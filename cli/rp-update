@@ -1,0 +1,60 @@
+#!/bin/bash
+# rp-update — Update a prospect's status and log a touch
+# Usage: rp-update <org-slug> <new-status> [note]
+# Statuses: research | ready | contacted | responded | passed | closed
+# Example: rp-update acme-corp contacted "Sent Mirror Email re: annual report gap"
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+TODAY=$(date +%Y-%m-%d)
+
+if [ $# -lt 2 ]; then
+  echo "Usage: rp-update <org-slug> <status> [note]"
+  echo "Statuses: research | ready | contacted | responded | passed | closed"
+  echo ""
+  echo "Available prospects:"
+  ls "$PROSPECTS"/*.md 2>/dev/null | xargs -I{} basename {} .md | sed 's/^/  /'
+  exit 1
+fi
+
+SLUG="$1"
+NEW_STATUS="$2"
+NOTE="${3:-}"
+FILEPATH="$PROSPECTS/$SLUG.md"
+
+if [ ! -f "$FILEPATH" ]; then
+  echo "✗ No prospect found: $SLUG"
+  echo "  Available:"
+  ls "$PROSPECTS"/*.md 2>/dev/null | xargs -I{} basename {} .md | sed 's/^/    /'
+  exit 1
+fi
+# Get current touch count
+OLD_TOUCHES=$(grep "^touch_count:" "$FILEPATH" | sed 's/touch_count: *//')
+NEW_TOUCHES=$((OLD_TOUCHES + 1))
+
+# Update frontmatter
+sed -i '' "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
+sed -i '' "s|^touch_count: .*|touch_count: $NEW_TOUCHES|" "$FILEPATH"
+sed -i '' "s|^last_contact: .*|last_contact: \"$TODAY\"|" "$FILEPATH"
+
+# Set follow-up date based on status
+case "$NEW_STATUS" in
+  contacted)
+    FOLLOWUP=$(date -v+3d +%Y-%m-%d)
+    sed -i '' "s|^next_followup: .*|next_followup: \"$FOLLOWUP\"|" "$FILEPATH"
+    echo "  Follow-up set: $FOLLOWUP (3 days)"
+    ;;
+  responded)
+    sed -i '' "s|^next_followup: .*|next_followup: \"\"|" "$FILEPATH"
+    ;;
+esac
+
+# Append to touch log
+if [ -n "$NOTE" ]; then
+  sed -i '' "/## Touch Log/a\\
+\\
+- **$TODAY** | $NEW_STATUS | $NOTE" "$FILEPATH"
+fi
+
+ORG=$(grep "^org:" "$FILEPATH" | sed 's/org: *"//' | sed 's/"//')
+echo "✓ $ORG → $NEW_STATUS (touch #$NEW_TOUCHES)"

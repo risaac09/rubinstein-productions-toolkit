@@ -1,0 +1,11 @@
+.DS_Store
+*.xlsx
+*.csv
+node_modules/
+.env
+*.dpx
+*.drx
+*.cube
+prospects/
+grants/funders/
+*.bak

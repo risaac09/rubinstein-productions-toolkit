@@ -1,0 +1,67 @@
+#!/bin/bash
+# rp-pipeline — View the current RP outreach pipeline
+# Usage: rp-pipeline [status]
+# Examples: rp-pipeline          (show all)
+#           rp-pipeline ready    (show only ready)
+#           rp-pipeline followup (show overdue follow-ups)
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+TODAY=$(date +%Y-%m-%d)
+FILTER="${1:-all}"
+
+echo "=== RP Outreach Pipeline ==="
+echo "    $(date +%Y-%m-%d)"
+echo ""
+
+# Count by status
+for status in research ready contacted responded passed closed; do
+  count=$(grep -rl "status: $status" "$PROSPECTS" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$count" -gt 0 ]; then
+    printf "  %-12s %s\n" "$status:" "$count"
+  fi
+done
+echo ""
+# Display prospects
+if [ "$FILTER" = "followup" ]; then
+  echo "--- Follow-ups due ---"
+  for f in "$PROSPECTS"/*.md; do
+    [ -f "$f" ] || continue
+    next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
+    if [ -n "$next" ] && [ "$next" \< "$TODAY" -o "$next" = "$TODAY" ]; then
+      org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
+      contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
+      status=$(grep "^status:" "$f" | sed 's/status: *//')
+      printf "  %-25s %-20s %-12s due: %s\n" "$org" "$contact" "$status" "$next"
+    fi
+  done
+else
+  for show_status in research ready contacted responded; do
+    if [ "$FILTER" != "all" ] && [ "$FILTER" != "$show_status" ]; then
+      continue
+    fi
+    
+    header_printed=false
+    for f in "$PROSPECTS"/*.md; do
+      [ -f "$f" ] || continue
+      file_status=$(grep "^status:" "$f" | sed 's/status: *//')
+      if [ "$file_status" = "$show_status" ]; then
+        if [ "$header_printed" = false ]; then
+          echo "--- $show_status ---"
+          header_printed=true
+        fi
+        org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')        contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
+        touches=$(grep "^touch_count:" "$f" | sed 's/touch_count: *//')
+        last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
+        angle=$(grep "^angle:" "$f" | sed 's/angle: *"//' | sed 's/"//')
+        printf "  %-25s %-20s touches:%-2s last:%-12s\n" "$org" "$contact" "$touches" "${last:---}"
+        if [ -n "$angle" ]; then
+          printf "    angle: %s\n" "$angle"
+        fi
+      fi
+    done
+    if [ "$header_printed" = true ]; then
+      echo ""
+    fi
+  done
+fi
