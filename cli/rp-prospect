@@ -1,0 +1,64 @@
+#!/bin/bash
+# rp-prospect — Create a new prospect file in the RP outreach pipeline
+# Usage: rp-prospect "Org Name" "https://website.com" "Contact Name" "Title" "email@org.com"
+# Or interactive: rp-prospect
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+TEMPLATE="$VAULT/Practice/Rubinstein Productions/Outreach/prospect-template.md"
+TODAY=$(date +%Y-%m-%d)
+
+# Interactive mode if no args
+if [ $# -eq 0 ]; then
+  echo "=== RP Prospect Creator ==="
+  echo ""
+  read -p "Organization name: " ORG_NAME
+  read -p "Website URL: " WEBSITE
+  read -p "Contact name: " CONTACT_NAME
+  read -p "Contact title: " CONTACT_TITLE
+  read -p "Email: " EMAIL
+  read -p "Source (linkedin/referral/event/research): " SOURCE
+  echo ""
+  echo "--- Sacral check ---"
+  read -p "Does reaching out to this person feel like a yes or a 'should'? " SACRALelse
+  ORG_NAME="$1"
+  WEBSITE="${2:-}"
+  CONTACT_NAME="${3:-}"
+  CONTACT_TITLE="${4:-}"
+  EMAIL="${5:-}"
+  SOURCE=""
+  SACRAL=""
+fi
+
+# Create filename from org name (lowercase, hyphens)
+FILENAME=$(echo "$ORG_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+FILEPATH="$PROSPECTS/$FILENAME.md"
+
+if [ -f "$FILEPATH" ]; then
+  echo "⚠ Prospect file already exists: $FILEPATH"
+  echo "  Use rp-update to modify."
+  exit 1
+fi
+
+# Generate prospect file from template
+sed \
+  -e "s|{{ORG_NAME}}|$ORG_NAME|g" \
+  -e "s|{{WEBSITE}}|$WEBSITE|g" \
+  -e "s|{{CONTACT_NAME}}|$CONTACT_NAME|g" \
+  -e "s|{{CONTACT_TITLE}}|$CONTACT_TITLE|g" \
+  -e "s|{{EMAIL}}|$EMAIL|g" \
+  -e "s|{{DATE}}|$TODAY|g" \
+  "$TEMPLATE" > "$FILEPATH"
+# Add source and sacral check if provided
+if [ -n "$SOURCE" ]; then
+  sed -i '' "s|source: \"\"|source: \"$SOURCE\"|" "$FILEPATH"
+fi
+if [ -n "$SACRAL" ]; then
+  sed -i '' "s|sacral_check: \"\"|sacral_check: \"$SACRAL\"|" "$FILEPATH"
+fi
+
+echo "✓ Prospect created: $FILENAME.md"
+echo "  Status: research"
+echo "  Next: Add your observation, then run rp-update $FILENAME ready"
+echo ""
+echo "  Open in Obsidian: obsidian://open?vault=Second%20Brain&file=Practice%2FRubinstein%20Productions%2FOutreach%2Fprospects%2F$FILENAME"

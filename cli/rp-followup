@@ -1,0 +1,56 @@
+#!/bin/bash
+# rp-followup — Show contacts due for follow-up
+# Usage: rp-followup
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+TODAY=$(date +%Y-%m-%d)
+
+echo "=== Follow-ups Due ==="
+echo "    $TODAY"
+echo ""
+
+found=false
+for f in "$PROSPECTS"/*.md; do
+  [ -f "$f" ] || continue
+  next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
+  [ -z "$next" ] && continue
+  
+  if [[ "$next" < "$TODAY" ]] || [[ "$next" == "$TODAY" ]]; then
+    org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
+    contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
+    touches=$(grep "^touch_count:" "$f" | sed 's/touch_count: *//')
+    last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
+    slug=$(basename "$f" .md)
+    
+    echo "  $org ($contact)"
+    echo "    Due: $next | Last: $last | Touches: $touches"    echo "    → rp-draft $slug"
+    echo ""
+    found=true
+  fi
+done
+
+if [ "$found" = false ]; then
+  echo "  No follow-ups due. Nice."
+fi
+
+# Also show contacted with no follow-up set
+echo "--- Contacted (no follow-up scheduled) ---"
+echo ""
+stale=false
+for f in "$PROSPECTS"/*.md; do
+  [ -f "$f" ] || continue
+  status=$(grep "^status:" "$f" | sed 's/status: *//')
+  next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
+  
+  if [ "$status" = "contacted" ] && [ -z "$next" ]; then
+    org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
+    last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
+    echo "  $org — last contact: $last (no follow-up set)"
+    stale=true
+  fi
+done
+
+if [ "$stale" = false ]; then
+  echo "  All contacted prospects have follow-ups scheduled."
+fi

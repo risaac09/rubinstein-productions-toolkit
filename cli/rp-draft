@@ -1,0 +1,85 @@
+#!/bin/bash
+# rp-draft — Open Gmail compose with pre-filled outreach email
+# Usage: rp-draft <org-slug>
+# Reads prospect file, opens Gmail compose in default browser
+# You write the email body — this handles the plumbing
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+
+if [ $# -lt 1 ]; then
+  echo "Usage: rp-draft <org-slug>"
+  echo ""
+  echo "Available prospects:"
+  ls "$PROSPECTS"/*.md 2>/dev/null | xargs -I{} basename {} .md | sed 's/^/  /'
+  exit 1
+fi
+
+SLUG="$1"
+FILEPATH="$PROSPECTS/$SLUG.md"
+
+if [ ! -f "$FILEPATH" ]; then
+  echo "✗ No prospect found: $SLUG"
+  exit 1
+fi
+
+# Extract fields
+EMAIL=$(grep "^email:" "$FILEPATH" | sed 's/email: *"//' | sed 's/"//')
+ORG=$(grep "^org:" "$FILEPATH" | sed 's/org: *"//' | sed 's/"//')CONTACT=$(grep "^contact:" "$FILEPATH" | sed 's/contact: *"//' | sed 's/"//')
+ANGLE=$(grep "^angle:" "$FILEPATH" | sed 's/angle: *"//' | sed 's/"//')
+STATUS=$(grep "^status:" "$FILEPATH" | sed 's/status: *//')
+
+if [ -z "$EMAIL" ]; then
+  echo "✗ No email address found for $ORG. Add it to the prospect file first."
+  exit 1
+fi
+
+# Print context for drafting
+echo "=== Draft Email: $ORG ==="
+echo ""
+echo "  To: $CONTACT <$EMAIL>"
+echo "  Status: $STATUS"
+if [ -n "$ANGLE" ]; then
+  echo "  Angle: $ANGLE"
+fi
+echo ""
+echo "--- RP Email Principles ---"
+echo "  • Lead with THEIR work, not ours"
+echo "  • Name something specific about the gap"
+echo "  • 3-4 short paragraphs max"
+echo "  • Single CTA (discovery call)"
+echo "  • Not coaching, not marketing — relational process"
+echo "  • Digital Liver test: Is it filtered? Processed? Nourishing?"
+echo ""
+
+# Prompt for subject and body
+read -p "Subject line: " SUBJECT
+echo ""
+echo "Email body (end with a line containing just 'END'):"BODY=""
+while IFS= read -r line; do
+  [ "$line" = "END" ] && break
+  BODY="$BODY$line%0A"
+done
+
+# Add signature
+BODY="${BODY}%0A---%0AIsaac Rubinstein%0ARubinstein Productions%0Arubinsteinproductions.com"
+
+# URL-encode subject
+ENCODED_SUBJECT=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SUBJECT'))" 2>/dev/null || echo "$SUBJECT")
+
+# Open Gmail compose
+GMAIL_URL="https://mail.google.com/mail/?view=cm&to=${EMAIL}&su=${ENCODED_SUBJECT}&body=${BODY}"
+open "$GMAIL_URL"
+
+echo ""
+echo "✓ Gmail compose opened for $CONTACT at $ORG"
+echo ""
+
+# Log the draft to the prospect file
+TODAY=$(date +%Y-%m-%d)
+sed -i '' "/## Draft History/a\\
+\\
+- **$TODAY** | Subject: $SUBJECT" "$FILEPATH"
+
+echo "  Draft logged. Send it, then run:"
+echo "  rp-update $SLUG contacted \"Sent: $SUBJECT\""
