@@ -1,0 +1,139 @@
+#!/bin/bash
+# rp-grant — Manage the Say Why grant pipeline
+# Usage: rp-grant <command> [args]
+#   rp-grant add                    — Add a new funder (interactive)
+#   rp-grant list [status]          — List funders by status
+#   rp-grant deadlines              — Show upcoming deadlines
+#   rp-grant update <slug> <status> — Update funder status
+#   rp-grant log <slug> "note"      — Log an action
+
+VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+GRANTS="$VAULT/Practice/Rubinstein Productions/Outreach/grants/funders"
+TEMPLATE="$VAULT/Practice/Rubinstein Productions/Outreach/grants/funder-template.md"
+TODAY=$(date +%Y-%m-%d)
+
+CMD="${1:-help}"
+
+case "$CMD" in
+
+add)
+  echo "=== Add Funder to Grant Pipeline ==="
+  echo ""
+  read -p "Funder name: " FUNDER_NAME
+  read -p "Type (foundation/government/corporate): " TYPE
+  read -p "Website: " WEBSITE
+  read -p "Focus areas (comma-separated): " FOCUS
+  read -p "Grant range (e.g., \$5K-50K): " RANGE
+  read -p "Next deadline (YYYY-MM-DD or unknown): " DEADLINE  read -p "Angle (narrative-SDOH/anti-extractive-media/info-metabolism/digital-equity): " ANGLE
+  
+  SLUG=$(echo "$FUNDER_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+  FILEPATH="$GRANTS/$SLUG.md"
+  
+  if [ -f "$FILEPATH" ]; then
+    echo "⚠ Funder already exists: $SLUG"
+    exit 1
+  fi
+  
+  sed \
+    -e "s|{{FUNDER_NAME}}|$FUNDER_NAME|g" \
+    -e "s|{{WEBSITE}}|$WEBSITE|g" \
+    "$TEMPLATE" > "$FILEPATH"
+  
+  sed -i '' "s|type: \"foundation|government|corporate|individual\"|type: \"$TYPE\"|" "$FILEPATH"
+  sed -i '' "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
+  sed -i '' "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
+  sed -i '' "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
+  
+  echo "✓ Funder added: $SLUG.md"
+  echo "  Open in Obsidian to complete fit assessment"
+  ;;
+
+list)
+  FILTER="${2:-all}"
+  echo "=== Grant Pipeline ==="
+  echo "    $TODAY"
+  echo ""  for status in research loi-prep submitted reviewed awarded declined; do
+    if [ "$FILTER" != "all" ] && [ "$FILTER" != "$status" ]; then
+      continue
+    fi
+    header_printed=false
+    for f in "$GRANTS"/*.md; do
+      [ -f "$f" ] || continue
+      file_status=$(grep "^status:" "$f" | sed 's/status: *//')
+      if [ "$file_status" = "$status" ]; then
+        if [ "$header_printed" = false ]; then
+          echo "--- $status ---"
+          header_printed=true
+        fi
+        funder=$(grep "^funder:" "$f" | sed 's/funder: *"//' | sed 's/"//')
+        range=$(grep "^grant_range:" "$f" | sed 's/grant_range: *"//' | sed 's/"//')
+        deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
+        angle=$(grep "^angle:" "$f" | sed 's/angle: *"//' | sed 's/"//')
+        printf "  %-30s %-15s deadline:%-12s %s\n" "$funder" "$range" "${deadline:---}" "$angle"
+      fi
+    done
+    if [ "$header_printed" = true ]; then echo ""; fi
+  done
+  ;;
+
+deadlines)
+  echo "=== Upcoming Grant Deadlines ==="
+  echo ""
+  found=false
+  for f in "$GRANTS"/*.md; do
+    [ -f "$f" ] || continue    deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
+    [ -z "$deadline" ] && continue
+    funder=$(grep "^funder:" "$f" | sed 's/funder: *"//' | sed 's/"//')
+    status=$(grep "^status:" "$f" | sed 's/status: *//')
+    next=$(grep "^next_action:" "$f" | sed 's/next_action: *"//' | sed 's/"//')
+    printf "  %-12s %-30s %-12s %s\n" "$deadline" "$funder" "$status" "$next"
+    found=true
+  done | sort
+  if [ "$found" = false ]; then
+    echo "  No deadlines set. Add them with rp-grant update <slug>"
+  fi
+  ;;
+
+update)
+  SLUG="$2"
+  NEW_STATUS="$3"
+  FILEPATH="$GRANTS/$SLUG.md"
+  if [ ! -f "$FILEPATH" ]; then
+    echo "✗ No funder found: $SLUG"
+    exit 1
+  fi
+  sed -i '' "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
+  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  funder=$(grep "^funder:" "$FILEPATH" | sed 's/funder: *"//' | sed 's/"//')
+  echo "✓ $funder → $NEW_STATUS"
+  ;;
+
+log)
+  SLUG="$2"
+  NOTE="$3"  FILEPATH="$GRANTS/$SLUG.md"
+  if [ ! -f "$FILEPATH" ]; then
+    echo "✗ No funder found: $SLUG"
+    exit 1
+  fi
+  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  sed -i '' "/## Action Log/a\\
+\\
+- **$TODAY** | $NOTE" "$FILEPATH"
+  funder=$(grep "^funder:" "$FILEPATH" | sed 's/funder: *"//' | sed 's/"//')
+  echo "✓ Logged action for $funder"
+  ;;
+
+help|*)
+  echo "rp-grant — Say Why Grant Pipeline Manager"
+  echo ""
+  echo "Commands:"
+  echo "  add                     Add a new funder (interactive)"
+  echo "  list [status]           List funders (all|research|loi-prep|submitted|reviewed|awarded)"
+  echo "  deadlines               Show upcoming deadlines sorted by date"
+  echo "  update <slug> <status>  Update funder status"
+  echo "  log <slug> \"note\"       Log an action to a funder"
+  echo ""
+  echo "Grant statuses: research → loi-prep → submitted → reviewed → awarded/declined"
+  ;;
+
+esac
