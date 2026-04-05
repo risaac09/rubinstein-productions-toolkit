@@ -52,6 +52,12 @@ nav:
     - How We Work: onboarding/how-we-work.md
     - Tools & Systems: onboarding/tools-and-systems.md
     - First Week Checklist: onboarding/first-week-checklist.md
+  - IT Department:
+    - Charter & Service Catalog: it/index.md
+    - Systems & Runbooks: it/systems.md
+    - Security & Continuity: it/security.md
+    - Roadmap: it/roadmap.md
+    - Incident Log: it/incidents.md
 
 markdown_extensions:
   - admonition
