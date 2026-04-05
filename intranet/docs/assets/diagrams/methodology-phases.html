@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP Methodology — Four Phases</title>
+<style>
+  :root {
+    --marrow: #1a1412;
+    --blood: #8b2e1c;
+    --amber: #c8923a;
+    --bone: #f2ece4;
+    --ash: #a89e93;
+    --white: #faf8f5;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', 'Calibri', sans-serif; background: var(--white); color: var(--marrow); }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: var(--ash); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Georgia', serif; font-size: 36px; font-style: italic; font-weight: 400; color: var(--marrow); margin-bottom: 8px; }
+  .subtitle { font-size: 16px; color: var(--ash); margin-bottom: 40px; }
+  .divider { height: 2px; background: var(--amber); width: 60px; margin: 32px 0; }
+
+  /* Phase Flow */
+  .phase-flow { display: flex; gap: 2px; margin: 32px 0; }
+  .phase-card { flex: 1; padding: 24px 16px; position: relative; min-height: 240px; }
+  .phase-card:nth-child(1) { background: var(--marrow); color: #fff; }
+  .phase-card:nth-child(2) { background: var(--blood); color: #fff; }
+  .phase-card:nth-child(3) { background: var(--amber); color: var(--marrow); }
+  .phase-card:nth-child(4) { background: var(--ash); color: var(--marrow); }
+  .phase-num { font-size: 48px; font-family: 'Georgia', serif; font-weight: 700; opacity: 0.3; position: absolute; top: 12px; right: 16px; }
+  .phase-name { font-size: 12px; letter-spacing: 3px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; }
+  .phase-desc { font-size: 13px; line-height: 1.6; opacity: 0.9; }
+  .phase-arrow { display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--amber); width: 24px; flex-shrink: 0; }
+
+  /* Helix visualization */
+  .helix-section { margin: 48px 0; text-align: center; }
+  .helix-svg { max-width: 100%; }
+  .helix-note { font-size: 13px; color: var(--ash); font-style: italic; margin-top: 16px; }
+
+  /* Principle cards */
+  .principles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 32px 0; }
+  .principle { background: var(--bone); padding: 20px; border-left: 3px solid var(--amber); }
+  .principle-name { font-size: 13px; font-weight: 700; color: var(--blood); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+  .principle-text { font-size: 14px; line-height: 1.6; color: var(--marrow); }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--bone); font-size: 12px; color: var(--ash); display: flex; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    .phase-flow { flex-direction: column; }
+    .phase-arrow { transform: rotate(90deg); width: auto; height: 24px; }
+    .principles { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">Rubinstein Productions</div>
+  <h1>Four phases. One principle.</h1>
+  <div class="subtitle">Every engagement moves through this arc. The pace varies; the sequence doesn't.</div>
+
+  <div class="phase-flow">
+    <div class="phase-card">
+      <span class="phase-num">1</span>
+      <div class="phase-name">Container</div>
+      <div class="phase-desc">Create safety. Establish the relational field. The facilitator's regulated nervous system entrains the participant's state through co-regulation.</div>
+    </div>
+    <div class="phase-card">
+      <span class="phase-num">2</span>
+      <div class="phase-name">Excavation</div>
+      <div class="phase-desc">Listen for what's alive. Find the inside version of the story — the one underneath the official narrative. Observe, don't diagnose.</div>
+    </div>
+    <div class="phase-card">
+      <span class="phase-num">3</span>
+      <div class="phase-name">Performance</div>
+      <div class="phase-desc">Cameras ship to participants. They film on their own terms, in their own space. The camera is a witness, not a product. Truth gets captured, not performed.</div>
+    </div>
+    <div class="phase-card">
+      <span class="phase-num">4</span>
+      <div class="phase-name">Translation</div>
+      <div class="phase-desc">Edit. Return. The story travels without the facilitator. All materials — footage, data, artifacts — belong to the client entirely.</div>
+    </div>
+  </div>
+
+  <div class="helix-section">
+    <svg class="helix-svg" viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg">
+      <!-- Connection line -->
+      <path d="M 80 60 C 200 20, 280 100, 400 60 C 520 20, 600 100, 720 60" fill="none" stroke="#c8923a" stroke-width="2" stroke-dasharray="6,4" opacity="0.6"/>
+      <path d="M 80 60 C 200 100, 280 20, 400 60 C 520 100, 600 20, 720 60" fill="none" stroke="#a89e93" stroke-width="2" stroke-dasharray="6,4" opacity="0.4"/>
+      <!-- Phase dots -->
+      <circle cx="80" cy="60" r="20" fill="#1a1412"/>
+      <text x="80" y="65" text-anchor="middle" fill="#c8923a" font-family="Georgia" font-size="16" font-weight="700">1</text>
+      <circle cx="300" cy="60" r="20" fill="#8b2e1c"/>
+      <text x="300" y="65" text-anchor="middle" fill="#fff" font-family="Georgia" font-size="16" font-weight="700">2</text>
+      <circle cx="520" cy="60" r="20" fill="#c8923a"/>
+      <text x="520" y="65" text-anchor="middle" fill="#1a1412" font-family="Georgia" font-size="16" font-weight="700">3</text>
+      <circle cx="720" cy="60" r="20" fill="#a89e93"/>
+      <text x="720" y="65" text-anchor="middle" fill="#1a1412" font-family="Georgia" font-size="16" font-weight="700">4</text>
+      <!-- Labels -->
+      <text x="80" y="100" text-anchor="middle" fill="#a89e93" font-family="Inter,Calibri" font-size="10" letter-spacing="1">CONTAINER</text>
+      <text x="300" y="100" text-anchor="middle" fill="#a89e93" font-family="Inter,Calibri" font-size="10" letter-spacing="1">EXCAVATION</text>
+      <text x="520" y="100" text-anchor="middle" fill="#a89e93" font-family="Inter,Calibri" font-size="10" letter-spacing="1">PERFORMANCE</text>
+      <text x="720" y="100" text-anchor="middle" fill="#a89e93" font-family="Inter,Calibri" font-size="10" letter-spacing="1">TRANSLATION</text>
+    </svg>
+    <div class="helix-note">The methodology is a helix, not a waterfall. Each phase informs the others retroactively.</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 style="font-family:Georgia;font-size:24px;font-style:italic;color:var(--marrow);margin-bottom:24px;">Core Principles</h2>
+
+  <div class="principles">
+    <div class="principle">
+      <div class="principle-name">Facilitation Before Technology</div>
+      <div class="principle-text">The relational container matters more than the equipment. A well-facilitated iPhone interview outperforms a poorly facilitated cinema shoot.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-name">Reciprocity Over Extraction</div>
+      <div class="principle-text">Every interaction is a mutual exchange. The participant should feel they received something — not that something was taken.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-name">Safety as Production Asset</div>
+      <div class="principle-text">Emotional regulation directly produces narrative coherence. This is a technical principle, not a soft one.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-name">Visible Consent Loops</div>
+      <div class="principle-text">Consent is ongoing, revisitable, and embodied. Check in at minimum three times per session — not just once with a signature.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-name">Embodied Presence</div>
+      <div class="principle-text">The facilitator's regulated nervous system is part of the production environment. Your body stabilizes the participant's through co-regulation.</div>
+    </div>
+    <div class="principle">
+      <div class="principle-name">The Story Travels Without You</div>
+      <div class="principle-text">Success is when the client doesn't need the facilitator. Build capacity, not dependency. Return everything.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Rubinstein Productions — Internal Reference</span>
+    <span>rubinsteinproductions.com</span>
+  </div>
+</div>
+</body>
+</html>

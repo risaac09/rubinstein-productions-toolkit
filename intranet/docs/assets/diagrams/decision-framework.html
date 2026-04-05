@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP Decision Framework — Opportunity Triage</title>
+<style>
+  :root {
+    --marrow: #1a1412;
+    --blood: #8b2e1c;
+    --amber: #c8923a;
+    --bone: #f2ece4;
+    --ash: #a89e93;
+    --white: #faf8f5;
+    --green: #4a7c59;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', 'Calibri', sans-serif; background: var(--white); color: var(--marrow); }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: var(--ash); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Georgia', serif; font-size: 36px; font-style: italic; font-weight: 400; color: var(--marrow); margin-bottom: 8px; }
+  .subtitle { font-size: 16px; color: var(--ash); margin-bottom: 40px; }
+  .divider { height: 2px; background: var(--amber); width: 60px; margin: 32px 0; }
+  h2 { font-family: 'Georgia', serif; font-size: 22px; font-weight: 400; font-style: italic; color: var(--marrow); margin-bottom: 16px; }
+
+  /* Flowchart */
+  .flow-wrap { margin: 24px 0 40px; overflow-x: auto; }
+  .flow-wrap svg { display: block; margin: 0 auto; }
+
+  /* Triage cards */
+  .triage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .triage-card { padding: 24px; border-top: 4px solid; }
+  .triage-card.a { border-color: var(--green); background: #f0f5f1; }
+  .triage-card.b { border-color: var(--amber); background: #fdf6ec; }
+  .triage-card.c { border-color: var(--blood); background: #f9f0ee; }
+  .triage-letter { font-family: 'Georgia', serif; font-size: 36px; font-weight: 700; opacity: 0.2; }
+  .triage-name { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+  .triage-card.a .triage-name { color: var(--green); }
+  .triage-card.b .triage-name { color: var(--amber); }
+  .triage-card.c .triage-name { color: var(--blood); }
+  .triage-desc { font-size: 13px; line-height: 1.7; margin-bottom: 8px; }
+  .triage-action { font-size: 12px; font-weight: 600; color: var(--marrow); background: rgba(255,255,255,0.7); padding: 6px 10px; }
+
+  /* Filter questions */
+  .filter-section { margin: 32px 0; }
+  .filter-card { display: grid; grid-template-columns: 48px 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
+  .filter-num { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-family: 'Georgia', serif; font-size: 22px; font-weight: 700; color: #fff; background: var(--marrow); border-radius: 50%; flex-shrink: 0; }
+  .filter-body { padding: 16px 20px; background: var(--bone); }
+  .filter-q { font-size: 14px; font-weight: 600; color: var(--marrow); margin-bottom: 6px; }
+  .filter-note { font-size: 12px; color: var(--ash); line-height: 1.6; font-style: italic; }
+  .filter-result { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .result-box { padding: 16px; text-align: center; font-size: 13px; font-weight: 600; }
+  .result-box.accept { background: var(--green); color: #fff; }
+  .result-box.decline { background: var(--blood); color: #fff; }
+
+  /* Energy callout */
+  .energy-callout { background: var(--marrow); color: #fff; padding: 24px 28px; margin: 32px 0; display: flex; align-items: center; gap: 20px; }
+  .energy-icon { width: 64px; height: 64px; flex-shrink: 0; }
+  .energy-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--amber); margin-bottom: 4px; }
+  .energy-text { font-size: 14px; line-height: 1.7; }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--bone); font-size: 12px; color: var(--ash); display: flex; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 28px; }
+    .triage-grid { grid-template-columns: 1fr; }
+    .filter-result { grid-template-columns: 1fr; }
+    .energy-callout { flex-direction: column; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">Rubinstein Productions</div>
+  <h1>Decision Framework</h1>
+  <p class="subtitle">How we triage opportunities — from first glance to final commitment.</p>
+
+  <div class="flow-wrap">
+    <svg viewBox="0 0 800 340" width="800" height="340" xmlns="http://www.w3.org/2000/svg">
+      <!-- Entry -->
+      <rect x="310" y="10" width="180" height="44" rx="22" fill="#1a1412"/>
+      <text x="400" y="37" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="12" fill="#c8923a" font-weight="700">NEW OPPORTUNITY</text>
+
+      <!-- Arrow down -->
+      <line x1="400" y1="54" x2="400" y2="78" stroke="#a89e93" stroke-width="2"/>
+      <polygon points="395,76 400,84 405,76" fill="#a89e93"/>
+
+      <!-- Triage box -->
+      <rect x="300" y="84" width="200" height="40" rx="4" fill="#f2ece4" stroke="#c8923a" stroke-width="2"/>
+      <text x="400" y="109" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#1a1412" font-weight="700" letter-spacing="1">A / B / C TRIAGE</text>
+
+      <!-- Three branches -->
+      <!-- A branch (left-center) -->
+      <line x1="340" y1="124" x2="200" y2="160" stroke="#4a7c59" stroke-width="2"/>
+      <polygon points="196,157 200,166 204,157" fill="#4a7c59" transform="rotate(25 200 160)"/>
+      <rect x="120" y="164" width="160" height="36" rx="4" fill="#4a7c59"/>
+      <text x="200" y="187" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#fff" font-weight="700">A — IMMEDIATE</text>
+
+      <!-- B branch (center) -->
+      <line x1="400" y1="124" x2="400" y2="164" stroke="#c8923a" stroke-width="2"/>
+      <polygon points="395,162 400,170 405,162" fill="#c8923a"/>
+      <rect x="320" y="170" width="160" height="36" rx="4" fill="#c8923a"/>
+      <text x="400" y="193" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#1a1412" font-weight="700">B — NURTURE</text>
+
+      <!-- C branch (right-center) -->
+      <line x1="460" y1="124" x2="600" y2="160" stroke="#8b2e1c" stroke-width="2"/>
+      <polygon points="596,157 600,166 604,157" fill="#8b2e1c" transform="rotate(-25 600 160)"/>
+      <rect x="520" y="164" width="160" height="36" rx="4" fill="#8b2e1c"/>
+      <text x="600" y="187" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#fff" font-weight="700">C — DECLINE</text>
+
+      <!-- B action -->
+      <text x="400" y="222" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#a89e93" font-style="italic">Pipeline, follow up 2 weeks</text>
+
+      <!-- C action -->
+      <text x="600" y="216" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#a89e93" font-style="italic">Graceful decline + referral</text>
+
+      <!-- A continues to filter -->
+      <line x1="200" y1="200" x2="200" y2="230" stroke="#4a7c59" stroke-width="2"/>
+      <polygon points="195,228 200,236 205,228" fill="#4a7c59"/>
+
+      <!-- 6 Question Filter -->
+      <rect x="80" y="236" width="240" height="40" rx="4" fill="#1a1412" stroke="#c8923a" stroke-width="2"/>
+      <text x="200" y="261" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#c8923a" font-weight="700" letter-spacing="1">6-QUESTION FILTER</text>
+
+      <!-- Two outcomes -->
+      <line x1="150" y1="276" x2="100" y2="306" stroke="#4a7c59" stroke-width="2"/>
+      <rect x="40" y="306" width="120" height="30" rx="4" fill="#4a7c59"/>
+      <text x="100" y="325" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#fff" font-weight="700">ALL YES → ACCEPT</text>
+
+      <line x1="250" y1="276" x2="300" y2="306" stroke="#8b2e1c" stroke-width="2"/>
+      <rect x="240" y="306" width="120" height="30" rx="4" fill="#8b2e1c"/>
+      <text x="300" y="325" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#fff" font-weight="700">ANY NO → DECLINE</text>
+
+      <!-- Filter questions summary (right side) -->
+      <text x="460" y="250" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#a89e93" font-weight="600">THE SIX GATES:</text>
+      <text x="460" y="268" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">1. Sacral response?</text>
+      <text x="460" y="284" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">2. Meets floor rate?</text>
+      <text x="460" y="300" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">3. Capacity available?</text>
+      <text x="630" y="268" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">4. Client ready?</text>
+      <text x="630" y="284" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">5. 5-day latency OK?</text>
+      <text x="630" y="300" font-family="Inter,Calibri,sans-serif" font-size="10" fill="#1a1412">6. Advances roadmap?</text>
+    </svg>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Layer 1 — A/B/C Triage</h2>
+
+  <div class="triage-grid">
+    <div class="triage-card a">
+      <div class="triage-letter">A</div>
+      <div class="triage-name">Immediate</div>
+      <div class="triage-desc">Active lead, clear fit, ready to scope. The sacral says yes on first contact. Move fast — respond within 24 hours.</div>
+      <div class="triage-action">→ Proceed to 6-Question Filter</div>
+    </div>
+    <div class="triage-card b">
+      <div class="triage-letter">B</div>
+      <div class="triage-name">Nurture</div>
+      <div class="triage-desc">Interesting but not ready. Could be timing, budget, or readiness. Add to pipeline and follow up in 2 weeks. Don't chase — stay warm.</div>
+      <div class="triage-action">→ Pipeline + 2-week follow-up</div>
+    </div>
+    <div class="triage-card c">
+      <div class="triage-letter">C</div>
+      <div class="triage-name">Decline</div>
+      <div class="triage-desc">Poor fit, below floor rate, or capacity exceeded. Decline gracefully with a referral if possible. No guilt — protecting capacity protects quality.</div>
+      <div class="triage-action">→ Graceful decline + referral</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Layer 2 — The Six Gates</h2>
+  <p style="font-size:13px; color:var(--ash); margin-bottom:24px; font-style:italic;">For A-category opportunities only. All six must pass.</p>
+
+  <div class="filter-section">
+    <div class="filter-card">
+      <div class="filter-num">1</div>
+      <div class="filter-body">
+        <div class="filter-q">Does the sacral respond?</div>
+        <div class="filter-note">Gut yes or no. If you're thinking yourself into a yes, it's a no. The Generator strategy is non-negotiable — the body knows before the mind does.</div>
+      </div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-num">2</div>
+      <div class="filter-body">
+        <div class="filter-q">Does it meet the floor rate?</div>
+        <div class="filter-note">$150/hr minimum, non-negotiable. Below this, the work cannot be sustained at the quality it requires. No exceptions.</div>
+      </div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-num">3</div>
+      <div class="filter-body">
+        <div class="filter-q">Is there capacity?</div>
+        <div class="filter-note">Max 2 Territory clients, 4 Map engagements per quarter, 3 active projects simultaneously. Check the dashboard before committing.</div>
+      </div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-num">4</div>
+      <div class="filter-body">
+        <div class="filter-q">Is the client ready for the work?</div>
+        <div class="filter-note">Not just buying a service — willing to be changed. Look for curiosity over consumption. If they want deliverables without process, it's a mismatch.</div>
+      </div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-num">5</div>
+      <div class="filter-body">
+        <div class="filter-q">Can we deliver in 5-day latency rhythm?</div>
+        <div class="filter-note">Creative deliverables need integration time. If the timeline doesn't allow for the 5-business-day latency between delivery and next action, renegotiate scope.</div>
+      </div>
+    </div>
+    <div class="filter-card">
+      <div class="filter-num">6</div>
+      <div class="filter-body">
+        <div class="filter-q">Does it advance the phase roadmap?</div>
+        <div class="filter-note">Foundation → Leverage → Scale. Does this project build toward the current phase? Interesting work that doesn't advance the roadmap dilutes momentum.</div>
+      </div>
+    </div>
+
+    <div class="filter-result">
+      <div class="result-box accept">All 6 YES → Accept the engagement</div>
+      <div class="result-box decline">Any NO → Negotiate scope or decline gracefully</div>
+    </div>
+  </div>
+
+  <div class="energy-callout">
+    <svg class="energy-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="28" fill="none" stroke="#c8923a" stroke-width="2"/>
+      <path d="M32 10 L32 32 L44 44" stroke="#c8923a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <circle cx="32" cy="32" r="3" fill="#c8923a"/>
+    </svg>
+    <div>
+      <div class="energy-label">Generator Energy Principle</div>
+      <div class="energy-text">If weekly energy is below 6/10, no new commitments regardless of opportunity quality. Energy is the ultimate constraint — everything else is downstream of it. At 6–7: only A-category. At 8+: full capacity available.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Rubinstein Productions — Internal Reference</span>
+    <span>rubinsteinproductions.com</span>
+  </div>
+</div>
+</body>
+</html>

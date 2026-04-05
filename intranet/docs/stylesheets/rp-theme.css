@@ -1,0 +1,50 @@
+/* Rubinstein Productions Intranet Theme */
+:root {
+  --rp-marrow: #1a1412;
+  --rp-blood: #8b2e1c;
+  --rp-amber: #c8923a;
+  --rp-bone: #f2ece4;
+  --rp-ash: #a89e93;
+  --rp-white: #faf8f5;
+
+  --md-primary-fg-color: var(--rp-marrow);
+  --md-primary-bg-color: var(--rp-white);
+  --md-accent-fg-color: var(--rp-amber);
+  --md-typeset-a-color: var(--rp-blood);
+}
+
+.md-header {
+  background-color: var(--rp-marrow);
+}
+
+.md-tabs {
+  background-color: var(--rp-marrow);
+}
+
+.md-nav__link--active {
+  color: var(--rp-blood) !important;
+  font-weight: 600;
+}
+
+h1 { color: var(--rp-marrow); }
+h2 { color: var(--rp-blood); }
+h3 { color: var(--rp-amber); }
+
+blockquote {
+  border-left: 4px solid var(--rp-amber);
+  background: var(--rp-bone);
+  padding: 0.5em 1em;
+}
+
+table th {
+  background-color: var(--rp-marrow);
+  color: var(--rp-amber);
+}
+
+.admonition.warning {
+  border-color: var(--rp-blood);
+}
+
+.admonition.tip {
+  border-color: var(--rp-amber);
+}

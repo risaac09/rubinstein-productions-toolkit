@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP Capacity Dashboard</title>
+<style>
+  :root {
+    --marrow: #1a1412;
+    --blood: #8b2e1c;
+    --amber: #c8923a;
+    --bone: #f2ece4;
+    --ash: #a89e93;
+    --white: #faf8f5;
+    --green: #4a7c59;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', 'Calibri', sans-serif; background: var(--white); color: var(--marrow); }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: var(--ash); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Georgia', serif; font-size: 36px; font-style: italic; font-weight: 400; color: var(--marrow); margin-bottom: 8px; }
+  .subtitle { font-size: 16px; color: var(--ash); margin-bottom: 40px; }
+  .divider { height: 2px; background: var(--amber); width: 60px; margin: 32px 0; }
+  h2 { font-family: 'Georgia', serif; font-size: 22px; font-weight: 400; font-style: italic; color: var(--marrow); margin-bottom: 16px; }
+
+  /* Gauge grid */
+  .gauge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 24px 0 40px; }
+  .gauge-card { background: var(--bone); padding: 24px; text-align: center; }
+  .gauge-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--ash); margin-bottom: 16px; }
+  .gauge-svg { display: block; margin: 0 auto 12px; }
+  .gauge-value { font-family: 'Georgia', serif; font-size: 32px; font-weight: 700; color: var(--marrow); }
+  .gauge-max { font-size: 14px; color: var(--ash); }
+  .gauge-status { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; padding: 4px 12px; display: inline-block; }
+  .gauge-status.open { background: var(--green); color: #fff; }
+  .gauge-status.limited { background: var(--amber); color: var(--marrow); }
+  .gauge-status.full { background: var(--blood); color: #fff; }
+
+  /* Energy scale */
+  .energy-section { margin: 32px 0; }
+  .energy-scale { display: flex; gap: 4px; margin: 16px 0; height: 48px; }
+  .energy-bar { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; transition: opacity 0.2s; cursor: default; position: relative; }
+  .energy-bar span { position: relative; z-index: 1; }
+  .energy-bar.red { background: var(--blood); }
+  .energy-bar.amber { background: var(--amber); color: var(--marrow); }
+  .energy-bar.green { background: var(--green); }
+  .energy-zones { display: grid; grid-template-columns: 5fr 2fr 3fr; gap: 4px; margin-bottom: 8px; }
+  .zone { padding: 10px; font-size: 12px; text-align: center; }
+  .zone.red { background: rgba(139,46,28,0.1); color: var(--blood); border-top: 3px solid var(--blood); }
+  .zone.amber { background: rgba(200,146,58,0.1); color: var(--amber); border-top: 3px solid var(--amber); }
+  .zone.green { background: rgba(74,124,89,0.1); color: var(--green); border-top: 3px solid var(--green); }
+  .zone-label { font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-size: 10px; margin-bottom: 4px; }
+  .zone-action { font-style: italic; }
+
+  /* Calendar grid */
+  .calendar-section { margin: 32px 0; }
+  .week-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0; }
+  .day-col { background: var(--bone); padding: 16px 12px; text-align: center; }
+  .day-name { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--ash); margin-bottom: 12px; }
+  .day-block { padding: 8px; margin-bottom: 6px; font-size: 11px; font-weight: 600; }
+  .block-deep { background: var(--marrow); color: var(--amber); }
+  .block-client { background: var(--amber); color: var(--marrow); }
+  .block-admin { background: var(--ash); color: #fff; }
+  .block-buffer { background: var(--bone); color: var(--ash); border: 1px dashed var(--ash); }
+
+  /* Hard limits */
+  .limits-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .limit-card { padding: 16px 20px; background: var(--bone); border-left: 3px solid var(--amber); }
+  .limit-rule { font-size: 14px; font-weight: 600; color: var(--marrow); margin-bottom: 4px; }
+  .limit-why { font-size: 12px; color: var(--ash); font-style: italic; line-height: 1.5; }
+
+  /* Recovery protocol */
+  .recovery { background: var(--marrow); color: #fff; padding: 24px 28px; margin: 32px 0; }
+  .recovery-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--blood); margin-bottom: 12px; }
+  .recovery-title { font-family: 'Georgia', serif; font-size: 18px; font-style: italic; margin-bottom: 16px; color: var(--amber); }
+  .recovery-steps { list-style: none; }
+  .recovery-steps li { padding: 8px 0; font-size: 13px; line-height: 1.6; border-bottom: 1px solid rgba(168,158,147,0.2); display: flex; gap: 12px; }
+  .recovery-steps li:last-child { border: none; }
+  .step-num { font-family: 'Georgia', serif; font-size: 18px; font-weight: 700; color: var(--amber); opacity: 0.5; min-width: 24px; }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--bone); font-size: 12px; color: var(--ash); display: flex; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 28px; }
+    .gauge-grid { grid-template-columns: 1fr; }
+    .week-grid { grid-template-columns: repeat(3, 1fr); }
+    .limits-grid { grid-template-columns: 1fr; }
+    .energy-zones { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">Rubinstein Productions</div>
+  <h1>Capacity Dashboard</h1>
+  <p class="subtitle">Hard limits, energy assessment, and calendar architecture — the infrastructure of sustainable practice.</p>
+
+  <!-- Capacity gauges -->
+  <div class="gauge-grid">
+    <div class="gauge-card">
+      <div class="gauge-label">Territory Clients</div>
+      <svg class="gauge-svg" viewBox="0 0 120 80" width="120" height="80">
+        <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="#f2ece4" stroke-width="10" stroke-linecap="round"/>
+        <path d="M 15 65 A 45 45 0 0 1 15 65" fill="none" stroke="#4a7c59" stroke-width="10" stroke-linecap="round"/>
+        <text x="60" y="58" text-anchor="middle" font-family="Georgia" font-size="28" font-weight="700" fill="#1a1412">0</text>
+      </svg>
+      <div class="gauge-value">0 <span class="gauge-max">/ 2</span></div>
+      <span class="gauge-status open">Open</span>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Map Engagements (Qtr)</div>
+      <svg class="gauge-svg" viewBox="0 0 120 80" width="120" height="80">
+        <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="#f2ece4" stroke-width="10" stroke-linecap="round"/>
+        <path d="M 15 65 A 45 45 0 0 1 15 65" fill="none" stroke="#4a7c59" stroke-width="10" stroke-linecap="round"/>
+        <text x="60" y="58" text-anchor="middle" font-family="Georgia" font-size="28" font-weight="700" fill="#1a1412">0</text>
+      </svg>
+      <div class="gauge-value">0 <span class="gauge-max">/ 4</span></div>
+      <span class="gauge-status open">Open</span>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Active Projects</div>
+      <svg class="gauge-svg" viewBox="0 0 120 80" width="120" height="80">
+        <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="#f2ece4" stroke-width="10" stroke-linecap="round"/>
+        <path d="M 15 65 A 45 45 0 0 1 15 65" fill="none" stroke="#4a7c59" stroke-width="10" stroke-linecap="round"/>
+        <text x="60" y="58" text-anchor="middle" font-family="Georgia" font-size="28" font-weight="700" fill="#1a1412">0</text>
+      </svg>
+      <div class="gauge-value">0 <span class="gauge-max">/ 3</span></div>
+      <span class="gauge-status open">Open</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Energy Assessment</h2>
+
+  <div class="energy-section">
+    <div class="energy-scale">
+      <div class="energy-bar red"><span>1</span></div>
+      <div class="energy-bar red"><span>2</span></div>
+      <div class="energy-bar red"><span>3</span></div>
+      <div class="energy-bar red"><span>4</span></div>
+      <div class="energy-bar red"><span>5</span></div>
+      <div class="energy-bar amber"><span>6</span></div>
+      <div class="energy-bar amber"><span>7</span></div>
+      <div class="energy-bar green"><span>8</span></div>
+      <div class="energy-bar green"><span>9</span></div>
+      <div class="energy-bar green"><span>10</span></div>
+    </div>
+    <div class="energy-zones">
+      <div class="zone red">
+        <div class="zone-label">1–5: No New Commitments</div>
+        <div class="zone-action">Protect, recover, renegotiate timelines</div>
+      </div>
+      <div class="zone amber">
+        <div class="zone-label">6–7: A-Category Only</div>
+        <div class="zone-action">Only if sacral responds strongly</div>
+      </div>
+      <div class="zone green">
+        <div class="zone-label">8–10: Full Capacity</div>
+        <div class="zone-action">All systems go</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Calendar Architecture</h2>
+
+  <div class="calendar-section">
+    <div class="week-grid">
+      <div class="day-col">
+        <div class="day-name">Monday</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-admin">Admin</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Tuesday</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-client">Client Calls</div>
+        <div class="day-block block-client">Sessions</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Wednesday</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-buffer">Buffer</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Thursday</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-client">Client Calls</div>
+        <div class="day-block block-client">Sessions</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Friday</div>
+        <div class="day-block block-deep">Deep Work</div>
+        <div class="day-block block-admin">Admin</div>
+        <div class="day-block block-buffer">Buffer / Review</div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px;">
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ash);"><span style="width:12px; height:12px; background:var(--marrow); display:inline-block;"></span> Deep Work (mornings, no calls)</div>
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ash);"><span style="width:12px; height:12px; background:var(--amber); display:inline-block;"></span> Client Sessions</div>
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ash);"><span style="width:12px; height:12px; background:var(--ash); display:inline-block;"></span> Administrative</div>
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ash);"><span style="width:12px; height:12px; border:1px dashed var(--ash); display:inline-block;"></span> Buffer / Integration</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Hard Limits</h2>
+
+  <div class="limits-grid">
+    <div class="limit-card">
+      <div class="limit-rule">No calls before noon</div>
+      <div class="limit-why">Deep work mornings, minimum 3 days per week. Creative production requires uninterrupted time.</div>
+    </div>
+    <div class="limit-card">
+      <div class="limit-rule">5-day deliverable latency</div>
+      <div class="limit-why">Creative work needs integration time. Rushing delivery degrades quality and burns energy.</div>
+    </div>
+    <div class="limit-card">
+      <div class="limit-rule">1-day buffer between sessions</div>
+      <div class="limit-why">Intensive facilitation requires recovery. Back-to-back sessions compromise presence.</div>
+    </div>
+    <div class="limit-card">
+      <div class="limit-rule">Monthly capacity review</div>
+      <div class="limit-why">Check quarterly limits against actuals. Adjust outreach intensity based on remaining capacity.</div>
+    </div>
+  </div>
+
+  <div class="recovery">
+    <div class="recovery-label">Emergency Protocol</div>
+    <div class="recovery-title">Overcommitment Recovery</div>
+    <ol class="recovery-steps">
+      <li><span class="step-num">1</span> Pause all outreach immediately — no new leads until recovery</li>
+      <li><span class="step-num">2</span> Extend timelines where possible — communicate proactively with clients</li>
+      <li><span class="step-num">3</span> Protect deep work mornings first — they are the foundation</li>
+      <li><span class="step-num">4</span> Renegotiate scope before dropping quality — always</li>
+    </ol>
+  </div>
+
+  <div class="footer">
+    <span>Rubinstein Productions — Internal Reference</span>
+    <span>rubinsteinproductions.com</span>
+  </div>
+</div>
+</body>
+</html>

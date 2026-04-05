@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP Service Tiers — Depth of Engagement</title>
+<style>
+  :root {
+    --marrow: #1a1412;
+    --blood: #8b2e1c;
+    --amber: #c8923a;
+    --bone: #f2ece4;
+    --ash: #a89e93;
+    --white: #faf8f5;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', 'Calibri', sans-serif; background: var(--white); color: var(--marrow); }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: var(--ash); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Georgia', serif; font-size: 36px; font-style: italic; font-weight: 400; color: var(--marrow); margin-bottom: 8px; }
+  .subtitle { font-size: 16px; color: var(--ash); margin-bottom: 40px; }
+  .divider { height: 2px; background: var(--amber); width: 60px; margin: 32px 0; }
+  h2 { font-family: 'Georgia', serif; font-size: 22px; font-weight: 400; font-style: italic; color: var(--marrow); margin-bottom: 16px; }
+
+  /* Pyramid SVG */
+  .pyramid-wrap { margin: 24px 0 40px; text-align: center; }
+  .pyramid-wrap svg { display: block; margin: 0 auto; }
+
+  /* Tier cards */
+  .tier-grid { display: grid; gap: 20px; margin-bottom: 32px; }
+  .tier-card { display: grid; grid-template-columns: 80px 1fr; border-left: 4px solid var(--ash); background: var(--bone); overflow: hidden; }
+  .tier-card.workshop { border-left-color: var(--ash); }
+  .tier-card.mirror { border-left-color: var(--blood); }
+  .tier-card.map { border-left-color: var(--amber); }
+  .tier-card.territory { border-left-color: var(--marrow); }
+
+  .tier-icon { display: flex; align-items: center; justify-content: center; }
+  .tier-card.workshop .tier-icon { background: var(--ash); }
+  .tier-card.mirror .tier-icon { background: var(--blood); }
+  .tier-card.map .tier-icon { background: var(--amber); }
+  .tier-card.territory .tier-icon { background: var(--marrow); }
+  .tier-icon svg { width: 36px; height: 36px; }
+
+  .tier-body { padding: 24px; }
+  .tier-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .tier-name { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--marrow); }
+  .tier-subtitle { font-family: 'Georgia', serif; font-style: italic; font-size: 15px; color: var(--blood); }
+  .tier-price { font-size: 20px; font-weight: 700; color: var(--marrow); margin: 8px 0 4px; }
+  .tier-duration { font-size: 12px; color: var(--ash); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .tier-desc { font-size: 13px; line-height: 1.7; color: var(--marrow); margin-bottom: 10px; }
+  .tier-includes { font-size: 12px; color: var(--ash); line-height: 1.6; }
+  .tier-includes strong { color: var(--blood); }
+  .tier-recommend { font-size: 12px; color: var(--marrow); background: rgba(200,146,58,0.12); padding: 8px 12px; margin-top: 10px; border-left: 2px solid var(--amber); }
+
+  /* Floor rate callout */
+  .floor-rate { background: var(--marrow); color: #fff; padding: 20px 28px; margin: 32px 0; display: flex; align-items: center; gap: 20px; }
+  .floor-rate .fr-amount { font-family: 'Georgia', serif; font-size: 32px; font-weight: 700; color: var(--amber); white-space: nowrap; }
+  .floor-rate .fr-text { font-size: 14px; line-height: 1.6; }
+  .floor-rate .fr-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--amber); margin-bottom: 4px; }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--bone); font-size: 12px; color: var(--ash); display: flex; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 28px; }
+    .tier-card { grid-template-columns: 1fr; }
+    .tier-icon { height: 48px; }
+    .floor-rate { flex-direction: column; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">Rubinstein Productions</div>
+  <h1>Service Tiers</h1>
+  <p class="subtitle">Four depths of engagement — from a single session to ongoing partnership.</p>
+
+  <div class="pyramid-wrap">
+    <svg viewBox="0 0 600 300" width="600" height="300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stepped pyramid, widest at bottom -->
+      <rect x="40" y="220" width="520" height="60" rx="2" fill="#1a1412"/>
+      <text x="300" y="255" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#c8923a" font-weight="700" letter-spacing="2">TERRITORY — ONGOING PARTNERSHIP</text>
+
+      <rect x="100" y="150" width="400" height="60" rx="2" fill="#c8923a"/>
+      <text x="300" y="185" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#1a1412" font-weight="700" letter-spacing="2">MAP — NARRATIVE STRATEGY SPRINT</text>
+
+      <rect x="160" y="80" width="280" height="60" rx="2" fill="#8b2e1c"/>
+      <text x="300" y="115" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#faf8f5" font-weight="700" letter-spacing="2">MIRROR — VOICE EXCAVATION</text>
+
+      <rect x="220" y="10" width="160" height="60" rx="2" fill="#a89e93"/>
+      <text x="300" y="45" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="11" fill="#1a1412" font-weight="700" letter-spacing="2">WORKSHOP</text>
+
+      <!-- Depth arrow -->
+      <text x="16" y="145" text-anchor="middle" font-family="Georgia,serif" font-size="11" fill="#a89e93" font-style="italic" transform="rotate(-90 16 145)">depth of engagement →</text>
+    </svg>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Tier Details</h2>
+
+  <div class="tier-grid">
+    <!-- Workshop -->
+    <div class="tier-card workshop">
+      <div class="tier-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="18" cy="12" r="5" stroke="#1a1412" stroke-width="2"/>
+          <circle cx="10" cy="16" r="3.5" stroke="#1a1412" stroke-width="1.5" opacity="0.5"/>
+          <circle cx="26" cy="16" r="3.5" stroke="#1a1412" stroke-width="1.5" opacity="0.5"/>
+          <path d="M6 30 C6 24 12 20 18 20 C24 20 30 24 30 30" stroke="#1a1412" stroke-width="2" fill="none"/>
+        </svg>
+      </div>
+      <div class="tier-body">
+        <div class="tier-header">
+          <span class="tier-name">Workshop</span>
+          <span class="tier-subtitle">"Say The Thing"</span>
+        </div>
+        <div class="tier-price">$150 – $300 / person</div>
+        <div class="tier-duration">3-hour group session · 8–20 participants</div>
+        <div class="tier-desc">Facilitated group experience using somatic exercises and narrative prompts. Entry point for organizations exploring the work — participants experience Voice Liberation principles firsthand.</div>
+        <div class="tier-includes"><strong>Includes:</strong> Facilitated group session, somatic exercises, narrative prompts, post-session synthesis</div>
+        <div class="tier-recommend">Recommend when: organization is curious but uncommitted, wants a low-stakes way to experience the methodology, or needs a team-building catalyst.</div>
+      </div>
+    </div>
+
+    <!-- Mirror -->
+    <div class="tier-card mirror">
+      <div class="tier-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="18" cy="18" rx="10" ry="14" stroke="#faf8f5" stroke-width="2"/>
+          <line x1="18" y1="4" x2="18" y2="32" stroke="#faf8f5" stroke-width="1" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+      <div class="tier-body">
+        <div class="tier-header">
+          <span class="tier-name">Mirror</span>
+          <span class="tier-subtitle">Voice Excavation Session</span>
+        </div>
+        <div class="tier-price">$500 – $1,500</div>
+        <div class="tier-duration">90-minute session + narrative synthesis</div>
+        <div class="tier-desc">The first deep engagement. A facilitated 1:1 or small group session where we hold the mirror — the client hears their voice reflected back. Diagnostic in nature, not prescriptive.</div>
+        <div class="tier-includes"><strong>Includes:</strong> 90-min facilitated session, Mirror Narrative document, optional recording</div>
+        <div class="tier-recommend">Recommend when: individual leader or small team wants to understand their narrative patterns before committing to larger engagement.</div>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div class="tier-card map">
+      <div class="tier-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="6" y="8" width="24" height="20" rx="2" stroke="#1a1412" stroke-width="2"/>
+          <line x1="6" y1="14" x2="30" y2="14" stroke="#1a1412" stroke-width="1.5"/>
+          <line x1="16" y1="14" x2="16" y2="28" stroke="#1a1412" stroke-width="1.5"/>
+          <circle cx="22" cy="21" r="3" stroke="#1a1412" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="tier-body">
+        <div class="tier-header">
+          <span class="tier-name">Map</span>
+          <span class="tier-subtitle">Narrative Strategy Sprint</span>
+        </div>
+        <div class="tier-price">$2,000 – $12,000</div>
+        <div class="tier-duration">Multi-day engagement</div>
+        <div class="tier-desc">Strategic engagement with measurable outcomes. Full Bilingual Dashboard, narrative strategy, facilitation, and production woven together. The Map builds infrastructure the client keeps.</div>
+        <div class="tier-includes"><strong>Includes:</strong> Bilingual Dashboard setup, narrative strategy, multi-session facilitation, production, final report</div>
+        <div class="tier-recommend">Recommend when: organization is ready to invest in measurable narrative change, has identified a specific challenge or transition, and has internal champions.</div>
+      </div>
+    </div>
+
+    <!-- Territory -->
+    <div class="tier-card territory">
+      <div class="tier-icon">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 4 L32 12 L32 24 L18 32 L4 24 L4 12 Z" stroke="#c8923a" stroke-width="2" fill="none"/>
+          <circle cx="18" cy="18" r="5" stroke="#c8923a" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="tier-body">
+        <div class="tier-header">
+          <span class="tier-name">Territory</span>
+          <span class="tier-subtitle">Voice Liberation Partnership</span>
+        </div>
+        <div class="tier-price">$4,000 – $8,000 / month</div>
+        <div class="tier-duration">Ongoing monthly retainer</div>
+        <div class="tier-desc">The deepest engagement. Monthly facilitation, production, and advisory with continuous Bilingual Dashboard reporting. The organization doesn't just change its story — it becomes a different kind of storyteller.</div>
+        <div class="tier-includes"><strong>Includes:</strong> Monthly facilitation, production, strategic advisory, Bilingual Dashboard reporting, priority scheduling</div>
+        <div class="tier-recommend">Recommend when: organization wants sustained transformation, has budget for monthly retainer, and is willing to embed Voice Liberation into operational rhythm.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="floor-rate">
+    <div>
+      <div class="fr-label">Floor Rate</div>
+      <div class="fr-amount">$150/hr</div>
+    </div>
+    <div class="fr-text">Non-negotiable minimum. Below this rate, the work cannot be sustained at the quality it requires. If a project doesn't clear the floor, we decline gracefully and offer referrals. No exceptions, no sliding scale on the floor itself.</div>
+  </div>
+
+  <div class="footer">
+    <span>Rubinstein Productions — Internal Reference</span>
+    <span>rubinsteinproductions.com</span>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,67 @@
+site_name: Rubinstein Productions — Internal
+site_description: Strategy, operations, methodology, and learning for RP
+site_author: Isaac Rubinstein
+site_url: ""
+
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: custom
+    accent: custom
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - toc.integrate
+
+extra_css:
+  - stylesheets/rp-theme.css
+
+nav:
+  - Home: index.md
+  - Visual Assets: visual-assets.md
+  - Strategy:
+    - Mission & Positioning: strategy/mission-and-positioning.md
+    - Theory of Change: strategy/theory-of-change.md
+    - Target Market & Competitive Landscape: strategy/competitive-landscape.md
+    - Brand Identity: strategy/brand-identity.md
+    - Phase Roadmap: strategy/phase-roadmap.md
+  - Operations:
+    - Engagement Lifecycle SOPs: operations/engagement-lifecycle.md
+    - Pricing Guardrails: operations/pricing-guardrails.md
+    - Capacity Management: operations/capacity-management.md
+    - Client Communication Standards: operations/client-communication.md
+    - Equipment & Logistics: operations/equipment-logistics.md
+    - Financial Operations: operations/financial-operations.md
+    - Decision Frameworks: operations/decision-frameworks.md
+  - Learning & Development:
+    - Methodology Deep-Dive — Four Phases: learning/four-phases.md
+    - Methodology Deep-Dive — Bilingual Dashboard: learning/bilingual-dashboard.md
+    - Facilitation Principles: learning/facilitation-principles.md
+    - Camera-Shipping Model: learning/camera-shipping-model.md
+    - Case Study Library: learning/case-study-library.md
+    - Reading List & Intellectual Lineage: learning/reading-list.md
+  - Onboarding:
+    - Welcome to RP: onboarding/welcome.md
+    - Who We Are: onboarding/who-we-are.md
+    - How We Work: onboarding/how-we-work.md
+    - Tools & Systems: onboarding/tools-and-systems.md
+    - First Week Checklist: onboarding/first-week-checklist.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji

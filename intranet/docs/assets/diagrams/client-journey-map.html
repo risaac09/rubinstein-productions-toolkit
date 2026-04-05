@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP Client Journey — Seven Stages</title>
+<style>
+  :root {
+    --marrow: #1a1412;
+    --blood: #8b2e1c;
+    --amber: #c8923a;
+    --bone: #f2ece4;
+    --ash: #a89e93;
+    --white: #faf8f5;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', 'Calibri', sans-serif; background: var(--white); color: var(--marrow); }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: var(--ash); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: 'Georgia', serif; font-size: 36px; font-style: italic; font-weight: 400; color: var(--marrow); margin-bottom: 8px; }
+  .subtitle { font-size: 16px; color: var(--ash); margin-bottom: 40px; }
+  .divider { height: 2px; background: var(--amber); width: 60px; margin: 32px 0; }
+  h2 { font-family: 'Georgia', serif; font-size: 22px; font-weight: 400; font-style: italic; color: var(--marrow); margin-bottom: 16px; }
+
+  /* Journey SVG */
+  .journey-svg-wrap { margin: 24px 0 40px; overflow-x: auto; }
+  .journey-svg-wrap svg { display: block; margin: 0 auto; }
+
+  /* Timeline */
+  .timeline { position: relative; margin: 0 0 48px; padding-left: 48px; }
+  .timeline::before { content: ''; position: absolute; left: 19px; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, var(--amber), var(--blood), var(--ash)); }
+  .stage-card { position: relative; margin-bottom: 28px; background: var(--bone); padding: 24px 24px 24px 28px; border-radius: 2px; }
+  .stage-card::before { content: ''; position: absolute; left: -37px; top: 28px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--amber); background: var(--white); z-index: 1; }
+  .stage-card.pre::before { border-color: var(--ash); }
+  .stage-card.container::before { border-color: var(--marrow); background: var(--marrow); }
+  .stage-card.excavation::before { border-color: var(--blood); background: var(--blood); }
+  .stage-card.performance::before { border-color: var(--amber); background: var(--amber); }
+  .stage-card.translation::before { border-color: var(--ash); background: var(--ash); }
+  .stage-card.post::before { border-color: var(--amber); }
+
+  .stage-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .stage-num { font-family: 'Georgia', serif; font-size: 28px; font-weight: 700; opacity: 0.25; }
+  .stage-name { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--blood); }
+  .stage-tagline { font-family: 'Georgia', serif; font-style: italic; font-size: 15px; color: var(--marrow); margin-bottom: 12px; }
+  .stage-desc { font-size: 13px; line-height: 1.7; color: var(--marrow); margin-bottom: 10px; }
+  .stage-meta { display: flex; flex-wrap: wrap; gap: 16px; }
+  .meta-item { font-size: 12px; color: var(--ash); }
+  .meta-label { font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--blood); font-size: 10px; display: block; margin-bottom: 2px; }
+
+  /* Phase badge */
+  .phase-badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 3px 10px; border-radius: 2px; margin-top: 8px; }
+  .phase-badge.pre { background: var(--bone); color: var(--ash); border: 1px solid var(--ash); }
+  .phase-badge.container { background: var(--marrow); color: #fff; }
+  .phase-badge.excavation { background: var(--blood); color: #fff; }
+  .phase-badge.performance { background: var(--amber); color: var(--marrow); }
+  .phase-badge.translation { background: var(--ash); color: var(--marrow); }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--bone); font-size: 12px; color: var(--ash); display: flex; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 28px; }
+    .stage-meta { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">Rubinstein Productions</div>
+  <h1>The Client Journey</h1>
+  <p class="subtitle">Seven stages from recognition to return — the full arc of voice liberation work.</p>
+
+  <div class="journey-svg-wrap">
+    <svg viewBox="0 0 900 160" width="900" height="160" xmlns="http://www.w3.org/2000/svg">
+      <!-- Flowing river path -->
+      <path d="M 50 100 C 120 40, 180 130, 250 80 C 320 30, 380 120, 450 80 C 520 40, 580 130, 650 80 C 720 30, 780 100, 850 80" fill="none" stroke="#f2ece4" stroke-width="28" stroke-linecap="round"/>
+      <path d="M 50 100 C 120 40, 180 130, 250 80 C 320 30, 380 120, 450 80 C 520 40, 580 130, 650 80 C 720 30, 780 100, 850 80" fill="none" stroke="#c8923a" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 6" opacity="0.6"/>
+
+      <!-- Stage nodes -->
+      <circle cx="50" cy="100" r="16" fill="#a89e93" stroke="#faf8f5" stroke-width="3"/>
+      <text x="50" y="105" text-anchor="middle" font-family="Georgia" font-size="13" fill="#faf8f5" font-weight="700">1</text>
+      <text x="50" y="135" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#a89e93" font-weight="600" letter-spacing="1">RECOGNITION</text>
+
+      <circle cx="183" cy="68" r="16" fill="#a89e93" stroke="#faf8f5" stroke-width="3"/>
+      <text x="183" y="73" text-anchor="middle" font-family="Georgia" font-size="13" fill="#faf8f5" font-weight="700">2</text>
+      <text x="183" y="105" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#a89e93" font-weight="600" letter-spacing="1">CONVERSATION</text>
+
+      <circle cx="317" cy="55" r="16" fill="#1a1412" stroke="#c8923a" stroke-width="3"/>
+      <text x="317" y="60" text-anchor="middle" font-family="Georgia" font-size="13" fill="#c8923a" font-weight="700">3</text>
+      <text x="317" y="35" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#1a1412" font-weight="600" letter-spacing="1">MIRROR</text>
+
+      <circle cx="450" cy="80" r="16" fill="#8b2e1c" stroke="#c8923a" stroke-width="3"/>
+      <text x="450" y="85" text-anchor="middle" font-family="Georgia" font-size="13" fill="#faf8f5" font-weight="700">4</text>
+      <text x="450" y="115" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#8b2e1c" font-weight="600" letter-spacing="1">MAP</text>
+
+      <circle cx="583" cy="105" r="16" fill="#c8923a" stroke="#1a1412" stroke-width="3"/>
+      <text x="583" y="110" text-anchor="middle" font-family="Georgia" font-size="13" fill="#1a1412" font-weight="700">5</text>
+      <text x="583" y="85" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#c8923a" font-weight="600" letter-spacing="1">INTEGRATION</text>
+
+      <circle cx="717" cy="55" r="16" fill="#a89e93" stroke="#1a1412" stroke-width="3"/>
+      <text x="717" y="60" text-anchor="middle" font-family="Georgia" font-size="13" fill="#1a1412" font-weight="700">6</text>
+      <text x="717" y="35" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#a89e93" font-weight="600" letter-spacing="1">STORY TRAVELS</text>
+
+      <circle cx="850" cy="80" r="16" fill="#faf8f5" stroke="#c8923a" stroke-width="3"/>
+      <text x="850" y="85" text-anchor="middle" font-family="Georgia" font-size="13" fill="#c8923a" font-weight="700">7</text>
+      <text x="850" y="115" text-anchor="middle" font-family="Inter,Calibri,sans-serif" font-size="9" fill="#c8923a" font-weight="600" letter-spacing="1">RETURN</text>
+    </svg>
+  </div>
+
+  <div class="divider"></div>
+  <h2>Stage Details</h2>
+
+  <div class="timeline">
+    <!-- Stage 1 -->
+    <div class="stage-card pre">
+      <div class="stage-header">
+        <span class="stage-num">01</span>
+        <span class="stage-name">Recognition</span>
+      </div>
+      <div class="stage-tagline">"They find us."</div>
+      <div class="stage-desc">The client encounters RP through content, referral, or the toolkit. Something resonates — they recognize their own narrative dysregulation in the language. This is not marketing; it's pattern recognition.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Channels</span>Toolkit, LinkedIn, referral, speaking</div>
+        <div class="meta-item"><span class="meta-label">Deliverable</span>None — they come to us</div>
+      </div>
+      <span class="phase-badge pre">Pre-engagement</span>
+    </div>
+
+    <!-- Stage 2 -->
+    <div class="stage-card pre">
+      <div class="stage-header">
+        <span class="stage-num">02</span>
+        <span class="stage-name">Conversation</span>
+      </div>
+      <div class="stage-tagline">"Mutual fit."</div>
+      <div class="stage-desc">An informal discovery call — not a sales pitch. Both sides assess alignment. We listen for readiness: are they buying a service, or are they willing to be changed? The sacral responds or it doesn't.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Duration</span>30–45 min call</div>
+        <div class="meta-item"><span class="meta-label">Deliverable</span>Clarity on fit; Mirror Session Prep Guide if proceeding</div>
+      </div>
+      <span class="phase-badge pre">Pre-engagement</span>
+    </div>
+
+    <!-- Stage 3 -->
+    <div class="stage-card container">
+      <div class="stage-header">
+        <span class="stage-num">03</span>
+        <span class="stage-name">Mirror</span>
+      </div>
+      <div class="stage-tagline">"Listen and reflect."</div>
+      <div class="stage-desc">The first deep engagement. A 90-minute facilitated session where we hold the mirror — the client hears their own voice reflected back through narrative synthesis. Diagnostic by nature, not prescriptive.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Duration</span>90-minute session + synthesis</div>
+        <div class="meta-item"><span class="meta-label">Deliverable</span>Mirror Narrative document</div>
+      </div>
+      <span class="phase-badge container">Container</span>
+    </div>
+
+    <!-- Stage 4 -->
+    <div class="stage-card container">
+      <div class="stage-header">
+        <span class="stage-num">04</span>
+        <span class="stage-name">Map</span>
+      </div>
+      <div class="stage-tagline">"Co-design the engagement."</div>
+      <div class="stage-desc">Together we scope the work: timeline, pricing, Bilingual Dashboard metrics. The Map stage bridges diagnosis and action — building the architecture for the engagement based on what the Mirror revealed.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Duration</span>1–2 weeks scoping</div>
+        <div class="meta-item"><span class="meta-label">Deliverables</span>Engagement Proposal, Project Roadmap, Bilingual Dashboard framework</div>
+      </div>
+      <span class="phase-badge container">Container</span> <span class="phase-badge excavation">Excavation</span>
+    </div>
+
+    <!-- Stage 5 -->
+    <div class="stage-card excavation">
+      <div class="stage-header">
+        <span class="stage-num">05</span>
+        <span class="stage-name">Integration</span>
+      </div>
+      <div class="stage-tagline">"The core work."</div>
+      <div class="stage-desc">Where transformation happens. Facilitation, filming, data collection — all threaded through the Bilingual Dashboard. The client moves from awareness to embodiment. We hold both the institutional frame and the relational field.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Duration</span>Multi-session engagement</div>
+        <div class="meta-item"><span class="meta-label">Deliverables</span>Session facilitation, footage, Progress Check-ins, Dashboard updates</div>
+      </div>
+      <span class="phase-badge excavation">Excavation</span> <span class="phase-badge performance">Performance</span>
+    </div>
+
+    <!-- Stage 6 -->
+    <div class="stage-card translation">
+      <div class="stage-header">
+        <span class="stage-num">06</span>
+        <span class="stage-name">Story Travels</span>
+      </div>
+      <div class="stage-tagline">"Post-production."</div>
+      <div class="stage-desc">The raw material becomes artifact. Editing, reports, final Bilingual Dashboard — the voice that was excavated now travels in forms the client can use. The 5-day latency ensures integration, not just output.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Duration</span>2–4 weeks post-production</div>
+        <div class="meta-item"><span class="meta-label">Deliverables</span>Final Delivery Package, Bilingual Dashboard Report, edited media</div>
+      </div>
+      <span class="phase-badge translation">Translation</span>
+    </div>
+
+    <!-- Stage 7 -->
+    <div class="stage-card post">
+      <div class="stage-header">
+        <span class="stage-num">07</span>
+        <span class="stage-name">Return</span>
+      </div>
+      <div class="stage-tagline">"The door stays open."</div>
+      <div class="stage-desc">Offboarding with gratitude. A Thank-You letter, an open invitation to return. Many clients cycle back — the journey is a spiral, not a line. Referrals often begin here.</div>
+      <div class="stage-meta">
+        <div class="meta-item"><span class="meta-label">Deliverable</span>Thank-You &amp; Offboarding letter</div>
+        <div class="meta-item"><span class="meta-label">Ongoing</span>Annual check-in, referral relationship</div>
+      </div>
+      <span class="phase-badge pre">Post-engagement</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Rubinstein Productions — Internal Reference</span>
+    <span>rubinsteinproductions.com</span>
+  </div>
+</div>
+</body>
+</html>
