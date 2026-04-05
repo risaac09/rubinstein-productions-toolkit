@@ -32,6 +32,12 @@ nav:
     - Target Market & Competitive Landscape: strategy/competitive-landscape.md
     - Brand Identity: strategy/brand-identity.md
     - Phase Roadmap: strategy/phase-roadmap.md
+  - Marketing & Content:
+    - Charter: marketing/index.md
+  - Business Development:
+    - Charter: business-development/index.md
+  - People & Practice:
+    - Charter: people/index.md
   - Operations:
     - Engagement Lifecycle SOPs: operations/engagement-lifecycle.md
     - Pricing Guardrails: operations/pricing-guardrails.md
