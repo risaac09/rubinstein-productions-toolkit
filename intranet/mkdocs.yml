@@ -24,6 +24,7 @@ extra_css:
 
 nav:
   - Home: index.md
+  - Digital Architecture: architecture.md
   - Visual Assets: visual-assets.md
   - Strategy:
     - Mission & Positioning: strategy/mission-and-positioning.md
@@ -58,6 +59,11 @@ nav:
     - Security & Continuity: it/security.md
     - Roadmap: it/roadmap.md
     - Incident Log: it/incidents.md
+  - R&D / Innovation:
+    - Charter: innovation/index.md
+    - Originality Factor: innovation/originality-factor.md
+    - Experiments Log: innovation/experiments.md
+    - Research Log: innovation/research-log.md
 
 markdown_extensions:
   - admonition
