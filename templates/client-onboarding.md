@@ -1,3 +1,5 @@
+> **Note:** This template uses [[wiki links]] for Obsidian internal navigation. Replace with standard links if using outside Obsidian.
+
 # Client Onboarding Template
 ## Phase 0: Pre-Engagement Discovery (The Assemblage Scan)
 

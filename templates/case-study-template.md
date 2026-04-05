@@ -1,3 +1,5 @@
+> **Note:** This template uses [[wiki links]] for Obsidian internal navigation. Replace with standard links if using outside Obsidian.
+
 # Case Study Template
 ## Documenting Client Transformations for Portfolio & Learning
 
