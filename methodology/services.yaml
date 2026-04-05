@@ -1,0 +1,141 @@
+# RP Service Tiers — machine-readable binding
+#
+# Source of truth for pricing floors, typical deliverables, and scope envelopes
+# per service tier. Consumed by rubinstein-productions-coo skill for pricing
+# discipline and by proposal-scope-builder for scope shaping.
+#
+# Human narrative lives in methodology/methodology-blueprint.md. This file is
+# the structured extract for automation.
+
+services:
+
+  mirror:
+    tier: 1
+    name: "The Mirror"
+    positioning: "The inside version, on paper."
+    price:
+      floor: 500
+      ceiling: 1500
+      currency: USD
+      model: fixed
+    duration:
+      typical: "1 session + 1 week turnaround"
+      maxWeeks: 2
+    audience: "Individual professionals — consultants, researchers, nonprofit leaders"
+    goal: "Low friction, high trust. Client experiences the process before committing to higher tiers."
+    methodologyPhases:
+      - container
+    typicalDeliverables:
+      - type: session
+        title: "90-minute facilitated session"
+        count: 1
+      - type: narrative-synthesis
+        title: "Written Narrative Synthesis"
+        count: 1
+    revenueRole: "Pipeline builder for Tier 2. High volume potential, low delivery cost."
+
+  map:
+    tier: 2
+    name: "The Map"
+    positioning: "The story can travel without the founder in the room."
+    price:
+      floor: 5000
+      ceiling: 12000
+      currency: USD
+      model: fixed
+    duration:
+      typical: "4-6 weeks"
+      maxWeeks: 8
+    audience: "Small nonprofits, SMEs, teams in transition"
+    goal: "Solve a specific communication problem with a transferable narrative artifact."
+    methodologyPhases:
+      - container
+      - excavation
+      - performance
+      - translation
+    typicalDeliverables:
+      - type: session
+        title: "Facilitated sessions (multiple)"
+        count: 3
+      - type: footage-handoff
+        title: "Camera shipped + client films + all footage returned"
+        count: 1
+      - type: video
+        title: "3-minute brand video (Isaac-produced)"
+        count: 1
+      - type: dashboard
+        title: "Bilingual Dashboard (Lite)"
+        count: 1
+    revenueRole: "Core revenue driver. Most engagements should land here."
+    prerequisites: []
+
+  territory:
+    tier: 3
+    name: "The Territory"
+    positioning: "The witness function is internalized by the team."
+    price:
+      floor: 4000
+      ceiling: 8000
+      currency: USD
+      model: monthly-retainer
+    duration:
+      typical: "3-6 months"
+      minMonths: 3
+      maxMonths: 12
+    audience: "Established organizations, foundations, impact networks"
+    goal: "Deep integration. The organization's narrative becomes self-sustaining."
+    methodologyPhases:
+      - container
+      - excavation
+      - performance
+      - translation
+    methodologyCycles: "repeated"
+    typicalDeliverables:
+      - type: session
+        title: "Full facilitation arc (repeated cycles)"
+      - type: video
+        title: "Produced videos"
+        countRange: [3, 6]
+      - type: dashboard
+        title: "Bilingual Dashboard (Full)"
+        count: 1
+      - type: review
+        title: "Quarterly review"
+        cadence: quarterly
+    revenueRole: "Highest LTV."
+    prerequisites:
+      - "Prior Tier 2 engagement or equivalent proof of concept"
+
+# ── Methodology phases (distinct from the 10-phase videography lifecycle) ──
+#
+# These are the four phases of the facilitation arc itself.
+# The 10-phase lifecycle (rp-lifecycle PWA) describes videography production
+# stages within Map/Territory engagements.
+
+methodologyPhases:
+  container:
+    name: "Container"
+    description: "Establishing the facilitated space. Neuroceptive safety, co-regulation."
+  excavation:
+    name: "Excavation"
+    description: "Surfacing the inside version. Narrative depth work."
+  performance:
+    name: "Performance"
+    description: "Embodied articulation. The client films themselves or is filmed."
+  translation:
+    name: "Translation"
+    description: "Rendering the surfaced material into transferable artifacts."
+
+# ── COO enforcement rules ──
+# Read by rubinstein-productions-coo skill for pricing discipline.
+
+rules:
+  pricingFloor:
+    enforced: true
+    message: "Quoting below the tier's price.floor requires explicit override and a documented reason."
+  territoryPrerequisite:
+    enforced: true
+    message: "Territory engagements require a prior Map engagement or equivalent proof of concept."
+  tierSkipWarning:
+    enforced: true
+    message: "Skipping from Mirror directly to Territory is unusual. Flag for review."
