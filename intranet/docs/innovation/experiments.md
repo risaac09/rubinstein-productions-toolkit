@@ -24,7 +24,15 @@ Format: newest first. An experiment graduates to `operations/` or `learning/` ca
 
 ## Active
 
-*None yet. Start the next one when you're ready to commit to a 4-week bet.*
+### 2026-04 → EXP-02 — Video essay pilot
+
+**Loop:** creative-research (marketing overlap)
+**Hypothesis:** A single long-form video essay on Say The Thing methodology, produced at the quality bar RP holds for client work, will either feel like a structural publishing form worth anchoring quarterly OR will feel like off-instrument labor. One pilot reveals which.
+**Kill criterion:** If production takes more than 3 working days, or if the pilot produces a piece Isaac can't stand behind by its own standards, the form is killed (not the idea — the commitment).
+**Timebox:** 6 weeks (write → shoot → edit → publish).
+**Pilot:** one essay, topic TBD from methodology or a canonized case study.
+**Status:** active
+**Outcome:** *(filled in post-publication: did it feel structural, or did it feel like performance?)*
 
 ---
 
@@ -55,5 +63,4 @@ Ideas that might become experiments. They sit here until someone writes a hypoth
 - **Monthly group facilitation container** — recurring 90-min session for past clients. Product-adjacent. Originality check: does this dilute one-to-one depth or deepen the network?
 - **Public client-brief endpoint** — client fills a form, gets an AI-generated brief within 24h. Requires CF Workers ($500 tier). BD tool.
 - **Weekly newsletter from stack-data** — automatically generated from activities + content + financials. Could become audience development or could become slop.
-- **Video essays on methodology** — package Say The Thing as YouTube essays. Marketing + R&D overlap.
 - **Audio log / podcast** — lower production cost than video, closer to thinking aloud. Fit with ultrarunning content?

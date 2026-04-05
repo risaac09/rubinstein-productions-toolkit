@@ -23,6 +23,11 @@ This department exists because the instrument requires tending that the other de
 | Facilitation principles | `intranet/docs/learning/facilitation-principles.md` |
 | Activities log (runs, training, recovery) | `stack-data/data/activities.json` |
 | Ultrarunning companion PWA | `ultraflow-companion` |
+| Illness & contingency policy | `intranet/docs/people/illness-contingency.md` |
+| Sabbatical policy (weekly / quarterly / annual) | `intranet/docs/people/sabbatical-policy.md` |
+| Delegation signals | `intranet/docs/people/delegation-signals.md` |
+| Inner-practice log system | `intranet/docs/people/inner-practice-log.md` |
+| Training periodization (full embodied) | `intranet/docs/people/training-periodization.md` |
 | Training ↔ content correlator | `stack-data/agents/training-content-correlator.sh` |
 
 ---
@@ -126,8 +131,3 @@ When 2+ of these are present, the move is: **reduce commitment surface area.** N
 
 ## Gaps / open questions
 
-- **Sabbatical policy** — 1 day/week is rule; longer sabbaticals (quarterly week off, annual month) undefined.
-- **Delegation threshold** — at what point does hiring a VA or sub-contractor become a capacity necessity? Named in roadmap but no trigger.
-- **Illness / contingency** — what happens to client obligations when Isaac is sick? No formal policy.
-- **Training periodization** — running has implicit race-cycle periodization; other embodied practice doesn't.
-- **Private inner-practice log** — mentioned but no system. Consider: encrypted note, voice memo cadence, or Obsidian vault section (private).

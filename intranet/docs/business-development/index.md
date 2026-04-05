@@ -24,6 +24,10 @@ A solo practice grows through the integrity of Isaac's relationships over time. 
 | Pricing guardrails | `intranet/docs/operations/pricing-guardrails.md` |
 | Client communication standards | `intranet/docs/operations/client-communication.md` |
 | Engagement lifecycle (handoff to Delivery) | `intranet/docs/operations/engagement-lifecycle.md` |
+| Discovery call structure | `intranet/docs/operations/discovery-call.md` |
+| Retainer renewal cadence | `intranet/docs/operations/retainer-renewal.md` |
+| Referral rhythm (quarterly stewardship) | `intranet/docs/business-development/referral-rhythm.md` |
+| Contact touches / lightweight CRM | `intranet/docs/business-development/crm-touches.md` |
 
 ---
 
@@ -118,8 +122,5 @@ new-contact → qualified → proposal-sent → engaged → active-client → pa
 
 ## Gaps / open questions
 
-- **Pipeline stage automation** — currently `status` is a flat field. No enforced state machine. Acceptable for current volume.
-- **CRM beyond contacts.json** — no touch history, no next-action reminders. Adequate for solo + few active relationships; may break at Territory-tier capacity.
-- **Discovery call template** — no standard structure for first real conversation. `mom-test` skill exists but isn't operationalized as a checklist.
-- **Retainer renewal process** — Territory tier implies annual+ retention. No formalized renewal conversation cadence.
-- **Partner/referral program** — past clients refer informally. No structured referral rhythm.
+- **Pipeline stage automation** — schema now validates `pipelineStage` enum (see `contacts.schema.json`). No state-machine transition enforcement yet. Acceptable for current volume.
+- **CRM beyond contacts.json** — `touches[]` array added to contact schema; manual append until sd-touches CLI justified. See `crm-touches.md`.

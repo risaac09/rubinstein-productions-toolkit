@@ -23,6 +23,9 @@ The department has three jobs: **publish**, **measure**, **refine voice**. It do
 | Published content log | `stack-data/data/content.json` (IG + YouTube) |
 | Weekly engagement reports | `stack-data/reports/YYYY-MM-DD-content.md` |
 | Visual assets catalog | `intranet/docs/visual-assets.md` |
+| Case study template | `templates/case-study-template.md` |
+| Newsletter dispatch | `intranet/docs/marketing/newsletter.md` |
+| Content archive strategy | `intranet/docs/marketing/content-archive.md` |
 | Brand identity | `intranet/docs/strategy/brand-identity.md` |
 
 **Data loop:** IG scraped weekly via GH Actions → merged into `content.json` → weekly-content-report agent summarizes → action taken (or explicitly not).
@@ -68,7 +71,7 @@ See `~/.claude/projects/-Users-isaacrubinstein/memory/reference_creative_stack.m
 | Instagram (@rubinsteinproductions) | Primary, active | Portfolio + practice documentation |
 | YouTube (@risaac09) | Active | Long-form (training, methodology, client films) |
 | rubinsteinproductions.com | Live | Marketing site / front door |
-| Email list | Not yet built | Open question — owned audience, newsletter-style |
+| Email list (newsletter) | Building — monthly cadence | Owned audience insurance; see `marketing/newsletter.md` |
 | LinkedIn | Dormant | Professional network; reactivate if BD needs it |
 | TikTok | Not active | Explicit non-goal |
 
@@ -80,7 +83,7 @@ See `~/.claude/projects/-Users-isaacrubinstein/memory/reference_creative_stack.m
 
 **One publishing intention per piece.** If a post is doing three things, it's doing none well.
 
-**Post when there's something to say.** No posting cadence quota. The cost of posting nothing is legible silence; the cost of posting slop is audience erosion. Silence is cheaper.
+**Weekly commitment: one post minimum.** The rhythm is one published piece per week. If the week produces nothing worth saying, the post documents that honestly — a quiet dispatch about what's alive in the practice, not filler. The cost of slop is audience erosion; the cost of silence is invisibility. Neither is free — the weekly rhythm forces the question every week.
 
 **Attribute real people.** Clients, collaborators, subjects get tagged, named, credited. Content is relational.
 
@@ -121,8 +124,3 @@ See `~/.claude/projects/-Users-isaacrubinstein/memory/reference_creative_stack.m
 
 ## Gaps / open questions
 
-- **Newsletter** — no owned audience channel. Planned at $500 tier or earlier.
-- **Publishing cadence** — currently reactive. Should there be a weekly/biweekly commitment, or is "post when there's something to say" the permanent rule? Open.
-- **Case studies** — no standard format for turning delivered engagements into publishable studies. Needed.
-- **Content archive** — IG is the primary archive but it's platform-locked. Backup/archive strategy undefined.
-- **Video essay form** — mentioned in `innovation/experiments.md` as a candidate. Not yet a committed direction.

@@ -34,10 +34,19 @@ nav:
     - Phase Roadmap: strategy/phase-roadmap.md
   - Marketing & Content:
     - Charter: marketing/index.md
+    - Newsletter Dispatch: marketing/newsletter.md
+    - Content Archive Strategy: marketing/content-archive.md
   - Business Development:
     - Charter: business-development/index.md
+    - Referral Rhythm: business-development/referral-rhythm.md
+    - CRM Touches (contacts.json): business-development/crm-touches.md
   - People & Practice:
     - Charter: people/index.md
+    - Illness & Contingency: people/illness-contingency.md
+    - Sabbatical Policy: people/sabbatical-policy.md
+    - Delegation Signals: people/delegation-signals.md
+    - Inner-Practice Log: people/inner-practice-log.md
+    - Training Periodization: people/training-periodization.md
   - Operations:
     - Engagement Lifecycle SOPs: operations/engagement-lifecycle.md
     - Pricing Guardrails: operations/pricing-guardrails.md
@@ -46,6 +55,8 @@ nav:
     - Equipment & Logistics: operations/equipment-logistics.md
     - Financial Operations: operations/financial-operations.md
     - Decision Frameworks: operations/decision-frameworks.md
+    - Discovery Call Structure: operations/discovery-call.md
+    - Retainer Renewal Cadence: operations/retainer-renewal.md
   - Learning & Development:
     - Methodology Deep-Dive — Four Phases: learning/four-phases.md
     - Methodology Deep-Dive — Bilingual Dashboard: learning/bilingual-dashboard.md
