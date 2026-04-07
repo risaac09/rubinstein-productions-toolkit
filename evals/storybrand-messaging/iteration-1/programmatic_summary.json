@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "rp-one-liner",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 372
+    },
+    {
+      "eval_name": "rp-one-liner",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 52
+    },
+    {
+      "eval_name": "homepage-hero-copy",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 664
+    },
+    {
+      "eval_name": "homepage-hero-copy",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 246
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "body_word_count": 224,
+  "body_line_count": 35,
+  "expectations": [
+    {
+      "text": "Separates personal and RP business finances clearly",
+      "assertion_id": "separates_personal_business",
+      "passed": true,
+      "evidence": "Separate RP Business and Personal Expenses tables with clean cash-flow reconciliation"
+    },
+    {
+      "text": "Response is actionable \u2014 gives a clear answer or next step",
+      "assertion_id": "actionable_response",
+      "passed": true,
+      "evidence": "Clear 'On track' verdict and cautionary notes about Map deposit-only and break-even RP number"
+    },
+    {
+      "text": "Avoids generic finance advice (diversify, emergency fund, compound interest lectures)",
+      "assertion_id": "no_generic_finance_advice",
+      "passed": true,
+      "evidence": "No generic advice; all observations tied to Isaac's numbers"
+    },
+    {
+      "text": "Calculates net cleanly (RP net $6,460, personal net, savings hit or miss)",
+      "assertion_id": "calculates_net_cleanly",
+      "passed": true,
+      "evidence": "RP net $6,460 (95% margin), available-to-save $3,560, surplus +$2,760 above target"
+    },
+    {
+      "text": "Gives a clear yes/no on whether Isaac hit savings target ($2,900-$1,800-$620-$480=0, did NOT hit $800)",
+      "assertion_id": "on_track_answer",
+      "passed": true,
+      "evidence": "Clear 'On track' with 4.45x overshoot (no tax reserve subtracted, so simpler calc)"
+    }
+  ]
+}

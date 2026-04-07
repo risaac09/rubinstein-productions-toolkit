@@ -1,0 +1,42 @@
+{
+  "body_word_count": 612,
+  "body_line_count": 74,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": false,
+      "evidence": "Organized by Core Insight/Headline Phrases/Themes/Voice Patterns/Ad Concepts — not the 5 canonical buckets"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": false,
+      "evidence": "No 1-5 scoring — only a final 'Weakest Review' callout identifying Review #3 as skippable"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "6+ exact quotes including 'Not toned - strong', 'walk into my gym like I own it', 'stupid how proud I am'"
+    },
+    {
+      "text": "Surfaces exact customer phrases as standout language (e.g. 'strong not toned', 'stupid how proud I am')",
+      "assertion_id": "pulls_exact_phrases",
+      "passed": true,
+      "evidence": "Headline-Ready Phrases section pulls 'Not toned - strong' and 'stupid how proud I am' explicitly"
+    },
+    {
+      "text": "Names specific transformation moments (groceries in one trip, walking into gym like I own it)",
+      "assertion_id": "identifies_transformations",
+      "passed": true,
+      "evidence": "Concept 3 The Gym Arc names weight-room-fear to 'walks in like she owns it'; groceries-in-one-trip surfaced as functional pride"
+    },
+    {
+      "text": "Captures objections to what OTHER products do (postpartum framing, 'you got this girl', 25-year-old audience)",
+      "assertion_id": "identifies_objections_to_competitors",
+      "passed": true,
+      "evidence": "Theme 2 names postpartum/25/beginner framing; Words to AVOID lists 'You got this girl', 'bounce back', look-25-again"
+    }
+  ]
+}

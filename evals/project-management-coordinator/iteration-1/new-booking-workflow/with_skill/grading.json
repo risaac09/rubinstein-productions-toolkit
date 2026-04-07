@@ -1,0 +1,48 @@
+{
+  "body_word_count": 1407,
+  "body_line_count": 128,
+  "expectations": [
+    {
+      "text": "Names specific deliverables (not vague 'outputs' or 'assets')",
+      "assertion_id": "concrete_deliverables",
+      "passed": true,
+      "evidence": "Names Bilingual Dashboard, Voice Guide, 3 excavation sessions, board presentation deck, voice DNA artifacts"
+    },
+    {
+      "text": "Includes concrete dates/milestones",
+      "assertion_id": "includes_timeline",
+      "passed": true,
+      "evidence": "Day-level milestones: Apr 14 kickoff, Apr 17 Session 1, Apr 30 mid-sprint, May 7/8 board"
+    },
+    {
+      "text": "Avoids PM jargon (stakeholders, alignment, touchpoints, deliverables-cadence)",
+      "assertion_id": "no_pm_jargon",
+      "passed": false,
+      "evidence": "found: 'touchpoints'"
+    },
+    {
+      "text": "Frames work in RP methodology terms where relevant (Bilingual Dashboard, Zero-Measurement Zone, etc.)",
+      "assertion_id": "rp_specific_framing",
+      "passed": true,
+      "evidence": "Uses Bilingual Dashboard with Royal KPIs + Voice KPIs sides, voice DNA, sacral check language"
+    },
+    {
+      "text": "Organizes into clear phases (discovery, excavation, synthesis, delivery)",
+      "assertion_id": "has_phases",
+      "passed": true,
+      "evidence": "Four phases mapped to weeks: Kickoff/Discovery, Voice Excavation Deep, Dashboard Build, Refinement/Delivery"
+    },
+    {
+      "text": "Has specific dates anchored to Apr 14 start and 4-week duration",
+      "assertion_id": "specific_dates",
+      "passed": true,
+      "evidence": "Start Apr 14, end May 8 (4-week sprint); daily milestones tied to weekdays"
+    },
+    {
+      "text": "Specifically schedules the board presentation within the timeline",
+      "assertion_id": "board_presentation_scheduled",
+      "passed": true,
+      "evidence": "Board presentation scheduled Thu/Fri May 7-8 with dry run Tue May 6"
+    }
+  ]
+}

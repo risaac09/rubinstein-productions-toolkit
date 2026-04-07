@@ -1,0 +1,35 @@
+{
+  "skill_name": "content-publishing-agent",
+  "notes": "Tests whether skill produces platform-appropriate content grounded in RP methodology, not generic thought-leadership slop.",
+  "universal_assertions": [
+    {"id": "no_ai_slop_phrases", "text": "Avoids AI-slop phrases (game-changer, dive deep, let's unpack, in today's world)", "check": "programmatic", "rule": "regex_absent", "patterns": ["game.changer", "dive deep", "let's unpack", "in today's world", "at the end of the day", "move the needle"], "quote_aware": false},
+    {"id": "no_emoji_bullets", "text": "Does not use emoji bullets (🔑 💡 🚀 ⚡ etc.)", "check": "programmatic", "rule": "regex_absent", "patterns": ["🔑", "💡", "🚀", "⚡", "✨", "🎯"], "quote_aware": false},
+    {"id": "specific_grounding", "text": "Content is grounded in specific observation/moment/tension, not abstract claims", "check": "qualitative"},
+    {"id": "platform_appropriate", "text": "Length + structure fits the requested platform", "check": "qualitative"},
+    {"id": "rp_methodology_voice", "text": "Voice is Isaac's (facilitator-filmmaker-builder), not generic thought leader", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "linkedin-post-from-session", "type": "linkedin_post",
+      "prompt": "Write a LinkedIn post based on this moment from a recent client session: I was filming a founder for her speaker-reel and between takes she said 'I hate this. I hate hearing my own voice. I sound performative.' I said 'Yeah — because you're performing. Who are you talking TO in your head right now?' She said 'the person hiring me.' I said 'Talk to your sister.' The next take was the one. Length: 150-250 words. Platform: LinkedIn. Tone: reflective, not preachy.",
+      "fixture_assertions": [
+        {"id": "preserves_the_moment", "text": "Preserves the actual quoted exchange (founder's line + Isaac's redirect)", "check": "qualitative"},
+        {"id": "word_budget_linkedin", "text": "Length 150-250 words", "check": "programmatic", "rule": "word_count", "min": 120, "max": 300}
+      ]
+    },
+    {"id": 2, "name": "case-study-outline", "type": "case_study",
+      "prompt": "Draft a case-study OUTLINE (not full essay, just the skeleton) for a completed RP project: 4-week Map-tier engagement with a climate-adaptation nonprofit. Their problem: website, grant narratives, and tenant materials each sounded like a different org. Outcome: Bilingual Dashboard + unified voice guide. They landed $180K in new funding in the 60 days post-delivery. Outline should have: opening hook, problem framing, process, turning point, outcome, reflection. 6 sections, 1-2 sentences each.",
+      "fixture_assertions": [
+        {"id": "six_sections", "text": "Has exactly 6 sections as requested", "check": "qualitative"},
+        {"id": "specific_outcomes", "text": "Names the $180K funding outcome specifically", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "essay-opening", "type": "essay",
+      "prompt": "Write the OPENING (first 2-3 paragraphs, ~200 words) of a long-form essay titled 'Information Metabolism: Why Your Org Sounds Like Three Different Organizations'. Audience: comms directors, EDs, founders at mission-driven orgs. The essay should start with a concrete scene, not a thesis statement. It should NOT open with a question or stat.",
+      "fixture_assertions": [
+        {"id": "opens_with_scene", "text": "Opens with a concrete scene or specific observation, not thesis/question/stat", "check": "qualitative"},
+        {"id": "word_budget_essay", "text": "Length 150-250 words", "check": "programmatic", "rule": "word_count", "min": 130, "max": 280},
+        {"id": "no_opening_question", "text": "Does NOT open with a rhetorical question", "check": "programmatic", "rule": "regex_absent", "patterns": ["^\\s*[A-Z][^.!]*\\?\\s*\\n"], "quote_aware": false}
+      ]
+    }
+  ]
+}

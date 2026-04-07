@@ -1,0 +1,42 @@
+{
+  "body_word_count": 903,
+  "body_line_count": 45,
+  "expectations": [
+    {
+      "text": "Avoids CRM-transactional language (touch base, circle back, ping, nurture)",
+      "assertion_id": "no_crm_language",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not frame relationships as metrics (engagement, conversion, ROI)",
+      "assertion_id": "no_metrics_framing",
+      "passed": false,
+      "evidence": "found: 'engagement'"
+    },
+    {
+      "text": "Response references specific people with specific context, not generic advice",
+      "assertion_id": "specific_personal",
+      "passed": true,
+      "evidence": "Uses names Priya/Maya/David, references coffee 3 weeks ago, baby in January, Boston taper specifics"
+    },
+    {
+      "text": "Frames the task relationally (care, curiosity, gratitude) not transactionally (opportunity, leverage)",
+      "assertion_id": "relational_framing",
+      "passed": true,
+      "evidence": "Heavy relational language: 'answer the door she opened', 'presence', 'field is still fed', 'gratitude practice'"
+    },
+    {
+      "text": "Response references specific context from each person (co-founder stuck, baby, Boston training)",
+      "assertion_id": "references_specifics",
+      "passed": true,
+      "evidence": "Cites co-founder narrative problem, baby in January, Boston April 20 taper window for David"
+    },
+    {
+      "text": "Does NOT frame Maya or Priya as potential client/referral opportunities",
+      "assertion_id": "doesnt_pitch_work",
+      "passed": false,
+      "evidence": "Priya explicitly flagged 'highest stakes for the RP layer... If it becomes pipeline, route to rubinstein-productions-agent'"
+    }
+  ]
+}

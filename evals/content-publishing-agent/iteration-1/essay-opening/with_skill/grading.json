@@ -1,0 +1,54 @@
+{
+  "body_word_count": 243,
+  "body_line_count": 3,
+  "expectations": [
+    {
+      "text": "Avoids AI-slop phrases (game-changer, dive deep, let's unpack, in today's world)",
+      "assertion_id": "no_ai_slop_phrases",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not use emoji bullets (\ud83d\udd11 \ud83d\udca1 \ud83d\ude80 \u26a1 etc.)",
+      "assertion_id": "no_emoji_bullets",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Content is grounded in specific observation/moment/tension, not abstract claims",
+      "assertion_id": "specific_grounding",
+      "passed": true,
+      "evidence": "Opens with embodied scene: ED's tight jaw, comms director going quiet, development director's laptop — concrete room"
+    },
+    {
+      "text": "Length + structure fits the requested platform",
+      "assertion_id": "platform_appropriate",
+      "passed": true,
+      "evidence": "Three paragraphs, ~243 words, moves scene to pattern to thesis — essay opening structure"
+    },
+    {
+      "text": "Voice is Isaac's (facilitator-filmmaker-builder), not generic thought leader",
+      "assertion_id": "rp_methodology_voice",
+      "passed": true,
+      "evidence": "'information metabolism' framing, 'metabolizing meaning', diagnostic language mirrors RP methodology"
+    },
+    {
+      "text": "Opens with a concrete scene or specific observation, not thesis/question/stat",
+      "assertion_id": "opens_with_scene",
+      "passed": true,
+      "evidence": "First sentence describes program officer reading aloud; no thesis, question, or statistic"
+    },
+    {
+      "text": "Length 150-250 words",
+      "assertion_id": "word_budget_essay",
+      "passed": true,
+      "evidence": "243 words (range 130-280)"
+    },
+    {
+      "text": "Does NOT open with a rhetorical question",
+      "assertion_id": "no_opening_question",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "body_word_count": 979,
+  "body_line_count": 45,
+  "expectations": [
+    {
+      "text": "Proposes specific next actions (not vague 'consider engaging')",
+      "assertion_id": "proposes_concrete_actions",
+      "passed": true,
+      "evidence": "Specific moves: comment today, update Apr 22 prep, private voice memo, anchor Phase 3 kickoff on ratified plan"
+    },
+    {
+      "text": "References specific handles/accounts from the input signals",
+      "assertion_id": "names_specific_handles",
+      "passed": true,
+      "evidence": "References @harborlight_coalition, @brightcurrent_ama, @threshold_recovery with Maya Chen called out by name"
+    },
+    {
+      "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)",
+      "assertion_id": "window_distinction",
+      "passed": true,
+      "evidence": "Explicitly labels 'REACTION WINDOW', 'LEARNING + LIGHT TOUCH', 'LEARNING WINDOW' on each signal"
+    },
+    {
+      "text": "Flags Harbor Light as highest-priority warm lead (discovery call upcoming + high engagement + ED commented publicly)",
+      "assertion_id": "prioritizes_harborlight",
+      "passed": true,
+      "evidence": "Listed #1 as REACTION WINDOW, 'the tell', cites ED comment + 3x engagement + Apr 22 discovery call"
+    },
+    {
+      "text": "Treats Ama as active client context (maybe LinkedIn comment/engagement) not a lead to pitch",
+      "assertion_id": "ama_as_client_not_lead",
+      "passed": true,
+      "evidence": "Says 'This is the work working', recommends private acknowledgment via session channel, 'Don't interrupt it'"
+    },
+    {
+      "text": "Flags Harbor Light 4-hours-ago post as reaction window closing",
+      "assertion_id": "reaction_window_flagged",
+      "passed": true,
+      "evidence": "Labeled 'REACTION WINDOW (hot, ~4hr old)' and 'Comment on the post today (reaction window closes fast)'"
+    }
+  ]
+}

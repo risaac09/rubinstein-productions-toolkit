@@ -1,0 +1,42 @@
+{
+  "body_word_count": 1252,
+  "body_line_count": 84,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Section explicitly labeled 'Pain/Persona Intersection Matrix' with 3 intersections each pairing pain and persona"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "3 named angles: 'The 30-second ritual between meetings', 'A candle that says something about you', 'Mark the hours'"
+    },
+    {
+      "text": "Defines at least 3 pain \u00d7 persona intersections",
+      "assertion_id": "three_intersections",
+      "passed": true,
+      "evidence": "3 intersections: Overstimulated Executive x Nervous System, Ambient Aesthete x Identity, Sensory-Seeking x Ritual Absence"
+    },
+    {
+      "text": "Maps messaging angles across all 5 awareness stages for at least one intersection",
+      "assertion_id": "angles_per_stage",
+      "passed": true,
+      "evidence": "All 3 intersections mapped through Unaware/Problem-Aware/Solution-Aware/Product-Aware/Most Aware stages with distinct messaging"
+    },
+    {
+      "text": "Names specific candle/WFH context (not generic lifestyle language)",
+      "assertion_id": "specific_candle_context",
+      "passed": true,
+      "evidence": "Specific detail: hand-poured small batch, Yankee/Diptyque comparison, three-candle day bundle, Zoom background framing"
+    }
+  ]
+}

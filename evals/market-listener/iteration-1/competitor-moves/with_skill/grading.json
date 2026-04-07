@@ -1,0 +1,42 @@
+{
+  "body_word_count": 956,
+  "body_line_count": 38,
+  "expectations": [
+    {
+      "text": "Proposes specific next actions (not vague 'consider engaging')",
+      "assertion_id": "proposes_concrete_actions",
+      "passed": true,
+      "evidence": "4 concrete actions: reach out to 3 prospects, draft long-form essay, COO pricing review, build 5-email lead magnet"
+    },
+    {
+      "text": "References specific handles/accounts from the input signals",
+      "assertion_id": "names_specific_handles",
+      "passed": true,
+      "evidence": "Names @namebearer_studio, @council_voice, @narrative_lab throughout analysis"
+    },
+    {
+      "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)",
+      "assertion_id": "window_distinction",
+      "passed": true,
+      "evidence": "Explicit 'Reaction window, not learning window' for Namebearer and 'Learning window, not reaction window' for Council Voice"
+    },
+    {
+      "text": "Identifies a pattern across these 3 (voice/narrative consultancy space is heating up)",
+      "assertion_id": "names_competitor_pattern",
+      "passed": true,
+      "evidence": "Summary names 'voice-finding as a category' with attention rewarding depth across all three signals"
+    },
+    {
+      "text": "Flags that @council_voice $6k is 4x RP Mirror pricing \u2014 competitive positioning question",
+      "assertion_id": "pricing_threat_flagged",
+      "passed": true,
+      "evidence": "Explicitly flags '$6k is 4x RP Mirror' and surfaces pricing-floor question for COO review"
+    },
+    {
+      "text": "Proposes specific RP content/positioning response, not vague 'keep an eye on this'",
+      "assertion_id": "proposes_rp_response",
+      "passed": true,
+      "evidence": "Proposes titled essay 'Before voice: the nervous system that makes voice possible' with 10-day publish window"
+    }
+  ]
+}

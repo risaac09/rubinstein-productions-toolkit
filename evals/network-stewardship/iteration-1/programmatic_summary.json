@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "who-to-reach-out-to",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 2,
+      "body_words": 903
+    },
+    {
+      "eval_name": "who-to-reach-out-to",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 671
+    },
+    {
+      "eval_name": "reconnect-after-long-gap",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 1060
+    },
+    {
+      "eval_name": "reconnect-after-long-gap",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 948
+    },
+    {
+      "eval_name": "gratitude-practice",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 2,
+      "body_words": 822
+    },
+    {
+      "eval_name": "gratitude-practice",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 424
+    }
+  ]
+}

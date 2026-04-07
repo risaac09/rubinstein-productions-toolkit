@@ -1,0 +1,54 @@
+{
+  "body_word_count": 100,
+  "body_line_count": 10,
+  "expectations": [
+    {
+      "text": "Output contains at least 10 distinct hooks",
+      "assertion_id": "min_hook_count",
+      "passed": true,
+      "evidence": "matched: \n10."
+    },
+    {
+      "text": "No hooks start with 'Are you...' (tired generic AI ad opener)",
+      "assertion_id": "no_are_you_openers",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "No 'discover', 'unlock', 'unleash', 'revolutionize', 'transform your life' AI-slop verbs",
+      "assertion_id": "no_ai_slop_verbs",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Hooks include concrete specifics (numbers, names, objects, situations) not vague claims",
+      "assertion_id": "specific_not_vague",
+      "passed": true,
+      "evidence": "14 views, 6 clicks, 500-person orgs, Asana, Monday.com, database administrator"
+    },
+    {
+      "text": "Output uses VARIETY of psychological trigger types (not all the same category)",
+      "assertion_id": "varied_trigger_types",
+      "passed": false,
+      "evidence": "All hooks are the same snarky one-liner put-down register; missing scene, math, identity, story variety"
+    },
+    {
+      "text": "Hooks feel native to the given persona's voice/context (not generic ad copy)",
+      "assertion_id": "persona_fit",
+      "passed": true,
+      "evidence": "Designer, creative work, database administrator — creative-agency native voice"
+    },
+    {
+      "text": "Hooks specifically reference Asana/Monday by name OR concrete UX gripes (clicking, permissions, 47 layers)",
+      "assertion_id": "names_competitors_or_gripes",
+      "passed": true,
+      "evidence": "Asana, Monday, permissions, 6 clicks, dropdown menus"
+    },
+    {
+      "text": "Hooks differentiate (show what competitors got wrong), not just claim to be better",
+      "assertion_id": "differentiation_not_claims",
+      "passed": true,
+      "evidence": "Hooks all attack competitors' design flaws rather than claim superiority"
+    }
+  ]
+}

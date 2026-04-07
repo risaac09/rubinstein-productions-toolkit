@@ -1,0 +1,35 @@
+{
+  "skill_name": "market-listener",
+  "notes": "Tests whether skill reads signals, cross-references with RP context, and proposes concrete next actions with reaction/learning window distinction.",
+  "universal_assertions": [
+    {"id": "proposes_concrete_actions", "text": "Proposes specific next actions (not vague 'consider engaging')", "check": "qualitative"},
+    {"id": "names_specific_handles", "text": "References specific handles/accounts from the input signals", "check": "qualitative"},
+    {"id": "window_distinction", "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "warm-lead-activity", "type": "warm_lead_review",
+      "prompt": "Review these warm-lead signals from the RP signals queue and propose actions:\n\n1. @harborlight_coalition posted 4 hours ago: a carousel about their 2026 youth mental health campaign launching May 1. 340 likes (3x their avg). Their ED (Maya Chen) commented 'this is the version of us I've been trying to articulate for 2 years'. Status: RP prospect, discovery call scheduled Apr 22.\n\n2. @brightcurrent_ama posted yesterday: her first LinkedIn essay since Dec, about 'saying the thing you've been trained to soften'. 127 reactions, 23 comments. Status: active RP Mirror-tier client, mid-session-arc.\n\n3. @threshold_recovery posted 6 days ago: board announcement of their new 3-year strategic plan. 45 engagements (normal). Status: active RP Map-tier client, Phase 2 (excavation) just completed.",
+      "fixture_assertions": [
+        {"id": "prioritizes_harborlight", "text": "Flags Harbor Light as highest-priority warm lead (discovery call upcoming + high engagement + ED commented publicly)", "check": "qualitative"},
+        {"id": "ama_as_client_not_lead", "text": "Treats Ama as active client context (maybe LinkedIn comment/engagement) not a lead to pitch", "check": "qualitative"},
+        {"id": "reaction_window_flagged", "text": "Flags Harbor Light 4-hours-ago post as reaction window closing", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "competitor-moves", "type": "competitor_digest",
+      "prompt": "Here are competitor-move signals from watched accounts. Synthesize what's happening and propose RP's response:\n\n1. @namebearer_studio (similar-size narrative consultancy): posted a 6-min video essay on 'the difference between brand voice and institutional voice'. 890 engagements (5x their avg). 3 prospects in RP's pipeline have engaged with it.\n\n2. @council_voice (facilitator/consultant): launched a new tier called 'The Clearing' — $6k single-engagement voice-finding intensive. Very similar positioning to RP Mirror tier at $1.5k.\n\n3. @narrative_lab (storytelling-for-nonprofits): released a free 7-email course on 'writing from the work'. 340 email signups in first 48h. Overlap with RP's content territory is 60%.",
+      "fixture_assertions": [
+        {"id": "names_competitor_pattern", "text": "Identifies a pattern across these 3 (voice/narrative consultancy space is heating up)", "check": "qualitative"},
+        {"id": "pricing_threat_flagged", "text": "Flags that @council_voice $6k is 4x RP Mirror pricing — competitive positioning question", "check": "qualitative"},
+        {"id": "proposes_rp_response", "text": "Proposes specific RP content/positioning response, not vague 'keep an eye on this'", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "topic-trend", "type": "trend_synthesis",
+      "prompt": "Topic-trend signals from the RP adjacency space:\n\n1. 4 watched accounts posted within 10 days about 'AI and voice authenticity' (concern that AI-generated content is eroding distinctive voice)\n2. 3 watched accounts posted about 'the cost of safe messaging' (nonprofits self-censoring into irrelevance)\n3. 2 prospects in RP's pipeline shared the 'AI and voice authenticity' posts to their own feeds\n\nWhat should RP write about next?",
+      "fixture_assertions": [
+        {"id": "identifies_cross_cutting_theme", "text": "Identifies cross-cutting theme (AI threat to distinctive voice = RP's exact territory)", "check": "qualitative"},
+        {"id": "names_angle_or_hook", "text": "Proposes a specific angle or hook Isaac could write, not just 'write about AI'", "check": "qualitative"},
+        {"id": "leverages_prospect_signal", "text": "Uses the 2-prospects-sharing signal to inform urgency or positioning", "check": "qualitative"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "body_word_count": 275,
+  "body_line_count": 15,
+  "expectations": [
+    {
+      "text": "Names specific deliverables (not vague 'outputs' or 'assets')",
+      "assertion_id": "concrete_deliverables",
+      "passed": true,
+      "evidence": "Bilingual Dashboard draft (Map tier), revision walkthrough, final delivery specified"
+    },
+    {
+      "text": "Includes concrete dates/milestones",
+      "assertion_id": "includes_timeline",
+      "passed": true,
+      "evidence": "All dates present: Apr 18 delivery, Apr 18-25 review, Apr 25-May 2 revisions, May 2 final"
+    },
+    {
+      "text": "Avoids PM jargon (stakeholders, alignment, touchpoints, deliverables-cadence)",
+      "assertion_id": "no_pm_jargon",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames work in RP methodology terms where relevant (Bilingual Dashboard, Zero-Measurement Zone, etc.)",
+      "assertion_id": "rp_specific_framing",
+      "passed": true,
+      "evidence": "Uses Bilingual Dashboard terminology and Map-tier framing"
+    },
+    {
+      "text": "Names something specific from the 3 excavation sessions (honors what was said)",
+      "assertion_id": "names_what_closed",
+      "passed": false,
+      "evidence": "Generic references to 'language you use, outcomes that matter, distinctions' — nothing specific to Threshold Recovery"
+    },
+    {
+      "text": "Includes all 4 dates (Apr 18, 18-25, 25-May 2, May 2)",
+      "assertion_id": "has_timeline",
+      "passed": true,
+      "evidence": "All four milestones explicitly listed with Map-tier delivery flow"
+    },
+    {
+      "text": "Tone is warm (relational), not corporate project-status",
+      "assertion_id": "warm_not_corporate",
+      "passed": true,
+      "evidence": "'Thank you for the care you brought', 'putting this in your hands' warm closings"
+    }
+  ]
+}

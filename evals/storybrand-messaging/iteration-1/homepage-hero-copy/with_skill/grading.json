@@ -1,0 +1,36 @@
+{
+  "body_word_count": 664,
+  "body_line_count": 51,
+  "expectations": [
+    {
+      "text": "Explicitly positions the customer as the hero and the brand/Isaac as the guide (not the hero)",
+      "assertion_id": "customer_is_hero",
+      "passed": true,
+      "evidence": "Headline addresses customer directly: 'Your mission deserves to be heard in your own voice.' Subhead uses 'We help executive directors reclaim...' The SB7 Element Map explicitly states 'names the ED as hero; desire = being heard authentically.'"
+    },
+    {
+      "text": "Names or applies the three levels of problem: external, internal, philosophical",
+      "assertion_id": "three_levels_of_problem",
+      "passed": true,
+      "evidence": "SB7 Element Map explicitly names all three: External ('sector-generic messaging'), Internal ('you sound like everyone else / you've lost your own voice'), Philosophical ('mission-driven leaders shouldn't have to perform the sector to be taken seriously')."
+    },
+    {
+      "text": "Positions the guide with both empathy and authority (competence)",
+      "assertion_id": "guide_authority_empathy",
+      "passed": true,
+      "evidence": "SB7 Element Map states 'empathy (we see the grinding-down) + implicit authority (clear POV: Voice Liberation, named methodology).' The copy names Voice Liberation as a specific approach, signaling competence."
+    },
+    {
+      "text": "Surfaces both the external problem (generic messaging) and the internal problem (how it feels to sound like everyone else)",
+      "assertion_id": "names_external_and_internal_problem",
+      "passed": true,
+      "evidence": "External: 'ground down into sector-speak' / 'your story sounds like everyone else's.' Internal: 'until your story sounds like everyone else's' captures the feeling of lost identity. Self-score confirms 'Names internal problem (sounding like everyone else, losing your own voice), not just external.'"
+    },
+    {
+      "text": "Includes a clear direct call-to-action, not a vague 'learn more'",
+      "assertion_id": "clear_call_to_action",
+      "passed": true,
+      "evidence": "Direct CTA is 'Book a Discovery Call' -- specific and action-oriented. Transitional CTA also provided: 'See the Voice Liberation approach.'"
+    }
+  ]
+}

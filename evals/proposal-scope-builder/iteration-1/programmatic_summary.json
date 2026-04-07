@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "mirror-tier-founder",
+      "mode": "with_skill",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 955
+    },
+    {
+      "eval_name": "mirror-tier-founder",
+      "mode": "baseline",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 848
+    },
+    {
+      "eval_name": "map-tier-org-sprint",
+      "mode": "with_skill",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 1119
+    },
+    {
+      "eval_name": "map-tier-org-sprint",
+      "mode": "baseline",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 1094
+    },
+    {
+      "eval_name": "territory-tier-retainer",
+      "mode": "with_skill",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 1405
+    },
+    {
+      "eval_name": "territory-tier-retainer",
+      "mode": "baseline",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 982
+    }
+  ]
+}

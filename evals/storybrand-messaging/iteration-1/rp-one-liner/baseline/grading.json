@@ -1,0 +1,36 @@
+{
+  "body_word_count": 52,
+  "body_line_count": 1,
+  "expectations": [
+    {
+      "text": "Explicitly positions the customer as the hero and the brand/Isaac as the guide (not the hero)",
+      "assertion_id": "customer_is_hero",
+      "passed": true,
+      "evidence": "Uses 'we help nonprofit EDs and founders find their real voice' -- customer is the subject being helped, brand is the guide providing the service."
+    },
+    {
+      "text": "Names or applies the three levels of problem: external, internal, philosophical",
+      "assertion_id": "three_levels_of_problem",
+      "passed": false,
+      "evidence": "External problem is named ('sounding like everyone else') and internal is implied ('story gets lost in the noise'). No philosophical level is named or applied anywhere in the output."
+    },
+    {
+      "text": "Positions the guide with both empathy and authority (competence)",
+      "assertion_id": "guide_authority_empathy",
+      "passed": false,
+      "evidence": "Empathy is present in acknowledging the problem. However, no authority signals appear -- no named methodology, no credentials, no proof of competence. Services are listed (facilitated conversations, brand video, narrative work) but these alone do not constitute authority positioning."
+    },
+    {
+      "text": "Follows the SB7 one-liner structure: character with a problem + guide with a plan + success/transformation",
+      "assertion_id": "follows_sb7_oneliner_structure",
+      "passed": true,
+      "evidence": "Structure maps clearly: character (nonprofit EDs and founders) + problem (sounding like everyone else) + plan (facilitated conversations, brand video, narrative work) + transformation (the people they're trying to reach actually hear them)."
+    },
+    {
+      "text": "Names a specific transformation or success state, not vague 'grow your impact' language",
+      "assertion_id": "specific_transformation_named",
+      "passed": true,
+      "evidence": "Success state is 'so the people they're trying to reach actually hear them' -- specific and concrete, about audience reception rather than generic impact."
+    }
+  ]
+}

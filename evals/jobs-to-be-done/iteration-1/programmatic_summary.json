@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "churn-analysis",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1025
+    },
+    {
+      "eval_name": "churn-analysis",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 558
+    },
+    {
+      "eval_name": "videography-job-discovery",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1129
+    },
+    {
+      "eval_name": "videography-job-discovery",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 893
+    }
+  ]
+}

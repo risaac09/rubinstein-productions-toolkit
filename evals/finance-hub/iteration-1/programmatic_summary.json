@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "client-payment-logged",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 375
+    },
+    {
+      "eval_name": "client-payment-logged",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 296
+    },
+    {
+      "eval_name": "can-i-afford-question",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 504
+    },
+    {
+      "eval_name": "can-i-afford-question",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 537
+    },
+    {
+      "eval_name": "burn-rate-check",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 626
+    },
+    {
+      "eval_name": "burn-rate-check",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 224
+    }
+  ]
+}

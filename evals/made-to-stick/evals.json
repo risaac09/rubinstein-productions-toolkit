@@ -1,0 +1,25 @@
+{
+  "skill_name": "made-to-stick",
+  "notes": "Tests whether skill enforces SUCCESs checklist (Simple/Unexpected/Concrete/Credible/Emotional/Stories) vs baseline generic 'make it catchy' advice.",
+  "universal_assertions": [
+    {"id": "names_success_principles", "text": "Explicitly names the SUCCESs principles (at least 4 of the 6: Simple, Unexpected, Concrete, Credible, Emotional, Stories)", "check": "qualitative"},
+    {"id": "curse_of_knowledge_referenced", "text": "References or applies the Curse of Knowledge concept", "check": "qualitative"},
+    {"id": "concrete_over_abstract", "text": "Pushes concrete sensory language over abstract jargon", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "diagnose-weak-message", "type": "vocab_canonical",
+      "prompt": "Here's the current tagline I'm testing: 'Rubinstein Productions empowers mission-driven organizations to amplify their authentic voice through innovative storytelling solutions.' Tell me what's wrong with it and why it won't stick.",
+      "fixture_assertions": [
+        {"id": "scores_against_each_principle", "text": "Scores the tagline against the SUCCESs principles explicitly (not just generic critique)", "check": "qualitative"},
+        {"id": "flags_abstract_jargon", "text": "Flags abstract/jargon words like 'empowers', 'authentic', 'innovative solutions' as failures of Concrete/Simple", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "craft-sticky-tagline", "type": "restraint_canonical",
+      "prompt": "Give me a sticky tagline for Voice Liberation — the practice of helping leaders stop sounding like their sector and start sounding like themselves.",
+      "fixture_assertions": [
+        {"id": "tagline_is_concrete", "text": "The proposed tagline is concrete and sensory, not abstract", "check": "qualitative"},
+        {"id": "contains_unexpected_element", "text": "Includes an unexpected twist, reversal, or counterintuitive element (the U in SUCCESs)", "check": "qualitative"}
+      ]
+    }
+  ]
+}

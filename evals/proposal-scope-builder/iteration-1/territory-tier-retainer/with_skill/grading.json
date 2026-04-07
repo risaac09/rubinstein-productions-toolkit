@@ -1,0 +1,78 @@
+{
+  "body_word_count": 1405,
+  "body_line_count": 86,
+  "expectations": [
+    {
+      "text": "Opening does NOT use generic proposal language (Dear, Thank you for your interest, Please find attached)",
+      "assertion_id": "no_generic_opener",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Proposal names a specific RP service tier (Mirror, Map, or Territory)",
+      "assertion_id": "names_tier",
+      "passed": true,
+      "evidence": "matched: Territory"
+    },
+    {
+      "text": "Proposal includes specific pricing ($-amount) within documented ranges",
+      "assertion_id": "pricing_in_ranges",
+      "passed": true,
+      "evidence": "matched: $8,000"
+    },
+    {
+      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "assertion_id": "voice_liberation_framing",
+      "passed": true,
+      "evidence": "Voice Liberation, Bilingual Dashboard, Generative Translation, Narrative Dysregulation, Zero-Measurement Zone all present"
+    },
+    {
+      "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",
+      "assertion_id": "diagnostic_opener",
+      "passed": true,
+      "evidence": "Quotes his through-line statement and diagnoses it as 'narrative dysregulation through growth'"
+    },
+    {
+      "text": "Follows the 6-section structure (Opening, Understanding, Proposed Engagement, Investment, Why This Approach, Next Steps)",
+      "assertion_id": "structured_sections",
+      "passed": true,
+      "evidence": "All six sections present with canonical labels"
+    },
+    {
+      "text": "Names concrete deliverables (e.g. Bilingual Dashboard, facilitation sessions, specific asset formats)",
+      "assertion_id": "specific_deliverables",
+      "passed": true,
+      "evidence": "Bilingual Dashboard v1, Onboarding Voice Kit, Funder Translation Library, facilitation sessions"
+    },
+    {
+      "text": "Closes with ONE clear next step (not a menu)",
+      "assertion_id": "single_next_step",
+      "passed": true,
+      "evidence": "'Book a 45-minute Partnership Calibration Call' is the single action"
+    },
+    {
+      "text": "Names Territory tier specifically (not Mirror or Map)",
+      "assertion_id": "territory_tier_selected",
+      "passed": true,
+      "evidence": "matched: Territory"
+    },
+    {
+      "text": "Pricing is monthly retainer in $5,000-$15,000 range (fits Jamal's $8K/month comfort)",
+      "assertion_id": "territory_pricing_monthly",
+      "passed": true,
+      "evidence": "$8,000/month matches stated comfort, within range"
+    },
+    {
+      "text": "References Jamal's specific need (holding the through-line as org grows)",
+      "assertion_id": "references_through_line",
+      "passed": true,
+      "evidence": "Names 'the through-line problem' and quotes his statement"
+    },
+    {
+      "text": "Specifies 3+ month (ideally 6-month) minimum commitment",
+      "assertion_id": "minimum_commitment",
+      "passed": true,
+      "evidence": "'6-Month Minimum Commitment: $48,000 total'"
+    }
+  ]
+}

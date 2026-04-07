@@ -1,0 +1,36 @@
+{
+  "body_word_count": 504,
+  "body_line_count": 59,
+  "expectations": [
+    {
+      "text": "Separates personal and RP business finances clearly",
+      "assertion_id": "separates_personal_business",
+      "passed": true,
+      "evidence": "Separate labeled tables for RP Business Side and Personal Side; notes lens 'doesn't touch personal savings'"
+    },
+    {
+      "text": "Response is actionable \u2014 gives a clear answer or next step",
+      "assertion_id": "actionable_response",
+      "passed": true,
+      "evidence": "Opens with 'Yes. Buy it through RP. Clean decision.' plus specific ledger logging instructions"
+    },
+    {
+      "text": "Avoids generic finance advice (diversify, emergency fund, compound interest lectures)",
+      "assertion_id": "no_generic_finance_advice",
+      "passed": true,
+      "evidence": "Mentions emergency fund briefly only to dismiss relevance; no lectures on diversification or compounding"
+    },
+    {
+      "text": "Gives a clear yes/no/it-depends answer with specific reasoning from the numbers",
+      "assertion_id": "yes_answer_with_reasoning",
+      "passed": true,
+      "evidence": "Clear 'Yes' with reasoning: 8.3% of business cash, 100% deductible, net ~$864 post-tax"
+    },
+    {
+      "text": "Addresses the business-expense angle (tax deductibility) since it's through RP",
+      "assertion_id": "addresses_business_expense_angle",
+      "passed": true,
+      "evidence": "Explicitly '100% tax-deductible business expense' with ~$336 tax refund calculation at 28%"
+    }
+  ]
+}

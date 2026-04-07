@@ -1,0 +1,72 @@
+{
+  "body_word_count": 955,
+  "body_line_count": 58,
+  "expectations": [
+    {
+      "text": "Opening does NOT use generic proposal language (Dear, Thank you for your interest, Please find attached)",
+      "assertion_id": "no_generic_opener",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Proposal names a specific RP service tier (Mirror, Map, or Territory)",
+      "assertion_id": "names_tier",
+      "passed": true,
+      "evidence": "matched: Mirror"
+    },
+    {
+      "text": "Proposal includes specific pricing ($-amount) within documented ranges",
+      "assertion_id": "pricing_in_ranges",
+      "passed": true,
+      "evidence": "matched: $3,200"
+    },
+    {
+      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "assertion_id": "voice_liberation_framing",
+      "passed": true,
+      "evidence": "Uses Voice Liberation, Narrative Dysregulation, Generative Translation, Bilingual Dashboard, Zero-Measurement Zone throughout"
+    },
+    {
+      "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",
+      "assertion_id": "diagnostic_opener",
+      "passed": true,
+      "evidence": "Quotes 'polished but hollow' and diagnoses 'losing it at the threshold' pattern"
+    },
+    {
+      "text": "Follows the 6-section structure (Opening, Understanding, Proposed Engagement, Investment, Why This Approach, Next Steps)",
+      "assertion_id": "structured_sections",
+      "passed": true,
+      "evidence": "All six sections present with exact labels"
+    },
+    {
+      "text": "Names concrete deliverables (e.g. Bilingual Dashboard, facilitation sessions, specific asset formats)",
+      "assertion_id": "specific_deliverables",
+      "passed": true,
+      "evidence": "Bilingual Dashboard, three 90-min sessions, recordings, voice-note support"
+    },
+    {
+      "text": "Closes with ONE clear next step (not a menu)",
+      "assertion_id": "single_next_step",
+      "passed": true,
+      "evidence": "'Reply to confirm' is the single action"
+    },
+    {
+      "text": "Names Mirror tier specifically (not Map or Territory)",
+      "assertion_id": "mirror_tier_selected",
+      "passed": true,
+      "evidence": "matched: Mirror"
+    },
+    {
+      "text": "Pricing falls in Mirror 3-session range ($2,500-$4,000)",
+      "assertion_id": "mirror_pricing",
+      "passed": true,
+      "evidence": "$3,200 is within $2,500-$4,000 range"
+    },
+    {
+      "text": "References Ama's specific gap ('polished but hollow', language that doesn't sound like her)",
+      "assertion_id": "references_ama_diagnostic",
+      "passed": true,
+      "evidence": "Direct quote of full 'polished but hollow' statement plus diagnosis"
+    }
+  ]
+}

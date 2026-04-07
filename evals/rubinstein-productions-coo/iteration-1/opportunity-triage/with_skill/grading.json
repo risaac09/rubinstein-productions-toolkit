@@ -1,0 +1,36 @@
+{
+  "body_word_count": 783,
+  "body_line_count": 34,
+  "expectations": [
+    {
+      "text": "References specific RP pricing tiers (Mirror / Map / Territory) with dollar ranges",
+      "assertion_id": "pricing_tiers_named",
+      "passed": true,
+      "evidence": "Names Mirror tier ('$500-$1,500 per session, or $2,500-$4,000 for a 3-session arc') and Map tier ('A Map half-day starts at $3,000-$5,000; a full sprint at $6,000-$12,000')."
+    },
+    {
+      "text": "Uses canonical audience segments (ED, Founder, Org-in-transition) not generic terms like 'clients' or 'prospects'",
+      "assertion_id": "audience_segments_canonical",
+      "passed": true,
+      "evidence": "Uses 'Nonprofit ED' as a 'documented audience segment' and references 'ED engagement' throughout."
+    },
+    {
+      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "assertion_id": "not_videography_business",
+      "passed": true,
+      "evidence": "States 'RP is not a video production company. The camera is a witness, not a polishing tool' and frames work as 'narrative practice' and 'Voice Excavation'."
+    },
+    {
+      "text": "Maps the opportunity to a specific RP tier (likely Map) and checks it against pricing floors",
+      "assertion_id": "maps_to_tier",
+      "passed": true,
+      "evidence": "Maps to 'Map-level engagement' with 'A Map half-day starts at $3,000-$5,000' and checks against '$500/hour' floor rate, concluding '$70-$100/hour... This is not close.'"
+    },
+    {
+      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Voice Liberation identity",
+      "assertion_id": "flags_framing_mismatch",
+      "passed": true,
+      "evidence": "States 'The ED keeps calling it \"a marketing video.\" This is the central flag. RP is not a video production company.' and calls it a 'Framing mismatch'."
+    }
+  ]
+}

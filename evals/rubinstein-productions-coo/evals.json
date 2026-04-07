@@ -1,0 +1,25 @@
+{
+  "skill_name": "rubinstein-productions-coo",
+  "notes": "Tests whether skill enforces RP-specific operational vocabulary (pricing tiers Mirror/Map/Territory, audience segments ED/Founder/Org-in-transition, Voice Liberation identity, capacity guardrails) vs baseline general consulting advice.",
+  "universal_assertions": [
+    {"id": "pricing_tiers_named", "text": "References specific RP pricing tiers (Mirror / Map / Territory) with dollar ranges", "check": "qualitative"},
+    {"id": "audience_segments_canonical", "text": "Uses canonical audience segments (ED, Founder, Org-in-transition) not generic terms like 'clients' or 'prospects'", "check": "qualitative"},
+    {"id": "not_videography_business", "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "opportunity-triage", "type": "vocab_canonical",
+      "prompt": "A mid-size environmental nonprofit in Boston wants to hire me for a 3-minute brand video. Budget is $2,500. The ED seems engaged but keeps calling it 'a marketing video.' Should I take this?",
+      "fixture_assertions": [
+        {"id": "maps_to_tier", "text": "Maps the opportunity to a specific RP tier (likely Map) and checks it against pricing floors", "check": "qualitative"},
+        {"id": "flags_framing_mismatch", "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Voice Liberation identity", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "capacity-pricing-check", "type": "restraint_canonical",
+      "prompt": "I have 3 active projects right now. A founder I met at a conference wants me to facilitate a half-day voice workshop for their leadership team next month. They asked for a quote. What should I charge and can I fit it?",
+      "fixture_assertions": [
+        {"id": "checks_capacity_explicitly", "text": "Explicitly evaluates current capacity against a limit or guideline before recommending", "check": "qualitative"},
+        {"id": "prices_from_tier_not_adhoc", "text": "Derives pricing from the RP tier/offer ladder structure, not ad-hoc market rates or hourly estimates", "check": "qualitative"}
+      ]
+    }
+  ]
+}

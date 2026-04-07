@@ -1,0 +1,35 @@
+{
+  "skill_name": "brand-intake",
+  "notes": "Tests whether skill produces the structured intake interview (Q1-7 batched + Say Why Q8-10 for RP) rather than open-ended discovery.",
+  "universal_assertions": [
+    {"id": "batched_questions", "text": "Asks multiple intake questions in a single batched message (not drip-by-drip)", "check": "qualitative"},
+    {"id": "no_generic_discovery", "text": "Avoids generic discovery cliches", "check": "programmatic", "rule": "regex_absent", "patterns": ["tell me more about yourself", "walk me through", "paint me a picture", "what keeps you up at night"], "quote_aware": false},
+    {"id": "numbered_or_grouped", "text": "Questions are numbered or visually grouped for quick scanning", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "rp-prospect-intake", "type": "rp_intake",
+      "prompt": "Running brand intake for a new RP prospect: Harbor Light Coalition, a mental health nonprofit in Providence RI. Start the intake.",
+      "fixture_assertions": [
+        {"id": "includes_say_why_module", "text": "Includes the 3 Say Why questions (voice integrity, inside version, jargon test) or signals they will be asked after standard Qs", "check": "qualitative"},
+        {"id": "rp_context_acknowledged", "text": "Acknowledges this is an RP/mission-driven context, not paid-ads", "check": "qualitative"},
+        {"id": "asks_positioning_not_product", "text": "Asks about voice/narrative/positioning rather than paid-ads product questions", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "paid-ads-brand-intake", "type": "paid_ads_intake",
+      "prompt": "Start brand intake for a new paid-ads client: Lumenhouse Candles, a DTC candle brand.",
+      "fixture_assertions": [
+        {"id": "asks_product_focus", "text": "Asks which product(s) ads are running for", "check": "qualitative"},
+        {"id": "asks_competitors", "text": "Asks about known competitors", "check": "qualitative"},
+        {"id": "skips_say_why", "text": "Does NOT include Say Why questions (voice integrity, inside version, jargon test)", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "partial-info-intake", "type": "rp_intake_with_context",
+      "prompt": "New RP client: Oakside Community Foundation, Map tier. Here's what I know: community funder in Providence, focused on youth programming, exec director is a former teacher. Start the intake.",
+      "fixture_assertions": [
+        {"id": "acknowledges_known_info", "text": "Acknowledges the information already provided rather than asking for it again", "check": "qualitative"},
+        {"id": "adapts_questions", "text": "Adapts questions to not re-ask what Isaac already told them", "check": "qualitative"},
+        {"id": "includes_say_why_for_rp", "text": "Includes Say Why module since this is an RP client", "check": "qualitative"}
+      ]
+    }
+  ]
+}

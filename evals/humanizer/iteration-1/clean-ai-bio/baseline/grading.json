@@ -1,0 +1,30 @@
+{
+  "body_word_count": 156,
+  "body_line_count": 3,
+  "expectations": [
+    {
+      "text": "Names specific AI writing patterns by category (e.g. 'rule of three', 'em dash overuse', 'inflated symbolism', 'promotional language') rather than giving vague 'make it more natural' advice",
+      "assertion_id": "names_specific_patterns",
+      "passed": false,
+      "evidence": "Output contains only rewritten prose with no meta-commentary naming pattern categories like 'inflated symbolism' or 'promotional language'."
+    },
+    {
+      "text": "Edited output is shorter than input",
+      "assertion_id": "reduces_word_count",
+      "passed": true,
+      "evidence": "156 words (<= 180)"
+    },
+    {
+      "text": "Removes or replaces promotional/inflated modifiers like 'passionate', 'purpose-driven', 'transformative', 'unwavering', 'thought leader'",
+      "assertion_id": "removes_promotional_language",
+      "passed": true,
+      "evidence": "None of the flagged modifiers appear; output uses plain language like 'building programs,' 'good at the unglamorous parts,' 'stays concrete.'"
+    },
+    {
+      "text": "Fixes false agency / inanimate subject constructions like 'work doesn't just create programs \u2014 it catalyzes movements'",
+      "assertion_id": "removes_false_agency",
+      "passed": true,
+      "evidence": "Subjects are human throughout ('Sarah has spent,' 'She started,' 'She does not talk'); 'her programs hold up' is standard usage, not inflated false agency."
+    }
+  ]
+}

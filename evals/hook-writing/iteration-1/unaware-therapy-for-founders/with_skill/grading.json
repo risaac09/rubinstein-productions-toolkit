@@ -1,0 +1,60 @@
+{
+  "body_word_count": 315,
+  "body_line_count": 10,
+  "expectations": [
+    {
+      "text": "Output contains at least 10 distinct hooks",
+      "assertion_id": "min_hook_count",
+      "passed": true,
+      "evidence": "matched: \n10."
+    },
+    {
+      "text": "No hooks start with 'Are you...' (tired generic AI ad opener)",
+      "assertion_id": "no_are_you_openers",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "No 'discover', 'unlock', 'unleash', 'revolutionize', 'transform your life' AI-slop verbs",
+      "assertion_id": "no_ai_slop_verbs",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Hooks include concrete specifics (numbers, names, objects, situations) not vague claims",
+      "assertion_id": "specific_not_vague",
+      "passed": true,
+      "evidence": "11pm Tuesday, 14 months, 47 decisions, Whole Foods parking lot, almond milk, 4pm call, Stripe"
+    },
+    {
+      "text": "Output uses VARIETY of psychological trigger types (not all the same category)",
+      "assertion_id": "varied_trigger_types",
+      "passed": true,
+      "evidence": "Varied scenes: payroll secrecy, friend dinner, co-founder q, decision load, relationship cost, numbness, crying, isolation"
+    },
+    {
+      "text": "Hooks feel native to the given persona's voice/context (not generic ad copy)",
+      "assertion_id": "persona_fit",
+      "passed": true,
+      "evidence": "Stripe, term sheet, payroll, board call, co-founder, Slack — founder-native vocabulary"
+    },
+    {
+      "text": "Hooks do NOT mention therapy, mental health, or the product directly (unaware stage)",
+      "assertion_id": "no_therapy_or_product_mention",
+      "passed": true,
+      "evidence": "No therapy, mental health, or product mention in any hook"
+    },
+    {
+      "text": "Hooks name specific founder situations (Slack at midnight, decision fatigue, board calls, cap tables, etc.)",
+      "assertion_id": "founder_specific_moments",
+      "passed": true,
+      "evidence": "Payroll, board call, term sheet, Stripe, 47 decisions, co-founder, Slack notification"
+    },
+    {
+      "text": "No hooks use 'Do you feel...' template opener",
+      "assertion_id": "no_do_you_feel",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "runs": [
+    {
+      "eval_name": "cold-nonprofit-visible-gap",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 108
+    },
+    {
+      "eval_name": "cold-nonprofit-visible-gap",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 187
+    },
+    {
+      "eval_name": "cold-b2b-mission-aligned",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 149
+    },
+    {
+      "eval_name": "cold-b2b-mission-aligned",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 213
+    },
+    {
+      "eval_name": "follow-up-after-discovery-call",
+      "mode": "with_skill",
+      "prog_passed": 3,
+      "prog_total": 4,
+      "body_words": 255
+    },
+    {
+      "eval_name": "follow-up-after-discovery-call",
+      "mode": "baseline",
+      "prog_passed": 3,
+      "prog_total": 4,
+      "body_words": 529
+    },
+    {
+      "eval_name": "proposal-submission",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 98
+    },
+    {
+      "eval_name": "proposal-submission",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 57
+    },
+    {
+      "eval_name": "warm-intro-from-referral",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 158
+    },
+    {
+      "eval_name": "warm-intro-from-referral",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 3,
+      "body_words": 116
+    }
+  ]
+}

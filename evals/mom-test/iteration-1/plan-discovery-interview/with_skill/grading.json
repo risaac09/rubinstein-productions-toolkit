@@ -1,0 +1,36 @@
+{
+  "body_word_count": 1303,
+  "body_line_count": 86,
+  "expectations": [
+    {
+      "text": "Explicitly references the three Mom Test rules (their life not your idea; specifics in the past not hypotheticals about the future; talk less / listen more)",
+      "assertion_id": "names_three_rules",
+      "passed": true,
+      "evidence": "Section 'Core Mom Test rules for this interview' explicitly lists all three: (1) 'Talk about their life, not your idea', (2) 'Ask about specifics in the past, not hypotheticals about the future', (3) 'Talk less. They should speak ~24 of 30 minutes.'"
+    },
+    {
+      "text": "Avoids suggesting hypothetical or future-tense interview questions like 'would you' or 'could you imagine'",
+      "assertion_id": "no_hypothetical_questions",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames questions around what the person has actually done in the past, not opinions or predictions",
+      "assertion_id": "past_behavior_focus",
+      "passed": true,
+      "evidence": "Core interview questions consistently anchor to past behavior: 'Walk me through the last board meeting', 'Tell me about the last time that happened. What day was it?', 'What did you do?', 'What have you tried to do about this so far?', 'Who have you brought in -- coaches, facilitators, consultants?', 'What did you pay for that?'"
+    },
+    {
+      "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee",
+      "assertion_id": "no_pitching_the_service",
+      "passed": true,
+      "evidence": "Output explicitly instructs 'The word Voice Liberation does not enter your mouth. Neither does facilitation workshop as a proposed offering.' and 'Do NOT pitch. Do NOT describe Voice Liberation.' No section of the interview plan describes VL to the interviewee."
+    },
+    {
+      "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm",
+      "assertion_id": "commitment_advancement_signal",
+      "passed": true,
+      "evidence": "28-30 min section asks for intro and follow-up time commitments. States 'A sure, send me something with no time commitment is a zombie lead -- push gently for a time.' Success criteria require 'At least 1 gives you a warm intro to a peer ED.'"
+    }
+  ]
+}

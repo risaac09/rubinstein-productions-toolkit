@@ -1,0 +1,36 @@
+{
+  "body_word_count": 633,
+  "body_line_count": 34,
+  "expectations": [
+    {
+      "text": "References specific RP pricing tiers (Mirror / Map / Territory) with dollar ranges",
+      "assertion_id": "pricing_tiers_named",
+      "passed": true,
+      "evidence": "Explicitly names 'Tier 2 — Map (Narrative Strategy Sprint)' with 'Published range for half-day Map engagement: $3,000 - $5,000'."
+    },
+    {
+      "text": "Uses canonical audience segments (ED, Founder, Org-in-transition) not generic terms like 'clients' or 'prospects'",
+      "assertion_id": "audience_segments_canonical",
+      "passed": true,
+      "evidence": "States 'The founder avatar maps cleanly to the primary target market' — uses 'founder' as a canonical RP audience segment."
+    },
+    {
+      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "assertion_id": "not_videography_business",
+      "passed": true,
+      "evidence": "States 'Facilitating a voice workshop for a leadership team is exactly what Voice Liberation does: helping mission-driven organizations excavate and articulate their authentic narrative.'"
+    },
+    {
+      "text": "Explicitly evaluates current capacity against a limit or guideline before recommending",
+      "assertion_id": "checks_capacity_explicitly",
+      "passed": true,
+      "evidence": "Runs 'Capacity Assessment Protocol' table checking against '2-Territory cap' and '4 quarterly Map slots', plus filming load, sacral response, and client quality impact."
+    },
+    {
+      "text": "Derives pricing from the RP tier/offer ladder structure, not ad-hoc market rates or hourly estimates",
+      "assertion_id": "prices_from_tier_not_adhoc",
+      "passed": true,
+      "evidence": "Derives price from 'Tier 2 — Map' published range ($3,000-$5,000), then validates with '$500/hr floor' as a cross-check, not the primary derivation."
+    }
+  ]
+}

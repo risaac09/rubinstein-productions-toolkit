@@ -1,0 +1,1 @@
+Most tools that promise better collaboration get ignored within a month. You keep using the ones that make conversation easier between two specific people about one specific problem. Start there. Pick a real friction point, build a habit around talking about it, and let the relationship carry the work forward.

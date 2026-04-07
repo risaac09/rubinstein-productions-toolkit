@@ -1,0 +1,36 @@
+{
+  "body_word_count": 435,
+  "body_line_count": 33,
+  "expectations": [
+    {
+      "text": "Explicitly names the SUCCESs principles (at least 4 of the 6: Simple, Unexpected, Concrete, Credible, Emotional, Stories)",
+      "assertion_id": "names_success_principles",
+      "passed": true,
+      "evidence": "Full 'SUCCESs Scorecard' table names all 6 principles (Simple 9/10, Unexpected 9/10, Concrete 8/10, Credible 8/10, Emotional 10/10, Stories 8/10) with explanations for each."
+    },
+    {
+      "text": "References or applies the Curse of Knowledge concept",
+      "assertion_id": "curse_of_knowledge_referenced",
+      "passed": true,
+      "evidence": "Dedicated section titled 'Why This Works (Curse-of-Knowledge check)' verifies the tagline avoids jargon like 'authentic,' 'executive presence,' 'narrative alignment' -- calling them 'sector words.'"
+    },
+    {
+      "text": "Pushes concrete sensory language over abstract jargon",
+      "assertion_id": "concrete_over_abstract",
+      "passed": true,
+      "evidence": "States 'No jargon. No \"authentic,\" no \"executive presence,\" no \"narrative alignment.\" Those are sector words' and frames 'Identity framing, not feature framing' as the design principle."
+    },
+    {
+      "text": "The proposed tagline is concrete and sensory, not abstract",
+      "assertion_id": "tagline_is_concrete",
+      "passed": true,
+      "evidence": "Tagline 'Stop sounding like your industry. Start sounding like you.' uses the concrete sensory verb 'sounding' and references a picturable thing ('your industry'). Scorecard rates Concrete 8/10."
+    },
+    {
+      "text": "Includes an unexpected twist, reversal, or counterintuitive element (the U in SUCCESs)",
+      "assertion_id": "contains_unexpected_element",
+      "passed": true,
+      "evidence": "Scorecard explains: 'Violates the default leadership-coaching promise (\"we'll polish your message\"). The surprise: the problem isn't skill -- it's camouflage.' The Stop/Start structure itself is a reversal."
+    }
+  ]
+}

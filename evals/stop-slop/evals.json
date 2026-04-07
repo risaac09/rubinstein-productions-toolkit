@@ -1,0 +1,24 @@
+{
+  "skill_name": "stop-slop",
+  "notes": "Tests whether skill removes AI writing patterns (filler phrases, formulaic structures, passive voice, vague declaratives, em dashes, rule of three, quotables) vs baseline general editing.",
+  "universal_assertions": [
+    {"id": "active_voice_enforced", "text": "Rewrites passive constructions into active voice with human subjects", "check": "qualitative"},
+    {"id": "no_em_dashes", "text": "Output contains no em dashes", "check": "programmatic", "rule": "regex_absent", "patterns": ["—"]}
+  ],
+  "evals": [
+    {"id": 1, "name": "clean-ai-paragraph", "type": "restraint",
+      "prompt": "Remove AI slop from this paragraph:\n\n'In today's rapidly evolving landscape, the intersection of technology and human connection has never been more critical. This groundbreaking approach doesn't just transform outcomes — it fundamentally reimagines the very fabric of how we engage, collaborate, and thrive. By leveraging cutting-edge methodologies, fostering meaningful dialogue, and cultivating authentic relationships, organizations can unlock unprecedented potential. The journey ahead is complex, nuanced, and deeply rewarding.'",
+      "fixture_assertions": [
+        {"id": "cuts_filler_openers", "text": "Removes throat-clearing opener ('In today's rapidly evolving landscape')", "check": "qualitative"},
+        {"id": "breaks_rule_of_three", "text": "Breaks or rewrites at least one three-item list into a different rhythm (two items, or varied structure)", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "clean-ai-bio", "type": "restraint",
+      "prompt": "Remove AI slop from this bio:\n\n'Sarah is a passionate, purpose-driven leader who has dedicated her career to empowering underserved communities through innovative programming. With over a decade of transformative experience, she brings a unique blend of strategic vision and heartfelt compassion to every initiative she spearheads. Her work doesn't just create programs — it catalyzes movements. Sarah's unwavering commitment to equity and inclusion has earned her recognition as a thought leader in the nonprofit space.'",
+      "fixture_assertions": [
+        {"id": "specific_over_abstract", "text": "Replaces at least one vague abstraction ('transformative experience', 'strategic vision', 'thought leader') with something concrete or cuts it", "check": "qualitative"},
+        {"id": "no_quotables", "text": "Removes or rewrites pull-quote-sounding lines like 'Her work doesn't just create programs — it catalyzes movements'", "check": "qualitative"}
+      ]
+    }
+  ]
+}

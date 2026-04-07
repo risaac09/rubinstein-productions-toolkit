@@ -1,0 +1,33 @@
+{
+  "skill_name": "network-stewardship",
+  "notes": "Tests whether skill treats relationships as living field (warm, specific, relational) not as CRM (transactional, generic, extractive).",
+  "universal_assertions": [
+    {"id": "no_crm_language", "text": "Avoids CRM-transactional language (touch base, circle back, ping, nurture)", "check": "programmatic", "rule": "regex_absent", "patterns": ["touch base", "circle back", "\\bping\\b", "nurture the relationship", "stay top of mind"], "quote_aware": false},
+    {"id": "no_metrics_framing", "text": "Does not frame relationships as metrics (engagement, conversion, ROI)", "check": "programmatic", "rule": "regex_absent", "patterns": ["\\bengagement\\b", "\\bconversion\\b", "\\bROI\\b", "\\bleads\\b", "\\bfunnel\\b"], "quote_aware": false},
+    {"id": "specific_personal", "text": "Response references specific people with specific context, not generic advice", "check": "qualitative"},
+    {"id": "relational_framing", "text": "Frames the task relationally (care, curiosity, gratitude) not transactionally (opportunity, leverage)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "who-to-reach-out-to", "type": "weekly_review",
+      "prompt": "It's Sunday evening. I want to think about who to reach out to this coming week. Here's who's on my mind: (1) Priya Rao — collaborator, we had a great coffee 3 weeks ago, she mentioned her co-founder is stuck on a narrative problem, I haven't followed up. (2) Maya Okonkwo — past client from Mirror engagement last fall, haven't talked since delivery, she had a baby in January. (3) David Lin — running buddy, haven't seen him since he started training for Boston, I'm worried about him. Give me 2-3 specific reach-outs I should make this week with suggested angles.",
+      "fixture_assertions": [
+        {"id": "references_specifics", "text": "Response references specific context from each person (co-founder stuck, baby, Boston training)", "check": "qualitative"},
+        {"id": "doesnt_pitch_work", "text": "Does NOT frame Maya or Priya as potential client/referral opportunities", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "reconnect-after-long-gap", "type": "reconnection",
+      "prompt": "I want to reconnect with Sam Levine — we were close 2 years ago, he introduced me to my first big client, then life got busy and we drifted. I know he had a career transition (left his job, started consulting). I feel some shame about how long it's been. Help me think through what a genuine reconnection looks like — not a transactional 'hey long time' message.",
+      "fixture_assertions": [
+        {"id": "names_the_shame", "text": "Acknowledges/names the shame or awkwardness, doesn't bypass it", "check": "qualitative"},
+        {"id": "not_transactional_reach", "text": "Suggested reach-out is NOT 'catch up over coffee' generic — has specific entry point", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "gratitude-practice", "type": "gratitude",
+      "prompt": "I want to send a real thank-you message to three people who made this past quarter possible: my sister Rachel (kept me sane during the Q1 panic), my business mentor Rob Chen (told me to raise my prices when I was scared to), and Jennifer Wells (a client who referred 2 new prospects without being asked). Help me draft one genuine message each — not the same template adapted three ways.",
+      "fixture_assertions": [
+        {"id": "three_distinct_messages", "text": "Produces 3 distinct messages (different voices/angles for each person)", "check": "qualitative"},
+        {"id": "specific_gratitude_content", "text": "Each message references the specific contribution (Q1 panic, raising prices, 2 referrals)", "check": "qualitative"}
+      ]
+    }
+  ]
+}

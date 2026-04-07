@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "critique-leading-questions",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 984
+    },
+    {
+      "eval_name": "critique-leading-questions",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 810
+    },
+    {
+      "eval_name": "plan-discovery-interview",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1303
+    },
+    {
+      "eval_name": "plan-discovery-interview",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1163
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "body_word_count": 893,
+  "body_line_count": 43,
+  "expectations": [
+    {
+      "text": "Uses 'hire' and/or 'fire' language to describe how customers choose or abandon products",
+      "assertion_id": "hire_fire_vocabulary",
+      "passed": true,
+      "evidence": "matched: hire"
+    },
+    {
+      "text": "Names or clearly invokes the three dimensions of a job (functional, emotional, social)",
+      "assertion_id": "three_dimensions_named",
+      "passed": true,
+      "evidence": "Explicit section headers '1. Functional jobs,' '2. Emotional jobs (the ones she won't say out loud),' and '3. Social / identity jobs' with multiple bullet points under each."
+    },
+    {
+      "text": "Frames the job in terms of circumstances/context, not customer demographics or attributes",
+      "assertion_id": "circumstances_over_demographics",
+      "passed": true,
+      "evidence": "Jobs are framed around situational contexts ('at galas, board meetings, major-donor cultivation dinners,' 'when competing with bigger-name orgs,' 'approaching a leadership transition') not demographic attributes."
+    },
+    {
+      "text": "Explicitly moves beyond the functional job ('produce a video') to emotional/social dimensions",
+      "assertion_id": "goes_beyond_functional_video",
+      "passed": true,
+      "evidence": "Opens with 'This is the functional deliverable. It's real, but it's not what you're actually being paid for.' Then devotes extensive sections to emotional jobs ('Make me feel proud,' 'Relieve the anxiety') and social jobs ('Signal to funders,' 'Position me as an ED who invests in communications')."
+    },
+    {
+      "text": "Describes the job as progress from one state to another in specific circumstances, not as a deliverable",
+      "assertion_id": "progress_in_circumstances",
+      "passed": true,
+      "evidence": "Summary job statement describes progress: 'reduce the ED's anxiety that her org's story is being told with dignity... in a process that honors her staff.' Emotional jobs describe movement from current states ('burned out, isolated, and uncertain') to desired states ('reminds her why she's doing this'). Closing question asks 'What has changed for you' — progress language."
+    }
+  ]
+}

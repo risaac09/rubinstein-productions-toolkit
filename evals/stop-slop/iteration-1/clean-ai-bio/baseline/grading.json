@@ -1,0 +1,30 @@
+{
+  "body_word_count": 78,
+  "body_line_count": 1,
+  "expectations": [
+    {
+      "text": "Rewrites passive constructions into active voice with human subjects",
+      "assertion_id": "active_voice_enforced",
+      "passed": false,
+      "evidence": "'She's been recognized in the nonprofit sector' is passive voice construction (has been + past participle)."
+    },
+    {
+      "text": "Output contains no em dashes",
+      "assertion_id": "no_em_dashes",
+      "passed": false,
+      "evidence": "found: '\u2014'"
+    },
+    {
+      "text": "Replaces at least one vague abstraction ('transformative experience', 'strategic vision', 'thought leader') with something concrete or cuts it",
+      "assertion_id": "specific_over_abstract",
+      "passed": false,
+      "evidence": "Abstractions remain without concrete specifics: 'initiatives that outlast her involvement', 'structural commitments', 'long-term strategy', 'day-to-day reality' -- no names, numbers, or locations."
+    },
+    {
+      "text": "Removes or rewrites pull-quote-sounding lines like 'Her work doesn't just create programs \u2014 it catalyzes movements'",
+      "assertion_id": "no_quotables",
+      "passed": false,
+      "evidence": "'the kind that grow their own legs and keep running' is a pull-quote-style metaphorical flourish."
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "body_word_count": 1025,
+  "body_line_count": 70,
+  "expectations": [
+    {
+      "text": "Uses 'hire' and/or 'fire' language to describe how customers choose or abandon products",
+      "assertion_id": "hire_fire_vocabulary",
+      "passed": true,
+      "evidence": "matched: Hire"
+    },
+    {
+      "text": "Names or clearly invokes the three dimensions of a job (functional, emotional, social)",
+      "assertion_id": "three_dimensions_named",
+      "passed": true,
+      "evidence": "Scorecard row 'Emotional + social dimensions understood? 2/10' and 'Treated purely as functional/transactional problem' together invoke all three dimensions (functional, emotional, social) as the JTBD framework."
+    },
+    {
+      "text": "Frames the job in terms of circumstances/context, not customer demographics or attributes",
+      "assertion_id": "circumstances_over_demographics",
+      "passed": true,
+      "evidence": "Analysis is framed entirely around timing and context ('Cancelling at month 2 is a Little Hire failure,' 'usage frequency drops sharply after week 2-3,' 'what was happening that week?') with no mention of customer demographics."
+    },
+    {
+      "text": "Reframes the problem as a job-mismatch or competing-solution problem, not a pricing/marketing problem",
+      "assertion_id": "reframes_as_job_mismatch",
+      "passed": true,
+      "evidence": "Opens with 'Lower pricing, onboarding emails, and a referral program all treat churn as an acquisition/pricing problem' then reframes: 'you're losing them to non-consumption, because the product never became a habit.' Three hypotheses are all job-mismatch framings."
+    },
+    {
+      "text": "Asks what users are switching TO (what is getting hired in place of this product)",
+      "assertion_id": "asks_what_theyre_firing_for",
+      "passed": true,
+      "evidence": "Interview step includes 'What are you using instead now? (this reveals the real competitor, often non-consumption)' and Forces section names Pull as 'going back to spreadsheets, manual work, or just not doing the job anymore.'"
+    }
+  ]
+}

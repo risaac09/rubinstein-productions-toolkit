@@ -1,0 +1,42 @@
+{
+  "body_word_count": 725,
+  "body_line_count": 44,
+  "expectations": [
+    {
+      "text": "Asks multiple intake questions in a single batched message (not drip-by-drip)",
+      "assertion_id": "batched_questions",
+      "passed": true,
+      "evidence": "Delivers 25 questions across 5 sections in one message"
+    },
+    {
+      "text": "Avoids generic discovery cliches",
+      "assertion_id": "no_generic_discovery",
+      "passed": false,
+      "evidence": "found: 'Walk me through'"
+    },
+    {
+      "text": "Questions are numbered or visually grouped for quick scanning",
+      "assertion_id": "numbered_or_grouped",
+      "passed": true,
+      "evidence": "Numbered 1.1-5.5 across five labeled sections with bold headers"
+    },
+    {
+      "text": "Includes the 3 Say Why questions (voice integrity, inside version, jargon test) or signals they will be asked after standard Qs",
+      "assertion_id": "includes_say_why_module",
+      "passed": false,
+      "evidence": "No Say Why module, no voice integrity/inside version/jargon test framing"
+    },
+    {
+      "text": "Acknowledges this is an RP/mission-driven context, not paid-ads",
+      "assertion_id": "rp_context_acknowledged",
+      "passed": true,
+      "evidence": "Frames as 501c3 nonprofit with lived experience, clients, funders — clearly mission-driven not paid-ads"
+    },
+    {
+      "text": "Asks about voice/narrative/positioning rather than paid-ads product questions",
+      "assertion_id": "asks_positioning_not_product",
+      "passed": true,
+      "evidence": "Section 4 asks voice/values/non-negotiables; no product SKU or ad-spend questions"
+    }
+  ]
+}

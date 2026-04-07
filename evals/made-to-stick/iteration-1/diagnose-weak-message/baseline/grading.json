@@ -1,0 +1,36 @@
+{
+  "body_word_count": 653,
+  "body_line_count": 35,
+  "expectations": [
+    {
+      "text": "Explicitly names the SUCCESs principles (at least 4 of the 6: Simple, Unexpected, Concrete, Credible, Emotional, Stories)",
+      "assertion_id": "names_success_principles",
+      "passed": true,
+      "evidence": "Section '7. It fails every SUCCESs criterion' explicitly lists all 6: Simple, Unexpected, Concrete, Credible, Emotional, Story, each with a brief evaluation."
+    },
+    {
+      "text": "References or applies the Curse of Knowledge concept",
+      "assertion_id": "curse_of_knowledge_referenced",
+      "passed": false,
+      "evidence": "The output never mentions 'Curse of Knowledge' by name nor describes the concept. It discusses abstraction and insider assumptions but does not reference this specific Made to Stick concept."
+    },
+    {
+      "text": "Pushes concrete sensory language over abstract jargon",
+      "assertion_id": "concrete_over_abstract",
+      "passed": true,
+      "evidence": "Section 3 states 'if I can't picture it, I can't remember it' and the closing recommends 'get specific, take a position, name a real person or moment, use language no competitor would use.'"
+    },
+    {
+      "text": "Scores the tagline against the SUCCESs principles explicitly (not just generic critique)",
+      "assertion_id": "scores_against_each_principle",
+      "passed": true,
+      "evidence": "Section 7 evaluates each of the 6 SUCCESs principles individually with specific judgments (e.g., 'Simple — 18 words, no core idea I can extract', 'Concrete — no image, no sensory detail, no specific case')."
+    },
+    {
+      "text": "Flags abstract/jargon words like 'empowers', 'authentic', 'innovative solutions' as failures of Concrete/Simple",
+      "assertion_id": "flags_abstract_jargon",
+      "passed": true,
+      "evidence": "Section 2 individually flags 'empowers,' 'mission-driven,' 'amplify,' 'authentic voice,' 'innovative,' and 'storytelling solutions' as cliches, noting 'Six buzzwords in 18 words. That's a buzzword every three words.'"
+    }
+  ]
+}

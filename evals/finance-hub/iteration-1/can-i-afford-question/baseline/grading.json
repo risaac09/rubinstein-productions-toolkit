@@ -1,0 +1,36 @@
+{
+  "body_word_count": 537,
+  "body_line_count": 42,
+  "expectations": [
+    {
+      "text": "Separates personal and RP business finances clearly",
+      "assertion_id": "separates_personal_business",
+      "passed": true,
+      "evidence": "Explicitly separates RP business side from personal side, notes 'lens does not touch personal accounts'"
+    },
+    {
+      "text": "Response is actionable \u2014 gives a clear answer or next step",
+      "assertion_id": "actionable_response",
+      "passed": true,
+      "evidence": "Clear recommendation 'Buy the lens' with three conditions and log-as-capital-equipment instruction"
+    },
+    {
+      "text": "Avoids generic finance advice (diversify, emergency fund, compound interest lectures)",
+      "assertion_id": "no_generic_finance_advice",
+      "passed": true,
+      "evidence": "Stays specific to numbers; 'runway' is contextual not generic lecture"
+    },
+    {
+      "text": "Gives a clear yes/no/it-depends answer with specific reasoning from the numbers",
+      "assertion_id": "yes_answer_with_reasoning",
+      "passed": true,
+      "evidence": "'Yes, comfortably' with cash-on-hand %, 3.5x remaining buffer, worst-case stress test"
+    },
+    {
+      "text": "Addresses the business-expense angle (tax deductibility) since it's through RP",
+      "assertion_id": "addresses_business_expense_angle",
+      "passed": true,
+      "evidence": "'Tax-deductible (Section 179 or depreciated), not personal discretionary spending'"
+    }
+  ]
+}

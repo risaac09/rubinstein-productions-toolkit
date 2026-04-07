@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "new-booking-workflow",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 1,
+      "body_words": 1407
+    },
+    {
+      "eval_name": "new-booking-workflow",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 1,
+      "body_words": 1073
+    },
+    {
+      "eval_name": "pre-shoot-prep",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1497
+    },
+    {
+      "eval_name": "pre-shoot-prep",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1025
+    },
+    {
+      "eval_name": "phase-transition-comms",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 280
+    },
+    {
+      "eval_name": "phase-transition-comms",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 275
+    }
+  ]
+}

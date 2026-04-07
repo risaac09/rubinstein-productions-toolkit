@@ -1,0 +1,78 @@
+{
+  "body_word_count": 1119,
+  "body_line_count": 70,
+  "expectations": [
+    {
+      "text": "Opening does NOT use generic proposal language (Dear, Thank you for your interest, Please find attached)",
+      "assertion_id": "no_generic_opener",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Proposal names a specific RP service tier (Mirror, Map, or Territory)",
+      "assertion_id": "names_tier",
+      "passed": true,
+      "evidence": "matched: Map"
+    },
+    {
+      "text": "Proposal includes specific pricing ($-amount) within documented ranges",
+      "assertion_id": "pricing_in_ranges",
+      "passed": true,
+      "evidence": "matched: $10,000"
+    },
+    {
+      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "assertion_id": "voice_liberation_framing",
+      "passed": true,
+      "evidence": "Voice Liberation, Narrative Dysregulation, Generative Translation, Zero-Measurement Zone, Bilingual Dashboard used throughout"
+    },
+    {
+      "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",
+      "assertion_id": "diagnostic_opener",
+      "passed": true,
+      "evidence": "Directly names 'three different organizations' pattern and diagnoses it"
+    },
+    {
+      "text": "Follows the 6-section structure (Opening, Understanding, Proposed Engagement, Investment, Why This Approach, Next Steps)",
+      "assertion_id": "structured_sections",
+      "passed": true,
+      "evidence": "All six sections present with canonical labels"
+    },
+    {
+      "text": "Names concrete deliverables (e.g. Bilingual Dashboard, facilitation sessions, specific asset formats)",
+      "assertion_id": "specific_deliverables",
+      "passed": true,
+      "evidence": "Narrative Dissonance Map, Bilingual Dashboard, half-day facilitated session, voice memo"
+    },
+    {
+      "text": "Closes with ONE clear next step (not a menu)",
+      "assertion_id": "single_next_step",
+      "passed": true,
+      "evidence": "'reply with a yes' is single primary action"
+    },
+    {
+      "text": "Names Map tier specifically (not Mirror or Territory)",
+      "assertion_id": "map_tier_selected",
+      "passed": true,
+      "evidence": "matched: Map"
+    },
+    {
+      "text": "Pricing falls in Map full sprint range ($6,000-$12,000), within Delta's $10K cap",
+      "assertion_id": "map_pricing",
+      "passed": true,
+      "evidence": "$10,000 is at Delta's cap and within $6K-$12K range"
+    },
+    {
+      "text": "References Delta's specific gap (three different organizations speaking)",
+      "assertion_id": "references_three_voices",
+      "passed": true,
+      "evidence": "Opens by naming grant voice, website voice, tenant-facing voice dissonance"
+    },
+    {
+      "text": "Names the Bilingual Dashboard as a deliverable",
+      "assertion_id": "includes_bilingual_dashboard",
+      "passed": true,
+      "evidence": "'Narrative Architecture document (your Bilingual Dashboard deliverable)'"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "skill_name": "mom-test",
+  "notes": "Tests whether skill enforces Mom Test vocabulary (three rules, past behavior over hypotheticals, commitment/advancement signals) vs baseline general customer-interview advice.",
+  "universal_assertions": [
+    {"id": "names_three_rules", "text": "Explicitly references the three Mom Test rules (their life not your idea; specifics in the past not hypotheticals about the future; talk less / listen more)", "check": "qualitative"},
+    {"id": "no_hypothetical_questions", "text": "Avoids suggesting hypothetical or future-tense interview questions like 'would you' or 'could you imagine'", "check": "programmatic", "rule": "regex_absent", "patterns": ["\\bwould you\\b.*\\?", "\\bcould you imagine\\b", "\\bif you had\\b.*\\?"], "quote_aware": true},
+    {"id": "past_behavior_focus", "text": "Frames questions around what the person has actually done in the past, not opinions or predictions", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "critique-leading-questions", "type": "vocab_canonical",
+      "prompt": "I'm about to interview 5 past videography clients to figure out what made them hire me. Here are my planned questions: 1) Would you recommend working with me? 2) What did you like best about the final video? 3) Do you think founders need more storytelling help these days? 4) If we worked together again, what would you want me to do differently? 5) How important is narrative quality to you? Rate these questions and tell me which to replace.",
+      "fixture_assertions": [
+        {"id": "flags_all_five_as_weak", "text": "Identifies that all 5 questions are problematic (leading, hypothetical, or opinion-gathering)", "check": "qualitative"},
+        {"id": "replaces_with_past_behavior", "text": "Proposed replacements ask about specific past events and concrete behavior, not predictions or feelings", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "plan-discovery-interview", "type": "restraint_canonical",
+      "prompt": "I want to interview 3 nonprofit EDs to validate whether there's a real job for Voice Liberation facilitation. Design a 30-minute interview for me.",
+      "fixture_assertions": [
+        {"id": "no_pitching_the_service", "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee", "check": "qualitative"},
+        {"id": "commitment_advancement_signal", "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm", "check": "qualitative"}
+      ]
+    }
+  ]
+}

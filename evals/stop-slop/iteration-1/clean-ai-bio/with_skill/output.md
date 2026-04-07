@@ -1,0 +1,1 @@
+Sarah has spent twelve years building programs for underserved communities. She designed a youth mentorship pipeline in East Baltimore that cut recidivism by 30%, then scaled the model to five cities. Funders and peers in the nonprofit sector seek her out for her equity-centered program design. She sits on two national advisory boards focused on inclusive policy.

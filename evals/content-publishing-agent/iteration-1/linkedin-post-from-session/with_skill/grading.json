@@ -1,0 +1,48 @@
+{
+  "body_word_count": 211,
+  "body_line_count": 10,
+  "expectations": [
+    {
+      "text": "Avoids AI-slop phrases (game-changer, dive deep, let's unpack, in today's world)",
+      "assertion_id": "no_ai_slop_phrases",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not use emoji bullets (\ud83d\udd11 \ud83d\udca1 \ud83d\ude80 \u26a1 etc.)",
+      "assertion_id": "no_emoji_bullets",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Content is grounded in specific observation/moment/tension, not abstract claims",
+      "assertion_id": "specific_grounding",
+      "passed": true,
+      "evidence": "Opens with specific scene of founder pulling lav off, names the between-takes moment and body detail"
+    },
+    {
+      "text": "Length + structure fits the requested platform",
+      "assertion_id": "platform_appropriate",
+      "passed": true,
+      "evidence": "211 words, scannable line breaks, closes with question then punch — standard LinkedIn rhythm"
+    },
+    {
+      "text": "Voice is Isaac's (facilitator-filmmaker-builder), not generic thought leader",
+      "assertion_id": "rp_methodology_voice",
+      "passed": true,
+      "evidence": "Uses 'audience problem dressed up as confidence problem' framing, filmmaker vocabulary (take, lav, camera)"
+    },
+    {
+      "text": "Preserves the actual quoted exchange (founder's line + Isaac's redirect)",
+      "assertion_id": "preserves_the_moment",
+      "passed": true,
+      "evidence": "Quotes 'I hate hearing my own voice... sound performative' and 'Talk to your sister' verbatim"
+    },
+    {
+      "text": "Length 150-250 words",
+      "assertion_id": "word_budget_linkedin",
+      "passed": true,
+      "evidence": "211 words (range 120-300)"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "rp-prospect-intake",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 533
+    },
+    {
+      "eval_name": "rp-prospect-intake",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 1,
+      "body_words": 725
+    },
+    {
+      "eval_name": "paid-ads-brand-intake",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 281
+    },
+    {
+      "eval_name": "paid-ads-brand-intake",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 916
+    },
+    {
+      "eval_name": "partial-info-intake",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 617
+    },
+    {
+      "eval_name": "partial-info-intake",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 688
+    }
+  ]
+}

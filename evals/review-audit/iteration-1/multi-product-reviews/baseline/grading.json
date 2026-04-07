@@ -1,0 +1,42 @@
+{
+  "body_word_count": 545,
+  "body_line_count": 50,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": false,
+      "evidence": "Organized by Product-Level Analysis/Cross-Product Patterns/Recommendations — not the 5 canonical buckets"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": false,
+      "evidence": "No 1-5 scoring; only broad sentiment labels like 'Strongly Positive' or 'Mixed'"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "Pulls quotes 'settles my nerves', 'genuinely cozy', 'too piney', 'weekend in the mountains'"
+    },
+    {
+      "text": "Output is separated/grouped by product (Hearth vs Evergreen)",
+      "assertion_id": "grouped_by_product",
+      "passed": true,
+      "evidence": "Two sub-sections: Hearth Candle (3 reviews) and Evergreen Diffuser (4 reviews) with independent analyses"
+    },
+    {
+      "text": "Surfaces distinct insights per product (not merged analysis)",
+      "assertion_id": "product_specific_insights",
+      "passed": true,
+      "evidence": "Hearth ritual/pre-call use case; Evergreen fade rate and piney scent issues — distinct per product"
+    },
+    {
+      "text": "Captures specific objections (scent fades, too piney, price)",
+      "assertion_id": "objections_captured",
+      "passed": true,
+      "evidence": "Names all three: scent fade (~1 week), 'too piney' return, $38 price friction"
+    }
+  ]
+}

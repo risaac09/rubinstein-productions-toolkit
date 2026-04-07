@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""
+grade.py — Grade outreach-email-manager eval outputs against programmatic assertions.
+
+Reads evals.json, walks each eval's with_skill/ and baseline/ output.md,
+applies programmatic checks (regex-absent, word counts), and writes grading.json
+per run directory with results that feed into the benchmark aggregator.
+
+Qualitative assertions are marked as needing LLM grading and left empty here —
+they're filled in by a grader subagent in a separate step.
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).parent
+EVALS = json.loads((HERE / "evals.json").read_text())
+ITERATION_DIR = HERE / "iteration-1"
+
+
+def extract_body(email_text: str) -> str:
+    """Strip TO:/SUBJECT:/signature lines, return just the body for word counting."""
+    lines = email_text.splitlines()
+    body_lines = []
+    in_body = False
+    for line in lines:
+        stripped = line.strip()
+        # Skip headers
+        if stripped.lower().startswith(("to:", "subject:", "cc:", "bcc:", "from:")):
+            continue
+        # Detect body start
+        if not in_body and stripped and not stripped.lower().startswith(("to:", "subject:")):
+            in_body = True
+        if in_body:
+            # Stop at signature block (crude: look for "— Isaac" or "--" or "Best,")
+            if re.match(r"^[-—]+\s*(isaac|$)", stripped.lower()):
+                break
+            if stripped.lower() in ("best,", "warmly,", "thanks,", "sincerely,", "regards,"):
+                break
+            body_lines.append(line)
+    return "\n".join(body_lines).strip()
+
+
+def word_count(text: str) -> int:
+    return len(text.split())
+
+
+def check_regex_absent(body: str, patterns: list) -> tuple[bool, str]:
+    """Return (passed, evidence). Passed = none of the patterns matched."""
+    hits = []
+    for pat in patterns:
+        m = re.search(pat, body, re.IGNORECASE)
+        if m:
+            hits.append(f"'{m.group(0)}'")
+    if hits:
+        return False, f"found: {', '.join(hits)}"
+    return True, "none of the banned patterns appeared"
+
+
+def check_word_count(body: str, min_words: int, max_words: int) -> tuple[bool, str]:
+    wc = word_count(body)
+    if min_words <= wc <= max_words:
+        return True, f"{wc} words (range {min_words}-{max_words})"
+    return False, f"{wc} words (outside range {min_words}-{max_words})"
+
+
+def grade_run(output_path: Path, assertions: list) -> dict:
+    """Grade a single output file against a list of assertions."""
+    if not output_path.exists():
+        return {"error": f"output missing: {output_path}", "expectations": []}
+
+    email = output_path.read_text()
+    body = extract_body(email)
+    results = []
+
+    for a in assertions:
+        entry = {"text": a["text"], "assertion_id": a.get("id", "")}
+        if a.get("check") == "qualitative":
+            # Placeholder for LLM grader to fill in
+            entry["passed"] = None
+            entry["evidence"] = "pending_llm_grade"
+        elif a.get("check") == "programmatic":
+            rule = a.get("rule")
+            if rule == "regex_absent":
+                passed, ev = check_regex_absent(body, a["patterns"])
+            elif rule == "word_count_body":
+                passed, ev = check_word_count(body, a["min"], a["max"])
+            else:
+                passed, ev = False, f"unknown rule: {rule}"
+            entry["passed"] = passed
+            entry["evidence"] = ev
+        results.append(entry)
+
+    return {
+        "body_word_count": word_count(body),
+        "expectations": results,
+    }
+
+
+def main():
+    universal = EVALS["universal_assertions"]
+    overall = {"runs": []}
+
+    for eval_def in EVALS["evals"]:
+        name = eval_def["name"]
+        all_assertions = universal + eval_def.get("fixture_assertions", [])
+        for mode in ("with_skill", "baseline"):
+            output_path = ITERATION_DIR / name / mode / "output.md"
+            result = grade_run(output_path, all_assertions)
+            grading_path = ITERATION_DIR / name / mode / "grading.json"
+            grading_path.write_text(json.dumps(result, indent=2))
+            # Summary for overall
+            programmatic = [e for e in result.get("expectations", []) if e.get("passed") is not None]
+            passed_prog = sum(1 for e in programmatic if e["passed"])
+            overall["runs"].append({
+                "eval_name": name,
+                "mode": mode,
+                "programmatic_passed": passed_prog,
+                "programmatic_total": len(programmatic),
+                "body_words": result.get("body_word_count", 0),
+            })
+            print(f"{name:32} {mode:12} prog: {passed_prog}/{len(programmatic)}  words: {result.get('body_word_count', 0)}")
+
+    (ITERATION_DIR / "programmatic_summary.json").write_text(json.dumps(overall, indent=2))
+    print(f"\nWrote {ITERATION_DIR}/programmatic_summary.json")
+
+
+if __name__ == "__main__":
+    main()

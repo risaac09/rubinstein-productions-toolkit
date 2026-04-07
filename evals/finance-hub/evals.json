@@ -1,0 +1,32 @@
+{
+  "skill_name": "finance-hub",
+  "notes": "Tests whether skill handles mixed personal + RP business financial queries with Isaac's unified-ledger framing.",
+  "universal_assertions": [
+    {"id": "separates_personal_business", "text": "Separates personal and RP business finances clearly", "check": "qualitative"},
+    {"id": "actionable_response", "text": "Response is actionable — gives a clear answer or next step", "check": "qualitative"},
+    {"id": "no_generic_finance_advice", "text": "Avoids generic finance advice (diversify, emergency fund, compound interest lectures)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "client-payment-logged", "type": "income_logging",
+      "prompt": "Log this payment: Oakside Community Foundation paid the $4,500 deposit on their Mirror tier engagement yesterday (Apr 4). Wire transfer, landed in RP business account. Full engagement is $9,000, so this is the 50% deposit. Update my RP revenue tracking and remind me what percentage of my Q2 revenue target this puts me at (target: $35,000).",
+      "fixture_assertions": [
+        {"id": "calculates_q2_progress", "text": "Calculates Q2 progress percentage correctly ($4,500 of $35,000 = ~13%)", "check": "qualitative"},
+        {"id": "notes_remaining_balance", "text": "Notes the remaining $4,500 balance owed on the engagement", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "can-i-afford-question", "type": "affordability_check",
+      "prompt": "Can I afford a $1,200 new camera lens? Context: personal purchase, I'd buy it through RP business (legitimate production expense), Q2 revenue so far is ~$12,000 against target of $35,000, my personal monthly burn is ~$3,800, and I have $14,500 in RP business checking + $8,200 in personal savings. I'm meeting my personal savings target. The lens would actually improve client deliverables.",
+      "fixture_assertions": [
+        {"id": "yes_answer_with_reasoning", "text": "Gives a clear yes/no/it-depends answer with specific reasoning from the numbers", "check": "qualitative"},
+        {"id": "addresses_business_expense_angle", "text": "Addresses the business-expense angle (tax deductibility) since it's through RP", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "burn-rate-check", "type": "monthly_review",
+      "prompt": "It's April 5th. Give me a burn rate check for March. My March RP revenue was $6,800 (2 Mirror sessions + Map deposit). March RP expenses: $340 (software subs $180, coffee/meetings $85, Apify $75). March personal expenses: rent $1,800, groceries+food $620, misc $480. My savings target is $800/month. Am I on track?",
+      "fixture_assertions": [
+        {"id": "calculates_net_cleanly", "text": "Calculates net cleanly (RP net $6,460, personal net, savings hit or miss)", "check": "qualitative"},
+        {"id": "on_track_answer", "text": "Gives a clear yes/no on whether Isaac hit savings target ($2,900-$1,800-$620-$480=0, did NOT hit $800)", "check": "qualitative"}
+      ]
+    }
+  ]
+}

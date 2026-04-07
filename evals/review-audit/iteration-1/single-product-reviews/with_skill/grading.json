@@ -1,0 +1,42 @@
+{
+  "body_word_count": 819,
+  "body_line_count": 57,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": true,
+      "evidence": "Labeled BUCKET 1 PAIN POINTS, BUCKET 2 TRIGGER MOMENTS, BUCKET 3 OBJECTIONS, BUCKET 4 TRANSFORMATIONS, BUCKET 5 STANDOUT LANGUAGE"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": true,
+      "evidence": "Review quality scoring section assigns 1-5 score to each of 8 reviews before analysis"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "Bucket 5 contains 12 exact pulled quotes including 'grounding without being overpowering' and 'chaos zone'"
+    },
+    {
+      "text": "Scores each review 1-5 explicitly",
+      "assertion_id": "scores_each_review",
+      "passed": true,
+      "evidence": "Each of 8 reviews scored 1-5 with explicit label e.g. 'Review 2: 1 (garbage)', 'Review 7: 5 (gold)'"
+    },
+    {
+      "text": "Discards or deprioritizes the 1-2 scored reviews (e.g. 'Love it', 'Smells great', 'Nice scent')",
+      "assertion_id": "discards_low_quality",
+      "passed": true,
+      "evidence": "Explicitly 'Discarded: Reviews 2, 4, 6' corresponding to 'Smells great', 'Love it', and shipping filler"
+    },
+    {
+      "text": "Highlights the breakup review and kitchen/chaos review as high-signal",
+      "assertion_id": "prioritizes_gold",
+      "passed": true,
+      "evidence": "Both scored 5 gold, breakup featured in Trigger Moments 'Gifted during a life rupture', kitchen in Transformations"
+    }
+  ]
+}

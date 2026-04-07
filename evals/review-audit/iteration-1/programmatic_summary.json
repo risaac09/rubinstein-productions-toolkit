@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "single-product-reviews",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 819
+    },
+    {
+      "eval_name": "single-product-reviews",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 639
+    },
+    {
+      "eval_name": "multi-product-reviews",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 894
+    },
+    {
+      "eval_name": "multi-product-reviews",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 545
+    },
+    {
+      "eval_name": "ad-ready-language",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 666
+    },
+    {
+      "eval_name": "ad-ready-language",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 612
+    }
+  ]
+}

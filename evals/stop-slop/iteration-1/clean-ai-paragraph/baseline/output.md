@@ -1,0 +1,1 @@
+Good tools change how people work together. This approach rethinks engagement and collaboration by pairing practical methods with honest conversation and real relationships. The work is hard, but it pays off.

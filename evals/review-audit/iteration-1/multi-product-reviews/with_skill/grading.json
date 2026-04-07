@@ -1,0 +1,42 @@
+{
+  "body_word_count": 894,
+  "body_line_count": 79,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": true,
+      "evidence": "Both products organized under BUCKET 1-5 labels: PAIN POINTS, TRIGGER MOMENTS, OBJECTIONS, TRANSFORMATIONS, STANDOUT LANGUAGE"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": true,
+      "evidence": "Review scoring section assigns 2-5 score to each of 6 reviews before bucket analysis"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "13 pulled quotes across both products including 'weekend in the mountains', 'too piney for me', 'settles my nerves'"
+    },
+    {
+      "text": "Output is separated/grouped by product (Hearth vs Evergreen)",
+      "assertion_id": "grouped_by_product",
+      "passed": true,
+      "evidence": "Two separate product sections labeled 'PRODUCT: Hearth Candle' and 'PRODUCT: Evergreen Diffuser' each with own buckets"
+    },
+    {
+      "text": "Surfaces distinct insights per product (not merged analysis)",
+      "assertion_id": "product_specific_insights",
+      "passed": true,
+      "evidence": "Hearth insights are pre-call nerves/rituals; Evergreen insights are scent longevity/small-space fit — distinct"
+    },
+    {
+      "text": "Captures specific objections (scent fades, too piney, price)",
+      "assertion_id": "objections_captured",
+      "passed": true,
+      "evidence": "Names 'scent fades faster than I'd like', 'too piney for me', and '$38 feels expensive' objections explicitly"
+    }
+  ]
+}

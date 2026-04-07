@@ -1,0 +1,30 @@
+{
+  "body_word_count": 848,
+  "body_line_count": 93,
+  "expectations": [
+    {
+      "text": "References or applies the RED-GREEN-REFACTOR cycle (or test-driven development) for skill authoring",
+      "assertion_id": "tdd_cycle_referenced",
+      "passed": false,
+      "evidence": "No mention of RED-GREEN-REFACTOR, TDD, or test-driven development anywhere in the output. Process goes straight from file creation to writing content."
+    },
+    {
+      "text": "Mentions pressure scenarios, failure modes, or edge cases as the starting point for skill design",
+      "assertion_id": "pressure_scenarios_mentioned",
+      "passed": false,
+      "evidence": "Tip #4 says 'Include failure modes' but only as content advice for the skill body, not as the starting point for skill design. No pressure scenarios mentioned."
+    },
+    {
+      "text": "Advises starting by identifying what goes wrong WITHOUT the skill (watching the agent fail), before writing instructions",
+      "assertion_id": "starts_with_failure",
+      "passed": false,
+      "evidence": "Step 1 is 'Create the skill file' — no mention of observing agent behavior without the skill first."
+    },
+    {
+      "text": "Includes a testing/verification step where the skill is tested against pressure scenarios after drafting",
+      "assertion_id": "includes_test_step",
+      "passed": false,
+      "evidence": "Step 4 'Save and test' only checks trigger matching ('Claude should pick up the skill from the description match'), not testing against pressure scenarios."
+    }
+  ]
+}

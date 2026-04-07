@@ -1,0 +1,30 @@
+{
+  "body_word_count": 31,
+  "body_line_count": 1,
+  "expectations": [
+    {
+      "text": "Rewrites passive constructions into active voice with human subjects",
+      "assertion_id": "active_voice_enforced",
+      "passed": false,
+      "evidence": "'This approach rethinks engagement and collaboration' uses an abstraction ('this approach') as subject, not a human subject."
+    },
+    {
+      "text": "Output contains no em dashes",
+      "assertion_id": "no_em_dashes",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Removes throat-clearing opener ('In today's rapidly evolving landscape')",
+      "assertion_id": "cuts_filler_openers",
+      "passed": true,
+      "evidence": "Opens with 'Good tools change how people work together' -- no filler opener present."
+    },
+    {
+      "text": "Breaks or rewrites at least one three-item list into a different rhythm (two items, or varied structure)",
+      "assertion_id": "breaks_rule_of_three",
+      "passed": false,
+      "evidence": "'practical methods with honest conversation and real relationships' is a three-item list with no structural variation."
+    }
+  ]
+}

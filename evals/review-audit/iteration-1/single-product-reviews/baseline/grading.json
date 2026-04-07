@@ -1,0 +1,42 @@
+{
+  "body_word_count": 639,
+  "body_line_count": 58,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": false,
+      "evidence": "Organized by Core Insight/VOC Language/JTBD/Objections/Angles/Personas — not the 5 canonical buckets"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": false,
+      "evidence": "No 1-5 scoring; only splits 'four substantive vs four short/generic' qualitatively"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "7 direct VOC quotes pulled e.g. 'grounding without being overpowering', 'calmer within five minutes'"
+    },
+    {
+      "text": "Scores each review 1-5 explicitly",
+      "assertion_id": "scores_each_review",
+      "passed": false,
+      "evidence": "No numeric 1-5 scoring applied to individual reviews — only substantive/short binary"
+    },
+    {
+      "text": "Discards or deprioritizes the 1-2 scored reviews (e.g. 'Love it', 'Smells great', 'Nice scent')",
+      "assertion_id": "discards_low_quality",
+      "passed": true,
+      "evidence": "Section 'What the Short Reviews Tell Us' calls them 'not creative fuel' and deprioritizes them"
+    },
+    {
+      "text": "Highlights the breakup review and kitchen/chaos review as high-signal",
+      "assertion_id": "prioritizes_gold",
+      "passed": true,
+      "evidence": "Both featured as signature insights: breakup as Angle 3, kitchen chaos as Angle 2 with highest-performing labels"
+    }
+  ]
+}

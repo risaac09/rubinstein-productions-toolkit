@@ -1,0 +1,35 @@
+{
+  "skill_name": "review-audit",
+  "notes": "Tests whether skill scores reviews 1-5, discards 1s, organizes by 5 buckets (pains/triggers/objections/transformations/standout language), and surfaces actual pulled quotes.",
+  "universal_assertions": [
+    {"id": "five_buckets", "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)", "check": "qualitative"},
+    {"id": "quality_scoring", "text": "References scoring reviews 1-5 for quality before analysis", "check": "qualitative"},
+    {"id": "pulled_quotes", "text": "Surfaces actual quotes from reviews (not just summary)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "single-product-reviews", "type": "single_product",
+      "prompt": "Analyze these 8 reviews for Lumenhouse Candles' 'Hearth' scented candle:\n\n1. \"I bought this for my WFH office and it completely changed my afternoons. The smell is grounding without being overpowering and I feel calmer within five minutes of lighting it. Honestly a work-from-home essential.\"\n2. \"Smells great.\"\n3. \"I'm picky about candles and I was skeptical about spending $38 but this one actually lasts. Burned it every evening for 3 weeks and it's still going.\"\n4. \"Love it\"\n5. \"This candle is everything. I light it during dinner prep and it transforms the kitchen from a chaos zone into somewhere I actually want to be. My partner asked if I was cooking something new and I just laughed.\"\n6. \"Good product, arrived quickly.\"\n7. \"I was going through a hard breakup and a friend gifted me this. It sounds silly but it genuinely helped. Something about the smell made my apartment feel like home again during weeks when nothing did.\"\n8. \"Nice scent, will buy again\"",
+      "fixture_assertions": [
+        {"id": "scores_each_review", "text": "Scores each review 1-5 explicitly", "check": "qualitative"},
+        {"id": "discards_low_quality", "text": "Discards or deprioritizes the 1-2 scored reviews (e.g. 'Love it', 'Smells great', 'Nice scent')", "check": "qualitative"},
+        {"id": "prioritizes_gold", "text": "Highlights the breakup review and kitchen/chaos review as high-signal", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "multi-product-reviews", "type": "multi_product",
+      "prompt": "Analyze these reviews across 2 Lumenhouse products (Hearth candle + Evergreen diffuser):\n\n1. \"Hearth candle is my favorite thing I own right now. I light it before every important call and it settles my nerves.\"\n2. \"The Evergreen diffuser is beautiful but the scent fades faster than I'd like. Maybe a week max.\"\n3. \"I bought the Hearth candle AND the Evergreen diffuser and I have them in different rooms. The candle for the kitchen, the diffuser for the bedroom. My whole apartment smells like a weekend in the mountains.\"\n4. \"Evergreen is too piney for me. Returned.\"\n5. \"Hearth smells amazing, genuinely cozy. $38 feels expensive but it lasts.\"\n6. \"The diffuser works well if you live in a small space. Filled my studio nicely.\"",
+      "fixture_assertions": [
+        {"id": "grouped_by_product", "text": "Output is separated/grouped by product (Hearth vs Evergreen)", "check": "qualitative"},
+        {"id": "product_specific_insights", "text": "Surfaces distinct insights per product (not merged analysis)", "check": "qualitative"},
+        {"id": "objections_captured", "text": "Captures specific objections (scent fades, too piney, price)", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "ad-ready-language", "type": "voc_extraction",
+      "prompt": "Analyze these reviews for Harbor Fitness (a strength training app for women 40+) and pull ad-ready language:\n\n1. \"I started this app at 52 and for the first time in my life I actually feel strong. Not 'toned' — strong. I can carry all the groceries in one trip and it's stupid how proud I am.\"\n2. \"Finally a fitness app that doesn't talk to me like I'm trying to lose my postpartum weight. I'm 47 and I just want to get strong for the next 40 years.\"\n3. \"Great workouts.\"\n4. \"I was scared of the weight room my whole adult life. Six months into Harbor and I walk into my gym like I own it.\"\n5. \"The coaching voice is calm and direct. No toxic positivity. No 'you got this girl!' energy. Just clear form cues.\"\n6. \"I've tried every fitness app. This is the first one where I didn't feel like I was supposed to be 25.\"",
+      "fixture_assertions": [
+        {"id": "pulls_exact_phrases", "text": "Surfaces exact customer phrases as standout language (e.g. 'strong not toned', 'stupid how proud I am')", "check": "qualitative"},
+        {"id": "identifies_transformations", "text": "Names specific transformation moments (groceries in one trip, walking into gym like I own it)", "check": "qualitative"},
+        {"id": "identifies_objections_to_competitors", "text": "Captures objections to what OTHER products do (postpartum framing, 'you got this girl', 25-year-old audience)", "check": "qualitative"}
+      ]
+    }
+  ]
+}

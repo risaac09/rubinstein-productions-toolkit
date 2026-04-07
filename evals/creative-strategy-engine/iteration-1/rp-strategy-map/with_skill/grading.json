@@ -1,0 +1,42 @@
+{
+  "body_word_count": 2417,
+  "body_line_count": 137,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Part 2 labeled 'PAIN x PERSONA MATRIX' with 5 ED-specific pain intersections mapped to angles"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "5 named angles e.g. 'Your grant voice ate your mission voice', 'You wrote a speech. You didn't say the thing.'"
+    },
+    {
+      "text": "Uses canonical RP personas (ED / Founder / Org-in-transition) rather than inventing new ones",
+      "assertion_id": "uses_canonical_rp_personas",
+      "passed": true,
+      "evidence": "Locks persona to canonical ED segment and explicitly contrasts vs Founder/Org-in-transition"
+    },
+    {
+      "text": "Names Mirror tier explicitly and maps angles to it",
+      "assertion_id": "names_mirror_tier",
+      "passed": true,
+      "evidence": "Title names 'Mirror ($900-1,800 single session)' and Most-Aware CTAs reference Mirror price across all 5 angles"
+    },
+    {
+      "text": "Names specific ED-level pains (not generic 'needs better marketing')",
+      "assertion_id": "ed_specific_pains",
+      "passed": true,
+      "evidence": "Grant voice ate mission voice, gala speech dread, inherited founder language, staff can't articulate mission"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "body_word_count": 688,
+  "body_line_count": 34,
+  "expectations": [
+    {
+      "text": "Proposes specific next actions (not vague 'consider engaging')",
+      "assertion_id": "proposes_concrete_actions",
+      "passed": true,
+      "evidence": "Concrete actions: primary 600-900 word piece, 3-4 atomized social posts, ship within 5 days"
+    },
+    {
+      "text": "References specific handles/accounts from the input signals",
+      "assertion_id": "names_specific_handles",
+      "passed": true,
+      "evidence": "References the 4 accounts, 3 accounts, and 2 pipeline prospects as described in the input signals"
+    },
+    {
+      "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)",
+      "assertion_id": "window_distinction",
+      "passed": true,
+      "evidence": "'Why now, not later' section names live wave, 5-day ship window, warns about topic going stale"
+    },
+    {
+      "text": "Identifies cross-cutting theme (AI threat to distinctive voice = RP's exact territory)",
+      "assertion_id": "identifies_cross_cutting_theme",
+      "passed": true,
+      "evidence": "'Two threads are one topic — what gets lost when organizations optimize for safety' merges AI + safe messaging"
+    },
+    {
+      "text": "Proposes a specific angle or hook Isaac could write, not just 'write about AI'",
+      "assertion_id": "names_angle_or_hook",
+      "passed": true,
+      "evidence": "Proposes titled piece 'The Thing You Won't Say Is The Thing That Would Work' plus 4 concrete hooks"
+    },
+    {
+      "text": "Uses the 2-prospects-sharing signal to inform urgency or positioning",
+      "assertion_id": "leverages_prospect_signal",
+      "passed": true,
+      "evidence": "Notes prospects already emotionally engaged, piece 'gives them language to explain to their stakeholders'"
+    }
+  ]
+}

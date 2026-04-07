@@ -1,0 +1,42 @@
+{
+  "body_word_count": 1182,
+  "body_line_count": 53,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Names founder-in-transition persona paired with core pain (voice lag); strategic foundation section locks pain x persona"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "5 named angles e.g. 'Your company changed. Your voice didn't.', 'You're pitching a company that doesn't exist anymore'"
+    },
+    {
+      "text": "Names one distinct angle per awareness stage (5 total)",
+      "assertion_id": "one_angle_per_stage",
+      "passed": true,
+      "evidence": "One distinct angle per stage across Unaware/Problem-Aware/Solution-Aware/Product-Aware/Most-Aware, summarized in final table"
+    },
+    {
+      "text": "Angles are specific to founder-in-transition context (not generic)",
+      "assertion_id": "founder_in_transition_specific",
+      "passed": true,
+      "evidence": "References reorg, Series B, rebrand, all-hands recaps, cap table, 'company outgrew its own story'"
+    },
+    {
+      "text": "Angles escalate in specificity from unaware to most-aware",
+      "assertion_id": "escalation_logic",
+      "passed": true,
+      "evidence": "Escalates from naming symptom (Unaware) to discovery call with 90-min format and timing (Most-Aware)"
+    }
+  ]
+}

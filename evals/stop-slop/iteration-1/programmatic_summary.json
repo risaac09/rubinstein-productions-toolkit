@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "clean-ai-paragraph",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 50
+    },
+    {
+      "eval_name": "clean-ai-paragraph",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 31
+    },
+    {
+      "eval_name": "clean-ai-bio",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 57
+    },
+    {
+      "eval_name": "clean-ai-bio",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 1,
+      "body_words": 78
+    }
+  ]
+}

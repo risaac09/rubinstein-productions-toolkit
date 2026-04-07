@@ -1,0 +1,36 @@
+{
+  "body_word_count": 375,
+  "body_line_count": 50,
+  "expectations": [
+    {
+      "text": "Separates personal and RP business finances clearly",
+      "assertion_id": "separates_personal_business",
+      "passed": true,
+      "evidence": "Type: Business (RP revenue), tax reserve, operating, personal income pool each labeled separately"
+    },
+    {
+      "text": "Response is actionable \u2014 gives a clear answer or next step",
+      "assertion_id": "actionable_response",
+      "passed": true,
+      "evidence": "Gives next action: 'confirm Oakside engagement kickoff date and add completion invoice to calendar'"
+    },
+    {
+      "text": "Avoids generic finance advice (diversify, emergency fund, compound interest lectures)",
+      "assertion_id": "no_generic_finance_advice",
+      "passed": true,
+      "evidence": "No generic advice — only specific ledger update, Q2 pacing, tax deadline reminder"
+    },
+    {
+      "text": "Calculates Q2 progress percentage correctly ($4,500 of $35,000 = ~13%)",
+      "assertion_id": "calculates_q2_progress",
+      "passed": true,
+      "evidence": "States 12.9% of Q2 target explicitly"
+    },
+    {
+      "text": "Notes the remaining $4,500 balance owed on the engagement",
+      "assertion_id": "notes_remaining_balance",
+      "passed": true,
+      "evidence": "Remaining Balance: $4,500 (due on completion) listed in transaction details"
+    }
+  ]
+}

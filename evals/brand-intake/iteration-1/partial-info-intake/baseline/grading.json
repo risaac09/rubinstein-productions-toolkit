@@ -1,0 +1,42 @@
+{
+  "body_word_count": 688,
+  "body_line_count": 48,
+  "expectations": [
+    {
+      "text": "Asks multiple intake questions in a single batched message (not drip-by-drip)",
+      "assertion_id": "batched_questions",
+      "passed": true,
+      "evidence": "Sends ~35 bulleted questions across 8 sections in one batched message"
+    },
+    {
+      "text": "Avoids generic discovery cliches",
+      "assertion_id": "no_generic_discovery",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Questions are numbered or visually grouped for quick scanning",
+      "assertion_id": "numbered_or_grouped",
+      "passed": true,
+      "evidence": "Grouped under 8 numbered sections with bold headers and bulleted sub-questions"
+    },
+    {
+      "text": "Acknowledges the information already provided rather than asking for it again",
+      "assertion_id": "acknowledges_known_info",
+      "passed": true,
+      "evidence": "References 'You mentioned she's a former teacher' and 'Youth programming is broad — help me narrow it'"
+    },
+    {
+      "text": "Adapts questions to not re-ask what Isaac already told them",
+      "assertion_id": "adapts_questions",
+      "passed": true,
+      "evidence": "Q2 builds on known teacher ED; Q3 refines known youth programming scope rather than re-asking"
+    },
+    {
+      "text": "Includes Say Why module since this is an RP client",
+      "assertion_id": "includes_say_why_for_rp",
+      "passed": false,
+      "evidence": "No Say Why module — no voice integrity, inside version, or jargon test questions"
+    }
+  ]
+}

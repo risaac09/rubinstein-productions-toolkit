@@ -1,0 +1,42 @@
+{
+  "body_word_count": 983,
+  "body_line_count": 36,
+  "expectations": [
+    {
+      "text": "Proposes specific next actions (not vague 'consider engaging')",
+      "assertion_id": "proposes_concrete_actions",
+      "passed": true,
+      "evidence": "Light-touch comment within 24h, reshape Apr 22 agenda, private message, alignment memo, Phase 3 framing"
+    },
+    {
+      "text": "References specific handles/accounts from the input signals",
+      "assertion_id": "names_specific_handles",
+      "passed": true,
+      "evidence": "Names @harborlight_coalition, @brightcurrent_ama, @threshold_recovery and Maya by name"
+    },
+    {
+      "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)",
+      "assertion_id": "window_distinction",
+      "passed": true,
+      "evidence": "Priority ordering: 'time-sensitive, act within 24h' vs 'no urgency, strategic preparation'"
+    },
+    {
+      "text": "Flags Harbor Light as highest-priority warm lead (discovery call upcoming + high engagement + ED commented publicly)",
+      "assertion_id": "prioritizes_harborlight",
+      "passed": true,
+      "evidence": "Listed as Signal 1, priority #1 'time-sensitive, prospect, discovery call in 17 days'"
+    },
+    {
+      "text": "Treats Ama as active client context (maybe LinkedIn comment/engagement) not a lead to pitch",
+      "assertion_id": "ama_as_client_not_lead",
+      "passed": true,
+      "evidence": "'output of the Mirror tier landing', private message first, don't take credit publicly, session-arc milestone"
+    },
+    {
+      "text": "Flags Harbor Light 4-hours-ago post as reaction window closing",
+      "assertion_id": "reaction_window_flagged",
+      "passed": true,
+      "evidence": "'Light-touch acknowledgment within 24h' framed as time-sensitive window not to let pass cold"
+    }
+  ]
+}

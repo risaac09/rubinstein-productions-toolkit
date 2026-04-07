@@ -1,0 +1,42 @@
+{
+  "body_word_count": 1355,
+  "body_line_count": 82,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Section 6 Strategy Matrix has 2D pain/persona grid crossing 3 personas with 5 awareness stages"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "8 named angles A1-A8 e.g. 'The Mirror', 'Narrative Spine', 'Say The Thing', 'Amortized Grant'"
+    },
+    {
+      "text": "Uses canonical RP personas (ED / Founder / Org-in-transition) rather than inventing new ones",
+      "assertion_id": "uses_canonical_rp_personas",
+      "passed": false,
+      "evidence": "Invents three new persona names: Story Carrier, Second Chapter ED, Pitch-Fatigued Operator"
+    },
+    {
+      "text": "Names Mirror tier explicitly and maps angles to it",
+      "assertion_id": "names_mirror_tier",
+      "passed": true,
+      "evidence": "Title names 'Mirror-Tier Single-Session ($900-$1,800)' and all angles map to Mirror throughout"
+    },
+    {
+      "text": "Names specific ED-level pains (not generic 'needs better marketing')",
+      "assertion_id": "ed_specific_pains",
+      "passed": true,
+      "evidence": "8 specific pains: mission drift, board-staff misalignment, ED burnout carrying story, grant fatigue, post-crisis reset"
+    }
+  ]
+}
