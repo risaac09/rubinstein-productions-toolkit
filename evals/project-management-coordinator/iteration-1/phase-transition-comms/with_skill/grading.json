@@ -1,0 +1,48 @@
+{
+  "body_word_count": 280,
+  "body_line_count": 14,
+  "expectations": [
+    {
+      "text": "Names specific deliverables (not vague 'outputs' or 'assets')",
+      "assertion_id": "concrete_deliverables",
+      "passed": true,
+      "evidence": "Specifically names Bilingual Dashboard draft, review document, final delivery"
+    },
+    {
+      "text": "Includes concrete dates/milestones",
+      "assertion_id": "includes_timeline",
+      "passed": true,
+      "evidence": "All four milestones dated: Apr 18, Apr 18-25, Apr 25-May 2, May 2"
+    },
+    {
+      "text": "Avoids PM jargon (stakeholders, alignment, touchpoints, deliverables-cadence)",
+      "assertion_id": "no_pm_jargon",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames work in RP methodology terms where relevant (Bilingual Dashboard, Zero-Measurement Zone, etc.)",
+      "assertion_id": "rp_specific_framing",
+      "passed": true,
+      "evidence": "Uses Bilingual Dashboard, clinical register and relational register framing"
+    },
+    {
+      "text": "Names something specific from the 3 excavation sessions (honors what was said)",
+      "assertion_id": "names_what_closed",
+      "passed": true,
+      "evidence": "Names what emerged: clinical register plus relational register distinction for Threshold Recovery voice"
+    },
+    {
+      "text": "Includes all 4 dates (Apr 18, 18-25, 25-May 2, May 2)",
+      "assertion_id": "has_timeline",
+      "passed": true,
+      "evidence": "All four dates listed: Apr 18 delivery, 18-25 review, 25-May 2 revision, May 2 final"
+    },
+    {
+      "text": "Tone is warm (relational), not corporate project-status",
+      "assertion_id": "warm_not_corporate",
+      "passed": true,
+      "evidence": "'Grateful for the trust', 'draft is meant to provoke response, not arrive perfect' — relational tone"
+    }
+  ]
+}

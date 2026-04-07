@@ -1,0 +1,24 @@
+{
+  "skill_name": "writing-skills",
+  "notes": "Tests whether skill enforces TDD methodology for skill creation (RED-GREEN-REFACTOR, pressure scenarios, watch-it-fail-first) vs baseline generic documentation advice.",
+  "universal_assertions": [
+    {"id": "tdd_cycle_referenced", "text": "References or applies the RED-GREEN-REFACTOR cycle (or test-driven development) for skill authoring", "check": "qualitative"},
+    {"id": "pressure_scenarios_mentioned", "text": "Mentions pressure scenarios, failure modes, or edge cases as the starting point for skill design", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "draft-new-skill", "type": "vocab_canonical",
+      "prompt": "I want to write a new skill that helps me run weekly retros with my team. Walk me through how to create it.",
+      "fixture_assertions": [
+        {"id": "starts_with_failure", "text": "Advises starting by identifying what goes wrong WITHOUT the skill (watching the agent fail), before writing instructions", "check": "qualitative"},
+        {"id": "includes_test_step", "text": "Includes a testing/verification step where the skill is tested against pressure scenarios after drafting", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "evaluate-skill-draft", "type": "restraint_canonical",
+      "prompt": "Here's a draft skill I wrote for meeting facilitation. It says: 'When facilitating meetings, always start with a check-in round, set a timer for each agenda item, and end with action items. Keep meetings under 45 minutes.' Is this a good skill? What's missing?",
+      "fixture_assertions": [
+        {"id": "flags_no_failure_modes", "text": "Flags that the skill lacks failure modes, pressure scenarios, or edge cases", "check": "qualitative"},
+        {"id": "flags_no_test_cases", "text": "Points out that there are no test cases or verification criteria to know if the skill actually works", "check": "qualitative"}
+      ]
+    }
+  ]
+}

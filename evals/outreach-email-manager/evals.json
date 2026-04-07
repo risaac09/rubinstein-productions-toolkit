@@ -1,0 +1,99 @@
+{
+  "skill_name": "outreach-email-manager",
+  "notes": "Fixtures test whether the skill produces Voice Liberation outreach that is diagnostic-first, specific, and brief — not generic consultant pitches or methodology-led intros.",
+  "universal_assertions": [
+    {
+      "id": "no_photo_video_pitch",
+      "text": "Body does NOT pitch photography or videography as the offer",
+      "check": "programmatic",
+      "rule": "regex_absent",
+      "patterns": ["photograph(er|y)", "videograph(er|y)", "film(making)?", "video production"]
+    },
+    {
+      "id": "no_consultant_speak",
+      "text": "Body avoids consultant-speak (synergy, leverage, strategic, elevated)",
+      "check": "programmatic",
+      "rule": "regex_absent",
+      "patterns": ["\\bsynergy\\b", "\\bleverage\\b", "\\bstrategic\\b", "\\belevated\\b", "\\bcurated\\b"]
+    },
+    {
+      "id": "specific_not_generic",
+      "text": "Opener names something specific about THEIR work (not generic compliment like 'I love what you do')",
+      "check": "qualitative"
+    },
+    {
+      "id": "diagnostic_not_methodology",
+      "text": "Opener leads with diagnosis of their gap/tension, NOT with Voice Liberation methodology or Isaac's process",
+      "check": "qualitative"
+    },
+    {
+      "id": "single_cta",
+      "text": "Email has exactly ONE clear call-to-action (one ask, not a menu)",
+      "check": "qualitative"
+    },
+    {
+      "id": "their_work_first",
+      "text": "Email leads with their work/context, not with who Isaac is",
+      "check": "qualitative"
+    }
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "cold-nonprofit-visible-gap",
+      "type": "cold_outreach",
+      "prompt": "Draft a cold outreach email to the Executive Director of Oakside Community Foundation (fictional climate-justice grant-maker in the Northeast). I visited their website — their 2024 annual report opens with $4.2M in grants deployed and a data dashboard. But their About page talks about being 'bridge-builders between displaced communities and philanthropic capital.' The website voice and the report voice don't match. I want to reach out about a potential Voice Liberation engagement. ED is Maya Okonkwo, maya@oakside.org. Keep this a genuine first-touch — no pitch of photography, no mention of methodology until they bite.",
+      "context": "Classic RP scenario: the gap between inside voice (warm, relational) and outside voice (metrics-led). Skill should lead with diagnosis, not offer.",
+      "fixture_assertions": [
+        {"id": "names_report_site_gap", "text": "Names the specific gap between annual report voice and About page voice", "check": "qualitative"},
+        {"id": "brevity_cold", "text": "Body is 3-4 short paragraphs, roughly 80-130 words", "check": "programmatic", "rule": "word_count_body", "min": 60, "max": 150}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "cold-b2b-mission-aligned",
+      "type": "cold_outreach",
+      "prompt": "Draft a cold outreach email to the co-founder of Pattern Coffee, a values-aligned B2B coffee roaster selling to corporate offices. Their website is beautiful but every page talks about 'curated experiences' and 'elevated moments' — consultant-speak that erases the actual farmers and supply chain story they reference in their Instagram captions. Founder is Jordan Ruiz, jordan@patterncoffee.co. Their IG shows real storytelling; their website shows brand polish. That's the gap.",
+      "context": "Tests ability to name the Instagram/website voice split as the diagnostic hook. Not generic 'your brand is great' — specific artifact-to-artifact observation.",
+      "fixture_assertions": [
+        {"id": "names_ig_web_split", "text": "Names the specific split between Instagram voice (farmer stories) and website voice (brand polish)", "check": "qualitative"},
+        {"id": "brevity_cold", "text": "Body is 3-4 short paragraphs, roughly 80-130 words", "check": "programmatic", "rule": "word_count_body", "min": 60, "max": 150}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "follow-up-after-discovery-call",
+      "type": "follow_up",
+      "prompt": "Draft a follow-up email to Jennifer Wells at Threshold Recovery Services. We had a discovery call last Tuesday where she shared that the board keeps asking for a 'refreshed message' but she said 'I don't think we have a message problem, I think we have a translation problem between what clinicians say in groups and what we can say on the website because of stigma and liability.' That's the real thing. I want to follow up with genuine thinking about that tension, not just 'following up.' Her email is jen@thresholdrs.com.",
+      "context": "Tests whether the skill honors Isaac's explicit anti-pattern — 'not following up' framing. Should reference the translation/liability tension specifically.",
+      "fixture_assertions": [
+        {"id": "avoids_following_up", "text": "Does NOT open with 'just following up' or similar generic re-engagement", "check": "programmatic", "rule": "regex_absent", "patterns": ["just following up", "checking in", "wanted to follow up"]},
+        {"id": "references_translation_tension", "text": "References Jennifer's specific translation/liability tension, not a generic summary", "check": "qualitative"},
+        {"id": "brevity_followup", "text": "Body is short, 40-100 words", "check": "programmatic", "rule": "word_count_body", "min": 30, "max": 120}
+      ]
+    },
+    {
+      "id": 4,
+      "name": "proposal-submission",
+      "type": "proposal_submission",
+      "prompt": "Draft a proposal submission email to David Chen (david@mutualaidsf.org) at Mutual Aid SF. I'm sending them the Voice Liberation Essentials proposal we discussed last week — 4-week engagement, $8,500, narrative excavation + website voice rebuild. The proposal is attached as a PDF. Keep the email short — the proposal does the selling, not the email.",
+      "context": "Tests restraint. Shouldn't re-pitch or summarize the proposal. Should just be a warm handoff with a clear next step.",
+      "fixture_assertions": [
+        {"id": "does_not_repitch", "text": "Does NOT re-pitch the methodology or summarize the proposal content in the email", "check": "qualitative"},
+        {"id": "brevity_proposal", "text": "Body is very short, 30-80 words", "check": "programmatic", "rule": "word_count_body", "min": 20, "max": 100}
+      ]
+    },
+    {
+      "id": 5,
+      "name": "warm-intro-from-referral",
+      "type": "cold_outreach",
+      "prompt": "Draft an outreach email to Sarah Mendelssohn (sarah@leafgroup.green), director of communications at Leaf Group (sustainability consultancy). Our mutual friend Priya Rao introduced us over email last Friday and said we'd like each other. Priya mentioned Sarah is wrestling with how to make their case studies sound less like 'sustainability theater' and more like real transformation stories. Light first-touch — reference Priya, reference the case-study tension, suggest a short call.",
+      "context": "Tests warm-intro framing with a specific diagnostic hook handed to us by the referrer. Should feel relational, not transactional.",
+      "fixture_assertions": [
+        {"id": "references_priya", "text": "References Priya specifically as the referrer", "check": "qualitative"},
+        {"id": "names_case_study_tension", "text": "Names the 'sustainability theater vs transformation stories' tension specifically", "check": "qualitative"},
+        {"id": "brevity_warm", "text": "Body is short, 60-120 words (warm intro doesn't need long pitch)", "check": "programmatic", "rule": "word_count_body", "min": 40, "max": 140}
+      ]
+    }
+  ]
+}

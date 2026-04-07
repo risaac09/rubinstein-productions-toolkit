@@ -1,0 +1,36 @@
+{
+  "body_word_count": 984,
+  "body_line_count": 60,
+  "expectations": [
+    {
+      "text": "Explicitly references the three Mom Test rules (their life not your idea; specifics in the past not hypotheticals about the future; talk less / listen more)",
+      "assertion_id": "names_three_rules",
+      "passed": false,
+      "evidence": "Output names two rules in 'Rules you violated' section ('Talk about their life, not your idea' and 'Ask about specifics in the past, not hypotheticals') but never mentions the third rule 'talk less / listen more'."
+    },
+    {
+      "text": "Avoids suggesting hypothetical or future-tense interview questions like 'would you' or 'could you imagine'",
+      "assertion_id": "no_hypothetical_questions",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames questions around what the person has actually done in the past, not opinions or predictions",
+      "assertion_id": "past_behavior_focus",
+      "passed": true,
+      "evidence": "All five replacement questions use past-tense anchoring: 'Who have you actually referred me to', 'Walk me through the moment you decided to hire me', 'When was the last time you or a peer founder had something important to communicate', 'Think back to a moment during our project when you felt frustrated', 'What's your current videography budget line'."
+    },
+    {
+      "text": "Identifies that all 5 questions are problematic (leading, hypothetical, or opinion-gathering)",
+      "assertion_id": "flags_all_five_as_weak",
+      "passed": true,
+      "evidence": "All five are flagged: Q1 scored 1/10 REPLACE (compliment trap), Q2 scored 3/10 REPLACE (asks for opinion, leading), Q3 scored 0/10 REPLACE (hypothetical, leading), Q4 scored 6/10 MODIFY (still hypothetical), Q5 scored 1/10 REPLACE (opinion/rating question). Summary says 'Replace 4 of 5 questions. Keep Q4's spirit but anchor it.'"
+    },
+    {
+      "text": "Proposed replacements ask about specific past events and concrete behavior, not predictions or feelings",
+      "assertion_id": "replaces_with_past_behavior",
+      "passed": true,
+      "evidence": "Every replacement anchors to past behavior: Q1 asks who they've actually referred, Q2 asks to walk through the hiring decision, Q3 asks about the last time something didn't land, Q4 asks to recall a specific frustration moment, Q5 asks about current budget line and spending reality."
+    }
+  ]
+}

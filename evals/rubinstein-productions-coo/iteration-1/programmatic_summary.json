@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "opportunity-triage",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 783
+    },
+    {
+      "eval_name": "opportunity-triage",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 682
+    },
+    {
+      "eval_name": "capacity-pricing-check",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 633
+    },
+    {
+      "eval_name": "capacity-pricing-check",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 460
+    }
+  ]
+}

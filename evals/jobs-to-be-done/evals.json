@@ -1,0 +1,25 @@
+{
+  "skill_name": "jobs-to-be-done",
+  "notes": "Tests whether skill enforces JTBD canonical vocabulary (hire/fire, progress in circumstances, functional/emotional/social dimensions) vs baseline generic product-discovery advice.",
+  "universal_assertions": [
+    {"id": "hire_fire_vocabulary", "text": "Uses 'hire' and/or 'fire' language to describe how customers choose or abandon products", "check": "programmatic", "rule": "regex_present", "patterns": ["\\bhire\\b", "\\bhired\\b", "\\bfire\\b", "\\bfired\\b"], "quote_aware": true},
+    {"id": "three_dimensions_named", "text": "Names or clearly invokes the three dimensions of a job (functional, emotional, social)", "check": "qualitative"},
+    {"id": "circumstances_over_demographics", "text": "Frames the job in terms of circumstances/context, not customer demographics or attributes", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "churn-analysis", "type": "vocab_canonical",
+      "prompt": "A SaaS client tells me their users keep cancelling after 2 months. They've tried lower pricing, more onboarding emails, and a referral program. Nothing worked. Help me diagnose what's going on.",
+      "fixture_assertions": [
+        {"id": "reframes_as_job_mismatch", "text": "Reframes the problem as a job-mismatch or competing-solution problem, not a pricing/marketing problem", "check": "qualitative"},
+        {"id": "asks_what_theyre_firing_for", "text": "Asks what users are switching TO (what is getting hired in place of this product)", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "videography-job-discovery", "type": "restraint_canonical",
+      "prompt": "What is the 'job' that a nonprofit ED hires a videographer to do when they commission a brand video? I'm trying to figure out what I'm really being paid for.",
+      "fixture_assertions": [
+        {"id": "goes_beyond_functional_video", "text": "Explicitly moves beyond the functional job ('produce a video') to emotional/social dimensions", "check": "qualitative"},
+        {"id": "progress_in_circumstances", "text": "Describes the job as progress from one state to another in specific circumstances, not as a deliverable", "check": "qualitative"}
+      ]
+    }
+  ]
+}

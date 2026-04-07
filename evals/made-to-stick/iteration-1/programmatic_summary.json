@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "diagnose-weak-message",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 1219
+    },
+    {
+      "eval_name": "diagnose-weak-message",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 653
+    },
+    {
+      "eval_name": "craft-sticky-tagline",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 435
+    },
+    {
+      "eval_name": "craft-sticky-tagline",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 81
+    }
+  ]
+}

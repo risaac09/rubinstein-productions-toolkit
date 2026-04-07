@@ -1,0 +1,36 @@
+{
+  "body_word_count": 81,
+  "body_line_count": 11,
+  "expectations": [
+    {
+      "text": "Explicitly names the SUCCESs principles (at least 4 of the 6: Simple, Unexpected, Concrete, Credible, Emotional, Stories)",
+      "assertion_id": "names_success_principles",
+      "passed": false,
+      "evidence": "The output contains only a tagline and 7 alternatives with no commentary. SUCCESs principles are never mentioned by name."
+    },
+    {
+      "text": "References or applies the Curse of Knowledge concept",
+      "assertion_id": "curse_of_knowledge_referenced",
+      "passed": false,
+      "evidence": "No mention of Curse of Knowledge or any related concept anywhere in the 81-word output."
+    },
+    {
+      "text": "Pushes concrete sensory language over abstract jargon",
+      "assertion_id": "concrete_over_abstract",
+      "passed": false,
+      "evidence": "The output provides no commentary, analysis, or rationale pushing concrete over abstract. It is a bare list of tagline options with no discussion."
+    },
+    {
+      "text": "The proposed tagline is concrete and sensory, not abstract",
+      "assertion_id": "tagline_is_concrete",
+      "passed": true,
+      "evidence": "Lead tagline 'Stop sounding like your industry. Start sounding like yourself.' uses the concrete sensory verb 'sounding' and a picturable referent ('your industry')."
+    },
+    {
+      "text": "Includes an unexpected twist, reversal, or counterintuitive element (the U in SUCCESs)",
+      "assertion_id": "contains_unexpected_element",
+      "passed": true,
+      "evidence": "The Stop/Start structure is a reversal pattern. Alternatives also contain reversals: 'Unlearn the industry accent' and 'Leaders don't need a bigger voice. They need their own.'"
+    }
+  ]
+}

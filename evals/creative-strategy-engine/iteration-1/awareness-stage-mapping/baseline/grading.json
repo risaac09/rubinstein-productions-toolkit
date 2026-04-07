@@ -1,0 +1,42 @@
+{
+  "body_word_count": 698,
+  "body_line_count": 35,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Founder-in-transition persona paired with voice-loss pain structures each angle"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "5 named angles: 'The Founder Voice Drift', 'Transition Eats Voice', 'Voice Work Isn't Brand Work', 'Built for the Transition Window'"
+    },
+    {
+      "text": "Names one distinct angle per awareness stage (5 total)",
+      "assertion_id": "one_angle_per_stage",
+      "passed": true,
+      "evidence": "Exactly one named angle per stage across all 5 Schwartz stages, none duplicated"
+    },
+    {
+      "text": "Angles are specific to founder-in-transition context (not generic)",
+      "assertion_id": "founder_in_transition_specific",
+      "passed": true,
+      "evidence": "References Series A, restructure announcement, rebrand launch, all-hands, 'two pivots ago'"
+    },
+    {
+      "text": "Angles escalate in specificity from unaware to most-aware",
+      "assertion_id": "escalation_logic",
+      "passed": true,
+      "evidence": "Escalates from pattern-interrupt drift noticing to dated scoped sprint with specific artifact deliverables"
+    }
+  ]
+}

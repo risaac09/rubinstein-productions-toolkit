@@ -1,0 +1,54 @@
+{
+  "body_word_count": 108,
+  "body_line_count": 5,
+  "expectations": [
+    {
+      "text": "Body does NOT pitch photography or videography as the offer",
+      "assertion_id": "no_photo_video_pitch",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Body avoids consultant-speak (synergy, leverage, strategic, elevated)",
+      "assertion_id": "no_consultant_speak",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Opener names something specific about THEIR work (not generic compliment like 'I love what you do')",
+      "assertion_id": "specific_not_generic",
+      "passed": null,
+      "evidence": "pending_llm_grade"
+    },
+    {
+      "text": "Opener leads with diagnosis of their gap/tension, NOT with Voice Liberation methodology or Isaac's process",
+      "assertion_id": "diagnostic_not_methodology",
+      "passed": null,
+      "evidence": "pending_llm_grade"
+    },
+    {
+      "text": "Email has exactly ONE clear call-to-action (one ask, not a menu)",
+      "assertion_id": "single_cta",
+      "passed": null,
+      "evidence": "pending_llm_grade"
+    },
+    {
+      "text": "Email leads with their work/context, not with who Isaac is",
+      "assertion_id": "their_work_first",
+      "passed": null,
+      "evidence": "pending_llm_grade"
+    },
+    {
+      "text": "Names the specific gap between annual report voice and About page voice",
+      "assertion_id": "names_report_site_gap",
+      "passed": null,
+      "evidence": "pending_llm_grade"
+    },
+    {
+      "text": "Body is 3-4 short paragraphs, roughly 80-130 words",
+      "assertion_id": "brevity_cold",
+      "passed": false,
+      "evidence": "unknown rule: word_count_body"
+    }
+  ]
+}

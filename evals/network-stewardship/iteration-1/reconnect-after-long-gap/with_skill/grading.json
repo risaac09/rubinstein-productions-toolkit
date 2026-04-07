@@ -1,0 +1,42 @@
+{
+  "body_word_count": 1060,
+  "body_line_count": 44,
+  "expectations": [
+    {
+      "text": "Avoids CRM-transactional language (touch base, circle back, ping, nurture)",
+      "assertion_id": "no_crm_language",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not frame relationships as metrics (engagement, conversion, ROI)",
+      "assertion_id": "no_metrics_framing",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Response references specific people with specific context, not generic advice",
+      "assertion_id": "specific_personal",
+      "passed": true,
+      "evidence": "References Sam's career transition, consulting year one, the client intro he made two years ago"
+    },
+    {
+      "text": "Frames the task relationally (care, curiosity, gratitude) not transactionally (opportunity, leverage)",
+      "assertion_id": "relational_framing",
+      "passed": true,
+      "evidence": "'attention and memory as the offer', 'witness him', 'field doesn't owe you a return'"
+    },
+    {
+      "text": "Acknowledges/names the shame or awkwardness, doesn't bypass it",
+      "assertion_id": "names_the_shame",
+      "passed": true,
+      "evidence": "Dedicated opening section 'First: the shame' explicitly explores shame-driven outreach as apology-performance"
+    },
+    {
+      "text": "Suggested reach-out is NOT 'catch up over coffee' generic \u2014 has specific entry point",
+      "assertion_id": "not_transactional_reach",
+      "passed": true,
+      "evidence": "Specific entry: downstream story of what intro produced, 'first year of consulting' peer comparison"
+    }
+  ]
+}

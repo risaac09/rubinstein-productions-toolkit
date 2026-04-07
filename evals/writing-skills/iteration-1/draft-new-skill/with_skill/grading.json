@@ -1,0 +1,30 @@
+{
+  "body_word_count": 1199,
+  "body_line_count": 106,
+  "expectations": [
+    {
+      "text": "References or applies the RED-GREEN-REFACTOR cycle (or test-driven development) for skill authoring",
+      "assertion_id": "tdd_cycle_referenced",
+      "passed": true,
+      "evidence": "Opening line: 'Creating a skill follows a strict TDD cycle: RED (baseline test) -> GREEN (write minimal skill) -> REFACTOR (close loopholes).'"
+    },
+    {
+      "text": "Mentions pressure scenarios, failure modes, or edge cases as the starting point for skill design",
+      "assertion_id": "pressure_scenarios_mentioned",
+      "passed": true,
+      "evidence": "Step 2 says 'Design 3+ pressure scenarios' and lists three specific ones: time pressure + exhaustion, interpersonal pressure, low-signal pressure."
+    },
+    {
+      "text": "Advises starting by identifying what goes wrong WITHOUT the skill (watching the agent fail), before writing instructions",
+      "assertion_id": "starts_with_failure",
+      "passed": true,
+      "evidence": "Step 2: 'Before writing a single line of the skill, you need to see what an agent does without it. This is the Iron Law: no skill without a failing test first.'"
+    },
+    {
+      "text": "Includes a testing/verification step where the skill is tested against pressure scenarios after drafting",
+      "assertion_id": "includes_test_step",
+      "passed": true,
+      "evidence": "Step 3 subsection: 'Run the same pressure scenarios WITH the skill loaded' followed by four expected compliance behaviors."
+    }
+  ]
+}

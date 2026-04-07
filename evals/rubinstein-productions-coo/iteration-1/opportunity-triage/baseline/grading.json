@@ -1,0 +1,36 @@
+{
+  "body_word_count": 682,
+  "body_line_count": 28,
+  "expectations": [
+    {
+      "text": "References specific RP pricing tiers (Mirror / Map / Territory) with dollar ranges",
+      "assertion_id": "pricing_tiers_named",
+      "passed": false,
+      "evidence": "No mention of Mirror, Map, or Territory tiers anywhere in the output. Pricing is given only as generic dollar amounts ('$2,500', '$3,500-$5,000')."
+    },
+    {
+      "text": "Uses canonical audience segments (ED, Founder, Org-in-transition) not generic terms like 'clients' or 'prospects'",
+      "assertion_id": "audience_segments_canonical",
+      "passed": true,
+      "evidence": "Uses 'ED' as a segment term throughout: 'An engaged ED is a green flag' and 'If the ED keeps saying \"marketing video\"'."
+    },
+    {
+      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "assertion_id": "not_videography_business",
+      "passed": false,
+      "evidence": "Frames the work as video production: advises on 'shoot day', 'post-production hours', and 'polished 3-minute video'. Never mentions Voice Liberation, narrative practice, or excavation."
+    },
+    {
+      "text": "Maps the opportunity to a specific RP tier (likely Map) and checks it against pricing floors",
+      "assertion_id": "maps_to_tier",
+      "passed": false,
+      "evidence": "No RP tier is referenced. Pricing is ad-hoc market-rate reasoning: '$2,500 is below market for a polished 3-minute video in Boston'."
+    },
+    {
+      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Voice Liberation identity",
+      "assertion_id": "flags_framing_mismatch",
+      "passed": false,
+      "evidence": "Identifies a 'marketing video' vs 'brand video' distinction as a generic scope concern, but never connects it to RP's Voice Liberation identity or methodology."
+    }
+  ]
+}

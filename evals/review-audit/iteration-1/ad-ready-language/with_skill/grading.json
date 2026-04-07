@@ -1,0 +1,42 @@
+{
+  "body_word_count": 666,
+  "body_line_count": 47,
+  "expectations": [
+    {
+      "text": "Organizes output into the 5 canonical buckets (pain points, trigger moments, objections, transformations, standout language)",
+      "assertion_id": "five_buckets",
+      "passed": true,
+      "evidence": "Labeled BUCKET 1 PAIN POINTS, BUCKET 2 TRIGGER MOMENTS, BUCKET 3 OBJECTIONS, BUCKET 4 TRANSFORMATIONS, BUCKET 5 STANDOUT LANGUAGE"
+    },
+    {
+      "text": "References scoring reviews 1-5 for quality before analysis",
+      "assertion_id": "quality_scoring",
+      "passed": true,
+      "evidence": "States '5 of 6 reviews score 4-5' and tags Review #3 as scored 2 up front"
+    },
+    {
+      "text": "Surfaces actual quotes from reviews (not just summary)",
+      "assertion_id": "pulled_quotes",
+      "passed": true,
+      "evidence": "Bucket 5 has 9 exact pulled quotes including 'Not toned - strong' and 'walk into my gym like I own it'"
+    },
+    {
+      "text": "Surfaces exact customer phrases as standout language (e.g. 'strong not toned', 'stupid how proud I am')",
+      "assertion_id": "pulls_exact_phrases",
+      "passed": true,
+      "evidence": "Pulls exact phrases 'Not toned - strong' and 'stupid how proud I am' in Bucket 5"
+    },
+    {
+      "text": "Names specific transformation moments (groceries in one trip, walking into gym like I own it)",
+      "assertion_id": "identifies_transformations",
+      "passed": true,
+      "evidence": "Bucket 4 'Ownership of physical space' names groceries-in-one-trip and walking into gyms transformation moments"
+    },
+    {
+      "text": "Captures objections to what OTHER products do (postpartum framing, 'you got this girl', 25-year-old audience)",
+      "assertion_id": "identifies_objections_to_competitors",
+      "passed": true,
+      "evidence": "Bucket 1 'Infantilized by fitness industry' names postpartum framing, 'you got this girl' bubbliness, and youth-coded aesthetics"
+    }
+  ]
+}

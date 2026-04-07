@@ -1,0 +1,36 @@
+{
+  "body_word_count": 1163,
+  "body_line_count": 87,
+  "expectations": [
+    {
+      "text": "Explicitly references the three Mom Test rules (their life not your idea; specifics in the past not hypotheticals about the future; talk less / listen more)",
+      "assertion_id": "names_three_rules",
+      "passed": true,
+      "evidence": "Ground rules section explicitly lists all three: (1) 'Talk about their life, not your idea', (2) 'Ask about the past and the specific, not the future and the hypothetical', (3) 'Talk less, listen more. Target 20% you, 80% them.'"
+    },
+    {
+      "text": "Avoids suggesting hypothetical or future-tense interview questions like 'would you' or 'could you imagine'",
+      "assertion_id": "no_hypothetical_questions",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames questions around what the person has actually done in the past, not opinions or predictions",
+      "assertion_id": "past_behavior_focus",
+      "passed": false,
+      "evidence": "While most questions are past-anchored, the 'Ideal world & stakes' section includes hypothetical/future-tense questions: Q15 'If this whole area got solved, what would be different for you' and Q16 'What happens if nothing changes in the next year?' These are predictions, not past behavior."
+    },
+    {
+      "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee",
+      "assertion_id": "no_pitching_the_service",
+      "passed": false,
+      "evidence": "Section '27:00-30:00 -- Reveal & react' explicitly pitches Voice Liberation to the interviewee: 'I work with leaders on what I call Voice Liberation -- helping them find and speak their actual truth in high-stakes settings where they normally self-edit.'"
+    },
+    {
+      "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm",
+      "assertion_id": "commitment_advancement_signal",
+      "passed": true,
+      "evidence": "Ground rule 4 states 'Compliments and that sounds interesting are worthless signals.' Weak validation section flags 'That sounds interesting with no specific incident.' Close asks for follow-up and intros. Strong validation requires prior spend, named budget, and offered referrals."
+    }
+  ]
+}

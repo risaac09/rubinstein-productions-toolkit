@@ -1,0 +1,78 @@
+{
+  "body_word_count": 1094,
+  "body_line_count": 67,
+  "expectations": [
+    {
+      "text": "Opening does NOT use generic proposal language (Dear, Thank you for your interest, Please find attached)",
+      "assertion_id": "no_generic_opener",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Proposal names a specific RP service tier (Mirror, Map, or Territory)",
+      "assertion_id": "names_tier",
+      "passed": true,
+      "evidence": "matched: Map"
+    },
+    {
+      "text": "Proposal includes specific pricing ($-amount) within documented ranges",
+      "assertion_id": "pricing_in_ranges",
+      "passed": true,
+      "evidence": "matched: $9,800"
+    },
+    {
+      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "assertion_id": "voice_liberation_framing",
+      "passed": true,
+      "evidence": "Names 'Voice Liberation' as practice and frames work as narrative excavation, rejects brand refresh"
+    },
+    {
+      "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",
+      "assertion_id": "diagnostic_opener",
+      "passed": true,
+      "evidence": "Names 'three different voices' and diagnoses narrative fragmentation"
+    },
+    {
+      "text": "Follows the 6-section structure (Opening, Understanding, Proposed Engagement, Investment, Why This Approach, Next Steps)",
+      "assertion_id": "structured_sections",
+      "passed": false,
+      "evidence": "Uses alternate section labels; 'Why I'm the right person' replaces 'Why This Approach' and lacks canonical 'Understanding' label"
+    },
+    {
+      "text": "Names concrete deliverables (e.g. Bilingual Dashboard, facilitation sessions, specific asset formats)",
+      "assertion_id": "specific_deliverables",
+      "passed": true,
+      "evidence": "Narrative core document, voice architecture, channel audit, one-page summary"
+    },
+    {
+      "text": "Closes with ONE clear next step (not a menu)",
+      "assertion_id": "single_next_step",
+      "passed": true,
+      "evidence": "Sequential 'reply with confirmation' as primary action"
+    },
+    {
+      "text": "Names Map tier specifically (not Mirror or Territory)",
+      "assertion_id": "map_tier_selected",
+      "passed": true,
+      "evidence": "matched: Map"
+    },
+    {
+      "text": "Pricing falls in Map full sprint range ($6,000-$12,000), within Delta's $10K cap",
+      "assertion_id": "map_pricing",
+      "passed": true,
+      "evidence": "$9,800 under cap, within range"
+    },
+    {
+      "text": "References Delta's specific gap (three different organizations speaking)",
+      "assertion_id": "references_three_voices",
+      "passed": true,
+      "evidence": "'speaking in three different voices' named directly"
+    },
+    {
+      "text": "Names the Bilingual Dashboard as a deliverable",
+      "assertion_id": "includes_bilingual_dashboard",
+      "passed": false,
+      "evidence": "No mention of 'Bilingual Dashboard' anywhere in the document"
+    }
+  ]
+}

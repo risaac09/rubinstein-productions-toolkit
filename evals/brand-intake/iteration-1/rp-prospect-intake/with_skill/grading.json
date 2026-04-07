@@ -1,0 +1,42 @@
+{
+  "body_word_count": 533,
+  "body_line_count": 26,
+  "expectations": [
+    {
+      "text": "Asks multiple intake questions in a single batched message (not drip-by-drip)",
+      "assertion_id": "batched_questions",
+      "passed": true,
+      "evidence": "Sends 8 numbered questions plus Q9-Q11 Say Why module in one batched reply"
+    },
+    {
+      "text": "Avoids generic discovery cliches",
+      "assertion_id": "no_generic_discovery",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Questions are numbered or visually grouped for quick scanning",
+      "assertion_id": "numbered_or_grouped",
+      "passed": true,
+      "evidence": "Numbered 1-8 plus Q9-Q11, grouped under Brand basics/What you already know/Creative context headers"
+    },
+    {
+      "text": "Includes the 3 Say Why questions (voice integrity, inside version, jargon test) or signals they will be asked after standard Qs",
+      "assertion_id": "includes_say_why_module",
+      "passed": true,
+      "evidence": "Explicit Say Why Alignment Module with Q9 voice integrity, Q10 inside version, Q11 jargon test"
+    },
+    {
+      "text": "Acknowledges this is an RP/mission-driven context, not paid-ads",
+      "assertion_id": "rp_context_acknowledged",
+      "passed": true,
+      "evidence": "Opens by naming 'Rubinstein Productions prospect — a mission-driven org where voice/narrative/facilitation is the offer'"
+    },
+    {
+      "text": "Asks about voice/narrative/positioning rather than paid-ads product questions",
+      "assertion_id": "asks_positioning_not_product",
+      "passed": true,
+      "evidence": "Q4 asks about voice/narrative/Say The Thing package and facilitation, not product SKUs or ad spend"
+    }
+  ]
+}

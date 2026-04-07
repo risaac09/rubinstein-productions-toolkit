@@ -1,0 +1,36 @@
+{
+  "skill_name": "project-management-coordinator",
+  "notes": "Tests whether skill produces structured project workflows for RP projects with concrete deliverables and client-appropriate communication.",
+  "universal_assertions": [
+    {"id": "concrete_deliverables", "text": "Names specific deliverables (not vague 'outputs' or 'assets')", "check": "qualitative"},
+    {"id": "includes_timeline", "text": "Includes concrete dates/milestones", "check": "qualitative"},
+    {"id": "no_pm_jargon", "text": "Avoids PM jargon (stakeholders, alignment, touchpoints, deliverables-cadence)", "check": "programmatic", "rule": "regex_absent", "patterns": ["\\bstakeholders\\b", "touchpoints", "alignment cadence", "sprint retrospective", "deliverables cadence"], "quote_aware": false},
+    {"id": "rp_specific_framing", "text": "Frames work in RP methodology terms where relevant (Bilingual Dashboard, Zero-Measurement Zone, etc.)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "new-booking-workflow", "type": "project_setup",
+      "prompt": "I just booked Oakside Community Foundation for a Map-tier engagement ($9,000, 4-week sprint, starting Apr 14). Deliverables: Bilingual Dashboard + voice guide + 3 voice excavation sessions + final presentation to their board. Set up the project workflow: phases, milestones, client touchpoints, internal deadlines. Assume I work solo.",
+      "fixture_assertions": [
+        {"id": "has_phases", "text": "Organizes into clear phases (discovery, excavation, synthesis, delivery)", "check": "qualitative"},
+        {"id": "specific_dates", "text": "Has specific dates anchored to Apr 14 start and 4-week duration", "check": "qualitative"},
+        {"id": "board_presentation_scheduled", "text": "Specifically schedules the board presentation within the timeline", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "pre-shoot-prep", "type": "shoot_prep",
+      "prompt": "Shoot day is Friday Apr 11 (6 days out). Client: Ama Nwosu (Bright Current founder, Mirror tier 3-session arc, this is session 2 of 3). We're filming her speaking 3 different prompts I'll give her on the day. Location: her home office. Solo operator (me + camera). Give me a prep checklist: gear, questions to prep, call-time logistics, what to send her Thursday.",
+      "fixture_assertions": [
+        {"id": "gear_list", "text": "Has a concrete gear list (camera, audio, lights)", "check": "qualitative"},
+        {"id": "prompts_reference", "text": "References that prompts need to be prepped ahead of time", "check": "qualitative"},
+        {"id": "client_comm_thursday", "text": "Specifies what to send Ama on Thursday (call time, what to wear, prep)", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "phase-transition-comms", "type": "client_communication",
+      "prompt": "Jennifer Wells (Threshold Recovery Services, Map tier) is transitioning from Phase 2 (excavation) to Phase 3 (synthesis/delivery). We just finished our 3rd excavation session. Next milestone: I deliver the Bilingual Dashboard draft by Apr 18, her review period Apr 18-25, revision cycle Apr 25-May 2, final delivery May 2. Draft the email to her that closes Phase 2 and sets up Phase 3.",
+      "fixture_assertions": [
+        {"id": "names_what_closed", "text": "Names something specific from the 3 excavation sessions (honors what was said)", "check": "qualitative"},
+        {"id": "has_timeline", "text": "Includes all 4 dates (Apr 18, 18-25, 25-May 2, May 2)", "check": "qualitative"},
+        {"id": "warm_not_corporate", "text": "Tone is warm (relational), not corporate project-status", "check": "qualitative"}
+      ]
+    }
+  ]
+}

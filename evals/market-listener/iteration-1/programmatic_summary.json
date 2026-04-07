@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "warm-lead-activity",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 979
+    },
+    {
+      "eval_name": "warm-lead-activity",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 983
+    },
+    {
+      "eval_name": "competitor-moves",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 956
+    },
+    {
+      "eval_name": "competitor-moves",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 929
+    },
+    {
+      "eval_name": "topic-trend",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 714
+    },
+    {
+      "eval_name": "topic-trend",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 688
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "linkedin-post-from-session",
+      "mode": "with_skill",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 211
+    },
+    {
+      "eval_name": "linkedin-post-from-session",
+      "mode": "baseline",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 172
+    },
+    {
+      "eval_name": "case-study-outline",
+      "mode": "with_skill",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 322
+    },
+    {
+      "eval_name": "case-study-outline",
+      "mode": "baseline",
+      "prog_passed": 2,
+      "prog_total": 2,
+      "body_words": 243
+    },
+    {
+      "eval_name": "essay-opening",
+      "mode": "with_skill",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 243
+    },
+    {
+      "eval_name": "essay-opening",
+      "mode": "baseline",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 249
+    }
+  ]
+}

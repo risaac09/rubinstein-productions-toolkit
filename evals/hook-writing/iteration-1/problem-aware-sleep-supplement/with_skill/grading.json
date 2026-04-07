@@ -1,0 +1,54 @@
+{
+  "body_word_count": 177,
+  "body_line_count": 10,
+  "expectations": [
+    {
+      "text": "Output contains at least 10 distinct hooks",
+      "assertion_id": "min_hook_count",
+      "passed": true,
+      "evidence": "matched: \n10."
+    },
+    {
+      "text": "No hooks start with 'Are you...' (tired generic AI ad opener)",
+      "assertion_id": "no_are_you_openers",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "No 'discover', 'unlock', 'unleash', 'revolutionize', 'transform your life' AI-slop verbs",
+      "assertion_id": "no_ai_slop_verbs",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Hooks include concrete specifics (numbers, names, objects, situations) not vague claims",
+      "assertion_id": "specific_not_vague",
+      "passed": true,
+      "evidence": "3:47am, 8pm/11/3 pattern, 3:12, 6:30, magnesium bath, 10pm cutoff — concrete"
+    },
+    {
+      "text": "Output uses VARIETY of psychological trigger types (not all the same category)",
+      "assertion_id": "varied_trigger_types",
+      "passed": true,
+      "evidence": "Mix of scene, reframe, contradiction, exhaustion inventory, identity/acceptance fear, math-pressure"
+    },
+    {
+      "text": "Hooks feel native to the given persona's voice/context (not generic ad copy)",
+      "assertion_id": "persona_fit",
+      "passed": true,
+      "evidence": "Knowledge-worker parent specifics: cortisol, kids waking at 6:30, be a parent tomorrow"
+    },
+    {
+      "text": "Multiple hooks specifically reference the 3am-waking pattern (not generic 'bad sleep')",
+      "assertion_id": "references_3am_pattern",
+      "passed": true,
+      "evidence": "Hooks 1, 3, 4, 5, 6, 9 reference 3am or specific waking times"
+    },
+    {
+      "text": "Hooks SHOW the pain (scene, moment, sensation) rather than TELLING it ('you're tired')",
+      "assertion_id": "shows_not_tells_pain",
+      "passed": false,
+      "evidence": "Hook 7 'you've been tired for so long', 8 'scariest part', 10 'your body' — majority tell rather than show"
+    }
+  ]
+}

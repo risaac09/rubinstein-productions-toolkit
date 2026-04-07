@@ -1,0 +1,42 @@
+{
+  "body_word_count": 916,
+  "body_line_count": 69,
+  "expectations": [
+    {
+      "text": "Asks multiple intake questions in a single batched message (not drip-by-drip)",
+      "assertion_id": "batched_questions",
+      "passed": true,
+      "evidence": "Sends 44 numbered questions in one batched intake message"
+    },
+    {
+      "text": "Avoids generic discovery cliches",
+      "assertion_id": "no_generic_discovery",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Questions are numbered or visually grouped for quick scanning",
+      "assertion_id": "numbered_or_grouped",
+      "passed": true,
+      "evidence": "Numbered 1-44 across 10 labeled sections with bold headers"
+    },
+    {
+      "text": "Asks which product(s) ads are running for",
+      "assertion_id": "asks_product_focus",
+      "passed": true,
+      "evidence": "Q5 'Top SKUs' and Q30 'Hero offer' cover which products to lead with in ads"
+    },
+    {
+      "text": "Asks about known competitors",
+      "assertion_id": "asks_competitors",
+      "passed": true,
+      "evidence": "Q20 'Direct competitors' and Q21 'Adjacent competitors' explicitly ask to name 3-5 brands"
+    },
+    {
+      "text": "Does NOT include Say Why questions (voice integrity, inside version, jargon test)",
+      "assertion_id": "skips_say_why",
+      "passed": true,
+      "evidence": "No voice integrity, inside version, or jargon test questions present"
+    }
+  ]
+}

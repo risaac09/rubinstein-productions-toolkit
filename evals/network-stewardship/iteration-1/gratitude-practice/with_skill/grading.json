@@ -1,0 +1,42 @@
+{
+  "body_word_count": 822,
+  "body_line_count": 46,
+  "expectations": [
+    {
+      "text": "Avoids CRM-transactional language (touch base, circle back, ping, nurture)",
+      "assertion_id": "no_crm_language",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not frame relationships as metrics (engagement, conversion, ROI)",
+      "assertion_id": "no_metrics_framing",
+      "passed": false,
+      "evidence": "found: 'funnel'"
+    },
+    {
+      "text": "Response references specific people with specific context, not generic advice",
+      "assertion_id": "specific_personal",
+      "passed": true,
+      "evidence": "Names Rachel's 'performing fine' comment, January pricing call with Rob, two unprompted referrals from Jennifer"
+    },
+    {
+      "text": "Frames the task relationally (care, curiosity, gratitude) not transactionally (opportunity, leverage)",
+      "assertion_id": "relational_framing",
+      "passed": true,
+      "evidence": "Each message centers specific gift received; explicit 'no ask here' and family intimacy register for Rachel"
+    },
+    {
+      "text": "Produces 3 distinct messages (different voices/angles for each person)",
+      "assertion_id": "three_distinct_messages",
+      "passed": true,
+      "evidence": "Rachel text/voice intimate, Rob professional peer-level, Jennifer warm-professional — three clearly distinct registers"
+    },
+    {
+      "text": "Each message references the specific contribution (Q1 panic, raising prices, 2 referrals)",
+      "assertion_id": "specific_gratitude_content",
+      "passed": true,
+      "evidence": "Q1 panic/February directly named, pricing advice and outcomes detailed, two unprompted referrals acknowledged"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "skill_name": "creative-strategy-engine",
+  "notes": "Tests whether skill produces pain/persona × awareness-stage matrix structure vs. generic creative brief.",
+  "universal_assertions": [
+    {"id": "names_awareness_stages", "text": "References the 5-stage awareness framework", "check": "programmatic", "rule": "regex_present", "patterns": ["unaware", "problem.aware", "solution.aware", "product.aware", "most.aware"], "quote_aware": false},
+    {"id": "pain_persona_structure", "text": "Organizes around pain × persona intersections", "check": "qualitative"},
+    {"id": "messaging_angles", "text": "Names specific messaging angles (not just topics)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "rp-strategy-map", "type": "rp_strategy",
+      "prompt": "Build the creative strategy matrix for Rubinstein Productions, targeting executive directors of small nonprofits who are considering Mirror-tier engagements ($900-1800 single-session). Map pains, personas, angles, awareness stages.",
+      "fixture_assertions": [
+        {"id": "uses_canonical_rp_personas", "text": "Uses canonical RP personas (ED / Founder / Org-in-transition) rather than inventing new ones", "check": "qualitative"},
+        {"id": "names_mirror_tier", "text": "Names Mirror tier explicitly and maps angles to it", "check": "qualitative"},
+        {"id": "ed_specific_pains", "text": "Names specific ED-level pains (not generic 'needs better marketing')", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "paid-ads-pain-persona", "type": "paid_ads_strategy",
+      "prompt": "Map a pain/persona matrix for Lumenhouse Candles (DTC candle brand). Primary audience: women 35-55 who work from home. Define 3 pain-persona intersections with messaging angles for each, mapped across the 5 awareness stages.",
+      "fixture_assertions": [
+        {"id": "three_intersections", "text": "Defines at least 3 pain × persona intersections", "check": "qualitative"},
+        {"id": "angles_per_stage", "text": "Maps messaging angles across all 5 awareness stages for at least one intersection", "check": "qualitative"},
+        {"id": "specific_candle_context", "text": "Names specific candle/WFH context (not generic lifestyle language)", "check": "qualitative"}
+      ]
+    },
+    {"id": 3, "name": "awareness-stage-mapping", "type": "awareness_mapping",
+      "prompt": "Map Voice Liberation messaging angles for founders whose orgs are in transition (growing, restructuring, rebranding) across the 5 awareness stages. One angle per stage.",
+      "fixture_assertions": [
+        {"id": "one_angle_per_stage", "text": "Names one distinct angle per awareness stage (5 total)", "check": "qualitative"},
+        {"id": "founder_in_transition_specific", "text": "Angles are specific to founder-in-transition context (not generic)", "check": "qualitative"},
+        {"id": "escalation_logic", "text": "Angles escalate in specificity from unaware to most-aware", "check": "qualitative"}
+      ]
+    }
+  ]
+}

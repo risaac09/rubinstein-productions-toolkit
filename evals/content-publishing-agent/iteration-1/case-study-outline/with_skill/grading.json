@@ -1,0 +1,48 @@
+{
+  "body_word_count": 322,
+  "body_line_count": 17,
+  "expectations": [
+    {
+      "text": "Avoids AI-slop phrases (game-changer, dive deep, let's unpack, in today's world)",
+      "assertion_id": "no_ai_slop_phrases",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not use emoji bullets (\ud83d\udd11 \ud83d\udca1 \ud83d\ude80 \u26a1 etc.)",
+      "assertion_id": "no_emoji_bullets",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Content is grounded in specific observation/moment/tension, not abstract claims",
+      "assertion_id": "specific_grounding",
+      "passed": true,
+      "evidence": "ED quote 'This is what I've been trying to say for two years' anchors turning point concretely"
+    },
+    {
+      "text": "Length + structure fits the requested platform",
+      "assertion_id": "platform_appropriate",
+      "passed": true,
+      "evidence": "Outline format with 6 named sections, 1-2 sentences each as requested"
+    },
+    {
+      "text": "Voice is Isaac's (facilitator-filmmaker-builder), not generic thought leader",
+      "assertion_id": "rp_methodology_voice",
+      "passed": true,
+      "evidence": "Uses 'Bilingual Dashboard', 'integrity audit', 'three organizations in one trench coat' — distinctive RP phrasing"
+    },
+    {
+      "text": "Has exactly 6 sections as requested",
+      "assertion_id": "six_sections",
+      "passed": true,
+      "evidence": "Six numbered sections: Opening Hook, Problem Framing, Process, Turning Point, Outcome, Reflection"
+    },
+    {
+      "text": "Names the $180K funding outcome specifically",
+      "assertion_id": "specific_outcomes",
+      "passed": true,
+      "evidence": "'landed $180K in new funding' appears in Outcome section with 60-day window"
+    }
+  ]
+}

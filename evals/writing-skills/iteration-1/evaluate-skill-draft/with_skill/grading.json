@@ -1,0 +1,30 @@
+{
+  "body_word_count": 554,
+  "body_line_count": 18,
+  "expectations": [
+    {
+      "text": "References or applies the RED-GREEN-REFACTOR cycle (or test-driven development) for skill authoring",
+      "assertion_id": "tdd_cycle_referenced",
+      "passed": false,
+      "evidence": "Describes a baseline-test-then-write process but never names it RED-GREEN-REFACTOR, TDD, or test-driven development."
+    },
+    {
+      "text": "Mentions pressure scenarios, failure modes, or edge cases as the starting point for skill design",
+      "assertion_id": "pressure_scenarios_mentioned",
+      "passed": true,
+      "evidence": "Final paragraph: 'run a baseline test. Give the draft to an agent... Document where it guesses, where it fails, where it rationalizes exceptions. Then write the skill to address those specific failures.'"
+    },
+    {
+      "text": "Flags that the skill lacks failure modes, pressure scenarios, or edge cases",
+      "assertion_id": "flags_no_failure_modes",
+      "passed": true,
+      "evidence": "States 'No Common Mistakes section' and asks 'What goes wrong when people try these techniques?' with specific examples like check-ins running 20 minutes and action items with no owner."
+    },
+    {
+      "text": "Points out that there are no test cases or verification criteria to know if the skill actually works",
+      "assertion_id": "flags_no_test_cases",
+      "passed": true,
+      "evidence": "Final section: 'Before rewriting, follow the skill creation process: run a baseline test. Give the draft to an agent... and watch what happens. Document where it guesses, where it fails.'"
+    }
+  ]
+}

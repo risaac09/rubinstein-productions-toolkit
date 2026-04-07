@@ -1,0 +1,36 @@
+{
+  "body_word_count": 1219,
+  "body_line_count": 93,
+  "expectations": [
+    {
+      "text": "Explicitly names the SUCCESs principles (at least 4 of the 6: Simple, Unexpected, Concrete, Credible, Emotional, Stories)",
+      "assertion_id": "names_success_principles",
+      "passed": true,
+      "evidence": "Full 'SUCCESs Audit' table names all 6 principles with individual scores (Simple 3/10, Unexpected 1/10, Concrete 1/10, Credible 2/10, Emotional 2/10, Stories 2/10) plus detailed per-principle breakdowns."
+    },
+    {
+      "text": "References or applies the Curse of Knowledge concept",
+      "assertion_id": "curse_of_knowledge_referenced",
+      "passed": true,
+      "evidence": "Dedicated section titled 'The Curse of Knowledge at Work' explains how the tagline 'reads like it was written by someone who already knows' what RP does, and that 'none of that knowledge is transmitted to an outsider.'"
+    },
+    {
+      "text": "Pushes concrete sensory language over abstract jargon",
+      "assertion_id": "concrete_over_abstract",
+      "passed": true,
+      "evidence": "Concrete section provides sensory alternatives ('We help nonprofits raise $2M more by sounding like humans, not brochures') and applies the 'Velcro test' asking 'What memory-hook does this sentence offer? None. It slides off the brain.'"
+    },
+    {
+      "text": "Scores the tagline against the SUCCESs principles explicitly (not just generic critique)",
+      "assertion_id": "scores_against_each_principle",
+      "passed": true,
+      "evidence": "Numeric scores per principle in a table (e.g., Simple 3/10, Concrete 1/10) with a total of 11/60, plus six dedicated subsections analyzing each principle individually."
+    },
+    {
+      "text": "Flags abstract/jargon words like 'empowers', 'authentic', 'innovative solutions' as failures of Concrete/Simple",
+      "assertion_id": "flags_abstract_jargon",
+      "passed": true,
+      "evidence": "Concrete section lists 'empower, mission-driven, amplify, authentic, voice, innovative, storytelling, solutions' as 'Eight abstract nouns/verbs in one sentence. Zero sensory detail.' Credible section calls 'innovative' a 'credibility-destroying word.'"
+    }
+  ]
+}

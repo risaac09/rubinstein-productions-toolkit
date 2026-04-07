@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "problem-aware-sleep-supplement",
+      "mode": "with_skill",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 177
+    },
+    {
+      "eval_name": "problem-aware-sleep-supplement",
+      "mode": "baseline",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 169
+    },
+    {
+      "eval_name": "solution-aware-project-mgmt-saas",
+      "mode": "with_skill",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 180
+    },
+    {
+      "eval_name": "solution-aware-project-mgmt-saas",
+      "mode": "baseline",
+      "prog_passed": 3,
+      "prog_total": 3,
+      "body_words": 100
+    },
+    {
+      "eval_name": "unaware-therapy-for-founders",
+      "mode": "with_skill",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 315
+    },
+    {
+      "eval_name": "unaware-therapy-for-founders",
+      "mode": "baseline",
+      "prog_passed": 4,
+      "prog_total": 4,
+      "body_words": 225
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "body_word_count": 929,
+  "body_line_count": 53,
+  "expectations": [
+    {
+      "text": "Proposes specific next actions (not vague 'consider engaging')",
+      "assertion_id": "proposes_concrete_actions",
+      "passed": true,
+      "evidence": "5 prioritized actions with owners and timelines: 48h prospect outreach, 2-wk essay, 30-day tier, 60-day list funnel"
+    },
+    {
+      "text": "References specific handles/accounts from the input signals",
+      "assertion_id": "names_specific_handles",
+      "passed": true,
+      "evidence": "Names @namebearer_studio, @council_voice, @narrative_lab across all three signal sections"
+    },
+    {
+      "text": "Distinguishes reaction-window (act now) from learning-window (study pattern)",
+      "assertion_id": "window_distinction",
+      "passed": true,
+      "evidence": "Prioritizes with timelines 48h/2wk/30d/60d and labels first move 'this week' vs learning-later items"
+    },
+    {
+      "text": "Identifies a pattern across these 3 (voice/narrative consultancy space is heating up)",
+      "assertion_id": "names_competitor_pattern",
+      "passed": true,
+      "evidence": "'The meta-pattern' section names 'public pedagogy as positioning' across all 3 competitors"
+    },
+    {
+      "text": "Flags that @council_voice $6k is 4x RP Mirror pricing \u2014 competitive positioning question",
+      "assertion_id": "pricing_threat_flagged",
+      "passed": true,
+      "evidence": "Names '$6k is a 4x markup on RP's Mirror tier' and offers two reads of the pricing collision"
+    },
+    {
+      "text": "Proposes specific RP content/positioning response, not vague 'keep an eye on this'",
+      "assertion_id": "proposes_rp_response",
+      "passed": true,
+      "evidence": "Proposes 3 specific essay titles including 'Brand voice is a performance. Institutional voice is a nervous system'"
+    }
+  ]
+}

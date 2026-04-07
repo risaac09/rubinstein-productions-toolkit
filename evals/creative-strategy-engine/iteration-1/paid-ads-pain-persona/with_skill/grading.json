@@ -1,0 +1,42 @@
+{
+  "body_word_count": 1467,
+  "body_line_count": 109,
+  "expectations": [
+    {
+      "text": "References the 5-stage awareness framework",
+      "assertion_id": "names_awareness_stages",
+      "passed": true,
+      "evidence": "matched: Unaware"
+    },
+    {
+      "text": "Organizes around pain \u00d7 persona intersections",
+      "assertion_id": "pain_persona_structure",
+      "passed": true,
+      "evidence": "Step 3 titled 'Pain x Persona Intersections' with explicit PAIN/PERSONA labels for each of 3 intersections"
+    },
+    {
+      "text": "Names specific messaging angles (not just topics)",
+      "assertion_id": "messaging_angles",
+      "passed": true,
+      "evidence": "Named angles: 'You haven't actually logged off in three years', 'Five minutes of something that's only for you'"
+    },
+    {
+      "text": "Defines at least 3 pain \u00d7 persona intersections",
+      "assertion_id": "three_intersections",
+      "passed": true,
+      "evidence": "3 intersections: Workday never ends x Always-On Executive, Home stopped feeling x Sensory-Starved, Stress x Caregiving Multitasker"
+    },
+    {
+      "text": "Maps messaging angles across all 5 awareness stages for at least one intersection",
+      "assertion_id": "angles_per_stage",
+      "passed": true,
+      "evidence": "All 3 angles mapped through Unaware/Problem-Aware/Solution-Aware/Product-Aware/Most-Aware with stage-specific expressions"
+    },
+    {
+      "text": "Names specific candle/WFH context (not generic lifestyle language)",
+      "assertion_id": "specific_candle_context",
+      "passed": true,
+      "evidence": "Names scent throw, 80-hour burn, match included, 1800 days in same walls, 6pm commute replacement"
+    }
+  ]
+}

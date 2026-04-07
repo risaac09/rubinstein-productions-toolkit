@@ -1,0 +1,25 @@
+{
+  "skill_name": "storybrand-messaging",
+  "notes": "Tests whether skill enforces SB7 canonical structure (hero + problem [external/internal/philosophical] + guide + plan + call-to-action + success + failure) vs baseline generic copywriting.",
+  "universal_assertions": [
+    {"id": "customer_is_hero", "text": "Explicitly positions the customer as the hero and the brand/Isaac as the guide (not the hero)", "check": "qualitative"},
+    {"id": "three_levels_of_problem", "text": "Names or applies the three levels of problem: external, internal, philosophical", "check": "qualitative"},
+    {"id": "guide_authority_empathy", "text": "Positions the guide with both empathy and authority (competence)", "check": "qualitative"}
+  ],
+  "evals": [
+    {"id": 1, "name": "rp-one-liner", "type": "vocab_canonical",
+      "prompt": "Write me a one-liner for Rubinstein Productions. We help nonprofit EDs and mission-driven founders find their real voice so they can stop sounding like everyone else in their sector. We do this through facilitated conversations, brand video, and narrative work.",
+      "fixture_assertions": [
+        {"id": "follows_sb7_oneliner_structure", "text": "Follows the SB7 one-liner structure: character with a problem + guide with a plan + success/transformation", "check": "qualitative"},
+        {"id": "specific_transformation_named", "text": "Names a specific transformation or success state, not vague 'grow your impact' language", "check": "qualitative"}
+      ]
+    },
+    {"id": 2, "name": "homepage-hero-copy", "type": "restraint_canonical",
+      "prompt": "Write hero-section copy for the Rubinstein Productions homepage. Target: nonprofit EDs who are tired of sector-generic messaging. We do Voice Liberation work — facilitation, narrative, film.",
+      "fixture_assertions": [
+        {"id": "names_external_and_internal_problem", "text": "Surfaces both the external problem (generic messaging) and the internal problem (how it feels to sound like everyone else)", "check": "qualitative"},
+        {"id": "clear_call_to_action", "text": "Includes a clear direct call-to-action, not a vague 'learn more'", "check": "qualitative"}
+      ]
+    }
+  ]
+}

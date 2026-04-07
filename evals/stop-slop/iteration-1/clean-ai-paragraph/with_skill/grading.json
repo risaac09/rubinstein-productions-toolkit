@@ -1,0 +1,30 @@
+{
+  "body_word_count": 50,
+  "body_line_count": 1,
+  "expectations": [
+    {
+      "text": "Rewrites passive constructions into active voice with human subjects",
+      "assertion_id": "active_voice_enforced",
+      "passed": true,
+      "evidence": "All sentences use active voice with human subjects: 'You keep using the ones', 'Pick a real friction point', 'build a habit', 'let the relationship carry'."
+    },
+    {
+      "text": "Output contains no em dashes",
+      "assertion_id": "no_em_dashes",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Removes throat-clearing opener ('In today's rapidly evolving landscape')",
+      "assertion_id": "cuts_filler_openers",
+      "passed": true,
+      "evidence": "Opens with 'Most tools that promise better collaboration get ignored within a month' -- direct claim, no throat-clearing filler."
+    },
+    {
+      "text": "Breaks or rewrites at least one three-item list into a different rhythm (two items, or varied structure)",
+      "assertion_id": "breaks_rule_of_three",
+      "passed": false,
+      "evidence": "Final sentence retains a three-item list: 'Pick a real friction point, build a habit around talking about it, and let the relationship carry the work forward.'"
+    }
+  ]
+}

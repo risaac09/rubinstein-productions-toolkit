@@ -1,0 +1,30 @@
+{
+  "body_word_count": 57,
+  "body_line_count": 1,
+  "expectations": [
+    {
+      "text": "Rewrites passive constructions into active voice with human subjects",
+      "assertion_id": "active_voice_enforced",
+      "passed": true,
+      "evidence": "All sentences use human subjects in active voice: 'Sarah has spent', 'She designed', 'Funders and peers seek her out', 'She sits on two national advisory boards'."
+    },
+    {
+      "text": "Output contains no em dashes",
+      "assertion_id": "no_em_dashes",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Replaces at least one vague abstraction ('transformative experience', 'strategic vision', 'thought leader') with something concrete or cuts it",
+      "assertion_id": "specific_over_abstract",
+      "passed": true,
+      "evidence": "Replaced abstractions with concrete specifics: 'youth mentorship pipeline in East Baltimore that cut recidivism by 30%', 'scaled the model to five cities', 'two national advisory boards'."
+    },
+    {
+      "text": "Removes or rewrites pull-quote-sounding lines like 'Her work doesn't just create programs \u2014 it catalyzes movements'",
+      "assertion_id": "no_quotables",
+      "passed": true,
+      "evidence": "No pull-quote flourishes. Every sentence is factual and specific (e.g. 'She designed a youth mentorship pipeline in East Baltimore')."
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "body_word_count": 671,
+  "body_line_count": 27,
+  "expectations": [
+    {
+      "text": "Avoids CRM-transactional language (touch base, circle back, ping, nurture)",
+      "assertion_id": "no_crm_language",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Does not frame relationships as metrics (engagement, conversion, ROI)",
+      "assertion_id": "no_metrics_framing",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Response references specific people with specific context, not generic advice",
+      "assertion_id": "specific_personal",
+      "passed": true,
+      "evidence": "Uses names, references co-founder narrative knot, 3-months postpartum, Boston taper weeks"
+    },
+    {
+      "text": "Frames the task relationally (care, curiosity, gratitude) not transactionally (opportunity, leverage)",
+      "assertion_id": "relational_framing",
+      "passed": false,
+      "evidence": "Frames Priya as 'warmest lead, most perishable' and Maya as 'relational deposit... pays back in years'"
+    },
+    {
+      "text": "Response references specific context from each person (co-founder stuck, baby, Boston training)",
+      "assertion_id": "references_specifics",
+      "passed": true,
+      "evidence": "Cites co-founder narrative problem, 3 months postpartum, Boston taper weeks, specific context each"
+    },
+    {
+      "text": "Does NOT frame Maya or Priya as potential client/referral opportunities",
+      "assertion_id": "doesnt_pitch_work",
+      "passed": false,
+      "evidence": "Maya framed as 'six months from now when she's thinking about her next project, this message will be why she texts you first'"
+    }
+  ]
+}

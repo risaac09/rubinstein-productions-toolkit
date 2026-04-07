@@ -1,0 +1,36 @@
+{
+  "body_word_count": 460,
+  "body_line_count": 38,
+  "expectations": [
+    {
+      "text": "References specific RP pricing tiers (Mirror / Map / Territory) with dollar ranges",
+      "assertion_id": "pricing_tiers_named",
+      "passed": false,
+      "evidence": "No mention of Mirror, Map, or Territory tiers. Pricing given only as generic range '$3,500 - $5,000' without tier names."
+    },
+    {
+      "text": "Uses canonical audience segments (ED, Founder, Org-in-transition) not generic terms like 'clients' or 'prospects'",
+      "assertion_id": "audience_segments_canonical",
+      "passed": false,
+      "evidence": "Uses 'founder' only descriptively for the specific person, not as a canonical RP audience segment. Says 'Conference-sourced leads' — generic term, not RP segment vocabulary."
+    },
+    {
+      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "assertion_id": "not_videography_business",
+      "passed": false,
+      "evidence": "Never mentions Voice Liberation or narrative practice. Treats the work as generic facilitation consulting: 'half-day facilitation engagement', 'blended rate'."
+    },
+    {
+      "text": "Explicitly evaluates current capacity against a limit or guideline before recommending",
+      "assertion_id": "checks_capacity_explicitly",
+      "passed": false,
+      "evidence": "Mentions '3 active projects' but never references a capacity limit or guideline. Assessment is qualitative ('likely fit it if') without any named cap or protocol."
+    },
+    {
+      "text": "Derives pricing from the RP tier/offer ladder structure, not ad-hoc market rates or hourly estimates",
+      "assertion_id": "prices_from_tier_not_adhoc",
+      "passed": false,
+      "evidence": "Pricing derived from ad-hoc hourly estimate: 'blended rate of $250-350/hr across prep + delivery'. No tier structure referenced."
+    }
+  ]
+}

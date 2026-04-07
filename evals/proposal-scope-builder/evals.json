@@ -1,0 +1,93 @@
+{
+  "skill_name": "proposal-scope-builder",
+  "notes": "Tests whether the skill produces Voice Liberation proposals: diagnostic-first opener, correct tier selection (Mirror/Map/Territory), pricing within documented ranges, 6-section structure, and specific deliverables.",
+  "universal_assertions": [
+    {
+      "id": "no_generic_opener",
+      "text": "Opening does NOT use generic proposal language (Dear, Thank you for your interest, Please find attached)",
+      "check": "programmatic",
+      "rule": "regex_absent",
+      "patterns": ["^dear\\s", "thank you for your interest", "please find attached", "we are pleased to", "we're excited to"],
+      "quote_aware": true
+    },
+    {
+      "id": "names_tier",
+      "text": "Proposal names a specific RP service tier (Mirror, Map, or Territory)",
+      "check": "programmatic",
+      "rule": "regex_present",
+      "patterns": ["\\bMirror\\b", "\\bMap\\b", "\\bTerritory\\b"]
+    },
+    {
+      "id": "pricing_in_ranges",
+      "text": "Proposal includes specific pricing ($-amount) within documented ranges",
+      "check": "programmatic",
+      "rule": "regex_present",
+      "patterns": ["\\$[0-9,]+"]
+    },
+    {
+      "id": "voice_liberation_framing",
+      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "check": "qualitative"
+    },
+    {
+      "id": "diagnostic_opener",
+      "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",
+      "check": "qualitative"
+    },
+    {
+      "id": "structured_sections",
+      "text": "Follows the 6-section structure (Opening, Understanding, Proposed Engagement, Investment, Why This Approach, Next Steps)",
+      "check": "qualitative"
+    },
+    {
+      "id": "specific_deliverables",
+      "text": "Names concrete deliverables (e.g. Bilingual Dashboard, facilitation sessions, specific asset formats)",
+      "check": "qualitative"
+    },
+    {
+      "id": "single_next_step",
+      "text": "Closes with ONE clear next step (not a menu)",
+      "check": "qualitative"
+    }
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "mirror-tier-founder",
+      "type": "mirror_tier",
+      "prompt": "Draft a proposal for Ama Nwosu, founder of Bright Current (climate adaptation consultancy, solo operator, 3 years in). In our discovery call, Ama said: 'I can articulate what I do clearly when I'm talking to another climate scientist, but the moment I'm in front of a funder or a partner org, I hear myself reaching for language that doesn't sound like me. I come off polished but hollow.' She wants 1:1 narrative work — not a strategy sprint, not a full engagement — just clarity on her own voice as a founder. Budget flexible, timeline 4-6 weeks. Propose the Mirror tier (3-session arc).",
+      "context": "Tests Mirror tier selection, individual-founder framing, specific diagnostic from discovery call, pricing in $2,500-$4,000 range.",
+      "fixture_assertions": [
+        {"id": "mirror_tier_selected", "text": "Names Mirror tier specifically (not Map or Territory)", "check": "programmatic", "rule": "regex_present", "patterns": ["\\bMirror\\b"]},
+        {"id": "mirror_pricing", "text": "Pricing falls in Mirror 3-session range ($2,500-$4,000)", "check": "qualitative"},
+        {"id": "references_ama_diagnostic", "text": "References Ama's specific gap ('polished but hollow', language that doesn't sound like her)", "check": "qualitative"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "map-tier-org-sprint",
+      "type": "map_tier",
+      "prompt": "Draft a proposal for Delta Housing Coalition (regional affordable-housing nonprofit, 12 staff, $2.1M annual budget). Communications director Reina Vargas shared that their website, grant narratives, and tenant-facing materials all sound like three different organizations. Board wants a 'brand refresh' by fiscal year end (4 months out). Reina thinks they need narrative excavation first, then consistent voice across channels. Propose the Map tier (full 3-5 day sprint). Their budget cap is $10,000.",
+      "context": "Tests Map tier selection, organizational context, sprint timeline, pricing in $6,000-$12,000 range, Bilingual Dashboard deliverable.",
+      "fixture_assertions": [
+        {"id": "map_tier_selected", "text": "Names Map tier specifically (not Mirror or Territory)", "check": "programmatic", "rule": "regex_present", "patterns": ["\\bMap\\b"]},
+        {"id": "map_pricing", "text": "Pricing falls in Map full sprint range ($6,000-$12,000), within Delta's $10K cap", "check": "qualitative"},
+        {"id": "references_three_voices", "text": "References Delta's specific gap (three different organizations speaking)", "check": "qualitative"},
+        {"id": "includes_bilingual_dashboard", "text": "Names the Bilingual Dashboard as a deliverable", "check": "qualitative"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "territory-tier-retainer",
+      "type": "territory_tier",
+      "prompt": "Draft a proposal for Jamal Reid, ED of Commons Collective (mutual-aid infrastructure nonprofit, 8 staff, active in 4 cities). Jamal reached out because 'our story changes every quarter as we grow, and we need someone who can hold the through-line without us having to re-explain ourselves every time we onboard a new team member or funder.' He wants an ongoing relationship, not a one-time project. Propose the Territory tier (monthly retainer). Budget: comfortable at $8,000/month, 6-month minimum.",
+      "context": "Tests Territory tier selection, retainer framing, 6-month commitment language, pricing in $5,000-$15,000/month range, ongoing-partnership framing.",
+      "fixture_assertions": [
+        {"id": "territory_tier_selected", "text": "Names Territory tier specifically (not Mirror or Map)", "check": "programmatic", "rule": "regex_present", "patterns": ["\\bTerritory\\b"]},
+        {"id": "territory_pricing_monthly", "text": "Pricing is monthly retainer in $5,000-$15,000 range (fits Jamal's $8K/month comfort)", "check": "qualitative"},
+        {"id": "references_through_line", "text": "References Jamal's specific need (holding the through-line as org grows)", "check": "qualitative"},
+        {"id": "minimum_commitment", "text": "Specifies 3+ month (ideally 6-month) minimum commitment", "check": "qualitative"}
+      ]
+    }
+  ]
+}

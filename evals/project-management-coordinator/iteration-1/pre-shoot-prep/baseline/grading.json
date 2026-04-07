@@ -1,0 +1,48 @@
+{
+  "body_word_count": 1025,
+  "body_line_count": 99,
+  "expectations": [
+    {
+      "text": "Names specific deliverables (not vague 'outputs' or 'assets')",
+      "assertion_id": "concrete_deliverables",
+      "passed": true,
+      "evidence": "Names concrete items: 3 prompts, B-roll, safety b-roll, stand-alone piece vs composite options"
+    },
+    {
+      "text": "Includes concrete dates/milestones",
+      "assertion_id": "includes_timeline",
+      "passed": true,
+      "evidence": "Friday Apr 11 shoot, Wednesday for logistics confirmation, Thursday noon email, night-before checklist"
+    },
+    {
+      "text": "Avoids PM jargon (stakeholders, alignment, touchpoints, deliverables-cadence)",
+      "assertion_id": "no_pm_jargon",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames work in RP methodology terms where relevant (Bilingual Dashboard, Zero-Measurement Zone, etc.)",
+      "assertion_id": "rp_specific_framing",
+      "passed": true,
+      "evidence": "Mirror tier language, 'presence over preparation', arc/session framing, escort her toward the thing"
+    },
+    {
+      "text": "Has a concrete gear list (camera, audio, lights)",
+      "assertion_id": "gear_list",
+      "passed": true,
+      "evidence": "Detailed gear list: Camera+lenses, Media, Audio, Lighting, Support sections all itemized"
+    },
+    {
+      "text": "References that prompts need to be prepped ahead of time",
+      "assertion_id": "prompts_reference",
+      "passed": true,
+      "evidence": "'Draft them, sit with them overnight, revise Wednesday' explicit prompt-prep workflow"
+    },
+    {
+      "text": "Specifies what to send Ama on Thursday (call time, what to wear, prep)",
+      "assertion_id": "client_comm_thursday",
+      "passed": true,
+      "evidence": "Thursday email specified: arrival time, wardrobe solid colors, space prep, what to expect, logistics"
+    }
+  ]
+}

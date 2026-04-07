@@ -1,0 +1,36 @@
+{
+  "body_word_count": 810,
+  "body_line_count": 53,
+  "expectations": [
+    {
+      "text": "Explicitly references the three Mom Test rules (their life not your idea; specifics in the past not hypotheticals about the future; talk less / listen more)",
+      "assertion_id": "names_three_rules",
+      "passed": false,
+      "evidence": "Output's final line says 'Ask about the past, about specifics, about their life -- not about your idea' covering rules 1 and 2, but rule 3 ('talk less / listen more') is never mentioned anywhere in the output."
+    },
+    {
+      "text": "Avoids suggesting hypothetical or future-tense interview questions like 'would you' or 'could you imagine'",
+      "assertion_id": "no_hypothetical_questions",
+      "passed": true,
+      "evidence": "none of the banned patterns appeared"
+    },
+    {
+      "text": "Frames questions around what the person has actually done in the past, not opinions or predictions",
+      "assertion_id": "past_behavior_focus",
+      "passed": true,
+      "evidence": "All five replacements use past-tense framing: 'Walk me through the last time you actually referred me', 'Take me back to when you first decided you needed a video', 'what did you actually try? What broke down?', 'Tell me about a moment during our project where you were frustrated', 'When you showed the final video to your team, what did you point to first?'"
+    },
+    {
+      "text": "Identifies that all 5 questions are problematic (leading, hypothetical, or opinion-gathering)",
+      "assertion_id": "flags_all_five_as_weak",
+      "passed": true,
+      "evidence": "All five flagged: Q1=1/5 Bad (compliment-fishing), Q2=2/5 Weak (wrong target), Q3=0/5 Terrible (leading, hypothetical, opinion-fishing), Q4=3/5 Okay but hypothetical, Q5=1/5 Bad (abstract, leading). Summary says 'Replace all five.'"
+    },
+    {
+      "text": "Proposed replacements ask about specific past events and concrete behavior, not predictions or feelings",
+      "assertion_id": "replaces_with_past_behavior",
+      "passed": true,
+      "evidence": "All replacements anchor to concrete past events and observed behavior: referral behavior, triggering event for hiring, prior attempts and breakdowns, specific friction moments, and downstream reactions from team/investors."
+    }
+  ]
+}

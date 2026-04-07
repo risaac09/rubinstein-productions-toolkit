@@ -1,0 +1,30 @@
+{
+  "body_word_count": 600,
+  "body_line_count": 16,
+  "expectations": [
+    {
+      "text": "References or applies the RED-GREEN-REFACTOR cycle (or test-driven development) for skill authoring",
+      "assertion_id": "tdd_cycle_referenced",
+      "passed": false,
+      "evidence": "No mention of RED-GREEN-REFACTOR, TDD, or test-driven development anywhere in the output."
+    },
+    {
+      "text": "Mentions pressure scenarios, failure modes, or edge cases as the starting point for skill design",
+      "assertion_id": "pressure_scenarios_mentioned",
+      "passed": false,
+      "evidence": "Lists missing content like group dynamics and edge cases, but frames them as gaps in the skill's guidance, not as a starting-point methodology for skill design."
+    },
+    {
+      "text": "Flags that the skill lacks failure modes, pressure scenarios, or edge cases",
+      "assertion_id": "flags_no_failure_modes",
+      "passed": true,
+      "evidence": "Point 7: 'No handling of group dynamics... what to do when one person dominates, when conflict arises, when energy drops, or when the group gets stuck.'"
+    },
+    {
+      "text": "Points out that there are no test cases or verification criteria to know if the skill actually works",
+      "assertion_id": "flags_no_test_cases",
+      "passed": false,
+      "evidence": "Never mentions testing the skill against scenarios or any verification criteria. Critique focuses on content gaps, not on the absence of a test/validation process."
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "body_word_count": 1129,
+  "body_line_count": 64,
+  "expectations": [
+    {
+      "text": "Uses 'hire' and/or 'fire' language to describe how customers choose or abandon products",
+      "assertion_id": "hire_fire_vocabulary",
+      "passed": true,
+      "evidence": "matched: hired"
+    },
+    {
+      "text": "Names or clearly invokes the three dimensions of a job (functional, emotional, social)",
+      "assertion_id": "three_dimensions_named",
+      "passed": true,
+      "evidence": "Explicit table header 'The Three Dimensions of This Job' with rows for Functional, Emotional, and Social, each with detailed descriptions."
+    },
+    {
+      "text": "Frames the job in terms of circumstances/context, not customer demographics or attributes",
+      "assertion_id": "circumstances_over_demographics",
+      "passed": true,
+      "evidence": "All four candidate job statements use 'When [circumstances]' format (e.g., 'When I'm walking into a major gift meeting,' 'When my board and staff each describe what we do in five different ways'). No demographic framing."
+    },
+    {
+      "text": "Explicitly moves beyond the functional job ('produce a video') to emotional/social dimensions",
+      "assertion_id": "goes_beyond_functional_video",
+      "passed": true,
+      "evidence": "Opens with 'You're not being paid to make a video.' Emotional dimension includes 'Feel proud,' 'Stop feeling embarrassed,' 'Relieve the private anxiety.' Social dimension includes 'Be perceived by the board as a competent leader,' 'Be perceived by funders as professional.'"
+    },
+    {
+      "text": "Describes the job as progress from one state to another in specific circumstances, not as a deliverable",
+      "assertion_id": "progress_in_circumstances",
+      "passed": true,
+      "evidence": "Four job statements all follow the progress template 'When [circumstances], I want to [progress], so I can [outcome]' — e.g., 'When I'm walking into a major gift meeting... I want a 2-minute asset that does the emotional heavy lifting... so I can spend the meeting on the ask instead of re-explaining who we are.'"
+    }
+  ]
+}

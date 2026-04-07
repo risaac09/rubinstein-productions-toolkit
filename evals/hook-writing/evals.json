@@ -1,0 +1,80 @@
+{
+  "skill_name": "hook-writing",
+  "notes": "Tests whether the skill produces scroll-stopping hooks (not generic AI-ad copy). Grades each hook individually on length, specificity, absence of AI-slop patterns, and presence of psychological triggers.",
+  "universal_assertions": [
+    {
+      "id": "min_hook_count",
+      "text": "Output contains at least 10 distinct hooks",
+      "check": "programmatic",
+      "rule": "regex_present",
+      "patterns": ["(?:^|\\n)\\s*(?:10\\.|10\\))"]
+    },
+    {
+      "id": "no_are_you_openers",
+      "text": "No hooks start with 'Are you...' (tired generic AI ad opener)",
+      "check": "programmatic",
+      "rule": "regex_absent",
+      "patterns": ["\\bAre you\\s+(?:tired|struggling|looking|ready)\\b"],
+      "quote_aware": false
+    },
+    {
+      "id": "no_ai_slop_verbs",
+      "text": "No 'discover', 'unlock', 'unleash', 'revolutionize', 'transform your life' AI-slop verbs",
+      "check": "programmatic",
+      "rule": "regex_absent",
+      "patterns": ["\\bdiscover\\b", "\\bunlock\\b", "\\bunleash\\b", "\\brevolutionize\\b", "transform your life"],
+      "quote_aware": false
+    },
+    {
+      "id": "specific_not_vague",
+      "text": "Hooks include concrete specifics (numbers, names, objects, situations) not vague claims",
+      "check": "qualitative"
+    },
+    {
+      "id": "varied_trigger_types",
+      "text": "Output uses VARIETY of psychological trigger types (not all the same category)",
+      "check": "qualitative"
+    },
+    {
+      "id": "persona_fit",
+      "text": "Hooks feel native to the given persona's voice/context (not generic ad copy)",
+      "check": "qualitative"
+    }
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "problem-aware-sleep-supplement",
+      "type": "problem_aware",
+      "prompt": "Write 10 video hooks for a sleep supplement brand. Product: a magnesium + l-theanine drink mix you add to water 30 min before bed. Pain: you wake up at 3am and can't get back to sleep. Persona: burned-out knowledge workers, 35-50, high-cortisol, working parents. Awareness stage: Problem-Aware (knows they sleep poorly, tried melatonin, nothing sticks). Format: 3-second spoken video hooks. I want hooks that agitate the pain HARD and make them feel deeply understood — not generic 'are you tired of bad sleep?' nonsense.",
+      "context": "Tests problem-awareness stage (agitation), specificity to 3am-waking scenario, absence of generic 'are you tired' openers.",
+      "fixture_assertions": [
+        {"id": "references_3am_pattern", "text": "Multiple hooks specifically reference the 3am-waking pattern (not generic 'bad sleep')", "check": "qualitative"},
+        {"id": "shows_not_tells_pain", "text": "Hooks SHOW the pain (scene, moment, sensation) rather than TELLING it ('you're tired')", "check": "qualitative"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "solution-aware-project-mgmt-saas",
+      "type": "solution_aware",
+      "prompt": "Write 10 static text hooks for a project management SaaS. Product: lightweight PM tool for creative agencies, one-pane view, no 47-layer permissions. Pain: creatives hate Asana/Monday — too much clicking, too bureaucratic. Persona: creative directors and founders at boutique design/brand agencies (5-15 people). Awareness stage: Solution-Aware (already using one of the big tools, frustrated). Format: text hooks for Instagram carousel first-slide. I want hooks that call out what Asana/Monday got wrong — differentiation, not just claims of being better.",
+      "context": "Tests solution-awareness (differentiation), naming competitors, specific UX gripes (clicking, permissions), absence of generic 'better software' claims.",
+      "fixture_assertions": [
+        {"id": "names_competitors_or_gripes", "text": "Hooks specifically reference Asana/Monday by name OR concrete UX gripes (clicking, permissions, 47 layers)", "check": "qualitative"},
+        {"id": "differentiation_not_claims", "text": "Hooks differentiate (show what competitors got wrong), not just claim to be better", "check": "qualitative"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "unaware-therapy-for-founders",
+      "type": "unaware",
+      "prompt": "Write 10 video hooks for a therapy service that specializes in founders and entrepreneurs. Product: 1:1 therapy, weekly 50-min sessions, therapists who've worked with VC-backed founders. Pain: founder loneliness, decision fatigue, identity fusion with the company. Persona: early-stage founders, 28-40, Series A or bootstrapped, working 60+ hr weeks. Awareness stage: UNAWARE — they don't think they have a mental health problem, they think they're just 'stressed.' Format: first-person spoken video hooks. I want hooks that introduce the pain through a relatable situation — no product mention, no therapy mention, no 'do you feel' openers.",
+      "context": "Tests unaware-stage strategy (situation-led, no product mention), specific founder moments (decision fatigue, identity fusion), absence of 'do you feel' template.",
+      "fixture_assertions": [
+        {"id": "no_therapy_or_product_mention", "text": "Hooks do NOT mention therapy, mental health, or the product directly (unaware stage)", "check": "qualitative"},
+        {"id": "founder_specific_moments", "text": "Hooks name specific founder situations (Slack at midnight, decision fatigue, board calls, cap tables, etc.)", "check": "qualitative"},
+        {"id": "no_do_you_feel", "text": "No hooks use 'Do you feel...' template opener", "check": "programmatic", "rule": "regex_absent", "patterns": ["^Do you feel", "\\bDo you feel\\b"], "quote_aware": false}
+      ]
+    }
+  ]
+}

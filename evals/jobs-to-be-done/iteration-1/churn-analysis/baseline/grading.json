@@ -1,0 +1,36 @@
+{
+  "body_word_count": 558,
+  "body_line_count": 30,
+  "expectations": [
+    {
+      "text": "Uses 'hire' and/or 'fire' language to describe how customers choose or abandon products",
+      "assertion_id": "hire_fire_vocabulary",
+      "passed": true,
+      "evidence": "matched: hire"
+    },
+    {
+      "text": "Names or clearly invokes the three dimensions of a job (functional, emotional, social)",
+      "assertion_id": "three_dimensions_named",
+      "passed": false,
+      "evidence": "Output never names or invokes the three dimensions (functional, emotional, social). The phrase 'job-to-be-done' appears once in passing but the dimensional framework is absent."
+    },
+    {
+      "text": "Frames the job in terms of circumstances/context, not customer demographics or attributes",
+      "assertion_id": "circumstances_over_demographics",
+      "passed": true,
+      "evidence": "Analysis is grounded in circumstantial context: '2-month timing is a strong signal,' 'Walk me through the day you decided to cancel. What was happening?' No demographic framing appears."
+    },
+    {
+      "text": "Reframes the problem as a job-mismatch or competing-solution problem, not a pricing/marketing problem",
+      "assertion_id": "reframes_as_job_mismatch",
+      "passed": true,
+      "evidence": "Reframe section explicitly states: 'What job did users hire us for, and are we still doing that job in month 2?' and 'no amount of pricing, email, or referral tactics will fix it.'"
+    },
+    {
+      "text": "Asks what users are switching TO (what is getting hired in place of this product)",
+      "assertion_id": "asks_what_theyre_firing_for",
+      "passed": true,
+      "evidence": "Interview questions include 'What were you using before this? What are you using now?' which directly asks what is being hired in place of the product."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "eval_name": "rp-strategy-map",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 2417
+    },
+    {
+      "eval_name": "rp-strategy-map",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1355
+    },
+    {
+      "eval_name": "paid-ads-pain-persona",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1467
+    },
+    {
+      "eval_name": "paid-ads-pain-persona",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1252
+    },
+    {
+      "eval_name": "awareness-stage-mapping",
+      "mode": "with_skill",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 1182
+    },
+    {
+      "eval_name": "awareness-stage-mapping",
+      "mode": "baseline",
+      "prog_passed": 1,
+      "prog_total": 1,
+      "body_words": 698
+    }
+  ]
+}

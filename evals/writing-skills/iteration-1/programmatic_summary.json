@@ -1,0 +1,32 @@
+{
+  "runs": [
+    {
+      "eval_name": "draft-new-skill",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 1199
+    },
+    {
+      "eval_name": "draft-new-skill",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 848
+    },
+    {
+      "eval_name": "evaluate-skill-draft",
+      "mode": "with_skill",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 554
+    },
+    {
+      "eval_name": "evaluate-skill-draft",
+      "mode": "baseline",
+      "prog_passed": 0,
+      "prog_total": 0,
+      "body_words": 600
+    }
+  ]
+}
