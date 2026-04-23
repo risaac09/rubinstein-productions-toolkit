@@ -1,6 +1,6 @@
 ---
 name: proposal-scope-builder
-description: Generate professional project proposals and scopes of work for Rubinstein Productions Voice Liberation services. Use when Isaac needs to respond to client inquiries, create formal proposals, price projects, or convert outreach conversations into concrete offers across Mirror/Map/Territory service tiers. Integrates with pricing guardrails from the COO skill to ensure sustainable pricing and proper scope definition. Trigger for any phrase like "draft a proposal", "they want a scope", "price this out", "write up the engagement", or "they're interested".
+description: Generate professional project proposals and scopes of work for Rubinstein Productions Voice Liberation services. Use when Isaac needs to respond to client inquiries, create formal proposals, price projects, or convert outreach conversations into concrete offers across Founder Story/Program Engagement/Organizational Embedding service tiers. Integrates with pricing guardrails from the COO skill to ensure sustainable pricing and proper scope definition. Trigger for any phrase like "draft a proposal", "they want a scope", "price this out", "write up the engagement", or "they're interested".
 ---
 
 > **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/Practice/Rubinstein Productions/Content/Say Why - Canonical Positioning & Skill Embedding.md`
@@ -10,7 +10,7 @@ description: Generate professional project proposals and scopes of work for Rubi
 
 ## Overview
 
-This skill helps Isaac create professional, mission-aligned proposals that convert inquiries into booked Voice Liberation engagements while protecting his pricing boundaries and energy.
+This skill helps Isaac create professional, mission-aligned proposals that convert inquiries into booked Rubinstein Productions engagements while protecting his pricing boundaries and energy.
 
 ---
 
@@ -65,31 +65,30 @@ Before generating any proposal, conduct a brief discovery:
 
 | Client Situation | Recommended Tier |
 |-----------------|-----------------|
-| Wants 1:1 narrative clarity work | Tier 1 — Mirror (Voice Excavation Sessions) |
-| Organization needs strategy sprint | Tier 2 — Map (Narrative Strategy Sprint) |
-| Ongoing partnership / stewardship | Tier 3 — Territory (Voice Liberation Partnership) |
+| Wants 1:1 narrative clarity work | Tier 1 — Founder Story (Narrative Clarity Sessions) |
+| Organization needs strategy sprint | Tier 2 — Program Engagement (Strategic Facilitation Sprint) |
+| Ongoing partnership / stewardship | Tier 3 — Organizational Embedding (Strategic Partnership) |
 | Unclear message + needs full production | Tier 2 → Tier 3 pathway |
 
 **Selection Logic:**
-- Individual founder or leader, personal narrative work → Mirror
-- Team or organization, needs structured output (Dashboard, report) → Map
-- Recurring engagement, ongoing strategy → Territory
-- When in doubt: start with Map, offer Territory as natural next step in proposal
+- Individual founder or leader, personal narrative work → Founder Story
+- Team or organization, needs structured output (Dashboard, report) → Program Engagement
+- Recurring engagement, ongoing strategy → Organizational Embedding
+- When in doubt: start with Program Engagement, offer Organizational Embedding as natural next step in proposal
 
 ---
 
 ### Step 3: Pricing (Always Check COO Guardrails First)
 
-**Tier 1 — Mirror (Voice Excavation Sessions)**
-- Single session: $500–$1,500
-- 3-session arc: $2,500–$4,000
+**Tier 1 — Founder Story (Narrative Clarity Sessions)**
+- Single session: $1,500–$2,500
 
-**Tier 2 — Map (Narrative Strategy Sprint)**
+**Tier 2 — Program Engagement (Strategic Facilitation Sprint)**
 - Half-day: $3,000–$5,000
-- Full sprint (3–5 days): $6,000–$12,000
+- Full sprint (3–5 days): $3,000–$8,000
 
-**Tier 3 — Territory (Voice Liberation Partnership)**
-- Monthly retainer: $5,000–$15,000
+**Tier 3 — Organizational Embedding (Strategic Partnership)**
+- Monthly retainer: $4,000–$8,000/month
 - Minimum 3-month commitment
 
 **Floor:** $500/hr. Never go below regardless of framing.
@@ -110,7 +109,7 @@ Before generating any proposal, conduct a brief discovery:
 
 1. **Opening** — Connect to their mission in 2-3 sentences that show you've listened. Not generic. Reference the specific thing they said that revealed the gap.
 
-2. **Understanding Your Situation** — Name the Narrative Dysregulation pattern you're seeing. "Here's what I'm hearing between the lines..." This is where RP demonstrates depth.
+2. **Understanding Your Situation** — Name the pattern of alienation from honest expression you're seeing. "Here's what I'm hearing between the lines..." This is where RP demonstrates depth.
 
 3. **Proposed Engagement** — Service tier, specific deliverables, timeline with phases
    - Be specific about what they'll receive (Bilingual Dashboard, facilitation sessions, asset formats)
@@ -118,7 +117,7 @@ Before generating any proposal, conduct a brief discovery:
 
 4. **Investment** — Clear breakdown; payment terms (typically 50% deposit, 50% on delivery or monthly for Territory)
 
-5. **Why This Approach** — Brief articulation of the Generative Translation methodology. Why Voice Liberation, not just content strategy.
+5. **Why This Approach** — Brief articulation of the facilitation and film methodology. Why this approach, not just content strategy.
 
 6. **Next Steps** — One clear action to move forward
 
@@ -145,7 +144,7 @@ Before generating any proposal, conduct a brief discovery:
 Run the Client Acceptance Filter:
 
 1. Sacral yes? (gut, not cognitive override)
-2. Capacity available? (≤2 active Territory, ≤4 active Map)
+2. Capacity available? (≤2 active Organizational Embedding, ≤4 active Program Engagement)
 3. Pricing meets floor?
 4. Mission-aligned OR strategic bridge?
 5. Can deliver excellence without depletion?
