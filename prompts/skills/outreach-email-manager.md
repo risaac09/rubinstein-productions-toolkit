@@ -8,14 +8,14 @@ description: Draft outreach emails (cold outreach, follow-ups, proposals) for Ru
 
 # Outreach Email Manager
 
-Comprehensive workflow for creating, drafting, and tracking outreach emails for Rubinstein Productions — a Voice Liberation consultancy helping mission-driven organizations excavate and amplify their authentic narrative.
+Comprehensive workflow for creating, drafting, and tracking outreach emails for Rubinstein Productions — a facilitation and film practice helping mission-driven professionals express what's true about their work.
 
 ## Overview
 
 This skill handles the complete outreach email workflow:
 
 1. Gather context (organization, contact, angle, stage)
-2. Draft the email content — Voice Liberation framing, not generic consultant pitch
+2. Draft the email content — RP framing, not generic consultant pitch
 3. Create a Gmail draft for review
 4. Log the outreach to Airtable for tracking
 
@@ -57,7 +57,7 @@ Gather if not already provided:
 
 ### Step 2: Draft the Email
 
-**Voice Liberation email principles:**
+**RP outreach principles:**
 - Lead with *their* work, not ours
 - Name something specific — not "I love what you do" but "I noticed that your annual report leads with data and your website leads with story — there's a gap worth exploring"
 - Brief: 3-4 short paragraphs for cold outreach
@@ -66,7 +66,7 @@ Gather if not already provided:
 
 **Email framing by type:**
 
-*Cold outreach:* Problem-first. Name the Narrative Dysregulation pattern you see in their public materials before offering anything.
+*Cold outreach:* Problem-first. Name the gap between what they do and what they say publicly in their public materials before offering anything.
 
 *Follow-up:* Connection-forward. Reference what was real in the previous conversation. Not "following up" — "I've been thinking about what you said about [X]..."
 
@@ -87,7 +87,7 @@ SUBJECT: [subject line]
 [Email body]
 
 — Isaac Rubinstein
-Rubinstein Productions | Voice Liberation
+Rubinstein Productions | Facilitation & Film
 [contact info]
 ```
 
