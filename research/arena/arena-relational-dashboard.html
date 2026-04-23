@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arena of Epistemologies — Relational Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; color: #c8c8d0; font-family: 'SF Mono', 'Fira Code', monospace; overflow-x: hidden; }
+
+  .header { padding: 24px 32px; border-bottom: 1px solid #1a1a2e; }
+  .header h1 { font-size: 18px; color: #e8e8f0; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; }
+  .header .subtitle { font-size: 12px; color: #666680; margin-top: 4px; }
+
+  .nav { display: flex; gap: 0; border-bottom: 1px solid #1a1a2e; background: #0d0d14; }
+  .nav button {
+    background: none; border: none; color: #666680; padding: 12px 24px;
+    font-family: inherit; font-size: 12px; cursor: pointer; letter-spacing: 1px;
+    text-transform: uppercase; border-bottom: 2px solid transparent; transition: all 0.2s;
+  }
+  .nav button:hover { color: #a0a0b0; }
+  .nav button.active { color: #c8c8d0; border-bottom-color: #4a6fa5; }
+
+  .panel { display: none; padding: 24px 32px; min-height: calc(100vh - 120px); }
+  .panel.active { display: block; }
+
+  /* Network Graph */
+  #network-panel svg { width: 100%; height: calc(100vh - 160px); }
+  .node circle { cursor: pointer; stroke-width: 2px; }
+  .node text { font-size: 10px; fill: #a0a0b0; pointer-events: none; }
+  .link { stroke-opacity: 0.4; fill: none; }
+  .link-encounter { stroke: #4a6fa5; }
+  .link-precondition { stroke: #6fa54a; stroke-dasharray: 5,3; }
+  .link-genealogy { stroke: #a54a6f; stroke-dasharray: 2,2; }
+  .link-complement { stroke: #a5946f; stroke-dasharray: 8,4; }
+
+  .tooltip {
+    position: absolute; background: #14141f; border: 1px solid #2a2a3e;
+    padding: 12px 16px; border-radius: 4px; font-size: 11px; max-width: 320px;
+    pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 100;
+    line-height: 1.6;
+  }
+  .tooltip .tt-name { color: #e8e8f0; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .tooltip .tt-score { color: #4a6fa5; }
+  .tooltip .tt-vuln { color: #a54a4a; font-size: 10px; margin-top: 6px; }
+
+  .legend { position: absolute; bottom: 20px; left: 32px; font-size: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .legend-line { width: 30px; height: 2px; }
+
+  /* Score Trajectories */
+  #trajectory-panel .traj-container { display: flex; flex-wrap: wrap; gap: 16px; }
+  .traj-card {
+    background: #10101a; border: 1px solid #1a1a2e; border-radius: 4px;
+    padding: 16px; width: calc(33.33% - 12px); min-width: 280px;
+  }
+  .traj-card .claim-name { font-size: 13px; color: #e8e8f0; margin-bottom: 2px; }
+  .traj-card .claim-score { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .traj-card svg { width: 100%; height: 60px; }
+  .traj-dot { fill: #4a6fa5; }
+  .traj-line { stroke: #4a6fa5; stroke-width: 1.5; fill: none; }
+  .traj-label { font-size: 9px; fill: #666680; }
+
+  .score-20 { color: #ffd700; }
+  .score-19 { color: #c0a0ff; }
+  .score-18 { color: #4a6fa5; }
+  .score-17 { color: #6fa54a; }
+
+  /* Genealogy */
+  #genealogy-panel svg { width: 100%; height: calc(100vh - 160px); }
+  .gen-node rect { rx: 4; ry: 4; }
+  .gen-alive rect { fill: #1a2a1a; stroke: #4a6fa5; }
+  .gen-dead rect { fill: #1a1a1a; stroke: #3a3a3a; }
+  .gen-node text { font-size: 10px; fill: #c8c8d0; }
+  .gen-link { stroke: #a54a6f; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+
+  /* Vulnerability Heatmap */
+  #vuln-panel .vuln-grid { overflow-x: auto; }
+  .vuln-grid table { border-collapse: collapse; font-size: 11px; }
+  .vuln-grid th, .vuln-grid td { padding: 8px 12px; border: 1px solid #1a1a2e; text-align: center; }
+  .vuln-grid th { background: #10101a; color: #a0a0b0; font-weight: 400; position: sticky; top: 0; }
+  .vuln-grid th.row-header { text-align: left; position: sticky; left: 0; background: #10101a; z-index: 2; min-width: 180px; }
+  .vuln-grid td.row-header { text-align: left; position: sticky; left: 0; background: #0d0d14; z-index: 1; min-width: 180px; color: #c8c8d0; }
+  .vuln-low { background: #1a2a1a; color: #6fa54a; }
+  .vuln-med { background: #2a2a1a; color: #a5946f; }
+  .vuln-high { background: #2a1a1a; color: #a54a4a; }
+  .vuln-const { background: #1a1a2a; color: #6f6fa5; }
+  .vuln-clear { background: transparent; color: #333; }
+  .vuln-guard { background: #0d1a0d; color: #4a6f4a; }
+
+  /* Kill Criteria */
+  #kill-panel .kill-container { display: flex; flex-direction: column; gap: 16px; }
+  .kill-bar-container { display: flex; align-items: center; gap: 12px; }
+  .kill-name { width: 240px; font-size: 11px; color: #a0a0b0; text-align: right; }
+  .kill-bar { height: 20px; background: #4a2a2a; border-radius: 2px; transition: width 0.5s; position: relative; }
+  .kill-bar .bar-label { position: absolute; right: 6px; top: 2px; font-size: 10px; color: #e8e8f0; }
+  .kill-bar.lethal { background: #6f2a2a; }
+  .kill-bar.tested { background: #2a3a4a; }
+
+  /* Adjacency Matrix */
+  #adjacency-panel .adj-grid { overflow: auto; max-height: calc(100vh - 200px); }
+  .adj-grid table { border-collapse: collapse; }
+  .adj-grid th, .adj-grid td { width: 40px; height: 40px; text-align: center; font-size: 9px; border: 1px solid #1a1a2e; }
+  .adj-grid th { background: #10101a; color: #888; writing-mode: vertical-rl; text-orientation: mixed; padding: 4px; min-width: 40px; }
+  .adj-grid th.row-h { writing-mode: horizontal-tb; text-align: right; padding-right: 8px; min-width: 160px; }
+  .adj-encountered { background: #1a2a3a; color: #4a6fa5; cursor: pointer; }
+  .adj-untested { background: #0d0d14; color: #222; }
+  .adj-self { background: #1a1a1a; }
+  .adj-encountered:hover { background: #2a3a5a; }
+
+  .section-title { font-size: 14px; color: #e8e8f0; margin-bottom: 16px; letter-spacing: 1px; }
+  .section-desc { font-size: 11px; color: #666680; margin-bottom: 20px; line-height: 1.6; max-width: 700px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Arena of Epistemologies — Relational Dashboard</h1>
+  <div class="subtitle">82 rounds / 19 survivors / rhizomatic layer of the same data</div>
+</div>
+
+<div class="nav">
+  <button class="active" onclick="showPanel('network')">Network</button>
+  <button onclick="showPanel('trajectory')">Score Trajectories</button>
+  <button onclick="showPanel('genealogy')">Genealogy</button>
+  <button onclick="showPanel('vuln')">Vulnerability Map</button>
+  <button onclick="showPanel('kill')">Kill Criteria</button>
+  <button onclick="showPanel('adjacency')">Adjacency Matrix</button>
+</div>
+
+<div id="network-panel" class="panel active"></div>
+<div id="trajectory-panel" class="panel"></div>
+<div id="genealogy-panel" class="panel"></div>
+<div id="vuln-panel" class="panel"></div>
+<div id="kill-panel" class="panel"></div>
+<div id="adjacency-panel" class="panel"></div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ============ DATA ============
+const claims = [
+  { id: "ABKT", name: "ABKT Laundering Problem", score: 20, tier: "apex", layer: "meta",
+    trajectory: [{phase:"P1",score:19},{phase:"T1",score:20},{phase:"T9",score:19},{phase:"C3",score:20}],
+    vulns: [{v:"Self-referential paralysis",sev:"low"},{v:"Anthropocentric frame",sev:"med"}],
+    killSurvived: ["Level-confusion","Genealogical absorption","Abstraction-as-Erasure"] },
+  { id: "TPL", name: "Temporal-Predictive Lock", score: 19, tier: "spine", layer: "mechanism",
+    trajectory: [{phase:"P1",score:18},{phase:"T6",score:19},{phase:"C2",score:19}],
+    vulns: [{v:"Clinical framing obscures politics",sev:"low"}],
+    killSurvived: ["Therapeutic Reductionism","Computational Quietism"] },
+  { id: "ST", name: "Sociogenic Thermodynamics", score: 19, tier: "spine", layer: "mechanism",
+    trajectory: [{phase:"C1",score:19}],
+    vulns: [{v:"Anthropocentric frame",sev:"med"},{v:"Over-abstraction risk",sev:"low"}],
+    killSurvived: ["Thermodynamic aestheticization","Genealogical absorption"] },
+  { id: "SLC", name: "Sedimentation-Lock Continuum", score: 19, tier: "spine", layer: "mechanism",
+    trajectory: [{phase:"C2",score:19}],
+    vulns: [{v:"Phase-transition markers unspecified",sev:"med"}],
+    killSurvived: ["Grammar/Prior Collapse"] },
+  { id: "CV", name: "Captive Voice", score: 19, tier: "spine", layer: "voice",
+    trajectory: [{phase:"T11",score:18},{phase:"CB4",score:19}],
+    vulns: [{v:"PIC-specificity risk",sev:"med"}],
+    killSurvived: ["Flattening critique","Strategic Deferral"] },
+  { id: "RS", name: "Racialized Soma", score: 18, tier: "field", layer: "precondition",
+    trajectory: [{phase:"P1",score:17},{phase:"T15",score:18},{phase:"CB1",score:18}],
+    vulns: [{v:"Identity essentialism drift",sev:"low"}],
+    killSurvived: ["Unmarked Body Assumption","Abstraction-as-Erasure"] },
+  { id: "DC", name: "Double Consciousness", score: 18, tier: "field", layer: "precondition",
+    trajectory: [{phase:"P1",score:18},{phase:"T7",score:18},{phase:"CB2",score:18}],
+    vulns: [{v:"Liberal-multicultural reading risk",sev:"med"}],
+    killSurvived: ["Flattening critique","Abstraction-as-Erasure"] },
+  { id: "AG", name: "Autonomic Gate", score: 18, tier: "field", layer: "precondition",
+    trajectory: [{phase:"T10",score:18},{phase:"CB3",score:18}],
+    vulns: [{v:"Reduces to 'check in with body'",sev:"med"}],
+    killSurvived: ["Therapeutic Reductionism","McMindfulness"] },
+  { id: "NSA", name: "Non-Self Asymmetry", score: 18, tier: "field", layer: "precondition",
+    trajectory: [{phase:"P1",score:19},{phase:"T9",score:18},{phase:"CB3",score:18}],
+    vulns: [{v:"Reinscribes liberal subject as default",sev:"med"}],
+    killSurvived: ["Sacred Attention Universalism","McMindfulness"] },
+  { id: "CLP", name: "Coupling Layer Problem", score: 18, tier: "field", layer: "interface",
+    trajectory: [{phase:"T3",score:18},{phase:"T16",score:18},{phase:"CB4",score:18}],
+    vulns: [{v:"Proceduralism drift",sev:"med"}],
+    killSurvived: ["Level-confusion","Abstraction-as-Erasure"] },
+  { id: "FR", name: "Friction", score: 18, tier: "field", layer: "interface",
+    trajectory: [{phase:"P1",score:17},{phase:"T16",score:18},{phase:"CB4",score:18}],
+    vulns: [{v:"UX co-optation risk",sev:"med"}],
+    killSurvived: ["Platform Reformism Capture","McMindfulness"] },
+  { id: "CC", name: "Captive Care", score: 18, tier: "field", layer: "interface",
+    trajectory: [{phase:"T11",score:18},{phase:"CB4",score:18}],
+    vulns: [{v:"Visibility paradox hard to operationalize",sev:"high"}],
+    killSurvived: ["Flattening critique","Therapeutic Reductionism"] },
+  { id: "WI", name: "Witnessing", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T14",score:17},{phase:"CB5",score:17}],
+    vulns: [{v:"Liberal witnessing drift",sev:"med"}],
+    killSurvived: ["Sacred Attention Universalism"] },
+  { id: "SS", name: "Structural Soma", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T4",score:17},{phase:"CB6",score:17}],
+    vulns: [{v:"Causal chain asserted not demonstrated",sev:"high"}],
+    killSurvived: ["Unmarked Body Assumption"] },
+  { id: "PD", name: "Precision-Degradation", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T8",score:17},{phase:"CB6",score:17}],
+    vulns: [{v:"Unfalsifiability risk",sev:"high"}],
+    killSurvived: ["Abstraction-as-Erasure"] },
+  { id: "GS", name: "Genre of Spiritual", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T7",score:17},{phase:"CB7",score:17}],
+    vulns: [{v:"Domain-specific by design",sev:"const"}],
+    killSurvived: ["Sacred Attention Universalism"] },
+  { id: "RC", name: "Racial Capitalism", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T12",score:18},{phase:"CB2",score:17},{phase:"CB7",score:17}],
+    vulns: [{v:"Robinson framework well-trodden",sev:"med"}],
+    killSurvived: ["Thermodynamic aestheticization","Genealogical absorption"] },
+  { id: "ODB", name: "Org Double-Bind", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T10",score:17},{phase:"CB8",score:17}],
+    vulns: [{v:"Kegan teleology must not lead",sev:"med"}],
+    killSurvived: ["Level-confusion"] },
+  { id: "MS", name: "Measurement Sovereignty", score: 17, tier: "support", layer: "toolkit",
+    trajectory: [{phase:"T16",score:17},{phase:"CB8",score:17}],
+    vulns: [{v:"Proceduralism drift",sev:"med"}],
+    killSurvived: ["Platform Reformism Capture"] }
+];
+
+// Relationships
+const relationships = [
+  // Direct encounters
+  {source:"ABKT",target:"NSA",type:"encounter",label:"T9: both drop 1"},
+  {source:"ABKT",target:"ST",type:"encounter",label:"C3: ABKT->20 via NT ancestor"},
+  {source:"TPL",target:"SLC",type:"encounter",label:"C2: SLC born from TPL+PBSC"},
+  {source:"CV",target:"CC",type:"encounter",label:"T11: both survive at 18"},
+  {source:"CLP",target:"FR",type:"encounter",label:"T16: both promoted to 18"},
+  {source:"DC",target:"GS",type:"encounter",label:"T7: both survive"},
+  {source:"AG",target:"ODB",type:"encounter",label:"T10: both survive"},
+  // Precondition chains
+  {source:"SS",target:"RS",type:"precondition",label:"infrastructure produces soma"},
+  {source:"RS",target:"AG",type:"precondition",label:"soma is material premise of gate"},
+  {source:"SS",target:"CLP",type:"precondition",label:"CLP presupposes pipeline"},
+  {source:"AG",target:"NSA",type:"precondition",label:"gate must be navigated first"},
+  {source:"NSA",target:"WI",type:"precondition",label:"non-self threshold for witnessing"},
+  // Genealogy
+  {source:"TPL",target:"SLC",type:"genealogy",label:"parent-child"},
+  {source:"SLC",target:"CV",type:"genealogy",label:"continuum specifies voice trap"},
+  // Complements
+  {source:"CV",target:"CC",type:"complement",label:"voice + care = two faces of capture"},
+  {source:"CV",target:"WI",type:"complement",label:"production + reception"},
+  {source:"CLP",target:"FR",type:"complement",label:"diagnosis + prescription"},
+  {source:"DC",target:"PD",type:"complement",label:"DC is pathway for precision degradation"},
+  {source:"GS",target:"ABKT",type:"complement",label:"domain application of ABKT"},
+  {source:"ODB",target:"CLP",type:"complement",label:"ODB is CLP in org context"},
+  {source:"MS",target:"ABKT",type:"complement",label:"democratic counter to laundering"},
+  {source:"ABKT",target:"ST",type:"complement",label:"meta-critique + mechanism"},
+  {source:"RC",target:"SS",type:"complement",label:"extraction + infrastructure pipeline"},
+];
+
+const tierColors = { apex: "#ffd700", spine: "#c0a0ff", field: "#4a6fa5", support: "#6fa54a" };
+const layerColors = { meta: "#ffd700", mechanism: "#c0a0ff", voice: "#ff6fa5", precondition: "#4a6fa5", interface: "#6fa5a5", toolkit: "#6fa54a" };
+const linkColors = { encounter: "#4a6fa5", precondition: "#6fa54a", genealogy: "#a54a6f", complement: "#a5946f" };
+
+// ============ NAV ============
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id + '-panel').classList.add('active');
+  event.target.classList.add('active');
+  if (id === 'network' && !document.querySelector('#network-panel svg')) buildNetwork();
+  if (id === 'trajectory') buildTrajectories();
+  if (id === 'genealogy' && !document.querySelector('#genealogy-panel svg')) buildGenealogy();
+  if (id === 'vuln') buildVuln();
+  if (id === 'kill') buildKill();
+  if (id === 'adjacency') buildAdjacency();
+}
+
+// ============ 1. NETWORK GRAPH ============
+function buildNetwork() {
+  const panel = document.getElementById('network-panel');
+  const w = panel.clientWidth, h = window.innerHeight - 160;
+
+  const svg = d3.select(panel).append('svg').attr('width', w).attr('height', h);
+  const g = svg.append('g');
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', (e) => g.attr('transform', e.transform)));
+
+  const sim = d3.forceSimulation(claims)
+    .force('link', d3.forceLink(relationships).id(d => d.id).distance(d => d.type === 'precondition' ? 120 : 160))
+    .force('charge', d3.forceManyBody().strength(-400))
+    .force('center', d3.forceCenter(w/2, h/2))
+    .force('collision', d3.forceCollide().radius(d => Math.sqrt(d.score) * 8 + 10));
+
+  const link = g.selectAll('.link').data(relationships).enter().append('line')
+    .attr('class', d => 'link link-' + d.type)
+    .attr('stroke', d => linkColors[d.type])
+    .attr('stroke-width', d => d.type === 'encounter' ? 2 : 1.5);
+
+  const node = g.selectAll('.node').data(claims).enter().append('g')
+    .attr('class', 'node')
+    .call(d3.drag().on('start', dragStart).on('drag', dragging).on('end', dragEnd));
+
+  node.append('circle')
+    .attr('r', d => d.score * 2.2)
+    .attr('fill', d => tierColors[d.tier] + '20')
+    .attr('stroke', d => tierColors[d.tier]);
+
+  node.append('text')
+    .attr('dy', d => d.score * 2.2 + 14)
+    .attr('text-anchor', 'middle')
+    .text(d => d.id);
+
+  // Score inside circle
+  node.append('text')
+    .attr('dy', 4)
+    .attr('text-anchor', 'middle')
+    .attr('fill', d => tierColors[d.tier])
+    .attr('font-size', '12px')
+    .attr('font-weight', '700')
+    .text(d => d.score);
+
+  const tooltip = document.getElementById('tooltip');
+  node.on('mouseover', (e, d) => {
+    const vulnHtml = d.vulns.map(v => `<span class="tt-vuln">${v.sev.toUpperCase()}: ${v.v}</span>`).join('<br>');
+    tooltip.innerHTML = `<div class="tt-name">${d.name}</div><div class="tt-score">Score: ${d.score}/20 | Tier: ${d.tier} | Layer: ${d.layer}</div><div style="margin-top:6px;font-size:10px;color:#666">Kill criteria survived: ${d.killSurvived.join(', ')}</div>${vulnHtml ? '<br>' + vulnHtml : ''}`;
+    tooltip.style.opacity = 1;
+    tooltip.style.left = (e.pageX + 12) + 'px';
+    tooltip.style.top = (e.pageY - 12) + 'px';
+    // Highlight connected
+    link.attr('stroke-opacity', l => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.08);
+    node.select('circle').attr('opacity', n => {
+      if (n.id === d.id) return 1;
+      return relationships.some(r => (r.source.id === d.id && r.target.id === n.id) || (r.target.id === d.id && r.source.id === n.id)) ? 1 : 0.15;
+    });
+  }).on('mouseout', () => {
+    tooltip.style.opacity = 0;
+    link.attr('stroke-opacity', 0.4);
+    node.select('circle').attr('opacity', 1);
+  }).on('mousemove', (e) => {
+    tooltip.style.left = (e.pageX + 12) + 'px';
+    tooltip.style.top = (e.pageY - 12) + 'px';
+  });
+
+  sim.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  function dragStart(e, d) { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+  function dragging(e, d) { d.fx = e.x; d.fy = e.y; }
+  function dragEnd(e, d) { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }
+
+  // Legend
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  legend.innerHTML = `
+    <div style="font-size:11px;color:#888;margin-bottom:8px;letter-spacing:1px">LINK TYPES</div>
+    <div class="legend-item"><div class="legend-line" style="background:#4a6fa5"></div>Direct encounter</div>
+    <div class="legend-item"><div class="legend-line" style="background:#6fa54a;border-top:2px dashed #6fa54a;height:0"></div>Precondition chain</div>
+    <div class="legend-item"><div class="legend-line" style="background:#a54a6f;border-top:2px dotted #a54a6f;height:0"></div>Genealogy</div>
+    <div class="legend-item"><div class="legend-line" style="background:#a5946f;border-top:2px dashed #a5946f;height:0"></div>Complement</div>
+    <div style="font-size:11px;color:#888;margin:12px 0 8px;letter-spacing:1px">NODE SIZE = SCORE</div>
+    <div class="legend-item"><span style="color:#ffd700">&#9679;</span> Apex (20)</div>
+    <div class="legend-item"><span style="color:#c0a0ff">&#9679;</span> Spine (19)</div>
+    <div class="legend-item"><span style="color:#4a6fa5">&#9679;</span> Field (18)</div>
+    <div class="legend-item"><span style="color:#6fa54a">&#9679;</span> Support (17)</div>
+  `;
+  panel.appendChild(legend);
+}
+
+// ============ 2. SCORE TRAJECTORIES ============
+function buildTrajectories() {
+  const panel = document.getElementById('trajectory-panel');
+  panel.innerHTML = '<div class="section-title">Score Trajectories</div><div class="section-desc">Each claim\'s score movement across Arena phases. Flat lines = stability under pressure. Drops = vulnerability exposed. Rises = combat-forged strength.</div><div class="traj-container"></div>';
+  const container = panel.querySelector('.traj-container');
+
+  const phaseOrder = ["P1","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","C1","C2","C3","C4","Recon","CB1","CB2","CB3","CB4","CB5","CB6","CB7","CB8"];
+
+  claims.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'traj-card';
+    const scoreClass = c.score >= 20 ? 'score-20' : c.score >= 19 ? 'score-19' : c.score >= 18 ? 'score-18' : 'score-17';
+    card.innerHTML = `<div class="claim-name">${c.name}</div><div class="claim-score ${scoreClass}">${c.score}</div>`;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 240 60');
+
+    const traj = c.trajectory;
+    if (traj.length > 1) {
+      const xScale = (i) => 20 + (i / (traj.length - 1)) * 200;
+      const yScale = (s) => 55 - ((s - 15) / 6) * 50;
+
+      // Line
+      let pathD = traj.map((t, i) => `${i === 0 ? 'M' : 'L'}${xScale(i)},${yScale(t.score)}`).join(' ');
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', pathD);
+      path.setAttribute('class', 'traj-line');
+      svg.appendChild(path);
+
+      // Dots + labels
+      traj.forEach((t, i) => {
+        const cx = xScale(i), cy = yScale(t.score);
+        const circle = document.createElementNS(svgNS, 'circle');
+        circle.setAttribute('cx', cx); circle.setAttribute('cy', cy);
+        circle.setAttribute('r', 3); circle.setAttribute('class', 'traj-dot');
+        svg.appendChild(circle);
+
+        const label = document.createElementNS(svgNS, 'text');
+        label.setAttribute('x', cx); label.setAttribute('y', cy - 8);
+        label.setAttribute('text-anchor', 'middle'); label.setAttribute('class', 'traj-label');
+        label.textContent = t.phase + ':' + t.score;
+        svg.appendChild(label);
+      });
+    } else {
+      const text = document.createElementNS(svgNS, 'text');
+      text.setAttribute('x', 120); text.setAttribute('y', 35);
+      text.setAttribute('text-anchor', 'middle'); text.setAttribute('fill', '#444');
+      text.setAttribute('font-size', '10');
+      text.textContent = `Born at ${traj[0].phase} at ${traj[0].score} — held`;
+      svg.appendChild(text);
+    }
+
+    card.appendChild(svg);
+    container.appendChild(card);
+  });
+}
+
+// ============ 3. GENEALOGY ============
+function buildGenealogy() {
+  const panel = document.getElementById('genealogy-panel');
+  panel.innerHTML = '<div class="section-title">Genealogy Map — The Arena Ate Its Parents</div><div class="section-desc">Merger lineages. Dead ancestors in gray, living offspring in color. Three complete parent-death cycles where offspring outperformed and then killed their progenitors.</div>';
+
+  const w = panel.clientWidth, h = window.innerHeight - 200;
+  const svg = d3.select(panel).append('svg').attr('width', w).attr('height', h);
+  const g = svg.append('g').attr('transform', 'translate(40, 40)');
+
+  // Define arrowhead
+  svg.append('defs').append('marker').attr('id', 'arrowhead')
+    .attr('viewBox', '0 0 10 10').attr('refX', 10).attr('refY', 5)
+    .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
+    .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', '#a54a6f');
+
+  const genNodes = [
+    // Row 0: Original ancestors
+    {id:"TT",name:"Trauma Time",score:18,alive:false,x:80,y:0},
+    {id:"PMR",name:"Predictive Model Rigidity",score:18,alive:false,x:280,y:0},
+    {id:"SAM_orig",name:"SAM",score:19,alive:false,x:520,y:0},
+    {id:"NT_orig",name:"Necro-Thermodynamics",score:19,alive:false,x:720,y:0},
+    {id:"PBSC_orig",name:"Performativity (PBSC)",score:19,alive:false,x:950,y:0},
+    // Row 1: First generation
+    {id:"TPL_g",name:"TPL (19)",score:19,alive:true,x:180,y:120},
+    {id:"SAM_g",name:"SAM (merged, 19)",score:19,alive:false,x:520,y:80},
+    // Row 2: Second generation
+    {id:"ST_g",name:"Sociogenic Thermodynamics (19)",score:19,alive:true,x:620,y:200},
+    {id:"SLC_g",name:"Sedimentation-Lock Continuum (19)",score:19,alive:true,x:420,y:200},
+    {id:"NTL_g",name:"NTL (18, killed)",score:18,alive:false,x:820,y:200},
+    {id:"CV_g",name:"Captive Voice (19)",score:19,alive:true,x:180,y:200},
+    // Annotations
+    {id:"ABKT_ref",name:"ABKT (20, absorbed SE)",score:20,alive:true,x:920,y:120},
+  ];
+
+  const genLinks = [
+    {source:"TT",target:"TPL_g"},{source:"PMR",target:"TPL_g"},
+    {source:"TPL_g",target:"SLC_g"},{source:"PBSC_orig",target:"SLC_g"},
+    {source:"SAM_orig",target:"SAM_g"},{source:"SAM_g",target:"ST_g"},{source:"NT_orig",target:"ST_g"},
+    {source:"NT_orig",target:"NTL_g"},{source:"ABKT_ref",target:"NTL_g"},
+    {source:"PBSC_orig",target:"CV_g"},
+  ];
+
+  const nodeMap = {};
+  genNodes.forEach(n => nodeMap[n.id] = n);
+
+  // Links
+  genLinks.forEach(l => {
+    const s = nodeMap[l.source], t = nodeMap[l.target];
+    g.append('line')
+      .attr('x1', s.x + 60).attr('y1', s.y + 20)
+      .attr('x2', t.x + 60).attr('y2', t.y)
+      .attr('class', 'gen-link');
+  });
+
+  // Nodes
+  const nodeG = g.selectAll('.gen-node').data(genNodes).enter().append('g')
+    .attr('class', d => 'gen-node ' + (d.alive ? 'gen-alive' : 'gen-dead'))
+    .attr('transform', d => `translate(${d.x}, ${d.y})`);
+
+  nodeG.append('rect').attr('width', 120).attr('height', 36)
+    .attr('fill', d => d.alive ? '#0a1a0a' : '#0a0a0a')
+    .attr('stroke', d => d.alive ? tierColors[d.score >= 20 ? 'apex' : d.score >= 19 ? 'spine' : 'field'] : '#333')
+    .attr('stroke-width', d => d.alive ? 2 : 1);
+
+  nodeG.append('text').attr('x', 60).attr('y', 15).attr('text-anchor', 'middle')
+    .attr('font-size', '9px').attr('fill', d => d.alive ? '#e8e8f0' : '#666')
+    .text(d => d.name.length > 20 ? d.name.substring(0, 18) + '...' : d.name);
+
+  nodeG.append('text').attr('x', 60).attr('y', 28).attr('text-anchor', 'middle')
+    .attr('font-size', '10px').attr('fill', d => d.alive ? '#ffd700' : '#444')
+    .text(d => d.alive ? 'ALIVE' : 'KILLED');
+
+  // Pattern annotation
+  g.append('text').attr('x', w/2 - 40).attr('y', h - 80)
+    .attr('text-anchor', 'middle').attr('fill', '#666').attr('font-size', '12px')
+    .text('Pattern: offspring patch exactly the vulnerabilities parents exposed in combat');
+}
+
+// ============ 4. VULNERABILITY HEATMAP ============
+function buildVuln() {
+  const panel = document.getElementById('vuln-panel');
+
+  const killCriteria = [
+    "Rupture-fantasy","Level-confusion","McMindfulness","Thermo aestheticization",
+    "Genealogical absorption","Unmarked Body","Flattening critique","Strategic Deferral",
+    "Grammar/Prior Collapse","Abstraction-as-Erasure","Computational Quietism",
+    "Genre Naturalization","Dissolution Demand","Therapeutic Reductionism",
+    "Sacred Attention Universalism","Platform Reformism"
+  ];
+
+  // Map claims to which criteria they survived
+  const survivalMap = {};
+  claims.forEach(c => {
+    survivalMap[c.id] = {};
+    c.killSurvived.forEach(k => {
+      // Match to short names
+      killCriteria.forEach(kc => {
+        if (k.toLowerCase().includes(kc.toLowerCase().split(' ')[0]) || kc.toLowerCase().includes(k.toLowerCase().split(' ')[0])) {
+          survivalMap[c.id][kc] = 'survived';
+        }
+      });
+    });
+  });
+
+  let html = '<div class="section-title">Vulnerability Map + Kill Criteria Survival</div>';
+  html += '<div class="section-desc">Green = survived this criterion. Red = known vulnerability. Gray = untested. The untested cells are where the rhizomatic layer has the most to reveal.</div>';
+  html += '<div class="vuln-grid"><table><tr><th class="row-header">Claim</th>';
+  killCriteria.forEach(k => html += `<th style="font-size:9px;min-width:80px">${k}</th>`);
+  html += '<th style="min-width:200px">Known Vulnerabilities</th></tr>';
+
+  claims.forEach(c => {
+    html += `<tr><td class="row-header">${c.id} (${c.score})</td>`;
+    killCriteria.forEach(k => {
+      const status = survivalMap[c.id][k];
+      if (status === 'survived') {
+        html += '<td class="vuln-guard">&#10003;</td>';
+      } else {
+        html += '<td class="vuln-clear">-</td>';
+      }
+    });
+    const vulnStr = c.vulns.map(v => `<span style="color:${v.sev==='high'?'#a54a4a':v.sev==='med'?'#a5946f':v.sev==='const'?'#6f6fa5':'#6fa54a'}">[${v.sev}] ${v.v}</span>`).join('<br>');
+    html += `<td style="text-align:left;font-size:10px">${vulnStr}</td></tr>`;
+  });
+
+  html += '</table></div>';
+  panel.innerHTML = html;
+}
+
+// ============ 5. KILL CRITERIA ============
+function buildKill() {
+  const panel = document.getElementById('kill-panel');
+
+  const criteria = [
+    {name:"Genealogical absorption",kills:40,tests:60,desc:"Most lethal. 'X is subset of Y' was primary cull mechanism."},
+    {name:"Therapeutic Reductionism",kills:8,tests:25,desc:"Most tested. Every healing/practice claim faced it."},
+    {name:"Abstraction-as-Erasure",kills:6,tests:18,desc:"Key differentiator: held bodies vs pure theory."},
+    {name:"Sacred Attention Universalism",kills:5,tests:12,desc:"Genre of Spiritual IS the counter-criterion."},
+    {name:"McMindfulness",kills:4,tests:15,desc:"Depoliticized contemplative practice."},
+    {name:"Unmarked Body Assumption",kills:4,tests:14,desc:"Racialized Soma's primary function is anti-UBA."},
+    {name:"Level-confusion",kills:3,tests:12,desc:"Micro/meso/macro conflation."},
+    {name:"Flattening critique",kills:3,tests:10,desc:"Structural to individual collapse."},
+    {name:"Platform Reformism Capture",kills:3,tests:8,desc:"Systemic critique reduced to policy reform."},
+    {name:"Thermodynamic aestheticization",kills:2,tests:8,desc:"Making entropy beautiful vs analyzing it."},
+    {name:"Genre Naturalization",kills:2,tests:6,desc:"Historically constructed treated as natural."},
+    {name:"Strategic Deferral",kills:2,tests:7,desc:"Postponing political specificity."},
+    {name:"Rupture-fantasy",kills:2,tests:5,desc:"Romanticizing clean breaks."},
+    {name:"Grammar/Prior Collapse",kills:1,tests:6,desc:"Grammatical vs predictive conflation."},
+    {name:"Computational Quietism",kills:1,tests:4,desc:"Computation as explanatory endpoint."},
+    {name:"Dissolution Demand",kills:1,tests:5,desc:"Subject dissolution as liberation. Tested vs Captive Erotic."},
+  ];
+
+  const maxTests = 60;
+
+  let html = '<div class="section-title">Kill Criteria Deployment</div>';
+  html += '<div class="section-desc">The 16 standing kill criteria, ordered by lethality. Red = kills attributed. Blue = total tests. Genealogical absorption alone accounts for roughly half of all eliminations.</div>';
+  html += '<div class="kill-container">';
+
+  criteria.forEach(c => {
+    const killW = (c.kills / maxTests) * 500;
+    const testW = (c.tests / maxTests) * 500;
+    html += `<div class="kill-bar-container">
+      <div class="kill-name">${c.name}</div>
+      <div style="position:relative;width:520px;height:24px;background:#111118;border-radius:2px">
+        <div class="kill-bar tested" style="width:${testW}px;position:absolute;top:2px;left:0;height:20px;border-radius:2px;opacity:0.4"></div>
+        <div class="kill-bar lethal" style="width:${killW}px;position:absolute;top:2px;left:0;height:20px;border-radius:2px">
+          <span class="bar-label">${c.kills}k / ${c.tests}t</span>
+        </div>
+      </div>
+      <div style="font-size:9px;color:#555;max-width:250px">${c.desc}</div>
+    </div>`;
+  });
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+// ============ 6. ADJACENCY MATRIX ============
+function buildAdjacency() {
+  const panel = document.getElementById('adjacency-panel');
+
+  // Build encounter set
+  const encounters = new Set();
+  relationships.filter(r => r.type === 'encounter').forEach(r => {
+    encounters.add(r.source + '|' + r.target);
+    encounters.add(r.target + '|' + r.source);
+  });
+
+  const ids = claims.map(c => c.id);
+  const total = ids.length * (ids.length - 1) / 2;
+  const tested = encounters.size / 2;
+
+  let html = '<div class="section-title">Adjacency Matrix — Tested vs Untested Encounters</div>';
+  html += `<div class="section-desc">${tested} of ${total} possible pairings directly tested. The ${total - tested} empty cells are the rhizomatic layer's territory — what the arborescent structure never forced into encounter.</div>`;
+  html += '<div class="adj-grid"><table><tr><th class="row-h"></th>';
+
+  ids.forEach(id => html += `<th>${id}</th>`);
+  html += '</tr>';
+
+  ids.forEach((rowId, i) => {
+    html += `<tr><th class="row-h">${claims[i].name.substring(0, 22)}</th>`;
+    ids.forEach(colId => {
+      if (rowId === colId) {
+        html += `<td class="adj-self">${claims[i].score}</td>`;
+      } else if (encounters.has(rowId + '|' + colId)) {
+        const rel = relationships.find(r => r.type === 'encounter' &&
+          ((r.source === rowId && r.target === colId) || (r.source === colId && r.target === rowId)));
+        html += `<td class="adj-encountered" title="${rel ? rel.label : 'encountered'}">&#9679;</td>`;
+      } else {
+        html += '<td class="adj-untested">?</td>';
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</table></div>';
+  panel.innerHTML = html;
+}
+
+// Init
+buildNetwork();
+</script>
+</body>
+</html>
