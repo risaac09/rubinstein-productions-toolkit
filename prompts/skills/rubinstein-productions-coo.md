@@ -38,52 +38,70 @@ This skill is the **operational conscience** of RP. It activates when:
 
 ---
 
-## SERVICE ARCHITECTURE (CURRENT PRICING)
+## SERVICE ARCHITECTURE (CURRENT — APRIL 2026)
 
-### Tier 1 — Mirror
-**Voice Excavation Sessions** | 1:1 intensive work
-- Single session: $500–$1,500
-- 3-session arc: $2,500–$4,000
-- Delivery: 2–3 hrs, Zero-Measurement Zone protocol, 5-day latency before any deliverable
+### Primary Offering — Founder Story
+**"Help me say what I've become."** | Individual or small-team engagement
+- Facilitated conversation (1–2 sessions) + short film (2–3 min) or narrative synthesis document
+- Price: $1,500–$2,500
+- Delivery: Facilitated session → 5-day latency → produced artifact
+- This is the front door. Every engagement starts here or passes through it.
+- Proof artifact: Genesis Design Challenge compilation film (8 participants, 15 min)
 
-### Tier 2 — Map
-**Narrative Strategy Sprint** | Organizational engagement
-- Half-day: $3,000–$5,000
-- Full sprint (3–5 days): $6,000–$12,000
-- Delivery: Bilingual Dashboard (Royal + Nomadic registers), Narrative Audit Scorecard
+### Growth Offering — Program Engagement
+**"Document what's emerging from this container."** | Embedded in a program, workshop, or cohort
+- Isaac embeds as facilitator-documentarian for the duration of a program
+- Multiple sessions, evaluation artifacts, compilation film, individual participant arcs
+- Price: $3,000–$8,000 per engagement (scoped to program length)
+- Delivery: Facilitated interviews + documentation + evaluation report + produced film
+- NOT actively sold on the site — positioned as a case study (the GDC) with a "Let's talk" path
+- Proof artifact: GDC Impact Evaluation Report, individual wayfinding interviews, compilation film
 
-### Tier 3 — Territory
-**Voice Liberation Partnership** | Ongoing retainer
-- Monthly: $5,000–$15,000
-- Minimum 3-month commitment
-- Includes: Monthly facilitation sessions, asset production, dashboard reporting, strategic advisory
+### Strategic Target — Organizational Embedding (NOT YET OFFERED)
+**"Build narrative and evaluation capacity into how we operate."**
+- Ongoing partnership: facilitation + documentation + evaluation methodology
+- Three-Phase approach: Awareness → Protocol → Systems Design
+- Price: $4,000–$8,000/month (minimum 3-month commitment)
+- DO NOT put this on the website until one completed engagement exists
+- Lives here as a strategic north star, not a current offering
+- When a Program Engagement buyer asks for more, this is the conversation
 
 ### Pricing Guardrails (non-negotiable)
 - Floor rate: $500/hr. Do not work below this under any framing.
-- Discounts only for: aligned nonprofits (max 30%), barter with documented value exchange, Phase 1 beta clients (documented, not repeated).
-- Always anchor to the highest tier first. Negotiate down, never up.
-- A "small ask" from a large org is still Tier 2 pricing — scoping labor is labor.
+- Discounts only for: aligned nonprofits (max 30%), barter with documented value exchange, early clients (documented, not repeated).
+- Lead with Founder Story pricing. Let buyers self-select into Program Engagement.
+- A "small ask" that requires scoping labor is still Founder Story pricing minimum.
 
 ---
 
 ## TARGET MARKET
 
-**Primary avatar:** The Mission-Driven Analyst
-- Roles: Chief Strategy Officers, VP Communications, Equity/Justice directors, nonprofit EDs, fund managers with narrative obligations
-- Pain: Can execute brilliantly but can't explain *why* in a way that moves people
-- Budget: $50K–$500K communications/strategy budgets
-- Trigger: Public narrative failure, fundraising plateau, leadership transition, strategic pivot
+**Primary avatar:** The Rebuilder
+- Who: Individual founders, practitioners, or professionals mid-transition — starting a new chapter after burnout, career change, grad school, layoff, or personal transformation
+- Pain: "I've been through something real but I can't show what I've become yet"
+- Budget: $1,500–$3,000 personal/professional development spend
+- Trigger: Starting something new (school, practice, business), returning to work, needing to articulate a through-line
+- Evidence: Bec (starting school after burnout recovery), Justin (post-layoff, facilitating his own container), GDC participants individually
 
-**Secondary:** Healthcare systems, public health orgs, social impact funds — Isaac's MPH + healthcare systems background gives asymmetric credibility here.
+**Secondary avatar:** The Container Builder
+- Who: Program leaders, workshop facilitators, cohort designers — people running transformational containers who need the process documented and evaluated
+- Pain: "Something real is happening in my program but I can't prove it or show it to funders/partners"
+- Budget: $3,000–$10,000 program budget line item
+- Trigger: Running a cohort, planning a retreat, needing evaluation data for funders, wanting participant stories captured
+- Evidence: Justin running the GDC, Vesta's virtual workshop concept, Bec + Isaac's Regenerative Futures Collective proposal
+
+**Asymmetric advantage:** Isaac's MPH + pediatric psychiatric direct-care background gives evaluation credibility that pure filmmakers/facilitators lack. The Impact Evaluation Report for the GDC is the proof artifact.
+
+**Who is NOT the buyer (yet):** Large organizations with $50K+ comms budgets. That's the Org Embedding tier — hold it until the pipeline exists.
 
 ---
 
 ## CAPACITY MANAGEMENT
 
 ### Generator-Aligned Capacity Rules
-- Maximum 2 active Territory partnerships at once
-- Maximum 4 Map engagements per quarter
-- Mirror sessions: unlimited but must not displace deep work blocks
+- Maximum 1 active Org Embedding partnership (when that tier opens)
+- Maximum 2 Program Engagements per quarter
+- Founder Story sessions: 3–4 per month max (must not displace deep work blocks)
 - Deep work blocks: protect minimum 3 mornings/week (no calls before noon)
 - Filming sessions require 24-hr prep + 5-day post-latency — block these in advance
 
@@ -99,16 +117,19 @@ If 3+ of these flag yellow → recommend deferring or scoping down.
 
 ---
 
-## FINANCIAL MODEL (YEAR 1 CONSERVATIVE TARGETS)
+## FINANCIAL MODEL (YEAR 1 — HONEST TARGETS)
 
-| Tier | Deals/year | Avg value | Revenue |
-|------|-----------|-----------|---------|
-| Mirror | 20 | $2,000 | $40,000 |
-| Map | 8 | $5,000 | $40,000 |
-| Territory | 1 | $8,000/mo × 3mo | $24,000 |
-| **Total** | | | **~$104,000** |
+**Current reality:** Zero revenue, zero paying clients. The work product exists (GDC artifacts) but no commercial transaction has occurred. Year 1 targets reflect building from zero.
 
-**Break-even:** ~$4,500/month (accounting for tools, admin, misc)
+| Offering | Deals/year | Avg value | Revenue |
+|----------|-----------|-----------|---------|
+| Founder Story | 12–15 | $1,800 | $21,600–$27,000 |
+| Program Engagement | 2–3 | $5,000 | $10,000–$15,000 |
+| **Total** | | | **~$32,000–$42,000** |
+
+**This is a part-time income in Year 1.** That's honest. The path to $80K+ requires either: (a) raising Founder Story volume to 25+/year, (b) landing an Org Embedding engagement, or (c) a complementary income stream (teaching, part-time work).
+
+**Break-even:** ~$4,500/month (accounting for tools, admin, misc) — Year 1 target does NOT cover this. Plan accordingly.
 **Profit target:** 60–70% margins (knowledge work, minimal overhead)
 **Quarterly tax reserve:** 30% of gross, set aside monthly
 
@@ -116,25 +137,26 @@ If 3+ of these flag yellow → recommend deferring or scoping down.
 
 ## PHASE ROADMAP
 
-### Phase 1: Foundation (Active — 2025–2026)
-- Brand identity solidified (Voice Liberation Specialist)
-- Core methodology documented (Generative Translation, Bilingual Dashboard)
-- Skill infrastructure built (7 AI skills operationalizing RP)
-- First 3 Territory clients
-- Bilingual Dashboard delivered as repeatable format
-- Case studies from early clients
+### Phase 1: First Revenue (Active — April–December 2026)
+- Close first 3 paying Founder Story clients
+- GDC film and evaluation report live on site as case study
+- Formspree contact form wired up
+- Site reflects real offering (Founder Story + case study)
+- COO skill, canonical positioning, and site aligned
+- First testimonial from a paying client
 
-### Phase 2: Leverage (2026–2027)
-- Signature workshop: "Voice Liberation Intensive" (group, $3K/person, cohort model)
-- Speaking/facilitation circuit (conferences, retreats, summits)
+### Phase 2: Program Engagement (2027)
+- First paid Program Engagement (embedded in someone else's container)
+- 10+ Founder Story clients completed
+- Case study library: 2–3 documented engagements with outcomes
+- Evaluation methodology documented as a repeatable deliverable
+- Speaking/facilitation circuit begins (conferences, retreats)
+
+### Phase 3: Organizational Embedding (2027+)
+- First Org Embedding retainer (only after Program Engagement track record)
+- Publishing/intellectual property (evaluation methodology, facilitation framework)
 - Strategic partnerships (health systems, foundations, equity funds)
-- First hire: operations support (not creative — protect Isaac's direct delivery)
-
-### Phase 3: Scale (2027+)
-- IAOS ecosystem products (digital, courses, licensing)
-- Training other Voice Liberation practitioners
-- Publishing/intellectual property (book, framework licensing)
-- Quantum Mirror as public-facing tool or SaaS
+- Possible: training other facilitator-documentarians
 
 ---
 
