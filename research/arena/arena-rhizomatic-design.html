@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arena Sensitivity Analysis — Rhizomatic Design</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; color: #d4d4d8; font-family: 'Georgia', serif; overflow-x: hidden; }
+
+  .phase-label {
+    position: absolute; font-size: 11px; color: #555; font-family: monospace;
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+
+  svg { display: block; }
+
+  .section {
+    padding: 60px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  h1 { font-size: 28px; color: #e4e4e7; font-weight: 400; margin-bottom: 8px; letter-spacing: 1px; }
+  h2 { font-size: 20px; color: #a1a1aa; font-weight: 400; margin-bottom: 30px; font-style: italic; }
+  h3 { font-size: 16px; color: #c084fc; font-weight: 400; margin: 40px 0 16px; letter-spacing: 1px; text-transform: uppercase; }
+
+  p { line-height: 1.7; color: #a1a1aa; margin-bottom: 16px; max-width: 720px; }
+  p em { color: #c084fc; font-style: normal; }
+
+  .reflection {
+    border-left: 2px solid #27272a;
+    padding: 20px 30px;
+    margin: 30px 0;
+    background: rgba(39, 39, 42, 0.3);
+  }
+  .reflection p { color: #71717a; font-style: italic; }
+
+  .canvas-container {
+    width: 100%;
+    height: 600px;
+    position: relative;
+    margin: 40px 0;
+    border: 1px solid #1a1a2e;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  #network-canvas { width: 100%; height: 100%; }
+
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 20px;
+    align-items: start;
+    margin: 40px 0;
+  }
+
+  .arm {
+    padding: 30px;
+    border: 1px solid #27272a;
+    border-radius: 4px;
+    background: rgba(15, 15, 25, 0.8);
+  }
+
+  .arm h4 {
+    font-size: 14px;
+    color: #c084fc;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    font-weight: 400;
+  }
+
+  .arm ul { list-style: none; padding: 0; }
+  .arm li { padding: 6px 0; color: #71717a; font-size: 14px; border-bottom: 1px solid #18182a; }
+  .arm li span { color: #a1a1aa; }
+
+  .vs-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 300px;
+  }
+  .vs {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 12px;
+    color: #3f3f46;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .data-types {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 30px 0;
+  }
+
+  .data-card {
+    padding: 24px;
+    border: 1px solid #27272a;
+    border-radius: 4px;
+    background: rgba(15, 15, 25, 0.6);
+  }
+  .data-card h5 {
+    font-size: 13px;
+    color: #c084fc;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    font-weight: 400;
+  }
+  .data-card p { font-size: 13px; color: #71717a; margin: 0; }
+
+  .metric {
+    display: inline-block;
+    padding: 3px 10px;
+    border: 1px solid #3f3f46;
+    border-radius: 12px;
+    font-size: 11px;
+    color: #a1a1aa;
+    margin: 4px 4px 4px 0;
+    font-family: monospace;
+  }
+
+  .flow-diagram {
+    margin: 40px 0;
+    padding: 30px;
+    border: 1px solid #1a1a2e;
+    border-radius: 4px;
+    background: rgba(10, 10, 20, 0.8);
+  }
+
+  .tier-legend {
+    display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap;
+  }
+  .tier-legend span {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: #71717a;
+  }
+  .tier-dot {
+    width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+  }
+
+  .divider {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #27272a, transparent);
+    margin: 60px 0;
+  }
+
+  .tooltip {
+    position: absolute;
+    padding: 10px 14px;
+    background: #18182a;
+    border: 1px solid #3f3f46;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #d4d4d8;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    max-width: 260px;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<div class="section">
+  <h1>Arena Sensitivity Analysis</h1>
+  <h2>Arborescent vs. Rhizomatic — A System for Conceptual Data</h2>
+
+  <div class="reflection">
+    <p>The Arena has been a tree. Claims entered domains, fought neighbors, climbed brackets, got culled by tier. The hierarchy is real — but it's path-dependent. What if the structure made the winners?</p>
+    <p>The rhizomatic arm doesn't rank. It maps. Every claim meets every other claim. No brackets, no clusters, no elimination until all encounters are complete. The data isn't "who's on top" — it's the network of absorptions, resistances, and transformations across all 171 possible connections.</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3>The 19 Survivors — Force Network</h3>
+  <p>Each node is a surviving claim. <em>Hover to see connections.</em> In the rhizomatic arm, every edge becomes a bout. The network density after testing reveals which claims are genuinely central vs. which benefited from favorable brackets.</p>
+
+  <div class="tier-legend">
+    <span><span class="tier-dot" style="background:#f59e0b"></span> 20/20 — Apex</span>
+    <span><span class="tier-dot" style="background:#c084fc"></span> 19/20 — Spine</span>
+    <span><span class="tier-dot" style="background:#60a5fa"></span> 18/20 — Strong Field</span>
+    <span><span class="tier-dot" style="background:#4ade80"></span> 17/20 — Threshold</span>
+  </div>
+
+  <div class="canvas-container">
+    <canvas id="network-canvas"></canvas>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <h3>Arm A vs. Arm B</h3>
+
+  <div class="comparison">
+    <div class="arm">
+      <h4>Arm A — Arborescent (Complete)</h4>
+      <ul>
+        <li><span>Structure:</span> Clustered domains → tournament → championship → cull</li>
+        <li><span>Rounds:</span> 82 (path-dependent, bracket-determined)</li>
+        <li><span>Elimination:</span> Sequential — claims die mid-process</li>
+        <li><span>Output:</span> Ranked hierarchy (20 → 19 → 18 → 17)</li>
+        <li><span>Bias risk:</span> Bracket seeding, cluster composition, fight order</li>
+        <li><span>Metaphor:</span> Tree. Root, trunk, branches, canopy.</li>
+        <li><span>What it finds:</span> Who climbs highest under THIS structure</li>
+      </ul>
+    </div>
+
+    <div class="vs-col"><span class="vs">compared against</span></div>
+
+    <div class="arm">
+      <h4>Arm B — Rhizomatic (Proposed)</h4>
+      <ul>
+        <li><span>Structure:</span> Full round-robin, randomized encounter order</li>
+        <li><span>Rounds:</span> 171 (19 choose 2 — every pair fights once)</li>
+        <li><span>Elimination:</span> None until all bouts complete</li>
+        <li><span>Output:</span> Connection map, vulnerability profiles, absorption network</li>
+        <li><span>Bias risk:</span> Evaluator consistency across 171 bouts</li>
+        <li><span>Metaphor:</span> Mycelium. No root, no top, only density.</li>
+        <li><span>What it finds:</span> Who survives ALL possible encounters</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <h3>What Is Conceptual Data?</h3>
+
+  <p>Not empirical measurement. Not opinion. Conceptual data is <em>the structured residue of adversarial theoretical encounter</em> — what's left after claims have been forced to fight, absorb, merge, and die under consistent rules.</p>
+
+  <p>Three forms:</p>
+
+  <div class="data-types">
+    <div class="data-card">
+      <h5>Pattern Data</h5>
+      <p>Which theoretical moves consistently survive stress-testing across different opponents and formats. "Recursive meta-critique beats domain-specific mechanism claims" is a finding with N&gt;1. The pattern is the data.</p>
+      <div style="margin-top: 12px">
+        <span class="metric">win rate per opponent type</span>
+        <span class="metric">kill criteria hit frequency</span>
+        <span class="metric">absorption success rate</span>
+      </div>
+    </div>
+
+    <div class="data-card">
+      <h5>Vulnerability Maps</h5>
+      <p>Each claim's documented susceptibility profile across all encounters. Comparable the way side-effect profiles are compared across interventions. A claim failing on Therapeutic Reductionism in 3/4 bouts has a reliability problem.</p>
+      <div style="margin-top: 12px">
+        <span class="metric">criteria × claim matrix</span>
+        <span class="metric">conditional failure rate</span>
+        <span class="metric">opponent-dependent triggers</span>
+      </div>
+    </div>
+
+    <div class="data-card">
+      <h5>Absorption Genealogies</h5>
+      <p>Directed graph of which claims subsume which others, with edge conditions. The topology itself is data — it reveals conceptual geography no single claim states. Convergent absorption patterns across both arms = high-confidence finding.</p>
+      <div style="margin-top: 12px">
+        <span class="metric">directed absorption graph</span>
+        <span class="metric">cluster coefficient</span>
+        <span class="metric">bridge nodes</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <h3>The Comparison Layer — What Convergence Tells You</h3>
+
+  <div class="flow-diagram">
+    <svg viewBox="0 0 1000 400" style="width:100%;height:auto">
+      <!-- Arm A -->
+      <rect x="40" y="30" width="200" height="60" rx="4" fill="none" stroke="#3f3f46"/>
+      <text x="140" y="55" text-anchor="middle" fill="#c084fc" font-size="11" font-family="monospace">ARM A: ARBORESCENT</text>
+      <text x="140" y="72" text-anchor="middle" fill="#52525b" font-size="10" font-family="monospace">82 rounds, tree structure</text>
+
+      <!-- Arm B -->
+      <rect x="40" y="310" width="200" height="60" rx="4" fill="none" stroke="#3f3f46"/>
+      <text x="140" y="335" text-anchor="middle" fill="#c084fc" font-size="11" font-family="monospace">ARM B: RHIZOMATIC</text>
+      <text x="140" y="352" text-anchor="middle" fill="#52525b" font-size="10" font-family="monospace">171 rounds, full mesh</text>
+
+      <!-- Arrows to comparison -->
+      <line x1="240" y1="60" x2="360" y2="150" stroke="#27272a" stroke-width="1"/>
+      <line x1="240" y1="340" x2="360" y2="250" stroke="#27272a" stroke-width="1"/>
+
+      <!-- Comparison box -->
+      <rect x="360" y="130" width="260" height="140" rx="4" fill="rgba(192,132,252,0.05)" stroke="#c084fc" stroke-opacity="0.3"/>
+      <text x="490" y="158" text-anchor="middle" fill="#c084fc" font-size="11" font-family="monospace">COMPARISON LAYER</text>
+      <text x="490" y="182" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Rank correlation (Spearman's ρ)</text>
+      <text x="490" y="200" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Vulnerability profile overlap</text>
+      <text x="490" y="218" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Absorption pattern isomorphism</text>
+      <text x="490" y="236" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Robustness coefficient per claim</text>
+      <text x="490" y="254" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Structure-dependent divergences</text>
+
+      <!-- Arrows to outputs -->
+      <line x1="620" y1="170" x2="720" y2="80" stroke="#27272a" stroke-width="1"/>
+      <line x1="620" y1="200" x2="720" y2="200" stroke="#27272a" stroke-width="1"/>
+      <line x1="620" y1="230" x2="720" y2="320" stroke="#27272a" stroke-width="1"/>
+
+      <!-- Output: Convergent -->
+      <rect x="720" y="50" width="240" height="60" rx="4" fill="rgba(74,222,128,0.05)" stroke="#4ade80" stroke-opacity="0.3"/>
+      <text x="840" y="72" text-anchor="middle" fill="#4ade80" font-size="11" font-family="monospace">CONVERGENT FINDINGS</text>
+      <text x="840" y="92" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">High confidence — structure-independent</text>
+
+      <!-- Output: Divergent -->
+      <rect x="720" y="170" width="240" height="60" rx="4" fill="rgba(245,158,11,0.05)" stroke="#f59e0b" stroke-opacity="0.3"/>
+      <text x="840" y="192" text-anchor="middle" fill="#f59e0b" font-size="11" font-family="monospace">DIVERGENT FINDINGS</text>
+      <text x="840" y="212" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Structure-dependent — bracket artifacts</text>
+
+      <!-- Output: Novel -->
+      <rect x="720" y="290" width="240" height="60" rx="4" fill="rgba(96,165,250,0.05)" stroke="#60a5fa" stroke-opacity="0.3"/>
+      <text x="840" y="312" text-anchor="middle" fill="#60a5fa" font-size="11" font-family="monospace">EMERGENT TOPOLOGY</text>
+      <text x="840" y="332" text-anchor="middle" fill="#71717a" font-size="10" font-family="Georgia">Network properties invisible to trees</text>
+    </svg>
+  </div>
+
+  <p><em>Convergent findings</em> are where both arms agree — same claims rise, same absorptions hold, same vulnerabilities surface regardless of structure. These are the Arena's highest-confidence outputs.</p>
+
+  <p><em>Divergent findings</em> reveal bracket artifacts — claims that won because of who they fought, not what they are. Equally valuable: they tell you where your certainty should be lower.</p>
+
+  <p><em>Emergent topology</em> is what only the rhizome can see: bridge nodes (claims that connect otherwise separate clusters), hub claims (absorb many, resist many), and isolates (claims that neither absorb nor get absorbed — genuinely orthogonal). The tree can't produce this because it pre-sorts claims into clusters before they fight.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="section">
+  <h3>Rhizomatic Bout Design — 171 Encounters</h3>
+
+  <p>Every claim fights every other claim exactly once. Randomized encounter order. Same 5-move format, same 16 kill criteria, same scoring rubric. But no elimination — every claim completes all 18 of its bouts before any verdict is rendered.</p>
+
+  <p>Post-bout analysis generates per-claim:</p>
+
+  <div class="data-types">
+    <div class="data-card">
+      <h5>Connection Score</h5>
+      <p>Not a rank — a density measure. How many claims can this one productively engage with (neither absorbing nor being absorbed)? High connection = conceptual bridge. Low connection = specialized tool.</p>
+    </div>
+
+    <div class="data-card">
+      <h5>Absorption Asymmetry</h5>
+      <p>Ratio of "I absorb you" to "you absorb me" across all opponents. ABKT's meta-critical power predicts high asymmetry. But does it hold against practice-level claims it never faced in Arm A?</p>
+    </div>
+
+    <div class="data-card">
+      <h5>Kill Criteria Signature</h5>
+      <p>Heat map of which criteria hit this claim across all 18 opponents. Each claim gets a unique vulnerability fingerprint. Compare fingerprints across arms for robustness.</p>
+    </div>
+  </div>
+
+  <div class="reflection" style="margin-top: 40px">
+    <p>The question isn't "which claim is best." The question is: what does the conceptual field look like when you let every idea touch every other idea without pre-sorting them into domains? The tree gives you a winner. The rhizome gives you a map. You need both — the tree to decide, the rhizome to understand.</p>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section" style="padding-bottom: 100px">
+  <h3>Defining the Term: Conceptual Data</h3>
+
+  <p style="color: #d4d4d8; font-size: 17px; line-height: 1.8; max-width: 760px;">
+    <em>Conceptual data</em> is the structured, comparable, reproducible residue of systematic adversarial encounter between theoretical claims — evaluated under consistent criteria, across multiple matchup structures, with documented vulnerability profiles and absorption genealogies.
+  </p>
+
+  <p>It is not empirical data (no measurement of phenomena). It is not opinion (consistent rules, documented outcomes). It is not meta-analysis in the Cochrane sense (no effect sizes). It is closest to:</p>
+
+  <div style="margin: 20px 0; padding: 20px 30px; border-left: 2px solid #c084fc;">
+    <p style="color: #a1a1aa; margin: 0;">A <em>systematic theoretical review</em> with internal validity checks — where the "studies" being reviewed are conceptual claims, the "methodology" is adversarial stress-testing, and the "data" is the pattern of outcomes across all encounters.</p>
+  </div>
+
+  <p>Properties of conceptual data:</p>
+  <p style="color:#71717a">
+    <em>Structured</em> — generated under consistent rules (kill criteria, scoring rubric, bout format)<br>
+    <em>Comparable</em> — same metrics across all claims (vulnerability profiles, absorption rates)<br>
+    <em>Reproducible</em> — re-runnable under different structures (the sensitivity analysis)<br>
+    <em>Falsifiable</em> — a claim predicted to be robust can be shown to be bracket-dependent<br>
+    <em>Topological</em> — the shape of the network is itself a finding<br>
+    <em>Non-empirical</em> — tests coherence and robustness, not truth-in-the-world
+  </p>
+
+  <p>The Arena doesn't tell you what's true. It tells you what survives. The difference between those two things is the space where the next research program lives.</p>
+</div>
+
+<script>
+const claims = [
+  { id: 0, name: "ABKT Laundering", tier: 20, short: "ABKT", desc: "Recursive meta-critical power. Five laundering mechanisms." },
+  { id: 1, name: "Temporal-Predictive Lock", tier: 19, short: "TPL", desc: "Trauma as high-precision predictive lock with temporal collapse." },
+  { id: 2, name: "Sociogenic Thermodynamics", tier: 19, short: "ST", desc: "Genre (synchronic) × entropy (diachronic). Spillers' flesh as hinge." },
+  { id: 3, name: "Sedimentation-Lock Continuum", tier: 19, short: "SLC", desc: "Body-schema rigidity from gradual citation to catastrophic lock." },
+  { id: 4, name: "Captive Voice", tier: 19, short: "CV", desc: "Double-bind: grammatical exclusion ↔ compelled ventriloquism." },
+  { id: 5, name: "Racialized Soma", tier: 18, short: "RS", desc: "Body arrives already somatically structured by racial-gender-class matrix." },
+  { id: 6, name: "Double Consciousness", tier: 18, short: "DC", desc: "Du Bois as politically imposed parallel processing." },
+  { id: 7, name: "Autonomic Gate", tier: 18, short: "AG", desc: "Nervous-system state gates access to practice." },
+  { id: 8, name: "Non-Self Asymmetry", tier: 18, short: "NSA", desc: "Can't release a self you were never granted." },
+  { id: 9, name: "Coupling Layer", tier: 18, short: "CL", desc: "Interior ↔ institutional translation problem." },
+  { id: 10, name: "Friction", tier: 18, short: "FR", desc: "Friction as therapeutic architecture. Anti-smoothness." },
+  { id: 11, name: "Captive Care", tier: 18, short: "CC", desc: "Care under capture. Visibility paradox." },
+  { id: 12, name: "Witnessing", tier: 17, short: "WIT", desc: "Counter-carceral recognition-as-refusal-of-erasure." },
+  { id: 13, name: "Structural Soma", tier: 17, short: "SS", desc: "Infrastructure → nervous system pipeline." },
+  { id: 14, name: "Precision-Degradation", tier: 17, short: "PD", desc: "Epistemic entropy. Capacity degrades through extraction." },
+  { id: 15, name: "Genre of Spiritual", tier: 17, short: "GoS", desc: "'Spiritual experience' as racial technology." },
+  { id: 16, name: "Racial Capitalism", tier: 17, short: "RC", desc: "Robinson + Bateson schismogenetic typology." },
+  { id: 17, name: "Org Double-Bind", tier: 17, short: "ODB", desc: "Bateson + Kegan/Lahey competing commitments." },
+  { id: 18, name: "Measurement Sovereignty", tier: 17, short: "MS", desc: "Measurement sovereignty precedes measurement accuracy." }
+];
+
+const tierColors = { 20: "#f59e0b", 19: "#c084fc", 18: "#60a5fa", 17: "#4ade80" };
+const tierRadius = { 20: 28, 19: 22, 18: 17, 17: 14 };
+
+const canvas = document.getElementById('network-canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const container = canvas.parentElement;
+
+let W, H, dpr;
+let nodes = [];
+let hoveredNode = null;
+let mouseX = 0, mouseY = 0;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = container.clientWidth;
+  H = container.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function initNodes() {
+  nodes = claims.map((c, i) => {
+    const angle = (i / claims.length) * Math.PI * 2 + Math.random() * 0.3;
+    const r = 120 + Math.random() * 100;
+    return {
+      ...c,
+      x: W / 2 + Math.cos(angle) * r,
+      y: H / 2 + Math.sin(angle) * r,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      r: tierRadius[c.tier]
+    };
+  });
+}
+
+function simulate() {
+  const centerX = W / 2, centerY = H / 2;
+
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+
+    // Center gravity
+    a.vx += (centerX - a.x) * 0.001;
+    a.vy += (centerY - a.y) * 0.001;
+
+    // Repulsion
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      let dx = a.x - b.x;
+      let dy = a.y - b.y;
+      let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      let minDist = a.r + b.r + 40;
+
+      if (dist < minDist) {
+        let force = (minDist - dist) / dist * 0.05;
+        a.vx += dx * force;
+        a.vy += dy * force;
+        b.vx -= dx * force;
+        b.vy -= dy * force;
+      }
+    }
+
+    // Tier-based attraction (same tier clusters loosely)
+    for (let j = 0; j < nodes.length; j++) {
+      if (i === j) continue;
+      const b = nodes[j];
+      if (a.tier === b.tier) {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (dist > 80 && dist < 300) {
+          a.vx += dx / dist * 0.02;
+          a.vy += dy / dist * 0.02;
+        }
+      }
+    }
+
+    // Damping
+    a.vx *= 0.95;
+    a.vy *= 0.95;
+
+    // Update
+    a.x += a.vx;
+    a.y += a.vy;
+
+    // Bounds
+    a.x = Math.max(a.r + 10, Math.min(W - a.r - 10, a.x));
+    a.y = Math.max(a.r + 10, Math.min(H - a.r - 10, a.y));
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw all possible edges (faint)
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      const isHovered = hoveredNode !== null && (hoveredNode === i || hoveredNode === j);
+
+      if (isHovered) continue; // Draw highlighted ones on top
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = 'rgba(63, 63, 70, 0.08)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+
+  // Draw highlighted edges
+  if (hoveredNode !== null) {
+    const h = nodes[hoveredNode];
+    for (let j = 0; j < nodes.length; j++) {
+      if (j === hoveredNode) continue;
+      const b = nodes[j];
+      ctx.beginPath();
+      ctx.moveTo(h.x, h.y);
+      ctx.lineTo(b.x, b.y);
+      const color = tierColors[h.tier];
+      ctx.strokeStyle = color + '40';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  // Draw nodes
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const isHovered = hoveredNode === i;
+    const color = tierColors[n.tier];
+
+    // Glow
+    if (isHovered) {
+      const grad = ctx.createRadialGradient(n.x, n.y, n.r, n.x, n.y, n.r * 3);
+      grad.addColorStop(0, color + '30');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Node
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+    ctx.fillStyle = isHovered ? color : color + '80';
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = isHovered ? '#fff' : '#a1a1aa';
+    ctx.font = (isHovered ? 'bold ' : '') + (n.tier >= 19 ? '11px' : '10px') + ' monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.short, n.x, n.y);
+  }
+}
+
+function getNodeAt(mx, my) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const dx = mx - n.x, dy = my - n.y;
+    if (dx * dx + dy * dy < (n.r + 8) * (n.r + 8)) return i;
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+
+  const idx = getNodeAt(mouseX, mouseY);
+  hoveredNode = idx;
+
+  if (idx !== null) {
+    const n = nodes[idx];
+    tooltip.style.opacity = 1;
+    tooltip.style.left = (mouseX + 16) + 'px';
+    tooltip.style.top = (mouseY - 10) + 'px';
+    tooltip.innerHTML = `<strong style="color:${tierColors[n.tier]}">${n.name}</strong><br>
+      <span style="color:#71717a">${n.tier}/20</span><br>
+      <span style="font-size:11px;color:#52525b">${n.desc}</span><br>
+      <span style="font-size:10px;color:#3f3f46;margin-top:4px;display:block">
+        ${18} rhizomatic bouts needed
+      </span>`;
+    canvas.style.cursor = 'pointer';
+  } else {
+    tooltip.style.opacity = 0;
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  tooltip.style.opacity = 0;
+});
+
+function loop() {
+  simulate();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resize();
+initNodes();
+loop();
+
+window.addEventListener('resize', () => {
+  resize();
+  initNodes();
+});
+</script>
+
+</body>
+</html>
