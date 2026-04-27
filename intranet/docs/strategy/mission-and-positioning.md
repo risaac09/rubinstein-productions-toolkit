@@ -1,6 +1,6 @@
 # Mission & Positioning
 
-> **Source of truth:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md` (v2, 2026-04-27). This page is a public-facing summary; if it disagrees with the canonical doc, the canonical wins.
+> **Source of truth:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md` (v2, 2026-04-27). This page is a public-facing summary; if it disagrees with the canonical doc, the canonical wins.
 
 ## What RP Is
 

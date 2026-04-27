@@ -3,7 +3,7 @@ name: rubinstein-productions-agent
 description: Master agent for Isaac Rubinstein — life orientation + Rubinstein Productions business. Use for any RP work (outreach, proposals, projects, invoicing, strategy), life check-ins, energy assessment, domain routing, or when Isaac doesn't know which skill to use. Trigger for "reach out to...", "draft a proposal", "I just booked a project", "should I take this?", "what should I focus on?", "morning check-in", "I'm stuck", "big picture", or any ambiguous multi-domain request.
 ---
 
-> **Canonical source (LOAD FIRST on any RP task):** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md`
+> **Canonical source (LOAD FIRST on any RP task):** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
 > When this file conflicts with the canonical doc, the canonical doc wins. Pull positioning, segments, pricing, methodology, and brand language from there.
 
 # Rubinstein Productions Agent

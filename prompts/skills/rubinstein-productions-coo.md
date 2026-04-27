@@ -3,7 +3,7 @@ name: rubinstein-productions-coo
 description: Operational architecture and strategic guardrails for Rubinstein Productions — Isaac's facilitation and film consultancy. Handles pricing enforcement, capacity management, opportunity triage, and quarterly reviews. Use when Isaac needs to decide whether to take a project, validate pricing, check capacity, or assess strategic direction. Connects to rubinstein-productions-agent as a sub-skill. Trigger for "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or any operational/strategic RP decision.
 ---
 
-> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md`
+> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
 > **Pull contract:** Enforce pricing floors by segment per canonical offer ladder (Founder Story $1,500–2,500 / Program Engagement $3–8K / Organizational Embedding $4–8K/mo). Reject opportunities where the prospect does NOT match a documented audience segment (Rebuilder / Container Builder / Emergent Practitioner) unless Isaac explicitly overrides. The canonical doc (v2, 2026-04-27) is the source of truth for segment definitions, pricing, methodology, and brand language — when it disagrees with this skill, canonical file wins.
 
 # Rubinstein Productions COO Skill

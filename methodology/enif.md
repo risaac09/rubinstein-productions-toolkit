@@ -1,8 +1,8 @@
-> **Canonical source:** `03 Projects/Rubinstein Productions/05 Methodology/RP Measurement Framework.md` in vault — last synced 2026-04-27. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot.
+> **Canonical source:** `00 Canonical/RP Measurement Framework.md` in vault — last synced 2026-04-27. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot.
 
 # Rubinstein Productions — Measurement Framework
 *The Bilingual Dashboard: Tracking what counts and what emerges*
-*Consolidated April 2026 | Read alongside: RP Core Methodology*
+*Consolidated April 2026 | Read alongside: Say Why - Canonical Positioning & Skill Embedding*
 
 ---
 
@@ -155,11 +155,11 @@ When reviewing session transcripts, code for the following domains. Over-code ra
 
 ### Airtable Structure
 
-**Table 1: Client Projects** — Client name, project ID, engagement type, dates, status, contract value, hours invested, effective hourly rate, referral source, industry
+**Table 1: Client Projects** — Client name, project ID, engagement type (Mirror/Map/Territory), dates, status, contract value, hours invested, effective hourly rate, referral source, industry
 
 **Table 2: Financial Metrics** — Monthly revenue, new/repeat clients, referrals, proposals sent/accepted, conversion rate, average project value, hours worked, effective rate
 
-**Table 3: Client Outcomes** — Linked to project, outcome type, quantified value, date, verified, usable in marketing
+**Table 3: Client Outcomes** — Linked to project, outcome type (funding secured, partnership formed, media coverage, team alignment, etc.), quantified value, date, verified, usable in marketing
 
 **Table 4: Satisfaction Scores** — Linked to project, assessment point, all Likert ratings, NPS, testimonial
 
@@ -275,3 +275,12 @@ Last Friday of each month. 2-3 hours. Uninterrupted, contemplative space.
 | Asset Utilization (3 months) | 70% | 85%+ |
 | Average Consistency Score | 7.0 | 8.0+ |
 | Mid-Process Safety Scores | >4.0/5 | >4.5/5 |
+
+---
+
+### Documents This File Replaces
+
+This document supersedes and consolidates:
+- `Emergent Narrative Impact Framework.md` (780-line full framework — aspirational future-state material on AI analysis, agent-based modeling, and certification programs has been cut; revisit when client base reaches 25+ engagements)
+- `Nomadic Indicators Codebook.md` (qualitative coding guide — absorbed into Section 3)
+- `Royal Metrics Dashboard.md` (Airtable structure — absorbed into Section 4)
