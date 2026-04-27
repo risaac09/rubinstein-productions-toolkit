@@ -3,7 +3,7 @@ name: proposal-scope-builder
 description: Generate professional project proposals and scopes of work for Rubinstein Productions Say Why facilitation and film services. Use when Isaac needs to respond to client inquiries, create formal proposals, price projects, or convert outreach conversations into concrete offers across Founder Story/Program Engagement/Organizational Embedding service tiers. Integrates with pricing guardrails from the COO skill to ensure sustainable pricing and proper scope definition. Trigger for any phrase like "draft a proposal", "they want a scope", "price this out", "write up the engagement", or "they're interested".
 ---
 
-> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md`
+> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
 > **Pull contract:** Every proposal opens with a tailored version of the 60-word pitch (Diagnostic framing of prospect's specific pain). Middle section uses Methodological-layer language (Excavation/Performance/Translation, non-extractive, inside version, camera as co-regulatory witness). Closing uses ONE Tribal-layer line. Proof points pulled from canonical file.
 
 # Proposal & Scope Builder

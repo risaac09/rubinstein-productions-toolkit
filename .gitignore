@@ -11,3 +11,6 @@ grants/funders/
 *.baksite/
 intranet/site/
 02 Practice/
+
+# Personal Claude usage reports — do not commit
+*-claude-usage-report.md

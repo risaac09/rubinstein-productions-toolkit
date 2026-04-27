@@ -1,8 +1,8 @@
-> **Canonical source:** `03 Projects/Rubinstein Productions/05 Methodology/RP Session Facilitation Guide.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/RP Session Facilitation Guide.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
 
 # Rubinstein Productions — Session Facilitation Guide
 *Tactical playbook for conducting facilitated conversations*
-*Consolidated April 2026 | Read alongside: RP Core Methodology*
+*Consolidated April 2026 | Read alongside: Say Why - Canonical Positioning & Skill Embedding*
 
 ---
 
@@ -385,3 +385,9 @@ Your clarity invites their clarity. Your vulnerability invites their vulnerabili
 - *Presence* — Peter Senge (facilitation as practice)
 - *The Polyvagal Theory* — Stephen Porges (the science of safety)
 - *The Developing Mind* — Daniel Siegel (interpersonal neurobiology)
+
+---
+
+### Document This File Replaces
+
+This document supersedes `Session Facilitation Guide.md` (March 2026). It incorporates the neuroscience-informed facilitation principles from the original `Methodology.md` (Oct 2025) and `Methdology 2.md` (Oct 2025), which are otherwise superseded by Say Why - Canonical Positioning & Skill Embedding (the integrated v2 canonical replacing the former `RP Core Methodology.md` — see `05 Methodology/_archive/2026-04-27/`).

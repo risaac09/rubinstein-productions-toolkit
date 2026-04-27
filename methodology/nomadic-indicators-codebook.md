@@ -1,9 +1,9 @@
-> **Canonical source:** `03 Projects/Rubinstein Productions/05 Methodology/Nomadic Indicators Codebook.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
 
-*For Emergent Narrative Impact Framework Register 2: Nomadic Science*
+*For RP Measurement Framework Register 2: Nomadic Science*
 
 ---
 
@@ -273,7 +273,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 - Note questions for next session or follow-up
 
 ### Step 5: Integration
-- Transfer relevant findings to case study template
+- Transfer relevant findings to Case Study Template
 - Update Royal Metrics Dashboard if quantifiable outcomes emerged
 - Note methodology learnings
 
@@ -339,6 +339,8 @@ This is a key moment. The client is spontaneously generating more resonant langu
 
 ## Monthly Synthesis Ritual Integration
 
+*From RP Measurement Framework*
+
 During your monthly synthesis ritual, review coded materials across all clients to identify:
 
 1. **Cross-Client Patterns:** Are certain codes appearing across multiple engagements?
@@ -361,5 +363,7 @@ Update quarterly based on practice.
 ---
 
 *Version: 1.0*
-*Based on: Emergent Narrative Impact Framework Part I, Register 2*
-*Related: session-facilitation-guide.md, evaluation-framework.md*
+*Based on: RP Measurement Framework Part I, Register 2*
+*Related: Session Facilitation Guide, Case Study Template, Royal Metrics Dashboard*
+
+**Tags:** #codebook #qualitative #nomadic-science #methodology #analysis
