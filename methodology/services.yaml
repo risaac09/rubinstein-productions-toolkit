@@ -1,89 +1,97 @@
 # RP Service Tiers — machine-readable binding
 #
-# Source of truth for pricing floors, typical deliverables, and scope envelopes
-# per service tier. Consumed by rubinstein-productions-coo skill for pricing
-# discipline and by proposal-scope-builder for scope shaping.
-#
-# Human narrative lives in methodology/methodology-blueprint.md. This file is
-# the structured extract for automation.
+# Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
+# (v2, 2026-04-27). This file is the structured extract for automation
+# (consumed by rubinstein-productions-coo for pricing discipline and by
+# proposal-scope-builder for scope shaping). When this file disagrees with
+# the canonical vault doc, the canonical doc wins.
 
 services:
 
-  mirror:
+  founderStory:
     tier: 1
-    name: "The Mirror"
-    positioning: "The inside version, on paper."
+    name: "Founder Story"
+    segment: "The Rebuilder"
+    segmentPain: "I've been through something real but I can't show what I've become yet."
+    positioning: "Help me say what I've become."
     price:
-      floor: 500
-      ceiling: 1500
+      floor: 1500
+      ceiling: 2500
       currency: USD
       model: fixed
     duration:
-      typical: "1 session + 1 week turnaround"
-      maxWeeks: 2
-    audience: "Individual professionals — consultants, researchers, nonprofit leaders"
-    goal: "Low friction, high trust. Client experiences the process before committing to higher tiers."
+      typical: "1–2 sessions + 5-day post-latency + delivery"
+      maxWeeks: 3
+    audience: "Individuals in transition — burnout recovery, career shift, grad school, layoff"
+    goal: "Front door. Every engagement starts here or passes through it."
     methodologyPhases:
       - container
+      - performance
+      - translation
     typicalDeliverables:
       - type: session
-        title: "90-minute facilitated session"
+        title: "Facilitated conversation"
         count: 1
-      - type: narrative-synthesis
-        title: "Written Narrative Synthesis"
+      - type: video
+        title: "Short film (2–3 min) OR written narrative synthesis"
         count: 1
-    revenueRole: "Pipeline builder for Tier 2. High volume potential, low delivery cost."
+    revenueRole: "Pipeline builder. High volume potential, low delivery cost."
+    proofArtifact: "Genesis Design Challenge compilation film (8 participants, 15 min)"
 
-  map:
+  programEngagement:
     tier: 2
-    name: "The Map"
-    positioning: "The story can travel without the founder in the room."
+    name: "Program Engagement"
+    segment: "The Container Builder"
+    segmentPain: "Something real is happening in my program but I can't prove it or show it to funders/partners."
+    positioning: "Document what's emerging from this container."
     price:
-      floor: 5000
-      ceiling: 12000
+      floor: 3000
+      ceiling: 8000
       currency: USD
       model: fixed
     duration:
-      typical: "4-6 weeks"
-      maxWeeks: 8
-    audience: "Small nonprofits, SMEs, teams in transition"
-    goal: "Solve a specific communication problem with a transferable narrative artifact."
+      typical: "Scoped to program length (typically 4–10 weeks)"
+      maxWeeks: 12
+    audience: "Program leaders, workshop facilitators, cohort designers"
+    goal: "Embedded documentation + evaluation across the program."
     methodologyPhases:
       - container
       - excavation
       - performance
       - translation
     typicalDeliverables:
-      - type: session
-        title: "Facilitated sessions (multiple)"
-        count: 3
-      - type: footage-handoff
-        title: "Camera shipped + client films + all footage returned"
+      - type: sessions
+        title: "Facilitated interviews + ongoing documentation"
+      - type: report
+        title: "Impact evaluation report"
         count: 1
       - type: video
-        title: "3-minute brand video (Isaac-produced)"
+        title: "Compilation film + individual participant arcs"
         count: 1
       - type: dashboard
         title: "Bilingual Dashboard (Lite)"
         count: 1
-    revenueRole: "Core revenue driver. Most engagements should land here."
+    revenueRole: "Growth offering. Positioned as a case study (the GDC), not actively sold."
+    proofArtifact: "GDC Impact Evaluation Report + wayfinding interviews + compilation film"
     prerequisites: []
 
-  territory:
+  organizationalEmbedding:
     tier: 3
-    name: "The Territory"
-    positioning: "The witness function is internalized by the team."
+    name: "Organizational Embedding"
+    segment: "The Emergent Practitioner"
+    segmentPain: "We're building something new and need infrastructure to tell its story and prove it works."
+    positioning: "Build narrative and evaluation capacity into how we operate."
     price:
       floor: 4000
       ceiling: 8000
       currency: USD
       model: monthly-retainer
     duration:
-      typical: "3-6 months"
+      typical: "3–6 months minimum"
       minMonths: 3
       maxMonths: 12
-    audience: "Established organizations, foundations, impact networks"
-    goal: "Deep integration. The organization's narrative becomes self-sustaining."
+    audience: "Organizations developing methodology, needing ongoing narrative + evaluation capacity"
+    goal: "Ongoing partnership: facilitation + documentation + evaluation methodology."
     methodologyPhases:
       - container
       - excavation
@@ -91,7 +99,7 @@ services:
       - translation
     methodologyCycles: "repeated"
     typicalDeliverables:
-      - type: session
+      - type: sessions
         title: "Full facilitation arc (repeated cycles)"
       - type: video
         title: "Produced videos"
@@ -102,40 +110,71 @@ services:
       - type: review
         title: "Quarterly review"
         cadence: quarterly
-    revenueRole: "Highest LTV."
+      - type: methodology
+        title: "Three-Phase evaluation: Awareness → Protocol → Systems Design"
+    revenueRole: "Strategic target. Highest LTV. NOT YET ACTIVELY OFFERED."
+    notYetOffered: true
+    holdConditionRelease: "Open this tier only after one completed paid Program Engagement exists at depth."
     prerequisites:
-      - "Prior Tier 2 engagement or equivalent proof of concept"
+      - "Prior Program Engagement or equivalent proof of concept"
 
-# ── Methodology phases (distinct from the 10-phase videography lifecycle) ──
+# ── Methodology phases (canonical doc Part 6) ──
 #
-# These are the four phases of the facilitation arc itself.
-# The 10-phase lifecycle (rp-lifecycle PWA) describes videography production
-# stages within Map/Territory engagements.
+# Universal four-phase structure. Different tiers traverse the phases differently
+# (see methodologyPhases per service above).
 
 methodologyPhases:
   container:
     name: "Container"
-    description: "Establishing the facilitated space. Neuroceptive safety, co-regulation."
+    description: "Establishing the facilitated space. Neuroceptive safety, co-regulation, institutional permission via PIPA logic model."
   excavation:
     name: "Excavation"
-    description: "Surfacing the inside version. Narrative depth work."
+    description: "Surfacing the inside version. CBSD feedback-loop mapping. What would they say if they knew it would land?"
   performance:
     name: "Performance"
-    description: "Embodied articulation. The client films themselves or is filmed."
+    description: "Camera ships to client. They film themselves. Zero-measurement zone."
   translation:
     name: "Translation"
-    description: "Rendering the surfaced material into transferable artifacts."
+    description: "Producing the artifact. 3-min brand video + all footage returned + Bilingual Dashboard. Nothing kept."
 
 # ── COO enforcement rules ──
-# Read by rubinstein-productions-coo skill for pricing discipline.
+# Read by rubinstein-productions-coo for pricing discipline.
 
 rules:
   pricingFloor:
     enforced: true
     message: "Quoting below the tier's price.floor requires explicit override and a documented reason."
-  territoryPrerequisite:
+  hourlyFloor:
     enforced: true
-    message: "Territory engagements require a prior Map engagement or equivalent proof of concept."
+    rate: 500
+    currency: USD
+    message: "Floor rate $500/hr. Never work below this under any framing."
+  organizationalEmbeddingPrerequisite:
+    enforced: true
+    message: "Organizational Embedding requires a prior Program Engagement or equivalent proof of concept. Hold until then."
   tierSkipWarning:
     enforced: true
-    message: "Skipping from Mirror directly to Territory is unusual. Flag for review."
+    message: "Skipping from Founder Story directly to Organizational Embedding is unusual. Flag for review."
+  segmentMatch:
+    enforced: true
+    message: "Reject opportunities where the prospect doesn't match a documented segment (Rebuilder / Container Builder / Emergent Practitioner) unless Isaac explicitly overrides."
+  sacredPause:
+    enforced: true
+    days: 5
+    message: "Mandatory 5-day minimum between filming and editing. Let the unconscious process."
+
+# ── Brand-reset terminology lock (2026-03-27) ──
+# These terms are RETIRED. If they appear in any RP-facing output, replace per
+# the canonical doc Part 13.
+
+retiredTerms:
+  - dead: "Voice Liberation"
+    replacement: "facilitation and film / Say Why practice"
+  - dead: "Consciousness Cartography"
+    replacement: "facilitation and film"
+  - dead: "Narrative Dysregulation"
+    replacement: "systemic alienation from honest expression"
+  - dead: "Generative Translation"
+    replacement: "the methodology"
+  - dead: "Rhizoanalyst"
+    replacement: "facilitator and filmmaker"

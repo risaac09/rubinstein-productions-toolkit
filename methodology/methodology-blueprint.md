@@ -118,29 +118,33 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 
 ## SERVICE TIERS
 
-### Tier 1: The Mirror ($500–$1,500)
-**Phases included:** Container only (Phase 1)
-**What it is:** A single 90-minute facilitated session + narrative synthesis
-**Who it's for:** Individual professionals — consultants, researchers, nonprofit leaders
-**What they get:** The experience of being listened to at a depth that surfaces the inside version. A written "Narrative Synthesis" — their honest version, on paper.
-**Goal:** Low friction. High trust. Client experiences the process before committing to production.
-**Revenue characteristics:** High volume potential, low delivery cost, pipeline builder for Tier 2
+> **Tier definitions canonical source:** vault `Say Why - Canonical Positioning & Skill Embedding.md` Part 1. This section mirrors the canonical and is updated when the canonical changes.
 
-### Tier 2: The Map ($5,000–$12,000)
-**Phases included:** All four phases (Container → Excavation → Performance → Translation)
-**What it is:** The full methodology, 4-6 weeks
-**Who it's for:** Small nonprofits, SMEs, teams in transition
-**What they get:** Facilitated sessions + camera shipped + client films + Isaac produces a 3-minute brand video + all footage returned + Bilingual Dashboard (Lite)
-**Goal:** Solve a specific communication problem. The story can travel without the founder in the room.
-**Revenue characteristics:** Core revenue driver. Most engagements should land here.
+### Tier 1: Founder Story ($1,500–$2,500)
+**Segment:** The Rebuilder — individual in transition (burnout recovery, career shift, grad school, layoff)
+**Phases included:** Container + light Performance/Translation
+**What it is:** Facilitated conversation (1–2 sessions) + short film (2–3 min) or written narrative synthesis
+**Pain it addresses:** "I've been through something real but I can't show what I've become yet"
+**Goal:** Front door. Every engagement starts here or passes through it.
+**Revenue characteristics:** Pipeline builder. High volume potential, low delivery cost.
 
-### Tier 3: The Territory ($4,000–$8,000/month)
-**Phases included:** Repeated cycles of all four phases over 3-6 months
-**What it is:** Creative partnership retainer
-**Who it's for:** Established organizations, foundations, impact networks
-**What they get:** Full facilitation arc + 3-6 produced videos + Bilingual Dashboard (Full) + quarterly review
-**Goal:** Deep integration. The organization's narrative becomes self-sustaining. The witness function is internalized by the team.
-**Revenue characteristics:** Highest LTV. Requires demonstrated proof of concept (ideally a Tier 2 engagement first).
+### Tier 2: Program Engagement ($3,000–$8,000)
+**Segment:** The Container Builder — program leader running a cohort, workshop, or design challenge
+**Phases included:** All four phases (Container → Excavation → Performance → Translation), embedded
+**What it is:** Embedded documentation + evaluation across the program
+**Pain it addresses:** "Something real is happening in my program but I can't prove it or show it to funders/partners"
+**What they get:** Facilitated interviews + ongoing documentation + impact evaluation report + compilation film + Bilingual Dashboard (Lite)
+**Goal:** Document and evaluate emergence inside someone else's container.
+**Positioning:** Not actively sold; positioned as a case study (the Genesis Design Challenge).
+
+### Tier 3: Organizational Embedding ($4,000–$8,000/month) — NOT YET OFFERED
+**Segment:** The Emergent Practitioner — org developing methodology, needing ongoing narrative + evaluation capacity
+**Phases included:** Repeated cycles of all four phases over 3+ months
+**What it is:** Ongoing partnership: facilitation + documentation + evaluation methodology
+**Pain it addresses:** "We're building something new and need infrastructure to tell its story and prove it works"
+**What they get:** Full facilitation arc (repeated) + 3–6 produced videos + Bilingual Dashboard (Full) + quarterly review + Three-Phase evaluation (Awareness → Protocol → Systems Design)
+**Goal:** Deep integration. The organization's narrative becomes self-sustaining.
+**Hold condition:** Open this tier only after one completed paid Program Engagement at depth.
 
 ---
 

@@ -656,7 +656,7 @@
 
 **For "Nomadic" Buyers**: _"We facilitate emergent narrative coherence through contemplative leadership practice. Our process creates space for organizational wisdom to surface and be documented authentically, honoring complexity rather than flattening it."_
 
-**The Unified Pitch**: _"Rubinstein Productions specializes in consciousness cartography for mission-driven organizations. We use participatory evaluation and systems mapping to catalyze emergent narrative clarity—delivering both measurable business impact and genuine transformation. We're not videographers. We're architects of coherence."_
+**The Unified Pitch**: _"Rubinstein Productions is a facilitation and film practice for mission-driven people and organizations. We use participatory evaluation and systems mapping to catalyze emergent narrative clarity — delivering both measurable business impact and genuine transformation. We're not videographers. The work is facilitation; the camera is a witness."_
 
 ---
 
