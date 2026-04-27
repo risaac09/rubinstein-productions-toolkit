@@ -1,4 +1,4 @@
-# Voice Liberation — Sticky Tagline
+# Say Why — Sticky Tagline
 
 ## Recommended Tagline
 

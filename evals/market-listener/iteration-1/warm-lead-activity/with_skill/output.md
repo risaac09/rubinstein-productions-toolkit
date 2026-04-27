@@ -5,7 +5,7 @@
 ### 1. @harborlight_coalition — REACTION WINDOW (hot, ~4hr old)
 **Signal:** Carousel announcing 2026 youth mental health campaign (launches May 1). 340 likes = 3x their average. ED Maya Chen commented: "this is the version of us I've been trying to articulate for 2 years."
 
-**Read:** This is the tell. Maya just publicly named the exact before/after state that Voice Liberation addresses — the gap between the org they've been performing and the org they're becoming. She did this 17 days before a scheduled discovery call. She is priming herself (and her board, publicly) for the conversation Isaac is about to have.
+**Read:** This is the tell. Maya just publicly named the exact before/after state that Say Why addresses — the gap between the org they've been performing and the org they're becoming. She did this 17 days before a scheduled discovery call. She is priming herself (and her board, publicly) for the conversation Isaac is about to have.
 
 The 3x engagement spike isn't the signal — Maya's comment is. She's articulated the job-to-be-done in her own words, in public, unprompted.
 
@@ -31,7 +31,7 @@ This is a case study in motion. Don't interrupt it.
 1. **Private acknowledgment, not public.** Send her a short voice memo or Signal/iMessage (whatever the session channel is) that names what just happened without making it about RP. Direction: reflect back that the essay is evidence the practice is taking — she found the sentence she couldn't find in December. Do NOT comment publicly on the LinkedIn post with anything that reads as "RP client ships essay" — that would flatten her authorship.
    - Executes via: manual DM / session channel.
 
-2. **Flag this as a case-study candidate for later.** With her consent (ask at next session, not now), this essay + the arc that produced it is exactly the kind of artifact that would anchor a Voice Liberation case study. Note it for the Q3 case-study cycle.
+2. **Flag this as a case-study candidate for later.** With her consent (ask at next session, not now), this essay + the arc that produced it is exactly the kind of artifact that would anchor a Say Why case study. Note it for the Q3 case-study cycle.
    - Executes via: `content-publishing-agent` (later, with consent) + `network-stewardship` (log the moment).
 
 3. **Pattern note for Isaac.** "Saying the thing you've been trained to soften" is a client-generated phrase that maps almost perfectly onto RP's positioning. Watch whether it shows up in other clients' language. If two more Mirror-tier clients independently reach for the "trained to soften" frame, that's a positioning signal worth absorbing into RP's own copy.

@@ -88,8 +88,8 @@ Instead, reconstruct the timeline (Mom Test + JTBD interview style):
 
 The answers tell you which job is actually being hired — and whether you're being hired for fundraising (Job 1), alignment (Job 2), legitimacy (Job 3), or legacy (Job 4). Scope, tone, run-time, and even shot list flow from that answer.
 
-## The Voice Liberation Frame
+## The Say Why Frame
 
-Given your Voice Liberation methodology: the underlying job across all four statements is almost always **"help me (the ED) say the thing I'm already saying, but in a form that carries weight I can't give it alone."** You're not being hired to find the message. You're being hired to *externalize and amplify a voice that already exists inside the ED and the org* — and to absorb the vulnerability of letting that voice be seen.
+Given your Say Why methodology: the underlying job across all four statements is almost always **"help me (the ED) say the thing I'm already saying, but in a form that carries weight I can't give it alone."** You're not being hired to find the message. You're being hired to *externalize and amplify a voice that already exists inside the ED and the org* — and to absorb the vulnerability of letting that voice be seen.
 
 That's the real deliverable. The video is the container.

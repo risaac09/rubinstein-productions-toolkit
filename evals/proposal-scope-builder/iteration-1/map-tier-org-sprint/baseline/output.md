@@ -83,7 +83,7 @@ This sits within your $10,000 budget cap with $200 of headroom.
 
 ## Why I'm the right person for this
 
-I work with mission-driven organizations that have outgrown their original story — or that never fully named it in the first place. My practice (Voice Liberation) is specifically built around the interview-and-excavation methodology that this sprint runs on. Housing nonprofits in particular tend to carry layered narratives: the policy story, the service story, the human story. Getting those to live together without one swallowing the others is exactly the work.
+I work with mission-driven organizations that have outgrown their original story — or that never fully named it in the first place. My practice (Say Why) is specifically built around the interview-and-excavation methodology that this sprint runs on. Housing nonprofits in particular tend to carry layered narratives: the policy story, the service story, the human story. Getting those to live together without one swallowing the others is exactly the work.
 
 I keep client load deliberately small so I can be fully present inside each sprint. If we proceed, Delta Housing gets my full attention during the sprint week.
 
@@ -103,5 +103,5 @@ Thank you, Reina, for the clarity of your original message. The diagnosis you of
 —
 
 Isaac Rubinstein
-Rubinstein Productions | Voice Liberation
+Rubinstein Productions | Say Why
 rubinsteinproductions.com

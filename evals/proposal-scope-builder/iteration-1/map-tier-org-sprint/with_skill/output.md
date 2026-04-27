@@ -18,7 +18,7 @@ This proposal is for what you actually asked for: narrative excavation first, th
 
 ## Understanding Your Situation
 
-What I'm hearing is a classic Narrative Dysregulation pattern in mission-driven nonprofits carrying multiple audiences at once:
+What I'm hearing is a classic systemic alienation from honest expression pattern in mission-driven nonprofits carrying multiple audiences at once:
 
 - **Grant voice** performs legibility for funders — outcomes-forward, data-anchored, often emotionally flattened to meet expectations of "seriousness."
 - **Website voice** tries to be everything to everyone — board, press, donors, tenants, partners — and becomes no one.
@@ -28,7 +28,7 @@ When three voices compete for the same organizational body, audiences feel the d
 
 The work isn't to pick one of the three voices and force the others into alignment. The work is to excavate the voice that already lives *underneath* all three — the one your staff uses in the hallway, the one a tenant organizer uses when the camera is off, the one Reina uses when she's telling a friend what Delta Housing actually does. That's the voice the other three are approximations of. Once it's named and held, the three channels stop competing. They become translations of a single source.
 
-This is Voice Liberation work, not brand strategy as usually defined. The deliverable is a narrative architecture your team can run without me.
+This is Say Why work, not brand strategy as usually defined. The deliverable is a narrative architecture your team can run without me.
 
 ---
 
@@ -92,7 +92,7 @@ This reflects a 17% mission-alignment adjustment from standard Map Tier pricing 
 
 ## Why This Approach
 
-Most brand refreshes solve the symptom — visual inconsistency, tone drift — by imposing a new surface. The dysregulation returns within a year because the underlying voice was never named. Voice Liberation treats the organization's narrative as something to be *excavated* rather than constructed, then translated faithfully into each channel. That's why this is Generative Translation, not content strategy: the voice you end with is the one Delta Housing already has, now made legible to itself.
+Most brand refreshes solve the symptom — visual inconsistency, tone drift — by imposing a new surface. The dysregulation returns within a year because the underlying voice was never named. Say Why treats the organization's narrative as something to be *excavated* rather than constructed, then translated faithfully into each channel. That's why this is the methodology, not content strategy: the voice you end with is the one Delta Housing already has, now made legible to itself.
 
 The camera, when we use it, is a co-regulatory witness — not an extraction device. Sessions are filmed only at your invitation, and footage is yours.
 

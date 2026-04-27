@@ -21,10 +21,10 @@
       "evidence": "While most questions are past-anchored, the 'Ideal world & stakes' section includes hypothetical/future-tense questions: Q15 'If this whole area got solved, what would be different for you' and Q16 'What happens if nothing changes in the next year?' These are predictions, not past behavior."
     },
     {
-      "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee",
+      "text": "Does not include any interview moment where Isaac pitches or describes Say Why to the interviewee",
       "assertion_id": "no_pitching_the_service",
       "passed": false,
-      "evidence": "Section '27:00-30:00 -- Reveal & react' explicitly pitches Voice Liberation to the interviewee: 'I work with leaders on what I call Voice Liberation -- helping them find and speak their actual truth in high-stakes settings where they normally self-edit.'"
+      "evidence": "Section '27:00-30:00 -- Reveal & react' explicitly pitches Say Why to the interviewee: 'I work with leaders on what I call Say Why -- helping them find and speak their actual truth in high-stakes settings where they normally self-edit.'"
     },
     {
       "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm",

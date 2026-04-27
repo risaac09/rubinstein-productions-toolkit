@@ -15,10 +15,10 @@
       "evidence": "Uses 'ED' as a segment term throughout: 'An engaged ED is a green flag' and 'If the ED keeps saying \"marketing video\"'."
     },
     {
-      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "text": "Frames RP as Say Why / narrative practice, NOT as a videography or video production business",
       "assertion_id": "not_videography_business",
       "passed": false,
-      "evidence": "Frames the work as video production: advises on 'shoot day', 'post-production hours', and 'polished 3-minute video'. Never mentions Voice Liberation, narrative practice, or excavation."
+      "evidence": "Frames the work as video production: advises on 'shoot day', 'post-production hours', and 'polished 3-minute video'. Never mentions Say Why, narrative practice, or excavation."
     },
     {
       "text": "Maps the opportunity to a specific RP tier (likely Map) and checks it against pricing floors",
@@ -27,10 +27,10 @@
       "evidence": "No RP tier is referenced. Pricing is ad-hoc market-rate reasoning: '$2,500 is below market for a polished 3-minute video in Boston'."
     },
     {
-      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Voice Liberation identity",
+      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Say Why identity",
       "assertion_id": "flags_framing_mismatch",
       "passed": false,
-      "evidence": "Identifies a 'marketing video' vs 'brand video' distinction as a generic scope concern, but never connects it to RP's Voice Liberation identity or methodology."
+      "evidence": "Identifies a 'marketing video' vs 'brand video' distinction as a generic scope concern, but never connects it to RP's Say Why identity or methodology."
     }
   ]
 }

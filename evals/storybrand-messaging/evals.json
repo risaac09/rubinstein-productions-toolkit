@@ -15,7 +15,7 @@
       ]
     },
     {"id": 2, "name": "homepage-hero-copy", "type": "restraint_canonical",
-      "prompt": "Write hero-section copy for the Rubinstein Productions homepage. Target: nonprofit EDs who are tired of sector-generic messaging. We do Voice Liberation work — facilitation, narrative, film.",
+      "prompt": "Write hero-section copy for the Rubinstein Productions homepage. Target: nonprofit EDs who are tired of sector-generic messaging. We do Say Why work — facilitation, narrative, film.",
       "fixture_assertions": [
         {"id": "names_external_and_internal_problem", "text": "Surfaces both the external problem (generic messaging) and the internal problem (how it feels to sound like everyone else)", "check": "qualitative"},
         {"id": "clear_call_to_action", "text": "Includes a clear direct call-to-action, not a vague 'learn more'", "check": "qualitative"}

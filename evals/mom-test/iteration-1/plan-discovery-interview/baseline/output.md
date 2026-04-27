@@ -1,12 +1,12 @@
-# 30-Minute Discovery Interview: Voice Liberation Facilitation for Nonprofit EDs
+# 30-Minute Discovery Interview: Say Why Facilitation for Nonprofit EDs
 
 ## Purpose
 
-Validate whether nonprofit Executive Directors have a real, urgent, funded problem that "Voice Liberation facilitation" could plausibly solve. You are testing whether a **job** exists in their world — not selling the offering. Keep your idea out of their mouth until the final minutes (if at all).
+Validate whether nonprofit Executive Directors have a real, urgent, funded problem that "Say Why facilitation" could plausibly solve. You are testing whether a **job** exists in their world — not selling the offering. Keep your idea out of their mouth until the final minutes (if at all).
 
 ## Ground rules for you (the interviewer)
 
-1. **Talk about their life, not your idea.** Don't describe Voice Liberation until the very end, and only if they ask.
+1. **Talk about their life, not your idea.** Don't describe Say Why until the very end, and only if they ask.
 2. **Ask about the past and the specific, not the future and the hypothetical.** "Tell me about the last time…" beats "Would you ever…".
 3. **Talk less, listen more.** Target 20% you, 80% them.
 4. **Dig for currency:** time spent, money spent, workarounds built, people pulled in, consequences suffered. Compliments and "that sounds interesting" are worthless signals.
@@ -75,7 +75,7 @@ Quantify the problem.
 
 Only now, if the conversation warrants it:
 
-> "I'll share briefly what I'm exploring, and I'd love your honest reaction — especially if it sounds off. I work with leaders on what I call *Voice Liberation* — helping them find and speak their actual truth in high-stakes settings where they normally self-edit. [One sentence on modality — facilitation, somatic, narrative — whatever is true.] Does any of that land, or miss, given what you just told me?"
+> "I'll share briefly what I'm exploring, and I'd love your honest reaction — especially if it sounds off. I work with leaders on what I call *Say Why* — helping them find and speak their actual truth in high-stakes settings where they normally self-edit. [One sentence on modality — facilitation, somatic, narrative — whatever is true.] Does any of that land, or miss, given what you just told me?"
 
 18. "What would you need to see to believe it works?"
 19. "What would make you not hire someone like me?"
@@ -122,4 +122,4 @@ Write a one-page synthesis answering:
 1. What job, in their words, are they trying to get done?
 2. What are they currently hiring to do that job, and where is that failing?
 3. Is there active budget, an active buyer, and active pain?
-4. Does "Voice Liberation facilitation" map onto that job — or do you need to rename, reframe, or reshape the offering?
+4. Does "Say Why facilitation" map onto that job — or do you need to rename, reframe, or reshape the offering?

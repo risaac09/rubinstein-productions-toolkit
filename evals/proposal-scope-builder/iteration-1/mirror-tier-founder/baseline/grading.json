@@ -21,10 +21,10 @@
       "evidence": "matched: $3,200"
     },
     {
-      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "text": "Uses Say Why framing (not generic 'brand strategy' or 'content marketing')",
       "assertion_id": "voice_liberation_framing",
       "passed": true,
-      "evidence": "Names 'Voice Liberation' in footer and frames as 'narrative excavation' not brand strategy"
+      "evidence": "Names 'Say Why' in footer and frames as 'narrative excavation' not brand strategy"
     },
     {
       "text": "Opener names the client's specific narrative gap/pattern (diagnostic), not generic appreciation",

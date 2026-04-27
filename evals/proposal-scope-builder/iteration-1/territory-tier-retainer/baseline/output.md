@@ -25,7 +25,7 @@ The Territory tier is an ongoing relationship, not a deliverable. It's designed 
 
 I function as your **external narrative steward**: I hold the through-line across quarters, translate internal shifts into language that lands, and make sure new team members and funders walk into a coherent story rather than a fragmented one.
 
-This is Voice Liberation applied at the organizational level. Your voice is already there. My job is to keep it legible to itself as you grow.
+This is Say Why applied at the organizational level. Your voice is already there. My job is to keep it legible to itself as you grow.
 
 ---
 
@@ -115,5 +115,5 @@ I'm ready to start as early as May 1, 2026.
 
 Warmly,
 Isaac Rubinstein
-Rubinstein Productions | Voice Liberation Consultancy
+Rubinstein Productions | Say Why Consultancy
 rubinsteinproductions.com

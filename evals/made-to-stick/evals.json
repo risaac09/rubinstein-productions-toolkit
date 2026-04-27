@@ -15,7 +15,7 @@
       ]
     },
     {"id": 2, "name": "craft-sticky-tagline", "type": "restraint_canonical",
-      "prompt": "Give me a sticky tagline for Voice Liberation — the practice of helping leaders stop sounding like their sector and start sounding like themselves.",
+      "prompt": "Give me a sticky tagline for Say Why — the practice of helping leaders stop sounding like their sector and start sounding like themselves.",
       "fixture_assertions": [
         {"id": "tagline_is_concrete", "text": "The proposed tagline is concrete and sensory, not abstract", "check": "qualitative"},
         {"id": "contains_unexpected_element", "text": "Includes an unexpected twist, reversal, or counterintuitive element (the U in SUCCESs)", "check": "qualitative"}

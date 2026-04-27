@@ -2,6 +2,8 @@
 
 These are non-negotiable. They exist to protect Isaac's energy, the practice's sustainability, and the quality of the work.
 
+> **Source of truth:** `00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md` Part 1 (vault). The page below is a public-facing summary; the canonical wins on conflicts.
+
 <div class="visual-embed">
 <iframe src="../assets/diagrams/service-tiers.html" width="100%" height="600" frameborder="0" style="border: 1px solid #f2ece4; border-radius: 4px;"></iframe>
 <p style="font-size: 12px; color: #a89e93; margin-top: 4px;">↗ <a href="../assets/diagrams/service-tiers.html" target="_blank">Open full tier visualization</a></p>
@@ -11,32 +13,40 @@ These are non-negotiable. They exist to protect Isaac's energy, the practice's s
 
 ## Service Tiers
 
-### Tier 1 — Mirror (Voice Excavation Sessions)
+### Tier 1 — Founder Story
+
+**Segment:** The Rebuilder — individual in transition (burnout recovery, career shift, grad school, layoff).
 
 | Offering | Price Range |
 |----------|------------|
-| Single session | $500–$1,500 |
-| 3-session arc | $1,500–$3,000 |
+| Facilitated conversation + short film or narrative synthesis | $1,500–$2,500 |
 
-Delivery: 2–3 hours per session. Zero-Measurement Zone protocol. 5-day latency before any deliverable.
+Delivery: 1–2 sessions + 5-day latency + produced artifact (short film 2–3 min OR written narrative synthesis).
 
-### Tier 2 — Map (Narrative Strategy Sprint)
+### Tier 2 — Program Engagement
+
+**Segment:** The Container Builder — program leader running a cohort, workshop, or design challenge.
 
 | Offering | Price Range |
 |----------|------------|
-| Half-day engagement | $2,000–$4,000 |
-| Full sprint (3–5 days) | $5,000–$12,000 |
+| Embedded documentation + evaluation across the program | $3,000–$8,000 |
 
-Delivery: Bilingual Dashboard (Royal + Nomadic), Narrative Audit Scorecard.
+Delivery: Facilitated interviews + ongoing documentation + impact evaluation report + compilation film + Bilingual Dashboard (Lite). Scoped to program length.
 
-### Tier 3 — Territory (Voice Liberation Partnership)
+Positioning: NOT actively sold; positioned as a case study (the Genesis Design Challenge) with a "Let's talk" path.
+
+### Tier 3 — Organizational Embedding (NOT YET OFFERED)
+
+**Segment:** The Emergent Practitioner — org developing methodology, needing ongoing narrative + evaluation capacity.
 
 | Offering | Price Range |
 |----------|------------|
 | Monthly retainer | $4,000–$8,000 |
 | Minimum commitment | 3 months |
 
-Includes: monthly facilitation, asset production, dashboard reporting, strategic advisory.
+Includes: facilitation cycles, asset production, Bilingual Dashboard (Full), strategic advisory, Three-Phase evaluation methodology (Awareness → Protocol → Systems Design).
+
+**Hold condition:** Open this tier only after one completed paid Program Engagement at depth.
 
 ### Group Offering — Workshop
 
@@ -52,11 +62,12 @@ Includes: monthly facilitation, asset production, dashboard reporting, strategic
 
 | Rule | Detail |
 |------|--------|
-| **Floor rate** | $150/hr. Do not work below this under any framing. |
-| **Session minimum** | $500. No exceptions. |
-| **Video minimum** | $2,000. No exceptions. |
+| **Hourly floor** | $500/hr. Do not work below this under any framing. |
+| **Founder Story floor** | $1,500. No exceptions. |
+| **Program Engagement floor** | $3,000. No exceptions. |
+| **Org Embedding floor** | $4,000/mo. No exceptions. |
 | **Anchor high** | Always present the highest applicable tier first. Negotiate down, never up. |
-| **Scoping is labor** | A "small ask" from a large org is still Tier 2 pricing. |
+| **Scoping is labor** | A "small ask" from a large org is still Program Engagement pricing. |
 
 ---
 
@@ -94,18 +105,19 @@ When a client says "that's too expensive":
 ### What to Say
 
 - "Here's what I can offer within that range..."
-- "The Mirror session might be the right starting point for your budget."
+- "A Founder Story might be the right starting point for your budget."
 - "I'd rather do less work at the right rate than more work at a rate that compromises quality."
 
 ---
 
-## Year 1 Revenue Model
+## Year 1 Revenue Model (honest targets)
 
-| Tier | Target deals/year | Avg value | Revenue |
+| Offering | Deals/year | Avg value | Revenue |
 |------|------------------|-----------|---------|
-| Mirror | 20 | $1,000 | $20,000 |
-| Map | 8 | $5,000 | $40,000 |
-| Territory | 1 | $8K/mo × 3mo | $24,000 |
-| **Total** | | | **~$84,000** |
+| Founder Story | 12–15 | $1,800 | $21,600–$27,000 |
+| Program Engagement | 2–3 | $5,000 | $10,000–$15,000 |
+| **Total** | | | **~$32,000–$42,000** |
 
-Break-even: ~$3,500/month. Profit target: 60–70% margins.
+Break-even: ~$4,500/month. Profit target: 60–70% margins. Quarterly tax reserve: 30% of gross.
+
+This is a part-time income in Year 1. Path to $80K+ requires either: (a) raising Founder Story volume to 25+/year, (b) landing a Program Engagement → Org Embedding upgrade, or (c) a complementary income stream.

@@ -2,7 +2,7 @@
 
 ## The Practice
 
-Rubinstein Productions is a Voice Liberation practice. We are not a video production company, a marketing agency, or a consulting firm — though our work sometimes resembles all three.
+Rubinstein Productions is a facilitation and film practice. We are not a video production company, a marketing agency, or a consulting firm — though our work sometimes resembles all three.
 
 We help mission-driven organizations excavate their authentic narrative, give it clear form, and translate it into assets that travel without us in the room. The methodology is rooted in nervous-system science, relational philosophy, and documentary tradition.
 
@@ -10,10 +10,9 @@ We help mission-driven organizations excavate their authentic narrative, give it
 
 | Layer | What It Means |
 |-------|--------------|
-| **Voice Liberation Specialist** | Primary professional identity. What we do. |
+| **Facilitator and filmmaker** | Primary professional identity. What we do. |
 | **Information Alchemist** | Meta-identity. The underlying capacity — sensing what systems hide, translating invisible dynamics. |
-| **Consciousness Cartographer** | The deep layer. Mapping organizational awareness and facilitating systemic shifts. |
-| **Facilitator + Filmmaker** | The craft layer. The specific tools we use to do the work. |
+| **Say Why practitioner** | The methodology layer. The specific practice — recovering the inside version of what clients already know. |
 
 ## What We Believe
 
@@ -29,7 +28,7 @@ We help mission-driven organizations excavate their authentic narrative, give it
 
 ## The Problem We Solve
 
-**Narrative Dysregulation:** the gap between an organization's operational reality (what they do) and their expressed identity (what they say).
+**Systemic alienation from honest expression:** the structural gap between an organization's operational reality (what they do) and their expressed identity (what they say).
 
 This gap shows up as: generic messaging, jargon-heavy communications, leaders who are brilliant in private but wooden in public, teams that execute well but can't explain why the work matters, fundraising language that sounds like every other organization in the sector.
 

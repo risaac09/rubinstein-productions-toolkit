@@ -14,7 +14,7 @@ The foundation of the facilitation methodology.
 
 ## Relational Ontology & Assemblage Theory
 
-The philosophical framework behind the Bilingual Dashboard and the concept of Narrative Dysregulation.
+The philosophical framework behind the Bilingual Dashboard and the analysis of systemic alienation from honest expression.
 
 - **Gilles Deleuze & Félix Guattari** — *A Thousand Plateaus* (1987). The Royal/Nomadic distinction originates here. The concepts of assemblage, deterritorialization, and smooth vs. striated space inform how RP understands organizational dynamics.
 - **Manuel DeLanda** — *A New Philosophy of Society* (2006). Assemblage theory made accessible. DeLanda's distinction between properties and capacities is useful for understanding what organizations can do vs. what they actually do.

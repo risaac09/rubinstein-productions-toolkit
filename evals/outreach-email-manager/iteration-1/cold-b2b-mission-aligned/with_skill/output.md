@@ -12,5 +12,5 @@ That's the gap I work in — when an organization knows its story somatically bu
 Would you be open to a 30-minute call to walk through where the translation is breaking down? No pitch — I'd just want to show you what I see.
 
 — Isaac Rubinstein
-Rubinstein Productions | Voice Liberation
+Rubinstein Productions | Say Why
 rubinsteinproductions.com

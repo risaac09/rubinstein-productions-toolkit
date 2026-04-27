@@ -1,6 +1,6 @@
 # Competitor-Move Synthesis — 2026-04-05
 
-Three signals, three different windows. Read through the Voice Liberation lens: the question isn't "match the move," it's "what does this tell us about where collective attention is pointing, and where can Isaac say the thing only he can say?"
+Three signals, three different windows. Read through the Say Why lens: the question isn't "match the move," it's "what does this tell us about where collective attention is pointing, and where can Isaac say the thing only he can say?"
 
 ## This week's signals
 
@@ -16,7 +16,7 @@ Three signals, three different windows. Read through the Voice Liberation lens: 
 
 - **What it tells us:** A peer is pricing a voice-finding single-engagement intensive at 4x RP's Mirror tier. This is either (a) a pricing-floor signal that RP's Mirror is under-priced for the market, or (b) a packaging signal that the "single-engagement intensive" format has found a willingness-to-pay band RP hasn't tested.
 - **Learning window, not reaction window.** Don't chase. But this has pricing/positioning implications that belong in `rubinstein-productions-coo` for review. Questions worth holding: Is Mirror's $1.5k still the right number, or is it a legacy anchor? Is there a higher-tier intensive between Mirror ($1.5k) and Map/Territory that RP hasn't named?
-- **Anthropology note:** "The Clearing" language is clean but generic. RP's methodology vocabulary (Mirror / Map / Territory + Voice Liberation + Say The Thing) is more distinct. Don't dilute it by reacting.
+- **Anthropology note:** "The Clearing" language is clean but generic. RP's methodology vocabulary (Mirror / Map / Territory + Say Why + Say The Thing) is more distinct. Don't dilute it by reacting.
 
 ### Topic trends (1)
 

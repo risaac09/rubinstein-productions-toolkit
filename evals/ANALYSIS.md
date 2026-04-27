@@ -157,7 +157,7 @@ Four discovery-framework skills tested at n=2 fixtures each (truncated from stan
 Baseline never names SUCCESs principles or Curse of Knowledge in the tagline fixture (2/5 qual). Skill enforces full framework scoring. The diagnose fixture was closer (4/5 vs 5/5) — baseline knows to critique jargon but doesn't use the SUCCESs lens. **Word bloat is significant (+125%)** because the skill produces framework scorecards.
 
 ### mom-test — ⭐ +25pp
-Biggest gap on the discovery-interview fixture: baseline pitched Voice Liberation to the interviewee (violating Rule 1) and included hypothetical questions (violating Rule 2). Skill prevented both. Critique fixture tied (both flagged all 5 questions). **Moderate word bloat (+16%).**
+Biggest gap on the discovery-interview fixture: baseline pitched Say Why to the interviewee (violating Rule 1) and included hypothetical questions (violating Rule 2). Skill prevented both. Critique fixture tied (both flagged all 5 questions). **Moderate word bloat (+16%).**
 
 ### jobs-to-be-done — ✅ +13pp
 Skill wins on churn-analysis (baseline missed three-dimensions framework). Videography fixture tied — baseline knew JTBD vocabulary well enough. **Notable bloat (+48%).**
@@ -177,7 +177,7 @@ One-liner fixture tied (3/5 both) — both failed on three-levels-of-problem. Ho
 Four writing/ops skills tested at n=2 fixtures each. **Batch D produced the two largest deltas in the entire eval suite.**
 
 ### rubinstein-productions-coo — ⭐⭐ +90pp (strongest signal across all 19 skills)
-Baseline scores 1/10 on qualitative — it knows nothing about RP pricing tiers (Mirror/Map/Territory), capacity protocols, or Voice Liberation framing. Skill enforces the full operational architecture. **Moderate word bloat (+24%).** This is the clearest case for Pattern 1: the skill encodes an entire operational vocabulary that baseline cannot replicate.
+Baseline scores 1/10 on qualitative — it knows nothing about RP pricing tiers (Mirror/Map/Territory), capacity protocols, or Say Why framing. Skill enforces the full operational architecture. **Moderate word bloat (+24%).** This is the clearest case for Pattern 1: the skill encodes an entire operational vocabulary that baseline cannot replicate.
 
 ### writing-skills — ⭐⭐ +75pp
 Baseline produces generic "how to write a skill file" advice (0/4 on draft fixture). Skill enforces TDD methodology: RED-GREEN-REFACTOR, pressure scenarios, watch-it-fail-first. The evaluate fixture was closer (skill 3/4 vs baseline 1/4) — skill missed explicitly naming "TDD" in one run. **Low bloat (+21%).**

@@ -31,14 +31,14 @@ Each phase has a detailed deep-dive in the [Learning section](../learning/four-p
 
 ## Service Tiers
 
-| Tier | Name | Price | What's Included |
-|------|------|-------|----------------|
-| Mirror | Voice Excavation Session | $500–$1,500 | 90-min session + narrative synthesis |
-| Map | Narrative Strategy Sprint | $2,000–$12,000 | Multi-day engagement + Bilingual Dashboard |
-| Territory | Voice Liberation Partnership | $4,000–$8,000/mo | Monthly facilitation + production + advisory |
-| Workshop | "Say The Thing" | $150–$300/person | 3-hour group session (8–20 people) |
+| Tier | Segment | Price | What's Included |
+|------|---------|-------|----------------|
+| Founder Story | The Rebuilder (individual in transition) | $1,500–$2,500 | Facilitated conversation + short film or narrative synthesis |
+| Program Engagement | The Container Builder (program leader running a cohort) | $3,000–$8,000 | Embedded documentation + evaluation + compilation film |
+| Organizational Embedding (NOT YET OFFERED) | The Emergent Practitioner (org developing methodology) | $4,000–$8,000/mo | Monthly facilitation + production + Bilingual Dashboard + advisory |
+| Workshop | Group | $150–$300/person | 3-hour group session (8–20 people) |
 
-Pricing guardrails are non-negotiable. Floor rate is $150/hr. See [Pricing Guardrails](../operations/pricing-guardrails.md).
+Pricing guardrails are non-negotiable. Hourly floor is $500/hr. See [Pricing Guardrails](../operations/pricing-guardrails.md).
 
 ## Communication Style
 

@@ -10,5 +10,5 @@ That gap — between what actually happened inside a client engagement and the s
 Would you be open to a 20-minute call in the next couple weeks? Not a pitch — I'd just like to hear what you're running into with these, and I might have some things that are useful.
 
 — Isaac Rubinstein
-Rubinstein Productions | Voice Liberation
+Rubinstein Productions | Say Why
 rubinsteinproductions.com
