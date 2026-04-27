@@ -1,10 +1,10 @@
 ---
 name: rubinstein-productions-coo
-description: Operational architecture and strategic guardrails for Rubinstein Productions — Isaac's Voice Liberation consultancy. Handles pricing enforcement, capacity management, opportunity triage, and quarterly reviews. Use when Isaac needs to decide whether to take a project, validate pricing, check capacity, or assess strategic direction. Connects to rubinstein-productions-agent as a sub-skill. Trigger for "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or any operational/strategic RP decision.
+description: Operational architecture and strategic guardrails for Rubinstein Productions — Isaac's facilitation and film consultancy. Handles pricing enforcement, capacity management, opportunity triage, and quarterly reviews. Use when Isaac needs to decide whether to take a project, validate pricing, check capacity, or assess strategic direction. Connects to rubinstein-productions-agent as a sub-skill. Trigger for "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or any operational/strategic RP decision.
 ---
 
-> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/Practice/Rubinstein Productions/Content/Say Why - Canonical Positioning & Skill Embedding.md`
-> **Pull contract:** Enforce pricing floors by segment per canonical offer ladder (Mirror $500-1,500 / Map $5-12K / Territory $4-8K/mo). Reject opportunities where the prospect does NOT match a documented audience segment (ED / Founder / Org-in-transition) unless Isaac explicitly overrides. The positioning doc is the source of truth for segment definitions and pricing — when it disagrees with this skill, canonical file wins.
+> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md`
+> **Pull contract:** Enforce pricing floors by segment per canonical offer ladder (Founder Story $1,500–2,500 / Program Engagement $3–8K / Organizational Embedding $4–8K/mo). Reject opportunities where the prospect does NOT match a documented audience segment (Rebuilder / Container Builder / Emergent Practitioner) unless Isaac explicitly overrides. The canonical doc (v2, 2026-04-27) is the source of truth for segment definitions, pricing, methodology, and brand language — when it disagrees with this skill, canonical file wins.
 
 # Rubinstein Productions COO Skill
 **Version:** 2.0 | **Updated:** March 2026
@@ -15,10 +15,10 @@ description: Operational architecture and strategic guardrails for Rubinstein Pr
 
 ## IDENTITY GROUND TRUTH
 
-**What RP is:** A Voice Liberation practice — helping mission-driven organizations excavate, articulate, and amplify their authentic narrative through Generative Translation.
+**What RP is:** A facilitation and film practice — helping mission-driven people and organizations recover the inside version of their truth and build sustainable capacity to express it. (Tagline: *Say the thing.*)
 
-**What Isaac is:** Information Alchemist | 5/1 Generator | Cross of Healing | Rhizoanalyst
-**Core problem RP solves:** Narrative Dysregulation — the gap between an organization's Royal Register (operational, institutional) and its Nomadic soul (living, embodied, generative).
+**What Isaac is:** Facilitator and filmmaker | Information Alchemist | 5/1 Generator | Cross of Healing
+**Core problem RP solves:** Systemic alienation from honest expression — the structural gap between operational reality and expressed identity, sustained by performance pressure, institutional memory, power dynamics, and measurement systems that only count what can be counted.
 
 **What RP is NOT:** A photography/videography business. Media production may be a delivery mechanism, but it is not the identity.
 
@@ -107,7 +107,7 @@ This skill is the **operational conscience** of RP. It activates when:
 
 ### Capacity Assessment Protocol
 When Isaac asks "can I take this?":
-1. What's currently active? (count Territory + Map clients)
+1. What's currently active? (count Organizational Embedding + Program Engagement clients)
 2. What's the next 4 weeks look like energetically?
 3. Does this project require filming? (adds 6+ days to workload)
 4. Is this Sacral yes or cognitive override? (flag if feels forced)

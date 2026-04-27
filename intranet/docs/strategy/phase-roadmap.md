@@ -6,8 +6,8 @@ Build the practice infrastructure and land the first clients.
 
 ### Completed
 
-- Brand identity solidified (Voice Liberation Specialist)
-- Core methodology documented (Generative Translation, Bilingual Dashboard, ENIF)
+- Brand identity solidified (Facilitator and filmmaker)
+- Core methodology documented (the four-phase methodology, Bilingual Dashboard, ENIF)
 - Skill infrastructure built (15+ AI skills operationalizing RP)
 - Toolkit open-sourced on GitHub
 - Client-facing template set created (11 documents covering full engagement lifecycle)
@@ -16,7 +16,7 @@ Build the practice infrastructure and land the first clients.
 
 ### In Progress
 
-- First 3 Territory clients
+- First 3 Organizational Embedding clients
 - Bilingual Dashboard delivered as repeatable format
 - Case studies from early engagements
 - RWJF grant brief (Say Why initiative)
@@ -26,9 +26,9 @@ Build the practice infrastructure and land the first clients.
 
 | Milestone | Target | Status |
 |-----------|--------|--------|
-| First Mirror engagement | Q2 2026 | In progress |
-| First Map engagement | Q2 2026 | Pipeline |
-| First Territory client | Q3 2026 | Pipeline |
+| First Founder Story engagement | Q2 2026 | In progress |
+| First Program Engagement engagement | Q2 2026 | Pipeline |
+| First Organizational Embedding client | Q3 2026 | Pipeline |
 | 3 completed case studies | Q4 2026 | Not started |
 | Say Why grant submitted | Q2 2026 | In progress |
 | Revenue: $20K cumulative | Q4 2026 | Not started |
@@ -41,7 +41,7 @@ Scale through group offerings and strategic partnerships while protecting solo d
 
 ### Priorities
 
-- **Signature workshop:** "Voice Liberation Intensive" — group format, $3K/person, cohort model (8–20 people)
+- **Signature workshop:** "Say Why Intensive" — group format, $3K/person, cohort model (8–20 people)
 - **Speaking/facilitation circuit:** Conferences, retreats, summits in healthcare, nonprofit, and social impact sectors
 - **Strategic partnerships:** Health systems, foundations, equity funds
 - **First hire:** Operations support (administrative, not creative — protect Isaac's direct delivery role)
@@ -65,16 +65,16 @@ Build beyond solo practice into ecosystem and intellectual property.
 ### Priorities
 
 - IAOS ecosystem products (digital tools, courses, licensing)
-- Training other Voice Liberation practitioners (certification model)
+- Training other Say Why practitioners (certification model)
 - Publishing and intellectual property (book, framework licensing)
-- Quantum Mirror as public-facing tool or SaaS
+- Quantum Founder Story as public-facing tool or SaaS
 - Alchemy app as standalone product
 
 ### Key Milestones
 
 | Milestone | Target |
 |-----------|--------|
-| Voice Liberation practitioner training program designed | 2027 |
+| Say Why practitioner training program designed | 2027 |
 | First licensed practitioner | 2028 |
 | Book proposal or manuscript drafted | 2028 |
 | Revenue: $200K+ annual | End of Phase 3 |
@@ -85,7 +85,7 @@ Build beyond solo practice into ecosystem and intellectual property.
 
 Do not advance to the next phase until the current phase is solid:
 
-**Phase 1 → Phase 2:** At least 2 Territory clients active, 3+ completed case studies, revenue above $60K annual, methodology proven and repeatable.
+**Phase 1 → Phase 2:** At least 2 Organizational Embedding clients active, 3+ completed case studies, revenue above $60K annual, methodology proven and repeatable.
 
 **Phase 2 → Phase 3:** Workshop model validated (3+ delivered), operations hire in place, revenue above $100K, at least 1 strategic partnership generating recurring work.
 

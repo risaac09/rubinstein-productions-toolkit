@@ -3,18 +3,18 @@
 ## The Causal Pathway
 
 ```
-Narrative Dysregulation → Facilitated Excavation → Authentic Articulation → Amplified Expression → Organizational Coherence
+Systemic alienation from honest expression → Facilitated Excavation → Authentic Articulation → Amplified Expression → Organizational Coherence
 ```
 
 ## The Problem
 
-Mission-driven organizations suffer from Narrative Dysregulation: a structural gap between their operational reality (what they do) and their expressed identity (what they say). This gap creates downstream failures in fundraising, team alignment, public trust, and leadership transitions.
+Mission-driven organizations suffer from Systemic alienation from honest expression: a structural gap between their operational reality (what they do) and their expressed identity (what they say). This gap creates downstream failures in fundraising, team alignment, public trust, and leadership transitions.
 
 The symptoms are visible everywhere: jargon-heavy communications that say nothing, messaging that sounds like every other organization in the sector, leaders who are brilliant in private but wooden in public, teams that execute well but can't explain why the work matters.
 
 ## The Root Cause
 
-Narrative Dysregulation is not a communications problem. It is a safety problem. Organizations cannot say what's true because the institutional environment has made honesty feel dangerous. The gap persists because:
+Systemic alienation from honest expression is not a communications problem. It is a safety problem. Organizations cannot say what's true because the institutional environment has made honesty feel dangerous. The gap persists because:
 
 1. **Performance pressure** rewards polished messaging over authentic expression
 2. **Institutional memory** carries unprocessed conflict and fear

@@ -1,24 +1,20 @@
 # Target Market & Competitive Landscape
 
-## Primary Avatar: The Mission-Driven Analyst
+> **Source of truth for audience segments + pricing:** vault `Say Why - Canonical Positioning & Skill Embedding.md` (v2, 2026-04-27). This page mirrors the canonical doc's Part 12 (competitive distinction) plus its Part 1 segments. When in doubt, the canonical wins.
 
-The ideal client is someone who can execute brilliantly but can't explain *why* in a way that moves people.
+## Audience Segments (canonical)
 
-| Attribute | Detail |
-|-----------|--------|
-| **Roles** | Chief Strategy Officers, VP Communications, Equity/Justice directors, nonprofit EDs, fund managers with narrative obligations |
-| **Pain** | Can execute but can't articulate. Public narrative falls flat. Fundraising language is generic. Internal culture doesn't match external messaging. |
-| **Budget** | $50K–$500K communications/strategy budgets |
-| **Trigger events** | Public narrative failure, fundraising plateau, leadership transition, strategic pivot, funder asks for "impact story" |
-| **Decision pattern** | Evidence-driven but values-oriented. Needs both ROI language and relational proof. |
+| Segment | Pain | Offer | Price |
+|---|---|---|---|
+| **The Rebuilder** — individual in transition (burnout recovery, career shift, grad school, layoff) | "I've been through something real but I can't show what I've become yet" | Founder Story (facilitated conversation + short film) | $1,500–$2,500 |
+| **The Container Builder** — program leader running a cohort, workshop, or design challenge | "Something real is happening in my program but I can't prove it or show it to funders/partners" | Program Engagement (embedded documentation + evaluation) | $3,000–$8,000 |
+| **The Emergent Practitioner** — org developing methodology, needing ongoing narrative + evaluation capacity | "We're building something new and need infrastructure to tell its story and prove it works" | Organizational Embedding (NOT yet offered — strategic target) | $4,000–$8,000/mo |
 
-## Secondary Markets
+**Entry point:** All roads start with Founder Story or a conversation. Program Engagement is positioned as a case study (the Genesis Design Challenge), not actively sold. Organizational Embedding is held until one completed paid Program Engagement exists.
 
-**Healthcare systems and public health organizations** — Isaac's MPH and healthcare systems background gives asymmetric credibility here. These organizations have massive narrative dysregulation (the gap between clinical outcomes and community experience) and budgets to address it.
+## Asymmetric Credibility
 
-**Social impact funds** — Increasingly need narrative capacity beyond annual reports. The Bilingual Dashboard speaks directly to their evaluation needs.
-
-**Foundations and grantmakers** — Need help telling grantee stories without extracting from the communities they serve. The camera-shipping model directly addresses this pain.
+Isaac's MPH and pediatric psychiatric direct-care background gives asymmetric credibility in healthcare and public-health adjacent work. The Genesis Design Challenge Impact Evaluation Report is the proof artifact.
 
 ## Competitive Landscape
 
@@ -34,7 +30,7 @@ The ideal client is someone who can execute brilliantly but can't explain *why* 
 
 ### The RP Difference
 
-No one else combines all three of these:
+No one else combines all three:
 
 1. **Facilitation methodology** rooted in nervous-system science (not just "great interviewing")
 2. **Production capability** with a participant-led model (camera ships to them, not crew)
@@ -63,6 +59,6 @@ RP occupies the upper-left quadrant uniquely: high production value, process-led
 
 ## Pricing Context
 
-RP pricing ($500–$8,000/month) sits below major consultancies ($25K+/engagement) but above freelance videographers ($500–$2,000/project). The positioning justifies the premium over production-only services: clients are paying for methodology + facilitation + measurement, not just footage.
+RP pricing ($1,500 entry to $8,000/mo retainer) sits below major consultancies ($25K+/engagement) but above freelance videographers ($500–$2,000/project). The positioning justifies the premium over production-only services: clients are paying for methodology + facilitation + measurement, not just footage.
 
 The risk is being perceived as "expensive videography" rather than "facilitation that includes production." Positioning language must lead with the methodology and the Bilingual Dashboard, not with the camera.
