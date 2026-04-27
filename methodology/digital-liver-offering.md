@@ -1,4 +1,4 @@
-> **Canonical source:** `03 Projects/Rubinstein Productions/05 Methodology/Digital Liver Offering Definition.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Digital Liver Offering Definition.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
 
 # Digital Liver — Offering Definition
 *Working Document | Created: 2026-03-30*
@@ -179,12 +179,12 @@ There are four credible paths. They're not mutually exclusive, but they require 
 |---|---|---|
 | **What it fixes** | Expression — what goes out alive | Information — what comes in alive |
 | **Client question** | "How do I say what's true?" | "How do I know what matters?" |
-| **Entry tier** | Founder Story ($1,500-2,500) | Workshop ($150-300/person) |
-| **Core tier** | Program Engagement ($3K-8K) | Organizational assessment ($5K-15K) |
-| **Deep tier** | Organizational Presence ($4K-8K/month) | Information architecture consulting ($project-based) |
+| **Entry tier** | The Mirror ($500-1,500) | Workshop ($150-300/person) |
+| **Core tier** | The Map ($5K-12K) | Organizational assessment ($5K-15K) |
+| **Deep tier** | The Territory ($4K-8K/month) | Information architecture consulting ($project-based) |
 | **Scalable product** | The 3-min video (artifact) | The app (tool) — Year 3+ |
 | **Intellectual authority** | Case studies, client testimonials | Academic papers, Substack, speaking |
-| **Pipeline** | LinkedIn → Founder Story → Program → Territory | Publishing → Speaking → Workshop → Consulting |
+| **Pipeline** | LinkedIn → Mirror → Map → Territory | Publishing → Speaking → Workshop → Consulting |
 | **Isaac's role** | Facilitator, filmmaker, witness | Researcher, teacher, practitioner |
 
 ---
@@ -217,6 +217,6 @@ The two offerings feed each other:
 
 *This document should be read alongside:*
 - Dual Architecture — Digital Liver + Rubinstein Productions (the fractal relationship)
-- methodology-blueprint.md (the mirrored RP version of this document)
+- Say Why - Canonical Positioning & Skill Embedding (the mirrored RP version of this document — formerly `RP Methodology Blueprint.md`, now the v2 integrated canonical)
 - Digital Liver — Research Foundation (the intellectual assets)
 - The Fractal Enclosure - Framework (the political economy argument)
