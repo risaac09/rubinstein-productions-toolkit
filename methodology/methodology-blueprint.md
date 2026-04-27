@@ -1,3 +1,5 @@
+> **Canonical source:** this file (toolkit is authoritative — vault archived its copy 2026-04-27; this file reflects the v2 April 2026 update).
+
 # Rubinstein Productions — Methodology Blueprint
 *Working Document | Created: 2026-03-30*
 *Purpose: Consolidate the RP methodology into a client-legible, market-ready framework*
