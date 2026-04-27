@@ -1,3 +1,5 @@
+> **Canonical source:** `03 Projects/Rubinstein Productions/07 Outreach/01 grants/Say Why — Evaluation Framework.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+
 # Say Why — Evaluation Framework
 ### Bilingual Assessment for Grant-Funded Engagements
 *Isaac Rubinstein | April 2026*
@@ -23,7 +25,8 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 |---|---|---|
 | Facilitation sessions completed | Count | 3-4 per participant |
 | Participants completing full arc | Count / % | 80%+ retention |
-| Video artifacts produced | Count | 1 per participant || Narrative synthesis documents | Count | 1 per participant |
+| Video artifacts produced | Count | 1 per participant |
+| Narrative synthesis documents | Count | 1 per participant |
 | Hours of raw footage returned | Hours | Varies |
 | Camera equipment shipped + returned | Count | 100% return rate |
 
@@ -51,7 +54,8 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 **What we're measuring:** The degree to which a participant can articulate what their work is and why it matters — in their own language, without institutional hedging.
 
 | Indicator | Baseline Assessment | Post Assessment |
-|---|---|---|| Self-referential clarity | "Tell me about your work" — coded for jargon density, hedging, self-correction loops | Same prompt, coded for directness, specificity, emotional congruence |
+|---|---|---|
+| Self-referential clarity | "Tell me about your work" — coded for jargon density, hedging, self-correction loops | Same prompt, coded for directness, specificity, emotional congruence |
 | Structural awareness | Can participant name the systemic conditions shaping their communication? | Has structural awareness deepened or become actionable? |
 | Voice-body alignment | Observed: posture, breathing, vocal tone during intake conversation | Same observational protocol post-completion |
 | Story portability | Does the participant's narrative require them in the room to land? | Can the video artifact carry the narrative independently? |
@@ -102,7 +106,6 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 ---
 
 *This framework should be read alongside:*
-- [[Say Why — Theory of Change]]
-- [[Say Why — Grant Concept]]
-- [[Emergent Narrative Impact Framework]]
-- [[Nomadic Indicators Codebook]]
+- theory-of-change.md
+- enif.md (full operational measurement system)
+- nomadic-indicators-codebook.md
