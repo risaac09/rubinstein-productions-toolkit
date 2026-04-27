@@ -2,7 +2,7 @@
 
 ## Opportunity Triage: A (Aligned)
 
-This is core RP methodology territory. A founder you met at a conference — meaning the work came to you (Generator-aligned, not chased). Facilitating a voice workshop for a leadership team is exactly what Voice Liberation does: helping mission-driven organizations excavate and articulate their authentic narrative. The founder avatar maps cleanly to the primary target market.
+This is core RP methodology territory. A founder you met at a conference — meaning the work came to you (Generator-aligned, not chased). Facilitating a voice workshop for a leadership team is exactly what Say Why does: helping mission-driven organizations excavate and articulate their authentic narrative. The founder avatar maps cleanly to the primary target market.
 
 **Classification: A — Proceed to pricing and capacity check.**
 

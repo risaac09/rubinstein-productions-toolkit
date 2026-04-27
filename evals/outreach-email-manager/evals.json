@@ -1,6 +1,6 @@
 {
   "skill_name": "outreach-email-manager",
-  "notes": "Fixtures test whether the skill produces Voice Liberation outreach that is diagnostic-first, specific, and brief — not generic consultant pitches or methodology-led intros.",
+  "notes": "Fixtures test whether the skill produces Say Why outreach that is diagnostic-first, specific, and brief — not generic consultant pitches or methodology-led intros.",
   "universal_assertions": [
     {
       "id": "no_photo_video_pitch",
@@ -23,7 +23,7 @@
     },
     {
       "id": "diagnostic_not_methodology",
-      "text": "Opener leads with diagnosis of their gap/tension, NOT with Voice Liberation methodology or Isaac's process",
+      "text": "Opener leads with diagnosis of their gap/tension, NOT with Say Why methodology or Isaac's process",
       "check": "qualitative"
     },
     {
@@ -42,7 +42,7 @@
       "id": 1,
       "name": "cold-nonprofit-visible-gap",
       "type": "cold_outreach",
-      "prompt": "Draft a cold outreach email to the Executive Director of Oakside Community Foundation (fictional climate-justice grant-maker in the Northeast). I visited their website — their 2024 annual report opens with $4.2M in grants deployed and a data dashboard. But their About page talks about being 'bridge-builders between displaced communities and philanthropic capital.' The website voice and the report voice don't match. I want to reach out about a potential Voice Liberation engagement. ED is Maya Okonkwo, maya@oakside.org. Keep this a genuine first-touch — no pitch of photography, no mention of methodology until they bite.",
+      "prompt": "Draft a cold outreach email to the Executive Director of Oakside Community Foundation (fictional climate-justice grant-maker in the Northeast). I visited their website — their 2024 annual report opens with $4.2M in grants deployed and a data dashboard. But their About page talks about being 'bridge-builders between displaced communities and philanthropic capital.' The website voice and the report voice don't match. I want to reach out about a potential Say Why engagement. ED is Maya Okonkwo, maya@oakside.org. Keep this a genuine first-touch — no pitch of photography, no mention of methodology until they bite.",
       "context": "Classic RP scenario: the gap between inside voice (warm, relational) and outside voice (metrics-led). Skill should lead with diagnosis, not offer.",
       "fixture_assertions": [
         {"id": "names_report_site_gap", "text": "Names the specific gap between annual report voice and About page voice", "check": "qualitative"},
@@ -76,7 +76,7 @@
       "id": 4,
       "name": "proposal-submission",
       "type": "proposal_submission",
-      "prompt": "Draft a proposal submission email to David Chen (david@mutualaidsf.org) at Mutual Aid SF. I'm sending them the Voice Liberation Essentials proposal we discussed last week — 4-week engagement, $8,500, narrative excavation + website voice rebuild. The proposal is attached as a PDF. Keep the email short — the proposal does the selling, not the email.",
+      "prompt": "Draft a proposal submission email to David Chen (david@mutualaidsf.org) at Mutual Aid SF. I'm sending them the Say Why Essentials proposal we discussed last week — 4-week engagement, $8,500, narrative excavation + website voice rebuild. The proposal is attached as a PDF. Keep the email short — the proposal does the selling, not the email.",
       "context": "Tests restraint. Shouldn't re-pitch or summarize the proposal. Should just be a warm handoff with a clear next step.",
       "fixture_assertions": [
         {"id": "does_not_repitch", "text": "Does NOT re-pitch the methodology or summarize the proposal content in the email", "check": "qualitative"},

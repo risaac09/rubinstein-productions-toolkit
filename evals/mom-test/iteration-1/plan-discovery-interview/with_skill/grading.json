@@ -21,10 +21,10 @@
       "evidence": "Core interview questions consistently anchor to past behavior: 'Walk me through the last board meeting', 'Tell me about the last time that happened. What day was it?', 'What did you do?', 'What have you tried to do about this so far?', 'Who have you brought in -- coaches, facilitators, consultants?', 'What did you pay for that?'"
     },
     {
-      "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee",
+      "text": "Does not include any interview moment where Isaac pitches or describes Say Why to the interviewee",
       "assertion_id": "no_pitching_the_service",
       "passed": true,
-      "evidence": "Output explicitly instructs 'The word Voice Liberation does not enter your mouth. Neither does facilitation workshop as a proposed offering.' and 'Do NOT pitch. Do NOT describe Voice Liberation.' No section of the interview plan describes VL to the interviewee."
+      "evidence": "Output explicitly instructs 'The word Say Why does not enter your mouth. Neither does facilitation workshop as a proposed offering.' and 'Do NOT pitch. Do NOT describe Say Why.' No section of the interview plan describes VL to the interviewee."
     },
     {
       "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm",

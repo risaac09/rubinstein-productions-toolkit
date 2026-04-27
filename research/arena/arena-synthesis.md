@@ -1,5 +1,7 @@
 # Arena of Epistemologies: Synthesis
 
+> **Terminology note (2026-04-27):** This research synthesis uses "Voice Liberation" as a theoretical concept (the named practice that addresses the double-bind of capture, in dialogue with Spivak/Spillers/Fanon). On 2026-03-27 RP retired "Voice Liberation" as a client-facing brand term in favor of "Say Why" / "facilitation and film" — but the analytical content of this synthesis stands as written. The term names a specific theoretical position here, not a current product label. See `00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md` Part 13 for the brand-reset ledger.
+
 ## What the Arena Produced
 
 Eighty-two rounds of adversarial combat across fourteen theoretical domains reduced one hundred fifty claims to nineteen. The survivors organize into a single argument about what happens when a facilitator enters a room where bodies have already been structured by power.

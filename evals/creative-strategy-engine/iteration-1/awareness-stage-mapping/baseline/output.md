@@ -1,4 +1,4 @@
-# Voice Liberation Messaging Angles — Founders in Transition
+# Say Why Messaging Angles — Founders in Transition
 
 Mapped across Eugene Schwartz's 5 awareness stages, for founders whose organizations are growing, restructuring, or rebranding.
 
@@ -36,7 +36,7 @@ They now believe voice matters and is recoverable. They're considering options: 
 
 *Hook territory:* "Brand strategists give you words. Voice liberation gives you back your mouth." / "Why messaging frameworks fail founders in transition." / The distinction between external positioning and internal clarity.
 
-*Goal:* Differentiate Voice Liberation from adjacent categories they're about to spend money on. Establish that this is a different *kind* of work.
+*Goal:* Differentiate Say Why from adjacent categories they're about to spend money on. Establish that this is a different *kind* of work.
 
 ---
 
@@ -44,7 +44,7 @@ They now believe voice matters and is recoverable. They're considering options: 
 
 **Angle: "Built for the Transition Window"**
 
-They know Voice Liberation exists and that Rubinstein Productions does it. They're comparing: is this for me, right now, at this stage? The objection is usually timing ("after the restructure settles") or fit ("we're too early / too big / too mid-transition"). The angle: transition *is* the window. Voice work done during growth/restructure/rebrand shapes what the next era sounds like. Done after, it's remedial.
+They know Say Why exists and that Rubinstein Productions does it. They're comparing: is this for me, right now, at this stage? The objection is usually timing ("after the restructure settles") or fit ("we're too early / too big / too mid-transition"). The angle: transition *is* the window. Voice work done during growth/restructure/rebrand shapes what the next era sounds like. Done after, it's remedial.
 
 *Hook territory:* "Rebrand without voice work and you'll rebrand again in 18 months." / "The best time to do this is the week before the all-hands." / Case framing around founders who did voice work *inside* the transition vs. after.
 
@@ -56,9 +56,9 @@ They know Voice Liberation exists and that Rubinstein Productions does it. They'
 
 **Angle: "Say The Thing, Before The Town Hall"**
 
-They're sold on the approach, sold on RP, and ready to move. They just need the specific on-ramp that matches their moment. The offer here is concrete and time-shaped: a Voice Liberation engagement scoped to a specific transition artifact — the rebrand launch, the restructure announcement, the Series B narrative, the new-hire onboarding deck — where the founder's actual voice has to show up or the whole thing reads as committee.
+They're sold on the approach, sold on RP, and ready to move. They just need the specific on-ramp that matches their moment. The offer here is concrete and time-shaped: a Say Why engagement scoped to a specific transition artifact — the rebrand launch, the restructure announcement, the Series B narrative, the new-hire onboarding deck — where the founder's actual voice has to show up or the whole thing reads as committee.
 
-*Hook territory:* Direct offers with specificity. "Voice Liberation sprint: 2 weeks, before your rebrand launches." / "Founder voice capture for your restructure announcement." / Named deliverables tied to transition moments.
+*Hook territory:* Direct offers with specificity. "Say Why sprint: 2 weeks, before your rebrand launches." / "Founder voice capture for your restructure announcement." / Named deliverables tied to transition moments.
 
 *Goal:* Close. Turn awareness into a scoped engagement with a near-term deadline.
 

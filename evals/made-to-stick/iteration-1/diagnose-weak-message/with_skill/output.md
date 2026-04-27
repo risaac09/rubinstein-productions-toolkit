@@ -98,7 +98,7 @@ Where's the customer who was invisible until their story got told? Where's the f
 
 This tagline reads like it was written by someone who already knows:
 - What Rubinstein Productions actually does
-- What "Voice Liberation" means as a methodology
+- What "Say Why" means as a methodology
 - What distinguishes this shop from 10,000 others
 - Why "authentic voice" matters in Isaac's specific practice
 

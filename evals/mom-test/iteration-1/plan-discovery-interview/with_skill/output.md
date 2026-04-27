@@ -1,12 +1,12 @@
-# 30-Minute Discovery Interview: Nonprofit ED Voice Liberation Validation
+# 30-Minute Discovery Interview: Nonprofit ED Say Why Validation
 
 ## Objective
 
-Learn whether nonprofit Executive Directors have a real, painful, already-being-paid-for job that Voice Liberation facilitation could be hired to do. Do NOT pitch. Do NOT describe Voice Liberation. The ED should not learn what you're selling during this call.
+Learn whether nonprofit Executive Directors have a real, painful, already-being-paid-for job that Say Why facilitation could be hired to do. Do NOT pitch. Do NOT describe Say Why. The ED should not learn what you're selling during this call.
 
 ## Core Mom Test rules for this interview
 
-1. **Talk about their life, not your idea.** The word "Voice Liberation" does not enter your mouth. Neither does "facilitation workshop" as a proposed offering.
+1. **Talk about their life, not your idea.** The word "Say Why" does not enter your mouth. Neither does "facilitation workshop" as a proposed offering.
 2. **Ask about specifics in the past, not hypotheticals about the future.** Every question anchors to a real event they actually lived through.
 3. **Talk less.** They should speak ~24 of 30 minutes. Embrace silence.
 
@@ -30,7 +30,7 @@ Learn whether nonprofit Executive Directors have a real, painful, already-being-
 
 > "Thanks for making time. I'm not selling anything today — I'm trying to understand how nonprofit EDs handle the people side of the work, especially the stuff that's hard to say out loud. I'd love to hear about your actual experience for 25 minutes or so, and then I'll get out of your hair."
 
-Do not mention Voice Liberation, facilitation, or Rubinstein Productions as an offering. If asked what you do, say "I do relational / narrative work with teams — but today I just want to learn from you."
+Do not mention Say Why, facilitation, or Rubinstein Productions as an offering. If asked what you do, say "I do relational / narrative work with teams — but today I just want to learn from you."
 
 ### 2–8 min: Their current life and role (past behavior)
 
@@ -53,7 +53,7 @@ Whatever they surfaced as hard, zoom in on ONE specific instance.
 - "Why was that hard?" (ask "why" 3–5 times, gently)
 - "What did it cost you — in time, in money, in people?"
 
-Listen for: moments where someone couldn't say something, where truth got swallowed, where the ED themselves bit their tongue, where a team member left because of something unspoken. These are Voice Liberation signals. Do not name them.
+Listen for: moments where someone couldn't say something, where truth got swallowed, where the ED themselves bit their tongue, where a team member left because of something unspoken. These are Say Why signals. Do not name them.
 
 ### 18–24 min: What they've already tried and paid for (competitive / budget)
 
@@ -87,7 +87,7 @@ The intro is the primary commitment currency. A follow-up meeting is secondary. 
 ## Questions to NEVER ask (they fail the Mom Test)
 
 - "Would you hire a facilitator to help your team say hard things?" — hypothetical, leading, produces a yes
-- "Do you think Voice Liberation sounds valuable?" — pitch + compliment fishing
+- "Do you think Say Why sounds valuable?" — pitch + compliment fishing
 - "How much would you pay for a workshop like this?" — hypothetical pricing, anchored to you
 - "Does your team struggle with psychological safety?" — leading, jargon, yes-bias
 - "Would this be useful?" — always yes

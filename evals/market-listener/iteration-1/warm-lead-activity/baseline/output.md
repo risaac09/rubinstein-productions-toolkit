@@ -4,7 +4,7 @@
 
 **What's happening:** A prospect with a discovery call already on the calendar (Apr 22) just shipped their most-engaged post of the year (3x avg), and their ED publicly said the quiet part out loud: "this is the version of us I've been trying to articulate for 2 years." That's not a content win — that's a voice-recognition event. Maya is telling her own audience (and herself) that something latent just got named.
 
-**Why it matters for RP:** This is the exact emotional state that converts in a discovery call. The gap between "the version of us I've been trying to articulate" and "the version we're actually operating as day-to-day" is the Voice Liberation wedge. She has proof it's possible, and proof it's rare (2 years of trying). Walking into Apr 22 cold would waste that heat.
+**Why it matters for RP:** This is the exact emotional state that converts in a discovery call. The gap between "the version of us I've been trying to articulate" and "the version we're actually operating as day-to-day" is the Say Why wedge. She has proof it's possible, and proof it's rare (2 years of trying). Walking into Apr 22 cold would waste that heat.
 
 **Proposed actions:**
 1. **Light-touch acknowledgment within 24h** — a short, non-salesy comment or DM on the carousel. Something that names what she named, without pitching. E.g., reflecting back the "articulating vs. operating" gap. Keeps RP adjacent to the moment without colonizing it.
@@ -16,7 +16,7 @@
 
 ## Signal 2: @brightcurrent_ama — active Mirror-tier client, mid-arc breakthrough
 
-**What's happening:** First LinkedIn essay since December, strong engagement (127 reactions / 23 comments), and the topic is literally the Voice Liberation thesis: "saying the thing you've been trained to soften." Mid-session-arc. This is the client doing the work out loud, in public, in her own voice.
+**What's happening:** First LinkedIn essay since December, strong engagement (127 reactions / 23 comments), and the topic is literally the Say Why thesis: "saying the thing you've been trained to soften." Mid-session-arc. This is the client doing the work out loud, in public, in her own voice.
 
 **Why it matters for RP:** This is the output of the Mirror tier landing. Mirror-tier clients who publish from the work — unprompted, mid-arc — are the ones who become case studies, referral sources, and testimonial anchors. This is also a nervous-system signal: publishing after a 4-month silence, on this specific topic, means something unlocked.
 
@@ -52,4 +52,4 @@
 
 ## Cross-cutting observation
 
-All three signals point to the same underlying pattern: **clients and prospects articulating (publicly or semi-publicly) the gap between the version of themselves they've been operating as and the version the work is surfacing.** Harborlight's ED named it directly. Brightcurrent wrote an essay about it. Threshold's board committed to a 3-year plan on the other side of excavation. This is worth logging as a recurring pattern in the RP thesis — it's the shape of Voice Liberation landing.
+All three signals point to the same underlying pattern: **clients and prospects articulating (publicly or semi-publicly) the gap between the version of themselves they've been operating as and the version the work is surfacing.** Harborlight's ED named it directly. Brightcurrent wrote an essay about it. Threshold's board committed to a 3-year plan on the other side of excavation. This is worth logging as a recurring pattern in the RP thesis — it's the shape of Say Why landing.

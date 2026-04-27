@@ -31,7 +31,7 @@
 | Assertion | with_skill fails | baseline fails |
 |---|---|---|
 | References specific RP pricing tiers (Mirror / Map / Territory) with d | 0 | 2 |
-| Frames RP as Voice Liberation / narrative practice, NOT as a videograp | 0 | 2 |
+| Frames RP as Say Why / narrative practice, NOT as a videograp | 0 | 2 |
 | Maps the opportunity to a specific RP tier (likely Map) and checks it  | 0 | 1 |
 | Flags the 'marketing video' framing as a potential mismatch with RP's  | 0 | 1 |
 | Uses canonical audience segments (ED, Founder, Org-in-transition) not  | 0 | 1 |

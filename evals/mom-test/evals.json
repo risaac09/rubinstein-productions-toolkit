@@ -15,9 +15,9 @@
       ]
     },
     {"id": 2, "name": "plan-discovery-interview", "type": "restraint_canonical",
-      "prompt": "I want to interview 3 nonprofit EDs to validate whether there's a real job for Voice Liberation facilitation. Design a 30-minute interview for me.",
+      "prompt": "I want to interview 3 nonprofit EDs to validate whether there's a real job for Say Why facilitation. Design a 30-minute interview for me.",
       "fixture_assertions": [
-        {"id": "no_pitching_the_service", "text": "Does not include any interview moment where Isaac pitches or describes Voice Liberation to the interviewee", "check": "qualitative"},
+        {"id": "no_pitching_the_service", "text": "Does not include any interview moment where Isaac pitches or describes Say Why to the interviewee", "check": "qualitative"},
         {"id": "commitment_advancement_signal", "text": "Calls out commitment or advancement (money/time/reputation asks, specific next steps) as the real validation signal, not verbal enthusiasm", "check": "qualitative"}
       ]
     }

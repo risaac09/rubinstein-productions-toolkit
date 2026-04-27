@@ -15,7 +15,7 @@
       "evidence": "Uses 'Nonprofit ED' as a 'documented audience segment' and references 'ED engagement' throughout."
     },
     {
-      "text": "Frames RP as Voice Liberation / narrative practice, NOT as a videography or video production business",
+      "text": "Frames RP as Say Why / narrative practice, NOT as a videography or video production business",
       "assertion_id": "not_videography_business",
       "passed": true,
       "evidence": "States 'RP is not a video production company. The camera is a witness, not a polishing tool' and frames work as 'narrative practice' and 'Voice Excavation'."
@@ -27,7 +27,7 @@
       "evidence": "Maps to 'Map-level engagement' with 'A Map half-day starts at $3,000-$5,000' and checks against '$500/hour' floor rate, concluding '$70-$100/hour... This is not close.'"
     },
     {
-      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Voice Liberation identity",
+      "text": "Flags the 'marketing video' framing as a potential mismatch with RP's Say Why identity",
       "assertion_id": "flags_framing_mismatch",
       "passed": true,
       "evidence": "States 'The ED keeps calling it \"a marketing video.\" This is the central flag. RP is not a video production company.' and calls it a 'Framing mismatch'."

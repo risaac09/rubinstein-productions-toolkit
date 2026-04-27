@@ -1,4 +1,4 @@
-# Voice Liberation — Tagline
+# Say Why — Tagline
 
 **Stop sounding like your industry. Start sounding like yourself.**
 

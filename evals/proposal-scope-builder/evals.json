@@ -1,6 +1,6 @@
 {
   "skill_name": "proposal-scope-builder",
-  "notes": "Tests whether the skill produces Voice Liberation proposals: diagnostic-first opener, correct tier selection (Mirror/Map/Territory), pricing within documented ranges, 6-section structure, and specific deliverables.",
+  "notes": "Tests whether the skill produces Say Why proposals: diagnostic-first opener, correct tier selection (Mirror/Map/Territory), pricing within documented ranges, 6-section structure, and specific deliverables.",
   "universal_assertions": [
     {
       "id": "no_generic_opener",
@@ -26,7 +26,7 @@
     },
     {
       "id": "voice_liberation_framing",
-      "text": "Uses Voice Liberation framing (not generic 'brand strategy' or 'content marketing')",
+      "text": "Uses Say Why framing (not generic 'brand strategy' or 'content marketing')",
       "check": "qualitative"
     },
     {

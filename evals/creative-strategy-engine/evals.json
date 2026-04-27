@@ -24,7 +24,7 @@
       ]
     },
     {"id": 3, "name": "awareness-stage-mapping", "type": "awareness_mapping",
-      "prompt": "Map Voice Liberation messaging angles for founders whose orgs are in transition (growing, restructuring, rebranding) across the 5 awareness stages. One angle per stage.",
+      "prompt": "Map Say Why messaging angles for founders whose orgs are in transition (growing, restructuring, rebranding) across the 5 awareness stages. One angle per stage.",
       "fixture_assertions": [
         {"id": "one_angle_per_stage", "text": "Names one distinct angle per awareness stage (5 total)", "check": "qualitative"},
         {"id": "founder_in_transition_specific", "text": "Angles are specific to founder-in-transition context (not generic)", "check": "qualitative"},

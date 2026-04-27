@@ -1,4 +1,4 @@
-# Voice Liberation × Founders-in-Transition: Messaging Angles Across the 5 Awareness Stages
+# Say Why × Founders-in-Transition: Messaging Angles Across the 5 Awareness Stages
 
 ## Strategic Foundation
 
@@ -48,25 +48,25 @@ This is the anchor angle. Below, it gets expressed differently at each awareness
 
 **Founder state:** Knows this is a real category — has maybe tried messaging consultants, brand strategists, communication coaches, or PR firms. None of it landed because those solutions address surface copy, not the underlying voice-identity mismatch during transition.
 
-**Goal:** Differentiate Voice Liberation from adjacent categories. Show why conventional solutions miss.
+**Goal:** Differentiate Say Why from adjacent categories. Show why conventional solutions miss.
 
-**Angle expression:** "Messaging consultants give you new words. Voice Liberation gives you the you who can say them."
+**Angle expression:** "Messaging consultants give you new words. Say Why gives you the you who can say them."
 
-**Sample framing:** "Brand strategists will rewrite your deck. Comms coaches will fix your delivery. PR firms will polish your positioning. None of it holds, because the problem isn't your words — it's the gap between who your company is becoming and who you're still being when you speak for it. Voice Liberation works on the founder inside the transition, not the copy outside it. Different layer. Different result."
+**Sample framing:** "Brand strategists will rewrite your deck. Comms coaches will fix your delivery. PR firms will polish your positioning. None of it holds, because the problem isn't your words — it's the gap between who your company is becoming and who you're still being when you speak for it. Say Why works on the founder inside the transition, not the copy outside it. Different layer. Different result."
 
-**Why this works at Solution-Aware:** Positions Voice Liberation against the founder's likely already-tried alternatives, and makes the category distinction visceral — this is relational/identity work, not copywriting.
+**Why this works at Solution-Aware:** Positions Say Why against the founder's likely already-tried alternatives, and makes the category distinction visceral — this is relational/identity work, not copywriting.
 
 ---
 
 ## Stage 4: Product-Aware
 
-**Founder state:** Knows Rubinstein Productions / Voice Liberation exists. Considering whether it's the right fit vs. other options or vs. doing nothing. Needs proof this holds during an actual transition.
+**Founder state:** Knows Rubinstein Productions / Say Why exists. Considering whether it's the right fit vs. other options or vs. doing nothing. Needs proof this holds during an actual transition.
 
 **Goal:** Prove it works for founders specifically in transition moments. Overcome the objection that this is "soft" or "slow."
 
 **Angle expression:** "Built for the founder whose company just outgrew its own story"
 
-**Sample framing:** "Voice Liberation isn't media training. It's not a brand refresh. It's the work of relocating your voice inside the new version of the company — during the reorg, during the rebrand, during the Series B, during the identity crisis that nobody on your cap table will name. Founders walk out with a voice that can carry the next chapter, not a script that already feels stale by week two. Built for transition specifically, because transition is when the old voice breaks and the new one has to be found — not written."
+**Sample framing:** "Say Why isn't media training. It's not a brand refresh. It's the work of relocating your voice inside the new version of the company — during the reorg, during the rebrand, during the Series B, during the identity crisis that nobody on your cap table will name. Founders walk out with a voice that can carry the next chapter, not a script that already feels stale by week two. Built for transition specifically, because transition is when the old voice breaks and the new one has to be found — not written."
 
 **Why this works at Product-Aware:** Specifies the exact use case (transition moments), contrasts against similar-looking offerings (media training, brand refresh), and promises an outcome (voice that carries the next chapter) that directly addresses the transition context.
 
@@ -80,7 +80,7 @@ This is the anchor angle. Below, it gets expressed differently at each awareness
 
 **Angle expression:** "Your next chapter needs a voice that fits it. Let's find it before you have to pitch again."
 
-**Sample framing:** "If your company is mid-transition and you know your voice hasn't caught up, book a Voice Liberation discovery call. One session, ninety minutes, no deck required. We'll map where your voice is lagging, name what the next version needs to carry, and decide together whether the full engagement is the right move for this chapter. Before your next board meeting, fundraise, or launch — not after."
+**Sample framing:** "If your company is mid-transition and you know your voice hasn't caught up, book a Say Why discovery call. One session, ninety minutes, no deck required. We'll map where your voice is lagging, name what the next version needs to carry, and decide together whether the full engagement is the right move for this chapter. Before your next board meeting, fundraise, or launch — not after."
 
 **Why this works at Most-Aware:** Concrete offer, low-friction first step, time-bound urgency tied to real founder calendar events (board meetings, fundraises, launches), and an explicit out ("decide together") that respects founder agency.
 
@@ -92,7 +92,7 @@ This is the anchor angle. Below, it gets expressed differently at each awareness
 |---|---|---|
 | Unaware | "The thing your team isn't saying out loud" | Name the invisible symptom |
 | Problem-Aware | "You're pitching a company that doesn't exist anymore" | Validate and name the experience |
-| Solution-Aware | "Messaging consultants give you new words. Voice Liberation gives you the you who can say them." | Differentiate from adjacent categories |
+| Solution-Aware | "Messaging consultants give you new words. Say Why gives you the you who can say them." | Differentiate from adjacent categories |
 | Product-Aware | "Built for the founder whose company just outgrew its own story" | Prove fit for transition specifically |
 | Most-Aware | "Your next chapter needs a voice that fits it. Let's find it before you have to pitch again." | Close with concrete, time-bound invitation |
 

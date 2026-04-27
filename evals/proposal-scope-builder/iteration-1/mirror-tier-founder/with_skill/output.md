@@ -23,7 +23,7 @@ Here's what I'm hearing between the lines:
 
 You're fluent in your own field. When the room is technical, your voice is native — it moves at the speed of your actual thinking. Then a funder or partner shows up, and something translates in real-time from *your* language into *their* expected language. The translation is so fast you barely notice it happening, but you feel the result: polished, hollow, slightly off-body.
 
-This is a classic **Narrative Dysregulation** pattern for solo founders, especially scientists and practitioners who moved from inside an institution to running their own shop. The nervous system learned early that funders speak a certain dialect, and it now reaches for that dialect automatically — even when your authentic voice would land harder.
+This is a classic **systemic alienation from honest expression** pattern for solo founders, especially scientists and practitioners who moved from inside an institution to running their own shop. The nervous system learned early that funders speak a certain dialect, and it now reaches for that dialect automatically — even when your authentic voice would land harder.
 
 The work here isn't to build a new voice. It's to stop the unconscious translation. To identify what gets shaved off in the funder-facing version, and to build a founder voice that doesn't require you to shape-shift at the door.
 
@@ -80,9 +80,9 @@ Because sessions are recorded on camera, a note: the recordings belong to you. T
 
 Most narrative work for founders starts from the outside — audience research, competitor analysis, messaging frameworks. That approach produces the polished-but-hollow version you're already stuck in. It builds a voice *for* the funder.
 
-Voice Liberation starts from the inside. The founder's voice isn't a brand output — it's a nervous-system fact. When it's regulated and intact, funders and partners recognize it. When it's translated on the fly, they feel the gap too, even if they can't name it. They read "hollow."
+Say Why starts from the inside. The founder's voice isn't a brand output — it's a nervous-system fact. When it's regulated and intact, funders and partners recognize it. When it's translated on the fly, they feel the gap too, even if they can't name it. They read "hollow."
 
-The Generative Translation methodology I use doesn't extract a voice from you. It removes what's interfering with the voice you already have. That's the whole difference.
+The the methodology methodology I use doesn't extract a voice from you. It removes what's interfering with the voice you already have. That's the whole difference.
 
 ---
 

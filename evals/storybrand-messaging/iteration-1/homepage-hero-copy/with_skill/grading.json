@@ -18,7 +18,7 @@
       "text": "Positions the guide with both empathy and authority (competence)",
       "assertion_id": "guide_authority_empathy",
       "passed": true,
-      "evidence": "SB7 Element Map states 'empathy (we see the grinding-down) + implicit authority (clear POV: Voice Liberation, named methodology).' The copy names Voice Liberation as a specific approach, signaling competence."
+      "evidence": "SB7 Element Map states 'empathy (we see the grinding-down) + implicit authority (clear POV: Say Why, named methodology).' The copy names Say Why as a specific approach, signaling competence."
     },
     {
       "text": "Surfaces both the external problem (generic messaging) and the internal problem (how it feels to sound like everyone else)",
@@ -30,7 +30,7 @@
       "text": "Includes a clear direct call-to-action, not a vague 'learn more'",
       "assertion_id": "clear_call_to_action",
       "passed": true,
-      "evidence": "Direct CTA is 'Book a Discovery Call' -- specific and action-oriented. Transitional CTA also provided: 'See the Voice Liberation approach.'"
+      "evidence": "Direct CTA is 'Book a Discovery Call' -- specific and action-oriented. Transitional CTA also provided: 'See the Say Why approach.'"
     }
   ]
 }

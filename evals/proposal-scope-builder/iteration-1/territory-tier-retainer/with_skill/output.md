@@ -1,9 +1,9 @@
-# Voice Liberation Partnership — Proposal for Commons Collective
+# Say Why Partnership — Proposal for Commons Collective
 
 **Prepared for:** Jamal Reid, Executive Director, Commons Collective
 **Prepared by:** Isaac Rubinstein, Rubinstein Productions
 **Date:** April 5, 2026
-**Engagement Tier:** Territory — Voice Liberation Partnership (6-month retainer)
+**Engagement Tier:** Territory — Say Why Partnership (6-month retainer)
 
 ---
 
@@ -32,7 +32,7 @@ This is Territory work. It's not a one-time project because the story itself is 
 ## Proposed Engagement — Territory Tier, 6-Month Partnership
 
 **What Territory Means:**
-An ongoing Voice Liberation partnership where I function as your external narrative steward. I hold the through-line, surface the patterns you can't see from inside, and translate the living work into language your team, funders, and public can receive without draining your own capacity to re-explain.
+An ongoing Say Why partnership where I function as your external narrative steward. I hold the through-line, surface the patterns you can't see from inside, and translate the living work into language your team, funders, and public can receive without draining your own capacity to re-explain.
 
 ### Phase 1 — Excavation & Baseline (Month 1)
 
@@ -50,7 +50,7 @@ An ongoing Voice Liberation partnership where I function as your external narrat
 Each month includes:
 - **1 x 90-minute strategy session** with you — narrative check-in, surface what's shifting, metabolize quarterly growth
 - **1 x 60-minute team session** — rotating focus: onboarding narrative, funder translation, public voice, program storytelling
-- **2 x asynchronous narrative reviews** — I review a draft (grant, deck, campaign, announcement) and return it with Voice Liberation edits that preserve your voice while tightening translation
+- **2 x asynchronous narrative reviews** — I review a draft (grant, deck, campaign, announcement) and return it with Say Why edits that preserve your voice while tightening translation
 - **Bilingual Dashboard updates** — the document stays alive; I version it as your story evolves
 - **On-call narrative support** — Slack/email access for "how do we say this" moments, capped at reasonable turnaround (48hr async)
 
@@ -108,9 +108,9 @@ If at any point we introduce filmed voice work (staff interviews, founder narrat
 
 Most communications consultants come in, run a discovery, deliver a messaging framework, and leave. Six months later the framework is stale because the organization has moved and the framework didn't.
 
-Voice Liberation is different because it assumes the story is alive. My job isn't to fix your message — it's to steward the through-line as your work moves. I'm not trying to make Commons Collective sound more polished. I'm trying to make sure the inside version and the outside version stay in honest relationship, so your team doesn't fragment and your funders receive the real thing.
+Say Why is different because it assumes the story is alive. My job isn't to fix your message — it's to steward the through-line as your work moves. I'm not trying to make Commons Collective sound more polished. I'm trying to make sure the inside version and the outside version stay in honest relationship, so your team doesn't fragment and your funders receive the real thing.
 
-This is what I mean by **Generative Translation**: the translation itself generates new coherence, rather than flattening what's actually happening. It's non-extractive because I'm not mining your story for content — I'm holding its shape so it can keep growing.
+This is what I mean by **the methodology**: the translation itself generates new coherence, rather than flattening what's actually happening. It's non-extractive because I'm not mining your story for content — I'm holding its shape so it can keep growing.
 
 Mutual-aid infrastructure is one of the hardest things to translate publicly because it refuses the hero narrative that funders have been trained to reward. You need a narrative steward who understands that refusal is part of the work, not a comms problem to solve.
 
