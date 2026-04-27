@@ -3,7 +3,7 @@ name: outreach-email-manager
 description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to Airtable. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals — and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
 ---
 
-> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/03 Projects/Rubinstein Productions/03 Content/Say Why - Canonical Positioning & Skill Embedding.md`
+> **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
 > **Pull contract:** Opener patterns MUST lead with the Diagnostic layer (Sift language: "stuck between knowing and saying," "information metabolism," "the gap between inside and outside versions"), NEVER with the Methodological layer. Prospects don't care about the method until they recognize the diagnosis. Use the 60-word pitch variant as the core body. Close with one Tribal-layer line when fit is warm.
 
 # Outreach Email Manager
