@@ -1,5 +1,7 @@
 # Arena of Epistemologies -- Relational Index
 
+> **Terminology note (2026-04-27):** "Voice Liberation" appears below as a theoretical anchor (specifically, the practice that names what liberation is liberation FROM in the capture/double-bind frame). On 2026-03-27 RP retired the term as a client-facing brand label in favor of "Say Why" / "facilitation and film." The analytical framing stands; only the brand label shifted. See `00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md` Part 13.
+
 **Companion to:** [[arena-log]] (chronological/arborescent layer)
 **This document:** Relational/rhizomatic layer -- same data, organized by connection rather than sequence
 **Last updated:** 2026-04-18
