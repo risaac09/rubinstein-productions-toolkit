@@ -14,3 +14,6 @@ intranet/site/
 
 # Personal Claude usage reports — do not commit
 *-claude-usage-report.md
+
+# Plugin distribution artifacts (sync via second-brain-mirror/_sync instead)
+dist/
