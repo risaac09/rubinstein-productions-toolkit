@@ -511,26 +511,29 @@ story.append(body(
 ))
 
 # Case 2
-story.append(sub_header("2. Enterprise Change Management Evaluation, Seattle Children's Hospital: Multi-site implementation evaluation"))
-story.append(small("<b>Role:</b> Lead evaluator for an enterprise system implementation across 40+ clinics"))
+story.append(sub_header("2. Enterprise Change Management Readiness, Seattle Children's Hospital: Large-scale system implementation"))
+story.append(small("<b>Role:</b> Change Management Readiness Program Lead for a Workday enterprise integration across 40+ clinics"))
 story.append(body(
-    "<b>Scope:</b> Evaluated the multi-year implementation of a new clinical and scheduling system across the "
-    "hospital's outpatient network, with quarterly reporting to the operational steering committee."
+    "<b>Scope:</b> Led change management readiness for the multi-year Workday integration across the hospital's "
+    "outpatient network. Designed and maintained adoption dashboards and readiness indicators; built and "
+    "facilitated the Change Champion Network; reported adoption patterns to the operational steering committee "
+    "on a quarterly cadence."
 ))
 story.append(body(
-    "<b>Methods:</b> Mixed-methods design combining system usage data analysis, direct observation in eight "
-    "sampled clinics, and structured interviews with 22 clinicians spanning roles and clinic types. Quarterly "
-    "reporting cadence aligned with operational decision points."
+    "<b>Methods:</b> Mixed-methods readiness tracking combining system usage data, pulse-check protocols with "
+    "clinical champions across eight sampled clinics, and structured interviews with 22 clinicians spanning "
+    "roles and clinic types. Quarterly reporting cadence aligned with operational decision points."
 ))
 story.append(body(
-    "<b>Outputs:</b> Quarterly evaluation briefs that identified specific implementation gaps in selected "
-    "sites, leading to targeted resource reallocation and site-level support adjustments mid-implementation."
+    "<b>Outputs:</b> Readiness dashboards tracking adoption indicators across clinical and operational workflows; "
+    "quarterly steering committee reports that identified implementation gaps and informed targeted resource "
+    "reallocation mid-implementation; training curricula and blended learning formats with LMS oversight."
 ))
 story.append(body(
     "<b>Why it is relevant to CAP:</b> Multi-site initiative, each site with its own implementation context, "
-    "where the central evaluation question is implementation fidelity and uptake rather than the intervention's "
-    "underlying validity, and where quarterly reporting was structured for operational use rather than "
-    "retrospective summary. The Innovation Cohort's 20 teams present a similar challenge."
+    "where the central challenge is adoption fidelity and uptake across teams rather than a single-site rollout, "
+    "and where quarterly measurement reporting was structured for operational use rather than retrospective "
+    "summary. The Innovation Cohort's 20 teams present a similar challenge."
 ))
 
 # Case 3
@@ -590,9 +593,10 @@ story.append(bullet(
     "Results-Based Accountability, the Water of Systems Change framework, and embedded racial equity assessment."
 ))
 story.append(bullet(
-    "<b>Enterprise Change Management Evaluation, Seattle Children's Hospital.</b> Led mixed-methods "
-    "evaluation of a clinical/scheduling system implementation across 40+ clinics, with quarterly reporting "
-    "to the operational steering committee that drove mid-implementation resource reallocation."
+    "<b>Enterprise Change Management Readiness, Seattle Children's Hospital.</b> Led change management "
+    "readiness for a Workday enterprise integration across 40+ clinics — designed adoption dashboards and "
+    "training curricula, tracked readiness indicators across clinical teams, and reported quarterly to the "
+    "operational steering committee, informing mid-implementation resource reallocation."
 ))
 story.append(bullet(
     "<b>Independent evaluator, Rhode Island Police Chiefs Association FFY2026 Highway Safety Grant.</b> "

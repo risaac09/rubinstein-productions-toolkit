@@ -658,11 +658,11 @@ story.append(bullet("<b>Master of Public Health (MPH)</b> — University of Wash
 
 story.append(sub_header("Relevant Experience"))
 story.append(bullet(
-    "<b>Enterprise Change Management, Seattle Children's Hospital</b> — Evaluated the implementation of "
-    "an enterprise clinical/scheduling system across 40+ clinics. Designed a mixed-methods evaluation "
-    "combining system usage data, direct observation in 8 clinics, and structured interviews with 22 clinicians. "
-    "Quarterly reporting to the operational steering committee. Identified implementation gaps that led to "
-    "targeted resource reallocation — not additional training."
+    "<b>Enterprise Change Management Readiness, Seattle Children's Hospital</b> — Led change management "
+    "readiness for a Workday enterprise integration across 40+ clinics. Designed adoption dashboards and "
+    "training curricula; facilitated the Change Champion Network with pulse-check protocols across 8 sampled "
+    "clinics; conducted structured interviews with 22 clinicians. Quarterly reporting to the operational "
+    "steering committee surfaced implementation gaps that led to targeted resource reallocation."
 ))
 story.append(bullet(
     "<b>Central Providence Unidos / One Neighborhood Builders (CPU-HEZ)</b> — Led evaluation and data strategy "

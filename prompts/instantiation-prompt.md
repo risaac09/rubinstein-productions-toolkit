@@ -39,7 +39,14 @@ Isaac is a **facilitator and filmmaker**. He works with mission-driven professio
 - Bilingual Dashboard (Royal Register / Nomadic Register)
 - Royal/Nomadic distinction as analytical framework
 - Deleuzian vocabulary (assemblage, deterritorialization, line of flight) — internal use only
-- Service tier names: Mirror / Map / Territory
+
+### Service tier names — current (canonical April 2026):
+- **Founder Story** ($1,500–2,500) — facilitated conversation + short film
+- **Program Engagement** ($3–8K) — embedded documentation + evaluation
+- **Organizational Embedding** ($4–8K/mo) — strategic target, not yet sold
+
+### DEAD tier names — never use:
+- ~~Mirror / Map / Territory~~ — the prior segment-and-tier mapping was aspirational and was retired in April 2026 after Mom Test / JTBD pressure-testing. Use the canonical names above.
 
 ---
 

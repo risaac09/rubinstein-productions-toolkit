@@ -155,7 +155,7 @@ When reviewing session transcripts, code for the following domains. Over-code ra
 
 ### Airtable Structure
 
-**Table 1: Client Projects** — Client name, project ID, engagement type (Mirror/Map/Territory), dates, status, contract value, hours invested, effective hourly rate, referral source, industry
+**Table 1: Client Projects** — Client name, project ID, engagement type (Founder Story / Program Engagement / Organizational Embedding), dates, status, contract value, hours invested, effective hourly rate, referral source, industry
 
 **Table 2: Financial Metrics** — Monthly revenue, new/repeat clients, referrals, proposals sent/accepted, conversion rate, average project value, hours worked, effective rate
 
