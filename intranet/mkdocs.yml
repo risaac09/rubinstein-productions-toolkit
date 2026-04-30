@@ -26,6 +26,10 @@ nav:
   - Home: index.md
   - Digital Architecture: architecture.md
   - Visual Assets: visual-assets.md
+  - Practices:
+    - Overview: practices/index.md
+    - Say Why (Facilitation & Film): practices/say-why.md
+    - Independent Evaluation: practices/evaluation.md
   - Strategy:
     - Mission & Positioning: strategy/mission-and-positioning.md
     - Theory of Change: strategy/theory-of-change.md
@@ -40,6 +44,7 @@ nav:
     - Charter: business-development/index.md
     - Referral Rhythm: business-development/referral-rhythm.md
     - CRM Touches (contacts.json): business-development/crm-touches.md
+    - RFP Pipeline (Eval): business-development/rfp-pipeline.md
   - People & Practice:
     - Charter: people/index.md
     - Illness & Contingency: people/illness-contingency.md
