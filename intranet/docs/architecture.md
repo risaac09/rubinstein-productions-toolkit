@@ -1,8 +1,26 @@
 # Digital Architecture
 
-Rubinstein Productions is a solo practice. This page models it as a company — not because it is one, but because the architecture makes the practice's scope, seams, and self-governance visible.
+Rubinstein Productions is a solo practice operating **two practice areas under one operator** — see [Practices](practices/index.md). This page models it as a company — not because it is one, but because the architecture makes the practice's scope, seams, and self-governance visible.
 
-The goal: every part of the work has a home. Nothing important is orphaned. Nothing is duplicated in two departments.
+The goal: every part of the work has a home. Nothing important is orphaned. Nothing is duplicated in two departments. The voice firewall between practices is preserved.
+
+---
+
+## Two practices, shared back-of-house
+
+| Practice | Public surface | Voice | Canonical |
+|---|---|---|---|
+| **Say Why (Facilitation & Film)** | rubinsteinproductions.com | Facilitator/filmmaker | `00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md` |
+| **Independent Evaluation** | isaacrubinstein.com | Plain MPH-credentialed | `00 Canonical/Independent Evaluator - Positioning.md` |
+
+The departments below (Executive, Delivery, Marketing, BD, People, Finance, R&D, IT) are **shared**. Both practices route through the same operator, capacity model, financial ops, IT stack, and innovation pipeline. Where a department serves the practices differently — different voices, different funnels, different tooling — it's noted explicitly. Where it's identical, it's not.
+
+**Practice-specific seams:**
+
+- **BD funnel:** Say Why is warm-only via contacts.json + outreach skills; Eval is RFP-driven via the [RFP Pipeline](business-development/rfp-pipeline.md). Both feed the same Delivery layer at handoff.
+- **Marketing voice:** Bifurcated — see [Marketing voice firewall](marketing/index.md#voice-firewall-hard).
+- **Delivery vocabulary:** Say Why uses Founder Story / Program Engagement / Organizational Embedding; Eval uses RFP-named project labels (e.g., evaluation plan, external evaluation, subcontracted analysis).
+- **Skills:** Say Why uses `outreach-email-manager`, `proposal-scope-builder`, `creative-strategy-engine`; Eval uses `eval-rfp-analyzer`, `eval-proposal-builder`, `capabilities-statement-generator`, `case-study-extractor`.
 
 ---
 

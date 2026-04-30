@@ -84,7 +84,7 @@ Marketing serves two practices with two distinct voices. See [Practices](../prac
 | Instagram (@rubinsteinproductions) | Say Why | Primary, active | Portfolio + practice documentation |
 | YouTube (@risaac09) | Say Why | Active | Long-form (training, methodology, client films) |
 | rubinsteinproductions.com | Say Why | Live | Marketing site / front door |
-| isaacrubinstein.com | Eval | In build (Phase 0 deliverable) | Eval-side positioning + capabilities |
+| isaacrubinstein.com | Eval | Live | Eval-side positioning + capabilities |
 | Email list (newsletter) | Say Why | Building — monthly cadence | Owned audience insurance; see `marketing/newsletter.md` |
 | LinkedIn | Eval (primary) | Dormant | Reactivate when eval BD volume justifies it |
 | TikTok | — | Not active | Explicit non-goal |

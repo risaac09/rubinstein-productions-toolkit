@@ -53,10 +53,10 @@ Output: `GO`, `MAYBE` (needs partner / clarification), or `NO-GO` with reasoning
 
 The `eval-rfp-analyzer` skill flags Phase 0 readiness gaps. As of 2026-04, the deliverables that gate every GO recommendation:
 
-- Capabilities statement PDF, tailored per recipient
-- 2–3 portfolio case studies (Workday SCH 2026, RIPCA, ONB / CPU, Seattle Children's Mental Health Referral Service)
-- W-9 with EIN (in lieu of SSN)
-- isaacrubinstein.com live with eval-voice positioning
+- Capabilities statement PDF, tailored per recipient (in build via `capabilities-statement-generator` skill)
+- 2–3 portfolio case studies (Workday SCH 2026, RIPCA, ONB / CPU, Seattle Children's Mental Health Referral Service) — in build via `case-study-extractor` skill
+- W-9 with EIN (in lieu of SSN) — open
+- isaacrubinstein.com — ✅ live (SSL cert provisioning may still be completing)
 
 Until these are in place, GO recommendations may be downgraded to MAYBE pending readiness.
 
