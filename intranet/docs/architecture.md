@@ -97,7 +97,7 @@ Each department has a primary artifact, a set of supporting skills/agents, and a
 
 ### Delivery / Production
 
-**What it does:** Executes client work — facilitation sessions, film production, Say The Thing packages, Territory retainers.
+**What it does:** Executes client work — Founder Story sessions, Program Engagements, Organizational Embedding retainers (held until first paid engagement at that depth), and the eval-side proposal/delivery cycle.
 
 | Artifact | Location |
 |---|---|
@@ -193,7 +193,7 @@ The architecture is only useful if the seams work. Key flows:
 ### Lead → engagement → revenue
 
 ```
-BD (outreach) → Delivery (Mirror/Map/Territory) → Finance (invoice)
+BD (outreach) → Delivery (Founder Story / Program Engagement / Org Embedding) → Finance (invoice)
                       ↓
                 Marketing (case study)
                       ↓
@@ -245,6 +245,6 @@ Who owns what decision, across departments. Everything has one primary owner.
 
 Honest about gaps. If you're reading this and a department is thin, it's because the practice hasn't needed it yet.
 
-- **Legal / Compliance:** Currently implicit. Contracts live in individual project files. At Territory-tier retainer volume, may warrant a `legal/` section (standard contracts, release forms, IP policy).
+- **Legal / Compliance:** Currently implicit. Contracts live in individual project files. At Organizational Embedding retainer volume, may warrant a `legal/` section (standard contracts, release forms, IP policy). Eval-side subcontracting agreements with established firms also belong here once recurring.
 - **Customer Success:** Not a separate department. Post-delivery follow-up is folded into BD's network stewardship.
 - **Learning & Development:** Exists in intranet (`learning/`) as methodology deep-dives, but not mapped as a department because it's closer to R&D + People in practice.

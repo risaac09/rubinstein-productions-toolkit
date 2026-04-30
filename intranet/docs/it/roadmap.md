@@ -54,7 +54,7 @@ The stack scales in budget tiers. Each tier is stable on its own — no tier req
 
 ## Aspirational tier: $1–1.2k/mo
 
-**Trigger to upgrade:** When two clients pay Territory-tier retainers (~$4–8k/mo each) and capacity management becomes the binding constraint, not budget.
+**Trigger to upgrade:** When two clients pay Organizational Embedding retainers (~$4–8K/mo each) and capacity management becomes the binding constraint, not budget.
 
 | Add | Why |
 |---|---|
@@ -67,7 +67,7 @@ The stack scales in budget tiers. Each tier is stable on its own — no tier req
 **What this tier unlocks:**
 
 - Autonomous ops: stack runs weekly ops cycle without Isaac invoking anything.
-- Actual multi-client capacity: >1 Territory client sustainable.
+- Actual multi-client capacity: >1 Organizational Embedding client sustainable.
 - Client-specific agent personalities via custom MCP.
 
 ---

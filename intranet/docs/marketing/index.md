@@ -64,16 +64,30 @@ See `~/.claude/projects/-Users-isaacrubinstein/memory/reference_creative_stack.m
 
 ---
 
+## Voice firewall (HARD)
+
+Marketing serves two practices with two distinct voices. See [Practices](../practices/index.md) for the full firewall.
+
+| Practice | Voice | Channels |
+|---|---|---|
+| **Say Why** | Facilitator/filmmaker register; "Say the thing"; embodied/somatic vocabulary; Information Alchemist meta-identity | rubinsteinproductions.com, IG @rubinsteinproductions, YouTube @risaac09 |
+| **Independent Evaluation** | Plain MPH-credentialed evaluation register; methodology-grounded; no Say Why brand language | isaacrubinstein.com, eval-side LinkedIn (when reactivated), capabilities statements, RFP submissions |
+
+**No mixing.** A nonprofit ED scanning eval RFPs should not see RP's voice; a Say Why client should not see institutional eval language. Drift between the two registers is the highest reputation risk to either practice. Apply `stop-slop` discipline both ways.
+
+---
+
 ## Channels
 
-| Channel | Status | Purpose |
-|---|---|---|
-| Instagram (@rubinsteinproductions) | Primary, active | Portfolio + practice documentation |
-| YouTube (@risaac09) | Active | Long-form (training, methodology, client films) |
-| rubinsteinproductions.com | Live | Marketing site / front door |
-| Email list (newsletter) | Building — monthly cadence | Owned audience insurance; see `marketing/newsletter.md` |
-| LinkedIn | Dormant | Professional network; reactivate if BD needs it |
-| TikTok | Not active | Explicit non-goal |
+| Channel | Practice | Status | Purpose |
+|---|---|---|---|
+| Instagram (@rubinsteinproductions) | Say Why | Primary, active | Portfolio + practice documentation |
+| YouTube (@risaac09) | Say Why | Active | Long-form (training, methodology, client films) |
+| rubinsteinproductions.com | Say Why | Live | Marketing site / front door |
+| isaacrubinstein.com | Eval | In build (Phase 0 deliverable) | Eval-side positioning + capabilities |
+| Email list (newsletter) | Say Why | Building — monthly cadence | Owned audience insurance; see `marketing/newsletter.md` |
+| LinkedIn | Eval (primary) | Dormant | Reactivate when eval BD volume justifies it |
+| TikTok | — | Not active | Explicit non-goal |
 
 **Platform diversification strategy:** IG + YouTube is the current stack. If algorithmic cooling happens on either, shift weight. An owned channel (email) is the planned insurance.
 

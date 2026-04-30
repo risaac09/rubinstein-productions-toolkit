@@ -12,7 +12,7 @@ How we communicate is part of the methodology. Every interaction should model th
 | Active client email | Within 24 hours (business days) |
 | Urgent issue (filming day, tech problem) | Same day |
 | Post-session follow-up | Within 24 hours |
-| Mirror Narrative delivery | 5–7 days after session (never before 5) |
+| Founder Story narrative delivery | 5–7 days after session (never before 5) |
 | Proposal delivery | Within 3 business days of scoping call |
 
 ---
@@ -35,17 +35,17 @@ How we communicate is part of the methodology. Every interaction should model th
 
 Subject: Good talking with you
 
-> [Name] — Thanks for the conversation today. What I heard was [1-sentence summary of their situation]. I think a Mirror Session could be useful here.
+> [Name] — Thanks for the conversation today. What I heard was [1-sentence summary of their situation]. I think a Founder Story session could be useful here.
 >
 > If you'd like to proceed, here are a few times that work: [options]. No prep needed on your end — I'll send a brief guide beforehand.
 >
 > Isaac
 
-### Sending the Mirror Narrative (Stage 3)
+### Sending the Founder Story narrative (Stage 3)
 
-Subject: Your Mirror Narrative
+Subject: Your Founder Story narrative
 
-> [Name] — Attached is the Mirror Narrative from our session on [date].
+> [Name] — Attached is the Founder Story narrative from our session on [date].
 >
 > This document is yours to keep regardless of what happens next. Take your time with it — it's meant to be sat with, not speed-read.
 >

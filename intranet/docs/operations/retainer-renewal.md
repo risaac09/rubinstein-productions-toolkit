@@ -1,6 +1,6 @@
-# Retainer Renewal — Territory Tier
+# Retainer Renewal — Organizational Embedding Tier
 
-Territory engagements (the $4–8k/mo retainer tier) imply ongoing relationship. Without a deliberate renewal conversation, retainers default to **drift** — either indefinite auto-renewal without fit-checking, or quiet non-renewal without a real close.
+Organizational Embedding engagements (the $4–8K/mo retainer tier; canonical: held until one paid engagement at this depth completes) imply ongoing relationship. Without a deliberate renewal conversation, retainers default to **drift** — either indefinite auto-renewal without fit-checking, or quiet non-renewal without a real close.
 
 This doc is the cadence and the script shape for naming the renewal conversation on purpose.
 
@@ -34,7 +34,7 @@ A joint assessment of whether the continued work is still the right work. Struct
 
 1. **What shifted in the last 12 months** — for the client, for their organization, for the conversation between you.
 2. **What's still unmetabolized** — the thing the retainer was working on that's still open, or the new thing that has surfaced that wasn't there at signing.
-3. **What shape fits the next chapter** — same retainer, reshaped retainer, or a clean close + a different engagement (e.g., back to Map-tier project work).
+3. **What shape fits the next chapter** — same retainer, reshaped retainer, or a clean close + a different engagement (e.g., back to Program Engagement project work).
 
 ### Possible outcomes
 

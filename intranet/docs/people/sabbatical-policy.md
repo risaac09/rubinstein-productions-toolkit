@@ -79,14 +79,14 @@ Named in advance each year. Examples:
 
 These cadences are **not negotiable against client pressure**. A client who cannot accept pre-scheduled closure windows is not the right fit for a solo practice.
 
-- If a Territory-tier retainer is proposed that conflicts with scheduled sabbatical, the retainer start date shifts or the retainer doesn't happen. Sabbatical does not.
+- If an Organizational Embedding retainer is proposed that conflicts with scheduled sabbatical, the retainer start date shifts or the retainer doesn't happen. Sabbatical does not.
 - If revenue pressure tempts cancellation of the annual month, that is the signal to reread `capacity-management.md` and have a capacity conversation, not a cancellation conversation.
 
 ---
 
 ## The underlying stance
 
-The instrument is the business. A depleted instrument produces depleted work. A rested instrument produces work that clients actually pay Territory-tier prices for.
+The instrument is the business. A depleted instrument produces depleted work. A rested instrument produces work that clients actually pay Organizational Embedding prices for.
 
 The sabbatical cadence is not a cost center. It is the precondition for the quality that the pricing assumes.
 

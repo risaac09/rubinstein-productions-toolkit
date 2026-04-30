@@ -62,7 +62,7 @@ Excavation is the research phase — but "research" here means something differe
 
 ### The Inside Version
 
-The most important output of Excavation is what we call "the inside version" — the narrative that lives beneath the official one. This isn't hidden in the sense of being secret; it's hidden in the sense that no one has named it yet. The Mirror Narrative is the written form of this inside version.
+The most important output of Excavation is what we call "the inside version" — the narrative that lives beneath the official one. This isn't hidden in the sense of being secret; it's hidden in the sense that no one has named it yet. The Founder Story narrative is the written form of this inside version (delivered as the Founder Story tier deliverable; deepened across Program Engagement and Organizational Embedding).
 
 ---
 

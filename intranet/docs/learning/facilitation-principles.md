@@ -1,6 +1,6 @@
 # Facilitation Principles
 
-These principles govern every facilitated interaction — whether a Mirror Session, a group workshop, or a casual conversation with a prospect. They are the methodological core of RP.
+These principles govern every facilitated interaction — whether a Founder Story session, a Program Engagement working session, a group workshop, or a casual conversation with a prospect. They are the methodological core of RP.
 
 ---
 
@@ -16,7 +16,7 @@ In practice: arrive early, set up equipment invisibly, establish the relational 
 
 Design every interaction as a mutual exchange. Filming should leave both parties more coherent, not just the facilitator richer in material. The participant should feel they received something (clarity, reflection, being witnessed) — not that something was taken from them.
 
-In practice: always deliver a Mirror Narrative or synthesis back to the participant. Never film without a clear plan to return value.
+In practice: always deliver a Founder Story narrative or synthesis back to the participant. Never film without a clear plan to return value.
 
 ### 3. Psychological Safety as Production Asset
 
@@ -69,7 +69,7 @@ In practice: do a 2–3 minute grounding practice before every session. Check: a
 - Signal the wind-down: "We're coming toward the end. Is there anything you haven't said that wants to be said?"
 - Reaffirm consent: "Is there anything from today you'd like to keep off the record?"
 - Name what you observed (briefly): "What struck me was..."
-- Explain next steps: when they'll receive the Mirror Narrative, what to expect
+- Explain next steps: when they'll receive the Founder Story narrative, what to expect
 - Thank them specifically (not generically)
 
 ---

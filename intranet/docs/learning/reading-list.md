@@ -24,7 +24,7 @@ The philosophical framework behind the Bilingual Dashboard and the analysis of s
 
 The craft layer — how stories work and why honest expression matters.
 
-- **Robert McKee** — *Story* (1997). Narrative structure. Useful for understanding the arc of a Mirror Narrative and how to structure film edits.
+- **Robert McKee** — *Story* (1997). Narrative structure. Useful for understanding the arc of a Founder Story narrative and how to structure film edits.
 - **Brené Brown** — *Daring Greatly* (2012). Vulnerability as a professional asset. Relevant to helping clients understand why saying the scary thing is the strategic thing.
 - **Marshall Rosenberg** — *Nonviolent Communication* (2003). The distinction between observation and evaluation informs facilitation technique. Useful for maintaining the "observe and reflect, don't diagnose" principle.
 

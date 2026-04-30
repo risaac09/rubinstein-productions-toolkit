@@ -54,7 +54,7 @@ Two principles govern all decisions:
 
 **Sacral authority.** Gut response over cognitive override. If Isaac is thinking himself into a yes, it's a no. This applies to taking projects, pricing decisions, and scope changes.
 
-**Protect the energy.** Overcommitment degrades everything. Max 2 Territory clients, max 4 Map engagements per quarter, no calls before noon on deep work days.
+**Protect the energy.** Overcommitment degrades everything. Max 2 Organizational Embedding clients, max 2 Program Engagements per quarter, max 3–4 Founder Story sessions per month, no calls before noon on deep work days.
 
 See [Decision Frameworks](../operations/decision-frameworks.md) for the full protocol.
 

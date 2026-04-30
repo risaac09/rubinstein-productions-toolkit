@@ -76,7 +76,7 @@ Build these as sd-touches CLI queries when the volume justifies the tooling. Cur
 
 ## Growth path
 
-If touch volume exceeds what's manageable in contacts.json (likely trigger: Territory-tier capacity across 3+ retainers), options:
+If touch volume exceeds what's manageable in contacts.json (likely trigger: Organizational Embedding capacity across 3+ retainers, or active eval-side RFP pipeline), options:
 
 1. **Extract to separate `touches.json` entity** with contactId foreign key
 2. **Move to external tool** (Airtable, Notion) with stack-data remaining source of truth via export

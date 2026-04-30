@@ -27,13 +27,13 @@ Full cycle: ~16–26 weeks. Two to three cycles per year is the realistic ceilin
 Already periodized. Calendar organized around A-races. **No change needed.**
 
 ### Creative / facilitation work
-Treat major engagements (Territory-tier retainers, film productions, Say The Thing intensives) as **races**. Treat sustained writing/research windows as **races**.
+Treat major engagements (Organizational Embedding retainers, film productions, Say The Thing intensives, multi-site evaluation kickoffs) as **races**. Treat sustained writing/research windows as **races**.
 
 | Race | Example |
 |---|---|
-| A-race | A Territory engagement kickoff; a film shoot week; a public workshop |
-| B-race | A Map-tier client kickoff; a newsletter issue; an essay draft |
-| C-race | Weekly publishing; a facilitation session in an ongoing engagement |
+| A-race | An Organizational Embedding engagement kickoff; a film shoot week; a public workshop; an evaluation site visit |
+| B-race | A Program Engagement kickoff; an evaluation proposal submission; a newsletter issue; an essay draft |
+| C-race | Weekly publishing; a Founder Story session; a facilitation session in an ongoing engagement |
 
 **Base → Build → Peak → Race cadence** for an A-race creative engagement:
 - Base (4 weeks out): research, drafts, client listening, capacity protection

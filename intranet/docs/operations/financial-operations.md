@@ -18,7 +18,7 @@ Track all revenue by tier and quarter using the `invoice-financial-tracker` skil
 
 - Invoice within 48 hours of deliverable completion
 - Payment terms: Net-30 (default) or 50/50 split (50% upon signing, 50% upon delivery)
-- Territory retainers: invoice on the 1st, due by the 15th
+- Organizational Embedding retainers: invoice on the 1st, due by the 15th
 - Always include: project name, deliverables completed, payment terms, bank details or payment link
 - Follow up once at 15 days overdue, once at 30 days, then escalate
 
@@ -62,13 +62,15 @@ Set aside 30% of every payment received into a separate account. This covers:
 
 | Tier | Deals | Avg Value | Revenue |
 |------|-------|-----------|---------|
-| Mirror | 20 | $1,000 | $20,000 |
-| Map | 8 | $5,000 | $40,000 |
-| Territory | 1 | $8K × 3mo | $24,000 |
-| **Gross** | | | **$84,000** |
+| Founder Story | 20 | $1,800 | $36,000 |
+| Program Engagement | 6 | $5,500 | $33,000 |
+| Organizational Embedding (held) | 1 | $5K × 3mo | $15,000 |
+| **Gross** | | | **~$84,000** |
 | Tax reserve (30%) | | | -$25,200 |
 | Estimated expenses | | | -$8,000 |
 | **Net** | | | **~$50,800** |
+
+Founder Story floor is $1,500; assumed mix-average $1,800 reflects the canonical $1,500–2,500 band. Program Engagement assumed mix-average $5,500 reflects the canonical $3–8K band. Organizational Embedding is held until one paid engagement at that depth completes; the row is included for modeling continuity, not as a sales target.
 
 ### Monthly Break-Even
 

@@ -55,7 +55,7 @@ Six questions. Score yes/no.
 When you're staring at an opportunity and can't decide:
 
 1. **Classify** it (A/B/C above)
-2. **Check capacity** (current load — Territory count, Map count, energy level)
+2. **Check capacity** (current load — Organizational Embedding count, Program Engagement count, energy level)
 3. **Sacral check:** Does this feel like a "hell yes" or a "probably"? If you're *thinking* yourself into yes, it's probably a no.
 4. **Present the answer:**
     - **A:** Take it

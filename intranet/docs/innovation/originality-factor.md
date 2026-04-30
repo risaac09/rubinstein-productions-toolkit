@@ -58,7 +58,7 @@ The practice is grounded in a specific person — facilitator, filmmaker, ultrar
 
 These shape the practice but can evolve. They're how the core gets expressed *now,* and will be expressed differently in 2 years.
 
-- **Service tiers (Mirror / Map / Territory)** — names and pricing can change; the ladder of commitment should not.
+- **Service tiers (Founder Story / Program Engagement / Organizational Embedding)** — names and pricing can change (these renamed from Mirror/Map/Territory in the 2026-04 brand reset); the ladder of commitment should not.
 - **Domains** — currently wedding film, facilitation, community coverage, personal documentary, training film. This mix can shift.
 - **Tooling** — vanilla JS PWAs, markdown + YAML, CLI-first. Current choice. If a better stack serves the core better, migrate.
 - **Published voice** — the specific cadence and vocabulary of RP's writing. Recognizable now; will mature.

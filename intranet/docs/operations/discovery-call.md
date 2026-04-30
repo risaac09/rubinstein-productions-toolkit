@@ -47,7 +47,7 @@ Don't skip this. Constraints name themselves here or they surprise you later.
 
 ### 5. Close (7 min)
 - Reflect back what you heard — specifically. "Here's what I'm hearing. Tell me where I'm wrong."
-- Name the fit honestly: "This sounds like a Mirror/Map/Territory" OR "I don't think this is for us — here's who might be better."
+- Name the fit honestly: "This sounds like a Founder Story / Program Engagement / Organizational Embedding" OR "I don't think this is for us — here's who might be better."
 - If fit: describe next step concretely (proposal by X, call #2 on Y).
 - If not fit: say so on the call. Don't ghost-then-decline later.
 

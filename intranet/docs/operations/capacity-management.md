@@ -13,9 +13,9 @@ RP operates on Generator energy principles. Capacity is not about hours availabl
 
 | Constraint | Limit | Rationale |
 |-----------|-------|-----------|
-| Active Territory partnerships | Max 2 | These are deep, ongoing relationships. More than 2 degrades quality. |
-| Map engagements per quarter | Max 4 | Each sprint consumes 3–5 days of intensive work plus prep and follow-up. |
-| Mirror sessions | Unlimited | But must not displace deep work blocks. |
+| Active Organizational Embedding clients | Max 2 | These are deep, ongoing relationships. More than 2 degrades quality. (Org Embedding is currently held — not yet offered until one paid engagement at this depth completes.) |
+| Program Engagements per quarter | Max 2 | Each Program Engagement consumes 3–5 days of intensive work plus prep and follow-up across all four methodology phases. |
+| Founder Story sessions per month | Max 3–4 | Cannot displace deep work blocks. |
 | Deep work mornings | Minimum 3/week | No calls before noon. Protect creative and analytical capacity. |
 | Filming sessions | Requires 24hr prep + 5-day post-latency | Block these in advance. They consume more energy than they appear to. |
 
@@ -29,8 +29,8 @@ When a new opportunity arrives, run this checklist:
 
 | Question | Check |
 |----------|-------|
-| How many Territory clients are active? | Must be < 2 |
-| How many Map engagements are in-flight this quarter? | Must be < 4 |
+| How many Organizational Embedding clients are active? | Must be ≤ 2 |
+| How many Program Engagements are in-flight this quarter? | Must be ≤ 2 |
 | Are all current client deadlines on track? | Must be yes |
 
 ### Step 2: Energy Check

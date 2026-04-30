@@ -48,9 +48,9 @@ Copied from `operations/capacity-management.md` for prominence:
 
 | Constraint | Limit | Rationale |
 |---|---|---|
-| Active Territory partnerships | Max 2 | More than 2 degrades relational depth |
-| Map engagements per quarter | Max 4 | Each sprint: 3–5 days intensive + prep + follow-up |
-| Mirror sessions | Unlimited (but protected) | Must not displace deep work |
+| Active Organizational Embedding clients | Max 2 | More than 2 degrades relational depth (held until first paid engagement at this depth) |
+| Program Engagements per quarter | Max 2 | Each: 3–5 days intensive + prep + follow-up across all four phases |
+| Founder Story sessions per month | Max 3–4 | Must not displace deep work |
 | Deep work mornings | Min 3/week | No calls before noon |
 | Filming sessions | 24hr prep + 5-day post-latency | Filming consumes more energy than it appears to |
 
@@ -110,7 +110,7 @@ When 2+ of these are present, the move is: **reduce commitment surface area.** N
 | Activities per week (by type) | Practice consistency | activities.json |
 | `feel` distribution over rolling 4 weeks | Capacity trend | activities.json queries |
 | Deep-work mornings honored (out of min 3) | Schedule integrity | Calendar review |
-| Mirror sessions / month | Surge-load indicator | stack-data |
+| Founder Story sessions / month | Surge-load indicator | stack-data |
 | Active Territory count | Hard-cap monitor | projects.json |
 
 **Counter-metric:** hours worked. Hours are not a signal of quality in this practice.

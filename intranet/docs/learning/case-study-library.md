@@ -22,7 +22,7 @@ Each case study should cover:
 
 - Client/organization description (anonymize if no permission)
 - What triggered the engagement (pain point, event, referral source)
-- Engagement tier (Mirror / Map / Territory)
+- Engagement tier (Founder Story / Program Engagement / Organizational Embedding)
 - Timeline and scope
 
 ### The Work
@@ -37,7 +37,7 @@ Each case study should cover:
 **Royal Metrics:**
 
 - Quantitative outcomes (completion, satisfaction, utilization, etc.)
-- Comparison to targets set during Map phase
+- Comparison to targets set during Engagement Design (Stage 4)
 
 **Nomadic Indicators:**
 

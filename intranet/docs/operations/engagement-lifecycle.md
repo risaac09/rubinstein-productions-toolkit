@@ -44,23 +44,23 @@ Prospect responds positively. A conversation is scheduled.
 ### Deliverable to Client
 
 - Nothing formal. Clarity on fit.
-- If proceeding: send Mirror Session Prep Guide (`02-mirror-session-prep.docx`)
+- If proceeding: send Founder Story Prep Guide (`02-founder-story-prep.docx`)
 
 ### Handoff Criteria → Stage 3
 
-Both parties agree a Mirror Session would be valuable. Date scheduled.
+Both parties agree a Founder Story session would be valuable. Date scheduled.
 
 ---
 
-## Stage 3: Mirror
+## Stage 3: Founder Story Session
 
-**What happens:** A 90-minute facilitated session where Isaac listens deeply and reflects back what he hears. This is not consulting — it's witnessing.
+**What happens:** A 90-minute facilitated session — the entry-tier engagement. Isaac listens deeply and reflects back what he hears. Methodology-wise, this is Container + light Performance/Translation in one pass (per canonical). Not consulting — witnessing.
 
 ### SOP
 
 **Pre-session:**
 
-1. Send Mirror Session Prep Guide 3–5 days before
+1. Send Founder Story Prep Guide 3–5 days before
 2. Confirm logistics (location, Zoom link, who's attending)
 3. Internal prep: review prospect notes, set intention, do nervous-system regulation (breathing, grounding)
 
@@ -73,35 +73,36 @@ Both parties agree a Mirror Session would be valuable. Date scheduled.
 **Post-session:**
 
 1. Allow 5-day integration window before writing
-2. Write the Mirror Narrative
-3. Send Mirror Narrative (`03-mirror-narrative.docx`) to client
+2. Write the Founder Story narrative
+3. Send Founder Story narrative (`03-founder-story-narrative.docx`) to client
 
 ### Deliverable to Client
 
-- Mirror Narrative — a written synthesis of what was observed, the inside version of their story, and open questions
+- Founder Story narrative — a written synthesis of what was observed, the inside version of their story, and open questions
+- For most Founder Story tier engagements, this completes the deliverable cycle (the engagement ends here)
 - This is theirs to keep regardless of whether they continue
 
 ### Handoff Criteria → Stage 4
 
-Client reads the narrative, confirms it resonates, expresses interest in a full engagement.
+Client reads the narrative, confirms it resonates, expresses interest in a deeper engagement (Program Engagement or, eventually, Organizational Embedding).
 
 !!! tip "5-Day Latency Rule"
-    Never write the Mirror Narrative within 5 days of the session. Integration time produces better synthesis. This is a hard rule, not a guideline.
+    Never write the Founder Story narrative within 5 days of the session. Integration time produces better synthesis. This is a hard rule, not a guideline.
 
 ---
 
-## Stage 4: Map
+## Stage 4: Engagement Design
 
-**What happens:** Co-design the full engagement based on what emerged from the Mirror.
+**What happens:** Co-design a Program Engagement (all four phases, embedded in the client's program) or Organizational Embedding (repeated cycles, 3+ months) based on what emerged from the Founder Story.
 
 ### SOP
 
-1. Review Mirror Narrative with client — what landed, what didn't, what questions remain
+1. Review Founder Story narrative with client — what landed, what didn't, what questions remain
 2. Co-scope the engagement: what are the actual deliverables, timeline, and measurement approach
-3. Define the Bilingual Dashboard metrics (Royal + Nomadic) for this specific engagement
+3. Define the Bilingual Dashboard metrics (institutional + relational; internal Royal/Nomadic analytical tool) for this specific engagement
 4. Draft Engagement Proposal (`04-engagement-proposal.docx`)
 5. Draft Project Roadmap (`05-project-roadmap.docx`)
-6. Set pricing using the [Pricing Guardrails](pricing-guardrails.md)
+6. Set pricing using the [Pricing Guardrails](pricing-guardrails.md) — Program Engagement $3–8K; Organizational Embedding $4–8K/mo (held)
 7. Send both documents to client
 
 ### Deliverable to Client

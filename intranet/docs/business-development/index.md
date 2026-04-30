@@ -46,13 +46,27 @@ A solo practice grows through the integrity of Isaac's relationships over time. 
 
 ## Service tiers (the offering)
 
+Two practices share BD operations but offer different work — see [Practices](../practices/index.md).
+
+**Say Why (Facilitation & Film):**
+
 | Tier | Shape | Price range | Purpose |
 |---|---|---|---|
-| **The Mirror** | Single facilitation session | $500–1.5k | Entry point, high clarity |
-| **The Map** | Say The Thing package | $5–12k | Articulating the hard-to-name thing |
-| **The Territory** | Ongoing retainer | $4–8k/mo | Deep, continuous relationship |
+| **Founder Story** | Single facilitation session + narrative synthesis | $1,500–2,500 | Entry-tier engagement, methodologically Container + light Performance/Translation in one pass |
+| **Program Engagement** | All four phases embedded in client's program | $3,000–8,000 | Full arc, embedded delivery; positioned as a case study (Genesis Design Challenge) not actively sold |
+| **Organizational Embedding** | All four phases, repeated cycles, 3+ months | $4,000–8,000/mo | Strategic target — held until one paid engagement at this depth completes |
 
-See `operations/pricing-guardrails.md` for the rules behind these numbers.
+**Independent Evaluation (eval-side BD via [RFP Pipeline](rfp-pipeline.md)):**
+
+| Service | Price range |
+|---|---|
+| Evaluation Plan Development | $3,000–8,000 |
+| External Evaluation (small program, 1 yr) | $15,000–30,000 |
+| External Evaluation (multi-site, multi-year) | $40,000–100,000+ |
+| Subcontracting (hourly) | $125–175/hr |
+| Logic Model / Theory of Change Workshop | $2,000–4,000 |
+
+See `operations/pricing-guardrails.md` for the rules behind these numbers and the canonicals for full context.
 
 ---
 
@@ -74,7 +88,7 @@ new-contact → qualified → proposal-sent → engaged → active-client → pa
 | qualified | There's a real possible fit | Brief generated via client-brief agent |
 | proposal-sent | Scope articulated and sent | `proposal-scope-builder` output |
 | engaged | Signed, scheduled | Handoff to Delivery (engagement lifecycle) |
-| active-client | In a Mirror/Map/Territory | — |
+| active-client | In a Founder Story / Program Engagement / Organizational Embedding | — |
 | past-client | Engagement delivered | Network stewardship rhythm |
 
 ---
@@ -115,7 +129,7 @@ new-contact → qualified → proposal-sent → engaged → active-client → pa
 | **Marketing** | Receives: warm-engagement signals from content. Sends: what content would help close specific deals (rarely — content is not a BD instrument). |
 | **Delivery** | Sends: signed engagements. Receives: client realities that reshape future pricing/scoping. |
 | **Finance** | Partners on pricing at the deal level. Finance sets guardrails; BD negotiates within them. |
-| **People** | Gated by: capacity. A signed Territory engagement requires People sign-off. |
+| **People** | Gated by: capacity. A signed Organizational Embedding engagement requires People sign-off. |
 | **R&D** | Pilots live here — R&D experiments often first meet reality through a BD conversation. |
 
 ---
