@@ -1,19 +1,16 @@
 # Proposal Builder
 
-Branded PDF generator for Isaac Rubinstein's evaluation consulting proposals. Reproduces the visual identity used in the RIPCA FFY2026 proposal and the Campus Compact CAP M&E proposal.
-
-## Background
-
-The original generator (`build_proposal_RIPCA_REFERENCE.py`) was built inside a Claude local-agent-mode session in April 2026 and lived in a transient session-output directory. It was rescued to this folder on 2026-04-27 to make the toolchain durable.
+Branded PDF generator for evaluation consulting proposals, capabilities statements, and cover letters. Reproduces the Ink/Ochre/Teal visual identity used across all RP eval-side outbound documents.
 
 ## What's here
 
 | File | Purpose |
 |---|---|
-| `build_proposal_RIPCA_REFERENCE.py` | Original RIPCA proposal builder. Treat as the canonical reference for styling and layout. Don't run as-is — output path points at a defunct sandbox location. |
-| `build_appendix_and_capstmt_RIPCA_REFERENCE.py` | Companion script that builds the RIPCA appendix + capabilities statement. Reference only. |
-| `build_campus_compact_proposal.py` | Working build script for the Campus Compact CAP proposal. Generated 2026-04-27. |
+| `build_capabilities_statement_generic.py` | 1-page capabilities statement PDF. Generic-recipient version; copy-and-adapt for tailored variants per recipient. |
+| `build_cover_letter.py` | Cover letter PDF builder with the shared visual identity. |
 | `README.md` | This file. |
+
+Bid-specific build scripts (proposals tailored to a particular RFP, named after the prospect) live in the private intranet repo at `~/rp-intranet/scripts/proposal-builder/`. The pattern is copy-and-adapt: clone a prior bid script to start a new proposal.
 
 ## Dependencies
 
@@ -27,7 +24,7 @@ Tested with `reportlab 4.4.10` on Python 3.9.
 
 The current pattern is **copy-and-adapt**: each proposal is its own Python script that imports nothing from the others. Reuse happens by copying the styling block (colors, ParagraphStyles, helper functions, page templates) verbatim and replacing the story.
 
-1. Copy `build_campus_compact_proposal.py` → `build_<client>_proposal.py`.
+1. Copy an existing bid script from `~/rp-intranet/scripts/proposal-builder/` → `build_<prospect>_proposal.py` (working dir of your choice, typically the prospect's vault folder).
 2. Update at the top:
    - Module docstring
    - `OUTPUT_DIR` (vault path to the prospect folder)
@@ -41,8 +38,8 @@ The current pattern is **copy-and-adapt**: each proposal is its own Python scrip
    - `bullet(text)` — bulleted body paragraph
    - `small(text)` — slate small text (footnotes, "available on request")
    - `ochre_rule()`, `thin_rule()` — horizontal rules
-   - Tables: build with `Table(...)` + `TableStyle(...)` — see methods/timeline/fee tables in the existing scripts
-5. Run: `python3 build_<client>_proposal.py`
+   - Tables: build with `Table(...)` + `TableStyle(...)`
+5. Run: `python3 build_<prospect>_proposal.py`
 
 ## Visual identity (don't change without need)
 
@@ -63,7 +60,7 @@ Page format: US Letter, 1-inch left/right margins, 0.9" top, 0.85" bottom. Top a
 
 ## Page-count compression
 
-The Campus Compact proposal hit the 10-page RFP limit only after compressing default spacing:
+For tight RFP page limits, compress default spacing:
 
 - `subtitle.spaceAfter`: 24 → 14
 - `h1.spaceBefore`: 28 → 16, `h1.spaceAfter`: 10 → 6
@@ -72,14 +69,13 @@ The Campus Compact proposal hit the 10-page RFP limit only after compressing def
 - `body.leading`: 16 → 14, `body.spaceAfter`: 8 → 5
 - All `PageBreak()` calls removed (let content flow naturally)
 
-For longer proposals where page count is not a constraint, restore the RIPCA-original values for more breathing room.
+For longer proposals where page count is not a constraint, restore the original values for more breathing room.
 
-## Refactor backlog (post Campus Compact submission)
+## Refactor backlog
 
 The current pattern requires hand-editing a Python file per proposal. Real fix: a single `build_proposal.py` that takes a markdown file path and a config (output path, header text, brand-color overrides) as arguments, parses the markdown, and emits the PDF. That requires writing a markdown-to-ParagraphStyle parser. Until then, copy-and-adapt is the workflow.
 
 Other follow-ups:
 
-- Add this folder to a git repo (currently not tracked).
 - Pin the reportlab version in a `requirements.txt`.
 - Extract brand colors into a single `brand.py` shared with the RP intranet CSS so a color change is a one-place edit.
