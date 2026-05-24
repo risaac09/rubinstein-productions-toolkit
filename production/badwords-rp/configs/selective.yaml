@@ -1,0 +1,87 @@
+# Selective mode
+# For hybrid use cases: a Founder Story tier that also needs a polished
+# social cut, or a Program Engagement deliverable where some moments warrant
+# preservation.
+#
+# Mark everything. Cut nothing automatically. The editor reviews
+# each marker and decides per-instance.
+#
+# Costs more editor time than Polish. Less safe than Witness.
+# Use when the deliverable matrix is genuinely mixed.
+
+mode: selective
+description: Mark all candidates. Editor decides per-instance. Hybrid workflows.
+
+# === BadWords settings.json mapping ===
+badwords_settings:
+
+  # --- Cut/Mark behavior (Fast Silence flow) ---
+  # Mark silences. Never auto-cut.
+  fs_cut_mode: false
+  fs_mark_mode: true
+
+  # --- Filler word list ---
+  # Same broad list as Polish, BUT fs_cut_mode is off so nothing auto-cuts.
+  # Filler words are marked red as candidates; editor confirms each.
+  filler_words:
+    - um
+    - umm
+    - uh
+    - uhh
+    - ah
+    - ahh
+    - er
+    - mhm
+    - hmm
+    - like
+    - you know
+    - i mean
+    - sort of
+    - kind of
+    - basically
+    - literally
+    - actually
+    - so yeah
+    - right
+    - okay so
+
+  # --- Silence detection ---
+  # Mid-range. Catch real pauses without flagging breath.
+  silence_min_dur: 0.6           # between polish 0.18 and witness 2.0
+  silence_threshold_db: -42.0    # default
+  ui_spin_pad: 0.15
+
+  # --- Whisper transcription ---
+  # Verbatim, since the editor may want the texture preserved on some clips.
+  ai_initial_prompt: "Umm, yyy, eh, mmm, tsk, h-h-hello, i... i will check. I went... I went to the st... store, tak tak."
+  ai_suppress_silence: false
+  ai_vad_filter: false
+  ai_ultra_precise: true
+  ai_beam_size: 5
+  ai_temperature: 0.0
+
+  # --- Algorithm tuning ---
+  algo_fuzzy_threshold: 80       # between polish 75 and witness 90
+  algo_retake_lookahead: 60
+  algo_distance_penalty: 3.0
+
+  # --- Output ---
+  xml_preserve_track_order: true
+  timestamp_precise: true
+
+# === Editor instructions ===
+# Workflow for Selective mode:
+#   1. Open BadWords in Resolve, load this config.
+#   2. Transcribe verbatim.
+#   3. Review each red mark. Confirm (keep red) or clear (back to default).
+#   4. Click Assemble. The cuts you confirmed are applied. Markers stay.
+#
+# Service tier alignment:
+#   - Founder Story tier with an extracted social cut
+#   - Program Engagement engagement footage repurposed into a Bilingual Dashboard
+#   - Any project where the deliverable matrix is mixed
+#
+# Trade-off:
+#   - More editor time than Polish (every red mark requires review)
+#   - Less methodologically safe than Witness (default still surfaces filler)
+#   - Use only when justified by the deliverable mix
