@@ -137,5 +137,6 @@ After each stage completes, prompt the next: outreach sent → log to Airtable? 
 - Facilitation over production — methodology leads; production serves narrative
 - Three-layer voice: Diagnostic / Methodological / Tribal (canonical doc Part 1)
 - Generator pacing — don't push all phases in one session
+- **Voice enforcement:** For any prose that ships under Isaac's name (essays, Substack posts, outreach emails, proposals), load `isaac-voice` skill. For draft editing, load both `isaac-voice` and `stop-slop`.
 
 **Output ceiling: 400 words max for any single response unless Isaac requests more.**
