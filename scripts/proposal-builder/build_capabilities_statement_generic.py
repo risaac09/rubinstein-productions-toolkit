@@ -88,7 +88,7 @@ def build():
         ("60+", "organizations in shared\nmeasurement system"),
         ("14", "population-level indicators\nacross 6 equity domains"),
         ("59%", "reduction in mental health\nservice turnaround"),
-        ("$510K", "small business lending\nprogram evaluated"),
+        ("3", "evaluation frameworks\nintegrated (RBA / WoSC / Equity)"),
     ]
     stat_x = 54
     stat_w = (W - 108) / 4

@@ -139,6 +139,18 @@ Start with `methodology/facilitation-protocol.md` for the session-level practice
 
 ---
 
+## Canonical structure
+
+This repo and the Obsidian vault are separate stacks. Directory names like `02 Practice/`, `03 Projects/`, `00 System/` are reserved for the vault and must never appear inside the toolkit root or anywhere below it (except under `_archive/`). The full forbidden list, the regex, and the rationale are in `docs/CANONICAL-STRUCTURE.md`.
+
+Three guards enforce this:
+
+- **Drift detector** — `scripts/check-vault-mirror-drift.sh`. Pure bash. Run anytime.
+- **Pre-commit hook** — `scripts/hooks/pre-commit-vault-mirror-check.sh`. Chains the secret scanner and the drift detector. Install on a clean checkout with `cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
+- **Daily detector** — `~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`. Runs at 04:30 daily, writes a dated note to the vault on drift. The pre-commit hook only fires on git commits; the daily run catches misroutes from other automation.
+
+---
+
 ## License
 
 MIT License. Use it, fork it, adapt it.

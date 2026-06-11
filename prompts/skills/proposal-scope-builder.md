@@ -115,7 +115,7 @@ Before generating any proposal, conduct a brief discovery:
    - Be specific about what they'll receive (Bilingual Dashboard, facilitation sessions, asset formats)
    - Name the Zero-Measurement Zone (if filming involved) and what that means for them
 
-4. **Investment** — Clear breakdown; payment terms (typically 50% deposit, 50% on delivery or monthly for Territory)
+4. **Investment** — Clear breakdown; payment terms (typically 50% deposit, 50% on delivery or monthly for Organizational Embedding)
 
 5. **Why This Approach** — Brief articulation of the facilitation and film methodology. Why this approach, not just content strategy.
 
