@@ -3,9 +3,13 @@
 # Usage: rp-prospect "Org Name" "https://website.com" "Contact Name" "Title" "email@org.com"
 # Or interactive: rp-prospect
 
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
-PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
-TEMPLATE="$VAULT/Practice/Rubinstein Productions/Outreach/prospect-template.md"
+VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+PROSPECTS="$OUTREACH/prospects"
+TEMPLATE="$OUTREACH/prospect-template.md"
+# Fall back to the template bundled with this repo if the vault copy doesn't exist
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$TEMPLATE" ] || TEMPLATE="$SCRIPT_DIR/../templates/prospect-template.md"
 TODAY=$(date +%Y-%m-%d)
 
 # Interactive mode if no args
@@ -20,7 +24,8 @@ if [ $# -eq 0 ]; then
   read -p "Source (linkedin/referral/event/research): " SOURCE
   echo ""
   echo "--- Sacral check ---"
-  read -p "Does reaching out to this person feel like a yes or a 'should'? " SACRALelse
+  read -p "Does reaching out to this person feel like a yes or a 'should'? " SACRAL
+else
   ORG_NAME="$1"
   WEBSITE="${2:-}"
   CONTACT_NAME="${3:-}"
@@ -32,6 +37,7 @@ fi
 
 # Create filename from org name (lowercase, hyphens)
 FILENAME=$(echo "$ORG_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+mkdir -p "$PROSPECTS"
 FILEPATH="$PROSPECTS/$FILENAME.md"
 
 if [ -f "$FILEPATH" ]; then

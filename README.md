@@ -18,11 +18,12 @@ I got obsessed with building the infrastructure behind my own practice: the sess
 
 ## Services
 
-Three engagement levels, each building on the last:
+Two engagement tiers, as priced at [rubinsteinproductions.com](https://rubinsteinproductions.com):
 
-- **The Mirror**: Single facilitation session. Listen, reflect, deliver a written narrative. ([PRICING REMOVED]–1,500)
-- **The Map**: Full arc. Facilitation, film, Bilingual Dashboard. ([PRICING REMOVED]–12,000)
-- **The Territory**: Ongoing creative partnership. Monthly retainer for organizations doing sustained narrative work. ([PRICING REMOVED]–8,000/month)
+- **Founder Story**: Say what you've become. Facilitated session, filmed, delivered as a short piece with a written narrative. ([PRICING REMOVED]–2,500)
+- **Program Engagement**: The full arc across a program or team. Facilitation, film, and the Bilingual Dashboard. ([PRICING REMOVED]–8,000)
+
+A third tier for sustained organizational embedding exists and opens by conversation, not by menu.
 
 ---
 
@@ -55,6 +56,8 @@ Shell scripts for outreach and grant pipeline management. Obsidian-native (markd
 - `rp-followup`: Surface overdue follow-ups
 - `rp-grant`: Grant funder tracking, deadlines, and status management
 - `install.sh`: Add to PATH in one step
+
+By default the tools file everything under an Obsidian vault path. Set `RP_OUTREACH_DIR` to point the whole pipeline anywhere else; directories are created on first use and the bundled `templates/` are used when no vault templates exist.
 ### `templates/`
 Reusable templates for the full client and grant lifecycle.
 
@@ -73,11 +76,11 @@ Grant infrastructure for the Say Why social impact initiative.
 - Funder research templates
 
 ### `apps/`
-Web-based tools (links to standalone repos).
+Web-based tools.
 
-- **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release.
-- **[Royal Metrics](https://github.com/risaac09/royal-metrics)**: ENIF business performance dashboard
-- **[RP Lifecycle](https://github.com/risaac09/rp-lifecycle)**: Videography project lifecycle manager
+- **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
+- **Royal Metrics**: ENIF business performance dashboard (private repo; the measurement framework it implements is in `methodology/`)
+- **RP Lifecycle**: Videography project lifecycle manager (private repo; the 10-phase template it encodes is part of the practice)
 
 ### `production/`
 Film and video production tools.
@@ -112,6 +115,9 @@ git clone https://github.com/risaac09/rubinstein-productions-toolkit.git
 # Add CLI tools to your PATH
 echo 'export PATH="$HOME/rubinstein-productions-toolkit/cli:$PATH"' >> ~/.zshrc
 source ~/.zshrc
+
+# Optional: choose where pipeline files live (defaults to an Obsidian vault path)
+echo 'export RP_OUTREACH_DIR="$HOME/rp-pipeline"' >> ~/.zshrc
 
 # Create your first prospect
 rp-prospect

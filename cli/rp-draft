@@ -4,8 +4,9 @@
 # Reads prospect file, opens Gmail compose in default browser
 # You write the email body — this handles the plumbing
 
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
-PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+PROSPECTS="$OUTREACH/prospects"
 
 if [ $# -lt 1 ]; then
   echo "Usage: rp-draft <org-slug>"
