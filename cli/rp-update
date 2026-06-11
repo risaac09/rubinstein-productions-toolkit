@@ -4,8 +4,9 @@
 # Statuses: research | ready | contacted | responded | passed | closed
 # Example: rp-update acme-corp contacted "Sent Mirror Email re: annual report gap"
 
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
-PROSPECTS="$VAULT/Practice/Rubinstein Productions/Outreach/prospects"
+VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 
 if [ $# -lt 2 ]; then
