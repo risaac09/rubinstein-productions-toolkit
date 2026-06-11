@@ -7,9 +7,13 @@
 #   rp-grant update <slug> <status> — Update funder status
 #   rp-grant log <slug> "note"      — Log an action
 
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
-GRANTS="$VAULT/Practice/Rubinstein Productions/Outreach/grants/funders"
-TEMPLATE="$VAULT/Practice/Rubinstein Productions/Outreach/grants/funder-template.md"
+VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+GRANTS="$OUTREACH/grants/funders"
+TEMPLATE="$OUTREACH/grants/funder-template.md"
+# Fall back to the template bundled with this repo if the vault copy doesn't exist
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$TEMPLATE" ] || TEMPLATE="$SCRIPT_DIR/../templates/funder-template.md"
 TODAY=$(date +%Y-%m-%d)
 
 CMD="${1:-help}"
@@ -24,9 +28,11 @@ add)
   read -p "Website: " WEBSITE
   read -p "Focus areas (comma-separated): " FOCUS
   read -p "Grant range (e.g., \$5K-50K): " RANGE
-  read -p "Next deadline (YYYY-MM-DD or unknown): " DEADLINE  read -p "Angle (narrative-SDOH/anti-extractive-media/info-metabolism/digital-equity): " ANGLE
-  
+  read -p "Next deadline (YYYY-MM-DD or unknown): " DEADLINE
+  read -p "Angle (narrative-SDOH/anti-extractive-media/info-metabolism/digital-equity): " ANGLE
+
   SLUG=$(echo "$FUNDER_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+  mkdir -p "$GRANTS"
   FILEPATH="$GRANTS/$SLUG.md"
   
   if [ -f "$FILEPATH" ]; then
@@ -39,7 +45,7 @@ add)
     -e "s|{{WEBSITE}}|$WEBSITE|g" \
     "$TEMPLATE" > "$FILEPATH"
   
-  sed -i '' "s|type: \"foundation|government|corporate|individual\"|type: \"$TYPE\"|" "$FILEPATH"
+  sed -i '' "s#type: \"foundation|government|corporate|individual\"#type: \"$TYPE\"#" "$FILEPATH"
   sed -i '' "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
   sed -i '' "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
   sed -i '' "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
@@ -52,7 +58,8 @@ list)
   FILTER="${2:-all}"
   echo "=== Grant Pipeline ==="
   echo "    $TODAY"
-  echo ""  for status in research loi-prep submitted reviewed awarded declined; do
+  echo ""
+  for status in research loi-prep submitted reviewed awarded declined; do
     if [ "$FILTER" != "all" ] && [ "$FILTER" != "$status" ]; then
       continue
     fi
@@ -79,17 +86,18 @@ list)
 deadlines)
   echo "=== Upcoming Grant Deadlines ==="
   echo ""
-  found=false
-  for f in "$GRANTS"/*.md; do
-    [ -f "$f" ] || continue    deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
+  out=$(for f in "$GRANTS"/*.md; do
+    [ -f "$f" ] || continue
+    deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
     [ -z "$deadline" ] && continue
     funder=$(grep "^funder:" "$f" | sed 's/funder: *"//' | sed 's/"//')
     status=$(grep "^status:" "$f" | sed 's/status: *//')
     next=$(grep "^next_action:" "$f" | sed 's/next_action: *"//' | sed 's/"//')
     printf "  %-12s %-30s %-12s %s\n" "$deadline" "$funder" "$status" "$next"
-    found=true
-  done | sort
-  if [ "$found" = false ]; then
+  done | sort)
+  if [ -n "$out" ]; then
+    echo "$out"
+  else
     echo "  No deadlines set. Add them with rp-grant update <slug>"
   fi
   ;;
@@ -110,7 +118,8 @@ update)
 
 log)
   SLUG="$2"
-  NOTE="$3"  FILEPATH="$GRANTS/$SLUG.md"
+  NOTE="$3"
+  FILEPATH="$GRANTS/$SLUG.md"
   if [ ! -f "$FILEPATH" ]; then
     echo "✗ No funder found: $SLUG"
     exit 1
