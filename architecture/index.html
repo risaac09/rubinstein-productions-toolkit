@@ -3,18 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Orchestrator — RP Agentic Architecture</title>
+<title>RP System Map — Agentic Architecture</title>
 <meta name="theme-color" content="#0f1216">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Orchestrator">
+<meta name="apple-mobile-web-app-title" content="RP Map">
 <style>
   :root{
     --bg:#0f1216; --panel:#171b21; --panel-2:#1d222a; --line:#2a313b;
     --ink:#e8e6d9; --muted:#9aa3ad;
-    --spine:#e8a949;   /* amber  — judgment */
-    --balloon:#3dd6b5; /* teal   — divergence */
-    --gate:#9b7fd4;    /* violet — the gate */
+    --orch:#e8a949;     /* orchestrator — judgment */
+    --enforce:#9b7fd4;  /* enforcement  — guardrails */
+    --mutate:#3dd6b5;   /* mutator      — touches data */
+    --inner:#7fa6d4;    /* inner / read-only */
+    --audit:#9aa3ad;    /* audit */
+    --data:#d8b48a;     /* ground truth */
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
@@ -23,245 +26,303 @@
   body{
     background:var(--bg); color:var(--ink); font-family:var(--sans);
     -webkit-font-smoothing:antialiased; line-height:1.5;
-    padding:max(20px,env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
-    max-width:680px; margin:0 auto;
+    padding:max(20px,env(safe-area-inset-top)) 16px calc(48px + env(safe-area-inset-bottom));
+    max-width:700px; margin:0 auto;
   }
-  header{margin:8px 4px 22px}
+  header{margin:8px 4px 8px}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-  h1{font-size:26px;font-weight:600;margin:6px 0 6px;letter-spacing:-.01em}
-  .sub{color:var(--muted);font-size:14px;margin:0}
-  .trigger{
-    margin:18px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    font-family:var(--mono);font-size:12px;color:var(--muted);
-  }
-  .chip{
-    font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);
-    border:1px solid var(--line);border-radius:999px;padding:5px 11px;
-  }
-  .chip b{color:var(--spine)}
+  h1{font-size:27px;font-weight:600;margin:6px 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px;margin:0;max-width:52ch}
 
-  .lane{position:relative;padding-left:26px;margin-top:10px}
-  .lane::before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--line)}
-  .lane-label{
-    font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--muted);margin:22px 0 8px;display:flex;align-items:center;gap:8px;
-  }
-  .lane-label .dot{width:8px;height:8px;border-radius:50%}
-  .dot.spine{background:var(--spine)} .dot.balloon{background:var(--balloon)} .dot.gate{background:var(--gate)}
+  nav{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 6px;position:sticky;top:0;
+      background:linear-gradient(180deg,var(--bg) 70%,transparent);padding:8px 0;z-index:5}
+  nav a{font-family:var(--mono);font-size:11px;color:var(--muted);text-decoration:none;
+        border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  nav a:active{color:var(--ink)}
 
-  .node{
-    position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;
-    margin:10px 0;overflow:hidden;transition:border-color .15s;
-  }
-  .node::before{
-    content:"";position:absolute;left:-22px;top:22px;width:9px;height:9px;border-radius:50%;
-    background:var(--bg);border:2px solid var(--line);
-  }
-  .node[data-accent=spine]::before{border-color:var(--spine)}
-  .node[data-accent=balloon]::before{border-color:var(--balloon)}
-  .node[data-accent=gate]::before{border-color:var(--gate)}
+  section{margin-top:26px;scroll-margin-top:60px}
+  h2.sec{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+         margin:0 4px 4px;display:flex;align-items:baseline;gap:9px}
+  h2.sec .n{color:var(--ink);font-size:16px;letter-spacing:0;font-family:var(--sans);font-weight:600;text-transform:none}
+  .lead{color:var(--muted);font-size:13px;margin:0 4px 12px}
+
+  /* ── pipeline ── */
+  .trigger{margin:0 4px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .chip{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  .chip b{color:var(--orch)}
+  .lane{position:relative;padding-left:24px}
+  .lane::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .node{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:13px;margin:9px 0;overflow:hidden}
+  .node::before{content:"";position:absolute;left:-20px;top:20px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--line)}
+  .node[data-a=orch]::before{border-color:var(--orch)}
+  .node[data-a=mutate]::before{border-color:var(--mutate)}
+  .node[data-a=enforce]::before{border-color:var(--enforce)}
   .node.sub{margin-left:14px;background:var(--panel-2)}
-  .node-head{
-    display:flex;align-items:center;gap:12px;padding:14px 15px;cursor:pointer;user-select:none;
-  }
-  .num{
-    font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--muted);
-    min-width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:600;
-  }
-  .node[data-accent=spine] .num{background:var(--spine)}
-  .node[data-accent=balloon] .num{background:var(--balloon)}
-  .node[data-accent=gate] .num{background:var(--gate)}
+  .node-head{display:flex;align-items:center;gap:11px;padding:13px 14px;cursor:pointer;user-select:none}
+  .num{font-family:var(--mono);font-size:12px;color:var(--bg);min-width:23px;height:23px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:700;background:var(--muted)}
+  .node[data-a=orch] .num{background:var(--orch)}
+  .node[data-a=mutate] .num{background:var(--mutate)}
+  .node[data-a=enforce] .num{background:var(--enforce)}
   .node-title{flex:1;min-width:0}
   .node-title .t{font-weight:600;font-size:15px}
-  .node-title .s{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
-  .caret{color:var(--muted);font-size:13px;transition:transform .2s;flex:none}
+  .node-title .s{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .caret{color:var(--muted);font-size:13px;transition:transform .2s}
   .node.open .caret{transform:rotate(90deg)}
-  .node-body{
-    max-height:0;opacity:0;transition:max-height .25s ease,opacity .2s,padding .2s;
-    padding:0 15px;font-size:14px;color:var(--ink)
-  }
-  .node.open .node-body{max-height:520px;opacity:1;padding:0 15px 15px}
-  .node-body p{margin:0 0 8px;color:#d6d3c6}
-  .node-body .out{
-    font-family:var(--mono);font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);
-    padding-top:9px;margin-top:4px;
-  }
-  .node-body .out b{color:var(--ink);font-weight:600}
+  .node-body{max-height:0;opacity:0;transition:max-height .25s ease,opacity .2s,padding .2s;padding:0 14px;font-size:13.5px}
+  .node.open .node-body{max-height:460px;opacity:1;padding:0 14px 14px}
+  .node-body p{margin:0 0 7px;color:#d6d3c6}
+  .out{font-family:var(--mono);font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px;margin-top:3px}
+  .out b{color:var(--ink)}
+  .balloon-wrap{border:1px dashed var(--mutate);border-radius:15px;padding:4px 11px 10px;margin:6px 0;background:linear-gradient(180deg,rgba(61,214,181,.05),transparent 55%)}
+  .cap{font-family:var(--mono);font-size:10.5px;color:var(--mutate);letter-spacing:.1em;text-transform:uppercase;padding:8px 2px 2px}
+  .loop{font-family:var(--mono);font-size:11px;color:var(--enforce);margin:4px 0 0 2px}
+  .ship{text-align:center;font-family:var(--mono);letter-spacing:.2em;text-transform:uppercase;font-size:12px;color:var(--bg);background:var(--ink);border-radius:11px;padding:13px;margin:14px 0 0;font-weight:700}
 
-  .balloon-wrap{
-    border:1px dashed var(--balloon);border-radius:16px;padding:6px 12px 12px;margin:6px 0 4px;
-    background:linear-gradient(180deg,rgba(61,214,181,.05),transparent 60%);
-  }
-  .balloon-wrap .cap{
-    font-family:var(--mono);font-size:11px;color:var(--balloon);letter-spacing:.1em;text-transform:uppercase;
-    padding:8px 2px 0;
-  }
-  .arena-tag{color:var(--balloon);font-weight:600}
+  /* ── agents ── */
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin:0 4px 12px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:9px;height:9px;border-radius:50%}
+  .sw.orch{background:var(--orch)} .sw.enforce{background:var(--enforce)} .sw.mutate{background:var(--mutate)} .sw.inner{background:var(--inner)} .sw.audit{background:var(--audit)}
+  .agents{display:flex;flex-direction:column;gap:8px}
+  .agent{background:var(--panel);border:1px solid var(--line);border-left-width:3px;border-radius:11px;overflow:hidden}
+  .agent[data-r=orch]{border-left-color:var(--orch)}
+  .agent[data-r=enforce]{border-left-color:var(--enforce)}
+  .agent[data-r=mutate]{border-left-color:var(--mutate)}
+  .agent[data-r=inner]{border-left-color:var(--inner)}
+  .agent[data-r=audit]{border-left-color:var(--audit)}
+  .agent-head{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer;user-select:none}
+  .agent-head .k{font-family:var(--mono);font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .role{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .agent-body{max-height:0;opacity:0;overflow:hidden;transition:max-height .25s,opacity .2s,padding .2s;padding:0 13px;font-size:13px}
+  .agent.open .agent-body{max-height:320px;opacity:1;padding:0 13px 13px}
+  .agent-body p{margin:0 0 9px;color:#d6d3c6}
+  .rw{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:11px}
+  .rw .row{display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap}
+  .rw .lbl{color:var(--muted);min-width:46px}
+  .ent{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--data)}
+  .ent.w{color:var(--mutate);border-color:rgba(61,214,181,.35)}
+  .dep{display:inline-block;margin-left:8px;font-family:var(--mono);font-size:9.5px;color:var(--enforce);border:1px solid rgba(155,127,212,.4);border-radius:5px;padding:1px 5px;text-transform:uppercase;letter-spacing:.06em}
 
-  .loop{
-    font-family:var(--mono);font-size:11.5px;color:var(--gate);margin:4px 0 0 2px;display:flex;gap:7px;align-items:center;
-  }
+  /* ── data ── */
+  .data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .ecard{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 10px;text-align:center}
+  .ecard .c{font-size:20px;font-weight:600;color:var(--data);font-family:var(--mono)}
+  .ecard .e{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .asof{font-family:var(--mono);font-size:10.5px;color:#5d6670;margin:9px 4px 0;text-align:right}
 
-  .ship{
-    text-align:center;font-family:var(--mono);letter-spacing:.2em;text-transform:uppercase;font-size:13px;
-    color:var(--bg);background:var(--ink);border-radius:12px;padding:14px;margin:18px 0 6px;font-weight:700;
-  }
+  /* ── surfaces ── */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .surf{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px}
+  .surf .k{font-weight:600;font-size:14px}
+  .surf .v{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+  .surf .u{font-family:var(--mono);font-size:10.5px;color:var(--inner);margin-top:6px}
 
-  h2.sec{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:34px 4px 12px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-  .skill{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 12px}
-  .skill .k{font-family:var(--mono);font-size:12px;font-weight:600}
-  .skill .v{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
-  .source{
-    margin-top:12px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
-    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-  }
-  .source b{color:var(--spine)}
-  footer{margin-top:30px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#5d6670;letter-spacing:.06em}
-  .ctrl{display:flex;justify-content:flex-end;margin:0 4px -4px}
-  .ctrl button{
-    font-family:var(--mono);font-size:11px;color:var(--muted);background:none;border:1px solid var(--line);
-    border-radius:8px;padding:6px 10px;cursor:pointer
-  }
-  .ctrl button:active{color:var(--ink)}
+  .ctrl{display:flex;justify-content:flex-end;margin:0 4px 6px}
+  .ctrl button{font-family:var(--mono);font-size:11px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  footer{margin-top:34px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#5d6670;letter-spacing:.05em;line-height:1.6}
 </style>
 </head>
 <body>
 <header>
   <div class="eyebrow">Rubinstein Productions / Agentic Architecture</div>
-  <h1>The Orchestrator</h1>
-  <p class="sub">Say the word and the spine wakes. Prompt to ship, with the judgment in the middle and the diversity on the outside.</p>
-  <div class="trigger">
-    <span>Trigger</span>
-    <span class="chip"><b>agent</b></span>
-    <span class="chip"><b>agents</b></span>
-    <span class="chip">activate all agents</span>
-  </div>
+  <h1>System Map</h1>
+  <p class="sub">The whole stack on one surface. The orchestrator in the middle, the agents around it, the data underneath, the things you ship on top. Tap anything to open it.</p>
 </header>
 
-<div class="ctrl"><button id="toggleAll">Expand all</button></div>
+<nav>
+  <a href="#orchestrator">Orchestrator</a>
+  <a href="#agents">Agents</a>
+  <a href="#data">Data</a>
+  <a href="#surfaces">Surfaces</a>
+</nav>
 
-<div class="lane-label"><span class="dot spine"></span> Spine — linear, three passes</div>
-<div class="lane" id="spine">
+<!-- ───────── ORCHESTRATOR ───────── -->
+<section id="orchestrator">
+  <h2 class="sec">Centerpiece <span class="n">The Orchestrator</span></h2>
+  <div class="trigger">
+    <span>Trigger</span><span class="chip"><b>agent</b></span><span class="chip"><b>agents</b></span><span class="chip">activate all agents</span>
+  </div>
+  <div class="ctrl"><button id="togglePipe">Expand all</button></div>
 
-  <div class="node" data-accent="spine">
-    <div class="node-head"><span class="num">1</span>
-      <div class="node-title"><div class="t">Prompt</div><div class="s">capture raw</div></div>
-      <span class="caret">›</span></div>
-    <div class="node-body">
-      <p>Echo the request back in your own words. Don't clean it, don't solve it, don't classify it yet. Typos mean velocity. Name the one or two real unknowns instead of guessing them away.</p>
-      <div class="out"><b>Hands off:</b> the request, stated plainly, plus the real unknowns.</div>
+  <p class="lead">Spine — linear, three passes.</p>
+  <div class="lane" id="pipe">
+    <div class="node" data-a="orch">
+      <div class="node-head"><span class="num">1</span><div class="node-title"><div class="t">Prompt</div><div class="s">capture raw</div></div><span class="caret">›</span></div>
+      <div class="node-body"><p>Echo the request back in your own words. Don't clean it, don't solve it, don't classify it yet. Name the one or two real unknowns instead of guessing them away.</p><div class="out"><b>Hands off:</b> the request, plainly, plus the real unknowns.</div></div>
+    </div>
+    <div class="node" data-a="orch">
+      <div class="node-head"><span class="num">2</span><div class="node-title"><div class="t">Orchestrator</div><div class="s">first pass · read the field</div></div><span class="caret">›</span></div>
+      <div class="node-body"><p>Decompose into workstreams. Estimate blast radius. Draft a candidate routing table from the existing skills. Frames the work. Deploys nothing yet.</p><div class="out"><b>Hands off:</b> workstreams, blast radius, candidate routing.</div></div>
+    </div>
+    <div class="node" data-a="orch">
+      <div class="node-head"><span class="num">3</span><div class="node-title"><div class="t">Strategic Coordinator</div><div class="s">the digital twin · second pass</div></div><span class="caret">›</span></div>
+      <div class="node-body"><p>The neck of the balloon. Grounds on stack-data, applies the COO guardrails, then commits: these agents deploy, in this shape, for these reasons. Flags every contested decision. The only layer allowed to say none of this is worth doing now.</p><div class="out"><b>Hands off:</b> a committed deployment plan, contested calls flagged.</div></div>
     </div>
   </div>
 
-  <div class="node" data-accent="spine">
-    <div class="node-head"><span class="num">2</span>
-      <div class="node-title"><div class="t">Orchestrator</div><div class="s">first pass · read the field</div></div>
-      <span class="caret">›</span></div>
-    <div class="node-body">
-      <p>Decompose into workstreams. Estimate blast radius. Draft a candidate routing table from the existing skills. This pass frames the work. It does not deploy anything yet.</p>
-      <div class="out"><b>Hands off:</b> workstreams, blast radius, a candidate routing table.</div>
+  <p class="lead" style="margin-top:14px">Balloon — jump out, then come back.</p>
+  <div class="balloon-wrap">
+    <div class="cap">Divergence</div>
+    <div class="lane">
+      <div class="node" data-a="mutate">
+        <div class="node-head"><span class="num">4</span><div class="node-title"><div class="t">Jump out</div><div class="s">parallel specialist agents</div></div><span class="caret">›</span></div>
+        <div class="node-body"><p>Deploy the committed agents in parallel, each isolated on a tight brief. Isolation is what keeps their outputs genuinely different.</p></div>
+      </div>
+      <div class="node sub" data-a="mutate">
+        <div class="node-head"><span class="num">✦</span><div class="node-title"><div class="t">Mini-arenas</div><div class="s">optional · recommended by default</div></div><span class="caret">›</span></div>
+        <div class="node-body"><p>For each contested decision, seat two or three agents on opposing sides. One exchange minimum. Conflict as a generative force. The output is a spread of distinct options with each cost named, not a blend.</p><div class="out">The Arena, from seed-bed (Claim → Arena), scaled to one decision.</div></div>
+      </div>
+    </div>
+    <div class="cap">Convergence</div>
+    <div class="lane">
+      <div class="node" data-a="mutate">
+        <div class="node-head"><span class="num">5</span><div class="node-title"><div class="t">Come back together</div><div class="s">twin reels it in</div></div><span class="caret">›</span></div>
+        <div class="node-body"><p>Merge the outputs, resolve each arena's spread into one ranked proposal: recommended first, alternatives kept visible, the cost of each named. Unresolved tensions get surfaced, not buried.</p></div>
+      </div>
     </div>
   </div>
 
-  <div class="node" data-accent="spine">
-    <div class="node-head"><span class="num">3</span>
-      <div class="node-title"><div class="t">Strategic Coordinator</div><div class="s">the digital twin · second pass</div></div>
-      <span class="caret">›</span></div>
-    <div class="node-body">
-      <p>The neck of the balloon. Holds the strategic sense of where things are and what's useful now. Grounds on <b>stack-data</b>, applies the COO guardrails, then commits: these agents deploy, in this shape, for these reasons. Flags every contested decision. The only layer allowed to say none of this is worth doing right now.</p>
-      <div class="out"><b>Hands off:</b> a committed deployment plan, with reasons, contested calls flagged.</div>
-    </div>
-  </div>
-</div>
-
-<div class="lane-label"><span class="dot balloon"></span> Balloon — jump out, then come back</div>
-<div class="balloon-wrap">
-  <div class="cap">Divergence</div>
+  <p class="lead" style="margin-top:14px">Gate.</p>
   <div class="lane">
-    <div class="node" data-accent="balloon">
-      <div class="node-head"><span class="num">4</span>
-        <div class="node-title"><div class="t">Jump out</div><div class="s">parallel specialist agents</div></div>
-        <span class="caret">›</span></div>
-      <div class="node-body">
-        <p>Deploy the committed agents in parallel. Each runs isolated on its workstream with a tight brief. They don't coordinate mid-flight. Isolation is what keeps their outputs genuinely different.</p>
-      </div>
+    <div class="node" data-a="enforce">
+      <div class="node-head"><span class="num">6</span><div class="node-title"><div class="t">Quality Assurance</div><div class="s">at least one · adversarial</div></div><span class="caret">›</span></div>
+      <div class="node-body"><p>Nothing ships before the gate. Check voice, grounding, constraints, and fit against the Pass 1 prompt.</p><div class="out"><b>On fail:</b> loop back to divergence with the failure named.</div></div>
     </div>
-
-    <div class="node sub" data-accent="balloon">
-      <div class="node-head"><span class="num">✦</span>
-        <div class="node-title"><div class="t"><span class="arena-tag">Mini-arenas</span></div><div class="s">optional · recommended by default</div></div>
-        <span class="caret">›</span></div>
-      <div class="node-body">
-        <p>For each contested decision, seat two or three agents on opposing sides of the real disagreement. One exchange minimum: state the case, answer the strongest objection. Conflict as a generative force.</p>
-        <p>The output is a <b>spread</b> of distinct, defensible options with each cost named. Not a blended compromise. Skip an arena only when a decision is genuinely uncontested.</p>
-        <div class="out"><b>The Arena</b>, from seed-bed (Claim → Arena), scaled down to a single decision inside a single run.</div>
-      </div>
-    </div>
+    <div class="loop">↺ fail → back to divergence</div>
   </div>
+  <div class="ship">Ship</div>
+</section>
 
-  <div class="cap">Convergence</div>
-  <div class="lane">
-    <div class="node" data-accent="balloon">
-      <div class="node-head"><span class="num">5</span>
-        <div class="node-title"><div class="t">Come back together</div><div class="s">twin reels it back in</div></div>
-        <span class="caret">›</span></div>
-      <div class="node-body">
-        <p>The digital twin merges the specialist outputs and resolves each arena's spread into one ranked proposal: recommended first, the live alternatives kept visible, the cost of each named. Tensions that didn't resolve get surfaced, not buried.</p>
-        <div class="out"><b>Hands off:</b> one coherent proposal, ranked, alternatives still showing.</div>
-      </div>
-    </div>
+<!-- ───────── AGENTS ───────── -->
+<section id="agents">
+  <h2 class="sec">The Stack <span class="n">Agents</span></h2>
+  <p class="lead">Each one declares what it reads and writes in the skill-contracts registry. Tap to open the wiring.</p>
+  <div class="legend">
+    <span><i class="sw orch"></i>orchestrator</span>
+    <span><i class="sw enforce"></i>enforcement</span>
+    <span><i class="sw mutate"></i>mutator</span>
+    <span><i class="sw inner"></i>read-only</span>
+    <span><i class="sw audit"></i>audit</span>
   </div>
-</div>
+  <div class="ctrl"><button id="toggleAgents">Expand all</button></div>
+  <div class="agents" id="agentList">
 
-<div class="lane-label"><span class="dot gate"></span> Gate</div>
-<div class="lane">
-  <div class="node" data-accent="gate">
-    <div class="node-head"><span class="num">6</span>
-      <div class="node-title"><div class="t">Quality Assurance</div><div class="s">at least one · adversarial</div></div>
-      <span class="caret">›</span></div>
-    <div class="node-body">
-      <p>Nothing ships before the gate. Check the proposal against <b>voice</b> (no em-dashes, no rule-of-three, no promotional verbs, active voice), <b>grounding</b> (every claim traces to a source), <b>constraints</b> (capacity, price floors, blast radius), and <b>fit</b> (does it answer the Pass 1 prompt, or did it drift).</p>
-      <div class="out"><b>On fail:</b> loop back to divergence with the failure named. Don't patch around it.</div>
-    </div>
+    <div class="agent" data-r="orch"><div class="agent-head"><span class="k">rubinstein-productions-agent</span><span class="role">orchestrator</span></div>
+      <div class="agent-body"><p>Master routing and identity. Delegates writes to specialized sub-skills.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">contacts</span><span class="ent">projects</span><span class="ent">content</span><span class="ent">financials</span><span class="ent">activities</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span style="color:var(--muted)">none (delegates)</span></div></div></div></div>
+
+    <div class="agent" data-r="orch"><div class="agent-head"><span class="k">information-alchemist-os</span><span class="role">orchestrator</span></div>
+      <div class="agent-body"><p>Master personal agent. Routes across life domains, above the business layer.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">contacts</span><span class="ent">projects</span><span class="ent">content</span><span class="ent">financials</span><span class="ent">activities</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span style="color:var(--muted)">none</span></div></div></div></div>
+
+    <div class="agent" data-r="enforce"><div class="agent-head"><span class="k">rubinstein-productions-coo</span><span class="role">enforcement</span></div>
+      <div class="agent-body"><p>Pricing floors, capacity, opportunity triage, quarterly review. Emits status-change events, doesn't directly mutate projects or financials.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">projects</span><span class="ent">financials</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">outreach-email-manager</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Drafts outreach, creates Gmail drafts, logs contact activity. Creates new lead contacts.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">contacts</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">contacts</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">proposal-scope-builder</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Builds proposals and scopes across the three tiers. Creates pipeline-stage projects shaped by services.yaml.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">contacts</span><span class="ent">projects</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">projects</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">project-management-coordinator</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Runs active projects from booking to delivery. Status, phase, deliverables, the 5-day pause.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">projects</span><span class="ent">contacts</span><span class="ent">financials</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">projects</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">network-stewardship</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Maintains the relational graph. Surfaces dormant relationships worth reviving.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">contacts</span><span class="ent">content</span><span class="ent">events</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">contacts</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">content-publishing-agent</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Scrapes and merges social content, plans the next publications.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">content</span><span class="ent">projects</span><span class="ent">contacts</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">content</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">market-listener</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Turns scraped market data into actionable signals. Competitor moves, warm-lead activity, topic trends.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">market</span><span class="ent">signals</span><span class="ent">content</span><span class="ent">contacts</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">signals</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="mutate"><div class="agent-head"><span class="k">invoice-financial-tracker</span><span class="role">mutator</span></div>
+      <div class="agent-body"><p>Invoicing and expense tracking. <span class="dep">deprecated → finance-hub</span></p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">financials</span><span class="ent">projects</span><span class="ent">contacts</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">financials</span><span class="ent w">events</span></div></div></div></div>
+
+    <div class="agent" data-r="inner"><div class="agent-head"><span class="k">seed-bed</span><span class="role">pre-output</span></div>
+      <div class="agent-body"><p>The greenhouse before the forge. Holds pre-categorical ideas until they reveal what they want to become. Origin of the Arena.</p>
+      <div class="rw"><div class="row"><span class="lbl">touches</span><span style="color:var(--muted)">vault only · pre-output, no stack-data writes</span></div></div></div></div>
+
+    <div class="agent" data-r="inner"><div class="agent-head"><span class="k">psychotherapeutic-coach</span><span class="role">read-only</span></div>
+      <div class="agent-body"><p>Reads the embodied practice log for somatic context. Does not mutate.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">activities</span></div></div></div></div>
+
+    <div class="agent" data-r="inner"><div class="agent-head"><span class="k">quantum-mirror-inner-practice</span><span class="role">read-only</span></div>
+      <div class="agent-body"><p>Morning practice layer. Reads activities; private notes live outside stack-data.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">activities</span></div></div></div></div>
+
+    <div class="agent" data-r="audit"><div class="agent-head"><span class="k">cognitive-debugger</span><span class="role">audit</span></div>
+      <div class="agent-body"><p>Metacognitive layer. Watches reasoning, touches no data.</p>
+      <div class="rw"><div class="row"><span class="lbl">touches</span><span style="color:var(--muted)">nothing — pure audit</span></div></div></div></div>
+
   </div>
-  <div class="loop">↺ fail → back to divergence</div>
-</div>
+</section>
 
-<div class="ship">Ship</div>
+<!-- ───────── DATA ───────── -->
+<section id="data">
+  <h2 class="sec">Ground Truth <span class="n">stack-data</span></h2>
+  <p class="lead">The single source of truth every agent reads from. Counts are the last index build, not live.</p>
+  <div class="data-grid">
+    <div class="ecard"><div class="c">10</div><div class="e">contacts</div></div>
+    <div class="ecard"><div class="c">3</div><div class="e">projects</div></div>
+    <div class="ecard"><div class="c">5</div><div class="e">content</div></div>
+    <div class="ecard"><div class="c">40</div><div class="e">events</div></div>
+    <div class="ecard"><div class="c">10</div><div class="e">signals</div></div>
+    <div class="ecard"><div class="c">2</div><div class="e">market</div></div>
+    <div class="ecard"><div class="c">1</div><div class="e">financials</div></div>
+    <div class="ecard"><div class="c">2</div><div class="e">activities</div></div>
+    <div class="ecard"><div class="c">10</div><div class="e">unreviewed</div></div>
+  </div>
+  <div class="asof">snapshot · built 2026-06-15 18:02 UTC</div>
+</section>
 
-<h2 class="sec">Connected skills — the wider system</h2>
-<div class="grid">
-  <div class="skill"><div class="k">rubinstein-productions-agent</div><div class="v">Master routing. The orchestrator precedent.</div></div>
-  <div class="skill"><div class="k">rubinstein-productions-coo</div><div class="v">Capacity, sacral check, energy gate, mission drift.</div></div>
-  <div class="skill"><div class="k">seed-bed</div><div class="v">Pre-categorical ideas. Origin of the Arena.</div></div>
-  <div class="skill"><div class="k">outreach-email-manager</div><div class="v">Who's waiting, who's cold, who to re-engage.</div></div>
-  <div class="skill"><div class="k">proposal-scope-builder</div><div class="v">Pricing and scope at the floor.</div></div>
-  <div class="skill"><div class="k">project-management-coordinator</div><div class="v">Deliverables, blockers, the 5-day pause.</div></div>
-</div>
-<div class="source">Ground truth — <b>stack-data/data/</b> · contacts · projects · financials · content · activities · signals</div>
+<!-- ───────── SURFACES ───────── -->
+<section id="surfaces">
+  <h2 class="sec">On Top <span class="n">Surfaces</span></h2>
+  <p class="lead">The things you ship. Installable, offline, no build.</p>
+  <div class="grid2">
+    <div class="surf"><div class="k">Alchemy</div><div class="v">Information metabolism. Capture, settle, alchemize, release.</div><div class="u">risaac09.github.io/alchemy</div></div>
+    <div class="surf"><div class="k">Metabolism Diagnostic</div><div class="v">Twelve-question torus assessment with the 2×2 placement map.</div><div class="u">risaac09.github.io/alchemy-diagnostic</div></div>
+    <div class="surf"><div class="k">Say Why Reflection</div><div class="v">The reflection scaffold. Upsells the facilitated Founder Story.</div><div class="u">saywhy.app</div></div>
+    <div class="surf"><div class="k">Royal Metrics</div><div class="v">The institutional-register dashboard over stack-data.</div><div class="u">risaac09.github.io/royal-metrics</div></div>
+  </div>
+</section>
 
-<footer>Tap any stage to open it · pin to home screen to keep it close</footer>
+<footer>
+  Tap any node to open it · Add to Home Screen to keep it close<br>
+  rubinstein-productions-toolkit / architecture
+</footer>
 
 <script>
 (function(){
-  var nodes = Array.prototype.slice.call(document.querySelectorAll('.node'));
-  nodes.forEach(function(n){
-    n.querySelector('.node-head').addEventListener('click', function(){
-      n.classList.toggle('open');
-      syncToggleLabel();
+  function wire(sel, btnId){
+    var items = Array.prototype.slice.call(document.querySelectorAll(sel));
+    var btn = btnId ? document.getElementById(btnId) : null;
+    items.forEach(function(n){
+      n.querySelector('.node-head, .agent-head').addEventListener('click', function(){
+        n.classList.toggle('open'); sync();
+      });
     });
-  });
-  var btn = document.getElementById('toggleAll');
-  function syncToggleLabel(){
-    var anyClosed = nodes.some(function(n){ return !n.classList.contains('open'); });
-    btn.textContent = anyClosed ? 'Expand all' : 'Collapse all';
+    function sync(){ if(!btn) return;
+      var anyClosed = items.some(function(n){return !n.classList.contains('open');});
+      btn.textContent = anyClosed ? 'Expand all' : 'Collapse all';
+    }
+    if(btn) btn.addEventListener('click', function(){
+      var anyClosed = items.some(function(n){return !n.classList.contains('open');});
+      items.forEach(function(n){ n.classList.toggle('open', anyClosed); });
+      sync();
+    });
   }
-  btn.addEventListener('click', function(){
-    var anyClosed = nodes.some(function(n){ return !n.classList.contains('open'); });
-    nodes.forEach(function(n){ n.classList.toggle('open', anyClosed); });
-    syncToggleLabel();
-  });
+  wire('#pipe .node, #orchestrator .node', 'togglePipe');
+  wire('#agentList .agent', 'toggleAgents');
 })();
 </script>
 </body>
