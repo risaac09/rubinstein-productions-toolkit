@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orchestrator — RP Agentic Architecture</title>
+<meta name="theme-color" content="#0f1216">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orchestrator">
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel-2:#1d222a; --line:#2a313b;
+    --ink:#e8e6d9; --muted:#9aa3ad;
+    --spine:#e8a949;   /* amber  — judgment */
+    --balloon:#3dd6b5; /* teal   — divergence */
+    --gate:#9b7fd4;    /* violet — the gate */
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+    padding:max(20px,env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+    max-width:680px; margin:0 auto;
+  }
+  header{margin:8px 4px 22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:26px;font-weight:600;margin:6px 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px;margin:0}
+  .trigger{
+    margin:18px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:12px;color:var(--muted);
+  }
+  .chip{
+    font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:999px;padding:5px 11px;
+  }
+  .chip b{color:var(--spine)}
+
+  .lane{position:relative;padding-left:26px;margin-top:10px}
+  .lane::before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .lane-label{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:22px 0 8px;display:flex;align-items:center;gap:8px;
+  }
+  .lane-label .dot{width:8px;height:8px;border-radius:50%}
+  .dot.spine{background:var(--spine)} .dot.balloon{background:var(--balloon)} .dot.gate{background:var(--gate)}
+
+  .node{
+    position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    margin:10px 0;overflow:hidden;transition:border-color .15s;
+  }
+  .node::before{
+    content:"";position:absolute;left:-22px;top:22px;width:9px;height:9px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--line);
+  }
+  .node[data-accent=spine]::before{border-color:var(--spine)}
+  .node[data-accent=balloon]::before{border-color:var(--balloon)}
+  .node[data-accent=gate]::before{border-color:var(--gate)}
+  .node.sub{margin-left:14px;background:var(--panel-2)}
+  .node-head{
+    display:flex;align-items:center;gap:12px;padding:14px 15px;cursor:pointer;user-select:none;
+  }
+  .num{
+    font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--muted);
+    min-width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:600;
+  }
+  .node[data-accent=spine] .num{background:var(--spine)}
+  .node[data-accent=balloon] .num{background:var(--balloon)}
+  .node[data-accent=gate] .num{background:var(--gate)}
+  .node-title{flex:1;min-width:0}
+  .node-title .t{font-weight:600;font-size:15px}
+  .node-title .s{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+  .caret{color:var(--muted);font-size:13px;transition:transform .2s;flex:none}
+  .node.open .caret{transform:rotate(90deg)}
+  .node-body{
+    max-height:0;opacity:0;transition:max-height .25s ease,opacity .2s,padding .2s;
+    padding:0 15px;font-size:14px;color:var(--ink)
+  }
+  .node.open .node-body{max-height:520px;opacity:1;padding:0 15px 15px}
+  .node-body p{margin:0 0 8px;color:#d6d3c6}
+  .node-body .out{
+    font-family:var(--mono);font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);
+    padding-top:9px;margin-top:4px;
+  }
+  .node-body .out b{color:var(--ink);font-weight:600}
+
+  .balloon-wrap{
+    border:1px dashed var(--balloon);border-radius:16px;padding:6px 12px 12px;margin:6px 0 4px;
+    background:linear-gradient(180deg,rgba(61,214,181,.05),transparent 60%);
+  }
+  .balloon-wrap .cap{
+    font-family:var(--mono);font-size:11px;color:var(--balloon);letter-spacing:.1em;text-transform:uppercase;
+    padding:8px 2px 0;
+  }
+  .arena-tag{color:var(--balloon);font-weight:600}
+
+  .loop{
+    font-family:var(--mono);font-size:11.5px;color:var(--gate);margin:4px 0 0 2px;display:flex;gap:7px;align-items:center;
+  }
+
+  .ship{
+    text-align:center;font-family:var(--mono);letter-spacing:.2em;text-transform:uppercase;font-size:13px;
+    color:var(--bg);background:var(--ink);border-radius:12px;padding:14px;margin:18px 0 6px;font-weight:700;
+  }
+
+  h2.sec{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:34px 4px 12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .skill{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 12px}
+  .skill .k{font-family:var(--mono);font-size:12px;font-weight:600}
+  .skill .v{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+  .source{
+    margin-top:12px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+  }
+  .source b{color:var(--spine)}
+  footer{margin-top:30px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#5d6670;letter-spacing:.06em}
+  .ctrl{display:flex;justify-content:flex-end;margin:0 4px -4px}
+  .ctrl button{
+    font-family:var(--mono);font-size:11px;color:var(--muted);background:none;border:1px solid var(--line);
+    border-radius:8px;padding:6px 10px;cursor:pointer
+  }
+  .ctrl button:active{color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Rubinstein Productions / Agentic Architecture</div>
+  <h1>The Orchestrator</h1>
+  <p class="sub">Say the word and the spine wakes. Prompt to ship, with the judgment in the middle and the diversity on the outside.</p>
+  <div class="trigger">
+    <span>Trigger</span>
+    <span class="chip"><b>agent</b></span>
+    <span class="chip"><b>agents</b></span>
+    <span class="chip">activate all agents</span>
+  </div>
+</header>
+
+<div class="ctrl"><button id="toggleAll">Expand all</button></div>
+
+<div class="lane-label"><span class="dot spine"></span> Spine — linear, three passes</div>
+<div class="lane" id="spine">
+
+  <div class="node" data-accent="spine">
+    <div class="node-head"><span class="num">1</span>
+      <div class="node-title"><div class="t">Prompt</div><div class="s">capture raw</div></div>
+      <span class="caret">›</span></div>
+    <div class="node-body">
+      <p>Echo the request back in your own words. Don't clean it, don't solve it, don't classify it yet. Typos mean velocity. Name the one or two real unknowns instead of guessing them away.</p>
+      <div class="out"><b>Hands off:</b> the request, stated plainly, plus the real unknowns.</div>
+    </div>
+  </div>
+
+  <div class="node" data-accent="spine">
+    <div class="node-head"><span class="num">2</span>
+      <div class="node-title"><div class="t">Orchestrator</div><div class="s">first pass · read the field</div></div>
+      <span class="caret">›</span></div>
+    <div class="node-body">
+      <p>Decompose into workstreams. Estimate blast radius. Draft a candidate routing table from the existing skills. This pass frames the work. It does not deploy anything yet.</p>
+      <div class="out"><b>Hands off:</b> workstreams, blast radius, a candidate routing table.</div>
+    </div>
+  </div>
+
+  <div class="node" data-accent="spine">
+    <div class="node-head"><span class="num">3</span>
+      <div class="node-title"><div class="t">Strategic Coordinator</div><div class="s">the digital twin · second pass</div></div>
+      <span class="caret">›</span></div>
+    <div class="node-body">
+      <p>The neck of the balloon. Holds the strategic sense of where things are and what's useful now. Grounds on <b>stack-data</b>, applies the COO guardrails, then commits: these agents deploy, in this shape, for these reasons. Flags every contested decision. The only layer allowed to say none of this is worth doing right now.</p>
+      <div class="out"><b>Hands off:</b> a committed deployment plan, with reasons, contested calls flagged.</div>
+    </div>
+  </div>
+</div>
+
+<div class="lane-label"><span class="dot balloon"></span> Balloon — jump out, then come back</div>
+<div class="balloon-wrap">
+  <div class="cap">Divergence</div>
+  <div class="lane">
+    <div class="node" data-accent="balloon">
+      <div class="node-head"><span class="num">4</span>
+        <div class="node-title"><div class="t">Jump out</div><div class="s">parallel specialist agents</div></div>
+        <span class="caret">›</span></div>
+      <div class="node-body">
+        <p>Deploy the committed agents in parallel. Each runs isolated on its workstream with a tight brief. They don't coordinate mid-flight. Isolation is what keeps their outputs genuinely different.</p>
+      </div>
+    </div>
+
+    <div class="node sub" data-accent="balloon">
+      <div class="node-head"><span class="num">✦</span>
+        <div class="node-title"><div class="t"><span class="arena-tag">Mini-arenas</span></div><div class="s">optional · recommended by default</div></div>
+        <span class="caret">›</span></div>
+      <div class="node-body">
+        <p>For each contested decision, seat two or three agents on opposing sides of the real disagreement. One exchange minimum: state the case, answer the strongest objection. Conflict as a generative force.</p>
+        <p>The output is a <b>spread</b> of distinct, defensible options with each cost named. Not a blended compromise. Skip an arena only when a decision is genuinely uncontested.</p>
+        <div class="out"><b>The Arena</b>, from seed-bed (Claim → Arena), scaled down to a single decision inside a single run.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">Convergence</div>
+  <div class="lane">
+    <div class="node" data-accent="balloon">
+      <div class="node-head"><span class="num">5</span>
+        <div class="node-title"><div class="t">Come back together</div><div class="s">twin reels it back in</div></div>
+        <span class="caret">›</span></div>
+      <div class="node-body">
+        <p>The digital twin merges the specialist outputs and resolves each arena's spread into one ranked proposal: recommended first, the live alternatives kept visible, the cost of each named. Tensions that didn't resolve get surfaced, not buried.</p>
+        <div class="out"><b>Hands off:</b> one coherent proposal, ranked, alternatives still showing.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lane-label"><span class="dot gate"></span> Gate</div>
+<div class="lane">
+  <div class="node" data-accent="gate">
+    <div class="node-head"><span class="num">6</span>
+      <div class="node-title"><div class="t">Quality Assurance</div><div class="s">at least one · adversarial</div></div>
+      <span class="caret">›</span></div>
+    <div class="node-body">
+      <p>Nothing ships before the gate. Check the proposal against <b>voice</b> (no em-dashes, no rule-of-three, no promotional verbs, active voice), <b>grounding</b> (every claim traces to a source), <b>constraints</b> (capacity, price floors, blast radius), and <b>fit</b> (does it answer the Pass 1 prompt, or did it drift).</p>
+      <div class="out"><b>On fail:</b> loop back to divergence with the failure named. Don't patch around it.</div>
+    </div>
+  </div>
+  <div class="loop">↺ fail → back to divergence</div>
+</div>
+
+<div class="ship">Ship</div>
+
+<h2 class="sec">Connected skills — the wider system</h2>
+<div class="grid">
+  <div class="skill"><div class="k">rubinstein-productions-agent</div><div class="v">Master routing. The orchestrator precedent.</div></div>
+  <div class="skill"><div class="k">rubinstein-productions-coo</div><div class="v">Capacity, sacral check, energy gate, mission drift.</div></div>
+  <div class="skill"><div class="k">seed-bed</div><div class="v">Pre-categorical ideas. Origin of the Arena.</div></div>
+  <div class="skill"><div class="k">outreach-email-manager</div><div class="v">Who's waiting, who's cold, who to re-engage.</div></div>
+  <div class="skill"><div class="k">proposal-scope-builder</div><div class="v">Pricing and scope at the floor.</div></div>
+  <div class="skill"><div class="k">project-management-coordinator</div><div class="v">Deliverables, blockers, the 5-day pause.</div></div>
+</div>
+<div class="source">Ground truth — <b>stack-data/data/</b> · contacts · projects · financials · content · activities · signals</div>
+
+<footer>Tap any stage to open it · pin to home screen to keep it close</footer>
+
+<script>
+(function(){
+  var nodes = Array.prototype.slice.call(document.querySelectorAll('.node'));
+  nodes.forEach(function(n){
+    n.querySelector('.node-head').addEventListener('click', function(){
+      n.classList.toggle('open');
+      syncToggleLabel();
+    });
+  });
+  var btn = document.getElementById('toggleAll');
+  function syncToggleLabel(){
+    var anyClosed = nodes.some(function(n){ return !n.classList.contains('open'); });
+    btn.textContent = anyClosed ? 'Expand all' : 'Collapse all';
+  }
+  btn.addEventListener('click', function(){
+    var anyClosed = nodes.some(function(n){ return !n.classList.contains('open'); });
+    nodes.forEach(function(n){ n.classList.toggle('open', anyClosed); });
+    syncToggleLabel();
+  });
+})();
+</script>
+</body>
+</html>
