@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RP System Map — Agentic Architecture</title>
+<title>RP System Map · Agentic Architecture</title>
 <meta name="theme-color" content="#0f1216">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,9 +12,9 @@
   :root{
     --bg:#0f1216; --panel:#171b21; --panel-2:#1d222a; --line:#2a313b;
     --ink:#e8e6d9; --muted:#9aa3ad;
-    --orch:#e8a949;     /* orchestrator — judgment */
-    --enforce:#9b7fd4;  /* enforcement  — guardrails */
-    --mutate:#3dd6b5;   /* mutator      — touches data */
+    --orch:#e8a949;     /* orchestrator · judgment */
+    --enforce:#9b7fd4;  /* enforcement  · guardrails */
+    --mutate:#3dd6b5;   /* mutator      · touches data */
     --inner:#7fa6d4;    /* inner / read-only */
     --audit:#9aa3ad;    /* audit */
     --data:#d8b48a;     /* ground truth */
@@ -142,9 +142,10 @@
   <div class="trigger">
     <span>Trigger</span><span class="chip"><b>agent</b></span><span class="chip"><b>agents</b></span><span class="chip">activate all agents</span>
   </div>
+  <p class="lead" style="margin-top:-4px">Off-ramp first: two records or fewer, no files written, one skill covers it. Name it a one-skill job, route direct, stop. The spine is for work one pass can't hold.</p>
   <div class="ctrl"><button id="togglePipe">Expand all</button></div>
 
-  <p class="lead">Spine — linear, three passes.</p>
+  <p class="lead">Spine · linear, three passes.</p>
   <div class="lane" id="pipe">
     <div class="node" data-a="orch">
       <div class="node-head"><span class="num">1</span><div class="node-title"><div class="t">Prompt</div><div class="s">capture raw</div></div><span class="caret">›</span></div>
@@ -155,22 +156,22 @@
       <div class="node-body"><p>Decompose into workstreams. Estimate blast radius. Draft a candidate routing table from the existing skills. Frames the work. Deploys nothing yet.</p><div class="out"><b>Hands off:</b> workstreams, blast radius, candidate routing.</div></div>
     </div>
     <div class="node" data-a="orch">
-      <div class="node-head"><span class="num">3</span><div class="node-title"><div class="t">Strategic Coordinator</div><div class="s">the digital twin · second pass</div></div><span class="caret">›</span></div>
-      <div class="node-body"><p>The neck of the balloon. Grounds on stack-data, applies the COO guardrails, then commits: these agents deploy, in this shape, for these reasons. Flags every contested decision. The only layer allowed to say none of this is worth doing now.</p><div class="out"><b>Hands off:</b> a committed deployment plan, contested calls flagged.</div></div>
+      <div class="node-head"><span class="num">3</span><div class="node-title"><div class="t">Strategic Coordinator</div><div class="s">the digital twin · calls isaac-twin</div></div><span class="caret">›</span></div>
+      <div class="node-body"><p>The neck of the balloon. It does not re-implement the twin, it calls it. Invokes <b>isaac-twin</b> for live state and judgment: identity, decision rules, voice, and the real guardrails (price floors, capacity, the sacral check it never simulates, the tier hold). Then does the orchestration-only work: read direction, commit the deployment plan, flag contested decisions for a mini-arena. The only layer allowed to say none of this is worth doing now.</p><div class="out"><b>Hands off:</b> a committed deployment plan, contested calls flagged.</div></div>
     </div>
   </div>
 
-  <p class="lead" style="margin-top:14px">Balloon — jump out, then come back.</p>
+  <p class="lead" style="margin-top:14px">Balloon · jump out, then come back.</p>
   <div class="balloon-wrap">
     <div class="cap">Divergence</div>
     <div class="lane">
       <div class="node" data-a="mutate">
-        <div class="node-head"><span class="num">4</span><div class="node-title"><div class="t">Jump out</div><div class="s">parallel specialist agents</div></div><span class="caret">›</span></div>
-        <div class="node-body"><p>Deploy the committed agents in parallel, each isolated on a tight brief. Isolation is what keeps their outputs genuinely different.</p></div>
+        <div class="node-head"><span class="num">4</span><div class="node-title"><div class="t">Jump out</div><div class="s">parallel agents · two+ workstreams</div></div><span class="caret">›</span></div>
+        <div class="node-body"><p>Deploy the committed agents in parallel, each isolated on a tight brief. Isolation is what keeps their outputs genuinely different.</p><div class="out">Conditional on workstream count. With one real workstream there's nothing to isolate, so skip divergence and run spine-only to the gate.</div></div>
       </div>
       <div class="node sub" data-a="mutate">
-        <div class="node-head"><span class="num">✦</span><div class="node-title"><div class="t">Mini-arenas</div><div class="s">optional · recommended by default</div></div><span class="caret">›</span></div>
-        <div class="node-body"><p>For each contested decision, seat two or three agents on opposing sides. One exchange minimum. Conflict as a generative force. The output is a spread of distinct options with each cost named, not a blend.</p><div class="out">The Arena, from seed-bed (Claim → Arena), scaled to one decision.</div></div>
+        <div class="node-head"><span class="num">✦</span><div class="node-title"><div class="t">Mini-arenas</div><div class="s">first-class · any contested call</div></div><span class="caret">›</span></div>
+        <div class="node-body"><p>For each contested decision, seat two or three agents on opposing sides. One exchange minimum. Conflict as a generative force. The output is a spread of distinct options with each cost named, not a blend. On real requests this is the most load-bearing move in the balloon, not the most skippable.</p><div class="out">Borrows the vault's Arena, its adversarial-dialogue engine, scaled to one decision. Runs directly off Pass 3, even when divergence is skipped.</div></div>
       </div>
     </div>
     <div class="cap">Convergence</div>
@@ -186,7 +187,7 @@
   <div class="lane">
     <div class="node" data-a="enforce">
       <div class="node-head"><span class="num">6</span><div class="node-title"><div class="t">Quality Assurance</div><div class="s">at least one · adversarial</div></div><span class="caret">›</span></div>
-      <div class="node-body"><p>Nothing ships before the gate. Check voice, grounding, constraints, and fit against the Pass 1 prompt.</p><div class="out"><b>On fail:</b> loop back to divergence with the failure named.</div></div>
+      <div class="node-body"><p>Nothing ships before the gate. Check voice, grounding (external assets re-read this session, not paraphrased from a memory note), constraints (price floors, capacity, the tier hold, blast radius), and fit against the Pass 1 prompt.</p><div class="out"><b>On fail:</b> loop back to divergence with the failure named.</div></div>
     </div>
     <div class="loop">↺ fail → back to divergence</div>
   </div>
@@ -206,6 +207,10 @@
   </div>
   <div class="ctrl"><button id="toggleAgents">Expand all</button></div>
   <div class="agents" id="agentList">
+
+    <div class="agent" data-r="orch"><div class="agent-head"><span class="k">isaac-twin</span><span class="role">digital twin</span></div>
+      <div class="agent-body"><p>The judgment layer Pass 3 calls. Carries the identity kernel, decision rules, voice, and the real guardrails: price floors, capacity, the sacral check it never simulates, the tier hold. Reads live state. Never re-implemented inline.</p>
+      <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">stack-data</span><span class="ent">gmail</span><span class="ent">calendar</span></div><div class="row"><span class="lbl">carries</span><span style="color:var(--muted)">guardrails · voice · sacral safeguard</span></div></div></div></div>
 
     <div class="agent" data-r="orch"><div class="agent-head"><span class="k">rubinstein-productions-agent</span><span class="role">orchestrator</span></div>
       <div class="agent-body"><p>Master routing and identity. Delegates writes to specialized sub-skills.</p>
@@ -247,8 +252,8 @@
       <div class="agent-body"><p>Invoicing and expense tracking. <span class="dep">deprecated → finance-hub</span></p>
       <div class="rw"><div class="row"><span class="lbl">reads</span><span class="ent">financials</span><span class="ent">projects</span><span class="ent">contacts</span></div><div class="row"><span class="lbl">writes</span><span class="ent w">financials</span><span class="ent w">events</span></div></div></div></div>
 
-    <div class="agent" data-r="inner"><div class="agent-head"><span class="k">seed-bed</span><span class="role">pre-output</span></div>
-      <div class="agent-body"><p>The greenhouse before the forge. Holds pre-categorical ideas until they reveal what they want to become. Origin of the Arena.</p>
+    <div class="agent" data-r="inner"><div class="agent-head"><span class="k">seed-bed</span><span class="role">pattern</span></div>
+      <div class="agent-body"><p>The greenhouse before the forge. Holds pre-categorical ideas until they reveal what they want to become. A toolkit pattern, not an installed skill on every machine. Routes a matured Claim onward to the Arena, the separate vault engine.</p>
       <div class="rw"><div class="row"><span class="lbl">touches</span><span style="color:var(--muted)">vault only · pre-output, no stack-data writes</span></div></div></div></div>
 
     <div class="agent" data-r="inner"><div class="agent-head"><span class="k">psychotherapeutic-coach</span><span class="role">read-only</span></div>
@@ -261,7 +266,7 @@
 
     <div class="agent" data-r="audit"><div class="agent-head"><span class="k">cognitive-debugger</span><span class="role">audit</span></div>
       <div class="agent-body"><p>Metacognitive layer. Watches reasoning, touches no data.</p>
-      <div class="rw"><div class="row"><span class="lbl">touches</span><span style="color:var(--muted)">nothing — pure audit</span></div></div></div></div>
+      <div class="rw"><div class="row"><span class="lbl">touches</span><span style="color:var(--muted)">nothing · pure audit</span></div></div></div></div>
 
   </div>
 </section>
