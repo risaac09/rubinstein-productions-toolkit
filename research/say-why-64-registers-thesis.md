@@ -40,39 +40,44 @@ public profile its plumbing. This gives it its reason.
 
 ## The thesis statement (poem)
 
-*Draft arrangement of Isaac's spoken words, 2026-06-17, in the circular form of
-Paz's "Sunstone." No full stops. The last line turns back into the first. His
-words are the spine; the connective lines are removable. His to cut.*
+*Isaac's words, 2026-06-17. Line cuts only. Nothing added, nothing smoothed. He
+named the form: Paz's "Sunstone."*
 
-> there is time, and there is you,
-> and you are the seat where the listening begins,
-> sixty-four registers turning on the torus,
-> economic material realities on the spectrum of consciousness,
-> on the torus of consciousness, cycles and spirals,
-> posture and breath, the seat,
-> listening, listening, listen,
-> the sponge and the fire, the pulls of your desire,
-> lead, lead, lead us to destiny, to fate,
-> amor fati, love itself,
-> the empty heart sinks without wound,
-> and the wound is where the register opens,
-> sixty-four ways to say the thing,
-> sixty-four turns of the same breath,
-> there is time, and there is you,
+> Economic material realities on the spectrum of consciousness,
+> on the torus of consciousness.
+> Cycles and spirals, posture and breath, the seat.
+> Listening. Listening. Listen.
+> Gain the sponge and the fire, the pulls of your desire.
+> Lead. Lead. Lead us to destiny, fate.
+> Amor fati. Love itself.
+> The empty heart sinks without wound.
+> There is time, and there is you.
 
 ---
 
-## Margin notes (decode + open choices)
+## Two words to check (your hearing, not mine)
 
-- **"amor fati."** The spoken "I'm more fatty" reads as *amor fati*, love of fate, which lands the line "destiny, fate, amor fati, love itself." Confirm if that is the intent.
-- **"sinks" vs "sings."** "The empty heart sinks without wound" is kept verbatim. "sings without wound" is the other hearing. Say which.
-- **The loop.** "Sunstone" ends where it starts. The draft opens and closes on "there is time, and there is you." Swap the hinge line to the registers if you want the loop to land on the structure instead of the person.
-- **Length.** Paz ran 584 lines, one per day of the Venus synodic cycle. A long form here could run 64 movements, one per register. This draft is the seed, not the full cycle.
+- **"Amor fati."** The transcript caught it as "I'm more fatty." I rendered it as the word it sounds like. Change it back if I misheard you.
+- **"sinks."** Kept exact. The only other thing it could be is "sings without wound." Your call.
+
+I left the form alone. If you want the Sunstone loop, where the last line turns
+back into the first, or the full length Paz ran (584 lines for the Venus cycle,
+which here could be 64 movements, one per register), say so and I will set the
+structure without touching a word.
 
 ---
+
+## Next steps
+
+The poem is the thesis. The build is how Say Why opens into it. A rough order:
+
+1. **Name the 64.** Take the 64 positions from `gene-keys-data` and give each a working register name, structure only, content by id. This is the index Say Why draws from.
+2. **Decide the click.** When someone opens Say Why, do they land in one register, choose one, or get drawn one? That choice sets the whole feel.
+3. **Bind register to torus and to film.** Each register sits on an axis (intake, transformation, expression, return flow) and carries a filming prompt. The register is where you speak from, not a score.
+4. **Walk the first arc with Justin.** Track the 64 ways you two have known each other as the first real pass through the structure. The relationship is the test case, and the episode is already an event.
 
 ## What this is not
 
 - Not a republish of Gene Keys content. Structure only, by id, same as the dataset.
-- Not a scoring tool. The register is a place to speak from, not a number.
-- Not committed copy. The poem is a draft of Isaac's words, held for his hand.
+- Not a scoring tool.
+- Not finished copy. The poem is yours, held for your hand.
