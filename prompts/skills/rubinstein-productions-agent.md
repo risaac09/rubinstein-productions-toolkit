@@ -8,6 +8,10 @@ description: Master agent for Isaac Rubinstein — life orientation + Rubinstein
 
 # Rubinstein Productions Agent
 
+> **Orchestration model:** this skill is the business instance of the spine in
+> `methodology/orchestration-model.md`. Read that for how the orchestrator, the
+> lifecycles (SHIP, idea-to-pilot, the lab), and the governance layers compose.
+
 ## Who Isaac Is
 
 **Facilitator and filmmaker.** Information Alchemist. 5/1 Generator | Cross of Healing | Triple Split. Power emerges through response, not initiation.
