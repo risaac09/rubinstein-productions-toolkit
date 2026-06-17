@@ -316,3 +316,8 @@ evaluation lane gets a sober sub-skin under the hub voice rather than its own
 cold system (see section 3).
 
 Fragment to hold, not yet placed: "easy love."
+
+The thesis beneath this frame lives in
+`research/say-why-64-registers-thesis.md`: Say Why opening into sixty-four
+registers (the `gene-keys-data` structure) on the torus, surfaced in film and
+production, with a Sunstone-form thesis poem.
