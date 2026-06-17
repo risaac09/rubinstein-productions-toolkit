@@ -68,11 +68,15 @@ Two decisions, not one. They do not compete.
 
 This keeps the work alive without spending the energy the pipeline needs.
 
-## Decision (for Isaac to record)
+## Decision (recorded 2026-06-17)
 
-- [ ] **Defer the build, harden the spec now** (orchestrator recommendation), or
-- [ ] **Build now** (Sacral override, accept the opportunity cost against the pipeline), or
-- [ ] **Shelve entirely** (the spec waits untouched).
+- [x] **Defer the build, harden the spec now** (orchestrator recommendation, chosen by Isaac).
+- [ ] Build now (Sacral override).
+- [ ] Shelve entirely.
+
+The governance bar and deploy red lines are folded into
+`research/rp-shared-foundation-spec.md`. The build stays deferred until a trigger
+below fires. The warm evaluation pipeline keeps Isaac's focus this week.
 
 ## Triggers to revisit a build
 

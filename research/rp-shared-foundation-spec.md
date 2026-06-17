@@ -68,10 +68,33 @@ the `stack-data` sync uses applies here.
 - **Server state** in KV holds only what a paid feature needs: entitlement and session, not content. The Performance-phase "zero-measurement" rule from the methodology holds in code: the backend does not store the user's words.
 - **Consent** is a record the user can see and a button that exports their data. The privacy claim becomes verifiable.
 
+## Governance bar (must pass before this is a governed deploy)
+
+Set by the 2026-06-17 governance review (`research/proposal-foundation-deploy.md`).
+The build is deferred; this bar is folded in now so the day a trigger fires the
+work starts governed, not improvised.
+
+**Minimum bar**
+- Secrets only in worker env, never in a repo or client code. The pre-commit hook rejects API keys.
+- Schema validation at load. Corrupt client state is migrated or rejected, never trusted.
+- Zero-measurement in code. KV holds session, entitlement, and an audit record only. Never the user's words, audio, or generated output.
+- Consent is a visible record with a working data-export button.
+- JWT carries no content, has a short expiry (under 15 minutes), enforced on client and server.
+- Stripe webhook verifies the signature and deduplicates by event id. Entitlement is re-checked against Stripe, not just read from cache.
+- A `SECURITY.md` (secret rotation, key access, incident response) ships before the foundation is marked canonical.
+
+**Deploy red lines (any one blocks the deploy)**
+- An API key anywhere in git history.
+- Unvalidated state accepted on load.
+- A Stripe webhook without signature verification.
+- A session token without expiry.
+- Any user content in KV.
+
 ## Minimal first deploy (the smallest real thing)
 
-Do not build all six lib files at once. The smallest deploy that unblocks the
-Graduate gate:
+Every step below must clear the governance bar above. The red lines are deploy
+blockers, not cleanup-later items. Do not build all six lib files at once. The
+smallest deploy that unblocks the Graduate gate:
 
 1. Create the worker with a real `wrangler.toml` (one KV namespace for entitlement).
 2. Ship `/api/jwt/for-session` and `/api/entitlement` only. Auth and gating, nothing else.
@@ -84,7 +107,9 @@ before generalizing.
 
 ## Honest current state
 
-Specified here, not built. The worker code exists in a form but has never run
-with real ids or keys. `rp-shared/` needs creating. This document is the target;
-the `idea-to-pilot` skill's Graduate gate stays closed until step 4 above passes
+Specified and now governed, not built. Per the 2026-06-17 decision the build is
+deferred; the governance bar above is folded in so the spec is shovel-ready. The
+worker code exists in a form but has never run with real ids or keys.
+`rp-shared/` needs creating. This document is the target; the `idea-to-pilot`
+skill's Graduate gate stays closed until the minimal first deploy passes the bar
 once.
