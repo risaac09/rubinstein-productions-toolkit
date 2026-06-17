@@ -287,6 +287,31 @@ gantt
 - One ladder. Free tools to $49 unlock to Founder Story to the higher tiers, with the evaluation lane folded in at the $500/hr floor.
 - The old domain redirects, the legacy Gmail forwards, and nothing is deleted that holds a live relationship.
 
-*Open question for Isaac: person-first ("Isaac Rubinstein, Information
-Alchemist") or practice-first ("Rubinstein Productions") as the public frame?
-The maps lead practice-first. Say the word and I will redraw.*
+---
+
+## 6. Public frame and on-camera voice (seed notes)
+*Captured 2026-06-17 from Isaac, raw. Not committed language. Taglines stay
+unconfirmed until Isaac signs off, per `instantiation-prompt.md`.*
+
+The frame leans **practice-first**: Rubinstein Productions as the hub, with the
+thinker identity carried as a subtitle rather than a separate brand. That keeps
+the maps in sections 2.2 and 2.3 as drawn.
+
+**Subtitle direction.** Information is the material, alchemy is the verb. Isaac's
+phrasing was "chemical information" as a subtitle under Rubinstein Productions,
+which sits with the existing "Information Alchemist" identity. Seed forms to
+test, none final:
+- Rubinstein Productions / Information Alchemy
+- Rubinstein Productions / the chemistry of information
+
+**Brand energy.** "Stillness in activity." The Hakuin line about meditation in
+the midst of action. Calm presence while the work is moving and the camera is
+running.
+
+**On-camera posture.** Mischief and presence. Be a little mischievous when you
+interact through the camera, and stay present with folks. This is the warm
+opposite of the clinical evaluation register, and it is the reason the folded-in
+evaluation lane gets a sober sub-skin under the hub voice rather than its own
+cold system (see section 3).
+
+Fragment to hold, not yet placed: "easy love."
