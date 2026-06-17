@@ -212,10 +212,10 @@ flowchart LR
 | **Brand voice on the consolidated site** | Folding a clinical evaluation voice into a relational film brand risks tone clash. | Keep evaluation copy plain and concrete; honor RP voice rules (no em-dashes, no rule-of-three, no jargon). |
 | **DNS/DMARC** | Outreach staging notes a pending DNS fix on the eval domain. | Finish DMARC before redirect so forwarded mail does not land in spam. |
 
-**Decision still owned by Isaac:** is the consolidated public identity framed as
-*Isaac Rubinstein, Information Alchemist* (person-first) or as *Rubinstein
-Productions* (practice-first)? The schema above leads with the practice as the
-hub and carries the person/thinker as layers. Flag if you want person-first.
+**Decision, resolved 2026-06-17: two front doors (both, and).** One hub with two
+front doors. The institutional `/evaluation` lane carries the warm money. The
+relational `/story` lane carries the Founder Story. The person is the
+through-line on both. Structure in `research/evaluation-forward-hub-framing.md`.
 
 ---
 
@@ -293,10 +293,12 @@ gantt
 *Captured 2026-06-17 from Isaac, raw. Not committed language. Taglines stay
 unconfirmed until Isaac signs off, per `instantiation-prompt.md`.*
 
-The frame is **practice-first**, confirmed by Isaac 2026-06-17: Rubinstein
-Productions as the hub, with the thinker identity carried as a subtitle rather
-than a separate brand. That keeps the maps in sections 2.2 and 2.3 as drawn. The
-subtitle wording stays open.
+The frame is **practice-first with two front doors**, set by Isaac 2026-06-17:
+Rubinstein Productions as the hub, an institutional `/evaluation` door and a
+relational `/story` door, the person as the through-line. The maps in sections
+2.2 and 2.3 still hold; the lead-flow in 2.3 already routes by inbound type, so
+it absorbs the two doors. The thinker identity rides as a subtitle, wording
+still open. Full structure in `research/evaluation-forward-hub-framing.md`.
 
 **Subtitle direction.** Information is the material, alchemy is the verb. Isaac's
 phrasing was "chemical information" as a subtitle under Rubinstein Productions,

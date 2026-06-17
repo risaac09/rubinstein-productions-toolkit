@@ -72,16 +72,19 @@ of the spokes changes:
 - It risks burying the thing that is actually distinctive. If the hub reads like
   every other evaluation consultancy, the film and the methodology stop pulling.
 
-## A third option
+## Decision, 2026-06-17: two front doors (both, and)
 
-Lead with evaluation for the agency/association buyer, keep film-forward for the
-individual buyer, and split them by entry path rather than by domain. One hub,
-two front doors: `/evaluation` reads institutional, `/story` reads relational,
-and the person is the through-line on both. This keeps the warm money lane
-honest without flattening the practice into a vendor.
+Isaac chose the both/and. One hub, two front doors, the person as the
+through-line. Not film-or-evaluation. The structure:
 
-## What I need from Isaac
+- **One hub.** `rubinsteinproductions.com`, `isaac@rubinsteinproductions.com`, the person Isaac Rubinstein present on both doors.
+- **Door 1, `/evaluation` (institutional).** For associations, agencies, and foundations with budget lines. Leads with developmental, narrative-based evaluation. Proof on hand: the H.R.1 cross-state tracker, the RIPCA proposal, the MPH. This door carries the warm money (McEvoy, Grossman, RIPCA). Sober register, closer to Brand A (Ink/Ochre/Teal).
+- **Door 2, `/story` (relational).** For individuals in transition. Leads with the Founder Story, facilitation and film. Warmer register, Brand B (Digital Liver).
+- **The through-line.** Same person, same Say Why method underneath both doors. Film is what makes the evaluation felt and the story shippable, the differentiator on either side.
+- **Above both doors.** The free tools (Alchemy, the Diagnostic) sit at the top of the funnel. The Diagnostic is the natural lead magnet for the evaluation door.
+- **Homepage.** A short landing that names the person and forks to the two doors, rather than forcing one register on every visitor.
 
-One call, not three. Pick the frame the hub leads with: film-forward,
-evaluation-forward, or the two-front-doors split. The consolidation schedule and
-the homepage copy both branch from that single choice.
+### What this unblocks
+- Consolidation Phases 2 to 4 can proceed. The evaluation lane gets a real `/evaluation` door instead of a folded-in afterthought.
+- The two design systems stop being a problem to resolve. They become the two doors' skins under one shared type and logo system.
+- The subtitle wording (Information Alchemy, the chemistry of information) rides the thinker layer across both doors, still unconfirmed.
