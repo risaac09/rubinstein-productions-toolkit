@@ -293,9 +293,10 @@ gantt
 *Captured 2026-06-17 from Isaac, raw. Not committed language. Taglines stay
 unconfirmed until Isaac signs off, per `instantiation-prompt.md`.*
 
-The frame leans **practice-first**: Rubinstein Productions as the hub, with the
-thinker identity carried as a subtitle rather than a separate brand. That keeps
-the maps in sections 2.2 and 2.3 as drawn.
+The frame is **practice-first**, confirmed by Isaac 2026-06-17: Rubinstein
+Productions as the hub, with the thinker identity carried as a subtitle rather
+than a separate brand. That keeps the maps in sections 2.2 and 2.3 as drawn. The
+subtitle wording stays open.
 
 **Subtitle direction.** Information is the material, alchemy is the verb. Isaac's
 phrasing was "chemical information" as a subtitle under Rubinstein Productions,
