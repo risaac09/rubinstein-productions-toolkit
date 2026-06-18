@@ -66,6 +66,21 @@ The single command is `stack-data/scripts/sd-fleet-sync`, which fetches every re
 
 If a repo cannot be fetched, name it in the stamp and mark its slice CANT-VERIFY. A missed fetch is a known unknown, not a silent gap.
 
+## The backlog ceiling
+
+A global run that only adds PRs is how the fleet reached twenty-two open at once. So the orchestrator holds a ceiling: ten to fifteen open PRs across the fleet, fifteen hard. Pass 0 already counts them. This is what it does with the count.
+
+When the open-PR count is over fifteen, the run does not proceed to new work until it has proposed cuts to bring the fleet back under the ceiling. The cuts come in two kinds, in this order:
+
+1. **Merge what is Ready.** Any PR that meets the Definition of Ready (described, criteria named, sized, current base, owner) and is low-risk (mergeable, tests green, no decision pending) is a merge candidate. Ready is not a resting state. A PR that reaches Ready merges or closes within one work block, it does not sit. This is SHIP's Promote applied to PRs.
+2. **Close what is waste.** A PR is closeable only if it is a true duplicate or genuinely stale. Genuinely stale means idle past fourteen days with no path to Ready. Duplicate means the same change in the same place, confirmed by reading both.
+
+Triage before you close, never on a title match. Two PRs that share a phrase can be different work in different repos, and two that share a feature name can be two halves of one feature. Read them. Complementary or recent work stays open. Closing live work to hit a number is the failure this rule exists to prevent, not the goal.
+
+What does not count against the ceiling, and is never closed to make room: a PR held on a sacral or strategic decision (it waits on Isaac, not on work), and a PR parked by strategy (real, not urgent). Those are deliberate, not sprawl. Name them as held, do not pad the count with them.
+
+Write the proposed cuts to the readiness board (`stack-data/reports/YYYY-MM-DD-readiness-board.md`) so the decision leaves a record. The board ranks by the Definition of Ready. The ceiling is the board put to work.
+
 ## The spine (three linear passes)
 
 These run in order. Do not skip ahead. Each pass hands a cleaner object to the next. On a small request the off-ramp fires first and the spine collapses to a single frame-and-route move; the full three passes are for work that earns them.
