@@ -81,6 +81,19 @@ What does not count against the ceiling, and is never closed to make room: a PR 
 
 Write the proposed cuts to the readiness board (`stack-data/reports/YYYY-MM-DD-readiness-board.md`) so the decision leaves a record. The board ranks by the Definition of Ready. The ceiling is the board put to work.
 
+## Reading the board: labels as standing direction
+
+Isaac steers the fleet from a PR board (the labeled open PRs, viewed as a GitHub Project or a filtered pulls list). Pass 0 reads each open PR's labels as his standing direction and obeys them. The board is the steering wheel. Pass 0 is where the orchestrator looks at it.
+
+Two kinds of label, and only one kind authorizes action:
+
+- **Stage labels say how to surface, never to act.** `decide` is a call only Isaac makes, so surface the decision with its options and cost and stop. `read` is content awaiting his read, so surface it and never merge it for him. `review` is a feature or system awaiting his approval, so surface a recommendation and do not merge. `parked` is a deliberate hold, so do not surface it as actionable and do not count it against the backlog ceiling.
+- **Action labels are the only authorization to write.** `merge` means merge on the next run if the PR also meets the Definition of Ready and is low-risk, and if it does not, surface why instead of merging. `close` means close it, with a one-line reason in the run's report.
+
+The default is hold. No label, or a stage label alone, means surface and do not act. Only `merge` or `close` lets the orchestrator change a PR. A freshly opened, unlabeled PR is always surfaced for triage, never auto-touched. `review` does not mean merge, it means his eyes are still owed; promote it only when he relabels it `merge`.
+
+This closes the loop with the backlog ceiling and the readiness board: Isaac drags a card or changes a label, and the next global run reads that signal and either surfaces or acts. His clicks between runs are the instructions for the run.
+
 ## The spine (three linear passes)
 
 These run in order. Do not skip ahead. Each pass hands a cleaner object to the next. On a small request the off-ramp fires first and the spine collapses to a single frame-and-route move; the full three passes are for work that earns them.
