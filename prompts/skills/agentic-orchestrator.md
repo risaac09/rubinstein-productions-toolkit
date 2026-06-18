@@ -11,7 +11,7 @@ A single skill answers one question. This skill answers a harder one: *which ski
 
 ## Trigger
 
-Fire on any mention of an agent. "Agents." "Activate all agents." "Run the agents on this." "Spin up the orchestrator." The word is the switch. When Isaac says it, this architecture is live for the rest of the request.
+Fire on any mention of an agent. "Agents." "Activate all agents." "Run the agents on this." "Spin up the orchestrator." "Global awareness refresh." "Consult the orchestrator." The word is the switch. When Isaac says it, this architecture is live for the rest of the request. Any global phrase ("global awareness", "activate all agents", a sweep across more than one repo) makes Pass 0 mandatory before anything else.
 
 The trigger has a hard off-ramp. The word "agents" is often colloquial ("run the agents on the lane" means "do the work," not "instantiate seven steps"). So before anything moves: if the blast radius is two records or fewer, no files get written, and one skill covers it, say "one-skill job, routing to X" and stop. The orchestrator is for work one pass cannot hold. Naming a small ask as small and routing it directly is the correct first move, not a failure to orchestrate.
 
@@ -43,6 +43,28 @@ The trigger has a hard off-ramp. The word "agents" is often colloquial ("run the
 ```
 
 Linear through the first three. Balloon out. Come back together. Gate. The balloon is where the diversity lives. The spine is where the judgment lives.
+
+## Pass 0: Sync and stamp (the freshness gate)
+
+The orchestrator reads state, so stale state is the failure mode that matters most. A session's local clone can sit many commits behind the remote (a real run found it 35 commits behind). Before any global run (a "global awareness refresh", "activate all agents", "consult the orchestrator", or any sweep across more than one repo), sync first. No awareness pass runs on an unsynced tree.
+
+Three moves, in order:
+
+1. **Fetch the fleet.** `git fetch` every repo in the registry (`stack-data/data/repos.json` lists all of them), then read `origin/main`, not the local working branch. Reset reading to the remote head.
+2. **Query what the clone cannot see.** Open PRs, CI status, and branches do not live in the local clone. Pull them from the GitHub API. Drafts in flight are state, and a sweep that ignores them is already wrong.
+3. **Read live data.** For stack-data, read `data/*.json` at `origin/main`, not a cached copy.
+
+Then stamp the run. Every global output opens with a freshness stamp:
+
+```
+Read as of: <repo>@<sha> (<fetch time>), open PRs: N, uncommitted: N.
+```
+
+The single command is `stack-data/scripts/sd-fleet-sync`, which fetches every registry repo, records head versus origin, open-PR count, and dirty-file count, and writes `dist/fleet-state.json`. Read that manifest first.
+
+**The honesty rule a cloud session must state.** A remote or cloud session sees GitHub, not the working trees on the M2 Pro or the Mini. Uncommitted local work is invisible until pushed (the physical-estate survey found 22 such files). So two rules hold: push local work before asking for a global refresh, and when running from the cloud, the stamp says "GitHub state as of X, local Mac working trees not visible from here." Never present a GitHub read as the whole truth.
+
+If a repo cannot be fetched, name it in the stamp and mark its slice CANT-VERIFY. A missed fetch is a known unknown, not a silent gap.
 
 ## The spine (three linear passes)
 
