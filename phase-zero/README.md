@@ -33,7 +33,7 @@ rendered with `stack-data/scripts/phase-zero` (adds live unreviewed-signal
 counts across the three listening layers). In stack-data the hook prefers that
 renderer; in every other repo it falls back to the portable core here.
 
-## Install
+## Install (per repo)
 
     # one repo
     ./install.sh ../saywhy-app
@@ -42,4 +42,20 @@ renderer; in every other repo it falls back to the portable core here.
     ./install.sh --all ..
 
 Re-run any time to refresh the kit. When `phase-zero.md` or the hook changes
-here, re-sync to propagate.
+here, re-sync to propagate. Per-repo install covers every clone session of that
+repo, local or remote.
+
+## Install (per machine, global)
+
+For a local machine where you move across repos in one shell, install the hook
+at the user level so the triggers fire in every session, including outside any
+repo. Run once per machine:
+
+    # picks up ~/stack-data automatically, or pin it:
+    STACK_DATA_DIR=/path/to/stack-data global/install-global.sh
+
+This writes `~/.claude/hooks/phase-zero-trigger.sh`, copies the portable core to
+`~/.claude/phase-zero.md` as a fallback, and merges the hook into
+`~/.claude/settings.json` without disturbing existing user settings. The global
+hook prefers the live stack-data renderer (signal counts) and defers to a repo's
+own phase-zero hook when you are inside one, so phase zero never prints twice.
