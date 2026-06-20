@@ -7,6 +7,12 @@
 
 ---
 
+## The unit this documents
+
+This case study is the researcher register of the foundational unit (`stack-data/context/foundational-unit.md`) made into an artifact. The engagement was a series of recorded relational encounters. Each was witnessed (the recordings in the Appendix), digested (the Nomadic coding in Part 5 and the metrics in Part 4), and here it sediments into the part that persists and teaches the next encounter. Keep it traceable: every claim below should trace to a witnessed encounter, not to a summary of one.
+
+---
+
 ## Case Study Metadata
 
 | Field | Value |
