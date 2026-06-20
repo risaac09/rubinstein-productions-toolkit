@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-06-20. Edit there; this file is a snapshot for skills and public repo use.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
