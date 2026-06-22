@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-06-20. Edit there; this file is a snapshot for skills and public repo use.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
@@ -250,6 +250,21 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 
 ---
 
+## The foundational unit: the three registers and the loop
+
+This codebook is one instrument of the foundational unit (`stack-data/context/foundational-unit.md`): one recorded relational encounter, witnessed, measured, and theorized in one body, given back legible and alive. Coding is how an encounter is metabolized, so the six domains are not a flat list. They sit under the three registers of the single act.
+
+| register and loop moment | the domains that read it |
+|---|---|
+| Cinematographer, generate (what the encounter witnessed) | Somatic Markers, Conversational Texture, Relational Field |
+| Evaluator, digest (the structure that holds it) | Consistency Mapping, the Consistency Scoring Protocol, Fear Inventory, Rhizomatic Process |
+| Researcher, sediment (what persists past the session) | Lines of Flight, Metaphor Emergence, the cross-session Methodology Signals |
+| Feed back | the methodology signals that change how the next field is held |
+
+A coded session is not finished when the codes are applied. It is finished when the metabolism is read: what this encounter generated, what got digested into structure, what sedimented into the corpus and the theory, and what feeds the next field. That reading is the unit made legible. It is the new item in the Synthesis step below, and it is what keeps the coding from collapsing into a flat list of tags.
+
+---
+
 ## Coding Process
 
 ### Step 1: Initial Read/Listen
@@ -269,6 +284,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 
 ### Step 4: Synthesis
 - Write 1-2 paragraph narrative summary
+- **Register and loop reading:** name what this encounter generated (the witnessed raw, from Somatic, Texture, Relational), what the evaluator digested (the structure, from Consistency, Fear, Process), what sedimented (Lines of Flight, metaphors, methodology signals), and what feeds the next field. This is the foundational unit made legible.
 - Identify 2-3 key insights
 - Note questions for next session or follow-up
 
