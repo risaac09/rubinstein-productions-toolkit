@@ -16,12 +16,22 @@ The orchestrator reads the map (identity, the four directions, the source of
 truth, the delegation protocol), names the direction the task faces, then
 delegates down to the branch the task needs.
 
+The bookend is the retrospective. When a prompt contains "log learnings",
+"retro this chat", or "session retrospective", the same hook loads the
+reflect-and-log prompt instead. The agent runs a four-direction retrospective on
+the session and logs the one learning worth keeping with `scripts/sd-retro` in
+stack-data. Phase zero opens a session, the retrospective closes it. The log is
+private and never feeds phase zero back.
+
 ## Files
 
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
   Meaning research institute, the Third Third Information Lab), the directions,
   the voice rules, the delegation protocol. Present in every repo.
-- `hooks/phase-zero-trigger.sh` — the UserPromptSubmit hook.
+- `retrospective.md` — the portable retrospective prompt loaded by the retro
+  triggers. Present in every repo.
+- `hooks/phase-zero-trigger.sh` — the UserPromptSubmit hook (phase-zero and
+  retrospective triggers both).
 - `settings.json` — the hook registration, copied to a repo with no existing
   settings; merged in (jq) when one exists.
 - `install.sh` — the distribution path.
