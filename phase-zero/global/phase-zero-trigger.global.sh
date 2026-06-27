@@ -5,7 +5,8 @@
 # global awareness in every session on this machine, including outside any repo.
 #
 # Triggers (case-insensitive):
-#   "activate all agents" | "engage global awareness" | "delegate to your orchestrator"
+#   "activate all agents" | "engage global awareness" | "refresh global awareness"
+#   | "delegate to your orchestrator" | "engage the orchestrator" | "engage your orchestrator"
 #
 # Two behaviors set it apart from the per-repo hook:
 #   1. Inside a repo that already ships the phase-zero kit, it defers to that
@@ -50,7 +51,7 @@ emit() {
 prompt=$(get_prompt "$input" | tr '[:upper:]' '[:lower:]')
 
 case "$prompt" in
-  *"activate all agents"*|*"engage global awareness"*|*"delegate to your orchestrator"*)
+  *"activate all agents"*|*"engage global awareness"*|*"refresh global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*)
     echo "[phase zero engaged — global awareness]"
     echo
     emit
