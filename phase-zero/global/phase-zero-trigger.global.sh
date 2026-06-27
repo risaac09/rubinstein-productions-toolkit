@@ -48,6 +48,17 @@ emit() {
   return 0
 }
 
+emit_retro() {
+  local cand
+  for cand in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
+    [ -n "$cand" ] || continue
+    if [ -f "$cand/.claude/retrospective.md" ]; then cat "$cand/.claude/retrospective.md" && return 0; fi
+    if [ -f "$cand/context/session-retrospective.md" ]; then cat "$cand/context/session-retrospective.md" && return 0; fi
+  done
+  [ -f "$HOME/.claude/retrospective.md" ] && { cat "$HOME/.claude/retrospective.md"; return 0; }
+  return 0
+}
+
 prompt=$(get_prompt "$input" | tr '[:upper:]' '[:lower:]')
 
 case "$prompt" in
@@ -55,6 +66,14 @@ case "$prompt" in
     echo "[phase zero engaged — global awareness]"
     echo
     emit
+    ;;
+esac
+
+case "$prompt" in
+  *"log learnings"*|*"retro this chat"*|*"session retrospective"*)
+    echo "[retrospective — reflect and log]"
+    echo
+    emit_retro
     ;;
 esac
 

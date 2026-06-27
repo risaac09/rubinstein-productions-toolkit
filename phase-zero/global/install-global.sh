@@ -21,6 +21,7 @@ mkdir -p "$DEST/hooks"
 cp "$SRC/phase-zero-trigger.global.sh" "$DEST/hooks/phase-zero-trigger.sh"
 chmod +x "$DEST/hooks/phase-zero-trigger.sh"
 cp "$KITROOT/phase-zero.md" "$DEST/phase-zero.md"   # guaranteed fallback core
+cp "$KITROOT/retrospective.md" "$DEST/retrospective.md"   # retrospective prompt fallback
 
 settings="$DEST/settings.json"
 hook_cmd='bash "$HOME/.claude/hooks/phase-zero-trigger.sh"'

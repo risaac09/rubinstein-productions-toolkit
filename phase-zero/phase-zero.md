@@ -44,3 +44,12 @@ this file is versioned in `rubinstein-productions-toolkit/phase-zero/`.
 4. Act in the branch, validate before commit, report back.
 
 Centralize the map. Delegate the work.
+
+## The bookend: retrospective
+
+Phase zero opens a session. The retrospective closes it. The phrases
+"log learnings", "retro this chat", or "session retrospective" load a
+four-direction reflect-and-log prompt (`retrospective.md`). Run it on the
+session, then log the one learning worth keeping with `scripts/sd-retro` in
+stack-data. The log is private and out of the entity graph, like the Lived
+Record. It never feeds phase zero back.

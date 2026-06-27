@@ -53,4 +53,18 @@ case "$prompt" in
     ;;
 esac
 
+# Retrospective: the bookend to phase zero. Loads the reflect-and-log prompt.
+case "$prompt" in
+  *"log learnings"*|*"retro this chat"*|*"session retrospective"*)
+    echo "[retrospective — reflect and log]"
+    echo
+    if [ -f "$root/.claude/retrospective.md" ]; then
+      cat "$root/.claude/retrospective.md" && exit 0
+    fi
+    if [ -f "$root/context/session-retrospective.md" ]; then
+      cat "$root/context/session-retrospective.md" && exit 0
+    fi
+    ;;
+esac
+
 exit 0
