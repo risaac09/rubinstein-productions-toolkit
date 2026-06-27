@@ -21,6 +21,7 @@ install_one() {
   [ -d "$target" ] || { echo "skip (not a dir): $target"; return 0; }
   mkdir -p "$target/.claude/hooks"
   cp "$SRC/phase-zero.md" "$target/.claude/phase-zero.md"
+  cp "$SRC/retrospective.md" "$target/.claude/retrospective.md"
   cp "$SRC/hooks/phase-zero-trigger.sh" "$target/.claude/hooks/phase-zero-trigger.sh"
   chmod +x "$target/.claude/hooks/phase-zero-trigger.sh"
 
