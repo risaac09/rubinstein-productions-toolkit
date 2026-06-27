@@ -7,7 +7,8 @@
 # passes through untouched (no output, exit 0).
 #
 # Triggers (case-insensitive):
-#   "activate all agents" | "engage global awareness" | "delegate to your orchestrator"
+#   "activate all agents" | "engage global awareness" | "refresh global awareness"
+#   | "delegate to your orchestrator" | "engage the orchestrator" | "engage your orchestrator"
 #
 # Source of truth: stack-data/PHASE-ZERO.md. This kit is versioned in
 # rubinstein-productions-toolkit/phase-zero/ and installed into each repo's
@@ -37,7 +38,7 @@ prompt=$(get_prompt "$input" | tr '[:upper:]' '[:lower:]')
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 case "$prompt" in
-  *"activate all agents"*|*"engage global awareness"*|*"delegate to your orchestrator"*)
+  *"activate all agents"*|*"engage global awareness"*|*"refresh global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*)
     echo "[phase zero engaged — global awareness]"
     echo
     if [ -x "$root/scripts/phase-zero" ]; then
