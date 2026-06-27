@@ -4,7 +4,9 @@ The shared baseline that travels into every repo. Any of these phrases loads it:
 
 - "activate all agents"
 - "engage global awareness"
+- "refresh global awareness"
 - "delegate to your orchestrator"
+- "engage the orchestrator"
 
 When one fires, read this index, name the direction the task faces, then
 delegate down to the branch the task needs. The canonical, live hierarchy lives
