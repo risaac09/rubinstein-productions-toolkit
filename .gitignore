@@ -17,3 +17,7 @@ intranet/site/
 
 # Plugin distribution artifacts (sync via second-brain-mirror/_sync instead)
 dist/
+
+# Python bytecode caches
+__pycache__/
+*.pyc
