@@ -1,6 +1,6 @@
 ---
 name: outreach-email-manager
-description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to Airtable. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals — and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
+description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to the stack-data drafts log plus the vault 07 Outreach staging note. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals, and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
 ---
 
 > **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
@@ -15,9 +15,9 @@ Comprehensive workflow for creating, drafting, and tracking outreach emails for 
 This skill handles the complete outreach email workflow:
 
 1. Gather context (organization, contact, angle, stage)
-2. Draft the email content — RP framing, not generic consultant pitch
+2. Draft the email content, RP framing, not generic consultant pitch
 3. Create a Gmail draft for review
-4. Log the outreach to Airtable for tracking
+4. Log the outreach to the stack-data drafts log and the vault 07 Outreach staging note
 
 ---
 
@@ -59,10 +59,15 @@ Gather if not already provided:
 
 **RP outreach principles:**
 - Lead with *their* work, not ours
-- Name something specific — not "I love what you do" but "I noticed that your annual report leads with data and your website leads with story — there's a gap worth exploring"
+- Name something specific, not "I love what you do" but "I noticed that your annual report leads with data and your website leads with story, there's a gap worth exploring"
 - Brief: 3-4 short paragraphs for cold outreach
-- Single CTA — one clear ask, not a menu of options
+- Single CTA, one clear ask, not a menu of options
 - Never pitch photography or videography as the offer. The offer is narrative translation.
+
+**Value-first drafting checks (run before the draft is final):**
+- *Free observation:* the email gives a genuine, specific observation about their work before it asks for anything. If it asks before it gives, rewrite.
+- *Public asset over offered asset:* point them at something already public and useful (a case study, the GDC film, a framework) rather than offering to make them something. Give a door, not a sales hook.
+- *Distribution close over call close:* default the close to sending or sharing something of value, not to booking a call. A call ask is the exception, used only when fit is already warm.
 
 **Email framing by type:**
 
@@ -93,26 +98,15 @@ Rubinstein Productions | Facilitation & Film
 
 ---
 
-### Step 4: Log to Airtable
+### Step 4: Log the Outreach
 
-Log the contact after drafting:
+Log the contact after drafting in two places. JSON state lives in stack-data; the human-readable staging note lives in the vault.
 
-```bash
-python3 scripts/log_to_airtable.py <<EOF
-{
-  "organization_name": "Organization Name",
-  "website": "https://organization.com",
-  "decision_maker": "Contact Name",
-  "title": "Their Title",
-  "email": "contact@org.com",
-  "outreach_status": "Ready",
-  "mission_statement": "Optional",
-  "email_subject": "Subject",
-  "email_body": "Body",
-  "notes": "Research notes + personalization rationale"
-}
-EOF
-```
+1. **stack-data drafts log.** Append the draft to a dated drafts file at `/Users/isaacrubinstein/stack-data/outreach/YYYY-MM-DD-drafts.md` (today's date). One block per draft, capturing organization, contact, title, email, status, subject, body, and the personalization rationale.
+
+2. **Vault 07 Outreach staging note.** Mirror the entry into the vault "07 Outreach" staging note so the pipeline has a human-readable surface. Keep it to a one-line-per-contact log: date, org, contact, status, next-step timing.
+
+Do not use Airtable. The drafts log plus the staging note are the pipeline of record.
 
 **Status progression:**
 - **Research** → gathering info, not yet ready
@@ -125,9 +119,9 @@ EOF
 ### Step 5: Next Steps
 
 1. Confirm draft created
-2. Confirm Airtable logged
+2. Confirm logged to the stack-data drafts log and the vault 07 Outreach staging note
 3. Recommend follow-up timing (Day 3 / 7 / 14 cadence)
-4. Flag if this should route to `proposal-scope-builder` next
+4. Flag if this should route to `rubinstein-productions-coo` for scoping and pricing next
 
 ---
 
@@ -141,6 +135,5 @@ Outreach should feel like *response* even when it's initiation. The best outreac
 
 ## Related Skills
 
-- `rubinstein-productions-agent` — lifecycle master
-- `proposal-scope-builder` — next stage after interest confirmed
-- `rubinstein-productions-coo` — for fit/capacity checks before investing in outreach
+- `isaac-twin` — lifecycle master (orchestrator)
+- `rubinstein-productions-coo` — fit/capacity checks before outreach, and scoping/pricing of the resulting proposal

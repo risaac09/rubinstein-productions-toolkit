@@ -47,8 +47,7 @@ so three lifecycles, and they share their last move.
 
 ### 1. A business record (the money path)
 A lead becoming a proposal becoming a project becoming an invoice. The domain
-skills already own the stages: `outreach-email-manager`, `proposal-scope-builder`,
-`project-management-coordinator`, `invoice-financial-tracker`. Underneath, the
+skills already own the stages: `outreach-email-manager`, `project-management-coordinator`, `invoice-financial-tracker`. Underneath, the
 record moves through **SHIP**: Submit, Hold, Integrate, Promote. SHIP is the data
 layer; the stage skills are the domain layer over it.
 
