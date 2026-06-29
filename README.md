@@ -75,8 +75,8 @@ Grant infrastructure for the Say Why social impact initiative.
 - Fiscal Sponsorship strategy
 - Funder research templates
 
-### `apps/`
-Web-based tools.
+### Apps (external repos)
+Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
 
 - **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
 - **Royal Metrics**: ENIF business performance dashboard (private repo; the measurement framework it implements is in `methodology/`)
