@@ -2,8 +2,7 @@
 #
 # Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
 # (v2, 2026-04-27). This file is the structured extract for automation
-# (consumed by rubinstein-productions-coo for pricing discipline and by
-# proposal-scope-builder for scope shaping). When this file disagrees with
+# (consumed by rubinstein-productions-coo for pricing discipline and scope shaping). When this file disagrees with
 # the canonical vault doc, the canonical doc wins.
 
 services:
