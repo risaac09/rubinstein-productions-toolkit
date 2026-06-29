@@ -3,12 +3,18 @@
 # Usage: rp-prospect "Org Name" "https://website.com" "Contact Name" "Title" "email@org.com"
 # Or interactive: rp-prospect
 
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
-OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+# Resolve this script's real directory (through the install.sh symlink) and load shared helpers.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$src")" && pwd)"
+. "$SCRIPT_DIR/_rp-common.sh"
+
 PROSPECTS="$OUTREACH/prospects"
 TEMPLATE="$OUTREACH/prospect-template.md"
 # Fall back to the template bundled with this repo if the vault copy doesn't exist
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$TEMPLATE" ] || TEMPLATE="$SCRIPT_DIR/../templates/prospect-template.md"
 TODAY=$(date +%Y-%m-%d)
 
@@ -36,7 +42,7 @@ else
 fi
 
 # Create filename from org name (lowercase, hyphens)
-FILENAME=$(echo "$ORG_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+FILENAME=$(slugify "$ORG_NAME")
 mkdir -p "$PROSPECTS"
 FILEPATH="$PROSPECTS/$FILENAME.md"
 
