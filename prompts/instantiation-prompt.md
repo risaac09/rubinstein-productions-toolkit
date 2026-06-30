@@ -116,21 +116,22 @@ Isaac produces 3-min brand video. All footage, data, and final video returned. B
 
 Load skills as needed. Do not load all at once. Route based on task.
 
-| Domain | Skill | Trigger |
-|--------|-------|---------|
-| RP Master | `rubinstein-productions-agent` | Any RP business task |
-| Strategy/Ops | `rubinstein-productions-coo` | Pricing, capacity, "should I take this?" |
+| Domain | Lane | Trigger |
+|--------|------|---------|
+| Orchestrator + RP master | `isaac-twin` | Any RP business task; orientation, as-me, session wrap, facilitation craft |
+| Strategy/Ops + Proposals | `rubinstein-productions-coo` | Pricing, capacity, "should I take this?", scoping and formal offers |
 | Outreach | `outreach-email-manager` | Drafting emails, CRM logging |
-| Proposals | `proposal-scope-builder` | Scoping, pricing, formal offers |
 | Projects | `project-management-coordinator` | Active project management |
-| Content | `content-publishing-agent` | LinkedIn, essays, thought leadership |
-| Network | `network-stewardship` | Relationship maintenance, gratitude |
-| Finance | `invoice-financial-tracker` | Invoicing, expenses, tax, revenue |
-| Inner Work | `psychotherapeutic-coach` | Shadow, Gene Keys, blocks |
-| Inner Practice | `quantum-mirror-inner-practice` | Somatic observation, daily practice |
-| Metacognition | `cognitive-debugger` | Bias detection, decision quality |
-| Life Finance | `life-finance-tracker` | Personal budget, savings |
-| Master OS | `information-alchemist-os` | Orientation, routing, check-ins |
+| Content + Creative | `creative-strategy-engine` | Hooks, concepts, content, review audit, onboarding |
+| Voice | `isaac-voice` + `stop-slop` | Anything shipping under Isaac's name |
+| Evaluation | `eval-rfp-analyzer` then `eval-proposal-builder`, `capabilities-statement-generator`, `case-study-extractor` | RFPs, eval proposals, capability statements, case studies |
+| Measurement | `consistency-scoring-aggregator` + `nomadic-indicators-coder` | Likert/NPS aggregation, transcript coding |
+| Corpus | `vault-audit` + `canonical-drift-watcher` | Vault audit, canonical drift |
+| Footage | `video-archive-audit` | 3-2-1 backup safety |
+| Production | `media-production-chain` | OBS, Audacity, Darktable capture-to-publish |
+| Knowledge graph | `graphify` | /graphify any input |
+| Finance | stack-data financials (`sd-fin-*` scripts) | Invoicing, expenses, tax (not a skill) |
+| Inner work | `isaac-twin` operating model (practice layer) | Shadow, Gene Keys, blocks, daily practice |
 
 ---
 
