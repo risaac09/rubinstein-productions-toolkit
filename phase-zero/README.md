@@ -26,7 +26,7 @@ private and never feeds phase zero back.
 ## Files
 
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
-  Meaning research institute, the Third Third Information Lab), the directions,
+  Meaning research institute, the Third Information Lab), the directions,
   the voice rules, the delegation protocol. Present in every repo.
 - `retrospective.md` — the portable retrospective prompt loaded by the retro
   triggers. Present in every repo.

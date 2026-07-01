@@ -18,7 +18,7 @@ every clone, with or without stack-data alongside.
 - Operator: Isaac Rubinstein.
 - Rubinstein Productions (RP): the production shop. Client work, content.
 - **Material and Meaning**: the public health research institute. The research layer.
-- **Third Third Information Lab**: the AI lab. Tools, agents, infrastructure.
+- **Third Information Lab**: the institute's AI lab. Evaluation-first: audits, rubrics, and papers on the datafication of care.
 - Four directions: North = work, East = innocence, South = transition,
   West = clarity. Name the one the task faces before acting.
 - Voice rules: no em-dashes, no rule-of-three, no promotional verbs, active
