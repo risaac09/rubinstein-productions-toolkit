@@ -3,7 +3,6 @@ name: Deploy architecture to Pages
 on:
   push:
     branches:
-      - claude/agentic-orchestrator-digital-twin-5xot4c
       - main
     paths:
       - architecture/**

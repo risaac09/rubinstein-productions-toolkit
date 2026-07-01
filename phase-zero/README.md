@@ -10,7 +10,13 @@ loads the phase-zero hierarchy into the model's context before the turn runs:
 
 - "activate all agents"
 - "engage global awareness"
+- "refresh global awareness"
 - "delegate to your orchestrator"
+- "engage the orchestrator"
+- "engage your orchestrator"
+
+The hook's case pattern is the canonical set; when a doc and the hook disagree,
+the hook wins and the doc gets fixed.
 
 The orchestrator reads the map (identity, the four directions, the source of
 truth, the delegation protocol), names the direction the task faces, then
@@ -26,7 +32,7 @@ private and never feeds phase zero back.
 ## Files
 
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
-  Meaning research institute, the Third Third Information Lab), the directions,
+  Meaning research institute, the Third Information Lab), the directions,
   the voice rules, the delegation protocol. Present in every repo.
 - `retrospective.md` — the portable retrospective prompt loaded by the retro
   triggers. Present in every repo.

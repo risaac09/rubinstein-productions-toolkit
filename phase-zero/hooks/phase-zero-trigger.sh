@@ -6,9 +6,10 @@
 # harness adds to the model's context before the turn runs. Any other prompt
 # passes through untouched (no output, exit 0).
 #
-# Triggers (case-insensitive):
+# Triggers (case-insensitive; this case pattern is the canonical set):
 #   "activate all agents" | "engage global awareness" | "refresh global awareness"
 #   | "delegate to your orchestrator" | "engage the orchestrator" | "engage your orchestrator"
+# Retro triggers (the bookend): "log learnings" | "retro this chat" | "session retrospective"
 #
 # Source of truth: stack-data/PHASE-ZERO.md. This kit is versioned in
 # rubinstein-productions-toolkit/phase-zero/ and installed into each repo's
@@ -30,7 +31,10 @@ get_prompt() {
 try: print(json.load(sys.stdin).get("prompt",""))
 except Exception: print("")' 2>/dev/null
   else
-    printf '%s' "$1"
+    # No JSON parser available: fail closed. Matching phrases against the raw
+    # event JSON can false-positive on non-prompt fields, so print nothing and
+    # let the operator retype the phrase on a machine with jq or python3.
+    printf ''
   fi
 }
 
@@ -50,6 +54,7 @@ case "$prompt" in
     if [ -f "$root/.claude/phase-zero.md" ]; then
       cat "$root/.claude/phase-zero.md" && exit 0
     fi
+    echo "(portable core missing in this repo; run the kit installer: rubinstein-productions-toolkit/phase-zero/install.sh)"
     ;;
 esac
 
