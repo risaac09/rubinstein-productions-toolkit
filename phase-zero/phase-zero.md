@@ -7,6 +7,10 @@ The shared baseline that travels into every repo. Any of these phrases loads it:
 - "refresh global awareness"
 - "delegate to your orchestrator"
 - "engage the orchestrator"
+- "engage your orchestrator"
+
+The hook's case pattern is the canonical set; when a doc and the hook disagree,
+the hook wins and the doc gets fixed.
 
 When one fires, read this index, name the direction the task faces, then
 delegate down to the branch the task needs. The canonical, live hierarchy lives
@@ -18,7 +22,8 @@ every clone, with or without stack-data alongside.
 - Operator: Isaac Rubinstein.
 - Rubinstein Productions (RP): the production shop. Client work, content.
 - **Material and Meaning**: the public health research institute. The research layer.
-- **Third Third Information Lab**: the AI lab. Tools, agents, infrastructure.
+- **Third Information Lab**: the lab under Material and Meaning. Evaluation
+  first: it carries the three-type evaluation into datafied care.
 - Four directions: North = work, East = innocence, South = transition,
   West = clarity. Name the one the task faces before acting.
 - Voice rules: no em-dashes, no rule-of-three, no promotional verbs, active

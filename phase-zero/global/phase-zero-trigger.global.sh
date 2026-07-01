@@ -33,7 +33,10 @@ get_prompt() {
 try: print(json.load(sys.stdin).get("prompt",""))
 except Exception: print("")' 2>/dev/null
   else
-    printf '%s' "$1"
+    # No JSON parser available: fail closed. Matching phrases against the raw
+    # event JSON can false-positive on non-prompt fields, so print nothing and
+    # let the operator retype the phrase on a machine with jq or python3.
+    printf ''
   fi
 }
 

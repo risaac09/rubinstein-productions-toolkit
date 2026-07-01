@@ -37,6 +37,12 @@ install_one() {
       if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
       then . else .hooks.UserPromptSubmit += [$entry] end
     ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
+  elif [ -f "$settings" ]; then
+    # jq is missing and a settings.json exists: never clobber it. Fail loudly.
+    echo "ERROR: $settings exists but jq is not installed; cannot merge." >&2
+    echo "Install jq, or add the UserPromptSubmit hook to it by hand:" >&2
+    echo "  $hook_cmd" >&2
+    return 1
   else
     cp "$SRC/settings.json" "$settings"
   fi
