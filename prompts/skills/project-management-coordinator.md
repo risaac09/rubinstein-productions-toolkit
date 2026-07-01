@@ -9,6 +9,15 @@ description: Coordinate active projects from booking through delivery for Rubins
 
 **Booked → Pre-Production → Production → Post-Production → Revisions → Delivered → Complete**
 
+## Methodological Spine
+
+Every engagement moves through four methodological moves. Map the operational phases above onto this spine:
+
+1. **Container.** Establish the held space and the conditions of safety before anything is asked of the participant. Booking and kickoff set this.
+2. **Excavation.** Surface the inside version of the truth through facilitated conversation. This is the production work.
+3. **Performance.** Bring the surfaced truth into expressed form, the filmed or facilitated moment where it is said and witnessed.
+4. **Translation.** Render the performance into an artifact and a synthesis the participant and their organization can carry forward. Post-production and delivery close this.
+
 ## 1. New Project Setup
 
 1. **Create project file** using ID format: RP-YYYY-###
@@ -49,21 +58,21 @@ description: Coordinate active projects from booking through delivery for Rubins
 
 **After milestones:** Shoot complete → update status. First cut sent → log date. Revisions done → mark ready. Final delivery → move to wrap-up.
 
-**For post-production/editing:** Load `davinci-resolve` skill for Resolve-specific guidance (project setup, color pipeline, audio, export).
-
 ## 5. Capacity Management
 
-**Limits:**
-- At 9-5 job: Max 2 active projects
-- Full-time RP: Max 4 active projects
-- Buffer: 1 week between projects
+**The capacity law (from the operating model, tier-based):**
+- Maximum 1 active Organizational Embedding partnership.
+- Maximum 2 Program Engagements per quarter.
+- Founder Story sessions 3-4 per month, never displacing deep work blocks.
+- Minimum 3 mornings per week protected for deep work, no calls before noon.
+- Filming requires 24-hour prep plus 5-day post-latency, blocked in advance.
 
 **Before taking any new project:**
 
-1. Count active projects (Pre-production, Production, or Post-production phase)
-2. Check timeline — is there 1+ week buffer between projects?
-3. Check energy — last 2 weeks averaging 7+? If below 6, need rest
-4. Sacral check — immediate "hell yes" or mental "should"?
+1. Count active engagements by tier (Organizational Embedding, Program Engagement, Founder Story)
+2. Check timeline against the protected deep-work mornings and any filming prep/post-latency windows
+3. Check energy, last 2 weeks averaging 7+? If below 6, need rest
+4. Sacral check, immediate "hell yes" or mental "should"?
 
 **Decision:** Under capacity + good timing + high energy + sacral yes → take it. At capacity or tight timing → offer later date. Over capacity → decline immediately. Under capacity but low energy → decline to protect regeneration.
 
@@ -98,9 +107,11 @@ RP-YYYY-###-ClientName-ProjectType/
 
 | Item | Standard |
 |------|----------|
-| Capacity (9-5) | Max 2 active |
-| Capacity (full-time) | Max 4 active |
-| Buffer between projects | 1 week minimum |
+| Organizational Embedding | Max 1 active |
+| Program Engagement | Max 2 per quarter |
+| Founder Story | 3-4 per month |
+| Protected deep-work mornings | Min 3 per week |
+| Filming | 24-hr prep + 5-day post-latency |
 | Urgent response | Same day |
 | Question response | 24 hours |
 | Pre-shoot confirmation | 48 hours before |
