@@ -60,6 +60,8 @@ Shell scripts for outreach and grant pipeline management. Obsidian-native (markd
 - `install.sh`: Add to PATH in one step
 
 By default the tools file everything under an Obsidian vault path. Set `RP_OUTREACH_DIR` to point the whole pipeline anywhere else; directories are created on first use and the bundled `templates/` are used when no vault templates exist.
+
+The tools run on macOS and Linux, every command answers `--help`, and `scripts/cli-smoke-test.sh` exercises the full prospect and grant lifecycle against a throwaway directory (CI runs it on every pull request).
 ### `templates/`
 Reusable templates for the full client and grant lifecycle.
 
@@ -111,6 +113,8 @@ There's no product here. No platform, no SaaS, no waitlist. Just how I actually 
 
 ## Quick Start
 
+New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, producers, and evaluators to a reading order and a first working session.
+
 ### Outreach + Grant CLI
 ```bash
 # Clone the repo
@@ -141,6 +145,14 @@ Start with `methodology/facilitation-protocol.md` for the session-level practice
 ---
 
 ## Who This Is For
+
+The **[Field Guide](docs/field-guide/index.md)** gives each audience a reading order and a first working session:
+
+- **[Writers](docs/field-guide/writers.md)**: the voice system, the question bank that generates client language, the editorial disciplines
+- **[Producers](docs/field-guide/producers.md)**: the session methodology, the client lifecycle from prospect to case study, shoot and post workflow
+- **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, the grant pipeline
+
+If none of those labels fit, you may still be at home here:
 
 - Solo consultants and facilitators who want to see how someone else built their practice infrastructure
 - Nonprofit professionals looking for evaluation frameworks that measure relational quality alongside deliverables
