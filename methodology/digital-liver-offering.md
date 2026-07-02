@@ -179,12 +179,12 @@ There are four credible paths. They're not mutually exclusive, but they require 
 |---|---|---|
 | **What it fixes** | Expression — what goes out alive | Information — what comes in alive |
 | **Client question** | "How do I say what's true?" | "How do I know what matters?" |
-| **Entry tier** | The Mirror ($500-1,500) | Workshop ($150-300/person) |
-| **Core tier** | The Map ($5K-12K) | Organizational assessment ($5K-15K) |
-| **Deep tier** | The Territory ($4K-8K/month) | Information architecture consulting ($project-based) |
+| **Entry tier** | Founder Story ($1,500-2,500) | Workshop ($150-300/person) |
+| **Core tier** | Program Engagement ($3K-8K) | Organizational assessment ($5K-15K) |
+| **Deep tier** | Organizational Embedding ($4K-8K/month) | Information architecture consulting ($project-based) |
 | **Scalable product** | The 3-min video (artifact) | The app (tool) — Year 3+ |
 | **Intellectual authority** | Case studies, client testimonials | Academic papers, Substack, speaking |
-| **Pipeline** | LinkedIn → Mirror → Map → Territory | Publishing → Speaking → Workshop → Consulting |
+| **Pipeline** | LinkedIn → Founder Story → Program Engagement → Organizational Embedding | Publishing → Speaking → Workshop → Consulting |
 | **Isaac's role** | Facilitator, filmmaker, witness | Researcher, teacher, practitioner |
 
 ---
