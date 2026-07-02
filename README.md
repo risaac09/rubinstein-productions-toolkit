@@ -35,7 +35,7 @@ A third tier for sustained organizational embedding exists and opens by conversa
 The intellectual core: how the practice works, why it works, and how to measure what it does.
 
 - **Facilitation Protocol**: Nervous-system aware, co-regulatory interview methodology
-- **Emergent Narrative Impact Framework (ENIF)**: What I call the "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence)
+- **Measurement Framework**: The "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence). Formerly ENIF; consolidated April 2026.
 - **Nomadic Indicators Codebook**: Qualitative coding guide for tracking transformation
 - **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
@@ -140,7 +140,7 @@ rp-grant help
 The `prompts/skills/` directory contains `.skill` and `.md` files designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
 
 ### Methodology
-Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/enif.md` for the measurement system.
+Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.
 
 ---
 
