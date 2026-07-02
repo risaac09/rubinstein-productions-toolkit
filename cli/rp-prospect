@@ -12,6 +12,16 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$src")" && pwd)"
 . "$SCRIPT_DIR/_rp-common.sh"
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "rp-prospect — Create a new prospect file in the RP outreach pipeline"
+  echo ""
+  echo "Usage: rp-prospect                                     (interactive)"
+  echo "       rp-prospect \"Org\" [website] [contact] [title] [email]"
+  echo ""
+  echo "Files land in \$RP_OUTREACH_DIR/prospects (see cli/README or repo README)."
+  exit 0
+fi
+
 PROSPECTS="$OUTREACH/prospects"
 TEMPLATE="$OUTREACH/prospect-template.md"
 # Fall back to the template bundled with this repo if the vault copy doesn't exist
@@ -63,10 +73,10 @@ sed \
   "$TEMPLATE" > "$FILEPATH"
 # Add source and sacral check if provided
 if [ -n "$SOURCE" ]; then
-  sed -i '' "s|source: \"\"|source: \"$SOURCE\"|" "$FILEPATH"
+  sedi "s|source: \"\"|source: \"$SOURCE\"|" "$FILEPATH"
 fi
 if [ -n "$SACRAL" ]; then
-  sed -i '' "s|sacral_check: \"\"|sacral_check: \"$SACRAL\"|" "$FILEPATH"
+  sedi "s|sacral_check: \"\"|sacral_check: \"$SACRAL\"|" "$FILEPATH"
 fi
 
 echo "✓ Prospect created: $FILENAME.md"
