@@ -16,3 +16,5 @@ jobs:
         run: scripts/cli-smoke-test.sh
       - name: Vault-mirror drift check
         run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
+      - name: Markdown link check
+        run: scripts/check-doc-links.sh
