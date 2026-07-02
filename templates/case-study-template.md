@@ -1,4 +1,4 @@
-> **Note:** This template uses [[wiki links]] for Obsidian internal navigation. Replace with standard links if using outside Obsidian.
+> **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
 
 # Case Study Template
 ## Documenting Client Transformations for Portfolio & Learning
@@ -19,7 +19,7 @@ This case study is the researcher register of the foundational unit (`stack-data
 |-------|-------|
 | **Client/Organization:** | |
 | **Industry/Sector:** | |
-| **Engagement Type:** | Gateway / Mid-Tier / High-Tier / Retainer |
+| **Engagement Type:** | Founder Story / Program Engagement / Organizational Embedding |
 | **Duration:** | |
 | **Dates:** | Start: _____ End: _____ |
 | **Deliverables Created:** | |
@@ -64,7 +64,7 @@ This case study is the researcher register of the foundational unit (`stack-data
 
 ### Initial Assessment Scores
 
-*From [[Client Onboarding Template]]*
+*From the [Client Onboarding template](client-onboarding.md)*
 
 | Dimension | Score (1-5) |
 |-----------|-------------|
@@ -288,10 +288,10 @@ Week 3: [Activity]
 
 ### Contribution to Framework Development
 
-**Insights for [[Emergent Narrative Impact Framework]]:**
+**Insights for the [Measurement Framework](../methodology/measurement-framework.md):**
 
 
-**Insights for [[Session Facilitation Guide]]:**
+**Insights for the [Session Facilitation Guide](../methodology/session-facilitation-guide.md):**
 
 
 **New questions raised:**
@@ -383,6 +383,6 @@ Week 3: [Activity]
 ---
 
 *Template Version: 1.0*
-*Related: [[Client Onboarding Template]], [[Session Facilitation Guide]], [[Emergent Narrative Impact Framework]]*
+*Related: [Client Onboarding template](client-onboarding.md), [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Measurement Framework](../methodology/measurement-framework.md)*
 
 **Tags:** #template #case-study #portfolio #client-work

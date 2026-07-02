@@ -8,16 +8,16 @@ Four documents share the same core idea and serve different jobs. The core idea 
 
 | Document | Job | Use it when |
 |---|---|---|
-| [RP Measurement Framework](../../methodology/enif.md) | The operational framework for a running practice: both registers, coding guide, reporting cadence, data safeguards | You are measuring ongoing client work |
+| [RP Measurement Framework](../../methodology/measurement-framework.md) | The operational framework for a running practice: both registers, reporting cadence, data safeguards | You are measuring ongoing client work |
 | [Evaluation Framework](../../methodology/evaluation-framework.md) | Assessment design for grant-funded cohorts, written to be funder-legible | You are designing evaluation for a funded program |
 | [Nomadic Indicators Codebook](../../methodology/nomadic-indicators-codebook.md) | The coding manual: per-code definitions, examples, and markers across six domains | You are coding transcripts, recordings, or field notes |
 | [Theory of Change](../../methodology/theory-of-change.md) | The logic model connecting the methodology to public-health outcomes | You are writing the grant narrative |
 
-Two notes on provenance. The file `enif.md` carries the name of a superseded framework; the document inside is the current consolidated one. And the copies of the theory of change and evaluation framework under `grants/` are older snapshots of the `methodology/` files; read the `methodology/` versions.
+One note on provenance: the codebook is the canonical coding reference. The framework document points to it rather than carrying its own copy of the codes, and the `grants/` directory holds pointer stubs to the `methodology/` versions of the theory of change and evaluation framework.
 
 ## First hour
 
-Read the [RP Measurement Framework](../../methodology/enif.md) end to end. It is the consolidation point: the institutional register, the relational register, the coding domains, the monthly synthesis ritual, and the consent tiers that govern what data can be collected and published. Then open the [Codebook](../../methodology/nomadic-indicators-codebook.md) beside a real transcript and try coding one page. The codes are learnable in a sitting; reliability comes with practice.
+Read the [RP Measurement Framework](../../methodology/measurement-framework.md) end to end. It is the consolidation point: the institutional register, the relational register, the monthly synthesis ritual, and the consent tiers that govern what data can be collected and published. Then open the [Codebook](../../methodology/nomadic-indicators-codebook.md) beside a real transcript and try coding one page. The codes are learnable in a sitting; reliability comes with practice.
 
 ## Working with the data
 
