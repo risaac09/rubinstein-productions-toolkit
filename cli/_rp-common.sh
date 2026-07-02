@@ -27,3 +27,25 @@ fm() {
 slugify() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-'
 }
+
+# sedi EXPR FILE — in-place sed. GNU sed takes -i with no argument; BSD/macOS
+# sed requires -i '' (a separate empty backup-suffix argument).
+if sed --version >/dev/null 2>&1; then
+  sedi() { sed -i "$1" "$2"; }
+else
+  sedi() { sed -i '' "$1" "$2"; }
+fi
+
+# date_add_days N — print today+N days as YYYY-MM-DD. BSD date uses -v, GNU uses -d.
+date_add_days() {
+  date -v+"$1"d +%Y-%m-%d 2>/dev/null || date -d "+$1 days" +%Y-%m-%d
+}
+
+# open_url URL — open in the default browser: macOS open, then xdg-open,
+# else print the URL for manual copy.
+open_url() {
+  if command -v open >/dev/null 2>&1; then open "$1"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$1"
+  else echo "  Open this URL manually:"; echo "  $1"
+  fi
+}
