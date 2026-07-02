@@ -22,7 +22,7 @@ Two documents underlie every path. Read them before or alongside your first sess
 A few things to know before you open the source documents.
 
 - **Canonical tier names.** The current service tiers are Founder Story, Program Engagement, and Organizational Embedding. Some older files still say Mirror, Map, and Territory, or Gateway and Mid-Tier. Those names are legacy. Where a document contradicts the [Methodology Blueprint](../../methodology/methodology-blueprint.md) on naming or pricing, the blueprint wins.
-- **Wiki links.** Links written as `[[Double Brackets]]` resolve inside the author's Obsidian vault, not in this repository. Treat them as titles to search for, not links to click.
+- **Vault notes.** Cross-references in this repository are standard relative links, checked in CI. A few sources live only in the author's Obsidian vault or home directory; those are marked in place as vault notes or home-dir artifacts, and they read as titles rather than links.
 - **Sibling repos.** A few documents cite `stack-data` paths. That repo is the author's operational source of truth and is cloned as a sibling directory in his setup. If you don't have it, the citation still tells you what the claim rests on.
 - **Aspirational content.** Revenue projections and expansion plans in some documents are marked speculative. Adopt the methods and skip the forecasts.
 
