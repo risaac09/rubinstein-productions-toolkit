@@ -6,7 +6,7 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 
 | Path | What lives here |
 |---|---|
-| `research/` | Research artifacts (including `research/arena/`) |
+| `research/` | Research artifacts. Note: `research/arena/` was consolidated into the vault on 2026-06-11 (commit 5ca1834) and must not be recreated here; the canonical Arena copies live in the vault at `02 Research/15 Synthesis/07 Arena`, and the Canonical Paths registry lists `research/arena` as a deprecated path. |
 | `cli/` | CLI tools |
 | `Rubinstein Productions/` | Toolkit-side RP material |
 | `scripts/` | Bash automation and hook sources |
