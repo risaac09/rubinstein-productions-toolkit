@@ -8,10 +8,10 @@
   ],
   "evals": [
     {"id": 1, "name": "rp-strategy-map", "type": "rp_strategy",
-      "prompt": "Build the creative strategy matrix for Rubinstein Productions, targeting executive directors of small nonprofits who are considering Mirror-tier engagements ($900-1800 single-session). Map pains, personas, angles, awareness stages.",
+      "prompt": "Build the creative strategy matrix for Rubinstein Productions, targeting executive directors of small nonprofits who are considering a single-session Founder Story tier engagement. Map pains, personas, angles, awareness stages.",
       "fixture_assertions": [
-        {"id": "uses_canonical_rp_personas", "text": "Uses canonical RP personas (ED / Founder / Org-in-transition) rather than inventing new ones", "check": "qualitative"},
-        {"id": "names_mirror_tier", "text": "Names Mirror tier explicitly and maps angles to it", "check": "qualitative"},
+        {"id": "uses_canonical_rp_personas", "text": "Uses canonical RP personas (The Rebuilder / The Container Builder / The Emergent Practitioner) rather than inventing new ones", "check": "qualitative"},
+        {"id": "names_founder_story_tier", "text": "Names Founder Story tier explicitly and maps angles to it", "check": "qualitative"},
         {"id": "ed_specific_pains", "text": "Names specific ED-level pains (not generic 'needs better marketing')", "check": "qualitative"}
       ]
     },
