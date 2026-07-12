@@ -29,6 +29,26 @@ the session and logs the one learning worth keeping with `scripts/sd-retro` in
 stack-data. Phase zero opens a session, the retrospective closes it. The log is
 private and never feeds phase zero back.
 
+## The session brief (v2)
+
+A second hook, `SessionStart`, fires when a session starts, resumes, or
+clears, and injects the standing context every session should carry: the
+model routing check (`model-routing.md`), a pointer to the operating brief
+for the standing model (`opus-4-8-brief.md`), and pointers to the decisions
+of record and the failure catalog in stack-data when a clone is reachable.
+The routing check used to live as hand-copied CLAUDE.md blocks; three copies
+had drifted apart by 2026-07-12, so the kit now carries the canonical text
+and the hook injects it everywhere, including repos with no CLAUDE.md at
+all.
+
+One-time migration after the first v2 deploy: delete the hand-copied "Model
+routing check" sections from stack-data/CLAUDE.md,
+second-brain-mirror/CLAUDE.md, and rubinsteinproductions/CLAUDE.md. The hook
+now injects the canonical copy, so a surviving block would only drift again.
+
+The global (per machine) install stays trigger-only this round. The session
+brief deploys per repo, so the user-level install cannot double-print it.
+
 ## Files
 
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
@@ -38,8 +58,14 @@ private and never feeds phase zero back.
   triggers. Present in every repo.
 - `hooks/phase-zero-trigger.sh` — the UserPromptSubmit hook (phase-zero and
   retrospective triggers both).
-- `settings.json` — the hook registration, copied to a repo with no existing
-  settings; merged in (jq) when one exists.
+- `model-routing.md`: the canonical model routing check, injected at session
+  start. Replaces the hand-copied CLAUDE.md blocks.
+- `opus-4-8-brief.md`: the operating brief for the standing model. Seven
+  slips, each with a rule and a tripwire, written at the Fable 5 handoff.
+- `hooks/session-brief.sh`: the SessionStart hook that injects the routing
+  check and the standing pointers.
+- `settings.json` — the hook registrations (both hooks), copied to a repo
+  with no existing settings; merged in (jq) when one exists.
 - `install.sh` — the distribution path.
 
 ## Source of truth
