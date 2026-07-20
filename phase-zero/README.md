@@ -78,7 +78,7 @@ renderer; in every other repo it falls back to the portable core here.
 ## Install (per repo)
 
     # one repo
-    ./install.sh ../saywhy-app
+    ./install.sh ../rp-shared
 
     # every git repo one level down
     ./install.sh --all ..

@@ -80,7 +80,7 @@ Web-based tools, each developed in its own repository. There is no `apps/` direc
 
 - **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
 - **Royal Metrics**: ENIF business performance dashboard (private repo; the measurement framework it implements is in `methodology/`)
-- **RP Lifecycle**: Videography project lifecycle manager (private repo; the 10-phase template it encodes is part of the practice)
+- **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
 
 ### `production/`
 Film and video production tools.
@@ -91,9 +91,11 @@ Film and video production tools.
 ### `research/`
 Frameworks and position papers.
 
-- Digital Liver framework
-- Fractal Enclosure framework
-- Say Why grant concept
+- Dual-architecture and frontier-lab-blueprint position papers
+- Say Why grant concept and the 64-registers thesis
+- rp-shared foundation spec, profile consolidation analysis, evaluation-forward hub framing
+
+(The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
 
 ---
 
