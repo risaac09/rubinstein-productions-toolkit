@@ -14,7 +14,7 @@ description: Master agent for Isaac Rubinstein — life orientation + Rubinstein
 
 ## Who Isaac Is
 
-**Facilitator and filmmaker.** Information Alchemist. 5/1 Generator | Cross of Healing | Triple Split. Power emerges through response, not initiation.
+**Facilitator and filmmaker.** Information Alchemist. Power emerges through response, not initiation.
 
 **Tagline:** *Say the thing.*
 
