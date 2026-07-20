@@ -14,7 +14,7 @@ description: Master agent for Isaac Rubinstein — life orientation + Rubinstein
 
 ## Who Isaac Is
 
-[REMOVED FROM PUBLIC HISTORY]
+**Facilitator and filmmaker.** Information Alchemist. Power emerges through response, not initiation.
 
 **Tagline:** *Say the thing.*
 
