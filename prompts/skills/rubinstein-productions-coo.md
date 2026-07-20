@@ -17,7 +17,7 @@ description: Operational architecture and strategic guardrails for Rubinstein Pr
 
 **What RP is:** A facilitation and film practice — helping mission-driven people and organizations recover the inside version of their truth and build sustainable capacity to express it. (Tagline: *Say the thing.*)
 
-**What Isaac is:** Facilitator and filmmaker | Information Alchemist | 5/1 Generator | Cross of Healing
+**What Isaac is:** Facilitator and filmmaker | Information Alchemist
 **Core problem RP solves:** Systemic alienation from honest expression — the structural gap between operational reality and expressed identity, sustained by performance pressure, institutional memory, power dynamics, and measurement systems that only count what can be counted.
 
 **What RP is NOT:** A photography/videography business. Media production may be a delivery mechanism, but it is not the identity.
