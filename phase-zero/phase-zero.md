@@ -23,7 +23,7 @@ every clone, with or without stack-data alongside.
 - Rubinstein Productions (RP): the production shop. Client work, content.
 - **Material and Meaning**: the public health research institute. The research layer.
 - **Third Information Lab**: the lab under Material and Meaning. Evaluation
-  first: it carries the three-type evaluation into datafied care.
+  first: it carries the Three-Record Evaluation into datafied care.
 - Four directions: North = work, East = innocence, South = transition,
   West = clarity. Name the one the task faces before acting.
 - Voice rules: no em-dashes, no rule-of-three, no promotional verbs, active
