@@ -4,6 +4,8 @@
 
 Built by [Isaac Rubinstein](https://rubinsteinproductions.com) for use in an actual practice. Take what's useful.
 
+Forks welcome, pull requests unreviewed: this is a solo practice's toolkit, so fork it and make it yours rather than waiting on me.
+
 ---
 
 ## What This Is
