@@ -2,7 +2,7 @@
 # install.sh — install the phase-zero kit into a target repo's .claude/.
 #
 # Drops the portable phase-zero core, the model-routing check, the operating
-# brief for the standing model, both hooks (UserPromptSubmit trigger,
+# brief, both hooks (UserPromptSubmit trigger,
 # SessionStart brief), and the hook registrations into <target-repo>/.claude/.
 # If the target already has a settings.json, the hooks are merged in (jq)
 # rather than overwriting existing config. Idempotent: re-running refreshes
@@ -26,7 +26,31 @@
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
-KIT_FILES="phase-zero.md retrospective.md model-routing.md opus-4-8-brief.md hooks/phase-zero-trigger.sh hooks/session-brief.sh"
+KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-trigger.sh hooks/session-brief.sh"
+
+# Kit files that used to ship and no longer do. install_one removes them, since
+# it otherwise only copies and a renamed file would leave its predecessor behind
+# in every consuming repo. Add a line here whenever a kit file is renamed or
+# dropped; drop the line once every clone has run an install past the change.
+RETIRED_FILES="opus-4-8-brief.md"
+
+# Repos that deliberately do not consume the kit. --all skips them; a direct
+# install.sh <repo> still works, so this is a default, not a lock. Both opted
+# out for the same reason: the hooks would sit inert. claude-memory's live
+# folder is never opened as a project (dropped 2026-07-13); risaac09 is one
+# generated README with no session to brief. Before 2026-07-24 --all installed
+# into every git repo one level down, including these two.
+NON_CONSUMERS="claude-memory risaac09"
+
+# `case` rather than a loop with `&& return`: a failing test as the last command
+# of a loop body would abort under `set -e` if this were ever called outside a
+# conditional. This form returns cleanly from any context.
+is_non_consumer() {
+  case " $NON_CONSUMERS " in
+    *" $(basename "$1") "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 check_one() {
   local target="$1" drift=0
@@ -41,6 +65,12 @@ check_one() {
       drift=1
     elif ! cmp -s "$SRC/$f" "$target/.claude/$f"; then
       echo "DRIFT stale $f: $target"
+      drift=1
+    fi
+  done
+  for f in $RETIRED_FILES; do
+    if [ -f "$target/.claude/$f" ]; then
+      echo "DRIFT retired file still present ($f): $target"
       drift=1
     fi
   done
@@ -60,10 +90,15 @@ install_one() {
   local target="$1"
   [ -d "$target" ] || { echo "skip (not a dir): $target"; return 0; }
   mkdir -p "$target/.claude/hooks"
+  # Retired files go before the copies, not after, so a future retired name that
+  # collides with a current kit name cannot delete what was just installed.
+  for f in $RETIRED_FILES; do
+    rm -f "$target/.claude/$f"
+  done
   cp "$SRC/phase-zero.md" "$target/.claude/phase-zero.md"
   cp "$SRC/retrospective.md" "$target/.claude/retrospective.md"
   cp "$SRC/model-routing.md" "$target/.claude/model-routing.md"
-  cp "$SRC/opus-4-8-brief.md" "$target/.claude/opus-4-8-brief.md"
+  cp "$SRC/operating-brief.md" "$target/.claude/operating-brief.md"
   cp "$SRC/hooks/phase-zero-trigger.sh" "$target/.claude/hooks/phase-zero-trigger.sh"
   cp "$SRC/hooks/session-brief.sh" "$target/.claude/hooks/session-brief.sh"
   chmod +x "$target/.claude/hooks/phase-zero-trigger.sh" "$target/.claude/hooks/session-brief.sh"
@@ -101,7 +136,7 @@ if [ "${1:-}" = "--check" ]; then
   if [ "${1:-}" = "--all" ]; then
     parent="${2:?usage: install.sh --check --all <parent-dir>}"
     for d in "$parent"/*/; do
-      if [ -d "$d/.git" ]; then
+      if [ -d "$d/.git" ] && ! is_non_consumer "${d%/}"; then
         check_one "${d%/}" || RC=1
       fi
     done
@@ -112,7 +147,13 @@ if [ "${1:-}" = "--check" ]; then
 elif [ "${1:-}" = "--all" ]; then
   parent="${2:?usage: install.sh --all <parent-dir>}"
   for d in "$parent"/*/; do
-    [ -d "$d/.git" ] && install_one "${d%/}"
+    if [ -d "$d/.git" ]; then
+      if is_non_consumer "${d%/}"; then
+        echo "skip (opted out): ${d%/}"
+      else
+        install_one "${d%/}"
+      fi
+    fi
   done
 else
   install_one "${1:?usage: install.sh <target-repo-dir>   (or --all <parent-dir>)}"
