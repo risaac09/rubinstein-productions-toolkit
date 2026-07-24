@@ -7,8 +7,8 @@
 #
 #   1. The model routing check (.claude/model-routing.md), so routing stops
 #      living as hand-copied CLAUDE.md blocks that drift apart.
-#   2. A pointer to the operating brief for the standing model
-#      (.claude/opus-4-8-brief.md).
+#   2. A pointer to the operating brief (.claude/operating-brief.md), named
+#      without a model version so a handoff edits the file, not every repo.
 #   3. Pointers to the decisions of record and the failure catalog in
 #      stack-data, when a clone is reachable (this repo, or a sibling).
 #
@@ -34,9 +34,10 @@ echo
 cat "$routing"
 echo
 
-if [ -f "$root/.claude/opus-4-8-brief.md" ]; then
-  echo "Operating brief for the standing model: .claude/opus-4-8-brief.md."
-  echo "Read it before the first substantive task of this session."
+if [ -f "$root/.claude/operating-brief.md" ]; then
+  echo "Operating brief: .claude/operating-brief.md. Four slips the record"
+  echo "warrants, each with a tripwire. Read it before work that spans more"
+  echo "than one repo or more than one session; skip it for a single-file fix."
 fi
 
 # Standing records: local when this is stack-data, sibling clone otherwise.
