@@ -34,8 +34,8 @@ private and never feeds phase zero back.
 A second hook, `SessionStart`, fires when a session starts, resumes, or
 clears, and injects the standing context every session should carry: the
 model routing check (`model-routing.md`), a pointer to the operating brief
-for the standing model (`opus-4-8-brief.md`), and pointers to the decisions
-of record and the failure catalog in stack-data when a clone is reachable.
+(`operating-brief.md`), and pointers to the decisions of record and the
+failure catalog in stack-data when a clone is reachable.
 The routing check used to live as hand-copied CLAUDE.md blocks; three copies
 had drifted apart by 2026-07-12, so the kit now carries the canonical text
 and the hook injects it everywhere, including repos with no CLAUDE.md at
@@ -60,8 +60,13 @@ brief deploys per repo, so the user-level install cannot double-print it.
   retrospective triggers both).
 - `model-routing.md`: the canonical model routing check, injected at session
   start. Replaces the hand-copied CLAUDE.md blocks.
-- `opus-4-8-brief.md`: the operating brief for the standing model. Seven
-  slips, each with a rule and a tripwire, written at the Fable 5 handoff.
+- `operating-brief.md`: the operating brief. Four slips, each with a rule and
+  a tripwire. Written at the Fable 5 handoff as `opus-4-8-brief.md`; renamed
+  and cut to four on 2026-07-24, when the Claude 5 baseline absorbed three of
+  the original seven and Anthropic named over-constraint as the thing to fix.
+  The name carries no model version so the next handoff edits this file
+  instead of renaming a file in every consuming repo. `install.sh` removes the
+  old filename via `RETIRED_FILES`.
 - `hooks/session-brief.sh`: the SessionStart hook that injects the routing
   check and the standing pointers.
 - `settings.json` — the hook registrations (both hooks), copied to a repo
