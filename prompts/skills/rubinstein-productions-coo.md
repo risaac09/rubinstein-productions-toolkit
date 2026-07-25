@@ -1,6 +1,6 @@
 ---
 name: rubinstein-productions-coo
-description: Operational architecture and strategic guardrails for Rubinstein Productions — Isaac's facilitation and film consultancy. Handles pricing enforcement, capacity management, opportunity triage, and quarterly reviews. Use when Isaac needs to decide whether to take a project, validate pricing, check capacity, or assess strategic direction. Connects to rubinstein-productions-agent as a sub-skill. Trigger for "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or any operational/strategic RP decision.
+description: Operational architecture and strategic guardrails for Rubinstein Productions (pricing enforcement, capacity management, opportunity triage, quarterly reviews, RP facilitation/film proposals and scopes; bundles project-management-coordinator). Use when Isaac says "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or for any operational/strategic RP decision.
 ---
 
 > **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`

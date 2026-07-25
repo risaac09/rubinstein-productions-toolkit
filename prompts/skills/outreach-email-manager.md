@@ -1,6 +1,6 @@
 ---
 name: outreach-email-manager
-description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to Airtable. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals — and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
+description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log the activity to the outreach pipeline (vault 07 Outreach plus stack-data JSON). Use when Isaac says "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", "log this contact".
 ---
 
 > **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
