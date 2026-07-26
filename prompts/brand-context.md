@@ -155,7 +155,7 @@ The condition: **systems that optimize expression until the honest version is to
 
 - **This is Isaac's practice.** Personal, singular, relational. Not an agency. Not a team. All creative should feel human.
 
-- **The "Generator" operating model.** Isaac operates as a Generator (Human Design 5/1 profile) — works best responding to inbound energy, not initiating cold. The outreach system is designed to create pull through genuine engagement, not push through volume.
+- **The responsive operating model.** Isaac works best responding to inbound energy, not initiating cold. The outreach system is designed to create pull through genuine engagement, not push through volume.
 
 - **The philosophical foundation is the moat.** Relational ontology, the Fractal Enclosure, Digital Liver, Deleuzian Nomadic/Royal Science, Ubuntu — this is the deepest layer. It shows up in the design of the offering (anti-extractive), the tone of the copy (structural, not personal), and the way the process works (relational, not transactional).
 
