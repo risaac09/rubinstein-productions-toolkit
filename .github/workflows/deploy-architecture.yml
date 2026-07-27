@@ -1,4 +1,9 @@
-name: Deploy architecture to Pages
+name: Deploy site to Pages
+
+# Builds the toolkit site: the field guide as the front door, the agentic
+# system map at /map/. One-time setup: Pages must be enabled in the repo
+# settings (Settings -> Pages -> Source: GitHub Actions); the workflow token
+# cannot create the Pages site itself.
 
 on:
   push:
@@ -6,6 +11,8 @@ on:
       - main
     paths:
       - architecture/**
+      - docs/**
+      - scripts/build-site.py
       - .github/workflows/deploy-architecture.yml
   workflow_dispatch:
 
@@ -26,11 +33,15 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Build site
+        run: |
+          pip install markdown
+          python3 scripts/build-site.py
       - uses: actions/configure-pages@v5
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: architecture
+          path: _site
       - id: deploy
         uses: actions/deploy-pages@v4

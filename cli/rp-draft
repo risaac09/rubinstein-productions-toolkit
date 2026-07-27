@@ -14,11 +14,12 @@ done
 
 PROSPECTS="$OUTREACH/prospects"
 
-if [ $# -lt 1 ]; then
+if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo "Usage: rp-draft <org-slug>"
   echo ""
   echo "Available prospects:"
   ls "$PROSPECTS"/*.md 2>/dev/null | xargs -I{} basename {} .md | sed 's/^/  /'
+  case "${1:-}" in -h|--help) exit 0 ;; esac
   exit 1
 fi
 
@@ -78,7 +79,7 @@ ENCODED_SUBJECT=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SU
 
 # Open Gmail compose
 GMAIL_URL="https://mail.google.com/mail/?view=cm&to=${EMAIL}&su=${ENCODED_SUBJECT}&body=${BODY}"
-open "$GMAIL_URL"
+open_url "$GMAIL_URL"
 
 echo ""
 echo "✓ Gmail compose opened for $CONTACT at $ORG"
@@ -86,7 +87,7 @@ echo ""
 
 # Log the draft to the prospect file
 TODAY=$(date +%Y-%m-%d)
-sed -i '' "/## Draft History/a\\
+sedi "/## Draft History/a\\
 \\
 - **$TODAY** | Subject: $SUBJECT" "$FILEPATH"
 

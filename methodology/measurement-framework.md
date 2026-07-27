@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/RP Measurement Framework.md` in vault — last synced 2026-04-27. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot.
+> **Canonical source:** `00 Canonical/RP Measurement Framework.md` in vault — last synced 2026-04-27. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot. Renamed from `enif.md` in July 2026 to match the framework's current name. For qualitative coding, the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) is canonical; Section 3 here is an orientation, and the vault canonical should carry the same cut.
 
 # Rubinstein Productions — Measurement Framework
 *The Bilingual Dashboard: Tracking what counts and what emerges*
@@ -112,33 +112,9 @@ Observable body-based signals tracked during sessions:
 
 ## 3. Qualitative Coding Guide
 
-When reviewing session transcripts, code for the following domains. Over-code rather than under-code on first pass.
+The canonical coding reference is the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md): per-code definitions, application criteria, and worked examples across six domains (Consistency, Texture, Process, Fear, Somatic, Relational). Code from the codebook rather than from memory of this section. Earlier versions of this framework carried a condensed copy of the codebook, and the two drifted; the copy was cut in July 2026.
 
-### Coding Domains
-
-| Domain | Key Codes | What to Track |
-|---|---|---|
-| **Consistency** | HIGH / LOW / SHIFT | Both/and vs. either/or language; ability to hold paradox |
-| **Texture** | PAUSE-CONTEMPLATIVE / PAUSE-AVOIDANT / SELF-CORRECTION / METAPHOR-EMERGENCE / PRONOUN-SHIFT | How they speak, not just what they say |
-| **Process** | DETERRITORIALIZATION / RETERRITORIALIZATION-GENERATIVE / RETERRITORIALIZATION-RIGID / LINE-OF-FLIGHT | Where thinking breaks open and what forms afterward |
-| **Fear** | FEAR-SURFACE / FEAR-UNDERLYING / FEAR-ROOT / FEAR-TRANSFORMATION | The journey from presenting fear to transformed relationship with fear |
-| **Somatic** | SOMATIC-OPENING / SOMATIC-CLOSING / SOMATIC-BREAKTHROUGH | Body signals of safety, defense, and release |
-| **Relational** | RELATION-EXPANSION / RELATION-CONTRACTION / PROJECTION-IDENTIFIED | How the client's sense of audience and connection changes |
-
-### Coding Process
-1. **Initial read/listen:** Go through without coding. Note overall impression and energy arc.
-2. **First pass:** Apply codes from all domains. Be generous. Mark timestamps.
-3. **Pattern identification:** Look for clustering. Identify journey arcs (especially fear evolution).
-4. **Synthesis:** Write 1-2 paragraph narrative summary. Identify 2-3 key insights. Note questions for next session.
-5. **Integration:** Transfer findings to case study template and client record.
-
-### Sample Coded Passage
-
-> "I guess we're... [5 second pause]... you know, I've been saying we're a 'capacity building organization' but that feels so dead when I say it. [laughs] Like, nobody gets excited about capacity building. What we actually do is... we help communities remember what they already know. That sounds weird but it's true. But I can't say that to a funder, can I?"
-
-**Codes:** PAUSE-CONTEMPLATIVE, DETERRITORIALIZATION, METAPHOR-EMERGENCE, SOMATIC-OPENING (laughter of recognition), FEAR-SURFACE, LINE-OF-FLIGHT
-
-**Follow-up:** "What happens if you imagine saying exactly that to a funder?"
+The workflow in brief: read or listen once without coding, then make a generous first pass with timestamps, then look for clustering and journey arcs (fear evolution especially), then write a short synthesis narrative. Findings land in the case study template and the client record.
 
 ---
 
