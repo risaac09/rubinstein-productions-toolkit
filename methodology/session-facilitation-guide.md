@@ -64,12 +64,12 @@ These protocols come from the neuroscience foundation of the methodology. They a
 
 ## Session Types
 
-### Type 1: Facilitation Session (The Mirror — Gateway)
+### Type 1: Facilitation Session (Founder Story)
 **Duration:** 90 minutes
 **Purpose:** Uncover unconscious narrative, identify fears, create initial articulation
 **Deliverables:** Recording, written synthesis, "What you're actually trying to say" document
 
-### Type 2: Narrative Development Session (Mid-Tier)
+### Type 2: Narrative Development Session (Program Engagement)
 **Duration:** 60-90 minutes
 **Purpose:** Deepen and structure the narrative, develop messaging architecture
 **Deliverables:** Refined messaging, story bank, key phrases
@@ -80,7 +80,7 @@ These protocols come from the neuroscience foundation of the methodology. They a
 **Deliverables:** Footage for editing
 **Special protocol:** This is the Zero-Measurement Zone. No extractive data collection. Follow energy, not agenda.
 
-### Type 4: Integration Session (Retainer / Territory)
+### Type 4: Integration Session (Organizational Embedding)
 **Duration:** 60 minutes
 **Purpose:** Check-in, refinement, evolution tracking
 **Deliverables:** Updated messaging, new directions identified
@@ -286,7 +286,7 @@ Write it down verbatim. This is often the breakthrough.
 
 ### Next Steps
 
-**For Mirror (Gateway) clients:**
+**For Founder Story clients:**
 > "I'll send you a written synthesis within [X days]. From there, we can discuss whether it makes sense to develop this further."
 
 **For ongoing clients:**
@@ -319,7 +319,7 @@ Write it down verbatim. This is often the breakthrough.
 - [ ] Write synthesis document
 - [ ] Identify 3-5 key themes
 - [ ] Pull "golden quotes"
-- [ ] Draft "What you're actually trying to say" document (if Mirror session)
+- [ ] Draft "What you're actually trying to say" document (if Founder Story session)
 - [ ] Send follow-up email with summary and next steps
 
 ### Reflection Questions (For Your Practice)

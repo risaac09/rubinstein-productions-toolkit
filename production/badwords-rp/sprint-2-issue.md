@@ -39,7 +39,7 @@ A future session can install BadWords and load one of these YAML configs to get 
 
 ## References
 
-- Sprint 1 inventory: [production/badwords-rp/SPRINTS.md](../production/badwords-rp/SPRINTS.md)
+- Sprint 1 inventory: [production/badwords-rp/SPRINTS.md](SPRINTS.md)
 - BadWords upstream: https://github.com/veritus-git/BadWords
 - RP service architecture memory: [project_rp_service_architecture.md](https://github.com/risaac09/rubinstein-productions-toolkit) (April 2026: Mirror/Map/Territory → Founder Story / Program Engagement / Org Embedding)
 - Transcription rule precedent: `~/rp-shared/worker/index.js` "Keep ums, false starts, and self-corrections"

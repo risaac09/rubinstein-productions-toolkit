@@ -11,13 +11,13 @@ description: Comprehensive library of proven prompting patterns, frameworks, and
 
 ## Navigation
 
-**Full Documentation**: See [README.md](Second%20Brain/System%20-%20Dev/Mac%20Setup%20Template/README.md) for complete navigation, use case index, and version notes.
+**Full Documentation**: The full navigation README and the `references/` companion bundle live in the author's vault (`System - Dev/Mac Setup Template/`) and are not shipped in this repo. This file stands alone.
 
 **Quick access by need:**
-- **Learning prompting**: Start here, then read [Prompt Patterns](references/prompt-patterns.md)
-- **Debugging prompts**: Jump to [Failure Modes](references/failure-modes.md)
-- **Building agents**: See [Orchestration Patterns](references/orchestration-patterns.md)
-- **Model optimization**: Review [Model Quirks](references/model-quirks.md)
+- **Learning prompting**: Start here, then read `references/prompt-patterns.md` (vault bundle)
+- **Debugging prompts**: Jump to `references/failure-modes.md` (vault bundle)
+- **Building agents**: See `references/orchestration-patterns.md` (vault bundle)
+- **Model optimization**: Review `references/model-quirks.md` (vault bundle)
 
 ---
 

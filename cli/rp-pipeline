@@ -13,6 +13,14 @@ while [ -L "$src" ]; do
 done
 . "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "rp-pipeline — View the current RP outreach pipeline"
+  echo ""
+  echo "Usage: rp-pipeline [status]"
+  echo "Statuses: all (default) | research | ready | contacted | responded | followup"
+  exit 0
+fi
+
 PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 FILTER="${1:-all}"

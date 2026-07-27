@@ -10,6 +10,15 @@ while [ -L "$src" ]; do
 done
 . "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "rp-followup — Show contacts due for follow-up"
+  echo ""
+  echo "Usage: rp-followup"
+  echo "Lists prospects whose next_followup date has arrived, then contacted"
+  echo "prospects with no follow-up scheduled."
+  exit 0
+fi
+
 PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 

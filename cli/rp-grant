@@ -51,10 +51,10 @@ add)
     -e "s|{{WEBSITE}}|$WEBSITE|g" \
     "$TEMPLATE" > "$FILEPATH"
   
-  sed -i '' "s#type: \"foundation|government|corporate|individual\"#type: \"$TYPE\"#" "$FILEPATH"
-  sed -i '' "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
-  sed -i '' "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
-  sed -i '' "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
+  sedi "s#type: \"foundation|government|corporate|individual\"#type: \"$TYPE\"#" "$FILEPATH"
+  sedi "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
+  sedi "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
+  sedi "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
   
   echo "✓ Funder added: $SLUG.md"
   echo "  Open in Obsidian to complete fit assessment"
@@ -116,8 +116,8 @@ update)
     echo "✗ No funder found: $SLUG"
     exit 1
   fi
-  sed -i '' "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
-  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  sedi "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
+  sedi "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
   funder=$(fm "$FILEPATH" funder)
   echo "✓ $funder → $NEW_STATUS"
   ;;
@@ -130,15 +130,15 @@ log)
     echo "✗ No funder found: $SLUG"
     exit 1
   fi
-  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
-  sed -i '' "/## Action Log/a\\
+  sedi "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  sedi "/## Action Log/a\\
 \\
 - **$TODAY** | $NOTE" "$FILEPATH"
   funder=$(fm "$FILEPATH" funder)
   echo "✓ Logged action for $funder"
   ;;
 
-help|*)
+help|-h|--help|*)
   echo "rp-grant — Say Why Grant Pipeline Manager"
   echo ""
   echo "Commands:"
