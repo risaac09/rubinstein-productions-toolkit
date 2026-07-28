@@ -7,12 +7,18 @@
 #   rp-grant update <slug> <status> — Update funder status
 #   rp-grant log <slug> "note"      — Log an action
 
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
-OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+# Resolve this script's real directory (through any symlink) and load shared helpers.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$src")" && pwd)"
+. "$SCRIPT_DIR/_rp-common.sh"
+
 GRANTS="$OUTREACH/grants/funders"
 TEMPLATE="$OUTREACH/grants/funder-template.md"
 # Fall back to the template bundled with this repo if the vault copy doesn't exist
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$TEMPLATE" ] || TEMPLATE="$SCRIPT_DIR/../templates/funder-template.md"
 TODAY=$(date +%Y-%m-%d)
 
@@ -31,7 +37,7 @@ add)
   read -p "Next deadline (YYYY-MM-DD or unknown): " DEADLINE
   read -p "Angle (narrative-SDOH/anti-extractive-media/info-metabolism/digital-equity): " ANGLE
 
-  SLUG=$(echo "$FUNDER_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+  SLUG=$(slugify "$FUNDER_NAME")
   mkdir -p "$GRANTS"
   FILEPATH="$GRANTS/$SLUG.md"
   
@@ -45,10 +51,10 @@ add)
     -e "s|{{WEBSITE}}|$WEBSITE|g" \
     "$TEMPLATE" > "$FILEPATH"
   
-  sed -i '' "s#type: \"foundation|government|corporate|individual\"#type: \"$TYPE\"#" "$FILEPATH"
-  sed -i '' "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
-  sed -i '' "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
-  sed -i '' "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
+  sedi "s#type: \"foundation|government|corporate|individual\"#type: \"$TYPE\"#" "$FILEPATH"
+  sedi "s|grant_range: \"\"|grant_range: \"$RANGE\"|" "$FILEPATH"
+  sedi "s|deadline: \"\"|deadline: \"$DEADLINE\"|" "$FILEPATH"
+  sedi "s|angle: \"\"|angle: \"$ANGLE\"|" "$FILEPATH"
   
   echo "✓ Funder added: $SLUG.md"
   echo "  Open in Obsidian to complete fit assessment"
@@ -66,16 +72,16 @@ list)
     header_printed=false
     for f in "$GRANTS"/*.md; do
       [ -f "$f" ] || continue
-      file_status=$(grep "^status:" "$f" | sed 's/status: *//')
+      file_status=$(fm "$f" status)
       if [ "$file_status" = "$status" ]; then
         if [ "$header_printed" = false ]; then
           echo "--- $status ---"
           header_printed=true
         fi
-        funder=$(grep "^funder:" "$f" | sed 's/funder: *"//' | sed 's/"//')
-        range=$(grep "^grant_range:" "$f" | sed 's/grant_range: *"//' | sed 's/"//')
-        deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
-        angle=$(grep "^angle:" "$f" | sed 's/angle: *"//' | sed 's/"//')
+        funder=$(fm "$f" funder)
+        range=$(fm "$f" grant_range)
+        deadline=$(fm "$f" deadline)
+        angle=$(fm "$f" angle)
         printf "  %-30s %-15s deadline:%-12s %s\n" "$funder" "$range" "${deadline:---}" "$angle"
       fi
     done
@@ -88,11 +94,11 @@ deadlines)
   echo ""
   out=$(for f in "$GRANTS"/*.md; do
     [ -f "$f" ] || continue
-    deadline=$(grep "^deadline:" "$f" | sed 's/deadline: *"//' | sed 's/"//')
+    deadline=$(fm "$f" deadline)
     [ -z "$deadline" ] && continue
-    funder=$(grep "^funder:" "$f" | sed 's/funder: *"//' | sed 's/"//')
-    status=$(grep "^status:" "$f" | sed 's/status: *//')
-    next=$(grep "^next_action:" "$f" | sed 's/next_action: *"//' | sed 's/"//')
+    funder=$(fm "$f" funder)
+    status=$(fm "$f" status)
+    next=$(fm "$f" next_action)
     printf "  %-12s %-30s %-12s %s\n" "$deadline" "$funder" "$status" "$next"
   done | sort)
   if [ -n "$out" ]; then
@@ -110,9 +116,9 @@ update)
     echo "✗ No funder found: $SLUG"
     exit 1
   fi
-  sed -i '' "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
-  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
-  funder=$(grep "^funder:" "$FILEPATH" | sed 's/funder: *"//' | sed 's/"//')
+  sedi "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
+  sedi "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  funder=$(fm "$FILEPATH" funder)
   echo "✓ $funder → $NEW_STATUS"
   ;;
 
@@ -124,15 +130,15 @@ log)
     echo "✗ No funder found: $SLUG"
     exit 1
   fi
-  sed -i '' "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
-  sed -i '' "/## Action Log/a\\
+  sedi "s|^last_action: .*|last_action: \"$TODAY\"|" "$FILEPATH"
+  sedi "/## Action Log/a\\
 \\
 - **$TODAY** | $NOTE" "$FILEPATH"
-  funder=$(grep "^funder:" "$FILEPATH" | sed 's/funder: *"//' | sed 's/"//')
+  funder=$(fm "$FILEPATH" funder)
   echo "✓ Logged action for $funder"
   ;;
 
-help|*)
+help|-h|--help|*)
   echo "rp-grant — Say Why Grant Pipeline Manager"
   echo ""
   echo "Commands:"

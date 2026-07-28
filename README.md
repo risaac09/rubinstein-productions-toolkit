@@ -4,6 +4,8 @@
 
 Built by [Isaac Rubinstein](https://rubinsteinproductions.com) for use in an actual practice. Take what's useful.
 
+Forks welcome, pull requests unreviewed: this is a solo practice's toolkit, so fork it and make it yours rather than waiting on me.
+
 ---
 
 ## What This Is
@@ -33,11 +35,13 @@ A third tier for sustained organizational embedding exists and opens by conversa
 The intellectual core: how the practice works, why it works, and how to measure what it does.
 
 - **Facilitation Protocol**: Nervous-system aware, co-regulatory interview methodology
-- **Emergent Narrative Impact Framework (ENIF)**: What I call the "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence)
+- **Measurement Framework**: The "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence). Formerly ENIF; consolidated April 2026.
 - **Nomadic Indicators Codebook**: Qualitative coding guide for tracking transformation
 - **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
 - **Evaluation Framework**: Assessment design using the Bilingual Dashboard
+
+Four core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, `total-cost-of-ownership-plain.md`, and `enif-plain.md`. The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
 
 ### `prompts/`
 The prompt stack: AI skill files that encode the methodology, brand voice, and operational logic.
@@ -58,6 +62,8 @@ Shell scripts for outreach and grant pipeline management. Obsidian-native (markd
 - `install.sh`: Add to PATH in one step
 
 By default the tools file everything under an Obsidian vault path. Set `RP_OUTREACH_DIR` to point the whole pipeline anywhere else; directories are created on first use and the bundled `templates/` are used when no vault templates exist.
+
+The tools run on macOS and Linux, every command answers `--help`, and `scripts/cli-smoke-test.sh` exercises the full prospect and grant lifecycle against a throwaway directory (CI runs it on every pull request).
 ### `templates/`
 Reusable templates for the full client and grant lifecycle.
 
@@ -75,12 +81,12 @@ Grant infrastructure for the Say Why social impact initiative.
 - Fiscal Sponsorship strategy
 - Funder research templates
 
-### `apps/`
-Web-based tools.
+### Apps (external repos)
+Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
 
 - **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
 - **Royal Metrics**: ENIF business performance dashboard (private repo; the measurement framework it implements is in `methodology/`)
-- **RP Lifecycle**: Videography project lifecycle manager (private repo; the 10-phase template it encodes is part of the practice)
+- **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
 
 ### `production/`
 Film and video production tools.
@@ -91,9 +97,11 @@ Film and video production tools.
 ### `research/`
 Frameworks and position papers.
 
-- Digital Liver framework
-- Fractal Enclosure framework
-- Say Why grant concept
+- Dual-architecture and frontier-lab-blueprint position papers
+- Say Why grant concept and the 64-registers thesis
+- rp-shared foundation spec, profile consolidation analysis, evaluation-forward hub framing
+
+(The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
 
 ---
 
@@ -106,6 +114,8 @@ There's no product here. No platform, no SaaS, no waitlist. Just how I actually 
 ---
 
 ## Quick Start
+
+New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, producers, and evaluators to a reading order and a first working session.
 
 ### Outreach + Grant CLI
 ```bash
@@ -132,11 +142,19 @@ rp-grant help
 The `prompts/skills/` directory contains `.skill` and `.md` files designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
 
 ### Methodology
-Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/enif.md` for the measurement system.
+Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.
 
 ---
 
 ## Who This Is For
+
+The **[Field Guide](docs/field-guide/index.md)** gives each audience a reading order and a first working session:
+
+- **[Writers](docs/field-guide/writers.md)**: the voice system, the question bank that generates client language, the editorial disciplines
+- **[Producers](docs/field-guide/producers.md)**: the session methodology, the client lifecycle from prospect to case study, shoot and post workflow
+- **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, the grant pipeline
+
+If none of those labels fit, you may still be at home here:
 
 - Solo consultants and facilitators who want to see how someone else built their practice infrastructure
 - Nonprofit professionals looking for evaluation frameworks that measure relational quality alongside deliverables

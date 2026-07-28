@@ -1,11 +1,22 @@
-# RP Service Tiers — machine-readable binding
+# RP Service Tiers — public extract
 #
 # Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
+<<<<<<< HEAD
 # (v2, 2026-04-27). This file is the structured extract for automation
 # (consumed by rubinstein-productions-coo for pricing discipline and scope shaping). When this file disagrees with
 # the canonical vault doc, the canonical doc wins.
+=======
+# (v2, 2026-04-27). This public copy carries only the two publicly offered
+# tiers (their price ranges match rubinsteinproductions.com/services) and the
+# four methodology phases. The full binding, with the internal tier, the COO
+# enforcement rules, and the terminology lock, lives in
+# rp-intranet/docs/operations/services.yaml (moved 2026-07-16); automation
+# reads that copy. When the two disagree, intranet wins; when either disagrees
+# with the canonical vault doc, the canonical doc wins.
+>>>>>>> main
 
 services:
+
 
   founderStory:
     tier: 1
@@ -74,49 +85,6 @@ services:
     proofArtifact: "GDC Impact Evaluation Report + wayfinding interviews + compilation film"
     prerequisites: []
 
-  organizationalEmbedding:
-    tier: 3
-    name: "Organizational Embedding"
-    segment: "The Emergent Practitioner"
-    segmentPain: "We're building something new and need infrastructure to tell its story and prove it works."
-    positioning: "Build narrative and evaluation capacity into how we operate."
-    price:
-      floor: [REMOVED]
-      ceiling: [REMOVED]
-      currency: USD
-      model: monthly-retainer
-    duration:
-      typical: "3–6 months minimum"
-      minMonths: 3
-      maxMonths: 12
-    audience: "Organizations developing methodology, needing ongoing narrative + evaluation capacity"
-    goal: "Ongoing partnership: facilitation + documentation + evaluation methodology."
-    methodologyPhases:
-      - container
-      - excavation
-      - performance
-      - translation
-    methodologyCycles: "repeated"
-    typicalDeliverables:
-      - type: sessions
-        title: "Full facilitation arc (repeated cycles)"
-      - type: video
-        title: "Produced videos"
-        countRange: [3, 6]
-      - type: dashboard
-        title: "Bilingual Dashboard (Full)"
-        count: 1
-      - type: review
-        title: "Quarterly review"
-        cadence: quarterly
-      - type: methodology
-        title: "Three-Phase evaluation: Awareness → Protocol → Systems Design"
-    revenueRole: "Strategic target. Highest LTV. NOT YET ACTIVELY OFFERED."
-    notYetOffered: true
-    holdConditionRelease: "Open this tier only after one completed paid Program Engagement exists at depth."
-    prerequisites:
-      - "Prior Program Engagement or equivalent proof of concept"
-
 # ── Methodology phases (canonical doc Part 6) ──
 #
 # Universal four-phase structure. Different tiers traverse the phases differently
@@ -135,45 +103,3 @@ methodologyPhases:
   translation:
     name: "Translation"
     description: "Producing the artifact. 3-min brand video + all footage returned + Bilingual Dashboard. Nothing kept."
-
-# ── COO enforcement rules ──
-# Read by rubinstein-productions-coo for pricing discipline.
-
-rules:
-  pricingFloor:
-    enforced: true
-    message: "Quoting below the tier's price.floor requires explicit override and a documented reason."
-  hourlyFloor:
-    enforced: true
-    rate: 500
-    currency: USD
-    message: "Floor rate [PRICING REMOVED]/hr. Never work below this under any framing."
-  organizationalEmbeddingPrerequisite:
-    enforced: true
-    message: "Organizational Embedding requires a prior Program Engagement or equivalent proof of concept. Hold until then."
-  tierSkipWarning:
-    enforced: true
-    message: "Skipping from Founder Story directly to Organizational Embedding is unusual. Flag for review."
-  segmentMatch:
-    enforced: true
-    message: "Reject opportunities where the prospect doesn't match a documented segment (Rebuilder / Container Builder / Emergent Practitioner) unless Isaac explicitly overrides."
-  sacredPause:
-    enforced: true
-    days: 5
-    message: "Mandatory 5-day minimum between filming and editing. Let the unconscious process."
-
-# ── Brand-reset terminology lock (2026-03-27) ──
-# These terms are RETIRED. If they appear in any RP-facing output, replace per
-# the canonical doc Part 13.
-
-retiredTerms:
-  - dead: "Voice Liberation"
-    replacement: "facilitation and film / Say Why practice"
-  - dead: "Consciousness Cartography"
-    replacement: "facilitation and film"
-  - dead: "Narrative Dysregulation"
-    replacement: "systemic alienation from honest expression"
-  - dead: "Generative Translation"
-    replacement: "the methodology"
-  - dead: "Rhizoanalyst"
-    replacement: "facilitator and filmmaker"

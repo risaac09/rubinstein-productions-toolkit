@@ -1,4 +1,4 @@
-> **Canonical source:** this file (toolkit is authoritative). Companion to [[counter-glossary.html]] (home dir) and [[negative-thousand.html]] (home dir). Filed under the same lineage as [[source-tracking-protocol.md]] and [[total-cost-of-ownership.md]].
+> **Canonical source:** this file (toolkit is authoritative). Companion to `counter-glossary.html` and `negative-thousand.html` (home-dir artifacts, outside this repo). Filed under the same lineage as [source-tracking-protocol.md](source-tracking-protocol.md) and [total-cost-of-ownership.md](total-cost-of-ownership.md).
 
 # Negative-Archive Ritual
 
@@ -17,9 +17,9 @@ The scraps folder is not a recycle bin. The recycle bin is the place where delet
 
 Three commitments converge here:
 
-**The Source-Tracking Protocol** (see [[source-tracking-protocol.md]]) asks every move to carry its lineage. The negative archive extends this to the moves *not* made. A refused source is also a source; it earned its refusal.
+**The Source-Tracking Protocol** (see [source-tracking-protocol.md](source-tracking-protocol.md)) asks every move to carry its lineage. The negative archive extends this to the moves *not* made. A refused source is also a source; it earned its refusal.
 
-**The thousand costs** (see [[total-cost-of-ownership.md]] and `~/context/thousand-costs.md`) enumerate the costs of doing the work. The scraps folder enumerates the artifacts of *not* doing some of the work, kept so that the unmade is not invisible.
+**The thousand costs** (see [total-cost-of-ownership.md](total-cost-of-ownership.md) and `~/context/thousand-costs.md`, home dir) enumerate the costs of doing the work. The scraps folder enumerates the artifacts of *not* doing some of the work, kept so that the unmade is not invisible.
 
 **The counter-glossary** (`~/counter-glossary.html`) pairs each term used to a term refused. The scraps folder is the same operation applied to artifacts: each piece kept implies the pieces unkept, and the unkept are also part of the practice (after Adorno, 1966/1973, on the non-identical; Derrida, 1995/1996, on the archive's selective violence; Hartman, 1997, on the constitutive exclusion).
 
@@ -107,11 +107,11 @@ Full APA citations available in the bibliography section of `~/negative-thousand
 
 ## 9. Cross-references
 
-- [[counter-glossary.html]] — the term-level companion to this ritual; what the work refuses lexically.
-- [[negative-thousand.html]] — the concept-level companion; what the work refuses theoretically.
-- [[total-cost-of-ownership.md]] — what the work costs to do.
-- [[source-tracking-protocol.md]] — what the work owes its citations.
-- [[../context/thousand-costs.md]] — the long enumeration the protocols are layered onto.
+- `counter-glossary.html` (home dir) — the term-level companion to this ritual; what the work refuses lexically.
+- `negative-thousand.html` (home dir) — the concept-level companion; what the work refuses theoretically.
+- [total-cost-of-ownership.md](total-cost-of-ownership.md) — what the work costs to do.
+- [source-tracking-protocol.md](source-tracking-protocol.md) — what the work owes its citations.
+- `~/context/thousand-costs.md` (home dir) — the long enumeration the protocols are layered onto.
 
 ## 10. Open questions
 
