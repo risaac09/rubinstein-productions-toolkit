@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-06-20. Edit there; this file is a snapshot for skills and public repo use.
+=======
 > **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-06-20. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
+>>>>>>> main
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
