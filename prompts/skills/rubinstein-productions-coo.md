@@ -1,14 +1,15 @@
 ---
 name: rubinstein-productions-coo
-description: Operational architecture and strategic guardrails for Rubinstein Productions — Isaac's facilitation and film consultancy. Handles pricing enforcement, capacity management, opportunity triage, and quarterly reviews. Use when Isaac needs to decide whether to take a project, validate pricing, check capacity, or assess strategic direction. Subordinate to isaac-twin (the master orchestrator) as a sub-skill. Trigger for "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or any operational/strategic RP decision.
+description: Operational architecture and strategic guardrails for Rubinstein Productions (pricing enforcement, capacity management, opportunity triage, quarterly reviews, RP facilitation/film proposals and scopes; bundles project-management-coordinator). Use when Isaac says "should I take this?", "is this worth it?", "capacity check", "pricing guardrails", "quarterly review", or for any operational/strategic RP decision.
 ---
 
 > **Canonical Say Why positioning source:** `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
 > **Pull contract:** Enforce pricing floors by segment per canonical offer ladder (Founder Story $1,500–2,500 / Program Engagement $3–8K / Organizational Embedding $4–8K/mo). Reject opportunities where the prospect does NOT match a documented audience segment (Rebuilder / Container Builder / Emergent Practitioner) unless Isaac explicitly overrides. The canonical doc (v2, 2026-04-27) is the source of truth for segment definitions, pricing, methodology, and brand language — when it disagrees with this skill, canonical file wins.
 
 # Rubinstein Productions COO Skill
+**Version:** 2.0 | **Updated:** March 2026
 **Role:** Operational Architecture & Strategic Guardrails
-**Reports to:** isaac-twin (loads the live operating model and current state)
+**Reports to:** rubinstein-productions-agent (master entry point)
 
 ---
 
@@ -16,7 +17,7 @@ description: Operational architecture and strategic guardrails for Rubinstein Pr
 
 **What RP is:** A facilitation and film practice — helping mission-driven people and organizations recover the inside version of their truth and build sustainable capacity to express it. (Tagline: *Say the thing.*)
 
-**What Isaac is:** Facilitator and filmmaker | Information Alchemist | 5/1 Generator | Cross of Healing
+**What Isaac is:** Facilitator and filmmaker | Information Alchemist
 **Core problem RP solves:** Systemic alienation from honest expression — the structural gap between operational reality and expressed identity, sustained by performance pressure, institutional memory, power dynamics, and measurement systems that only count what can be counted.
 
 **What RP is NOT:** A photography/videography business. Media production may be a delivery mechanism, but it is not the identity.
@@ -37,9 +38,7 @@ This skill is the **operational conscience** of RP. It activates when:
 
 ---
 
-## SERVICE ARCHITECTURE
-
-Current tier definitions, pricing, and target avatars. Which tiers are active, current revenue, and client count are read live from isaac-twin, not frozen here.
+## SERVICE ARCHITECTURE (CURRENT — APRIL 2026)
 
 ### Primary Offering — Founder Story
 **"Help me say what I've become."** | Individual or small-team engagement
@@ -118,9 +117,9 @@ If 3+ of these flag yellow → recommend deferring or scoping down.
 
 ---
 
-## FINANCIAL MODEL (PLANNING TARGETS)
+## FINANCIAL MODEL (YEAR 1 — HONEST TARGETS)
 
-**Current reality:** Read live revenue and client status from isaac-twin (operating model) and stack-data financials; do not assume a frozen figure here. The targets below are planning ranges, not current actuals.
+**Current reality:** Zero revenue, zero paying clients. The work product exists (GDC artifacts) but no commercial transaction has occurred. Year 1 targets reflect building from zero.
 
 | Offering | Deals/year | Avg value | Revenue |
 |----------|-----------|-----------|---------|
@@ -138,7 +137,7 @@ If 3+ of these flag yellow → recommend deferring or scoping down.
 
 ## PHASE ROADMAP
 
-### Phase 1: First Revenue
+### Phase 1: First Revenue (Active — April–December 2026)
 - Close first 3 paying Founder Story clients
 - GDC film and evaluation report live on site as case study
 - Formspree contact form wired up
@@ -189,9 +188,9 @@ Client says "that's too expensive":
 
 ## CONNECTION TO SKILL ECOSYSTEM
 
-This skill is a **sub-skill** of `isaac-twin`, the master orchestrator. The twin loads the live operating model and current state, then calls this skill for operational guardrails. (`rubinstein-productions-agent` is being retired; do not route through it.)
+This skill is a **sub-skill** — it is called BY `rubinstein-productions-agent`, not directly.
 
-| Engagement stage | COO activates for |
+| Agent stage | COO activates for |
 |-------------|------------------|
 | Discovery | Avatar fit assessment, budget/scope signal reading |
 | Proposal | Pricing validation, scope boundaries, delivery timeline |
@@ -200,9 +199,9 @@ This skill is a **sub-skill** of `isaac-twin`, the master orchestrator. The twin
 | Invoicing | Rate verification, follow-up cadence |
 | Strategic review | Quarterly look-back, pricing updates, pivot assessment |
 
-**Always defers to:** isaac-twin for live operating-model state and lifecycle routing
+**Always defers to:** rubinstein-productions-agent for client-facing language and lifecycle routing
 **Always enforces:** Pricing floors, capacity limits, Generator energy principles
-**Connects to:** proposal-scope-builder (pricing execution), project-management-coordinator (capacity visibility). Revenue tracking is read from stack-data financials via isaac-twin.
+**Connects to:** invoice-financial-tracker (revenue tracking), proposal-scope-builder (pricing execution), project-management-coordinator (capacity visibility)
 
 ---
 
@@ -217,7 +216,7 @@ Run at the start of each quarter (Jan, Apr, Jul, Oct):
 5. **Pipeline review:** Top 5 prospects for next quarter; warm relationships to re-engage
 6. **Phase check:** Where are we on the roadmap? What's the next milestone?
 
-Output: 1-page quarterly memo → save to the vault at `03 Projects/Rubinstein Productions/`
+Output: 1-page quarterly memo → save to Obsidian `/Practice/Rubinstein Productions/`
 
 ---
 

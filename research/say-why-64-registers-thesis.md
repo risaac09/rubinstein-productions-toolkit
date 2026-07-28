@@ -32,8 +32,10 @@ So the product seed is concrete:
 - **Geometry:** the torus. Intake, transformation, expression, return flow. Cycles and spirals.
 - **Posture:** mischief and presence (see consolidation doc, section 6). The seat, posture, breath.
 
-This is the soul under the consolidation work in
-`research/profile-consolidation-analysis.md`. The consolidation gives the one
+This is the soul under the consolidation work, which moved to the private
+rp-intranet repo as
+`docs/business-development/toolkit-research/profile-consolidation-analysis.md`
+and is not readable from this public repo. The consolidation gives the one
 public profile its plumbing. This gives it its reason.
 
 ---

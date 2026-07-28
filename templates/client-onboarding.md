@@ -1,9 +1,9 @@
-> **Note:** This template uses [[wiki links]] for Obsidian internal navigation. Replace with standard links if using outside Obsidian.
+> **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
 
 # Client Onboarding Template
 ## Phase 0: Pre-Engagement Discovery (The Assemblage Scan)
 
-*Operationalized from [[Emergent Narrative Impact Framework]] and [[rubinstein-productions-brand-strategy]]*
+*Operationalized from the [Measurement Framework](../methodology/measurement-framework.md) and the [brand context](../prompts/brand-context.md)*
 
 ---
 
@@ -230,9 +230,9 @@ Decision-makers involved:
 **Total Score:** ___ / 25
 
 **Interpretation:**
-- 20-25: High readiness, likely mid/high-tier engagement
-- 15-19: Moderate readiness, may need Gateway first
-- 10-14: Significant work needed, start with Facilitation Session (The Mirror)
+- 20-25: High readiness, likely Program Engagement or deeper
+- 15-19: Moderate readiness, may need a Founder Story first
+- 10-14: Significant work needed, start with a Founder Story session
 - Below 10: May not be ready—consider whether to proceed
 
 ---
@@ -284,9 +284,9 @@ What's trying to be born through this work?
 
 ### Recommended Engagement
 
-- [ ] **The Mirror:** Facilitation Session ($500-1,500)
-- [ ] **The Map:** "Say The Thing" Package ($5,000-12,000)
-- [ ] **The Territory:** Creative Partnership ($4,000-8,000/month)
+- [ ] **Founder Story:** Facilitated conversation + short film ($1,500-2,500)
+- [ ] **Program Engagement:** Embedded documentation + evaluation ($3,000-8,000)
+- [ ] **Organizational Embedding:** Ongoing narrative + evaluation capacity ($4,000-8,000/month; opens by conversation)
 - [ ] **Not a fit:** Refer to _______________
 
 **Rationale:**
@@ -324,7 +324,7 @@ What's trying to be born through this work?
 ---
 
 *Template Version: 1.0*
-*Based on: [[Emergent Narrative Impact Framework]], [[rubinstein-productions-brand-strategy]]*
-*Related: [[Session Facilitation Guide]], [[Case Study Template]]*
+*Based on: [Measurement Framework](../methodology/measurement-framework.md), [brand context](../prompts/brand-context.md)*
+*Related: [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
 
 **Tags:** #template #client-work #onboarding #phase-0

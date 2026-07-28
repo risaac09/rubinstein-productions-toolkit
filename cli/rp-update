@@ -4,17 +4,24 @@
 # Statuses: research | ready | contacted | responded | passed | closed
 # Example: rp-update acme-corp contacted "Sent Mirror Email re: annual report gap"
 
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
-OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+# Resolve this script's real directory (through the install.sh symlink) and load shared helpers.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
+done
+. "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
+
 PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 
-if [ $# -lt 2 ]; then
+if [ $# -lt 2 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo "Usage: rp-update <org-slug> <status> [note]"
   echo "Statuses: research | ready | contacted | responded | passed | closed"
   echo ""
   echo "Available prospects:"
   ls "$PROSPECTS"/*.md 2>/dev/null | xargs -I{} basename {} .md | sed 's/^/  /'
+  case "${1:-}" in -h|--help) exit 0 ;; esac
   exit 1
 fi
 
@@ -30,32 +37,32 @@ if [ ! -f "$FILEPATH" ]; then
   exit 1
 fi
 # Get current touch count
-OLD_TOUCHES=$(grep "^touch_count:" "$FILEPATH" | sed 's/touch_count: *//')
+OLD_TOUCHES=$(fm "$FILEPATH" touch_count)
 NEW_TOUCHES=$((OLD_TOUCHES + 1))
 
 # Update frontmatter
-sed -i '' "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
-sed -i '' "s|^touch_count: .*|touch_count: $NEW_TOUCHES|" "$FILEPATH"
-sed -i '' "s|^last_contact: .*|last_contact: \"$TODAY\"|" "$FILEPATH"
+sedi "s|^status: .*|status: $NEW_STATUS|" "$FILEPATH"
+sedi "s|^touch_count: .*|touch_count: $NEW_TOUCHES|" "$FILEPATH"
+sedi "s|^last_contact: .*|last_contact: \"$TODAY\"|" "$FILEPATH"
 
 # Set follow-up date based on status
 case "$NEW_STATUS" in
   contacted)
-    FOLLOWUP=$(date -v+3d +%Y-%m-%d)
-    sed -i '' "s|^next_followup: .*|next_followup: \"$FOLLOWUP\"|" "$FILEPATH"
+    FOLLOWUP=$(date_add_days 3)
+    sedi "s|^next_followup: .*|next_followup: \"$FOLLOWUP\"|" "$FILEPATH"
     echo "  Follow-up set: $FOLLOWUP (3 days)"
     ;;
   responded)
-    sed -i '' "s|^next_followup: .*|next_followup: \"\"|" "$FILEPATH"
+    sedi "s|^next_followup: .*|next_followup: \"\"|" "$FILEPATH"
     ;;
 esac
 
 # Append to touch log
 if [ -n "$NOTE" ]; then
-  sed -i '' "/## Touch Log/a\\
+  sedi "/## Touch Log/a\\
 \\
 - **$TODAY** | $NEW_STATUS | $NOTE" "$FILEPATH"
 fi
 
-ORG=$(grep "^org:" "$FILEPATH" | sed 's/org: *"//' | sed 's/"//')
+ORG=$(fm "$FILEPATH" org)
 echo "✓ $ORG → $NEW_STATUS (touch #$NEW_TOUCHES)"

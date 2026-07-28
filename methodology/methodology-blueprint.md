@@ -160,12 +160,14 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - Pre-revenue as of March 2026
 - No paid advertising budget
 
+*These projections were drafted against the retired tier pricing. The labels below use the canonical tier names; the dollar figures have not been recomputed since the April 2026 repricing.*
+
 | Quarter | Tier 1 | Tier 2 | Tier 3 | Projected Revenue |
 |---------|--------|--------|--------|-------------------|
-| Q2 2026 (Apr-Jun) | 3-4 Mirror sessions | 0-1 Map engagements | 0 | $1,500 – $6,500 |
-| Q3 2026 (Jul-Sep) | 4-6 Mirror sessions | 1-2 Map engagements | 0 | $4,000 – $15,000 |
-| Q4 2026 (Oct-Dec) | 4-6 Mirror sessions | 1-2 Map engagements | 0-1 Territory | $4,000 – $20,000 |
-| Q1 2027 (Jan-Mar) | 4-6 Mirror sessions | 2-3 Map engagements | 0-1 Territory | $7,000 – $30,000 |
+| Q2 2026 (Apr-Jun) | 3-4 Founder Story sessions | 0-1 Program Engagements | 0 | $1,500 – $6,500 |
+| Q3 2026 (Jul-Sep) | 4-6 Founder Story sessions | 1-2 Program Engagements | 0 | $4,000 – $15,000 |
+| Q4 2026 (Oct-Dec) | 4-6 Founder Story sessions | 1-2 Program Engagements | 0-1 Organizational Embedding | $4,000 – $20,000 |
+| Q1 2027 (Jan-Mar) | 4-6 Founder Story sessions | 2-3 Program Engagements | 0-1 Organizational Embedding | $7,000 – $30,000 |
 | **Year 1 Total** | | | | **$16,500 – $71,500** |
 
 *Note: Wide range reflects pre-revenue uncertainty. The lower bound assumes slow pipeline development. The upper bound assumes the LinkedIn content strategy and warm outreach generate consistent leads.*
@@ -183,11 +185,13 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 
 ### Unit Economics
 
-| Tier | Price Range | Delivery Hours | Effective Hourly | Margin |
+*Hours and hourly rates below were computed on the retired pricing; recompute against the canonical tier prices in the Service Tiers section before using these for decisions.*
+
+| Tier | Price Range (retired) | Delivery Hours | Effective Hourly | Margin |
 |------|------------|----------------|------------------|--------|
-| Mirror | $500-1,500 | 3-4 hours | $125-500/hr | Very high |
-| Map | $5,000-12,000 | 25-40 hours | $125-480/hr | High |
-| Territory | $4K-8K/month | 15-25 hrs/month | $160-533/hr | High |
+| Founder Story | $500-1,500 | 3-4 hours | $125-500/hr | Very high |
+| Program Engagement | $5,000-12,000 | 25-40 hours | $125-480/hr | High |
+| Organizational Embedding | $4K-8K/month | 15-25 hrs/month | $160-533/hr | High |
 
 *Unit economics are strong. The constraint is capacity, not margin.*
 
@@ -201,7 +205,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 5. **Website** — Conversion point. Not a discovery channel.
 
 **Pipeline logic:**
-LinkedIn → warm lead → conversation → Mirror (Tier 1) → demonstrated value → Map (Tier 2) → demonstrated transformation → Territory (Tier 3)
+LinkedIn → warm lead → conversation → Founder Story (Tier 1) → demonstrated value → Program Engagement (Tier 2) → demonstrated transformation → Organizational Embedding (Tier 3)
 
 ### Key Metrics to Track
 
@@ -209,7 +213,7 @@ LinkedIn → warm lead → conversation → Mirror (Tier 1) → demonstrated val
 |--------|-------------------|-------------------|
 | LinkedIn connections (target personas) | +100 | +400 |
 | Inbound inquiries / month | 2-3 | 5-8 |
-| Mirror sessions completed | 3-4 total | 10-15 cumulative |
+| Founder Story sessions completed | 3-4 total | 10-15 cumulative |
 | Tier 2 engagements completed | 0-1 | 2-4 cumulative |
 | Revenue | $1,500-6,500 | $16K-40K cumulative |
 | Referral rate | n/a | 30%+ of new leads from past clients |
@@ -218,10 +222,10 @@ LinkedIn → warm lead → conversation → Mirror (Tier 1) → demonstrated val
 
 | Risk | Likelihood | Mitigation |
 |------|-----------|------------|
-| Capacity conflict with day job | High | Strict 10-15 hr/week cap. No Territory engagements until Q4. |
+| Capacity conflict with day job | High | Strict 10-15 hr/week cap. No Organizational Embedding engagements until Q4. |
 | Camera shipping model untested | High | Run 1-2 beta engagements at reduced price in Q2. |
-| No social proof / case studies | High | First Mirror session → document with permission → becomes proof of process |
-| Pricing resistance ($5K+ for Tier 2) | Medium | Mirror tier de-risks. Client experiences value before committing. |
+| No social proof / case studies | High | First Founder Story session → document with permission → becomes proof of process |
+| Pricing resistance for Tier 2 | Medium | Founder Story tier de-risks. Client experiences value before committing. |
 | Market confusion about offering | Medium | Homepage hero + LinkedIn content must immediately communicate: facilitation + film, not coaching or marketing |
 
 ---
@@ -237,7 +241,7 @@ LinkedIn → warm lead → conversation → Mirror (Tier 1) → demonstrated val
 ---
 
 *This document should be read alongside:*
-- [[Dual Architecture — Digital Liver + Rubinstein Productions]] (the fractal relationship)
-- [[RP Master Synthesis|Rubinstein Productions Master Synthesis]] (the operating system)
-- [[creative-strategy-rubinsteinproductions]] (the marketing playbook)
-- [[brand-context-rubinsteinproductions]] (the positioning)
+- [Dual Architecture](../research/dual-architecture.md) (the fractal relationship)
+- `RP Master Synthesis` (vault note; the operating system)
+- [Creative Strategy](../prompts/creative-strategy.md) (the marketing playbook)
+- [Brand Context](../prompts/brand-context.md) (the positioning)

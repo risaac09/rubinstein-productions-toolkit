@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  cli-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CLI smoke test (GNU userland)
+        run: scripts/cli-smoke-test.sh
+      - name: Vault-mirror drift check
+        run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
+      - name: Markdown link check
+        run: scripts/check-doc-links.sh

@@ -1,6 +1,8 @@
-# The orchestration model: one system, six layers
+# The orchestration model, explained: one system, six layers
 
-Five orchestration vocabularies grew in parallel across stack-data and this toolkit. Left alone they read as five competing frameworks. They are not competing. They operate at different altitudes. This document reconciles them into one canonical model by stacking them, not merging them. Nothing here invents a new vocabulary; it places the ones that exist.
+> **Canonical spec:** [`methodology/orchestration-model.md`](../methodology/orchestration-model.md). This is the plain-language explainer of that model, cut as six layers. The spec is the source of truth for the brand decision, what the model retires, and the open build work; this is the teaching layer.
+
+Five orchestration vocabularies grew in parallel across stack-data and this toolkit. Left alone they read as five competing frameworks. They are not competing. They operate at different altitudes. This document explains the canonical model in `methodology/orchestration-model.md` by stacking those vocabularies rather than merging them. Nothing here invents a new vocabulary; it places the ones that exist.
 
 ## The five that accreted
 
@@ -51,4 +53,4 @@ The lifecycle stages are separated by a single gate, the Definition of Ready (th
 
 ## Where this lives
 
-This canonical model lives in the toolkit because it reconciles toolkit skills. The data layers it names (SHIP, the lab, the registry) stay in stack-data. The freshness gate (Pass 0 of `agentic-orchestrator`) is what keeps any run over this stack reading current state rather than a stale clone.
+The canonical spec (`methodology/orchestration-model.md`) lives in the toolkit because it reconciles toolkit skills, and this explainer sits beside it. The data layers it names (SHIP, the lab, the registry) stay in stack-data. The freshness gate (Pass 0 of `agentic-orchestrator`) is what keeps any run over this stack reading current state rather than a stale clone.

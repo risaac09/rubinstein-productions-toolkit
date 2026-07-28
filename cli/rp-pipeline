@@ -5,8 +5,22 @@
 #           rp-pipeline ready    (show only ready)
 #           rp-pipeline followup (show overdue follow-ups)
 
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
-OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+# Resolve this script's real directory (through the install.sh symlink) and load shared helpers.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
+done
+. "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "rp-pipeline — View the current RP outreach pipeline"
+  echo ""
+  echo "Usage: rp-pipeline [status]"
+  echo "Statuses: all (default) | research | ready | contacted | responded | followup"
+  exit 0
+fi
+
 PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 FILTER="${1:-all}"
@@ -28,11 +42,11 @@ if [ "$FILTER" = "followup" ]; then
   echo "--- Follow-ups due ---"
   for f in "$PROSPECTS"/*.md; do
     [ -f "$f" ] || continue
-    next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
+    next=$(fm "$f" next_followup)
     if [ -n "$next" ] && [ "$next" \< "$TODAY" -o "$next" = "$TODAY" ]; then
-      org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
-      contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
-      status=$(grep "^status:" "$f" | sed 's/status: *//')
+      org=$(fm "$f" org)
+      contact=$(fm "$f" contact)
+      status=$(fm "$f" status)
       printf "  %-25s %-20s %-12s due: %s\n" "$org" "$contact" "$status" "$next"
     fi
   done
@@ -45,16 +59,17 @@ else
     header_printed=false
     for f in "$PROSPECTS"/*.md; do
       [ -f "$f" ] || continue
-      file_status=$(grep "^status:" "$f" | sed 's/status: *//')
+      file_status=$(fm "$f" status)
       if [ "$file_status" = "$show_status" ]; then
         if [ "$header_printed" = false ]; then
           echo "--- $show_status ---"
           header_printed=true
         fi
-        org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')        contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
-        touches=$(grep "^touch_count:" "$f" | sed 's/touch_count: *//')
-        last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
-        angle=$(grep "^angle:" "$f" | sed 's/angle: *"//' | sed 's/"//')
+        org=$(fm "$f" org)
+        contact=$(fm "$f" contact)
+        touches=$(fm "$f" touch_count)
+        last=$(fm "$f" last_contact)
+        angle=$(fm "$f" angle)
         printf "  %-25s %-20s touches:%-2s last:%-12s\n" "$org" "$contact" "$touches" "${last:---}"
         if [ -n "$angle" ]; then
           printf "    angle: %s\n" "$angle"

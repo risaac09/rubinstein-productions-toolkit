@@ -27,7 +27,7 @@ DATE=$(date +%Y-%m-%d)
 # Format: "vault-relative-path|toolkit-filename"
 # (All canonicals consolidated into 00 Canonical/ on 2026-04-27.)
 PAIRS=(
-  "00 Canonical/RP Measurement Framework.md|enif.md"
+  "00 Canonical/RP Measurement Framework.md|measurement-framework.md"
   "00 Canonical/RP Session Facilitation Guide.md|session-facilitation-guide.md"
   "00 Canonical/Digital Liver Offering Definition.md|digital-liver-offering.md"
   "00 Canonical/Nomadic Indicators Codebook.md|nomadic-indicators-codebook.md"

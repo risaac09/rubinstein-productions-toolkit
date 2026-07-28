@@ -31,9 +31,11 @@ The positioning: a practice that creates conditions where clarity can happen aga
 | **What the client gets** | A 3-min brand video. All their raw footage. All their data. The experience. The technology literacy. Everything goes home with them. |
 | **What makes it different** | The client holds the means of production. They film themselves, on their own terms, in their own space. Isaac facilitates remotely and produces the final video. Nothing is extracted. |
 | **Entry point** | A conversation. Then a camera shows up at your door. |
-| **Price** | TBD — evolving from the old tier structure |
+| **Price** | Founder Story $1,500–2,500 · Program Engagement $3,000–8,000 · Organizational Embedding $4,000–8,000/month (not yet offered) |
 
-**Old tier structure (historical, under revision):**
+**Current tiers (canonical since April 2026):** Founder Story, Program Engagement, Organizational Embedding. Definitions and segments live in [methodology/methodology-blueprint.md](../methodology/methodology-blueprint.md).
+
+**Old tier structure (historical, superseded April 2026):**
 
 | Tier | Description | Old Price |
 |---|---|---|
@@ -42,7 +44,7 @@ The positioning: a practice that creates conditions where clarity can happen aga
 | Retainer | Monthly facilitation + 2–4 videos/month + strategic guidance | $2,000–4,000/month |
 | Workshop | 3-hour facilitated group session | $150–300/person |
 
-*Note: The camera-shipping model is a new evolution. Pricing for the full offering is being established.*
+*The table above is kept as pricing history. Quote from the canonical tiers.*
 
 ---
 
@@ -155,7 +157,7 @@ The condition: **systems that optimize expression until the honest version is to
 
 - **This is Isaac's practice.** Personal, singular, relational. Not an agency. Not a team. All creative should feel human.
 
-- **The "Generator" operating model.** Isaac operates as a Generator (Human Design 5/1 profile) — works best responding to inbound energy, not initiating cold. The outreach system is designed to create pull through genuine engagement, not push through volume.
+- **The responsive operating model.** Isaac works best responding to inbound energy, not initiating cold. The outreach system is designed to create pull through genuine engagement, not push through volume.
 
 - **The philosophical foundation is the moat.** Relational ontology, the Fractal Enclosure, Digital Liver, Deleuzian Nomadic/Royal Science, Ubuntu — this is the deepest layer. It shows up in the design of the offering (anti-extractive), the tone of the copy (structural, not personal), and the way the process works (relational, not transactional).
 

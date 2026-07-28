@@ -82,9 +82,9 @@ Isaac produces 3-min brand video. All footage, data, and final video returned. B
 
 | Tier | Name | Target | Price | Deliverable |
 |------|------|--------|-------|-------------|
-| 1 | **The Mirror** | Individual professionals | $500–$1,500 | 90-min facilitated session + narrative synthesis |
-| 2 | **The Map** | Small nonprofits, SMEs, teams | $5,000–$12,000 | "Say the Thing" package: facilitation + camera + 3-min video + Bilingual Dashboard Lite |
-| 3 | **The Territory** | Established orgs, foundations | $4,000–$8,000/mo (3-mo min) | Full facilitation arc + 3-6 videos + Full Dashboard + quarterly review |
+| 1 | **Founder Story** | Individual in transition (burnout recovery, career shift, grad school, layoff) | $1,500–$2,500 | Facilitated conversation + short film |
+| 2 | **Program Engagement** | Program leader running a cohort, workshop, or design challenge | $3,000–$8,000 | Embedded documentation + evaluation across the program + Bilingual Dashboard |
+| 3 | **Organizational Embedding** | Org developing methodology, needing ongoing narrative + evaluation capacity | $4,000–$8,000/mo (not yet offered) | Repeated four-phase cycles + Full Dashboard + quarterly review |
 
 **Pricing floor:** $500/hr. Non-negotiable.
 **Discounts:** Aligned nonprofits max 30%. Strategic 20% max. Beta rates documented, not repeated.
@@ -94,8 +94,8 @@ Isaac produces 3-min brand video. All footage, data, and final video returned. B
 
 ## CAPACITY & GENERATOR RULES
 
-- Max 2 active Territory partnerships
-- Max 4 Map engagements per quarter
+- Max 2 active Organizational Embedding partnerships
+- Max 4 Program Engagements per quarter
 - Protect 3 mornings/week as deep work (no calls before noon)
 - 5-day Sacred Pause between filming and editing
 - Sacral authority: gut response over cognitive override
