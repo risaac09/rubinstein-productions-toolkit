@@ -108,7 +108,7 @@ Output of this pass: the request, stated plainly, plus the one or two real unkno
 
 Read the field. Decompose the request into workstreams. Estimate blast radius (how many files, domains, or commitments this touches). Draft a routing table: which skills *could* serve each workstream. Do not commit to deploying anything yet. This pass frames the work; it does not assign it.
 
-Lean on the existing routing tables: `rubinstein-productions-agent` for stage routing, the sub-skills for outreach, proposals, projects, finance, COO strategy. If the request is a raw idea with no home yet, consider `seed-bed` (a toolkit pattern, not an installed skill on every machine; it holds the idea pre-categorical and routes a matured Claim onward to the Arena).
+Lean on the existing routing tables: `isaac-twin` for stage routing (the old `rubinstein-productions-agent` table is retired; never route through it), the sub-skills for outreach, projects, and COO strategy. Proposal scoping and finance folded into the COO lane and stack-data financials in the 2026-06-29 consolidation. If the request is a raw idea with no home yet, consider `seed-bed` (a toolkit pattern, not an installed skill on every machine; it holds the idea pre-categorical and routes a matured Claim onward to the Arena).
 
 Output of this pass: workstreams, blast radius, a candidate routing table.
 
@@ -172,7 +172,7 @@ Terse. Concrete names and numbers over abstractions. Show the spine's decisions 
 
 ## Connection to existing skills
 
-- **Calls:** `isaac-twin` (state and judgment, Pass 3 and Convergence), `rubinstein-productions-agent` (routing), `rubinstein-productions-coo` (guardrails), and any sub-skill the digital twin commits to during Pass 3.
+- **Calls:** `isaac-twin` (state, judgment, and stage routing; Pass 3 and Convergence), `rubinstein-productions-coo` (guardrails), and any sub-skill the digital twin commits to during Pass 3.
 - **Composes with:** the vault's Arena pattern (adversarial dialogue), scaled down here into mini-arenas; and `seed-bed` as a conditional pattern for raw ideas with no home yet (it routes a matured Claim onward to the Arena).
 - **Does not duplicate:** the digital twin. `isaac-twin` already holds the identity kernel, decision rules, guardrails, voice, and the sacral safeguard. Pass 3 names that skill and passes it the task; it never re-states the twin's charter inline. If anyone re-pastes the charter into Pass 3 to make it self-explanatory, that is the duplication returning.
 - **Invoked by:** the `agents` drop-in prompt (`prompts/agents.md`), or any utterance containing "agent".

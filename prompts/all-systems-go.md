@@ -5,7 +5,7 @@ Activates the full stack, surfaces the field, proposes actions — does not act.
 
 ---
 
-Activate the `rubinstein-productions-agent` skill as orchestrator. Run a full operational sweep across the practice and surface what needs my attention today.
+Activate the `isaac-twin` skill as orchestrator. Run a full operational sweep across the practice and surface what needs my attention today.
 
 **1. Ground the state (read, don't assume):**
 - Read `~/stack-data/data/` — contacts, projects, financials, content, activities — to establish current ground truth.
@@ -13,10 +13,10 @@ Activate the `rubinstein-productions-agent` skill as orchestrator. Run a full op
 - Note any stale data (items not touched in >30 days that should be active).
 
 **2. Triage across domains:**
-- **Pipeline / outreach** (`outreach-email-manager`, `network-stewardship`): who's waiting on me, who's gone cold, who to re-engage this week.
+- **Pipeline / outreach** (`outreach-email-manager`): who's waiting on me, who's gone cold, who to re-engage this week. Relational-field judgment stays with the twin.
 - **Active projects** (`project-management-coordinator`): deliverables due, blockers, client comms owed, capacity check.
-- **Financials** (`invoice-financial-tracker` → finance-hub): unpaid invoices, upcoming expenses, revenue vs. plan.
-- **Content** (`content-publishing-agent`): last post date, engagement trends from `content.json` metricsHistory, next piece to ship.
+- **Financials** (read `~/stack-data/data/financials.json` direct): unpaid invoices, upcoming expenses, revenue vs. plan.
+- **Content** (`creative-strategy-engine`): last post date, engagement trends from `content.json` metricsHistory, next piece to ship.
 - **COO layer** (`rubinstein-productions-coo`): pricing discipline, capacity, opportunity triage — flag anything off-pattern.
 
 **3. Synthesize — give me:**

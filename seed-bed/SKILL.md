@@ -110,7 +110,7 @@ When Isaac wants to process `07 Capture/`:
 
 ## Connection to Existing Skills
 
-**Called BY:** `rubinstein-productions-agent` (when idea doesn't fit existing routing table)
+**Called BY:** `isaac-twin` (when idea doesn't fit existing routing table; formerly `rubinstein-productions-agent`, retired 2026-06-29)
 **Feeds INTO:** Any downstream skill when a seed matures — COO, Arena, Content Arc, Projects, PM Coordinator, Writing, Quantum Mirror
 **Never calls:** COO triage, Proposal Builder, or any output-oriented skill during incubation. The seed-bed is pre-output.
 
