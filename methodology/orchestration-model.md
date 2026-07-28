@@ -11,7 +11,7 @@ of accreting.
 | Artifact | Was describing | Now lives as |
 |---|---|---|
 | `agentic-orchestrator` (toolkit PR #3) | the runtime loop | **the spine** (below) |
-| `rubinstein-productions-agent` skill | the business orchestrator | the spine's instance for RP operations |
+| `rubinstein-productions-agent` skill (retired 2026-06-29) | the business orchestrator | `isaac-twin`, the spine's instance for RP operations |
 | `idea-to-pilot` (toolkit PR #5) | new-product lifecycle | one of three lifecycles the spine drives |
 | SHIP (stack-data PR #29) | record movement through PM | the data layer's movement protocol |
 | the lab (stack-data PR #29) | eval loop | the QA gate's measurement engine |
@@ -34,11 +34,15 @@ prompt (Isaac's words)
 ```
 
 Names that collapse here:
-- The **strategic coordinator** and the **digital twin** are one pass, not two. It
-  stays folded into the orchestrator as Pass 3. That answers the open question in
-  PR #3: no separate digital-twin skill.
-- `rubinstein-productions-agent` is this spine instantiated for the business. It
-  is not a different orchestrator. `all-systems-go` is one triggered run of it.
+- The **strategic coordinator** and the **digital twin** are one pass, not two.
+  PR #3's open question was first answered "no separate digital-twin skill"; the
+  twin has since shipped as its own skill (`isaac-twin`, loading the live
+  operating model), and Pass 3 now calls that skill instead of re-stating it
+  inline. Still one pass.
+- `rubinstein-productions-agent` was this spine instantiated for the business,
+  not a different orchestrator. It retired in the 2026-06-29 consolidation;
+  `isaac-twin` is the spine's business instance now, and `all-systems-go` is one
+  triggered run of it.
 - **diverge** and **converge** are together "the balloon" in `agentic-orchestrator`:
   jump out to parallel agents, jump back to one proposal. Same engine phase, two
   names; the spine keeps diverge and converge.
@@ -50,7 +54,7 @@ so three lifecycles, and they share their last move.
 
 ### 1. A business record (the money path)
 A lead becoming a proposal becoming a project becoming an invoice. The domain
-skills already own the stages: `outreach-email-manager`, `project-management-coordinator`, `invoice-financial-tracker`. Underneath, the
+skills already own the stages: `outreach-email-manager` and `project-management-coordinator`; the invoice stage reads stack-data financials through the COO lane (`invoice-financial-tracker` retired 2026-06-29). Underneath, the
 record moves through **SHIP**: Submit, Hold, Integrate, Promote. SHIP is the data
 layer; the stage skills are the domain layer over it.
 
