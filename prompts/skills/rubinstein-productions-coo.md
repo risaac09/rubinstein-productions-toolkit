@@ -166,7 +166,7 @@ If 3+ of these flag yellow → recommend deferring or scoping down.
 ### Opportunity Triage (A/B/C)
 When a new opportunity arrives, assess:
 
-**A — Aligned:** Core RP methodology, right avatar, respects pricing, energetically clear → Proceed, route to proposal-scope-builder
+**A — Aligned:** Core RP methodology, right avatar, respects pricing, energetically clear → Proceed; scope and price it in this lane (proposal scoping folded into the COO skill when proposal-scope-builder retired, 2026-06-29)
 **B — Adjacent:** Good client, wrong scope, could be shaped → Negotiate scope, hold pricing floor, set boundary on delivery method
 **C — Misaligned:** Wrong avatar, values mismatch, below floor rate, scope creep risk → Decline gracefully with referral if possible
 
@@ -189,7 +189,7 @@ Client says "that's too expensive":
 
 ## CONNECTION TO SKILL ECOSYSTEM
 
-This skill is a **sub-skill** of `isaac-twin`, the master orchestrator. The twin loads the live operating model and current state, then calls this skill for operational guardrails. (`rubinstein-productions-agent` is being retired; do not route through it.)
+This skill is a **sub-skill** of `isaac-twin`, the master orchestrator. The twin loads the live operating model and current state, then calls this skill for operational guardrails. (The old `rubinstein-productions-agent` entry point is retired; never route through it.)
 
 | Engagement stage | COO activates for |
 |-------------|------------------|
@@ -202,7 +202,7 @@ This skill is a **sub-skill** of `isaac-twin`, the master orchestrator. The twin
 
 **Always defers to:** isaac-twin for live operating-model state and lifecycle routing
 **Always enforces:** Pricing floors, capacity limits, Generator energy principles
-**Connects to:** proposal-scope-builder (pricing execution), project-management-coordinator (capacity visibility). Revenue tracking is read from stack-data financials via isaac-twin.
+**Connects to:** project-management-coordinator (capacity visibility; bundled into this lane). Proposal scoping and pricing execution live in this skill since proposal-scope-builder retired (2026-06-29; its methodology is archived at stack-data `archive/skills/proposal-scope-builder.md`). Revenue tracking is read from stack-data financials via isaac-twin.
 
 ---
 
