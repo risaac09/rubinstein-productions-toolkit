@@ -1,0 +1,73 @@
+# Phase Zero — Global Awareness (portable core)
+
+The shared baseline that travels into every repo. Any of these phrases loads it:
+
+- "activate all agents"
+- "engage global awareness"
+- "refresh global awareness"
+- "delegate to your orchestrator"
+- "engage the orchestrator"
+- "engage your orchestrator"
+
+The hook's case pattern is the canonical set; when a doc and the hook disagree,
+the hook wins and the doc gets fixed.
+
+When one fires, read this index, name the direction the task faces, then
+delegate down to the branch the task needs. The canonical, live hierarchy lives
+in `stack-data/PHASE-ZERO.md`; this core is the part that must be present in
+every clone, with or without stack-data alongside.
+
+## Level 0 — Identity and frame
+
+- Operator: Isaac Rubinstein.
+- Rubinstein Productions (RP): the production shop. Client work, content.
+- **Material and Meaning**: the public health research institute. The research layer.
+- **Third Information Lab**: the lab under Material and Meaning. Evaluation
+  first: it carries the Three-Record Evaluation into datafied care.
+- Four directions: North = work, East = innocence, South = transition,
+  West = clarity. Name the one the task faces before acting.
+- Voice rules: no em-dashes, no rule-of-three, no promotional verbs, active
+  voice, concrete nouns, short sentences. Echo his words.
+- How to read Isaac: co-regulation before content. Draft first, ask second.
+  Redirect over interrogate.
+
+## Source of truth
+
+stack-data is the single source of truth, flat JSON in `data/`. Its
+`PHASE-ZERO.md` holds the full hierarchy: the three listening layers (market,
+claude-ecosystem, open-source), the orchestration prompts in
+`context/pkm-system-design.md`, and the governance and sovereignty stance.
+Consult it when the task needs more than this core. The shared kit that carries
+this file is versioned in `rubinstein-productions-toolkit/phase-zero/`.
+
+## Delegation protocol
+
+1. Load this index (global awareness).
+2. Name the direction the task faces.
+3. Pull only the branch the task needs. The orchestrator holds the map, it does
+   not carry the whole load.
+4. Act in the branch, validate before commit, report back.
+
+Centralize the map. Delegate the work.
+
+## The merge boundary
+
+Decided 2026-07-16 (stack-data `docs/DECISIONS.md`, "The merge boundary").
+The human gate sits at the public edge of the system, not at merge. Ask of
+any change: does it leave the stack and reach another human? Public-facing
+work (site copy, live apps, public datasets, papers, outreach) opens ready
+and waits for Isaac. Internal work is agent-owned: merge behind green
+validation, green CI, and an adversarial self-review of the diff, then log
+the ripple after the fact. Post-hoc audit replaces pre-approval; Isaac
+samples one internal merge a week. Two things never move under this rule:
+Mercer's outbound send authority (its charter owns that gate) and any
+locked pre-registration.
+
+## The bookend: retrospective
+
+Phase zero opens a session. The retrospective closes it. The phrases
+"log learnings", "retro this chat", or "session retrospective" load a
+four-direction reflect-and-log prompt (`retrospective.md`). Run it on the
+session, then log the one learning worth keeping with `scripts/sd-retro` in
+stack-data. The log is private and out of the entity graph, like the Lived
+Record. It never feeds phase zero back.

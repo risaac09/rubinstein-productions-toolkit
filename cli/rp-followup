@@ -2,8 +2,23 @@
 # rp-followup — Show contacts due for follow-up
 # Usage: rp-followup
 
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
-OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
+# Resolve this script's real directory (through the install.sh symlink) and load shared helpers.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
+done
+. "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "rp-followup — Show contacts due for follow-up"
+  echo ""
+  echo "Usage: rp-followup"
+  echo "Lists prospects whose next_followup date has arrived, then contacted"
+  echo "prospects with no follow-up scheduled."
+  exit 0
+fi
+
 PROSPECTS="$OUTREACH/prospects"
 TODAY=$(date +%Y-%m-%d)
 
@@ -14,18 +29,19 @@ echo ""
 found=false
 for f in "$PROSPECTS"/*.md; do
   [ -f "$f" ] || continue
-  next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
+  next=$(fm "$f" next_followup)
   [ -z "$next" ] && continue
-  
+
   if [[ "$next" < "$TODAY" ]] || [[ "$next" == "$TODAY" ]]; then
-    org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
-    contact=$(grep "^contact:" "$f" | sed 's/contact: *"//' | sed 's/"//')
-    touches=$(grep "^touch_count:" "$f" | sed 's/touch_count: *//')
-    last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
+    org=$(fm "$f" org)
+    contact=$(fm "$f" contact)
+    touches=$(fm "$f" touch_count)
+    last=$(fm "$f" last_contact)
     slug=$(basename "$f" .md)
-    
+
     echo "  $org ($contact)"
-    echo "    Due: $next | Last: $last | Touches: $touches"    echo "    → rp-draft $slug"
+    echo "    Due: $next | Last: $last | Touches: $touches"
+    echo "    → rp-draft $slug"
     echo ""
     found=true
   fi
@@ -41,12 +57,12 @@ echo ""
 stale=false
 for f in "$PROSPECTS"/*.md; do
   [ -f "$f" ] || continue
-  status=$(grep "^status:" "$f" | sed 's/status: *//')
-  next=$(grep "^next_followup:" "$f" | sed 's/next_followup: *"//' | sed 's/"//')
-  
+  status=$(fm "$f" status)
+  next=$(fm "$f" next_followup)
+
   if [ "$status" = "contacted" ] && [ -z "$next" ]; then
-    org=$(grep "^org:" "$f" | sed 's/org: *"//' | sed 's/"//')
-    last=$(grep "^last_contact:" "$f" | sed 's/last_contact: *"//' | sed 's/"//')
+    org=$(fm "$f" org)
+    last=$(fm "$f" last_contact)
     echo "  $org — last contact: $last (no follow-up set)"
     stale=true
   fi

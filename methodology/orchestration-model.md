@@ -33,12 +33,15 @@ prompt (Isaac's words)
   -> ship
 ```
 
-Two names collapse here:
+Names that collapse here:
 - The **strategic coordinator** and the **digital twin** are one pass, not two. It
   stays folded into the orchestrator as Pass 3. That answers the open question in
   PR #3: no separate digital-twin skill.
 - `rubinstein-productions-agent` is this spine instantiated for the business. It
   is not a different orchestrator. `all-systems-go` is one triggered run of it.
+- **diverge** and **converge** are together "the balloon" in `agentic-orchestrator`:
+  jump out to parallel agents, jump back to one proposal. Same engine phase, two
+  names; the spine keeps diverge and converge.
 
 ## The three lifecycles the spine drives
 
@@ -66,6 +69,14 @@ themselves scored.
 SHIP's **Promote**, idea-to-pilot's **Graduate**, and the lab's **promote the
 winner** are the same gesture at three layers: a candidate that cleared its gate
 becomes the new default, logged. Call it Promote everywhere.
+
+## The gate between stages: Definition of Ready
+
+The lifecycle stages are separated by one gate, the Definition of Ready (the JIRA
+sense). A unit is Ready to advance when it is described in one line, has acceptance
+criteria, is sized to finish in one work block, has no blocking dependency, and
+names its owner. SHIP's **Hold** is the same gate seen from the data side: a record
+with no owner and no dated next action is not Ready, it is about to be lost.
 
 ## The cross-cutting substrates
 

@@ -70,7 +70,9 @@ the `stack-data` sync uses applies here.
 
 ## Governance bar (must pass before this is a governed deploy)
 
-Set by the 2026-06-17 governance review (`research/proposal-foundation-deploy.md`).
+Set by the 2026-06-17 governance review, which moved to the private rp-intranet
+repo as `docs/business-development/toolkit-research/proposal-foundation-deploy.md`
+and is not readable from this public repo.
 The build is deferred; this bar is folded in now so the day a trigger fires the
 work starts governed, not improvised.
 

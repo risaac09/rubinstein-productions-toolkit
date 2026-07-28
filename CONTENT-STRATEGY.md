@@ -204,9 +204,9 @@ That arc moves from personal craft → shared methodology → public infrastruct
 ---
 
 *This strategy should be read alongside:*
-- [[creative-strategy-rubinsteinproductions]]
-- [[RP-Content-Arc-6Month]]
-- [[Say Why — Grant Concept]]
-- [[The Extraction Problem — Position Paper]]
+- [Creative Strategy](prompts/creative-strategy.md)
+- `RP-Content-Arc-6Month` (vault note)
+- [Say Why Grant Concept](research/say-why-grant-concept.md)
+- `The Extraction Problem — Position Paper` (vault note)
 
 *"The liver processes and expresses."*
