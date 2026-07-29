@@ -1,6 +1,6 @@
 # The measurement framework (ENIF), in plain language
 
-> **Canonical doc:** [`methodology/enif.md`](enif.md). That file is the source of truth, a snapshot of the vault canonical and the April 2026 consolidation of the original 780-line ENIF. This is the teaching layer for readers with no evaluation background.
+> **Canonical doc:** [`methodology/measurement-framework.md`](measurement-framework.md). That file is the source of truth, a snapshot of the vault canonical and the April 2026 consolidation of the original 780-line ENIF. This is the teaching layer for readers with no evaluation background.
 
 ## What it is
 
