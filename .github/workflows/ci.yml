@@ -18,3 +18,9 @@ jobs:
         run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
       - name: Markdown link check
         run: scripts/check-doc-links.sh
+      - name: Unresolved merge marker check
+        run: |
+          if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then
+            echo "Unresolved merge markers found" >&2
+            exit 1
+          fi

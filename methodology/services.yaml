@@ -1,11 +1,6 @@
 # RP Service Tiers — public extract
 #
 # Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
-<<<<<<< HEAD
-# (v2, 2026-04-27). This file is the structured extract for automation
-# (consumed by rubinstein-productions-coo for pricing discipline and scope shaping). When this file disagrees with
-# the canonical vault doc, the canonical doc wins.
-=======
 # (v2, 2026-04-27). This public copy carries only the two publicly offered
 # tiers (their price ranges match rubinsteinproductions.com/services) and the
 # four methodology phases. The full binding, with the internal tier, the COO
@@ -13,7 +8,6 @@
 # rp-intranet/docs/operations/services.yaml (moved 2026-07-16); automation
 # reads that copy. When the two disagree, intranet wins; when either disagrees
 # with the canonical vault doc, the canonical doc wins.
->>>>>>> main
 
 services:
 
