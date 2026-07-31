@@ -124,7 +124,6 @@ Load skills as needed. Do not load all at once. Route based on task.
 | Projects | `project-management-coordinator` | Active project management |
 | Content + Creative | `creative-strategy-engine` | Hooks, concepts, content, review audit, onboarding |
 | Voice | `isaac-voice` + `stop-slop` | Anything shipping under Isaac's name |
-| Evaluation | `eval-rfp-analyzer` then `eval-proposal-builder`, `capabilities-statement-generator`, `case-study-extractor` | RFPs, eval proposals, capability statements, case studies |
 | Measurement | `consistency-scoring-aggregator` + `nomadic-indicators-coder` | Likert/NPS aggregation, transcript coding |
 | Corpus | `vault-audit` + `canonical-drift-watcher` | Vault audit, canonical drift |
 | Footage | `video-archive-audit` | 3-2-1 backup safety |
