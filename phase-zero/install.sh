@@ -40,7 +40,7 @@ RETIRED_FILES="opus-4-8-brief.md"
 # folder is never opened as a project (dropped 2026-07-13); risaac09 is one
 # generated README with no session to brief. Before 2026-07-24 --all installed
 # into every git repo one level down, including these two.
-NON_CONSUMERS="claude-memory risaac09"
+NON_CONSUMERS="claude-memory risaac09 mercer"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
