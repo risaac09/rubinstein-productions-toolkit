@@ -46,7 +46,7 @@ Four core docs carry a plain-language companion for readers with no evaluation b
 ### `prompts/`
 The prompt stack: AI skill files that encode the methodology, brand voice, and operational logic.
 
-- **15+ Cowork/Claude Code skills** covering facilitation, outreach, proposals, financial tracking, coaching, content publishing, and more
+- **7 Cowork/Claude Code skills** covering outreach, project management, practice operations, agentic development and orchestration, prompting patterns, and idea-to-pilot; `evals/` still carries the harnesses for retired skills
 - **Brand context**: Complete positioning, voice guidelines, and creative constraints
 - **Instantiation prompt**: The system prompt that bootstraps the full practice
 
@@ -79,27 +79,27 @@ Grant infrastructure for the Say Why social impact initiative.
 - Theory of Change
 - Evaluation Framework
 - Fiscal Sponsorship strategy
-- Funder research templates
+- Funder tracking template: `templates/funder-template.md`
 
 ### Apps (external repos)
 Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
 
 - **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
-- **Royal Metrics**: ENIF business performance dashboard (private repo; the measurement framework it implements is in `methodology/`)
+- **Royal Metrics**: ENIF business performance dashboard (lives at `three-type-evaluation/instrument/` since 2026-07-20, standalone repo archived; the measurement framework it implements is in `methodology/`)
 - **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
 
 ### `production/`
 Film and video production tools.
 
 - DaVinci Resolve workflow script
-- Color grading powergrades
+- PowerGrade template spec
 - iPhone filming guide for the camera-shipping model
 ### `research/`
 Frameworks and position papers.
 
 - Dual-architecture and frontier-lab-blueprint position papers
 - Say Why grant concept and the 64-registers thesis
-- rp-shared foundation spec, profile consolidation analysis, evaluation-forward hub framing
+- rp-shared foundation spec
 
 (The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
 
