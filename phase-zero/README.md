@@ -41,10 +41,12 @@ had drifted apart by 2026-07-12, so the kit now carries the canonical text
 and the hook injects it everywhere, including repos with no CLAUDE.md at
 all.
 
-One-time migration after the first v2 deploy: delete the hand-copied "Model
-routing check" sections from stack-data/CLAUDE.md,
-second-brain-mirror/CLAUDE.md, and rubinsteinproductions/CLAUDE.md. The hook
-now injects the canonical copy, so a surviving block would only drift again.
+One-time migration after the first v2 deploy, done and verified 2026-08-01:
+the hand-copied "Model routing check" sections came out of
+stack-data/CLAUDE.md, second-brain-mirror/CLAUDE.md, and
+rubinsteinproductions/CLAUDE.md. Each now carries a pointer-style Model
+routing section. The hook injects the canonical copy, so a surviving block
+would only drift again.
 
 The global (per machine) install stays trigger-only this round. The session
 brief deploys per repo, so the user-level install cannot double-print it.
