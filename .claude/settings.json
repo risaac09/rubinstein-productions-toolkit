@@ -1,5 +1,5 @@
 {
-  "effortLevel": "xhigh",
+  "effortLevel": "medium",
   "hooks": {
     "UserPromptSubmit": [
       {

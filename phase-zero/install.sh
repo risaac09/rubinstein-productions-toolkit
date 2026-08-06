@@ -10,9 +10,9 @@
 #
 # Usage:
 #   ./install.sh <target-repo-dir>          install into one repo
-#   ./install.sh --all <parent-dir>         install into every git repo one level down
+#   ./install.sh --all <parent-dir>         install into every listed consumer
 #   ./install.sh --check <target-repo-dir>  verify one deployed kit, no writes
-#   ./install.sh --check --all <parent-dir> verify every deployed kit, no writes
+#   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
 #
 # --check byte-compares the six kit files against source and confirms both
 # hook registrations exist in settings.json. It writes nothing and exits 1
@@ -34,19 +34,16 @@ KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md ho
 # dropped; drop the line once every clone has run an install past the change.
 RETIRED_FILES="opus-4-8-brief.md"
 
-# Repos that deliberately do not consume the kit. --all skips them; a direct
-# install.sh <repo> still works, so this is a default, not a lock. Both opted
-# out for the same reason: the hooks would sit inert. claude-memory's live
-# folder is never opened as a project (dropped 2026-07-13); risaac09 is one
-# generated README with no session to brief. Before 2026-07-24 --all installed
-# into every git repo one level down, including these two.
-NON_CONSUMERS="claude-memory risaac09 mercer"
+# The current consumer roster. --all touches only these basenames; a direct
+# install.sh <repo> still works for an intentional one-off. The local path
+# `scripts` is the home-scripts repository.
+CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard rubinstein-productions-toolkit"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
 # conditional. This form returns cleanly from any context.
-is_non_consumer() {
-  case " $NON_CONSUMERS " in
+is_consumer() {
+  case " $CONSUMERS " in
     *" $(basename "$1") "*) return 0 ;;
     *) return 1 ;;
   esac
@@ -56,8 +53,8 @@ check_one() {
   local target="$1" drift=0
   [ -d "$target" ] || { echo "skip (not a dir): $target"; return 0; }
   if [ ! -d "$target/.claude" ]; then
-    echo "no kit: $target"
-    return 0
+    echo "DRIFT missing kit directory: $target"
+    return 1
   fi
   for f in $KIT_FILES; do
     if [ ! -f "$target/.claude/$f" ]; then
@@ -136,7 +133,7 @@ if [ "${1:-}" = "--check" ]; then
   if [ "${1:-}" = "--all" ]; then
     parent="${2:?usage: install.sh --check --all <parent-dir>}"
     for d in "$parent"/*/; do
-      if [ -d "$d/.git" ] && ! is_non_consumer "${d%/}"; then
+      if [ -d "$d/.git" ] && is_consumer "${d%/}"; then
         check_one "${d%/}" || RC=1
       fi
     done
@@ -148,10 +145,10 @@ elif [ "${1:-}" = "--all" ]; then
   parent="${2:?usage: install.sh --all <parent-dir>}"
   for d in "$parent"/*/; do
     if [ -d "$d/.git" ]; then
-      if is_non_consumer "${d%/}"; then
-        echo "skip (opted out): ${d%/}"
-      else
+      if is_consumer "${d%/}"; then
         install_one "${d%/}"
+      else
+        echo "skip (not a consumer): ${d%/}"
       fi
     fi
   done

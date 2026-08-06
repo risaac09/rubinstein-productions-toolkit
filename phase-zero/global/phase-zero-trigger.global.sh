@@ -18,8 +18,12 @@
 
 set -euo pipefail
 
-# Defer to the project-level hook when the current repo ships one.
-if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -f "$CLAUDE_PROJECT_DIR/.claude/hooks/phase-zero-trigger.sh" ]; then
+# Defer to the project-level hook when the current repo ships one. At $HOME the
+# candidate path is this hook's own install location, not a repo kit, so a
+# home-directory session must not defer to itself (same guard as the session
+# brief).
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$CLAUDE_PROJECT_DIR" != "$HOME" ] \
+   && [ -f "$CLAUDE_PROJECT_DIR/.claude/hooks/phase-zero-trigger.sh" ]; then
   exit 0
 fi
 
