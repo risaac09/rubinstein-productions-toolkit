@@ -11,11 +11,13 @@ then ask before proceeding. Do not switch silently.
 
 Routing defaults:
 
-- Orchestration, architecture, hard reasoning, final synthesis: Opus 5 at
-  high or xhigh.
+- Routine synthesis, continuity work, component edits, extraction, and
+  research legwork: Sonnet 5 at medium.
+- Orchestration, architecture, hard reasoning, and final synthesis: begin on
+  Sonnet 5 at medium. Escalate to Opus 5 only when a named difficulty survives
+  that pass.
 - The single hardest long-horizon task worth the premium: Fable 5, sweep
   effort low to high.
-- Component edits, extraction, research legwork: Sonnet 5 at medium.
 - Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
 - Low-impact preprocessing with no subscription budget: the local lane,
   free and private. Always-on small model at `http://mini.local:8080/v1`
@@ -25,6 +27,23 @@ Routing defaults:
   Resolve. The local lane has a quality floor: no audit-class, corpus-sweep,
   or voice-gated work.
 - Deterministic work with no judgment: a script, not a model call.
+
+Capacity contract, effective 2026-08-12:
+
+- Claude runs on Max 5x. ChatGPT Plus is a separate paid pool. Use Claude for
+  synthesis, continuity, Isaac-voice work, and Claude-native projects. Route
+  routine repository execution, local audits, and artifact production to Codex
+  Terra at medium when the task does not depend on Claude context.
+- Do not use usage credits or silent API overage on either service. If Claude
+  reaches an included limit, hand eligible execution work to Codex through the
+  content-free coordination protocol or wait for Claude's next reset. If both
+  pools are limited, continue deterministic local work or move the task to the
+  next week.
+- Keep at least 20 percent of Claude's weekly capacity available for urgent
+  synthesis and continuity work. Start a fresh outcome-focused session when the
+  task changes instead of carrying a long cached context forward.
+- Opus and Fable are explicit escalations. Name the difficulty they address and
+  return to Sonnet after that pass.
 
 Model and effort are separate levers. The right setting can be the same model
 at a lower effort. Sweep effort before reaching for a bigger model: Opus 5

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-global.sh — install the phase-zero hook at the user level (~/.claude).
+# install-global.sh — install the phase-zero hooks at the user level (~/.claude).
 #
 # Run once per machine. After this, the trigger phrases load global awareness in
 # every Claude Code session on the machine, including outside any repo. Existing
@@ -9,8 +9,8 @@
 #   ./install-global.sh
 #   STACK_DATA_DIR=/path/to/stack-data ./install-global.sh   # pin the live source
 #
-# The global hook defers to a repo's own phase-zero hook when you are inside one,
-# so phase zero never prints twice.
+# The global hooks defer to a repo's own phase-zero kit when you are inside one,
+# so phase zero and the routing brief never print twice.
 
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"      # .../phase-zero/global
@@ -22,24 +22,44 @@ cp "$SRC/phase-zero-trigger.global.sh" "$DEST/hooks/phase-zero-trigger.sh"
 chmod +x "$DEST/hooks/phase-zero-trigger.sh"
 cp "$KITROOT/phase-zero.md" "$DEST/phase-zero.md"   # guaranteed fallback core
 cp "$KITROOT/retrospective.md" "$DEST/retrospective.md"   # retrospective prompt fallback
+cp "$KITROOT/model-routing.md" "$DEST/model-routing.md"
+cp "$KITROOT/operating-brief.md" "$DEST/operating-brief.md"
+cp "$SRC/session-brief.global.sh" "$DEST/hooks/session-brief.sh"
+chmod +x "$DEST/hooks/session-brief.sh"
 
 settings="$DEST/settings.json"
 hook_cmd='bash "$HOME/.claude/hooks/phase-zero-trigger.sh"'
+session_cmd='bash "$HOME/.claude/hooks/session-brief.sh"'
 
 if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
   entry=$(jq -n --arg cmd "$hook_cmd" '{hooks:[{type:"command",command:$cmd}]}')
-  jq --argjson entry "$entry" '
+  session_entry=$(jq -n --arg cmd "$session_cmd" '{hooks:[{type:"command",command:$cmd}]}')
+  jq --argjson entry "$entry" --argjson session_entry "$session_entry" '
     .hooks //= {} |
     .hooks.UserPromptSubmit //= [] |
-    if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
-    then . else .hooks.UserPromptSubmit += [$entry] end
+    (if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
+     then . else .hooks.UserPromptSubmit += [$entry] end) |
+    .hooks.SessionStart //= [] |
+    (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("session-brief"))
+     then . else .hooks.SessionStart += [$session_entry] end)
   ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
+elif [ -f "$settings" ]; then
+  # jq is missing and a settings.json exists: never clobber it. Fail loudly,
+  # the same guard install.sh applies to a repo settings.json.
+  echo "ERROR: $settings exists but jq is not installed; cannot merge." >&2
+  echo "Install jq, or add these hooks to it by hand:" >&2
+  echo "  UserPromptSubmit: $hook_cmd" >&2
+  echo "  SessionStart:     $session_cmd" >&2
+  exit 1
 else
   cat > "$settings" <<'JSON'
 {
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "bash \"$HOME/.claude/hooks/phase-zero-trigger.sh\"" } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash \"$HOME/.claude/hooks/session-brief.sh\"" } ] }
     ]
   }
 }
