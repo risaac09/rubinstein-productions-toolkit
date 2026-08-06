@@ -37,7 +37,7 @@ RETIRED_FILES="opus-4-8-brief.md"
 # The current consumer roster. --all touches only these basenames; a direct
 # install.sh <repo> still works for an intentional one-off. The local path
 # `scripts` is the home-scripts repository.
-CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard rubinstein-productions-toolkit"
+CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com rubinstein-productions-toolkit"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
