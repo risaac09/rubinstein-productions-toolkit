@@ -48,8 +48,9 @@ rubinsteinproductions/CLAUDE.md. Each now carries a pointer-style Model
 routing section. The hook injects the canonical copy, so a surviving block
 would only drift again.
 
-The global (per machine) install stays trigger-only this round. The session
-brief deploys per repo, so the user-level install cannot double-print it.
+The global per-machine install carries a fallback SessionStart brief for work
+opened from `~/` or another directory without the kit. It defers to a repository
+SessionStart hook when one exists, so the routing brief never prints twice.
 
 ## Files
 
@@ -87,7 +88,7 @@ renderer; in every other repo it falls back to the portable core here.
     # one repo
     ./install.sh ../rp-shared
 
-    # every git repo one level down
+    # every listed consumer under the parent directory
     ./install.sh --all ..
 
 Re-run any time to refresh the kit. When `phase-zero.md` or the hook changes
@@ -104,7 +105,8 @@ repo. Run once per machine:
     STACK_DATA_DIR=/path/to/stack-data global/install-global.sh
 
 This writes `~/.claude/hooks/phase-zero-trigger.sh`, copies the portable core to
-`~/.claude/phase-zero.md` as a fallback, and merges the hook into
-`~/.claude/settings.json` without disturbing existing user settings. The global
-hook prefers the live stack-data renderer (signal counts) and defers to a repo's
-own phase-zero hook when you are inside one, so phase zero never prints twice.
+`~/.claude/phase-zero.md` as a fallback, installs the global SessionStart brief,
+and merges both hooks into `~/.claude/settings.json` without disturbing existing
+user settings. The global prompt trigger prefers the live stack-data renderer.
+Both global hooks defer to the repository copy when the current project ships
+the kit, so neither phase zero nor the routing brief prints twice.
