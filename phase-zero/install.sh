@@ -4,9 +4,10 @@
 # Drops the portable phase-zero core, the model-routing check, the operating
 # brief, both hooks (UserPromptSubmit trigger,
 # SessionStart brief), and the hook registrations into <target-repo>/.claude/.
-# If the target already has a settings.json, the hooks are merged in (jq)
-# rather than overwriting existing config. Idempotent: re-running refreshes
-# the kit.
+# If the target already has a settings.json, the hooks and the high-blast
+# permission clamps (the deny/ask lists in the kit settings.json, mirroring
+# ~/.claude/settings.json) are merged in (jq) rather than overwriting
+# existing config. Idempotent: re-running refreshes the kit.
 #
 # Usage:
 #   ./install.sh <target-repo-dir>          install into one repo
@@ -15,8 +16,10 @@
 #   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
 #
 # --check byte-compares the six kit files against source and confirms both
-# hook registrations exist in settings.json. It writes nothing and exits 1
-# on any drift. This is the kit-drift tripwire from the 2026-07-17 audit:
+# hook registrations plus every kit permission clamp exist in settings.json.
+# settings.json itself is never byte-compared: merged consumer copies carry
+# repo-local config and legitimately differ from source. It writes nothing
+# and exits 1 on any drift. This is the kit-drift tripwire from the 2026-07-17 audit:
 # a stale deployed copy (third-information-lab missed the merge-boundary
 # section for a day) is invisible until something reads it.
 #
@@ -78,6 +81,15 @@ check_one() {
   else
     grep -q "phase-zero-trigger" "$settings" || { echo "DRIFT hook unregistered (phase-zero-trigger): $target"; drift=1; }
     grep -q "session-brief" "$settings" || { echo "DRIFT hook unregistered (session-brief): $target"; drift=1; }
+    # Clamp tripwire: every deny/ask rule in the kit settings.json must appear
+    # in the consumer settings.json (a rule promoted from ask to deny locally
+    # still matches; that is a stricter posture, not drift). Needs jq to read
+    # the kit list; without jq the clamp check is skipped, like the merge.
+    if command -v jq >/dev/null 2>&1; then
+      for rule in $(jq -r '((.permissions.deny // []) + (.permissions.ask // []))[]' "$SRC/settings.json"); do
+        grep -qF "\"$rule\"" "$settings" || { echo "DRIFT clamp unregistered ($rule): $target"; drift=1; }
+      done
+    fi
   fi
   [ "$drift" -eq 0 ] && echo "kit current: $target"
   return $drift
@@ -104,15 +116,22 @@ install_one() {
   local sb_cmd='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/session-brief.sh"'
   local settings="$target/.claude/settings.json"
   if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
-    # Merge: keep existing config, add each kit hook if absent.
-    jq --arg pz "$pz_cmd" --arg sb "$sb_cmd" '
+    # Merge: keep existing config, add each kit hook if absent, and union the
+    # kit permission clamps into the target. Existing entries keep their order;
+    # kit rules are appended only when missing. An ask rule the target already
+    # denies is not re-added to ask (deny wins, the stricter posture stands).
+    # Nothing the repo already carries is dropped.
+    jq --arg pz "$pz_cmd" --arg sb "$sb_cmd" --slurpfile kit "$SRC/settings.json" '
       .hooks //= {} |
       .hooks.UserPromptSubmit //= [] |
       (if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
        then . else .hooks.UserPromptSubmit += [{hooks:[{type:"command",command:$pz}]}] end) |
       .hooks.SessionStart //= [] |
       (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("session-brief"))
-       then . else .hooks.SessionStart += [{hooks:[{type:"command",command:$sb}]}] end)
+       then . else .hooks.SessionStart += [{hooks:[{type:"command",command:$sb}]}] end) |
+      .permissions //= {} |
+      .permissions.deny = ((.permissions.deny // []) + (($kit[0].permissions.deny // []) - (.permissions.deny // []))) |
+      .permissions.ask = ((.permissions.ask // []) + (($kit[0].permissions.ask // []) - (.permissions.ask // []) - (.permissions.deny // [])))
     ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
   elif [ -f "$settings" ]; then
     # jq is missing and a settings.json exists: never clobber it. Fail loudly.
