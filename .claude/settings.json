@@ -21,5 +21,19 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": [
+      "mcp__Desktop_Commander__write_file",
+      "mcp__Desktop_Commander__edit_block",
+      "mcp__Desktop_Commander__move_file"
+    ],
+    "ask": [
+      "mcp__Control_your_Mac__osascript",
+      "mcp__Desktop_Commander__start_process",
+      "mcp__Desktop_Commander__interact_with_process",
+      "mcp__Desktop_Commander__kill_process",
+      "mcp__Read_and_Send_iMessages__send_imessage"
+    ]
   }
 }
