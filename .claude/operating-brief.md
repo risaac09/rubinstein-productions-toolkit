@@ -54,16 +54,23 @@ check that thing.
 Tripwire: agents produce reviewable artifacts and the orchestrator reads them
 before executing. Never run blind.
 
-### 4. Apparatus before behavior
+### 4. Apparatus fed thin (North register v2, 2026-08-08)
 
-The slip: reaching for a new script, schema, workflow, or governance doc before
-the behavior it serves has happened once by hand.
-Warrant: the record. The North corrective, confirmed by night-atlas across the
-whole stack: systems built with discipline and fed thin.
-Rule: before building, answer the North question. What behavior, how small, by
-when. If the behavior can run without the apparatus, run the behavior first and
-document after.
-Tripwire: a new tool earns its file by the disk having done the thing once already.
+The slip: apparatus built with discipline and starved of its feed. The old test
+(behavior before building) was a proxy; the merge boundary made building cheap
+and feeding delegable, so the test is now feeder-ownership.
+Warrant: the record, both edges on one day (2026-08-08 estate audit): a missing
+parity assertion cost eight days of silent partial backups, while 465 unreviewed
+queue items and a zero-row data lane showed the fed-thin failure live.
+Rule: classify before building. Self-consuming apparatus (fail-loud gates,
+retries, assertions, detectors landing in an existing reviewed surface) builds
+freely, before any behavior. Agent-fed apparatus builds before behavior if it
+routes into a surface already reviewed, never minting a new one. A new
+human-fed surface (queue, brief, dashboard, log needing Isaac's eyes) keeps the
+old rule and tightens it: behavior first, a named feeder, a cadence, and a kill
+criterion of six unfed weeks, self-retiring with a one-line note.
+Tripwire: a proposal creating a new human review surface names its kill
+criterion, or it does not ship.
 
 ## What came out, and why
 
@@ -84,7 +91,8 @@ If any of them reappears in the record, put it back with the evidence attached.
 Three questions, one each from the corrective layer. They cost a minute and they
 are the cheapest review the stack owns.
 
-1. What behavior, how small, by when. (North)
+1. Which feeder class; a new human-fed surface still answers what behavior,
+   how small, by when, plus its kill criterion. (North v2)
 2. Does naming this layer change a decision today. (West)
 3. Whose nervous system is this built for, and who does it cost. (South)
 
