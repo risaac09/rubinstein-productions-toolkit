@@ -88,7 +88,7 @@ Claude Code's bundled pptx skill has `scripts/thumbnail.py`, which builds a labe
 ### The output of Phase 1
 
 ```markdown
-# BRAND-PROFILE — <template name>
+# BRAND-PROFILE: <template name>
 Origin: <dc:creator>, created <date>, modified <date>. Client-native / ours.
 Fonts: title <face weight size color> · kicker <...> · body <...> · label <...>
 Embedded: yes/no  (if no: warn that rendering machines need the font installed)
@@ -96,7 +96,7 @@ Working palette (modal, from XML): <hex> <role> ...
 Official palette (from instruction text): <hex> ...
 Background: <mechanism, e.g. greige @30% alpha over white → renders #F0EDEA>
 Footer: <asset> at (x,y) w×h in · content stops at y=<n>in
-Layouts available: <n> — <names and purpose>
+Layouts available: <n>, <names and purpose>
 Missing layouts: <forms with no layout>
 Semantic color code: <which color means structure, which means signal, which means risk>
 ```
