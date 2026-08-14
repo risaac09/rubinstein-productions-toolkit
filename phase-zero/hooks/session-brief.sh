@@ -26,6 +26,36 @@ cat >/dev/null 2>&1 || true
 
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
+# Shallow-clone tripwire. Printed before the routing block and before the
+# kit-payload check, because it stays true whether or not the payload is here.
+#
+# Cloud sandboxes clone shallow, and a graft boundary above the fork point
+# makes git lie QUIETLY: merge-base returns a plausible wrong SHA, divergence
+# counts invent commits on both sides, and `git diff base..head` shows phantom
+# reversions. Nothing errors, nothing warns, so the wrong answer reads as the
+# real state of the branch. Three mergeable PRs (stack-data #101, #76, #90)
+# were closed and hand-replayed on 2026-07-27 on exactly that false verdict,
+# and the prose rule in CLAUDE.md did not stop a recurrence on 2026-08-14.
+#
+# Local operation, no network, so this costs nothing. Remediation stays manual
+# on purpose: an LFS-backed mirror can carry a very expensive history, and
+# unshallowing it at session start would be the wrong default.
+shallow=$(git -C "$root" rev-parse --is-shallow-repository 2>/dev/null || echo false)
+if [ "$shallow" = "true" ]; then
+  gitdir=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null || echo "")
+  grafts=""
+  if [ -n "$gitdir" ] && [ -f "$gitdir/shallow" ]; then
+    grafts=$(wc -l < "$gitdir/shallow" 2>/dev/null | tr -d ' ')
+  fi
+  echo "[SHALLOW CLONE${grafts:+, $grafts graft points}] git ancestry here is UNRELIABLE."
+  echo "merge-base, divergence counts, and 'git diff base..head' return wrong"
+  echo "answers SILENTLY: no error, no warning, just a plausible wrong result."
+  echo "Before acting on any merge, divergence, or 'unrelated histories' verdict:"
+  echo "  git fetch --unshallow origin   # then re-check git merge-base"
+  echo "Treat 'unrelated histories' as a clone property until proven otherwise."
+  echo
+fi
+
 routing="$root/.claude/model-routing.md"
 [ -f "$routing" ] || exit 0
 
