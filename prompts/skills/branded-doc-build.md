@@ -77,11 +77,18 @@ Write the deliverable as a markdown working file, then build each Word document 
 
 **Strip internal scaffolding from anything client-facing.** Decision gates, strategy notes, and your own reasoning stay in the markdown. Generic-template residue is the same failure from the other direction: a list like "JIRA, Azure DevOps, ServiceNow, etc." reads as a template nobody bothered to localize.
 
+### Whose brand
+
+**Palette follows the speaker, not the audience.** Use the client's brand when the document speaks for the program. Use your own brand when you are the one speaking, as in a document pitching your own role or practice. Brand identity is voice attribution, and getting this backwards makes a self-advocacy document read as a program deliverable.
+
+Where the client's palette lacks a level you need, extend it by darkening an existing accent. Never import a foreign hue to carry a semantic role.
+
 ### Content discipline, before any formatting
 
 - **Mark every value the client must supply as a bracketed placeholder,** and gate the document with a top note listing what must be confirmed before sending. Then `grep -o '\[[^]]*\]'` the built file before handoff. A shipped client template once carried `[topic]` in its own footer.
 - **Never let a placeholder become an invented value.** A named gap beats a fabricated figure. Name who owes the answer.
 - **Ship the trade-offs inside the deliverable.** The strongest one-pager in the corpus carries its own "Trade-off:" line and a "Still open:" list of undecided items. Intellectual honesty is content, not a caveat you deliver verbally.
+- **Wear verification on the surface.** State currency and its source in the document: `Confirmed current as of June 2026 (per Karen)`. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
 - **When you change an instrument that carries a trend, ship a change log** sorted Kept / Reworded / Cut / Fixed / New, flag every reworded trend item so the seam is not misread later, and list open decisions at the bottom.
 
 ---

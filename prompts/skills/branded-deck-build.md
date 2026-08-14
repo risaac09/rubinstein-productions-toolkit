@@ -228,7 +228,12 @@ Then open every image and inspect it as if you know there are problems. Fresh ey
 | 15 | Theme and layout counts have not exploded | Pasting slides imports their masters. Many themes means many visual systems. |
 | 16 | Spelling of titles and headers specifically | These are what get quoted. |
 | 17 | Axes not truncated on bounded scales | Data honesty. |
-| 18 | Voice rules applied to the final copy | Sweep em-dashes to colons. Check the promotional verbs. |
+| 18 | **Speaker notes rotated with their slides** | A slide read 75% while its note still said 44%. The visible layer was updated and the notes layer was not. |
+| 19 | Placeholder zones filled or consciously re-dated | An `FPO` risks zone survived three consecutive weekly cycles. |
+| 20 | Hidden and work-in-progress slides removed | Two cycles shipped a hidden `TBD/WIP` slide riding along at the end. |
+| 21 | On-slide date agrees with the filename date | They drift apart on recurring artifacts. |
+| 22 | Deck size sane, no stray video or animated GIF | Check `du -sh` on `ppt/media/`. |
+| 23 | Voice rules applied to the final copy | Sweep em-dashes to colons. Check the promotional verbs. |
 
 Fix, **re-render**, re-check. One fix routinely creates another. Only call it done after a clean full pass.
 
@@ -288,6 +293,86 @@ Increment the filename each generation and archive superseded versions. During l
 | **Deleting without bridging** | Cutting hard-to-restyle slides and never shipping the promised pointer to where that content went. |
 | **Template media baggage** | Carrying megabytes of unused layout art into every deliverable. |
 | **Byte-identical duplicates** | `deck copy.pptx` accumulating in the working folder. Check md5 before treating one as a version. |
+| **Media accretion through slide reuse** | Copying one slide from another deck brings its payload. A single countdown slide carried a 44 MB GIF across. |
+| **Placeholder rot** | An `FPO` or `TBD` zone that survives cycle after cycle because nobody swept it. |
+| **Stale notes layer** | Visible slide updated, speaker note left contradicting it. |
+| **The mega-deck** | Operating detail crammed into the executive artifact instead of routed to a companion at the right altitude. |
+| **Presenting the instrument as the readout** | Showing the facilitation board (questions and time-boxes) back to the audience instead of building a results artifact. |
+| **Strategy layer on a slide** | Negotiation prep, situation reads, and tonal notes escaping the prose note. |
+| **Unbounded compilation decks** | An archive that accretes weekly summaries to 84 slides. Useful as a record, unpresentable as a deck. |
+| **Entertainment openers** | Icebreaker slides consuming meeting time. Delete the genre rather than restyling it. |
+
+---
+
+## Altitude
+
+### Mint the set in one run
+
+Do not wait to be asked for the short version. In the strongest example, the full readout, a two-slide cut, and a one-slide cut were all produced inside fifty minutes from one evidence base. Altitudes designed together stay consistent. Altitudes compressed weeks apart drift.
+
+| Altitude | Audience | Budget |
+|---|---|---|
+| Full readout | The working team | Whatever the evidence needs |
+| Two-slide | A meeting agenda item | Roughly two thirds of the full word count |
+| One-slide | Executives, and anything forwardable | 150 to 220 words |
+
+### Write the verdict sentence before any slide
+
+It has to be short enough to survive every altitude verbatim and strong enough that other people quote it in their own decks. One real example, `The change scaffolding held. Go-live readiness did not.`, was minted in the evidence base with the instruction to state it once and let it carry, then appeared unchanged in three altitudes and as a pull quote in a separate briefing.
+
+### Compress by deleting zones, not by shrinking type
+
+**If text overflows its box, the content is wrong, not the font size.**
+
+What survives compression, in order: the verdict sentence, then item heads, then the ask, then item bodies squeezed to one clause. Counts, narrative, and methodology go first. Put plainly: **the analyst's material dies first and the decision material dies last.**
+
+### What a one-slide artifact contains
+
+A letterspaced kicker naming the source and date. A title. A one-sentence verdict band. Roughly three columns of three chips each, every chip a bold head plus one gray clause. A numbered ask band at the bottom. The brand footer. Cap each column at three chips and let the fuller altitude hold the rest, which is exactly what the two-slide version is for.
+
+Rebuild it as its own composition. A one-slide artifact is not a shrunk deck.
+
+Refresh the dates at distillation time. The original timeline will have slipped, and the distilled version is the one that travels.
+
+### Split by genre, not just by length
+
+A reference library keeps every row with owner and cadence. A signal instrument keeps seven picks with trend arrows and one italic line each. Key each pick back to its library category so a reader can drill in, and make each artifact name its counterpart on the slide face.
+
+When one deck's content is another deck's detail, ship an explicit handoff line rather than duplicating or leaving a gap. A cut without a pointer reads as an omission.
+
+Give any dense instrument a "How to read this" strip explaining what the arrows mean and what it pairs with.
+
+**End every altitude in an ask.** A numbered priorities band, a "what we will ask of you" box, or a closing ask slide.
+
+### A briefing is two artifacts
+
+A prose note holds the strategy layer: the read on the person, the timed arc, verbatim opening and closing lines, anticipated questions, tonal notes. The deck holds only what the audience sees. **Never let the strategy layer onto a slide.**
+
+---
+
+## Recurring-cadence decks
+
+A monthly or weekly deck's job is to be recognized instantly. Identity comes from editing last cycle's file, not rebuilding.
+
+**Fix the skeleton, rotate the zones.** Decide which regions change each cycle and which never do. In a good weekly status, the objective sentence stayed byte-for-byte identical across three weeks and only the dated zones moved.
+
+**A weekly project status is one slide.** Stakeholders, a stable objective, a milestone table with a color legend, key accomplishments as of a date, activities within the next two weeks, and risks. It is read, not presented, so roughly 200 words in a quad chart is correct here even though it would be wrong on a presented slide.
+
+**Keep media byte-identical between cycles** and stay under about 2 MB. Media accretion is the defining failure of recurring decks: one copied slide carried a 44 MB animated GIF background into a meeting deck, another added a 23 MB video icebreaker, and the deck reached 73 MB. The next cycle cut it to 2 MB by deleting decoration, not by restyling anything.
+
+**Delete decoration rather than restyling it,** and use the template's own branded banner slides as section dividers. That converts brand assets into navigation and removes the need for stock photography. The result is often more on-template than the client's own decks, which is the correct posture: hold their brand more strictly than they do under time pressure.
+
+**Update state words in existing titles** rather than adding slides for the same topic: `Coming Soon: X` becomes `X: Now Live`, `Training Completion` becomes `Access: Still Required`.
+
+**Stamp the date in the frame,** and make the on-slide date agree with the filename date.
+
+**Build next cycle's data slide before the data exists,** with visible TBD slots.
+
+**Share components verbatim across genres** so two artifacts cannot disagree. The same milestone table belongs in the walking deck and the weekly status.
+
+A walking deck answers why, what, how, who, and when in that order, then risks and next steps.
+
+Keep an accreting archive deck as the system of record so the presented deck can stay short. Do not present the archive.
 
 ---
 
@@ -297,6 +382,14 @@ Alternate channels deliberately. Humans edit in PowerPoint to absorb meeting rea
 
 Iterate the hardest one or two slides in an isolated file cloned from the deck, then port the final state back. This keeps the churn off the main artifact.
 
-When the deck goes to a wide audience, distill it to one slide with fixed zones: what we already know, the approach, a dated timeline, what we will ask of you, and the so-what. Refresh the dates to reality at distillation time, since the deck's original dates will have slipped.
-
 Split one body of content into genre-shaped artifacts rather than one mega-deck: the deck is the decision surface, a field guide holds the protocols, a workbook holds the data capture. Name the companions on the slide face.
+
+### Whose brand, though
+
+**Palette follows the speaker, not the audience.** Use the client's brand when the artifact speaks for the program. Use your own brand when you are the one speaking, as in a deck pitching your own role. Brand identity is voice attribution.
+
+Where the client's palette lacks a level you need, extend it by darkening an existing accent for hierarchy bands. Never import a foreign hue to carry a semantic role.
+
+### Wear verification on the surface
+
+State currency and its source on the slide: `Confirmed current as of June 2026 (per Karen)`. Leave `[TK]` and `[LINK, PLACEHOLDER]` visible rather than faking them. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
