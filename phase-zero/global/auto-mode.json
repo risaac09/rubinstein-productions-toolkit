@@ -1,0 +1,25 @@
+{
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Organization: Rubinstein Productions, a solo operator. Primary use: software development, personal knowledge infrastructure, and content pipelines across roughly fifteen local repos on two Macs (an M2 Pro laptop and a Mac mini at mini.local).",
+      "Source control: github.com/risaac09 and all repos under it. Several repos are public and deploy client-side code via GitHub Pages or Netlify; the private repos hold client and personal data. Treat a repo as private unless its remote clearly shows otherwise.",
+      "Secrets management: env files under ~/.secrets/, sourced by the shell profile. Their contents must never be read into context, echoed, copied elsewhere, or committed.",
+      "Sensitive data locations & audiences: ~/stack-data holds client contacts and financials and may only ever land in its own private GitHub repo. The Obsidian vault under ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ is the personal corpus; its content may move within the vault and to the private second-brain-mirror repo, nowhere else. ~/.secrets has no valid audience.",
+      "Key internal services: the Mac mini at mini.local (llama-server on :8080, SSH, launchd jobs), Netlify for rubinsteinproductions.com, and GitHub Actions in a handful of repos.",
+      "Sensitive remote targets: GitHub Pages publication branches, Netlify production deploys, and launchd agents under ~/Library/LaunchAgents on either machine."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Never create or clone a git repository inside iCloud-synced paths: the Obsidian vault under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories.",
+      "Never change a GitHub repository's visibility or archive state: private repos hold client and personal data, and a visibility flip is the worst-case exposure.",
+      "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on both machines depend on them.",
+      "Never manually dispatch API-key-billed GitHub Actions workflows just to verify a change: verification runs locally."
+    ],
+    "hard_deny": [
+      "$defaults",
+      "Never read, copy, or commit files under ~/.secrets/ or their contents, and never place a token, key, or credential in any public repo: the PWAs ship their client code publicly.",
+      "Never push vault content or stack-data client data (contacts, financials, client names) to a public repository or send it to any external service."
+    ]
+  }
+}
