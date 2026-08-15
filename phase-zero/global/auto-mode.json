@@ -1,0 +1,25 @@
+{
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      [REMOVED FROM PUBLIC HISTORY]
+      "Source control: github.com/risaac09 and all repos under it. Several repos are public and deploy client-side code via GitHub Pages or Netlify; the private repos hold client and personal data. Treat a repo as private unless its remote clearly shows otherwise.",
+      [REMOVED FROM PUBLIC HISTORY]
+      [REMOVED FROM PUBLIC HISTORY]
+      [REMOVED FROM PUBLIC HISTORY]
+      [REMOVED FROM PUBLIC HISTORY]
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Never create or clone a git repository inside iCloud-synced paths: the Obsidian vault under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories.",
+      "Never change a GitHub repository's visibility or archive state: private repos hold client and personal data, and a visibility flip is the worst-case exposure.",
+      "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on both machines depend on them.",
+      "Never manually dispatch API-key-billed GitHub Actions workflows just to verify a change: verification runs locally."
+    ],
+    "hard_deny": [
+      "$defaults",
+      "Never read, copy, or commit files under ~/.secrets/ or their contents, and never place a token, key, or credential in any public repo: the PWAs ship their client code publicly.",
+      [REMOVED FROM PUBLIC HISTORY]
+    ]
+  }
+}

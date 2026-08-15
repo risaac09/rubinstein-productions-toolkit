@@ -74,6 +74,13 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   check and the standing pointers.
 - `settings.json` — the hook registrations (both hooks), copied to a repo
   with no existing settings; merged in (jq) when one exists.
+- `global/auto-mode.json` — the auto-mode classifier config (`autoMode` block:
+  environment, soft_deny, hard_deny, each keeping `"$defaults"`). Names the
+  trust boundary (risaac09 GitHub, ~/.secrets, the vault, stack-data, the
+  Mini) so the classifier stops guessing. The classifier reads `autoMode` only
+  from user-level `~/.claude/settings.json`, so this deploys through
+  `install-global.sh` per machine, never through the per-repo kit. Verify
+  after deploy with `claude auto-mode config`.
 - `install.sh` — the distribution path.
 
 ## Source of truth
