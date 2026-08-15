@@ -66,6 +66,26 @@ else
 JSON
 fi
 
+# Merge the auto-mode classifier config from auto-mode.json. The classifier
+# reads autoMode only from user-level settings (never project .claude/), so
+# this is its one deploy path. Kit entries are guaranteed present and kept in
+# kit order; entries added locally by hand survive the merge. Sections the kit
+# file omits (allow) are left untouched, keeping the built-in defaults.
+if command -v jq >/dev/null 2>&1; then
+  jq --slurpfile kit "$SRC/auto-mode.json" '
+    .autoMode //= {} |
+    reduce ("environment","allow","soft_deny","hard_deny") as $k (.;
+      ($kit[0].autoMode[$k] // []) as $kitlist |
+      if ($kitlist | length) > 0 then
+        .autoMode[$k] = ($kitlist + ((.autoMode[$k] // []) - $kitlist))
+      else . end)
+  ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
+else
+  echo "ERROR: jq is not installed; autoMode block not merged into $settings" >&2
+  echo "Install jq and re-run, or merge global/auto-mode.json by hand." >&2
+  exit 1
+fi
+
 echo "phase-zero global hook installed -> $DEST"
 if [ -z "${STACK_DATA_DIR:-}" ] && [ ! -d "$HOME/stack-data" ]; then
   echo "note: no stack-data clone found at ~/stack-data. The hook will use the"
