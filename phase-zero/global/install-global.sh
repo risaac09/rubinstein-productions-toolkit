@@ -68,17 +68,18 @@ fi
 
 # Merge the auto-mode classifier config from auto-mode.json. The classifier
 # reads autoMode only from user-level settings (never project .claude/), so
-# this is its one deploy path. Kit entries are guaranteed present and kept in
-# kit order; entries added locally by hand survive the merge. Sections the kit
-# file omits (allow) are left untouched, keeping the built-in defaults.
+# this is its one deploy path. Same convention as every other kit-deployed
+# file (see repo CLAUDE.md): kit source is truth, a redeploy overwrites each
+# section the kit provides wholesale, so an edited or removed kit entry never
+# lingers as a stale duplicate. Do not hand-edit the deployed autoMode block;
+# edit global/auto-mode.json and re-run this script. Sections the kit file
+# omits (allow) are left untouched, keeping the built-in defaults.
 if command -v jq >/dev/null 2>&1; then
   jq --slurpfile kit "$SRC/auto-mode.json" '
     .autoMode //= {} |
     reduce ("environment","allow","soft_deny","hard_deny") as $k (.;
       ($kit[0].autoMode[$k] // []) as $kitlist |
-      if ($kitlist | length) > 0 then
-        .autoMode[$k] = ($kitlist + ((.autoMode[$k] // []) - $kitlist))
-      else . end)
+      if ($kitlist | length) > 0 then .autoMode[$k] = $kitlist else . end)
   ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
 else
   echo "ERROR: jq is not installed; autoMode block not merged into $settings" >&2
