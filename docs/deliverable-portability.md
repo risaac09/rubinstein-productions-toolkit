@@ -21,7 +21,7 @@ So the defect was not caused by a model lacking judgment about typography. It wa
 Each of these is checkable, teachable, and portable. None requires the model to have good taste.
 
 **1. Extract brand truth from the file. Never type a hex from memory.**
-Observed drift in our own from-scratch builds: `#FE6D00` where the template says `#FD6D00`, `#0082A6` where the template says `#0082A5`. One bit off, every time. Across five documents in one program, five different teals were used, because everyone approximated by eye. The fix is a grep, not a judgment.
+The drift in our own from-scratch builds is always a near miss: `#B4501E` where the template says `#B4501D`, `#1F6E87` where the template says `#1F6E86`. One digit off, every time. Across five documents in one program, five different teals were used, because everyone approximated by eye. The fix is a grep, not a judgment.
 
 **2. Build inside the client's own file.**
 Brand fidelity comes from file lineage, not from reconstruction. Duplicating their template inherits masters, footer geometry, logo images, and the tagline (which is an image, not text) for free. Rebuilding from scratch means approximating all of it. This single choice removes most of the surface where a weaker model degrades.

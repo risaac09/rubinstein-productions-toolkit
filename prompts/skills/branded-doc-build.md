@@ -47,7 +47,7 @@ python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv
 
 **1. Read `docProps/core.xml` first.** `dc:creator`, `cp:lastModifiedBy`, and `dcterms:modified` tell you whether this is a client file or yours. If it is theirs, you are in preserve-provenance mode for the rest of the task.
 
-**2. Check whether the theme actually belongs to the brand.** Read `word/theme/theme1.xml`. Client templates are routinely a costume over a foreign skeleton: one real "branded" client guide was an Epic template whose theme was still Epic green, with the client's teal and orange applied only as run-level overrides. Anything theme-inheriting (hyperlinks, newly added table rows) would leak green.
+**2. Check whether the theme actually belongs to the brand.** Read `word/theme/theme1.xml`. Client templates are routinely a costume over a foreign skeleton: one real "branded" client guide turned out to be a software vendor's template whose theme was still the vendor's own green, with the client's colors applied only as run-level overrides. Anything theme-inheriting (hyperlinks, newly added table rows) would leak green.
 
 If the theme is foreign, say so in the profile. It means the brand is surface-deep and will not survive normal editing.
 
@@ -88,7 +88,7 @@ Where the client's palette lacks a level you need, extend it by darkening an exi
 - **Mark every value the client must supply as a bracketed placeholder,** and gate the document with a top note listing what must be confirmed before sending. Then `grep -o '\[[^]]*\]'` the built file before handoff. A shipped client template once carried `[topic]` in its own footer.
 - **Never let a placeholder become an invented value.** A named gap beats a fabricated figure. Name who owes the answer.
 - **Ship the trade-offs inside the deliverable.** The strongest one-pager in the corpus carries its own "Trade-off:" line and a "Still open:" list of undecided items. Intellectual honesty is content, not a caveat you deliver verbally.
-- **Wear verification on the surface.** State currency and its source in the document: `Confirmed current as of June 2026 (per Karen)`. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
+- **Wear verification on the surface.** State currency and its source in the document: `Confirmed current as of June 2026 (per the program lead)`. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
 - **When you change an instrument that carries a trend, ship a change log** sorted Kept / Reworded / Cut / Fixed / New, flag every reworded trend item so the seam is not misread later, and list open decisions at the bottom.
 
 ---
