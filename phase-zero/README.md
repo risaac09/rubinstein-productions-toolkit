@@ -76,10 +76,14 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   with no existing settings; merged in (jq) when one exists.
 - `global/auto-mode.json` — the auto-mode classifier config (`autoMode` block:
   environment, soft_deny, hard_deny, each keeping `"$defaults"`). Names the
-  trust boundary (risaac09 GitHub, ~/.secrets, the vault, stack-data, the
-  Mini) so the classifier stops guessing. The classifier reads `autoMode` only
-  from user-level `~/.claude/settings.json`, so this deploys through
-  `install-global.sh` per machine, never through the per-repo kit. Verify
+  trust boundary: every risaac09 repo by name with its actual visibility (not
+  a generic "treat as private" guess — the classifier never sees `gh repo
+  view` output, only what's stated here or in a live message), ~/.secrets, the
+  vault, stack-data, the sd-privacy-scan blind spot, the Mini. The classifier
+  reads `autoMode` only from user-level `~/.claude/settings.json`, so this
+  deploys through `install-global.sh` per machine, never through the per-repo
+  kit. `install-global.sh` overwrites each section wholesale on redeploy, same
+  as every other kit-deployed file — never hand-edit the deployed block. Verify
   after deploy with `claude auto-mode config`.
 - `install.sh` — the distribution path.
 
