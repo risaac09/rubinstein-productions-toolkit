@@ -31,7 +31,7 @@ Write the decision as one sentence before building anything. That sentence deter
 
 ## Phase 1. Extract template truth (never guess it)
 
-Guessed brand colors are always slightly wrong, and slightly wrong reads as off. Observed drift from real work: `#FE6D00` typed where the template says `#FD6D00`, `#0082A6` where the template says `#0082A5`. One bit off, every time, because someone re-typed from memory instead of reading the file.
+Guessed brand colors are always slightly wrong, and slightly wrong reads as off. The drift is always a near miss: `#B4501E` typed where the template says `#B4501D`, `#1F6E87` where the template says `#1F6E86`. One digit off, every time, because someone re-typed from memory instead of reading the file.
 
 Unzip and read. Produce a `BRAND-PROFILE.md` before drawing a single shape.
 
@@ -186,7 +186,7 @@ Adopt their renames verbatim and immediately. `Readiness Assessment` not `survey
 
 ### Replace placeholders with real names as soon as they are known
 
-Keep brackets only where the client must fill them, and say who in the kicker: `[SCM leads to confirm areas]`. Ship the argument skeleton with visible bracketed asks, then replace them with client-supplied truth. Never invent names to look finished.
+Keep brackets only where the client must fill them, and say who in the kicker: `[program leads to confirm areas]`. Ship the argument skeleton with visible bracketed asks, then replace them with client-supplied truth. Never invent names to look finished.
 
 ---
 
@@ -392,4 +392,4 @@ Where the client's palette lacks a level you need, extend it by darkening an exi
 
 ### Wear verification on the surface
 
-State currency and its source on the slide: `Confirmed current as of June 2026 (per Karen)`. Leave `[TK]` and `[LINK, PLACEHOLDER]` visible rather than faking them. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
+State currency and its source on the slide: `Confirmed current as of June 2026 (per the program lead)`. Leave `[TK]` and `[LINK, PLACEHOLDER]` visible rather than faking them. Claim `Every figure traceable to a named source file. None estimated.` only when an evidence base actually backs every figure.
