@@ -1,5 +1,5 @@
 {
-  "note": "Baseline snapshot of settings.local.json permissions.allow, captured 2026-08-17 (actor-layer review F01). Reference point for permissions-audit.sh drift detection, not a claim that these entries are safe \u2014 see the classifier-defeating pattern check for that.",
+  "note": "Baseline snapshot of settings.local.json permissions.allow. Reference point for permissions-audit.sh drift detection, not a claim that these entries are safe \u2014 see the classifier-defeating pattern check for that. Refreshed 2026-08-17 after the first one-batch prune removed 10 high-blast-radius entries (security dump-keychain, security find-generic/internet-password, python3:*, osascript:*, sudo npm install/mv/defaults:*, git config *, crontab:*) flagged by this same audit.",
   "captured": "2026-08-17",
   "source": "~/.claude/settings.local.json",
   "allow": [
@@ -17,7 +17,6 @@
     "mcp__gemini-cli__Help",
     "Bash(npm install:*)",
     "Bash(npm search:*)",
-    "Bash(sudo npm install:*)",
     "Bash(source ~/.nvm/nvm.sh)",
     "Bash(gemini --version:*)",
     "Bash(cat:*)",
@@ -42,7 +41,6 @@
     "Bash(find:*)",
     "mcp__obsidian__create-note",
     "Read(//tmp/**)",
-    "Bash(python3:*)",
     "Bash(ls:*)",
     "Skill(update-config)",
     "Bash(grep -r \"Obsidian\\\\|allowed_dir\\\\|CloudDocs\" '/Users/isaacrubinstein/Library/Application Support/Claude' --include=*.json -l)",
@@ -53,7 +51,6 @@
     "WebFetch(domain:github.com)",
     "Bash(\"/Users/isaacrubinstein/Downloads/gpth-macos\" --help)",
     "Bash(\"/Users/isaacrubinstein/Downloads/gpth-macos\" \\\\\n  --input \"/Volumes/Samsung 2TB/Takeout\" \\\\\n  --output \"/Volumes/Samsung 2TB/Photos_Organized\" \\\\\n  --albums nothing \\\\\n  --copy \\\\\n  --no-interactive 2>&1)",
-    "Bash(osascript:*)",
     "Bash(echo \"exit: $?\")",
     "Bash(exiftool -ver)",
     "Read(//usr/local/bin/**)",
@@ -90,9 +87,6 @@
     "Bash(/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay set:*)",
     "Bash(/Applications/BetterDisplay.app/Contents/MacOS/BetterDisplay perform:*)",
     "mcp__obsidian__move-note",
-    "Bash(crontab:*)",
-    "Bash(sudo mv:*)",
-    "Bash(sudo defaults:*)",
     "Bash(system_profiler SPThunderboltDataType 2>/dev/null)",
     "Bash(networksetup -listallnetworkservices)",
     "Bash(networksetup -getinfo \"Thunderbolt Bridge\")",
@@ -101,7 +95,6 @@
     "Bash(diskutil list:*)",
     "Bash(mount)",
     "Bash(du -sh /Volumes/isaacrubinstein/*)",
-    "Bash(security find-generic-password:*)",
     "Bash(mdfind -name \"license\")",
     "Bash(mdfind -name \"activation\")",
     "Bash(mdfind -name \"registration\")",
@@ -121,8 +114,6 @@
     "Bash(grep -iE \"\\\\.app$\")",
     "Bash(smbutil view *)",
     "Bash(nc -vz -G 2 10.0.0.1 445)",
-    "Bash(security find-internet-password *)",
-    "Bash(security dump-keychain *)",
     "Bash(dscl . -list /Users)",
     "Bash(mkdir -p /tmp/m2test)",
     "Bash(mount_smbfs \"//guest@10.0.0.1/isaacrubinstein\" /tmp/m2test)",
@@ -166,7 +157,6 @@
     "Bash(.venv/bin/python -c \"from mcp.server.fastmcp import FastMCP; print\\('FastMCP ok'\\)\")",
     "Bash(.venv/bin/python -m py_compile vault_mcp/server.py)",
     "Bash(.venv/bin/python -m py_compile vault_indexer/daemon.py vault_indexer/paths.py vault_indexer/cleanup.py)",
-    "Bash(.venv/bin/python -m vault_indexer.cleanup)",
-    "Bash(git config *)"
+    "Bash(.venv/bin/python -m vault_indexer.cleanup)"
   ]
 }
