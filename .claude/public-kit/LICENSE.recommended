@@ -1,15 +1,8 @@
-Scope: this MIT license covers code and tooling only — `cli/`, `scripts/`,
-`production/resolve_workflow.py`, and the `phase-zero/` and `public-kit/`
-deployment mechanisms. Methodology, templates, and docs (`methodology/`,
-`templates/`, `docs/`) are licensed CC BY-SA 4.0 instead — see
-`LICENSE-CONTENT` for the full text and rationale. Nothing of consequence
-in this repo is data; if that changes, data is CC0.
-
----
-
+<!-- public-kit template: default for code-shaped repos. Copy to LICENSE at
+     repo root, fill in [YEAR] and [COPYRIGHT HOLDER], delete this comment. -->
 MIT License
 
-Copyright (c) 2026 Isaac Rubinstein / Rubinstein Productions
+Copyright (c) [YEAR] [COPYRIGHT HOLDER]
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
