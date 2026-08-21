@@ -25,6 +25,22 @@
 #
 # This is the rp-shared-style distribution path: the kit is versioned here in
 # the toolkit, and synced out, so every repo runs the same infrastructure.
+#
+# A second, independent kit shares this script: public-kit/, for public-repo
+# hygiene (license templates, README shape, CONTRIBUTING/SECURITY templates,
+# public voice rules) rather than AI-agent session infrastructure. Prefix any
+# of the above with --public to act on it instead:
+#
+#   ./install.sh --public <target-repo-dir>
+#   ./install.sh --public --all <parent-dir>
+#   ./install.sh --public --check <target-repo-dir>
+#   ./install.sh --public --check --all <parent-dir>
+#
+# The two kits have separate allowlists (CONSUMERS vs PUBLIC_CONSUMERS),
+# separate source directories, and separate target directories
+# (.claude/*.md + .claude/hooks/ vs .claude/public-kit/) — never overlapping,
+# and never implying anything about the other. A repo can be on neither list,
+# either, or both.
 
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -39,8 +55,12 @@ RETIRED_FILES="opus-4-8-brief.md"
 
 # The current consumer roster. --all touches only these basenames; a direct
 # install.sh <repo> still works for an intentional one-off. The local path
-# `scripts` is the home-scripts repository.
-CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com rubinstein-productions-toolkit"
+# `scripts` is the home-scripts repository. three-bits added 2026-08-21: its
+# own CLAUDE.md claimed the kit was deployed there, but it carried none of
+# the kit files and wasn't on this list either, so --check --all couldn't
+# even see the gap. Added here so future drift is caught; a parallel session
+# is deploying the actual kit files to three-bits directly.
+CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits rubinstein-productions-toolkit"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
@@ -49,6 +69,43 @@ is_consumer() {
   case " $CONSUMERS " in
     *" $(basename "$1") "*) return 0 ;;
     *) return 1 ;;
+  esac
+}
+
+# --- public-kit: a second, independent kit (see the file header). Its own
+# source dir, allowlist, target dir, and install/check functions; nothing
+# below is read by the phase-zero path above, and vice versa.
+PUBLIC_SRC="$(cd "$SRC/../public-kit" && pwd)"
+PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURITY.md.template"
+
+# Repos that are actually public. Independent of CONSUMERS above -- being on
+# one list implies nothing about the other. three-type-evaluation is here for
+# its public paper side only; the rest of that repo stays private, untouched
+# either way since this kit only ever writes under .claude/public-kit/.
+PUBLIC_CONSUMERS="alchemy statehouse-dashboard gene-keys-data rubinsteinproductions risaac09 three-type-evaluation rubinstein-productions-toolkit"
+
+is_public_consumer() {
+  case " $PUBLIC_CONSUMERS " in
+    *" $(basename "$1") "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Per-repo-type default for which LICENSE template a public-kit install
+# picks: methodology-shaped repos (protocols, frameworks, practice-writing)
+# get CC BY-SA 4.0, everything else defaults to MIT (code-shaped). A `case`,
+# not a config file, so a new consumer's type is one line to add.
+public_consumer_license_type() {
+  case "$(basename "$1")" in
+    three-type-evaluation) echo "methodology" ;;
+    *) echo "code" ;;
+  esac
+}
+
+public_license_template() {
+  case "$(public_consumer_license_type "$1")" in
+    methodology) echo "$PUBLIC_SRC/LICENSE-CC-BY-SA-4.0.template" ;;
+    *) echo "$PUBLIC_SRC/LICENSE-MIT.template" ;;
   esac
 }
 
@@ -146,7 +203,79 @@ install_one() {
   echo "phase-zero installed -> $target/.claude"
 }
 
-if [ "${1:-}" = "--check" ]; then
+check_one_public() {
+  local target="$1" drift=0
+  [ -d "$target" ] || { echo "skip (not a dir): $target"; return 0; }
+  if [ ! -d "$target/.claude/public-kit" ]; then
+    echo "DRIFT missing public-kit directory: $target"
+    return 1
+  fi
+  for f in $PUBLIC_KIT_FILES; do
+    if [ ! -f "$target/.claude/public-kit/$f" ]; then
+      echo "DRIFT missing $f: $target"
+      drift=1
+    elif ! cmp -s "$PUBLIC_SRC/$f" "$target/.claude/public-kit/$f"; then
+      echo "DRIFT stale $f: $target"
+      drift=1
+    fi
+  done
+  local license_src license_dst
+  license_src="$(public_license_template "$target")"
+  license_dst="$target/.claude/public-kit/LICENSE.recommended"
+  if [ ! -f "$license_dst" ]; then
+    echo "DRIFT missing LICENSE.recommended: $target"
+    drift=1
+  elif ! cmp -s "$license_src" "$license_dst"; then
+    echo "DRIFT stale LICENSE.recommended: $target"
+    drift=1
+  fi
+  [ "$drift" -eq 0 ] && echo "public-kit current: $target"
+  return $drift
+}
+
+install_one_public() {
+  local target="$1"
+  [ -d "$target" ] || { echo "skip (not a dir): $target"; return 0; }
+  mkdir -p "$target/.claude/public-kit"
+  for f in $PUBLIC_KIT_FILES; do
+    cp "$PUBLIC_SRC/$f" "$target/.claude/public-kit/$f"
+  done
+  cp "$(public_license_template "$target")" "$target/.claude/public-kit/LICENSE.recommended"
+  echo "public-kit installed -> $target/.claude/public-kit"
+}
+
+if [ "${1:-}" = "--public" ]; then
+  shift
+  if [ "${1:-}" = "--check" ]; then
+    shift
+    RC=0
+    if [ "${1:-}" = "--all" ]; then
+      parent="${2:?usage: install.sh --public --check --all <parent-dir>}"
+      for d in "$parent"/*/; do
+        if [ -d "$d/.git" ] && is_public_consumer "${d%/}"; then
+          check_one_public "${d%/}" || RC=1
+        fi
+      done
+    else
+      check_one_public "${1:?usage: install.sh --public --check <target-repo-dir>}" || RC=1
+    fi
+    exit $RC
+  elif [ "${1:-}" = "--all" ]; then
+    parent="${2:?usage: install.sh --public --all <parent-dir>}"
+    for d in "$parent"/*/; do
+      if [ -d "$d/.git" ]; then
+        if is_public_consumer "${d%/}"; then
+          install_one_public "${d%/}"
+        else
+          echo "skip (not a public consumer): ${d%/}"
+        fi
+      fi
+    done
+  else
+    install_one_public "${1:?usage: install.sh --public <target-repo-dir>   (or --public --all <parent-dir>)}"
+  fi
+  exit 0
+elif [ "${1:-}" = "--check" ]; then
   shift
   RC=0
   if [ "${1:-}" = "--all" ]; then
