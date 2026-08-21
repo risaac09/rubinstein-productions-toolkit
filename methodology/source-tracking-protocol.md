@@ -4,6 +4,7 @@ cssclasses: [reference]
 created: 2026-05-23
 status: working-draft
 canonical: true
+license: CC-BY-SA-4.0
 companion-to:
   - "Working Context Block"
   - "Total Cost of Ownership"
