@@ -3,7 +3,7 @@
 # Client Onboarding Template
 ## Phase 0: Pre-Engagement Discovery (The Assemblage Scan)
 
-*Operationalized from the [Measurement Framework](../methodology/measurement-framework.md) and the [brand context](../prompts/brand-context.md)*
+*Operationalized from the [Measurement Framework](../methodology/measurement-framework.md) and the brand context (private, `rp-intranet/docs/strategy/brand-context.md`)*
 
 ---
 
@@ -324,7 +324,7 @@ What's trying to be born through this work?
 ---
 
 *Template Version: 1.0*
-*Based on: [Measurement Framework](../methodology/measurement-framework.md), [brand context](../prompts/brand-context.md)*
+*Based on: [Measurement Framework](../methodology/measurement-framework.md), brand context (private, `rp-intranet/docs/strategy/brand-context.md`)*
 *Related: [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
 
 **Tags:** #template #client-work #onboarding #phase-0

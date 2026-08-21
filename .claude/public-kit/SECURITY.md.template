@@ -1,0 +1,33 @@
+<!-- public-kit template. Copy to SECURITY.md at repo root, fill in the
+     bracketed sections, delete this comment. -->
+# Security Policy
+
+## Reporting a vulnerability
+
+If you find a security issue in this repo, report it privately rather than
+opening a public issue:
+
+- [Preferred: GitHub's private vulnerability reporting, if enabled on this
+  repo — Security tab -> Report a vulnerability]
+- Or email: [contact address]
+
+Include what you found, how to reproduce it, and its likely impact. Expect
+an acknowledgment within [a stated window, e.g. "a few days" — set an
+honest one, don't promise an SLA a solo maintainer can't keep], not
+necessarily a fix on any particular timeline.
+
+## Scope
+
+This is a solo practitioner's repo, [maintained alongside client work / not
+under an SLA]. Treat this policy as "there is a real person who wants to
+know," not as a guarantee of response time or process.
+
+[If the repo is a static site, a CLI with no secrets/auth surface, or
+otherwise has a small attack surface, say so plainly here — it sets
+correct expectations for what kind of report is actually useful.]
+
+## What's out of scope
+
+[List anything explicitly not covered — e.g. issues in a third-party
+dependency (report upstream instead), or a deliberately public/non-secret
+data file. Delete if nothing applies.]

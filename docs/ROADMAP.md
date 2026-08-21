@@ -14,12 +14,16 @@ A structural assessment of the toolkit as of July 2026, written the way a depart
 
 `grants/theory-of-change.md` and `grants/evaluation-framework.md` are older snapshots of the same-named files in `methodology/`, and they still carry retired framework names. Either delete the `grants/` copies and link to `methodology/`, or reduce them to stub files that point at the canonical version. Duplicated prose drifts; it already has.
 
+**Status: mooted 2026-08-21.** The repo-scope audit found `grants/` held one real document (`fiscal-sponsorship-strategy.md`, live business strategy) behind two pointer stubs. The real document moved to `rp-intranet`; the stubs were deleted outright rather than fixed, since `methodology/theory-of-change.md` and `methodology/evaluation-framework.md` are already directly canonical and need no pointer.
+
 The same decision is owed between `methodology/enif.md` and `methodology/nomadic-indicators-codebook.md`. The framework document claims to have absorbed the codebook, yet the codebook still ships separately and is the richer coding reference. Recommendation: declare the codebook canonical for coding, cut the framework's summary of it to a pointer, and rename `enif.md` to match the framework's actual current name.
 
 ### 2. One vocabulary for the tiers
 **Status: executed July 2026.** All live prose now uses Founder Story, Program Engagement, and Organizational Embedding; the retired names survive only in explicitly historical tables and in the do-not-use lists. The projection and unit-economics tables in the blueprint kept their old dollar figures and now say so. Vault follow-up: the canonicals behind `session-facilitation-guide.md` and `digital-liver-offering.md` need the same renames before the next sync.
 
 Four tier-naming schemes coexist: the canonical Founder Story, Program Engagement, and Organizational Embedding; the retired Mirror, Map, and Territory; and two generations of Gateway and Mid-Tier labels. `prompts/instantiation-prompt.md` lists the retired names as dead and then uses them in its own service table. One sweep through `client-onboarding.md`, `case-study-template.md`, `instantiation-prompt.md`, and `brand-context.md` closes this. Prices diverge in the same files and should be settled in the same sweep.
+
+**Status: partially mooted 2026-08-21.** `instantiation-prompt.md` and `brand-context.md` moved to `rp-intranet` in the same audit that resolved item 1 above; the tier-naming sweep across them is now that repo's problem. `client-onboarding.md` and `case-study-template.md` stay here and still need the sweep.
 
 ### 3. Links that work where readers are
 **Status: executed July 2026.** In-repo wiki links became relative markdown links, vault-only and home-dir references are marked in place, and `scripts/check-doc-links.sh` now fails CI on any relative link that does not resolve.
