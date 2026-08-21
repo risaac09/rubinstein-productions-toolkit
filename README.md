@@ -97,7 +97,7 @@ This repo's own `CLAUDE.md` used to claim "nothing private lands here." An audit
 - **Grant strategy, brand/creative-strategy prompts, the identity-instantiation prompt, the content strategy, and RP-specific production tooling** (`badwords-rp/`) moved to `rp-intranet`, a private operations repo. They were business strategy and voice/positioning material, not reusable methodology.
 - **Position papers and grant-concept research** moved to `stack-data`, alongside near-identical or adjacent material already living there.
 - **Duplicate Total Cost of Ownership methodology files** were deleted outright; `stack-data/context/tco-framework.md` is the canonical version now.
-- **`context-provenance/`** — a self-contained, unrelated tool (AI-attribution/provenance tracking) that happened to live in this tree — is being spun out into its own standalone repo, `context-provenance`. *(As of this writing that extraction is prepared but not yet complete — see that PR/commit for status if this note is stale.)*
+- **Context Provenance** — the self-contained AI-attribution and provenance tool that happened to live in this tree now has its own repository: **[`risaac09/context-provenance`](https://github.com/risaac09/context-provenance)**. Its original subtree history moved with it.
 
 ### A judgment call
 
