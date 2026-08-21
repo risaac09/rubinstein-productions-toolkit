@@ -1,0 +1,31 @@
+<!-- public-kit template. Copy to CONTRIBUTING.md at repo root, fill in the
+     bracketed sections, delete this comment. -->
+# Contributing
+
+This is a solo practitioner's repo. Pull requests are welcome to read and
+learn from, but are not actively reviewed or merged — fork it and make it
+yours rather than waiting on a review here.
+
+## If you find a bug or have a question
+
+Open an issue. It may not get a response quickly, or at all, but it's read.
+
+## If you want to build on this
+
+Fork it. Under this repo's license (see `LICENSE`[ and `LICENSE-CONTENT`
+if the repo splits code and content]), you're free to adapt it[, with the
+condition that a share-alike adaptation stays open in turn — see the
+license file for the exact terms].
+
+## If you fork and change something worth sharing back
+
+[Optional: state a specific, low-friction channel — an issue template, a
+discussion board, an email — for the maintainer to hear what a fork
+learned. Delete this section if there's no such channel; an unstated
+expectation is worse than none.]
+
+## Code of conduct
+
+Be direct, be honest, don't waste anyone's time including your own. No
+formal code of conduct beyond that for a single-maintainer repo of this
+size — if that changes (more contributors, more traffic), revisit.

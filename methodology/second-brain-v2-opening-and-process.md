@@ -2,8 +2,9 @@
 title: "Second Brain V2: Opening and Process"
 type: methodology
 date: 2026-05-23
+license: CC-BY-SA-4.0
 canonical-source: "second-brain-mirror/vault/00 Canonical/Second Brain V2 - Opening and Process.md"
-companion: "methodology/total-cost-of-ownership.md, methodology/source-tracking-protocol.md"
+companion: "stack-data/context/tco-framework.md, methodology/source-tracking-protocol.md"
 description: "What V2 is, the opening sequence, the iteration loop, the nomadic-scientist epistemology, the lineages, the extension protocol for new domains, and the failure modes."
 ---
 
