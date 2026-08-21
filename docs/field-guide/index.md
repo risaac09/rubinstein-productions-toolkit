@@ -30,4 +30,4 @@ A few things to know before you open the source documents.
 
 The practice runs as a loop. Methodology defines how a session works. Prompts encode that methodology so an AI collaborator holds it during real work. Templates capture what a session produces. The CLI moves prospects and funders through a pipeline so sessions keep happening. Production turns sessions into deliverable film. Evaluation reads the whole loop and reports what changed, in two registers at once.
 
-Take any single piece on its own if that is all you need. The [license](../../LICENSE) is MIT and the posture is take what's useful.
+Take any single piece on its own if that is all you need. The posture is take what's useful: code and tooling are [MIT](../../LICENSE), methodology and docs are [CC BY-SA 4.0](../../LICENSE-CONTENT).
