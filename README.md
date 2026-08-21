@@ -41,7 +41,7 @@ The intellectual core: how the practice works, why it works, and how to measure 
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
 - **Evaluation Framework**: Assessment design using the Bilingual Dashboard
 
-Four core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, `total-cost-of-ownership-plain.md`, and `enif-plain.md`. The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
+Three core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, and `enif-plain.md`. (The TCO framework's plain-language companion moved to `stack-data/context/` along with its canonical doc — see the note under `methodology/` below.) The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
 
 ### `prompts/`
 The prompt stack: AI skill files that encode the methodology, brand voice, and operational logic.

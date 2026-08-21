@@ -4,9 +4,9 @@ You write narrative, copy, or story development, and you want to see how a worki
 
 ## First hour
 
-1. **[Brand Context](../../prompts/brand-context.md)**. The voice bible: positioning, audience personas, tone adjectives, and hard creative constraints. The constraints are the interesting part. Never frame the client as broken. No savior framing. No fabricated case studies. Steal the structure and swap in your own rules.
+1. **Brand Context** (private, `rp-intranet/docs/strategy/brand-context.md`). The voice bible: positioning, audience personas, tone adjectives, and hard creative constraints. The constraints are the interesting part. Never frame the client as broken. No savior framing. No fabricated case studies. Steal the structure and swap in your own rules.
 2. **[Glossary](../../methodology/glossary.md)**. The vocabulary the rest of the corpus assumes, with the academic sources named.
-3. **[Content Strategy](../../CONTENT-STRATEGY.md)**. The publishing playbook: two audiences, four content pillars, a launch sequence, and explicit rules for what never gets published. "Publish the methodology, not the diary" is the sentence to keep.
+3. **Content Strategy** (private, `rp-intranet/docs/marketing/content-strategy.md`). The publishing playbook: two audiences, four content pillars, a launch sequence, and explicit rules for what never gets published. "Publish the methodology, not the diary" is the sentence to keep.
 
 ## Where the language comes from
 

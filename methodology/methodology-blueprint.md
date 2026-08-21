@@ -241,7 +241,7 @@ LinkedIn → warm lead → conversation → Founder Story (Tier 1) → demonstra
 ---
 
 *This document should be read alongside:*
-- [Dual Architecture](../research/dual-architecture.md) (the fractal relationship)
+- Dual Architecture (the fractal relationship; `stack-data/context/`)
 - `RP Master Synthesis` (vault note; the operating system)
-- [Creative Strategy](../prompts/creative-strategy.md) (the marketing playbook)
-- [Brand Context](../prompts/brand-context.md) (the positioning)
+- Creative Strategy (the marketing playbook; private, `rp-intranet/docs/marketing/creative-strategy.md`)
+- Brand Context (the positioning; private, `rp-intranet/docs/strategy/brand-context.md`)

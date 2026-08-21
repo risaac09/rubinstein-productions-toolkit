@@ -15,13 +15,12 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | `templates/` | Document and skill templates |
 | `prompts/` | Reusable prompts |
 | `production/` | Production assets |
-| `grants/` | Grant material |
 | `evals/` | Skill evals |
 | `dist/` | Build output |
 | `context-provenance/` | Context-tracking artifacts |
 | `seed-bed/` | Seed-bed working area |
 | `_archive/` | Quarantine for misrouted writes and obsolete material |
-| Repo root files | `README.md`, `LICENSE`, `CONTENT-STRATEGY.md`, working notes |
+| Repo root files | `README.md`, `LICENSE`, working notes |
 
 ## Forbidden — reserved for the vault
 
