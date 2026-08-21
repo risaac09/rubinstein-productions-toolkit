@@ -3,6 +3,12 @@
 The portable global-awareness layer. It travels into every repo so every clone
 session, local or remote, runs the same infrastructure.
 
+A separate, independent kit for public-repo hygiene (license templates,
+README shape, CONTRIBUTING/SECURITY templates, public voice rules) lives
+alongside this one at `../public-kit/`, sharing this directory's
+`install.sh` via its `--public` flag. Different allowlist, different
+purpose — see that kit's own README.
+
 ## What it does
 
 When a prompt contains one of the trigger phrases, a `UserPromptSubmit` hook
