@@ -16,11 +16,14 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | `prompts/` | Reusable prompts |
 | `production/` | Production assets |
 | `evals/` | Skill evals |
+| `architecture/` | System-map artifact |
+| `phase-zero/` | AI-agent session infrastructure kit source; deployed via `phase-zero/install.sh` |
+| `public-kit/` | Public-repo hygiene kit source; deployed via `phase-zero/install.sh --public` |
 | `dist/` | Build output |
-| `context-provenance/` | Context-tracking artifacts |
+| `context-provenance/` | Self-contained, unrelated tool (AI-attribution/provenance tracking); being spun out to its own repo, `context-provenance` — see README.md's "What's Not Here" |
 | `seed-bed/` | Seed-bed working area |
 | `_archive/` | Quarantine for misrouted writes and obsolete material |
-| Repo root files | `README.md`, `LICENSE`, working notes |
+| Repo root files | `README.md`, `LICENSE`, `LICENSE-CONTENT`, working notes |
 
 ## Forbidden — reserved for the vault
 

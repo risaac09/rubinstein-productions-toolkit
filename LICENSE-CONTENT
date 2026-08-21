@@ -1,0 +1,51 @@
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+
+Copyright (c) 2026 Isaac Rubinstein / Rubinstein Productions
+
+Scope: this license covers the methodology, protocols, and practice-writing
+in this repository — `methodology/`, `templates/`, and `docs/`. Code and
+tooling elsewhere in this repo (`cli/`, `scripts/`, `production/`,
+`phase-zero/`, `public-kit/`) are MIT-licensed instead; see `LICENSE`.
+
+Why CC BY-SA and not MIT for this material: this is a practice built on
+reciprocity, not just permission. MIT lets someone take a framework, adapt
+it, and close it back off. Share-alike means an adaptation of this
+methodology has to stay as open as the original — the same obligation this
+practice asks of anyone building on its work. (Precedent: `pureland-fork-kit`
+adopted CC BY-SA 4.0 for the same reason; its own LICENSE.md names this
+practice's prior MIT/CC0-only public licensing as a real inconsistency —
+"a practice built on the claim that value taken should be given back was
+shipping its own work under licenses that make no such requirement of
+anyone downstream" — and this relicensing is the same correction, applied
+here.)
+
+You are free to:
+
+  Share — copy and redistribute the material in any medium or format
+  Adapt — remix, transform, and build upon the material for any purpose,
+          even commercially
+
+Under the following terms:
+
+  Attribution — You must give appropriate credit to Isaac Rubinstein /
+    Rubinstein Productions, provide a link to this license, and indicate
+    if changes were made. You may do so in any reasonable manner, but not
+    in any way that suggests the licensor endorses you or your use.
+
+  ShareAlike — If you remix, transform, or build upon the material, you
+    must distribute your contributions under the same license as the
+    original.
+
+  No additional restrictions — You may not apply legal terms or
+    technological measures that legally restrict others from doing
+    anything the license permits.
+
+No warranties are given. The license may not give you all of the
+permissions necessary for your intended use — for example, other rights
+such as publicity, privacy, or moral rights may limit how you use the
+material.
+
+This is a human-readable summary of (and not a substitute for) the full
+license text. The complete legal code is available at:
+
+  https://creativecommons.org/licenses/by-sa/4.0/legalcode

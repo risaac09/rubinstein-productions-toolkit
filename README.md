@@ -1,31 +1,18 @@
 # Rubinstein Productions Toolkit
 
-**The complete operational stack behind a solo facilitation and film practice: methodology, evaluation, outreach automation, prompt engineering, and production tools.**
+**Public methodology, evaluation frameworks, prompt-stack tooling, and deployment kits for AI-assisted solo practices.**
 
-Built by [Isaac Rubinstein](https://rubinsteinproductions.com) for use in an actual practice. Take what's useful.
+Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism — not the business behind it — is the useful, reusable part.
 
-Forks welcome, pull requests unreviewed: this is a solo practice's toolkit, so fork it and make it yours rather than waiting on me.
+Forks welcome, pull requests unreviewed: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me.
 
 ---
 
 ## What This Is
 
-This is everything I use to run Rubinstein Productions, a facilitation and film practice that helps mission-driven professionals say what's true about their work.
+A kit, not a company. This repo carries the methodology, the evaluation frameworks, the AI prompt/skill stack, and the deployment mechanism (`phase-zero/`, `public-kit/`) that make a solo AI-assisted practice legible and replicable. It does not carry the practice itself — strategy, pricing internals, brand voice, grant pipeline, and client-facing production tooling live in a private operations repo, `rp-intranet`, and stay there.
 
-I got obsessed with building the infrastructure behind my own practice: the session methodology, the measurement frameworks, the AI prompt stack, the CLI tools for managing pipelines. All the stuff that usually lives in someone's head or scattered across a dozen folders. I built it because I enjoy building it. Keeping it private seemed wasteful.
-
-**How it works:** I facilitate. I ship a camera to the participant. They film themselves. Everything is returned. The methodology draws on polyvagal co-regulation theory, relational ontology, and critical information ecology. At the practice level, it's careful listening and honest expression.
-
----
-
-## Services
-
-Two engagement tiers, as priced at [rubinsteinproductions.com](https://rubinsteinproductions.com):
-
-- **Founder Story**: Say what you've become. Facilitated session, filmed, delivered as a short piece with a written narrative. ([PRICING REMOVED]–2,500)
-- **Program Engagement**: The full arc across a program or team. Facilitation, film, and the Bilingual Dashboard. ([PRICING REMOVED]–8,000)
-
-A third tier for sustained organizational embedding exists and opens by conversation, not by menu.
+The methodology draws on polyvagal co-regulation theory, relational ontology, and critical information ecology. At the practice level it's careful listening and honest expression; here, it's the frameworks and tools that operationalize that.
 
 ---
 
@@ -41,17 +28,36 @@ The intellectual core: how the practice works, why it works, and how to measure 
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
 - **Evaluation Framework**: Assessment design using the Bilingual Dashboard
 
-Three core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, and `enif-plain.md`. (The TCO framework's plain-language companion moved to `stack-data/context/` along with its canonical doc — see the note under `methodology/` below.) The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
+Three core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, and `enif-plain.md`. The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
+
+Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
+
+### `templates/`
+Reusable templates for the client and grant lifecycle.
+
+- Prospect tracking template (YAML frontmatter for Obsidian/Dataview)
+- Funder tracking template
+- Client onboarding template
+- Case study template
+- Pipeline dashboards (outreach + grants)
+
+### `docs/`, `architecture/`, `evals/`
+Internal documentation, a system-map artifact, and the skill-eval harnesses (baseline vs. with-skill comparisons across outreach, project management, creative strategy, and writing skills) that back the prompt stack's claims. `docs/field-guide/` routes readers by role.
+
+### `scripts/`
+Generic automation: the doc-link checker, the vault/toolkit boundary drift detector, the pre-commit hook chain, and the methodology sync script. Nothing RP-specific.
+
+### `phase-zero/`
+The deployment kit for AI-agent session infrastructure (hooks, operating brief, model routing, retrospective, settings) — deployed byte-identical into consuming repos' `.claude/` directories via `phase-zero/install.sh`. See that file's `CONSUMERS` allowlist for who's on it.
+
+### `public-kit/`
+A second, smaller deployment kit for public-repo hygiene: license templates, a README-shape standard, `CONTRIBUTING.md`/`SECURITY.md` templates, and the canonical public-facing voice rules. Deployed independently of `phase-zero/` via `public-kit/install.sh` (or the `--public` mode of the shared installer — see that script) to repos that are actually public. A repo can take either kit, both, or neither.
 
 ### `prompts/`
-The prompt stack: AI skill files that encode the methodology, brand voice, and operational logic.
-
-- **7 Cowork/Claude Code skills** covering outreach, project management, practice operations, agentic development and orchestration, prompting patterns, and idea-to-pilot; `evals/` still carries the harnesses for retired skills
-- **Brand context**: Complete positioning, voice guidelines, and creative constraints
-- **Instantiation prompt**: The system prompt that bootstraps the full practice
+What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.
 
 ### `cli/`
-Shell scripts for outreach and grant pipeline management. Obsidian-native (markdown + YAML frontmatter). No external dependencies, no API keys, no cost.
+Shell scripts for outreach and grant pipeline management. Obsidian-native (markdown + YAML frontmatter). No external dependencies, no API keys, no cost. *(Kept here as a default, not a settled call — see "A judgment call" below.)*
 
 - `rp-prospect`: Create and track prospects (interactive or CLI args)
 - `rp-pipeline`: View outreach pipeline by status
@@ -64,22 +70,16 @@ Shell scripts for outreach and grant pipeline management. Obsidian-native (markd
 By default the tools file everything under an Obsidian vault path. Set `RP_OUTREACH_DIR` to point the whole pipeline anywhere else; directories are created on first use and the bundled `templates/` are used when no vault templates exist.
 
 The tools run on macOS and Linux, every command answers `--help`, and `scripts/cli-smoke-test.sh` exercises the full prospect and grant lifecycle against a throwaway directory (CI runs it on every pull request).
-### `templates/`
-Reusable templates for the full client and grant lifecycle.
 
-- Prospect tracking template (YAML frontmatter for Obsidian/Dataview)
-- Funder tracking template
-- Client onboarding template
-- Case study template
-- Pipeline dashboards (outreach + grants)
+### `production/`
+Generic film/video production tooling. *(Also kept as a default — see below.)*
 
-### `grants/`
-Grant infrastructure for the Say Why social impact initiative.
+- DaVinci Resolve workflow script
+- PowerGrade template spec
+- iPhone filming guide for the camera-shipping model
 
-- Theory of Change
-- Evaluation Framework
-- Fiscal Sponsorship strategy
-- Funder tracking template: `templates/funder-template.md`
+### `research/`
+What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
 
 ### Apps (external repos)
 Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
@@ -88,28 +88,32 @@ Web-based tools, each developed in its own repository. There is no `apps/` direc
 - **Royal Metrics**: ENIF business performance dashboard (lives at `three-type-evaluation/instrument/` since 2026-07-20, standalone repo archived; the measurement framework it implements is in `methodology/`)
 - **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
 
-### `production/`
-Film and video production tools.
+---
 
-- DaVinci Resolve workflow script
-- PowerGrade template spec
-- iPhone filming guide for the camera-shipping model
-### `research/`
-Frameworks and position papers.
+## What's Not Here (and why)
 
-- Dual-architecture and frontier-lab-blueprint position papers
-- Say Why grant concept and the 64-registers thesis
-- rp-shared foundation spec
+This repo's own `CLAUDE.md` used to claim "nothing private lands here." An audit in August 2026 found that wasn't true, and this reorganization is the fix:
 
-(The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
+- **Grant strategy, brand/creative-strategy prompts, the identity-instantiation prompt, the content strategy, and RP-specific production tooling** (`badwords-rp/`) moved to `rp-intranet`, a private operations repo. They were business strategy and voice/positioning material, not reusable methodology.
+- **Position papers and grant-concept research** moved to `stack-data`, alongside near-identical or adjacent material already living there.
+- **Duplicate Total Cost of Ownership methodology files** were deleted outright; `stack-data/context/tco-framework.md` is the canonical version now.
+- **`context-provenance/`** — a self-contained, unrelated tool (AI-attribution/provenance tracking) that happened to live in this tree — is being spun out into its own standalone repo, `context-provenance`. *(As of this writing that extraction is prepared but not yet complete — see that PR/commit for status if this note is stale.)*
+
+### A judgment call
+
+`cli/` and most of `production/` (everything except `badwords-rp/`, which moved) are kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and neither directory carries names, numbers, or strategy — but this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
 
 ---
 
-## Why Open Source
+## License
 
-I built this because I enjoy building it. The infrastructure is as interesting to me as the client work, maybe more so. The question of how a solo practitioner can encode their entire methodology into replicable tools felt worth answering publicly.
+Three lanes, matching the rest of this practice's repos:
 
-There's no product here. No platform, no SaaS, no waitlist. Just how I actually work: the real prompts, the real evaluation frameworks, the real CLI tools I run every week. If any of it is useful to your practice, take it.
+- **Code and tooling** (`cli/`, `scripts/`, `production/resolve_workflow.py`, the `phase-zero/` and `public-kit/` mechanisms themselves) — **MIT**. Use it, fork it, adapt it.
+- **Methodology, protocols, and practice-writing** (`methodology/`, `templates/`, `docs/`) — **CC BY-SA 4.0**. Share and adapt, with attribution, alike.
+- **Data** — none of consequence lives in this repo; where it would, it's CC0.
+
+See `LICENSE` for the full texts and scope note, and `public-kit/` for the templates this policy is built from.
 
 ---
 
@@ -159,7 +163,7 @@ If none of those labels fit, you may still be at home here:
 - Solo consultants and facilitators who want to see how someone else built their practice infrastructure
 - Nonprofit professionals looking for evaluation frameworks that measure relational quality alongside deliverables
 - Documentary filmmakers curious about participant-led production models
-- Anyone building an AI-assisted practice stack who wants to see how prompt engineering connects to methodology
+- Anyone building an AI-assisted practice stack who wants to see how prompt engineering connects to methodology, or who wants a public-repo hygiene kit (`public-kit/`) they can deploy to their own projects
 
 ---
 
@@ -172,12 +176,6 @@ Three guards enforce this:
 - **Drift detector** — `scripts/check-vault-mirror-drift.sh`. Pure bash. Run anytime.
 - **Pre-commit hook** — `scripts/hooks/pre-commit-vault-mirror-check.sh`. Chains the secret scanner and the drift detector. Install on a clean checkout with `cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
 - **Daily detector** — `~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`. Runs at 04:30 daily, writes a dated note to the vault on drift. The pre-commit hook only fires on git commits; the daily run catches misroutes from other automation.
-
----
-
-## License
-
-MIT License. Use it, fork it, adapt it.
 
 ---
 
