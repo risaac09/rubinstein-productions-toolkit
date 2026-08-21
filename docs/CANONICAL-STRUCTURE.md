@@ -20,10 +20,11 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | `phase-zero/` | AI-agent session infrastructure kit source; deployed via `phase-zero/install.sh` |
 | `public-kit/` | Public-repo hygiene kit source; deployed via `phase-zero/install.sh --public` |
 | `dist/` | Build output |
-| `context-provenance/` | Self-contained, unrelated tool (AI-attribution/provenance tracking); being spun out to its own repo, `context-provenance` — see README.md's "What's Not Here" |
 | `seed-bed/` | Seed-bed working area |
 | `_archive/` | Quarantine for misrouted writes and obsolete material |
 | Repo root files | `README.md`, `LICENSE`, `LICENSE-CONTENT`, working notes |
+
+The former `context-provenance/` directory moved to the standalone [risaac09/context-provenance](https://github.com/risaac09/context-provenance) repository. It is no longer a legitimate toolkit top-level path.
 
 ## Forbidden — reserved for the vault
 
