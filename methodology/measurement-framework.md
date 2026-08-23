@@ -247,7 +247,7 @@ Last Friday of each month. 2-3 hours. Uninterrupted, contemplative space.
 | Average NPS | 8.0 | 9.0+ |
 | Repeat/Referral Rate | 30% | 60%+ |
 | Conversion Rate | 40% | 60%+ |
-| Effective Hourly Rate | [PRICING REMOVED] | [PRICING REMOVED]+ |
+| Effective Hourly Rate | see `rp-intranet` pricing guardrails | |
 | Asset Utilization (3 months) | 70% | 85%+ |
 | Average Consistency Score | 7.0 | 8.0+ |
 | Mid-Process Safety Scores | >4.0/5 | >4.5/5 |
