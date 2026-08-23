@@ -24,7 +24,7 @@ couldn't:
 1. **Ground it.** Read `~/stack-data/data/` (contacts, projects, financials,
    content, activities) and confirm Pass 3 (the digital twin) reaches the
    right ground truth. Cross-check the COO guardrails in
-   `prompts/skills/rubinstein-productions-coo.md`. Fix any path or skill name
+   `rp-intranet` `docs/operations/rubinstein-productions-coo-skill.md`. Fix any path or skill name
    that doesn't resolve on this machine.
 
 2. **Resolve the open question** in PR #3: does the digital twin stay folded

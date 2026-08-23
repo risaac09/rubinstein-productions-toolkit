@@ -118,117 +118,19 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 
 ---
 
-## SERVICE TIERS
+## SERVICE TIERS AND BUSINESS PLAN
 
-> **Tier definitions canonical source:** vault `Say Why - Canonical Positioning & Skill Embedding.md` Part 1. This section mirrors the canonical and is updated when the canonical changes.
+Tier definitions, pricing, revenue projections, unit economics, and the
+go-to-market plan are operational internals. They live in the private
+`rp-intranet` repo, not here:
 
-[REMOVED FROM PUBLIC HISTORY]
-**Segment:** The Rebuilder — individual in transition (burnout recovery, career shift, grad school, layoff)
-**Phases included:** Container + light Performance/Translation
-**What it is:** Facilitated conversation (1–2 sessions) + short film (2–3 min) or written narrative synthesis
-**Pain it addresses:** "I've been through something real but I can't show what I've become yet"
-**Goal:** Front door. Every engagement starts here or passes through it.
-**Revenue characteristics:** Pipeline builder. High volume potential, low delivery cost.
+- `docs/operations/pricing-guardrails.md` — tier pricing and the floor rate
+- `docs/strategy/business-plan-elements.md` — projections, cost structure,
+  unit economics, go-to-market, risks
 
-[REMOVED FROM PUBLIC HISTORY]
-**Segment:** The Container Builder — program leader running a cohort, workshop, or design challenge
-**Phases included:** All four phases (Container → Excavation → Performance → Translation), embedded
-**What it is:** Embedded documentation + evaluation across the program
-**Pain it addresses:** "Something real is happening in my program but I can't prove it or show it to funders/partners"
-**What they get:** Facilitated interviews + ongoing documentation + impact evaluation report + compilation film + Bilingual Dashboard (Lite)
-**Goal:** Document and evaluate emergence inside someone else's container.
-**Positioning:** Not actively sold; positioned as a case study (the Genesis Design Challenge).
+This file carries the methodology. The four phases above are the whole of
+what the public kit needs to reproduce the practice.
 
-[REMOVED FROM PUBLIC HISTORY]
-**Segment:** The Emergent Practitioner — org developing methodology, needing ongoing narrative + evaluation capacity
-**Phases included:** Repeated cycles of all four phases over 3+ months
-**What it is:** Ongoing partnership: facilitation + documentation + evaluation methodology
-**Pain it addresses:** "We're building something new and need infrastructure to tell its story and prove it works"
-**What they get:** Full facilitation arc (repeated) + 3–6 produced videos + Bilingual Dashboard (Full) + quarterly review + Three-Phase evaluation (Awareness → Protocol → Systems Design)
-**Goal:** Deep integration. The organization's narrative becomes self-sustaining.
-**Hold condition:** Open this tier only after one completed paid Program Engagement at depth.
-
----
-
-## BUSINESS PLAN ELEMENTS
-
-### Revenue Projections (Year 1 — Conservative)
-
-**Assumptions:**
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-- No paid advertising budget
-
-*These projections were drafted against the retired tier pricing. The labels below use the canonical tier names; the dollar figures have not been recomputed since the April 2026 repricing.*
-
-| Quarter | Tier 1 | Tier 2 | Tier 3 | Projected Revenue |
-|---------|--------|--------|--------|-------------------|
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-
-*Note: Wide range reflects pre-revenue uncertainty. The lower bound assumes slow pipeline development. The upper bound assumes the LinkedIn content strategy and warm outreach generate consistent leads.*
-
-### Cost Structure
-
-| Category | Monthly Cost | Notes |
-|----------|-------------|-------|
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-
-### Unit Economics
-
-*Hours and hourly rates below were computed on the retired pricing; recompute against the canonical tier prices in the Service Tiers section before using these for decisions.*
-
-| Tier | Price Range (retired) | Delivery Hours | Effective Hourly | Margin |
-|------|------------|----------------|------------------|--------|
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-
-*Unit economics are strong. The constraint is capacity, not margin.*
-
-### Go-to-Market (Year 1)
-
-**Channels (in priority order):**
-1. **LinkedIn organic** — Primary. Essay-style posts, confession hooks, contrast content. The creative strategy is built for this.
-2. **Warm outreach** — Email to existing network. The outreach email manager skill handles this.
-3. **Workshops/events** — Guest facilitation at conferences, nonprofit convenings. Tier 1 pipeline.
-4. **Substack** — The 8-essay arc. Builds intellectual credibility. Drives warm leads.
-5. **Website** — Conversion point. Not a discovery channel.
-
-**Pipeline logic:**
-LinkedIn → warm lead → conversation → Founder Story (Tier 1) → demonstrated value → Program Engagement (Tier 2) → demonstrated transformation → Organizational Embedding (Tier 3)
-
-### Key Metrics to Track
-
-| Metric | Target (Q2 2026) | Target (Q4 2026) |
-|--------|-------------------|-------------------|
-| LinkedIn connections (target personas) | +100 | +400 |
-| Inbound inquiries / month | 2-3 | 5-8 |
-| Founder Story sessions completed | 3-4 total | 10-15 cumulative |
-| Tier 2 engagements completed | 0-1 | 2-4 cumulative |
-[REMOVED FROM PUBLIC HISTORY]
-| Referral rate | n/a | 30%+ of new leads from past clients |
-
-### Risks and Mitigations
-
-| Risk | Likelihood | Mitigation |
-|------|-----------|------------|
-| Capacity conflict with day job | High | Strict 10-15 hr/week cap. No Organizational Embedding engagements until Q4. |
-| Camera shipping model untested | High | Run 1-2 beta engagements at reduced price in Q2. |
-| No social proof / case studies | High | First Founder Story session → document with permission → becomes proof of process |
-| Pricing resistance for Tier 2 | Medium | Founder Story tier de-risks. Client experiences value before committing. |
-| Market confusion about offering | Medium | Homepage hero + LinkedIn content must immediately communicate: facilitation + film, not coaching or marketing |
-
----
 
 ## WHAT'S STILL MISSING
 
