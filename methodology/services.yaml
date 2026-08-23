@@ -2,9 +2,12 @@
 #
 # Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
 # (v2, 2026-04-27). This public copy carries only the two publicly offered
-# tiers (their price ranges match rubinsteinproductions.com/services) and the
-# four methodology phases. The full binding, with the internal tier, the COO
-# enforcement rules, and the terminology lock, lives in
+# tiers and the four methodology phases, and deliberately no prices: as of
+# 2026-08-23 rubinsteinproductions.com/services publishes none either, so the
+# earlier note here claiming the ranges matched the site was stale, and this
+# file was the only public surface carrying them. The full binding, with
+# prices, the internal tier, the COO enforcement rules, and the terminology
+# lock, lives in
 # rp-intranet/docs/operations/services.yaml (moved 2026-07-16); automation
 # reads that copy. When the two disagree, intranet wins; when either disagrees
 # with the canonical vault doc, the canonical doc wins.
@@ -18,11 +21,7 @@ services:
     segment: "The Rebuilder"
     segmentPain: "I've been through something real but I can't show what I've become yet."
     positioning: "Help me say what I've become."
-    price:
-      floor: 1500
-      ceiling: 2500
-      currency: USD
-      model: fixed
+    # price: see rp-intranet/docs/operations/services.yaml
     duration:
       typical: "1–2 sessions + 5-day post-latency + delivery"
       maxWeeks: 3
@@ -48,11 +47,7 @@ services:
     segment: "The Container Builder"
     segmentPain: "Something real is happening in my program but I can't prove it or show it to funders/partners."
     positioning: "Document what's emerging from this container."
-    price:
-      floor: 3000
-      ceiling: 8000
-      currency: USD
-      model: fixed
+    # price: see rp-intranet/docs/operations/services.yaml
     duration:
       typical: "Scoped to program length (typically 4–10 weeks)"
       maxWeeks: 12
