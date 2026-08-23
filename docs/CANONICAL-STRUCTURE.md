@@ -15,7 +15,6 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | `templates/` | Document and skill templates |
 | `prompts/` | Reusable prompts |
 | `production/` | Production assets |
-| `evals/` | Skill evals |
 | `architecture/` | System-map artifact |
 | `phase-zero/` | AI-agent session infrastructure kit source; deployed via `phase-zero/install.sh` |
 | `public-kit/` | Public-repo hygiene kit source; deployed via `phase-zero/install.sh --public` |

@@ -284,10 +284,14 @@ What's trying to be born through this work?
 
 ### Recommended Engagement
 
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
-[REMOVED FROM PUBLIC HISTORY]
+- [ ] **Founder Story:** Facilitated conversation + short film
+- [ ] **Program Engagement:** Embedded documentation + evaluation
+- [ ] **Organizational Embedding:** Ongoing narrative + evaluation capacity (opens by conversation)
 - [ ] **Not a fit:** Refer to _______________
+
+*Price the selected tier from the pricing guardrails in the private
+`rp-intranet` repo. This is a public template; it carries the shape of the
+engagement, not the rate card.*
 
 **Rationale:**
 

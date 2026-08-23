@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## What this repo is
-The public toolkit: methodology, templates, docs, evals, generic CLI tools, and the two deployment kit sources (`phase-zero/`, `public-kit/`). Take what's useful is the license posture. Business strategy, brand/voice prompts, and RP-specific production tooling live in the private `rp-intranet` — an August 2026 audit found this repo's older "nothing private lands here" claim wasn't actually true and moved that content out; see README.md's "What's Not Here" for the full accounting.
+The public toolkit: methodology, templates, docs, generic CLI tools, and the two deployment kit sources (`phase-zero/`, `public-kit/`). Take what's useful is the license posture. Business strategy, brand/voice prompts, and RP-specific production tooling live in the private `rp-intranet` — an August 2026 audit found this repo's older "nothing private lands here" claim wasn't actually true and moved that content out. A second pass on 2026-08-23 removed what that audit's scope missed: the eval corpus, service-tier pricing, revenue projections, and a snapshot of the local permission allow list. See README.md's "What's Not Here" for the full accounting. Before adding anything here, assume public means public.
 
 ## The one guardrail
 This repo is the kit source, now for two independent kits sharing one installer, `phase-zero/install.sh`.

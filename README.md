@@ -41,8 +41,10 @@ Reusable templates for the client and grant lifecycle.
 - Case study template
 - Pipeline dashboards (outreach + grants)
 
-### `docs/`, `architecture/`, `evals/`
-Internal documentation, a system-map artifact, and the skill-eval harnesses (baseline vs. with-skill comparisons across outreach, project management, creative strategy, and writing skills) that back the prompt stack's claims. `docs/field-guide/` routes readers by role.
+### `docs/`, `architecture/`
+Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role.
+
+The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: their prompts and fixtures are real RP business scenarios carrying balances, revenue targets, pricing bands, and a client engagement, which is the same material this README says stays private.
 
 ### `scripts/`
 Generic automation: the doc-link checker, the vault/toolkit boundary drift detector, the pre-commit hook chain, and the methodology sync script. Nothing RP-specific.
@@ -79,7 +81,7 @@ Generic film/video production tooling. *(Also kept as a default — see below.)*
 - iPhone filming guide for the camera-shipping model
 
 ### `research/`
-What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc lives in `methodology/digital-liver-offering.md`, not here.)
+What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc is business strategy with revenue models, so it lives in the private `rp-intranet` repo.)
 
 ### Apps (external repos)
 Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
@@ -98,6 +100,16 @@ This repo's own `CLAUDE.md` used to claim "nothing private lands here." An audit
 - **Position papers and grant-concept research** moved to `stack-data`, alongside near-identical or adjacent material already living there.
 - **Duplicate Total Cost of Ownership methodology files** were deleted outright; `stack-data/context/tco-framework.md` is the canonical version now.
 - **Context Provenance** — the self-contained AI-attribution and provenance tool that happened to live in this tree now has its own repository: **[`risaac09/context-provenance`](https://github.com/risaac09/context-provenance)**. Its original subtree history moved with it.
+
+A second pass on 2026-08-23 caught what the first one missed. The August reorg scoped itself to `prompts/`, `research/`, `grants/`, and `production/`, so these were never in range:
+
+- **The skill-eval harnesses** (`evals/`) moved to `rp-intranet`. Their prompts read as synthetic but are real business scenarios: account balances, rent, monthly burn, a quarterly revenue target, a named client engagement, and the price-anchoring script with the floor and ceiling stated outright.
+- **Service-tier pricing, revenue projections, unit economics, and the go-to-market plan** moved to `rp-intranet`. The projection table sat directly beneath an assumptions block naming the employer.
+- **The Digital Liver offering doc and the RP COO skill** moved to `rp-intranet`. Both are business strategy carrying rates and financial models.
+- **A verbatim snapshot of one machine's Claude permission allow list** was removed. Publishing it published the exact set of commands that run with no approval prompt on that machine. The audit script reads a machine-local baseline now.
+- **The autoMode environment block** shipped generic. It had named every private repo and then described the privacy scanner's known blind spot, which is a target list sitting next to the gap that reaches it. Machine specifics come from a local overlay the installer merges last.
+
+History still holds all of it. Scrubbing that is a separate decision.
 
 ### A judgment call
 
