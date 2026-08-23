@@ -14,12 +14,21 @@
 # Exit 1 if either check has hits, 0 if clean.
 set -uo pipefail
 
-SRC="$(cd "$(dirname "$0")" && pwd)"
 SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.local.json}"
-BASELINE="$SRC/permissions-baseline.json"
+# Machine-local, never committed here. The baseline is a verbatim snapshot of
+# one machine's allow list, which is a list of exactly the commands that run
+# with no approval prompt on that machine. That is the last thing to publish
+# from a public repo, so it lives beside the settings it mirrors. Seed it with:
+#   jq '{allow: (.permissions.allow // [])}' ~/.claude/settings.local.json \
+#     > ~/.claude/permissions-baseline.json
+BASELINE="${CLAUDE_PERMISSIONS_BASELINE:-$HOME/.claude/permissions-baseline.json}"
 
 [ -f "$SETTINGS" ] || { echo "permissions-audit: no $SETTINGS, nothing to check"; exit 0; }
-[ -f "$BASELINE" ] || { echo "permissions-audit: no baseline at $BASELINE" >&2; exit 1; }
+[ -f "$BASELINE" ] || {
+  echo "permissions-audit: no baseline at $BASELINE" >&2
+  echo "  seed it: jq '{allow: (.permissions.allow // [])}' $SETTINGS > $BASELINE" >&2
+  exit 1
+}
 
 rc=0
 count=$(jq '.permissions.allow // [] | length' "$SETTINGS")

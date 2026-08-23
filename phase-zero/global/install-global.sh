@@ -97,6 +97,34 @@ if command -v jq >/dev/null 2>&1; then
       ($kit[0].autoMode[$k] // []) as $kitlist |
       if ($kitlist | length) > 0 then .autoMode[$k] = $kitlist else . end)
   ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
+
+  # Machine-local overlay, merged last so it wins. This is where the specifics
+  # go: which repos are actually private, internal hostnames and services,
+  # local paths. They are deliberately absent from the kit file, because this
+  # repo is public and that inventory is a map of what is worth taking. Same
+  # section-wholesale semantics as the kit merge above.
+  OVERLAY="${AUTO_MODE_OVERLAY:-$HOME/.claude/auto-mode.local.json}"
+  if [ -f "$OVERLAY" ]; then
+    # Fail loudly. A malformed overlay that silently did not merge would leave
+    # the generic kit environment in place while the operator believed their
+    # machine-specific rules were loaded, which is the one outcome this overlay
+    # exists to prevent.
+    if jq --slurpfile local "$OVERLAY" '
+      .autoMode //= {} |
+      reduce ("environment","allow","soft_deny","hard_deny") as $k (.;
+        ($local[0].autoMode[$k] // []) as $locallist |
+        if ($locallist | length) > 0 then .autoMode[$k] = $locallist else . end)
+    ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"; then
+      echo "auto-mode: merged machine-local overlay from $OVERLAY"
+    else
+      rm -f "$settings.tmp"
+      echo "ERROR: overlay at $OVERLAY did not merge (invalid JSON?)." >&2
+      echo "  autoMode is left on the generic kit environment. Fix and re-run." >&2
+      exit 1
+    fi
+  else
+    echo "auto-mode: no machine-local overlay at $OVERLAY (using the generic kit environment)"
+  fi
 else
   echo "ERROR: jq is not installed; autoMode block not merged into $settings" >&2
   echo "Install jq and re-run, or merge global/auto-mode.json by hand." >&2
