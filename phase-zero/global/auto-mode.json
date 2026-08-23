@@ -2,13 +2,13 @@
   "autoMode": {
     "environment": [
       "$defaults",
-      "Organization: Rubinstein Productions, a solo operator. Primary use: software development, personal knowledge infrastructure, and content pipelines across roughly fifteen local repos on two Macs (an M2 Pro laptop and a Mac mini at mini.local).",
-      "Source control: github.com/risaac09. Public repos, safe only for open-source code, project docs, and the PWAs' own public-facing client code, never secrets or client/personal data: alchemy, gene-keys-data, isaacrubinstein.com, risaac09 (the GitHub profile repo), rubinstein-productions-toolkit, rubinsteinproductions, statehouse-dashboard. Every other repo under risaac09 is private and holds client or personal data (current ones: stack-data, rp-intranet, rp-shared, second-brain-mirror, home-scripts, material-and-meaning-institute, three-bits, three-type-evaluation, claude-memory, finance-tracker-starter) unless a visibility check earlier in this session says otherwise.",
-      "Additional context: a pre-push hook (sd-privacy-scan) runs on the public repos listed above but matches only a fixed private-term denylist; it has a known blind spot for shape-only leaks such as client hex color codes, vendor names, or a bare first name, which carry no denylisted string and pass clean. A clean sd-privacy-scan result is not evidence a push to a public repo is free of client or personal detail; judge the content on its own terms.",
-      "Secrets management: env files under ~/.secrets/, sourced by the shell profile. Their contents must never be read into context, echoed, copied elsewhere, or committed.",
-      "Sensitive data locations & audiences: ~/stack-data holds client contacts and financials and may only ever land in its own private GitHub repo. The Obsidian vault under ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/ is the personal corpus; its content may move within the vault and to the private second-brain-mirror repo, nowhere else. ~/.secrets has no valid audience.",
-      "Key internal services: the Mac mini at mini.local (llama-server on :8080, SSH, launchd jobs), Netlify for rubinsteinproductions.com, and GitHub Actions in a handful of repos.",
-      "Sensitive remote targets: GitHub Pages publication branches, Netlify production deploys, and launchd agents under ~/Library/LaunchAgents on either machine."
+      "Organization: a solo operator. Primary use: software development, personal knowledge infrastructure, and content pipelines across local repos on more than one machine.",
+      "Source control: a single GitHub owner with a mix of public and private repos. Never assume a repo's visibility from its name, its contents, or this file. Check it live (gh repo view <owner>/<repo> --json visibility) before treating anything as safe to publish, and re-check per session.",
+      "Treat a clean pre-push privacy scan as necessary, not sufficient. A denylist scanner cannot see shape-only leaks that carry no listed term. Judge the content on its own terms before any push to a public repo.",
+      "Secrets management: env files under ~/.secrets/, sourced by the shell profile. Their contents must never be read into context, echoed, copied elsewhere, or committed. ~/.secrets has no valid audience.",
+      "Sensitive data locations & audiences: the operational data repo holds client contacts and financials and may only ever land in its own private GitHub repo. The Obsidian vault is the personal corpus; its content may move within the vault and to its private mirror repo, nowhere else.",
+      "Sensitive remote targets: GitHub Pages publication branches, production deploys, and launchd agents under ~/Library/LaunchAgents.",
+      "Machine-specific detail (which repos are private, internal hostnames and services, local paths) is deliberately absent from this public kit file. Supply it from a machine-local overlay at ~/.claude/auto-mode.local.json, which install-global.sh merges last so it wins. Keep the overlay out of any public repo."
     ],
     "soft_deny": [
       "$defaults",
@@ -20,7 +20,7 @@
     "hard_deny": [
       "$defaults",
       "Never read, copy, or commit files under ~/.secrets/ or their contents, and never place a token, key, or credential in any public repo: the PWAs ship their client code publicly.",
-      "Never push vault content or stack-data client data (contacts, financials, client names) to a public repository or send it to any external service."
+      "Never push vault content or operational client data (contacts, financials, client names) to a public repository or send it to any external service."
     ]
   }
 }

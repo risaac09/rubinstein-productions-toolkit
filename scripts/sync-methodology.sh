@@ -29,7 +29,8 @@ DATE=$(date +%Y-%m-%d)
 PAIRS=(
   "00 Canonical/RP Measurement Framework.md|measurement-framework.md"
   "00 Canonical/RP Session Facilitation Guide.md|session-facilitation-guide.md"
-  "00 Canonical/Digital Liver Offering Definition.md|digital-liver-offering.md"
+  # Digital Liver Offering Definition syncs to rp-intranet now, not here:
+  # it is business strategy with revenue models, not public methodology.
   "00 Canonical/Nomadic Indicators Codebook.md|nomadic-indicators-codebook.md"
   "00 Canonical/Say Why — Theory of Change.md|theory-of-change.md"
   "00 Canonical/Say Why — Evaluation Framework.md|evaluation-framework.md"
