@@ -137,11 +137,11 @@ result. The gap above is real, not papered over.
 ## Phase 2: Remotion motion graphics (`motion/`)
 
 A minimal Remotion project at `motion/`, scaffolded with `create-video`'s
-`--blank` template (free tier, no license needed at this scale — Remotion is
+`--blank` template (free tier, no license needed at this scale: Remotion is
 free for teams up to 3). One working composition: `src/LowerThird.tsx`, a
 name + role title card at 1920x1080/30fps with a spring-eased entrance
-(20 frames), a hold (60 frames), and an eased exit (15 frames) — 95 frames /
-~3.2s total. Registered as composition id `LowerThird` in `src/Root.tsx`.
+(20 frames), a hold (60 frames), and an eased exit (15 frames), 95 frames
+total, about 3.2s. Registered as composition id `LowerThird` in `src/Root.tsx`.
 
 **Verified, not just written:**
 
@@ -154,11 +154,19 @@ npx remotion render LowerThird out/lower-third.mp4
 
 Render took ~8.6s wall time (95 frames, this machine). `ffprobe` confirmed
 the output: h264, 1920x1080, 30fps, 3.22s duration, 213KB. Pulled frames at
-n=8 (mid-entrance, text visibly lower-opacity and offset) and n=45
-(mid-hold, fully settled) and inspected them directly — the card renders
-correctly, not a blank or garbled frame. `out/` is gitignored (already set
-up by the scaffold), so the rendered MP4 isn't committed; re-render with the
-command above to reproduce it.
+n=8 (mid-entrance, text visibly lower-opacity and offset), n=45 (mid-hold,
+fully settled), and n=94 (last rendered frame, fully faded to black) and
+inspected them directly: the card enters, holds, and exits correctly, not a
+blank or garbled frame. `out/` is gitignored (already set up by the
+scaffold), so the rendered MP4 isn't committed; re-render with the command
+above to reproduce it.
+
+A `/code-review` pass on this commit caught one real bug before push: the
+exit fade's interpolate window ended at frame 95, one past the last frame
+Remotion actually renders (0..94), so the card never fully finished fading
+out; the last frame showed a faint ghost of the card instead of black.
+Fixed by ending the exit window at `TOTAL_DURATION - 1`; re-rendered and
+confirmed frame 94 is now fully black.
 
 **How this fits with the video-use core, honestly:**
 
@@ -170,7 +178,7 @@ renders graphics elements (lower thirds, titles, intro/outro cards) as
 separate clips with alpha or as their own MP4s; a compositing step (ffmpeg
 overlay filter, most likely inside `helpers/render.py`'s existing overlay
 stage) lays the Remotion output on top of the base video at specified
-timestamps. None of that compositing step exists yet — this phase only
+timestamps. None of that compositing step exists yet; this phase only
 proves the Remotion side renders deterministically and can iterate the same
 way any other React code does (edit `LowerThird.tsx`, re-render, diff the
 frame). Wiring the two together is the next increment, not this one.
@@ -178,17 +186,17 @@ frame). Wiring the two together is the next increment, not this one.
 **Friction notes, for anyone treating this as a repeatable pipeline later:**
 
 - `create-video --blank --no-tailwind` still ships Tailwind in
-  `package.json`/`index.css` — the flag didn't suppress it for this
+  `package.json`/`index.css`; the flag didn't suppress it for this
   template. Harmless here since `LowerThird.tsx` doesn't use Tailwind
   classes, but worth knowing before assuming `--no-tailwind` actually drops
   the dependency.
 - `npm install` pulled 367 packages for a single lower-third composition.
   Fine for a prototype; would be worth trimming (drop Tailwind, ESLint
   config, etc.) if this becomes a long-lived tool rather than a demo.
-- Render time (~8.6s for 95 frames / ~3.2s of output) is fast on this
+- Render time (~8.6s for 95 frames, ~3.2s of output) is fast on this
   machine for a text-only composition. Untested: how render time scales
   with video-in-video compositing, more complex animations, or longer
-  durations — the real cost driver for a titling pipeline is unknown until
+  durations. The real cost driver for a titling pipeline is unknown until
   something heavier than text-on-a-color-card gets rendered.
 - Node 24 / npm 11 worked with no version pinning needed, unlike `video-use`
   which required a Python version pin. No Node-version friction hit in this
