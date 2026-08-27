@@ -32,9 +32,11 @@ export const LowerThird: React.FC<LowerThirdProps> = ({ name, role }) => {
     durationInFrames: ENTRANCE_DURATION,
   });
 
+  // Remotion renders frames 0..durationInFrames - 1, so the exit window's
+  // right edge must land on the last rendered frame, not TOTAL_DURATION.
   const exitProgress = interpolate(
     frame,
-    [exitStart, exitStart + EXIT_DURATION],
+    [exitStart, TOTAL_DURATION - 1],
     [0, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.in(Easing.quad) },
   );
