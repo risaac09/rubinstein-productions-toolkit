@@ -21,6 +21,22 @@ The governing decision is not visual. It is **how much form this document's audi
 | **Content source** | The material the document is built from | Ask. |
 | **The reader and the job** | Who reads it, and what they do differently afterward | Ask. This sets the form budget. |
 
+**Resolve named people and counts before drafting, not after.** An org chart
+or a roster is unedited structure. A deck or a brief is curated intent. The
+two disagree, and the structural one is usually right about who exists: a
+senior stakeholder can be absent from every stakeholder slide and still sit
+above two of the named readers on the org card. Look up who each named
+reader actually is before writing to them, because roles split an apparently
+uniform group into different instruments with different questions. Check
+whether a count's grouping variable equals the label a reader will
+paraphrase it under, and hand the correction alongside the number when it
+does not: people who answered a question about a function are not that
+function's department, and the shorthand misattributes them. Build the
+source manifest, the citation keys plus the known-missing list, before any
+narrative content, so no claim needs re-grounding later. A draft that names
+its missing source and waits one turn beats a draft that guesses the source
+whole.
+
 ---
 
 ## Phase 1. Set the form budget
