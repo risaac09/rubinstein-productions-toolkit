@@ -1,6 +1,6 @@
-> **Canonical source:** `00 Canonical/Say Why — Evaluation Framework.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Say Why — Evaluation Framework.md` in vault — last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use.
 
-# Say Why — Evaluation Framework
+# Say Why - Evaluation Framework
 ### Bilingual Assessment for Grant-Funded Engagements
 *Isaac Rubinstein | April 2026*
 
@@ -8,7 +8,7 @@
 
 ## Design Philosophy
 
-Traditional program evaluation in social impact spaces privileges what can be counted (outputs, reach, impressions) over what matters (trust, clarity, relational change). Say Why uses a **Bilingual Dashboard** — two parallel measurement languages that together capture what neither could alone.
+Traditional program evaluation in social impact spaces privileges what can be counted (outputs, reach, impressions) over what matters (trust, clarity, relational change). Say Why uses a **Bilingual Dashboard**, two parallel measurement languages that together capture what neither could alone.
 
 **Royal Metrics** speak the language institutions already understand: deliverables, timelines, quantities, ROI. These satisfy funder reporting requirements and demonstrate accountability.
 
@@ -50,10 +50,10 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 
 ### Narrative Coherence (pre/post)
 **Method:** Facilitated reflection interview at intake and 30 days post-completion.
-**What we're measuring:** The degree to which a participant can articulate what their work is and why it matters — in their own language, without institutional hedging.
+**What we're measuring:** The degree to which a participant can articulate what their work is and why it matters, in their own language, without institutional hedging.
 
 | Indicator | Baseline Assessment | Post Assessment |
-|---|---|---|| Self-referential clarity | "Tell me about your work" — coded for jargon density, hedging, self-correction loops | Same prompt, coded for directness, specificity, emotional congruence |
+|---|---|---|| Self-referential clarity | "Tell me about your work", coded for jargon density, hedging, self-correction loops | Same prompt, coded for directness, specificity, emotional congruence |
 | Structural awareness | Can participant name the systemic conditions shaping their communication? | Has structural awareness deepened or become actionable? |
 | Voice-body alignment | Observed: posture, breathing, vocal tone during intake conversation | Same observational protocol post-completion |
 | Story portability | Does the participant's narrative require them in the room to land? | Can the video artifact carry the narrative independently? |
@@ -64,8 +64,8 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 | Indicator | What We're Tracking |
 |---|---|
 | Trust velocity | How quickly did relational safety establish? What enabled or inhibited it? |
-| Recognition moments | Instances where participant says "that's it" or equivalent — the inside version surfacing |
-| Consent quality | Was consent ongoing, embodied, and revisitable — or performative? |
+| Recognition moments | Instances where participant says "that's it" or equivalent, the inside version surfacing |
+| Consent quality | Was consent ongoing, embodied, and revisitable, or performative? |
 | Reciprocity | Did the engagement leave both parties more coherent, or did it extract from one? |
 
 ### Emergent Capacity
@@ -97,14 +97,14 @@ Both are necessary. Neither is sufficient. The evaluation is legible to funders 
 
 **For funders (quarterly):** Royal metrics summary + 2-3 Nomadic indicator narratives. Numbers for accountability. Stories for truth.
 
-**For participants (post-engagement):** Personal Bilingual Dashboard — what the numbers say about their engagement AND what the relational indicators reveal about their growth. This is returned to them like the footage — it's theirs.
+**For participants (post-engagement):** Personal Bilingual Dashboard, what the numbers say about their engagement AND what the relational indicators reveal about their growth. This is returned to them like the footage, it's theirs.
 
 **For the field (annual):** Practice-based research publication documenting the methodology, findings, and emergent patterns across cohorts. Contributes to the evidence base for narrative-as-social-determinant-of-health.
 
 ---
 
 *This framework should be read alongside:*
-- Say Why — Theory of Change
-- Say Why — Grant Concept
+- Say Why - Theory of Change
+- Say Why - Grant Concept
 - RP Measurement Framework
 - Nomadic Indicators Codebook

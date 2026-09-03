@@ -1,6 +1,6 @@
-> **Canonical source:** `00 Canonical/RP Session Facilitation Guide.md` in vault — last synced 2026-04-27. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/RP Session Facilitation Guide.md` in vault — last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use.
 
-# Rubinstein Productions — Session Facilitation Guide
+# Rubinstein Productions - Session Facilitation Guide
 *Tactical playbook for conducting facilitated conversations*
 *Consolidated April 2026 | Read alongside: Say Why - Canonical Positioning & Skill Embedding*
 
@@ -14,7 +14,7 @@ Before every session:
 2. **Foundation:** Am I grounded in my own knowing? (Line 1)
 3. **Projection Readiness:** Am I prepared to be seen as "the expert"? (Line 5)
 
-### What Your Job Is — and Isn't
+### What Your Job Is - and Isn't
 
 **Your job IS to:**
 - Create safety for truth to emerge
@@ -32,7 +32,7 @@ Before every session:
 - Make them comfortable at the expense of truth
 
 ### The Alchemical Stance
-You are a mirror, not a mechanic. Transformation happens through witnessing, not instruction. The client has the answers; you have the questions. Your regulated nervous system co-regulates theirs — this is the biological mechanism (Polyvagal Theory) that makes the work possible.
+You are a mirror, not a mechanic. Transformation happens through witnessing, not instruction. The client has the answers; you have the questions. Your regulated nervous system co-regulates theirs, this is the biological mechanism (Polyvagal Theory) that makes the work possible.
 
 ---
 
@@ -44,12 +44,12 @@ These protocols come from the neuroscience foundation of the methodology. They a
 - 2-3 minutes of slow diaphragmatic breathing before arrival
 - Internal check: *Am I grounded, curious, non-performative?*
 - Set a clear intention (e.g., "to witness truthfully," not "to capture perfectly")
-- Visualize the client's autonomy — they are author, not object
+- Visualize the client's autonomy, they are author, not object
 
 ### Co-Regulation During Sessions
 - **Tone & Pacing:** Low, steady vocal tone. Longer pauses signal safety.
 - **Body Position:** Open torso, soft non-intrusive gaze. Avoid excessive nodding (can be read as evaluative).
-- **Micro-Resets:** Offer pauses when tension rises — *"Want to take a second before we continue?"*
+- **Micro-Resets:** Offer pauses when tension rises, *"Want to take a second before we continue?"*
 - **Silence as Tool:** Longer silences trigger parasympathetic restoration, supporting access to autobiographical memory (Siegel, 2012). Don't fill them.
 
 ### Reading the Client's Nervous System
@@ -64,12 +64,12 @@ These protocols come from the neuroscience foundation of the methodology. They a
 
 ## Session Types
 
-### Type 1: Facilitation Session (Founder Story)
+### Type 1: Facilitation Session (The Mirror - Gateway)
 **Duration:** 90 minutes
 **Purpose:** Uncover unconscious narrative, identify fears, create initial articulation
 **Deliverables:** Recording, written synthesis, "What you're actually trying to say" document
 
-### Type 2: Narrative Development Session (Program Engagement)
+### Type 2: Narrative Development Session (Mid-Tier)
 **Duration:** 60-90 minutes
 **Purpose:** Deepen and structure the narrative, develop messaging architecture
 **Deliverables:** Refined messaging, story bank, key phrases
@@ -80,7 +80,7 @@ These protocols come from the neuroscience foundation of the methodology. They a
 **Deliverables:** Footage for editing
 **Special protocol:** This is the Zero-Measurement Zone. No extractive data collection. Follow energy, not agenda.
 
-### Type 4: Integration Session (Organizational Embedding)
+### Type 4: Integration Session (Retainer / Territory)
 **Duration:** 60 minutes
 **Purpose:** Check-in, refinement, evolution tracking
 **Deliverables:** Updated messaging, new directions identified
@@ -109,7 +109,7 @@ These protocols come from the neuroscience foundation of the methodology. They a
 - [ ] Recording confirmed working
 - [ ] Room temperature comfortable
 - [ ] Lighting flattering (if on-camera)
-- [ ] Keep gear visible and narrate setup steps: *"I'm just adjusting this light — let me know if it feels too bright"*
+- [ ] Keep gear visible and narrate setup steps: *"I'm just adjusting this light, let me know if it feels too bright"*
 
 ---
 
@@ -121,10 +121,10 @@ These protocols come from the neuroscience foundation of the methodology. They a
 > "Before we dive in, take a breath. Let yourself arrive. There's nothing you need to prepare or perform."
 
 **Setting the Container:**
-> "This space is for your truth to emerge. I'm going to ask questions — some might feel unusual or uncomfortable. You can always pass or say 'I'm not ready for that one.' My job is to listen deeply and reflect back what I hear. Your job is to be as honest as you can be."
+> "This space is for your truth to emerge. I'm going to ask questions, some might feel unusual or uncomfortable. You can always pass or say 'I'm not ready for that one.' My job is to listen deeply and reflect back what I hear. Your job is to be as honest as you can be."
 
 **Consent & Recording:**
-> "I'll be recording this so I can capture exactly what you say — your words are the gold. Nothing gets used without your approval. Sound good?"
+> "I'll be recording this so I can capture exactly what you say, your words are the gold. Nothing gets used without your approval. Sound good?"
 
 **Calibration Question:**
 > "On a scale of 1-10, how present do you feel right now?"
@@ -147,7 +147,7 @@ If below 6: Take 2 minutes for grounding breathwork together.
 - "What do you most want people to understand about you/your work?"
 - "If you could be known for one thing, what would it be?"
 - "What breaks your heart about the world? What gives you hope?"
-- "Why does this work matter — to you, personally?"
+- "Why does this work matter, to you, personally?"
 
 ### Current State
 - "How do you currently explain what you do?"
@@ -168,7 +168,7 @@ If below 6: Take 2 minutes for grounding breathwork together.
 
 **Deeper:**
 - "What would you say if there were no consequences?"
-- "What truth are you protecting yourself — or others — from?"
+- "What truth are you protecting yourself, or others, from?"
 - "What's the conversation you've been avoiding for years?"
 
 **Root:**
@@ -214,7 +214,7 @@ Replace "tell me about..." with:
 
 **Interventions:**
 - "Can you give me a specific example?"
-- "Let's make this personal — what does this mean for YOU?"
+- "Let's make this personal, what does this mean for YOU?"
 - "I notice you shifted to 'we.' What's the 'I' version?"
 - "If you weren't trying to sound professional, how would you say this?"
 
@@ -249,7 +249,7 @@ Replace "tell me about..." with:
 - "Let me pause and reflect back what I'm hearing..."
 - "I want to make sure I'm tracking. Can you help me understand how [X] connects to [Y]?"
 - "What feels most important right now?"
-- Take a breath. Trust the confusion — it's data.
+- Take a breath. Trust the confusion, it's data.
 
 ### Client Wants You to Tell Them the Answer
 **Signs:** "What do you think I should say?" "Just tell me what works."
@@ -286,7 +286,7 @@ Write it down verbatim. This is often the breakthrough.
 
 ### Next Steps
 
-**For Founder Story clients:**
+**For Mirror (Gateway) clients:**
 > "I'll send you a written synthesis within [X days]. From there, we can discuss whether it makes sense to develop this further."
 
 **For ongoing clients:**
@@ -312,14 +312,14 @@ Write it down verbatim. This is often the breakthrough.
 - [ ] Note questions for next session
 - [ ] Rate session energy (for your tracking)
 - [ ] Record somatic state: "Did I feel drained? Did I feel energized?"
-- [ ] 5-minute decompression window — no technical breakdown
+- [ ] 5-minute decompression window, no technical breakdown
 
 ### Within 24-48 Hours
 - [ ] Generate/review transcript
 - [ ] Write synthesis document
 - [ ] Identify 3-5 key themes
 - [ ] Pull "golden quotes"
-- [ ] Draft "What you're actually trying to say" document (if Founder Story session)
+- [ ] Draft "What you're actually trying to say" document (if Mirror session)
 - [ ] Send follow-up email with summary and next steps
 
 ### Reflection Questions (For Your Practice)
@@ -379,15 +379,15 @@ Your clarity invites their clarity. Your vulnerability invites their vulnerabili
 
 ## Reference Texts
 
-- *The Coaching Habit* — Michael Bungay Stanier (question craft)
-- *Motivational Interviewing* — Miller & Rollnick (resistance work)
-- *The Art of Possibility* — Rosamund Zander (generative questions)
-- *Presence* — Peter Senge (facilitation as practice)
-- *The Polyvagal Theory* — Stephen Porges (the science of safety)
-- *The Developing Mind* — Daniel Siegel (interpersonal neurobiology)
+- *The Coaching Habit*, Michael Bungay Stanier (question craft)
+- *Motivational Interviewing*, Miller & Rollnick (resistance work)
+- *The Art of Possibility*, Rosamund Zander (generative questions)
+- *Presence*, Peter Senge (facilitation as practice)
+- *The Polyvagal Theory*, Stephen Porges (the science of safety)
+- *The Developing Mind*, Daniel Siegel (interpersonal neurobiology)
 
 ---
 
 ### Document This File Replaces
 
-This document supersedes `Session Facilitation Guide.md` (March 2026). It incorporates the neuroscience-informed facilitation principles from the original `Methodology.md` (Oct 2025) and `Methdology 2.md` (Oct 2025), which are otherwise superseded by Say Why - Canonical Positioning & Skill Embedding (the integrated v2 canonical replacing the former `RP Core Methodology.md` — see `05 Methodology/_archive/2026-04-27/`).
+This document supersedes `Session Facilitation Guide.md` (March 2026). It incorporates the neuroscience-informed facilitation principles from the original `Methodology.md` (Oct 2025) and `Methdology 2.md` (Oct 2025), which are otherwise superseded by Say Why - Canonical Positioning & Skill Embedding (the integrated v2 canonical replacing the former `RP Core Methodology.md`, see `05 Methodology/_archive/2026-04-27/`).
