@@ -18,11 +18,11 @@ questions instead.
 
 **Q1. Who verifies this?** The load-bearing question. Not "is it hard" but "if
 it comes back wrong, what catches it, and what does that catch cost?" A test
-suite, `validate.sh`, a schema, CI: machine-verified, route down, because a
-cheap model behind a strong checker beats an expensive one with no checker.
-Isaac reading it: human-verified, route up, because his attention is the
-scarce resource and a second review round is the real expense. Nobody until a
-client sees it: route up hard.
+suite, a schema check, CI, the repo's own validator: machine-verified, route
+down, because a cheap model behind a strong checker beats an expensive one
+with no checker. Isaac reading it: human-verified, route up, because his
+attention is the scarce resource and a second review round is the real
+expense. Nobody until a client sees it: route up hard.
 
 **Q2. What does a miss cost?** Local branch, pre-push, revertible: absorb the
 risk. Pushed, sent, published, or written into a canonical doc: buy the
@@ -78,7 +78,13 @@ to start.
 ## The falsifier
 
 Log two fields per substantive task: the tier routed to, and whether the work
-needed a second review round. Without that record this rule cannot be shown
+needed a second review round. The destination already exists, and extra keys
+pass validation untouched, so this needs no new machinery:
+
+    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
+
+(stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
+never rides a session branch.) Without that record this rule cannot be shown
 wrong, and its next version is another guess with better prose. The open
 Claude-versus-Sol card in `stack-data/docs/DECISIONS.md` closes on that data,
 not on argument.
