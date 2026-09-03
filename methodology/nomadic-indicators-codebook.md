@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-06-20. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
@@ -9,9 +9,9 @@
 
 ## Purpose
 
-This codebook provides a systematic approach to analyzing qualitative data from client engagements—session transcripts, recordings, field notes, and follow-up conversations. Unlike Royal Metrics (which track quantifiable outcomes), Nomadic Indicators track what emerges, shifts, and transforms through the work.
+This codebook provides a systematic approach to analyzing qualitative data from client engagements-session transcripts, recordings, field notes, and follow-up conversations. Unlike Royal Metrics (which track quantifiable outcomes), Nomadic Indicators track what emerges, shifts, and transforms through the work.
 
-> "The Nomadic Scientist is not trying to prove a hypothesis but to follow the emergence of something genuinely new." — From the Framework
+> "The Nomadic Scientist is not trying to prove a hypothesis but to follow the emergence of something genuinely new.", From the Framework
 
 ---
 
@@ -25,7 +25,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Stakeholder articulates something that holds multiple truths simultaneously without resolving the tension artificially.
 
 **Example:**
-> "We're a startup that moves fast AND we care deeply about our team's wellbeing—those aren't contradictions, they're both true, and sometimes that creates friction we have to navigate."
+> "We're a startup that moves fast AND we care deeply about our team's wellbeing-those aren't contradictions, they're both true, and sometimes that creates friction we have to navigate."
 
 **Markers:**
 - Both/and language instead of either/or
@@ -47,14 +47,14 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Movement from low to high consistency is observable within or across sessions.
 
 **Example:**
-> Session 1: "I can't talk about the spiritual dimension—funders won't get it."
-> Session 3: "The work IS spiritual—and I'm learning to translate that for different audiences without losing it."
+> Session 1: "I can't talk about the spiritual dimension-funders won't get it."
+> Session 3: "The work IS spiritual-and I'm learning to translate that for different audiences without losing it."
 
 ---
 
 ### Domain 2: Conversational Texture
 
-**Definition:** The qualitative feel of how someone speaks—not just what they say but how they say it. Changes in texture often signal transformation.
+**Definition:** The qualitative feel of how someone speaks-not just what they say but how they say it. Changes in texture often signal transformation.
 
 #### Code: PAUSE-CONTEMPLATIVE
 **Apply when:** Silence indicates processing, integration, or genuine reflection (not confusion or avoidance).
@@ -76,7 +76,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Client catches themselves mid-thought and revises toward greater truth.
 
 **Example:**
-> "We want to scale— actually, wait. Do we want to scale? I've been saying that but I'm not sure it's true."
+> "We want to scale, actually, wait. Do we want to scale? I've been saying that but I'm not sure it's true."
 
 **Significance:** High self-correction frequency indicates active integration happening in real-time.
 
@@ -138,10 +138,10 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 - Doesn't survive contact with different stakeholders
 
 #### Code: LINE-OF-FLIGHT
-**Apply when:** An insight emerges that wasn't in the original scope—something genuinely new that opens unexpected territory.
+**Apply when:** An insight emerges that wasn't in the original scope-something genuinely new that opens unexpected territory.
 
 **Example:**
-> "Wait—what if our real work isn't the program at all? What if it's the community that forms around it?"
+> "Wait-what if our real work isn't the program at all? What if it's the community that forms around it?"
 
 **Significance:** Lines of flight are the gold of Nomadic science. They indicate the work is catalyzing genuine emergence, not just clarifying what was already known.
 
@@ -152,7 +152,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Definition:** Tracking the structure, transformation, and dissolution of fear throughout the engagement.
 
 #### Code: FEAR-SURFACE
-**Apply when:** Client articulates a presenting fear—the first layer of what they're afraid of.
+**Apply when:** Client articulates a presenting fear-the first layer of what they're afraid of.
 
 **Example:**
 > "I'm afraid funders won't take us seriously."
@@ -161,16 +161,16 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Deeper fear beneath the surface fear is identified.
 
 **Example:**
-> "Actually, I'm afraid of being seen as unprofessional—like I don't belong in these rooms."
+> "Actually, I'm afraid of being seen as unprofessional-like I don't belong in these rooms."
 
 #### Code: FEAR-ROOT
-**Apply when:** The core fear is reached—usually related to identity, worth, or belonging.
+**Apply when:** The core fear is reached-usually related to identity, worth, or belonging.
 
 **Example:**
 > "I'm afraid that if people see the real me, they'll realize I don't know what I'm doing."
 
 #### Code: FEAR-TRANSFORMATION
-**Apply when:** The relationship to fear shifts—not that fear disappears, but it's held differently.
+**Apply when:** The relationship to fear shifts-not that fear disappears, but it's held differently.
 
 **Example:**
 > "I still feel the fear, but now I can name it and speak anyway. It doesn't run the show anymore."
@@ -209,7 +209,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Visible release or shift in body accompanying insight.
 
 **Markers:**
-- Tears (not necessarily sad—often recognition or relief)
+- Tears (not necessarily sad-often recognition or relief)
 - Deep exhale
 - Laughter of recognition
 - Physical movement/gesture
@@ -274,7 +274,7 @@ A coded session is not finished when the codes are applied. It is finished when 
 
 ### Step 2: First Pass Coding
 - Apply codes from all six domains
-- Be generous—over-code rather than under-code
+- Be generous-over-code rather than under-code
 - Note timestamps or paragraph references
 
 ### Step 3: Pattern Identification
@@ -315,11 +315,11 @@ Have diverse stakeholders (staff, board, beneficiaries) rate 1-10:
 ### Scoring
 
 **Average Score Interpretation:**
-- 9-10: Exceptional consistency—narrative functions as living container
-- 7-8: Strong consistency—holds most complexity effectively
-- 5-6: Moderate consistency—works for some stakeholders, not others
-- 3-4: Low consistency—significant gaps or fractures
-- 1-2: Incoherent—narrative not functioning as unifier
+- 9-10: Exceptional consistency-narrative functions as living container
+- 7-8: Strong consistency-holds most complexity effectively
+- 5-6: Moderate consistency-works for some stakeholders, not others
+- 3-4: Low consistency-significant gaps or fractures
+- 1-2: Incoherent-narrative not functioning as unifier
 
 ### Cross-Stakeholder Analysis
 
@@ -380,6 +380,6 @@ Update quarterly based on practice.
 
 *Version: 1.0*
 *Based on: RP Measurement Framework Part I, Register 2*
-*Related: Session Facilitation Guide, Case Study Template, Royal Metrics Dashboard*
+*Related: RP Session Facilitation Guide, Case Study Template, Royal Metrics Dashboard*
 
 **Tags:** #codebook #qualitative #nomadic-science #methodology #analysis
