@@ -36,10 +36,10 @@ When Isaac brings a signal:
 4. **Save as a seed note** to the vault:
 
 ```
-Path: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/07 Capture/Seeds/YYYY-MM-DD-[slug].md
+Path: ~/vault/Second Brain/07 Capture/Seeds/YYYY-MM-DD-[slug].md
 ```
 
-Use osascript to write to iCloud vault. Frontmatter:
+Write the file directly. The vault is a local git repo since 2026-09-02, so the osascript detour this skill used for iCloud access is no longer needed. Frontmatter:
 ```yaml
 ---
 type: seed
@@ -102,7 +102,7 @@ When a seed has been tended 4+ times with no maturation signal:
 
 When Isaac wants to process `07 Capture/`:
 
-1. Read all unprocessed notes in `07 Capture/01 Phone Notes/` using osascript.
+1. Read all unprocessed notes in `07 Capture/01 Phone Notes/` with ordinary file reads.
 2. For each: *"Is this a seed, or does it already know what it is?"*
 3. If it already knows → route directly to the appropriate skill (COO for service ideas, Writing for prose impulses, etc.)
 4. If it's a seed → run Intake Protocol above.
@@ -114,7 +114,7 @@ When Isaac wants to process `07 Capture/`:
 **Feeds INTO:** Any downstream skill when a seed matures — COO, Arena, Content Arc, Projects, PM Coordinator, Writing, Quantum Mirror
 **Never calls:** COO triage, Proposal Builder, or any output-oriented skill during incubation. The seed-bed is pre-output.
 
-**Vault interaction (all via osascript for iCloud access):**
+**Vault interaction (ordinary file reads and writes under `~/vault/`; the osascript-for-iCloud rail was retired 2026-09-02):**
 - Reads/writes: `07 Capture/Seeds/` (primary)
 - Reads: `07 Capture/01 Phone Notes/` (backlog processing)
 - Reads: `07 Capture/Followups Inbox/` (routing non-seeds)
