@@ -13,7 +13,7 @@
 #   . "$(cd -P "$(dirname "$src")" && pwd)/_rp-common.sh"
 
 # Vault + outreach roots. Override with RP_VAULT / RP_OUTREACH_DIR.
-VAULT="${RP_VAULT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+VAULT="${RP_VAULT:-$HOME/vault/Second Brain}"
 OUTREACH="${RP_OUTREACH_DIR:-$VAULT/Practice/Rubinstein Productions/Outreach}"
 
 # fm FILE FIELD — print the value of a top-level frontmatter scalar.

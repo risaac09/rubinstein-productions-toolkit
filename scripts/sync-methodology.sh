@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain"
+VAULT="$HOME/vault/Second Brain"
 TOOLKIT="$(cd "$(dirname "$0")/.." && pwd)/methodology"
 DATE=$(date +%Y-%m-%d)
 
