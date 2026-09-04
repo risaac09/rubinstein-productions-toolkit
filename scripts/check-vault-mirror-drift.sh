@@ -22,7 +22,7 @@
 set -euo pipefail
 
 TOOLKIT_ROOT="${TOOLKIT_ROOT:-$HOME/rubinstein-productions-toolkit}"
-VAULT_ROOT="${VAULT_ROOT:-/Users/isaacrubinstein/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain}"
+VAULT_ROOT="${VAULT_ROOT:-$HOME/vault/Second Brain}"
 MAINTENANCE_DIR="$VAULT_ROOT/00 System/Maintenance"
 
 # Vault-style directory pattern. Format: two digits + space + one of the
@@ -91,7 +91,7 @@ for f in "${FINDINGS[@]}"; do
 done
 echo
 echo "These directory names are reserved for the Obsidian vault:"
-echo "  /Users/isaacrubinstein/Library/Mobile Documents/iCloud~md~obsidian/Documents/Second Brain/"
+echo "  $VAULT_ROOT/"
 echo
 echo "Forbidden pattern: $VAULT_PATTERN"
 echo "Exception list: ${EXCEPTION_BASENAMES[*]}"
