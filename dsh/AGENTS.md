@@ -85,17 +85,29 @@ trigger.
 Name the model and effort that fit the task, then ask before switching. Do not
 switch silently. Isaac confirms, adjusts, or overrides. His answer wins. Once
 he decides, do not raise it again this session. If he says "just go," take the
-default and move.
+anchor and move.
 
-- Default lane, lowest cost: `deepseek/deepseek-v4-flash-0731` via OpenRouter.
-  Routine synthesis, extraction, bulk reads, mechanical edits.
-- Coding agents: `qwen/qwen3-coder`.
-- Hard reasoning, orchestration, final synthesis: `qwen/qwen3-max-thinking` or
-  `deepseek/deepseek-v4-pro`.
-- Multimodal: `qwen/qwen3.5-397b-a17b`.
-- Local lane, free and private: `http://mini.local:8080/v1` for preprocessing;
-  quality floor: no audit-class, corpus-sweep, or voice-gated work.
-- Sweep effort before reaching for a bigger model.
+Route on the task, not on its category. Task-type labels hide the difference
+between a one-line config bump and a branch nobody but Isaac can check. Ask:
+
+- **Who verifies it?** Tests, a schema, CI: route down, since a cheap model
+  behind a strong checker beats an expensive one with no checker. Only Isaac
+  reading it: route up, since his attention is the scarce resource.
+- **What does a miss cost?** Revertible and pre-push: absorb it. Pushed, sent,
+  published, or written into a canonical doc: buy the margin.
+- **Is the thinking already in the prompt?** High spec lowers effort, not tier.
+  Sweep effort before reaching for a bigger model.
+- **Does it need a lane this one cannot serve?** Isaac-voice, audit-class, and
+  Claude-context work do not belong here; hand them back.
+
+Anchor: `deepseek/deepseek-v4-flash-0731`. Up through `deepseek/deepseek-v4-pro`
+to `qwen/qwen3-max-thinking`. Coding agents: `qwen/qwen3-coder`. Multimodal:
+`qwen/qwen3.5-397b-a17b`. Local lane, free and private:
+`http://mini.local:8080/v1` for preprocessing, with a quality floor of no
+audit-class, corpus-sweep, or voice-gated work.
+
+Escalations are rationed by the capacity budget, not by rarity. Importance is
+not difficulty.
 
 Full table with prices: `dsh/model-routing.md` in this repo.
 
