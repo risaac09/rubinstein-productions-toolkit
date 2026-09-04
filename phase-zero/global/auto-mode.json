@@ -6,13 +6,13 @@
       "Source control: a single GitHub owner with a mix of public and private repos. Never assume a repo's visibility from its name, its contents, or this file. Check it live (gh repo view <owner>/<repo> --json visibility) before treating anything as safe to publish, and re-check per session.",
       "Treat a clean pre-push privacy scan as necessary, not sufficient. A denylist scanner cannot see shape-only leaks that carry no listed term. Judge the content on its own terms before any push to a public repo.",
       "Secrets management: env files under ~/.secrets/, sourced by the shell profile. Their contents must never be read into context, echoed, copied elsewhere, or committed. ~/.secrets has no valid audience.",
-      "Sensitive data locations & audiences: the operational data repo holds client contacts and financials and may only ever land in its own private GitHub repo. The Obsidian vault is the personal corpus; its content may move within the vault and to its private mirror repo, nowhere else.",
+      "Sensitive data locations & audiences: the operational data repo holds client contacts and financials and may only ever land in its own private GitHub repo. The vault is the personal corpus and is itself a private git repo (second-brain-mirror, git-primary since 2026-09-02); its content may move within the vault and to that repo, nowhere else.",
       "Sensitive remote targets: GitHub Pages publication branches, production deploys, and launchd agents under ~/Library/LaunchAgents.",
       "Machine-specific detail (which repos are private, internal hostnames and services, local paths) is deliberately absent from this public kit file. Supply it from a machine-local overlay at ~/.claude/auto-mode.local.json, which install-global.sh merges last so it wins. Keep the overlay out of any public repo."
     ],
     "soft_deny": [
       "$defaults",
-      "Never create or clone a git repository inside iCloud-synced paths: the Obsidian vault under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories.",
+      "Never create or clone a git repository inside iCloud-synced paths: anything under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories. The vault is not an exception to this; it left iCloud on 2026-09-02 so it could be a git repo without sitting in one.",
       "Never change a GitHub repository's visibility or archive state: private repos hold client and personal data, and a visibility flip is the worst-case exposure.",
       "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on both machines depend on them.",
       "Never manually dispatch API-key-billed GitHub Actions workflows just to verify a change: verification runs locally."
