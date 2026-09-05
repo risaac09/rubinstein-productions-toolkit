@@ -74,5 +74,6 @@ it is the safe default when there are two people on the timeline.
 ## What this deliberately does not do
 
 No title cards, no lower thirds, no auto-selection of clips, no speaker
-tracking. Those are the parts where the constraint is the product: choosing the
+tracking, and no internal cuts: one row is one continuous span. A clip that
+needs its middle removed is two rows, or a trip to Resolve. Those are the parts where the constraint is the product: choosing the
 moment is the editorial act, and the series' clips play clean by design.

@@ -276,7 +276,8 @@ def main():
         start = clip["start"] + args.offset
         end = clip["end"] + args.offset
         dur = end - start
-        name = "%s-%s" % (slug(clip["id"], "clip"), slug(clip["title"], "clip"))
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", clip["id"]).strip("-") or "clip"
+        name = "%s-%s" % (safe_id, slug(clip["title"], "clip"))
         out = os.path.join(args.outdir, name + ".mp4")
 
         cues = []
