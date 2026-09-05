@@ -111,17 +111,32 @@ Separate source bins by camera so you can batch-apply the correct source convers
 
 ---
 
-## Phase C (Future): CLI Automation
+## Phase C: CLI Automation
 
-When volume justifies it, build Python scripts via DaVinci Resolve Scripting API:
-- Auto-create project with bin structure
-- Auto-sort media into camera bins (by metadata)
-- Auto-apply source conversion nodes by camera tag
-- Auto-apply Low Contrast PowerGrade
-- Auto-queue render presets
-- Subtitle import and style application
+`resolve_workflow.py` implements this against the DaVinci Resolve Scripting
+API. Resolve must be running — the API connects to a live instance, not
+headless. Coverage against the original Phase C list, checked 2026-08-17:
 
-Resolve must be running — API connects to live instance, not headless.
+| Bullet | Status |
+|---|---|
+| Auto-create project with bin structure | Done (`new-project`) |
+| Auto-queue render presets | Done (`render` / `render-all`) |
+| Auto-apply source conversion nodes by camera tag | Done (`import-media` tags clips by clip color; `apply-lut --camera <key>` filters by it) |
+| Auto-sort media into camera bins by metadata | Not done — `--camera` on `import-media` is still a human-supplied flag, not metadata-driven |
+| Auto-apply Low Contrast PowerGrade | Not done — no PowerGrade/gallery-still API call exists in the script; use `apply-drx` with a hand-exported `.drx` instead |
+| Subtitle import | Partial — `add-subtitles` places an .srt on the timeline where the API allows it, but verify the result; it isn't guaranteed on every Resolve version |
+| Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently — don't wait for it to get built. |
+| Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
+
+Two other hard API limits worth knowing before you file a bug against the
+script:
+- **No node creation.** `apply-lut --node 2` (this spec's Node 2, the
+  Low Contrast PowerGrade) only works if that node already exists on the
+  clip — add it in the Color page first. The scripting API cannot create
+  color-page nodes.
+- **Vertical export is resize-only.** The `story` preset changes canvas
+  dimensions; it does not reframe subjects. Set per-clip Pan/Zoom manually
+  before rendering vertical, or the crop will be arbitrary.
 
 ---
 
@@ -133,4 +148,4 @@ Resolve must be running — API connects to live instance, not headless.
 
 ---
 
-*Version 1.1 — April 2026*
+*Version 1.2 — 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
