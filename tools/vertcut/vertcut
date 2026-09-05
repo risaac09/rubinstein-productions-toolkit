@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# vertcut — bare-minimum AI-assisted vertical-clip workflow.
+#
+#   vertcut transcribe SRC [-o DIR] [--model M]   word-level transcript for clip picking
+#   vertcut cut SRC CLIPS.tsv [options]           9:16 captioned exports from a cuts manifest
+#
+# Full docs: tools/vertcut/README.md
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="${VERTCUT_PYTHON:-/usr/bin/python3}"
+
+die() { printf 'vertcut: %s\n' "$1" >&2; exit 1; }
+
+usage() {
+  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found on PATH"; }
+
+cmd_transcribe() {
+  local src="" out="" model="mlx-community/whisper-large-v3-turbo"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -o|--out) out="$2"; shift 2 ;;
+      --model)  model="$2"; shift 2 ;;
+      -h|--help) usage ;;
+      *) [ -z "$src" ] && src="$1" && shift || die "unexpected argument: $1" ;;
+    esac
+  done
+  [ -n "$src" ] || usage 1
+  [ -f "$src" ] || die "no such file: $src"
+
+  local mw
+  mw="$(command -v mlx_whisper || echo "$HOME/Library/Python/3.9/bin/mlx_whisper")"
+  [ -x "$mw" ] || die "mlx_whisper not found (pip3 install --user mlx-whisper)"
+  need ffmpeg
+
+  local base; base="$(basename "${src%.*}")"
+  out="${out:-$(dirname "$src")}"
+  mkdir -p "$out"
+
+  # Whisper wants 16k mono; feeding it the raw .mov is slow and sometimes fails.
+  local wav="$out/$base.16k.wav"
+  echo "vertcut: extracting audio -> $wav"
+  ffmpeg -hide_banner -loglevel error -y -i "$src" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$wav"
+
+  echo "vertcut: transcribing with $model (word timestamps)"
+  "$mw" "$wav" --model "$model" --word-timestamps True \
+    --output-dir "$out" --output-name "$base" --output-format json
+
+  echo "vertcut: wrote $out/$base.json"
+  echo "         pass it to \`vertcut cut --words $out/$base.json\` to burn captions."
+}
+
+cmd_cut() {
+  need ffmpeg; need ffprobe
+  exec "$PY" "$HERE/lib/vertcut_cut.py" "$@"
+}
+
+case "${1:-}" in
+  transcribe) shift; cmd_transcribe "$@" ;;
+  cut)        shift; cmd_cut "$@" ;;
+  -h|--help|"") usage ;;
+  *) die "unknown command: $1 (try --help)" ;;
+esac
