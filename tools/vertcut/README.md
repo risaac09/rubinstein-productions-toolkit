@@ -17,7 +17,7 @@ only does the two mechanical parts — hearing the words, and cutting the frame.
 ## 1. Transcribe
 
 ```
-tools/vertcut/vertcut transcribe "/Volumes/Samsung 2TB/Vesta - Say Why/master.mov"
+tools/vertcut/vertcut transcribe "/Volumes/DRIVE/Episode Folder/master.mov"
 ```
 
 Extracts 16k mono audio, runs `whisper-large-v3-turbo` locally with word
@@ -33,8 +33,8 @@ Tab-separated, one row per clip. Comments and blank lines are ignored.
 
 ```
 # id	in	out	title
-2	00:35:18	00:36:17	culture is not valuable
-4	00:41:59	00:43:18	my own rigor comes from reality
+2	00:35:18	00:36:17	the twenty percent line
+4	00:41:59	00:43:18	where the rigor comes from
 ```
 
 In/out accept `SS.mmm`, `MM:SS`, `HH:MM:SS.mmm`, or DaVinci `HH:MM:SS:FF`
