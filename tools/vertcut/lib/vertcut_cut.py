@@ -96,10 +96,24 @@ def probe(src):
         capture_output=True, text=True)
     if out.returncode != 0:
         die("ffprobe failed on %s: %s" % (src, out.stderr.strip()))
-    st = json.loads(out.stdout)["streams"][0]
-    num, _, den = st["r_frame_rate"].partition("/")
-    fps = float(num) / float(den or 1)
+    streams = json.loads(out.stdout).get("streams") or []
+    if not streams:
+        die("no video stream in %s" % src)
+    st = streams[0]
+    num, _, den = (st.get("r_frame_rate") or "0/0").partition("/")
+    try:
+        fps = float(num) / float(den or 1)
+    except (ValueError, ZeroDivisionError):
+        fps = 0.0
     return int(st["width"]), int(st["height"]), (fps or 25.0)
+
+
+def has_audio_stream(src):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=index", "-of", "csv=p=0", src],
+        capture_output=True, text=True)
+    return out.returncode == 0 and out.stdout.strip() != ""
 
 
 # ---------------------------------------------------------------- captions
@@ -232,8 +246,9 @@ def main():
     ap.add_argument("--x", type=float, default=0.0,
                     help="crop offset, -1 (full left) .. 1 (full right)")
     ap.add_argument("--offset", type=float, default=0.0,
-                    help="seconds to add to every manifest timecode "
-                         "(use 3600 for a Resolve timeline starting at 01:00:00:00)")
+                    help="seconds to add to every manifest timecode, when the "
+                         "manifest's zero is not the media file's zero; verify "
+                         "the sign on one clip before rendering the set")
     ap.add_argument("--fps", type=float, help="frame rate for HH:MM:SS:FF timecodes")
     ap.add_argument("--font", default=DEFAULT_FONT)
     ap.add_argument("--font-size", type=int, default=66)
@@ -249,6 +264,7 @@ def main():
     if not os.path.isfile(args.src):
         die("no such file: %s" % args.src)
     src_w, src_h, src_fps = probe(args.src)
+    has_audio = has_audio_stream(args.src)
     fps = args.fps or src_fps
 
     clips = read_manifest(args.manifest, fps)
@@ -284,6 +300,11 @@ def main():
         if words is not None:
             cues = group_cues(words, start, end, args.max_words, args.max_chars, args.gap)
 
+        print("vertcut: [%d/%d] %s  %.2fs  %d cues"
+              % (n, len(clips), os.path.basename(out), dur, len(cues)))
+        if args.dry_run:
+            continue
+
         tmp = tempfile.mkdtemp(prefix="vertcut-")
         try:
             filters = [chain]
@@ -302,25 +323,22 @@ def main():
             cmd = (["ffmpeg", "-hide_banner", "-loglevel", "error", "-stats", "-y"]
                    + inputs
                    + ["-filter_complex", ";".join(filters),
-                      "-map", label, "-map", "0:a?",
+                      "-map", label] + (["-map", "0:a"] if has_audio else []) + [
                       "-t", "%.3f" % dur,
                       "-c:v", "libx264", "-crf", str(args.crf), "-preset", "veryfast",
                       "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0),
-                      "-c:a", "aac", "-b:a", "192k",
-                      "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-                      "-movflags", "+faststart", out])
+                      "-movflags", "+faststart"]
+                   + (["-c:a", "aac", "-b:a", "192k",
+                       "-af", "loudnorm=I=-16:TP=-1.5:LRA=11"] if has_audio else ["-an"])
+                   + [out])
 
-            print("vertcut: [%d/%d] %s  %.2fs  %d cues"
-                  % (n, len(clips), os.path.basename(out), dur, len(cues)))
-            if args.dry_run:
-                continue
             r = subprocess.run(cmd)
             if r.returncode != 0:
                 die("ffmpeg failed on clip %s" % clip["id"])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-        if cues and not args.dry_run:
+        if cues:
             with open(os.path.splitext(out)[0] + ".srt", "w") as fh:
                 for i, cue in enumerate(cues, 1):
                     fh.write("%d\n%s --> %s\n%s\n\n"

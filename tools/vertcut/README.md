@@ -38,9 +38,13 @@ Tab-separated, one row per clip. Comments and blank lines are ignored.
 ```
 
 In/out accept `SS.mmm`, `MM:SS`, `HH:MM:SS.mmm`, or DaVinci `HH:MM:SS:FF`
-(pass `--fps` if the source frame rate is not the timeline frame rate). If the
-Resolve timeline starts at 01:00:00:00, pass `--offset 3600` rather than
-rewriting every row.
+(pass `--fps` if the source frame rate is not the timeline frame rate).
+
+`--offset` shifts every row by N seconds, for when the manifest's timecodes come
+from a timeline whose zero is not the media file's zero — a Resolve timeline
+starting at 01:00:00:00, for instance. The sign is whichever direction lands the
+clip: render one row with `--only`, watch it, and flip to `--offset -3600` if it
+came out an hour early. Do not assume; check one clip first.
 
 ## 3. Cut
 
