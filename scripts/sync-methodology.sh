@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync-methodology.sh — sync vault canonicals → toolkit/methodology/
+# sync-methodology.sh: sync vault canonicals → toolkit/methodology/
 #
 # Single canonical sync script for the vault → toolkit pipeline.
 # Replaces the older mirror-side `~/second-brain-mirror/bin/sync-snapshots.sh`
@@ -11,9 +11,9 @@
 #   - Strips `[[wikilinks]]` to plain text (toolkit is public; wikilinks
 #     don't render meaningfully outside Obsidian).
 #   - Preserves any user-customized "Canonical source:" header in the toolkit
-#     file — only the `last synced YYYY-MM-DD` date is auto-updated. If no
+#     file, only the `last synced YYYY-MM-DD` date is auto-updated. If no
 #     header exists yet, a generic default is written.
-#   - Idempotent — re-running with no vault changes is a no-op.
+#   - Idempotent: re-running with no vault changes is a no-op.
 #
 # Usage: bash scripts/sync-methodology.sh
 # Run after editing any vault canonical, then commit the toolkit changes.
@@ -63,7 +63,7 @@ for pair in "${PAIRS[@]}"; do
     fi
   fi
   if [[ -z "$HEADER" ]]; then
-    HEADER=$(printf '> **Canonical source:** `%s` in vault — last synced %s. Edit there; this file is a snapshot for skills and public repo use.' "$VPATH" "$DATE")
+    HEADER=$(printf '> **Canonical source:** `%s` in vault, last synced %s. Edit there; this file is a snapshot for skills and public repo use.' "$VPATH" "$DATE")
   fi
 
   # 2. Build body: strip frontmatter, strip self-declaration blockquote, strip wikilinks.
@@ -75,7 +75,7 @@ for pair in "${PAIRS[@]}"; do
       if (line == 1 && /^---$/) { in_fm = 1; next }
       # Closing of frontmatter
       if (in_fm && /^---$/) { in_fm = 0; past_fm = 1; next }
-      # Inside frontmatter — skip
+      # Inside frontmatter, skip
       if (in_fm) next
       # Skip the self-declaration blockquote line(s) right after frontmatter
       if (past_fm && /^> \*\*Canonical:\*\*/) { next }
@@ -86,7 +86,7 @@ for pair in "${PAIRS[@]}"; do
     }
   ' "$VFILE")
 
-  # Strip [[wikilinks]] to plain text — handle [[A|B]] (display B) and [[A]] (display A)
+  # Strip [[wikilinks]] to plain text, handle [[A|B]] (display B) and [[A]] (display A)
   BODY=$(printf '%s' "$BODY" \
     | sed -E 's/\[\[([^]|]+)\|([^]]+)\]\]/\2/g' \
     | sed -E 's/\[\[([^]]+)\]\]/\1/g')
@@ -110,7 +110,7 @@ done
 
 echo ""
 echo "Snapshots regenerated: $CHANGED file(s) changed."
-echo "Toolkit-canonical files (glossary, facilitation-protocol, methodology-blueprint) NOT touched — they have no vault counterpart."
+echo "Toolkit-canonical files (glossary, facilitation-protocol, methodology-blueprint) NOT touched, they have no vault counterpart."
 
 if [[ "$CHANGED" -gt 0 ]]; then
   echo ""

@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Say Why — Evaluation Framework.md` in vault — last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Say Why - Evaluation Framework.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
 
 # Say Why - Evaluation Framework
 ### Bilingual Assessment for Grant-Funded Engagements
