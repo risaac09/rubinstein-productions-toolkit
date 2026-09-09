@@ -9,30 +9,58 @@ redeploy via `dsh/install.sh` (the brief points at this file).
 Before starting any substantive task, name the model and effort that fit it,
 then ask before proceeding. Do not switch silently.
 
-- Open with one line: task type, recommended model, effort level, cost
-  tradeoff. Prices per 1M tokens in/out on OpenRouter, verified 2026-08-22:
-  DeepSeek V4 Flash $0.08/$0.18, DeepSeek V4 Pro $0.41/$0.83,
+- Open with one line: what the task needs, recommended model, effort level,
+  cost tradeoff. Prices per 1M tokens in/out on OpenRouter, verified
+  2026-08-22: DeepSeek V4 Flash $0.08/$0.18, DeepSeek V4 Pro $0.41/$0.83,
   Qwen 3 Coder 480B $0.30/$1.00, Qwen 3.5 397B $0.39/$2.34,
   Qwen 3 Max Thinking $0.78/$3.90.
 - Isaac confirms, adjusts, or overrides. His answer wins. Once he decides,
   proceed and do not raise it again this session.
 
-## Routing defaults
+## Route on the task, not on its category
 
-- Default lane, lowest cost: `deepseek/deepseek-v4-flash-0731` at low effort.
-  Routine synthesis, continuity work, component edits, extraction, research
-  legwork, bulk reads, mechanical edits.
-- Coding agents: `qwen/qwen3-coder` at medium.
-- Orchestration, architecture, hard reasoning, final synthesis: begin on the
-  default at medium. Escalate to `qwen/qwen3-max-thinking` or
-  `deepseek/deepseek-v4-pro` only when a named difficulty survives that pass.
-- Multimodal: `qwen/qwen3.5-397b-a17b`.
+Read the work before naming a model. Task-type labels like "repository
+execution" or "synthesis" are proxies, and they hide the difference between a
+one-line config bump and a branch nobody but Isaac can check. Ask four
+questions instead.
+
+**Q1. Who verifies this?** The load-bearing question. Not "is it hard" but "if
+it comes back wrong, what catches it, and what does that catch cost?" A test
+suite, a schema check, CI, the repo's own validator: machine-verified, route
+down, because a cheap model behind a strong checker beats an expensive one
+with no checker. Isaac reading it: human-verified, route up, because his
+attention is the scarce resource and a second review round is the real
+expense. Nobody until a client sees it: route up hard.
+
+**Q2. What does a miss cost?** Local branch, pre-push, revertible: absorb the
+risk. Pushed, sent, published, or written into a canonical doc: buy the
+margin.
+
+**Q3. How much of the thinking is already in the prompt?** A prompt carrying
+the diagnosis lowers required effort. A prompt where the model still has to
+find the problem raises it. This lever stays inside a tier, so sweep it before
+reaching for a bigger model.
+
+**Q4. Does the task need a lane this one cannot serve?** Isaac-voice work,
+audit-class passes, and anything depending on Claude-session context do not
+belong on this lane at all; hand them back rather than approximating them.
+Multimodal input needs `qwen/qwen3.5-397b-a17b`. Coding agents run on
+`qwen/qwen3-coder`.
+
+Tier follows Q1 and Q2. Effort follows Q3 and the surface area. Lane follows
+Q4. Three levers, not one lookup. The anchor is
+`deepseek/deepseek-v4-flash-0731` at low; Q1 and Q2 move up from there through
+`deepseek/deepseek-v4-pro` to `qwen/qwen3-max-thinking`, and Q3 sets where in
+the effort ladder to start.
+
+## Lane floors
+
+- Deterministic work with no judgment: a script, not a model call.
 - Low-impact preprocessing with no subscription budget: the local lane, free
   and private. Always-on small model at `http://mini.local:8080/v1` for
   markitdown conversion, summarization, bulk classification, light drafts.
   The local lane has a quality floor: no audit-class, corpus-sweep, or
   voice-gated work.
-- Deterministic work with no judgment: a script, not a model call.
 
 ## Capacity contract
 
@@ -41,9 +69,33 @@ then ask before proceeding. Do not switch silently.
   when the task changes instead of carrying a long cached context forward.
 - Do not use silent API overage. If the pool is limited, hand eligible
   execution work to another lane or wait for the next reset.
+- Escalations are rationed by this budget, not by rarity. Do not hold the
+  expensive tiers back to keep them feeling scarce, which under-routes the
+  genuinely hard task to preserve a symbol. Name the difficulty, spend the
+  tier, return to the anchor after that pass.
 - Model and effort are separate levers. Sweep effort before reaching for a
   bigger model. The suggestion is a prompt, not a gate. If Isaac says "just
-  go," take the default and move.
+  go," take the anchor and move.
+
+## The falsifier
+
+Log two fields per substantive task: the tier routed to, and whether the work
+needed a second review round. The destination already exists, and extra keys
+pass validation untouched, so this needs no new machinery:
+
+    sd-ai-engage --json '{"routedTier":"v4-pro/medium","secondRound":false}' --land
+
+(stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
+never rides a session branch.) Without that record this rule cannot be shown
+wrong, and its next version is another guess with better prose.
+
+## Known failure mode
+
+Routing from the category label before reading the task. It fires in both
+directions. Down, when "routine repository execution" sends a multi-commit
+branch with voice-gated copy and no test coverage to the cheapest lane. Up,
+when a task's importance rather than its difficulty argues for the top tier
+after the hard reasoning has already been spent. Importance is not difficulty.
 
 ## Books of record
 
