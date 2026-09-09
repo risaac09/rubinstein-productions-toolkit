@@ -22,3 +22,6 @@ dist/
 __pycache__/
 *.pyc
 _site/
+
+# Local video-editor experiments: node_modules, a venv and renders (833 MB). Not kit material.
+tools/video-editor/
