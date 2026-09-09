@@ -47,12 +47,12 @@ to start.
 - Deterministic work with no judgment: a script, not a model call.
 - Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
 - Low-impact preprocessing with no subscription budget: the local lane, free
-  and private. Always-on small model at `http://mini.local:8080/v1` (Gemma 4
-  E4B, OpenAI-compatible; `llm-mini` sets LLM_BASE_URL) for markitdown
-  conversion, summarization, bulk classification, light drafts. Heavy local
-  jobs use the M2's on-demand 35B (`llm-start`), never during Resolve. The
-  local lane has a quality floor: no audit-class, corpus-sweep, or voice-gated
-  work.
+  and private. Always-on Qwen3.6-35B-A3B at `http://127.0.0.1:8080/v1`
+  (launchd `com.rubinstein.llama-server`; `LLM_BASE_URL` is preset) for
+  markitdown conversion, summarization, bulk classification, light drafts.
+  Big local jobs use `llm-start solo` (gpt-oss-120b), which takes the whole
+  machine and never runs beside Resolve. The local lane has a quality floor:
+  no audit-class, corpus-sweep, or voice-gated work.
 - Fable 5 is for the single hardest long-horizon task of the cycle, swept low
   to high.
 
