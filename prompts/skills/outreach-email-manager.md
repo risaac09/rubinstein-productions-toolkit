@@ -1,6 +1,6 @@
 ---
 name: outreach-email-manager
-description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to the stack-data drafts log plus the vault 07 Outreach staging note. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals, and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
+description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to the stack-data drafts log plus the corpus 07 Outreach staging note. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals, and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
 ---
 
 > **Canonical Say Why positioning source:** `~/vault/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
@@ -17,7 +17,7 @@ This skill handles the complete outreach email workflow:
 1. Gather context (organization, contact, angle, stage)
 2. Draft the email content, RP framing, not generic consultant pitch
 3. Create a Gmail draft for review
-4. Log the outreach to the stack-data drafts log and the vault 07 Outreach staging note
+4. Log the outreach to the stack-data drafts log and the corpus 07 Outreach staging note
 
 ---
 
@@ -100,11 +100,11 @@ Rubinstein Productions | Facilitation & Film
 
 ### Step 4: Log the Outreach
 
-Log the contact after drafting in two places. JSON state lives in stack-data; the human-readable staging note lives in the vault.
+Log the contact after drafting in two places. JSON state lives in stack-data; the human-readable staging note lives in the corpus.
 
 1. **stack-data drafts log.** Append the draft to a dated drafts file at `/Users/isaacrubinstein/stack-data/outreach/YYYY-MM-DD-drafts.md` (today's date). One block per draft, capturing organization, contact, title, email, status, subject, body, and the personalization rationale.
 
-2. **Vault 07 Outreach staging note.** Mirror the entry into the vault "07 Outreach" staging note so the pipeline has a human-readable surface. Keep it to a one-line-per-contact log: date, org, contact, status, next-step timing.
+2. **Corpus 07 Outreach staging note.** Mirror the entry into the corpus "07 Outreach" staging note so the pipeline has a human-readable surface. Keep it to a one-line-per-contact log: date, org, contact, status, next-step timing.
 
 Do not use Airtable. The drafts log plus the staging note are the pipeline of record.
 
@@ -119,7 +119,7 @@ Do not use Airtable. The drafts log plus the staging note are the pipeline of re
 ### Step 5: Next Steps
 
 1. Confirm draft created
-2. Confirm logged to the stack-data drafts log and the vault 07 Outreach staging note
+2. Confirm logged to the stack-data drafts log and the corpus 07 Outreach staging note
 3. Recommend follow-up timing (Day 3 / 7 / 14 cadence)
 4. Flag if this should route to `rubinstein-productions-coo` for scoping and pricing next
 
