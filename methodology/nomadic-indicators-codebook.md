@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
+> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
@@ -9,7 +9,7 @@
 
 ## Purpose
 
-This codebook provides a systematic approach to analyzing qualitative data from client engagements-session transcripts, recordings, field notes, and follow-up conversations. Unlike Royal Metrics (which track quantifiable outcomes), Nomadic Indicators track what emerges, shifts, and transforms through the work.
+This codebook provides a systematic approach to analyzing qualitative data from client engagements, session transcripts, recordings, field notes, and follow-up conversations. Unlike Royal Metrics (which track quantifiable outcomes), Nomadic Indicators track what emerges, shifts, and transforms through the work.
 
 > "The Nomadic Scientist is not trying to prove a hypothesis but to follow the emergence of something genuinely new.", From the Framework
 
@@ -48,13 +48,13 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 
 **Example:**
 > Session 1: "I can't talk about the spiritual dimension-funders won't get it."
-> Session 3: "The work IS spiritual-and I'm learning to translate that for different audiences without losing it."
+> Session 3: "The work IS spiritual, and I'm learning to translate that for different audiences without losing it."
 
 ---
 
 ### Domain 2: Conversational Texture
 
-**Definition:** The qualitative feel of how someone speaks-not just what they say but how they say it. Changes in texture often signal transformation.
+**Definition:** The qualitative feel of how someone speaks, not just what they say but how they say it. Changes in texture often signal transformation.
 
 #### Code: PAUSE-CONTEMPLATIVE
 **Apply when:** Silence indicates processing, integration, or genuine reflection (not confusion or avoidance).
@@ -138,7 +138,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 - Doesn't survive contact with different stakeholders
 
 #### Code: LINE-OF-FLIGHT
-**Apply when:** An insight emerges that wasn't in the original scope-something genuinely new that opens unexpected territory.
+**Apply when:** An insight emerges that wasn't in the original scope, something genuinely new that opens unexpected territory.
 
 **Example:**
 > "Wait-what if our real work isn't the program at all? What if it's the community that forms around it?"
@@ -152,7 +152,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Definition:** Tracking the structure, transformation, and dissolution of fear throughout the engagement.
 
 #### Code: FEAR-SURFACE
-**Apply when:** Client articulates a presenting fear-the first layer of what they're afraid of.
+**Apply when:** Client articulates a presenting fear, the first layer of what they're afraid of.
 
 **Example:**
 > "I'm afraid funders won't take us seriously."
@@ -161,16 +161,16 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 **Apply when:** Deeper fear beneath the surface fear is identified.
 
 **Example:**
-> "Actually, I'm afraid of being seen as unprofessional-like I don't belong in these rooms."
+> "Actually, I'm afraid of being seen as unprofessional, like I don't belong in these rooms."
 
 #### Code: FEAR-ROOT
-**Apply when:** The core fear is reached-usually related to identity, worth, or belonging.
+**Apply when:** The core fear is reached, usually related to identity, worth, or belonging.
 
 **Example:**
 > "I'm afraid that if people see the real me, they'll realize I don't know what I'm doing."
 
 #### Code: FEAR-TRANSFORMATION
-**Apply when:** The relationship to fear shifts-not that fear disappears, but it's held differently.
+**Apply when:** The relationship to fear shifts, not that fear disappears, but it's held differently.
 
 **Example:**
 > "I still feel the fear, but now I can name it and speak anyway. It doesn't run the show anymore."
