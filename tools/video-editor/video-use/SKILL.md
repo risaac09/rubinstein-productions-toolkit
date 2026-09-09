@@ -125,7 +125,7 @@ Example line:
 When the task is "pick the best take of each beat across many clips," spawn a dedicated sub-agent with a brief shaped like this. The structure is load-bearing; the pitch-shape example is not.
 
 ```
-You are editing a <type> video. Pick the best take of each beat and 
+You are editing a <type> video. Pick the best take of each beat and
 assemble them chronologically by beat, not by source clip order.
 
 INPUTS:
