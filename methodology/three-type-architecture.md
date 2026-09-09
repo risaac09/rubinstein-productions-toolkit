@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/RP Three-Type Information Architecture.md` in vault — last synced 2026-08-23. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/RP Three-Type Information Architecture.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
 
 # Three-Type Information Architecture
 *The epistemological foundation of the Bilingual Dashboard*
