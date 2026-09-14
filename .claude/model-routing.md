@@ -45,16 +45,20 @@ to start.
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
+- Routine synthesis, continuity work, component edits, extraction, and
+  research legwork: Sonnet 5 at medium.
+- Orchestration, architecture, hard reasoning, and final synthesis: begin on
+  Sonnet 5 at medium. Escalate to Opus 5 only when a named difficulty survives
+  that pass.
+- The single hardest long-horizon task worth the premium: Fable 5, sweep
+  effort low to high.
 - Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
-- Low-impact preprocessing with no subscription budget: the local lane, free
-  and private. Always-on small model at `http://mini.local:8080/v1` (Gemma 4
-  E4B, OpenAI-compatible; `llm-mini` sets LLM_BASE_URL) for markitdown
-  conversion, summarization, bulk classification, light drafts. Heavy local
-  jobs use the M2's on-demand 35B (`llm-start`), never during Resolve. The
-  local lane has a quality floor: no audit-class, corpus-sweep, or voice-gated
-  work.
-- Fable 5 is for the single hardest long-horizon task of the cycle, swept low
-  to high.
+- Low-impact preprocessing (markitdown conversion, summarization, bulk
+  classification, light drafts): Haiku 4.5 at low. There is no local lane.
+  It was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
+  one and the models stopped fitting. Name the consequence rather than
+  forgetting it: this work used to be free and private, and now it costs
+  subscription quota, so batch it instead of running it per item.
 
 ## Capacity contract, effective 2026-08-12
 
