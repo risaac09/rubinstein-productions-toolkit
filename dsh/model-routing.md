@@ -56,11 +56,11 @@ the effort ladder to start.
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
-- Low-impact preprocessing with no subscription budget: the local lane, free
-  and private. Always-on small model at `http://mini.local:8080/v1` for
-  markitdown conversion, summarization, bulk classification, light drafts.
-  The local lane has a quality floor: no audit-class, corpus-sweep, or
-  voice-gated work.
+- Low-impact preprocessing (markitdown conversion, summarization, bulk
+  classification, light drafts): the cheapest lane that is actually running.
+  There is no local lane. `mini.local` was the Mac mini, sold in September
+  2026, and the general-purpose local lane that briefly replaced it was
+  retired 2026-09-13 with the 96GB machine.
 
 ## Capacity contract
 

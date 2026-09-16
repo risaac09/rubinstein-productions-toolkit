@@ -53,13 +53,12 @@ to start.
 - The single hardest long-horizon task worth the premium: Fable 5, sweep
   effort low to high.
 - Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
-- Low-impact preprocessing with no subscription budget: the local lane,
-  free and private. Always-on Qwen3.6-35B-A3B at `http://127.0.0.1:8080/v1`
-  (launchd `com.rubinstein.llama-server`; `LLM_BASE_URL` is preset) for
-  markitdown conversion, summarization, bulk classification, light drafts.
-  Big local jobs use `llm-start solo` (gpt-oss-120b), which takes the whole
-  machine and never runs beside Resolve. The local lane has a quality floor:
-  no audit-class, corpus-sweep, or voice-gated work.
+- Low-impact preprocessing (markitdown conversion, summarization, bulk
+  classification, light drafts): Haiku 4.5 at low. There is no local lane.
+  It was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
+  one and the models stopped fitting. Name the consequence rather than
+  forgetting it: this work used to be free and private, and now it costs
+  subscription quota, so batch it instead of running it per item.
 
 ## Capacity contract, effective 2026-08-12
 
