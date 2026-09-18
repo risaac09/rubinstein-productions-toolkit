@@ -8,7 +8,22 @@
 
 set -euo pipefail
 
-cat >/dev/null 2>&1 || true
+# Read the event JSON for one field, session_id. The phase-zero trigger hook
+# keeps a per-session marker under $TMPDIR so a repeat trigger prints the
+# short form; a start, resume, clear, or compaction removes it here, so the
+# next trigger prints the full map again. Injection on resume and clear is
+# deliberate: the routing block should survive context resets.
+input="$(cat 2>/dev/null || true)"
+# The shared helpers live beside this hook; without them the brief still
+# prints, it just cannot clear the marker.
+pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+if [ -f "$pz_lib" ] && bash -n "$pz_lib" 2>/dev/null; then
+  . "$pz_lib" || true
+  if command -v pz_marker >/dev/null 2>&1 && command -v pz_field >/dev/null 2>&1; then
+    pz_seen="$(pz_marker "$(pz_field "$input" session_id)")"
+    if [ -n "$pz_seen" ]; then rm -f "$pz_seen" 2>/dev/null || true; fi
+  fi
+fi
 
 project="${CLAUDE_PROJECT_DIR:-}"
 if [ -n "$project" ] && [ "$project" != "$HOME" ] && [ -f "$project/.claude/hooks/session-brief.sh" ]; then

@@ -15,7 +15,7 @@
 #   ./install.sh --check <target-repo-dir>  verify one deployed kit, no writes
 #   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
 #
-# --check byte-compares the six kit files against source and confirms both
+# --check byte-compares the seven kit files against source and confirms both
 # hook registrations plus every kit permission clamp exist in settings.json.
 # settings.json itself is never byte-compared: merged consumer copies carry
 # repo-local config and legitimately differ from source. It writes nothing
@@ -45,7 +45,7 @@
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
-KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-trigger.sh hooks/session-brief.sh"
+KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-lib.sh hooks/phase-zero-trigger.sh hooks/session-brief.sh"
 
 # Kit files that used to ship and no longer do. install_one removes them, since
 # it otherwise only copies and a renamed file would leave its predecessor behind
@@ -165,6 +165,7 @@ install_one() {
   cp "$SRC/retrospective.md" "$target/.claude/retrospective.md"
   cp "$SRC/model-routing.md" "$target/.claude/model-routing.md"
   cp "$SRC/operating-brief.md" "$target/.claude/operating-brief.md"
+  cp "$SRC/hooks/phase-zero-lib.sh" "$target/.claude/hooks/phase-zero-lib.sh"
   cp "$SRC/hooks/phase-zero-trigger.sh" "$target/.claude/hooks/phase-zero-trigger.sh"
   cp "$SRC/hooks/session-brief.sh" "$target/.claude/hooks/session-brief.sh"
   chmod +x "$target/.claude/hooks/phase-zero-trigger.sh" "$target/.claude/hooks/session-brief.sh"

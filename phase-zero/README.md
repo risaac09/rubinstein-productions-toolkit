@@ -25,8 +25,20 @@ The hook's case pattern is the canonical set; when a doc and the hook disagree,
 the hook wins and the doc gets fixed.
 
 The orchestrator reads the map (identity, the four directions, the source of
-truth, the delegation protocol), names the direction the task faces, then
-delegates down to the branch the task needs.
+truth, the gear ladder, the delegation protocol), names the direction the task
+faces, then delegates down to the branch the task needs.
+
+A repeat trigger in the same session prints the short form instead of the
+whole map: the live sections (where stack-data renders them), the gear
+ladder, and the delegation protocol. The hook keeps a per-session marker under
+`$TMPDIR`, keyed by the event's `session_id`; the SessionStart hook removes
+it, so a started, resumed, cleared, or compacted session loads the full map
+again. "refresh global awareness" always loads the full map and is the phrase
+to use after a compaction. Without a `session_id` in the event the hook prints
+the full map every time. Added 2026-09-17: 33 of the 85 sessions that had
+typed "activate all agents" typed it twice or more, each repeat re-sending the
+map. stack-data's `tests/test-phase-zero.py` pins the behavior of the deployed
+hook and the renderer.
 
 The bookend is the retrospective. When a prompt contains "log learnings",
 "retro this chat", or "session retrospective", the same hook loads the
@@ -62,9 +74,13 @@ SessionStart hook when one exists, so the routing brief never prints twice.
 
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
   Meaning research institute, the Third Information Lab), the directions,
-  the voice rules, the delegation protocol. Present in every repo.
+  the voice rules, the gear ladder, the delegation protocol. Present in every
+  repo.
 - `retrospective.md` — the portable retrospective prompt loaded by the retro
   triggers. Present in every repo.
+- `hooks/phase-zero-lib.sh` — the three helpers the four hooks share (the
+  event-field parser, the section extractor, the session marker path). Sourced
+  beside each hook; deployed by both installers.
 - `hooks/phase-zero-trigger.sh` — the UserPromptSubmit hook (phase-zero and
   retrospective triggers both).
 - `model-routing.md`: the canonical model routing check, injected at session
