@@ -38,6 +38,12 @@ set -euo pipefail
 
 input=$(cat)
 
+# The shared helpers (pz_field, pz_section, pz_marker) live beside this hook.
+# A kit missing them is half installed: fail closed, print nothing.
+pz_lib="$(dirname "${BASH_SOURCE[0]}")/phase-zero-lib.sh"
+[ -f "$pz_lib" ] || exit 0
+. "$pz_lib"
+
 # The cheap gate. Almost every prompt is not a trigger; those leave here with
 # zero subprocesses. nocasematch makes the case patterns case-insensitive in
 # bash 3.2 and up.
@@ -48,34 +54,8 @@ case "$input" in
 esac
 shopt -u nocasematch
 
-# get_field <name>: one string field of the event JSON, or "". Never fails:
-# a parser error or a missing field is an empty string, and with no JSON
-# parser at all it prints nothing, because matching phrases against the raw
-# event JSON can false-positive on non-prompt fields (fail closed).
-get_field() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // "" | if type == "string" then . else "" end' 2>/dev/null || true
-  elif command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$input" | python3 -c 'import sys, json
-try:
-    v = json.load(sys.stdin).get(sys.argv[1], "")
-    print(v if isinstance(v, str) else "")
-except Exception:
-    print("")' "$1" 2>/dev/null || true
-  else
-    printf ''
-  fi
-}
-
-prompt=$(get_field prompt | tr '[:upper:]' '[:lower:]')
+prompt=$(pz_field "$input" prompt | tr '[:upper:]' '[:lower:]')
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-
-# section <file> <heading>: that "## heading" section, through the line
-# before the next "## " heading, so the short form prints the protocol from
-# the one source instead of a second copy.
-section() {
-  awk -v h="## $2" '$0 == h { p = 1 } p && $0 != h && /^## / { exit } p { print }' "$1"
-}
 
 # Prints the richest map available. Returns 0 only when a map printed; the
 # installer hint is not a map, and a session that saw only the hint must get
@@ -104,9 +84,9 @@ emit_short() {
   [ -f "$root/PHASE-ZERO.md" ] && src="$root/PHASE-ZERO.md"
   [ -z "$src" ] && [ -f "$root/.claude/phase-zero.md" ] && src="$root/.claude/phase-zero.md"
   [ -n "$src" ] || return 0
-  section "$src" "Gear and blast radius"
-  section "$src" "Delegation protocol"
-  section "$src" "The merge boundary"
+  pz_section "$src" "Gear and blast radius"
+  pz_section "$src" "Delegation protocol"
+  pz_section "$src" "The merge boundary"
   return 0
 }
 
@@ -117,9 +97,7 @@ case "$prompt" in
 esac
 
 if [ -n "$mode" ]; then
-  session=$(get_field session_id | tr -cd 'A-Za-z0-9_-')
-  marker=""
-  [ -n "$session" ] && marker="${TMPDIR:-/tmp}/phase-zero-seen-$session"
+  marker="$(pz_marker "$(pz_field "$input" session_id)")"
   if [ "$mode" = pending ]; then
     if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi
   fi

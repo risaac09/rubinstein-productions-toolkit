@@ -36,33 +36,18 @@ fi
 
 input=$(cat)
 
+# The shared helpers (pz_field, pz_section, pz_marker) live beside this hook.
+# A kit missing them is half installed: fail closed, print nothing.
+pz_lib="$(dirname "${BASH_SOURCE[0]}")/phase-zero-lib.sh"
+[ -f "$pz_lib" ] || exit 0
+. "$pz_lib"
+
 shopt -s nocasematch
 case "$input" in
   *"activate all agents"*|*"engage global awareness"*|*"refresh global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*|*"log learnings"*|*"retro this chat"*|*"session retrospective"*) ;;
   *) exit 0 ;;
 esac
 shopt -u nocasematch
-
-# get_field <name>: one string field of the event JSON, or "". Never fails;
-# with no JSON parser at all it prints nothing (fail closed).
-get_field() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // "" | if type == "string" then . else "" end' 2>/dev/null || true
-  elif command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$input" | python3 -c 'import sys, json
-try:
-    v = json.load(sys.stdin).get(sys.argv[1], "")
-    print(v if isinstance(v, str) else "")
-except Exception:
-    print("")' "$1" 2>/dev/null || true
-  else
-    printf ''
-  fi
-}
-
-section() {
-  awk -v h="## $2" '$0 == h { p = 1 } p && $0 != h && /^## / { exit } p { print }' "$1"
-}
 
 # Prints the richest map available. Returns 0 only when a map printed.
 emit_full() {
@@ -88,9 +73,9 @@ emit_short() {
   echo '[phase zero: short form. The full map loaded earlier this session; say "refresh global awareness" to reload it.]'
   echo
   [ -n "$src" ] || return 0
-  section "$src" "Gear and blast radius"
-  section "$src" "Delegation protocol"
-  section "$src" "The merge boundary"
+  pz_section "$src" "Gear and blast radius"
+  pz_section "$src" "Delegation protocol"
+  pz_section "$src" "The merge boundary"
   return 0
 }
 
@@ -105,7 +90,7 @@ emit_retro() {
   return 0
 }
 
-prompt=$(get_field prompt | tr '[:upper:]' '[:lower:]')
+prompt=$(pz_field "$input" prompt | tr '[:upper:]' '[:lower:]')
 
 mode=""
 case "$prompt" in
@@ -114,9 +99,7 @@ case "$prompt" in
 esac
 
 if [ -n "$mode" ]; then
-  session=$(get_field session_id | tr -cd 'A-Za-z0-9_-')
-  marker=""
-  [ -n "$session" ] && marker="${TMPDIR:-/tmp}/phase-zero-seen-$session"
+  marker="$(pz_marker "$(pz_field "$input" session_id)")"
   if [ "$mode" = pending ]; then
     if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi
   fi

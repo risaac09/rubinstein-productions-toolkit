@@ -14,19 +14,14 @@ set -euo pipefail
 # next trigger prints the full map again. Injection on resume and clear is
 # deliberate: the routing block should survive context resets.
 input="$(cat 2>/dev/null || true)"
-session=""
-if command -v jq >/dev/null 2>&1; then
-  session="$(printf '%s' "$input" | jq -r '.session_id // "" | if type == "string" then . else "" end' 2>/dev/null || true)"
-elif command -v python3 >/dev/null 2>&1; then
-  session="$(printf '%s' "$input" | python3 -c 'import sys, json
-try:
-    v = json.load(sys.stdin).get("session_id", "")
-    print(v if isinstance(v, str) else "")
-except Exception:
-    print("")' 2>/dev/null || true)"
+# The shared helpers live beside this hook; without them the brief still
+# prints, it just cannot clear the marker.
+pz_lib="$(dirname "${BASH_SOURCE[0]}")/phase-zero-lib.sh"
+if [ -f "$pz_lib" ]; then
+  . "$pz_lib"
+  pz_seen="$(pz_marker "$(pz_field "$input" session_id)")"
+  if [ -n "$pz_seen" ]; then rm -f "$pz_seen" 2>/dev/null || true; fi
 fi
-session="$(printf '%s' "$session" | tr -cd 'A-Za-z0-9_-')"
-if [ -n "$session" ]; then rm -f "${TMPDIR:-/tmp}/phase-zero-seen-$session" 2>/dev/null || true; fi
 
 project="${CLAUDE_PROJECT_DIR:-}"
 if [ -n "$project" ] && [ "$project" != "$HOME" ] && [ -f "$project/.claude/hooks/session-brief.sh" ]; then

@@ -19,6 +19,7 @@ KITROOT="$(cd "$SRC/.." && pwd)"          # .../phase-zero
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
 
 mkdir -p "$DEST/hooks"
+cp "$KITROOT/hooks/phase-zero-lib.sh" "$DEST/hooks/phase-zero-lib.sh"
 cp "$SRC/phase-zero-trigger.global.sh" "$DEST/hooks/phase-zero-trigger.sh"
 chmod +x "$DEST/hooks/phase-zero-trigger.sh"
 cp "$KITROOT/phase-zero.md" "$DEST/phase-zero.md"   # guaranteed fallback core

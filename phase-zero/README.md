@@ -78,6 +78,9 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   repo.
 - `retrospective.md` — the portable retrospective prompt loaded by the retro
   triggers. Present in every repo.
+- `hooks/phase-zero-lib.sh` — the three helpers the four hooks share (the
+  event-field parser, the section extractor, the session marker path). Sourced
+  beside each hook; deployed by both installers.
 - `hooks/phase-zero-trigger.sh` — the UserPromptSubmit hook (phase-zero and
   retrospective triggers both).
 - `model-routing.md`: the canonical model routing check, injected at session
