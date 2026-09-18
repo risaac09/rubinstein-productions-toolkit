@@ -92,6 +92,9 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   as every other kit-deployed file — never hand-edit the deployed block. Verify
   after deploy with `claude auto-mode config`.
 - `install.sh` — the distribution path.
+- `redeploy-prs.sh` — the same deploy as one pull request per consumer from
+  temp worktrees, for a machine whose auto-mode clamp refuses agent merges;
+  the operator merges them after the toolkit change that holds the kit source.
 
 ## Source of truth
 
