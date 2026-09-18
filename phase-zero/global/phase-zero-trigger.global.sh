@@ -64,12 +64,11 @@ section() {
   awk -v h="## $2" '$0 == h { p = 1 } p && $0 != h && /^## / { exit } p { print }' "$1"
 }
 
-CANDIDATES="${STACK_DATA_DIR:-} $HOME/stack-data $HOME/code/stack-data $HOME/src/stack-data"
-
 # Prints the richest map available. Returns 0 only when a map printed.
 emit_full() {
   local cand
-  for cand in $CANDIDATES; do
+  for cand in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
+    [ -n "$cand" ] || continue
     if [ -x "$cand/scripts/phase-zero" ]; then bash "$cand/scripts/phase-zero" 2>/dev/null && return 0; fi
     if [ -f "$cand/PHASE-ZERO.md" ]; then cat "$cand/PHASE-ZERO.md" && return 0; fi
   done
@@ -80,7 +79,8 @@ emit_full() {
 
 emit_short() {
   local cand src=""
-  for cand in $CANDIDATES; do
+  for cand in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
+    [ -n "$cand" ] || continue
     if [ -x "$cand/scripts/phase-zero" ]; then bash "$cand/scripts/phase-zero" --short 2>/dev/null && return 0; fi
     if [ -f "$cand/PHASE-ZERO.md" ]; then src="$cand/PHASE-ZERO.md"; break; fi
   done
@@ -96,7 +96,8 @@ emit_short() {
 
 emit_retro() {
   local cand
-  for cand in $CANDIDATES; do
+  for cand in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
+    [ -n "$cand" ] || continue
     if [ -f "$cand/.claude/retrospective.md" ]; then cat "$cand/.claude/retrospective.md" && return 0; fi
     if [ -f "$cand/context/session-retrospective.md" ]; then cat "$cand/context/session-retrospective.md" && return 0; fi
   done
