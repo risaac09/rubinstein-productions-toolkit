@@ -4,8 +4,10 @@
 # Reads the prompt-submit event JSON on stdin. If the prompt contains a
 # phase-zero trigger phrase, it prints global awareness on stdout, which the
 # harness adds to the model's context before the turn runs. Any other prompt
-# passes through untouched (no output, exit 0). Unparseable input also passes
-# through with exit 0: a context hook must never block or alarm a session.
+# passes through untouched (no output, exit 0) and spawns no process: a
+# case-insensitive substring gate on the raw event runs first, and only an
+# event that carries a phrase somewhere is parsed. Unparseable input also
+# passes through with exit 0: a context hook must never block or alarm.
 #
 # Triggers (case-insensitive; this case pattern is the canonical set):
 #   "activate all agents" | "engage global awareness" | "refresh global awareness"
@@ -14,12 +16,13 @@
 #
 # Repeat triggers (2026-09-17). The first trigger in a session prints the full
 # map. A later trigger in the same session prints the short form, the live
-# sections plus the gear ladder and the delegation protocol, because the map
-# is already in context: 33 of the 85 sessions that ever typed "activate all
-# agents" typed it twice or more, and each repeat re-sent the whole map.
-# "refresh global awareness" always prints in full; it is the reload phrase,
-# and the one to use after a context compaction. The per-session marker lives
-# under $TMPDIR, keyed by the event's session_id, and the SessionStart hook
+# sections plus the gear ladder, the delegation protocol, and the merge
+# boundary, because the map is already in context: 33 of the 85 sessions that
+# ever typed "activate all agents" typed it twice or more, and each repeat
+# re-sent the whole map. "refresh global awareness" always prints in full; it
+# is the reload phrase, and the one to use after a context compaction. The
+# per-session marker lives under $TMPDIR, keyed by the event's session_id, and
+# is written only when a full map actually printed; the SessionStart hook
 # removes it, so a started, resumed, cleared, or compacted session begins full
 # again. No session_id in the event means full every time.
 #
@@ -34,6 +37,16 @@
 set -euo pipefail
 
 input=$(cat)
+
+# The cheap gate. Almost every prompt is not a trigger; those leave here with
+# zero subprocesses. nocasematch makes the case patterns case-insensitive in
+# bash 3.2 and up.
+shopt -s nocasematch
+case "$input" in
+  *"activate all agents"*|*"engage global awareness"*|*"refresh global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*|*"log learnings"*|*"retro this chat"*|*"session retrospective"*) ;;
+  *) exit 0 ;;
+esac
+shopt -u nocasematch
 
 # get_field <name>: one string field of the event JSON, or "". Never fails:
 # a parser error or a missing field is an empty string, and with no JSON
@@ -55,10 +68,7 @@ except Exception:
 }
 
 prompt=$(get_field prompt | tr '[:upper:]' '[:lower:]')
-session=$(get_field session_id | tr -cd 'A-Za-z0-9_-')
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-marker=""
-[ -n "$session" ] && marker="${TMPDIR:-/tmp}/phase-zero-seen-$session"
 
 # section <file> <heading>: that "## heading" section, through the line
 # before the next "## " heading, so the short form prints the protocol from
@@ -67,6 +77,9 @@ section() {
   awk -v h="## $2" '$0 == h { p = 1 } p && $0 != h && /^## / { exit } p { print }' "$1"
 }
 
+# Prints the richest map available. Returns 0 only when a map printed; the
+# installer hint is not a map, and a session that saw only the hint must get
+# the full attempt again next time, not the short form.
 emit_full() {
   if [ -x "$root/scripts/phase-zero" ]; then
     bash "$root/scripts/phase-zero" 2>/dev/null && return 0
@@ -78,13 +91,14 @@ emit_full() {
     cat "$root/.claude/phase-zero.md" && return 0
   fi
   echo "(portable core missing in this repo; run the kit installer: rubinstein-productions-toolkit/phase-zero/install.sh)"
+  return 1
 }
 
 emit_short() {
   if [ -x "$root/scripts/phase-zero" ]; then
     bash "$root/scripts/phase-zero" --short 2>/dev/null && return 0
   fi
-  echo '[phase zero: short form. The map loaded earlier this session; say "refresh global awareness" to reload it.]'
+  echo '[phase zero: short form. The full map loaded earlier this session; say "refresh global awareness" to reload it.]'
   echo
   local src=""
   [ -f "$root/PHASE-ZERO.md" ] && src="$root/PHASE-ZERO.md"
@@ -92,21 +106,30 @@ emit_short() {
   [ -n "$src" ] || return 0
   section "$src" "Gear and blast radius"
   section "$src" "Delegation protocol"
+  section "$src" "The merge boundary"
   return 0
 }
 
 mode=""
 case "$prompt" in
   *"refresh global awareness"*) mode=full ;;
-  *"activate all agents"*|*"engage global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*)
-    if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi ;;
+  *"activate all agents"*|*"engage global awareness"*|*"delegate to your orchestrator"*|*"engage the orchestrator"*|*"engage your orchestrator"*) mode=pending ;;
 esac
 
 if [ -n "$mode" ]; then
+  session=$(get_field session_id | tr -cd 'A-Za-z0-9_-')
+  marker=""
+  [ -n "$session" ] && marker="${TMPDIR:-/tmp}/phase-zero-seen-$session"
+  if [ "$mode" = pending ]; then
+    if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi
+  fi
   echo "[phase zero engaged — global awareness]"
   echo
-  if [ "$mode" = full ]; then emit_full; else emit_short; fi
-  if [ -n "$marker" ]; then { : > "$marker"; } 2>/dev/null || true; fi
+  if [ "$mode" = full ]; then
+    if emit_full && [ -n "$marker" ]; then { : > "$marker"; } 2>/dev/null || true; fi
+  else
+    emit_short
+  fi
   exit 0
 fi
 
