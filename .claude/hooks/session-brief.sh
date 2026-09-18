@@ -28,11 +28,13 @@ set -euo pipefail
 input="$(cat 2>/dev/null || true)"
 # The shared helpers live beside this hook; without them the brief still
 # prints, it just cannot clear the marker.
-pz_lib="$(dirname "${BASH_SOURCE[0]}")/phase-zero-lib.sh"
-if [ -f "$pz_lib" ]; then
-  . "$pz_lib"
-  pz_seen="$(pz_marker "$(pz_field "$input" session_id)")"
-  if [ -n "$pz_seen" ]; then rm -f "$pz_seen" 2>/dev/null || true; fi
+pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+if [ -f "$pz_lib" ] && bash -n "$pz_lib" 2>/dev/null; then
+  . "$pz_lib" || true
+  if command -v pz_marker >/dev/null 2>&1 && command -v pz_field >/dev/null 2>&1; then
+    pz_seen="$(pz_marker "$(pz_field "$input" session_id)")"
+    if [ -n "$pz_seen" ]; then rm -f "$pz_seen" 2>/dev/null || true; fi
+  fi
 fi
 
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"

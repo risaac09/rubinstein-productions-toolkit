@@ -38,11 +38,6 @@ set -euo pipefail
 
 input=$(cat)
 
-# The shared helpers (pz_field, pz_section, pz_marker) live beside this hook.
-# A kit missing them is half installed: fail closed, print nothing.
-pz_lib="$(dirname "${BASH_SOURCE[0]}")/phase-zero-lib.sh"
-[ -f "$pz_lib" ] || exit 0
-. "$pz_lib"
 
 # The cheap gate. Almost every prompt is not a trigger; those leave here with
 # zero subprocesses. nocasematch makes the case patterns case-insensitive in
@@ -54,8 +49,18 @@ case "$input" in
 esac
 shopt -u nocasematch
 
+# The shared helpers (pz_field, pz_section, pz_marker) live beside this hook
+# and load only past the gate, so a non-trigger prompt still spawns nothing.
+# A kit missing them, or a lib caught mid-copy, is half installed: fail
+# closed, print nothing, exit 0, never block the prompt.
+pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+[ -f "$pz_lib" ] || exit 0
+bash -n "$pz_lib" 2>/dev/null || exit 0
+. "$pz_lib" || exit 0
+command -v pz_field >/dev/null 2>&1 || exit 0
+
 prompt=$(pz_field "$input" prompt | tr '[:upper:]' '[:lower:]')
-root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 
 # Prints the richest map available. Returns 0 only when a map printed; the
 # installer hint is not a map, and a session that saw only the hint must get

@@ -15,7 +15,7 @@
 #   ./install.sh --check <target-repo-dir>  verify one deployed kit, no writes
 #   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
 #
-# --check byte-compares the six kit files against source and confirms both
+# --check byte-compares the seven kit files against source and confirms both
 # hook registrations plus every kit permission clamp exist in settings.json.
 # settings.json itself is never byte-compared: merged consumer copies carry
 # repo-local config and legitimately differ from source. It writes nothing
