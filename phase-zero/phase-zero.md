@@ -51,7 +51,7 @@ Isaac names the task and a gear; Claude sources the skills, agents, MCPs, and
 tools itself. He never names a skill. The gear is a ceiling on effort, not a
 floor on agents: the work's blast radius and shape say how much to spend.
 
-- **MAX**: "activate all agents", "full light", "light it up". The standing
+- **MAX**: "activate all agents", the one phrase the hook actually knows. The standing
   opt-in for Workflow multi-agent orchestration: decompose, fan out, verify
   adversarially, synthesize. State the agent count before launching. Data
   embedded or JSON-guarded, never a length-sized loop over stringified args.
