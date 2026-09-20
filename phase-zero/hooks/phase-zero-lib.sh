@@ -15,11 +15,28 @@
 #   pz_section <file> <heading> that "## heading" section, through the line
 #                               before the next "## ", so the short form prints
 #                               the protocol from the one source.
-#   pz_marker <session_id>      the per-session marker path under $TMPDIR, or ""
-#                               when the id is empty after sanitizing. The
+#   pz_marker <session_id> <scope>
+#                               the per-session marker path under $TMPDIR, or
+#                               "" when the id is empty after sanitizing. The
 #                               trigger hook writes it after a full map prints;
 #                               the session brief removes it on start, resume,
 #                               clear, and compaction.
+#
+#                               <scope> is the installation the marker belongs
+#                               to, and callers pass the directory the hook
+#                               itself lives in. Without it the marker was
+#                               keyed on session_id alone, while every repo
+#                               carries its own copy of these hooks and a
+#                               login session shares one $TMPDIR. So the first
+#                               trigger in a second repo read the marker the
+#                               first repo wrote, printed the short form, and
+#                               told the reader "the full map loaded earlier
+#                               this session" while emitting none of that
+#                               repo's map. Reproduced 2026-09-19 by running
+#                               two installs against one TMPDIR and one
+#                               session id. The trigger and the brief sit in
+#                               the same directory, so they agree on the scope
+#                               without being told what it is.
 
 pz_field() {
   if command -v jq >/dev/null 2>&1; then
@@ -41,8 +58,13 @@ pz_section() {
 }
 
 pz_marker() {
-  local s
+  local s scope
   s="$(printf '%s' "${1:-}" | tr -cd 'A-Za-z0-9_-')"
-  [ -n "$s" ] && printf '%s' "${TMPDIR:-/tmp}/phase-zero-seen-$s"
+  [ -n "$s" ] || return 0
+  # cksum, not the path: the path can hold anything, and the marker name has
+  # to stay a single harmless filename. An absent scope still hashes to a
+  # stable value, so an old caller keeps working.
+  scope="$(printf '%s' "${2:-}" | cksum | tr -cd '0-9 ' | cut -d' ' -f1)"
+  printf '%s' "${TMPDIR:-/tmp}/phase-zero-seen-$s-${scope:-0}"
   return 0
 }
