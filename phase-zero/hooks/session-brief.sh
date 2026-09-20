@@ -28,11 +28,14 @@ set -euo pipefail
 input="$(cat 2>/dev/null || true)"
 # The shared helpers live beside this hook; without them the brief still
 # prints, it just cannot clear the marker.
-pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+pz_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+pz_lib="$pz_dir/phase-zero-lib.sh"
 if [ -f "$pz_lib" ] && bash -n "$pz_lib" 2>/dev/null; then
   . "$pz_lib" || true
   if command -v pz_marker >/dev/null 2>&1 && command -v pz_field >/dev/null 2>&1; then
-    pz_seen="$(pz_marker "$(pz_field "$input" session_id)")"
+    # Same scope the trigger uses: this hook sits beside it, so both resolve
+    # to the same directory and the brief clears the marker the trigger wrote.
+    pz_seen="$(pz_marker "$(pz_field "$input" session_id)" "$pz_dir")"
     if [ -n "$pz_seen" ]; then rm -f "$pz_seen" 2>/dev/null || true; fi
   fi
 fi
