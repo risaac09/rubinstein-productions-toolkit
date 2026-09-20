@@ -53,11 +53,23 @@ shopt -u nocasematch
 # and load only past the gate, so a non-trigger prompt still spawns nothing.
 # A kit missing them, or a lib caught mid-copy, is half installed: fail
 # closed, print nothing, exit 0, never block the prompt.
-pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+pz_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+pz_lib="$pz_dir/phase-zero-lib.sh"
 [ -f "$pz_lib" ] || exit 0
 bash -n "$pz_lib" 2>/dev/null || exit 0
 . "$pz_lib" || exit 0
 command -v pz_field >/dev/null 2>&1 || exit 0
+
+# Past the gate with no JSON parser, the prompt reads as empty and every
+# trigger phrase silently stops working for the rest of the session: the hook
+# exits 0, prints nothing, and looks exactly like a prompt that was not a
+# trigger. Say so once instead. The gate above means this only ever fires on
+# a prompt that really did carry a phrase.
+if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  echo "[phase zero: neither jq nor python3 is on PATH, so this hook cannot read the prompt."
+  echo "Global awareness is NOT loading in this session. Install either one.]"
+  exit 0
+fi
 
 prompt=$(pz_field "$input" prompt | tr '[:upper:]' '[:lower:]')
 root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
@@ -65,9 +77,17 @@ root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && p
 # Prints the richest map available. Returns 0 only when a map printed; the
 # installer hint is not a map, and a session that saw only the hint must get
 # the full attempt again next time, not the short form.
+# Each tier's output is captured before any of it is printed. Printing as we
+# go meant a renderer that died halfway left its partial map in the context
+# window AND fell through to the next tier, so the reader got a truncated map
+# followed by a whole second one, and the session was still marked as having
+# seen a clean full map.
 emit_full() {
+  local out
   if [ -x "$root/scripts/phase-zero" ]; then
-    bash "$root/scripts/phase-zero" 2>/dev/null && return 0
+    if out="$(bash "$root/scripts/phase-zero" 2>/dev/null)" && [ -n "$out" ]; then
+      printf '%s\n' "$out"; return 0
+    fi
   fi
   if [ -f "$root/PHASE-ZERO.md" ]; then
     cat "$root/PHASE-ZERO.md" && return 0
@@ -102,7 +122,7 @@ case "$prompt" in
 esac
 
 if [ -n "$mode" ]; then
-  marker="$(pz_marker "$(pz_field "$input" session_id)")"
+  marker="$(pz_marker "$(pz_field "$input" session_id)" "$pz_dir")"
   if [ "$mode" = pending ]; then
     if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi
   fi

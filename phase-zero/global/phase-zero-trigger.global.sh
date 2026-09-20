@@ -48,18 +48,36 @@ shopt -u nocasematch
 # and load only past the gate, so a non-trigger prompt still spawns nothing.
 # A kit missing them, or a lib caught mid-copy, is half installed: fail
 # closed, print nothing, exit 0, never block the prompt.
-pz_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/phase-zero-lib.sh"
+pz_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+pz_lib="$pz_dir/phase-zero-lib.sh"
 [ -f "$pz_lib" ] || exit 0
 bash -n "$pz_lib" 2>/dev/null || exit 0
 . "$pz_lib" || exit 0
 command -v pz_field >/dev/null 2>&1 || exit 0
 
+# Past the gate with no JSON parser, the prompt reads as empty and every
+# trigger phrase silently stops working for the rest of the session. Say so
+# once instead of going dark.
+if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  echo "[phase zero: neither jq nor python3 is on PATH, so this hook cannot read the prompt."
+  echo "Global awareness is NOT loading in this session. Install either one.]"
+  exit 0
+fi
+
 # Prints the richest map available. Returns 0 only when a map printed.
+# Each tier is captured before it is printed: a renderer that died halfway
+# used to leave its partial map in the context window and then fall through
+# to the next tier, so the reader got a truncated map followed by a whole
+# second one, and the session was still marked as having seen a clean map.
 emit_full() {
-  local cand
+  local cand out
   for cand in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
     [ -n "$cand" ] || continue
-    if [ -x "$cand/scripts/phase-zero" ]; then bash "$cand/scripts/phase-zero" 2>/dev/null && return 0; fi
+    if [ -x "$cand/scripts/phase-zero" ]; then
+      if out="$(bash "$cand/scripts/phase-zero" 2>/dev/null)" && [ -n "$out" ]; then
+        printf '%s\n' "$out"; return 0
+      fi
+    fi
     if [ -f "$cand/PHASE-ZERO.md" ]; then cat "$cand/PHASE-ZERO.md" && return 0; fi
   done
   if [ -f "$HOME/.claude/phase-zero.md" ]; then cat "$HOME/.claude/phase-zero.md" && return 0; fi
@@ -104,7 +122,7 @@ case "$prompt" in
 esac
 
 if [ -n "$mode" ]; then
-  marker="$(pz_marker "$(pz_field "$input" session_id)")"
+  marker="$(pz_marker "$(pz_field "$input" session_id)" "$pz_dir")"
   if [ "$mode" = pending ]; then
     if [ -n "$marker" ] && [ -f "$marker" ]; then mode=short; else mode=full; fi
   fi
