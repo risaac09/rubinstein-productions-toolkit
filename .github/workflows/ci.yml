@@ -24,3 +24,18 @@ jobs:
             echo "Unresolved merge markers found" >&2
             exit 1
           fi
+      # The phase-zero kit ships hooks into fourteen repos, and a hook with a
+      # syntax error fails closed and silent by design: the trigger exits 0
+      # and prints nothing, so a broken deploy looks exactly like a prompt
+      # that was not a trigger. Nothing here checked these files at all until
+      # 2026-09-20. Syntax first, behavior next.
+      - name: Phase-zero shell syntax
+        run: |
+          set -eu
+          n=0
+          for f in $(git ls-files 'phase-zero/*.sh' 'phase-zero/**/*.sh'); do
+            bash -n "$f" || { echo "syntax error in $f" >&2; exit 1; }
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ] || { echo "no phase-zero shell files matched; the glob is wrong" >&2; exit 1; }
+          echo "phase-zero: $n shell file(s) parse clean"
