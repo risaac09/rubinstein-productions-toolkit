@@ -203,6 +203,24 @@ class TestApplyStops(unittest.TestCase):
         self.assertEqual(len(pool.imports), 1)  # nothing imported after the stop
 
 
+class TestApplyBridgeFailure(unittest.TestCase):
+    def test_an_import_that_raises_stops_and_reports(self):
+        root = FakeFolder("Master")
+        pool = FakePool(root)
+        rows = [row("/media/card/a.mov"),
+                row("/media/card/b.mov", camera="iPhone 16 Pro Max", profile="SDR", cs=detect.CS_CAMERA_SDR)]
+        real = pool.ImportMedia
+
+        def flaky(paths):
+            if "/media/card/b.mov" in paths:
+                raise RuntimeError("bridge dropped")
+            return real(paths)
+        pool.ImportMedia = flaky
+        results = ingest.apply_plan(pool, root, ingest.plan_ingest(rows, []))
+        self.assertEqual(results[0]["result"], "tagged")
+        self.assertEqual(results[1]["result"], "FAILED: not run (RuntimeError: bridge dropped)")
+
+
 class FakeProject:
     def __init__(self, name="Sandbox", mode="davinciYRGBColorManagedv2"):
         self.name, self.mode = name, mode

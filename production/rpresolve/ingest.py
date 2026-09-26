@@ -114,6 +114,34 @@ def ensure_folder(media_pool, root, parts):
     return current
 
 
+def _import_and_tag(media_pool, entries, results):
+    """Import one bin's entries into the current folder, then tag the TAG
+    entries with read-back. Fills results[id(entry)] as each one finishes."""
+    items = media_pool.ImportMedia([e["path"] for e in entries]) or []
+    by_path = {}
+    for item in items:
+        path = item.GetClipProperty("File Path") if item else ""
+        if path:
+            by_path[norm_path(path)] = item
+    for e in entries:
+        r = results[id(e)]
+        item = by_path.get(norm_path(e["path"]))
+        if item is None:
+            r["result"] = "FAILED: not imported (Resolve returned no clip for this path)"
+            continue
+        if e["action"] == IMPORT_ONLY:
+            r["result"] = "imported"
+            continue
+        try:
+            r["input_color_space"] = api.set_clip_property_checked(
+                item, "Input Color Space", e["input_color_space"])
+            if e["data_level"]:
+                r["data_level"] = api.set_clip_property_checked(item, "Data Level", e["data_level"])
+            r["result"] = "tagged"
+        except api.WriteNotApplied as err:
+            r["result"] = f"FAILED: {err}"
+
+
 def apply_plan(media_pool, root, plan, check=None):
     """Import and tag per plan. Returns one result per plan entry:
     {path, bin, action, result, input_color_space, data_level}, where result
@@ -140,38 +168,16 @@ def apply_plan(media_pool, root, plan, check=None):
             if check:
                 check()
             folder = ensure_folder(media_pool, root, list(parts))
-        except Exception as err:  # a changed project or a bin Resolve refused
+            if not media_pool.SetCurrentFolder(folder):
+                for e in entries:
+                    results[id(e)]["result"] = f"FAILED: could not open bin '{'/'.join(parts)}'"
+                continue
+            _import_and_tag(media_pool, entries, results)
+        except Exception as err:  # a changed project, a refused bin, a dropped bridge
             stopped = f"{type(err).__name__}: {err}"
             for e in entries:
-                results[id(e)]["result"] = f"FAILED: not run ({stopped})"
-            continue
-        if not media_pool.SetCurrentFolder(folder):
-            for e in entries:
-                results[id(e)]["result"] = f"FAILED: could not open bin '{'/'.join(parts)}'"
-            continue
-        items = media_pool.ImportMedia([e["path"] for e in entries]) or []
-        by_path = {}
-        for item in items:
-            path = item.GetClipProperty("File Path") if item else ""
-            if path:
-                by_path[norm_path(path)] = item
-        for e in entries:
-            r = results[id(e)]
-            item = by_path.get(norm_path(e["path"]))
-            if item is None:
-                r["result"] = "FAILED: not imported (Resolve returned no clip for this path)"
-                continue
-            if e["action"] == IMPORT_ONLY:
-                r["result"] = "imported"
-                continue
-            try:
-                r["input_color_space"] = api.set_clip_property_checked(
-                    item, "Input Color Space", e["input_color_space"])
-                if e["data_level"]:
-                    r["data_level"] = api.set_clip_property_checked(item, "Data Level", e["data_level"])
-                r["result"] = "tagged"
-            except api.WriteNotApplied as err:
-                r["result"] = f"FAILED: {err}"
+                if not results[id(e)]["result"]:
+                    results[id(e)]["result"] = f"FAILED: not run ({stopped})"
     return [results[id(e)] for e in plan]
 
 
