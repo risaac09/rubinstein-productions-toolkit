@@ -148,6 +148,18 @@ class DecodeError(ValueError):
     """A blob did not have the shape this survey knows how to read."""
 
 
+def _as_bytes(value, what="blob"):
+    """value as bytes when SQLite handed back a BLOB (or a slice of one).
+    A NULL, TEXT, INTEGER or REAL value raises DecodeError: bytes() of an
+    int allocates that many zero bytes, and bytes() of a str raises
+    TypeError, so no decoder may see one."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value)
+    if value is None:
+        raise DecodeError(f"{what} is NULL")
+    raise DecodeError(f"{what} stored as {type(value).__name__}, expected a BLOB")
+
+
 # ---------------------------------------------------------------------------
 # Snapshot (the only code that touches a live database file)
 # ---------------------------------------------------------------------------
@@ -200,8 +212,9 @@ def parse_message(buf):
     """Parse one protobuf message without a schema into a list of
     (field_number, wire_type, value). Varints come back as int, fixed64 and
     fixed32 as raw bytes, length-delimited values as bytes. Group wire
-    types, field number 0 and any overrun raise DecodeError."""
-    buf = bytes(buf)
+    types, field number 0, any overrun and a buf that is not bytes-like
+    raise DecodeError."""
+    buf = _as_bytes(buf, "protobuf message")
     pos, out = 0, []
     while pos < len(buf):
         key, pos = read_varint(buf, pos)
@@ -273,6 +286,7 @@ def _as_text(value):
 def unwrap_blob(blob):
     """Strip Resolve's one-byte blob prefix: 0x81 = zstd-compressed payload,
     0x80 = raw payload. Anything else raises DecodeError."""
+    blob = _as_bytes(blob)
     if not blob:
         raise DecodeError("empty blob")
     prefix = blob[0]
@@ -291,7 +305,8 @@ def unwrap_blob(blob):
 def unwrap_fields_blob(blob):
     """Unwrap the FieldsBlob frame: BE uint32 tag (1 or 2), BE uint32
     payload length, then a 0x81/0x80 payload. Returns the protobuf bytes."""
-    if not blob or len(blob) < 8:
+    blob = _as_bytes(blob, "FieldsBlob")
+    if len(blob) < 8:
         raise DecodeError("FieldsBlob shorter than its 8-byte header")
     tag, length = struct.unpack_from(">II", blob, 0)
     if tag not in (1, 2):
@@ -308,7 +323,8 @@ def parse_qvariant_map(blob):
     one is-null byte, value). Supports bool, int, uint, qlonglong,
     qulonglong, double, QString and QByteArray; any other type stops the
     parse with DecodeError, since its size is unknown."""
-    if not blob or len(blob) < 8:
+    blob = _as_bytes(blob, "QVariantMap")
+    if len(blob) < 8:
         raise DecodeError("QVariantMap shorter than its header")
     version, count = struct.unpack_from(">II", blob, 0)
     if version != 1:
@@ -351,8 +367,9 @@ def parse_qvariant_map(blob):
 def decode_be_resolution(blob):
     """Two BE int64 (width, height). Returns (w, h), or None for (0, 0),
     which on a timeline means "use the project setting"."""
-    if not blob or len(blob) != 16:
-        raise DecodeError(f"resolution blob of {len(blob or b'')} bytes (expected 16)")
+    blob = _as_bytes(blob, "resolution")
+    if len(blob) != 16:
+        raise DecodeError(f"resolution blob of {len(blob)} bytes (expected 16)")
     width, height = struct.unpack(">qq", blob)
     if (width, height) == (0, 0):
         return None
@@ -363,7 +380,8 @@ def decode_be_resolution(blob):
 
 def decode_frame_rate(blob):
     """Frame rate stored as an LE double in the blob's first 8 bytes."""
-    if not blob or len(blob) < 8:
+    blob = _as_bytes(blob, "frame rate")
+    if len(blob) < 8:
         raise DecodeError("frame-rate blob shorter than 8 bytes")
     (fps,) = struct.unpack_from("<d", blob, 0)
     if not math.isfinite(fps) or fps <= 0 or fps > 1000:
@@ -453,36 +471,58 @@ def graph_order(nodes, edges):
     return order
 
 
+def _first_with_wire(fields):
+    """{field_number: (wire, value)} keeping the first occurrence of each."""
+    out = {}
+    for field, wire, value in fields:
+        out.setdefault(field, (wire, value))
+    return out
+
+
+def _node_payload(node, num, what, extract, problems):
+    """extract(value) for a length-delimited node field, or [] when the
+    field is absent. A field present with another wire type holds no
+    payload this survey can read: it returns None (UNDECODED) and notes
+    the problem."""
+    if num not in node:
+        return []
+    wire, value = node[num]
+    if wire != WIRE_LEN:
+        problems.append(f"node {what} (field {num}) with wire type {wire}")
+        return None
+    return extract(value)
+
+
 def decode_grade_body(body):
     """Decode a ListMgt::LmVersion.Body. Returns a dict:
-        kind   "graph" or "legacy" (the old "GRF" text format)
-        nodes  [{id, type, type_name, label, luts, ofx}] in signal-flow order
-        edges  [(source id, destination id, input index)]
+        kind      "graph" or "legacy" (the old "GRF" text format)
+        nodes     [{id, type, type_name, label, luts, ofx}] in signal-flow
+                  order; luts or ofx is None when that node field could
+                  not be decoded
+        edges     [(source id, destination id, input index)]
+        problems  node fields present in a shape this survey cannot read
     Raises DecodeError when the body cannot be read."""
-    if body is None:
-        raise DecodeError("no grade body")
-    body = bytes(body)
+    body = _as_bytes(body, "grade body")
     if body[:3] == b"GRF":
-        return {"kind": "legacy", "nodes": [], "edges": []}
+        return {"kind": "legacy", "nodes": [], "edges": [], "problems": []}
     top = first_fields(parse_message(unwrap_blob(body)))
     graph = top.get(1)
     if not isinstance(graph, bytes):
         raise DecodeError("grade body has no node graph (field 1)")
-    nodes, edges = [], []
+    nodes, edges, problems = [], [], []
     for field, wire, value in parse_message(graph):
         if wire != WIRE_LEN:
             continue
         if field == 7:
-            node = first_fields(parse_message(value))
-            node_id, node_type = node.get(1), node.get(8)
-            label = node.get(6)
+            node = _first_with_wire(parse_message(value))
+            node_id, node_type, label = (node.get(k, (None, None))[1] for k in (1, 8, 6))
             nodes.append({
                 "id": node_id if isinstance(node_id, int) else None,
                 "type": node_type if isinstance(node_type, int) else None,
                 "type_name": NODE_TYPES.get(node_type, f"type {node_type}"),
                 "label": label.decode("utf-8", "replace") if isinstance(label, bytes) else "",
-                "luts": extract_lut_paths(node.get(9) or b""),
-                "ofx": extract_ofx_plugins(node.get(10) or b""),
+                "luts": _node_payload(node, 9, "LUT params", extract_lut_paths, problems),
+                "ofx": _node_payload(node, 10, "OFX stack", extract_ofx_plugins, problems),
             })
         elif field == 8:
             edge = first_fields(parse_message(value))
@@ -490,7 +530,7 @@ def decode_grade_body(body):
     by_id = {n["id"]: n for n in nodes}
     if len(by_id) == len(nodes) and None not in by_id:
         nodes = [by_id[i] for i in graph_order(nodes, edges)]
-    return {"kind": "graph", "nodes": nodes, "edges": edges}
+    return {"kind": "graph", "nodes": nodes, "edges": edges, "problems": problems}
 
 
 def decode_media_clip(blob):
@@ -647,6 +687,9 @@ def survey_timelines(con, errors):
         items[seq_id][TRACK_TYPES.get(track_type, f"type {track_type}")] += count
     timelines = []
     for name, seq_id, res_blob, fps_blob in con.execute(TIMELINES_SQL):
+        if not isinstance(name, str):
+            errors.append(f"timeline name stored as {type(name).__name__}, read as {UNDECODED}")
+            name = UNDECODED
         try:
             res = decode_be_resolution(res_blob)
             resolution = "project" if res is None else "%dx%d" % res
@@ -670,7 +713,8 @@ def survey_grades(con, errors):
     node_types = Counter()
     luts, ofx, sequences = Counter(), Counter(), Counter()
     grades = []
-    undecoded = Counter()
+    undecoded, problems = Counter(), Counter()
+    undecoded_lut_nodes = undecoded_ofx_nodes = 0
     for item_id, media_id, seq_id, _vertype, body in con.execute(ACTIVE_GRADES_SQL):
         owner = grade_owner(item_id, media_id, seq_id)
         counts[owner] += 1
@@ -679,25 +723,39 @@ def survey_grades(con, errors):
         except DecodeError as e:
             undecoded[str(e)] += 1
             continue
+        except Exception as e:  # one malformed row must not end the survey
+            undecoded[f"{type(e).__name__}: {e}"] += 1
+            continue
         if grade["kind"] == "legacy":
             counts["legacy"] += 1
             continue
+        problems.update(grade["problems"])
         nodes = grade["nodes"]
         node_counts.append(len(nodes))
         node_counts_by_owner[owner].append(len(nodes))
         labels = [n["label"] for n in nodes]
         for n in nodes:
             node_types[n["type_name"]] += 1
-            luts.update(n["luts"])
-            ofx.update(n["ofx"])
+            if n["luts"] is None:
+                undecoded_lut_nodes += 1
+            else:
+                luts.update(n["luts"])
+            if n["ofx"] is None:
+                undecoded_ofx_nodes += 1
+            else:
+                ofx.update(n["ofx"])
         sequences[" > ".join(label for label in labels if label)] += 1
         grades.append({"owner": owner, "labels": labels})
     for reason, n in undecoded.items():
         errors.append(f"{n} grade bod{'y' if n == 1 else 'ies'} UNDECODED: {reason}")
+    for reason, n in problems.items():
+        errors.append(f"{UNDECODED}: {reason} ({n}x)")
     return {
         "graded": {k: counts.get(k, 0) for k in ("clip", "pool", "timeline", "other")},
         "legacy_grades": counts.get("legacy", 0),
         "undecoded_grades": sum(undecoded.values()),
+        "undecoded_lut_nodes": undecoded_lut_nodes,
+        "undecoded_ofx_nodes": undecoded_ofx_nodes,
         "node_count": _stats(node_counts),
         "node_count_by_owner": {k: _stats(v) for k, v in node_counts_by_owner.items()},
         "node_types": dict(node_types),
@@ -767,7 +825,7 @@ def survey_snapshot(db_path, home=None):
         for key, section in sections:
             try:
                 result[key] = section()
-            except sqlite3.Error as e:
+            except Exception as e:  # sqlite errors, and any value no decoder guards
                 errors.append(f"{key}: {type(e).__name__}: {e}")
                 result[key] = None
     finally:
@@ -796,6 +854,9 @@ def survey_project(project_dir, workdir, home=None):
         entry["read"] = True
     except sqlite3.Error as e:
         entry["errors"] = [f"snapshot failed: {type(e).__name__}: {e}"]
+    except Exception as e:  # keeps the promise above; the other projects still run
+        entry["read"] = False
+        entry["errors"] = [f"survey failed: {type(e).__name__}: {e}"]
     finally:
         for suffix in ("", "-journal", "-wal", "-shm"):
             try:
@@ -819,7 +880,12 @@ def read_metadata_cache(cache_path, workdir):
             rows = con.execute("select key, width, height, fps from project_metadata").fetchall()
         finally:
             con.close()
-        return {k: {"width": w, "height": h, "fps": f} for k, w, h, f in rows}, None
+        # Keep only values of the expected type: a TEXT or BLOB number here
+        # would otherwise break the cross-check for every project.
+        def num(v, kind):
+            return v if isinstance(v, kind) and not isinstance(v, bool) else None
+        return {k: {"width": num(w, int), "height": num(h, int), "fps": num(f, (int, float))}
+                for k, w, h, f in rows if isinstance(k, str)}, None
     except sqlite3.Error as e:
         return {}, f"metadata cache unreadable: {type(e).__name__}: {e}"
     finally:
@@ -835,9 +901,10 @@ def cache_disagreements(settings, cache_row):
     if not cache_row or not settings:
         return []
     out = []
-    cache_res = f"{cache_row['width']}x{cache_row['height']}"
-    if settings.get("resolution") not in (UNDECODED, cache_res):
-        out.append(f"cache resolution {cache_res}")
+    if cache_row.get("width") is not None and cache_row.get("height") is not None:
+        cache_res = f"{cache_row['width']}x{cache_row['height']}"
+        if settings.get("resolution") not in (UNDECODED, cache_res):
+            out.append(f"cache resolution {cache_res}")
     fps = settings.get("fps")
     if isinstance(fps, (int, float)) and cache_row.get("fps") is not None:
         if not math.isclose(fps, cache_row["fps"], abs_tol=0.002):
@@ -915,6 +982,15 @@ def _counts(counter, limit=None, key=lambda k: k):
     if limit and len(items) > limit:
         text += f", +{len(items) - limit} more"
     return text or "-"
+
+
+def _gap_cell(text, undecoded, noun="node"):
+    """A counts cell plus how many items could not be decoded. Where
+    nothing decoded, the cell is the gap alone ('-' would read as none)."""
+    if not undecoded:
+        return text
+    note = f"{undecoded} {noun}{'' if undecoded == 1 else 's'} {UNDECODED}"
+    return note if text == "-" else f"{text}; {note}"
 
 
 def _short_ofx(plugin):
@@ -1033,8 +1109,10 @@ def render_markdown(report):
             _color_cell(p.get("settings")),
             graded,
             _nodes_cell(grades),
-            _counts(grades.get("luts") or {}, key=os.path.basename),
-            _counts(grades.get("ofx") or {}, key=_short_ofx),
+            _gap_cell(_counts(grades.get("luts") or {}, key=os.path.basename),
+                      grades.get("undecoded_lut_nodes")),
+            _gap_cell(_counts(grades.get("ofx") or {}, key=_short_ofx),
+                      grades.get("undecoded_ofx_nodes")),
             _counts(media.get("roots") or {}, limit=3),
             _counts(media.get("codecs") or {}, limit=3),
         ]

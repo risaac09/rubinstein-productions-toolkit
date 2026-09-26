@@ -32,6 +32,7 @@ import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -267,6 +268,15 @@ class TestProtobuf(unittest.TestCase):
     def test_first_fields_keeps_first(self):
         self.assertEqual(rs.first_fields([(1, 0, 5), (1, 0, 6), (2, 2, b"x")]), {1: 5, 2: b"x"})
 
+    def test_non_bytes_rejected_without_allocating(self):
+        # bytes(2 ** 62) would try to allocate 4 EiB; bytes("x") raises TypeError.
+        for bad in (2 ** 62, 2 ** 40, "text", 1.5, None):
+            with self.assertRaises(rs.DecodeError):
+                rs.parse_message(bad)
+            self.assertIsNone(rs.try_parse_message(bad))
+        self.assertEqual(rs.parse_message(bytearray(fld(1, 5))), [(1, 0, 5)])
+        self.assertEqual(rs.parse_message(memoryview(fld(1, 5))), [(1, 0, 5)])
+
 
 class TestFraming(unittest.TestCase):
     def test_zstd_unwrap(self):
@@ -297,6 +307,16 @@ class TestFraming(unittest.TestCase):
         blob = qmap([("SetupBA", 12, b"\x01\x02"), ("Name", 10, "Timeline 1"), ("Mod", 4, -5)])
         self.assertEqual(rs.parse_qvariant_map(blob),
                          {"SetupBA": b"\x01\x02", "Name": "Timeline 1", "Mod": -5})
+
+    def test_decoders_reject_text_and_integer_columns(self):
+        # SQLite hands back str for TEXT and int for INTEGER columns.
+        decoders = (rs.unwrap_blob, rs.unwrap_fields_blob, rs.parse_qvariant_map,
+                    rs.decode_be_resolution, rs.decode_frame_rate, rs.decode_grade_body,
+                    rs.decode_media_clip, rs.decode_media_geometry, rs.decode_setup_fields)
+        for decode in decoders:
+            for bad in ("x" * 16, "GRF text", 2 ** 40, 7, 1.5):
+                with self.assertRaises(rs.DecodeError, msg=f"{decode.__name__}({bad!r})"):
+                    decode(bad)
 
     def test_qvariant_map_rejects_unknown_type_and_version(self):
         blob = struct.pack(">II", 1, 1) + qkey("X") + struct.pack(">I", 99) + b"\x00"
@@ -428,6 +448,22 @@ class TestNodeGraph(unittest.TestCase):
             with self.assertRaises(rs.DecodeError):
                 rs.decode_grade_body(bad)
 
+    def test_node_payload_with_wrong_wire_type_is_undecoded(self):
+        # Node fields 9 (LUT params) and 10 (OFX stack) stored as varints:
+        # the values must never reach parse_message, and the node's LUTs and
+        # OFX read as UNDECODED (None) with the problem noted.
+        bad = msg(fld(1, 1), fld(6, "X"), fld(8, 44), fld(9, 2 ** 62), fld(10, 2 ** 40))
+        g = rs.decode_grade_body(grade_body([bad, node(2, "Y", luts=[LOOK_LUT])], [edge(1, 2)]))
+        by_label = {n["label"]: n for n in g["nodes"]}
+        self.assertIsNone(by_label["X"]["luts"])
+        self.assertIsNone(by_label["X"]["ofx"])
+        self.assertEqual(by_label["Y"]["luts"], [LOOK_LUT])
+        self.assertEqual(g["problems"], ["node LUT params (field 9) with wire type 0",
+                                         "node OFX stack (field 10) with wire type 0"])
+        absent = rs.decode_grade_body(grade_body([msg(fld(1, 1), fld(8, 44))], []))
+        self.assertEqual((absent["nodes"][0]["luts"], absent["nodes"][0]["ofx"]), ([], []))
+        self.assertEqual(absent["problems"], [])
+
     def test_graph_order_cycle_falls_back_to_id(self):
         nodes = [{"id": 1}, {"id": 2}, {"id": 3}]
         self.assertEqual(rs.graph_order(nodes, [(2, 3, 0), (3, 2, 0)]), [1, 2, 3])
@@ -505,6 +541,91 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(p["media"]["roots"], {"/mnt/CARD_A": 1, "~/Desktop": 1, rs.UNDECODED: 1})
         self.assertEqual(p["media"]["codecs"], {"hvc1": 1, "ext RW2": 1})
         self.assertTrue(any("UNDECODED" in e for e in p["errors"]))
+
+    def survey_mutated(self, name, *statements):
+        """survey_project on the synthetic DB after running statements."""
+        folder = self.make_project(name, corrupt_grade=False)
+        con = sqlite3.connect(folder / "Project.db")
+        for sql, params in statements:
+            con.execute(sql, params)
+        con.commit()
+        con.close()
+        work = self.tmp / ("work-" + name)
+        work.mkdir()
+        return rs.survey_project(str(folder), str(work), home="/home/u")
+
+    def test_malformed_values_keep_the_project_row(self):
+        set_body = 'update "ListMgt::LmVersion" set Body = ? where "ListMgt::LmVersion_id" = ?'
+        huge_node = grade_body([msg(fld(1, 1), fld(6, "X"), fld(8, 44), fld(9, 2 ** 62))], [])
+        p = self.survey_mutated("Huge Varint", (set_body, (huge_node, "v-2")))
+        self.assertTrue(p["read"])
+        self.assertEqual(p["grades"]["undecoded_lut_nodes"], 1)
+        self.assertEqual(p["grades"]["luts"], {HOUSE_LUT: 1, LOOK_LUT: 1})
+        self.assertIn("UNDECODED: node LUT params (field 9) with wire type 0 (1x)", p["errors"])
+
+        p = self.survey_mutated(
+            "Text Columns",
+            ("update Sm2Sequence set Resolution = ? where Sm2Sequence_id = 'seq-a'", ("x" * 16,)),
+            ("update Sm2Sequence set FrameRate = ? where Sm2Sequence_id = 'seq-b'", ("24",)),
+            (set_body, ("GRF but stored as TEXT", "v-2")),
+            ("update SM_Config set FieldsBlob = ?", ("not a blob",)),
+            ("update Sm2Timeline set Name = ? where Name = 'Vertical'", (b"\xff\xfe",)),
+            ("insert into BtVideoInfo values (?, ?)", ("/text/clip", 5)))
+        self.assertTrue(p["read"])
+        self.assertEqual(p["settings"]["resolution"], rs.UNDECODED)
+        tl = {t["name"]: t for t in p["timelines"]}
+        self.assertEqual(tl["Main"]["resolution"], rs.UNDECODED)
+        self.assertEqual(tl[rs.UNDECODED]["fps"], rs.UNDECODED)
+        self.assertEqual(p["grades"]["undecoded_grades"], 1)
+        self.assertEqual(p["media"]["count"], 4)
+        self.assertEqual(p["media"]["roots"][rs.UNDECODED], 2)
+        text = " ".join(p["errors"])
+        for expected in ("resolution stored as str", "frame rate stored as str",
+                         "grade body stored as str", "QVariantMap stored as str",
+                         "timeline name stored as bytes"):
+            self.assertIn(expected, text)
+        json.dumps(rs._json_ready({"projects": [p]}))  # nothing unserializable reached the report
+
+    def test_unexpected_errors_are_contained(self):
+        folder = self.make_project("Contained", corrupt_grade=False)
+        work = self.tmp / "work"
+        work.mkdir()
+        real = rs.decode_grade_body
+
+        def flaky(body):
+            if rs.unwrap_blob(body).count(b"SOLO"):
+                raise MemoryError("synthetic")
+            return real(body)
+
+        with mock.patch.object(rs, "decode_grade_body", flaky), \
+                mock.patch.object(rs, "decode_media_clip", side_effect=TypeError("synthetic")):
+            p = rs.survey_project(str(folder), str(work), home="/home/u")
+        self.assertTrue(p["read"])
+        self.assertEqual(p["grades"]["undecoded_grades"], 1)
+        self.assertEqual(p["grades"]["graded"]["clip"], 2)
+        self.assertIsNone(p["media"])
+        self.assertIsNotNone(p["timelines"])
+        self.assertIn("1 grade body UNDECODED: MemoryError: synthetic", p["errors"])
+        self.assertIn("media: TypeError: synthetic", p["errors"])
+        with mock.patch.object(rs, "survey_snapshot", side_effect=RuntimeError("synthetic")):
+            p = rs.survey_project(str(folder), str(work))
+        self.assertFalse(p["read"])
+        self.assertEqual(p["errors"], ["survey failed: RuntimeError: synthetic"])
+        self.assertEqual(os.listdir(work), [])
+
+    def test_metadata_cache_with_text_values(self):
+        cache = self.tmp / "Metadata.db"
+        con = sqlite3.connect(cache)
+        con.execute("create table project_metadata (key, width, height, fps)")
+        con.executemany("insert into project_metadata values (?, ?, ?, ?)", [
+            ("Text", "3840", 2160, "29.97"), (b"blob key", 1920, 1080, 24.0)])
+        con.commit()
+        con.close()
+        rows, error = rs.read_metadata_cache(str(cache), str(self.tmp))
+        self.assertIsNone(error)
+        self.assertEqual(rows, {"Text": {"width": None, "height": 2160, "fps": None}})
+        self.assertEqual(rs.cache_disagreements({"resolution": "1920x1080", "fps": 24.0},
+                                                rows["Text"]), [])
 
     def test_missing_db_is_reported(self):
         folder = self.tmp / "Projects" / "Empty"
