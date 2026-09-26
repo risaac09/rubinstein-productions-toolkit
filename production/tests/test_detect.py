@@ -297,6 +297,33 @@ class TestHeaders(unittest.TestCase):
         h = detect.Headers(load("r8_drone_fc7703"))
         self.assertIn("DJI.AVC", h.handlers())
 
+    def test_vfr_is_exact_because_real_vfr_is_tiny(self):
+        # The iPhone HLG fixture is true VFR at 0.018% off its nominal rate.
+        h = detect.Headers(load("r6_iphone_hlg_dolby_vision"))
+        self.assertEqual(h.vfr(), "yes")
+
+    def test_dolby_vision_is_hlg_only_on_an_hlg_base(self):
+        def doc(compat=None, side=None, colr=(9, 16, 9)):
+            track = {"handler": "vide", "colr": {"type": "nclx", "primaries": colr[0],
+                                                 "transfer": colr[1], "matrix": colr[2]}}
+            if compat is not None:
+                track["dolby_vision"] = {"profile": 8, "compatibility_id": compat}
+            stream = {"codec_type": "video"}
+            if side is not None:
+                stream["side_data_list"] = [dict({"side_data_type": "DOVI configuration record"}, **side)]
+            return {"ffprobe": {"streams": [stream]}, "atoms": {"tracks": [track]}}
+        self.assertTrue(detect.Headers(doc(compat=4)).is_hlg())
+        self.assertFalse(detect.Headers(doc(compat=1)).is_hlg())   # 8.1, PQ base
+        self.assertFalse(detect.Headers(doc(compat=0)).is_hlg())   # 5, IPT base
+        self.assertTrue(detect.Headers(doc(side={"dv_bl_signal_compatibility_id": 4})).is_hlg())
+        self.assertFalse(detect.Headers(doc(side={})).is_hlg())    # no id proves nothing
+        self.assertTrue(detect.Headers(doc(colr=(9, 18, 9))).is_hlg())
+
+    def test_camera_sdr_uses_its_own_constant(self):
+        with mock.patch.object(detect, "CS_CAMERA_SDR", "camera-sdr-probe"):
+            row = detect.classify(load("r6_iphone_sdr_vfr"))
+        self.assertEqual(row["input_color_space"], "camera-sdr-probe")
+
     def test_vfr_compares_rationals(self):
         doc = {"ffprobe": {"streams": [{"codec_type": "video", "r_frame_rate": "30000/1001",
                                         "avg_frame_rate": "60000/2002"}]}}
@@ -592,6 +619,19 @@ print(json.dumps([{"SourceFile": f, "QuickTime:MajorBrand": "Apple QuickTime (.M
 '''
 
 
+class TestExiftoolTimeouts(unittest.TestCase):
+    def test_batch_timeout_retries_each_file_with_the_short_timeout(self):
+        seen = []
+
+        def run(cmd, **kw):
+            seen.append((len(cmd), kw["timeout"]))
+            raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+        with mock.patch.object(detect.subprocess, "run", side_effect=run):
+            out = detect.run_exiftool(["a.mov", "b.mov"], exiftool="x", timeout=600, single_timeout=60)
+        self.assertEqual(out, {})
+        self.assertEqual([t for _, t in seen], [600, 60, 60])
+
+
 class TestDetectPathsWithFakeTools(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -629,6 +669,17 @@ class TestDetectPathsWithFakeTools(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)[0]["profile"], "Rec.709")
+
+    def test_cli_refuses_out_inside_this_repo(self):
+        if not any((d / ".git").exists() for d in WORKFLOW.parents):
+            self.skipTest("not running from a git checkout")
+        env = dict(os.environ, RPRESOLVE_FFPROBE=self.ffprobe, RPRESOLVE_EXIFTOOL=self.exiftool)
+        leak = WORKFLOW.parent / "tests" / "detect-leak-probe.tsv"
+        proc = subprocess.run([sys.executable, str(WORKFLOW), "detect", self.media, "--out", str(leak)],
+                              capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertIn("inside this repository", proc.stderr)
+        self.assertFalse(leak.exists())
 
     def test_cli_writes_the_table_past_a_malformed_file(self):
         with open(os.path.join(self.media, "deep.mov"), "wb") as f:

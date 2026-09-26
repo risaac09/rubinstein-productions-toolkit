@@ -48,8 +48,16 @@ row is high or medium confidence; low appears only on review rows.
 input_color_space holds the Resolve colour-space name to tag the clip with.
 Each CS_* name below appears verbatim in the Resolve 21.0.4 binary, except
 the BRAW placeholder "auto (camera RAW)": RCM decodes camera RAW without a
-per-clip input tag. Whether SetClipProperty('Input Color Space', name)
-accepts these names is UNVERIFIED until the sandbox spike.
+per-clip input tag. Sandbox spike 4 (2026-09-26) wrote 'Panasonic
+V-Gamut/V-Log' with SetClipProperty('Input Color Space', name) and read it
+back exactly; the other names are Resolve's own auto-tag strings (spike 5)
+and are not yet written through the API.
+
+Camera SDR (CS_CAMERA_SDR) and screen, Zoom and OBS content (CS_REC709)
+are separate constants on purpose. Resolve auto-tags camera SDR
+'Rec.709 (Scene)', while non-709 tags fall to 'Rec.709 Gamma 2.4', and
+which of the two camera SDR should get is an open decision (spike 7). Both
+read 'Rec.709 Gamma 2.4' until it is made; the decision changes one line.
 
 Output columns are COLUMNS: the eight the pipeline plan names, plus a note
 saying why a row was pinned or what is missing.
@@ -74,7 +82,8 @@ REVIEW = "review"
 CORRUPT = "corrupt"
 
 CS_VLOG = "Panasonic V-Gamut/V-Log"
-CS_REC709 = "Rec.709 Gamma 2.4"
+CS_REC709 = "Rec.709 Gamma 2.4"      # screen, Zoom and OBS content
+CS_CAMERA_SDR = "Rec.709 Gamma 2.4"  # camera SDR; open decision, see the docstring
 CS_HLG = "Rec.2100 HLG"
 CS_APPLE_LOG = "Apple Log"
 CS_SRGB = "sRGB"
@@ -92,6 +101,7 @@ SKIP_DIRS = {"#recycle", "@eaDir", "#snapshot"}
 BRAW_FOURCCS = {"brst", "brhq", "brxq", "brlt"}
 PRORES_RAW_FOURCCS = {"aprn", "aprh"}
 APPLE_LOG_TAG = "com.apple.rec2020.apple-log"
+DOVI_COMPAT_HLG = 4  # Dolby Vision bl_signal_compatibility_id for an HLG base
 BMD_FILMLOG_TAG = "com.blackmagic-design.camera.filmlog"
 
 # The moov atom is read whole. A multi-hour clip's moov is a few MB; this
@@ -167,14 +177,15 @@ def _exiftool_arg(path):
     return "./" + path if path.startswith("-") else path
 
 
-def run_exiftool(paths, exiftool=None, timeout=600, chunk=64):
+def run_exiftool(paths, exiftool=None, timeout=600, chunk=64, single_timeout=60):
     """Return {path: exiftool dict} for the paths exiftool could read. Runs
     in batches to spare perl start-up; a path missing from a batch result
-    is retried on its own."""
+    is retried on its own, with single_timeout, so one stalled read cannot
+    cost a full batch timeout per file."""
     exiftool = exiftool or EXIFTOOL
     results = {}
 
-    def _run(batch):
+    def _run(batch, timeout=timeout):
         args = [_exiftool_arg(p) for p in batch]
         cmd = [exiftool, "-G1", "-a", "-s", "-j", "-api", "LargeFileSupport=1"] + args
         try:
@@ -199,7 +210,7 @@ def run_exiftool(paths, exiftool=None, timeout=600, chunk=64):
                 results[by_arg[src]] = doc
         for p in batch:
             if p not in results:
-                docs = _run([p])
+                docs = _run([p], timeout=min(timeout, single_timeout))
                 if docs and isinstance(docs[0], dict):
                     results[p] = docs[0]
     return results
@@ -615,6 +626,21 @@ class Headers:
                     return True
         return False
 
+    def dolby_vision_hlg_base(self):
+        """True only when the Dolby Vision record names an HLG-compatible
+        base layer (bl_signal_compatibility_id 4, as iPhone profile 8.4
+        writes). Profiles 5 and 8.1 carry IPT or PQ bases, which are not
+        HLG; a record without the id proves nothing."""
+        dv = self.video_track.get("dolby_vision") or {}
+        if dv.get("compatibility_id") == DOVI_COMPAT_HLG:
+            return True
+        for s in self.streams:
+            for sd in s.get("side_data_list") or []:
+                if ("DOVI" in (sd.get("side_data_type") or "")
+                        and sd.get("dv_bl_signal_compatibility_id") == DOVI_COMPAT_HLG):
+                    return True
+        return False
+
     def is_prores_raw(self):
         return (self.video.get("codec_name") == "prores_raw"
                 or self.video_fourcc() in PRORES_RAW_FOURCCS)
@@ -642,7 +668,10 @@ class Headers:
         return "unknown"
 
     def vfr(self):
-        """'yes' when avg_frame_rate differs from r_frame_rate."""
+        """'yes' when avg_frame_rate differs from r_frame_rate at all. The
+        comparison is exact on purpose: a real iPhone VFR clip (the HLG
+        fixture) differs by only 0.018%, so any tolerance wide enough to
+        absorb container rounding would also hide true VFR."""
         if not self.video:
             return "unknown"
         r = _fraction(self.video.get("r_frame_rate"))
@@ -654,8 +683,8 @@ class Headers:
     def is_hlg(self):
         c = self.colr()
         if c is not None:
-            return c[1] == 18 or self.dolby_vision()
-        return self.transfer() == "arib-std-b67" or self.dolby_vision()
+            return c[1] == 18 or self.dolby_vision_hlg_base()
+        return self.transfer() == "arib-std-b67" or self.dolby_vision_hlg_base()
 
     def is_rec709(self):
         c = self.colr()
@@ -774,7 +803,7 @@ def rule_2_braw_proxy(h):
 
 _ATOMOS_PROFILES = {
     ("vlog", "vgamut"): ("V-Log", CS_VLOG),
-    ("rec709", "rec709"): ("Rec.709", CS_REC709),
+    ("rec709", "rec709"): ("Rec.709", CS_CAMERA_SDR),
 }
 
 
@@ -819,8 +848,8 @@ _PANA_XML_PROFILES = {
     # CaptureGamma: (profile, colour space, expected CaptureGamut)
     "v-log": ("V-Log", CS_VLOG, "v-gamut"),
     "v-logl": ("V-Log L", CS_VLOG, "v-gamut"),
-    "natural": ("Natural", CS_REC709, "bt.709"),
-    "cinelike_v": ("Cinelike V", CS_REC709, "bt.709"),
+    "natural": ("Natural", CS_CAMERA_SDR, "bt.709"),
+    "cinelike_v": ("Cinelike V", CS_CAMERA_SDR, "bt.709"),
 }
 
 _VLOGL_CURVE = "V-Log L uses the V-Log curve"
@@ -828,8 +857,8 @@ _VLOGL_GAMUT_GAP = "V-Gamut for V-Log L is UNVERIFIED"
 
 _PANA_PHOTOSTYLES = {
     "v-log": ("V-Log", CS_VLOG),
-    "natural": ("Natural", CS_REC709),
-    "cinelike v": ("Cinelike V", CS_REC709),
+    "natural": ("Natural", CS_CAMERA_SDR),
+    "cinelike v": ("Cinelike V", CS_CAMERA_SDR),
 }
 
 
@@ -927,7 +956,7 @@ def rule_5_blackmagic_cam(h):
     if h.is_hlg():
         return _review("5", camera, _join(software, "HLG-tagged Blackmagic Cam clip is not in the verified table"))
     if h.is_rec709():
-        return _row("5", camera, "Rec.709", CS_REC709, "high", _join(software, lens_note))
+        return _row("5", camera, "Rec.709", CS_CAMERA_SDR, "high", _join(software, lens_note))
     return _review("5", camera, _join(software, f"colour tags {h.colr() or h.transfer() or 'absent'} not in the verified table"))
 
 
@@ -949,7 +978,7 @@ def rule_6_iphone(h):
     if h.colr() == (9, 2, 9):
         return _review("6", model, _join(ios, "colr 9/2/9 without a logs atom"))
     if h.is_rec709():
-        return _row("6", model, "SDR", CS_REC709, "high", ios)
+        return _row("6", model, "SDR", CS_CAMERA_SDR, "high", ios)
     return _review("6", model, _join(ios, f"colour tags {h.colr() or h.transfer() or 'absent'} not in the verified table"))
 
 
