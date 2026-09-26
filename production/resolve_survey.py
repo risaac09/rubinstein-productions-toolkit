@@ -798,7 +798,8 @@ def survey_media(con, errors, home=None):
             directory, filename, fourcc = decode_media_clip(clip_blob)
         except DecodeError:
             undecoded += 1
-            roots[UNDECODED] += 1
+            for counter in (roots, codecs, codec_res):
+                counter[UNDECODED] += 1
             continue
         roots[media_root(directory, home)] += 1
         codec = fourcc or ("ext " + (os.path.splitext(filename)[1].lstrip(".").upper() or "?"))
@@ -833,16 +834,22 @@ def _undecoded_settings():
             "color_management_fields": []}
 
 
+SURVEY_SECTIONS = ("settings", "timelines", "grades", "media")
+
+
 def survey_snapshot(db_path, home=None):
-    """Survey one project from an already-snapshotted database file."""
+    """Survey one project from an already-snapshotted database file. A
+    section that fails as a whole (a missing table, say) is None, with the
+    reason in "errors"."""
     errors = []
     con = sqlite3.connect(f"file:{urllib.parse.quote(os.path.abspath(db_path))}?mode=ro", uri=True)
-    sections = (
-        ("settings", lambda: survey_settings(con, errors)),
-        ("timelines", lambda: survey_timelines(con, errors)),
-        ("grades", lambda: survey_grades(con, errors)),
-        ("media", lambda: survey_media(con, errors, home)),
-    )
+    run = {
+        "settings": lambda: survey_settings(con, errors),
+        "timelines": lambda: survey_timelines(con, errors),
+        "grades": lambda: survey_grades(con, errors),
+        "media": lambda: survey_media(con, errors, home),
+    }
+    sections = [(key, run[key]) for key in SURVEY_SECTIONS]
     try:
         result = {}
         for key, section in sections:
@@ -860,7 +867,9 @@ def survey_snapshot(db_path, home=None):
 def survey_project(project_dir, workdir, home=None):
     """Snapshot <project_dir>/Project.db into workdir, survey the copy,
     delete the copy. Never raises for a bad project; failures land in the
-    returned dict's "errors" and "read" is False."""
+    returned dict's "errors". "read" is False when no snapshot was taken
+    or every section failed; "failed_sections" lists the sections that
+    failed in a project that was otherwise read."""
     name = os.path.basename(os.path.normpath(project_dir))
     live = os.path.join(project_dir, "Project.db")
     entry = {"name": name, "read": False}
@@ -874,7 +883,12 @@ def survey_project(project_dir, workdir, home=None):
         snapshot_db(live, snap)
         entry["snapshot_bytes"] = os.path.getsize(snap)
         entry.update(survey_snapshot(snap, home))
-        entry["read"] = True
+        failed = [key for key in SURVEY_SECTIONS if entry.get(key) is None]
+        entry["read"] = len(failed) < len(SURVEY_SECTIONS)
+        if entry["read"]:
+            entry["failed_sections"] = failed
+        else:
+            entry["errors"].append("no section could be read")
     except sqlite3.Error as e:
         entry["errors"] = [f"snapshot failed: {type(e).__name__}: {e}"]
     except Exception as e:  # keeps the promise above; the other projects still run
@@ -1028,7 +1042,9 @@ def _timeline_summary(timelines):
 
 
 def _project_cell(p):
-    s = p.get("settings") or {}
+    s = p.get("settings")
+    if s is None:
+        return UNDECODED
     text = f"{s.get('resolution', UNDECODED)}@{_fmt_fps(s.get('fps', UNDECODED))}"
     if p.get("cache_disagreements"):
         text += " (" + "; ".join(p["cache_disagreements"]) + ")"
@@ -1064,15 +1080,81 @@ def _nodes_cell(grades):
     return text
 
 
+def _graded_cell(grades):
+    if grades is None:
+        return UNDECODED
+    g = grades.get("graded") or {}
+    text = f"{g.get('clip', 0)}/{g.get('pool', 0)}/{g.get('timeline', 0)}"
+    extras = []
+    if grades.get("legacy_grades"):
+        extras.append(f"{grades['legacy_grades']} legacy")
+    if grades.get("undecoded_grades"):
+        extras.append(f"{grades['undecoded_grades']} {UNDECODED}")
+    if g.get("other"):
+        extras.append(f"{g['other']} other owner")
+    return text + (" (" + ", ".join(extras) + ")" if extras else "")
+
+
+def _grade_cells(grades):
+    """The Nodes, LUTs and OFX cells. They count the grades that decoded
+    as node graphs. When the grades section failed, or grades exist and
+    none of them decoded as a graph (all legacy or UNDECODED), all three
+    are UNDECODED: '-' is kept for a project with no grades at all."""
+    if grades is None:
+        return [UNDECODED] * 3
+    graphs = (grades.get("node_count") or {}).get("grades", 0)
+    if not graphs and sum((grades.get("graded") or {}).values()):
+        return [UNDECODED] * 3
+    return [
+        _nodes_cell(grades),
+        _gap_cell(_counts(grades.get("luts") or {}, key=os.path.basename),
+                  grades.get("undecoded_lut_nodes")),
+        _gap_cell(_counts(grades.get("ofx") or {}, key=_short_ofx),
+                  grades.get("undecoded_ofx_nodes")),
+    ]
+
+
+def _media_cells(media):
+    """The Media roots and Codecs cells: UNDECODED when the media section
+    failed, '-' when it read and found no clips."""
+    if media is None:
+        return [UNDECODED] * 2
+    return [_counts(media.get("roots") or {}, limit=3), _counts(media.get("codecs") or {}, limit=3)]
+
+
+def read_status(projects):
+    """(read in full, read in part, not read), each a list of entries."""
+    full = [p for p in projects if p.get("read") and not p.get("failed_sections")]
+    partial = [p for p in projects if p.get("read") and p.get("failed_sections")]
+    unread = [p for p in projects if not p.get("read")]
+    return full, partial, unread
+
+
+def _partial_note(p):
+    return f"{p['name']} ({', '.join(p['failed_sections'])})"
+
+
 def render_markdown(report):
     projects = report["projects"]
     patterns = report["patterns"]
-    read = [p for p in projects if p.get("read")]
+    full, partial, unread = read_status(projects)
+    status = [
+        f"Generated {report['generated']} by resolve_survey.py. {len(projects)} project "
+        f"databases in `{report['projects_dir']}`: {len(full)} read in full, {len(partial)} "
+        f"read in part, {len(unread)} not read.",
+    ]
+    if partial:
+        status.append("Read in part (the named sections failed and print as "
+                      f"{UNDECODED}; reasons under Decode problems): "
+                      + ", ".join(_cell(_partial_note(p)) for p in partial) + ".")
+    if unread:
+        status.append("Not read (every cell prints as "
+                      f"{UNDECODED}; reasons under Decode problems): "
+                      + ", ".join(_cell(p["name"]) for p in unread) + ".")
     lines = [
         "# Resolve project survey",
         "",
-        f"Generated {report['generated']} by resolve_survey.py. "
-        f"{len(read)} of {len(projects)} project databases read from `{report['projects_dir']}`.",
+        "\n\n".join(status),
         "",
         "Every Project.db was copied with SQLite's online backup API over a read-only "
         "(`mode=ro`) connection, and the copy was read and then deleted. No Resolve API "
@@ -1093,10 +1175,14 @@ def render_markdown(report):
         "- **Nodes**: nodes per active grade (API `GetNumNodes` equivalent), min/median/max. "
         "\"incl.\" flags node types other than correctors and mixers, which are counted but "
         "whose API counting is unverified.",
-        "- **LUTs** and **OFX**: node occurrences across active grades.",
+        "- **LUTs** and **OFX**: node occurrences across active grades. Nodes, LUTs and OFX "
+        "count the grades that decoded as node graphs; Graded names the legacy and "
+        f"`{UNDECODED}` grades they leave out.",
         "- **Media**: BtVideoInfo rows per storage root; **Codecs**: fourcc, or the file "
         "extension when the clip has no fourcc (stills).",
-        f"- `{UNDECODED}`: the value could not be decoded from the database.",
+        f"- `{UNDECODED}`: the value could not be decoded from the database. A cell that is "
+        f"`{UNDECODED}` alone means the whole section failed, or nothing in it decoded; `-` "
+        "means the section read and found none.",
         "",
         "## Per project",
         "",
@@ -1110,19 +1196,6 @@ def render_markdown(report):
                          + " | ".join([UNDECODED] * 9) + " |")
             continue
         timelines = p.get("timelines")
-        grades = p.get("grades") or {}
-        media = p.get("media") or {}
-        g = grades.get("graded") or {}
-        graded = f"{g.get('clip', 0)}/{g.get('pool', 0)}/{g.get('timeline', 0)}" if grades else UNDECODED
-        extras = []
-        if grades.get("legacy_grades"):
-            extras.append(f"{grades['legacy_grades']} legacy")
-        if grades.get("undecoded_grades"):
-            extras.append(f"{grades['undecoded_grades']} {UNDECODED}")
-        if g.get("other"):
-            extras.append(f"{g['other']} other owner")
-        if extras:
-            graded += " (" + ", ".join(extras) + ")"
         row = [
             p["name"],
             p.get("db_saved", "-"),
@@ -1130,14 +1203,9 @@ def render_markdown(report):
             _timeline_summary(timelines) if timelines is not None else UNDECODED,
             _project_cell(p),
             _color_cell(p.get("settings")),
-            graded,
-            _nodes_cell(grades),
-            _gap_cell(_counts(grades.get("luts") or {}, key=os.path.basename),
-                      grades.get("undecoded_lut_nodes")),
-            _gap_cell(_counts(grades.get("ofx") or {}, key=_short_ofx),
-                      grades.get("undecoded_ofx_nodes")),
-            _counts(media.get("roots") or {}, limit=3),
-            _counts(media.get("codecs") or {}, limit=3),
+            _graded_cell(p.get("grades")),
+            *_grade_cells(p.get("grades")),
+            *_media_cells(p.get("media")),
         ]
         lines.append("| " + " | ".join(_cell(c) for c in row) + " |")
 
@@ -1352,16 +1420,18 @@ def main(argv=None):
     if args.json_out:
         write_report(args.json_out, json.dumps(_json_ready(report), indent=2, sort_keys=False) + "\n")
 
-    read = sum(1 for p in report["projects"] if p.get("read"))
+    full, partial, unread = read_status(report["projects"])
     tree = report["patterns"]["house_tree"]
-    print(f"Surveyed {read}/{len(report['projects'])} projects -> {args.out}"
+    print(f"Surveyed {len(report['projects'])} projects: {len(full)} read in full, "
+          f"{len(partial)} in part, {len(unread)} not read -> {args.out}"
           + (f" (+ {args.json_out})" if args.json_out else ""))
     print(f"  House node tree: {tree['project_count']} projects, {tree['grade_count']} grades")
-    failed = [p["name"] for p in report["projects"] if not p.get("read")]
-    if failed:
-        print("  FAILED to read: " + ", ".join(failed), file=sys.stderr)
-        return 1
-    return 0
+    if partial:
+        print("  Read in PART (failed sections): " + ", ".join(_partial_note(p) for p in partial),
+              file=sys.stderr)
+    if unread:
+        print("  FAILED to read: " + ", ".join(p["name"] for p in unread), file=sys.stderr)
+    return 1 if partial or unread else 0
 
 
 if __name__ == "__main__":

@@ -179,6 +179,24 @@ def geometry_blob(w, h):
     return qmap([("UniqueId", 10, "0000"), ("Resolution", 12, struct.pack(">qq", w, h))])
 
 
+def table_row(md, name):
+    """The cells of the per-project table row for `name`."""
+    for line in md.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split(" | ")]
+        if line.startswith("| ") and cells[0] == name:
+            return cells
+    raise AssertionError(f"no table row for {name!r}")
+
+
+def report_for(*projects):
+    """A report dict around hand-built project entries, as run_survey and
+    main assemble it."""
+    projects = list(projects)
+    return {"projects": projects, "patterns": rs.cross_project_patterns(projects),
+            "generated": "2026-01-01 00:00:00", "projects_dir": "/projects", "notes": [],
+            "skipped": []}
+
+
 SCHEMA = [
     'create table SM_Config (FieldsBlob blob)',
     'create table Sm2Timeline (Name text, Sequence text)',
@@ -572,7 +590,8 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(g["ofx"], {CST: 2})
         self.assertNotIn("OLD", " ".join(g["label_sequences"]))
         self.assertEqual(p["media"]["roots"], {"/mnt/CARD_A": 1, "~/Desktop": 1, rs.UNDECODED: 1})
-        self.assertEqual(p["media"]["codecs"], {"hvc1": 1, "ext RW2": 1})
+        self.assertEqual(p["media"]["codecs"], {"hvc1": 1, "ext RW2": 1, rs.UNDECODED: 1})
+        self.assertEqual(p["failed_sections"], [])
         self.assertTrue(any("UNDECODED" in e for e in p["errors"]))
 
     def survey_mutated(self, name, *statements):
@@ -692,6 +711,34 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(luts, {HOUSE_LUT: 2, LOOK_LUT: 2})
         self.assertNotIn("grades", data["projects"][0]["grades"])
 
+    def test_main_counts_failed_sections(self):
+        # A zero-byte Project.db snapshots fine and holds no table; a DB
+        # without BtVideoInfo (older schema) loses only its media section.
+        self.make_project("Full", corrupt_grade=False)
+        empty = self.tmp / "Projects" / "Empty File"
+        empty.mkdir()
+        (empty / "Project.db").write_bytes(b"")
+        older = self.make_project("No Media", corrupt_grade=False)
+        con = sqlite3.connect(older / "Project.db")
+        con.execute("drop table BtVideoInfo")
+        con.commit()
+        con.close()
+        out, err = self.tmp / "out" / "survey.md", io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            rc = rs.main(["--out", str(out), "--no-metadata-cache",
+                          "--projects-dir", str(self.tmp / "Projects")])
+        self.assertEqual(rc, 1)
+        self.assertIn("FAILED to read: Empty File", err.getvalue())
+        self.assertIn("Read in PART (failed sections): No Media (media)", err.getvalue())
+        md = out.read_text()
+        self.assertIn("3 project databases in", md)
+        self.assertIn("1 read in full, 1 read in part, 1 not read.", md)
+        self.assertEqual(table_row(md, "Empty File")[2:], [rs.UNDECODED] * 10)
+        row = table_row(md, "No Media")
+        self.assertEqual(row[10:], [rs.UNDECODED, rs.UNDECODED])
+        self.assertEqual(row[2], "2")
+        self.assertIn("no such table: BtVideoInfo", md)
+
     def test_main_rejects_unknown_project(self):
         self.make_project("Only")
         with redirect_stderr(io.StringIO()):
@@ -722,6 +769,61 @@ class TestSnapshotAndProject(unittest.TestCase):
         finally:
             rs.zstd = saved
         self.assertEqual(rc, 2)
+
+
+class TestRender(unittest.TestCase):
+    """render_markdown on hand-built entries: a failed section must print
+    UNDECODED, and '-' must stay reserved for a section that found none."""
+
+    SETTINGS = {"resolution": "1920x1080", "fps": 24.0, "color_science": "davinciYRGB",
+                "input_color_space": "Rec.709 Gamma 2.4", "color_management_fields": []}
+    NO_GRADES = {"graded": {"clip": 0, "pool": 0, "timeline": 0, "other": 0},
+                 "legacy_grades": 0, "undecoded_grades": 0, "node_count": None,
+                 "node_types": {}, "luts": {}, "ofx": {}, "label_sequences": {}, "grades": []}
+    NO_MEDIA = {"count": 0, "roots": {}, "codecs": {}, "codec_resolutions": {}}
+
+    def entry(self, name, **sections):
+        p = {"name": name, "read": True, "db_saved": "2026-01-01 00:00", "errors": [],
+             "settings": self.SETTINGS, "timelines": [], "grades": self.NO_GRADES,
+             "media": self.NO_MEDIA}
+        p.update(sections)
+        p["failed_sections"] = [k for k in rs.SURVEY_SECTIONS if p[k] is None]
+        return p
+
+    def test_none_sections_print_undecoded(self):
+        md = rs.render_markdown(report_for(
+            self.entry("Nothing", settings=None, timelines=None, grades=None, media=None),
+            self.entry("No Media", media=None),
+            self.entry("No Grades Section", grades=None),
+            self.entry("Empty")))
+        self.assertEqual(table_row(md, "Nothing")[2:], [rs.UNDECODED] * 10)
+        self.assertEqual(table_row(md, "No Media")[10:], [rs.UNDECODED] * 2)
+        self.assertEqual(table_row(md, "No Grades Section")[6:10], [rs.UNDECODED] * 4)
+        empty = table_row(md, "Empty")
+        self.assertEqual(empty[2:4], ["0", "-"])
+        self.assertEqual(empty[6:], ["0/0/0", "-", "-", "-", "-", "-"])
+        self.assertIn("1 read in full, 3 read in part, 0 not read.", md)
+        self.assertIn("No Media (media)", md)
+
+    def test_grades_that_never_decoded_print_undecoded(self):
+        failed = dict(self.NO_GRADES, graded={"clip": 5, "pool": 0, "timeline": 0, "other": 0},
+                      undecoded_grades=5)
+        legacy = dict(self.NO_GRADES, graded={"clip": 0, "pool": 2, "timeline": 0, "other": 0},
+                      legacy_grades=2)
+        md = rs.render_markdown(report_for(self.entry("Failed", grades=failed),
+                                           self.entry("Legacy", grades=legacy)))
+        self.assertEqual(table_row(md, "Failed")[6:10],
+                         ["5/0/0 (5 UNDECODED)", rs.UNDECODED, rs.UNDECODED, rs.UNDECODED])
+        self.assertEqual(table_row(md, "Legacy")[6:10],
+                         ["0/2/0 (2 legacy)", rs.UNDECODED, rs.UNDECODED, rs.UNDECODED])
+
+    def test_undecoded_lut_and_ofx_nodes_are_named(self):
+        grades = dict(self.NO_GRADES, graded={"clip": 1, "pool": 0, "timeline": 0, "other": 0},
+                      node_count={"min": 2, "median": 2, "max": 2, "grades": 1},
+                      node_types={"corrector": 2}, luts={"Pack/LOOK.cube": 1},
+                      undecoded_lut_nodes=1, undecoded_ofx_nodes=2)
+        row = table_row(rs.render_markdown(report_for(self.entry("Gaps", grades=grades))), "Gaps")
+        self.assertEqual(row[8:10], ["LOOK.cube x1; 1 node UNDECODED", "2 nodes UNDECODED"])
 
 
 class TestOutputGuard(unittest.TestCase):
