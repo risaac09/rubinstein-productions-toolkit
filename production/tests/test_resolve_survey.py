@@ -30,6 +30,8 @@ import struct
 import sys
 import tempfile
 import time
+import urllib.parse
+from collections import defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -551,6 +553,45 @@ class TestSnapshotAndProject(unittest.TestCase):
         con = sqlite3.connect(dest)
         self.assertEqual(con.execute("select count(*) from Sm2Timeline").fetchone()[0], 2)
         con.close()
+
+    def test_live_files_are_opened_only_through_a_mode_ro_uri(self):
+        # The chmod test above cannot tell a mode=ro URI from a plain
+        # read-write connect (SQLite falls back to read-only on a 0400
+        # file). Record every sqlite3.connect instead: each one that
+        # reaches a live file must be a mode=ro URI without immutable.
+        folder = self.make_project("A & B #1? 100%")
+        live = folder / "Project.db"
+        cache = self.tmp / "Metadata.db"
+        con = sqlite3.connect(cache)
+        con.execute("create table project_metadata (key text, width integer, height integer, fps real)")
+        con.commit()
+        con.close()
+        calls, real_connect = [], sqlite3.connect
+
+        def spy(database, *args, **kwargs):
+            calls.append((database, kwargs))
+            return real_connect(database, *args, **kwargs)
+
+        work = self.tmp / "work"
+        work.mkdir()
+        with mock.patch.object(rs.sqlite3, "connect", spy):
+            self.assertTrue(rs.survey_project(str(folder), str(work))["read"])
+            rs.read_metadata_cache(str(cache), str(work))
+        opened = defaultdict(list)
+        for database, kwargs in calls:
+            path, query = str(database), ""
+            if kwargs.get("uri") and path.startswith("file:"):
+                path, _, query = path[len("file:"):].partition("?")
+                path = urllib.parse.unquote(path)
+            opened[os.path.realpath(path)].append((database, kwargs, urllib.parse.parse_qs(query)))
+        for live_file in (live, cache):
+            uses = opened[os.path.realpath(live_file)]
+            self.assertEqual(len(uses), 1, f"{live_file.name} opened {len(uses)} times")
+            database, kwargs, params = uses[0]
+            self.assertIs(kwargs.get("uri"), True, database)
+            self.assertEqual(params.get("mode"), ["ro"], database)
+            self.assertNotIn("immutable", params, database)
+            self.assertNotIn("immutable", database)
 
     def test_snapshot_gives_up_on_a_locked_database(self):
         folder = self.make_project("Locked")
