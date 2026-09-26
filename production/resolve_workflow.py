@@ -28,6 +28,8 @@ Commands:
     info                   Show current project/timeline info
     open-page              Switch Resolve to a specific page
     export-project         Export current project as .drp file
+    survey                 Read-only survey of every project on disk (offline;
+                           runs resolve_survey.py, no Resolve connection)
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -74,6 +76,7 @@ import sys
 import os
 import json
 import argparse
+import subprocess
 import time
 from pathlib import Path
 
@@ -89,6 +92,12 @@ except ImportError:
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
 
 CONFIG_PATH_DEFAULT = Path(__file__).resolve().parent / "resolve-config.json"
+
+# The survey decodes zstd blobs, which needs compression.zstd (Python 3.14+).
+# This script runs on the system python3 (3.9), so survey runs the sibling
+# resolve_survey.py as a subprocess under this interpreter instead.
+SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
+SURVEY_SCRIPT = Path(__file__).resolve().parent / "resolve_survey.py"
 
 DEFAULT_CONFIG = {
     "bins": {
@@ -1083,6 +1092,38 @@ def cmd_export_project(args):
 
 
 # ---------------------------------------------------------------------------
+# Offline survey (no Resolve connection)
+# ---------------------------------------------------------------------------
+
+def build_survey_command(args, python=SURVEY_PYTHON, script=SURVEY_SCRIPT):
+    """The argv that runs resolve_survey.py for a parsed 'survey' command."""
+    cmd = [python, str(script), "--out", args.out]
+    if args.json:
+        cmd += ["--json", args.json]
+    if args.projects:
+        cmd += ["--projects", *args.projects]
+    if args.projects_dir:
+        cmd += ["--projects-dir", args.projects_dir]
+    if args.no_metadata_cache:
+        cmd.append("--no-metadata-cache")
+    return cmd
+
+
+def cmd_survey(args):
+    """Run the read-only project survey. It reads Project.db snapshots from
+    disk and never connects to Resolve, so it is safe while Resolve is open."""
+    if not os.path.exists(SURVEY_PYTHON):
+        print(f"ERROR: {SURVEY_PYTHON} not found. The survey needs Python 3.14+ "
+              "(compression.zstd); install it with Homebrew (python@3.14).")
+        return 1
+    if not SURVEY_SCRIPT.exists():
+        print(f"ERROR: {SURVEY_SCRIPT} not found; keep resolve_survey.py next to this script.")
+        return 1
+    sys.stdout.flush()
+    return subprocess.run(build_survey_command(args)).returncode
+
+
+# ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
 
@@ -1140,6 +1181,9 @@ Examples:
 
   # Export project backup
   python3 resolve_workflow.py export-project --output /backups/
+
+  # Survey every project's grades, timelines and media (offline, read-only)
+  python3 resolve_workflow.py survey --out /path/outside/repo/survey.md --json /path/outside/repo/survey.json
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1226,6 +1270,18 @@ Examples:
     sp = subparsers.add_parser("export-project", help="Export current project as .drp")
     sp.add_argument("--output", "-o", help="Output directory (default: current dir)")
     sp.set_defaults(func=cmd_export_project)
+
+    sp = subparsers.add_parser(
+        "survey", help="Read-only survey of every project on disk (offline, no Resolve API)")
+    sp.add_argument("--out", required=True,
+                    help="Markdown report path (refused inside this repository)")
+    sp.add_argument("--json", help="Also write the survey as JSON here")
+    sp.add_argument("--projects", nargs="+", metavar="NAME",
+                    help="Only these projects (default: every project folder)")
+    sp.add_argument("--projects-dir", help="Resolve's Projects folder (default: the disk database)")
+    sp.add_argument("--no-metadata-cache", action="store_true",
+                    help="Skip the cross-check against Resolve's metadata cache")
+    sp.set_defaults(func=cmd_survey)
 
     args = parser.parse_args()
     if not args.command:

@@ -10,7 +10,10 @@ stdlib unittest only — no pytest/dependency to install for a public kit.
 Run: python3 production/tests/test_resolve_workflow_pure.py
 """
 
+import argparse
 import io
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -26,7 +29,10 @@ from resolve_workflow import (
     parse_framerate,
     safe_fps,
     load_config,
+    build_survey_command,
     DEFAULT_CONFIG,
+    SURVEY_PYTHON,
+    SURVEY_SCRIPT,
 )
 
 
@@ -143,6 +149,50 @@ class TestLoadConfig(unittest.TestCase):
                 config = load_config(str(p))
             self.assertEqual(config, DEFAULT_CONFIG)
             self.assertIn("WARNING", buf.getvalue())
+
+
+class TestSurveyCommand(unittest.TestCase):
+    """survey hands off to resolve_survey.py under Python 3.14; only the
+    hand-off is tested here (the survey itself: test_resolve_survey.py)."""
+
+    def ns(self, **kw):
+        base = dict(out="/elsewhere/survey.md", json=None, projects=None,
+                    projects_dir=None, no_metadata_cache=False)
+        base.update(kw)
+        return argparse.Namespace(**base)
+
+    def test_minimal_command(self):
+        self.assertEqual(build_survey_command(self.ns(), python="py", script="s.py"),
+                         ["py", "s.py", "--out", "/elsewhere/survey.md"])
+
+    def test_all_options_pass_through(self):
+        cmd = build_survey_command(
+            self.ns(json="/elsewhere/s.json", projects=["Two Words", "B"],
+                    projects_dir="/lib/Projects", no_metadata_cache=True),
+            python="py", script="s.py")
+        self.assertEqual(cmd, ["py", "s.py", "--out", "/elsewhere/survey.md",
+                               "--json", "/elsewhere/s.json", "--projects", "Two Words", "B",
+                               "--projects-dir", "/lib/Projects", "--no-metadata-cache"])
+
+    def test_defaults_point_at_sibling_script(self):
+        self.assertEqual(SURVEY_SCRIPT.name, "resolve_survey.py")
+        self.assertEqual(SURVEY_SCRIPT.parent, Path(__file__).resolve().parent.parent)
+
+    @unittest.skipUnless(os.path.exists(SURVEY_PYTHON), "survey interpreter not installed")
+    def test_survey_refuses_output_in_repo_end_to_end(self):
+        script = Path(__file__).resolve().parent.parent / "resolve_workflow.py"
+        if not any((d / ".git").exists() for d in script.parents):
+            self.skipTest("not running from a git checkout; the in-repo refusal cannot apply")
+        target = script.parent / "tests" / "should-not-exist.md"
+        with tempfile.TemporaryDirectory() as empty:
+            # An empty projects folder: even if the refusal failed, no real
+            # Resolve data could be read or written into the repo.
+            proc = subprocess.run([sys.executable, str(script), "survey", "--out", str(target),
+                                   "--projects-dir", empty, "--no-metadata-cache"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 2, proc.stderr.decode())
+        self.assertIn(b"inside this repository", proc.stderr)
+        self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

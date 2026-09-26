@@ -138,6 +138,20 @@ script:
   dimensions; it does not reframe subjects. Set per-clip Pan/Zoom manually
   before rendering vertical, or the crop will be arbitrary.
 
+### Offline survey of existing projects
+
+`resolve_workflow.py survey --out <path outside this repo>` runs
+`resolve_survey.py`, which reads every project in the local disk database
+straight from its `Project.db` and never connects to Resolve, so it is safe
+while Resolve is open. It snapshots each database with SQLite's online
+backup API over a read-only connection and reports timelines, grades (node
+labels, LUTs, OFX plugins), color science fields and media roots, plus the
+patterns that recur across projects. Values it cannot decode print as
+`UNDECODED`. It needs Python 3.14+ for `compression.zstd`
+(`/opt/homebrew/bin/python3.14`); the blob formats and field map are
+documented in its module docstring. The report names projects and media
+paths, so `--out` is refused inside this repository.
+
 ---
 
 ## Open Questions
