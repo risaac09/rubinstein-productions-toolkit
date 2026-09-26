@@ -128,10 +128,17 @@ def check_tools(ffprobe=None, exiftool=None):
         raise ToolMissing("; ".join(missing))
 
 
+def _ffprobe_arg(path):
+    # ffprobe reads a leading '-' as an option and a bare 'word:' prefix
+    # (clip:1.mov) as a protocol name. The file: protocol takes the rest
+    # as a plain path in both cases.
+    return "file:" + path
+
+
 def run_ffprobe(path, ffprobe=None, timeout=120):
     """Return (parsed JSON or None, stderr text)."""
     cmd = [ffprobe or FFPROBE, "-v", "error", "-show_format", "-show_streams",
-           "-of", "json", path]
+           "-of", "json", _ffprobe_arg(path)]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               encoding="utf-8", errors="replace", timeout=timeout)

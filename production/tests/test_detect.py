@@ -442,6 +442,30 @@ class TestTools(unittest.TestCase):
         self.assertEqual(detect._exiftool_arg("-odd.mov"), "./-odd.mov")
         self.assertEqual(detect._exiftool_arg("/a/b.mov"), "/a/b.mov")
 
+    def test_run_ffprobe_guards_the_path_argument(self):
+        with tempfile.TemporaryDirectory() as d:
+            argv_tool = fake_tool(d, "ffprobe", ARGV_FFPROBE)
+            for name in ("-odd.mov", "clip:1.mov", "/a/b.mov"):
+                data, _ = detect.run_ffprobe(name, ffprobe=argv_tool)
+                argv = json.loads(data["format"]["tags"]["argv"])
+                with self.subTest(name=name):
+                    self.assertEqual(argv[-1], "file:" + name)
+
+    @unittest.skipUnless(os.access(detect.FFPROBE, os.X_OK), "ffprobe not installed")
+    def test_real_ffprobe_reads_dash_and_colon_names(self):
+        # Unguarded, ffprobe reads '-odd.mov' as an option and 'clip:' as a protocol.
+        with tempfile.TemporaryDirectory() as d:
+            here = os.getcwd()
+            os.chdir(d)
+            self.addCleanup(os.chdir, here)
+            for name in ("-odd.mov", "clip:1.mov"):
+                with open(name, "wb") as f:
+                    f.write(mov([]))
+                data, err = detect.run_ffprobe(name)
+                with self.subTest(name=name):
+                    self.assertIsNotNone(data, err)
+                    self.assertEqual(data["format"]["tags"]["major_brand"], "qt  ")
+
 
 def fake_tool(directory, name, body):
     path = os.path.join(directory, name)
@@ -460,6 +484,10 @@ if path.endswith("cut.mov"):
 tags = {"encoder": "OBS Studio (32.1.2)"}
 print(json.dumps({"format": {"tags": tags}, "streams": [{"codec_type": "video", "codec_name": "h264",
       "color_range": "tv", "r_frame_rate": "60/1", "avg_frame_rate": "60/1"}]}))
+'''
+
+ARGV_FFPROBE = r'''
+print(json.dumps({"format": {"tags": {"argv": json.dumps(sys.argv[1:])}}, "streams": []}))
 '''
 
 FAKE_EXIFTOOL = r'''
