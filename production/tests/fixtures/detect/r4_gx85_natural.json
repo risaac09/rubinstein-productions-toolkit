@@ -1,0 +1,99 @@
+{
+ "description": "GX85 H.264 MP4: PhotoStyle Natural, no XML",
+ "path": "card/DCIM/105_PANA/P1050001.MP4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "mp42",
+    "compatible_brands": "mp42avc1"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "24000/1001",
+    "avg_frame_rate": "24000/1001",
+    "width": 3840,
+    "height": 2160
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v2 [ISO 14496-14]",
+  "QuickTime:CompatibleBrands": [
+   "mp42",
+   "avc1"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track2:HandlerType": "Audio Track",
+  "Panasonic:Model": "DMC-GX85",
+  "Panasonic:FirmwareVersion": "0.1.3.0",
+  "Panasonic:PhotoStyle": "Natural",
+  "IFD0:Make": "Panasonic",
+  "IFD0:Model": "DMC-GX85",
+  "IFD0:Software": "Ver.1.3"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp42",
+   "compatible": [
+    "mp42",
+    "avc1"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": false
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "4",
+  "profile": "Natural",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "Panasonic DMC-GX85",
+  "data_level": "video",
+  "vfr": "no",
+  "confidence": "medium"
+ }
+}

@@ -1,0 +1,136 @@
+{
+ "description": "variant: BRAW proxy whose customgamma is not the verified filmlog value",
+ "path": "exports/A001_01011200_C002.mp4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "isom",
+    "compatible_brands": "iso4avc1isom",
+    "com.apple.proapps.manufacturer": "Blackmagic Design",
+    "com.apple.proapps.modelname": "Blackmagic PYXIS 6K",
+    "com.blackmagic-design.camera.cameraType": "Blackmagic PYXIS 6K",
+    "com.apple.proapps.customgamma": "com.blackmagic-design.camera.extendedvideo",
+    "com.blackmagic-design.camera.colorScience": "Blackmagic PYXIS 6K, Color Science Gen 5",
+    "com.blackmagic-design.camera.codec": "braw"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "Main",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "24/1",
+    "avg_frame_rate": "24/1",
+    "width": 1920,
+    "height": 1080,
+    "tags": {
+     "handler_name": "\u0019Apple Video Media Handler",
+     "encoder": "H264/AVC"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Frame Cropping"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "24/1",
+    "tags": {
+     "handler_name": "\u0017Time Code Media Handler"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "lpcm",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "handler_name": "\u0019Apple Sound Media Handler"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 Base Media v1 [IS0 14496-12:2003]",
+  "QuickTime:CompatibleBrands": [
+   "iso4",
+   "avc1",
+   "isom"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Apple Video Media Handler",
+  "Track1:VendorID": "Unknown (BMAG)",
+  "Track1:CompressorName": "H264/AVC",
+  "Track2:HandlerType": "Time Code",
+  "Track2:HandlerDescription": "Time Code Media Handler",
+  "Track3:HandlerType": "Audio Track",
+  "Track3:HandlerDescription": "Apple Sound Media Handler",
+  "Keys:AppleProappsModelname": "Blackmagic PYXIS 6K",
+  "Keys:Blackmagic-designCameraCameraType": "Blackmagic PYXIS 6K",
+  "Keys:AppleProappsCustomgamma": "com.blackmagic-design.camera.extendedvideo",
+  "Keys:Blackmagic-designCameraColorScience": "Blackmagic PYXIS 6K, Color Science Gen 5",
+  "Keys:Blackmagic-designCameraCodec": "braw"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "isom",
+   "compatible": [
+    "iso4",
+    "avc1",
+    "isom"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Apple Video Media Handler",
+    "fourcc": "avc1",
+    "vendor": "BMAG",
+    "compressor": "H264/AVC",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": false
+    }
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "Time Code Media Handler",
+    "fourcc": "tmcd"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Apple Sound Media Handler",
+    "fourcc": "lpcm"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "2",
+  "profile": "review",
+  "input_color_space": "",
+  "confidence": "low"
+ }
+}

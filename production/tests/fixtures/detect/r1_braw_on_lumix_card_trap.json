@@ -1,0 +1,134 @@
+{
+ "description": "trap: a Lumix-formatted card labelled LUMIX holding BRAW; the volume label is not the camera",
+ "path": "LUMIX/PRIVATE/PANA_GRP/A001_01011200_C002.braw",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "camera_type": "Blackmagic PYXIS 6K",
+    "firmware_version": "10.2",
+    "braw_compression_ratio": "8:1",
+    "viewing_gamma": "Blackmagic Design Film",
+    "viewing_gamut": "Blackmagic Design"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_tag_string": "brst",
+    "r_frame_rate": "24/1",
+    "avg_frame_rate": "24/1",
+    "width": 6064,
+    "height": 4048,
+    "tags": {
+     "handler_name": "\u0019Apple Video Media Handler",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "24/1",
+    "tags": {
+     "handler_name": "Time Code Media Handler"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "lpcm",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "handler_name": "\u0019Apple Sound Media Handler",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u001cTimed Metadata Media Handler"
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u001cTimed Metadata Media Handler"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Apple Video Media Handler",
+  "Track2:HandlerType": "Time Code",
+  "Track2:HandlerDescription": "Time Code Media Handler",
+  "Track3:HandlerType": "Audio Track",
+  "Track3:HandlerDescription": "Apple Sound Media Handler",
+  "Track4:HandlerType": "NRT Metadata",
+  "Track4:HandlerDescription": "Timed Metadata Media Handler",
+  "Track4:MetaFormat": "mebx",
+  "Track5:HandlerType": "NRT Metadata",
+  "Track5:HandlerDescription": "Apple Alias Data Handler",
+  "Track5:MetaFormat": "mebx",
+  "Keys:CameraType": "Blackmagic PYXIS 6K",
+  "Keys:BrawCompressionRatio": "8:1",
+  "Keys:ViewingGamma": "Blackmagic Design Film",
+  "Keys:ViewingGamut": "Blackmagic Design"
+ },
+ "atoms": {
+  "ftyp": null,
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Apple Video Media Handler",
+    "fourcc": "brst",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": ""
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "Time Code Media Handler",
+    "fourcc": "tmcd"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Apple Sound Media Handler",
+    "fourcc": "lpcm"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Timed Metadata Media Handler",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Timed Metadata Media Handler",
+    "fourcc": "mebx"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "1",
+  "profile": "BRAW",
+  "input_color_space": "auto (camera RAW)",
+  "camera": "Blackmagic PYXIS 6K"
+ }
+}

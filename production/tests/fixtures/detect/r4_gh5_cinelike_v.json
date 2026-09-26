@@ -1,0 +1,116 @@
+{
+ "description": "variant: GH5 XML CaptureGamma CINELIKE_V / BT.709 (2 such clips in the survey)",
+ "path": "card/DCIM/116_PANA/P1160002.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  pana",
+    "com.panasonic.Semi-Pro.metadata.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<ClipMain xmlns=\"urn:schemas-Professional-Plug-in:Semi-Pro:ClipMetadata:v1.0\">\n  <ClipContent>\n    <EssenceList>\n      <Video>\n        <Codec BitRate=\"400\">H264_422_Intra</Codec>\n        <BitDepth>10</BitDepth>\n        <FrameRate>29.97p</FrameRate>\n      </Video>\n    </EssenceList>\n    <ClipMetadata>\n      <Device>\n        <Manufacturer>Panasonic</Manufacturer>\n        <ModelName>DC-GH5</ModelName>\n      </Device>\n    </ClipMetadata>\n  </ClipContent>\n  <UserArea>\n    <AcquisitionMetadata xmlns=\"urn:schemas-Professional-Plug-in:P2:CameraMetadata:v1.2\">\n      <CameraUnitMetadata>\n        <Gamma>\n          <CaptureGamma>CINELIKE_V</CaptureGamma>\n        </Gamma>\n        <Gamut>\n          <CaptureGamut>BT.709</CaptureGamut>\n        </Gamut>\n      </CameraUnitMetadata>\n    </AcquisitionMetadata>\n  </UserArea>\n</ClipMain>\n"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High 4:2:2 Intra",
+    "pix_fmt": "yuv422p10le",
+    "bits_per_raw_sample": "10",
+    "color_range": "pc",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 3328,
+    "height": 2496,
+    "tags": {
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "pcm_s16be",
+    "codec_tag_string": "twos",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "vendor_id": "pana"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "90000/3003"
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  ",
+   "pana"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track2:HandlerType": "Audio Track",
+  "Track3:HandlerType": "Time Code",
+  "Keys:PanasonicSemi-ProMetadataXml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<ClipMain xmlns=\"urn:schemas-Professional-Plug-in:Semi-Pro:ClipMetadata:v1.0\">\n  <ClipContent>\n    <EssenceList>\n      <Video>\n        <Codec BitRate=\"400\">H264_422_Intra</Codec>\n        <BitDepth>10</BitDepth>\n        <FrameRate>29.97p</FrameRate>\n      </Video>\n    </EssenceList>\n    <ClipMetadata>\n      <Device>\n        <Manufacturer>Panasonic</Manufacturer>\n        <ModelName>DC-GH5</ModelName>\n      </Device>\n    </ClipMetadata>\n  </ClipContent>\n  <UserArea>\n    <AcquisitionMetadata xmlns=\"urn:schemas-Professional-Plug-in:P2:CameraMetadata:v1.2\">\n      <CameraUnitMetadata>\n        <Gamma>\n          <CaptureGamma>CINELIKE_V</CaptureGamma>\n        </Gamma>\n        <Gamut>\n          <CaptureGamut>BT.709</CaptureGamut>\n        </Gamut>\n      </CameraUnitMetadata>\n    </AcquisitionMetadata>\n  </UserArea>\n</ClipMain>\n",
+  "Panasonic:Model": "DC-GH5",
+  "Panasonic:FirmwareVersion": "0.2.8.0",
+  "Panasonic:PhotoStyle": "Unknown (7)",
+  "IFD0:Make": "Panasonic",
+  "IFD0:Model": "DC-GH5",
+  "IFD0:Software": "Ver.2.8"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  ",
+    "pana"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "twos"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "4",
+  "profile": "Cinelike V",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "Panasonic DC-GH5",
+  "confidence": "high"
+ }
+}

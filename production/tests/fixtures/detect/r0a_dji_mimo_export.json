@@ -1,0 +1,98 @@
+{
+ "description": "DJI Mimo app export: derived by name",
+ "path": "exports/dji_export_20260101_120000_1700000000000_compos.mov",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  "
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main",
+    "pix_fmt": "yuv420p",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "24000/1001",
+    "avg_frame_rate": "280600/11701",
+    "width": 1080,
+    "height": 1920,
+    "tags": {
+     "handler_name": "Core Media Video",
+     "vendor_id": "[0][0][0][0]",
+     "encoder": "HEVC"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track1:CompressorName": "HEVC",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Data Handler"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "hvc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "HEVC",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "0a",
+  "profile": "derived",
+  "input_color_space": "",
+  "camera": "DJI Mimo export"
+ }
+}
