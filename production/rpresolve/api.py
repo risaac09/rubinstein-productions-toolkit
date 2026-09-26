@@ -37,8 +37,11 @@ SCRIPT_MODULE_DIR = (
 
 # Folders Resolve scans for LUTs on macOS. Graph.GetLUT may report a path
 # relative to one of these rather than the absolute path passed to SetLUT.
+# ~/DaVinci Resolve/LUT is where the user LUTs actually live on the M4 Max
+# (read from disk 2026-09-26); the ~/Library folder is kept for other setups.
 DEFAULT_LUT_ROOTS = (
     "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT",
+    os.path.expanduser("~/DaVinci Resolve/LUT"),
     os.path.expanduser(
         "~/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT"
     ),
