@@ -1,0 +1,105 @@
+{
+ "description": "iPhone screen recording tagged BT.709 (nclx 1/1/1): rule 12 covers sRGB only, so review",
+ "path": "phone/ScreenRecording_01-02-2026 12-00-00_1.mp4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "mp42",
+    "compatible_brands": "isommp41mp42"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main",
+    "pix_fmt": "yuvj420p",
+    "color_range": "pc",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30/1",
+    "avg_frame_rate": "48000/1483",
+    "width": 1320,
+    "height": 2868,
+    "tags": {
+     "handler_name": "Core Media Video"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Display Matrix"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v2 [ISO 14496-14]",
+  "QuickTime:CompatibleBrands": [
+   "isom",
+   "mp41",
+   "mp42"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Audio"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp42",
+   "compatible": [
+    "isom",
+    "mp41",
+    "mp42"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "hvc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": true
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "13",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "unknown",
+  "confidence": "low"
+ }
+}

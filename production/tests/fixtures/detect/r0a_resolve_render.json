@@ -1,0 +1,119 @@
+{
+ "description": "Resolve render named like a camera file: encoder Blackmagic Design DaVinci Resolve Studio",
+ "path": "renders/P1000001_01000000.mov",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "encoder": "Blackmagic Design DaVinci Resolve Studio"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main 10",
+    "pix_fmt": "yuv420p10le",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 5728,
+    "height": 3024,
+    "tags": {
+     "handler_name": "VideoHandler",
+     "vendor_id": "    ",
+     "encoder": "H.265 10-bit"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "lpcm",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "SoundHandler",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "30000/1001",
+    "tags": {
+     "handler_name": "TimeCodeHandler"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "VideoHandler",
+  "Track1:VendorID": "Unknown (    )",
+  "Track1:CompressorName": "H.265 10-bit",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "SoundHandler",
+  "Track3:HandlerType": "Alias Data",
+  "Track3:HandlerDescription": "Core Media Data Handler",
+  "UserData:SoftwareVersion": "Blackmagic Design DaVinci Resolve Studio"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "VideoHandler",
+    "fourcc": "hvc1",
+    "vendor": "    ",
+    "compressor": "H.265 10-bit",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "SoundHandler",
+    "fourcc": "lpcm"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "TimeCodeHandler",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "0a",
+  "profile": "derived",
+  "input_color_space": "",
+  "camera": "DaVinci Resolve render",
+  "confidence": "high"
+ }
+}

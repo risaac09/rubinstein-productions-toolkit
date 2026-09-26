@@ -1,0 +1,221 @@
+{
+ "description": "variant: a logs atom value other than the verified apple-log (e.g. a newer Apple Log)",
+ "path": "phone/IMG_0004.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "com.apple.quicktime.make": "Apple",
+    "com.apple.quicktime.model": "iPhone 16 Pro Max",
+    "com.apple.quicktime.software": "18.4.1"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "prores",
+    "codec_tag_string": "apch",
+    "profile": "HQ",
+    "pix_fmt": "yuv422p10le",
+    "bits_per_raw_sample": "10",
+    "color_range": "tv",
+    "color_space": "bt2020nc",
+    "color_primaries": "bt2020",
+    "r_frame_rate": "24/1",
+    "avg_frame_rate": "24/1",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "handler_name": "Core Media Video",
+     "vendor_id": "[0][0][0][0]",
+     "encoder": "Apple ProRes 422 HQ"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Display Matrix"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "pcm_s32le",
+    "codec_tag_string": "lpcm",
+    "bits_per_raw_sample": "32",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "audio",
+    "codec_name": "pcm_f32le",
+    "codec_tag_string": "lpcm",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 5,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 6,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 7,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track1:CompressorName": "Apple ProRes 422 HQ",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Audio",
+  "Track3:HandlerType": "Audio Track",
+  "Track3:HandlerDescription": "Core Media Audio",
+  "Track4:HandlerType": "NRT Metadata",
+  "Track4:HandlerDescription": "Core Media Metadata",
+  "Track4:MetaFormat": "mebx",
+  "Track5:HandlerType": "NRT Metadata",
+  "Track5:HandlerDescription": "Core Media Metadata",
+  "Track5:MetaFormat": "mebx",
+  "Track6:HandlerType": "NRT Metadata",
+  "Track6:HandlerDescription": "Core Media Metadata",
+  "Track6:MetaFormat": "mebx",
+  "Track7:HandlerType": "NRT Metadata",
+  "Track7:HandlerDescription": "Core Media Metadata",
+  "Track7:MetaFormat": "mebx",
+  "Track8:HandlerType": "NRT Metadata",
+  "Track8:HandlerDescription": "Core Media Data Handler",
+  "Track8:MetaFormat": "mebx",
+  "Keys:Make": "Apple",
+  "Keys:Model": "iPhone 16 Pro Max",
+  "Keys:Software": "18.4.1"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "apch",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "Apple ProRes 422 HQ",
+    "colr": {
+     "type": "nclc",
+     "primaries": 9,
+     "transfer": 2,
+     "matrix": 9
+    },
+    "logs": "com.apple.rec2020.apple-log-2"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "lpcm"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "lpcm"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "6",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "iPhone 16 Pro Max",
+  "confidence": "low"
+ }
+}

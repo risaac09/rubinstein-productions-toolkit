@@ -1,0 +1,131 @@
+{
+ "description": "Blackmagic Cam app on iPhone 16 Pro Max: ProRes HQ, nclc 1/1/1",
+ "path": "phone/A001_01011000_C001.mov",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "com.apple.proapps.manufacturer": "Apple Inc.",
+    "com.apple.quicktime.software": "Blackmagic Cam 2.3.000047",
+    "com.apple.quicktime.model": "Apple iPhone 16 Pro Max 24mm"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "prores",
+    "codec_tag_string": "apch",
+    "profile": "HQ",
+    "pix_fmt": "yuv422p10le",
+    "bits_per_raw_sample": "10",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "24/1",
+    "avg_frame_rate": "24/1",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "handler_name": "Core Media Video",
+     "vendor_id": "[0][0][0][0]",
+     "encoder": "Apple ProRes 422 HQ"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Display Matrix"
+     },
+     {
+      "side_data_type": "Ambient viewing environment"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "60/1",
+    "tags": {
+     "handler_name": "Core Media Time Code"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track1:CompressorName": "Apple ProRes 422 HQ",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Audio",
+  "Track3:HandlerType": "Time Code",
+  "Track3:HandlerDescription": "Core Media Data Handler",
+  "Keys:Software": "Blackmagic Cam 2.3.000047",
+  "Keys:Model": "Apple iPhone 16 Pro Max 24mm"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "apch",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "Apple ProRes 422 HQ",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "Core Media Time Code",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "5",
+  "profile": "Rec.709",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "iPhone 16 Pro Max (Blackmagic Cam)",
+  "data_level": "video",
+  "vfr": "no",
+  "confidence": "high"
+ }
+}
