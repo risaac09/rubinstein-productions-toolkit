@@ -1194,16 +1194,18 @@ def main(argv=None):
                         help="Node labels that mark the house node tree (default: %(default)s)")
     args = parser.parse_args(argv)
 
-    if zstd is None:
-        print(f"ERROR: this Python ({sys.version.split()[0]}) has no compression.zstd. "
-              "Run with Python 3.14+, e.g. /opt/homebrew/bin/python3.14.", file=sys.stderr)
-        return 2
+    # The output refusal comes first: it guards a public repo and depends on
+    # nothing else, so an interpreter without zstd still refuses it.
     for label, path in (("--out", args.out), ("--json", args.json_out)):
         if path and inside_repo(path):
             print(f"ERROR: {label} {path} is inside this repository's git working tree. The "
                   "survey names projects, media and LUT paths; write it somewhere outside "
                   "the repo.", file=sys.stderr)
             return 2
+    if zstd is None:
+        print(f"ERROR: this Python ({sys.version.split()[0]}) has no compression.zstd. "
+              "Run with Python 3.14+, e.g. /opt/homebrew/bin/python3.14.", file=sys.stderr)
+        return 2
     if not os.path.isdir(args.projects_dir):
         print(f"ERROR: projects folder not found: {args.projects_dir}", file=sys.stderr)
         return 2

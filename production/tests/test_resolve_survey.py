@@ -599,6 +599,26 @@ class TestOutputGuard(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertFalse(target.exists())
 
+    def test_refusal_does_not_depend_on_zstd(self):
+        # resolve_workflow.py's end-to-end test runs the survey under
+        # SURVEY_PYTHON; if that interpreter lacks zstd, the in-repo refusal
+        # must still be what stops the run.
+        here = Path(rs.__file__).resolve().parent
+        if rs.git_common_dir(here) is None:
+            self.skipTest("not running from a git checkout")
+        target = here / "tests" / "should-not-exist.md"
+        saved, err = rs.zstd, io.StringIO()
+        rs.zstd = None
+        try:
+            with tempfile.TemporaryDirectory() as empty, redirect_stderr(err):
+                rc = rs.main(["--out", str(target), "--projects-dir", empty, "--no-metadata-cache"])
+        finally:
+            rs.zstd = saved
+        self.assertEqual(rc, 2)
+        self.assertIn("inside this repository", err.getvalue())
+        self.assertNotIn("zstd", err.getvalue())
+        self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

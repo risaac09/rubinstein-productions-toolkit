@@ -194,6 +194,22 @@ class TestSurveyCommand(unittest.TestCase):
         self.assertIn(b"inside this repository", proc.stderr)
         self.assertFalse(target.exists())
 
+    def test_survey_refusal_needs_no_zstd(self):
+        # Run resolve_survey.py under this interpreter. Under the system 3.9
+        # it has no compression.zstd, which is the case where SURVEY_PYTHON
+        # lacks it: the in-repo refusal must still be the answer.
+        script = SURVEY_SCRIPT
+        if not any((d / ".git").exists() for d in script.parents):
+            self.skipTest("not running from a git checkout; the in-repo refusal cannot apply")
+        target = script.parent / "tests" / "should-not-exist.md"
+        with tempfile.TemporaryDirectory() as empty:
+            proc = subprocess.run([sys.executable, str(script), "--out", str(target),
+                                   "--projects-dir", empty, "--no-metadata-cache"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 2, proc.stderr.decode())
+        self.assertIn(b"inside this repository", proc.stderr)
+        self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
