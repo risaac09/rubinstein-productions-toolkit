@@ -33,6 +33,14 @@ from rpresolve import detect
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "detect"
 WORKFLOW = Path(__file__).resolve().parent.parent / "resolve_workflow.py"
 LEAK = re.compile(r"Clients/|Personal/|/Volumes/|ISO6709|Serial|isaacrubinstein", re.IGNORECASE)
+# ffprobe prints an ISO 6709 string under a bare "location" key (the VP9
+# IMG_ impostor's original does), so keys naming a location and the
+# coordinate shape itself are banned, as well as the Apple key.
+NO_LOCATION_OR_IDS = re.compile(
+    r'com\.apple\.quicktime\.location|"[^"]*location[^"]*"\s*:'
+    r"|[+-]\d{1,3}\.\d+[+-]\d{1,3}\.\d+|latitude|longitude"
+    r"|GPS|SN=|camera_id|uuid|creation_time",
+    re.IGNORECASE)
 
 
 def load(name):
@@ -61,10 +69,21 @@ class TestFixtureHygiene(unittest.TestCase):
         self.assertEqual(leaks, [], "private strings in fixtures:\n" + "\n".join(leaks))
 
     def test_fixtures_carry_no_location_or_ids(self):
-        banned = re.compile(r"com\.apple\.quicktime\.location|GPS|SN=|camera_id|uuid|creation_time",
-                            re.IGNORECASE)
-        hits = [p.name for p in all_fixtures() if banned.search(p.read_text(encoding="utf-8"))]
+        hits = [p.name for p in all_fixtures() if NO_LOCATION_OR_IDS.search(p.read_text(encoding="utf-8"))]
         self.assertEqual(hits, [])
+
+    def test_location_guard_catches_every_shape_seen(self):
+        # Made-up coordinates; the shapes are what ffprobe and exiftool print.
+        for sample in ('"location": "+00.0000-000.0000+000.000/"',
+                       '"location-eng": "+00.0000-000.0000/"',
+                       '"com.apple.quicktime.location.ISO6709": "x"',
+                       '"Keys:LocationName": "x"',
+                       '"comment": "shot at +00.000-000.000"',
+                       '<Latitude>0</Latitude>'):
+            with self.subTest(sample=sample):
+                self.assertRegex(sample, NO_LOCATION_OR_IDS)
+        # A description may still use the word.
+        self.assertNotRegex('"description": "no location data kept"', NO_LOCATION_OR_IDS)
 
     def test_fixture_paths_are_relative_and_generic(self):
         for path in all_fixtures():
