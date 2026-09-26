@@ -26,7 +26,9 @@ on 2026-09-26. Rules run in order and the first match wins:
     4   Panasonic Lumix: XML CaptureGamma/CaptureGamut, then PhotoStyle
         (GH5 code 10 = V-Log L; code 13 = HLG only when the VUI says
         arib-std-b67), then HybridLogGamma. VUI 709 tags are ignored.
-    5   Blackmagic Camera app on iPhone.
+    5   Blackmagic Camera app on iPhone: Apple Log from the v1 tag (logs
+        atom or customgamma) or colr 9/2/9; any other logs or customgamma
+        value goes to review (Apple Log 2 tagging is UNVERIFIED).
     6   iPhone camera app: Apple Log (logs atom), HLG (colr 9/18/9 or
         dvvC), or SDR Rec.709.
     7   DJI Osmo Pocket 3 / Osmo Action 5 Pro. Normal vs D-Log M is not in
@@ -897,8 +899,23 @@ def rule_5_blackmagic_cam(h):
     camera = f"{device} (Blackmagic Cam)"
     custom = h.tag("com.apple.proapps.customgamma") or h.exif_value("Keys:AppleProappsCustomgamma")
     lens_note = f"lens {lens}" if lens else ""
-    if h.logs() or custom == APPLE_LOG_TAG or h.colr() == (9, 2, 9):
-        return _row("5", camera, "Apple Log", CS_APPLE_LOG, "high", _join(software, lens_note))
+    logs = h.logs()
+    # Only the Apple Log v1 tag is verified. Apple Log 2 (iPhone 17 Pro,
+    # wider gamut) has no clip in the survey, so its tags are unknown.
+    if logs and logs != APPLE_LOG_TAG:
+        return _review("5", camera, _join(software, f"logs atom '{logs}' not in the verified table"))
+    if custom and custom != APPLE_LOG_TAG:
+        return _review("5", camera, _join(software, f"customgamma '{custom}' not in the verified table"))
+    if logs:
+        signal = "logs atom apple-log"
+    elif custom:
+        signal = "customgamma apple-log"
+    elif h.colr() == (9, 2, 9):
+        signal = "colr 9/2/9 without a logs atom"
+    else:
+        signal = ""
+    if signal:
+        return _row("5", camera, "Apple Log", CS_APPLE_LOG, "high", _join(software, lens_note, signal))
     if h.is_hlg():
         return _review("5", camera, _join(software, "HLG-tagged Blackmagic Cam clip is not in the verified table"))
     if h.is_rec709():

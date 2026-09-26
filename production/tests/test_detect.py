@@ -176,6 +176,28 @@ class TestTraps(unittest.TestCase):
         self.assertEqual(video["color_primaries"], "bt470bg")
         self.assertEqual(detect.classify(doc)["input_color_space"], detect.CS_REC709)
 
+    def test_blackmagic_cam_pins_apple_log_only_on_the_v1_tag(self):
+        # Apple Log 2 (17 Pro only) is not in the survey; any other value is review.
+        row = detect.classify(load("r5_bmcam_unknown_logs_value"))
+        self.assertEqual((row["profile"], row["input_color_space"]), (detect.REVIEW, ""))
+        self.assertIn("com.apple.rec2020.apple-log-2", row["note"])
+
+        doc = load("r5_bmcam_apple_log_vfr")
+        video = next(t for t in doc["atoms"]["tracks"] if t.get("handler") == "vide")
+        del video["logs"]
+        doc["ffprobe"]["format"]["tags"]["com.apple.proapps.customgamma"] = "com.example.other-gamma"
+        doc["exiftool"]["Keys:AppleProappsCustomgamma"] = "com.example.other-gamma"
+        row = detect.classify(doc)
+        self.assertEqual((row["profile"], row["input_color_space"]), (detect.REVIEW, ""))
+        self.assertIn("customgamma 'com.example.other-gamma'", row["note"])
+
+        # The survey's third signal: colr 9/2/9 alone still pins, and says so.
+        del doc["ffprobe"]["format"]["tags"]["com.apple.proapps.customgamma"]
+        del doc["exiftool"]["Keys:AppleProappsCustomgamma"]
+        row = detect.classify(doc)
+        self.assertEqual((row["profile"], row["input_color_space"]), ("Apple Log", detect.CS_APPLE_LOG))
+        self.assertIn("colr 9/2/9 without a logs atom", row["note"])
+
     def test_braw_proxy_ignores_the_709_tag(self):
         row = detect.classify(load("r2_braw_proxy_orphan"))
         self.assertEqual(row["input_color_space"], detect.CS_BMD_FILM_GEN5)
