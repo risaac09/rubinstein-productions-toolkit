@@ -1133,7 +1133,6 @@ def cmd_survey(args):
 # ---------------------------------------------------------------------------
 # Offline detect (no Resolve connection)
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 
 def _git_common_dir(path):
     """git's shared .git directory for the working tree holding `path` (the
