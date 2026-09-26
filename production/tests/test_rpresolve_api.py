@@ -10,6 +10,8 @@ Run: python3 -m unittest discover production/tests -v
 
 import io
 import os
+import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -47,6 +49,8 @@ class FakeProject:
     def GetTimelineByIndex(self, i): return self.timelines[i - 1]
 
     def SetCurrentTimeline(self, tl):
+        if getattr(self, "fail_set_timeline", False):
+            return False
         self.current = tl
         return True
 
@@ -131,8 +135,10 @@ class FakeItem:
     def GetNodeGraph(self): return self.graph
 
     def SetProperty(self, key, value):
-        # Resolve stores floats at single precision; mimic a tiny drift.
-        self.props[key] = value + 1e-9 if isinstance(value, float) else value
+        # Resolve stores floats at single precision; round through float32.
+        if isinstance(value, float):
+            value = struct.unpack("f", struct.pack("f", value))[0]
+        self.props[key] = value
         return True
 
     def GetProperty(self, key): return self.props.get(key)
@@ -215,6 +221,15 @@ class TestUISnapshot(unittest.TestCase):
             self.project.current = self.tl_b
         self.assertTrue(any("not found" in p for p in snap.problems))
 
+    def test_failed_timeline_switch_leaves_other_playhead_alone(self):
+        with api.UISnapshot(self.resolve, self.project) as snap:
+            self.project.SetCurrentTimeline(self.tl_b)
+            self.project.fail_set_timeline = True
+        self.assertIs(self.project.current, self.tl_b)
+        self.assertEqual(self.tl_b.tc, "01:00:00:00")
+        self.assertTrue(any("could not switch back" in p for p in snap.problems))
+        self.assertFalse(any("playhead" in p for p in snap.problems))
+
     def test_body_exception_propagates(self):
         with self.assertRaises(ValueError):
             with api.UISnapshot(self.resolve, self.project):
@@ -238,6 +253,11 @@ class TestReadback(unittest.TestCase):
     def test_property_within_tolerance(self):
         item = FakeItem("clip", None)
         api.set_property_checked(item, "ZoomX", 1.25)
+
+    def test_property_float32_rounding_is_not_a_failure(self):
+        item = FakeItem("clip", None)
+        for value in (123.45, 1920.3, -3840.7, 0.1):
+            api.set_property_checked(item, "Pan", value)
 
     def test_property_numeric_string_readback(self):
         item = FakeItem("clip", None)
@@ -322,6 +342,23 @@ class TestLutPathsMatch(unittest.TestCase):
         self.assertFalse(lut_paths_match(self.lut, "Camera/GH5.cube", [self.root]))
         self.assertFalse(lut_paths_match(self.lut, "/somewhere/else/GH7.cube", [self.root]))
 
+    def test_same_basename_other_folder_under_known_root(self):
+        top = os.path.join(self.root, "GH7.cube")
+        Path(top).write_text("LUT_3D_SIZE 2\n")
+        self.assertFalse(lut_paths_match(self.lut, "GH7.cube", [self.root]))
+        self.assertTrue(lut_paths_match(top, "GH7.cube", [self.root]))
+
+    def test_symlink_into_root_matches_in_root_path(self):
+        outside = os.path.join(self.tmp.name, "repo", "Look.cube")
+        os.makedirs(os.path.dirname(outside))
+        Path(outside).write_text("LUT_3D_SIZE 2\n")
+        link = os.path.join(self.root, "Look.cube")
+        os.symlink(outside, link)
+        self.assertTrue(lut_paths_match(link, "Look.cube", [self.root]))
+        from resolve_workflow import _path_under
+        self.assertTrue(_path_under(link, self.root, follow_links=False))
+        self.assertFalse(_path_under(link, self.root))
+
     def test_partial_component_is_not_a_match(self):
         self.assertFalse(lut_paths_match(self.lut, "H7.cube"))
 
@@ -382,6 +419,24 @@ class TestApplyDrx(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("3 node(s)", detail)
         self.assertEqual(g.calls, [("ApplyGradeFromDRX", "/g/look.drx", 1)])
+
+    def test_true_returning_noop_fails(self):
+        # A modal dialog swallows the write: setter says True, graph unchanged.
+        g = FakeGraph(["old"])
+        ok, detail = apply_drx_to_item(FakeItem("c1", g), "/g/look.drx", 1)
+        self.assertFalse(ok)
+        self.assertIn("unchanged", detail)
+
+    def test_same_labels_but_changed_tools_counts_as_applied(self):
+        g = FakeGraph([""])
+        g.tools = ["Primary"]
+        g.GetToolsInNode = lambda i: list(g.tools)
+        def apply(path, mode):
+            g.tools = ["Primary", "Curves"]
+            return True
+        g.ApplyGradeFromDRX = apply
+        ok, detail = apply_drx_to_item(FakeItem("c1", g), "/g/look.drx", 0)
+        self.assertTrue(ok, detail)
 
     def test_apply_false_fails(self):
         g = FakeGraph(["old"])
@@ -464,6 +519,68 @@ class TestCommandsEndToEnd(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertTrue(project.refreshed)
         self.assertIn("[FAIL] c1", buf.getvalue())
+
+    def test_apply_lut_sends_symlink_path_not_target(self):
+        import argparse
+        from unittest import mock
+        import resolve_workflow as rw
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "LUT")
+            os.makedirs(root)
+            target = os.path.join(tmp, "repo", "Look.cube")
+            os.makedirs(os.path.dirname(target))
+            Path(target).write_text("LUT_3D_SIZE 2\n")
+            link = os.path.join(root, "Look.cube")
+            os.symlink(target, link)
+            g = FakeGraph(["CST"], lut_report="Look.cube")
+            resolve, _ = self._resolve_with([FakeItem("c1", g)])
+            args = argparse.Namespace(lut_file=link, track=1, node=1, camera=None, config=None)
+            buf = io.StringIO()
+            with mock.patch.object(rw, "get_resolve", return_value=resolve), \
+                    mock.patch.object(rw.rpapi, "DEFAULT_LUT_ROOTS", (root,)), redirect_stdout(buf):
+                status = rw.cmd_apply_lut(args)
+            self.assertEqual(status, 0, buf.getvalue())
+            self.assertEqual(g.calls, [("SetLUT", 1, os.path.abspath(link))])
+            self.assertNotIn("WARNING", buf.getvalue())
+
+
+PRODUCTION = Path(__file__).resolve().parent.parent
+
+
+class TestMainExitPaths(unittest.TestCase):
+    def test_ctrl_c_exits_130_through_exit_clean(self):
+        code = (
+            "import sys; sys.path.insert(0, %r)\n"
+            "import resolve_workflow as rw\n"
+            "def boom(args): print('working'); raise KeyboardInterrupt\n"
+            "rw.cmd_info = boom\n"
+            "sys.argv = ['resolve_workflow.py', 'info']\n"
+            "rw.main()\n"
+        ) % str(PRODUCTION)
+        proc = subprocess.run([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 130)
+        self.assertEqual(proc.stdout.decode().strip(), "working")
+        self.assertIn("Interrupted.", proc.stderr.decode())
+
+    def test_symlinked_script_finds_rpresolve(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            link = os.path.join(tmp, "rw.py")
+            os.symlink(str(PRODUCTION / "resolve_workflow.py"), link)
+            proc = subprocess.run([sys.executable, link, "--help"], cwd=tmp,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+    def test_lone_copy_fails_with_clear_message(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = os.path.join(tmp, "rw.py")
+            shutil.copy(str(PRODUCTION / "resolve_workflow.py"), copy)
+            proc = subprocess.run([sys.executable, copy, "--help"], cwd=tmp,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("rpresolve/ directory", proc.stderr.decode())
+        self.assertNotIn("Traceback", proc.stderr.decode())
+
 
 if __name__ == "__main__":
     unittest.main()

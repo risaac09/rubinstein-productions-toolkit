@@ -8,7 +8,10 @@ Safety rules for every script built on this module:
        ProjectPin at start and call check() before each batch of writes;
        Isaac edits live, so a script must stop if he switched projects.
     2. Never call ProjectManager.LoadProject or CreateProject. Opening or
-       creating projects is a human decision made in the Resolve UI.
+       creating projects is a human decision made in the Resolve UI. The
+       one exception is resolve_workflow.py new-project, which Isaac runs
+       by hand to create a named project; nothing automated may call it
+       or copy its CreateProject call.
     3. UI state writes (page, current timeline, playhead) happen only in
        the sandbox project or with an explicit opt-in flag, and are wrapped
        in UISnapshot so the UI is put back afterwards.
@@ -41,7 +44,12 @@ DEFAULT_LUT_ROOTS = (
     ),
 )
 
+# Resolve stores item properties at single precision, so a value like
+# 123.45 reads back as 123.4499969. Numbers match when within this
+# absolute tolerance or within FLOAT32_REL_TOLERANCE of the wanted value
+# (float32 has about 7 significant digits; 1e-6 relative covers rounding).
 NUMERIC_TOLERANCE = 1e-6
+FLOAT32_REL_TOLERANCE = 1e-6
 
 
 class ResolveAPIError(RuntimeError):
@@ -224,8 +232,11 @@ class UISnapshot:
                         problems.append(f"could not switch back to timeline '{self.timeline_name}'")
                     else:
                         current = target
+                        same = True
 
-                if self.timecode and current:
+                # The playhead was captured on the original timeline; never
+                # move the playhead of whatever timeline is open instead.
+                if self.timecode and current and same:
                     if _safe_call(current, "GetCurrentTimecode") != self.timecode:
                         if not _safe_call(current, "SetCurrentTimecode", self.timecode):
                             problems.append(f"could not restore playhead to {self.timecode}")
@@ -281,14 +292,15 @@ def _as_number(value):
 
 def set_property_checked(item, key, value):
     """SetProperty(key, value) on a timeline item, then GetProperty(key)
-    must match: numbers within NUMERIC_TOLERANCE, anything else exactly.
+    must match: numbers within float32 rounding (NUMERIC_TOLERANCE absolute
+    or FLOAT32_REL_TOLERANCE relative), anything else exactly.
     Returns the value read back."""
     item.SetProperty(key, value)
     got = item.GetProperty(key)
     want_num = _as_number(value)
     got_num = _as_number(got)
     if want_num is not None and got_num is not None:
-        ok = math.isclose(want_num, got_num, rel_tol=0.0, abs_tol=NUMERIC_TOLERANCE)
+        ok = math.isclose(want_num, got_num, rel_tol=FLOAT32_REL_TOLERANCE, abs_tol=NUMERIC_TOLERANCE)
     else:
         ok = got == value
     if not ok:

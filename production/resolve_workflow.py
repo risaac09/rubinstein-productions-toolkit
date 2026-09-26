@@ -8,6 +8,9 @@ Connects via the DaVinci Resolve Scripting API.
 Usage:
     python3 resolve_workflow.py <command> [options]
 
+    Imports the sibling rpresolve/ package, so run it from production/ or
+    through a symlink; a copy of this file alone will not start.
+
 Commands:
     new-project         Create a new project with standard bin structure
     import-media        Import media files into camera-specific bins (recursive)
@@ -74,7 +77,16 @@ import argparse
 import time
 from pathlib import Path
 
-from rpresolve import api as rpapi
+# rpresolve is a sibling package; put this file's real directory on the
+# path so a symlinked or differently-cwd'd run still finds it. A lone copy
+# of this file elsewhere (e.g. Resolve's Scripts menu) still needs the
+# rpresolve/ directory copied next to it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    from rpresolve import api as rpapi  # noqa: E402
+except ImportError:
+    sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
+             "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
 
 CONFIG_PATH_DEFAULT = Path(__file__).resolve().parent / "resolve-config.json"
 
@@ -744,9 +756,12 @@ def _filter_items_by_camera(items, camera_key, config):
     return kept
 
 
-def _path_under(path, root):
-    """True if `path` sits inside directory `root` (both realpath'd)."""
-    path, root = os.path.realpath(path), os.path.realpath(root)
+def _path_under(path, root, follow_links=True):
+    """True if `path` sits inside directory `root`. Both are realpath'd by
+    default; with follow_links=False only abspath'd, so a symlink placed
+    inside `root` still counts as inside it."""
+    norm = os.path.realpath if follow_links else os.path.abspath
+    path, root = norm(path), norm(root)
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
@@ -757,7 +772,8 @@ def lut_paths_match(requested, reported, lut_roots=()):
       - both paths equal after os.path.realpath
       - `reported` equals `requested` made relative to a LUT root
       - `reported` is relative and matches the trailing path components of
-        `requested` (a LUT root this function was not told about)
+        `requested`, only when `requested` sits under none of `lut_roots`
+        (a LUT root this function was not told about)
     """
     if not reported:
         return False
@@ -767,10 +783,20 @@ def lut_paths_match(requested, reported, lut_roots=()):
         return os.path.realpath(rep_norm) == req_real
 
     rep_norm = rep_norm.lstrip("/")
+    known_root = False
+    req_abs = os.path.abspath(requested)
     for root in lut_roots or ():
-        if _path_under(req_real, root):
-            if os.path.relpath(req_real, os.path.realpath(root)) == rep_norm:
-                return True
+        # A symlink inside the root is scanned under its in-root path, so
+        # try the unresolved path as well as the realpath.
+        for req, norm in ((req_abs, os.path.abspath), (req_real, os.path.realpath)):
+            if _path_under(req, root, follow_links=(norm is os.path.realpath)):
+                known_root = True
+                if os.path.relpath(req, norm(root)) == rep_norm:
+                    return True
+    if known_root:
+        # Under a known root the exact root-relative path is the only
+        # match; a shorter tail could name a same-named LUT elsewhere.
+        return False
     req_parts = req_real.split(os.sep)
     rep_parts = rep_norm.split("/")
     return len(rep_parts) <= len(req_parts) and req_parts[-len(rep_parts):] == rep_parts
@@ -798,20 +824,42 @@ def apply_lut_to_items(items, node_index, lut_path, lut_roots=()):
     return [(item.GetName(), *apply_lut_to_item(item, node_index, lut_path, lut_roots)) for item in items]
 
 
+def graph_fingerprint(graph):
+    """What the scripting API can read of a node graph: per node its label,
+    LUT, and (where the build has GetToolsInNode) tool list. Used to tell
+    an applied grade from a no-op, since a .drx stores its node graph in an
+    opaque binary blob that cannot be compared against directly."""
+    count = int(graph.GetNumNodes() or 0)
+    tools = getattr(graph, "GetToolsInNode", None)
+    nodes = []
+    for i in range(1, count + 1):
+        node_tools = tools(i) if tools else None
+        nodes.append((graph.GetNodeLabel(i) or "", graph.GetLUT(i) or "",
+                      tuple(node_tools) if isinstance(node_tools, (list, tuple)) else node_tools))
+    return tuple(nodes)
+
+
 def apply_drx_to_item(item, drx_path, grade_mode):
     """Apply a .drx grade to one timeline item through its Graph, then read
-    back the node count from a fresh Graph (the grade replaces the old
-    one). Returns (ok, detail)."""
+    back a fresh Graph (the grade replaces the old one). The setter returns
+    True even when a modal dialog swallows the write, so a graph that reads
+    back identical to before the call counts as not applied. Returns
+    (ok, detail)."""
     graph = item.GetNodeGraph()
     if not graph:
         return (False, "no node graph (is this a video clip?)")
+    before = graph_fingerprint(graph)
     if not graph.ApplyGradeFromDRX(drx_path, grade_mode):
         return (False, "ApplyGradeFromDRX returned False")
-    after = item.GetNodeGraph() or graph
-    num_nodes = after.GetNumNodes()
-    if not num_nodes:
+    after_graph = item.GetNodeGraph() or graph
+    after = graph_fingerprint(after_graph)
+    if not after:
         return (False, "grade reported applied but the node graph reads back empty")
-    return (True, f"{num_nodes} node(s) after grade")
+    if after == before:
+        return (False, f"node graph unchanged after apply ({len(after)} node(s), same labels/LUTs); "
+                       "a modal dialog may have swallowed the write, or the clip already carried "
+                       "this grade. Check it in the Color page.")
+    return (True, f"{len(after)} node(s) after grade (was {len(before)})")
 
 
 def apply_drx_to_items(items, drx_path, grade_mode):
@@ -839,7 +887,9 @@ def cmd_apply_lut(args):
         print("ERROR: No active timeline.")
         sys.exit(1)
 
-    lut_path = str(Path(args.lut_file).resolve())
+    # abspath keeps a symlink into Resolve's LUT folder as the in-folder
+    # path Resolve scanned; realpath would send SetLUT the link target.
+    lut_path = os.path.abspath(os.path.expanduser(args.lut_file))
     if not os.path.exists(lut_path):
         print(f"ERROR: LUT file not found: {lut_path}")
         sys.exit(1)
@@ -858,7 +908,8 @@ def cmd_apply_lut(args):
 
     print(f"Applying LUT to {len(items)} clip(s) on V{track_index}, node {node_index}:")
     print(f"  LUT: {lut_path}")
-    if not any(_path_under(lut_path, root) for root in rpapi.DEFAULT_LUT_ROOTS):
+    if not any(_path_under(lut_path, root, follow_links=False) or _path_under(lut_path, root)
+               for root in rpapi.DEFAULT_LUT_ROOTS):
         print("  WARNING: LUT is outside Resolve's LUT folders; SetLUT only accepts LUTs Resolve has scanned.")
 
     # SetLUT needs a LUT Resolve has scanned; rescan so a freshly copied
@@ -1183,6 +1234,9 @@ Examples:
 
     try:
         status = args.func(args)
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        status = 130
     except SystemExit as e:
         if isinstance(e.code, int) or e.code is None:
             status = e.code
