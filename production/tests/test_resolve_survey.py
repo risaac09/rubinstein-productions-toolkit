@@ -464,6 +464,39 @@ class TestNodeGraph(unittest.TestCase):
         self.assertEqual((absent["nodes"][0]["luts"], absent["nodes"][0]["ofx"]), ([], []))
         self.assertEqual(absent["problems"], [])
 
+    def test_label_with_wrong_wire_type_is_undecoded(self):
+        # Field 6 as a varint: an UNDECODED label with the problem noted.
+        # Only an absent field 6 reads as unlabeled.
+        nodes = [msg(fld(1, 1), fld(6, 5), fld(8, 44)), node(2), node(3, "B")]
+        g = rs.decode_grade_body(grade_body(nodes, [edge(1, 2), edge(2, 3)]))
+        self.assertEqual([n["label"] for n in g["nodes"]], [rs.UNDECODED, "", "B"])
+        self.assertEqual(g["problems"], ["node label (field 6) with wire type 0"])
+
+    def test_other_node_and_edge_fields_with_wrong_wire_type(self):
+        nodes = [msg(fld(1, 1), fld(6, "A"), fld(8, "44")), msg(fld(1, "2"), fld(6, "B"), fld(8, 44))]
+        edges = [msg(fld(1, "1"), fld(3, 2), fld(4, b"\x00"))]
+        g = rs.decode_grade_body(grade_body(nodes, edges))
+        by_label = {n["label"]: n for n in g["nodes"]}
+        self.assertEqual(by_label["A"]["type_name"], rs.UNDECODED)
+        self.assertIsNone(by_label["B"]["id"])
+        self.assertEqual(g["edges"], [(rs.UNDECODED, 2, rs.UNDECODED)])
+        self.assertEqual(sorted(g["problems"]), [
+            "edge input index (field 4) with wire type 2", "edge source (field 1) with wire type 2",
+            "node id (field 1) with wire type 2", "node type (field 8) with wire type 2"])
+
+    def test_undecoded_label_reaches_the_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "Project.db")
+            build_project_db(db, corrupt_grade=False)
+            con = sqlite3.connect(db)
+            con.execute('update "ListMgt::LmVersion" set Body = ? where "ListMgt::LmVersion_id" = ?',
+                        (grade_body([msg(fld(1, 1), fld(6, 5), fld(8, 44))], []), "v-2"))
+            con.commit()
+            con.close()
+            p = rs.survey_snapshot(db, home="/home/u")
+        self.assertIn(rs.UNDECODED, p["grades"]["label_sequences"])
+        self.assertIn("UNDECODED: node label (field 6) with wire type 0 (1x)", p["errors"])
+
     def test_graph_order_cycle_falls_back_to_id(self):
         nodes = [{"id": 1}, {"id": 2}, {"id": 3}]
         self.assertEqual(rs.graph_order(nodes, [(2, 3, 0), (3, 2, 0)]), [1, 2, 3])

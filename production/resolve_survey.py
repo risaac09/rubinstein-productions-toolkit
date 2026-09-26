@@ -479,16 +479,29 @@ def _first_with_wire(fields):
     return out
 
 
+def _graph_field(fields, num, wire, what, problems):
+    """A node or edge field read with its expected wire type: None when
+    absent, UNDECODED (with the problem noted) when present with another
+    wire type. Absent and malformed stay distinct, as in
+    interpret_project_settings."""
+    if num not in fields:
+        return None
+    got, value = fields[num]
+    if got != wire:
+        problems.append(f"{what} (field {num}) with wire type {got}")
+        return UNDECODED
+    return value
+
+
 def _node_payload(node, num, what, extract, problems):
     """extract(value) for a length-delimited node field, or [] when the
     field is absent. A field present with another wire type holds no
     payload this survey can read: it returns None (UNDECODED) and notes
     the problem."""
-    if num not in node:
+    value = _graph_field(node, num, WIRE_LEN, f"node {what}", problems)
+    if value is None:
         return []
-    wire, value = node[num]
-    if wire != WIRE_LEN:
-        problems.append(f"node {what} (field {num}) with wire type {wire}")
+    if value is UNDECODED:
         return None
     return extract(value)
 
@@ -497,10 +510,12 @@ def decode_grade_body(body):
     """Decode a ListMgt::LmVersion.Body. Returns a dict:
         kind      "graph" or "legacy" (the old "GRF" text format)
         nodes     [{id, type, type_name, label, luts, ofx}] in signal-flow
-                  order; luts or ofx is None when that node field could
-                  not be decoded
+                  order. label is "" only when field 6 is absent;
+                  label and type_name are UNDECODED, and luts or ofx
+                  None, when that field is present with another wire type
         edges     [(source id, destination id, input index)]
-        problems  node fields present in a shape this survey cannot read
+        problems  node and edge fields present with a wire type this
+                  survey cannot read, one entry per field
     Raises DecodeError when the body cannot be read."""
     body = _as_bytes(body, "grade body")
     if body[:3] == b"GRF":
@@ -515,18 +530,26 @@ def decode_grade_body(body):
             continue
         if field == 7:
             node = _first_with_wire(parse_message(value))
-            node_id, node_type, label = (node.get(k, (None, None))[1] for k in (1, 8, 6))
+            node_id = _graph_field(node, 1, WIRE_VARINT, "node id", problems)
+            node_type = _graph_field(node, 8, WIRE_VARINT, "node type", problems)
+            label = _graph_field(node, 6, WIRE_LEN, "node label", problems)
+            if isinstance(label, bytes):
+                label = label.decode("utf-8", "replace")
             nodes.append({
                 "id": node_id if isinstance(node_id, int) else None,
                 "type": node_type if isinstance(node_type, int) else None,
-                "type_name": NODE_TYPES.get(node_type, f"type {node_type}"),
-                "label": label.decode("utf-8", "replace") if isinstance(label, bytes) else "",
+                "type_name": (UNDECODED if node_type is UNDECODED
+                              else NODE_TYPES.get(node_type, f"type {node_type}")),
+                "label": "" if label is None else label,
                 "luts": _node_payload(node, 9, "LUT params", extract_lut_paths, problems),
                 "ofx": _node_payload(node, 10, "OFX stack", extract_ofx_plugins, problems),
             })
         elif field == 8:
-            edge = first_fields(parse_message(value))
-            edges.append((edge.get(1), edge.get(3), edge.get(4, 0)))
+            edge = _first_with_wire(parse_message(value))
+            src, dst, index = (_graph_field(edge, num, WIRE_VARINT, f"edge {what}", problems)
+                               for num, what in ((1, "source"), (3, "destination"),
+                                                 (4, "input index")))
+            edges.append((src, dst, 0 if index is None else index))
     by_id = {n["id"]: n for n in nodes}
     if len(by_id) == len(nodes) and None not in by_id:
         nodes = [by_id[i] for i in graph_order(nodes, edges)]
