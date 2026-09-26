@@ -101,6 +101,14 @@ class TestFixtureClassification(unittest.TestCase):
                     self.assertEqual(row["confidence"], "low")
                     self.assertTrue(row["note"], "a review row must say what was missing")
 
+    def test_no_colour_space_is_tagged_at_low_confidence(self):
+        for path in all_fixtures():
+            row = detect.classify(json.loads(path.read_text(encoding="utf-8")))
+            if row["input_color_space"] or row["profile"] not in (detect.REVIEW, detect.CORRUPT):
+                with self.subTest(fixture=path.name):
+                    self.assertIn(row["confidence"], ("high", "medium"))
+                    self.assertFalse(detect.needs_review(row))
+
     def test_rows_use_only_the_documented_values(self):
         for path in all_fixtures():
             row = detect.classify(json.loads(path.read_text(encoding="utf-8")))
@@ -197,6 +205,13 @@ class TestTraps(unittest.TestCase):
         row = detect.classify(doc)
         self.assertEqual((row["profile"], row["input_color_space"]), ("Apple Log", detect.CS_APPLE_LOG))
         self.assertIn("colr 9/2/9 without a logs atom", row["note"])
+
+    def test_drone_type_normal_is_review_that_names_the_candidate(self):
+        row = detect.classify(load("r8_drone_fc7703"))
+        self.assertEqual((row["rule"], row["profile"], row["input_color_space"]), ("8", detect.REVIEW, ""))
+        self.assertIn("Comment Type=Normal", row["note"])
+        self.assertIn(detect.CS_REC709, row["note"])
+        self.assertTrue(detect.needs_review(row))
 
     def test_braw_proxy_ignores_the_709_tag(self):
         row = detect.classify(load("r2_braw_proxy_orphan"))
@@ -450,6 +465,14 @@ class TestOutput(unittest.TestCase):
         rows = [detect.classify(load("r10_obs")), detect.classify(load("r9_gopro_hero9"))]
         self.assertEqual(json.loads(detect.format_json(rows)), rows)
         self.assertIn("1 review", detect.summarize(rows))
+
+    def test_a_low_confidence_pin_needs_review(self):
+        # No rule pins at low today; a future one must still fail the exit status.
+        pinned = detect.classify(load("r10_obs"))
+        low = dict(pinned, confidence="low")
+        self.assertFalse(detect.needs_review(pinned))
+        self.assertTrue(detect.needs_review(low))
+        self.assertIn("1 pinned, 1 review, 0 corrupt", detect.summarize([pinned, low]))
 
 
 class TestTools(unittest.TestCase):

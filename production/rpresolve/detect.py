@@ -33,7 +33,8 @@ on 2026-09-26. Rules run in order and the first match wins:
         dvvC), or SDR Rec.709.
     7   DJI Osmo Pocket 3 / Osmo Action 5 Pro. Normal vs D-Log M is not in
         the headers, so anything without an HLG VUI goes to review.
-    8   DJI drone (UserData Model FC####, handler DJI.AVC).
+    8   DJI drone (UserData Model FC####, handler DJI.AVC). Comment
+        Type=Normal suggests Rec.709, but the survey grades it Low: review.
     9   GoPro. Colour profile is not pinned: review.
     10  OBS: Rec.709, upstream camera unknown (capture card).
     11  Zoom: Rec.709; the bt470bg primaries/matrix tags are wrong.
@@ -41,7 +42,8 @@ on 2026-09-26. Rules run in order and the first match wins:
     13  unknown.
 
 Never guess. A file the rules cannot pin gets profile "review" and an empty
-input_color_space, and the note column names what was missing.
+input_color_space, and the note column names what was missing. A pinned
+row is high or medium confidence; low appears only on review rows.
 
 input_color_space holds the Resolve colour-space name to tag the clip with.
 Each CS_* name below appears verbatim in the Resolve 21.0.4 binary, except
@@ -978,8 +980,9 @@ def rule_8_dji_drone(h):
     m = re.search(r"\bType=([\w-]+)", comment)
     kind = m.group(1) if m else ""
     if kind == "Normal":
-        return _row("8", camera, "Normal", CS_REC709, "low",
-                    "profile from Comment Type=Normal; product name UNVERIFIED")
+        # The survey grades this Low: a tag at that grade would be a guess.
+        return _review("8", camera, f"Comment Type=Normal suggests {CS_REC709}; "
+                                    "survey grade Low, product name UNVERIFIED")
     return _review("8", camera, f"Comment Type '{kind or 'absent'}' not in the verified table")
 
 
@@ -1081,7 +1084,10 @@ def classify(doc):
 
 
 def needs_review(row):
-    return row.get("profile") in (REVIEW, CORRUPT)
+    """True for review and corrupt rows, and for any row pinned at low
+    confidence. No rule pins at low today; this keeps a future one from
+    passing a guess through with exit status 0."""
+    return row.get("profile") in (REVIEW, CORRUPT) or row.get("confidence") == "low"
 
 
 # ---------------------------------------------------------------------------
@@ -1133,7 +1139,7 @@ def format_json(rows):
 
 
 def summarize(rows):
-    review = sum(1 for r in rows if r["profile"] == REVIEW)
     corrupt = sum(1 for r in rows if r["profile"] == CORRUPT)
+    review = sum(1 for r in rows if needs_review(r)) - corrupt
     pinned = len(rows) - review - corrupt
     return f"detect: {len(rows)} file(s): {pinned} pinned, {review} review, {corrupt} corrupt"

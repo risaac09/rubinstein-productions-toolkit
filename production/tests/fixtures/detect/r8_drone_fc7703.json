@@ -111,8 +111,8 @@
  "proxy_original": null,
  "expect": {
   "rule": "8",
-  "profile": "Normal",
-  "input_color_space": "Rec.709 Gamma 2.4",
+  "profile": "review",
+  "input_color_space": "",
   "camera": "DJI drone (FC7703)",
   "data_level": "video",
   "vfr": "no",

@@ -1138,8 +1138,12 @@ def cmd_survey(args):
 def cmd_detect(args):
     """Classify each media file's camera and picture profile from its
     headers and write a TSV (or JSON). Never connects to Resolve.
-    Exit status: 0 when every file is pinned, 2 when any row is 'review'
-    or 'corrupt', 1 when the tools are missing or no file was found."""
+    A pinned row carries an input_color_space at high or medium confidence;
+    anything the survey grades lower is 'review' with an empty one.
+    Exit status: 0 when every file is pinned, 2 when any row is 'review',
+    'corrupt' or low confidence, 1 when the tools are missing or no file
+    was found. A file that fails to probe becomes a 'review' row and the
+    run goes on."""
     try:
         rows, missing = rpdetect.detect_paths(args.paths)
     except rpdetect.ToolMissing as e:
