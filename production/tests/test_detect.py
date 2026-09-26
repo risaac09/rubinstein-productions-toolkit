@@ -681,6 +681,17 @@ class TestDetectPathsWithFakeTools(unittest.TestCase):
         self.assertIn("inside this repository", proc.stderr)
         self.assertFalse(leak.exists())
 
+    def test_cli_checks_out_before_probing(self):
+        # A directory --out is refused up front; ffprobe is never run.
+        env = dict(os.environ, RPRESOLVE_FFPROBE="/nonexistent/ffprobe",
+                   RPRESOLVE_EXIFTOOL="/nonexistent/exiftool")
+        proc = subprocess.run([sys.executable, str(WORKFLOW), "detect", self.media,
+                               "--out", self.tmp.name], capture_output=True, text=True,
+                              env=env, timeout=60)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertIn("is a directory", proc.stderr)
+        self.assertNotIn("ffprobe not found", proc.stderr)
+
     def test_cli_writes_the_table_past_a_malformed_file(self):
         with open(os.path.join(self.media, "deep.mov"), "wb") as f:
             f.write(mov([nested_trak(5000)]))

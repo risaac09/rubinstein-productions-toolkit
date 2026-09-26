@@ -1134,30 +1134,6 @@ def cmd_survey(args):
 # Offline detect (no Resolve connection)
 # ---------------------------------------------------------------------------
 
-def _git_common_dir(path):
-    """git's shared .git directory for the working tree holding `path` (the
-    nearest existing folder at or above it), or None outside git."""
-    folder = os.path.realpath(path)
-    while not os.path.isdir(folder) and folder != os.path.dirname(folder):
-        folder = os.path.dirname(folder)
-    try:
-        proc = subprocess.run(["git", "-C", folder, "rev-parse", "--path-format=absolute",
-                               "--git-common-dir"], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, encoding="utf-8", timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    out = proc.stdout.strip()
-    return os.path.realpath(out) if proc.returncode == 0 and out else None
-
-
-def _inside_this_repo(path):
-    """True when writing `path` would land in any working tree of the repo
-    holding this script. Output that names client media must stay out of
-    this public repository."""
-    here = _git_common_dir(os.path.dirname(os.path.realpath(__file__)))
-    return here is not None and _git_common_dir(os.path.dirname(os.path.realpath(path))) == here
-
-
 def cmd_detect(args):
     """Classify each media file's camera and picture profile from its
     headers and write a TSV (or JSON). Never connects to Resolve.
@@ -1167,6 +1143,19 @@ def cmd_detect(args):
     'corrupt' or low confidence, 1 when the tools are missing or no file
     was found. A file that fails to probe becomes a 'review' row and the
     run goes on."""
+    if args.out:
+        # The same guards as the survey, checked before any file is probed:
+        # rows carry full media paths, and this repository is public.
+        from resolve_survey import inside_repo, output_path_problem
+        if inside_repo(args.out):
+            print(f"ERROR: --out {args.out} is inside this repository's git working tree. "
+                  "detect rows carry full media paths; write them outside the repo.",
+                  file=sys.stderr)
+            return 1
+        problem = output_path_problem(args.out)
+        if problem:
+            print(f"ERROR: {problem}", file=sys.stderr)
+            return 1
     try:
         rows, missing = rpdetect.detect_paths(args.paths)
     except rpdetect.ToolMissing as e:
@@ -1180,11 +1169,6 @@ def cmd_detect(args):
         return 1
 
     text = rpdetect.format_json(rows) if args.json else rpdetect.format_tsv(rows)
-    if args.out and _inside_this_repo(args.out):
-        print(f"ERROR: --out {args.out} is inside this repository's git working tree. "
-              "detect rows carry full media paths; write them outside the repo.",
-              file=sys.stderr)
-        return 1
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             f.write(text)
