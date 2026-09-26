@@ -8,6 +8,9 @@ Connects via the DaVinci Resolve Scripting API.
 Usage:
     python3 resolve_workflow.py <command> [options]
 
+    Imports the sibling rpresolve/ package, so run it from production/ or
+    through a symlink; a copy of this file alone will not start.
+
 Commands:
     new-project         Create a new project with standard bin structure
     import-media        Import media files into camera-specific bins (recursive)
@@ -38,12 +41,29 @@ Environment Setup (macOS):
     export RESOLVE_SCRIPT_LIB="/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so"
     export PYTHONPATH="$PYTHONPATH:$RESOLVE_SCRIPT_API/Modules/"
 
-Known API limits (verified against the Blackmagic scripting docs, not a live
-session — confirm against your Resolve version):
-    - The scripting API cannot create color-page nodes. apply-lut/apply-drx
-      targeting a node index beyond what the clip already has will fail with
-      an explicit error rather than silently doing nothing. Add the node in
-      the Color page first (or apply a .drx that already contains it).
+Known API limits (live-verified against Resolve Studio 21.0.4.5):
+    - Timeline.ApplyGradeFromDRX(path, mode, items) does not exist in 21.0.4;
+      the scripting README example for it is stale. The working call is per
+      item: item.GetNodeGraph().ApplyGradeFromDRX(path, gradeMode) -> Bool,
+      gradeMode 0 = no keyframes, 1 = source timecode aligned, 2 = start
+      frames aligned. It very likely replaces the item's node graph.
+    - Grades go through the Graph object from item.GetNodeGraph():
+      GetNumNodes(), GetNodeLabel(i), GetLUT(i), SetLUT(i, path),
+      GetToolsInNode(i), SetNodeEnabled(i, bool). Node indexes are 1-based.
+      TimelineItem.GetNumNodes/SetLUT/GetLUT are deprecated aliases.
+    - SetLUT only accepts a LUT Resolve has scanned (Project.RefreshLUTList()
+      rescans), and GetLUT may report it relative to a LUT folder. apply-lut
+      reads each LUT back and reports a mismatch as FAIL.
+    - GetToolsInNode(i) returns None for a node whose corrections are all at
+      default; it is reliable only for OFX nodes.
+    - The scripting API cannot create color-page nodes. apply-lut targeting
+      a node index beyond what the clip already has fails with an explicit
+      error. Add the node in the Color page first (or apply a .drx that
+      already contains it).
+    - Unknown resolve.CONSTANT names return None silently.
+    - The Python client can segfault on interpreter shutdown after some
+      calls, and piped output is lost unless flushed first. main() exits
+      through rpresolve.api.exit_clean (flush, then os._exit).
     - Subtitle *styling* (font/color/position) has no scripting entry point;
       add-subtitles places the track, styling stays a manual Edit-page step.
     - The "story" vertical preset resizes the canvas only. It does not
@@ -56,6 +76,17 @@ import json
 import argparse
 import time
 from pathlib import Path
+
+# rpresolve is a sibling package; put this file's real directory on the
+# path so a symlinked or differently-cwd'd run still finds it. A lone copy
+# of this file elsewhere (e.g. Resolve's Scripts menu) still needs the
+# rpresolve/ directory copied next to it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    from rpresolve import api as rpapi  # noqa: E402
+except ImportError:
+    sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
+             "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
 
 CONFIG_PATH_DEFAULT = Path(__file__).resolve().parent / "resolve-config.json"
 
@@ -210,25 +241,10 @@ def safe_fps(raw_value, default=24.0):
 def get_resolve():
     """Connect to running DaVinci Resolve instance."""
     try:
-        import DaVinciResolveScript as dvr
-    except ImportError:
-        script_module = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules"
-        if script_module not in sys.path:
-            sys.path.append(script_module)
-        try:
-            import DaVinciResolveScript as dvr
-        except ImportError:
-            print("ERROR: Cannot import DaVinciResolveScript.")
-            print("Make sure DaVinci Resolve is running and environment variables are set.")
-            print("See --help for environment setup instructions.")
-            sys.exit(1)
-
-    resolve = dvr.scriptapp("Resolve")
-    if not resolve:
-        print("ERROR: Could not connect to DaVinci Resolve.")
-        print("Make sure DaVinci Resolve Studio is running.")
+        return rpapi.connect()
+    except rpapi.ResolveUnavailable as e:
+        print(f"ERROR: {e}")
         sys.exit(1)
-    return resolve
 
 
 def get_project(resolve):
@@ -740,6 +756,128 @@ def _filter_items_by_camera(items, camera_key, config):
     return kept
 
 
+def _path_under(path, root, follow_links=True):
+    """True if `path` sits inside directory `root`. Both are realpath'd by
+    default; with follow_links=False only abspath'd, so a symlink placed
+    inside `root` still counts as inside it."""
+    norm = os.path.realpath if follow_links else os.path.abspath
+    path, root = norm(path), norm(root)
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def lut_paths_match(requested, reported, lut_roots=()):
+    """Decide whether Graph.GetLUT's `reported` value names the LUT that
+    was requested. Resolve may report the absolute path or a path relative
+    to one of its LUT folders, so accept any of:
+      - both paths equal after os.path.realpath
+      - `reported` equals `requested` made relative to a LUT root
+      - `reported` is relative and matches the trailing path components of
+        `requested`, only when `requested` sits under none of `lut_roots`
+        (a LUT root this function was not told about)
+    """
+    if not reported:
+        return False
+    req_real = os.path.realpath(requested)
+    rep_norm = os.path.normpath(str(reported).replace("\\", "/"))
+    if os.path.isabs(rep_norm):
+        return os.path.realpath(rep_norm) == req_real
+
+    rep_norm = rep_norm.lstrip("/")
+    known_root = False
+    req_abs = os.path.abspath(requested)
+    for root in lut_roots or ():
+        # A symlink inside the root is scanned under its in-root path, so
+        # try the unresolved path as well as the realpath.
+        for req, norm in ((req_abs, os.path.abspath), (req_real, os.path.realpath)):
+            if _path_under(req, root, follow_links=(norm is os.path.realpath)):
+                known_root = True
+                if os.path.relpath(req, norm(root)) == rep_norm:
+                    return True
+    if known_root:
+        # Under a known root the exact root-relative path is the only
+        # match; a shorter tail could name a same-named LUT elsewhere.
+        return False
+    req_parts = req_real.split(os.sep)
+    rep_parts = rep_norm.split("/")
+    return len(rep_parts) <= len(req_parts) and req_parts[-len(rep_parts):] == rep_parts
+
+
+def apply_lut_to_item(item, node_index, lut_path, lut_roots=()):
+    """Set a LUT on one node of one timeline item through its Graph and
+    read it back. Returns (ok, detail)."""
+    graph = item.GetNodeGraph()
+    if not graph:
+        return (False, "no node graph (is this a video clip?)")
+    num_nodes = graph.GetNumNodes() or 0
+    if node_index > num_nodes:
+        return (False, f"only has {num_nodes} node(s); the scripting API cannot create node {node_index}. "
+                       "Add the node in the Color page first, then re-run.")
+    if not graph.SetLUT(node_index, lut_path):
+        return (False, "SetLUT returned False (is the LUT in a folder Resolve has scanned?)")
+    reported = graph.GetLUT(node_index)
+    if not lut_paths_match(lut_path, reported, lut_roots):
+        return (False, f"read back LUT {reported!r} on node {node_index}, not the requested file")
+    return (True, f"node {node_index} LUT = {reported}")
+
+
+def apply_lut_to_items(items, node_index, lut_path, lut_roots=()):
+    return [(item.GetName(), *apply_lut_to_item(item, node_index, lut_path, lut_roots)) for item in items]
+
+
+def graph_fingerprint(graph):
+    """What the scripting API can read of a node graph: per node its label,
+    LUT, and (where the build has GetToolsInNode) tool list. Used to tell
+    an applied grade from a no-op, since a .drx stores its node graph in an
+    opaque binary blob that cannot be compared against directly."""
+    count = int(graph.GetNumNodes() or 0)
+    tools = getattr(graph, "GetToolsInNode", None)
+    nodes = []
+    for i in range(1, count + 1):
+        node_tools = tools(i) if tools else None
+        nodes.append((graph.GetNodeLabel(i) or "", graph.GetLUT(i) or "",
+                      tuple(node_tools) if isinstance(node_tools, (list, tuple)) else node_tools))
+    return tuple(nodes)
+
+
+def apply_drx_to_item(item, drx_path, grade_mode):
+    """Apply a .drx grade to one timeline item through its Graph, then read
+    back a fresh Graph (the grade replaces the old one). The setter returns
+    True even when a modal dialog swallows the write, so a graph that reads
+    back identical to before the call counts as not applied. Returns
+    (ok, detail)."""
+    graph = item.GetNodeGraph()
+    if not graph:
+        return (False, "no node graph (is this a video clip?)")
+    before = graph_fingerprint(graph)
+    if not graph.ApplyGradeFromDRX(drx_path, grade_mode):
+        return (False, "ApplyGradeFromDRX returned False")
+    after_graph = item.GetNodeGraph() or graph
+    after = graph_fingerprint(after_graph)
+    if not after:
+        return (False, "grade reported applied but the node graph reads back empty")
+    if after == before:
+        return (False, f"node graph unchanged after apply ({len(after)} node(s), same labels/LUTs); "
+                       "a modal dialog may have swallowed the write, or the clip already carried "
+                       "this grade. Check it in the Color page.")
+    return (True, f"{len(after)} node(s) after grade (was {len(before)})")
+
+
+def apply_drx_to_items(items, drx_path, grade_mode):
+    return [(item.GetName(), *apply_drx_to_item(item, drx_path, grade_mode)) for item in items]
+
+
+def report_item_results(results, verb):
+    """Print one ok/FAIL line per (name, ok, detail) and a count. Returns
+    the exit status: 0 when every item succeeded, 1 otherwise."""
+    applied = 0
+    for name, ok, detail in results:
+        print(f"  [{'ok' if ok else 'FAIL'}] {name}: {detail}")
+        applied += 1 if ok else 0
+    failed = len(results) - applied
+    print(f"\n{verb} {applied}/{len(results)} clips." + (f" {failed} FAILED." if failed else ""))
+    return 0 if failed == 0 else 1
+
+
 def cmd_apply_lut(args):
     resolve = get_resolve()
     project = get_project(resolve)
@@ -749,7 +887,9 @@ def cmd_apply_lut(args):
         print("ERROR: No active timeline.")
         sys.exit(1)
 
-    lut_path = str(Path(args.lut_file).resolve())
+    # abspath keeps a symlink into Resolve's LUT folder as the in-folder
+    # path Resolve scanned; realpath would send SetLUT the link target.
+    lut_path = os.path.abspath(os.path.expanduser(args.lut_file))
     if not os.path.exists(lut_path):
         print(f"ERROR: LUT file not found: {lut_path}")
         sys.exit(1)
@@ -764,27 +904,22 @@ def cmd_apply_lut(args):
 
     if not items:
         print(f"No clips found on video track {track_index}" + (f" tagged for camera '{args.camera}'." if args.camera else "."))
-        return
+        return 0
 
     print(f"Applying LUT to {len(items)} clip(s) on V{track_index}, node {node_index}:")
     print(f"  LUT: {lut_path}")
+    if not any(_path_under(lut_path, root, follow_links=False) or _path_under(lut_path, root)
+               for root in rpapi.DEFAULT_LUT_ROOTS):
+        print("  WARNING: LUT is outside Resolve's LUT folders; SetLUT only accepts LUTs Resolve has scanned.")
 
-    applied, node_errors = 0, 0
-    for item in items:
-        num_nodes = item.GetNumNodes()
-        if node_index > num_nodes:
-            print(f"  [FAIL] {item.GetName()}: only has {num_nodes} node(s); the scripting API cannot create node {node_index}.")
-            print(f"         Add the node in the Color page first, then re-run.")
-            node_errors += 1
-            continue
-        result = item.SetLUT(node_index, lut_path)
-        if result:
-            print(f"  [ok] {item.GetName()}")
-            applied += 1
-        else:
-            print(f"  [FAIL] {item.GetName()}")
+    # SetLUT needs a LUT Resolve has scanned; rescan so a freshly copied
+    # .cube is visible. Older builds may lack the call.
+    refresh = getattr(project, "RefreshLUTList", None)
+    if refresh:
+        refresh()
 
-    print(f"\nApplied to {applied}/{len(items)} clips." + (f" ({node_errors} skipped: missing node)" if node_errors else ""))
+    results = apply_lut_to_items(items, node_index, lut_path, rpapi.DEFAULT_LUT_ROOTS)
+    return report_item_results(results, "Applied LUT to")
 
 
 def cmd_apply_drx(args):
@@ -811,18 +946,15 @@ def cmd_apply_drx(args):
 
     if not items:
         print(f"No clips found on video track {track_index}" + (f" tagged for camera '{args.camera}'." if args.camera else "."))
-        return
+        return 0
 
     print(f"Applying DRX grade to {len(items)} clip(s) on V{track_index}:")
     print(f"  Grade: {drx_path}")
     print(f"  Mode: {grade_mode}")
     print("  NOTE: a DRX grade replaces the clip's existing node graph, including any LUT set via apply-lut.")
 
-    result = timeline.ApplyGradeFromDRX(drx_path, grade_mode, items)
-    if result:
-        print(f"  Applied to {len(items)} clips.")
-    else:
-        print("  ERROR: Grade application failed.")
+    results = apply_drx_to_items(items, drx_path, grade_mode)
+    return report_item_results(results, "Applied DRX grade to")
 
 
 # ---------------------------------------------------------------------------
@@ -1053,6 +1185,7 @@ Examples:
     sp.add_argument("drx_file", help="Path to .drx grade file")
     sp.add_argument("--track", "-t", type=int, default=1, help="Video track number (default: 1)")
     sp.add_argument("--mode", "-m", type=int, default=0,
+                     choices=[0, 1, 2],
                      help="Grade mode: 0=no keyframes, 1=source TC aligned, 2=start frames aligned (default: 0)")
     sp.add_argument("--camera", help="Only apply to clips tagged for this camera (see resolve-config.json)")
     sp.set_defaults(func=cmd_apply_drx)
@@ -1097,15 +1230,24 @@ Examples:
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        rpapi.exit_clean(1)
 
     try:
-        args.func(args)
-    except SystemExit:
-        raise
+        status = args.func(args)
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        status = 130
+    except SystemExit as e:
+        if isinstance(e.code, int) or e.code is None:
+            status = e.code
+        else:
+            print(e.code, file=sys.stderr)
+            status = 1
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
-        sys.exit(1)
+        status = 1
+    # Commands return an int status; ones that just print return None (= 0).
+    rpapi.exit_clean(status or 0)
 
 
 if __name__ == "__main__":
