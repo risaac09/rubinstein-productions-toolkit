@@ -147,6 +147,19 @@ class TestTraps(unittest.TestCase):
         self.assertEqual((row["rule"], row["profile"]), ("1", "BRAW"))
         self.assertNotIn("Panasonic", row["camera"])
 
+        # The folder plays no part: the same headers under a plain path classify the same.
+        moved = dict(doc, path="card/A001_01011200_C002.braw")
+        self.assertEqual(dict(detect.classify(moved), path=""), dict(row, path=""))
+
+        # Give it every Panasonic header signal rule 4 reads. Rule 4 would now
+        # claim the file on its own, so only rule order keeps it BRAW.
+        doc["exiftool"]["IFD0:Make"] = "Panasonic"
+        doc["exiftool"]["QuickTime:CompatibleBrands"] = ["qt  ", "pana"]
+        self.assertIsNotNone(detect.rule_4_panasonic(detect.Headers(doc)))
+        row = detect.classify(doc)
+        self.assertEqual((row["rule"], row["profile"]), ("1", "BRAW"))
+        self.assertNotIn("Panasonic", row["camera"])
+
     def test_vp9_img_impostor_is_not_an_iphone_original(self):
         doc = load("r13_vp9_img_impostor")
         tags = doc["ffprobe"]["format"]["tags"]
