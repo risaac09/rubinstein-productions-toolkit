@@ -1191,8 +1191,8 @@ def cmd_ingest(args):
     reading every write back. For RCM projects made for this pipeline:
     --project must name the open project, and nothing already in its media
     pool is touched. Exit status: 0 all tagged or imported as planned; 2
-    when any file went to Review or was skipped as corrupt; 1 on any
-    failed import or write, or a refused precondition."""
+    when any file went to Review, was skipped as corrupt, or is VFR; 1 on
+    any failed import or write, or a refused precondition."""
     problem = _out_problem(args.out) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
@@ -1257,8 +1257,11 @@ def cmd_ingest(args):
           + (" (dry run, nothing written)" if args.dry_run else ""), file=sys.stderr)
     if any(r["result"].startswith("FAILED") for r in results):
         return 1
-    flagged = any(e["bin"] and e["bin"][-1] == rpingest.REVIEW_BIN for e in plan) or \
-        any(e["profile"] == rpdetect.CORRUPT for e in plan)
+    # 2 = something needs a person: a Review file, a corrupt file, or a VFR
+    # clip that must be conformed to CFR before editing.
+    flagged = any((e["bin"] and e["bin"][-1] == rpingest.REVIEW_BIN)
+                  or e["profile"] == rpdetect.CORRUPT
+                  or e["reason"].startswith("VFR") for e in plan)
     return 2 if flagged else 0
 
 

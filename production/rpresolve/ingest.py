@@ -118,7 +118,11 @@ def apply_plan(media_pool, root, plan, check=None):
     """Import and tag per plan. Returns one result per plan entry:
     {path, bin, action, result, input_color_space, data_level}, where result
     is 'skipped', 'imported', 'tagged', or 'FAILED: <why>'. check, when
-    given, is called before each bin's writes (ProjectPin.check)."""
+    given, is called before each bin's writes (ProjectPin.check).
+    Never raises for a Resolve failure: the first error (a bin that cannot
+    be made, the open project changing) stops the run, and every entry not
+    yet done is marked FAILED with the reason, so the report still shows
+    exactly what was written."""
     results = {id(e): {"path": e["path"], "bin": "/".join(e["bin"] or []), "action": e["action"],
                        "result": "skipped" if e["action"] == SKIP else "",
                        "input_color_space": "", "data_level": ""} for e in plan}
@@ -126,10 +130,21 @@ def apply_plan(media_pool, root, plan, check=None):
     for e in plan:
         if e["action"] != SKIP:
             groups.setdefault(tuple(e["bin"]), []).append(e)
+    stopped = None
     for parts, entries in groups.items():
-        if check:
-            check()
-        folder = ensure_folder(media_pool, root, list(parts))
+        if stopped:
+            for e in entries:
+                results[id(e)]["result"] = f"FAILED: not run, stopped earlier ({stopped})"
+            continue
+        try:
+            if check:
+                check()
+            folder = ensure_folder(media_pool, root, list(parts))
+        except Exception as err:  # a changed project or a bin Resolve refused
+            stopped = f"{type(err).__name__}: {err}"
+            for e in entries:
+                results[id(e)]["result"] = f"FAILED: not run ({stopped})"
+            continue
         if not media_pool.SetCurrentFolder(folder):
             for e in entries:
                 results[id(e)]["result"] = f"FAILED: could not open bin '{'/'.join(parts)}'"
