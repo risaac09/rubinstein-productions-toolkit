@@ -385,12 +385,15 @@ class TestFieldDecoders(unittest.TestCase):
         self.assertEqual(s["input_color_space_evidence"], "field 203 absent")
         self.assertEqual(s["output_transform_label"], "No Output Transform")
         self.assertEqual(s["color_management_fields"], [122])
+        self.assertEqual(s["defaulted"], [])
 
     def test_settings_defaults_and_unknown_codes(self):
         s = rs.interpret_project_settings({})
         self.assertEqual((s["resolution"], s["fps"], s["color_science"]),
                          ("1920x1080", 24.0, "davinciYRGB"))
         self.assertIn("inferred", s["color_science_evidence"])
+        self.assertEqual(s["defaulted"], ["resolution", "fps"])
+        self.assertEqual(rs.interpret_project_settings({1: [(2, b"3840 x 2160")]})["defaulted"], ["fps"])
         s = rs.interpret_project_settings({46: [(0, 7)], 203: [(0, 14)], 1: [(2, b"Custom")]})
         self.assertEqual(s["color_science"], rs.UNDECODED)
         self.assertEqual(s["color_science_evidence"], "field 46 = 7")
@@ -760,6 +763,33 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(rs.cache_disagreements(settings, rows["Synthetic"]), ["cache fps 60"])
         self.assertEqual(rs.read_metadata_cache(str(self.tmp / "none.db"), str(self.tmp))[0], {})
 
+    def test_main_marks_projects_missing_from_the_cache(self):
+        self.make_project("Cached", corrupt_grade=False)
+        self.make_project("Uncached", corrupt_grade=False)
+        cache = self.tmp / "Metadata.db"
+        con = sqlite3.connect(cache)
+        con.execute("create table project_metadata (key text, width integer, height integer, fps real)")
+        con.execute("insert into project_metadata values ('Cached', 3840, 2160, 29.97)")
+        con.commit()
+        con.close()
+        out, js = self.tmp / "out" / "survey.md", self.tmp / "out" / "survey.json"
+        with redirect_stdout(io.StringIO()):
+            rc = rs.main(["--out", str(out), "--json", str(js), "--metadata-cache", str(cache),
+                          "--projects-dir", str(self.tmp / "Projects")])
+        self.assertEqual(rc, 0)
+        md = out.read_text()
+        self.assertEqual(table_row(md, "Cached")[4], "3840x2160@29.97")
+        self.assertEqual(table_row(md, "Uncached")[4], "3840x2160@29.97 (no cache row)")
+        self.assertNotIn("cross-check did not run", md)
+        checks = {p["name"]: p["cache_check"] for p in json.loads(js.read_text())["projects"]}
+        self.assertEqual(checks, {"Cached": "checked", "Uncached": "no row"})
+        with redirect_stdout(io.StringIO()):
+            rs.main(["--out", str(out), "--no-metadata-cache",
+                     "--projects-dir", str(self.tmp / "Projects")])
+        md = out.read_text()
+        self.assertEqual(table_row(md, "Uncached")[4], "3840x2160@29.97")
+        self.assertIn("cross-check did not run", md)
+
     def test_main_without_zstd(self):
         saved = rs.zstd
         rs.zstd = None
@@ -816,6 +846,20 @@ class TestRender(unittest.TestCase):
                          ["5/0/0 (5 UNDECODED)", rs.UNDECODED, rs.UNDECODED, rs.UNDECODED])
         self.assertEqual(table_row(md, "Legacy")[6:10],
                          ["0/2/0 (2 legacy)", rs.UNDECODED, rs.UNDECODED, rs.UNDECODED])
+
+    def test_project_cell_marks_defaults_and_missing_cache_row(self):
+        defaults = dict(self.SETTINGS, defaulted=["resolution", "fps"])
+        md = rs.render_markdown(dict(report_for(
+            self.entry("Defaults", settings=defaults, cache_check="no row"),
+            self.entry("Fps Only", settings=dict(self.SETTINGS, defaulted=["fps"]),
+                       cache_check="checked", cache_disagreements=["cache fps 30"]),
+            self.entry("Read", cache_check="checked")), metadata_cache_read=True))
+        self.assertEqual(table_row(md, "Defaults")[4],
+                         "1920x1080@24 (default resolution; default fps; no cache row)")
+        self.assertEqual(table_row(md, "Fps Only")[4], "1920x1080@24 (default fps; cache fps 30)")
+        self.assertEqual(table_row(md, "Read")[4], "1920x1080@24")
+        self.assertNotIn("cross-check did not run", md)
+        self.assertIn("cross-check did not run", rs.render_markdown(report_for(self.entry("X"))))
 
     def test_undecoded_lut_and_ofx_nodes_are_named(self):
         grades = dict(self.NO_GRADES, graded={"clip": 1, "pool": 0, "timeline": 0, "other": 0},

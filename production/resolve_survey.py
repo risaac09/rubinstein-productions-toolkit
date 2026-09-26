@@ -622,13 +622,14 @@ def interpret_project_settings(fields):
             return None, f"field {num} present with wire type {entries[0][0]}"
         return None, None
 
-    out = {}
+    out = {"defaulted": []}  # settings printed from an absent field's default
     label, problem = first(SETUP_RESOLUTION_LABEL, WIRE_LEN)
     if problem:
         out["resolution"], out["resolution_evidence"] = UNDECODED, problem
     elif label is None:
         out["resolution"] = "%dx%d" % DEFAULT_PROJECT_RESOLUTION
         out["resolution_evidence"] = "field 1 absent (Resolve default)"
+        out["defaulted"].append("resolution")
     else:
         text = label.decode("utf-8", "replace")
         match = re.match(r"\s*(\d+)\s*x\s*(\d+)", text)
@@ -641,6 +642,7 @@ def interpret_project_settings(fields):
     elif raw_fps is None:
         out["fps"] = DEFAULT_PROJECT_FPS
         out["fps_evidence"] = "field 248 absent (default 24)"
+        out["defaulted"].append("fps")
     else:
         fps = struct.unpack("<f", raw_fps)[0]
         out["fps"] = round(fps, 3) if math.isfinite(fps) and fps > 0 else UNDECODED
@@ -831,7 +833,7 @@ def survey_settings(con, errors):
 def _undecoded_settings():
     return {"resolution": UNDECODED, "fps": UNDECODED, "color_science": UNDECODED,
             "input_color_space": UNDECODED, "output_transform_label": None,
-            "color_management_fields": []}
+            "color_management_fields": [], "defaulted": []}
 
 
 SURVEY_SECTIONS = ("settings", "timelines", "grades", "media")
@@ -1042,12 +1044,19 @@ def _timeline_summary(timelines):
 
 
 def _project_cell(p):
+    """resolution@fps, then in one parenthesis: which of the two are
+    absent-field defaults, any metadata-cache disagreement, and a note
+    when the cache was read but holds no row for this project."""
     s = p.get("settings")
     if s is None:
         return UNDECODED
     text = f"{s.get('resolution', UNDECODED)}@{_fmt_fps(s.get('fps', UNDECODED))}"
-    if p.get("cache_disagreements"):
-        text += " (" + "; ".join(p["cache_disagreements"]) + ")"
+    notes = [f"default {key}" for key in ("resolution", "fps") if key in (s.get("defaulted") or ())]
+    notes += p.get("cache_disagreements") or []
+    if p.get("cache_check") == "no row":
+        notes.append("no cache row")
+    if notes:
+        text += " (" + "; ".join(notes) + ")"
     return text
 
 
@@ -1165,9 +1174,15 @@ def render_markdown(report):
         "- **Saved**: the live Project.db's modification time.",
         "- **Timelines**: resolution@fps per timeline, grouped. `project` means the timeline "
         "uses the project resolution.",
-        "- **Project**: project resolution@fps from SetupBA fields 1 and 248 (absent fields are "
-        "Resolve defaults). Where Resolve's metadata cache disagrees, the cache value follows in "
-        "parentheses; which of the two is right is unverified.",
+        "- **Project**: project resolution@fps from SetupBA fields 1 and 248. `default "
+        "resolution` and `default fps` mark a field SetupBA left out: the cell shows the default "
+        "this survey assumes for it (%dx%d, %g fps), which was not read from the project. Where "
+        "Resolve's metadata cache disagrees, the cache value follows in parentheses; which of the "
+        "two is right is unverified. `no cache row`: the cache has no entry for the project, so "
+        "nothing cross-checks its value." % (*DEFAULT_PROJECT_RESOLUTION, DEFAULT_PROJECT_FPS)
+        + ("" if report.get("metadata_cache_read") else
+           " The metadata-cache cross-check did not run for this survey (turned off, or the "
+           "cache could not be read), so no Project value is cross-checked."),
         "- **Color**: color science mode (SetupBA field 46) and input color space (field 203). "
         "\"inferred\" marks the absent-field reading, which rests on two API checks. "
         "\"CM fields\" lists color-management fields present in the project.",
@@ -1354,6 +1369,7 @@ def run_survey(project_dirs, cache_path=None, tree_labels=HOUSE_TREE_LABELS, hom
         cache, cache_error = read_metadata_cache(cache_path, workdir)
         if cache_error:
             notes.append(cache_error)
+        cache_read = bool(cache_path) and not cache_error
         projects = []
         for d in project_dirs:
             entry = survey_project(str(d), workdir, home)
@@ -1361,9 +1377,13 @@ def run_survey(project_dirs, cache_path=None, tree_labels=HOUSE_TREE_LABELS, hom
                 row = cache.get(entry["name"])
                 entry["metadata_cache"] = row
                 entry["cache_disagreements"] = cache_disagreements(entry.get("settings"), row)
+                # "no row" is kept apart from "checked": both leave
+                # cache_disagreements empty, and only one was cross-checked.
+                entry["cache_check"] = ("not run" if not cache_read
+                                        else "no row" if row is None else "checked")
             projects.append(entry)
     return {"projects": projects, "patterns": cross_project_patterns(projects, tree_labels),
-            "notes": notes}
+            "notes": notes, "metadata_cache_read": cache_read}
 
 
 def main(argv=None):
