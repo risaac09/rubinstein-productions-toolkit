@@ -1128,14 +1128,38 @@ def git_common_dir(start):
 
 def inside_repo(path, repo_dir=None):
     """True when `path` would land inside any working tree of the git
-    repository that holds repo_dir (default: this script's directory)."""
+    repository that holds repo_dir (default: this script's directory).
+    `path` is resolved first, including a symlink at its last component
+    (dangling or not), since a write to the link lands at its target."""
     repo_common = git_common_dir(repo_dir or os.path.dirname(os.path.realpath(__file__)))
     if repo_common is None:
         return False
-    parent = Path(os.path.abspath(path)).parent
+    parent = Path(os.path.realpath(path)).parent
     while not parent.exists() and parent != parent.parent:
         parent = parent.parent
     return git_common_dir(parent) == repo_common
+
+
+def write_report(path, text):
+    """Write text to `path`, resolved the way inside_repo resolves it. The
+    text goes to a temporary file (mode 0600) beside the target, which then
+    replaces the target's directory entry. A file hard-linked to the target
+    elsewhere keeps its old content, so a link into the repo cannot carry
+    the report there, and a reader never sees a half-written file."""
+    target = os.path.realpath(path)
+    folder = os.path.dirname(target)
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".resolve-survey-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -1223,15 +1247,9 @@ def main(argv=None):
     report.update({"generated": time.strftime("%Y-%m-%d %H:%M:%S %z"),
                    "projects_dir": args.projects_dir, "skipped": skipped})
 
-    for path in (args.out, args.json_out):
-        if path:
-            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(args.out, "w", encoding="utf-8") as f:
-        f.write(render_markdown(report))
+    write_report(args.out, render_markdown(report))
     if args.json_out:
-        with open(args.json_out, "w", encoding="utf-8") as f:
-            json.dump(_json_ready(report), f, indent=2, sort_keys=False)
-            f.write("\n")
+        write_report(args.json_out, json.dumps(_json_ready(report), indent=2, sort_keys=False) + "\n")
 
     read = sum(1 for p in report["projects"] if p.get("read"))
     tree = report["patterns"]["house_tree"]

@@ -587,6 +587,62 @@ class TestOutputGuard(unittest.TestCase):
             self.assertFalse(rs.inside_repo(other / "out.md", repo_dir=repo))
             self.assertFalse(rs.inside_repo(tmp / "loose.md", repo_dir=repo))
 
+    def test_symlinks_resolve_to_where_the_write_lands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo = tmp / "repo"
+            (repo / ".git").mkdir(parents=True)
+            (repo / "kept.md").write_text("repo file\n")
+            outside = tmp / "outside"
+            outside.mkdir()
+            dangling = outside / "dangling.md"
+            dangling.symlink_to(repo / "new.md")          # target not created yet
+            existing = outside / "existing.md"
+            existing.symlink_to(repo / "kept.md")
+            linked_dir = outside / "dir"
+            linked_dir.symlink_to(repo)
+            escape = repo / "escape.md"
+            escape.symlink_to(outside / "report.md")
+            self.assertTrue(rs.inside_repo(dangling, repo_dir=repo))
+            self.assertTrue(rs.inside_repo(existing, repo_dir=repo))
+            self.assertTrue(rs.inside_repo(linked_dir / "out.md", repo_dir=repo))
+            self.assertFalse(rs.inside_repo(escape, repo_dir=repo))
+
+    def test_main_refuses_a_symlink_into_this_repo(self):
+        here = Path(rs.__file__).resolve().parent
+        if rs.git_common_dir(here) is None:
+            self.skipTest("not running from a git checkout")
+        target = here / "tests" / "should-not-exist.md"
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, redirect_stderr(err):
+            link = Path(tmp) / "out.md"
+            link.symlink_to(target)
+            empty = Path(tmp) / "Projects"
+            empty.mkdir()
+            rc = rs.main(["--out", str(link), "--projects-dir", str(empty), "--no-metadata-cache"])
+        self.assertEqual(rc, 2)
+        self.assertIn("inside this repository", err.getvalue())
+        self.assertFalse(target.exists())
+
+    def test_write_report_leaves_hard_links_and_symlinks_intact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            twin = tmp / "twin.md"            # stands in for a file in the repo
+            twin.write_text("old\n")
+            out = tmp / "out.md"
+            os.link(twin, out)
+            rs.write_report(str(out), "report\n")
+            self.assertEqual(out.read_text(), "report\n")
+            self.assertEqual(twin.read_text(), "old\n")
+            self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o600)
+            real = tmp / "elsewhere" / "report.md"
+            link = tmp / "link.md"
+            link.symlink_to(real)
+            rs.write_report(str(link), "via link\n")
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(real.read_text(), "via link\n")
+            self.assertEqual(sorted(p.name for p in tmp.rglob(".resolve-survey-*")), [])
+
     def test_main_refuses_output_in_this_repo(self):
         here = Path(rs.__file__).resolve().parent
         if rs.git_common_dir(here) is None:
