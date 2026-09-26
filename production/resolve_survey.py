@@ -135,6 +135,9 @@ DEFAULT_PROJECT_RESOLUTION = (1920, 1080)
 DEFAULT_PROJECT_FPS = 24.0
 COLOR_SCIENCE_CODES = {None: "davinciYRGB", 2: "davinciYRGBColorManagedv2"}
 INPUT_COLOR_SPACE_CODES = {14: "Rec.709 Gamma 2.4"}
+# Printed when field 203 is absent: Resolve omits a setting left at its
+# default, and which space that default is has not been checked here.
+INPUT_SPACE_DEFAULT = "project default (not stored)"
 
 WIRE_VARINT, WIRE_FIXED64, WIRE_LEN, WIRE_FIXED32 = 0, 1, 2, 5
 MAX_WALK_DEPTH = 24
@@ -660,9 +663,15 @@ def interpret_project_settings(fields):
         out["color_science_evidence"] = f"field 46 = {mode}"
 
     space, problem = first(SETUP_INPUT_COLOR_SPACE, WIRE_VARINT)
-    out["input_color_space"] = INPUT_COLOR_SPACE_CODES.get(space, UNDECODED)
-    out["input_color_space_evidence"] = problem or ("field 203 absent" if space is None
-                                                    else f"field 203 = {space}")
+    if problem:
+        out["input_color_space"], out["input_color_space_evidence"] = UNDECODED, problem
+    elif space is None:
+        out["input_color_space"] = INPUT_SPACE_DEFAULT
+        out["input_color_space_evidence"] = "field 203 absent (Resolve default)"
+        out["defaulted"].append("input_color_space")
+    else:
+        out["input_color_space"] = INPUT_COLOR_SPACE_CODES.get(space, UNDECODED)
+        out["input_color_space_evidence"] = f"field 203 = {space}"
 
     transform, _ = first(SETUP_OUTPUT_TRANSFORM, WIRE_LEN)
     out["output_transform_label"] = transform.decode("utf-8", "replace") if transform else None
@@ -925,7 +934,7 @@ def read_metadata_cache(cache_path, workdir):
             return v if isinstance(v, kind) and not isinstance(v, bool) else None
         return {k: {"width": num(w, int), "height": num(h, int), "fps": num(f, (int, float))}
                 for k, w, h, f in rows if isinstance(k, str)}, None
-    except sqlite3.Error as e:
+    except (sqlite3.Error, OSError) as e:
         return {}, f"metadata cache unreadable: {type(e).__name__}: {e}"
     finally:
         try:
@@ -1185,6 +1194,8 @@ def render_markdown(report):
            "cache could not be read), so no Project value is cross-checked."),
         "- **Color**: color science mode (SetupBA field 46) and input color space (field 203). "
         "\"inferred\" marks the absent-field reading, which rests on two API checks. "
+        f"`{INPUT_SPACE_DEFAULT}` means field 203 is absent, so the project uses Resolve's "
+        "default input space, which this survey does not name. "
         "\"CM fields\" lists color-management fields present in the project.",
         "- **Graded**: active grades with corrections, as clip / media pool / timeline.",
         "- **Nodes**: nodes per active grade (API `GetNumNodes` equivalent), min/median/max. "
@@ -1346,6 +1357,26 @@ def write_report(path, text):
         raise
 
 
+def output_path_problem(out, json_out=None):
+    """Why the report cannot be written to these paths, or None. Checked
+    before any database is read, so a bad path costs nothing: a path that
+    is an existing directory, --json naming the same file as --out, or a
+    nearest existing folder this user cannot write to."""
+    targets = [("--out", out)] + ([("--json", json_out)] if json_out else [])
+    if json_out and os.path.realpath(out) == os.path.realpath(json_out):
+        return f"--json {json_out} is the same file as --out; give them different paths."
+    for label, path in targets:
+        target = os.path.realpath(path)
+        if os.path.isdir(target):
+            return f"{label} {path} is a directory; give a file path."
+        folder = os.path.dirname(target)
+        while not os.path.exists(folder) and folder != os.path.dirname(folder):
+            folder = os.path.dirname(folder)
+        if not os.path.isdir(folder) or not os.access(folder, os.W_OK | os.X_OK):
+            return f"{label} {path}: cannot write under {folder}."
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1358,6 +1389,7 @@ def list_projects(projects_dir, names=None):
     skipped = [d.name for d in folders if d not in with_db]
     if not names:
         return with_db, skipped, []
+    names = list(dict.fromkeys(names))  # a name given twice is surveyed once
     by_name = {d.name: d for d in with_db}
     return ([by_name[n] for n in names if n in by_name], [],
             [n for n in names if n not in by_name])
@@ -1415,6 +1447,10 @@ def main(argv=None):
                   "survey names projects, media and LUT paths; write it somewhere outside "
                   "the repo.", file=sys.stderr)
             return 2
+    problem = output_path_problem(args.out, args.json_out)
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 2
     if zstd is None:
         print(f"ERROR: this Python ({sys.version.split()[0]}) has no compression.zstd. "
               "Run with Python 3.14+, e.g. /opt/homebrew/bin/python3.14.", file=sys.stderr)

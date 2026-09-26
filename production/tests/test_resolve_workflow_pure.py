@@ -157,7 +157,8 @@ class TestSurveyCommand(unittest.TestCase):
 
     def ns(self, **kw):
         base = dict(out="/elsewhere/survey.md", json=None, projects=None,
-                    projects_dir=None, no_metadata_cache=False)
+                    projects_dir=None, metadata_cache=None, no_metadata_cache=False,
+                    tree_labels=None)
         base.update(kw)
         return argparse.Namespace(**base)
 
@@ -168,11 +169,14 @@ class TestSurveyCommand(unittest.TestCase):
     def test_all_options_pass_through(self):
         cmd = build_survey_command(
             self.ns(json="/elsewhere/s.json", projects=["Two Words", "B"],
-                    projects_dir="/lib/Projects", no_metadata_cache=True),
+                    projects_dir="/lib/Projects", metadata_cache="/lib/Metadata.db",
+                    no_metadata_cache=True, tree_labels=["CST IN", "CST OUT"]),
             python="py", script="s.py")
         self.assertEqual(cmd, ["py", "s.py", "--out", "/elsewhere/survey.md",
                                "--json", "/elsewhere/s.json", "--projects", "Two Words", "B",
-                               "--projects-dir", "/lib/Projects", "--no-metadata-cache"])
+                               "--projects-dir", "/lib/Projects",
+                               "--metadata-cache", "/lib/Metadata.db", "--no-metadata-cache",
+                               "--tree-labels", "CST IN", "CST OUT"])
 
     def test_defaults_point_at_sibling_script(self):
         self.assertEqual(SURVEY_SCRIPT.name, "resolve_survey.py")

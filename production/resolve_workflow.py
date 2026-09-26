@@ -1104,8 +1104,12 @@ def build_survey_command(args, python=SURVEY_PYTHON, script=SURVEY_SCRIPT):
         cmd += ["--projects", *args.projects]
     if args.projects_dir:
         cmd += ["--projects-dir", args.projects_dir]
+    if args.metadata_cache:
+        cmd += ["--metadata-cache", args.metadata_cache]
     if args.no_metadata_cache:
         cmd.append("--no-metadata-cache")
+    if args.tree_labels:
+        cmd += ["--tree-labels", *args.tree_labels]
     return cmd
 
 
@@ -1279,8 +1283,13 @@ Examples:
     sp.add_argument("--projects", nargs="+", metavar="NAME",
                     help="Only these projects (default: every project folder)")
     sp.add_argument("--projects-dir", help="Resolve's Projects folder (default: the disk database)")
+    sp.add_argument("--metadata-cache",
+                    help="Resolve's ProjectMetadataCache/Metadata.db to cross-check against "
+                         "(default: the live one)")
     sp.add_argument("--no-metadata-cache", action="store_true",
                     help="Skip the cross-check against Resolve's metadata cache")
+    sp.add_argument("--tree-labels", nargs="+", metavar="LABEL",
+                    help="Node labels that mark the house node tree (default: the survey's)")
     sp.set_defaults(func=cmd_survey)
 
     args = parser.parse_args()

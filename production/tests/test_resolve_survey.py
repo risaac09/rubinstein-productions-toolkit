@@ -383,19 +383,25 @@ class TestFieldDecoders(unittest.TestCase):
         self.assertEqual(s["resolution"], "3840x2160")
         self.assertEqual(s["fps"], 23.976)
         self.assertEqual(s["color_science"], "davinciYRGBColorManagedv2")
-        self.assertEqual(s["input_color_space"], rs.UNDECODED)
-        self.assertEqual(s["input_color_space_evidence"], "field 203 absent")
+        # Absent field 203 is the Resolve default, reported as such and
+        # never as a decode failure.
+        self.assertEqual(s["input_color_space"], rs.INPUT_SPACE_DEFAULT)
+        self.assertNotEqual(s["input_color_space"], rs.UNDECODED)
+        self.assertEqual(s["input_color_space_evidence"], "field 203 absent (Resolve default)")
         self.assertEqual(s["output_transform_label"], "No Output Transform")
         self.assertEqual(s["color_management_fields"], [122])
-        self.assertEqual(s["defaulted"], [])
+        self.assertEqual(s["defaulted"], ["input_color_space"])
+        self.assertIn(rs.INPUT_SPACE_DEFAULT, rs._color_cell(s))
 
     def test_settings_defaults_and_unknown_codes(self):
         s = rs.interpret_project_settings({})
         self.assertEqual((s["resolution"], s["fps"], s["color_science"]),
                          ("1920x1080", 24.0, "davinciYRGB"))
         self.assertIn("inferred", s["color_science_evidence"])
-        self.assertEqual(s["defaulted"], ["resolution", "fps"])
-        self.assertEqual(rs.interpret_project_settings({1: [(2, b"3840 x 2160")]})["defaulted"], ["fps"])
+        self.assertEqual(s["defaulted"], ["resolution", "fps", "input_color_space"])
+        self.assertEqual(rs.interpret_project_settings({1: [(2, b"3840 x 2160"), ], 203: [(0, 14)]})["defaulted"], ["fps"])
+        # An unmapped code stays UNDECODED: only absence means default.
+        self.assertEqual(rs.interpret_project_settings({203: [(0, 99)]})["input_color_space"], rs.UNDECODED)
         s = rs.interpret_project_settings({46: [(0, 7)], 203: [(0, 14)], 1: [(2, b"Custom")]})
         self.assertEqual(s["color_science"], rs.UNDECODED)
         self.assertEqual(s["color_science_evidence"], "field 46 = 7")
@@ -782,6 +788,39 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(row[10:], [rs.UNDECODED, rs.UNDECODED])
         self.assertEqual(row[2], "2")
         self.assertIn("no such table: BtVideoInfo", md)
+
+    def test_duplicate_project_names_are_surveyed_once(self):
+        self.make_project("Only", corrupt_grade=False)
+        dirs, _, unknown = rs.list_projects(self.tmp / "Projects", ["Only", "Only"])
+        self.assertEqual([d.name for d in dirs], ["Only"])
+        self.assertEqual(unknown, [])
+
+    def test_metadata_cache_os_error_is_a_note(self):
+        cache = self.tmp / "Metadata.db"
+        cache.write_bytes(b"")
+        with mock.patch.object(rs, "snapshot_db", side_effect=PermissionError(13, "denied")):
+            rows, error = rs.read_metadata_cache(str(cache), str(self.tmp))
+        self.assertEqual(rows, {})
+        self.assertIn("metadata cache unreadable: PermissionError", error)
+
+    def test_main_checks_output_paths_before_reading_any_project(self):
+        self.make_project("Only", corrupt_grade=False)
+        base = ["--no-metadata-cache", "--projects-dir", str(self.tmp / "Projects")]
+        out_dir = self.tmp / "out_dir"
+        out_dir.mkdir()
+        cases = [
+            (["--out", str(out_dir)], "is a directory"),
+            (["--out", str(self.tmp / "a.md"), "--json", str(self.tmp / "a.md")], "same file as --out"),
+            (["--out", str(self.tmp / "a.md"), "--json", str(out_dir)], "is a directory"),
+        ]
+        for args, message in cases:
+            err = io.StringIO()
+            with mock.patch.object(rs, "survey_project") as surveyed, redirect_stderr(err):
+                rc = rs.main(args + base)
+            self.assertEqual(rc, 2, args)
+            self.assertIn(message, err.getvalue(), args)
+            surveyed.assert_not_called()
+        self.assertFalse((self.tmp / "a.md").exists())
 
     def test_main_rejects_unknown_project(self):
         self.make_project("Only")
