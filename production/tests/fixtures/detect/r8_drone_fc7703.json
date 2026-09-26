@@ -1,0 +1,121 @@
+{
+ "description": "older DJI drone, camera FC7703: Comment Type=Normal; the SN field is removed from the comment",
+ "path": "drone/DJI_0001.MP4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "avc1",
+    "compatible_brands": "avc1isom",
+    "comment": "DE=None, Type=Normal, HQ=Normal, Mode=P"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "handler_name": "\u0010DJI.AVC",
+     "encoder": "AVC encoder"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "data",
+    "codec_tag_string": "priv",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u0010DJI.Meta"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "subtitle",
+    "codec_name": "mov_text",
+    "codec_tag_string": "text",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u0010DJI.Subtitle"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 Base w/ AVC ext [ISO 14496-12:2005]",
+  "QuickTime:CompatibleBrands": [
+   "avc1",
+   "isom"
+  ],
+  "UserData:Model": "FC7703",
+  "ItemList:Comment": "DE=None, Type=Normal, HQ=Normal, Mode=P",
+  "Microsoft:Category": [
+   "v01.43.0097",
+   "0.0.1",
+   "v1.0.0"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "\u0010DJI.AVC",
+  "Track1:CompressorName": "AVC encoder",
+  "Track2:HandlerType": "NRT Metadata",
+  "Track2:HandlerDescription": "\u0010DJI.Meta",
+  "Track2:MetaFormat": "priv",
+  "Track3:HandlerType": "Text",
+  "Track3:HandlerDescription": "\u0010DJI.Subtitle"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "avc1",
+   "compatible": [
+    "avc1",
+    "isom",
+    "\u0000\u0000\u0000\u0000"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "DJI.AVC",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "AVC encoder"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "DJI.Meta",
+    "fourcc": "priv"
+   },
+   {
+    "handler": "text",
+    "handler_name": "DJI.Subtitle",
+    "fourcc": "text"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "8",
+  "profile": "Normal",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "DJI drone (FC7703)",
+  "data_level": "video",
+  "vfr": "no",
+  "confidence": "low"
+ }
+}

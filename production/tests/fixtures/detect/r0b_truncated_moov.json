@@ -1,0 +1,31 @@
+{
+ "description": "trap: truncated recording, ftyp and mdat only, no moov atom",
+ "path": "phone/A001_01011800_C004.mov",
+ "ffprobe": null,
+ "ffprobe_error": "[mov,mp4,m4a,3gp,3g2,mj2 @ 0x0] moov atom not found\nInvalid data found when processing input",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ]
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": false,
+  "tracks": []
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "0b",
+  "profile": "corrupt",
+  "input_color_space": "",
+  "data_level": "unknown",
+  "vfr": "unknown",
+  "confidence": "high"
+ }
+}

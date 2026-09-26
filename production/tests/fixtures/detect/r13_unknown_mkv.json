@@ -1,0 +1,43 @@
+{
+ "description": "hand-built: a Matroska file no rule claims",
+ "path": "misc/clip0001.mkv",
+ "ffprobe": {
+  "format": {
+   "format_name": "matroska,webm",
+   "tags": {
+    "ENCODER": "unknown muxer"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "[0][0][0][0]",
+    "pix_fmt": "yuv420p",
+    "color_range": "tv",
+    "r_frame_rate": "30/1",
+    "avg_frame_rate": "30/1",
+    "width": 1920,
+    "height": 1080
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {},
+ "atoms": {
+  "ftyp": null,
+  "moov": false,
+  "tracks": []
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "13",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "unknown",
+  "data_level": "video",
+  "vfr": "no",
+  "confidence": "low"
+ }
+}

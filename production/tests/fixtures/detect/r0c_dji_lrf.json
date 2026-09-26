@@ -1,0 +1,158 @@
+{
+ "description": "DJI .LRF low-res proxy beside the original",
+ "path": "osmo/DJI_20260101120000_0001_D.LRF",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "isom",
+    "compatible_brands": "isomiso2avc1mp41",
+    "encoder": "DJI OsmoPocket3"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 1280,
+    "height": 720,
+    "tags": {
+     "handler_name": "VideoHandler"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "SoundHandler"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "djmd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "DJI meta"
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "30000/1001",
+    "tags": {
+     "handler_name": "TimeCodeHandler"
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "video",
+    "codec_name": "mjpeg",
+    "codec_tag_string": "[0][0][0][0]",
+    "profile": "Baseline",
+    "pix_fmt": "yuvj420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "pc",
+    "color_space": "bt470bg",
+    "r_frame_rate": "90000/1",
+    "avg_frame_rate": "0/0",
+    "width": 1280,
+    "height": 720,
+    "disposition": {
+     "attached_pic": 1
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 Base Media v1 [IS0 14496-12:2003]",
+  "QuickTime:CompatibleBrands": [
+   "isom",
+   "iso2",
+   "avc1",
+   "mp41"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "VideoHandler",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "SoundHandler",
+  "Track3:HandlerType": "NRT Metadata",
+  "Track3:HandlerDescription": "DJI meta",
+  "Track3:MetaFormat": "djmd",
+  "Track4:HandlerType": "Time Code",
+  "Track4:HandlerDescription": "TimeCodeHandler",
+  "ItemList:Encoder": "DJI OsmoPocket3",
+  "Microsoft:Category": "pb_file:dvtm_PP-101.proto;model_name:PP-101;pb_version:2.0.0;pb_lib_version:02.01.00;"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "isom",
+   "compatible": [
+    "isom",
+    "iso2",
+    "avc1",
+    "mp41"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "VideoHandler",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": false
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "SoundHandler",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "DJI meta",
+    "fourcc": "djmd"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "TimeCodeHandler",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "0c",
+  "profile": "proxy",
+  "input_color_space": "",
+  "camera": "DJI low-res proxy (.LRF)"
+ }
+}
