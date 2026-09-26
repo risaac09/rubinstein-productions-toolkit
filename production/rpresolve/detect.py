@@ -94,6 +94,11 @@ BMD_FILMLOG_TAG = "com.blackmagic-design.camera.filmlog"
 # cap only guards against a corrupt size field.
 MAX_MOOV_BYTES = 64 * 1024 * 1024
 
+# Container boxes nest trak > mdia > minf > stbl, four deep, in every file
+# seen. The walk stops descending past this depth, so a malformed file with
+# thousands of nested containers cannot exhaust the Python stack.
+MAX_BOX_DEPTH = 8
+
 
 class DetectError(RuntimeError):
     """Base class for errors raised by this module."""
@@ -278,7 +283,7 @@ def _parse_video_entry(buf, start, end):
 def _parse_trak(buf, start, end):
     track = {}
 
-    def walk(s0, e0, parent):
+    def walk(s0, e0, parent, depth):
         for typ, s, e in _boxes(buf, s0, e0):
             if typ == b"hdlr" and parent == b"mdia" and e - s >= 12:
                 track["handler"] = _fourcc(buf[s + 8:s + 12])
@@ -290,9 +295,12 @@ def _parse_trak(buf, start, end):
                 if track.get("handler") == "vide":
                     track.update(_parse_video_entry(buf, s + 8, entry_end))
             elif typ in _CONTAINERS:
-                walk(s, e, typ)
+                if depth >= MAX_BOX_DEPTH:
+                    track["error"] = f"containers nest past {MAX_BOX_DEPTH} levels"
+                    continue
+                walk(s, e, typ, depth + 1)
 
-    walk(start, end, b"trak")
+    walk(start, end, b"trak", 1)
     return track
 
 
@@ -347,8 +355,8 @@ def read_atoms(path, max_moov=MAX_MOOV_BYTES):
                                      if t == b"trak"]
                     break
                 pos += box_size
-        except (OSError, struct.error) as e:
-            out["error"] = f"read error: {e}"
+        except (OSError, struct.error, ValueError, RecursionError) as e:
+            out["error"] = f"read error: {type(e).__name__}: {e}"
     return out
 
 
@@ -1056,16 +1064,33 @@ def needs_review(row):
 # Batch entry point and output
 # ---------------------------------------------------------------------------
 
+def failed_row(path, exc):
+    """Rule-13 review row for a file whose probe or classification raised."""
+    out = {"path": path, "data_level": "unknown", "vfr": "unknown"}
+    out.update(_review("13", "unknown",
+                       f"detect failed on this file: {type(exc).__name__}: {str(exc)[:160]}"))
+    return {c: out.get(c, "") for c in COLUMNS}
+
+
 def detect_paths(paths, ffprobe=None, exiftool=None):
     """Probe and classify every video file under paths. Returns
-    (rows, missing) where missing lists inputs that do not exist."""
+    (rows, missing) where missing lists inputs that do not exist. A file
+    that raises becomes a review row, so one bad file never discards the
+    batch; a missing tool still stops the run."""
     ffprobe = ffprobe or FFPROBE
     exiftool = exiftool or EXIFTOOL
     check_tools(ffprobe, exiftool)
     files, missing = collect_files(paths)
     exif = run_exiftool(files, exiftool=exiftool) if files else {}
     cache = {}
-    rows = [classify(probe(f, exif.get(f), ffprobe=ffprobe, dir_cache=cache)) for f in files]
+    rows = []
+    for f in files:
+        try:
+            rows.append(classify(probe(f, exif.get(f), ffprobe=ffprobe, dir_cache=cache)))
+        except ToolMissing:
+            raise
+        except Exception as e:
+            rows.append(failed_row(f, e))
     return rows, missing
 
 

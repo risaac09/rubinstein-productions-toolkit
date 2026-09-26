@@ -24,6 +24,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -268,6 +269,14 @@ def mov(children, moov=True, mdat=b"\x00" * 64):
     return data
 
 
+def nested_trak(levels):
+    """A malformed trak holding `levels` stbl boxes, each inside the last."""
+    inner = b""
+    for _ in range(levels):
+        inner = box(b"stbl", inner)
+    return box(b"trak", inner)
+
+
 class TestReadAtoms(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -316,6 +325,19 @@ class TestReadAtoms(unittest.TestCase):
     def test_empty_and_missing_files(self):
         self.assertFalse(detect.read_atoms(self.write("empty.mov", b""))["moov"])
         self.assertIn("error", detect.read_atoms(os.path.join(self.tmp.name, "nope.mov")))
+
+    def test_deeply_nested_containers_stop_at_the_depth_cap(self):
+        # 5,000 nested stbl boxes once raised RecursionError out of read_atoms.
+        colr = box(b"colr", b"nclc" + struct.pack(">HHH", 1, 1, 1))
+        video = trak(b"vide", b"Core Media Video", video_entry(b"apch", [colr]))
+        atoms = detect.read_atoms(self.write("deep.mov", mov([nested_trak(5000), video])))
+        self.assertNotIn("error", atoms)
+        bad, good = atoms["tracks"]
+        self.assertIn("nest past", bad["error"])
+        self.assertNotIn("fourcc", bad)
+        # The real track beside it, four containers deep, still parses.
+        self.assertEqual((good["fourcc"], good["colr"]["transfer"]), ("apch", 1))
+        self.assertNotIn("error", good)
 
     def test_real_parse_feeds_classify(self):
         colr = box(b"colr", b"nclc" + struct.pack(">HHH", 9, 2, 9))
@@ -483,6 +505,42 @@ class TestDetectPathsWithFakeTools(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)[0]["profile"], "Rec.709")
+
+    def test_cli_writes_the_table_past_a_malformed_file(self):
+        with open(os.path.join(self.media, "deep.mov"), "wb") as f:
+            f.write(mov([nested_trak(5000)]))
+        env = dict(os.environ, RPRESOLVE_FFPROBE=self.ffprobe, RPRESOLVE_EXIFTOOL=self.exiftool)
+        out = os.path.join(self.tmp.name, "detect.tsv")
+        proc = subprocess.run([sys.executable, str(WORKFLOW), "detect", self.media, "--out", out],
+                              capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        with open(out, encoding="utf-8") as f:
+            self.assertEqual(len(f.read().splitlines()), 4)
+
+    def test_a_file_that_raises_becomes_a_review_row(self):
+        real = detect.classify
+
+        def classify(doc):
+            if doc["path"].endswith("cut.mov"):
+                raise ValueError("synthetic parse failure")
+            return real(doc)
+
+        with mock.patch.object(detect, "classify", classify):
+            rows, _ = detect.detect_paths([self.media], ffprobe=self.ffprobe, exiftool=self.exiftool)
+        by_name = {os.path.basename(r["path"]): r for r in rows}
+        self.assertEqual(by_name["2026-01-01 12-00-00.mov"]["rule"], "10")
+        bad = by_name["cut.mov"]
+        self.assertEqual((bad["rule"], bad["profile"], bad["input_color_space"]), ("13", detect.REVIEW, ""))
+        self.assertIn("ValueError: synthetic parse failure", bad["note"])
+        self.assertEqual(tuple(bad), detect.COLUMNS)
+
+    def test_missing_tool_mid_batch_still_stops_the_run(self):
+        def run_ffprobe(path, ffprobe=None):
+            raise detect.ToolMissing("cannot run ffprobe: gone")
+
+        with mock.patch.object(detect, "run_ffprobe", run_ffprobe):
+            with self.assertRaises(detect.ToolMissing):
+                detect.detect_paths([self.media], ffprobe=self.ffprobe, exiftool=self.exiftool)
 
     def test_cli_missing_tools_exit_1(self):
         env = dict(os.environ, RPRESOLVE_FFPROBE="/nonexistent/ffprobe",
