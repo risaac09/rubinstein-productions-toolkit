@@ -823,6 +823,9 @@ _PANA_XML_PROFILES = {
     "cinelike_v": ("Cinelike V", CS_REC709, "bt.709"),
 }
 
+_VLOGL_CURVE = "V-Log L uses the V-Log curve"
+_VLOGL_GAMUT_GAP = "V-Gamut for V-Log L is UNVERIFIED"
+
 _PANA_PHOTOSTYLES = {
     "v-log": ("V-Log", CS_VLOG),
     "natural": ("Natural", CS_REC709),
@@ -845,9 +848,13 @@ def _panasonic_profile(h, model):
         hit = _PANA_XML_PROFILES.get(gamma.lower())
         if hit and (not gamut or gamut.lower() == hit[2]):
             codec = _xml_field(xml, "Codec")
-            return hit[0], hit[1], "high", _join(
-                f"XML CaptureGamma {gamma} / CaptureGamut {gamut or '?'}",
-                f"codec {codec}" if codec else "")
+            note = _join(f"XML CaptureGamma {gamma} / CaptureGamut {gamut or '?'}",
+                         f"codec {codec}" if codec else "")
+            if hit[0] == "V-Log L":
+                # A CaptureGamut of V-Gamut is the camera's own word on the
+                # gamut; only an XML without one leaves it open.
+                note = _join(note, _VLOGL_CURVE, "" if gamut else _VLOGL_GAMUT_GAP)
+            return hit[0], hit[1], "high", note
         if gamma:
             return None, None, None, f"XML CaptureGamma '{gamma}' / CaptureGamut '{gamut}' not in the verified table"
     style = h.exif_value("Panasonic:PhotoStyle")
@@ -855,7 +862,8 @@ def _panasonic_profile(h, model):
     if hit:
         return hit[0], hit[1], "medium", f"PhotoStyle {style}; no XML"
     if model == "DC-GH5" and style == "Unknown (10)":
-        return "V-Log L", CS_VLOG, "medium", "GH5 PhotoStyle code 10 = V-Log L; no XML"
+        return "V-Log L", CS_VLOG, "medium", _join(
+            "GH5 PhotoStyle code 10 = V-Log L; no XML", _VLOGL_CURVE, _VLOGL_GAMUT_GAP)
     if model == "DC-GH5" and style == "Unknown (13)":
         if h.transfer() == "arib-std-b67":
             return "HLG", CS_HLG, "medium", "GH5 PhotoStyle code 13 with VUI arib-std-b67"
@@ -880,8 +888,6 @@ def rule_4_panasonic(h):
     if h.is_prores_raw():
         return _row("4", camera, f"{profile} (ProRes RAW)", cs, "medium",
                     _join(note, f"ProRes RAW: decode with RAW to Log = {profile}; RAW path untested"))
-    if profile == "V-Log L":
-        note = _join(note, "V-Log L uses the V-Log curve; V-Gamut for V-Log L is UNVERIFIED")
     return _row("4", camera, profile, cs, confidence, note)
 
 

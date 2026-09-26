@@ -206,6 +206,23 @@ class TestTraps(unittest.TestCase):
         self.assertEqual((row["profile"], row["input_color_space"]), ("Apple Log", detect.CS_APPLE_LOG))
         self.assertIn("colr 9/2/9 without a logs atom", row["note"])
 
+    def test_vlogl_gamut_gap_is_named_only_when_the_xml_is_silent(self):
+        doc = load("r4_gh5_mov_xml_vlogl")
+        row = detect.classify(doc)
+        self.assertIn("CaptureGamut V-Gamut", row["note"])
+        self.assertNotIn("UNVERIFIED", row["note"])
+
+        self.assertIn("V-Gamut for V-Log L is UNVERIFIED", detect.classify(load("r4_gh5_mp4_code10"))["note"])
+
+        silent = re.compile(r"\s*<Gamut>.*?</Gamut>", re.S)
+        for holder, key in ((doc["ffprobe"]["format"]["tags"], "com.panasonic.Semi-Pro.metadata.xml"),
+                            (doc["exiftool"], "Keys:PanasonicSemi-ProMetadataXml")):
+            holder[key] = silent.sub("", holder[key])
+        row = detect.classify(doc)
+        self.assertEqual(row["profile"], "V-Log L")
+        self.assertIn("CaptureGamut ?", row["note"])
+        self.assertIn("V-Gamut for V-Log L is UNVERIFIED", row["note"])
+
     def test_drone_type_normal_is_review_that_names_the_candidate(self):
         row = detect.classify(load("r8_drone_fc7703"))
         self.assertEqual((row["rule"], row["profile"], row["input_color_space"]), ("8", detect.REVIEW, ""))
