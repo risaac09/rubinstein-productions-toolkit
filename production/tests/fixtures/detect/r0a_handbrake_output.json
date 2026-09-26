@@ -1,0 +1,94 @@
+{
+ "description": "hand-built: HandBrake output",
+ "path": "exports/clip_small.mp4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "isom",
+    "compatible_brands": "isomiso2avc1mp41",
+    "encoder": "HandBrake 1.8.2 2024081500"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "AAC audio"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "Baseline",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt470bg",
+    "color_transfer": "bt709",
+    "color_primaries": "bt470bg",
+    "r_frame_rate": "25/1",
+    "avg_frame_rate": "25/1",
+    "width": 1280,
+    "height": 720,
+    "tags": {
+     "handler_name": "H.264/AVC video",
+     "encoder": "AVC Coding"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v2 [ISO 14496-14]",
+  "QuickTime:CompatibleBrands": [
+   "mp42",
+   "isom"
+  ],
+  "Track1:HandlerType": "Audio Track",
+  "Track1:HandlerDescription": "AAC audio",
+  "Track2:HandlerType": "Video Track",
+  "Track2:HandlerDescription": "H.264/AVC video",
+  "Track2:CompressorName": "AVC Coding"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp42",
+   "compatible": [
+    "mp42",
+    "isom"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "soun",
+    "handler_name": "AAC audio",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "vide",
+    "handler_name": "H.264/AVC video",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "AVC Coding"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "0a",
+  "profile": "derived",
+  "input_color_space": "",
+  "camera": "HandBrake output"
+ }
+}

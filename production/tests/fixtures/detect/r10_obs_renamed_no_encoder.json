@@ -1,0 +1,101 @@
+{
+ "description": "variant: renamed OBS file without the encoder tag; handler and vendor still identify OBS",
+ "path": "obs/Renamed Session.mov",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  "
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High",
+    "pix_fmt": "yuv420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "60/1",
+    "avg_frame_rate": "60/1",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "handler_name": "OBS Video Handler",
+     "vendor_id": "OBSS",
+     "encoder": "com.apple.videotoolbox.videoenc"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "OBS Audio Handler",
+     "vendor_id": "[0][0][0][0]"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "OBS Video Handler",
+  "Track1:VendorID": "Unknown (OBSS)",
+  "Track1:CompressorName": "com.apple.videotoolbox.videoenc",
+  "Track2:HandlerType": "URL",
+  "Track2:HandlerDescription": "OBS Data Handler"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "OBS Video Handler",
+    "fourcc": "avc1",
+    "vendor": "OBSS",
+    "compressor": "com.apple.videotoolbox.videoenc",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": false
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "OBS Audio Handler",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "10",
+  "profile": "Rec.709",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "OBS (capture card)"
+ }
+}

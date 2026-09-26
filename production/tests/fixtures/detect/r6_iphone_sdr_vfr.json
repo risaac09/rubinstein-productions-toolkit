@@ -1,0 +1,220 @@
+{
+ "description": "iPhone SDR HEVC: nclc 1/1/1, r_frame_rate 60/1 but avg_frame_rate 217650/3629",
+ "path": "phone/IMG_0003.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "com.apple.quicktime.make": "Apple",
+    "com.apple.quicktime.model": "iPhone 16 Pro Max",
+    "com.apple.quicktime.software": "18.6.2"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main",
+    "pix_fmt": "yuv420p",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "60/1",
+    "avg_frame_rate": "217650/3629",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "handler_name": "Core Media Video",
+     "vendor_id": "[0][0][0][0]",
+     "encoder": "HEVC"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Display Matrix"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "audio",
+    "codec_tag_string": "apac",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 5,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 6,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 7,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track1:CompressorName": "HEVC",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Audio",
+  "Track3:HandlerType": "Audio Track",
+  "Track3:HandlerDescription": "Core Media Audio",
+  "Track4:HandlerType": "NRT Metadata",
+  "Track4:HandlerDescription": "Core Media Metadata",
+  "Track4:MetaFormat": "mebx",
+  "Track5:HandlerType": "NRT Metadata",
+  "Track5:HandlerDescription": "Core Media Metadata",
+  "Track5:MetaFormat": "mebx",
+  "Track6:HandlerType": "NRT Metadata",
+  "Track6:HandlerDescription": "Core Media Metadata",
+  "Track6:MetaFormat": "mebx",
+  "Track7:HandlerType": "NRT Metadata",
+  "Track7:HandlerDescription": "Core Media Metadata",
+  "Track7:MetaFormat": "mebx",
+  "Track8:HandlerType": "NRT Metadata",
+  "Track8:HandlerDescription": "Core Media Data Handler",
+  "Track8:MetaFormat": "mebx",
+  "Keys:Make": "Apple",
+  "Keys:Model": "iPhone 16 Pro Max",
+  "Keys:Software": "18.6.2"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "hvc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "HEVC",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "apac"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "6",
+  "profile": "SDR",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "iPhone 16 Pro Max",
+  "data_level": "video",
+  "vfr": "yes",
+  "confidence": "high"
+ }
+}

@@ -30,6 +30,8 @@ Commands:
     export-project         Export current project as .drp file
     survey                 Read-only survey of every project on disk (offline;
                            runs resolve_survey.py, no Resolve connection)
+    detect                 Offline: classify camera and picture profile from
+                           file headers (ffprobe, exiftool); never touches Resolve
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -87,6 +89,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
     from rpresolve import api as rpapi  # noqa: E402
+    from rpresolve import detect as rpdetect  # noqa: E402
 except ImportError:
     sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
@@ -1128,6 +1131,55 @@ def cmd_survey(args):
 
 
 # ---------------------------------------------------------------------------
+# Offline detect (no Resolve connection)
+# ---------------------------------------------------------------------------
+
+def cmd_detect(args):
+    """Classify each media file's camera and picture profile from its
+    headers and write a TSV (or JSON). Never connects to Resolve.
+    A pinned row carries an input_color_space at high or medium confidence;
+    anything the survey grades lower is 'review' with an empty one.
+    Exit status: 0 when every file is pinned, 2 when any row is 'review',
+    'corrupt' or low confidence, 1 when the tools are missing or no file
+    was found. A file that fails to probe becomes a 'review' row and the
+    run goes on."""
+    if args.out:
+        # The same guards as the survey, checked before any file is probed:
+        # rows carry full media paths, and this repository is public.
+        from resolve_survey import inside_repo, output_path_problem
+        if inside_repo(args.out):
+            print(f"ERROR: --out {args.out} is inside this repository's git working tree. "
+                  "detect rows carry full media paths; write them outside the repo.",
+                  file=sys.stderr)
+            return 1
+        problem = output_path_problem(args.out)
+        if problem:
+            print(f"ERROR: {problem}", file=sys.stderr)
+            return 1
+    try:
+        rows, missing = rpdetect.detect_paths(args.paths)
+    except rpdetect.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for m in missing:
+        print(f"  [skip] Not found: {m}", file=sys.stderr)
+    if not rows:
+        print("ERROR: No video files found (directories are searched recursively).",
+              file=sys.stderr)
+        return 1
+
+    text = rpdetect.format_json(rows) if args.json else rpdetect.format_tsv(rows)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(rpdetect.summarize(rows), file=sys.stderr)
+    return 2 if any(rpdetect.needs_review(r) for r in rows) else 0
+
+
+# ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
 
@@ -1188,6 +1240,9 @@ Examples:
 
   # Survey every project's grades, timelines and media (offline, read-only)
   python3 resolve_workflow.py survey --out /path/outside/repo/survey.md --json /path/outside/repo/survey.json
+
+  # Classify cameras and picture profiles offline; exits 2 if any row needs review
+  python3 resolve_workflow.py detect /path/to/card/ --out detect.tsv
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1291,6 +1346,13 @@ Examples:
     sp.add_argument("--tree-labels", nargs="+", metavar="LABEL",
                     help="Node labels that mark the house node tree (default: the survey's)")
     sp.set_defaults(func=cmd_survey)
+
+    sp = subparsers.add_parser(
+        "detect", help="Offline: classify camera and picture profile from file headers")
+    sp.add_argument("paths", nargs="+", help="Media files or directories (searched recursively)")
+    sp.add_argument("--out", "-o", help="Write the table here instead of stdout")
+    sp.add_argument("--json", action="store_true", help="Emit JSON instead of TSV")
+    sp.set_defaults(func=cmd_detect)
 
     args = parser.parse_args()
     if not args.command:

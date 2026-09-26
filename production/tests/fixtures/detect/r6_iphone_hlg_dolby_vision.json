@@ -1,0 +1,176 @@
+{
+ "description": "iPhone 14 Pro Max HEVC: nclc 9/18/9 with dvvC (Dolby Vision 8.4); VFR",
+ "path": "phone/IMG_0002.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "com.apple.quicktime.make": "Apple",
+    "com.apple.quicktime.model": "iPhone 14 Pro Max",
+    "com.apple.quicktime.software": "17.6.1"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main 10",
+    "pix_fmt": "yuv420p10le",
+    "color_range": "tv",
+    "color_space": "bt2020nc",
+    "color_transfer": "arib-std-b67",
+    "color_primaries": "bt2020",
+    "r_frame_rate": "24/1",
+    "avg_frame_rate": "67500/2813",
+    "width": 1920,
+    "height": 1080,
+    "tags": {
+     "handler_name": "Core Media Video",
+     "vendor_id": "[0][0][0][0]",
+     "encoder": "HEVC"
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "DOVI configuration record"
+     },
+     {
+      "side_data_type": "Display Matrix"
+     },
+     {
+      "side_data_type": "Ambient viewing environment"
+     }
+    ]
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "Core Media Audio",
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "data",
+    "codec_tag_string": "mebx",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "Core Media Metadata"
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "Core Media Video",
+  "Track1:CompressorName": "HEVC",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "Core Media Audio",
+  "Track3:HandlerType": "NRT Metadata",
+  "Track3:HandlerDescription": "Core Media Metadata",
+  "Track3:MetaFormat": "mebx",
+  "Track4:HandlerType": "NRT Metadata",
+  "Track4:HandlerDescription": "Core Media Metadata",
+  "Track4:MetaFormat": "mebx",
+  "Track5:HandlerType": "NRT Metadata",
+  "Track5:HandlerDescription": "Core Media Data Handler",
+  "Track5:MetaFormat": "mebx",
+  "Keys:Make": "Apple",
+  "Keys:Model": "iPhone 14 Pro Max",
+  "Keys:Software": "17.6.1"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  "
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "Core Media Video",
+    "fourcc": "hvc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "HEVC",
+    "dolby_vision": {
+     "profile": 8,
+     "compatibility_id": 4
+    },
+    "colr": {
+     "type": "nclc",
+     "primaries": 9,
+     "transfer": 18,
+     "matrix": 9
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "Core Media Audio",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "Core Media Metadata",
+    "fourcc": "mebx"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "6",
+  "profile": "HLG",
+  "input_color_space": "Rec.2100 HLG",
+  "camera": "iPhone 14 Pro Max",
+  "data_level": "video",
+  "vfr": "yes",
+  "confidence": "high"
+ }
+}

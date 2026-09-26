@@ -1,0 +1,117 @@
+{
+ "description": "GH7 internal ProRes RAW HQ: ffprobe names vlog/vgamut; RAW decode path untested",
+ "path": "card/DCIM/100_PANA/P1000003.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  pana",
+    "com.panasonic.Semi-Pro.metadata.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<ClipMain xmlns=\"urn:schemas-Professional-Plug-in:Semi-Pro:ClipMetadata:v1.0\">\n  <ClipContent>\n    <EssenceList>\n      <Video>\n        <Codec BitRate=\"4153\">ProRes_RAWHQ</Codec>\n        <BitDepth>16</BitDepth>\n        <FrameRate>29.97p</FrameRate>\n      </Video>\n    </EssenceList>\n    <ClipMetadata>\n      <Device>\n        <Manufacturer>Panasonic</Manufacturer>\n        <ModelName>DC-GH7</ModelName>\n      </Device>\n    </ClipMetadata>\n  </ClipContent>\n  <UserArea>\n    <AcquisitionMetadata xmlns=\"urn:schemas-Professional-Plug-in:P2:CameraMetadata:v1.2\">\n      <CameraUnitMetadata>\n        <Gamma>\n          <CaptureGamma>V-Log</CaptureGamma>\n        </Gamma>\n        <Gamut>\n          <CaptureGamut>V-Gamut</CaptureGamut>\n        </Gamut>\n      </CameraUnitMetadata>\n    </AcquisitionMetadata>\n  </UserArea>\n</ClipMain>\n",
+    "com.apple.proapps.manufacturer": "Panasonic",
+    "com.apple.proapps.modelname": "DC-GH7"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "prores_raw",
+    "codec_tag_string": "aprh",
+    "profile": "RAW HQ",
+    "bits_per_raw_sample": "12",
+    "color_transfer": "vlog",
+    "color_primaries": "vgamut",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 5728,
+    "height": 3024,
+    "tags": {
+     "vendor_id": "appl",
+     "encoder": "Apple ProRes RAW HQ"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24be",
+    "codec_tag_string": "lpcm",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "90000/3003"
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  ",
+   "pana"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:VendorID": "Apple",
+  "Track1:CompressorName": "Apple ProRes RAW HQ",
+  "Track2:HandlerType": "Audio Track",
+  "Track3:HandlerType": "Time Code",
+  "Keys:AppleProappsModelname": "DC-GH7",
+  "Keys:PanasonicSemi-ProMetadataXml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<ClipMain xmlns=\"urn:schemas-Professional-Plug-in:Semi-Pro:ClipMetadata:v1.0\">\n  <ClipContent>\n    <EssenceList>\n      <Video>\n        <Codec BitRate=\"4153\">ProRes_RAWHQ</Codec>\n        <BitDepth>16</BitDepth>\n        <FrameRate>29.97p</FrameRate>\n      </Video>\n    </EssenceList>\n    <ClipMetadata>\n      <Device>\n        <Manufacturer>Panasonic</Manufacturer>\n        <ModelName>DC-GH7</ModelName>\n      </Device>\n    </ClipMetadata>\n  </ClipContent>\n  <UserArea>\n    <AcquisitionMetadata xmlns=\"urn:schemas-Professional-Plug-in:P2:CameraMetadata:v1.2\">\n      <CameraUnitMetadata>\n        <Gamma>\n          <CaptureGamma>V-Log</CaptureGamma>\n        </Gamma>\n        <Gamut>\n          <CaptureGamut>V-Gamut</CaptureGamut>\n        </Gamut>\n      </CameraUnitMetadata>\n    </AcquisitionMetadata>\n  </UserArea>\n</ClipMain>\n",
+  "Panasonic:Model": "DC-GH7",
+  "Panasonic:FirmwareVersion": "0.1.6.0",
+  "Panasonic:PhotoStyle": "V-Log",
+  "Panasonic:HybridLogGamma": "Off",
+  "IFD0:Make": "Panasonic",
+  "IFD0:Model": "DC-GH7",
+  "IFD0:Software": "Ver.1.6"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  ",
+    "pana"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "aprh",
+    "vendor": "appl",
+    "compressor": "Apple ProRes RAW HQ"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "lpcm"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "4",
+  "profile": "V-Log (ProRes RAW)",
+  "input_color_space": "Panasonic V-Gamut/V-Log",
+  "camera": "Panasonic DC-GH7",
+  "data_level": "unknown",
+  "vfr": "no",
+  "confidence": "medium"
+ }
+}

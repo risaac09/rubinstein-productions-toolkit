@@ -1,0 +1,117 @@
+{
+ "description": "Ninja V ProRes RAW from a GH7: raw.intermediate_oetf VLog, model from com.apple.proapps.modelname",
+ "path": "recorder/NINJAV_S001_S001_T003.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "make": "Atomos",
+    "encoder": "NinjaV - 11.17.00   ",
+    "com.apple.proapps.manufacturer": "Panasonic",
+    "com.atomos.hdr.monitormode": "Native",
+    "com.apple.proapps.modelname": "DC-GH7",
+    "com.atomos.raw.intermediate_oetf": "VLog",
+    "com.atomos.raw.intermediate_gamut": "VGamut"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "in24",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "video",
+    "codec_name": "prores_raw",
+    "codec_tag_string": "aprh",
+    "profile": "RAW HQ",
+    "bits_per_raw_sample": "12",
+    "color_transfer": "linear",
+    "r_frame_rate": "60000/1001",
+    "avg_frame_rate": "60000/1001",
+    "width": 4096,
+    "height": 2160,
+    "tags": {
+     "vendor_id": "appl",
+     "encoder": "Apple ProRes RAW HQ"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "60000/1001"
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "UserData:Make": "Atomos",
+  "UserData:SoftwareVersion": "NinjaV - 11.17.00  ",
+  "Keys:AppleProappsModelname": "DC-GH7",
+  "Keys:AtomosRawIntermediateOetf": "VLog",
+  "Keys:AtomosRawIntermediateGamut": "VGamut",
+  "Track1:HandlerType": "Audio Track",
+  "Track2:HandlerType": "Video Track",
+  "Track2:VendorID": "Apple",
+  "Track2:CompressorName": "Apple ProRes RAW HQ",
+  "Track3:HandlerType": "Alias Data"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  ",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "in24"
+   },
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "aprh",
+    "vendor": "appl",
+    "compressor": "Apple ProRes RAW HQ"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "3",
+  "profile": "V-Log (ProRes RAW)",
+  "input_color_space": "Panasonic V-Gamut/V-Log",
+  "camera": "Atomos Ninja V / DC-GH7",
+  "data_level": "unknown",
+  "vfr": "no",
+  "confidence": "medium"
+ }
+}

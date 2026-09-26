@@ -1,0 +1,99 @@
+{
+ "description": "variant: PhotoStyle unnamed, HybridLogGamma On",
+ "path": "card/DCIM/100_PANA/P1000004.MP4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "mp42",
+    "compatible_brands": "mp42avc1"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "h264",
+    "codec_tag_string": "avc1",
+    "profile": "High",
+    "pix_fmt": "yuvj420p",
+    "bits_per_raw_sample": "8",
+    "color_range": "pc",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "60000/1001",
+    "avg_frame_rate": "60000/1001",
+    "width": 1920,
+    "height": 1080
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v2 [ISO 14496-14]",
+  "QuickTime:CompatibleBrands": [
+   "mp42",
+   "avc1"
+  ],
+  "QuickTime:HandlerDescription": "Panasonic Static Metadata",
+  "Track1:HandlerType": "Video Track",
+  "Track2:HandlerType": "Audio Track",
+  "Panasonic:Model": "DC-GH7",
+  "Panasonic:FirmwareVersion": "0.1.6.0",
+  "Panasonic:PhotoStyle": "Unknown (99)",
+  "Panasonic:HybridLogGamma": "On",
+  "IFD0:Make": "Panasonic",
+  "IFD0:Model": "DC-GH7",
+  "IFD0:Software": "Ver.1.6"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp42",
+   "compatible": [
+    "mp42",
+    "avc1"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "avc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclx",
+     "primaries": 1,
+     "transfer": 1,
+     "matrix": 1,
+     "full_range": true
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "4",
+  "profile": "HLG",
+  "input_color_space": "Rec.2100 HLG",
+  "camera": "Panasonic DC-GH7",
+  "confidence": "medium"
+ }
+}

@@ -1,0 +1,152 @@
+{
+ "description": "GoPro HERO9 HEVC: gpmd track and GoPro:Model; colour profile route UNVERIFIED",
+ "path": "gopro/GX010001.MP4",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "mp41",
+    "compatible_brands": "mp41",
+    "firmware": "HD9.01.01.72.00"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "hevc",
+    "codec_tag_string": "hvc1",
+    "profile": "Main",
+    "pix_fmt": "yuvj420p",
+    "color_range": "pc",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 2704,
+    "height": 1520,
+    "tags": {
+     "handler_name": "\u000bGoPro H.265",
+     "encoder": "GoPro H.265 encoder"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "\u000bGoPro AAC  "
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "90000/3003",
+    "tags": {
+     "handler_name": "\u000bGoPro TCD  "
+    }
+   },
+   {
+    "index": 3,
+    "codec_type": "data",
+    "codec_name": "bin_data",
+    "codec_tag_string": "gpmd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u000bGoPro MET  "
+    }
+   },
+   {
+    "index": 4,
+    "codec_type": "data",
+    "codec_tag_string": "fdsc",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "tags": {
+     "handler_name": "\u000bGoPro SOS  "
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v1 [ISO 14496-1:ch13]",
+  "QuickTime:CompatibleBrands": [
+   "mp41"
+  ],
+  "GoPro:FirmwareVersion": "HD9.01.01.72.00",
+  "GoPro:Model": "HERO9 Black",
+  "GoPro:Protune": "On",
+  "GoPro:ColorMode": "GOPRO",
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "GoPro H.265",
+  "Track1:CompressorName": "GoPro H.265 encoder",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "GoPro AAC  ",
+  "Track3:HandlerType": "Time Code",
+  "Track3:HandlerDescription": "GoPro TCD  ",
+  "Track4:HandlerType": "NRT Metadata",
+  "Track4:HandlerDescription": "GoPro MET  ",
+  "Track4:MetaFormat": "gpmd",
+  "Track5:HandlerType": "NRT Metadata",
+  "Track5:HandlerDescription": "GoPro SOS  ",
+  "Track5:MetaFormat": "fdsc"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp41",
+   "compatible": [
+    "mp41"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "GoPro H.265",
+    "fourcc": "hvc1",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "GoPro H.265 encoder"
+   },
+   {
+    "handler": "soun",
+    "handler_name": "GoPro AAC",
+    "fourcc": "mp4a"
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "GoPro TCD",
+    "fourcc": "tmcd"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "GoPro MET",
+    "fourcc": "gpmd"
+   },
+   {
+    "handler": "meta",
+    "handler_name": "GoPro SOS",
+    "fourcc": "fdsc"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "9",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "GoPro HERO9 Black",
+  "data_level": "full",
+  "vfr": "no",
+  "confidence": "low"
+ }
+}

@@ -1,0 +1,116 @@
+{
+ "description": "Ninja V clip with no com.atomos gamma/gamut: review, never colr transfer",
+ "path": "recorder/NINJAV_S001_S001_T004.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "make": "Atomos",
+    "encoder": "NinjaV - 11.17.00   "
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "in24",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "video",
+    "codec_name": "prores",
+    "codec_tag_string": "apch",
+    "profile": "HQ",
+    "pix_fmt": "yuv422p10le",
+    "bits_per_raw_sample": "10",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 4096,
+    "height": 2160,
+    "tags": {
+     "vendor_id": "appl",
+     "encoder": "Apple ProRes 422 HQ"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "30000/1001"
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "UserData:Make": "Atomos",
+  "UserData:SoftwareVersion": "NinjaV - 11.17.00  ",
+  "Track1:HandlerType": "Audio Track",
+  "Track2:HandlerType": "Video Track",
+  "Track2:VendorID": "Apple",
+  "Track2:CompressorName": "Apple ProRes 422 HQ",
+  "Track3:HandlerType": "Alias Data"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  ",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "in24"
+   },
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "apch",
+    "vendor": "appl",
+    "compressor": "Apple ProRes 422 HQ",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 2,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "3",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "Atomos Ninja V (camera not recorded)",
+  "confidence": "low"
+ }
+}

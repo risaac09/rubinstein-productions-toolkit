@@ -1,0 +1,100 @@
+{
+ "description": "trap: IMG_ name, udta make=Apple, colr 9/18/9, but VP9 in mp42 from a Google muxer: no camera original",
+ "path": "phone/IMG_0006.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "mp42",
+    "compatible_brands": "isommp42",
+    "make": "Apple",
+    "model": "iPhone 14 Pro Max"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "video",
+    "codec_name": "vp9",
+    "codec_tag_string": "vp09",
+    "profile": "Profile 2",
+    "pix_fmt": "yuv420p10le",
+    "color_range": "tv",
+    "color_space": "bt2020nc",
+    "color_transfer": "arib-std-b67",
+    "color_primaries": "bt2020",
+    "r_frame_rate": "30000/1001",
+    "avg_frame_rate": "30000/1001",
+    "width": 1080,
+    "height": 1920,
+    "tags": {
+     "handler_name": "ISO Media file produced by Google Inc."
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "audio",
+    "codec_name": "aac",
+    "codec_tag_string": "mp4a",
+    "profile": "LC",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 2,
+    "tags": {
+     "handler_name": "ISO Media file produced by Google Inc."
+    }
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "MP4 v2 [ISO 14496-14]",
+  "QuickTime:CompatibleBrands": [
+   "isom",
+   "mp42"
+  ],
+  "Track1:HandlerType": "Video Track",
+  "Track1:HandlerDescription": "ISO Media file produced by Google Inc.",
+  "Track2:HandlerType": "Audio Track",
+  "Track2:HandlerDescription": "ISO Media file produced by Google Inc."
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "mp42",
+   "compatible": [
+    "isom",
+    "mp42"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "vide",
+    "handler_name": "ISO Media file produced by Google Inc.",
+    "fourcc": "vp09",
+    "vendor": "\u0000\u0000\u0000\u0000",
+    "compressor": "",
+    "colr": {
+     "type": "nclx",
+     "primaries": 9,
+     "transfer": 18,
+     "matrix": 9,
+     "full_range": false
+    }
+   },
+   {
+    "handler": "soun",
+    "handler_name": "ISO Media file produced by Google Inc.",
+    "fourcc": "mp4a"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "13",
+  "profile": "review",
+  "input_color_space": "",
+  "camera": "unknown",
+  "confidence": "low"
+ }
+}

@@ -1,0 +1,123 @@
+{
+ "description": "trap: Ninja V Rec.709 ProRes 422 with the same colr nclc 1/2/1 as the V-Log clip",
+ "path": "recorder/NINJAV_S001_S001_T002.MOV",
+ "ffprobe": {
+  "format": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "tags": {
+    "major_brand": "qt  ",
+    "compatible_brands": "qt  ",
+    "make": "Atomos",
+    "encoder": "NinjaV - 11.17.00   ",
+    "com.atomos.hdr.gamut": "Rec709",
+    "com.atomos.hdr.gamma": "Rec709",
+    "com.atomos.hdr.monitormode": "Native"
+   }
+  },
+  "streams": [
+   {
+    "index": 0,
+    "codec_type": "audio",
+    "codec_name": "pcm_s24le",
+    "codec_tag_string": "in24",
+    "bits_per_raw_sample": "24",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "0/0",
+    "channels": 4,
+    "tags": {
+     "vendor_id": "[0][0][0][0]"
+    }
+   },
+   {
+    "index": 1,
+    "codec_type": "video",
+    "codec_name": "prores",
+    "codec_tag_string": "apcn",
+    "profile": "Standard",
+    "pix_fmt": "yuv422p10le",
+    "bits_per_raw_sample": "10",
+    "color_range": "tv",
+    "color_space": "bt709",
+    "color_primaries": "bt709",
+    "r_frame_rate": "60000/1001",
+    "avg_frame_rate": "60000/1001",
+    "width": 3840,
+    "height": 2160,
+    "tags": {
+     "vendor_id": "appl",
+     "encoder": "Apple ProRes 422"
+    }
+   },
+   {
+    "index": 2,
+    "codec_type": "data",
+    "codec_tag_string": "tmcd",
+    "r_frame_rate": "0/0",
+    "avg_frame_rate": "60000/1001"
+   }
+  ]
+ },
+ "ffprobe_error": "",
+ "exiftool": {
+  "QuickTime:MajorBrand": "Apple QuickTime (.MOV/QT)",
+  "QuickTime:CompatibleBrands": [
+   "qt  "
+  ],
+  "UserData:Make": "Atomos",
+  "UserData:SoftwareVersion": "NinjaV - 11.17.00  ",
+  "Keys:AtomosHdrGamut": "Rec709",
+  "Keys:AtomosHdrGamma": "Rec709",
+  "Track1:HandlerType": "Audio Track",
+  "Track2:HandlerType": "Video Track",
+  "Track2:VendorID": "Apple",
+  "Track2:CompressorName": "Apple ProRes 422",
+  "Track3:HandlerType": "Alias Data"
+ },
+ "atoms": {
+  "ftyp": {
+   "major": "qt  ",
+   "compatible": [
+    "qt  ",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000",
+    "\u0000\u0000\u0000\u0000"
+   ]
+  },
+  "moov": true,
+  "tracks": [
+   {
+    "handler": "soun",
+    "handler_name": "",
+    "fourcc": "in24"
+   },
+   {
+    "handler": "vide",
+    "handler_name": "",
+    "fourcc": "apcn",
+    "vendor": "appl",
+    "compressor": "Apple ProRes 422",
+    "colr": {
+     "type": "nclc",
+     "primaries": 1,
+     "transfer": 2,
+     "matrix": 1
+    }
+   },
+   {
+    "handler": "tmcd",
+    "handler_name": "",
+    "fourcc": "tmcd"
+   }
+  ]
+ },
+ "proxy_original": null,
+ "expect": {
+  "rule": "3",
+  "profile": "Rec.709",
+  "input_color_space": "Rec.709 Gamma 2.4",
+  "camera": "Atomos Ninja V (camera not recorded)",
+  "data_level": "video",
+  "vfr": "no",
+  "confidence": "high"
+ }
+}
