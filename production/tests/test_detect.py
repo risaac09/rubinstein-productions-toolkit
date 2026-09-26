@@ -548,17 +548,19 @@ class TestTools(unittest.TestCase):
     @unittest.skipUnless(os.access(detect.FFPROBE, os.X_OK), "ffprobe not installed")
     def test_real_ffprobe_reads_dash_and_colon_names(self):
         # Unguarded, ffprobe reads '-odd.mov' as an option and 'clip:' as a protocol.
+        here = os.getcwd()
         with tempfile.TemporaryDirectory() as d:
-            here = os.getcwd()
             os.chdir(d)
-            self.addCleanup(os.chdir, here)
-            for name in ("-odd.mov", "clip:1.mov"):
-                with open(name, "wb") as f:
-                    f.write(mov([]))
-                data, err = detect.run_ffprobe(name)
-                with self.subTest(name=name):
-                    self.assertIsNotNone(data, err)
-                    self.assertEqual(data["format"]["tags"]["major_brand"], "qt  ")
+            try:
+                for name in ("-odd.mov", "clip:1.mov"):
+                    with open(name, "wb") as f:
+                        f.write(mov([]))
+                    data, err = detect.run_ffprobe(name)
+                    with self.subTest(name=name):
+                        self.assertIsNotNone(data, err)
+                        self.assertEqual(data["format"]["tags"]["major_brand"], "qt  ")
+            finally:
+                os.chdir(here)
 
 
 def fake_tool(directory, name, body):
