@@ -6,7 +6,7 @@ from .protocol import Server
 from .registry import Registry
 from .session import ResolveSession
 from .stdio import FramedWriter, LineReader, hard_exit
-from . import tools_offline, tools_read
+from . import tools_offline, tools_read, tools_write
 
 INSTRUCTIONS = """\
 Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
@@ -24,6 +24,7 @@ def build_registry():
     registry = Registry()
     tools_read.register(registry)
     tools_offline.register(registry)
+    tools_write.register(registry)
     return registry
 
 
