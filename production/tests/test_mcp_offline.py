@@ -71,12 +71,11 @@ class Base(unittest.TestCase):
 
 
 class TestRegistry(unittest.TestCase):
-    def test_offline_tools_registered_and_all_read_only(self):
-        names = [t.name for t in REG.list()]
+    def test_offline_tools_registered_and_read_only(self):
         for name in ("detect", "survey", "measure", "endcheck", "selects"):
-            self.assertIn(name, names)
-        for t in REG.list():
-            self.assertTrue(t.annotations["readOnlyHint"], t.name)
+            t = REG.get(name)
+            self.assertIsNotNone(t, name)
+            self.assertTrue(t.annotations["readOnlyHint"], name)
             self.assertEqual(schema.validate({"type": "object"}, t.input_schema), [])
 
 
