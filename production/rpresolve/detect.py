@@ -154,7 +154,7 @@ def run_ffprobe(path, ffprobe=None, timeout=120):
     cmd = [ffprobe or FFPROBE, "-v", "error", "-show_format", "-show_streams",
            "-of", "json", _ffprobe_arg(path)]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         return None, f"ffprobe timed out after {timeout}s"
@@ -189,7 +189,7 @@ def run_exiftool(paths, exiftool=None, timeout=600, chunk=64, single_timeout=60)
         args = [_exiftool_arg(p) for p in batch]
         cmd = [exiftool, "-G1", "-a", "-s", "-j", "-api", "LargeFileSupport=1"] + args
         try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   encoding="utf-8", errors="replace", timeout=timeout)
         except subprocess.TimeoutExpired:
             return []

@@ -161,6 +161,42 @@ class ProjectPin:
         return name
 
 
+def current_project(resolve):
+    """(project_manager, project) for the open project, or raise
+    ResolveUnavailable / ProjectChanged. Never exits the interpreter, so a
+    long-lived caller (the MCP server) survives."""
+    pm = resolve.GetProjectManager()
+    if not pm:
+        raise ResolveUnavailable("Could not get the Project Manager from Resolve.")
+    project = pm.GetCurrentProject()
+    if not project:
+        raise ProjectChanged("No project is open in Resolve.")
+    return pm, project
+
+
+def media_pool_root(project):
+    """(media_pool, root_folder) or raise ResolveAPIError."""
+    media_pool = project.GetMediaPool()
+    root = media_pool.GetRootFolder() if media_pool else None
+    if not root:
+        raise ResolveAPIError("Could not get the media pool root folder.")
+    return media_pool, root
+
+
+def pin_for_write(resolve, name, unique_id=None):
+    """(pm, project, pin) for a write that names its project. Raises
+    ProjectChanged unless the open project is named `name` and, when
+    unique_id is given, carries that id: names can repeat across
+    project-manager folders, ids cannot."""
+    pm, project = current_project(resolve)
+    pin = ProjectPin(project)
+    pin.require_name(name, pm)
+    if unique_id and pin.unique_id != unique_id:
+        raise ProjectChanged(f"Open project '{pin.name}' has id {pin.unique_id}, "
+                             f"expected {unique_id}. Stopping.")
+    return pm, project, pin
+
+
 # ---------------------------------------------------------------------------
 # UI snapshot / restore
 # ---------------------------------------------------------------------------
