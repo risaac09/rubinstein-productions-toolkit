@@ -39,6 +39,7 @@ Checks (endcheck):
 
 import array
 import ast
+import bisect
 import csv
 import difflib
 import hashlib
@@ -332,9 +333,11 @@ def end_check(words, out, end_words, env=None):
                                 "it would clip a word")
         # Suggest the earliest silence in the window whose midpoint passes
         # the word rule itself: the words before it end in end_words.
+        mids = [midpoint(w) for w in words]
         for a, b in runs:
             c = round((a + b) / 2, 3)
-            tail = tokens(" ".join(w["word"] for w in words if midpoint(w) < c)[-400:])
+            k = bisect.bisect_left(mids, c)
+            tail = tokens(" ".join(w["word"] for w in words[max(0, k - len(want) - 2):k]))
             if tail[-len(want):] == want:
                 result["suggest"] = c
                 break
@@ -387,9 +390,15 @@ def validate_manifest(m):
     return m
 
 
+def frame(t, fps):
+    """The frame a time falls on, rounding half up (Python's round() goes to
+    the even neighbour at exact halves)."""
+    return int(math.floor(t * fps + 0.5))
+
+
 def frames(span, fps):
-    """Frames a span covers: source frames [round(in*fps), round(out*fps))."""
-    return round(span["out"] * fps) - round(span["in"] * fps)
+    """Frames a span covers: source frames [frame(in), frame(out))."""
+    return frame(span["out"], fps) - frame(span["in"], fps)
 
 
 def clip_frames(clip, fps):
@@ -520,20 +529,35 @@ def sentences(words, gap=0.6):
 def selects(words, approved, min_s=20.0, max_s=65.0, pad=0.15):
     """Spans of consecutive sentences that sit inside the approved text and
     last between min_s and max_s seconds, best first, non-overlapping.
-    Each: {in, out, seconds, coverage, end_words, text}."""
+    Each: {in, out, seconds, coverage, end_words, text}. Every sentence is
+    matched against the approved text once; a window's coverage is the sum
+    of its sentences' matched words over their total, and a window holding
+    any sentence that fails on its own is skipped."""
     sents = sentences(words)
+    scored = []
+    for s in sents:
+        toks = content_tokens(" ".join(w["word"] for w in s))
+        r = approved_check(toks, approved) if toks else {"verdict": "pass", "coverage": 1.0,
+                                                        "longest_unmatched_run": 0}
+        scored.append((len(toks), round(r["coverage"] * len(toks)), r))
     candidates = []
     for i in range(len(sents)):
+        n = matched = 0
         for j in range(i, len(sents)):
+            if scored[j][2]["verdict"] == "fail":
+                break
+            n, matched = n + scored[j][0], matched + scored[j][1]
             a, b = sents[i][0]["start"], sents[j][-1]["end"]
             dur = b - a
             if dur > max_s:
                 break
-            if dur < min_s:
+            if dur < min_s or n == 0:
                 continue
             span_words = [w for s in sents[i:j + 1] for w in s]
-            check = approved_check(content_tokens(" ".join(w["word"] for w in span_words)), approved)
-            if check["verdict"] == "pass":
+            coverage = matched / n
+            worst_run = max(scored[k][2]["longest_unmatched_run"] for k in range(i, j + 1))
+            check = {"coverage": round(coverage, 3)}
+            if coverage >= PASS_COVERAGE and worst_run < REVIEW_RUN:
                 nxt = sents[j + 1][0]["start"] if j + 1 < len(sents) else b + 1.0
                 out = round(min(b + pad, (b + nxt) / 2), 2)
                 candidates.append({"in": round(max(0.0, a - 0.05), 2), "out": out,

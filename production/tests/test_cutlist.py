@@ -185,6 +185,19 @@ class TestManifest(unittest.TestCase):
             json.dump({"ranges": [{"source": "C1", "start": 2.42, "end": 6.85}]}, f)
         self.assertEqual(cutlist.spans_from_edl(edl), {"C1": [(2.42, 6.85)]})
 
+    def test_frame_rounds_half_up(self):
+        self.assertEqual(cutlist.frame(0.02, 25), 1)    # 0.5 frames: up, not to even
+        self.assertEqual(cutlist.frame(0.06, 25), 2)    # 1.5 frames
+        self.assertEqual(cutlist.frames({"in": 0.02, "out": 0.06}, 25), 1)
+
+    def test_selects_windows_stay_inside_the_text(self):
+        words = cutlist.load_words(self.words)
+        approved = cutlist.load_approved(self.approved)
+        rows = cutlist.selects(words, approved, min_s=1.0, max_s=5.0)
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertGreaterEqual(r["coverage"], cutlist.PASS_COVERAGE)
+
     def test_build_validate_and_frames(self):
         m = cutlist.build_manifest({"a_30": [(1.0, 2.75), (3.6, 4.95)]}, self.src, 25,
                                    self.words, self.approved, reframe={"face_x": 270})

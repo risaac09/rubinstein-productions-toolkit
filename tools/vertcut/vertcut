@@ -44,9 +44,10 @@ cmd_transcribe() {
   # Whisper wants 16k mono; feeding it the raw .mov is slow and sometimes fails.
   # The WAV is scratch: it goes to a temp dir and is deleted, never beside the
   # output, where a synced or autocommitted folder would pick it up.
-  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/vertcut.XXXXXX")"
-  trap 'rm -rf "$tmp"' EXIT
-  local wav="$tmp/$base.16k.wav"
+  # Global, not local: the EXIT trap runs after this function has returned.
+  VERTCUT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/vertcut.XXXXXX")"
+  trap 'rm -rf "${VERTCUT_TMP:-}"' EXIT
+  local wav="$VERTCUT_TMP/$base.16k.wav"
   echo "vertcut: extracting audio (temp)"
   ffmpeg -hide_banner -loglevel error -y -i "$src" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$wav"
 
@@ -57,6 +58,7 @@ cmd_transcribe() {
   "$mw" "$wav" --model "$model" --word-timestamps True \
     --condition-on-previous-text False --hallucination-silence-threshold 2 \
     --output-dir "$out" --output-name "$base" --output-format json
+  rm -rf "$VERTCUT_TMP"
 
   echo "vertcut: wrote $out/$base.json"
   echo "         pass it to \`vertcut cut --words $out/$base.json\` to burn captions."

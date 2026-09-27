@@ -87,19 +87,27 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
         return out
     project.SetCurrentTimeline(tl)
     # Frame rate is fixed once a timeline holds a clip; set it while empty.
+    # Resolve reads it back as a float (25.0), so compare numbers.
     tl.SetSetting("useCustomSettings", "1")
-    api.set_setting_checked(tl, "timelineFrameRate", str(int(fps)) if float(fps).is_integer() else str(fps))
+    tl.SetSetting("timelineFrameRate", str(int(fps)) if float(fps).is_integer() else str(fps))
+    got = tl.GetSetting("timelineFrameRate")
+    try:
+        rate_ok = abs(float(got) - float(fps)) < 1e-3
+    except (TypeError, ValueError):
+        rate_ok = False
+    if not rate_ok:
+        raise api.WriteNotApplied(f"timelineFrameRate: wrote {fps}, read back {got!r}")
     _setup(tl, fps, WIDE)
     start = tl.GetStartFrame()
     record = start
     for s in spans:
-        a, b = round(s["in"] * fps), round(s["out"] * fps)
+        a, b = cutlist.frame(s["in"], fps), cutlist.frame(s["out"], fps)
         media_pool.AppendToTimeline([{"mediaPoolItem": item, "startFrame": a, "endFrame": b,
                                       "trackIndex": 1, "recordFrame": record}])
         record += b - a
     items = tl.GetItemListInTrack("video", 1) or []
     for it, s in zip(items, spans):
-        a, b = round(s["in"] * fps), round(s["out"] * fps)
+        a, b = cutlist.frame(s["in"], fps), cutlist.frame(s["out"], fps)
         got = {"start": it.GetStart(), "duration": it.GetDuration(),
                "source_start": getattr(it, "GetSourceStartFrame", lambda: None)(),
                "want_source": a, "want_duration": b - a}
@@ -161,7 +169,7 @@ def plan_clips(manifest, only=None):
     return clips
 
 
-def gate_clips(manifest, clips, force=False, audio=True):
+def gate_clips(manifest, clips, audio=True):
     """{clip name: [failing span reasons]} from endcheck; empty lists pass."""
     rows = cutlist.endcheck({**manifest, "clips": clips}, audio=audio)
     fails = {c["name"]: [] for c in clips}
