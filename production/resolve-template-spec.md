@@ -152,6 +152,14 @@ patterns that recur across projects. Values it cannot decode print as
 documented in its module docstring. The report names projects and media
 paths, so `--out` is refused inside this repository.
 
+### MCP server
+
+[`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
+as 15 tools: reads of the open project, the offline checks (detect,
+survey, measure, endcheck, selects), and additive writes (ingest, cut,
+duplicate, grade onto `[auto]` timelines, queue a render without starting
+it), each shown as a plan before it runs.
+
 ---
 
 ## Open Questions
