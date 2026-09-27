@@ -563,11 +563,14 @@ def cmd_render(args):
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"Output directory: {output_dir}")
-    job_id = queue_render(project, args.preset, output_dir, config["render_presets"], args.name)
-
+    # The lock covers queueing and starting, not the monitor loop: a render
+    # can run for an hour and must not lock every MCP session out of Resolve.
+    with rpapi.ResolveLock():
+        job_id = queue_render(project, args.preset, output_dir, config["render_presets"], args.name)
+        if job_id and args.start:
+            print("\nStarting render...")
+            project.StartRendering()
     if job_id and args.start:
-        print("\nStarting render...")
-        project.StartRendering()
         _monitor_render(project, [job_id])
 
 
@@ -586,16 +589,16 @@ def cmd_render_all(args):
     print(f"Queuing {len(preset_keys)} preset(s):\n")
 
     job_ids = []
-    for preset_key in preset_keys:
-        job_id = queue_render(project, preset_key, output_dir, presets_cfg, args.name)
-        if job_id:
-            job_ids.append(job_id)
-
-    print(f"\n{len(job_ids)}/{len(preset_keys)} render job(s) queued.")
-
+    with rpapi.ResolveLock():  # queueing and starting only; see cmd_render
+        for preset_key in preset_keys:
+            job_id = queue_render(project, preset_key, output_dir, presets_cfg, args.name)
+            if job_id:
+                job_ids.append(job_id)
+        print(f"\n{len(job_ids)}/{len(preset_keys)} render job(s) queued.")
+        if job_ids and args.start:
+            print("\nStarting render...")
+            project.StartRendering()
     if job_ids and args.start:
-        print("\nStarting render...")
-        project.StartRendering()
         _monitor_render(project, job_ids)
 
 
@@ -965,11 +968,18 @@ def cmd_ingest(args):
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
+    # detect probes files, not Resolve: run it before taking the lock.
+    try:
+        found = rpwork.detect(args.paths)
+    except (rpdetect.ToolMissing, rpwork.Refused) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
     resolve = get_resolve()
     try:
         with rpapi.ResolveLock():
             r = rpwork.ingest(resolve, args.project, args.paths, parent=args.bin,
-                              dry_run=args.dry_run)
+                              dry_run=args.dry_run, rows=found["rows"])
+        r["missing"] = found["missing"]
     except rpapi.ProjectChanged as e:
         print(f"ERROR: {e} ingest writes clip properties, so it runs only on the "
               "project named with --project.", file=sys.stderr)
@@ -1171,8 +1181,6 @@ def _locked(fn):
 
 cmd_apply_lut = _locked(cmd_apply_lut)
 cmd_apply_drx = _locked(cmd_apply_drx)
-cmd_render = _locked(cmd_render)
-cmd_render_all = _locked(cmd_render_all)
 cmd_clear_queue = _locked(cmd_clear_queue)
 
 

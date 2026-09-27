@@ -15,6 +15,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live one
+    tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # the shared fakes in test_ingest
 
 from rpresolve import api, cutlist, detect, workflows
