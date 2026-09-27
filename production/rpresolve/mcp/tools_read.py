@@ -253,13 +253,28 @@ def _folder_at(root, path):
     return folder, "/".join(walked)
 
 
-def _tree(folder, depth):
+TREE_MAX_FOLDERS = 300
+
+
+def _tree(folder, depth, budget=None):
+    """The folder and its subfolders to `depth` levels, breadth-limited to
+    TREE_MAX_FOLDERS nodes in all; a node whose children were cut off
+    carries "children_omitted": True."""
+    budget = budget if budget is not None else [TREE_MAX_FOLDERS - 1]
     subs = _call(folder, "GetSubFolderList") or []
     node = {"name": folder.GetName(), "clips": len(_call(folder, "GetClipList") or []),
             "subfolders": len(subs)}
     if depth > 0 and subs:
-        node["children"] = [_tree(f, depth - 1) for f in subs]
+        if budget[0] < len(subs):
+            node["children_omitted"] = True
+        else:
+            budget[0] -= len(subs)
+            node["children"] = [_tree(f, depth - 1, budget) for f in subs]
     return node
+
+
+def _omitted(node):
+    return node.get("children_omitted") or any(_omitted(c) for c in node.get("children", ()))
 
 
 def _clip_row(clip):
@@ -276,6 +291,10 @@ def media_pool(args, ctx):
         folder, path = _folder_at(root, args.get("folder"))
         result = {"project": _project_info(project), "folder": path,
                   "tree": _tree(folder, args["depth"])}
+        if _omitted(result["tree"]):
+            result["tree_note"] = (f"the tree stops at {TREE_MAX_FOLDERS} folders; nodes marked "
+                                   "children_omitted have more. Ask for a subfolder, or less "
+                                   "depth.")
         rows = []
         if args["clips"]:
             for clip in _call(folder, "GetClipList") or []:

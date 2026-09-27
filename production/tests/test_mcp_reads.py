@@ -170,6 +170,22 @@ class TestMediaPool(Base):
             call("media_pool", {"folder": "Source/Nope"}, self.project)
 
 
+class TestMediaPoolTreeCap(Base):
+    def test_big_trees_stop_at_the_cap(self):
+        days = [rf.Folder(f"day{d}", [], [rf.Folder(f"cam{c}") for c in range(3)])
+                for d in range(200)]
+        self.project.pool.root = rf.Folder("Master", [], days)
+        with mock.patch("rpresolve.mcp.tools_read.TREE_MAX_FOLDERS", 300):
+            r = call("media_pool", {"depth": 3, "clips": False}, self.project)
+        shown = sum(1 + len(d.get("children", ())) for d in r["tree"]["children"])
+        self.assertLessEqual(1 + shown, 300)
+        self.assertTrue(any(d.get("children_omitted") for d in r["tree"]["children"]))
+        self.assertIn("tree_note", r)
+        r = call("media_pool", {"folder": "day1", "depth": 3}, self.project)
+        self.assertNotIn("tree_note", r)
+        self.assertEqual(len(r["tree"]["children"]), 3)
+
+
 class TestRenderQueue(Base):
     def test_jobs_with_status(self):
         r = call("render_queue_status", {}, self.project)
