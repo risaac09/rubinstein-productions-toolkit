@@ -26,9 +26,12 @@ Verified against Resolve Studio 21.0.4.5:
     - Unknown resolve.CONSTANT names return None silently; check them.
 """
 
+import errno
+import fcntl
 import math
 import os
 import sys
+import time
 
 SCRIPT_MODULE_DIR = (
     "/Library/Application Support/Blackmagic Design/DaVinci Resolve/"
@@ -195,6 +198,56 @@ def pin_for_write(resolve, name, unique_id=None):
         raise ProjectChanged(f"Open project '{pin.name}' has id {pin.unique_id}, "
                              f"expected {unique_id}. Stopping.")
     return pm, project, pin
+
+
+class ResolveBusy(ResolveAPIError):
+    """Another process holds the Resolve lock."""
+
+
+class ResolveLock:
+    """Cross-process lock around Resolve work. Every Claude Code session
+    starts its own MCP server, and the CLI can run beside them; the lock
+    keeps two of them from interleaving writes (or UI snapshots) in the one
+    open project. An fcntl.flock on RPRESOLVE_LOCK (default
+    ~/Library/Caches/rpresolve/resolve.lock), released when the holder
+    exits even if it crashes. Waits up to `timeout` seconds, then raises
+    ResolveBusy."""
+
+    def __init__(self, timeout=30.0, path=None):
+        self.timeout = timeout
+        self.path = path or os.environ.get("RPRESOLVE_LOCK") or os.path.expanduser(
+            "~/Library/Caches/rpresolve/resolve.lock")
+        self.fd = None
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError as e:
+                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    self._close()
+                    raise
+                if time.monotonic() >= deadline:
+                    self._close()
+                    raise ResolveBusy("Another Claude session or the CLI is using Resolve; "
+                                      f"waited {self.timeout:.0f}s. Try again when it finishes.")
+                time.sleep(0.2)
+
+    def __exit__(self, *exc):
+        self._close()
+        return False
+
+    def _close(self):
+        if self.fd is not None:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self.fd)
+                self.fd = None
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 
 import argparse
 import io
+import os
+import tempfile
 import sys
 import unicodedata
 import unittest
@@ -17,6 +19,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live one
+    tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 
 from rpresolve import api, detect, ingest
 

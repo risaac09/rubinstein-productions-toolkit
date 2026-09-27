@@ -110,6 +110,7 @@ try:
         _path_under, apply_drx_to_item, apply_drx_to_items, apply_lut_to_item,
         apply_lut_to_items, graph_fingerprint, lut_paths_match)
     from rpresolve.render import pick_codec  # noqa: E402,F401
+    from rpresolve import workflows as rpwork  # noqa: E402
 except ImportError as e:
     sys.exit(f"ERROR: cannot import rpresolve ({e}). Keep resolve_workflow.py next to its "
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
@@ -117,8 +118,8 @@ except ImportError as e:
 # The survey decodes zstd blobs, which needs compression.zstd (Python 3.14+).
 # This script runs on the system python3 (3.9), so survey runs the sibling
 # resolve_survey.py as a subprocess under this interpreter instead.
-SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
-SURVEY_SCRIPT = Path(__file__).resolve().parent / "resolve_survey.py"
+SURVEY_PYTHON = rpwork.SURVEY_PYTHON
+SURVEY_SCRIPT = rpwork.SURVEY_SCRIPT
 
 VALID_FRAMERATES = {"23.976", "24", "25", "29.97", "30", "50", "59.94", "60"}
 MEDIA_EXTENSIONS = {
@@ -562,11 +563,14 @@ def cmd_render(args):
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"Output directory: {output_dir}")
-    job_id = queue_render(project, args.preset, output_dir, config["render_presets"], args.name)
-
+    # The lock covers queueing and starting, not the monitor loop: a render
+    # can run for an hour and must not lock every MCP session out of Resolve.
+    with rpapi.ResolveLock():
+        job_id = queue_render(project, args.preset, output_dir, config["render_presets"], args.name)
+        if job_id and args.start:
+            print("\nStarting render...")
+            project.StartRendering()
     if job_id and args.start:
-        print("\nStarting render...")
-        project.StartRendering()
         _monitor_render(project, [job_id])
 
 
@@ -585,16 +589,16 @@ def cmd_render_all(args):
     print(f"Queuing {len(preset_keys)} preset(s):\n")
 
     job_ids = []
-    for preset_key in preset_keys:
-        job_id = queue_render(project, preset_key, output_dir, presets_cfg, args.name)
-        if job_id:
-            job_ids.append(job_id)
-
-    print(f"\n{len(job_ids)}/{len(preset_keys)} render job(s) queued.")
-
+    with rpapi.ResolveLock():  # queueing and starting only; see cmd_render
+        for preset_key in preset_keys:
+            job_id = queue_render(project, preset_key, output_dir, presets_cfg, args.name)
+            if job_id:
+                job_ids.append(job_id)
+        print(f"\n{len(job_ids)}/{len(preset_keys)} render job(s) queued.")
+        if job_ids and args.start:
+            print("\nStarting render...")
+            project.StartRendering()
     if job_ids and args.start:
-        print("\nStarting render...")
-        project.StartRendering()
         _monitor_render(project, job_ids)
 
 
@@ -889,34 +893,22 @@ def cmd_export_project(args):
 
 def build_survey_command(args, python=SURVEY_PYTHON, script=SURVEY_SCRIPT):
     """The argv that runs resolve_survey.py for a parsed 'survey' command."""
-    cmd = [python, str(script), "--out", args.out]
-    if args.json:
-        cmd += ["--json", args.json]
-    if args.projects:
-        cmd += ["--projects", *args.projects]
-    if args.projects_dir:
-        cmd += ["--projects-dir", args.projects_dir]
-    if args.metadata_cache:
-        cmd += ["--metadata-cache", args.metadata_cache]
-    if args.no_metadata_cache:
-        cmd.append("--no-metadata-cache")
-    if args.tree_labels:
-        cmd += ["--tree-labels", *args.tree_labels]
-    return cmd
+    return rpwork.survey_command(args.out, args.json, args.projects, args.projects_dir,
+                                 args.metadata_cache, args.no_metadata_cache, args.tree_labels,
+                                 python=python, script=script)
 
 
 def cmd_survey(args):
     """Run the read-only project survey. It reads Project.db snapshots from
     disk and never connects to Resolve, so it is safe while Resolve is open."""
-    if not os.path.exists(SURVEY_PYTHON):
-        print(f"ERROR: {SURVEY_PYTHON} not found. The survey needs Python 3.14+ "
-              "(compression.zstd); install it with Homebrew (python@3.14).")
-        return 1
-    if not SURVEY_SCRIPT.exists():
-        print(f"ERROR: {SURVEY_SCRIPT} not found; keep resolve_survey.py next to this script.")
-        return 1
     sys.stdout.flush()
-    return subprocess.run(build_survey_command(args), stdin=subprocess.DEVNULL).returncode
+    try:
+        return rpwork.survey(args.out, args.json, args.projects, args.projects_dir,
+                             args.metadata_cache, args.no_metadata_cache,
+                             args.tree_labels)["returncode"]
+    except rpwork.Refused as e:
+        print(f"ERROR: {e}")
+        return 1
 
 
 # ---------------------------------------------------------------------------
@@ -945,16 +937,13 @@ def cmd_detect(args):
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
     try:
-        rows, missing = rpdetect.detect_paths(args.paths)
-    except rpdetect.ToolMissing as e:
+        r = rpwork.detect(args.paths)
+    except (rpdetect.ToolMissing, rpwork.Refused) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    for m in missing:
+    rows = r["rows"]
+    for m in r["missing"]:
         print(f"  [skip] Not found: {m}", file=sys.stderr)
-    if not rows:
-        print("ERROR: No video files found (directories are searched recursively).",
-              file=sys.stderr)
-        return 1
 
     text = rpdetect.format_json(rows) if args.json else rpdetect.format_tsv(rows)
     if args.out:
@@ -963,8 +952,8 @@ def cmd_detect(args):
         print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(text)
-    print(rpdetect.summarize(rows), file=sys.stderr)
-    return 2 if any(rpdetect.needs_review(r) for r in rows) else 0
+    print(r["summary"], file=sys.stderr)
+    return r["exit_status"]
 
 
 def cmd_ingest(args):
@@ -979,72 +968,37 @@ def cmd_ingest(args):
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
-    resolve = get_resolve()
-    pm = resolve.GetProjectManager()
-    project = get_project(resolve)
-    pin = rpapi.ProjectPin(project)
+    # detect probes files, not Resolve: run it before taking the lock.
     try:
-        pin.require_name(args.project, pm)
+        found = rpwork.detect(args.paths)
+    except (rpdetect.ToolMissing, rpwork.Refused) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    resolve = get_resolve()
+    try:
+        with rpapi.ResolveLock():
+            r = rpwork.ingest(resolve, args.project, args.paths, parent=args.bin,
+                              dry_run=args.dry_run, rows=found["rows"])
+        r["missing"] = found["missing"]
     except rpapi.ProjectChanged as e:
         print(f"ERROR: {e} ingest writes clip properties, so it runs only on the "
               "project named with --project.", file=sys.stderr)
         return 1
-    mode = str(project.GetSetting("colorScienceMode") or "")
-    if not mode.startswith("davinciYRGBColorManaged"):
-        print(f"ERROR: colorScienceMode is '{mode}'. Input color space tags only take "
-              "effect under DaVinci YRGB Color Managed; set it in Project Settings first.",
-              file=sys.stderr)
-        return 1
-
-    try:
-        rows, missing = rpdetect.detect_paths(args.paths)
-    except rpdetect.ToolMissing as e:
+    except (rpapi.ResolveAPIError, rpdetect.ToolMissing) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    for m in missing:
+    for m in r["missing"]:
         print(f"  [skip] Not found: {m}", file=sys.stderr)
-    if not rows:
-        print("ERROR: No video files found (directories are searched recursively).",
-              file=sys.stderr)
-        return 1
-
-    project = pin.check(pm)
-    media_pool, root = get_root_folder(project)
-    plan = rpingest.plan_ingest(rows, rpingest.pool_file_paths(root), parent=args.bin)
-    if args.dry_run:
-        results = [{"path": e["path"], "bin": "/".join(e["bin"] or []), "action": e["action"],
-                    "result": "planned" if e["action"] != rpingest.SKIP else "skipped",
-                    "input_color_space": e["input_color_space"], "data_level": e["data_level"]}
-                   for e in plan]
-    else:
-        previous = media_pool.GetCurrentFolder()
-        try:
-            results = rpingest.apply_plan(media_pool, root, plan, check=lambda: pin.check(pm))
-        finally:
-            if previous:
-                media_pool.SetCurrentFolder(previous)
-
-    text = rpingest.format_report(plan, results)
+    text = rpingest.format_report(r["plan"], r["results"])
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             f.write(text)
-        print(f"Wrote {len(results)} row(s) to {args.out}", file=sys.stderr)
+        print(f"Wrote {len(r['results'])} row(s) to {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(text)
-    counts = {}
-    for r in results:
-        key = r["result"].split(":")[0]
-        counts[key] = counts.get(key, 0) + 1
-    print("ingest: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+    print("ingest: " + ", ".join(f"{v} {k}" for k, v in sorted(r["counts"].items()))
           + (" (dry run, nothing written)" if args.dry_run else ""), file=sys.stderr)
-    if any(r["result"].startswith("FAILED") for r in results):
-        return 1
-    # 2 = something needs a person: a Review file, a corrupt file, or a VFR
-    # clip that must be conformed to CFR before editing.
-    flagged = any((e["bin"] and e["bin"][-1] == rpingest.REVIEW_BIN)
-                  or e["profile"] == rpdetect.CORRUPT
-                  or e["reason"].startswith("VFR") for e in plan)
-    return 2 if flagged else 0
+    return r["exit_status"]
 
 
 def cmd_measure(args):
@@ -1176,68 +1130,58 @@ def cmd_selects(args):
 def cmd_cut(args):
     """Build [auto] timelines from a manifest in the open project named with
     --project. Exit 0 all built and read back, 1 on any failure."""
-    from rpresolve import cutlist, cut
+    from rpresolve import cutlist
     try:
-        m = cutlist.load_manifest(args.manifest)
-        clips = cut.plan_clips(m, args.only)
-    except (cutlist.CutlistError, OSError) as e:
+        gate = rpwork.cut_gate(args.manifest, args.only, audio=not args.no_audio,
+                               force=args.force)
+    except (cutlist.CutlistError, OSError, rpwork.Refused) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    if not os.path.isfile(m["source_path"]) or cutlist.sha256_file(m["source_path"]) != m["source_sha256"]:
-        print(f"ERROR: {m['source_path']} is missing or no longer matches the manifest's sha256; "
-              "the words were read from a different file.", file=sys.stderr)
-        return 1
-    fails = cut.gate_clips(m, clips, audio=not args.no_audio)
-    blocked = {k: v for k, v in fails.items() if v}
-    for name, reasons in blocked.items():
-        print(f"  {'FORCED' if args.force else 'BLOCKED'} {name}: " + " | ".join(reasons), file=sys.stderr)
-    if blocked and not args.force:
-        clips = [c for c in clips if c["name"] not in blocked]
-    if not clips:
-        print("ERROR: no clip passed endcheck; nothing to build.", file=sys.stderr)
-        return 1
-
+    for name, reasons in gate["blocked"].items():
+        print(f"  {'FORCED' if args.force else 'BLOCKED'} {name}: " + " | ".join(reasons),
+              file=sys.stderr)
     resolve = get_resolve()
-    pm = resolve.GetProjectManager()
-    project = get_project(resolve)
-    pin = rpapi.ProjectPin(project)
     try:
-        pin.require_name(args.project, pm)
+        with rpapi.ResolveLock():
+            r = rpwork.cut(resolve, args.project, args.manifest, prefix=args.prefix,
+                           make_9x16=not args.no_9x16, gate=gate)
     except rpapi.ProjectChanged as e:
         print(f"ERROR: {e} cut builds timelines, so it runs only on the project named with "
               "--project.", file=sys.stderr)
         return 1
-    media_pool, root = get_root_folder(project)
-    item = cut.find_source_item(root, m["source_sha256"], os.path.getsize(m["source_path"]))
-    if item is None:
-        print("ERROR: no media-pool clip in this project matches the manifest source's sha256. "
-              "Import the source first.", file=sys.stderr)
+    except rpapi.ResolveAPIError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    src_width = int(str(item.GetClipProperty("Resolution") or "0x0").split("x")[0] or 0)
-    existing = cut.timeline_names(project)
-    results, failed = [], False
-    snap = rpapi.UISnapshot(resolve, project)
-    with snap:
-        for clip in clips:
-            wide_name = f"{args.prefix}_{clip['name']}{cut.AUTO}"
-            if wide_name in existing:
-                print(f"  skip  {wide_name} (exists; left untouched)")
-                continue
-            r = cut.build_clip(project, media_pool, item, clip, m["fps"], args.prefix,
-                               check=lambda: pin.check(pm))
-            print(f"  {'made ' if r['ok'] else 'FAIL '} {r['name']}  {r['frames']} frames "
-                  f"(expected {r['frames_expected']}) {r['reason']}")
-            failed |= not r["ok"]
-            results.append(r)
-            if r["ok"] and not args.no_9x16:
-                wide = cut.timeline_names(project).get(r["name"])
-                t = cut.build_tall(project, wide, clip, src_width, args.prefix,
-                                   check=lambda: pin.check(pm))
-                print(f"  {'made ' if t['ok'] else 'FAIL '} {t['name']}  {t['props'] or ''} {t['reason']}")
-                failed |= not t["ok"]
-    if snap.problems:
-        print("  UI restore: " + "; ".join(snap.problems), file=sys.stderr)
-    return 1 if failed else 0
+    for name in r["skipped_existing"]:
+        print(f"  skip  {name} (exists; left untouched)")
+    for x in r["results"]:
+        if x["kind"] == "16x9":
+            print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['frames']} frames "
+                  f"(expected {x['frames_expected']}) {x['reason']}")
+        else:
+            print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['props'] or ''} {x['reason']}")
+    if r["ui_restore_problems"]:
+        print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
+    return r["exit_status"]
+
+
+def _locked(fn):
+    """Run a Resolve write command under the cross-process Resolve lock, so
+    it cannot interleave with an MCP session's writes."""
+    def run(args):
+        try:
+            with rpapi.ResolveLock():
+                return fn(args)
+        except rpapi.ResolveBusy as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+    run.__name__, run.__doc__ = fn.__name__, fn.__doc__
+    return run
+
+
+cmd_apply_lut = _locked(cmd_apply_lut)
+cmd_apply_drx = _locked(cmd_apply_drx)
+cmd_clear_queue = _locked(cmd_clear_queue)
 
 
 # ---------------------------------------------------------------------------
