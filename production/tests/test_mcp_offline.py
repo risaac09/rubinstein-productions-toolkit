@@ -143,6 +143,9 @@ class TestEndcheck(Base):
         self.assertIn(r["verdict"], ("pass", "review", "fail"))
         self.assertIn("audio not checked", r["summary"])
         self.assertEqual(seen[-1], (2, 2))
+        page = call("endcheck", {"manifest": m, "audio": False, "limit": 1, "offset": 1})
+        self.assertEqual(page["lines"], [cutlist.endcheck_line(rows[1])])
+        self.assertEqual(page["counts"], r["counts"])
         one = call("endcheck", {"manifest": m, "audio": False, "clips": ["quiet"]})
         self.assertEqual([x["clip"] for x in one["rows"]], ["quiet"])
         with self.assertRaisesRegex(ValueError, "not in the manifest: nope"):
@@ -209,6 +212,24 @@ class TestSurvey(Base):
             r = call("survey", {"json": False})
         self.assertTrue(seen["out"].startswith(self.outdir))
         self.assertIsNone(seen["json_out"])
+        with self.assertRaisesRegex(ValueError, "does not end in .json"):
+            call("survey", {"out": os.path.join(self.dir, "s.json")})
+
+    def test_failed_survey_leaves_no_empty_report(self):
+        def failing(out, json_out=None, **kw):
+            return {"returncode": 1, "out": out, "json_out": json_out,
+                    "stdout_tail": "", "stderr_tail": "boom"}
+
+        def refusing(out, json_out=None, **kw):
+            raise workflows.Refused("no python3.14")
+        for fake in (failing, refusing):
+            try:
+                with mock.patch.object(workflows, "survey", fake):
+                    r = call("survey", {})
+                self.assertFalse(r["ok"])
+            except workflows.Refused:
+                pass
+            self.assertEqual(os.listdir(self.outdir), [])
 
 
 try:

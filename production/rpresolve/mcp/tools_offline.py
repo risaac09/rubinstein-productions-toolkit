@@ -57,6 +57,15 @@ def _auto_out(stem, ext):
     return p
 
 
+def _drop_empty(path):
+    """Remove an auto-created output file that nothing was written to."""
+    try:
+        if path and os.path.getsize(path) == 0:
+            os.remove(path)
+    except OSError:
+        pass
+
+
 def _page(rows, args):
     offset, limit = args["offset"], args["limit"]
     page = rows[offset:offset + limit]
@@ -105,17 +114,27 @@ def detect(args, ctx):
 # ---------------------------------------------------------------------------
 
 def survey(args, ctx):
-    out = _out(args) or _auto_out("survey", ".md")
+    given = _out(args)
+    if given and args["json"] and given.lower().endswith(".json"):
+        raise ValueError("out is the Markdown report and the JSON goes beside it with a .json "
+                         "suffix; give an out path that does not end in .json.")
+    out = given or _auto_out("survey", ".md")
     json_out = os.path.splitext(out)[0] + ".json" if args["json"] else None
-    if json_out:
-        problem = paths.out_problem(json_out, any_git_tree=True)
-        if problem:
-            raise paths.OutputRefused(problem)
-    ctx.check_cancel()
-    r = workflows.survey(out, json_out, projects=args.get("projects"),
-                         tree_labels=args.get("tree_labels"), capture=True,
-                         timeout=args["timeout"])
+    try:
+        if json_out:
+            problem = paths.out_problem(json_out, any_git_tree=True)
+            if problem:
+                raise paths.OutputRefused(problem)
+        ctx.check_cancel()
+        r = workflows.survey(out, json_out, projects=args.get("projects"),
+                             tree_labels=args.get("tree_labels"), capture=True,
+                             timeout=args["timeout"])
+    except BaseException:
+        _drop_empty(None if given else out)
+        raise
     ok = r["returncode"] == 0
+    if not ok:
+        _drop_empty(None if given else out)
     r["summary"] = (f"survey written to {out}" + (f" and {json_out}" if json_out else "")
                     if ok else f"survey failed (exit {r['returncode']}); see stderr_tail")
     r["ok"] = ok
@@ -181,9 +200,9 @@ def endcheck(args, ctx):
     result = {"summary": (f"endcheck: {len(rows)} span(s): {n['pass']} pass, {n['review']} "
                           f"review, {n['fail']} fail" +
                           ("" if args["audio"] else " (audio not checked)")),
-              "verdict": verdict, "counts": n,
-              "lines": [cutlist.endcheck_line(r) for r in rows]}
+              "verdict": verdict, "counts": n}
     result.update(_page(rows, args))
+    result["lines"] = [cutlist.endcheck_line(r) for r in result["rows"]]
     if out or result["next_offset"] is not None:
         result["file"] = paths.write_private(out or _auto_out("endcheck", ".json"),
                                              _json(rows), any_git_tree=True)
