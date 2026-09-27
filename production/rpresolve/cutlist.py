@@ -240,7 +240,7 @@ def envelope(source, t0, t1, ffmpeg=None):
            "-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE),
            "-f", "s16le", "-"]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
     except subprocess.TimeoutExpired:
         raise CutlistError(f"ffmpeg timed out reading audio at {t0:.2f}s")
     if proc.returncode != 0:
