@@ -53,5 +53,7 @@ jobs:
           python-version: "3.9"
       - name: MCP protocol, schema, stdio isolation, end to end
         run: python -m unittest -v production.tests.test_mcp
+      - name: MCP offline tools
+        run: python -m unittest -v production.tests.test_mcp_offline
       - name: Library and workflows
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib

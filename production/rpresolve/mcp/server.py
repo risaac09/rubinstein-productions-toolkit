@@ -6,11 +6,12 @@ from .protocol import Server
 from .registry import Registry
 from .session import ResolveSession
 from .stdio import FramedWriter, LineReader, hard_exit
-from . import tools_read
+from . import tools_offline, tools_read
 
 INSTRUCTIONS = """\
 Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
-- Call resolve_status first. Resolve is edited live by a person: never assume which project is open.
+- detect, survey, measure, endcheck and selects never connect to Resolve; paths must be absolute.
+- Before any Resolve tool, call resolve_status. Resolve is edited live by a person: never assume which project is open.
 - Every write tool must name the open project exactly (project, and project_id when you have it).
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
 - Additive only: nothing that existed before is modified; grades go only onto timelines whose name ends " [auto]"; renders are queued, never started.
@@ -22,6 +23,7 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 def build_registry():
     registry = Registry()
     tools_read.register(registry)
+    tools_offline.register(registry)
     return registry
 
 

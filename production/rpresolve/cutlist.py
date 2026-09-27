@@ -483,15 +483,23 @@ def build_manifest(spans_by_clip, source_path, fps, words_path, approved_path,
 # endcheck and selects
 # ---------------------------------------------------------------------------
 
-def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None):
+def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
+             check_cancel=None, progress=None):
     """Every span of every clip against the words, the source audio and the
-    approved text. Returns [{clip, span, in, out, frames, end, text, ok}]."""
+    approved text. Returns [{clip, span, in, out, frames, end, text, ok}].
+    check_cancel() is called before each span (it raises to stop);
+    progress(done, total) after each."""
     words = words if words is not None else load_words(manifest["words"])
     approved = approved if approved is not None else load_approved(manifest["approved_text"])
     loops = repetition_loops(words)
     rows = []
+    total = sum(len(c["spans"]) for c in manifest["clips"])
     for clip in manifest["clips"]:
         for i, s in enumerate(clip["spans"], 1):
+            if check_cancel:
+                check_cancel()
+            if progress and rows:
+                progress(len(rows), total)
             bad = [lp for lp in loops if lp[0] < s["out"] + SEARCH_S and lp[1] > s["in"]]
             if bad:
                 a0, b0, phrase = bad[0]
@@ -509,7 +517,38 @@ def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None):
                          "ok": end["ok"] and text["ok"], "review": text["verdict"] == "review",
                          "reason": "; ".join(r for r in (end["reason"],
                                    "" if text["ok"] else "not inside the approved text") if r)})
+    if progress:
+        progress(len(rows), total)
     return rows
+
+
+def endcheck_status(r):
+    """PASS, REVIEW or FAIL for one endcheck row."""
+    return "PASS" if r["ok"] and not r.get("review") else ("REVIEW" if r["ok"] else "FAIL")
+
+
+def endcheck_counts(rows):
+    """{pass, review, fail} over endcheck rows."""
+    fails = sum(1 for r in rows if not r["ok"])
+    reviews = sum(1 for r in rows if r["ok"] and r.get("review"))
+    return {"pass": len(rows) - fails - reviews, "review": reviews, "fail": fails}
+
+
+def endcheck_line(r):
+    """One row as the line the CLI prints."""
+    end, text = r.get("end") or {}, r.get("text") or {}
+    near = (end.get("nearest") or {}) if end else {}
+    extra = []
+    if end.get("suggest"):
+        extra.append(f"suggest out {end['suggest']}")
+    elif not r["ok"] and near:
+        for side in ("before", "after"):
+            if near.get(side):
+                extra.append(f"clean {side} {near[side]['t']} ends \"{near[side]['ends']}\"")
+    if text and text.get("verdict") != "pass" and text.get("unmatched"):
+        extra.append(f"essay {text['verdict']} {text['coverage']:.2f}: [{text['unmatched']}]")
+    return (f"{endcheck_status(r):6} {r['clip']:<14} span {r['span']}  out {r['out']:<9} "
+            f"{r['reason'] or ''}" + ("  | " + "; ".join(extra) if extra else ""))
 
 
 def sentences(words, gap=0.6):
@@ -570,3 +609,14 @@ def selects(words, approved, min_s=20.0, max_s=65.0, pad=0.15):
         if all(c["out"] <= k["in"] or c["in"] >= k["out"] for k in chosen):
             chosen.append(c)
     return sorted(chosen, key=lambda c: c["in"])
+
+
+SELECTS_COLUMNS = ("in", "out", "seconds", "coverage", "end_words", "text")
+
+
+def selects_tsv(rows):
+    """selects() rows as the TSV the CLI prints."""
+    lines = ["\t".join(SELECTS_COLUMNS)]
+    lines += ["\t".join(re.sub(r"[\t\r\n]+", " ", str(r[k])) for k in SELECTS_COLUMNS)
+              for r in rows]
+    return "\n".join(lines) + "\n"

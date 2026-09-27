@@ -341,7 +341,8 @@ def _write_png(rgb, path):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def measure(path, samples=10, segments=(), hero=None, faces=True):
+def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=None,
+            progress=None):
     info = probe(path)
     depth = bit_depth(info["tags"]["pix_fmt"])
     rgb_source = is_rgb_source(info["tags"]["pix_fmt"])
@@ -350,7 +351,12 @@ def measure(path, samples=10, segments=(), hero=None, faces=True):
     frames, pooled = [], []
     with tempfile.TemporaryDirectory(prefix="rpresolve-measure-") as tmp:
         stills = []
-        for i, t in enumerate(sample_times(info["duration"], samples)):
+        times = sample_times(info["duration"], samples)
+        for i, t in enumerate(times):
+            if check_cancel:
+                check_cancel()
+            if progress and i:
+                progress(i, len(times))
             rgb = read_frame(path, t, info["width"], info["height"], vf)
             pooled.append(rgb[::PIXEL_STRIDE * 2, ::PIXEL_STRIDE * 2])
             frame = {"t": round(t, 3), "luma": luma_stats(rgb), "clipping": clipping(rgb),
