@@ -42,12 +42,20 @@ cmd_transcribe() {
   mkdir -p "$out"
 
   # Whisper wants 16k mono; feeding it the raw .mov is slow and sometimes fails.
-  local wav="$out/$base.16k.wav"
-  echo "vertcut: extracting audio -> $wav"
+  # The WAV is scratch: it goes to a temp dir and is deleted, never beside the
+  # output, where a synced or autocommitted folder would pick it up.
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/vertcut.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
+  local wav="$tmp/$base.16k.wav"
+  echo "vertcut: extracting audio (temp)"
   ffmpeg -hide_banner -loglevel error -y -i "$src" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$wav"
 
+  # Conditioning each window on the previous text lets Whisper fall into
+  # repetition loops ("learn how to learn how to ..." for minutes on Say Why
+  # Ep 002); off, with the silence guard, those regions transcribe cleanly.
   echo "vertcut: transcribing with $model (word timestamps)"
   "$mw" "$wav" --model "$model" --word-timestamps True \
+    --condition-on-previous-text False --hallucination-silence-threshold 2 \
     --output-dir "$out" --output-name "$base" --output-format json
 
   echo "vertcut: wrote $out/$base.json"
