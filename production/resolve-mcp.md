@@ -83,8 +83,8 @@ absolute, since the server's working directory is not the caller's.
   and any restore problem is in the result.
 - **One writer at a time.** Every Claude Code session starts its own server,
   so all Resolve access takes a lock at `~/Library/Caches/rpresolve/resolve.lock`,
-  shared with the CLI's write commands. Reads wait up to 10 s, writes 30 s,
-  then report Resolve as busy.
+  shared with the CLI's write commands. `resolve_status` waits up to 5 s,
+  the other reads 10 s and writes 30 s, then report Resolve as busy.
 - **A record of every write.** A real run writes a synced "started" line to
   `~/Library/Logs/rpresolve-mcp/writes.jsonl` (mode 0600) before touching
   Resolve and a "finished" line after. If the started line cannot be

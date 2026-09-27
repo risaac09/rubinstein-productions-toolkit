@@ -203,15 +203,18 @@ def main():
             check(not err and r["created"], "cut built its timelines")
     finally:
         code = c.close()
+        # Always take the test job back out, even when a later step raised.
+        with api.ResolveLock():
+            pm, project = api.current_project(resolve)
+            if job_id:
+                rendering = project.IsRenderingInProgress()
+                check(not rendering, "no render was started")
+                if not rendering:
+                    check(bool(project.DeleteRenderJob(job_id)), "the test render job was deleted")
     check(code == 0, "the server exited cleanly")
 
     with api.ResolveLock():
         pm, project = api.current_project(resolve)
-        if job_id:
-            rendering = project.IsRenderingInProgress()
-            check(not rendering, "no render was started")
-            if not rendering:
-                check(bool(project.DeleteRenderJob(job_id)), "the test render job was deleted")
         after = snapshot(project)
         ui1 = (resolve.GetCurrentPage(), project.GetCurrentTimeline().GetUniqueId())
 
