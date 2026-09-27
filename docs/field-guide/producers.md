@@ -19,7 +19,7 @@ The engagement has a defined shape from first contact to published case study.
 ## Shoot and post
 
 - **[Filming Guide](../../production/filming-guide.md)**. A concrete one-day shoot plan at iPhone level: setup, shot lists, and time budget for two short pieces. The camera-packing sequence is the signature visual of the camera-shipping model, where the participant films themselves and everything is returned.
-- **[Resolve Template Spec](../../production/resolve-template-spec.md)** and **[resolve_workflow.py](../../production/resolve_workflow.py)**. A DaVinci Resolve project template and a CLI that automates it through the Resolve scripting API. Two caveats: these document the author's personal content workflow rather than client delivery, and the script needs Resolve Studio running, since it drives a live instance.
+- **[Resolve Template Spec](../../production/resolve-template-spec.md)** and **[resolve_workflow.py](../../production/resolve_workflow.py)**. A DaVinci Resolve project template and a CLI that automates it through the Resolve scripting API. Two caveats: these document the author's personal content workflow rather than client delivery, and the script needs Resolve Studio running, since it drives a live instance. The [Resolve MCP server](../../production/resolve-mcp.md) exposes the same automation to Claude Code as tools, with every write planned first and additive only.
 
 ## The ethics layer
 
