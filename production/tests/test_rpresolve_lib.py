@@ -197,5 +197,20 @@ class TestApiAdditions(unittest.TestCase):
             api.media_pool_root(FakeProj())
 
 
+
+class TestConfigLocale(unittest.TestCase):
+    def test_config_reads_as_utf8_under_the_c_locale(self):
+        """Connected to Resolve, the process runs in the C locale; the
+        config's non-ASCII note must still load (the MCP queue_render bug)."""
+        import subprocess
+        env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
+        code = ("import sys; sys.path.insert(0, %r); from rpresolve.config import load_config; "
+                "print('\\u2014' in load_config(warn=print)['render_presets']['story']['note'])"
+                % str(Path(__file__).resolve().parent.parent))
+        out = subprocess.run([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        self.assertEqual(out.returncode, 0, out.stderr.decode()[-300:])
+        self.assertEqual(out.stdout.strip(), b"True")
+
 if __name__ == "__main__":
     unittest.main()

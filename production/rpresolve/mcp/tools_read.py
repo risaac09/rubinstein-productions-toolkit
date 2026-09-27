@@ -131,17 +131,10 @@ def _timelines(project):
 
 def _find_timeline(project, ref):
     """A timeline by unique id, else by exact name (refused when two share it)."""
-    found = [(i, tl) for i, tl in _timelines(project) if tl and _call(tl, "GetUniqueId") == ref]
-    if not found:
-        found = [(i, tl) for i, tl in _timelines(project) if tl and _call(tl, "GetName") == ref]
-    if not found:
-        raise ValueError(f"no timeline named or with unique id '{ref}' in "
-                         f"'{project.GetName()}'; list_timelines shows them.")
-    if len(found) > 1:
-        ids = ", ".join(str(_call(tl, "GetUniqueId")) for _, tl in found)
-        raise ValueError(f"{len(found)} timelines are named '{ref}'; name one by unique id "
-                         f"({ids}).")
-    return found[0]
+    try:
+        return api.find_timeline(project, ref)
+    except api.ResolveAPIError as e:
+        raise ValueError(f"{e} list_timelines shows them.") from None
 
 
 # ---------------------------------------------------------------------------

@@ -287,6 +287,24 @@ def _find_timeline(project, unique_id, name):
     return None if unique_id else by_name
 
 
+def find_timeline(project, ref):
+    """(index, timeline) by unique id, else by exact name. Raises
+    ResolveAPIError when none matches or two timelines share the name."""
+    count = int(_safe_call(project, "GetTimelineCount") or 0)
+    tls = [(i, _safe_call(project, "GetTimelineByIndex", i)) for i in range(1, count + 1)]
+    found = [(i, tl) for i, tl in tls if tl and _safe_call(tl, "GetUniqueId") == ref]
+    if not found:
+        found = [(i, tl) for i, tl in tls if tl and _safe_call(tl, "GetName") == ref]
+    if not found:
+        raise ResolveAPIError(f"no timeline named or with unique id '{ref}' in "
+                              f"'{_safe_call(project, 'GetName')}'.")
+    if len(found) > 1:
+        ids = ", ".join(str(_safe_call(tl, "GetUniqueId")) for _, tl in found)
+        raise ResolveAPIError(f"{len(found)} timelines are named '{ref}'; name one by its "
+                              f"unique id ({ids}).")
+    return found[0]
+
+
 class UISnapshot:
     """Context manager: record the current page, timeline, and playhead
     timecode on entry and put them back on exit. Restoring is best effort

@@ -4,8 +4,13 @@ Shared fakes of the Resolve scripting objects for the MCP tool tests.
 Every fake answers the getters the tools use. Any other method is still
 callable, returns None and is recorded in CALLS, so a test can assert that
 a read tool never reached for a setter (SetCurrentTimeline, OpenPage,
-SetCurrentFolder, ...) that the fake does not implement.
+SetCurrentFolder, ...) that the fake does not implement. The setters the
+write tools need are implemented, and record themselves in CALLS too.
 """
+
+import copy
+import itertools
+
 
 CALLS = []
 MUTATING_PREFIXES = ("Set", "Open", "Load", "Create", "Delete", "Add", "Import", "Append",
@@ -15,6 +20,14 @@ MUTATING_PREFIXES = ("Set", "Open", "Load", "Create", "Delete", "Add", "Import",
 
 def mutating_calls():
     return [c for c in CALLS if c[1].startswith(MUTATING_PREFIXES)]
+
+
+def _log(obj, name, *args):
+    CALLS.append((type(obj).__name__, name, args))
+
+
+# path -> [(label, lut, tools)]: the graph ApplyGradeFromDRX leaves behind.
+DRX_GRAPHS = {}
 
 
 class Fake:
@@ -36,6 +49,21 @@ class Graph(Fake):
     def GetNodeLabel(self, i): return self.nodes[i - 1][0]
     def GetLUT(self, i): return self.nodes[i - 1][1]
     def GetToolsInNode(self, i): return self.nodes[i - 1][2]
+
+    def SetLUT(self, i, path):
+        _log(self, "SetLUT", i, path)
+        if not 1 <= i <= len(self.nodes):
+            return False
+        label, _, _ = self.nodes[i - 1]
+        self.nodes[i - 1] = (label, path, ["LUT: " + path.rsplit("/", 1)[-1]])
+        return True
+
+    def ApplyGradeFromDRX(self, path, mode):
+        _log(self, "ApplyGradeFromDRX", path, mode)
+        if path not in DRX_GRAPHS:
+            return False
+        self.nodes[:] = [tuple(n) for n in DRX_GRAPHS[path]]
+        return True
 
 
 class Clip(Fake):
@@ -89,6 +117,24 @@ class Timeline(Fake):
         tracks = self.tracks.get(kind, [])
         return list(tracks[index - 1]) if 1 <= index <= len(tracks) else None
 
+    def DuplicateTimeline(self, name=None):
+        _log(self, "DuplicateTimeline", name)
+        project = getattr(self, "project", None)
+        tracks = {k: [[_copy_item(it) for it in track] for track in v]
+                  for k, v in self.tracks.items()}
+        dup = Timeline(name or self.name + " copy", f"{self.uid}-dup{len(CALLS)}", self.fps,
+                       self.start, self.end, tracks)
+        if project is not None:
+            project.add(dup)
+            project.current = dup  # Resolve makes the copy current (spike 18)
+        return dup
+
+
+def _copy_item(it):
+    new = copy.copy(it)
+    new.graph = Graph([tuple(n) for n in it.graph.nodes]) if it.graph else None
+    return new
+
 
 class Folder(Fake):
     def __init__(self, name, clips=(), subs=()):
@@ -110,7 +156,12 @@ class Project(Fake):
     def __init__(self, name="RP Automation Sandbox", uid="sandbox-id", timelines=(),
                  current=None, root=None, jobs=(), rendering=False):
         self.name, self.uid = name, uid
-        self.timelines = list(timelines)
+        self.timelines = []
+        for tl in timelines:
+            self.add(tl)
+        self.fmt = {"format": "mov", "codec": "ProRes422HQ"}
+        self.render_settings = {}
+        self._ids = itertools.count(1)
         self.current = current
         self.pool = Pool(root or Folder("Master"))
         self.jobs = [dict(j) for j in jobs]
@@ -135,7 +186,49 @@ class Project(Fake):
     def IsRenderingInProgress(self): return self.rendering
 
     def GetCurrentRenderFormatAndCodec(self):
-        return {"format": "mov", "codec": "ProRes422HQ"}
+        return dict(self.fmt)
+
+    def add(self, tl):
+        tl.project = self
+        self.timelines.append(tl)
+
+    def SetCurrentTimeline(self, tl):
+        _log(self, "SetCurrentTimeline", getattr(tl, "name", tl))
+        self.current = tl
+        return True
+
+    def GetRenderCodecs(self, fmt):
+        return {"mov": {"Apple ProRes 422 HQ": "ProRes422HQ"},
+                "mp4": {"H.264": "H264", "H.265": "H265"}}.get(fmt, {})
+
+    def SetCurrentRenderFormatAndCodec(self, fmt, codec):
+        _log(self, "SetCurrentRenderFormatAndCodec", fmt, codec)
+        if fmt == "unknown":
+            return False
+        self.fmt = {"format": fmt, "codec": codec}
+        return True
+
+    def SetRenderSettings(self, settings):
+        _log(self, "SetRenderSettings", settings)
+        self.render_settings = dict(settings)
+        return True
+
+    def RefreshLUTList(self):
+        _log(self, "RefreshLUTList")
+        return True
+
+    def AddRenderJob(self):
+        _log(self, "AddRenderJob")
+        rs = self.render_settings
+        jid = f"job-{next(self._ids)}"
+        self.jobs.append({"JobId": jid, "RenderJobName": f"Job {len(self.jobs) + 1}",
+                          "TimelineName": self.current.GetName(),
+                          "TargetDir": rs.get("TargetDir"),
+                          "OutputFilename": f"{rs.get('CustomName')}.{self.fmt['format']}",
+                          "FormatWidth": rs.get("FormatWidth"),
+                          "FormatHeight": rs.get("FormatHeight"),
+                          "VideoFormat": self.fmt["format"], "VideoCodec": self.fmt["codec"]})
+        return jid
 
 
 class ProjectManager(Fake):
@@ -153,6 +246,11 @@ class Resolve(Fake):
     def GetProductName(self): return "DaVinci Resolve Studio"
     def GetVersionString(self): return "21.0.4.5"
     def GetCurrentPage(self): return self.page
+
+    def OpenPage(self, page):
+        _log(self, "OpenPage", page)
+        self.page = page
+        return True
 
 
 class Session:
