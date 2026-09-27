@@ -32,6 +32,8 @@ Commands:
                            runs resolve_survey.py, no Resolve connection)
     detect                 Offline: classify camera and picture profile from
                            file headers (ffprobe, exiftool); never touches Resolve
+    ingest                 Import classified media into camera bins and tag each
+                           clip's input color space (RCM projects you name)
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -90,6 +92,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
     from rpresolve import api as rpapi  # noqa: E402
     from rpresolve import detect as rpdetect  # noqa: E402
+    from rpresolve import ingest as rpingest  # noqa: E402
 except ImportError:
     sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
@@ -1134,6 +1137,16 @@ def cmd_survey(args):
 # Offline detect (no Resolve connection)
 # ---------------------------------------------------------------------------
 
+def _out_problem(out):
+    """Why --out cannot be used (inside this public repo, a directory, not
+    writable), or None. Checked before any slow work."""
+    from resolve_survey import inside_repo, output_path_problem
+    if inside_repo(out):
+        return (f"--out {out} is inside this repository's git working tree. "
+                "The rows carry full media paths; write them outside the repo.")
+    return output_path_problem(out)
+
+
 def cmd_detect(args):
     """Classify each media file's camera and picture profile from its
     headers and write a TSV (or JSON). Never connects to Resolve.
@@ -1143,19 +1156,12 @@ def cmd_detect(args):
     'corrupt' or low confidence, 1 when the tools are missing or no file
     was found. A file that fails to probe becomes a 'review' row and the
     run goes on."""
-    if args.out:
-        # The same guards as the survey, checked before any file is probed:
-        # rows carry full media paths, and this repository is public.
-        from resolve_survey import inside_repo, output_path_problem
-        if inside_repo(args.out):
-            print(f"ERROR: --out {args.out} is inside this repository's git working tree. "
-                  "detect rows carry full media paths; write them outside the repo.",
-                  file=sys.stderr)
-            return 1
-        problem = output_path_problem(args.out)
-        if problem:
-            print(f"ERROR: {problem}", file=sys.stderr)
-            return 1
+    # The same guards as the survey, checked before any file is probed:
+    # rows carry full media paths, and this repository is public.
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
     try:
         rows, missing = rpdetect.detect_paths(args.paths)
     except rpdetect.ToolMissing as e:
@@ -1177,6 +1183,86 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(rpdetect.summarize(rows), file=sys.stderr)
     return 2 if any(rpdetect.needs_review(r) for r in rows) else 0
+
+
+def cmd_ingest(args):
+    """Classify the media with detect, import it into camera bins under
+    --bin, and tag each imported clip's Input Color Space and Data Level,
+    reading every write back. For RCM projects made for this pipeline:
+    --project must name the open project, and nothing already in its media
+    pool is touched. Exit status: 0 all tagged or imported as planned; 2
+    when any file went to Review, was skipped as corrupt, or is VFR; 1 on
+    any failed import or write, or a refused precondition."""
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    resolve = get_resolve()
+    pm = resolve.GetProjectManager()
+    project = get_project(resolve)
+    pin = rpapi.ProjectPin(project)
+    try:
+        pin.require_name(args.project, pm)
+    except rpapi.ProjectChanged as e:
+        print(f"ERROR: {e} ingest writes clip properties, so it runs only on the "
+              "project named with --project.", file=sys.stderr)
+        return 1
+    mode = str(project.GetSetting("colorScienceMode") or "")
+    if not mode.startswith("davinciYRGBColorManaged"):
+        print(f"ERROR: colorScienceMode is '{mode}'. Input color space tags only take "
+              "effect under DaVinci YRGB Color Managed; set it in Project Settings first.",
+              file=sys.stderr)
+        return 1
+
+    try:
+        rows, missing = rpdetect.detect_paths(args.paths)
+    except rpdetect.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for m in missing:
+        print(f"  [skip] Not found: {m}", file=sys.stderr)
+    if not rows:
+        print("ERROR: No video files found (directories are searched recursively).",
+              file=sys.stderr)
+        return 1
+
+    project = pin.check(pm)
+    media_pool, root = get_root_folder(project)
+    plan = rpingest.plan_ingest(rows, rpingest.pool_file_paths(root), parent=args.bin)
+    if args.dry_run:
+        results = [{"path": e["path"], "bin": "/".join(e["bin"] or []), "action": e["action"],
+                    "result": "planned" if e["action"] != rpingest.SKIP else "skipped",
+                    "input_color_space": e["input_color_space"], "data_level": e["data_level"]}
+                   for e in plan]
+    else:
+        previous = media_pool.GetCurrentFolder()
+        try:
+            results = rpingest.apply_plan(media_pool, root, plan, check=lambda: pin.check(pm))
+        finally:
+            if previous:
+                media_pool.SetCurrentFolder(previous)
+
+    text = rpingest.format_report(plan, results)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"Wrote {len(results)} row(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    counts = {}
+    for r in results:
+        key = r["result"].split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+    print("ingest: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+          + (" (dry run, nothing written)" if args.dry_run else ""), file=sys.stderr)
+    if any(r["result"].startswith("FAILED") for r in results):
+        return 1
+    # 2 = something needs a person: a Review file, a corrupt file, or a VFR
+    # clip that must be conformed to CFR before editing.
+    flagged = any((e["bin"] and e["bin"][-1] == rpingest.REVIEW_BIN)
+                  or e["profile"] == rpdetect.CORRUPT
+                  or e["reason"].startswith("VFR") for e in plan)
+    return 2 if flagged else 0
 
 
 # ---------------------------------------------------------------------------
@@ -1243,6 +1329,9 @@ Examples:
 
   # Classify cameras and picture profiles offline; exits 2 if any row needs review
   python3 resolve_workflow.py detect /path/to/card/ --out detect.tsv
+
+  # Import a card into camera bins and tag input color spaces (RCM project only)
+  python3 resolve_workflow.py ingest /path/to/card/ --project "My New Project" --dry-run
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1353,6 +1442,17 @@ Examples:
     sp.add_argument("--out", "-o", help="Write the table here instead of stdout")
     sp.add_argument("--json", action="store_true", help="Emit JSON instead of TSV")
     sp.set_defaults(func=cmd_detect)
+
+    sp = subparsers.add_parser(
+        "ingest", help="Import classified media into camera bins and tag input color spaces")
+    sp.add_argument("paths", nargs="+", help="Media files or directories (searched recursively)")
+    sp.add_argument("--project", required=True,
+                    help="Name of the open project; ingest refuses any other")
+    sp.add_argument("--bin", default="Source", help="Parent bin for the camera bins (default: Source)")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="Classify and plan against the media pool; write nothing")
+    sp.add_argument("--out", "-o", help="Write the report here instead of stdout")
+    sp.set_defaults(func=cmd_ingest)
 
     args = parser.parse_args()
     if not args.command:

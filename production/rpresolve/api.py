@@ -314,6 +314,23 @@ def set_property_checked(item, key, value):
     return got
 
 
+def set_clip_property_checked(clip, key, value):
+    """SetClipProperty(key, value) on a media-pool item, then require
+    GetClipProperty(key) to equal str(value) exactly. Verified on Resolve
+    21.0.4.5 for 'Input Color Space' (sandbox spike 4). Returns the value
+    read back."""
+    wanted = str(value)
+    clip.SetClipProperty(key, wanted)
+    got = clip.GetClipProperty(key)
+    if str(got) != wanted:
+        raise WriteNotApplied(
+            f"Clip property '{key}': wrote '{wanted}', read back '{got}'. "
+            "Check the value is one Resolve offers for this clip, and whether "
+            "a modal dialog is open in Resolve."
+        )
+    return got
+
+
 # ---------------------------------------------------------------------------
 # Node graph helpers (Graph from TimelineItem.GetNodeGraph(); 1-based)
 # ---------------------------------------------------------------------------
