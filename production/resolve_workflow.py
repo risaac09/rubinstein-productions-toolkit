@@ -34,6 +34,8 @@ Commands:
                            file headers (ffprobe, exiftool); never touches Resolve
     ingest                 Import classified media into camera bins and tag each
                            clip's input color space (RCM projects you name)
+    measure                Offline: luma, clipping, legal range and skin numbers
+                           from a render; camera-match numbers per segment
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -1265,6 +1267,37 @@ def cmd_ingest(args):
     return 2 if flagged else 0
 
 
+def cmd_measure(args):
+    """Measure a rendered file (see rpresolve/measure.py). Prints a summary;
+    --json writes the full report. Exit 1 when the file cannot be read."""
+    try:
+        from rpresolve import measure as rpmeasure
+    except ImportError as e:
+        print(f"ERROR: measure needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    problem = _out_problem(args.json) if args.json else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        segments = [rpmeasure.parse_segment(s) for s in args.segment or []]
+        if args.hero and args.hero not in [s[0] for s in segments]:
+            print(f"ERROR: --hero {args.hero} is not one of the segment labels.", file=sys.stderr)
+            return 1
+        report = rpmeasure.measure(args.file, samples=args.samples, segments=segments,
+                                   hero=args.hero, faces=not args.no_faces)
+    except rpmeasure.MeasureError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpmeasure.format_summary(report))
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+            f.write("\n")
+        print(f"Wrote {args.json}", file=sys.stderr)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
@@ -1332,6 +1365,9 @@ Examples:
 
   # Import a card into camera bins and tag input color spaces (RCM project only)
   python3 resolve_workflow.py ingest /path/to/card/ --project "My New Project" --dry-run
+
+  # Measure a render; camera-match numbers for two cameras by time range
+  python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1453,6 +1489,17 @@ Examples:
                     help="Classify and plan against the media pool; write nothing")
     sp.add_argument("--out", "-o", help="Write the report here instead of stdout")
     sp.set_defaults(func=cmd_ingest)
+
+    sp = subparsers.add_parser(
+        "measure", help="Offline: luma, clipping, legal range and skin numbers from a render")
+    sp.add_argument("file", help="Rendered video or still")
+    sp.add_argument("--samples", type=int, default=10, help="Frames to sample (default 10)")
+    sp.add_argument("--segment", action="append", metavar="LABEL=START-END",
+                    help="A camera's time range in seconds; repeat per camera")
+    sp.add_argument("--hero", help="Segment label whose skin chroma the others are compared to")
+    sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
+    sp.add_argument("--json", help="Also write the full report as JSON here")
+    sp.set_defaults(func=cmd_measure)
 
     args = parser.parse_args()
     if not args.command:
