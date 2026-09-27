@@ -103,6 +103,12 @@ def registry(extra=()):
         print("hello from a tool")
         return {"summary": "chatty"}
 
+    def big(args, ctx):
+        return {"summary": "big", "rows": ["x" * 100] * 1000}
+
+    def typed(args, ctx):
+        return {"summary": "typed", "n_type": type(args["n"]).__name__}
+
     reg.add(Tool("echo", "echo", {"type": "object", "properties": {
         "n": {"type": "integer", "minimum": 1, "default": 1}, "s": {"type": "string"}},
         "required": ["s"], "additionalProperties": False}, echo, annotations=READ))
@@ -110,6 +116,9 @@ def registry(extra=()):
     reg.add(Tool("boom", "boom", OBJ, boom))
     reg.add(Tool("bye", "bye", OBJ, bye))
     reg.add(Tool("chatty", "chatty", OBJ, chatty))
+    reg.add(Tool("big", "big", OBJ, big))
+    reg.add(Tool("typed", "typed", {"type": "object", "properties": {"n": {"type": "integer"}},
+                                    "additionalProperties": False}, typed))
     return reg, gate
 
 
@@ -149,7 +158,7 @@ class TestProtocol(unittest.TestCase):
         init(self.h)
         self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         tools = {t["name"]: t for t in self.h.recv()["result"]["tools"]}
-        self.assertEqual(set(tools), {"echo", "slow", "boom", "bye", "chatty"})
+        self.assertEqual(set(tools), {"echo", "slow", "boom", "bye", "chatty", "big", "typed"})
         self.assertTrue(tools["echo"]["annotations"]["readOnlyHint"])
         self.h.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                      "params": {"name": "echo", "arguments": {"s": "hi", "n": 2}}})
@@ -226,6 +235,31 @@ class TestProtocol(unittest.TestCase):
         init(self.h, "2025-06-18")
         self.h.send([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])
         self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_REQUEST)
+
+    def test_a_batch_gets_one_array_reply(self):
+        init(self.h, "2025-03-26")
+        self.h.send([{"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                     {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                     {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                      "params": {"name": "echo", "arguments": {"s": "b"}}}])
+        reply = self.h.recv()
+        self.assertIsInstance(reply, list)
+        self.assertEqual([r["id"] for r in reply], [1, 2])
+
+    def test_oversized_results_drop_the_structured_copy(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                     "params": {"name": "big", "arguments": {}}})
+        r = self.h.recv()["result"]
+        self.assertNotIn("structuredContent", r)
+        self.assertIn("[truncated", r["content"][0]["text"])
+        self.assertLess(len(r["content"][0]["text"]), protocol.MAX_TEXT + 200)
+
+    def test_whole_floats_arrive_as_integers(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                     "params": {"name": "typed", "arguments": {"n": 2.0}}})
+        self.assertEqual(self.h.recv()["result"]["structuredContent"]["n_type"], "int")
 
     def test_eof_exits_zero(self):
         init(self.h)

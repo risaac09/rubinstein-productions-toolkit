@@ -22,8 +22,13 @@ def isolate_stdio():
         sys.stdout.flush()
     except Exception:
         pass
-    out_fd = os.dup(1)
-    in_fd = os.dup(0)
+    try:
+        out_fd = os.dup(1)
+        in_fd = os.dup(0)
+    except OSError as e:
+        sys.stderr.write(f"rpresolve MCP server: stdin and stdout must be open pipes "
+                         f"from the MCP client ({e}); exiting.\n")
+        hard_exit(2)
     os.dup2(2, 1)
     null = os.open(os.devnull, os.O_RDONLY)
     os.dup2(null, 0)

@@ -26,7 +26,7 @@ import traceback
 
 from . import SERVER_NAME, SERVER_TITLE, __version__
 from .registry import Cancelled, ToolContext
-from .schema import validate, with_defaults
+from .schema import coerce, validate, with_defaults
 
 SUPPORTED = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 STRUCTURED_SINCE = "2025-06-18"
@@ -56,18 +56,49 @@ class Server:
         self.initialized = False
         self.queue = queue.Queue()
         self.cancelled = set()
+        self._collect = None  # a list while a batch is being answered
         self.running = None
         self.lock = threading.Lock()
 
     # -- output --------------------------------------------------------------
 
     def send(self, msg):
+        if self._collect is not None and "id" in msg:
+            self._collect.append(msg)
+            return
         data = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         try:
             self.writer.write(data + b"\n")
         except (BrokenPipeError, OSError):
             log("client closed the output pipe; exiting")
             self._exit(0)
+
+    def send_raw(self, obj):
+        data = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        try:
+            self.writer.write(data + b"\n")
+        except (BrokenPipeError, OSError):
+            log("client closed the output pipe; exiting")
+            self._exit(0)
+
+    def _route_batch_member(self, m):
+        """Answer one batch member inside the main loop (responses collect)."""
+        if not isinstance(m, dict) or m.get("jsonrpc") != "2.0" or m.get("method") is None:
+            if isinstance(m, dict) and m.get("method") is None and "id" in m:
+                return  # a response; nothing to answer
+            self.error(m.get("id") if isinstance(m, dict) else None, INVALID_REQUEST,
+                       "not a JSON-RPC 2.0 message")
+            return
+        if "id" not in m:
+            self._notification(m["method"], m.get("params") or {})
+        elif m["method"] == "ping":
+            self.reply(m["id"], {})
+        else:
+            try:
+                self.handle(m)
+            except Exception:
+                log("internal error:\n" + traceback.format_exc())
+                self.error(m.get("id"), INTERNAL, "internal error; see the server log")
 
     def reply(self, rid, result):
         self.send({"jsonrpc": "2.0", "id": rid, "result": result})
@@ -96,8 +127,7 @@ class Server:
                     self.error(None, INVALID_REQUEST, "batch requests are not supported "
                                f"under protocol {self.version}")
                     continue
-                for m in msg:
-                    self._route(m)
+                self.queue.put(("batch", msg))
                 continue
             self._route(msg)
         self.queue.put(_EOF)
@@ -123,6 +153,8 @@ class Server:
         elif method == "notifications/cancelled":
             rid = params.get("requestId")
             with self.lock:
+                if len(self.cancelled) >= 1000:  # ids for requests that never came
+                    self.cancelled.clear()
                 self.cancelled.add(rid)
             if params.get("reason"):
                 log(f"request {rid} cancelled: {params['reason']}")
@@ -141,6 +173,14 @@ class Server:
             if msg is _EOF:
                 log("stdin closed; exiting")
                 self._exit(0)
+            if isinstance(msg, tuple):  # ("batch", [messages]): one array reply
+                self._collect = []
+                for m in msg[1]:
+                    self._route_batch_member(m)
+                replies, self._collect = self._collect, None
+                if replies:
+                    self.send_raw(replies)
+                continue
             rid = msg.get("id")
             if self._is_cancelled(rid):
                 continue
@@ -156,6 +196,7 @@ class Server:
             finally:
                 with self.lock:
                     self.running = None
+                    self.cancelled.discard(rid)
 
     def handle(self, msg):
         rid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
@@ -204,6 +245,8 @@ class Server:
         args = {} if args is None else args
         problems = validate(tool.input_schema, args) if isinstance(args, dict) else \
             ["arguments: expected object"]
+        if not problems:
+            args = coerce(tool.input_schema, args)
         if problems:
             self.reply(rid, self._result({"summary": "invalid arguments", "errors": problems},
                                          True))
@@ -248,10 +291,13 @@ class Server:
 
     def _result(self, result, is_error):
         text = json.dumps(result, ensure_ascii=False, indent=1, default=str)
-        if len(text) > MAX_TEXT:
+        truncated = len(text) > MAX_TEXT
+        if truncated:
             text = text[:MAX_TEXT] + ("\n... [truncated; ask for fewer items with limit/offset, "
                                       "or write the full result to a file with out]")
         out = {"content": [{"type": "text", "text": text}], "isError": bool(is_error)}
-        if self.version >= STRUCTURED_SINCE and not is_error:
+        # An oversized result goes as the truncated text only: a full
+        # structured copy would carry the size the cap exists to prevent.
+        if self.version >= STRUCTURED_SINCE and not is_error and not truncated:
             out["structuredContent"] = json.loads(json.dumps(result, default=str))
         return out

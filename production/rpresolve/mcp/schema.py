@@ -64,6 +64,17 @@ def validate(schema, value, path="arguments"):
     return errors
 
 
+def coerce(schema, args):
+    """args with integer-typed top-level values given as whole floats (2.0)
+    turned into ints, so a handler can use them as indexes or counts."""
+    out = dict(args or {})
+    for name, sub in (schema.get("properties") or {}).items():
+        v = out.get(name)
+        if sub.get("type") == "integer" and isinstance(v, float) and v.is_integer():
+            out[name] = int(v)
+    return out
+
+
 def with_defaults(schema, args):
     """args with each top-level property's schema default filled in."""
     out = dict(args or {})
