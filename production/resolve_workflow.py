@@ -102,58 +102,23 @@ try:
     from rpresolve import api as rpapi  # noqa: E402
     from rpresolve import detect as rpdetect  # noqa: E402
     from rpresolve import ingest as rpingest  # noqa: E402
+    from rpresolve import config as rpconfig  # noqa: E402
+    from rpresolve import paths as rppaths  # noqa: E402
+    from rpresolve import render as rprender  # noqa: E402
+    from rpresolve.config import CONFIG_PATH_DEFAULT, DEFAULT_CONFIG  # noqa: E402,F401
+    from rpresolve.grade import (  # noqa: E402,F401  (re-exported for callers and tests)
+        _path_under, apply_drx_to_item, apply_drx_to_items, apply_lut_to_item,
+        apply_lut_to_items, graph_fingerprint, lut_paths_match)
+    from rpresolve.render import pick_codec  # noqa: E402,F401
 except ImportError:
     sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
-
-CONFIG_PATH_DEFAULT = Path(__file__).resolve().parent / "resolve-config.json"
 
 # The survey decodes zstd blobs, which needs compression.zstd (Python 3.14+).
 # This script runs on the system python3 (3.9), so survey runs the sibling
 # resolve_survey.py as a subprocess under this interpreter instead.
 SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
 SURVEY_SCRIPT = Path(__file__).resolve().parent / "resolve_survey.py"
-
-DEFAULT_CONFIG = {
-    "bins": {
-        "Source": ["iPhone", "GH7", "GH5", "Audio"],
-        "Selects": [],
-        "Timeline": [],
-        "Graphics": [],
-        "Exports": [],
-    },
-    "cameras": {
-        "iphone": {"bin": ["Source", "iPhone"], "clip_color": "Blue"},
-        "gh7": {"bin": ["Source", "GH7"], "clip_color": "Orange"},
-        "gh5": {"bin": ["Source", "GH5"], "clip_color": "Yellow"},
-    },
-    "default_resolution": {"width": 3840, "height": 2160},
-    "default_framerate": "23.976",
-    "color_science_mode": "davinciYRGBColorManagedv2",
-    "render_presets": {
-        "youtube": {
-            "name": "YouTube 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H265", "codec_fallbacks": ["HEVC", "H.265"],
-            "suffix": "_youtube",
-        },
-        "linkedin": {
-            "name": "LinkedIn 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_linkedin",
-        },
-        "master": {
-            "name": "Master ProRes", "resolution": {"width": 3840, "height": 2160},
-            "format": "mov", "codec": "ProRes422HQ",
-            "codec_fallbacks": ["Apple ProRes 422 HQ"], "suffix": "_master",
-        },
-        "story": {
-            "name": "Instagram Story", "resolution": {"width": 1080, "height": 1920},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_story",
-            "note": "Resize only — no automatic reframe. Set per-clip Pan/Zoom before rendering vertical.",
-        },
-    },
-}
 
 VALID_FRAMERATES = {"23.976", "24", "25", "29.97", "30", "50", "59.94", "60"}
 MEDIA_EXTENSIONS = {
@@ -168,54 +133,14 @@ MEDIA_EXTENSIONS = {
 # ---------------------------------------------------------------------------
 
 def load_config(config_path=None):
-    """Load resolve-config.json, falling back to built-in defaults for any
-    missing top-level key. Never raises — a missing or malformed config
-    degrades to defaults with a printed warning."""
-    path = Path(config_path) if config_path else CONFIG_PATH_DEFAULT
-    config = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
-
-    if not path.exists():
-        return config
-
-    try:
-        with open(path) as f:
-            user_config = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"WARNING: Could not read config '{path}': {e}. Using defaults.")
-        return config
-
-    for key, value in user_config.items():
-        config[key] = value
-    return config
+    """resolve-config.json with defaults for missing keys (rpresolve.config);
+    a malformed file prints a warning and degrades to defaults."""
+    return rpconfig.load_config(config_path, warn=print)
 
 
 # ---------------------------------------------------------------------------
 # Pure logic — no Resolve dependency, unit-testable offline
 # ---------------------------------------------------------------------------
-
-def pick_codec(preferred_name, fallback_names, codecs_dict):
-    """Given GetRenderCodecs()'s {description: name} dict, find the best
-    match for a desired codec NAME (the dict's values, not its keys — the
-    value side is what SetCurrentRenderFormatAndCodec expects).
-
-    Returns (description, name, matched) where matched is False if we fell
-    back to "first available" rather than finding what was asked for.
-    """
-    if not codecs_dict:
-        return (None, None, False)
-
-    by_name = {name: desc for desc, name in codecs_dict.items()}
-
-    if preferred_name in by_name:
-        return (by_name[preferred_name], preferred_name, True)
-
-    for fallback in fallback_names or []:
-        if fallback in by_name:
-            return (by_name[fallback], fallback, True)
-
-    first_desc, first_name = next(iter(codecs_dict.items()))
-    return (first_desc, first_name, False)
-
 
 def collect_media_files(paths, extensions=MEDIA_EXTENSIONS):
     """Recursively collect media files from a list of file/directory paths.
@@ -614,56 +539,18 @@ def cmd_auto_subtitle(args):
 # ---------------------------------------------------------------------------
 
 def queue_render(project, preset_key, output_dir, presets, custom_name=None):
-    """Queue a single render job from a preset. Returns job_id (str) or None."""
-    preset = presets.get(preset_key)
-    if not preset:
-        print(f"ERROR: Unknown preset '{preset_key}'. Configured presets: {', '.join(presets.keys())}")
-        return None
-
-    timeline = project.GetCurrentTimeline()
-    if not timeline:
-        print("ERROR: No active timeline.")
-        return None
-
-    filename = custom_name or timeline.GetName()
-
-    codecs = project.GetRenderCodecs(preset["format"])
-    desc, codec_name, matched = pick_codec(preset["codec"], preset.get("codec_fallbacks"), codecs)
-    if not codec_name:
-        print(f"  ERROR: No codecs available for format '{preset['format']}'.")
-        return None
-    if not matched:
-        print(f"  WARNING: preferred codec '{preset['codec']}' not found; using '{codec_name}' ({desc}) instead.")
-
-    codec_ok = project.SetCurrentRenderFormatAndCodec(preset["format"], codec_name)
-    actual = project.GetCurrentRenderFormatAndCodec() or {}
-    if not codec_ok or actual.get("codec") != codec_name or actual.get("format") != preset["format"]:
-        print(f"  WARNING: requested format/codec '{preset['format']}/{codec_name}', Resolve reports {actual} — render may not match the preset.")
-
-    res = preset["resolution"]
-    settings = {
-        "TargetDir": str(Path(output_dir).resolve()),
-        "CustomName": f"{filename}{preset['suffix']}",
-        "FormatWidth": res["width"],
-        "FormatHeight": res["height"],
-        "ExportVideo": True,
-        "ExportAudio": True,
-    }
-    settings_ok = project.SetRenderSettings(settings)
-    if not settings_ok:
-        print(f"  WARNING: SetRenderSettings reported failure for '{preset['name']}' — verify Deliver page before rendering.")
-
-    if preset.get("note"):
-        print(f"  NOTE: {preset['note']}")
-
-    job_id = project.AddRenderJob()
-    if job_id:
-        print(f"  [{preset['name']}] Queued (job {job_id}) -> {settings['CustomName']}.{preset['format']}")
-        print(f"    {res['width']}x{res['height']} | {codec_name}")
-        return job_id
-    else:
-        print(f"  ERROR: Failed to queue {preset['name']}")
-        return None
+    """Queue a single render job from a preset (rpresolve.render) and print
+    what happened. Returns job_id (str) or None."""
+    r = rprender.queue_render_job(project, preset_key, output_dir, presets, custom_name)
+    for w in r["warnings"]:
+        print(f"  {w}" if w.startswith("NOTE") else f"  WARNING: {w}")
+    if r["error"]:
+        print(f"  ERROR: {r['error']}")
+    if r["job_id"]:
+        s, c = r["settings"], r["codec"]
+        print(f"  [{r['name']}] Queued (job {r['job_id']}) -> {s['CustomName']}")
+        print(f"    {s['FormatWidth']}x{s['FormatHeight']} | {c['used']}")
+    return r["job_id"]
 
 
 def cmd_render(args):
@@ -778,116 +665,6 @@ def _filter_items_by_camera(items, camera_key, config):
         if color == target_color:
             kept.append(item)
     return kept
-
-
-def _path_under(path, root, follow_links=True):
-    """True if `path` sits inside directory `root`. Both are realpath'd by
-    default; with follow_links=False only abspath'd, so a symlink placed
-    inside `root` still counts as inside it."""
-    norm = os.path.realpath if follow_links else os.path.abspath
-    path, root = norm(path), norm(root)
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
-
-
-def lut_paths_match(requested, reported, lut_roots=()):
-    """Decide whether Graph.GetLUT's `reported` value names the LUT that
-    was requested. Resolve may report the absolute path or a path relative
-    to one of its LUT folders, so accept any of:
-      - both paths equal after os.path.realpath
-      - `reported` equals `requested` made relative to a LUT root
-      - `reported` is relative and matches the trailing path components of
-        `requested`, only when `requested` sits under none of `lut_roots`
-        (a LUT root this function was not told about)
-    """
-    if not reported:
-        return False
-    req_real = os.path.realpath(requested)
-    rep_norm = os.path.normpath(str(reported).replace("\\", "/"))
-    if os.path.isabs(rep_norm):
-        return os.path.realpath(rep_norm) == req_real
-
-    rep_norm = rep_norm.lstrip("/")
-    known_root = False
-    req_abs = os.path.abspath(requested)
-    for root in lut_roots or ():
-        # A symlink inside the root is scanned under its in-root path, so
-        # try the unresolved path as well as the realpath.
-        for req, norm in ((req_abs, os.path.abspath), (req_real, os.path.realpath)):
-            if _path_under(req, root, follow_links=(norm is os.path.realpath)):
-                known_root = True
-                if os.path.relpath(req, norm(root)) == rep_norm:
-                    return True
-    if known_root:
-        # Under a known root the exact root-relative path is the only
-        # match; a shorter tail could name a same-named LUT elsewhere.
-        return False
-    req_parts = req_real.split(os.sep)
-    rep_parts = rep_norm.split("/")
-    return len(rep_parts) <= len(req_parts) and req_parts[-len(rep_parts):] == rep_parts
-
-
-def apply_lut_to_item(item, node_index, lut_path, lut_roots=()):
-    """Set a LUT on one node of one timeline item through its Graph and
-    read it back. Returns (ok, detail)."""
-    graph = item.GetNodeGraph()
-    if not graph:
-        return (False, "no node graph (is this a video clip?)")
-    num_nodes = graph.GetNumNodes() or 0
-    if node_index > num_nodes:
-        return (False, f"only has {num_nodes} node(s); the scripting API cannot create node {node_index}. "
-                       "Add the node in the Color page first, then re-run.")
-    if not graph.SetLUT(node_index, lut_path):
-        return (False, "SetLUT returned False (is the LUT in a folder Resolve has scanned?)")
-    reported = graph.GetLUT(node_index)
-    if not lut_paths_match(lut_path, reported, lut_roots):
-        return (False, f"read back LUT {reported!r} on node {node_index}, not the requested file")
-    return (True, f"node {node_index} LUT = {reported}")
-
-
-def apply_lut_to_items(items, node_index, lut_path, lut_roots=()):
-    return [(item.GetName(), *apply_lut_to_item(item, node_index, lut_path, lut_roots)) for item in items]
-
-
-def graph_fingerprint(graph):
-    """What the scripting API can read of a node graph: per node its label,
-    LUT, and (where the build has GetToolsInNode) tool list. Used to tell
-    an applied grade from a no-op, since a .drx stores its node graph in an
-    opaque binary blob that cannot be compared against directly."""
-    count = int(graph.GetNumNodes() or 0)
-    tools = getattr(graph, "GetToolsInNode", None)
-    nodes = []
-    for i in range(1, count + 1):
-        node_tools = tools(i) if tools else None
-        nodes.append((graph.GetNodeLabel(i) or "", graph.GetLUT(i) or "",
-                      tuple(node_tools) if isinstance(node_tools, (list, tuple)) else node_tools))
-    return tuple(nodes)
-
-
-def apply_drx_to_item(item, drx_path, grade_mode):
-    """Apply a .drx grade to one timeline item through its Graph, then read
-    back a fresh Graph (the grade replaces the old one). The setter returns
-    True even when a modal dialog swallows the write, so a graph that reads
-    back identical to before the call counts as not applied. Returns
-    (ok, detail)."""
-    graph = item.GetNodeGraph()
-    if not graph:
-        return (False, "no node graph (is this a video clip?)")
-    before = graph_fingerprint(graph)
-    if not graph.ApplyGradeFromDRX(drx_path, grade_mode):
-        return (False, "ApplyGradeFromDRX returned False")
-    after_graph = item.GetNodeGraph() or graph
-    after = graph_fingerprint(after_graph)
-    if not after:
-        return (False, "grade reported applied but the node graph reads back empty")
-    if after == before:
-        return (False, f"node graph unchanged after apply ({len(after)} node(s), same labels/LUTs); "
-                       "a modal dialog may have swallowed the write, or the clip already carried "
-                       "this grade. Check it in the Color page.")
-    return (True, f"{len(after)} node(s) after grade (was {len(before)})")
-
-
-def apply_drx_to_items(items, drx_path, grade_mode):
-    return [(item.GetName(), *apply_drx_to_item(item, drx_path, grade_mode)) for item in items]
 
 
 def report_item_results(results, verb):
@@ -1139,7 +916,7 @@ def cmd_survey(args):
         print(f"ERROR: {SURVEY_SCRIPT} not found; keep resolve_survey.py next to this script.")
         return 1
     sys.stdout.flush()
-    return subprocess.run(build_survey_command(args)).returncode
+    return subprocess.run(build_survey_command(args), stdin=subprocess.DEVNULL).returncode
 
 
 # ---------------------------------------------------------------------------
@@ -1149,11 +926,7 @@ def cmd_survey(args):
 def _out_problem(out):
     """Why --out cannot be used (inside this public repo, a directory, not
     writable), or None. Checked before any slow work."""
-    from resolve_survey import inside_repo, output_path_problem
-    if inside_repo(out):
-        return (f"--out {out} is inside this repository's git working tree. "
-                "The rows carry full media paths; write them outside the repo.")
-    return output_path_problem(out)
+    return rppaths.out_problem(out)
 
 
 def cmd_detect(args):
@@ -1307,11 +1080,10 @@ def cmd_measure(args):
 
 def _write_private(path, text):
     """Write a file that names private media and words; refused in the repo."""
-    problem = _out_problem(path)
-    if problem:
-        raise SystemExit(f"ERROR: {problem}")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+    try:
+        rppaths.write_private(path, text)
+    except rppaths.OutputRefused as e:
+        raise SystemExit(f"ERROR: {e}")
 
 
 def cmd_manifest(args):
