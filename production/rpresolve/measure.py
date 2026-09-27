@@ -59,7 +59,7 @@ class MeasureError(RuntimeError):
 
 def _run(cmd, **kw):
     try:
-        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        return subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               timeout=TIMEOUT_S, **kw)
     except subprocess.TimeoutExpired:
         raise MeasureError(f"{os.path.basename(cmd[0])} timed out after {TIMEOUT_S}s")
@@ -306,7 +306,7 @@ def vision_binary():
         return None
     os.makedirs(CACHE_DIR, exist_ok=True)
     proc = subprocess.run([SWIFTC, "-O", VISION_SOURCE, "-o", binary],
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return binary if proc.returncode == 0 and os.access(binary, os.X_OK) else None
 
 
@@ -316,7 +316,7 @@ def face_boxes(images):
     binary = vision_binary()
     if not binary:
         return None
-    proc = subprocess.run([binary, *images], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    proc = subprocess.run([binary, *images], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         return None
