@@ -311,8 +311,8 @@ def register(registry):
         "apply_grade",
         "Apply a LUT (to one node) or a .drx grade still (with its {num_nodes, labels} "
         "manifest beside it) to items on one video track of an ' [auto]' timeline only, and "
-        "read each back. Refuses an item whose grade version is remote or whose graph is not "
-        "default unless overwrite is true. After the real run it checks every item on other "
+        "read each back. Always refuses an item whose grade version is remote (shared with "
+        "other timelines); refuses one whose graph is not default unless overwrite is true. After the real run it checks every item on other "
         "timelines that uses the same media, and reports any grade that changed there as a "
         "leak. Applying a .drx opens the Color page; the page and timeline are put back. Dry "
         "run first; the real run needs its plan_sha.",
@@ -322,6 +322,7 @@ def register(registry):
                          "description": "An ' [auto]' timeline's name or unique id."},
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
                       "description": "Item numbers on the track, from 1 (default: all)."},
             "lut": {"type": "object", "properties": {
                 "path": {"type": "string",

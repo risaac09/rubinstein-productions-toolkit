@@ -159,6 +159,12 @@ class TestApplyGrade(Base):
         r = call("apply_grade", {"timeline": "Edit [auto]", "lut": {"path": self.lut}},
                  self.resolve)
         self.assertIn("remote", r["refused"][0]["reasons"][0])
+        r = call("apply_grade", {"timeline": "Edit [auto]", "lut": {"path": self.lut},
+                                 "overwrite": True}, self.resolve)
+        self.assertEqual([t["index"] for t in r["targets"]], [2])  # remote stays refused
+        with self.assertRaises(AssertionError):
+            call("apply_grade", {"timeline": "Edit [auto]", "items": [2, 2],
+                                 "lut": {"path": self.lut}}, self.resolve)
         with self.assertRaisesRegex(workflows.Refused, "cannot add node 3"):
             call("apply_grade", {"timeline": "Edit [auto]", "items": [2], "overwrite": True,
                                  "lut": {"path": self.lut, "node": 3}}, self.resolve)

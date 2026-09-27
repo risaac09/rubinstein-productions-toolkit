@@ -367,8 +367,8 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     """Apply a LUT (lut={path, node}) or a .drx still (drx={path, mode,
     manifest}) to items on one video track of an ' [auto]' timeline, read
     each back, and check that no item on any other timeline sharing the
-    same media changed. Refuses a remote grade version or a graph that is
-    not default unless overwrite. Returns {project, timeline, grade,
+    same media changed. Refuses a remote grade version always, and a graph
+    that is not default unless overwrite. Returns {project, timeline, grade,
     targets, results, leaks, plan_sha, dry_run, ui_restore_problems,
     exit_status}."""
     if bool(lut) == bool(drx):
@@ -383,7 +383,7 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     if not 1 <= track <= tracks:
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = items or list(range(1, len(all_items) + 1))
+    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
@@ -419,7 +419,12 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
             why.append(f"it has {g['num_nodes']} node(s); the API cannot add node {spec['node']}")
         entry = {"index": n, "name": it.GetName(), "media_id": _media_id(it),
                  "fingerprint": fp}
-        hard = g is None or (spec["kind"] == "lut" and g and spec["node"] > g["num_nodes"])
+        # A remote version is shared by every timeline using the clip, so
+        # grading it would change timelines these tools did not make: never,
+        # whatever overwrite says.
+        remote = bool(g) and (g.get("version") or {}).get("type") == "remote"
+        hard = (g is None or remote or
+                (spec["kind"] == "lut" and g and spec["node"] > g["num_nodes"]))
         if why and (hard or not overwrite):
             refusals.append({**entry, "reasons": why})
         else:
