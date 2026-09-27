@@ -61,10 +61,12 @@ def load_config(config_path=None, warn=None):
     if not path.exists():
         return config
 
+    # UTF-8 always: Resolve's scripting library leaves the process in the C
+    # locale once connected, where a default open() decodes as ASCII.
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             user_config = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (ValueError, OSError) as e:  # JSONDecodeError and UnicodeDecodeError
         if warn:
             warn(f"WARNING: Could not read config '{path}': {e}. Using defaults.")
         return config

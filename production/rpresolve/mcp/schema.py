@@ -2,10 +2,11 @@
 rpresolve.mcp.schema: validate tool arguments against the JSON Schema
 subset the tools use: type, properties, required, additionalProperties
 (false), enum, minimum, maximum, minLength, minItems, maxItems, items,
-pattern, default (not applied). validate() returns a list of messages;
+pattern, uniqueItems, default (not applied). validate() returns a list of messages;
 empty means valid.
 """
 
+import json
 import re
 
 _TYPES = {
@@ -46,6 +47,8 @@ def validate(schema, value, path="arguments"):
             errors.append(f"{path}: fewer than {schema['minItems']} item(s)")
         if "maxItems" in schema and len(value) > schema["maxItems"]:
             errors.append(f"{path}: more than {schema['maxItems']} item(s)")
+        if schema.get("uniqueItems") and len({json.dumps(v, sort_keys=True) for v in value}) < len(value):
+            errors.append(f"{path}: items are not unique")
         if "items" in schema:
             for i, item in enumerate(value):
                 errors += validate(schema["items"], item, f"{path}[{i}]")
