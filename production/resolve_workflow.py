@@ -1067,23 +1067,6 @@ def cmd_manifest(args):
     return 0
 
 
-def _endcheck_line(r):
-    status = "PASS" if r["ok"] and not r.get("review") else ("REVIEW" if r["ok"] else "FAIL")
-    end, text = r.get("end") or {}, r.get("text") or {}
-    near = (end.get("nearest") or {}) if end else {}
-    extra = []
-    if end.get("suggest"):
-        extra.append(f"suggest out {end['suggest']}")
-    elif not r["ok"] and near:
-        for side in ("before", "after"):
-            if near.get(side):
-                extra.append(f"clean {side} {near[side]['t']} ends \"{near[side]['ends']}\"")
-    if text and text.get("verdict") != "pass" and text.get("unmatched"):
-        extra.append(f"essay {text['verdict']} {text['coverage']:.2f}: [{text['unmatched']}]")
-    return (f"{status:6} {r['clip']:<14} span {r['span']}  out {r['out']:<9} "
-            f"{r['reason'] or ''}" + ("  | " + "; ".join(extra) if extra else ""))
-
-
 def cmd_endcheck(args):
     """Check a manifest. Exit 0 all pass, 2 any review, 1 any fail."""
     from rpresolve import cutlist
@@ -1094,10 +1077,10 @@ def cmd_endcheck(args):
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     for r in rows:
-        print(_endcheck_line(r))
-    fails = sum(1 for r in rows if not r["ok"])
-    reviews = sum(1 for r in rows if r["ok"] and r.get("review"))
-    print(f"endcheck: {len(rows)} span(s): {len(rows) - fails - reviews} pass, {reviews} review, "
+        print(cutlist.endcheck_line(r))
+    n = cutlist.endcheck_counts(rows)
+    fails, reviews = n["fail"], n["review"]
+    print(f"endcheck: {len(rows)} span(s): {n['pass']} pass, {reviews} review, "
           f"{fails} fail" + (" (audio not checked)" if args.no_audio else ""), file=sys.stderr)
     if args.json:
         _write_private(args.json, json.dumps(rows, indent=1, default=str) + "\n")
@@ -1115,10 +1098,7 @@ def cmd_selects(args):
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     rows = cutlist.selects(words, approved, args.min_seconds, args.max_seconds)
-    lines = ["in\tout\tseconds\tcoverage\tend_words\ttext"]
-    lines += [f"{r['in']}\t{r['out']}\t{r['seconds']}\t{r['coverage']}\t{r['end_words']}\t{r['text']}"
-              for r in rows]
-    text = "\n".join(lines) + "\n"
+    text = cutlist.selects_tsv(rows)
     if args.out:
         _write_private(args.out, text)
         print(f"Wrote {len(rows)} proposal(s) to {args.out}", file=sys.stderr)
