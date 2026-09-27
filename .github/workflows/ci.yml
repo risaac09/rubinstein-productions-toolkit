@@ -39,3 +39,19 @@ jobs:
           done
           [ "$n" -gt 0 ] || { echo "no phase-zero shell files matched; the glob is wrong" >&2; exit 1; }
           echo "phase-zero: $n shell file(s) parse clean"
+
+  # The Resolve MCP server core and the library under it are stdlib-only
+  # and run on the system Python 3.9 on the Mac; this job runs their tests
+  # on 3.9 so a newer-Python construct or a protocol regression fails the PR.
+  # Tests that need Resolve, numpy, ffmpeg or macOS skip themselves.
+  resolve-mcp-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: MCP protocol, schema, stdio isolation, end to end
+        run: python -m unittest -v production.tests.test_mcp
+      - name: Library and workflows
+        run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib
