@@ -55,5 +55,7 @@ jobs:
         run: python -m unittest -v production.tests.test_mcp
       - name: MCP offline tools
         run: python -m unittest -v production.tests.test_mcp_offline
+      - name: MCP read tools
+        run: python -m unittest -v production.tests.test_mcp_reads
       - name: Library and workflows
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib
