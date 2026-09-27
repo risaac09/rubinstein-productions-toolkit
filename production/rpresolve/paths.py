@@ -42,7 +42,7 @@ def out_problem(path, any_git_tree=False):
     any git tree with any_git_tree=True), a directory, or not writable."""
     from resolve_survey import inside_repo, output_path_problem  # lazy: keeps this module light
     if inside_repo(path):
-        return (f"--out {path} is inside this repository's git working tree. The output "
+        return (f"{path} is inside this repository's git working tree. The output "
                 "names client media; write it outside the repo.")
     if any_git_tree and in_any_git_tree(path):
         return (f"{path} is inside a git working tree. The output names client media; "

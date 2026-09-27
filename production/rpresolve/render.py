@@ -8,6 +8,7 @@ page settings; only the format and codec can be read and put back. The
 job itself is read back from GetRenderJobList.
 """
 
+import os
 from pathlib import Path
 
 # The Deliver fields SetRenderSettings writes here, for callers to report.
@@ -44,14 +45,14 @@ def queue_render_job(project, preset_key, output_dir, presets, custom_name=None)
     {job_id, name, error, warnings, codec: {requested, used, description,
     matched}, settings}. error names why nothing was queued (job_id None);
     warnings are non-fatal. Prints nothing."""
-    out = {"job_id": None, "name": None, "error": None, "warnings": [], "codec": None,
-           "settings": None}
+    out = {"job_id": None, "name": None, "format": None, "error": None, "warnings": [],
+           "codec": None, "settings": None}
     preset = presets.get(preset_key)
     if not preset:
         out["error"] = (f"Unknown preset '{preset_key}'. Configured presets: "
                         f"{', '.join(presets.keys())}")
         return out
-    out["name"] = preset["name"]
+    out["name"], out["format"] = preset["name"], preset["format"]
     timeline = project.GetCurrentTimeline()
     if not timeline:
         out["error"] = "No active timeline."
@@ -119,6 +120,19 @@ def render_job_readback(project, job_id, want=None):
     problems = []
     for key, value in (want or {}).items():
         got = job.get(key)
-        if got is not None and str(got) != str(value):
+        if got is not None and not _same(key, got, value):
             problems.append(f"{key}: queued {got!r}, expected {value!r}")
     return job, problems
+
+
+def _same(key, got, want):
+    """Compare a queued job field with what was asked for, allowing for
+    Resolve's own normalisation: folders by resolved path (a trailing slash
+    or symlink is the same folder), numbers as numbers."""
+    if key == "TargetDir":
+        norm = lambda p: os.path.realpath(str(p).rstrip("/") or "/")
+        return norm(got) == norm(want)
+    try:
+        return float(got) == float(want)
+    except (TypeError, ValueError):
+        return str(got) == str(want)

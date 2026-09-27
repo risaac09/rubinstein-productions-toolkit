@@ -110,8 +110,8 @@ try:
         _path_under, apply_drx_to_item, apply_drx_to_items, apply_lut_to_item,
         apply_lut_to_items, graph_fingerprint, lut_paths_match)
     from rpresolve.render import pick_codec  # noqa: E402,F401
-except ImportError:
-    sys.exit("ERROR: cannot import rpresolve. Keep resolve_workflow.py next to its "
+except ImportError as e:
+    sys.exit(f"ERROR: cannot import rpresolve ({e}). Keep resolve_workflow.py next to its "
              "rpresolve/ directory (production/ in the toolkit), or symlink the script.")
 
 # The survey decodes zstd blobs, which needs compression.zstd (Python 3.14+).
@@ -548,7 +548,7 @@ def queue_render(project, preset_key, output_dir, presets, custom_name=None):
         print(f"  ERROR: {r['error']}")
     if r["job_id"]:
         s, c = r["settings"], r["codec"]
-        print(f"  [{r['name']}] Queued (job {r['job_id']}) -> {s['CustomName']}")
+        print(f"  [{r['name']}] Queued (job {r['job_id']}) -> {s['CustomName']}.{r['format']}")
         print(f"    {s['FormatWidth']}x{s['FormatHeight']} | {c['used']}")
     return r["job_id"]
 

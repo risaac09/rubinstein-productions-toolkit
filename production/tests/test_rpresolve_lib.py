@@ -149,6 +149,11 @@ class TestRender(unittest.TestCase):
             self.assertEqual((job["JobId"], problems), ("job-1", []))
             _, problems = render.render_job_readback(p, "job-1", {"TargetDir": "/elsewhere"})
             self.assertTrue(problems)
+            p.jobs[0]["TargetDir"] += "/"      # Resolve's own trailing slash is the same folder
+            p.jobs[0]["FormatWidth"] = "3840"  # and a number as text is the same number
+            _, problems = render.render_job_readback(
+                p, "job-1", {"TargetDir": str(Path(d).resolve()), "FormatWidth": 3840})
+            self.assertEqual(problems, [])
             self.assertEqual(render.render_job_readback(p, "nope")[0], None)
             self.assertEqual(render.list_jobs(p)[0]["JobStatus"], "Ready")
 
