@@ -57,13 +57,15 @@ class Server:
         self.queue = queue.Queue()
         self.cancelled = set()
         self._collect = None  # a list while a batch is being answered
+        self._collect_thread = None  # only that thread's replies go into it
         self.running = None
         self.lock = threading.Lock()
 
     # -- output --------------------------------------------------------------
 
     def send(self, msg):
-        if self._collect is not None and "id" in msg:
+        if (self._collect is not None and "id" in msg
+                and threading.get_ident() == self._collect_thread):
             self._collect.append(msg)
             return
         data = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -174,10 +176,10 @@ class Server:
                 log("stdin closed; exiting")
                 self._exit(0)
             if isinstance(msg, tuple):  # ("batch", [messages]): one array reply
-                self._collect = []
+                self._collect, self._collect_thread = [], threading.get_ident()
                 for m in msg[1]:
                     self._route_batch_member(m)
-                replies, self._collect = self._collect, None
+                replies, self._collect, self._collect_thread = self._collect, None, None
                 if replies:
                     self.send_raw(replies)
                 continue
