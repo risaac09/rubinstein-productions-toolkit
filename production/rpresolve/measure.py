@@ -45,11 +45,24 @@ UNAVAILABLE = "UNAVAILABLE"
 # Skin mask inside a face box, as YCbCr ranges on 8-bit full-range values
 # (the widely used Chai and Ngan bounds).
 SKIN_CB, SKIN_CR = (77, 127), (133, 173)
-PIXEL_STRIDE = 2  # pooled luma and clipping use every second row and column
+PIXEL_STRIDE = 2  # per-frame luma and clipping use every second row and column
+TIMEOUT_S = 300   # per ffmpeg/ffprobe call; a stalled SMB read must not hang the run
+# ffprobe color_space tag -> ffmpeg scale in_color_matrix. Anything else,
+# untagged included, is decoded as Rec.709 and the report says so.
+MATRICES = {"bt709": "bt709", "smpte170m": "bt601", "bt470bg": "bt601",
+            "bt2020nc": "bt2020", "bt2020c": "bt2020"}
 
 
 class MeasureError(RuntimeError):
     pass
+
+
+def _run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=TIMEOUT_S, **kw)
+    except subprocess.TimeoutExpired:
+        raise MeasureError(f"{os.path.basename(cmd[0])} timed out after {TIMEOUT_S}s")
 
 
 # ---------------------------------------------------------------------------
@@ -60,9 +73,9 @@ def probe(path):
     """{width, height, duration, fps, color tags} of the first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
            "stream=width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:format=duration", "-of", "json", "file:" + path]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          encoding="utf-8", errors="replace")
+           "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration",
+           "-of", "json", "file:" + path]
+    proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         raise MeasureError(f"ffprobe failed on {path}: {proc.stderr.strip()[-200:]}")
     data = json.loads(proc.stdout or "{}")
@@ -74,9 +87,41 @@ def probe(path):
         duration = float((data.get("format") or {}).get("duration") or 0)
     except ValueError:
         duration = 0.0
-    return {"width": int(s["width"]), "height": int(s["height"]), "duration": duration,
+    width, height = int(s["width"]), int(s["height"])
+    # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
+    if rotation(s) % 180 == 90:
+        width, height = height, width
+    return {"width": width, "height": height, "duration": duration,
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
                                                "color_transfer", "color_primaries")}}
+
+
+def rotation(stream):
+    """Display rotation in degrees (0..359) from ffprobe's side data or the
+    older 'rotate' tag."""
+    for sd in stream.get("side_data_list") or []:
+        if "rotation" in sd:
+            try:
+                return int(round(float(sd["rotation"]))) % 360
+            except (TypeError, ValueError):
+                pass
+    try:
+        return int((stream.get("tags") or {}).get("rotate", 0)) % 360
+    except (TypeError, ValueError):
+        return 0
+
+
+def decode_filter(tags):
+    """(-vf value, note) that decodes YUV with an explicit matrix and range
+    from the file's tags; ffmpeg's own default is BT.601 when untagged. RGB
+    sources need no filter."""
+    if is_rgb_source(tags.get("pix_fmt")):
+        return None, ""
+    space = tags.get("color_space") or ""
+    matrix = MATRICES.get(space, "bt709")
+    note = "" if space in MATRICES else f"color_space '{space or 'untagged'}': decoded as bt709"
+    rng = "full" if tags.get("color_range") == "pc" else "limited"
+    return f"scale=in_color_matrix={matrix}:in_range={rng}", note
 
 
 def sample_times(duration, count):
@@ -87,12 +132,14 @@ def sample_times(duration, count):
     return [duration * (i + 0.5) / count for i in range(count)]
 
 
-def read_frame(path, t, width, height):
+def read_frame(path, t, width, height, vf=None):
     """One frame at time t as float RGB 0..1, shape (h, w, 3), decoded by
-    ffmpeg to full-range 16-bit RGB (limited-range sources are expanded)."""
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", "1",
-           "-f", "rawvideo", "-pix_fmt", "rgb48le", "-"]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ffmpeg to full-range 16-bit RGB (limited-range sources are expanded).
+    width and height are the displayed (rotated) size from probe()."""
+    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", "1"]
+    cmd += ["-vf", vf] if vf else []
+    cmd += ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-"]
+    proc = _run(cmd)
     want = width * height * 6
     if proc.returncode != 0 or len(proc.stdout) < want:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
@@ -108,8 +155,7 @@ def legal_range(path, t, bit_depth):
     """(YMIN, YMAX) from ffmpeg signalstats at time t, in 8-bit code values."""
     cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", "1",
            "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          encoding="utf-8", errors="replace")
+    proc = _run(cmd, encoding="utf-8", errors="replace")
     found = dict(_STAT.findall(proc.stdout))
     if "YMIN" not in found or "YMAX" not in found:
         return None
@@ -127,8 +173,9 @@ def is_rgb_source(pix_fmt):
 
 
 def bit_depth(pix_fmt):
-    """Bits per component of a Y'CbCr pixel format: yuv420p10le -> 10."""
-    m = re.search(r"p(\d{2})(le|be)$", pix_fmt or "")
+    """Bits per component of a Y'CbCr pixel format: yuv420p10le and
+    p010le -> 10; formats without a width suffix are 8-bit."""
+    m = re.search(r"(\d{2})(le|be)$", pix_fmt or "")
     return int(m.group(1)) if m else 8
 
 
@@ -136,16 +183,16 @@ def bit_depth(pix_fmt):
 # Pure measurements (tested on synthetic arrays)
 # ---------------------------------------------------------------------------
 
-def luma_stats(rgb):
-    y = color.luma_ire(rgb[::PIXEL_STRIDE, ::PIXEL_STRIDE].reshape(-1, 3))
+def luma_stats(rgb, stride=PIXEL_STRIDE):
+    y = color.luma_ire(rgb[::stride, ::stride].reshape(-1, 3))
     p1, p50, p99 = np.percentile(y, [1, 50, 99])
     return {"p1": round(float(p1), 2), "p50": round(float(p50), 2), "p99": round(float(p99), 2)}
 
 
-def clipping(rgb):
+def clipping(rgb, stride=PIXEL_STRIDE):
     """Share of pixels (percent) with any channel at the top code value, and
     with every channel at zero."""
-    px = rgb[::PIXEL_STRIDE, ::PIXEL_STRIDE].reshape(-1, 3)
+    px = rgb[::stride, ::stride].reshape(-1, 3)
     top = 1.0 - 0.5 / 255
     bottom = 0.5 / 255
     return {"high_pct": round(float(np.mean(px.max(axis=1) >= top)) * 100, 3),
@@ -213,7 +260,8 @@ def camera_match(frames, segments, hero=None):
     frames: [{t, skin, luma}]; segments: [(label, start, end)]."""
     per = {}
     for label, start, end in segments:
-        labs = [f["skin"]["lab"] for f in frames if f.get("skin") and start <= f["t"] <= end]
+        labs = [f["skin"]["lab"] for f in frames
+                if isinstance(f.get("skin"), dict) and start <= f["t"] <= end]
         p50 = [f["luma"]["p50"] for f in frames if start <= f["t"] <= end]
         per[label] = {"frames_with_skin": len(labs),
                       "skin_lab": [round(float(v), 3) for v in np.median(labs, axis=0)] if labs else None,
@@ -297,14 +345,16 @@ def measure(path, samples=10, segments=(), hero=None, faces=True):
     info = probe(path)
     depth = bit_depth(info["tags"]["pix_fmt"])
     rgb_source = is_rgb_source(info["tags"]["pix_fmt"])
+    full_range = info["tags"].get("color_range") == "pc"
+    vf, decode_note = decode_filter(info["tags"])
     frames, pooled = [], []
     with tempfile.TemporaryDirectory(prefix="rpresolve-measure-") as tmp:
         stills = []
         for i, t in enumerate(sample_times(info["duration"], samples)):
-            rgb = read_frame(path, t, info["width"], info["height"])
+            rgb = read_frame(path, t, info["width"], info["height"], vf)
             pooled.append(rgb[::PIXEL_STRIDE * 2, ::PIXEL_STRIDE * 2])
             frame = {"t": round(t, 3), "luma": luma_stats(rgb), "clipping": clipping(rgb),
-                     "legal_8bit": None if rgb_source else legal_range(path, t, depth),
+                     "legal_8bit": None if rgb_source or full_range else legal_range(path, t, depth),
                      "skin": None}
             if faces:
                 still = os.path.join(tmp, f"f{i:03d}.png")
@@ -321,10 +371,12 @@ def measure(path, samples=10, segments=(), hero=None, faces=True):
     all_px = np.concatenate([p.reshape(-1, 3) for p in pooled])
     legal = [f["legal_8bit"] for f in frames if f["legal_8bit"]]
     report = {
-        "file": path, "tags": info["tags"], "frames_sampled": len(frames),
-        "luma": luma_stats(all_px.reshape(-1, 1, 3)),
-        "clipping": clipping(all_px.reshape(-1, 1, 3)),
+        "file": path, "tags": info["tags"], "decode_note": decode_note,
+        "frames_sampled": len(frames),
+        "luma": luma_stats(all_px.reshape(-1, 1, 3), stride=1),
+        "clipping": clipping(all_px.reshape(-1, 1, 3), stride=1),
         "legal_8bit": ("not applicable (RGB source)" if rgb_source else
+                       "not applicable (full-range source)" if full_range else
                        {"ymin": min(l[0] for l in legal), "ymax": max(l[1] for l in legal),
                         "within_16_235": all(16 <= l[0] and l[1] <= 235 for l in legal)}
                        if legal else None),
@@ -354,7 +406,8 @@ def format_summary(report):
     """A short human-readable summary of a measure report."""
     lines = [f"measure: {report['file']}",
              f"  tags: " + ", ".join(f"{k}={v or '?'}" for k, v in report["tags"].items()),
-             f"  frames sampled: {report['frames_sampled']}",
+             f"  frames sampled: {report['frames_sampled']}"
+             + (f" ({report['decode_note']})" if report.get("decode_note") else ""),
              "  luma IRE p1/p50/p99: {p1} / {p50} / {p99}".format(**report["luma"]),
              "  clipping: {high_pct}% high, {low_pct}% low".format(**report["clipping"])]
     legal = report.get("legal_8bit")

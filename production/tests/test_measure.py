@@ -101,6 +101,32 @@ class TestPureMeasurements(unittest.TestCase):
         self.assertLess(out["chroma_vs_hero_pct"]["B"], 0)
         self.assertEqual(out["chroma_vs_hero_pct"]["A"], 0.0)
 
+    def test_camera_match_with_skin_unavailable(self):
+        frames = [{"t": 1.0, "luma": {"p50": 50.0}, "skin": measure.UNAVAILABLE},
+                  {"t": 11.0, "luma": {"p50": 48.0}, "skin": measure.UNAVAILABLE}]
+        out = measure.camera_match(frames, [("A", 0, 5), ("B", 10, 15)])
+        self.assertIsNone(out["pairs"][0]["skin_de2000"])
+        self.assertEqual(out["pairs"][0]["luma_p50_delta_ire"], 2.0)
+
+    def test_decode_filter_is_explicit(self):
+        vf, note = measure.decode_filter({"pix_fmt": "yuv420p", "color_space": "", "color_range": ""})
+        self.assertEqual(vf, "scale=in_color_matrix=bt709:in_range=limited")
+        self.assertIn("untagged", note)
+        vf, note = measure.decode_filter({"pix_fmt": "yuv420p", "color_space": "smpte170m",
+                                          "color_range": "pc"})
+        self.assertEqual((vf, note), ("scale=in_color_matrix=bt601:in_range=full", ""))
+        self.assertEqual(measure.decode_filter({"pix_fmt": "rgb48le"}), (None, ""))
+
+    def test_rotation_and_timeouts(self):
+        self.assertEqual(measure.rotation({"side_data_list": [{"rotation": -90}]}), 270)
+        self.assertEqual(measure.rotation({"tags": {"rotate": "90"}}), 90)
+        self.assertEqual(measure.rotation({}), 0)
+        from unittest import mock
+        with mock.patch.object(measure.subprocess, "run",
+                               side_effect=subprocess.TimeoutExpired("ffprobe", 1)):
+            with self.assertRaises(measure.MeasureError):
+                measure.probe("x.mov")
+
     def test_sampling_and_pixel_formats(self):
         self.assertEqual(measure.sample_times(0, 10), [0.0])
         self.assertEqual(measure.sample_times(10, 2), [2.5, 7.5])
@@ -108,6 +134,7 @@ class TestPureMeasurements(unittest.TestCase):
         self.assertFalse(measure.is_rgb_source("yuv420p10le"))
         self.assertEqual(measure.bit_depth("yuv422p10le"), 10)
         self.assertEqual(measure.bit_depth("yuv420p"), 8)
+        self.assertEqual(measure.bit_depth("p010le"), 10)
 
 
 @needs_numpy
@@ -125,6 +152,28 @@ class TestOnAGeneratedClip(unittest.TestCase):
         self.assertEqual(report["clipping"], {"high_pct": 0.0, "low_pct": 0.0})
         self.assertTrue(report["legal_8bit"]["within_16_235"])
         self.assertEqual(report["skin"], "not measured (--no-faces)")
+        self.assertEqual(report["decode_note"], "color_space 'untagged': decoded as bt709")
+
+    def test_rotated_clip_is_not_scrambled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flat, clip = os.path.join(tmp, "flat.mov"), os.path.join(tmp, "rot.mov")
+            # Left half white, right half black, stored 320x180, displayed rotated 90.
+            subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                            "color=c=black:size=320x180:rate=24:duration=1,"
+                            "drawbox=x=0:y=0:w=160:h=180:color=white:t=fill",
+                            "-c:v", "prores_ks", "-pix_fmt", "yuv422p10le", "-y", flat], check=True)
+            subprocess.run([measure.FFMPEG, "-v", "error", "-display_rotation", "90", "-i", flat,
+                            "-c", "copy", "-y", clip], check=True)
+            info = measure.probe(clip)
+            if (info["width"], info["height"]) == (320, 180):
+                self.skipTest("this ffmpeg did not record the rotation")
+            rgb = measure.read_frame(clip, 0.5, info["width"], info["height"],
+                                     measure.decode_filter(info["tags"])[0])
+        self.assertEqual(rgb.shape, (320, 180, 3))
+        rows = rgb.mean(axis=(1, 2))
+        # After a quarter turn the split runs across rows: each row is uniform.
+        self.assertTrue(((rows > 0.9) | (rows < 0.1)).all(), rows[:5])
+        self.assertAlmostEqual(float((rows > 0.9).mean()), 0.5, delta=0.02)
 
 
 @needs_numpy
