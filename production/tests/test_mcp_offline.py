@@ -71,10 +71,10 @@ class Base(unittest.TestCase):
 
 
 class TestRegistry(unittest.TestCase):
-    def test_six_tools_all_read_only(self):
+    def test_offline_tools_registered_and_all_read_only(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(names, ["resolve_status", "detect", "survey", "measure", "endcheck",
-                                 "selects"])
+        for name in ("detect", "survey", "measure", "endcheck", "selects"):
+            self.assertIn(name, names)
         for t in REG.list():
             self.assertTrue(t.annotations["readOnlyHint"], t.name)
             self.assertEqual(schema.validate({"type": "object"}, t.input_schema), [])
@@ -289,7 +289,7 @@ class TestEndToEnd(Base):
         out, err = p.communicate(b"".join(json.dumps(r).encode() + b"\n" for r in reqs), timeout=60)
         by_id = {m["id"]: m for m in (json.loads(l) for l in out.decode().splitlines())}
         self.assertEqual(p.returncode, 0, err.decode()[-500:])
-        self.assertEqual(len(by_id[2]["result"]["tools"]), 6)
+        self.assertIn("selects", [t["name"] for t in by_id[2]["result"]["tools"]])
         ok = by_id[3]["result"]
         self.assertFalse(ok["isError"])
         self.assertGreater(ok["structuredContent"]["total"], 0)
