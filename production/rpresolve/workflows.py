@@ -7,7 +7,7 @@ Nothing here prints or exits the interpreter. Preconditions that fail raise
 Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
-Write paths (ingest, cut) pin the open project by name (and unique id when
+Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render) pin the open project by name (and unique id when
 given), re-check the pin before every batch of writes, and take a
 `check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
@@ -20,7 +20,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from . import api
+from . import api, grade
 from . import detect as rpdetect
 from . import ingest as rpingest
 
@@ -254,4 +254,297 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                 failed |= not t["ok"]
     out["ui_restore_problems"] = snap.problems
     out["exit_status"] = 1 if failed else 0
+    return out
+
+
+# ---------------------------------------------------------------------------
+# duplicate, grade, queue a render ([auto] timelines, the MCP write tools)
+# ---------------------------------------------------------------------------
+
+AUTO = " [auto]"
+TRACK_KINDS = ("video", "audio", "subtitle")
+
+
+def _item_frames(tl):
+    """Per track kind and index, each item's (start, end, source start,
+    source end): what a duplicate must reproduce."""
+    out = {}
+    for kind in TRACK_KINDS:
+        for t in range(1, int(api._safe_call(tl, "GetTrackCount", kind) or 0) + 1):
+            out[f"{kind}{t}"] = [(api._safe_call(it, "GetStart"), api._safe_call(it, "GetEnd"),
+                                  api._safe_call(it, "GetSourceStartFrame"),
+                                  api._safe_call(it, "GetSourceEndFrame"))
+                                 for it in tl.GetItemListInTrack(kind, t) or []]
+    return out
+
+
+def duplicate_auto(resolve, project_name, timeline, new_name=None, dry_run=False,
+                   project_id=None, expect_sha=None):
+    """Duplicate a timeline as a new ' [auto]' timeline, compare every
+    item's frames with the origin, and put the current timeline and page
+    back (DuplicateTimeline makes the copy current). Returns {project,
+    origin, new_name, plan_sha, dry_run, created, mismatches,
+    ui_restore_problems, exit_status}."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, origin = api.find_timeline(project, timeline)
+    origin_name, origin_id = origin.GetName(), origin.GetUniqueId()
+    name = new_name or (origin_name if origin_name.endswith(AUTO) else origin_name + AUTO)
+    if name == origin_name:
+        raise Refused(f"'{origin_name}' is already an [auto] timeline; give new_name.")
+    if not name.endswith(AUTO):
+        raise Refused(f"new_name must end with '{AUTO}' (got '{name}').")
+    count = int(project.GetTimelineCount() or 0)
+    if any(project.GetTimelineByIndex(i).GetName() == name for i in range(1, count + 1)):
+        raise Refused(f"a timeline named '{name}' already exists; nothing is overwritten.")
+    frames = _item_frames(origin)
+    sha = plan_sha("duplicate", pin.unique_id, origin_id, name, frames)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "origin": {"name": origin_name, "unique_id": origin_id,
+                      "items": sum(len(v) for v in frames.values())},
+           "new_name": name, "plan_sha": sha, "dry_run": dry_run, "created": None,
+           "mismatches": [], "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the timeline or its items differ); "
+                      "run the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        project = pin.check(pm)
+        dup = origin.DuplicateTimeline(name)
+        if not dup:
+            raise api.WriteNotApplied(f"DuplicateTimeline('{name}') failed")
+        _, dup = api.find_timeline(project, name)
+        got = _item_frames(dup)
+    out["created"] = {"name": name, "unique_id": dup.GetUniqueId()}
+    out["mismatches"] = [f"{k}: origin {frames.get(k)} copy {got.get(k)}"
+                         for k in sorted(set(frames) | set(got)) if frames.get(k) != got.get(k)]
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if out["mismatches"] else 0
+    return out
+
+
+def _fingerprints(items):
+    return [grade.graph_fingerprint(g) if g else None
+            for g in (api._safe_call(it, "GetNodeGraph") for it in items)]
+
+
+def _media_id(item):
+    return api._safe_call(api._safe_call(item, "GetMediaPoolItem"), "GetUniqueId")
+
+
+def _shared_items(project, target_tl_id, media_ids):
+    """Every video item, on any timeline but the target, that uses one of
+    the target's media: where a grade could leak."""
+    found = []
+    count = int(project.GetTimelineCount() or 0)
+    for i in range(1, count + 1):
+        tl = project.GetTimelineByIndex(i)
+        if not tl or tl.GetUniqueId() == target_tl_id:
+            continue
+        for t in range(1, int(tl.GetTrackCount("video") or 0) + 1):
+            for n, it in enumerate(tl.GetItemListInTrack("video", t) or [], 1):
+                if _media_id(it) in media_ids:
+                    found.append((f"{tl.GetName()} V{t} #{n}", it))
+    return found
+
+
+def resolve_lut(path):
+    """An existing .cube: absolute, or relative to one of Resolve's LUT
+    folders. Returns the absolute path; raises Refused."""
+    p = os.path.expanduser(path)
+    candidates = [p] if os.path.isabs(p) else [os.path.join(r, p) for r in api.DEFAULT_LUT_ROOTS]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    raise Refused(f"LUT '{path}' not found" + ("" if os.path.isabs(p) else
+                  " under Resolve's LUT folders (" + ", ".join(api.DEFAULT_LUT_ROOTS) + ")"))
+
+
+def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, items=None,
+                overwrite=False, dry_run=False, project_id=None, check_cancel=None,
+                expect_sha=None):
+    """Apply a LUT (lut={path, node}) or a .drx still (drx={path, mode,
+    manifest}) to items on one video track of an ' [auto]' timeline, read
+    each back, and check that no item on any other timeline sharing the
+    same media changed. Refuses a remote grade version or a graph that is
+    not default unless overwrite. Returns {project, timeline, grade,
+    targets, results, leaks, plan_sha, dry_run, ui_restore_problems,
+    exit_status}."""
+    if bool(lut) == bool(drx):
+        raise Refused("give exactly one of lut or drx.")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Grades go only onto timelines "
+                      "these tools made; duplicate it first (duplicate_timeline_auto).")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = items or list(range(1, len(all_items) + 1))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    if lut:
+        lut_path = resolve_lut(lut["path"])
+        spec = {"kind": "lut", "path": lut_path, "node": int(lut.get("node") or 1)}
+    else:
+        drx_path = os.path.expanduser(drx["path"])
+        if not os.path.isfile(drx_path):
+            raise Refused(f".drx '{drx_path}' not found.")
+        man_path = os.path.expanduser(drx.get("manifest") or os.path.splitext(drx_path)[0] + ".json")
+        if not os.path.isfile(man_path):
+            raise Refused(f"no label manifest at {man_path}: a .drx is applied only with its "
+                          "expected {num_nodes, labels} beside it, so the result can be read back.")
+        with open(man_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+        spec = {"kind": "drx", "path": drx_path, "mode": int(drx.get("mode") or 0),
+                "manifest": manifest}
+    targets, refusals = [], []
+    for n in wanted:
+        it = all_items[n - 1]
+        g = grade.read_grade(it)
+        fp = g["fingerprint"] if g else None
+        why = []
+        if g is None:
+            why.append("no node graph")
+        else:
+            if (g.get("version") or {}).get("type") == "remote":
+                why.append("its current grade version is remote (shared across timelines)")
+            if not grade.is_default_graph(fp):
+                why.append(f"its graph is not default ({g['num_nodes']} node(s))")
+        if spec["kind"] == "lut" and g and spec["node"] > g["num_nodes"]:
+            why.append(f"it has {g['num_nodes']} node(s); the API cannot add node {spec['node']}")
+        entry = {"index": n, "name": it.GetName(), "media_id": _media_id(it),
+                 "fingerprint": fp}
+        hard = g is None or (spec["kind"] == "lut" and g and spec["node"] > g["num_nodes"])
+        if why and (hard or not overwrite):
+            refusals.append({**entry, "reasons": why})
+        else:
+            entry["overwrites"] = why
+            targets.append(entry)
+    shown = {k: v for k, v in spec.items() if k != "manifest"}
+    sha = plan_sha("grade", pin.unique_id, tl_id, track, shown,
+                   [(t["index"], t["name"], t["fingerprint"]) for t in targets], overwrite)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "grade": shown, "targets": [{k: v for k, v in t.items() if k != "fingerprint"}
+                                       for t in targets],
+           "refused": refusals, "results": [], "leaks": [], "plan_sha": sha,
+           "dry_run": dry_run, "ui_restore_problems": [], "exit_status": 0}
+    if not targets:
+        raise Refused("no item may be graded: " + "; ".join(
+            f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refusals))
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (items or their grades differ); "
+                      "run the dry run again and review it")
+    media = {t["media_id"] for t in targets if t["media_id"]}
+    shared = _shared_items(project, tl_id, media)
+    before = _fingerprints([it for _, it in shared])
+    untouched = [it for n, it in enumerate(all_items, 1) if n not in {t["index"] for t in targets}]
+    untouched_before = _fingerprints(untouched)
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if spec["kind"] == "lut":
+            refresh = getattr(project, "RefreshLUTList", None)
+            if refresh:
+                refresh()
+        for t in targets:
+            if check_cancel:
+                check_cancel()
+            pin.check(pm)
+            it = all_items[t["index"] - 1]
+            if spec["kind"] == "lut":
+                ok, detail = grade.apply_lut_to_item(it, spec["node"], spec["path"],
+                                                     api.DEFAULT_LUT_ROOTS)
+            else:
+                ok, detail = grade.apply_drx_to_item(it, spec["path"], spec["mode"])
+                if ok:
+                    miss = api.assert_graph_matches(it.GetNodeGraph(), spec["manifest"])
+                    if miss:
+                        ok, detail = False, "read back against the manifest: " + "; ".join(miss)
+            out["results"].append({"index": t["index"], "name": t["name"], "ok": ok,
+                                   "detail": detail})
+    after = _fingerprints([it for _, it in shared])
+    out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
+    if _fingerprints(untouched) != untouched_before:
+        out["leaks"].append(f"{tl_name}: an item that was not a target changed")
+    out["ui_restore_problems"] = snap.problems
+    failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
+    out["exit_status"] = 1 if failed else 0
+    return out
+
+
+def queue_render(resolve, project_name, timeline, preset_key, output_dir, presets,
+                 custom_name=None, dry_run=False, project_id=None, expect_sha=None):
+    """Queue one render job for a timeline from a preset, never start it.
+    Makes the timeline current only while queueing, then puts back the
+    current timeline, page and the Deliver page's format and codec. The
+    other Deliver fields it sets cannot be read back or restored, so every
+    result lists them. Refuses when a render is running or the output file
+    exists. Returns {project, timeline, preset, output, plan_sha, dry_run,
+    job, readback_problems, deliver_changed, warnings, ui_restore_problems,
+    exit_status}."""
+    from . import render
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    preset = presets.get(preset_key)
+    if not preset:
+        raise Refused(f"unknown preset '{preset_key}'; configured: {', '.join(presets)}")
+    if not os.path.isdir(output_dir):
+        raise Refused(f"output_dir {output_dir} is not an existing folder.")
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; queue after it finishes.")
+    base = (custom_name or tl.GetName()) + preset["suffix"]
+    target = os.path.join(os.path.realpath(output_dir), f"{base}.{preset['format']}")
+    if os.path.exists(target):
+        raise Refused(f"{target} already exists; a render would overwrite it. Choose another "
+                      "custom_name or folder.")
+    sha = plan_sha("render", pin.unique_id, tl.GetUniqueId(), preset_key, preset,
+                   os.path.realpath(output_dir), base)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId()},
+           "preset": {"key": preset_key, **preset}, "output": target, "plan_sha": sha,
+           "dry_run": dry_run, "job": None, "readback_problems": [],
+           "deliver_changed": list(render.DELIVER_FIELDS), "warnings": [],
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run; run the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        project = pin.check(pm)
+        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
+        if not project.SetCurrentTimeline(tl):
+            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
+        try:
+            q = render.queue_render_job(project, preset_key, os.path.realpath(output_dir),
+                                        presets, custom_name)
+        finally:
+            if fmt0.get("format") and fmt0.get("format") != "unknown":
+                if not (project.SetCurrentRenderFormatAndCodec(fmt0["format"], fmt0.get("codec"))
+                        and (project.GetCurrentRenderFormatAndCodec() or {}) == fmt0):
+                    out["warnings"].append(f"could not put the Deliver format/codec back to {fmt0}")
+            else:
+                out["warnings"].append("the Deliver page had no format set before, so the "
+                                       "queued job's format stays selected there")
+    out["warnings"] = q["warnings"] + out["warnings"]
+    out["ui_restore_problems"] = snap.problems
+    if q["error"] or not q["job_id"]:
+        out["exit_status"] = 1
+        out["warnings"].insert(0, q["error"] or "no job id")
+        return out
+    job, problems = render.render_job_readback(
+        project, q["job_id"], {"TargetDir": os.path.realpath(output_dir),
+                               "TimelineName": tl.GetName(),
+                               "FormatWidth": preset["resolution"]["width"],
+                               "FormatHeight": preset["resolution"]["height"]})
+    out["job"] = job
+    out["readback_problems"] = problems
+    out["exit_status"] = 1 if problems else 0
     return out

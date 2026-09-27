@@ -13,11 +13,14 @@ The rules every write tool keeps:
 
 import os
 
-from .. import api, workflows
+from .. import api, paths, workflows
+from ..config import load_config
 from .. import detect as rpdetect
 from .. import ingest as rpingest
 from . import journal
 from .registry import WRITE, Tool
+
+DESTRUCTIVE = {**WRITE, "destructiveHint": True}
 from .tools_offline import _abs, _existing, _page
 
 WRITE_LOCK_WAIT = 30.0
@@ -134,6 +137,103 @@ def cut(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# duplicate_timeline_auto, apply_grade, queue_render
+# ---------------------------------------------------------------------------
+
+def _how(r):
+    return ("" if not r["dry_run"] else f". To run it, call again with dry_run false and "
+            f"plan_sha {r['plan_sha']}.")
+
+
+def _ui(r):
+    return "; the UI was not fully restored" if r["ui_restore_problems"] else ""
+
+
+def duplicate_timeline_auto(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.duplicate_auto(ctx.session.get(), args["project"], args["timeline"],
+                                     args.get("new_name"), dry_run=args["dry_run"],
+                                     project_id=args.get("project_id"),
+                                     expect_sha=args.get("plan_sha"))
+        o = r["origin"]
+        if r["dry_run"]:
+            r["summary"] = (f"would duplicate '{o['name']}' ({o['items']} item(s)) as "
+                            f"'{r['new_name']}'" + _how(r))
+        else:
+            r["summary"] = (f"duplicated '{o['name']}' as '{r['new_name']}'" +
+                            (f"; {len(r['mismatches'])} track(s) differ from the origin"
+                             if r["mismatches"] else "; every item matches the origin") + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("duplicate_timeline_auto", args, run)
+
+
+def apply_grade(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.apply_grade(ctx.session.get(), args["project"], args["timeline"],
+                                  lut=args.get("lut"), drx=args.get("drx"), track=args["track"],
+                                  items=args.get("items"), overwrite=args["overwrite"],
+                                  dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                  check_cancel=ctx.check_cancel,
+                                  expect_sha=args.get("plan_sha"))
+        g, tl = r["grade"], r["timeline"]["name"]
+        what = (f"LUT {os.path.basename(g['path'])} on node {g['node']}" if g["kind"] == "lut"
+                else f"{os.path.basename(g['path'])} (mode {g['mode']})")
+        over = sum(1 for t in r["targets"] if t.get("overwrites"))
+        skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
+        if r["dry_run"]:
+            r["summary"] = (f"would apply {what} to {len(r['targets'])} item(s) on '{tl}'" +
+                            (f", replacing {over} existing grade(s)" if over else "") +
+                            skipped + _how(r))
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["summary"] = (f"applied {what} to {ok} of {len(r['results'])} item(s) on '{tl}'" +
+                            skipped +
+                            (f"; GRADE LEAKED to {len(r['leaks'])} item(s) elsewhere"
+                             if r["leaks"] else "; no other timeline changed") + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("apply_grade", args, run)
+
+
+def queue_render(args, ctx):
+    _require_sha(args)
+    out_dir = _abs(args["output_dir"], "output_dir")
+    problem = paths.out_problem(os.path.join(out_dir, "x"), any_git_tree=True)
+    if problem:
+        raise paths.OutputRefused(problem.replace(os.path.join(out_dir, "x"), out_dir))
+    presets = load_config()["render_presets"]
+
+    def run():
+        r = workflows.queue_render(ctx.session.get(), args["project"], args["timeline"],
+                                   args["preset"], out_dir, presets, args.get("custom_name"),
+                                   dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                   expect_sha=args.get("plan_sha"))
+        tl, name = r["timeline"]["name"], r["preset"]["name"]
+        changed = ", ".join(r["deliver_changed"])
+        if r["dry_run"]:
+            r["summary"] = (f"would queue '{tl}' as {name} to {r['output']} (not started); this "
+                            f"sets the Deliver page's {changed}" + _how(r))
+        elif r["exit_status"] == 0:
+            r["summary"] = (f"queued '{tl}' as {name} to {r['output']}, job "
+                            f"{r['job']['JobId']}; NOT started, Isaac starts renders. Deliver "
+                            f"page fields now changed: {changed}" + _ui(r))
+        else:
+            r["summary"] = ("queue_render FAILED: " +
+                            "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("queue_render", args, run)
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -192,3 +292,75 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "manifest"], "additionalProperties": False},
         cut, title="Cut clip timelines", annotations=WRITE))
+    registry.add(Tool(
+        "duplicate_timeline_auto",
+        "Duplicate a timeline as a new timeline whose name ends ' [auto]' (default: the "
+        "same name plus ' [auto]'), then compare every item's timeline and source frames with "
+        "the origin. The origin is not touched. Duplicating makes the copy current in Resolve, "
+        "so the current timeline and page are put back. Dry run first; the real run needs "
+        "its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string", "description": "Origin timeline name or unique id."},
+            "new_name": {"type": "string", "pattern": " \\[auto\\]$",
+                         "description": "Name for the copy; must end ' [auto]'."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        duplicate_timeline_auto, title="Duplicate a timeline as [auto]", annotations=WRITE))
+    registry.add(Tool(
+        "apply_grade",
+        "Apply a LUT (to one node) or a .drx grade still (with its {num_nodes, labels} "
+        "manifest beside it) to items on one video track of an ' [auto]' timeline only, and "
+        "read each back. Refuses an item whose grade version is remote or whose graph is not "
+        "default unless overwrite is true. After the real run it checks every item on other "
+        "timelines that uses the same media, and reports any grade that changed there as a "
+        "leak. Applying a .drx opens the Color page; the page and timeline are put back. Dry "
+        "run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            "lut": {"type": "object", "properties": {
+                "path": {"type": "string",
+                         "description": "A .cube, absolute or relative to Resolve's LUT folder."},
+                "node": {"type": "integer", "minimum": 1, "default": 1}},
+                "required": ["path"], "additionalProperties": False},
+            "drx": {"type": "object", "properties": {
+                "path": {"type": "string", "description": "Absolute path of the .drx."},
+                "mode": {"type": "integer", "enum": [0, 1, 2], "default": 0,
+                         "description": "0 no keyframes, 1 source timecode, 2 start frames."},
+                "manifest": {"type": "string",
+                             "description": "Expected-labels JSON (default: beside the .drx)."}},
+                "required": ["path"], "additionalProperties": False},
+            "overwrite": {"type": "boolean", "default": False,
+                          "description": "Also replace grades that are not default."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "queue_render",
+        "Queue one render job for a timeline from a resolve-config.json preset. It never "
+        "starts a render: Isaac starts renders. The timeline is made current only while "
+        "queueing; the current timeline, page and the Deliver page's format and codec are put "
+        "back. The other Deliver fields it sets (target folder, name, size, video and audio "
+        "on) cannot be read back or restored, and every result lists them. Refused while a "
+        "render runs or when the output file exists. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string", "description": "Timeline name or unique id."},
+            "preset": {"type": "string", "enum": sorted(load_config()["render_presets"]),
+                       "description": "A render preset from resolve-config.json."},
+            "output_dir": {"type": "string",
+                           "description": "Absolute path of an existing folder outside any "
+                           "git repository."},
+            "custom_name": {"type": "string", "pattern": "^[A-Za-z0-9 _.()-]{1,120}$",
+                            "description": "File name before the preset suffix (default: the "
+                            "timeline name)."},
+            **DRY_RUN},
+         "required": ["project", "timeline", "preset", "output_dir"],
+         "additionalProperties": False},
+        queue_render, title="Queue a render", annotations=WRITE))
