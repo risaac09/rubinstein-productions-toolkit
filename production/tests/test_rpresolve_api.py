@@ -19,6 +19,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live one
+    tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 
 from rpresolve import api
 from resolve_workflow import (
