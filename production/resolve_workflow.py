@@ -36,6 +36,13 @@ Commands:
                            clip's input color space (RCM projects you name)
     measure                Offline: luma, clipping, legal range and skin numbers
                            from a render; camera-match numbers per segment
+    manifest               Offline: build a cut manifest from a CUTS script, a
+                           vertcut TSV or a video-use edl.json
+    endcheck               Offline: check every cut's end word, that it sits in
+                           a pause of the audio, and that it says only what the
+                           approved text says
+    selects                Offline: propose spans that sit inside the approved text
+    cut                    Build [auto] 16:9 and 9:16 timelines from a manifest
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -1298,6 +1305,169 @@ def cmd_measure(args):
     return 0
 
 
+def _write_private(path, text):
+    """Write a file that names private media and words; refused in the repo."""
+    problem = _out_problem(path)
+    if problem:
+        raise SystemExit(f"ERROR: {problem}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def cmd_manifest(args):
+    """Build a cut manifest (see rpresolve/cutlist.py) and write it to --out."""
+    from rpresolve import cutlist
+    problem = _out_problem(args.out)
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        if args.from_cuts:
+            spans = cutlist.spans_from_cuts_script(args.from_cuts)
+        elif args.from_tsv:
+            spans = cutlist.spans_from_vertcut_tsv(args.from_tsv, args.fps, args.offset)
+        else:
+            spans = cutlist.spans_from_edl(args.from_edl)
+        reframe = {"face_x": args.face_x} if args.face_x is not None else None
+        m = cutlist.build_manifest(spans, os.path.abspath(args.source), args.fps,
+                                   os.path.abspath(args.words), os.path.abspath(args.approved),
+                                   reframe=reframe)
+    except (cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    _write_private(args.out, json.dumps(m, indent=1) + "\n")
+    n = sum(len(c["spans"]) for c in m["clips"])
+    print(f"Wrote {len(m['clips'])} clip(s), {n} span(s) to {args.out}", file=sys.stderr)
+    return 0
+
+
+def _endcheck_line(r):
+    status = "PASS" if r["ok"] and not r.get("review") else ("REVIEW" if r["ok"] else "FAIL")
+    end, text = r.get("end") or {}, r.get("text") or {}
+    near = (end.get("nearest") or {}) if end else {}
+    extra = []
+    if end.get("suggest"):
+        extra.append(f"suggest out {end['suggest']}")
+    elif not r["ok"] and near:
+        for side in ("before", "after"):
+            if near.get(side):
+                extra.append(f"clean {side} {near[side]['t']} ends \"{near[side]['ends']}\"")
+    if text and text.get("verdict") != "pass" and text.get("unmatched"):
+        extra.append(f"essay {text['verdict']} {text['coverage']:.2f}: [{text['unmatched']}]")
+    return (f"{status:6} {r['clip']:<14} span {r['span']}  out {r['out']:<9} "
+            f"{r['reason'] or ''}" + ("  | " + "; ".join(extra) if extra else ""))
+
+
+def cmd_endcheck(args):
+    """Check a manifest. Exit 0 all pass, 2 any review, 1 any fail."""
+    from rpresolve import cutlist
+    try:
+        m = cutlist.load_manifest(args.manifest)
+        rows = cutlist.endcheck(m, audio=not args.no_audio)
+    except (cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for r in rows:
+        print(_endcheck_line(r))
+    fails = sum(1 for r in rows if not r["ok"])
+    reviews = sum(1 for r in rows if r["ok"] and r.get("review"))
+    print(f"endcheck: {len(rows)} span(s): {len(rows) - fails - reviews} pass, {reviews} review, "
+          f"{fails} fail" + (" (audio not checked)" if args.no_audio else ""), file=sys.stderr)
+    if args.json:
+        _write_private(args.json, json.dumps(rows, indent=1, default=str) + "\n")
+    return 1 if fails else (2 if reviews else 0)
+
+
+def cmd_selects(args):
+    """Propose spans inside the approved text, as a TSV (in, out, seconds,
+    coverage, end words, text). Isaac picks; nothing is cut."""
+    from rpresolve import cutlist
+    try:
+        words = cutlist.load_words(args.words)
+        approved = cutlist.load_approved(args.approved)
+    except (cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    rows = cutlist.selects(words, approved, args.min_seconds, args.max_seconds)
+    lines = ["in\tout\tseconds\tcoverage\tend_words\ttext"]
+    lines += [f"{r['in']}\t{r['out']}\t{r['seconds']}\t{r['coverage']}\t{r['end_words']}\t{r['text']}"
+              for r in rows]
+    text = "\n".join(lines) + "\n"
+    if args.out:
+        _write_private(args.out, text)
+        print(f"Wrote {len(rows)} proposal(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_cut(args):
+    """Build [auto] timelines from a manifest in the open project named with
+    --project. Exit 0 all built and read back, 1 on any failure."""
+    from rpresolve import cutlist, cut
+    try:
+        m = cutlist.load_manifest(args.manifest)
+        clips = cut.plan_clips(m, args.only)
+    except (cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if not os.path.isfile(m["source_path"]) or cutlist.sha256_file(m["source_path"]) != m["source_sha256"]:
+        print(f"ERROR: {m['source_path']} is missing or no longer matches the manifest's sha256; "
+              "the words were read from a different file.", file=sys.stderr)
+        return 1
+    fails = cut.gate_clips(m, clips, audio=not args.no_audio)
+    blocked = {k: v for k, v in fails.items() if v}
+    for name, reasons in blocked.items():
+        print(f"  {'FORCED' if args.force else 'BLOCKED'} {name}: " + " | ".join(reasons), file=sys.stderr)
+    if blocked and not args.force:
+        clips = [c for c in clips if c["name"] not in blocked]
+    if not clips:
+        print("ERROR: no clip passed endcheck; nothing to build.", file=sys.stderr)
+        return 1
+
+    resolve = get_resolve()
+    pm = resolve.GetProjectManager()
+    project = get_project(resolve)
+    pin = rpapi.ProjectPin(project)
+    try:
+        pin.require_name(args.project, pm)
+    except rpapi.ProjectChanged as e:
+        print(f"ERROR: {e} cut builds timelines, so it runs only on the project named with "
+              "--project.", file=sys.stderr)
+        return 1
+    media_pool, root = get_root_folder(project)
+    item = cut.find_source_item(root, m["source_sha256"], os.path.getsize(m["source_path"]))
+    if item is None:
+        print("ERROR: no media-pool clip in this project matches the manifest source's sha256. "
+              "Import the source first.", file=sys.stderr)
+        return 1
+    src_width = int(str(item.GetClipProperty("Resolution") or "0x0").split("x")[0] or 0)
+    existing = cut.timeline_names(project)
+    results, failed = [], False
+    snap = rpapi.UISnapshot(resolve, project)
+    with snap:
+        for clip in clips:
+            wide_name = f"{args.prefix}_{clip['name']}{cut.AUTO}"
+            if wide_name in existing:
+                print(f"  skip  {wide_name} (exists; left untouched)")
+                continue
+            r = cut.build_clip(project, media_pool, item, clip, m["fps"], args.prefix,
+                               check=lambda: pin.check(pm))
+            print(f"  {'made ' if r['ok'] else 'FAIL '} {r['name']}  {r['frames']} frames "
+                  f"(expected {r['frames_expected']}) {r['reason']}")
+            failed |= not r["ok"]
+            results.append(r)
+            if r["ok"] and not args.no_9x16:
+                wide = cut.timeline_names(project).get(r["name"])
+                t = cut.build_tall(project, wide, clip, src_width, args.prefix,
+                                   check=lambda: pin.check(pm))
+                print(f"  {'made ' if t['ok'] else 'FAIL '} {t['name']}  {t['props'] or ''} {t['reason']}")
+                failed |= not t["ok"]
+    if snap.problems:
+        print("  UI restore: " + "; ".join(snap.problems), file=sys.stderr)
+    return 1 if failed else 0
+
+
 # ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
@@ -1500,6 +1670,45 @@ Examples:
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
+
+    sp = subparsers.add_parser("manifest", help="Offline: build a cut manifest")
+    src = sp.add_mutually_exclusive_group(required=True)
+    src.add_argument("--from-cuts", metavar="PY", help="A Python file with a literal CUTS dict")
+    src.add_argument("--from-tsv", metavar="TSV", help="A vertcut cuts TSV")
+    src.add_argument("--from-edl", metavar="JSON", help="A video-use edl.json")
+    sp.add_argument("--source", required=True, help="The source media file")
+    sp.add_argument("--fps", type=float, required=True, help="Source frame rate")
+    sp.add_argument("--words", required=True, help="mlx_whisper word-level JSON of the source")
+    sp.add_argument("--approved", required=True, help="The approved text (essay) clips must stay inside")
+    sp.add_argument("--offset", type=float, default=0.0, help="Seconds added to TSV timecodes")
+    sp.add_argument("--face-x", type=float, help="Speaker's face centre in source pixels, for 9:16")
+    sp.add_argument("--out", required=True, help="Manifest JSON path (refused inside this repo)")
+    sp.set_defaults(func=cmd_manifest)
+
+    sp = subparsers.add_parser("endcheck", help="Offline: check every cut's end, pause and text")
+    sp.add_argument("manifest")
+    sp.add_argument("--no-audio", action="store_true", help="Word and text checks only")
+    sp.add_argument("--json", help="Also write the full results here")
+    sp.set_defaults(func=cmd_endcheck)
+
+    sp = subparsers.add_parser("selects", help="Offline: propose spans inside the approved text")
+    sp.add_argument("words", help="mlx_whisper word-level JSON")
+    sp.add_argument("--approved", required=True, help="The approved text (essay)")
+    sp.add_argument("--min-seconds", type=float, default=20.0)
+    sp.add_argument("--max-seconds", type=float, default=65.0)
+    sp.add_argument("--out", help="Write the TSV here instead of stdout")
+    sp.set_defaults(func=cmd_selects)
+
+    sp = subparsers.add_parser("cut", help="Build [auto] 16:9 and 9:16 timelines from a manifest")
+    sp.add_argument("manifest")
+    sp.add_argument("--project", required=True, help="Name of the open project; cut refuses any other")
+    sp.add_argument("--prefix", default="SW", help="Timeline name prefix (default SW)")
+    sp.add_argument("--only", nargs="+", metavar="CLIP", help="Only these clips")
+    sp.add_argument("--no-9x16", action="store_true", help="Skip the 9:16 versions")
+    sp.add_argument("--no-audio", action="store_true", help="Skip the audio part of the gate")
+    sp.add_argument("--force", action="store_true",
+                    help="Build clips that fail endcheck (to reproduce an old cut); reported loudly")
+    sp.set_defaults(func=cmd_cut)
 
     args = parser.parse_args()
     if not args.command:
