@@ -138,7 +138,7 @@ what the public kit needs to reproduce the practice.
 2. **A completed client journey.** No one has gone through the full camera-shipping process yet. This needs to happen in Q2 2026.
 3. **A case study.** The cohort video is the only proof of process. First Tier 2 engagement becomes the first case study.
 4. **Pricing validation.** The tiers are set by value-based logic but untested in the market.
-5. **The camera-shipping logistics.** Insurance, shipping timelines, backup equipment, international shipping (Norway).
+5. **The camera-shipping logistics.** Insurance, shipping timelines, backup equipment, international shipping.
 
 ---
 
