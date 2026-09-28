@@ -2,7 +2,7 @@
   "autoMode": {
     "environment": [
       "$defaults",
-      "Organization: a solo operator. Primary use: software development, personal knowledge infrastructure, and content pipelines across local repos on more than one machine.",
+      "Organization: a solo operator. Primary use: software development, personal knowledge infrastructure, and content pipelines across local repos on one Mac plus cloud session containers.",
       "Source control: a single GitHub owner with a mix of public and private repos. Never assume a repo's visibility from its name, its contents, or this file. Check it live (gh repo view <owner>/<repo> --json visibility) before treating anything as safe to publish, and re-check per session.",
       "Treat a clean pre-push privacy scan as necessary, not sufficient. A denylist scanner cannot see shape-only leaks that carry no listed term. Judge the content on its own terms before any push to a public repo.",
       "Secrets management: env files under ~/.secrets/, sourced by the shell profile. Their contents must never be read into context, echoed, copied elsewhere, or committed. ~/.secrets has no valid audience.",
@@ -12,10 +12,10 @@
     ],
     "soft_deny": [
       "$defaults",
-      "Never create or clone a git repository inside iCloud-synced paths: anything under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories. The vault is not an exception to this; it left iCloud on 2026-09-02 so it could be a git repo without sitting in one.",
+      "Never write, create, clone, or move anything into iCloud-synced paths: anything under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories and spawns conflict copies. Deliverables stay in the project, drafts go to ~/Downloads or the session scratchpad, worktrees to a directory outside every synced path. The Photos library is the one exception, for photos and video.",
       "Never change a GitHub repository's visibility or archive state: private repos hold client and personal data, and a visibility flip is the worst-case exposure.",
-      "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on both machines depend on them.",
-      "Never manually dispatch API-key-billed GitHub Actions workflows just to verify a change: verification runs locally."
+      "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on this machine depend on them.",
+      "Never manually dispatch billed GitHub Actions workflows just to verify a change: verification runs locally."
     ],
     "hard_deny": [
       "$defaults",

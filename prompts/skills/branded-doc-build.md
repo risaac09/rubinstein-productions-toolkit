@@ -1,6 +1,6 @@
 ---
 name: branded-doc-build
-description: Build, finish, or review a Word document when a brand template (or an example document) and source material both exist. Use for client-facing guides, field instruments, one-pagers, change logs, FAQs, email kits, briefs, and any .docx that has to look native to someone else's brand system. Trigger for "write this up as a doc", "make a Word document", "build a field guide", "one-pager", "turn this into a docx", "review this document", "match the brand", "plain version", or any request pairing a template with content to place in it. Also use when reviewing a document someone else authored.
+description: 'Build, finish, or review a Word document that must look native to a client brand template or example document. Use for guides, field instruments, one-pagers, FAQs and briefs. Trigger for "make a Word document", "turn this into a docx", "one-pager", "review this document", "match the brand", or a template paired with content.'
 ---
 
 # Branded document build

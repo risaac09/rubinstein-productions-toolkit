@@ -85,6 +85,8 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   retrospective triggers both).
 - `model-routing.md`: the canonical model routing check, injected at session
   start. Replaces the hand-copied CLAUDE.md blocks.
+- `model-routing-rationale.md`: the reasoning behind the routing check, the
+  known failure mode, and its history. Source only; never deployed or injected.
 - `operating-brief.md`: the operating brief. Four slips, each with a rule and
   a tripwire. Written at the Fable 5 handoff as `opus-4-8-brief.md`; renamed
   and cut to four on 2026-07-24, when the Claude 5 baseline absorbed three of

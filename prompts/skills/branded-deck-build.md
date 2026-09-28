@@ -1,6 +1,6 @@
 ---
 name: branded-deck-build
-description: Build or finish a PowerPoint deck when a brand template (or an example deck) and source material both exist. Use for client-facing decks, executive briefs, readouts, status updates, assessment presentations, and any .pptx that has to look native to someone else's brand system. Trigger for "build a deck", "finish this deck", "make slides", "executive brief", "readout deck", "put this in the template", "match the brand", "deck QA", "why does this deck look off", or any request pairing a template with content to place in it. Also use when reviewing an existing deck against a template.
+description: 'Build, finish, or QA a PowerPoint deck that must look native to a client brand template or example deck. Use for client decks, executive briefs, readouts and status updates. Trigger for "build a deck", "make slides", "put this in the template", "match the brand", "deck QA", or a template paired with content to place in it.'
 ---
 
 # Branded deck build
