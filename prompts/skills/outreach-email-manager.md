@@ -1,6 +1,6 @@
 ---
 name: outreach-email-manager
-description: Draft outreach emails (cold outreach, follow-ups, proposals) for Rubinstein Productions Say Why facilitation and film consultancy, create them as Gmail drafts, and log all outreach activity to the stack-data drafts log plus the corpus 07 Outreach staging note. Use this skill when Isaac needs to reach out to potential clients, follow up after conversations, or submit proposals, and wants the contact tracked in the outreach pipeline. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".
+description: 'Draft Rubinstein Productions outreach emails (cold outreach, follow-ups, proposals) as Gmail drafts and log each contact to the stack-data drafts log and the corpus 07 Outreach note. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".'
 ---
 
 > **Canonical Say Why positioning source:** `~/vault/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
