@@ -12,7 +12,7 @@
     ],
     "soft_deny": [
       "$defaults",
-      "Never write, create, clone, or move anything into iCloud-synced paths: anything under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories and spawns conflict copies. Deliverables stay in the project, drafts go to ~/Downloads or the session scratchpad, worktrees to ~/claude-worktrees. The Photos library is the one exception, for photos and video.",
+      "Never write, create, clone, or move anything into iCloud-synced paths: anything under ~/Library/Mobile Documents/, ~/Desktop, or ~/Documents. iCloud's file-by-file sync corrupts .git directories and spawns conflict copies. Deliverables stay in the project, drafts go to ~/Downloads or the session scratchpad, worktrees to a directory outside every synced path. The Photos library is the one exception, for photos and video.",
       "Never change a GitHub repository's visibility or archive state: private repos hold client and personal data, and a visibility flip is the worst-case exposure.",
       "Never load, unload, or edit launchd agents or their plists under ~/Library/LaunchAgents: standing jobs on this machine depend on them.",
       "Never manually dispatch billed GitHub Actions workflows just to verify a change: verification runs locally."
