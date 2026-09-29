@@ -8,10 +8,10 @@ Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
 Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
-destination form, queue_destination, create_captions, sync) pin the open
-project by name (and unique id when given), re-check the pin before every
-batch of writes, and take a `check_cancel` callable that raises to stop at
-the next safe point. A dry
+destination form, queue_destination, create_captions, sync,
+trim_review_markers) pin the open project by name (and unique id when
+given), re-check the pin before every batch of writes, and take a
+`check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
 would carry out differs from the one the dry run showed.
 """
@@ -1216,3 +1216,89 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
     if not res["returned"]:
         res["problems"].append("AutoSyncAudio returned False")
     return res
+
+
+# ---------------------------------------------------------------------------
+# trim-review markers: review rows as markers on an [auto] timeline
+# ---------------------------------------------------------------------------
+
+def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
+                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
+                        check_cancel=None):
+    """Review the parts of `source` an ' [auto]' timeline plays
+    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
+    per row there, reading each back with GetMarkers. Adds markers only:
+    nothing is cut, rippled, moved or deleted. A row that would land on a
+    frame already holding a marker is refused and reported. words: the
+    list from cutlist.load_words, or None for silences only. Returns
+    {project, timeline, source, items, skipped_items, rows, counts,
+    thresholds, planned, refused, results, plan_sha, dry_run,
+    ui_restore_problems, exit_status}."""
+    from . import deliver, markers as mk, trimreview as tr
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Markers go only onto timelines "
+                      "these tools made; duplicate it first (duplicate_timeline_auto).")
+    tl_fps = deliver.fps_number(api._safe_call(tl, "GetSetting", "timelineFrameRate") or
+                                api._safe_call(project, "GetSetting", "timelineFrameRate"))
+    if not tl_fps:
+        raise Refused(f"the frame rate of '{tl_name}' could not be read.")
+    found, skipped = mk.source_items(tl, source)
+    items, slow = mk.mappable(found, tl_fps)
+    skipped += slow
+    if not items:
+        raise Refused(f"no item on '{tl_name}' plays {source} at its own speed" +
+                      (": " + "; ".join(skipped) if skipped else "") + ".")
+    if check_cancel:
+        check_cancel()
+    review = tr.review_source(source, words, ranges=mk.ranges(items), audio=audio,
+                              **(review_opts or {}))
+    existing = mk.existing_frames(tl)
+    planned, refused = mk.plan(review["rows"], items, tl.GetStartFrame(), tl_fps, set(existing))
+    shown = [{k: v for k, v in m.items() if k != "row"} for m in planned]
+    sha = plan_sha("trim-markers", pin.unique_id, tl_id, sorted(existing), shown)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "fps": tl_fps,
+                        "markers_before": len(existing)},
+           "source": source,
+           "items": [{k: it[k] for k in ("kind", "track", "start", "end", "src_start_s",
+                                         "src_end_s")} for it in items],
+           "skipped_items": skipped, "rows": len(review["rows"]),
+           "counts": tr.counts(review["rows"]), "thresholds": review["thresholds"],
+           "planned": shown,
+           "refused": [{"frame": r["frame"], "reason": r["reason"], "kind": r["row"]["kind"],
+                        "source_start": r["row"]["source_start"]} for r in refused],
+           "results": [], "problems": [], "plan_sha": sha, "dry_run": dry_run,
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the timeline, its markers or the "
+                      "review differ); run the dry run again and review it")
+    problems = []
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if check_cancel:
+            check_cancel()
+        project = pin.check(pm)
+        if not project.SetCurrentTimeline(tl) or _uid(project.GetCurrentTimeline()) != tl_id:
+            raise api.WriteNotApplied(f"could not make '{tl_name}' current to mark it")
+        before = mk.existing_frames(tl)
+        if before != existing:
+            raise Refused(f"the markers on '{tl_name}' changed since the plan; nothing was added.")
+        out["results"] = mk.add(tl, planned, check=_check(pin, pm, check_cancel))
+        after = mk.existing_frames(tl)
+    changed = sorted(f for f in before if after.get(f) != before[f])
+    extra = sorted(set(after) - set(before) - {m["frame"] for m in planned})
+    if changed:
+        problems.append(f"{len(changed)} marker(s) that were there before changed: frames "
+                        f"{changed[:10]}")
+    if extra:
+        problems.append(f"{len(extra)} marker(s) appeared that were not planned: frames "
+                        f"{extra[:10]}")
+    out["problems"] = problems
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if problems or any(not r["ok"] for r in out["results"]) else 0
+    return out

@@ -28,7 +28,8 @@ from . import journal
 from .registry import WRITE, Tool
 
 DESTRUCTIVE = {**WRITE, "destructiveHint": True}
-from .tools_offline import _abs, _existing, _page, deliver_config, destination_keys
+from .tools_offline import (REVIEW_PROPS, _abs, _existing, _page, deliver_config,
+                            destination_keys)
 
 WRITE_LOCK_WAIT = 30.0
 
@@ -373,7 +374,7 @@ def deliver_captions(args, ctx):
 
 
 # ---------------------------------------------------------------------------
-# sync
+# sync and trim_review_markers
 # ---------------------------------------------------------------------------
 
 def sync(args, ctx):
@@ -423,6 +424,51 @@ def sync(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("sync", args, run)
+
+
+def trim_review_markers(args, ctx):
+    from .. import cutlist, trimreview as tr
+    from .tools_offline import review_opts
+    _require_sha(args)
+    if bool(args.get("manifest")) == bool(args.get("source")):
+        raise ValueError("give exactly one of manifest (a cut manifest) or source (a media file).")
+    if args.get("manifest"):
+        m = cutlist.load_manifest(_existing(args["manifest"], "manifest"))
+        source = m["source_path"]
+        words_path = _existing(args["words"], "words") if args.get("words") else m["words"]
+    else:
+        source = _existing(args["source"], "source")
+        words_path = _existing(args["words"], "words") if args.get("words") else None
+    words = cutlist.load_words(words_path) if words_path else None  # offline, before the lock
+    ctx.check_cancel()
+
+    def run():
+        r = workflows.trim_review_markers(ctx.session.get(), args["project"], args["timeline"],
+                                          source, words, audio=args["audio"],
+                                          review_opts=review_opts(args), dry_run=args["dry_run"],
+                                          project_id=args.get("project_id"),
+                                          expect_sha=args.get("plan_sha"),
+                                          check_cancel=ctx.check_cancel)
+        tl, c = r["timeline"]["name"], r["counts"]["kind"]
+        kinds = ", ".join(f"{n} {k}" for k, n in c.items() if n)
+        why = {}
+        for x in r["refused"]:
+            why[x["reason"]] = why.get(x["reason"], 0) + 1
+        refused = ("; refused, left unmarked: " + ", ".join(f"{n} ({k})" for k, n in why.items())
+                   if why else "")
+        if r["dry_run"]:
+            r["summary"] = (f"would add {len(r['planned'])} marker(s) to '{tl}' ({kinds or 'no rows'})"
+                            f"{refused}; nothing is cut" + _how(r))
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["summary"] = (f"added {ok} of {len(r['results'])} marker(s) to '{tl}', each read "
+                            f"back{refused}; nothing was cut" +
+                            (f"; PROBLEMS: {'; '.join(r['problems'])}" if r.get("problems")
+                             else "") + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("trim_review_markers", args, run)
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +686,29 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "reference", "other"], "additionalProperties": False},
         sync, title="Sync dual-system sound", annotations=WRITE))
+    registry.add(Tool(
+        "trim_review_markers",
+        "Add trim-review rows as markers on an ' [auto]' timeline: long silences (Blue), "
+        "fillers (Yellow), repeats (Purple) and Whisper loops (Red) in the parts of the source "
+        "the timeline plays, each with its suggestion and confidence in the note, each read "
+        "back with GetMarkers. It adds markers only: nothing is cut, rippled or deleted. A row "
+        "that would land on a frame already holding a marker is refused and reported. Give a "
+        "cut manifest (its source and words), or a source with its words. The timeline is made "
+        "current while marking and the UI is put back. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "manifest": {"type": "string", "description": "Absolute path of a cut manifest."},
+            "source": {"type": "string",
+                       "description": "Absolute path of the source media, instead of a manifest."},
+            "words": {"type": "string",
+                      "description": "Absolute path of the word JSON (default: the manifest's; "
+                      "without it, silences only)."},
+            **REVIEW_PROPS, **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        trim_review_markers, title="Mark silences and fillers", annotations=WRITE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

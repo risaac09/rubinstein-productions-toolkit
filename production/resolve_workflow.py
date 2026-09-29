@@ -64,6 +64,8 @@ Commands:
     sync                   Stack dual-system sound (camera + recorder, or two
                            cameras) on a new [auto] timeline at the measured
                            offset, every placement read back
+    trim-review            Silence, filler and repeat review of an edit: a TSV,
+                           or markers on an [auto] timeline; deletes nothing
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -1434,7 +1436,7 @@ def cmd_deliver_fix_loudness(args):
 
 
 # ---------------------------------------------------------------------------
-# Sync (dual-system sound)
+# Sync (dual-system sound) and trim review
 # ---------------------------------------------------------------------------
 
 def _fps_arg(text):
@@ -1529,6 +1531,112 @@ def cmd_sync(args):
                if a["implied_offset_s"] is not None else "") +
               (f"; {a['note']}" if a.get("note") else ""))
     for p in r["problems"]:
+        print(f"  PROBLEM: {p}", file=sys.stderr)
+    if r["ui_restore_problems"]:
+        print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
+    return r["exit_status"]
+
+
+def _review_opts(args):
+    db = args.silence_db
+    if db != "auto":
+        try:
+            db = float(db)
+        except ValueError:
+            raise ValueError(f"--silence-db takes dBFS (such as -45) or auto (got {db!r}).")
+    return {"silence_db": db, "min_silence_s": args.min_silence, "tighten_s": args.tighten,
+            "cut_s": args.cut, "soft": args.soft_fillers}
+
+
+def cmd_trim_review(args):
+    """Silence and filler review: offline to a TSV (start, end, kind, text,
+    confidence, suggestion) from a cut manifest or a whole source with its
+    words JSON; with --markers, the same rows as markers on an [auto]
+    timeline in the project named with --project, each read back. Nothing
+    is cut, rippled or deleted. Exit 0 done (or planned, with --dry-run), 1
+    refused or failed."""
+    from rpresolve import cutlist, trimreview as tr
+    manifest = tr.is_manifest(args.input)
+    try:
+        opts = _review_opts(args)
+        if manifest:
+            m = cutlist.load_manifest(args.input)
+            source = m["source_path"]
+            words = cutlist.load_words(args.words or m["words"])
+        else:
+            source = args.input
+            words = cutlist.load_words(args.words) if args.words else None
+    except (cutlist.CutlistError, OSError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if not os.path.isfile(source):
+        print(f"ERROR: the source {source} is not a file.", file=sys.stderr)
+        return 1
+    if args.markers:
+        if args.out:
+            print("ERROR: --out goes with the offline review; --markers writes to the timeline.",
+                  file=sys.stderr)
+            return 1
+        if not (args.timeline and args.project):
+            print("ERROR: --markers needs --timeline and --project.", file=sys.stderr)
+            return 1
+        return _trim_markers(args, source, words, opts)
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        if manifest:
+            r = tr.review_manifest(m, words, audio=not args.no_audio, **opts)
+        else:
+            r = tr.review_source(source, words, audio=not args.no_audio, **opts)
+    except cutlist.CutlistError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    text = tr.tsv(r["rows"])
+    if args.out:
+        _write_private(args.out, text)
+        print(f"Wrote {len(r['rows'])} row(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    thr = sorted({t for t in r["thresholds"] if t is not None})
+    print(tr.summary(r["rows"]) + (f" Silence below {', '.join(f'{t:g}' for t in thr)} dBFS."
+                                   if thr else ""), file=sys.stderr)
+    return 0
+
+
+def _trim_markers(args, source, words, opts):
+    resolve = get_resolve()
+    try:
+        with rpapi.ResolveLock():
+            r = rpwork.trim_review_markers(resolve, args.project, args.timeline, source, words,
+                                           audio=not args.no_audio, review_opts=opts,
+                                           dry_run=args.dry_run, project_id=args.project_id,
+                                           expect_sha=args.plan_sha)
+    except rpapi.ResolveAPIError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    tl = r["timeline"]
+    print(f"Timeline: {tl['name']} ({tl['fps']:g} fps, {tl['markers_before']} marker(s) before)")
+    print(f"Source:   {len(r['items'])} item(s) of it on the timeline" +
+          (f"; skipped: {'; '.join(r['skipped_items'])}" if r["skipped_items"] else ""))
+    c = r["counts"]
+    print(f"Review:   {r['rows']} row(s): " + ", ".join(f"{n} {k}" for k, n in c["kind"].items()))
+    for m in r["planned"]:
+        print(f"  +{m['frame']:<7} {m['color']:<7} {m['duration']:>4}f  {m['name']}")
+    for x in r["refused"]:
+        print(f"  REFUSED +{x['frame']} {x['kind']}: {x['reason']}", file=sys.stderr)
+    if r["dry_run"]:
+        print(f"plan_sha: {r['plan_sha']}")
+        print("Dry run: no marker added. To add them, run again without --dry-run and with "
+              f"--plan-sha {r['plan_sha']}.")
+        return 0
+    ok = sum(1 for x in r["results"] if x["ok"])
+    print(f"Added and read back {ok} of {len(r['results'])} marker(s); nothing was cut.")
+    for x in r["results"]:
+        if not x["ok"]:
+            print(f"  FAIL +{x['frame']} {x['name']}: {x['problem']}", file=sys.stderr)
+    for p in r.get("problems", []):
         print(f"  PROBLEM: {p}", file=sys.stderr)
     if r["ui_restore_problems"]:
         print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
@@ -1641,6 +1749,11 @@ Examples:
   python3 resolve_workflow.py sync-measure /path/to/A001.MOV /path/to/ZOOM0001.WAV
   python3 resolve_workflow.py sync /path/to/A001.MOV /path/to/ZOOM0001.WAV --project "My Project" \\
       --bin "Sync A001" --dry-run
+
+  # Trim review: a TSV of proposals, or markers on an [auto] timeline (nothing is cut)
+  python3 resolve_workflow.py trim-review manifest.json --out /path/outside/repo/review.tsv
+  python3 resolve_workflow.py trim-review manifest.json --markers --timeline "SW_clip [auto]" \\
+      --project "My Project" --dry-run
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1925,6 +2038,34 @@ Examples:
                                                            "plan_sha")
     sp.add_argument("--plan-sha", help="Refuse unless the plan still matches this dry run's")
     sp.set_defaults(func=cmd_sync)
+
+    sp = subparsers.add_parser(
+        "trim-review", help="Silence and filler review: a TSV, or markers on an [auto] timeline; "
+        "deletes nothing")
+    sp.add_argument("input", help="A cut manifest (.json), or the source media file")
+    sp.add_argument("--words", help="mlx_whisper word JSON (default: the manifest's); without "
+                                    "it a source gets silences only")
+    sp.add_argument("--out", help="Write the TSV here instead of stdout (refused in this repo)")
+    sp.add_argument("--silence-db", default=str(-45.0),
+                    help="Silence below this dBFS, or 'auto' (the quiet floor plus 10 dB); "
+                         "default -45")
+    sp.add_argument("--min-silence", type=float, default=0.8,
+                    help="Shortest silence listed, seconds (default 0.8)")
+    sp.add_argument("--tighten", type=float, default=1.2,
+                    help="A silence this long suggests tighten (default 1.2 s)")
+    sp.add_argument("--cut", type=float, default=2.5,
+                    help="A silence this long suggests cut-candidate (default 2.5 s)")
+    sp.add_argument("--soft-fillers", action="store_true",
+                    help="Also list 'like', 'you know' and 'I mean' (low confidence, keep)")
+    sp.add_argument("--no-audio", action="store_true", help="Words only: no silences")
+    sp.add_argument("--markers", action="store_true",
+                    help="Add the rows as markers on --timeline instead of writing a TSV")
+    sp.add_argument("--timeline", help="With --markers: an [auto] timeline's name or unique id")
+    sp.add_argument("--project", help="With --markers: name of the open project")
+    sp.add_argument("--project-id", help="With --markers: its unique id")
+    sp.add_argument("--dry-run", action="store_true", help="With --markers: plan only")
+    sp.add_argument("--plan-sha", help="With --markers: refuse unless the plan still matches")
+    sp.set_defaults(func=cmd_trim_review)
 
     args = parser.parse_args()
     if not args.command:
