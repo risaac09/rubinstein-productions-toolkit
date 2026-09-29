@@ -273,6 +273,16 @@ class TestSyncPool(Base):
                                          "reference A1: source_start 1 (planned 0)",
                                          "other A2: source_start 1 (planned 0)"])
 
+    def test_ntsc_frame_math_takes_the_exact_rate(self):
+        # 29.97 is 30000/1001. An offset of 305700.6 frames at that rate (2 h 50
+        # min) is 305700.29 at a plain 29.97: a whole frame apart once rounded.
+        self.cam.props["FPS"] = self.rec.props["FPS"] = "29.97"
+        dry = self.run_it(measure=self.measure(305700.6 * 1001 / 30000), dry_run=True)
+        self.assertEqual(dry["rate"], "29.97")  # the string only for SetSetting
+        self.assertEqual(dry["offset_frames"], 305701)
+        self.assertEqual(self.measured[0][2]["fps"], 30000 / 1001)
+        self.assertEqual([p["length"] for p in dry["plan"]], [1500, 1500, 1600])
+
     def test_drift_over_the_threshold_is_reported_not_corrected(self):
         dry, r = self.twice(measure=self.measure(exceeds=True))
         self.assertEqual(r["exit_status"], 2)
@@ -439,6 +449,18 @@ class TestRateAndPlan(unittest.TestCase):
         self.assertEqual(syncbuild.rate_string(60.0), "60")
         self.assertIsNone(syncbuild.rate_string(12.5))
         self.assertIsNone(syncbuild.rate_string("x"))
+
+    def test_exact_rates_for_frame_math(self):
+        from rpresolve.deliver import exact_fps
+        for spelled, n in (("23.976", 24), ("23.98", 24), ("29.97", 30), ("29.97 DF", 30),
+                           ("47.952", 48), ("59.94", 60), ("95.904", 96), ("119.88", 120)):
+            self.assertEqual(exact_fps(spelled), n * 1000 / 1001, spelled)
+        for rate in ("24", "25", "30", "60", 50, "25.000"):
+            self.assertEqual(exact_fps(rate), float(str(rate)), rate)
+        self.assertIsNone(exact_fps(None))
+        # Every Resolve timeline rate maps to itself or to its exact NTSC rate.
+        for r in syncbuild.RESOLVE_RATES:
+            self.assertEqual(syncbuild.rate_string(exact_fps(r)), r)
 
     def test_audio_subtypes(self):
         self.assertEqual([syncbuild.audio_subtype(n) for n in (1, 2, 4, 6, 0)],

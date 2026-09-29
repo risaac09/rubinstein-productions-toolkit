@@ -977,7 +977,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     would_create, bin, rate, offset_frames, plan, plan_sha, dry_run,
     imported, built, autosync, problems, ui_restore_problems,
     exit_status}."""
-    from . import syncbuild as sb
+    from . import deliver, syncbuild as sb
     if measure is None or (bin and probe is None):
         from . import sync as rpsync  # numpy
         measure, probe = measure or rpsync.measure, probe or rpsync.probe
@@ -1043,6 +1043,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     if rate is None:
         raise Refused(f"the reference runs at {fps:g} fps, which is not a timeline frame rate "
                       "Resolve offers.")
+    tl_fps = deliver.exact_fps(rate)  # frame math at 30000/1001, not 29.97; rate is for SetSetting
     stem = os.path.splitext(infos[0]["name"])[0]
     name = name or f"{stem} sync{AUTO}"
     if not name.endswith(AUTO):
@@ -1060,7 +1061,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
             raise Refused("this Resolve does not define " + ", ".join(
                 f"resolve.{n}" for n in missing) + " (an unknown constant reads as None), so "
                 "AutoSyncAudio's settings cannot be given.")
-    kw = {"fps": float(rate), "check_cancel": check_cancel}
+    kw = {"fps": tl_fps, "check_cancel": check_cancel}
     if window_s:
         kw["window_s"] = window_s
     try:
@@ -1075,7 +1076,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
         raise Refused("the two recordings do not match well enough to place: " +
                       "; ".join(report["reasons"]) + groups + ". Nothing was built.")
     offset_frames = report["frames"]["placed"]
-    the_plan = sb.plan(infos[0], infos[1], offset_frames, float(rate))
+    the_plan = sb.plan(infos[0], infos[1], offset_frames, tl_fps)
     drift = report.get("drift") or {}
     sha = plan_sha("sync", pin.unique_id, "import" if importing else "pool",
                    [_file_key(p) for p in paths], bin, name, bool(autosync), rate,
@@ -1109,11 +1110,11 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
                 # The new timelines go into the run's bin too (CreateEmptyTimeline
                 # adds to the current folder); the folder is put back after.
                 clips, infos = _import_pair(media_pool, root, bin, paths, rate, out)
-                build_plan = sb.plan(infos[0], infos[1], offset_frames, float(rate))
+                build_plan = sb.plan(infos[0], infos[1], offset_frames, tl_fps)
             else:
                 build_plan = the_plan
             clips.update({"reference_info": infos[0], "other_info": infos[1]})
-            built = sb.build(project, media_pool, name, rate, float(rate), clips, build_plan,
+            built = sb.build(project, media_pool, name, rate, tl_fps, clips, build_plan,
                              check)
             tl = built.pop("timeline")
             out["built"] = built
@@ -1175,8 +1176,8 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
     whose items say where Resolve put the other file. Returns {returned,
     changed_properties, verification_timeline, implied_offset_s, verdict,
     problems}."""
-    from . import syncbuild as sb
-    fps = float(rate)
+    from . import deliver, syncbuild as sb
+    fps = deliver.exact_fps(rate)
     res = {"returned": None, "changed_properties": [], "verification_timeline": vname,
            "implied_offset_s": None, "verdict": None, "problems": []}
     check()
@@ -1243,8 +1244,8 @@ def trim_review_markers(resolve, project_name, timeline, source, words=None, aud
     if not tl_name.endswith(AUTO):
         raise Refused(f"'{tl_name}' is not an [auto] timeline. Markers go only onto timelines "
                       "these tools made; duplicate it first (duplicate_timeline_auto).")
-    tl_fps = deliver.fps_number(api._safe_call(tl, "GetSetting", "timelineFrameRate") or
-                                api._safe_call(project, "GetSetting", "timelineFrameRate"))
+    tl_fps = deliver.exact_fps(api._safe_call(tl, "GetSetting", "timelineFrameRate") or
+                               api._safe_call(project, "GetSetting", "timelineFrameRate"))
     if not tl_fps:
         raise Refused(f"the frame rate of '{tl_name}' could not be read.")
     found, skipped = mk.source_items(tl, source)

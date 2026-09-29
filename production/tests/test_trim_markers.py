@@ -100,6 +100,21 @@ class TestPlan(Base):
         self.assertIn("nothing was cut", m["note"])
         self.assertTrue(m["custom"].startswith(markers.CUSTOM))
 
+    def test_an_ntsc_timeline_maps_at_the_exact_rate(self):
+        # 29.97 is 30000/1001. An item showing the source from frame 299700 (2 h
+        # 46 min in) starts at 9999.990 s at that rate, at 10000.000 s at a plain
+        # 29.97; a filler at 10049.995 s is 1498.65 frames in, not 1498.35.
+        clip = rf.Clip("take.wav", "clip-take", {"File Path": self.source, "FPS": "29.97"})
+        self.project.timelines.append(rf.Timeline(
+            "Long [auto]", "tl-long", 29.97, 108000, 111000, tracks={"video": [[rf.Item(
+                "take.wav", 108000, 111000, clip, source=(299700, 302700))]]}))
+        words = [{"word": w, "start": a, "end": b} for w, a, b in
+                 (("so", 10049.5, 10049.8), ("um", 10049.995, 10050.2), ("then", 10050.5, 10050.9))]
+        r = workflows.trim_review_markers(self.resolve, P, "Long [auto]", self.source, words,
+                                          audio=False, dry_run=True)
+        self.assertEqual([m["frame"] for m in r["planned"] if m["name"] == "filler: um"], [1499])
+        self.assertEqual(r["timeline"]["fps"], 30000 / 1001)
+
     def test_a_frame_that_holds_a_marker_is_refused(self):
         self.auto.markers[10.0] = {"color": "Green", "duration": 1.0, "note": "", "name": "mine",
                                    "customData": ""}

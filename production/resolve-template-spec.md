@@ -585,7 +585,10 @@ Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
   (and the offset groups), and nothing is built.
 - **The timeline:** `<reference> sync [auto]` (or `--name`, which must
   end ` [auto]`; an existing name is refused), at the reference's frame
-  rate, set while it is empty and read back. The reference goes on V1/A1
+  rate, set while it is empty and read back. Resolve spells an NTSC rate
+  short (`29.97`); the frame math uses the rate it stands for
+  (30000/1001), since a plain 29.97 puts a placement 0.108 frame off per
+  hour of offset. The reference goes on V1/A1
   from the start; the other on A2 (an audio file, `mediaType` 2) or V2/A2
   (a camera) at the offset in whole frames. A negative offset moves the
   reference later instead, so nothing is trimmed from either.

@@ -8,8 +8,10 @@ the project, plans and puts the UI back.
 Where a row lands: the timeline items whose media is the review's source
 file map source seconds to timeline frames (an item starting at timeline
 frame S with source start frame F, at the source's own rate, shows source
-second t at S + (t - F / source fps) * timeline fps). Items that play at
-another speed are skipped and reported, since that mapping would not hold.
+second t at S + (t - F / source fps) * timeline fps, each rate exact: an
+NTSC rate Resolve spells '29.97' is 30000/1001 here, since the plain float
+is 0.108 frame off per hour of source). Items that play at another speed
+are skipped and reported, since that mapping would not hold.
 
 Timeline markers are addressed by frames from the timeline's start (the
 scripting README: GetMarkers returns {96.0: {...}} for a marker "at
@@ -22,6 +24,7 @@ moved or merged.
 import os
 
 from . import api, cutlist
+from .deliver import exact_fps
 from .deliver import fps_number as _number  # the leading number of a property ('25.000')
 from .trimreview import COLORS
 
@@ -47,7 +50,7 @@ def source_items(tl, source):
                 if not path or os.path.realpath(path) != want:
                     continue
                 label = f"{kind[0].upper()}{t} at {it.GetStart()}"
-                fps = _number(api._safe_call(clip, "GetClipProperty", "FPS"))
+                fps = exact_fps(api._safe_call(clip, "GetClipProperty", "FPS"))
                 s0, s1 = (api._safe_call(it, "GetSourceStartFrame"),
                           api._safe_call(it, "GetSourceEndFrame"))
                 if not fps or s0 is None:

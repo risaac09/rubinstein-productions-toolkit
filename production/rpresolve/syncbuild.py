@@ -17,6 +17,9 @@ What Resolve 21.0.4.5 does, and what this module does about it:
       to the start and added to GetStartFrame() once the timeline exists.
     - startFrame and endFrame count source frames at the source's own
       rate, and endFrame is exclusive (cut.py, measured on Ep 002).
+    - Rates come spelled short ('29.97'); every frame here is counted at
+      the rate that stands for (deliver.exact_fps: 30000/1001), and the
+      string goes only to SetSetting.
     - MediaPool.AutoSyncAudio(items, settings) links the audio into the
       clips it syncs, changing media-pool items, so it runs only on clips
       this run imported. What it did is read back through a second
@@ -27,6 +30,7 @@ What Resolve 21.0.4.5 does, and what this module does about it:
 import os
 
 from . import api, cutlist
+from .deliver import exact_fps
 from .deliver import fps_number as _number  # the leading number of a property ('25.000')
 
 AUTO = " [auto]"
@@ -122,7 +126,7 @@ def clip_info(clip):
     frames = _number(clip.GetClipProperty("Frames"))
     return {"name": clip.GetName(), "uid": _uid(clip),
             "path": clip.GetClipProperty("File Path") or "",
-            "fps": _number(clip.GetClipProperty("FPS")),
+            "fps": exact_fps(clip.GetClipProperty("FPS")),
             "frames": int(frames) if frames is not None else None,
             "video": "video" in kind.lower(),
             "channels": int(_number(clip.GetClipProperty("Audio Ch")) or 0)}
