@@ -581,7 +581,8 @@ def render_steps(dest, target_dir, filename, size=None, fps=None):
     for key, value in sorted((dest.get("resolve") or {}).items()):
         if value is not None:
             steps.append({"settings": {key: value}, "required": False})
-    steps.append({"settings": {"ReplaceExistingFilesInPlace": False}, "required": False})
+    # ReplaceExistingFilesInPlace is not sent: Resolve 21.0.4.5 refuses it (spike 19), and
+    # output_problems already refuses a target file that exists.
     return steps
 
 

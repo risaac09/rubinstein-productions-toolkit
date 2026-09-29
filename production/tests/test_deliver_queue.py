@@ -254,6 +254,17 @@ class TestRefusals(Base):
 
     def test_captions_only_on_a_disabled_track(self):
         self.wide.disabled.add(("subtitle", 1))
+        # Not current, so the dry run cannot read the switch and says so ...
+        dry = self.queue(dry_run=True)
+        self.assertTrue(any("checked when the job is queued" in w for w in dry["warnings"]))
+        # ... and the real queue reads it once the timeline is current, and refuses.
+        with self.assertRaisesRegex(workflows.Refused, "disabled track.*Nothing was queued"):
+            self.queue(expect_sha=dry["plan_sha"])
+        self.assertEqual(self.project.jobs, [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "youtube_16x9")))
+        self.assertIs(self.project.current, self.here)  # the UI is put back
+        # When it is the current timeline, the dry run reads the switch itself.
+        self.project.current = self.wide
         with self.assertRaisesRegex(workflows.Refused, "disabled track"):
             self.queue(dry_run=True)
         self.wide.tracks["subtitle"].append(
@@ -261,6 +272,15 @@ class TestRefusals(Base):
         r = self.queue(dry_run=True)
         self.assertEqual(r["timeline"]["subtitle_tracks"], [1])
         self.assertEqual(r["timeline"]["subtitle_tracks_disabled"], [1])
+
+    def test_a_timeline_that_is_not_current_is_not_read_as_all_disabled(self):
+        # Resolve 21.0.4.5 reports every track of a non-current timeline as off
+        # (spike 19); that must not refuse captions that are really on.
+        self.assertIsNot(self.project.current, self.wide)
+        self.assertIs(self.wide.GetIsTrackEnabled("video", 1), False)
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 0, r)
+        self.assertEqual(len(self.project.jobs), 1)
 
     def test_a_queued_job_that_hides_its_output_is_named(self):
         # A job without TargetDir/OutputFilename cannot be compared for a clash.

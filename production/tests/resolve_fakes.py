@@ -111,7 +111,12 @@ class Timeline(Fake):
     def GetStartFrame(self): return self.start
     def GetEndFrame(self): return self.end
     def GetTrackCount(self, kind): return len(self.tracks.get(kind, []))
-    def GetIsTrackEnabled(self, kind, index): return (kind, index) not in self.disabled
+    def GetIsTrackEnabled(self, kind, index):
+        # Like Resolve 21.0.4.5: every track of a timeline that is not current reads False.
+        project = getattr(self, "project", None)
+        if project is not None and project.current is not self:
+            return False
+        return (kind, index) not in self.disabled
 
     def GetSetting(self, key=None):
         return self.fps if key == "timelineFrameRate" else self.settings.get(key)

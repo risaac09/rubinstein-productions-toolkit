@@ -585,6 +585,25 @@ def _restore_mode(project, mode0, warnings):
             warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
 
 
+def _subtitle_tracks(project, tl):
+    """(items per enabled subtitle track, items per disabled one, whether
+    the on/off state could be read). Resolve 21.0.4.5 answers
+    GetIsTrackEnabled with False for every track, video included, of a
+    timeline that is not current (spike 19), so the state is read only on
+    the current timeline. Otherwise every track counts as enabled, and the
+    real queue reads it again once it has made the timeline current."""
+    cur = api._safe_call(project, "GetCurrentTimeline")
+    readable = bool(cur) and api._safe_call(cur, "GetUniqueId") == tl.GetUniqueId()
+    on, off = [], []
+    for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
+        count = len(tl.GetItemListInTrack("subtitle", i) or [])
+        if readable and api._safe_call(tl, "GetIsTrackEnabled", "subtitle", i) is False:
+            off.append(count)
+        else:
+            on.append(count)
+    return on, off, readable
+
+
 def _remove_if_empty(folder):
     """rmdir a folder this run made, only while it is still empty. True
     when it is gone."""
@@ -645,14 +664,7 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     _, tl = api.find_timeline(project, timeline)
     if project.IsRenderingInProgress():
         raise Refused("a render is running; queue after it finishes.")
-    subtitle_counts, subtitle_off = [], []
-    for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
-        count = len(tl.GetItemListInTrack("subtitle", i) or [])
-        # A disabled track does not render; a state that cannot be read counts as enabled.
-        if api._safe_call(tl, "GetIsTrackEnabled", "subtitle", i) is False:
-            subtitle_off.append(count)
-        else:
-            subtitle_counts.append(count)
+    subtitle_counts, subtitle_off, track_state_read = _subtitle_tracks(project, tl)
     fps_raw = (api._safe_call(tl, "GetSetting", "timelineFrameRate") or
                api._safe_call(project, "GetSetting", "timelineFrameRate"))
     fps = deliver.fps_number(fps_raw)
@@ -697,6 +709,9 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
                                "their output file (TargetDir and OutputFilename), so a clash with "
                                "them could not be checked: " + ", ".join(map(str, unnamed)))
+    if dry_run and dest["captions"] in ("sidecar", "burnin") and not track_state_read:
+        out["warnings"].append("whether the subtitle tracks are switched on is checked when the "
+                               "job is queued: Resolve reports it only for the current timeline")
     if fps is None:
         out["warnings"].append(f"the timeline's frame rate ({fps_raw!r}) could not be read, so "
                                "FrameRate is not set; check fps with deliver-check.")
@@ -714,6 +729,10 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         mode0 = project.GetCurrentRenderMode()
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
+        # Now current, so the subtitle tracks' on/off state reads true (_subtitle_tracks).
+        late = deliver.timeline_problems(dest, *_subtitle_tracks(project, tl)[:2])
+        if late:
+            raise Refused(" ".join(late) + " Nothing was queued.")
         made = not os.path.isdir(real_dir)
         if made:
             try:
@@ -754,7 +773,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         exact["AudioBitDepth"] = int(dest["audio"]["bit_depth"])
     if fps:
         exact["FrameRate"] = fps
-    loose = {"VideoFormat": [dest["format"]],
+    # The job list names the container its own way: 'QuickTime' for mov.
+    loose = {"VideoFormat": [dest["format"], {"mov": "QuickTime", "mp4": "MP4"}[dest["format"]]],
              "VideoCodec": [q["codec"]["used"], q["codec"]["description"]],
              "AudioCodec": [dest["audio"].get("resolve_codec") or dest["audio"]["codec"]]}
     problems, warnings, unverified = render.readback_report(job, exact, loose)
