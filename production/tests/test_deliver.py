@@ -257,10 +257,16 @@ class TestOutputProblems(unittest.TestCase):
         os.remove(out)
         open(out[:-4] + ".srt", "w").close()
         self.assertIn("caption file", deliver.output_problems(self.dir, self.name, self.yt)[0])
-        # a burn-in destination makes no sidecar, so an .srt beside it is no clash
-        self.assertEqual(deliver.output_problems(
-            self.dir, "SW001_Guest_01_example-clip_9x16.mp4", dest("linkedin_9x16")), [])
         os.remove(out[:-4] + ".srt")
+        # a burn-in destination makes no sidecar, so an .srt with its own stem beside it is
+        # no clash (deliver-check reports that file later)
+        vertical = "SW001_Guest_01_example-clip_9x16"
+        open(os.path.join(self.dir, vertical + ".srt"), "w").close()
+        self.assertEqual(deliver.output_problems(self.dir, vertical + ".mp4",
+                                                 dest("linkedin_9x16")), [])
+        self.assertIn("caption file", deliver.output_problems(
+            self.dir, vertical + ".mp4", dest("linkedin_9x16", captions="sidecar"))[0])
+        os.remove(os.path.join(self.dir, vertical + ".srt"))
         self.assertIn("render queue", deliver.output_problems(self.dir, self.name, self.yt,
                                                               queued={out})[0])
 
