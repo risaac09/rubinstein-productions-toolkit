@@ -1445,6 +1445,16 @@ def _fps_arg(text):
     return float(dc.parse_fps(text))
 
 
+def _numpy_missing(what):
+    """None when numpy imports; else the error line for a command that needs
+    it, so it can stop before connecting to Resolve or taking the lock."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError as e:
+        return f"ERROR: {what} needs numpy ({e}). Use /usr/bin/python3."
+    return None
+
+
 def cmd_sync_measure(args):
     """Measure where <other> sits against <reference> from the sound both
     recorded (offline; rpresolve/sync.py). Exit 0 a match, 2 a match whose
@@ -1480,6 +1490,10 @@ def cmd_sync(args):
     with either end of the overlap more than half a frame out (rounding plus
     half the drift) or an AutoSyncAudio result that could not be read back,
     1 refused or failed."""
+    missing = _numpy_missing("sync")  # it measures the audio first (rpresolve/sync.py)
+    if missing:
+        print(missing, file=sys.stderr)
+        return 1
     resolve = get_resolve()
     try:
         with rpapi.ResolveLock():

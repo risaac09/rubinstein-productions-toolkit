@@ -485,9 +485,24 @@ class TestSyncCommandAndTool(Base):
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
                 mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
+                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
                 redirect_stdout(out), redirect_stderr(err):
             status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
         return status, out.getvalue(), err.getvalue()
+
+    def test_cli_without_numpy_stops_before_resolve(self):
+        ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
+                  name=None, autosync=False, window=None, dry_run=True, plan_sha=None)
+        err = io.StringIO()
+        connect = mock.Mock(return_value=self.resolve)
+        with mock.patch.dict(sys.modules, {"numpy": None}), \
+                mock.patch.object(resolve_workflow, "get_resolve", connect), \
+                redirect_stdout(io.StringIO()), redirect_stderr(err):
+            status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
+        self.assertEqual(status, 1)
+        self.assertIn("sync needs numpy", err.getvalue())
+        connect.assert_not_called()
+        self.assertFalse(os.path.exists(os.environ["RPRESOLVE_LOCK"]))
 
     def test_cli_dry_run_then_real_run(self):
         status, out, _ = self.cli(dry_run=True)
