@@ -152,18 +152,49 @@ class TestMeasureSignals(unittest.TestCase):
         other = np.interp(t_ref * RATE, np.arange(len(src)), src)
         r = sync.measure_signals(src, other, RATE, fps=25)
         self.assertTrue(r["match"], r["reasons"])
-        # At reference time t the offset is start + (t - start) * d / (1 + d).
+        # At reference time t the offset is start + (t - start) * d / (1 + d). The
+        # placement is that line at the overlap's midpoint; the head window reads
+        # it at its own centre; retimed, the first frame belongs at the start.
+        mid = (r["overlap"]["start_s"] + r["overlap"]["end_s"]) / 2
+        self.assertAlmostEqual(r["offset_s"], start + (mid - start) * d / (1 + d), delta=0.0002)
         head = r["windows"][0]["center_s"]
-        self.assertAlmostEqual(r["offset_s"], start + (head - start) * d / (1 + d), delta=0.0002)
+        self.assertAlmostEqual(r["head_offset_s"], start + (head - start) * d / (1 + d),
+                               delta=0.0002)
+        self.assertAlmostEqual(r["drift"]["retime_offset_s"], start, delta=0.0005)
         self.assertAlmostEqual(r["drift"]["ppm"], 50 / (1 + d), delta=1.0)
         self.assertAlmostEqual(r["drift"]["ms_per_min"], 3.0, delta=0.06)
-        self.assertTrue(r["drift"]["exceeds"])  # 30 ms over 600 s is 0.75 frame at 25 fps
+        # 30 ms over 600 s: 15 ms of it either side of the midpoint, plus the
+        # rounding of 20.0150 s to frame 500 (15 ms), puts the ends 30 ms out.
+        self.assertAlmostEqual(r["drift"]["worst_ms"], 30.0, delta=0.5)
+        self.assertTrue(r["drift"]["exceeds"])
         self.assertAlmostEqual(r["drift"]["retime_pct"], 99.995, delta=0.0002)
         self.assertLess(r["drift"]["max_residual_ms"], 0.5)
         # The second pass stretched the other by the first pass's slope, so
         # every window correlates as well as a copy should.
         self.assertAlmostEqual(r["drift_compensated_ppm"], 50, delta=3)
         self.assertGreater(min(w["ncc"] for w in r["windows"]), 0.95)
+
+    def test_rounding_and_drift_together_are_held_to_half_a_frame(self):
+        # 25 ppm over 600 s adds up to 15 ms, under half a 25 fps frame on its
+        # own. Placed at the line's midpoint (20.0160 s, frame 500.4 rounded to
+        # 500), the ends sit 16 ms of rounding plus 7.5 ms of drift out: over
+        # 20 ms, so it is reported, with the retime that leaves the rounding.
+        from rpresolve import syncbuild
+        src = lowpass(bursts(680, seed=15), 1500)
+        d, start = 25e-6, 20.0085
+        t_ref = start + np.arange(600 * RATE) / RATE * (1 + d)
+        other = np.interp(t_ref * RATE, np.arange(len(src)), src)
+        r = sync.measure_signals(src, other, RATE, fps=25)
+        self.assertTrue(r["match"], r["reasons"])
+        self.assertAlmostEqual(r["drift"]["over_overlap_ms"], 15.0, delta=0.3)
+        self.assertAlmostEqual(r["offset_s"], start + 300 * d, delta=0.0003)
+        self.assertEqual(r["frames"]["placed"], 500)
+        self.assertAlmostEqual(r["drift"]["worst_ms"], 23.5, delta=0.5)
+        self.assertTrue(r["drift"]["exceeds"])
+        words = syncbuild.drift_words(r["drift"], 25)
+        self.assertIn("OVER 0.5 frame", words)
+        self.assertIn("with that frame at +20.008", words)
+        self.assertIn("(frame +500)", words)
 
     def test_a_fast_clock_is_measured_the_same_way(self):
         src = lowpass(bursts(400, seed=14), 1500)
@@ -368,11 +399,16 @@ class TestFrames(unittest.TestCase):
     def test_drift_fit_and_residuals(self):
         ws = [{"center_s": 0.0, "offset_s": 1.0}, {"center_s": 60.0, "offset_s": 1.001},
               {"center_s": 120.0, "offset_s": 1.002}]
-        d = sync.drift(ws, 120.0, fps=25)
+        d = sync.drift(ws, 0.0, 120.0, fps=25)
         self.assertAlmostEqual(d["ms_per_min"], 1.0, places=6)
         self.assertAlmostEqual(d["ppm"], 16.67, places=2)
         self.assertEqual(d["max_residual_ms"], 0.0)
+        # Placed at the midpoint's 1.001 s, rounded to frame 25 (1.000 s): the
+        # start sits 0 ms from it and the end 2 ms.
+        self.assertEqual((d["offset_mid_s"], d["worst_ms"]), (1.001, 2.0))
         self.assertFalse(d["exceeds"])
+        # Without a frame rate the placement is exact: 1 ms either side.
+        self.assertEqual(sync.drift(ws, 0.0, 120.0)["worst_ms"], 1.0)
 
 
 FFMPEG = "/opt/homebrew/bin/ffmpeg"

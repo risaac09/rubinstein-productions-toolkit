@@ -23,12 +23,15 @@ cross-correlated with FFTs:
        came from a step lowers it, and the first pass stands.
 
 offset_s is where the other file's first frame lands on the reference's
-clock, measured at the head: positive when the other recording started
-after the reference, negative when it started before. A straight line
-fitted through every window's offset gives clock drift, in ms per minute
-and ppm. Drift that adds up to more than MAX_DRIFT_FRAMES over the overlap
-is reported with the retime that would cancel it; nothing here corrects
-it. One clock keeps every window within a millisecond or so of that line
+clock: positive when the other recording started after the reference,
+negative when it started before. A straight line fitted through every
+window's offset gives clock drift, in ms per minute and ppm, and offset_s
+is that line's value at the overlap's midpoint, where one placement errs
+least (the head window's offset, head_offset_s, when the overlap holds
+one window). What a placement at whole frames leaves at either end of the
+overlap, the frame rounding plus half the drift, is worst_ms; past
+MAX_DRIFT_FRAMES of a frame it is reported with the retime that would
+cancel the drift (exit 2 in the CLI); nothing here corrects it. One clock keeps every window within a millisecond or so of that line
 (the stretched pass, within microseconds on synthetic drift). A window
 more than LINE_MIN_MS or LINE_FRAMES of a frame off it, whichever is
 more, means the pair lines up differently in different places: a call
@@ -65,8 +68,9 @@ Offsets are in the files' own time: each file's zero is its first video
 frame (its first audio sample when it has no video), so an audio stream
 that starts later than the video in its container is accounted for.
 Placed at frame precision, a clip lands within half a frame of the
-measured offset: that residual is inherent (+/-20 ms at 25 fps) and is
-reported beside the frames.
+measured offset at the overlap's midpoint: that residual is inherent
+(+/-20 ms at 25 fps) and is reported beside the frames; drift adds to it
+toward either end.
 
 numpy is required (the system /usr/bin/python3 has it).
 """
@@ -377,31 +381,51 @@ def frames(offset_s, fps):
             "inherent_ms": round(500.0 / fps, 3)}
 
 
-def drift(measured, overlap_s, fps=None, max_frames=MAX_DRIFT_FRAMES):
+def drift(measured, start_s, end_s, fps=None, max_frames=MAX_DRIFT_FRAMES):
     """Clock drift from two or more window measurements ({center_s,
-    offset_s}): the least-squares change in offset per second of the
-    reference, as ms per minute and ppm; what it adds up to over the
-    overlap and whether that passes max_frames; the speed (percent, for the
-    other clip) that would cancel it; and how far each window sits from
-    the fitted line, which a single clock keeps within a millisecond or so
-    and a pair that lines up differently in different places does not.
-    residual_limit_ms is the most a window may sit off the line:
-    LINE_MIN_MS, or LINE_FRAMES of a frame when that is more."""
+    offset_s}) over the overlap [start_s, end_s] on the reference's clock:
+    the least-squares change in offset per second of the reference, as ms
+    per minute and ppm, and what it adds up to over the overlap; how far
+    each window sits from the fitted line, which a single clock keeps
+    within a millisecond or so and a pair that lines up differently in
+    different places does not (residual_limit_ms: LINE_MIN_MS, or
+    LINE_FRAMES of a frame when that is more); and what one placement
+    leaves.
+
+    The placement is the line's value at the overlap's midpoint
+    (offset_mid_s), where a constant offset errs least, placed at the whole
+    frame nearest it when fps is known. worst_ms is how far the line gets
+    from that placement at either end of the overlap: the frame rounding
+    plus half the drift. exceeds when that passes max_frames of a frame.
+    retime_pct is the speed (percent, for the other clip) that cancels the
+    drift; retimed about its first frame, the other clip's first frame then
+    belongs at retime_offset_s on the reference's clock."""
     t = np.array([m["center_s"] for m in measured], dtype=np.float64)
     o = np.array([m["offset_s"] for m in measured], dtype=np.float64)
     tc = t - t.mean()
     d = float((tc * (o - o.mean())).sum() / (tc * tc).sum())
     fit = o.mean() + d * tc
     res_ms = (o - fit) * 1000
-    over_ms = d * overlap_s * 1000
+
+    def at(x):  # the fitted line at reference time x
+        return float(o.mean() + d * (x - t.mean()))
+
+    over_ms = d * (end_s - start_s) * 1000
     frame_ms = 1000.0 / (fps or DEFAULT_DRIFT_FPS)
     line_ms = max(LINE_MIN_MS, LINE_FRAMES * frame_ms)
+    mid = (start_s + end_s) / 2.0
+    offset_mid = round(at(mid), 6)
+    placed = cutlist.frame(offset_mid, fps) / float(fps) if fps else offset_mid
+    worst_ms = max(abs(at(start_s) - placed), abs(at(end_s) - placed)) * 1000
     return {"ppm": round(d * 1e6, 2), "ms_per_min": round(d * 60000, 3),
             "over_overlap_ms": round(over_ms, 2),
             "over_overlap_frames": round(over_ms / frame_ms, 3),
+            "mid_s": round(mid, 3), "offset_mid_s": offset_mid,
+            "worst_ms": round(worst_ms, 2), "worst_frames": round(worst_ms / frame_ms, 3),
             "threshold_frames": max_frames,
-            "exceeds": abs(over_ms) > max_frames * frame_ms,
+            "exceeds": worst_ms > max_frames * frame_ms,
             "retime_pct": round(100 * (1 - d), 5),
+            "retime_offset_s": round(at(0.0) / (1 - d), 6),
             "span_s": round(float(t[-1] - t[0]), 3),
             "residuals_ms": [round(float(r), 3) for r in res_ms],
             "max_residual_ms": round(float(np.abs(res_ms).max()), 3),
@@ -494,7 +518,8 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
     th = {"min_peak_ratio": min_ratio, "min_ncc": min_ncc, "min_overlap_s": MIN_OVERLAP_S,
           "max_drift_frames": max_drift_frames, "window_s": window_s, "search_s": search_s}
     out = {"rate": rate, "thresholds": th, "coarse": None, "overlap": None,
-           "windows": [], "offset_s": None, "tail_offset_s": None, "drift": None,
+           "windows": [], "offset_s": None, "head_offset_s": None, "tail_offset_s": None,
+           "drift": None,
            "frames": None, "polarity": None, "match": False, "reasons": []}
     silent = [role for role, x in (("reference", ref), ("other", other)) if not np.any(x)]
     if silent:
@@ -587,12 +612,14 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
     if not out["windows"]:
         return out
     head = out["windows"][0]
-    out["offset_s"] = head["offset_s"]
+    out["offset_s"] = out["head_offset_s"] = head["offset_s"]
     out["polarity"] = head["polarity"]
     if len(out["windows"]) >= 2:
         out["tail_offset_s"] = out["windows"][-1]["offset_s"]
-        d = drift(out["windows"], ov_s, fps, max_drift_frames)
+        d = drift(out["windows"], ov0 / rate + ref_start_s, ov1 / rate + ref_start_s, fps,
+                  max_drift_frames)
         out["drift"] = d
+        out["offset_s"] = d["offset_mid_s"]  # where one placement errs least
         for w, r in zip(out["windows"], d["residuals_ms"]):
             w["residual_ms"] = r
         spread = (max(w["offset_s"] for w in out["windows"]) -
@@ -685,11 +712,8 @@ def format_summary(r):
                      "first pass stands")
     d = r.get("drift")
     if d and r["match"]:
-        lines.append(f"  drift: {d['ms_per_min']:+.3f} ms/min ({d['ppm']:+.2f} ppm), "
-                     f"{d['over_overlap_ms']:+.1f} ms over the overlap ("
-                     f"{d['over_overlap_frames']:+.2f} frame)" +
-                     (f"; OVER {d['threshold_frames']:g} frame: retime the other clip to "
-                      f"{d['retime_pct']:.5f}% to cancel it" if d["exceeds"] else ""))
+        from .syncbuild import drift_words
+        lines.append("  drift: " + drift_words(d, (r.get("frames") or {}).get("fps")))
     elif r.get("drift_note"):
         lines.append("  " + r["drift_note"])
     if r.get("groups"):
@@ -698,6 +722,7 @@ def format_summary(r):
     f = r.get("frames")
     if r.get("offset_s") is not None:
         lines.append(f"  offset: {r['offset_s']:+.4f} s" +
+                     (" (the drift line at the overlap's midpoint)" if d else "") +
                      (f" = {f['exact']:+.3f} frames at {f['fps']:g} fps, placed at "
                       f"{f['placed']:+d} (residual {f['residual_ms']:+.1f} ms; inherent "
                       f"+/-{f['inherent_ms']:.1f} ms at frame precision)" if f else ""))

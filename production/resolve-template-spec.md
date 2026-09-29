@@ -487,14 +487,18 @@ The reference is the camera clip.
   overlap: a head, a tail and at least one between (up to 7), or the whole
   overlap as one window when it is under 90 s.
 - **Offset:** where the other file's first frame lands on the
-  reference's clock, at the head window. Positive when the other started
-  later; negative when it started earlier. Each file's zero is its first
-  video frame (its first audio sample when it has none), so an audio
-  stream that starts late in its container is counted.
+  reference's clock. Positive when the other started later; negative when
+  it started earlier. With drift measured, it is the drift line's value
+  at the overlap's midpoint, where one placement errs least (the head
+  window's own reading is `head_offset_s`); with one window, that
+  window's. Each file's zero is its first video frame (its first audio
+  sample when it has none), so an audio stream that starts late in its
+  container is counted.
 - **Frames:** the offset times the reference's frame rate (or `--fps`),
   placed at the whole frame by rounding half up. Frame placement leaves a
   residual of up to half a frame (20 ms at 25 fps, 8.3 ms at 60): the
-  report gives the one this offset leaves, beside that inherent bound.
+  report gives the one this offset leaves at the midpoint, beside that
+  inherent bound; drift adds to it toward either end.
 - **Confidence**, per window: the normalized correlation at the peak
   (-1 to 1; its sign is the polarity, and an inverted mic reads as a match
   with polarity "inverted") and the peak over the highest correlation more
@@ -519,9 +523,13 @@ The reference is the camera clip.
   correct matches had a coarse ratio under 2x, and all 13 still match.
 - **Drift:** a straight line through every window's offset gives the
   clock drift, in ms per minute and ppm, and what it adds up to over the
-  overlap. Over half a frame, the report says so and gives the speed that
-  would cancel it (`retime_pct`, for the other clip); nothing corrects it
-  (exit 2). When the line slopes by more than a quarter sample per
+  overlap. What counts is where the placement leaves the ends of the
+  overlap: the frame rounding plus half the drift (`worst_ms`). Over half
+  a frame, the report says so and gives the speed that would cancel the
+  drift (`retime_pct`, for the other clip) and where the clip's first
+  frame then belongs (`retime_offset_s`, retimed about that frame);
+  nothing corrects it (exit 2). Counting the drift alone, as before, let
+  25 ppm over 10 minutes (15 ms) exit 0 while one end sat 23 ms out. When the line slopes by more than a quarter sample per
   window, the windows are measured again with the other file stretched by
   that slope: a drifting clock smears a window's peak (50 ppm over 30 s is
   1.5 ms), and on a synthetic 50 ppm pair the stretch took each window's
@@ -544,8 +552,9 @@ The reference is the camera clip.
   pull-down (1000 ppm, a recorder set to 48.048 or 47.952 kHz) reads like
   this, and the reason names it.
 
-Exit status: 0 a match; 2 a match whose drift passes half a frame; 1 no
-match or a file that cannot be read.
+Exit status: 0 a match; 2 a match whose placement leaves either end of
+the overlap more than half a frame out; 1 no match or a file that cannot
+be read.
 
 **Measured on real pairs, 2026-09-29** (read-only copies in a temp
 folder; nothing from them is in this repository):
@@ -588,8 +597,11 @@ Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
   start, source start and length within one frame of the plan. An item
   that no placement explains is a problem too. A track that already holds
   items when a clip is due there is not placed onto.
-- **Drift** over half a frame is reported (exit 2), with the retime that
-  would cancel it. Nothing retimes the clip; that is a hand step.
+- **Drift:** the other clip is placed at the offset the drift line gives
+  at the overlap's midpoint. When the rounding plus half the drift leaves
+  either end more than half a frame out, that is reported (exit 2), with
+  the retime that would cancel the drift and where the retimed clip's
+  first frame belongs. Nothing retimes the clip; that is a hand step.
 - **AutoSyncAudio** (`--autosync`, MCP `autosync`) runs only with `--bin`:
   it links the audio into the clips it syncs, changing media-pool items,
   so it touches only clips this run imported. It runs after the stacked

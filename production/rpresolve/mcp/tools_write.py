@@ -20,7 +20,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, deliver, paths, workflows
+from .. import api, deliver, paths, syncbuild, workflows
 from ..config import load_config
 from .. import detect as rpdetect
 from .. import ingest as rpingest
@@ -398,10 +398,7 @@ def sync(args, ctx):
         d = m.get("drift") or {}
         where = (f"offset {m['offset_s']:+.4f} s, placed at {f['placed']:+d} frame(s) at "
                  f"{r['rate']} fps (residual {f['residual_ms']:+.1f} ms)")
-        drift = (f"; drift {d['ms_per_min']:+.3f} ms/min, {d['over_overlap_ms']:+.1f} ms over "
-                 "the overlap" + (f", OVER the threshold and left as measured; retiming the other "
-                                  f"clip to {d['retime_pct']:.5f}% would cancel it"
-                                  if d.get("exceeds") else "") if d else
+        drift = ("; drift " + syncbuild.drift_words(d, f["fps"]) if d else
                  f"; {m.get('drift_note', '')}")
         if r["dry_run"]:
             r["summary"] = (f"would build '{r['timeline']}' with {r['other']['name']} on "
@@ -662,8 +659,10 @@ def register(registry):
         "(unique id, file path or name), or, with bin, files imported into that new bin at the "
         "pool's root, which the run owns. Only then may autosync run Resolve's AutoSyncAudio on "
         "them; its result is read back through a second [auto] timeline and compared with the "
-        "measured offset, never trusted alone. A weak or inconsistent match is refused; drift "
-        "over half a frame is reported with the retime that would cancel it, never corrected. "
+        "measured offset, never trusted alone. A weak or inconsistent match is refused; a "
+        "placement that leaves either end of the overlap more than half a frame out (rounding "
+        "plus half the drift) is reported with the retime that would cancel the drift, never "
+        "corrected. "
         "Making a multicam clip stays a hand step. Dry run first; the real run needs its "
         "plan_sha.",
         {"type": "object", "properties": {

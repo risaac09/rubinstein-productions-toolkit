@@ -44,8 +44,11 @@ def report(offset_s, fps=25.0, match=True, exceeds=False, reasons=()):
     """A measurement as rpresolve.sync.measure returns it."""
     exact = offset_s * fps
     placed = int(exact + 0.5) if exact >= 0 else -int(-exact + 0.5)
+    over_ms = 48.0 if exceeds else 0.0
+    worst_ms = abs(exact - placed) / fps * 1000 + over_ms / 2
     return {"match": match, "reasons": list(reasons), "offset_s": offset_s,
-            "tail_offset_s": offset_s, "polarity": "normal", "coarse": None,
+            "head_offset_s": offset_s, "tail_offset_s": offset_s, "polarity": "normal",
+            "coarse": None,
             "overlap": {"start_s": 0.0, "end_s": 60.0, "seconds": 60.0},
             "windows": [{"label": "head", "center_s": 15.0, "seconds": 30.0,
                          "offset_s": offset_s, "ncc": 0.8, "peak_ratio": 12.0,
@@ -53,12 +56,14 @@ def report(offset_s, fps=25.0, match=True, exceeds=False, reasons=()):
             "frames": {"fps": fps, "exact": exact, "placed": placed,
                        "residual_frames": exact - placed,
                        "residual_ms": (exact - placed) / fps * 1000, "inherent_ms": 500 / fps},
-            "drift": {"ppm": 80.0 if exceeds else 1.0, "ms_per_min": 4.8 if exceeds else 0.06,
-                      "over_overlap_ms": 48.0 if exceeds else 0.6,
-                      "over_overlap_frames": 1.2 if exceeds else 0.015, "threshold_frames": 0.5,
-                      "exceeds": exceeds, "retime_pct": 99.992 if exceeds else 99.9999,
+            "drift": {"ppm": 80.0 if exceeds else 0.0, "ms_per_min": 4.8 if exceeds else 0.0,
+                      "over_overlap_ms": over_ms, "over_overlap_frames": over_ms * fps / 1000,
+                      "mid_s": 30.0, "offset_mid_s": offset_s, "worst_ms": worst_ms,
+                      "worst_frames": worst_ms * fps / 1000, "threshold_frames": 0.5,
+                      "exceeds": exceeds, "retime_pct": 99.992 if exceeds else 100.0,
+                      "retime_offset_s": offset_s - 0.0024 if exceeds else offset_s,
                       "span_s": 30.0, "residuals_ms": [0.0], "max_residual_ms": 0.0,
-                      "residual_limit_ms": 20.0},
+                      "residual_limit_ms": 4.0},
             "thresholds": {}}
 
 

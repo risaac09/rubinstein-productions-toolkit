@@ -1448,7 +1448,8 @@ def _fps_arg(text):
 def cmd_sync_measure(args):
     """Measure where <other> sits against <reference> from the sound both
     recorded (offline; rpresolve/sync.py). Exit 0 a match, 2 a match whose
-    clock drift passes the threshold (reported, never corrected), 1 no
+    placement leaves either end of the overlap more than half a frame out
+    (frame rounding plus half the drift; reported, never corrected), 1 no
     match or a file that cannot be read."""
     try:
         from rpresolve import sync as rpsync
@@ -1476,8 +1477,9 @@ def cmd_sync(args):
     the open project named with --project: the reference on V1/A1, the
     other on the next track at the measured offset, every placement read
     back. Exit 0 built and read back (or planned, with --dry-run), 2 built
-    with drift over the threshold or an AutoSyncAudio result that could
-    not be read back, 1 refused or failed."""
+    with either end of the overlap more than half a frame out (rounding plus
+    half the drift) or an AutoSyncAudio result that could not be read back,
+    1 refused or failed."""
     resolve = get_resolve()
     try:
         with rpapi.ResolveLock():
@@ -1501,11 +1503,8 @@ def cmd_sync(args):
           f"+/-{f['inherent_ms']:.1f} ms)")
     d = m.get("drift")
     if d:
-        print(f"Drift:     {d['ms_per_min']:+.3f} ms/min ({d['ppm']:+.2f} ppm), "
-              f"{d['over_overlap_ms']:+.1f} ms over the overlap" +
-              (f"; OVER {d['threshold_frames']:g} frame and left as measured: retiming the "
-               f"other clip to {d['retime_pct']:.5f}% by hand would cancel it"
-               if d["exceeds"] else ""))
+        from rpresolve.syncbuild import drift_words
+        print(f"Drift:     {drift_words(d, f['fps'])}")
     elif m.get("drift_note"):
         print(f"Drift:     {m['drift_note']}")
     print(f"Timeline:  {r['timeline']} at {r['rate']} fps" +

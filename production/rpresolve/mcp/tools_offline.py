@@ -452,10 +452,12 @@ def register(registry):
         "audio: a camera clip and a recorder's file, or two cameras): FFT cross-correlation of "
         "the two mono signals at 8 kHz, on windows across the overlap. Returns the offset in "
         "seconds (where the other file's first frame lands on the reference, positive when it "
-        "started later) and in frames at fps with the half-frame residual of frame placement, "
-        "clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel "
-        "it), and each window's normalized correlation and peak-to-next-peak ratio. A weak or "
-        "inconsistent result is not called a match, and says why. Never connects to Resolve.",
+        "started later; with drift, the drift line's value at the overlap's midpoint) and in "
+        "frames at fps with the half-frame residual of frame placement, clock drift (ms per "
+        "minute, ppm, over the overlap, how far the placement leaves either end, and the "
+        "retime that would cancel it), and each window's normalized correlation and "
+        "peak-to-next-peak ratio. A weak, repeating or inconsistent result is not called a "
+        "match, and says why. Never connects to Resolve.",
         _obj({"reference": {"type": "string",
                             "description": "Absolute path of the reference (the camera clip)."},
               "other": {"type": "string",

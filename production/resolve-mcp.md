@@ -126,9 +126,10 @@ tree and never overwrites an `.srt`.
   Deliver section of `resolve-template-spec.md`.
 - **Dual-system sound is placed, never retimed.** `sync` refuses a
   measurement that is not a match (and says which windows agree on which
-  offset), places the other recording at the measured offset rounded to a
-  frame, and reports drift over half a frame with the retime that would
-  cancel it. `AutoSyncAudio` changes the clips it links, so it runs only on
+  offset), places the other recording at the measured offset (the drift
+  line at the overlap's midpoint) rounded to a frame, and reports when
+  that rounding plus half the drift leaves either end of the overlap more
+  than half a frame out, with the retime that would cancel the drift. `AutoSyncAudio` changes the clips it links, so it runs only on
   clips the same call imported into its own new bin, and its result is
   compared with the measured offset through a second ` [auto]` timeline.
 - **Markers only.** `trim_review_markers` adds markers to an ` [auto]`

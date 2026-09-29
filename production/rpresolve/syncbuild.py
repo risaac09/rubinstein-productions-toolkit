@@ -54,6 +54,24 @@ def rate_string(fps):
     return best if abs(float(best) - f) < 0.01 else None
 
 
+def drift_words(d, fps=None):
+    """A measurement's drift (rpresolve.sync.drift) in words: the drift,
+    how far the ends of the overlap sit from a placement made at its
+    midpoint, and, past the threshold, the retime that leaves only the
+    rounding."""
+    text = (f"{d['ms_per_min']:+.3f} ms/min ({d['ppm']:+.2f} ppm), {d['over_overlap_ms']:+.1f} "
+            f"ms over the overlap; placed by the drift line at the overlap's midpoint, its ends "
+            f"sit up to {d['worst_ms']:.1f} ms ({d['worst_frames']:.2f} frame) from the "
+            "placement, the rounding and half the drift together")
+    if d["exceeds"]:
+        at = d["retime_offset_s"]
+        text += (f"; OVER {d['threshold_frames']:g} frame and left as measured: retiming the "
+                 f"other clip to {d['retime_pct']:.5f}% about its first frame, with that frame at "
+                 f"{at:+.4f} s" + (f" (frame {cutlist.frame(at, fps):+d})" if fps else "") +
+                 ", would leave only the rounding")
+    return text
+
+
 def _uid(obj):
     return api._safe_call(obj, "GetUniqueId")
 

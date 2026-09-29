@@ -944,8 +944,9 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
 # sync: dual-system sound as a stacked multitrack [auto] timeline
 # ---------------------------------------------------------------------------
 
-SYNC_KEYS = ("coarse", "overlap", "windows", "offset_s", "tail_offset_s", "drift", "drift_note",
-             "frames", "polarity", "match", "reasons", "groups", "rival", "thresholds")
+SYNC_KEYS = ("coarse", "overlap", "windows", "offset_s", "head_offset_s", "tail_offset_s", "drift",
+             "drift_note", "frames", "polarity", "match", "reasons", "groups", "rival",
+             "thresholds")
 
 
 def _file_key(path):
