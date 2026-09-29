@@ -22,20 +22,20 @@ deliver_captions(file, dest):
        (HH:MM:SS.fff, HH:MM:SS:FF with ttp:frameRate and
        ttp:frameRateMultiplier, sub-frames), offset times (12.5s, 300f,
        500ms, 2m, 1h, 100t), begin with end or dur (with both, the
-       earlier of the two ends), timing on body and div
-       (a <p> starts with its parent unless it has a begin, ends with it
-       unless it has an end or dur, and is cut off where its parent ends;
-       parallel time containers only, timeContainer="seq" is refused),
-       <br/> as a line break, spans flattened, a <p> anywhere but in a
-       body or div refused (so none is lost), anything else in a <p>
-       left out (TTML metadata such as ttm:desc and ttm:agent quietly,
-       other elements with text named in a warning). Media time (Resolve's) and
+       earlier end), timing on body and div (a <p> starts with its parent
+       unless it has a begin, ends with it unless it has an end or dur,
+       and is cut off where its parent ends; parallel time containers
+       only, timeContainer="seq" is refused), <br/> as a line break,
+       spans flattened. Anything else inside a <p> is left out: TTML
+       metadata such as ttm:desc and ttm:agent quietly, other elements
+       holding text named in a warning. A <p> anywhere but in a body or
+       div is refused, so none is lost. Media time (Resolve's) and
        non-drop SMPTE time: under SMPTE a label's hours, minutes, seconds
        and frames count frames at ttp:frameRate, divided by the effective
-       rate (TTML2 I.3), so 01:00:04:00 at 24 x 1000/1001 is 86496 frames;
-       with discontinuous markers (TTML2's default ttp:markerMode) a dur or
-       a timed body or div is refused, since time arithmetic is undefined
-       there.
+       rate (TTML2 I.3), so 01:00:04:00 at 24 x 1000/1001 is 86496
+       frames; with discontinuous markers (TTML2's default
+       ttp:markerMode) a dur or a timed body or div is refused, since
+       time arithmetic is undefined there.
     3. Takes off the file's start timecode (file_start: the video stream's
        "timecode" tag, else another stream's, else the format's), read
        against the file's own frame rate; drop-frame (";") at 29.97 and
