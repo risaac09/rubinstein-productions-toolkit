@@ -461,6 +461,32 @@ def cmd_build_timeline(args):
     print(f"Timeline '{args.name}' is now active.")
 
 
+TRACK_KINDS = ("video", "audio", "subtitle")
+
+
+def items_per_track(timeline):
+    """{(kind, index): item count} for every video, audio and subtitle track."""
+    counts = {}
+    for kind in TRACK_KINDS:
+        for i in range(1, (timeline.GetTrackCount(kind) or 0) + 1):
+            counts[(kind, i)] = len(timeline.GetItemListInTrack(kind, i) or [])
+    return counts
+
+
+def track_changes(before, after):
+    """[(kind, index, before, after)] for every track whose item count
+    changed, a track that is new counting from 0 (and one that went, to 0)."""
+    return [(kind, i, before.get((kind, i), 0), after.get((kind, i), 0))
+            for kind, i in sorted(set(before) | set(after),
+                                  key=lambda k: (TRACK_KINDS.index(k[0]), k[1]))
+            if before.get((kind, i)) != after.get((kind, i))]
+
+
+def _change_line(before, kind, i, was, now):
+    new = "" if (kind, i) in before else " (new)"
+    return f"  {kind} track {i}{new}: {was} -> {now} item(s)"
+
+
 def cmd_add_subtitles(args):
     resolve = get_resolve()
     project = get_project(resolve)
@@ -476,7 +502,7 @@ def cmd_add_subtitles(args):
         sys.exit(1)
 
     media_pool = project.GetMediaPool()
-    before = timeline.GetTrackCount("subtitle")
+    before = items_per_track(timeline)
 
     imported = media_pool.ImportMedia([srt_path])
     if not imported:
@@ -484,17 +510,33 @@ def cmd_add_subtitles(args):
         sys.exit(1)
 
     appended = media_pool.AppendToTimeline(imported)
-    after = timeline.GetTrackCount("subtitle")
+    after = items_per_track(timeline)
+    changes = track_changes(before, after)
+    lines = [_change_line(before, *c) for c in changes]
+    subtitles = sum(now - was for kind, _, was, now in changes if kind == "subtitle")
+    elsewhere = [line for line, c in zip(lines, changes) if c[0] != "subtitle"]
+    tracks = (sum(1 for k in before if k[0] == "subtitle"),
+              sum(1 for k in after if k[0] == "subtitle"))
 
-    if after > before:
+    if subtitles > 0 and not elsewhere:
         print(f"Subtitles placed on timeline: {args.srt_file}")
-        print(f"  Subtitle tracks: {before} -> {after}")
+        print(f"  Subtitle tracks: {tracks[0]} -> {tracks[1]}")
+        print("\n".join(lines))
         return 0
-    print(f"ERROR: the subtitle track count did not grow ({before} -> {after}); AppendToTimeline "
-          f"returned {bool(appended)}.", file=sys.stderr)
+    if changes:
+        what = ("put items on a video or audio track, where an .srt is a clip" if elsewhere else
+                "left the subtitle tracks with no more items than before")
+        print(f"ERROR: AppendToTimeline (returned {bool(appended)}) {what}. Items per track, "
+              "counted before and after:", file=sys.stderr)
+        print("\n".join(lines), file=sys.stderr)
+        print("  Check the timeline and undo what should not be there (Edit > Undo). Use "
+              "'captions' to transcribe an [auto] timeline, or File > Import > Subtitle in the "
+              "Resolve UI for this .srt.", file=sys.stderr)
+        return 1
+    print(f"ERROR: no track gained or lost an item (video, audio and subtitle tracks, counted "
+          f"before and after); AppendToTimeline returned {bool(appended)}.", file=sys.stderr)
     print("  Resolve 21 does not place an .srt through AppendToTimeline: it returns True and "
-          "adds nothing (spike 18). The .srt was imported into the Media Pool and the timeline "
-          "is unchanged.",
+          "adds nothing (spike 18). The .srt was imported into the Media Pool.",
           file=sys.stderr)
     print("  Use 'captions' to transcribe an [auto] timeline, or File > Import > Subtitle in "
           "the Resolve UI for this .srt.", file=sys.stderr)
@@ -1511,7 +1553,8 @@ Examples:
     sp.set_defaults(func=cmd_build_timeline)
 
     sp = subparsers.add_parser(
-        "add-subtitles", help="Import .srt subtitles (legacy; exits 1 when nothing is placed)")
+        "add-subtitles", help="Import .srt subtitles (legacy; exits 1 unless items land on "
+        "subtitle tracks alone)")
     sp.add_argument("srt_file", help="Path to .srt subtitle file")
     sp.set_defaults(func=cmd_add_subtitles)
 

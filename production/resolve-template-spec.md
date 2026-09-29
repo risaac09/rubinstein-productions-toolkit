@@ -125,7 +125,7 @@ headless. Coverage against the original Phase C list, checked 2026-08-17:
 | Auto-apply source conversion nodes by camera tag | Done (`import-media` tags clips by clip color; `apply-lut --camera <key>` filters by it) |
 | Auto-sort media into camera bins by metadata | Not done — `--camera` on `import-media` is still a human-supplied flag, not metadata-driven |
 | Auto-apply Low Contrast PowerGrade | Not done — no PowerGrade/gallery-still API call exists in the script; use `apply-drx` with a hand-exported `.drx` instead |
-| Subtitle import | Auto captions done (`captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so `add-subtitles` now exits 1 when the track count does not grow; import an .srt by hand (File > Import > Subtitle) |
+| Subtitle import | Auto captions done (`captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so `add-subtitles` counts the items on every video, audio and subtitle track before and after, exits 0 only when subtitle items alone grew, and otherwise exits 1 naming each track that changed (or that none did); import an .srt by hand (File > Import > Subtitle) |
 | Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently — don't wait for it to get built. |
 | Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
 

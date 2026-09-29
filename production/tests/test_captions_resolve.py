@@ -276,8 +276,10 @@ class TestCommands(Base):
         status, out, err = self.cli(resolve_workflow.cmd_add_subtitles,
                                     argparse.Namespace(srt_file=srt))
         self.assertEqual(status, 1)
-        self.assertIn("did not grow (0 -> 0)", err)
+        self.assertIn("no track gained or lost an item", err)
+        self.assertIn("counted before and after", err)
         self.assertIn("AppendToTimeline returned True", err)
+        self.assertIn("spike 18", err)
         self.assertIn("use 'captions'", err.replace("Use", "use"))
         self.assertEqual([c[1] for c in rf.CALLS if c[0] == "Pool"],
                          ["ImportMedia", "AppendToTimeline"])
@@ -294,6 +296,38 @@ class TestCommands(Base):
             language="en", chars_per_line=42, gap=0))
         self.assertEqual(status, 0)
         self.assertIn("generated", out)
+
+    def srt(self):
+        srt = os.path.join(self.dir, "example.srt")
+        open(srt, "w").close()
+        self.project.current = self.wide
+        return srt
+
+    def test_add_subtitles_onto_an_existing_subtitle_track_passes(self):
+        # the subtitle track count stays 1; the items on it grow
+        self.wide.tracks["subtitle"] = [[rf.Item("Old", 86400, 86410, nodes=None)]]
+
+        def place(items):
+            self.wide.tracks["subtitle"][0].append(rf.Item("Sub", 86420, 86430, nodes=None))
+            return True
+        self.project.pool.AppendToTimeline = place
+        status, out, err = self.cli(resolve_workflow.cmd_add_subtitles,
+                                    argparse.Namespace(srt_file=self.srt()))
+        self.assertEqual(status, 0, err)
+        self.assertIn("subtitle track 1: 1 -> 2 item(s)", out)
+
+    def test_add_subtitles_placed_as_a_clip_says_where(self):
+        # a Resolve that puts the .srt on a video track: exit 1, and say so
+        def place(items):
+            self.wide.tracks["video"].append([rf.Item("example.srt", 86400, 86500, nodes=None)])
+            return True
+        self.project.pool.AppendToTimeline = place
+        status, out, err = self.cli(resolve_workflow.cmd_add_subtitles,
+                                    argparse.Namespace(srt_file=self.srt()))
+        self.assertEqual(status, 1)
+        self.assertIn("video track 2 (new): 0 -> 1 item(s)", err)
+        self.assertIn("put items on a video or audio track", err)
+        self.assertNotIn("unchanged", err)
 
     def test_add_subtitles_passes_when_a_track_is_added(self):
         srt = os.path.join(self.dir, "example.srt")
