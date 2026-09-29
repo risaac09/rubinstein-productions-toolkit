@@ -116,6 +116,7 @@ SessionStart hook when one exists, so the routing brief never prints twice.
 - `redeploy-prs.sh` — the same deploy as one pull request per consumer from
   temp worktrees, for a machine whose auto-mode clamp refuses agent merges;
   the operator merges them after the toolkit change that holds the kit source.
+  It reads its roster from `install.sh --list`, so the two never disagree.
 
 ## Source of truth
 
