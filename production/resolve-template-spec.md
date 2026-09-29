@@ -184,8 +184,11 @@ Settings and Export Presets describes the render presets.
 
 House rules, all in the config: integrated loudness within +/-0.5 LU of the
 target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
-colour tags Rec.709 primaries and matrix with the Gamma 2.4 transfer
-(Resolve's `ColorSpaceTag` "Rec.709" and `GammaTag` "Gamma 2.4"), limited
+colour tags Rec.709 primaries and matrix, with the transfer tagged per
+destination: web files use `GammaTag` "Rec.709-A", which writes the
+transfer as bt709 (asserted by the check), and the client master keeps
+the house "Gamma 2.4", which writes it unspecified (reported only). Isaac
+compared both renders and chose Rec.709-A for the web on 2026-09-29. Limited
 range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
 stream counts as limited, as decoders read it). An overlay
 kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
@@ -283,13 +286,11 @@ folder no destination owns.
 These are set from the scripting README and the config; none has been
 seen in a file Resolve rendered with these settings yet.
 
-- **Which transfer tag Resolve writes for "Gamma 2.4"** (bt709, that is
-  1-1-1; unspecified, 1-2-1; or something else). This decides how Macs
-  play a web upload: a file tagged 1-1-1 is shown with the Rec.709 camera
-  curve, brighter in the shadows than the Gamma 2.4 grade, which is the
-  "Rec.709-A" issue. The check reports the transfer it finds and asserts
-  nothing until `deliver.color.expect.color_transfer` is set from a real
-  render.
+- **Settled 2026-09-29 by a real render:** `GammaTag` "Gamma 2.4" writes
+  the transfer as unspecified (1-2-1), so each player guesses the gamma;
+  "Rec.709-A" writes bt709 (1-1-1). Isaac compared the two renders and
+  chose Rec.709-A for web destinations, whose check now asserts transfer
+  bt709. The client master keeps Gamma 2.4.
 - The tag strings `Rec.709` and `Gamma 2.4`, the `AudioCodec` strings
   `aac` and `lpcm`, and the `DataBurnIn` string `None`. The queue assumes
   that `SetRenderSettings` returns False for a string Resolve does not
@@ -331,8 +332,8 @@ and write down what Resolve did. None has been run yet.
    example `SaveAsNewRenderPreset` and reading the preset back).
 2. **Valid tag strings.** Queue `linkedin_16x9` on a short 16:9 sandbox
    timeline with `deliver-queue`, render it by hand, and run
-   `deliver-check`. Record the transfer ffprobe reads for "Gamma 2.4" and
-   set `deliver.color.expect.color_transfer` from it.
+   `deliver-check`. Done 2026-09-29: "Gamma 2.4" reads unspecified,
+   "Rec.709-A" reads bt709, and web destinations now assert bt709.
 3. **Render mode.** Leave the Deliver page in Individual clips, queue a
    destination, and record `GetCurrentRenderMode` before and after,
    whether `GetRenderJobList` names the mode, and whether putting the mode
