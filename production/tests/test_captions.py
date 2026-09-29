@@ -165,6 +165,23 @@ class TestTTML(unittest.TestCase):
                 with self.assertRaisesRegex(captions.CaptionError, why):
                     captions.parse_ttml(text)
 
+    def test_only_span_and_br_carry_caption_text(self):
+        ns = (TTML_NS + ' xmlns:ttm="http://www.w3.org/ns/ttml#metadata"'
+              ' xmlns:tts="http://www.w3.org/ns/ttml#styling"')
+        body = ('<p begin="1s" end="2s"><ttm:desc>a note</ttm:desc>Example caption one</p>'
+                '<p begin="3s" end="4s"><ttm:agent xml:id="a1" type="person"><ttm:name '
+                'type="full">Example Name</ttm:name></ttm:agent>Two <span><ttm:title>t'
+                '</ttm:title>words</span></p>'
+                '<p begin="5s" end="6s"><metadata><ttm:copyright>c</ttm:copyright></metadata>'
+                'Three<set tts:color="red"/><ttm:actor agent="a1"/></p>'
+                '<p begin="7s" end="8s">Four <x:aside xmlns:x="urn:example">not shown</x:aside>'
+                '<x:empty xmlns:x="urn:example"/></p>')
+        r = captions.parse_ttml(tt(body, ns=ns))
+        self.assertEqual([t for _, _, t in r["cues"]],
+                         ["Example caption one", "Two words", "Three", "Four"])
+        # TTML's own metadata is dropped quietly; text in anything else is named
+        self.assertEqual(r["dropped"], ["aside"])
+
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
         self.assertEqual(r["cues"][0][2], "One\nTwo")
@@ -442,6 +459,15 @@ class TestDeliverCaptions(CaptionBase):
         self.assertEqual(r["start"]["fps"], "24000/1001")
         self.assertAlmostEqual(r["cues"]["first"][0], 4.004, places=6)
         self.assertAlmostEqual(r["cues"]["first"][1], 5.005, places=6)
+
+    def test_text_outside_ttml_content_is_left_out_with_a_warning(self):
+        path = self.clip([("01:00:00.040", "01:00:01.200", 'Example caption one<x:aside '
+                           'xmlns:x="urn:example">not shown</x:aside>')])
+        r = self.convert(path)
+        with open(deliver.sidecar_path(path), encoding="utf-8") as f:
+            self.assertNotIn("not shown", f.read())
+        self.assertTrue(any("left out" in w and "<aside>" in w for w in r["warnings"]),
+                        r["warnings"])
 
     def test_refused_inside_a_git_tree(self):
         os.makedirs(os.path.join(self.dir, ".git"))

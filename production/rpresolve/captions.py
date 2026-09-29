@@ -24,7 +24,9 @@ deliver_captions(file, dest):
        500ms, 2m, 1h, 100t), begin with end or dur, timing on body and div
        (a <p> starts with its parent unless it has a begin, ends with it
        unless it has an end or dur, and is cut off where its parent ends),
-       <br/> as a line break, spans flattened. Media time (Resolve's) and
+       <br/> as a line break, spans flattened, anything else in a <p>
+       left out (TTML metadata such as ttm:desc and ttm:agent quietly,
+       other elements with text named in a warning). Media time (Resolve's) and
        non-drop SMPTE time: under SMPTE a label's hours, minutes, seconds
        and frames count frames at ttp:frameRate, divided by the effective
        rate (TTML2 I.3), so 01:00:04:00 at 24 x 1000/1001 is 86496 frames;
@@ -68,8 +70,14 @@ from . import delivercheck as dc
 
 TRASH_LABEL = "deliver-captions"
 XML_NS = "{http://www.w3.org/XML/1998/namespace}"
-# Elements inside a <p> whose text is not caption text.
-NOT_TEXT = {"metadata", "set", "animate", "animation"}
+# Inside a <p> only <span> and <br> carry caption text (TTML's inline
+# content). TTML's metadata (metadata, ttm:desc, ttm:title, ttm:agent with
+# its ttm:name, ttm:actor, ttm:copyright, ttm:item), animation and embedded
+# content are never presented, so they are left out quietly; text in any
+# other element is left out too, and named.
+NOT_TEXT = {"metadata", "desc", "title", "agent", "name", "actor", "copyright", "item",
+            "set", "animate", "animation", "audio", "chunk", "data", "font", "image",
+            "resources", "source"}
 TIMING = ("begin", "end", "dur")
 BR = "\x00"  # stands for <br/> while whitespace is collapsed
 
@@ -201,10 +209,12 @@ def parse_time(expr, params):
                        "or an offset time (12.5s, 300f, 500ms).")
 
 
-def _p_text(p):
-    """A <p>'s caption text: spans flattened, <br/> as a line break, runs
-    of white space collapsed as TTML's default xml:space does (kept as line
-    breaks under xml:space="preserve"), blank lines dropped."""
+def _p_text(p, dropped):
+    """A <p>'s caption text: its own text and its spans' (flattened), <br/>
+    as a line break, runs of white space collapsed as TTML's default
+    xml:space does (kept as line breaks under xml:space="preserve"), blank
+    lines dropped. Any other child is left out (NOT_TEXT); the name of one
+    outside TTML's vocabulary that holds text is added to `dropped`."""
     preserve = p.get(XML_NS + "space") == "preserve"
     parts = []
 
@@ -220,8 +230,9 @@ def _p_text(p):
                     raise CaptionError("a <span> inside a caption carries its own timing, which "
                                        "this converter does not split into cues.")
                 walk(child)
-            elif name not in NOT_TEXT:
-                walk(child)
+            elif name not in NOT_TEXT and "".join(child.itertext()).strip():
+                if name not in dropped:
+                    dropped.append(name)
             if child.tail:
                 parts.append(child.tail)
     walk(p)
@@ -233,9 +244,11 @@ def _p_text(p):
 
 
 def parse_ttml(text):
-    """{cues, params, empty} from TTML text. cues: [(begin, end, text)] in
-    exact seconds (Fraction), in time order; empty: how many <p> had no
-    text and were left out. Raises CaptionError."""
+    """{cues, params, empty, dropped} from TTML text. cues: [(begin, end,
+    text)] in exact seconds (Fraction), in time order; empty: how many <p>
+    had no text and were left out; dropped: the names of elements outside
+    TTML's vocabulary whose text inside a caption was left out. Raises
+    CaptionError."""
     if isinstance(text, str):
         text = text.encode("utf-8")
     try:
@@ -246,7 +259,7 @@ def parse_ttml(text):
         raise CaptionError(f"the root element is <{_local(root.tag)}>; a TTML file's root is "
                            "<tt>.")
     params = timing_params(root)
-    cues, empty = [], 0
+    cues, empty, dropped = [], 0, []
 
     markers = params["time_base"] == "smpte" and params["marker_mode"] == "discontinuous"
 
@@ -271,7 +284,7 @@ def parse_ttml(text):
         if stop is not None and parent_end is not None:
             stop = min(stop, parent_end)
         if _local(el.tag) == "p":
-            words = _p_text(el)
+            words = _p_text(el, dropped)
             if not words:
                 return 1
             if stop is None:
@@ -289,7 +302,7 @@ def parse_ttml(text):
         if _local(child.tag) == "body":
             empty += visit(child, Fraction(0), None)
     cues.sort(key=lambda c: (c[0], c[1]))
-    return {"cues": cues, "params": params, "empty": empty}
+    return {"cues": cues, "params": params, "empty": empty, "dropped": dropped}
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +444,10 @@ def plan(path, dest, track=None):
     warnings = []
     if parsed["empty"]:
         warnings.append(f"{parsed['empty']} caption(s) with no text were left out.")
+    if parsed["dropped"]:
+        warnings.append("text inside " + ", ".join(f"<{n}>" for n in parsed["dropped"]) +
+                        " was left out of the captions: inside a <p> TTML presents only text, "
+                        "<span> and <br/>.")
 
     info = dc.probe(path)
     duration = dc.duration(info)
