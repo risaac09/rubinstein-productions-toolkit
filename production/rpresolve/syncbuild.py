@@ -40,7 +40,9 @@ class SyncError(RuntimeError):
 # The timeline frame rates Resolve offers, as it spells them.
 RESOLVE_RATES = ("23.976", "24", "25", "29.97", "30", "47.952", "48", "50", "59.94", "60",
                  "72", "95.904", "96", "100", "119.88", "120")
-TOLERANCE_FRAMES = 1
+# A length converted between the source's rate and the timeline's may round by a
+# frame; the record and source start frames are planned whole and must read back exactly.
+LENGTH_TOLERANCE_FRAMES = 1
 
 
 def rate_string(fps):
@@ -197,9 +199,9 @@ def ensure_track(tl, kind, index, subtype=None):
 
 def read_back(tl, placements, clips, start):
     """Each planned placement against the track: exactly one item of that
-    clip there, its start, source start and length within
-    TOLERANCE_FRAMES. Returns (rows, problems); an item on any track that
-    no placement explains is a problem too."""
+    clip there, at exactly its planned start and source start, and its
+    length within LENGTH_TOLERANCE_FRAMES. Returns (rows, problems); an
+    item on any track that no placement explains is a problem too."""
     # Items are known by track and position: Resolve hands back a new wrapper
     # object for the same item on every GetItemListInTrack call.
     rows, problems, seen = [], [], set()
@@ -220,7 +222,8 @@ def read_back(tl, placements, clips, start):
                "length": it.GetEnd() - it.GetStart()}
         row["got"] = got
         bad = [f"{k} {got[k]} (planned {p[k]})" for k in ("record", "source_start", "length")
-               if got[k] is not None and abs(float(got[k]) - p[k]) > TOLERANCE_FRAMES]
+               if got[k] is not None and abs(float(got[k]) - p[k]) >
+               (LENGTH_TOLERANCE_FRAMES if k == "length" else 0)]
         if bad:
             problems.append(f"{tag}: " + ", ".join(bad))
         row["ok"] = not bad

@@ -412,8 +412,8 @@ def sync(args, ctx):
             ok = sum(1 for p in (r["built"] or {}).get("placements", []) if p["ok"])
             n = len((r["built"] or {}).get("placements", []))
             a = r["autosync"]
-            r["summary"] = (f"built '{r['timeline']}': {ok} of {n} placement(s) read back within "
-                            f"a frame; {where}{drift}" +
+            r["summary"] = (f"built '{r['timeline']}': {ok} of {n} placement(s) read back as "
+                            f"planned; {where}{drift}" +
                             (f"; AutoSyncAudio {a['verdict']}" if a else "") +
                             (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "") +
                             _ui(r))
@@ -654,10 +654,10 @@ def register(registry):
         "sync",
         "Stack dual-system sound on a new ' [auto]' timeline: the reference camera clip on "
         "V1/A1, the other recording on A2 (or a second camera on V2/A2) at the offset measured "
-        "from their audio (as sync_measure), then read every placement back (start, source "
-        "start, length) within a frame of the plan. reference and other are media-pool clips "
-        "(unique id, file path or name), or, with bin, files imported into that new bin at the "
-        "pool's root, which the run owns. Only then may autosync run Resolve's AutoSyncAudio on "
+        "from their audio (as sync_measure), then read every placement back: start and source "
+        "start exactly as planned, length within a frame. reference and other are media-pool "
+        "clips (unique id, file path or name), or, with bin, files imported into that new bin "
+        "at the pool's root, which the run owns. Only then may autosync run Resolve's AutoSyncAudio on "
         "them; its result is read back through a second [auto] timeline and compared with the "
         "measured offset, never trusted alone. A weak or inconsistent match is refused; a "
         "placement that leaves either end of the overlap more than half a frame out (rounding "

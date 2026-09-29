@@ -70,7 +70,7 @@ writes.
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
-| `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back within a frame. Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
+| `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
 The offline tools never connect to Resolve. Every path they take must be

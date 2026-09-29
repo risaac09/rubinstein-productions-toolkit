@@ -593,8 +593,10 @@ Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
   current timeline, so the new timeline is made current (and put back
   after); tracks are made with `AddTrack` first (an added audio track's
   type is read back: `stereo` for 2 channels, `mono` for 1); then each
-  placement must show exactly one item of its clip on its track, with its
-  start, source start and length within one frame of the plan. An item
+  placement must show exactly one item of its clip on its track, at
+  exactly its planned start and source start (whole frames the plan
+  chose; one frame off would add to the half frame of rounding), with its
+  length within one frame (a rate conversion can round it). An item
   that no placement explains is a problem too. A track that already holds
   items when a clip is due there is not placed onto.
 - **Drift:** the other clip is placed at the offset the drift line gives

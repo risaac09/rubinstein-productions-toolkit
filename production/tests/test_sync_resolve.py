@@ -246,6 +246,33 @@ class TestSyncPool(Base):
         self.assertEqual(r["exit_status"], 1)
         self.assertIn("reference V1: record 2 (planned 0)", r["problems"])
 
+    def test_a_placement_one_frame_off_is_reported(self):
+        # Record and source start are whole frames this plan chose: one frame off
+        # is wrong, on top of the half frame of rounding the offset already has.
+        real = self.project.pool.AppendToTimeline
+
+        def late(infos):
+            return real([{**i, "recordFrame": i["recordFrame"] + (i["trackIndex"] == 2)}
+                         for i in infos])
+        self.project.pool.AppendToTimeline = late
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 1)
+        self.assertEqual(r["problems"], ["other A2: record 64 (planned 63)"])
+
+    def test_a_source_start_one_frame_in_is_reported_and_a_length_may_round(self):
+        # Starting a frame into each source also shortens each by a frame: the
+        # start is wrong, the length within the frame a rate conversion rounds.
+        real = self.project.pool.AppendToTimeline
+
+        def skewed(infos):
+            return real([{**i, "startFrame": i["startFrame"] + 1} for i in infos])
+        self.project.pool.AppendToTimeline = skewed
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 1)
+        self.assertEqual(r["problems"], ["reference V1: source_start 1 (planned 0)",
+                                         "reference A1: source_start 1 (planned 0)",
+                                         "other A2: source_start 1 (planned 0)"])
+
     def test_drift_over_the_threshold_is_reported_not_corrected(self):
         dry, r = self.twice(measure=self.measure(exceeds=True))
         self.assertEqual(r["exit_status"], 2)

@@ -961,7 +961,8 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     (rpresolve.sync) and build a stacked multitrack ' [auto]' timeline in
     the open project named project_name: the reference on V1/A1, the other
     on A2 (or V2/A2 for a second camera) at the measured offset, every
-    placement read back within a frame of the plan.
+    placement read back: its start and source start exactly as planned,
+    its length within a frame (rate conversion rounds).
 
     reference and other name media-pool clips (unique id, file path or
     clip name). With bin they are files instead, imported into a new bin
