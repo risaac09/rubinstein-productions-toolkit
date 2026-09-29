@@ -182,6 +182,24 @@ class TestTTML(unittest.TestCase):
         # TTML's own metadata is dropped quietly; text in anything else is named
         self.assertEqual(r["dropped"], ["aside"])
 
+    def test_sequential_time_containers_are_refused(self):
+        # under seq each child counts from the end of the one before; read as
+        # par, both would start at 0 s and pass every later check
+        for where in ('<body timeContainer="seq"><div>', '<body><div timeContainer="seq">'):
+            with self.subTest(where=where):
+                text = (f'<tt {TTML_NS}>{where}<p dur="1s">One</p><p dur="1s">Two</p>'
+                        '</div></body></tt>')
+                with self.assertRaisesRegex(captions.CaptionError, "timeContainer 'seq'"):
+                    captions.parse_ttml(text)
+        text = (f'<tt {TTML_NS}><body><div><p begin="1s" end="2s" timeContainer="seq">One'
+                '</p></div></body></tt>')
+        with self.assertRaisesRegex(captions.CaptionError, "timeContainer 'seq' on a <p>"):
+            captions.parse_ttml(text)
+        # par, TTML's default, reads as before
+        text = (f'<tt {TTML_NS}><body timeContainer="par"><div timeContainer=" par ">'
+                '<p begin="1s" dur="1s">One</p></div></body></tt>')
+        self.assertEqual(secs(captions.parse_ttml(text)), [(1.0, 2.0, "One")])
+
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
         self.assertEqual(r["cues"][0][2], "One\nTwo")

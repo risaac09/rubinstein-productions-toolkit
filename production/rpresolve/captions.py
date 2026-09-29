@@ -23,7 +23,8 @@ deliver_captions(file, dest):
        ttp:frameRateMultiplier, sub-frames), offset times (12.5s, 300f,
        500ms, 2m, 1h, 100t), begin with end or dur, timing on body and div
        (a <p> starts with its parent unless it has a begin, ends with it
-       unless it has an end or dur, and is cut off where its parent ends),
+       unless it has an end or dur, and is cut off where its parent ends;
+       parallel time containers only, timeContainer="seq" is refused),
        <br/> as a line break, spans flattened, anything else in a <p>
        left out (TTML metadata such as ttm:desc and ttm:agent quietly,
        other elements with text named in a warning). Media time (Resolve's) and
@@ -298,9 +299,16 @@ def parse_ttml(text):
         return sum(visit(child, here, stop) for child in el
                    if _local(child.tag) in ("body", "div", "p"))
 
-    for child in root:
-        if _local(child.tag) == "body":
-            empty += visit(child, Fraction(0), None)
+    bodies = [child for child in root if _local(child.tag) == "body"]
+    for el in (el for body in bodies for el in body.iter()):
+        mode = _attr(el, "timeContainer")
+        if mode is not None and mode.strip() != "par":
+            raise CaptionError(f"timeContainer {mode.strip()!r} on a <{_local(el.tag)}>: only "
+                               "par, TTML's default, is read (each caption counts from its "
+                               "parent's begin); under seq each counts from the end of the one "
+                               "before.")
+    for body in bodies:
+        empty += visit(body, Fraction(0), None)
     cues.sort(key=lambda c: (c[0], c[1]))
     return {"cues": cues, "params": params, "empty": empty, "dropped": dropped}
 
