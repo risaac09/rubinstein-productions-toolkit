@@ -48,5 +48,171 @@
       "suffix": "_story",
       "note": "Resize only — no automatic subject reframe/crop. Set per-clip Pan/Zoom manually before rendering vertical."
     }
+  },
+  "deliver": {
+    "loudness": { "tolerance_lu": 0.5, "true_peak_max_dbtp": -1.0, "fix_true_peak_margin_db": 0.5 },
+    "color": {
+      "resolve": { "ColorSpaceTag": "Rec.709", "GammaTag": "Gamma 2.4" },
+      "expect": { "color_primaries": "bt709", "color_space": "bt709", "color_transfer": null,
+                  "color_range": "tv" }
+    },
+    "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"],
+    "data_burn_in": "None"
+  },
+  "destinations": {
+    "youtube_16x9": {
+      "name": "YouTube 16:9 UHD",
+      "naming": "clip",
+      "aspect": "16x9",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H265",
+      "codec_fallbacks": ["HEVC", "H.265"],
+      "resolution": { "width": 3840, "height": 2160 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -14.0 },
+      "captions": "sidecar",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
+    },
+    "youtube_16x9_hd": {
+      "name": "YouTube 16:9 HD",
+      "naming": "clip",
+      "aspect": "16x9",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H265",
+      "codec_fallbacks": ["HEVC", "H.265"],
+      "resolution": { "width": 1920, "height": 1080 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -14.0 },
+      "captions": "sidecar",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
+    },
+    "linkedin_16x9": {
+      "name": "LinkedIn 16:9",
+      "naming": "clip",
+      "aspect": "16x9",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H264",
+      "codec_fallbacks": ["H.264", "AVC"],
+      "resolution": { "width": 1920, "height": 1080 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -16.0 },
+      "captions": "sidecar",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+    },
+    "linkedin_9x16": {
+      "name": "LinkedIn 9:16",
+      "naming": "clip",
+      "aspect": "9x16",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H264",
+      "codec_fallbacks": ["H.264", "AVC"],
+      "resolution": { "width": 1080, "height": 1920 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -16.0 },
+      "captions": "burnin",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+    },
+    "linkedin_1x1": {
+      "name": "LinkedIn 1:1",
+      "naming": "clip",
+      "aspect": "1x1",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H264",
+      "codec_fallbacks": ["H.264", "AVC"],
+      "resolution": { "width": 1080, "height": 1080 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -16.0 },
+      "captions": "burnin",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+    },
+    "substack_16x9": {
+      "name": "Substack 16:9",
+      "naming": "clip",
+      "aspect": "16x9",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H264",
+      "codec_fallbacks": ["H.264", "AVC"],
+      "resolution": { "width": 1920, "height": 1080 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -16.0 },
+      "captions": "sidecar",
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+    },
+    "client_master": {
+      "name": "Client master ProRes 422 HQ",
+      "naming": "master",
+      "aspect": null,
+      "target_dir": null,
+      "format": "mov",
+      "codec": "ProRes422HQ",
+      "codec_fallbacks": ["Apple ProRes 422 HQ"],
+      "resolution": "timeline",
+      "audio": {
+        "codec": "lpcm",
+        "resolve_codec": "lpcm",
+        "sample_rate": 48000,
+        "bit_depth": 24,
+        "channels": null,
+        "bitrate_kbps": null
+      },
+      "loudness": { "integrated_lufs": null },
+      "captions": "none",
+      "resolve": {},
+      "expect": { "codec_name": "prores", "profile": "HQ", "pix_fmt_family": "422", "bit_depth": 10 }
+    }
   }
 }

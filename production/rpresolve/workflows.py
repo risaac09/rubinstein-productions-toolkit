@@ -7,9 +7,10 @@ Nothing here prints or exits the interpreter. Preconditions that fail raise
 Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
-Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render) pin the open project by name (and unique id when
-given), re-check the pin before every batch of writes, and take a
-`check_cancel` callable that raises to stop at the next safe point. A dry
+Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
+destination form, queue_destination) pin the open project by name (and
+unique id when given), re-check the pin before every batch of writes, and
+take a `check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
 would carry out differs from the one the dry run showed.
 """
@@ -484,8 +485,10 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     return out
 
 
-def queue_render(resolve, project_name, timeline, preset_key, output_dir, presets,
-                 custom_name=None, dry_run=False, project_id=None, expect_sha=None):
+def queue_render(resolve, project_name, timeline, preset_key=None, output_dir=None, presets=None,
+                 custom_name=None, dry_run=False, project_id=None, expect_sha=None,
+                 destination=None, name_parts=None, config=None, check_cancel=None,
+                 volumes_root="/Volumes"):
     """Queue one render job for a timeline from a preset, never start it.
     Makes the timeline current only while queueing, then puts back the
     current timeline, page and the Deliver page's format and codec. The
@@ -493,8 +496,19 @@ def queue_render(resolve, project_name, timeline, preset_key, output_dir, preset
     result lists them. Refuses when a render is running or the output file
     exists. Returns {project, timeline, preset, output, plan_sha, dry_run,
     job, readback_problems, deliver_changed, warnings, ui_restore_problems,
-    exit_status}."""
+    exit_status}.
+
+    With destination (a key in config["destinations"]) instead of a preset,
+    output_dir is the target folder (default: the destination's
+    target_dir) and name_parts name the file; see queue_destination."""
+    if destination:
+        return queue_destination(resolve, project_name, timeline, destination, output_dir,
+                                 name_parts, config=config, dry_run=dry_run,
+                                 project_id=project_id, expect_sha=expect_sha,
+                                 check_cancel=check_cancel, volumes_root=volumes_root)
     from . import render
+    if not presets or not preset_key or not output_dir:
+        raise Refused("give a preset and an output folder, or a destination.")
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
     preset = presets.get(preset_key)
@@ -531,13 +545,7 @@ def queue_render(resolve, project_name, timeline, preset_key, output_dir, preset
             q = render.queue_render_job(project, preset_key, os.path.realpath(output_dir),
                                         presets, custom_name)
         finally:
-            if fmt0.get("format") and fmt0.get("format") != "unknown":
-                if not (project.SetCurrentRenderFormatAndCodec(fmt0["format"], fmt0.get("codec"))
-                        and (project.GetCurrentRenderFormatAndCodec() or {}) == fmt0):
-                    out["warnings"].append(f"could not put the Deliver format/codec back to {fmt0}")
-            else:
-                out["warnings"].append("the Deliver page had no format set before, so the "
-                                       "queued job's format stays selected there")
+            _restore_format(project, fmt0, out["warnings"])
     out["warnings"] = q["warnings"] + out["warnings"]
     out["ui_restore_problems"] = snap.problems
     if q["error"] or not q["job_id"]:
@@ -551,5 +559,209 @@ def queue_render(resolve, project_name, timeline, preset_key, output_dir, preset
                                "FormatHeight": preset["resolution"]["height"]})
     out["job"] = job
     out["readback_problems"] = problems
+    out["exit_status"] = 1 if problems else 0
+    return out
+
+
+def _restore_format(project, fmt0, warnings):
+    """Put the Deliver page's format and codec back to fmt0."""
+    if fmt0.get("format") and fmt0.get("format") != "unknown":
+        if not (project.SetCurrentRenderFormatAndCodec(fmt0["format"], fmt0.get("codec"))
+                and (project.GetCurrentRenderFormatAndCodec() or {}) == fmt0):
+            warnings.append(f"could not put the Deliver format/codec back to {fmt0}")
+    else:
+        warnings.append("the Deliver page had no format set before, so the queued job's "
+                        "format stays selected there")
+
+
+def _restore_mode(project, mode0, warnings):
+    """Put the Deliver page's render mode back to mode0 (0 Individual
+    clips, 1 Single clip), when it was read and has changed."""
+    if mode0 not in (0, 1):
+        warnings.append(f"the Deliver page's render mode read as {mode0!r} before queueing, "
+                        "so it stays on Single clip")
+    elif project.GetCurrentRenderMode() != mode0:
+        if not (project.SetCurrentRenderMode(mode0) and project.GetCurrentRenderMode() == mode0):
+            warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
+
+
+def _remove_if_empty(folder):
+    """rmdir a folder this run made, only while it is still empty. True
+    when it is gone."""
+    try:
+        os.rmdir(folder)
+        return True
+    except OSError:
+        return False
+
+
+def _timeline_size(project, tl):
+    """(width, height) of a timeline, falling back to the project's."""
+    def read(key):
+        for obj in (tl, project):
+            v = api._safe_call(obj, "GetSetting", key)
+            try:
+                if v not in (None, "") and int(float(v)) > 0:
+                    return int(float(v))
+            except (TypeError, ValueError):
+                pass
+        return None
+    return read("timelineResolutionWidth"), read("timelineResolutionHeight")
+
+
+def queue_destination(resolve, project_name, timeline, key, target_dir, name_parts, config=None,
+                      dry_run=False, project_id=None, expect_sha=None, check_cancel=None,
+                      volumes_root="/Volumes"):
+    """Queue one job that renders a timeline for a delivery destination
+    (rpresolve.deliver), named from name_parts into target_dir; never start
+    it. Refused, with every reason, when: the destination or name parts are
+    invalid; a render is running; the destination has a fixed size and the
+    timeline another shape (or a size that cannot be read), since Resolve
+    would scale the picture into the frame with bars; the target folder is
+    missing, under /Volumes without its share mounted, or inside a git
+    working tree; the file or its sidecar already exists, or a queued job
+    already writes it; captions are wanted and the timeline has no subtitle
+    track (or only empty ones). A required Deliver setting that Resolve
+    refuses stops the job from being queued. The queued job is read back
+    from GetRenderJobList. Returns {project, timeline, destination, output,
+    sidecar, settings, plan_sha, dry_run, job, readback_problems,
+    unverified, deliver_changed, carried_over, codec, warnings,
+    ui_restore_problems, exit_status}. carried_over names the render
+    settings the job takes from whatever the Deliver page last held."""
+    from . import deliver, render
+    from .config import load_config
+    config = config or load_config()
+    try:
+        dest = deliver.destination(config, key)
+        filename = deliver.name_for(dest, name_parts)
+    except deliver.DeliverError as e:
+        raise Refused(str(e))
+    target_dir = target_dir or dest.get("target_dir")
+    if not target_dir:
+        raise Refused(f"no target folder: give one, or set target_dir for '{key}' in a config "
+                      "overlay kept outside this repository.")
+    target_dir = os.path.expanduser(str(target_dir))
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; queue after it finishes.")
+    subtitle_counts, subtitle_off = [], []
+    for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
+        count = len(tl.GetItemListInTrack("subtitle", i) or [])
+        # A disabled track does not render; a state that cannot be read counts as enabled.
+        if api._safe_call(tl, "GetIsTrackEnabled", "subtitle", i) is False:
+            subtitle_off.append(count)
+        else:
+            subtitle_counts.append(count)
+    fps_raw = (api._safe_call(tl, "GetSetting", "timelineFrameRate") or
+               api._safe_call(project, "GetSetting", "timelineFrameRate"))
+    fps = deliver.fps_number(fps_raw)
+    size = _timeline_size(project, tl)
+    problems = (deliver.shape_problems(dest, size, f"timeline '{tl.GetName()}'") +
+                deliver.timeline_problems(dest, subtitle_counts, subtitle_off) +
+                deliver.output_problems(target_dir, filename, dest,
+                                        queued=render.queued_outputs(project),
+                                        volumes_root=volumes_root,
+                                        subfolder=dest.get("subfolder")))
+    if problems:
+        raise Refused(" ".join(problems))
+    try:
+        steps = deliver.render_steps(dest, deliver.output_folder(target_dir, dest), filename,
+                                     size=size, fps=fps)
+    except deliver.DeliverError as e:
+        raise Refused(str(e))
+    # The destination's own subfolder of the target folder (deliver.output_folder).
+    real_dir = deliver.output_folder(target_dir, dest)
+    output = os.path.join(real_dir, filename)
+    core = steps[0]["settings"]
+    sha = plan_sha("deliver", pin.unique_id, tl.GetUniqueId(), key, dest, real_dir, filename,
+                   steps)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId(), "fps": fps_raw,
+                        "size": list(size), "subtitle_tracks": subtitle_counts,
+                        "subtitle_tracks_disabled": subtitle_off},
+           "destination": {k: dest.get(k) for k in ("key", "name", "format", "codec",
+                                                    "resolution", "audio", "loudness",
+                                                    "captions", "data_burn_in", "color")},
+           "output": output,
+           "sidecar": deliver.sidecar_path(output) if dest["captions"] == "sidecar" else None,
+           "settings": steps, "plan_sha": sha, "dry_run": dry_run, "job": None,
+           "readback_problems": [], "unverified": [],
+           "deliver_changed": (["format/codec (put back)", "render mode Single clip (put back)"]
+                               + deliver.changed_fields(steps)),
+           "carried_over": deliver.carried_over(steps),
+           "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0,
+           "made_folder": None}
+    unnamed = render.unreported_jobs(project)
+    if unnamed:
+        out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
+                               "their output file (TargetDir and OutputFilename), so a clash with "
+                               "them could not be checked: " + ", ".join(map(str, unnamed)))
+    if fps is None:
+        out["warnings"].append(f"the timeline's frame rate ({fps_raw!r}) could not be read, so "
+                               "FrameRate is not set; check fps with deliver-check.")
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run; run the dry run again and review it")
+    restore_warnings = []
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if check_cancel:
+            check_cancel()
+        project = pin.check(pm)
+        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
+        mode0 = project.GetCurrentRenderMode()
+        if not project.SetCurrentTimeline(tl):
+            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
+        made = not os.path.isdir(real_dir)
+        if made:
+            try:
+                os.mkdir(real_dir)
+            except OSError as e:
+                raise api.WriteNotApplied(f"could not make the destination folder "
+                                          f"{real_dir}: {e}")
+        try:
+            q = render.queue_destination_job(project, dest, steps)
+        except BaseException:
+            if made:
+                _remove_if_empty(real_dir)
+            raise
+        finally:
+            _restore_format(project, fmt0, restore_warnings)
+            _restore_mode(project, mode0, restore_warnings)
+    out["codec"] = q["codec"]
+    out["warnings"] += q["warnings"] + restore_warnings
+    out["ui_restore_problems"] = snap.problems
+    out["made_folder"] = real_dir if made else None
+    if q["error"] or not q["job_id"]:
+        out["exit_status"] = 1
+        out["warnings"].insert(0, q["error"] or "no job id")
+        if made and _remove_if_empty(real_dir):  # nothing was queued into it
+            out["made_folder"] = None
+        return out
+    job = next((j for j in project.GetRenderJobList() or [] if j.get("JobId") == q["job_id"]),
+               None)
+    if job is None:
+        out["exit_status"] = 1
+        out["readback_problems"] = [f"job {q['job_id']} is not in the render queue"]
+        return out
+    out["job"] = dict(job)
+    exact = {"TargetDir": real_dir, "OutputFilename": filename, "TimelineName": tl.GetName(),
+             "FormatWidth": core["FormatWidth"], "FormatHeight": core["FormatHeight"],
+             "AudioSampleRate": int(dest["audio"]["sample_rate"])}
+    if dest["audio"].get("bit_depth"):
+        exact["AudioBitDepth"] = int(dest["audio"]["bit_depth"])
+    if fps:
+        exact["FrameRate"] = fps
+    loose = {"VideoFormat": [dest["format"]],
+             "VideoCodec": [q["codec"]["used"], q["codec"]["description"]],
+             "AudioCodec": [dest["audio"].get("resolve_codec") or dest["audio"]["codec"]]}
+    problems, warnings, unverified = render.readback_report(job, exact, loose)
+    unverified += [k for k in deliver.changed_fields(steps)
+                   if k not in exact and k not in loose and job.get(k) is None]
+    out["readback_problems"] = problems
+    out["warnings"] += warnings
+    out["unverified"] = unverified
     out["exit_status"] = 1 if problems else 0
     return out
