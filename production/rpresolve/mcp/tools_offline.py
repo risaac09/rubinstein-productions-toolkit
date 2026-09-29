@@ -266,7 +266,8 @@ def destination_keys():
 def deliver_check(args, ctx):
     from .. import deliver, delivercheck as dc
     path = _existing(args["file"], "file")
-    dest = deliver.destination(deliver_config(), args["destination"])
+    config = deliver_config()
+    dest = deliver.destination(config, args["destination"])
     size = None
     if args.get("size"):
         w, h = args["size"].split("x")
@@ -274,7 +275,8 @@ def deliver_check(args, ctx):
     if args.get("fps"):
         dc.parse_fps(args["fps"])
     ctx.check_cancel()
-    r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"])
+    r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"],
+                 folders=deliver.subfolders(config))
     c = r["counts"]
     bad = [x["check"] for x in r["checks"] if x["status"] == dc.FAIL]
     r["summary"] = (f"deliver_check {os.path.basename(path)} as {dest['key']}: "

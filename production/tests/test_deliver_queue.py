@@ -88,8 +88,11 @@ class TestQueueDestination(Base):
     def test_dry_run_changes_nothing(self):
         r = self.queue(dry_run=True)
         name = "SW001_Guest_01_example-clip_16x9.mp4"
-        self.assertEqual(r["output"], os.path.join(self.out, name))
-        self.assertEqual(r["sidecar"], os.path.join(self.out, name[:-4] + ".srt"))
+        sub = os.path.join(self.out, "youtube_16x9")
+        self.assertEqual(r["output"], os.path.join(sub, name))
+        self.assertEqual(r["sidecar"], os.path.join(sub, name[:-4] + ".srt"))
+        self.assertFalse(os.path.exists(sub))  # a dry run makes no folder
+        self.assertIsNone(r["made_folder"])
         self.assertEqual(r["timeline"]["subtitle_tracks"], [1])
         self.assertIn("GammaTag", r["deliver_changed"])
         self.assertEqual(len(r["plan_sha"]), 64)
@@ -101,7 +104,10 @@ class TestQueueDestination(Base):
         self.assertEqual(r["exit_status"], 0, r)
         job = r["job"]
         self.assertEqual((job["OutputFilename"], job["TargetDir"], job["TimelineName"]),
-                         ("SW001_Guest_01_example-clip_16x9.mp4", self.out, "Clip [auto]"))
+                         ("SW001_Guest_01_example-clip_16x9.mp4",
+                          os.path.join(self.out, "youtube_16x9"), "Clip [auto]"))
+        self.assertEqual(r["made_folder"], os.path.join(self.out, "youtube_16x9"))
+        self.assertTrue(os.path.isdir(r["made_folder"]))
         self.assertEqual((job["FormatWidth"], job["FormatHeight"], job["VideoCodec"]),
                          (3840, 2160, "H265"))
         self.assertEqual(r["readback_problems"], [])
@@ -163,6 +169,24 @@ class TestQueueDestination(Base):
         self.assertEqual(len(set(names)), 7)
         self.assertIn("SW001_Guest_01_example-clip_9x16.mp4", names)
         self.assertIn("Client_example-slug_master.mov", names)
+
+    def test_one_clip_to_every_16x9_platform_in_one_target_folder(self):
+        # One name per aspect, one subfolder per destination: no collision.
+        outputs = []
+        for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "substack_16x9"):
+            r = self.twice(dest=key)[1]
+            self.assertEqual(r["exit_status"], 0, r)
+            outputs.append(r["output"])
+        self.assertEqual({os.path.basename(o) for o in outputs},
+                         {"SW001_Guest_01_example-clip_16x9.mp4"})
+        self.assertEqual([os.path.basename(os.path.dirname(o)) for o in outputs],
+                         ["youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "substack_16x9"])
+        self.assertEqual(len(self.project.jobs), 4)
+
+    def test_a_subfolder_taken_by_a_file_is_refused(self):
+        open(os.path.join(self.out, "youtube_16x9"), "w").close()
+        with self.assertRaisesRegex(workflows.Refused, "not a folder"):
+            self.queue(dry_run=True)
 
     def test_timeline_size_falls_back_to_the_project(self):
         r = self.queue(dest="client_master", timeline="Clip [auto]", dry_run=True,
@@ -229,7 +253,8 @@ class TestRefusals(Base):
                             for w in r["warnings"]), r["warnings"])
 
     def test_existing_file_or_sidecar_or_queued_job(self):
-        name = os.path.join(self.out, "SW001_Guest_01_example-clip_16x9")
+        os.makedirs(os.path.join(self.out, "youtube_16x9"))
+        name = os.path.join(self.out, "youtube_16x9", "SW001_Guest_01_example-clip_16x9")
         open(name + ".mp4", "w").close()
         with self.assertRaisesRegex(workflows.Refused, "already exists"):
             self.queue(dry_run=True)
@@ -278,6 +303,9 @@ class TestRefusals(Base):
         self.assertEqual(r["exit_status"], 1)
         self.assertIn("GammaTag", r["warnings"][0])
         self.assertEqual(self.project.jobs, [])
+        # the folder the run made is removed again: nothing was queued into it
+        self.assertIsNone(r["made_folder"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "youtube_16x9")))
         self.assertEqual(self.project.fmt, {"format": "mp4", "codec": "H264"})
 
     def test_a_refused_optional_setting_is_a_warning(self):
@@ -438,6 +466,13 @@ class TestMCP(Base):
         args = {k: v for k, v in self.args().items() if k != "target_dir"}
         with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
             r = self.call(args)
+        self.assertEqual(os.path.dirname(r["output"]), os.path.join(self.out, "linkedin_16x9"))
+        # subfolder null in an overlay renders straight into the target folder
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"destinations": {"linkedin_16x9": {"target_dir": self.out,
+                                                           "subfolder": None}}}, f)
+        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+            r = self.call({**args, "dry_run": True})
         self.assertEqual(os.path.dirname(r["output"]), self.out)
         with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay + ".missing"}):
             with self.assertRaisesRegex(ValueError, "not a file"):

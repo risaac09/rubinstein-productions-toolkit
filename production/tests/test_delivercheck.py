@@ -209,6 +209,25 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(failed(dc.check(path, tiny("linkedin_9x16"), loudness=False)),
                          ["captions"])
 
+    def test_the_folder_row_knows_which_destination_a_folder_is_for(self):
+        folders = deliver.subfolders(CFG)
+        d = self.folder()
+        for sub in ("linkedin_16x9", "youtube_16x9"):
+            os.makedirs(os.path.join(d, sub))
+        own = make(os.path.join(d, "linkedin_16x9", NAME16))
+        other = make(os.path.join(d, "youtube_16x9", NAME16))
+        for p in (own, other):
+            with open(deliver.sidecar_path(p), "w", encoding="utf-8") as f:
+                f.write(SRT)
+        dest = tiny("linkedin_16x9")
+        self.assertEqual(statuses(dc.check(own, dest, loudness=False, folders=folders))["folder"],
+                         dc.PASS)
+        r = dc.check(other, dest, loudness=False, folders=folders)
+        self.assertEqual(failed(r), ["folder"])  # a LinkedIn check of YouTube's file
+        loose = self.clip()  # a folder no destination owns
+        self.assertEqual(statuses(dc.check(loose, dest, loudness=False,
+                                           folders=folders))["folder"], dc.SKIP)
+
     def test_burn_in_fails_on_any_caption_file_for_its_stem(self):
         path = self.clip(name="SW001_Guest_01_example-clip_9x16.mp4", sidecar=None,
                          size="36x64")

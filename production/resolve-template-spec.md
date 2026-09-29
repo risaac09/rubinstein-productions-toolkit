@@ -209,6 +209,29 @@ digits in words joined by single hyphens, up to 60 characters. Aspect:
 `16x9`, `9x16` or `1x1`, taken from the destination, as is the extension.
 Names are validated when a job is queued and again when the file is checked.
 
+### Folders
+
+The name carries the aspect but not the platform, so each destination
+renders into its own subfolder of the target folder, named by its
+`subfolder` (default: the destination key):
+
+```
+05-Deliverables/
+  youtube_16x9/SW001_Guest_01_example-clip_16x9.mp4   (+ .srt)
+  linkedin_16x9/SW001_Guest_01_example-clip_16x9.mp4  (+ .srt)
+  linkedin_9x16/SW001_Guest_01_example-clip_9x16.mp4
+  client_master/Client_example-slug_master.mov
+```
+
+One clip delivered to several platforms keeps one name per aspect and
+never collides. The real queue makes the subfolder when it is missing
+(a dry run makes nothing) and removes it again when nothing was queued.
+A file already sitting at the subfolder's name is refused. `"subfolder":
+null` in a config renders straight into the target folder. `deliver-check`
+has a `folder` row: PASS in the destination's own subfolder, FAIL in
+another destination's (a LinkedIn check of YouTube's file), SKIP in a
+folder no destination owns.
+
 ### The loop
 
 1. **Queue.** `resolve_workflow.py deliver-queue --project ... --timeline ...

@@ -6,6 +6,8 @@ Resolve. Stdlib only.
 check() reports every rule as PASS, FAIL or SKIP with what it found and
 what it expected:
     name          the file name follows the naming rule for the destination
+    folder        the file sits in its destination's subfolder; FAIL when it
+                  sits in another destination's, SKIP when in neither
     container     .mp4 or .mov, and the brand ffprobe reads agrees
     video_codec   codec (and profile, where the destination fixes one)
     size          width x height (a "timeline" size needs --size to assert)
@@ -254,12 +256,14 @@ def _one_of(value, want):
     return value in want if isinstance(want, (list, tuple)) else value == want
 
 
-def check(path, dest, fps=None, size=None, as_name=None, loudness=True):
+def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None):
     """Check path against the merged destination dest. fps: the timeline's
     frame rate to assert (any form parse_fps reads). size: (width, height)
     to assert when the destination renders at the timeline's size.
     as_name: judge the name and the sidecar as if the file were called
-    this (a fixed file that is still beside its original). loudness=False
+    this (a fixed file that is still beside its original). folders:
+    {subfolder: destination key} from deliver.subfolders(config), so a file
+    in another destination's folder fails. loudness=False
     skips the ffmpeg read. Returns {file, destination, checks, counts,
     status}; raises ToolMissing or CheckError."""
     need_ffmpeg = loudness and deliver.has_loudness_target(dest)
@@ -281,6 +285,20 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True):
     rows.append(_row("name", not problems, name, f"the {dest['naming']} naming rule, "
                      f"{dest.get('aspect') or 'master'}, .{dest['format']}",
                      "; ".join(problems) or None))
+
+    # Folder: which destination's subfolder the file sits in.
+    parent = os.path.basename(os.path.dirname(os.path.abspath(path)))
+    own = (dest.get("subfolder") or "").casefold()
+    other = (folders or {}).get(parent.casefold())
+    want_folder = (dest.get("subfolder") or "any") + "/"
+    if own and parent.casefold() == own:
+        rows.append(_row("folder", True, parent + "/", want_folder))
+    elif other and other != dest["key"]:
+        rows.append(_row("folder", False, parent + "/", want_folder,
+                         f"this is the folder for '{other}'"))
+    else:
+        rows.append(_row("folder", None, parent + "/", want_folder,
+                         "not in a destination folder"))
 
     # Container: mov and mp4 share ffprobe's format name; the brand differs.
     ext = os.path.splitext(path)[1].lstrip(".").lower()

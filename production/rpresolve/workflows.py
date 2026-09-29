@@ -651,14 +651,17 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                 deliver.timeline_problems(dest, subtitle_counts, subtitle_off) +
                 deliver.output_problems(target_dir, filename, dest,
                                         queued=render.queued_outputs(project),
-                                        volumes_root=volumes_root))
+                                        volumes_root=volumes_root,
+                                        subfolder=dest.get("subfolder")))
     if problems:
         raise Refused(" ".join(problems))
     try:
-        steps = deliver.render_steps(dest, target_dir, filename, size=size, fps=fps)
+        steps = deliver.render_steps(dest, deliver.output_folder(target_dir, dest), filename,
+                                     size=size, fps=fps)
     except deliver.DeliverError as e:
         raise Refused(str(e))
-    real_dir = os.path.realpath(target_dir)
+    # The destination's own subfolder of the target folder (deliver.output_folder).
+    real_dir = deliver.output_folder(target_dir, dest)
     output = os.path.join(real_dir, filename)
     core = steps[0]["settings"]
     sha = plan_sha("deliver", pin.unique_id, tl.GetUniqueId(), key, dest, real_dir, filename,
@@ -677,7 +680,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
            "deliver_changed": (["format/codec (put back)", "render mode Single clip (put back)"]
                                + deliver.changed_fields(steps)),
            "carried_over": deliver.carried_over(steps),
-           "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0}
+           "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0,
+           "made_folder": None}
     unnamed = render.unreported_jobs(project)
     if unnamed:
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
@@ -698,6 +702,13 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         project = pin.check(pm)
         fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
         mode0 = project.GetCurrentRenderMode()
+        made = not os.path.isdir(real_dir)
+        if made:
+            try:
+                os.mkdir(real_dir)
+            except OSError as e:
+                raise api.WriteNotApplied(f"could not make the destination folder "
+                                          f"{real_dir}: {e}")
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         try:
@@ -708,9 +719,16 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     out["codec"] = q["codec"]
     out["warnings"] += q["warnings"] + restore_warnings
     out["ui_restore_problems"] = snap.problems
+    out["made_folder"] = real_dir if made else None
     if q["error"] or not q["job_id"]:
         out["exit_status"] = 1
         out["warnings"].insert(0, q["error"] or "no job id")
+        if made:
+            try:
+                os.rmdir(real_dir)  # only when still empty; nothing was queued into it
+                out["made_folder"] = None
+            except OSError:
+                pass
         return out
     job = next((j for j in project.GetRenderJobList() or [] if j.get("JobId") == q["job_id"]),
                None)

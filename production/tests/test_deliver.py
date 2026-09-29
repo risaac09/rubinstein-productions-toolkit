@@ -423,6 +423,35 @@ class TestOutputProblems(unittest.TestCase):
         self.assertEqual(deliver.timeline_problems(dest("client_master"), [], [4]), [])
 
 
+class TestSubfolders(unittest.TestCase):
+    @staticmethod
+    def with_sub(value):
+        """youtube_16x9 with its subfolder set in the config, through destination()."""
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        cfg["destinations"]["youtube_16x9"]["subfolder"] = value
+        return deliver.destination(cfg, "youtube_16x9")
+
+    def test_default_is_the_key_and_null_means_none(self):
+        self.assertEqual(dest("youtube_16x9")["subfolder"], "youtube_16x9")
+        self.assertIsNone(self.with_sub(None)["subfolder"])
+        self.assertEqual(self.with_sub("yt")["subfolder"], "yt")
+
+    def test_a_subfolder_must_be_one_plain_folder_name(self):
+        for bad in ("../up", "a/b", "", "Upper", ".hidden", 7):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(deliver.DeliverError, "subfolder"):
+                    self.with_sub(bad)
+
+    def test_output_folder_and_the_folder_map(self):
+        tmp = os.path.realpath("/tmp")
+        self.assertEqual(deliver.output_folder("/tmp", dest("linkedin_9x16")),
+                         os.path.join(tmp, "linkedin_9x16"))
+        self.assertEqual(deliver.output_folder("/tmp", self.with_sub(None)), tmp)
+        cfg = {"destinations": {"a": {"name": "A"}, "b": {"subfolder": "Bee"},
+                                "c": {"subfolder": None}, "d": None}}
+        self.assertEqual(deliver.subfolders(cfg), {"a": "a", "bee": "b"})
+
+
 class TestShape(unittest.TestCase):
     def test_shape_problems(self):
         tall, wide, square = dest("linkedin_9x16"), dest("youtube_16x9"), dest("linkedin_1x1")

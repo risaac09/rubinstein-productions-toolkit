@@ -1221,6 +1221,8 @@ def cmd_deliver_queue(args):
         print("Dry run: nothing queued. To queue it, run again without --dry-run and with "
               f"--plan-sha {r['plan_sha']}.")
         return 0
+    if r.get("made_folder"):
+        print(f"Made folder: {r['made_folder']}")
     if r["job"]:
         print(f"Queued job {r['job'].get('JobId')}; NOT started (a person starts renders).")
         print("Resolve holds: " + ", ".join(f"{k}={v!r}" for k, v in sorted(r["job"].items())))
@@ -1243,11 +1245,13 @@ def cmd_deliver_check(args):
     fail (or an unreadable file), 2 ffprobe or ffmpeg missing."""
     from rpresolve import deliver, delivercheck as dc
     try:
-        dest = deliver.destination(_deliver_config(args), args.dest)
+        config = _deliver_config(args)
+        dest = deliver.destination(config, args.dest)
         size = _size(args.size) if args.size else None
         if args.fps:
             dc.parse_fps(args.fps)
-        r = dc.check(args.file, dest, fps=args.fps, size=size, loudness=not args.no_loudness)
+        r = dc.check(args.file, dest, fps=args.fps, size=size, loudness=not args.no_loudness,
+                     folders=deliver.subfolders(config))
     except dc.ToolMissing as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2

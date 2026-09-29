@@ -278,7 +278,8 @@ def _queue_destination(args, ctx):
                             "the job takes these from the Deliver page as it stands: "
                             f"{', '.join(r['carried_over'])}" + _how(r))
         elif r["exit_status"] == 0:
-            r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}, job "
+            made = f" (made the folder {r['made_folder']})" if r.get("made_folder") else ""
+            r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}{made}, job "
                             f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "
                             "job list does not report " +
                             (", ".join(r["unverified"]) or "nothing else") +

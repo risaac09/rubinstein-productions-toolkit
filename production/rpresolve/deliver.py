@@ -19,6 +19,12 @@ parse_name checks a file name against the rule):
     master  Client_example-slug_master.mov
             client ([A-Za-z0-9]+), slug as above.
 
+Folders: each destination renders into its own subfolder of the target
+folder, named by its "subfolder" (default: the destination key, such as
+youtube_16x9/), so one clip delivered to several platforms keeps one name
+per aspect without two files colliding. "subfolder": null renders straight
+into the target folder.
+
 Captions modes: "sidecar" (an .srt beside the file, named <stem>.srt),
 "burnin" (drawn into the picture by Resolve) and "none". Any caption file
 already beside the target (caption_files: .srt, .vtt, .scc, .ttml or .xml
@@ -43,6 +49,8 @@ FORMATS = ("mp4", "mov")
 NAMINGS = ("clip", "master")
 AUDIO_CODECS = ("aac", "lpcm")
 SUBTITLE_FORMAT = {"sidecar": "SeparateFile", "burnin": "BurnIn"}
+# A destination subfolder: one plain folder name, no path.
+SUBFOLDER_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 SHOW = r"[A-Z]{1,8}"
 WORD = r"[A-Za-z0-9]+"
@@ -263,6 +271,8 @@ def destination(config, key):
             "data_burn_in": house.get("data_burn_in", "None"), "resolve": {}, "expect": {}}
     dest = merge(base, raw)
     dest["key"] = key
+    if "subfolder" not in dest:
+        dest["subfolder"] = key
     problems = destination_problems(dest)
     if problems:
         raise DeliverError(f"destination '{key}' in the config is not usable: " +
@@ -318,6 +328,10 @@ def destination_problems(dest):
     color = dest.get("color") or {}
     if not isinstance(color.get("resolve"), dict) or not isinstance(color.get("expect"), dict):
         p.append("color needs a resolve block (tag strings) and an expect block (ffprobe values)")
+    sub = dest.get("subfolder")
+    if sub is not None and not (isinstance(sub, str) and SUBFOLDER_RE.fullmatch(sub)):
+        p.append("subfolder must be one folder name (lowercase letters, digits, _ and -), "
+                 "or null to render straight into the target folder")
     if dest.get("target_dir") is not None and not os.path.isabs(
             os.path.expanduser(str(dest["target_dir"]))):
         p.append("target_dir must be an absolute path")
@@ -372,10 +386,33 @@ def same_output(a, b):
         return _folded(da) == _folded(db)
 
 
-def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volumes"):
+def output_folder(target_dir, dest):
+    """The folder a destination's file goes in: target_dir/<subfolder>, or
+    target_dir itself when the destination has none. A real path; the
+    subfolder need not exist yet."""
+    real = os.path.realpath(os.path.expanduser(target_dir))
+    return os.path.join(real, dest["subfolder"]) if dest.get("subfolder") else real
+
+
+def subfolders(config):
+    """{subfolder: destination key} for every configured destination that
+    has one, for telling which destination a folder belongs to."""
+    out = {}
+    for key, raw in (config.get("destinations") or {}).items():
+        if raw:
+            sub = raw.get("subfolder", key) if isinstance(raw, dict) else None
+            if isinstance(sub, str) and sub:
+                out[sub.casefold()] = key
+    return out
+
+
+def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volumes",
+                    subfolder=None):
     """Every reason a render of `filename` into `target_dir` must not be
-    queued, as a list (empty: go ahead). `queued` holds the paths the
-    render queue already writes to, compared by same_output()."""
+    queued, as a list (empty: go ahead). With subfolder, the file goes in
+    target_dir/subfolder, which may not exist yet (the queue makes it) but
+    must not be a file. `queued` holds the paths the render queue already
+    writes to, compared by same_output()."""
     if not os.path.isabs(os.path.expanduser(target_dir)):
         return [f"target dir {target_dir!r} must be an absolute path."]
     real = os.path.realpath(os.path.expanduser(target_dir))
@@ -390,7 +427,14 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
     if paths.in_any_git_tree(real):
         problems.append(f"{target_dir} is inside a git working tree; deliverables go outside "
                         "any repository.")
-    out = os.path.join(real, filename)
+    folder = real
+    if subfolder:
+        folder = os.path.join(real, subfolder)
+        if os.path.lexists(folder) and not os.path.isdir(folder):
+            problems.append(f"{folder} exists and is not a folder; the destination's files go "
+                            "in a folder of that name.")
+            return problems
+    out = os.path.join(folder, filename)
     if os.path.lexists(out):
         problems.append(f"{out} already exists; nothing is overwritten. Rename or move it, or "
                         "change the name parts.")
