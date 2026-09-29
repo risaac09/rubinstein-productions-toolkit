@@ -100,18 +100,21 @@ class Item(Fake):
 
 
 class Timeline(Fake):
-    def __init__(self, name, uid, fps=25.0, start=86400, end=86400, tracks=None):
+    def __init__(self, name, uid, fps=25.0, start=86400, end=86400, tracks=None, settings=None):
         self.name, self.uid, self.fps, self.start, self.end = name, uid, fps, start, end
         self.tracks = tracks or {"video": [[]], "audio": [[]]}  # kind -> [track items]
+        self.settings = dict(settings or {})
+        self.disabled = set()  # (kind, index) of tracks switched off
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
     def GetStartFrame(self): return self.start
     def GetEndFrame(self): return self.end
     def GetTrackCount(self, kind): return len(self.tracks.get(kind, []))
+    def GetIsTrackEnabled(self, kind, index): return (kind, index) not in self.disabled
 
     def GetSetting(self, key=None):
-        return self.fps if key == "timelineFrameRate" else None
+        return self.fps if key == "timelineFrameRate" else self.settings.get(key)
 
     def GetItemListInTrack(self, kind, index):
         tracks = self.tracks.get(kind, [])
@@ -166,6 +169,11 @@ class Project(Fake):
         self.pool = Pool(root or Folder("Master"))
         self.jobs = [dict(j) for j in jobs]
         self.rendering = rendering
+        self.refuse = set()  # SetRenderSettings keys this fake refuses
+        self.render_mode = 1  # 0 Individual clips, 1 Single clip
+        self.stuck_mode = False  # SetCurrentRenderMode says yes and changes nothing
+        self.settings = {"colorScienceMode": "davinciYRGBColorManagedv2",
+                         "timelineResolutionWidth": "3840", "timelineResolutionHeight": "2160"}
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
@@ -176,7 +184,7 @@ class Project(Fake):
 
     def GetCurrentTimeline(self): return self.current
     def GetMediaPool(self): return self.pool
-    def GetSetting(self, key=None): return {"colorScienceMode": "davinciYRGBColorManagedv2"}.get(key)
+    def GetSetting(self, key=None): return self.settings.get(key)
     def GetRenderJobList(self): return [dict(j) for j in self.jobs]
 
     def GetRenderJobStatus(self, job_id):
@@ -208,9 +216,23 @@ class Project(Fake):
         self.fmt = {"format": fmt, "codec": codec}
         return True
 
+    def GetCurrentRenderMode(self):
+        return self.render_mode
+
+    def SetCurrentRenderMode(self, mode):
+        _log(self, "SetCurrentRenderMode", mode)
+        if mode not in (0, 1):
+            return False
+        if not self.stuck_mode:
+            self.render_mode = mode
+        return True
+
     def SetRenderSettings(self, settings):
+        # Resolve keeps every field until something sets it again.
         _log(self, "SetRenderSettings", settings)
-        self.render_settings = dict(settings)
+        if self.refuse & set(settings):
+            return False
+        self.render_settings.update(settings)
         return True
 
     def RefreshLUTList(self):
@@ -227,7 +249,9 @@ class Project(Fake):
                           "OutputFilename": f"{rs.get('CustomName')}.{self.fmt['format']}",
                           "FormatWidth": rs.get("FormatWidth"),
                           "FormatHeight": rs.get("FormatHeight"),
-                          "VideoFormat": self.fmt["format"], "VideoCodec": self.fmt["codec"]})
+                          "VideoFormat": self.fmt["format"], "VideoCodec": self.fmt["codec"],
+                          **{k: rs[k] for k in ("FrameRate", "AudioCodec", "AudioSampleRate",
+                                                "AudioBitDepth") if k in rs}})
         return jid
 
 
