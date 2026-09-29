@@ -18,7 +18,9 @@ cross-correlated with FFTs:
        quarter sample per window, again with the other stretched by that
        slope about each window's centre: a drifting clock smears a
        window's peak (50 ppm over 30 s is 1.5 ms) and lowers its
-       correlation, and the stretch restores it.
+       correlation, and the stretch restores it. The stretched pass is
+       kept only when it raises the windows' correlation; a slope that
+       came from a step lowers it, and the first pass stands.
 
 offset_s is where the other file's first frame lands on the reference's
 clock, measured at the head: positive when the other recording started
@@ -26,11 +28,16 @@ after the reference, negative when it started before. A straight line
 fitted through every window's offset gives clock drift, in ms per minute
 and ppm. Drift that adds up to more than MAX_DRIFT_FRAMES over the overlap
 is reported with the retime that would cancel it; nothing here corrects
-it. A window more than MAX_DRIFT_FRAMES off that line means the pair lines
-up differently in different places, which one placement cannot fix: a
-call recorded at both ends (each voice reaches the two files by its own
-path; 184 ms apart on one real pair) or an edited file. The report then
-groups the windows by the offset they agree on.
+it. One clock keeps every window within a millisecond or so of that line
+(the stretched pass, within microseconds on synthetic drift). A window
+more than LINE_MIN_MS or LINE_FRAMES of a frame off it, whichever is
+more, means the pair lines up differently in different places: a call
+recorded at both ends (each voice reaches the two files by its own path;
+184 ms apart on one real pair), samples dropped by one recorder, or an
+edited file. A line through three windows absorbs two thirds of a step at
+one end, so a step escapes only while under three times that limit (0.3
+frame), and what it leaves is counted as drift. The report then groups the
+windows by the offset they agree on.
 
 Each measurement carries its confidence: the normalized correlation at the
 peak (-1..1, its sign the polarity) and the ratio of the peak to the
@@ -83,10 +90,12 @@ MIN_PEAK_RATIO = 2.0
 MIN_NCC = 0.1
 COARSE_MIN_RATIO = 2.0  # a coarse runner-up closer than this is measured as a match would be
 MAX_DRIFT_FRAMES = 0.5
+LINE_MIN_MS = 2.0     # a window further than this off the drift line (and
+LINE_FRAMES = 0.1     # than this much of a frame) is not on one clock's line
 MAX_WINDOWS = 7
 WARP_MIN_SAMPLES = 0.25   # a first-pass slope smearing a window by more is compensated
 PEAK_RATIO_CAP = 1e6  # reported when nothing else correlates at all
-MAX_PLAUSIBLE_PPM = 1000.0  # 1 ms per second: past this, head and tail found different matches
+MAX_PLAUSIBLE_PPM = 300.0  # two crystal clocks stay well inside this (+/-100 ppm each at worst)
 DEFAULT_DRIFT_FPS = 25.0    # the drift threshold's frame when no fps is known
 
 
@@ -273,8 +282,9 @@ def windows(ov0, ov1, rate, window_s=WINDOW_S, max_windows=MAX_WINDOWS):
     it holds three windows of window_s: a head, a tail, a middle one and,
     one per ten windows' worth of overlap, more evenly spaced between
     (max_windows in all). Three at least, so that a step (two parts that
-    line up differently) cannot pass for a straight drift line. Otherwise
-    the whole overlap as one window."""
+    line up differently) leaves a window off the fitted drift line; with
+    three, by a third of the step. Otherwise the whole overlap as one
+    window."""
     w = int(round(window_s * rate))
     span = ov1 - ov0
     if w <= 0 or span < 3 * w:
@@ -338,7 +348,9 @@ def drift(measured, overlap_s, fps=None, max_frames=MAX_DRIFT_FRAMES):
     overlap and whether that passes max_frames; the speed (percent, for the
     other clip) that would cancel it; and how far each window sits from
     the fitted line, which a single clock keeps within a millisecond or so
-    and a pair that lines up differently in different places does not."""
+    and a pair that lines up differently in different places does not.
+    residual_limit_ms is the most a window may sit off the line:
+    LINE_MIN_MS, or LINE_FRAMES of a frame when that is more."""
     t = np.array([m["center_s"] for m in measured], dtype=np.float64)
     o = np.array([m["offset_s"] for m in measured], dtype=np.float64)
     tc = t - t.mean()
@@ -347,6 +359,7 @@ def drift(measured, overlap_s, fps=None, max_frames=MAX_DRIFT_FRAMES):
     res_ms = (o - fit) * 1000
     over_ms = d * overlap_s * 1000
     frame_ms = 1000.0 / (fps or DEFAULT_DRIFT_FPS)
+    line_ms = max(LINE_MIN_MS, LINE_FRAMES * frame_ms)
     return {"ppm": round(d * 1e6, 2), "ms_per_min": round(d * 60000, 3),
             "over_overlap_ms": round(over_ms, 2),
             "over_overlap_frames": round(over_ms / frame_ms, 3),
@@ -356,7 +369,7 @@ def drift(measured, overlap_s, fps=None, max_frames=MAX_DRIFT_FRAMES):
             "span_s": round(float(t[-1] - t[0]), 3),
             "residuals_ms": [round(float(r), 3) for r in res_ms],
             "max_residual_ms": round(float(np.abs(res_ms).max()), 3),
-            "residual_limit_ms": round(max_frames * frame_ms, 3)}
+            "residual_limit_ms": round(line_ms, 3)}
 
 
 def groups(measured, limit_ms):
@@ -483,10 +496,19 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
         limit = max_drift_frames * rate / (fps or DEFAULT_DRIFT_FPS)
         # A drifting clock smears each window's peak: measure again with the
         # other stretched by the first pass's slope, about the fitted lag. Only
-        # when that pass lies on a line; a step is not drift.
+        # when that pass lies near a line, and kept only when the stretch raised
+        # the correlation, as a real drift's does: a line fitted through a step
+        # has a slope too, and stretching by it smears every window instead.
         if max(abs(lag - at(c)) for c, lag in found) <= limit:
-            measured = _measure(ref, other, spans, at, warp, rate, search_s, check_cancel)
-            out["drift_compensated_ppm"] = round(warp * 1e6, 2)
+            again = _measure(ref, other, spans, at, warp, rate, search_s, check_cancel)
+            both = [(r1, r2) for (_, _, r1), (_, _, r2) in zip(first, again) if r1 and r2]
+            gain = (np.mean([abs(r2["ncc"]) for _, r2 in both]) -
+                    np.mean([abs(r1["ncc"]) for r1, _ in both])) if both else -1.0
+            if gain > 0:
+                measured = again
+                out["drift_compensated_ppm"] = round(warp * 1e6, 2)
+            else:
+                out["stretch_dropped_ppm"] = round(warp * 1e6, 2)
     for (label, a, b), (_, lag, r) in zip(spans, measured):
         if r is None:
             out["reasons"].append(f"{label} window: nothing to correlate")
@@ -526,17 +548,22 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
             w["residual_ms"] = r
         spread = (max(w["offset_s"] for w in out["windows"]) -
                   min(w["offset_s"] for w in out["windows"])) * 1000
-        if abs(d["ppm"]) > MAX_PLAUSIBLE_PPM:
-            out["reasons"].append(f"the windows' offsets change by {d['ppm']:.0f} ppm, beyond "
-                                  "any clock drift: they found different matches")
-        elif d["max_residual_ms"] > d["residual_limit_ms"]:
+        # Off the line first: a slope means something only when the windows lie on one.
+        if d["max_residual_ms"] > d["residual_limit_ms"]:
             out["groups"] = groups(out["windows"], d["residual_limit_ms"])
             out["reasons"].append(
                 f"the windows disagree: offsets spread over {spread:.1f} ms and one sits "
-                f"{d['max_residual_ms']:.1f} ms off any straight drift line (limit "
-                f"{d['residual_limit_ms']:g} ms). One placement cannot hold sync: each part "
-                "reaches the two files by a different path (a call recorded at both ends) or "
-                "one file is edited")
+                f"{d['max_residual_ms']:.1f} ms off any straight drift line (one clock keeps "
+                f"them within {d['residual_limit_ms']:g} ms). The pair lines up differently "
+                "in different places: each part reaches the two files by a different path (a "
+                "call recorded at both ends), one recorder dropped samples, or one file is "
+                "edited")
+        elif abs(d["ppm"]) > MAX_PLAUSIBLE_PPM:
+            out["reasons"].append(
+                f"the windows' offsets change by {d['ppm']:.0f} ppm, more than two clocks drift "
+                f"apart ({MAX_PLAUSIBLE_PPM:g} ppm at most): a 0.1% pull-up or pull-down (1000 "
+                "ppm; a recorder set to 48.048 or 47.952 kHz) reads like this, and so do windows "
+                "that found different matches")
         if len({w["polarity"] for w in out["windows"]}) > 1:
             out["reasons"].append("the windows disagree on polarity")
     else:
@@ -603,6 +630,10 @@ def format_summary(r):
     if r.get("drift_compensated_ppm") is not None:
         lines.append(f"  measured again with the other stretched by "
                      f"{r['drift_compensated_ppm']:+.2f} ppm (the first pass's drift)")
+    if r.get("stretch_dropped_ppm") is not None:
+        lines.append(f"  stretching the other by the first pass's {r['stretch_dropped_ppm']:+.2f} "
+                     "ppm lowered the windows' correlation (a clock's drift raises it); the "
+                     "first pass stands")
     d = r.get("drift")
     if d and r["match"]:
         lines.append(f"  drift: {d['ms_per_min']:+.3f} ms/min ({d['ppm']:+.2f} ppm), "

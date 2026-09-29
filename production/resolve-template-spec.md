@@ -518,11 +518,24 @@ The reference is the camera clip.
   window, the windows are measured again with the other file stretched by
   that slope: a drifting clock smears a window's peak (50 ppm over 30 s is
   1.5 ms), and on a synthetic 50 ppm pair the stretch took each window's
-  correlation from about 0.3 back to 0.99.
-- **Windows off the line:** a window more than half a frame off the
-  drift line means the pair lines up differently in different places,
-  which one placement cannot fix. That is not a match, and the report
-  groups the windows by the offset they agree on.
+  correlation from about 0.3 back to 0.99. The stretched pass is kept
+  only when it raises the windows' correlation; a slope fitted through a
+  step lowers it, and the first pass stands.
+- **Windows off the line:** one clock keeps every window within about a
+  millisecond of its drift line (within microseconds after the stretch,
+  on synthetic drift). A window more than 2 ms or a tenth of a frame off
+  it, whichever is more (4 ms at 25 fps), means the pair lines up
+  differently in different places: a call recorded at both ends, a
+  recorder that dropped samples, an edited file. That is not a match, and
+  the report groups the windows by the offset they agree on. A line
+  through three windows absorbs two thirds of a step at one end, so the
+  limit catches a step down to 0.3 frame; synthetic audio that lost 30 to
+  45 ms of samples (a USB or OBS dropout) is refused, where the earlier
+  half-frame limit let it pass as 140 to 230 ppm of drift.
+- **A slope beyond two clocks:** on a clean line, more than 300 ppm is not
+  a match. Two crystal clocks stay well inside it; a 0.1% pull-up or
+  pull-down (1000 ppm, a recorder set to 48.048 or 47.952 kHz) reads like
+  this, and the reason names it.
 
 Exit status: 0 a match; 2 a match whose drift passes half a frame; 1 no
 match or a file that cannot be read.

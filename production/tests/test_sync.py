@@ -177,6 +177,17 @@ class TestMeasureSignals(unittest.TestCase):
         self.assertIn("measured again", sync.format_summary(
             {**r, "reference": {"path": "a"}, "other": {"path": "b"}}))
 
+    def test_a_slope_beyond_two_clocks_is_refused(self):
+        # 500 ppm lies on a clean line, but no two crystal clocks drift that far
+        # apart; a 0.1% pull-down (1000 ppm) is the usual cause, and is named.
+        src = lowpass(bursts(340, seed=80), 1500)
+        t_ref = 20.0 + np.arange(300 * RATE) / RATE * (1 + 500e-6)
+        other = np.interp(t_ref * RATE, np.arange(len(src)), src)
+        r = sync.measure_signals(src, other, RATE, fps=25)
+        self.assertFalse(r["match"])
+        self.assertLess(r["drift"]["max_residual_ms"], 1.0)
+        self.assertTrue(any("pull-down" in x for x in r["reasons"]), r["reasons"])
+
     def test_unrelated_signals_are_not_a_match(self):
         r = sync.measure_signals(bursts(90, seed=7), bursts(60, seed=8), RATE, fps=25)
         self.assertFalse(r["match"])
@@ -233,6 +244,41 @@ class TestMeasureSignals(unittest.TestCase):
         self.assertFalse(r["rival"]["match"])
         self.assertTrue(r["match"], r["reasons"])
         self.assertAlmostEqual(r["offset_s"], 20.0, delta=0.0005)
+
+    @staticmethod
+    def dropout(ms, seed=70):
+        """The reference, and 240 s of it from 20 s that lost `ms` of samples
+        at 180 s (a USB or OBS audio dropout), on one clock."""
+        src = lowpass(bursts(300, seed=seed), 1500)
+        other = src[20 * RATE:260 * RATE]
+        k, n = 180 * RATE, int(ms * RATE / 1000)
+        return src, np.concatenate([other[:k], other[k + n:]])
+
+    def test_dropped_samples_are_refused(self):
+        # A line through three windows absorbs two thirds of a 40 ms step; the
+        # third left over is still far more than one clock allows.
+        src, other = self.dropout(40)
+        r = sync.measure_signals(src, other, RATE, fps=25)
+        self.assertFalse(r["match"])
+        self.assertTrue(any("dropped samples" in x for x in r["reasons"]), r["reasons"])
+        self.assertAlmostEqual(r["drift"]["max_residual_ms"], 40 / 3.0, delta=0.1)
+        self.assertEqual(r["drift"]["residual_limit_ms"], 4.0)  # a tenth of a 25 fps frame
+        offsets = sorted(g["offset_s"] for g in r["groups"])
+        self.assertAlmostEqual(offsets[-1] - offsets[0], 0.040, delta=0.0005)
+
+    def test_a_stretch_that_lowers_the_correlation_is_dropped(self):
+        # A 10 ms step fits a line well enough to pass, and that line slopes by
+        # 48 ppm. Stretching the other by it smears every window, so the first
+        # pass stands: each window lines up as a clean copy does.
+        src, other = self.dropout(10)
+        r = sync.measure_signals(src, other, RATE, fps=25)
+        self.assertTrue(r["match"], r["reasons"])
+        self.assertGreater(min(w["ncc"] for w in r["windows"]), 0.99)
+        self.assertAlmostEqual(r["windows"][0]["offset_s"], 20.0, delta=0.0001)
+        self.assertAlmostEqual(r["stretch_dropped_ppm"], 47.6, delta=1)
+        self.assertNotIn("drift_compensated_ppm", r)
+        self.assertIn("first pass stands", sync.format_summary(
+            {**r, "reference": {"path": "a"}, "other": {"path": "b"}}))
 
     def test_short_overlap_measures_one_window_and_no_drift(self):
         src = bursts(40, seed=10)
