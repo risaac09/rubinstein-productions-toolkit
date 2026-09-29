@@ -35,6 +35,10 @@ def _web(name, aspect, width, height, codec, lufs, captions):
                   "bit_depth": None, "channels": 2, "bitrate_kbps": 320},
         "loudness": {"integrated_lufs": lufs},
         "captions": captions,
+        # Web files are tagged Rec.709-A, which writes the transfer as bt709 (1-1-1);
+        # "Gamma 2.4" writes it unspecified and players guess. Isaac compared both
+        # renders and chose Rec.709-A on 2026-09-29 (pipeline note, spike 21).
+        "color": {"resolve": {"GammaTag": "Rec.709-A"}, "expect": {"color_transfer": "bt709"}},
         # Further SetRenderSettings keys, sent one by one; a refusal is a warning.
         "resolve": {"NetworkOptimization": True},
         # What ffprobe should read back. H.264 for the web is 8-bit 4:2:0;
