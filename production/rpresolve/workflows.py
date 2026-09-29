@@ -585,6 +585,16 @@ def _restore_mode(project, mode0, warnings):
             warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
 
 
+def _remove_if_empty(folder):
+    """rmdir a folder this run made, only while it is still empty. True
+    when it is gone."""
+    try:
+        os.rmdir(folder)
+        return True
+    except OSError:
+        return False
+
+
 def _timeline_size(project, tl):
     """(width, height) of a timeline, falling back to the project's."""
     def read(key):
@@ -702,6 +712,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         project = pin.check(pm)
         fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
         mode0 = project.GetCurrentRenderMode()
+        if not project.SetCurrentTimeline(tl):
+            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         made = not os.path.isdir(real_dir)
         if made:
             try:
@@ -709,10 +721,12 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
             except OSError as e:
                 raise api.WriteNotApplied(f"could not make the destination folder "
                                           f"{real_dir}: {e}")
-        if not project.SetCurrentTimeline(tl):
-            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         try:
             q = render.queue_destination_job(project, dest, steps)
+        except BaseException:
+            if made:
+                _remove_if_empty(real_dir)
+            raise
         finally:
             _restore_format(project, fmt0, restore_warnings)
             _restore_mode(project, mode0, restore_warnings)
@@ -723,12 +737,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     if q["error"] or not q["job_id"]:
         out["exit_status"] = 1
         out["warnings"].insert(0, q["error"] or "no job id")
-        if made:
-            try:
-                os.rmdir(real_dir)  # only when still empty; nothing was queued into it
-                out["made_folder"] = None
-            except OSError:
-                pass
+        if made and _remove_if_empty(real_dir):  # nothing was queued into it
+            out["made_folder"] = None
         return out
     job = next((j for j in project.GetRenderJobList() or [] if j.get("JobId") == q["job_id"]),
                None)

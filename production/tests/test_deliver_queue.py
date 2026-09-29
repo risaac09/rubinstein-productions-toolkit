@@ -188,6 +188,23 @@ class TestQueueDestination(Base):
         with self.assertRaisesRegex(workflows.Refused, "not a folder"):
             self.queue(dry_run=True)
 
+    def test_a_subfolder_that_is_a_link_is_refused(self):
+        # A link would send the render past the mount and git checks on the target.
+        elsewhere = os.path.join(self.dir, "elsewhere")
+        os.makedirs(elsewhere)
+        os.symlink(elsewhere, os.path.join(self.out, "youtube_16x9"))
+        with self.assertRaisesRegex(workflows.Refused, "is a link"):
+            self.queue(dry_run=True)
+
+    def test_a_queue_that_raises_leaves_no_folder_behind(self):
+        def boom(*a):
+            raise RuntimeError("Resolve went away")
+        dry = self.queue(dry_run=True)
+        with mock.patch.object(render, "queue_destination_job", boom):
+            with self.assertRaisesRegex(RuntimeError, "went away"):
+                self.queue(expect_sha=dry["plan_sha"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "youtube_16x9")))
+
     def test_timeline_size_falls_back_to_the_project(self):
         r = self.queue(dest="client_master", timeline="Clip [auto]", dry_run=True,
                        parts={"client": "Client", "slug": "s"})

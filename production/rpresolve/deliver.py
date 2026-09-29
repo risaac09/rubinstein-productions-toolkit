@@ -430,6 +430,10 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
     folder = real
     if subfolder:
         folder = os.path.join(real, subfolder)
+        if os.path.islink(folder):
+            problems.append(f"{folder} is a link; the destination's files go in a real folder "
+                            "there, so the checks above cover where they land.")
+            return problems
         if os.path.lexists(folder) and not os.path.isdir(folder):
             problems.append(f"{folder} exists and is not a folder; the destination's files go "
                             "in a folder of that name.")
