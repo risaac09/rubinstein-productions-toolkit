@@ -1521,6 +1521,8 @@ def cmd_sync(args):
         print(f"Drift:     {drift_words(d, f['fps'])}")
     elif m.get("drift_note"):
         print(f"Drift:     {m['drift_note']}")
+    for n in m.get("notes") or []:
+        print(f"Note:      {n}")
     print(f"Timeline:  {r['timeline']} at {r['rate']} fps" +
           (f"; files imported into the new bin '{r['bin']}'" if r["bin"] else ""))
     for p in r["plan"]:

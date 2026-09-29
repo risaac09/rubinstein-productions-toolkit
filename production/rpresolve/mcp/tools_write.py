@@ -399,7 +399,8 @@ def sync(args, ctx):
         where = (f"offset {m['offset_s']:+.4f} s, placed at {f['placed']:+d} frame(s) at "
                  f"{r['rate']} fps (residual {f['residual_ms']:+.1f} ms)")
         drift = ("; drift " + syncbuild.drift_words(d, f["fps"]) if d else
-                 f"; {m.get('drift_note', '')}")
+                 f"; {m.get('drift_note', '')}") + "".join(
+                     f"; note: {n}" for n in m.get("notes") or [])
         if r["dry_run"]:
             r["summary"] = (f"would build '{r['timeline']}' with {r['other']['name']} on "
                             f"{'V2/A2' if any(p['kind'] == 'video' and p['role'] == 'other' for p in r['plan']) else 'A2'}"

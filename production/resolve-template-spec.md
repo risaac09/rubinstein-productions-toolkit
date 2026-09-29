@@ -493,7 +493,10 @@ The reference is the camera clip.
   window's own reading is `head_offset_s`); with one window, that
   window's. Each file's zero is its first video frame (its first audio
   sample when it has none), so an audio stream that starts late in its
-  container is counted.
+  container is counted. That assumes Resolve also plays such a stream
+  from its own start time, which is not yet seen live (item 7 below); the
+  report adds a note whenever either file's audio starts off its first
+  frame.
 - **Frames:** the offset times the reference's frame rate (or `--fps`),
   placed at the whole frame by rounding half up. Frame placement leaves a
   residual of up to half a frame (20 ms at 25 fps, 8.3 ms at 60): the
@@ -654,7 +657,18 @@ Not yet seen on a live Resolve; owed, in the sandbox, with Resolve open on
    (+/-0.5 frame or better). A nudge below a frame, if ever wanted, is a
    hand step in Fairlight (untried).
 6. A true acoustic dual-system pair has not been measured: the real pairs
-   above are a call's own files and a call recorded at both ends.
+   above are a call's own files and a call recorded at both ends. Its
+   windows' distance from the drift line is the check on the 2 ms / tenth
+   of a frame limit (a talker who moves between a lav and a camera mic
+   changes the path by about 3 ms a metre).
+7. Whether Resolve honours an audio stream's start time. OBS and phone
+   files often start their audio 20 to 40 ms after the first video frame
+   (ffprobe's `start_time`); the offset counts that. If Resolve plays
+   audio sample 0 at video frame 0 instead, the stacked pair is out by
+   that much (about a frame at 25 fps), and the read-back cannot see it,
+   since it checks frames. Import a file whose audio `start_time` is not
+   zero, read its audio item's placement against its video item, and
+   record whether Resolve honours it.
 
 ## Trim review
 

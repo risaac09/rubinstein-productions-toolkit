@@ -470,6 +470,12 @@ class TestFiles(unittest.TestCase):
         self.assertEqual(r["fps"], 25.0)
         self.assertEqual(r["frames"]["placed"], 255)
         self.assertIn("MATCH", sync.format_summary(r))
+        # The camera's audio starts 0.2 s after its first frame: counted here, and
+        # named, since whether Resolve places it so is not yet seen live.
+        self.assertEqual(len(r["notes"]), 1)
+        self.assertIn("the reference's audio starts +200.0 ms from its first frame",
+                      r["notes"][0])
+        self.assertIn("note: the reference's audio", sync.format_summary(r))
 
     def test_cli_exit_codes(self):
         def run(*argv):

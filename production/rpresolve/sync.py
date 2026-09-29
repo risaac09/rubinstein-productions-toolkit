@@ -69,6 +69,9 @@ passes as above.
 Offsets are in the files' own time: each file's zero is its first video
 frame (its first audio sample when it has no video), so an audio stream
 that starts later than the video in its container is accounted for.
+Whether Resolve places such a stream from its own start time too is not
+yet seen live, so measure() adds a note when either file's audio starts
+off its first frame.
 Placed at frame precision, a clip lands within half a frame of the
 measured offset at the overlap's midpoint: that residual is inherent
 (+/-20 ms at 25 fps) and is reported beside the frames; drift adds to it
@@ -678,6 +681,13 @@ def measure(reference, other, fps=None, window_s=WINDOW_S, search_s=FINE_SEARCH_
     report["reference"] = {"path": reference, **pr, "decoded_s": round(len(ref) / rate, 3)}
     report["other"] = {"path": other, **po, "decoded_s": round(len(oth) / rate, 3)}
     report["fps"] = fps
+    # The offset counts an audio stream that starts off its file's first frame;
+    # whether Resolve places the audio that way too is not yet seen live.
+    report["notes"] = [
+        f"the {role}'s audio starts {p['audio_start_s'] * 1000:+.1f} ms from its first frame; "
+        "the offset counts that, and whether Resolve places the audio the same way is not yet "
+        "checked live" for role, p in (("reference", pr), ("other", po))
+        if abs(p["audio_start_s"]) >= 0.0005]
     return report
 
 
@@ -728,5 +738,6 @@ def format_summary(r):
                      (f" = {f['exact']:+.3f} frames at {f['fps']:g} fps, placed at "
                       f"{f['placed']:+d} (residual {f['residual_ms']:+.1f} ms; inherent "
                       f"+/-{f['inherent_ms']:.1f} ms at frame precision)" if f else ""))
+    lines += [f"  note: {n}" for n in r.get("notes") or []]
     lines.append("  MATCH" if r["match"] else "  NO MATCH: " + "; ".join(r["reasons"]))
     return "\n".join(lines) + "\n"

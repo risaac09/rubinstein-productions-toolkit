@@ -513,6 +513,25 @@ class TestSyncCommandAndTool(Base):
         self.assertEqual(status, 0, err)
         self.assertIn("ok   other     A2: read back from +63", out)
 
+    def test_cli_names_an_audio_start_it_counted(self):
+        real = self.measure()
+
+        def noted(reference, other, **args):
+            return {**real(reference, other, **args), "notes": [
+                "the reference's audio starts +21.0 ms from its first frame; the offset counts "
+                "that, and whether Resolve places the audio the same way is not yet checked live"]}
+        sync = functools.partial(workflows.sync, measure=noted, probe=self.probe)
+        out = io.StringIO()
+        with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
+                mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
+                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
+                redirect_stdout(out), redirect_stderr(io.StringIO()):
+            status = resolve_workflow.cmd_sync(argparse.Namespace(
+                reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
+                name=None, autosync=False, window=None, dry_run=True, plan_sha=None))
+        self.assertEqual(status, 0)
+        self.assertIn("Note:      the reference's audio starts +21.0 ms", out.getvalue())
+
     def test_cli_refusal_exits_1(self):
         status, _, err = self.cli(other="clip-cam")
         self.assertEqual(status, 1)
