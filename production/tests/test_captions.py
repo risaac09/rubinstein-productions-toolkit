@@ -519,6 +519,28 @@ class TestDeliverCaptions(CaptionBase):
         self.assertTrue(any("left out" in w and "<aside>" in w for w in r["warnings"]),
                         r["warnings"])
 
+    def test_label_time_captions_at_23976_are_refused_with_the_reason(self):
+        # If Resolve timed a 23.976 TTML in label time, the real-time start
+        # (86400 frames / (24000/1001) = 3603.6 s) would overshoot by 3.6 s.
+        path = self.clip([("01:00:00.041", "01:00:01.000", "Example caption one")],
+                         master=self.ntsc_master)
+        with self.assertRaises(captions.CaptionError) as cm:
+            self.convert(path)
+        msg = str(cm.exception)
+        for part in ("cue 1 at -3.559 s", "At 23.976 fps", "3603.600 s of real time",
+                     "3600.000 s as a label, 3.600 s apart", "taken off as a label, the "
+                     "captions fit the video", "only been seen at 25 fps",
+                     "23.976 [auto] timeline"):
+            self.assertIn(part, msg)
+        self.assertFalse(os.path.exists(deliver.sidecar_path(path)))
+        # when the label does not explain it either, the refusal says so
+        os.remove(deliver.resolve_sidecars(path)[0][1])
+        self.sidecar(path, [("00:59:00.000", "00:59:01.000", "Example caption one")])
+        with self.assertRaises(captions.CaptionError) as cm:
+            self.convert(path)
+        self.assertIn("3.600 s apart", str(cm.exception))
+        self.assertIn("do not fit either", str(cm.exception))
+
     def test_refused_inside_a_git_tree(self):
         os.makedirs(os.path.join(self.dir, ".git"))
         with self.assertRaisesRegex(captions.CaptionError, "git working tree"):

@@ -365,7 +365,12 @@ NAME] [--keep-ttml] [--json]`:
   59.94 and refused at any other rate. With no timecode tag it refuses
   unless the first cue already starts inside the file. After the shift
   every cue must start at or after 0 and end within the video's duration
-  plus 0.5 s, or it refuses with the numbers;
+  plus 0.5 s, or it refuses with the numbers; at a non-integer rate
+  (23.976, 29.97) the refusal also gives the start as a timecode label
+  (3.6 s an hour less at non-drop) and says whether the cues fit with
+  that taken off instead, the sign of a TTML timed in label time. Which
+  of the two Resolve writes at those rates is still open: a sandbox
+  render of a 23.976 `[auto]` timeline settles it;
 - writes `<stem>.srt` (UTF-8, LF line ends, cues numbered from 1,
   `HH:MM:SS,mmm`), reads it back (same cue count, text and times as the
   TTML, or the new `.srt` is removed again), then moves the TTML to

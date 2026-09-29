@@ -58,7 +58,8 @@ Not verified yet: at 23.976 or 29.97 the timecode label and real time part
 by 0.1% (3.6 s an hour). Which of the two Resolve writes into the TTML
 has only been seen at 25 fps, where they agree; the result warns at a
 non-integer rate. A shift the wrong way shows up as cues before 0 or past
-the end, which refuse.
+the end, which refuse, and at a non-integer rate the refusal gives the
+start both ways and says whether the cues fit with the label taken off.
 """
 
 import hashlib
@@ -361,6 +362,33 @@ def parse_timecode(tc, fps):
     return Fraction(frames) / fps
 
 
+def timecode_label(tc, fps):
+    """Seconds (Fraction) timecode tc reads as a label: HH:MM:SS plus FF
+    frames of a label second (round(fps)). parse_timecode counts the same
+    timecode in real time; at 23.976 or 29.97 non-drop the two part by 0.1%
+    (3.6 s an hour). Raises CaptionError as parse_timecode does."""
+    parse_timecode(tc, fps)
+    h, mi, s, _, ff = TIMECODE.match(str(tc).strip()).groups()
+    return Fraction(int(h) * 3600 + int(mi) * 60 + int(s)) + Fraction(int(ff), round(fps))
+
+
+def _label_note(tc, fps, offset, cues, duration):
+    """Why cues that do not fit a file at a non-integer rate might, for the
+    refusal: the start in real time and as a label, and whether the cues fit
+    when the label is taken off instead."""
+    label = timecode_label(tc, fps)
+    note = (f" At {float(fps):.3f} fps the start {tc} is {_fmt_s(offset)} of real time, which "
+            f"was taken off, and {_fmt_s(label)} as a label, {_fmt_s(offset - label)} apart.")
+    alt = [(float(a - label), float(b - label), t) for a, b, t in cues]
+    if dc.cue_time_problems(alt, duration):
+        return note + " Taken off as a label, the captions do not fit either."
+    return (note + " With the start taken off as a label, the captions fit the video: this "
+            "TTML looks timed in label time. Which of the two Resolve writes has only been seen "
+            "at 25 fps, where they agree; a sandbox render of a 23.976 [auto] timeline with "
+            "captions as a separate file, its first caption checked against the picture, "
+            "settles it.")
+
+
 def file_start(info):
     """(timecode, where it was read) from ffprobe's output: the first video
     stream's "timecode" tag, else any other stream's, else the format's;
@@ -502,9 +530,10 @@ def plan(path, dest, track=None):
     shifted = [(a - offset, b - offset, text) for a, b, text in cues]
     problems = dc.cue_time_problems([(float(a), float(b), t) for a, b, t in shifted], duration)
     if problems:
+        note = _label_note(tc, fps, offset, cues, duration) if tc and fps.denominator != 1 else ""
         raise CaptionError(f"after taking off the file's start ({tc or 'no timecode'}, "
                            f"{_fmt_s(offset)}) the captions do not fit the video: " +
-                           "; ".join(problems) + ". Nothing was written.")
+                           "; ".join(problems) + ". Nothing was written." + note)
     others = [p for t, p in sidecars if p != ttml]
     return {"file": path, "destination": dest["key"], "ttml": ttml, "track": track,
             "others": others, "srt": srt, "cues": shifted, "params": parsed["params"],
