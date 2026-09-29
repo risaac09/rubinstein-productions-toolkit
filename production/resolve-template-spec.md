@@ -432,8 +432,9 @@ are still open.
 
 Run each in the "RP Automation Sandbox" project, pinned by its unique id,
 and write down what Resolve did. Steps 2 and 5 ran on 2026-09-29 (the
-transfer tag and the sidecar above); the Rec.709-A comparison under step
-2 is still owed, and no result for steps 1, 3 and 4 is recorded here.
+transfer tag and the sidecar above), including step 2's Rec.709-A
+comparison, which settled the web tag; no result for steps 1, 3 and 4 is
+recorded here.
 
 1. **Invalid tag strings.** Call `SetRenderSettings({"GammaTag": "Gamma
    2.4 (not a tag)"})`, then the same for `ColorSpaceTag`, `AudioCodec`
