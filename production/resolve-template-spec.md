@@ -351,7 +351,8 @@ NAME] [--keep-ttml] [--json]`:
   times (`12.5s`, `300f`, `500ms`), `dur` (with `end` too, the earlier
   end wins), begin offsets on `body` and
   `div` (parallel time containers; `timeContainer="seq"` is refused),
-  `<br/>` as a line break and spans flattened (anything else in a
+  `<br/>` as a line break and spans flattened, a `<p>` anywhere but in a
+  `div` or the `body` refused so that none is lost (anything else in a
   `<p>`, such as `ttm:desc` or `ttm:agent`, is left out, and text in an
   element outside TTML is named in a warning); media time
   (Resolve's) or non-drop SMPTE time, where a label counts frames at

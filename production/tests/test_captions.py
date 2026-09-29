@@ -210,6 +210,28 @@ class TestTTML(unittest.TestCase):
                 '<p>Example caption one</p></div></body></tt>')
         self.assertEqual(secs(captions.parse_ttml(text)), [(1.0, 3.0, "Example caption one")])
 
+    def test_a_caption_where_captions_are_not_read_is_refused(self):
+        # every TTML <p> in the body is a cue, an empty one, or a refusal
+        cases = {
+            "<foo>": tt('<foo><p begin="1s" end="2s">Lost</p></foo>'
+                        '<p begin="3s" end="4s">Kept</p>'),
+            "<wrap>": tt('<x:wrap xmlns:x="urn:example"><p begin="1s" end="2s">Lost</p>'
+                         '</x:wrap><p begin="3s" end="4s">Kept</p>'),
+            "<span>": tt('<p begin="1s" end="2s">A <span><p begin="1s" end="2s">B</p></span>'
+                         '</p>'),
+            "<tt>": (f'<tt {TTML_NS}><p begin="1s" end="2s">Lost</p><body><div>'
+                     '<p begin="3s" end="4s">Kept</p></div></body></tt>'),
+        }
+        for where, text in cases.items():
+            with self.subTest(where=where):
+                with self.assertRaisesRegex(captions.CaptionError,
+                                            f"1 caption.*inside {where}"):
+                    captions.parse_ttml(text)
+        # a <p> of another vocabulary in metadata is not a caption
+        ok = tt('<metadata><h:p xmlns:h="http://www.w3.org/1999/xhtml">a note</h:p></metadata>'
+                '<p begin="3s" end="4s">Kept</p>')
+        self.assertEqual(secs(captions.parse_ttml(ok)), [(3.0, 4.0, "Kept")])
+
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
         self.assertEqual(r["cues"][0][2], "One\nTwo")

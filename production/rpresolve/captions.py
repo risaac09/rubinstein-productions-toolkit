@@ -26,7 +26,8 @@ deliver_captions(file, dest):
        (a <p> starts with its parent unless it has a begin, ends with it
        unless it has an end or dur, and is cut off where its parent ends;
        parallel time containers only, timeContainer="seq" is refused),
-       <br/> as a line break, spans flattened, anything else in a <p>
+       <br/> as a line break, spans flattened, a <p> anywhere but in a
+       body or div refused (so none is lost), anything else in a <p>
        left out (TTML metadata such as ttm:desc and ttm:agent quietly,
        other elements with text named in a warning). Media time (Resolve's) and
        non-drop SMPTE time: under SMPTE a label's hours, minutes, seconds
@@ -261,7 +262,7 @@ def parse_ttml(text):
         raise CaptionError(f"the root element is <{_local(root.tag)}>; a TTML file's root is "
                            "<tt>.")
     params = timing_params(root)
-    cues, empty, dropped = [], 0, []
+    cues, empty, dropped, seen = [], 0, [], set()
 
     markers = params["time_base"] == "smpte" and params["marker_mode"] == "discontinuous"
 
@@ -287,6 +288,7 @@ def parse_ttml(text):
         if stop is not None and parent_end is not None:
             stop = min(stop, parent_end)
         if _local(el.tag) == "p":
+            seen.add(el)
             words = _p_text(el, dropped)
             if not words:
                 return 1
@@ -311,6 +313,18 @@ def parse_ttml(text):
                                "before.")
     for body in bodies:
         empty += visit(body, Fraction(0), None)
+    # Every <p> of the document's own vocabulary is a cue, an empty caption,
+    # or a refusal: one under anything but a body or div would otherwise
+    # vanish from the .srt, and the read-back compares the .srt with these
+    # cues, never with the TTML.
+    p_tag = root.tag[:-len("tt")] + "p"
+    missed = [el for el in root.iter(p_tag) if el not in seen]
+    if missed:
+        parent = {c: el for el in root.iter() for c in el}
+        where = sorted({f"<{_local(parent[el].tag)}>" for el in missed})
+        raise CaptionError(f"{len(missed)} caption(s) sit inside {', '.join(where)}, where they "
+                           "are not read: a <p> belongs in a <div> or the <body>. Nothing was "
+                           "converted.")
     cues.sort(key=lambda c: (c[0], c[1]))
     return {"cues": cues, "params": params, "empty": empty, "dropped": dropped}
 
