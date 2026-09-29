@@ -13,8 +13,9 @@
 # prints "nothing to deploy".
 #
 # Usage: KIT=<kit dir> phase-zero/redeploy-prs.sh [--dry-run]
-#   KIT defaults to the phase-zero/ directory beside this script. --dry-run
-#   prints each consumer's clone, branch, dirty count, and visibility.
+#   KIT defaults to the phase-zero/ directory beside this script. The roster
+#   is `install.sh --list` from that KIT. --dry-run prints each consumer's
+#   clone, branch, dirty count, and visibility.
 #   PZ_COAUTHOR="Claude <model> <noreply@anthropic.com>" adds a Co-Authored-By
 #   trailer naming the model running the redeploy. Unset, the commit credits
 #   no model: the script writes no content of its own.
@@ -27,7 +28,13 @@ set -uo pipefail
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 KIT="${KIT:-$(cd "$(dirname "$0")" && pwd)}"
 KITREPO="$(cd "$KIT/.." && pwd)"
-CONSUMERS="second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits"
+# The roster comes from install.sh, the list of record, never a copy here: a
+# hand copy left out stack-data and the 2026-09-29 redeploy skipped it. The
+# toolkit itself is dropped, because its own .claude/ ships in the same PR as
+# the kit source change. Named literally: KITREPO is often a worktree, so its
+# basename is the worktree's name, not the repo's.
+CONSUMERS="$(bash "$KIT/install.sh" --list | grep -vx 'rubinstein-productions-toolkit')"
+if [ -z "$CONSUMERS" ]; then echo "FAIL: install.sh --list returned no consumers" >&2; exit 1; fi
 trailer=""
 if [ -n "${PZ_COAUTHOR:-}" ]; then trailer="
 

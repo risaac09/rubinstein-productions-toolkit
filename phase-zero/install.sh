@@ -14,7 +14,11 @@
 #   ./install.sh --all <parent-dir>         install into every listed consumer
 #   ./install.sh --check <target-repo-dir>  verify one deployed kit, no writes
 #   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
+#   ./install.sh --list                     print the consumer roster, one per line
 #
+# CONSUMERS below is the list of record. redeploy-prs.sh reads it through
+# --list instead of carrying a copy: a hand copy there left out stack-data,
+# and the 2026-09-29 redeploy skipped it without a word.
 # --check byte-compares the seven kit files against source and confirms both
 # hook registrations plus every kit permission clamp exist in settings.json.
 # settings.json itself is never byte-compared: merged consumer copies carry
@@ -35,6 +39,7 @@
 #   ./install.sh --public --all <parent-dir>
 #   ./install.sh --public --check <target-repo-dir>
 #   ./install.sh --public --check --all <parent-dir>
+#   ./install.sh --public --list
 #
 # The two kits have separate allowlists (CONSUMERS vs PUBLIC_CONSUMERS),
 # separate source directories, and separate target directories
@@ -82,7 +87,8 @@ PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURI
 # one list implies nothing about the other. three-type-evaluation is here for
 # its public paper side only; the rest of that repo stays private, untouched
 # either way since this kit only ever writes under .claude/public-kit/.
-PUBLIC_CONSUMERS="alchemy statehouse-dashboard gene-keys-data rubinsteinproductions risaac09 three-type-evaluation rubinstein-productions-toolkit"
+# isaacrubinstein.com added 2026-09-29: public on GitHub, confirmed by Isaac.
+PUBLIC_CONSUMERS="alchemy statehouse-dashboard gene-keys-data rubinsteinproductions risaac09 three-type-evaluation rubinstein-productions-toolkit isaacrubinstein.com"
 
 is_public_consumer() {
   case " $PUBLIC_CONSUMERS " in
@@ -245,8 +251,17 @@ install_one_public() {
   echo "public-kit installed -> $target/.claude/public-kit"
 }
 
+if [ "${1:-}" = "--list" ]; then
+  printf '%s\n' $CONSUMERS
+  exit 0
+fi
+
 if [ "${1:-}" = "--public" ]; then
   shift
+  if [ "${1:-}" = "--list" ]; then
+    printf '%s\n' $PUBLIC_CONSUMERS
+    exit 0
+  fi
   if [ "${1:-}" = "--check" ]; then
     shift
     RC=0
