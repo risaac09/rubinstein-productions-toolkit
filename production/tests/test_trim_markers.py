@@ -103,7 +103,8 @@ class TestPlan(Base):
     def test_an_ntsc_timeline_maps_at_the_exact_rate(self):
         # 29.97 is 30000/1001. An item showing the source from frame 299700 (2 h
         # 46 min in) starts at 9999.990 s at that rate, at 10000.000 s at a plain
-        # 29.97; a filler at 10049.995 s is 1498.65 frames in, not 1498.35.
+        # 29.97. A filler at 10049.995 s sits 1498.65 frames in (frame 1499); the
+        # plain rate puts it at 1498.35 (frame 1498).
         clip = rf.Clip("take.wav", "clip-take", {"File Path": self.source, "FPS": "29.97"})
         self.project.timelines.append(rf.Timeline(
             "Long [auto]", "tl-long", 29.97, 108000, 111000, tracks={"video": [[rf.Item(

@@ -278,8 +278,8 @@ class TestMeasureSignals(unittest.TestCase):
         offsets = sorted(g["offset_s"] for g in r["groups"])
         self.assertAlmostEqual(offsets[0], 10.0, delta=0.001)
         self.assertAlmostEqual(offsets[1], 10.18, delta=0.001)
-        # Off the line, the offset is the head's reading, not a midpoint between
-        # the groups that no window measured.
+        # Off the line, the offset is the head's own reading: the line's midpoint
+        # falls between the groups, where no window measured anything.
         self.assertEqual(r["offset_s"], r["head_offset_s"])
         self.assertIn("(the head window's)", sync.format_summary(
             {**r, "reference": {"path": "a"}, "other": {"path": "b"}}))

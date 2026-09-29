@@ -1043,7 +1043,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     if rate is None:
         raise Refused(f"the reference runs at {fps:g} fps, which is not a timeline frame rate "
                       "Resolve offers.")
-    tl_fps = deliver.exact_fps(rate)  # frame math at 30000/1001, not 29.97; rate is for SetSetting
+    tl_fps = deliver.exact_fps(rate)  # frames count at 30000/1001; the string is for SetSetting
     stem = os.path.splitext(infos[0]["name"])[0]
     name = name or f"{stem} sync{AUTO}"
     if not name.endswith(AUTO):
