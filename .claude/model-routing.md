@@ -1,110 +1,56 @@
 # Model routing check
 
-Before starting any substantive task, name the model and effort that fit it,
-then ask before proceeding. Do not switch silently.
+Before a substantive task, state in one line the model, effort, and why, then
+proceed. Ask first only when escalating above the anchor (Sonnet 5 at medium),
+when spending Fable, or before launching a Workflow fan-out (state the agent
+count). If Isaac redirects, his call wins for the rest of the session.
+Prices per 1M tokens in/out: Fable 5 $10/$50, Opus 5 $5/$25, Sonnet 5 $3/$15,
+Haiku 4.5 $1/$5.
 
-- Open with one line: what the task needs, recommended model, effort level,
-  cost tradeoff. Prices per 1M tokens in/out: Fable 5 $10/$50, Opus 5 $5/$25,
-  Sonnet 5 $3/$15, Haiku 4.5 $1/$5.
-- Isaac confirms, adjusts, or overrides. His answer wins. Once he decides,
-  proceed and do not raise it again this session.
+## Route on the task, not its category
 
-## Route on the task, not on its category
+Read the work before naming a model. Tier follows Q1 and Q2, effort follows Q3,
+pool follows Q4.
 
-Read the work before naming a model. Task-type labels like "repository
-execution" or "synthesis" are proxies, and they hide the difference between a
-one-line config bump and a branch nobody but Isaac can check. Ask four
-questions instead.
-
-**Q1. Who verifies this?** The load-bearing question. Not "is it hard" but "if
-it comes back wrong, what catches it, and what does that catch cost?" A test
-suite, a schema check, CI, the repo's own validator: machine-verified, route
-down, because a cheap model behind a strong checker beats an expensive one
-with no checker. Isaac reading it: human-verified, route up, because his
-attention is the scarce resource and a second review round is the real
-expense. Nobody until a client sees it: route up hard.
-
-**Q2. What does a miss cost?** Local branch, pre-push, revertible: absorb the
-risk. Pushed, sent, published, or written into a canonical doc: buy the
-margin.
-
-**Q3. How much of the thinking is already in the prompt?** A prompt carrying
-the diagnosis lowers required effort. A prompt where the model still has to
-find the problem raises it. This lever stays inside a tier, so sweep it before
-reaching for a bigger model.
-
-**Q4. Does it need Claude's context, continuity, or Isaac's voice?** This picks
-the pool, and it is independent of Q1 through Q3. A hard task with no
-Claude-context dependence goes to a strong Codex model, not to Opus.
-
-Tier follows Q1 and Q2. Effort follows Q3 and the surface area. Pool follows
-Q4 and the capacity contract. Three levers, not one lookup. The anchor is
-Sonnet 5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
-to start.
+- Q1. Who verifies it? A test suite, schema, CI or validator: route down.
+  Isaac's own review: route up. Nobody until a client sees it: route up hard.
+- Q2. What does a miss cost? Local and revertible: absorb it. Pushed, sent,
+  published, or written into a canonical doc: buy the margin.
+- Q3. How much of the thinking is already in the prompt? A carried diagnosis
+  lowers effort; a problem still to be found raises it.
+- Q4. Does it need Claude's context, continuity, or Isaac's voice? If not, a
+  strong Codex model is the right pool, not Opus.
 
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
-- Routine synthesis, continuity work, component edits, extraction, and
-  research legwork: Sonnet 5 at medium.
-- Orchestration, architecture, hard reasoning, and final synthesis: begin on
-  Sonnet 5 at medium. Escalate to Opus 5 only when a named difficulty survives
-  that pass.
-- The single hardest long-horizon task worth the premium: Fable 5, sweep
-  effort low to high.
-- Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
-- Low-impact preprocessing (markitdown conversion, summarization, bulk
-  classification, light drafts): Haiku 4.5 at low. There is no local lane.
-  It was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
-  one and the models stopped fitting. Name the consequence rather than
-  forgetting it: this work used to be free and private, and now it costs
-  subscription quota, so batch it instead of running it per item.
+- Bulk reads, search, mechanical edits, validation, low-impact preprocessing:
+  Haiku 4.5 at low. There is no local lane (retired 2026-09-13), so batch it.
+- Routine synthesis, continuity, component edits, extraction, research legwork:
+  Sonnet 5 at medium.
+- Orchestration, architecture, hard reasoning, final synthesis: start on
+  Sonnet 5 at medium; escalate to Opus 5 only for a named difficulty.
+- The single hardest long-horizon task worth the premium: Fable 5.
 
-## Capacity contract, effective 2026-08-12
+Importance is not difficulty. Model and effort are separate levers; the same
+model at a lower effort is often right.
 
-- Claude runs on Max 5x. ChatGPT Plus is a separate paid pool. Claude carries
-  synthesis, continuity, Isaac-voice work, and Claude-native projects. Work
-  that clears Q4 with no Claude-context dependence goes to Codex at a tier set
-  by Q1 and Q2, not automatically to Terra at medium.
-- Do not use usage credits or silent API overage on either service. If Claude
-  reaches an included limit, hand eligible execution work to Codex through the
-  content-free coordination protocol or wait for Claude's next reset. If both
-  pools are limited, continue deterministic local work or move the task to the
-  next week.
-- Keep at least 20 percent of Claude's weekly capacity available for urgent
-  synthesis and continuity work. Start a fresh outcome-focused session when the
-  task changes instead of carrying a long cached context forward.
-- Escalations are rationed by this budget, not by rarity. Do not hold Opus or
-  Fable back to keep them feeling scarce, which under-routes the genuinely hard
-  task to preserve a symbol. Name the difficulty, spend the tier, return to the
-  anchor after that pass.
+## Capacity contract (2026-08-12)
+
+Claude runs on Max 5x; ChatGPT Plus is a separate pool. No usage credits or
+silent API overage on either. At a Claude limit, hand eligible execution work
+to Codex or wait for the reset. Keep 20 percent of Claude's weekly capacity for
+urgent synthesis and continuity. Escalations are rationed by this budget, not
+by rarity.
 
 ## The falsifier
 
-Log two fields per substantive task: the tier routed to, and whether the work
-needed a second review round. The destination already exists, and extra keys
-pass validation untouched, so this needs no new machinery:
+Log the tier and whether the work needed a second review round:
 
     sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
 
-(stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
-never rides a session branch.) Without that record this rule cannot be shown
-wrong, and its next version is another guess with better prose. The open
-Claude-versus-Sol card in `stack-data/docs/DECISIONS.md` closes on that data,
-not on argument.
-
-## Known failure mode
-
-Routing from the category label before reading the task. It fires in both
-directions. Down, when "routine repository execution" sends a four-commit
-branch with voice-gated copy and no test coverage to a cheap lane. Up, when a
-task's importance rather than its difficulty argues for Fable after the hard
-reasoning has already been spent. Importance is not difficulty.
-
-Model and effort are separate levers. The right setting is often the same model
-at a lower effort: Opus 5 runs the full ladder to max, and its low and medium
-tiers hold up on work that used to need a higher tier. The suggestion is a
-prompt, not a gate. If Isaac says "just go," take the anchor and move.
+The reasoning behind each rule, the known failure mode, and worked examples:
+`rubinstein-productions-toolkit/phase-zero/model-routing-rationale.md`.
 
 This copy is kit-deployed. The source lives in
 `rubinstein-productions-toolkit/phase-zero/model-routing.md`; edit it there
