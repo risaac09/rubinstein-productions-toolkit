@@ -90,9 +90,10 @@ absolute, since the server's working directory is not the caller's.
   `target_dir` in place of `preset` and `output_dir`, `queue_render` names
   the file by the house rule and also refuses when the folder sits under
   `/Volumes` with its share unmounted, when it is inside any git working
-  tree, when the sidecar caption file exists or a queued job already
-  writes the same file, and when captions are wanted but the timeline has
-  no subtitle track. Each Deliver field goes in its own `SetRenderSettings`
+  tree, for a sidecar destination when a caption file under the file's
+  stem (.srt, .vtt, .scc, .ttml or .xml, in any case) exists, when a queued
+  job already writes the same file, and when captions are wanted but the
+  timeline has no subtitle track. Each Deliver field goes in its own `SetRenderSettings`
   call; if Resolve refuses a required one, nothing is queued. The result
   shows what Resolve's job list holds and names the fields it does not
   report; `deliver_check` on the rendered file covers those. See the

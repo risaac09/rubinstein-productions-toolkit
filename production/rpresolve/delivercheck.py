@@ -16,7 +16,9 @@ what it expected:
                   an expected value of null is only reported
     audio_*       codec, channels, sample rate, bit depth for LPCM
     captions      sidecar: <stem>.srt beside the file parses, has cues, and
-                  runs in time order; burn-in or none: no sidecar and no
+                  runs in time order; burn-in or none: no caption file for
+                  the stem beside it (deliver.caption_files: .srt, .vtt,
+                  .scc, .ttml, .xml, any case, dangling links too) and no
                   subtitle stream (burnt-in text is not read from pixels)
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
                   tolerance, true peak at or under the maximum; SKIP when the
@@ -377,12 +379,11 @@ def _captions(path, name, dest, streams):
             or str(s.get("codec_tag_string", "")).lower() in CAPTION_TAGS]
     sub_desc = ", ".join(f"#{s.get('index')} {s.get('codec_name') or s.get('codec_tag_string')}"
                          for s in subs)
+    beside = [os.path.basename(p) for p in deliver.caption_files(os.path.join(folder, name))]
     if dest["captions"] == "sidecar":
         if not os.path.isfile(sidecar):
-            near = sorted(f for f in os.listdir(folder)
-                          if f.lower().endswith(".srt") and f.startswith(os.path.splitext(name)[0]))
-            return _row("captions", False, "no sidecar" + (f" (found {', '.join(near)})"
-                                                           if near else ""),
+            return _row("captions", False, "no sidecar" + (f" (found {', '.join(beside)})"
+                                                           if beside else ""),
                         os.path.basename(sidecar))
         try:
             with open(sidecar, encoding="utf-8") as f:
@@ -394,12 +395,12 @@ def _captions(path, name, dest, streams):
                     (f"; {'; '.join(problems[:3])}" if problems else ""),
                     "a parseable, non-empty, time-ordered .srt beside the file")
     found = []
-    if os.path.isfile(sidecar):
-        found.append(f"sidecar {os.path.basename(sidecar)}")
+    if beside:
+        found.append(f"caption file(s) {', '.join(beside)}")
     if subs:
         found.append(f"subtitle stream(s) {sub_desc}")
-    return _row("captions", not found, "; ".join(found) or "no sidecar, no subtitle stream",
-                "no sidecar and no subtitle stream (" + dest["captions"] + ")",
+    return _row("captions", not found, "; ".join(found) or "no caption file, no subtitle stream",
+                "no caption file beside it and no subtitle stream (" + dest["captions"] + ")",
                 "burnt-in captions are not read from the picture" if dest["captions"] ==
                 "burnin" else None)
 

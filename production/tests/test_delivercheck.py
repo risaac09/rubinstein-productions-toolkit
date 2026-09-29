@@ -196,6 +196,36 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(failed(dc.check(path, tiny("linkedin_9x16"), loudness=False)),
                          ["captions"])
 
+    def test_burn_in_fails_on_any_caption_file_for_its_stem(self):
+        path = self.clip(name="SW001_Guest_01_example-clip_9x16.mp4", sidecar=None,
+                         size="36x64")
+        stem = path[:-4]
+        cases = [(stem + ".vtt", False), (stem + ".en.srt", False), (stem + ".SRT", False),
+                 (stem + ".srt", True)]  # True: a dangling link
+        for side, dangling in cases:
+            with self.subTest(side=os.path.basename(side), dangling=dangling):
+                if dangling:
+                    os.symlink(os.path.join(os.path.dirname(path), "gone.srt"), side)
+                else:
+                    with open(side, "w", encoding="utf-8") as f:
+                        f.write(SRT)
+                try:
+                    r = dc.check(path, tiny("linkedin_9x16"), loudness=False)
+                    self.assertEqual(failed(r), ["captions"], dc.format_report(r))
+                    row = next(x for x in r["checks"] if x["check"] == "captions")
+                    self.assertIn(os.path.basename(side), row["found"])
+                finally:
+                    os.remove(side)
+        self.assertEqual(failed(dc.check(path, tiny("linkedin_9x16"), loudness=False)), [])
+
+    def test_a_dangling_sidecar_link_fails(self):
+        path = self.clip(sidecar=None)
+        os.symlink(os.path.join(os.path.dirname(path), "gone.srt"), deliver.sidecar_path(path))
+        r = dc.check(path, tiny("linkedin_16x9"), loudness=False)
+        self.assertEqual(failed(r), ["captions"])
+        row = next(x for x in r["checks"] if x["check"] == "captions")
+        self.assertIn("no sidecar", row["found"])
+
     def test_wrong_fps(self):
         path = self.clip(rate="25")
         self.assertEqual(failed(dc.check(path, tiny("linkedin_16x9"), fps="23.976",

@@ -270,6 +270,34 @@ class TestOutputProblems(unittest.TestCase):
         self.assertIn("render queue", deliver.output_problems(self.dir, self.name, self.yt,
                                                               queued={out})[0])
 
+    def test_any_caption_file_for_the_stem_blocks_a_sidecar_job(self):
+        stem = os.path.join(self.dir, self.name[:-4])
+        for tail in (".vtt", ".SRT", ".en.srt", ".scc", ".ttml", ".xml", "_Subtitle 1.srt"):
+            with self.subTest(tail=tail):
+                open(stem + tail, "w").close()
+                try:
+                    problems = deliver.output_problems(self.dir, self.name, self.yt)
+                    self.assertEqual(len(problems), 1, problems)
+                    self.assertIn("caption file", problems[0])
+                    self.assertIn(os.path.basename(stem + tail), problems[0])
+                finally:
+                    os.remove(stem + tail)
+        os.symlink(os.path.join(self.dir, "gone.srt"), stem + ".srt")  # dangling
+        self.assertIn("caption file", deliver.output_problems(self.dir, self.name, self.yt)[0])
+        os.remove(stem + ".srt")
+        for other in (stem + ".txt", stem + ".mp4.part", os.path.join(self.dir, "other.srt")):
+            open(other, "w").close()
+        self.assertEqual(deliver.output_problems(self.dir, self.name, self.yt), [])
+
+    def test_caption_files(self):
+        stem = os.path.join(self.dir, self.name[:-4])
+        for tail in (".en.srt", ".VTT", ".mp4", ".txt"):
+            open(stem + tail, "w").close()
+        os.symlink(os.path.join(self.dir, "gone"), stem + ".srt")
+        self.assertEqual([os.path.basename(p) for p in deliver.caption_files(stem + ".mp4")],
+                         sorted(os.path.basename(stem + t) for t in (".en.srt", ".VTT", ".srt")))
+        self.assertEqual(deliver.caption_files(os.path.join(self.dir, "nope", "x.mp4")), [])
+
     def test_captions_need_a_subtitle_track_with_something_on_it(self):
         self.assertIn("no subtitle track", deliver.timeline_problems(self.yt, [])[0])
         self.assertIn("empty", deliver.timeline_problems(dest("linkedin_9x16"), [0, 0])[0])

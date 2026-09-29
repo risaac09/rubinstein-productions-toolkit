@@ -215,8 +215,10 @@ Names are validated when a job is queued and again when the file is checked.
    all frames, and never replace existing files. It refuses, with every
    reason, when the target folder is missing; when it sits under `/Volumes`
    and that share is not mounted (a dropped share leaves its folders on the
-   boot disk); when it is inside a git working tree; when the file or its
-   `.srt` already exists, or a queued job writes the same file; when
+   boot disk); when it is inside a git working tree; when the file already
+   exists, or a queued job writes the same file; for a sidecar
+   destination, when any caption file under the file's stem already sits
+   there (`.srt`, `.vtt`, `.scc`, `.ttml` or `.xml`, in any case); when
    captions are wanted and the timeline has no subtitle track, or only
    empty ones. It never starts the render.
 2. **Render.** Isaac starts it on the Deliver page.
@@ -254,7 +256,8 @@ seen in a file Resolve rendered with these settings yet.
   `SetRenderSettings`, and the job is then not queued.
 - The sidecar's name: the check expects `<stem>.srt` beside the file and
   names any near miss it finds. Whether the sidecar is SRT or WebVTT is not
-  a scripting key.
+  a scripting key. A burn-in or no-captions file fails the check when any
+  caption file under its stem sits beside it.
 - Which fields `GetRenderJobList` reports. The queue result compares the
   ones it does report and lists the rest as unverified.
 - Channel count cannot be set through the API (the render takes the

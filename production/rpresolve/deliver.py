@@ -20,10 +20,12 @@ parse_name checks a file name against the rule):
             client ([A-Za-z0-9]+), slug as above.
 
 Captions modes: "sidecar" (an .srt beside the file, named <stem>.srt),
-"burnin" (drawn into the picture by Resolve) and "none".
+"burnin" (drawn into the picture by Resolve) and "none". Any caption file
+already beside the target (caption_files: .srt, .vtt, .scc, .ttml or .xml
+under the file's stem, in any case) blocks a sidecar job, and fails the
+check of a burn-in or no-captions file.
 """
 
-import glob
 import os
 import re
 
@@ -31,6 +33,8 @@ from . import paths
 
 ASPECTS = ("16x9", "9x16", "1x1")
 CAPTIONS = ("sidecar", "burnin", "none")
+# Extensions of caption files that may sit beside a deliverable.
+CAPTION_EXTS = ("srt", "vtt", "scc", "ttml", "xml")
 FORMATS = ("mp4", "mov")
 NAMINGS = ("clip", "master")
 AUDIO_CODECS = ("aac", "lpcm")
@@ -215,6 +219,23 @@ def sidecar_path(output_path):
     return os.path.splitext(output_path)[0] + ".srt"
 
 
+def caption_files(output_path):
+    """Every caption file already beside output_path that could belong to
+    it: a name that starts with its stem and ends in a caption extension
+    (CAPTION_EXTS), in any case, dangling links included. Resolve's own
+    sidecar name is unverified, so <stem>.en.srt and <stem>_x.vtt count
+    too. Sorted paths; [] when the folder cannot be read."""
+    folder, base = os.path.split(output_path)
+    stem = os.path.splitext(base)[0].casefold()
+    try:
+        names = os.listdir(folder or ".")
+    except OSError:
+        return []
+    return sorted(os.path.join(folder, n) for n in names
+                  if n.casefold().startswith(stem) and "." in n
+                  and n.rsplit(".", 1)[1].casefold() in CAPTION_EXTS)
+
+
 # ---------------------------------------------------------------------------
 # Destinations
 # ---------------------------------------------------------------------------
@@ -329,8 +350,7 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
         problems.append(f"{out} already exists; nothing is overwritten. Rename or move it, or "
                         "change the name parts.")
     if dest.get("captions") == "sidecar":
-        stem = os.path.splitext(out)[0]
-        found = sorted(glob.glob(glob.escape(stem) + "*.srt"))
+        found = caption_files(out)
         if found:
             problems.append(f"a caption file already sits beside it ({', '.join(found)}); "
                             "the sidecar would be overwritten or misnamed.")
