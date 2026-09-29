@@ -185,7 +185,9 @@ Settings and Export Presets describes the render presets.
 House rules, all in the config: integrated loudness within +/-0.5 LU of the
 target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
 colour tags Rec.709 primaries and matrix with the Gamma 2.4 transfer
-(Resolve's `ColorSpaceTag` "Rec.709" and `GammaTag` "Gamma 2.4"). An overlay
+(Resolve's `ColorSpaceTag` "Rec.709" and `GammaTag` "Gamma 2.4"), limited
+range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
+stream counts as limited, as decoders read it). An overlay
 kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
 the MCP server) lies over `resolve-config.json`: it changes any one field
 of a destination, adds a private `target_dir`, adds a destination, or

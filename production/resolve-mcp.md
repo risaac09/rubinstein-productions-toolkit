@@ -58,7 +58,7 @@ tool must name that project.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
-| `deliver_check` | offline | A rendered file against its delivery destination: name rule, container, codec, size, exact fps, pixel format, colour tags, audio, captions, loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
+| `deliver_check` | offline | A rendered file against its delivery destination: name rule, container, codec, size, exact fps, pixel format, colour tags and range, audio, captions, loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines (and 9:16 copies) from a cut manifest, gated by endcheck. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |

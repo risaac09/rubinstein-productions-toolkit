@@ -145,7 +145,8 @@ class TestConfig(unittest.TestCase):
                                                   "GammaTag": "Gamma 2.4"})
         self.assertEqual(yt["color"]["expect"], {"color_primaries": "bt709",
                                                  "color_space": "bt709",
-                                                 "color_transfer": None})
+                                                 "color_transfer": None,
+                                                 "color_range": "tv"})
         for key, size, captions in (("linkedin_16x9", (1920, 1080), "sidecar"),
                                     ("linkedin_9x16", (1080, 1920), "burnin"),
                                     ("linkedin_1x1", (1080, 1080), "burnin"),

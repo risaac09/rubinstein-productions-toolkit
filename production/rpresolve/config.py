@@ -91,11 +91,12 @@ DEFAULT_CONFIG = {
         # Resolve's tag strings go to SetRenderSettings; "expect" is what
         # ffprobe should read back. Which transfer Resolve writes for
         # "Gamma 2.4" is unverified until a real render, so the check only
-        # reports it (null).
+        # reports it (null). Web deliverables are limited ("tv") range; a
+        # full-range render (yuvj*, or flagged pc) plays crushed or lifted.
         "color": {
             "resolve": {"ColorSpaceTag": "Rec.709", "GammaTag": "Gamma 2.4"},
             "expect": {"color_primaries": "bt709", "color_space": "bt709",
-                       "color_transfer": None},
+                       "color_transfer": None, "color_range": "tv"},
         },
         "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"],
         # The Deliver page's Data Burn-in for every destination job: "None",

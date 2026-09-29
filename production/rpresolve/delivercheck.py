@@ -13,7 +13,9 @@ what it expected:
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
     color_*       primaries, transfer and matrix tags against the config;
-                  an expected value of null is only reported
+                  an expected value of null is only reported. color_range:
+                  limited ("tv") by default; a yuvj* pix_fmt counts as full
+                  range, an unflagged YUV stream as limited
     audio_*       codec, channels, sample rate, bit depth for LPCM
     captions      sidecar: <stem>.srt beside the file parses, has cues, and
                   runs in time order; burn-in or none: no caption file for
@@ -181,6 +183,26 @@ def pix_fmt_family(pix_fmt):
     return semi.get(s, (None, None))
 
 
+def color_range(video):
+    """(range, found) for a video stream: range is 'tv' (limited), 'pc'
+    (full) or None when it cannot be told. A yuvj* pix_fmt is full range
+    whatever the flag says (ffmpeg decodes a full-range flag to yuvj*). An
+    unflagged YUV stream is limited range, which is how decoders read it
+    (H.264 and H.265 default the full-range flag to 0), and ffprobe leaves
+    the field out for such a file."""
+    pix = str(video.get("pix_fmt") or "")
+    flag = video.get("color_range")
+    if flag in (None, "", "unknown"):
+        flag = None
+    if pix.startswith("yuvj"):
+        return "pc", f"{flag or 'unflagged'}, {pix} (full range)"
+    if flag in ("tv", "pc"):
+        return flag, flag
+    if flag is None and pix.startswith("yuv"):
+        return "tv", "unflagged, so decoded as tv (limited)"
+    return None, flag or "unflagged"
+
+
 SRT_TIME = r"(\d{1,2}):(\d{2}):(\d{2}),(\d{3})"
 SRT_LINE = re.compile(rf"^{SRT_TIME}\s*-->\s*{SRT_TIME}(?:\s.*)?$")
 
@@ -322,6 +344,13 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True):
                              want if want is not None else "not asserted",
                              None if want is not None else "reported only; see the open "
                              "question on the Gamma 2.4 transfer tag"))
+        rng, found = color_range(video)
+        want = cexp.get("color_range")
+        rows.append(_row("color_range",
+                         None if want is None or rng is None else _one_of(rng, want), found,
+                         want if want is not None else "not asserted",
+                         "range could not be told from the stream" if want is not None and
+                         rng is None else None))
 
     # Audio
     a = dest["audio"]

@@ -46,11 +46,12 @@ needs_ffmpeg = unittest.skipUnless(
     "ffmpeg or ffprobe (with libx264, libx265 and prores_ks) missing")
 
 TAGS = {"bt709": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
-        "bt2020": "setparams=color_primaries=bt2020:color_trc=bt709:colorspace=bt2020nc:range=tv"}
+        "bt2020": "setparams=color_primaries=bt2020:color_trc=bt709:colorspace=bt2020nc:range=tv",
+        "full": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc"}
 
 
 def make(path, size="64x36", rate="24000/1001", codec="h264", lufs=-16.0, peaks=False,
-         tags="bt709", seconds=2.5):
+         tags="bt709", seconds=2.5, pix_fmt=None):
     """A test clip: testsrc2 picture, stereo 1 kHz sine at `lufs`, and with
     peaks a short full-scale pulse twice a second (about -0.3 dBTP)."""
     expr = f"{10 ** (lufs / 20):.5f}*sin(2*PI*1000*t)"
@@ -60,6 +61,8 @@ def make(path, size="64x36", rate="24000/1001", codec="h264", lufs=-16.0, peaks=
              "hevc": ["-c:v", "libx265", "-preset", "ultrafast", "-x265-params",
                       "log-level=error", "-tag:v", "hvc1", "-pix_fmt", "yuv420p"],
              "prores": ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]}[codec]
+    if pix_fmt:
+        video[video.index("-pix_fmt") + 1] = pix_fmt
     audio = ["-c:a", "pcm_s24le"] if codec == "prores" else ["-c:a", "aac", "-b:a", "192k"]
     cmd = [dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
            "-i", f"testsrc2=size={size}:rate={rate}:duration={seconds}",
@@ -116,6 +119,16 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(dc.pix_fmt_family("p010le"), ("420", 10))
         self.assertEqual(dc.pix_fmt_family("gbrp"), (None, None))
 
+    def test_colour_range(self):
+        self.assertEqual(dc.color_range({"pix_fmt": "yuv420p", "color_range": "tv"})[0], "tv")
+        self.assertEqual(dc.color_range({"pix_fmt": "yuv420p", "color_range": "pc"})[0], "pc")
+        self.assertEqual(dc.color_range({"pix_fmt": "yuvj420p"})[0], "pc")  # JPEG, full
+        self.assertEqual(dc.color_range({"pix_fmt": "yuvj420p", "color_range": "tv"})[0], "pc")
+        rng, found = dc.color_range({"pix_fmt": "yuv422p10le"})
+        self.assertEqual(rng, "tv")  # unflagged YUV decodes as limited range
+        self.assertIn("unflagged", found)
+        self.assertIsNone(dc.color_range({"pix_fmt": "gbrp"})[0])
+
     def test_ebur128_summary(self):
         text = ("[Parsed_ebur128_0 @ 0x0] Summary:\n\n  Integrated loudness:\n    I:         "
                 "-14.2 LUFS\n    Threshold: -24.2 LUFS\n\n  Loudness range:\n    LRA:         "
@@ -164,8 +177,8 @@ class TestCheck(unittest.TestCase):
         r = dc.check(self.clip(), tiny("linkedin_16x9"), fps="23.976")
         self.assertEqual(failed(r), [], dc.format_report(r))
         s = statuses(r)
-        self.assertEqual((s["loudness"], s["true_peak"], s["captions"], s["color_transfer"]),
-                         (dc.PASS, dc.PASS, dc.PASS, dc.SKIP))
+        self.assertEqual((s["loudness"], s["true_peak"], s["captions"], s["color_transfer"],
+                          s["color_range"]), (dc.PASS, dc.PASS, dc.PASS, dc.SKIP, dc.PASS))
         self.assertEqual(r["status"], "pass")
         row = next(x for x in r["checks"] if x["check"] == "color_transfer")
         self.assertEqual(row["found"], "bt709")  # reported even though not asserted
@@ -250,6 +263,19 @@ class TestCheck(unittest.TestCase):
         strict["color"]["expect"]["color_transfer"] = ["unknown"]
         self.assertEqual(failed(dc.check(self.clip(), strict, loudness=False)),
                          ["color_transfer"])
+
+    def test_full_range_fails(self):
+        r = dc.check(self.clip(tags="full"), tiny("linkedin_16x9"), loudness=False)
+        self.assertEqual(failed(r), ["color_range"], dc.format_report(r))
+        row = next(x for x in r["checks"] if x["check"] == "color_range")
+        self.assertIn("pc", row["found"])
+        self.assertEqual(row["expected"], "tv")
+        r = dc.check(self.clip(pix_fmt="yuvj420p"), tiny("linkedin_16x9"), loudness=False)
+        self.assertEqual(failed(r), ["color_range"], dc.format_report(r))
+        # the house rule can be changed in the config
+        loose = tiny("linkedin_16x9")
+        loose["color"]["expect"]["color_range"] = None
+        self.assertEqual(failed(dc.check(self.clip(tags="full"), loose, loudness=False)), [])
 
     def test_loudness_two_lu_off(self):
         r = dc.check(self.clip(lufs=-14.0), tiny("linkedin_16x9"))
