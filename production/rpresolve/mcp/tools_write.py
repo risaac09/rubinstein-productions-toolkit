@@ -373,6 +373,59 @@ def deliver_captions(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# sync
+# ---------------------------------------------------------------------------
+
+def sync(args, ctx):
+    _require_sha(args)
+    try:
+        from .. import sync as _numpy_check  # noqa: F401  (numpy, before the lock)
+    except ImportError as e:
+        raise RuntimeError(f"sync needs numpy ({e}); run the server on /usr/bin/python3.")
+    if args.get("bin"):
+        for field in ("reference", "other"):
+            _existing(args[field], field)
+    ctx.check_cancel()
+
+    def run():
+        r = workflows.sync(ctx.session.get(), args["project"], args["reference"], args["other"],
+                           name=args.get("name"), bin=args.get("bin"), autosync=args["autosync"],
+                           window_s=args["window_s"], dry_run=args["dry_run"],
+                           project_id=args.get("project_id"), expect_sha=args.get("plan_sha"),
+                           check_cancel=ctx.check_cancel)
+        m, f = r["measurement"], r["measurement"]["frames"]
+        d = m.get("drift") or {}
+        where = (f"offset {m['offset_s']:+.4f} s, placed at {f['placed']:+d} frame(s) at "
+                 f"{r['rate']} fps (residual {f['residual_ms']:+.1f} ms)")
+        drift = (f"; drift {d['ms_per_min']:+.3f} ms/min, {d['over_overlap_ms']:+.1f} ms over "
+                 "the overlap" + (f", OVER the threshold and left as measured; retiming the other "
+                                  f"clip to {d['retime_pct']:.5f}% would cancel it"
+                                  if d.get("exceeds") else "") if d else
+                 f"; {m.get('drift_note', '')}")
+        if r["dry_run"]:
+            r["summary"] = (f"would build '{r['timeline']}' with {r['other']['name']} on "
+                            f"{'V2/A2' if any(p['kind'] == 'video' and p['role'] == 'other' for p in r['plan']) else 'A2'}"
+                            f": {where}{drift}" +
+                            (f"; imports both files into a new bin '{r['bin']}'" if r["bin"]
+                             else "") +
+                            ("; then AutoSyncAudio, checked against this offset" if
+                             args["autosync"] else "") + _how(r))
+        else:
+            ok = sum(1 for p in (r["built"] or {}).get("placements", []) if p["ok"])
+            n = len((r["built"] or {}).get("placements", []))
+            a = r["autosync"]
+            r["summary"] = (f"built '{r['timeline']}': {ok} of {n} placement(s) read back within "
+                            f"a frame; {where}{drift}" +
+                            (f"; AutoSyncAudio {a['verdict']}" if a else "") +
+                            (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "") +
+                            _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("sync", args, run)
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -554,6 +607,39 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         create_captions, title="Create auto captions", annotations=WRITE))
+    registry.add(Tool(
+        "sync",
+        "Stack dual-system sound on a new ' [auto]' timeline: the reference camera clip on "
+        "V1/A1, the other recording on A2 (or a second camera on V2/A2) at the offset measured "
+        "from their audio (as sync_measure), then read every placement back (start, source "
+        "start, length) within a frame of the plan. reference and other are media-pool clips "
+        "(unique id, file path or name), or, with bin, files imported into that new bin at the "
+        "pool's root, which the run owns. Only then may autosync run Resolve's AutoSyncAudio on "
+        "them; its result is read back through a second [auto] timeline and compared with the "
+        "measured offset, never trusted alone. A weak or inconsistent match is refused; drift "
+        "over half a frame is reported with the retime that would cancel it, never corrected. "
+        "Making a multicam clip stays a hand step. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "reference": {"type": "string", "minLength": 1,
+                          "description": "The camera clip: a pool clip's unique id, file path "
+                          "or name; with bin, an absolute file path."},
+            "other": {"type": "string", "minLength": 1,
+                      "description": "The audio file or second camera, the same way."},
+            "bin": {"type": "string", "pattern": "^[A-Za-z0-9 _.()-]{1,80}$",
+                    "description": "Import the two files into this new bin (it must not exist)."},
+            "name": {"type": "string", "pattern": " \\[auto\\]$",
+                     "description": "Timeline name; must end ' [auto]' (default: '<reference> "
+                     "sync [auto]')."},
+            "autosync": {"type": "boolean", "default": False,
+                         "description": "With bin: also run AutoSyncAudio on the imported clips "
+                         "and check it."},
+            "window_s": {"type": "number", "minimum": 5, "maximum": 300, "default": 30,
+                         "description": "Seconds per measuring window."},
+            **DRY_RUN},
+         "required": ["project", "reference", "other"], "additionalProperties": False},
+        sync, title="Sync dual-system sound", annotations=WRITE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

@@ -58,6 +58,12 @@ Commands:
                            zero-based <stem>.srt beside the render
     deliver-fix-loudness   Offline: two-pass loudnorm to the destination's target,
                            video copied untouched, into <stem>.loudfix<ext>
+    sync-measure           Offline: where one recording sits against another from
+                           their audio: offset in seconds and frames, clock drift,
+                           confidence; refuses to call a weak match a match
+    sync                   Stack dual-system sound (camera + recorder, or two
+                           cameras) on a new [auto] timeline at the measured
+                           offset, every placement read back
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -1427,6 +1433,108 @@ def cmd_deliver_fix_loudness(args):
     return 0 if r["status"] == "pass" else 1
 
 
+# ---------------------------------------------------------------------------
+# Sync (dual-system sound)
+# ---------------------------------------------------------------------------
+
+def _fps_arg(text):
+    """--fps as a float (23.976, 25, 24000/1001); raises ValueError."""
+    from rpresolve import delivercheck as dc
+    return float(dc.parse_fps(text))
+
+
+def cmd_sync_measure(args):
+    """Measure where <other> sits against <reference> from the sound both
+    recorded (offline; rpresolve/sync.py). Exit 0 a match, 2 a match whose
+    clock drift passes the threshold (reported, never corrected), 1 no
+    match or a file that cannot be read."""
+    try:
+        from rpresolve import sync as rpsync
+    except ImportError as e:
+        print(f"ERROR: sync-measure needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        fps = _fps_arg(args.fps) if args.fps else None
+        r = rpsync.measure(args.reference, args.other, fps=fps, window_s=args.window,
+                           ref_stream=args.ref_stream, other_stream=args.other_stream)
+    except (rpsync.SyncError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        sys.stdout.write(rpsync.format_summary(r))
+    if not r["match"]:
+        return 1
+    return 2 if (r.get("drift") or {}).get("exceeds") else 0
+
+
+def cmd_sync(args):
+    """Build a stacked multitrack [auto] timeline from dual-system sound in
+    the open project named with --project: the reference on V1/A1, the
+    other on the next track at the measured offset, every placement read
+    back. Exit 0 built and read back (or planned, with --dry-run), 2 built
+    with drift over the threshold or an AutoSyncAudio result that could
+    not be read back, 1 refused or failed."""
+    resolve = get_resolve()
+    try:
+        with rpapi.ResolveLock():
+            r = rpwork.sync(resolve, args.project, args.reference, args.other, name=args.name,
+                            bin=args.bin, autosync=args.autosync, window_s=args.window,
+                            dry_run=args.dry_run, project_id=args.project_id,
+                            expect_sha=args.plan_sha)
+    except rpapi.ResolveAPIError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    m = r["measurement"]
+    ref, oth = r["reference"], r["other"]
+    print(f"Reference: {ref['name']} ({ref['fps']:g} fps)")
+    print(f"Other:     {oth['name']}")
+    for w in m["windows"]:
+        print(f"  {w['label']:5} at {w['center_s']:.1f} s: {w['offset_s']:+.4f} s, ncc "
+              f"{w['ncc']:+.3f}, peak {w['peak_ratio']:.2f}x")
+    f = m["frames"]
+    print(f"Offset:    {m['offset_s']:+.4f} s = {f['exact']:+.3f} frames at {r['rate']} fps; "
+          f"placed at {f['placed']:+d} (residual {f['residual_ms']:+.1f} ms, inherent "
+          f"+/-{f['inherent_ms']:.1f} ms)")
+    d = m.get("drift")
+    if d:
+        print(f"Drift:     {d['ms_per_min']:+.3f} ms/min ({d['ppm']:+.2f} ppm), "
+              f"{d['over_overlap_ms']:+.1f} ms over the overlap" +
+              (f"; OVER {d['threshold_frames']:g} frame and left as measured: retiming the "
+               f"other clip to {d['retime_pct']:.5f}% by hand would cancel it"
+               if d["exceeds"] else ""))
+    elif m.get("drift_note"):
+        print(f"Drift:     {m['drift_note']}")
+    print(f"Timeline:  {r['timeline']} at {r['rate']} fps" +
+          (f"; files imported into the new bin '{r['bin']}'" if r["bin"] else ""))
+    for p in r["plan"]:
+        print(f"  {p['role']:9} {p['kind'][0].upper()}{p['track']}: from frame +{p['record']}, "
+              f"{p['length']} frames")
+    if r["dry_run"]:
+        print(f"plan_sha: {r['plan_sha']}")
+        print("Dry run: nothing imported or built. To build it, run again without --dry-run and "
+              f"with --plan-sha {r['plan_sha']}.")
+        return 0
+    b = r["built"] or {}
+    for p in b.get("placements", []):
+        got = p["got"] or {}
+        print(f"  {'ok  ' if p['ok'] else 'FAIL'} {p['role']:9} {p['kind'][0].upper()}{p['track']}: "
+              f"read back from +{got.get('record')}, source {got.get('source_start')}, "
+              f"{got.get('length')} frames")
+    a = r["autosync"]
+    if a:
+        print(f"AutoSyncAudio returned {a['returned']}; verdict {a['verdict']}" +
+              (f" (Resolve placed it at {a['implied_offset_s']:+.4f} s)"
+               if a["implied_offset_s"] is not None else "") +
+              (f"; {a['note']}" if a.get("note") else ""))
+    for p in r["problems"]:
+        print(f"  PROBLEM: {p}", file=sys.stderr)
+    if r["ui_restore_problems"]:
+        print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
+    return r["exit_status"]
+
+
 def _locked(fn):
     """Run a Resolve write command under the cross-process Resolve lock, so
     it cannot interleave with an MCP session's writes."""
@@ -1528,6 +1636,11 @@ Examples:
       --dest youtube_16x9 --replace
   python3 resolve_workflow.py deliver-check /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
       --dest youtube_16x9 --fps 23.976
+
+  # Dual-system sound: measure, then stack on a new [auto] timeline (plan first)
+  python3 resolve_workflow.py sync-measure /path/to/A001.MOV /path/to/ZOOM0001.WAV
+  python3 resolve_workflow.py sync /path/to/A001.MOV /path/to/ZOOM0001.WAV --project "My Project" \\
+      --bin "Sync A001" --dry-run
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1777,6 +1890,41 @@ Examples:
     sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_fix_loudness)
+
+    sp = subparsers.add_parser(
+        "sync-measure", help="Offline: where one recording sits against another, from their "
+        "audio (offset, drift, confidence)")
+    sp.add_argument("reference", help="The reference: the camera clip")
+    sp.add_argument("other", help="The other recording: an audio file or a second camera")
+    sp.add_argument("--fps", help="Frame rate for the offset in frames (default: the "
+                                  "reference's)")
+    sp.add_argument("--window", type=float, default=30.0,
+                    help="Seconds per measuring window (default 30)")
+    sp.add_argument("--ref-stream", type=int, default=0, help="Audio stream of the reference "
+                                                              "(0 is the first)")
+    sp.add_argument("--other-stream", type=int, default=0, help="Audio stream of the other")
+    sp.add_argument("--json", action="store_true", help="Print the whole report as JSON")
+    sp.set_defaults(func=cmd_sync_measure)
+
+    sp = subparsers.add_parser(
+        "sync", help="Stack dual-system sound on a new [auto] timeline at the measured offset")
+    sp.add_argument("reference", help="Pool clip (unique id, file path or name), or a file with "
+                                      "--bin: the camera clip")
+    sp.add_argument("other", help="Pool clip, or a file with --bin: the audio or second camera")
+    sp.add_argument("--project", required=True, help="Name of the open project")
+    sp.add_argument("--project-id", help="Its unique id, to pin it exactly")
+    sp.add_argument("--bin", help="Import the two files into this new bin at the pool's root "
+                                  "(the run owns it)")
+    sp.add_argument("--name", help="Timeline name, ending ' [auto]' (default: '<reference> sync "
+                                   "[auto]')")
+    sp.add_argument("--autosync", action="store_true",
+                    help="Also run Resolve's AutoSyncAudio on the imported clips (with --bin "
+                         "only) and check it against the measured offset")
+    sp.add_argument("--window", type=float, help="Seconds per measuring window (default 30)")
+    sp.add_argument("--dry-run", action="store_true", help="Measure and plan only; prints the "
+                                                           "plan_sha")
+    sp.add_argument("--plan-sha", help="Refuse unless the plan still matches this dry run's")
+    sp.set_defaults(func=cmd_sync)
 
     args = parser.parse_args()
     if not args.command:

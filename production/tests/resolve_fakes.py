@@ -69,6 +69,13 @@ class Graph(Fake):
 class Clip(Fake):
     def __init__(self, name, uid, props=None):
         self.name, self.uid, self.props = name, uid, dict(props or {})
+        self.linked = None  # (audio clip, offset in timeline frames) after AutoSyncAudio
+
+    def has(self, kind):
+        """Whether the clip carries picture ('video') or sound ('audio'), from
+        its Type property as Resolve reports it ("Video + Audio", "Audio")."""
+        kind_prop = str(self.props.get("Type", "Video + Audio")).lower()
+        return kind in kind_prop
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
@@ -108,6 +115,10 @@ class Timeline(Fake):
         # Caption items CreateSubtitlesFromAudio makes; 0 is a Resolve that
         # returns True and places nothing.
         self.auto_captions = 3
+        self.subtypes = {}  # (kind, index) -> audio type of a track AddTrack made
+        self.markers = {}   # float frame from the start -> marker dict, as GetMarkers gives
+        self.refuse_add_track = False  # AddTrack returns True and adds nothing
+        self.tc_start = False  # the start frame follows the rate (01:00:00:00), as a new timeline's
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
@@ -127,6 +138,50 @@ class Timeline(Fake):
     def GetItemListInTrack(self, kind, index):
         tracks = self.tracks.get(kind, [])
         return list(tracks[index - 1]) if 1 <= index <= len(tracks) else None
+
+    def holds_items(self):
+        return any(track for tracks in self.tracks.values() for track in tracks)
+
+    def SetSetting(self, key, value):
+        _log(self, "SetSetting", key, value)
+        if key == "timelineFrameRate":
+            # Fixed once the timeline holds a clip, as in Resolve.
+            if self.holds_items():
+                return False
+            self.fps = float(value)
+            if self.tc_start:
+                self.start = self.end = int(round(3600 * self.fps))
+        self.settings[key] = value
+        return True
+
+    def AddTrack(self, kind, *sub):
+        _log(self, "AddTrack", kind, *sub)
+        if self.refuse_add_track or kind not in ("video", "audio", "subtitle"):
+            return True
+        self.tracks.setdefault(kind, []).append([])
+        if kind == "audio":  # mono when no type is given, as the README says
+            self.subtypes[(kind, len(self.tracks[kind]))] = (sub[0] if sub and isinstance(
+                sub[0], str) else "mono")
+        return True
+
+    def GetTrackSubType(self, kind, index):
+        if kind != "audio":
+            return ""
+        return self.subtypes.get((kind, index), "stereo")
+
+    def AddMarker(self, frame, color, name, note, duration, custom=""):
+        # One marker per frame, a colour Resolve offers, inside the timeline.
+        _log(self, "AddMarker", frame, color, name, note, duration, custom)
+        f = float(frame)
+        if (f in self.markers or color not in MARKER_COLORS or f < 0
+                or f >= self.end - self.start or duration < 1):
+            return False
+        self.markers[f] = {"color": color, "duration": float(duration), "note": note,
+                           "name": name, "customData": custom}
+        return True
+
+    def GetMarkers(self):
+        return {k: dict(v) for k, v in self.markers.items()}
 
     def CreateSubtitlesFromAudio(self, settings=None):
         # Live (2026-09-29): on the current timeline, from the Edit page, it returns
@@ -181,20 +236,109 @@ class Folder(Fake):
     def GetSubFolderList(self): return list(self.subs)
 
 
+MARKER_COLORS = ("Blue", "Cyan", "Green", "Yellow", "Red", "Pink", "Purple", "Fuchsia",
+                 "Rose", "Lavender", "Sky", "Mint", "Lemon", "Sand", "Cocoa", "Cream")
+# path -> clip properties ImportMedia gives the clip it makes for that file.
+IMPORT_PROPS = {}
+
+
 class Pool(Fake):
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, root, project=None):
+        self.root, self.project, self.current = root, project, root
+        self.autosync_separate = True  # the synced audio is an item of its own on a timeline
+        self.autosync_offset = 0  # timeline frames: where the synced audio's start lands
 
     def GetRootFolder(self): return self.root
+    def GetCurrentFolder(self): return self.current
+
+    def SetCurrentFolder(self, folder):
+        _log(self, "SetCurrentFolder", getattr(folder, "name", folder))
+        self.current = folder
+        return True
+
+    def AddSubFolder(self, parent, name):
+        _log(self, "AddSubFolder", getattr(parent, "name", parent), name)
+        folder = Folder(name)
+        parent.subs.append(folder)
+        return folder
 
     def ImportMedia(self, paths):
         _log(self, "ImportMedia", list(paths))
-        return [Clip(p.rsplit("/", 1)[-1], f"import-{len(CALLS)}") for p in paths]
+        clips = [Clip(p.rsplit("/", 1)[-1], f"import-{len(CALLS)}-{n}",
+                      {"File Path": p, **IMPORT_PROPS.get(p, {})})
+                 for n, p in enumerate(paths)]
+        self.current.clips.extend(clips)
+        return clips
+
+    def CreateEmptyTimeline(self, name):
+        _log(self, "CreateEmptyTimeline", name)
+        fps = float(self.project.settings.get("timelineFrameRate", 25)) if self.project else 25.0
+        start = int(round(3600 * fps))
+        tl = Timeline(name, f"new-{len(CALLS)}", fps, start, start,
+                      tracks={"video": [[]], "audio": [[]]})
+        tl.tc_start = True
+        if self.project is not None:
+            self.project.add(tl)
+        return tl
 
     def AppendToTimeline(self, items):
         # Resolve 21.0.4.5 (spike 18): True for an imported .srt, and nothing placed.
+        # A clipInfo lands on the current timeline, on its trackIndex only when that
+        # track exists; the call is truthy whether or not anything was placed.
         _log(self, "AppendToTimeline", items)
+        tl = self.project.current if self.project is not None else None
+        placed = []
+        for info in items or []:
+            if not isinstance(info, dict) or tl is None:
+                continue
+            placed += _place(tl, info)
+        return placed or True
+
+    def AutoSyncAudio(self, items, settings):
+        _log(self, "AutoSyncAudio", [getattr(i, "name", i) for i in items], dict(settings))
+        video = [c for c in items if c.has("video")]
+        audio = [c for c in items if not c.has("video")]
+        if not video or not audio:
+            return False
+        video[0].linked = (audio[0], self.autosync_offset)
+        video[0].props["Synced Audio"] = audio[0].name
         return True
+
+
+def _place(tl, info):
+    clip = info["mediaPoolItem"]
+    kinds = [k for k, t in (("video", 1), ("audio", 2))
+             if info.get("mediaType") in (None, t) and clip.has(k)]
+    track = int(info.get("trackIndex", 1))
+    s0, s1 = info.get("startFrame", 0), info.get("endFrame")
+    clip_fps = float(str(clip.props.get("FPS") or tl.fps).split()[0])
+    length = int(round((s1 - s0) * tl.fps / clip_fps))
+    rec = int(info.get("recordFrame", tl.end))
+    placed = []
+    for kind in kinds:
+        tracks = tl.tracks.setdefault(kind, [])
+        if track > len(tracks):
+            continue
+        it = Item(clip.name, rec, rec + length, clip, nodes=None if kind == "audio" else
+                  (("", "", None),), source=(s0, s1))
+        tracks[track - 1].append(it)
+        placed.append(it)
+        tl.end = max(tl.end, it.end)
+    pool = tl.project.pool if getattr(tl, "project", None) is not None else None
+    if clip.linked and "audio" in kinds and pool is not None and pool.autosync_separate:
+        audio, offset = clip.linked
+        a_tracks = tl.tracks.get("audio", [])
+        if track + 1 <= len(a_tracks):
+            a_fps = float(str(audio.props.get("FPS") or tl.fps).split()[0])
+            skip = max(0, -offset)
+            a_len = int(audio.props.get("Frames", length)) * tl.fps / a_fps - skip
+            start = rec + max(0, offset)
+            end = min(rec + length, start + int(round(a_len)))
+            it = Item(audio.name, start, end, audio, nodes=None,
+                      source=(int(round(skip * a_fps / tl.fps)), None))
+            a_tracks[track].append(it)
+            placed.append(it)
+    return placed
 
 
 class Project(Fake):
@@ -208,14 +352,15 @@ class Project(Fake):
         self.render_settings = {}
         self._ids = itertools.count(1)
         self.current = current
-        self.pool = Pool(root or Folder("Master"))
+        self.pool = Pool(root or Folder("Master"), self)
         self.jobs = [dict(j) for j in jobs]
         self.rendering = rendering
         self.refuse = set()  # SetRenderSettings keys this fake refuses
         self.render_mode = 1  # 0 Individual clips, 1 Single clip
         self.stuck_mode = False  # SetCurrentRenderMode says yes and changes nothing
         self.settings = {"colorScienceMode": "davinciYRGBColorManagedv2",
-                         "timelineResolutionWidth": "3840", "timelineResolutionHeight": "2160"}
+                         "timelineResolutionWidth": "3840", "timelineResolutionHeight": "2160",
+                         "timelineFrameRate": "25"}
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
@@ -316,6 +461,17 @@ class Resolve(Fake):
     AUTO_CAPTION_SUBTITLE_DEFAULT = 0.0
     AUTO_CAPTION_LINE_SINGLE = 1.0
     AUTO_CAPTION_LINE_DOUBLE = 2.0
+    # AutoSyncAudio's keys and values, named as in the scripting README's Audio Sync
+    # Settings. The two channel values are the README's; the others are stand-ins that
+    # no live Resolve has confirmed yet.
+    AUDIO_SYNC_MODE = 10.0
+    AUDIO_SYNC_CHANNEL_NUMBER = 11.0
+    AUDIO_SYNC_RETAIN_EMBEDDED_AUDIO = 12.0
+    AUDIO_SYNC_RETAIN_VIDEO_METADATA = 13.0
+    AUDIO_SYNC_WAVEFORM = 20.0
+    AUDIO_SYNC_TIMECODE = 21.0
+    AUDIO_SYNC_CHANNEL_AUTOMATIC = -1
+    AUDIO_SYNC_CHANNEL_MIX = -2
 
     def __init__(self, project, page="edit"):
         self.pm, self.page = ProjectManager(project), page

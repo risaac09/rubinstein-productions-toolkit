@@ -5,7 +5,8 @@ detect and measure read media headers and frames with ffprobe, ffmpeg and
 exiftool; survey reads Resolve's project databases from disk (safe while
 Resolve is open); endcheck and selects read a transcript, an approved text
 and, for endcheck, the source audio; deliver_check reads a rendered file
-with ffprobe and ffmpeg and checks it against a delivery destination.
+with ffprobe and ffmpeg and checks it against a delivery destination;
+sync_measure correlates two recordings' audio.
 
 Destinations come from production/resolve-config.json, with the overlay at
 $RPRESOLVE_CONFIG laid over it when that is set (deliver_config()).
@@ -286,6 +287,29 @@ def deliver_check(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# sync_measure
+# ---------------------------------------------------------------------------
+
+def sync_measure(args, ctx):
+    try:
+        from .. import sync as rpsync
+    except ImportError as e:
+        raise RuntimeError(f"sync_measure needs numpy ({e}); run the server on /usr/bin/python3.")
+    ref = _existing(args["reference"], "reference")
+    other = _existing(args["other"], "other")
+    out = _out(args)
+    ctx.check_cancel()
+    r = rpsync.measure(ref, other, fps=args.get("fps"), window_s=args["window_s"],
+                       check_cancel=ctx.check_cancel)
+    result = {"summary": rpsync.format_summary(r).strip(), "match": r["match"],
+              "offset_s": r["offset_s"], "frames": r["frames"], "drift": r["drift"],
+              "reasons": r["reasons"], "report": r}
+    if out:
+        result["file"] = paths.write_private(out, _json(r), any_git_tree=True)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -368,6 +392,26 @@ def register(registry):
               **PAGING, "limit": _limit(20, 200),
               "out": _out_prop("every proposal as TSV")}, ["words", "approved"]),
         selects, title="Propose selects", annotations=READ))
+    registry.add(Tool(
+        "sync_measure",
+        "Where one recording sits against another, from the sound both heard (dual-system "
+        "audio: a camera clip and a recorder's file, or two cameras): FFT cross-correlation of "
+        "the two mono signals at 8 kHz, on windows across the overlap. Returns the offset in "
+        "seconds (where the other file's first frame lands on the reference, positive when it "
+        "started later) and in frames at fps with the half-frame residual of frame placement, "
+        "clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel "
+        "it), and each window's normalized correlation and peak-to-next-peak ratio. A weak or "
+        "inconsistent result is not called a match, and says why. Never connects to Resolve.",
+        _obj({"reference": {"type": "string",
+                            "description": "Absolute path of the reference (the camera clip)."},
+              "other": {"type": "string",
+                        "description": "Absolute path of the other recording."},
+              "fps": {"type": "number", "minimum": 1, "maximum": 240,
+                      "description": "Frame rate for frames (default: the reference's)."},
+              "window_s": {"type": "number", "minimum": 5, "maximum": 300, "default": 30,
+                           "description": "Seconds per measuring window."},
+              "out": _out_prop("the full JSON report")}, ["reference", "other"]),
+        sync_measure, title="Measure dual-system sync", annotations=READ))
     registry.add(Tool(
         "deliver_check",
         "Check a rendered deliverable against a delivery destination from resolve-config.json, "
