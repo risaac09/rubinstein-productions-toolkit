@@ -61,7 +61,8 @@ Tag each clip on import so you know which source node to apply.
 - **Font:** Inter 500
 - **Color:** White or Bone (#f2ece4) on semi-transparent dark bar
 - **Position:** Lower third, consistent
-- **Source:** Import .srt, apply style
+- **Source:** Auto captions on the `[auto]` timeline (`captions`, see Deliver),
+  or File > Import > Subtitle by hand; the style is applied by hand
 
 ---
 
@@ -104,7 +105,7 @@ Separate source bins by camera so you can batch-apply the correct source convers
 5. Apply camera-specific source conversion (Node 1) — batch per camera bin
 6. Apply Low Contrast PowerGrade (Node 2) — all clips
 7. Manual creative grade (Node 3) — per clip, match across cameras
-8. Subtitles if needed (.srt import → branded style)
+8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
 10. Queue 4K export presets in Deliver page
 11. Render
@@ -124,7 +125,7 @@ headless. Coverage against the original Phase C list, checked 2026-08-17:
 | Auto-apply source conversion nodes by camera tag | Done (`import-media` tags clips by clip color; `apply-lut --camera <key>` filters by it) |
 | Auto-sort media into camera bins by metadata | Not done — `--camera` on `import-media` is still a human-supplied flag, not metadata-driven |
 | Auto-apply Low Contrast PowerGrade | Not done — no PowerGrade/gallery-still API call exists in the script; use `apply-drx` with a hand-exported `.drx` instead |
-| Subtitle import | Partial — `add-subtitles` places an .srt on the timeline where the API allows it, but verify the result; it isn't guaranteed on every Resolve version |
+| Subtitle import | Auto captions done (`captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so `add-subtitles` now exits 1 when the track count does not grow; import an .srt by hand (File > Import > Subtitle) |
 | Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently — don't wait for it to get built. |
 | Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
 
@@ -155,10 +156,12 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 16 tools: reads of the open project, the offline checks (detect,
-survey, measure, endcheck, selects, deliver_check), and additive writes
-(ingest, cut, duplicate, grade onto `[auto]` timelines, queue a render
-without starting it), each shown as a plan before it runs.
+as 18 tools: reads of the open project, the offline checks (detect,
+survey, measure, endcheck, selects, deliver_check), the offline caption
+conversion (deliver_captions), and additive writes (ingest, cut,
+duplicate, grade onto `[auto]` timelines, auto captions on `[auto]`
+timelines, queue a render without starting it), each write shown as a
+plan before it runs.
 
 ---
 
@@ -190,7 +193,10 @@ transfer as bt709 (asserted by the check), and the client master keeps
 the house "Gamma 2.4", which writes it unspecified (reported only). Isaac
 compared both renders and chose Rec.709-A for the web on 2026-09-29. Limited
 range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
-stream counts as limited, as decoders read it). An overlay
+stream counts as limited, as decoders read it), and auto-caption line
+length by frame shape (`deliver.captions`: 42 characters on one line for
+landscape, 20 on up to two lines for portrait, 24 on up to two lines for
+square). An overlay
 kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
 the MCP server) lies over `resolve-config.json`: it changes any one field
 of a destination, adds a private `target_dir`, adds a destination, or
@@ -237,6 +243,16 @@ folder no destination owns.
 
 ### The loop
 
+Queue, render, captions to .srt (sidecar destinations), fix loudness,
+check. Isaac chose on 2026-09-29 to run the loudness fix on every render
+as the standard last step, so the check that follows judges the file that
+ships.
+
+0. **Captions first**, for a destination that wants them (sidecar or burnt
+   in): `resolve_workflow.py captions --project ... --timeline "<name>
+   [auto]" --dry-run`, then again with `--plan-sha`; or the MCP
+   `create_captions`. See Captions below. The queue refuses a captioned
+   destination whose timeline has no subtitle items.
 1. **Queue.** `resolve_workflow.py deliver-queue --project ... --timeline ...
    --dest <key> --show SW --episode 1 --guest Guest --index 1 --slug
    example-clip --target-dir <folder> --dry-run`, then again with
@@ -264,27 +280,102 @@ folder no destination owns.
    captions are wanted and the timeline has no subtitle track, or only
    empty ones. It never starts the render.
 2. **Render.** Isaac starts it on the Deliver page.
-3. **Check.** `resolve_workflow.py deliver-check <file> --dest <key> --fps
-   <timeline fps>` (or MCP `deliver_check`). Exit 0 all pass, 1 any fail,
-   2 ffprobe or ffmpeg missing; `--json` for the whole result. The client
-   master renders at the timeline's size, so pass `--size` to assert it.
-4. **Fix loudness** when that is what failed:
-   `resolve_workflow.py deliver-fix-loudness <file> --dest <key>`. A
-   two-pass loudnorm (measure, then linear with the measured values) on
+3. **Captions to .srt**, for a sidecar destination:
+   `resolve_workflow.py deliver-captions <file> --dest <key>` (or the MCP
+   `deliver_captions`). Resolve writes the sidecar as TTML timed from the
+   timeline's timecode (see Captions below); this makes the zero-based
+   `<stem>.srt` a platform reads, and moves the TTML to the Trash.
+4. **Fix loudness**, the standard last step:
+   `resolve_workflow.py deliver-fix-loudness <file> --dest <key> --replace`.
+   A two-pass loudnorm (measure, then linear with the measured values) on
    the first audio stream, re-encoded to the destination's audio; video
    and every other stream copied, colour tags kept. It writes
    `<stem>.loudfix<ext>` beside the original, checks it under the
    original's name and confirms the video stream is bit-identical. With
    `--replace`, and only after that passes, the original moves to
    `~/.Trash/deliver-loudfix-<timestamp>/` and the fixed file takes its
-   name. If loudnorm had to fall back from linear to dynamic mode (a linear
-   gain would have broken the true-peak limit), it says so: listen before
-   delivering.
+   name; the `.srt` beside it keeps matching. If loudnorm had to fall back
+   from linear to dynamic mode (a linear gain would have broken the
+   true-peak limit), it says so: listen before delivering. The client
+   master has no loudness target, so this step is skipped for it.
+5. **Check.** `resolve_workflow.py deliver-check <file> --dest <key> --fps
+   <timeline fps>` (or MCP `deliver_check`). Exit 0 all pass, 1 any fail,
+   2 ffprobe or ffmpeg missing; `--json` for the whole result. The client
+   master renders at the timeline's size, so pass `--size` to assert it.
+   For a sidecar destination the captions row fails when the `.srt` is
+   missing (and, when Resolve's TTML is still beside the file, its note
+   says to run deliver-captions), does not parse, or has a cue that
+   starts before 0 or ends more than 0.5 s after the video does: an
+   `.srt` timed from the timeline's 01:00:00:00 fails here.
+
+### Captions
+
+**Making them.** `captions` (MCP `create_captions`) runs Resolve's auto
+captions (`Timeline.CreateSubtitlesFromAudio`, Resolve Studio) on one
+`[auto]` timeline. The line length and line breaks come from
+`deliver.captions` for the timeline's shape, read from its resolution:
+Resolve's default of 42 characters on one line overflows a 1080-wide 9:16
+frame when burnt in (clipped at both edges on the 2026-09-29 renders), and
+about 20 fit. It refuses a timeline that is not `[auto]`, one that already
+has any subtitle item (additive only), a run while a render is in
+progress, and a Resolve that does not define a constant the settings need
+(an unknown `resolve.CONSTANT` reads as None). It makes the timeline
+current and opens the Edit page for the call, then puts back the current
+timeline and page. It then reads the subtitle tracks back and fails when
+no item is there, whatever the call returned. On the sandbox the call
+took 36 s on a 37 s portrait timeline (45 s for the whole command) and
+gave 22 items, the longest line 22 characters on one or two lines (39 on
+one line at the defaults). Whether
+20 characters sit inside the frame when burnt in is checked at Isaac's
+next render.
+
+**The sidecar.** A render with `SubtitleFormat` `SeparateFile` writes
+`<stem>_<subtitle track name>.ttml` beside the file (such as
+`<stem>_Subtitle 1.ttml`): IMSC1 TTML, `ttp:timeBase="media"`,
+`ttp:frameRate="25"`, cues as `<p begin="01:00:00.039"
+end="01:00:03.519">`, timed from the timeline's timecode. The rendered
+file carries the same start as a timecode tag (ffprobe: stream tag
+`timecode=01:00:00:00`). `deliver-captions <file> --dest <key> [--track
+NAME] [--keep-ttml] [--json]`:
+
+- refuses unless the destination's captions are `sidecar`, the file sits
+  outside any git working tree, `<stem>.srt` does not exist yet (nothing
+  is overwritten), and one `<stem>_*.ttml` sits beside it; with several
+  (one per subtitle track), `--track` names the one to convert and the
+  others stay where they are;
+- reads the TTML with every namespace, clock times with fractions or
+  frames (`ttp:frameRate`, `ttp:frameRateMultiplier`, sub-frames), offset
+  times (`12.5s`, `300f`, `500ms`), `dur`, begin offsets on `body` and
+  `div`, `<br/>` as a line break and spans flattened;
+- takes off the file's start timecode (the video stream's `timecode` tag,
+  else another stream's, else the format's), counted at the file's own
+  frame rate; drop-frame (`;`) is counted as SMPTE drop-frame at 29.97 and
+  59.94 and refused at any other rate. With no timecode tag it refuses
+  unless the first cue already starts inside the file. After the shift
+  every cue must start at or after 0 and end within the video's duration
+  plus 0.5 s, or it refuses with the numbers;
+- writes `<stem>.srt` (UTF-8, LF line ends, cues numbered from 1,
+  `HH:MM:SS,mmm`), reads it back (same cue count, text and times as the
+  TTML, or the new `.srt` is removed again), then moves the TTML to
+  `~/.Trash/deliver-captions-<timestamp>/` unless `--keep-ttml`. A move
+  that fails leaves both files beside the render and says so.
+
+The MCP `deliver_captions` never connects to Resolve, but it writes a file
+and moves another, so it keeps the write tools' contract: a dry run by
+default that shows the offset, the cue span and the `.srt` path, a real
+run only with that dry run's `plan_sha`, and a journal line before and
+after. Exit codes on the CLI: 0 written and verified, 1 refused or
+failed, 2 ffprobe missing.
+
+On the 2026-09-29 sandbox renders (copies): 22 cues, the first at
+0.039 s and the last ending at 36.880 s, the video's length; after the
+loudness fix with `--replace`, deliver-check passed every row it asserts.
 
 ### Not verified until a live queue and a real render
 
-These are set from the scripting README and the config; none has been
-seen in a file Resolve rendered with these settings yet.
+These are set from the scripting README and the config. The first renders
+with these settings (sandbox, 2026-09-29) answered two of them; the rest
+are still open.
 
 - **Settled 2026-09-29 by a real render:** `GammaTag` "Gamma 2.4" writes
   the transfer as unspecified (1-2-1), so each player guesses the gamma;
@@ -300,10 +391,11 @@ seen in a file Resolve rendered with these settings yet.
   Project"), the job queues with the wrong tags, the read-back lists
   `GammaTag` as unverified, and nothing downstream catches the transfer,
   which deliver-check only reports.
-- The sidecar's name: the check expects `<stem>.srt` beside the file and
-  names any near miss it finds. Whether the sidecar is SRT or WebVTT is not
-  a scripting key. A burn-in or no-captions file fails the check when any
-  caption file under its stem sits beside it.
+- **The sidecar's name and format**: `<stem>_<track name>.ttml`, IMSC1
+  TTML timed from the timeline's timecode (see Captions);
+  `deliver-captions` makes the `<stem>.srt` the check expects. The format
+  is not a scripting key. A burn-in or no-captions file fails the check
+  when any caption file under its stem sits beside it.
 - Which fields `GetRenderJobList` reports. The queue result compares the
   ones it does report and lists the rest as unverified.
 - Channel count cannot be set through the API (the render takes the
@@ -322,7 +414,9 @@ seen in a file Resolve rendered with these settings yet.
 ### Live steps owed (sandbox project only)
 
 Run each in the "RP Automation Sandbox" project, pinned by its unique id,
-and write down what Resolve did. None has been run yet.
+and write down what Resolve did. Steps 2 and 5 ran on 2026-09-29 (the
+transfer tag and the sidecar above); the Rec.709-A comparison under step
+2 is still owed, and no result for steps 1, 3 and 4 is recorded here.
 
 1. **Invalid tag strings.** Call `SetRenderSettings({"GammaTag": "Gamma
    2.4 (not a tag)"})`, then the same for `ColorSpaceTag`, `AudioCodec`
@@ -342,8 +436,11 @@ and write down what Resolve did. None has been run yet.
 4. **Job list fields.** Record which of `FrameRate`, `AudioSampleRate`,
    `AudioBitDepth`, `AudioCodec`, `ColorSpaceTag`, `GammaTag` and
    `DataBurnIn` `GetRenderJobList` reports, and how it writes each.
-5. **Sidecar name.** Render a sidecar destination and record the caption
-   file's name and format.
+5. **Sidecar name.** Done: `<stem>_<track name>.ttml`, IMSC1 TTML (see
+   Captions).
+6. **Burnt-in caption width.** Render `linkedin_9x16` from a timeline
+   captioned with the portrait settings (20 characters, two lines) and
+   look at the widest caption in the frame.
 
 Remove the queued sandbox job after each step; never start a render from
 a script.
@@ -358,4 +455,4 @@ a script.
 
 ---
 
-*Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
+*Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
