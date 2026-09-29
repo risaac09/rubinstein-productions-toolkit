@@ -34,10 +34,19 @@ groups the windows by the offset they agree on.
 
 Each measurement carries its confidence: the normalized correlation at the
 peak (-1..1, its sign the polarity) and the ratio of the peak to the
-highest correlation more than EXCLUDE_S away from it. A window below
-MIN_PEAK_RATIO or MIN_NCC is not called a match, and neither is an overlap
-shorter than MIN_OVERLAP_S, windows that disagree as above, a slope beyond
-any clock (MAX_PLAUSIBLE_PPM), or windows of opposite polarity.
+highest correlation more than EXCLUDE_S away from it. A window's search
+reaches only FINE_SEARCH_S either side of the coarse lag, so its ratio says
+nothing about a lag further away; the coarse pass does, as the ratio of its
+peak to the best lag more than FINE_SEARCH_S away. Under COARSE_MIN_RATIO
+that runner-up is measured as the match is, window by window: when every
+window there passes too, the sound repeats (a looped music bed, one sting
+at both ends, a countdown) and one offset cannot be chosen. When the
+runner-up fails, the low coarse ratio came from noise the fine pass sees
+through (wind or handling rumble on a camera mic), and the match stands.
+A window below MIN_PEAK_RATIO or MIN_NCC is not called a match, and
+neither is an overlap shorter than MIN_OVERLAP_S, windows that disagree as
+above, a slope beyond any clock (MAX_PLAUSIBLE_PPM), windows of opposite
+polarity, or a runner-up that passes as above.
 
 Offsets are in the files' own time: each file's zero is its first video
 frame (its first audio sample when it has no video), so an audio stream
@@ -72,6 +81,7 @@ EXCLUDE_S = 0.05
 MIN_OVERLAP_S = 5.0
 MIN_PEAK_RATIO = 2.0
 MIN_NCC = 0.1
+COARSE_MIN_RATIO = 2.0  # a coarse runner-up closer than this is measured as a match would be
 MAX_DRIFT_FRAMES = 0.5
 MAX_WINDOWS = 7
 WARP_MIN_SAMPLES = 0.25   # a first-pass slope smearing a window by more is compensated
@@ -190,10 +200,11 @@ def peak(ref, other, lag_min=None, lag_max=None, min_overlap=1, exclude=0):
     """The best lag of other against ref (see xcorr), searched over
     [lag_min, lag_max] among lags where the two overlap by at least
     min_overlap samples. Returns {lag (sub-sample), ncc, peak_ratio,
-    polarity, overlap}, or None when no lag qualifies. ncc is the
-    correlation at the peak over the energy of the overlapping parts;
+    second_lag, polarity, overlap}, or None when no lag qualifies. ncc is
+    the correlation at the peak over the energy of the overlapping parts;
     peak_ratio the peak over the highest |c| more than `exclude` samples
-    away (PEAK_RATIO_CAP at most, and when nothing is left to compare)."""
+    away (PEAK_RATIO_CAP at most, and when nothing is left to compare), and
+    second_lag where that highest |c| is (None when nothing is left)."""
     ref = np.asarray(ref, dtype=np.float64)
     other = np.asarray(other, dtype=np.float64)
     if not len(ref) or not len(other):
@@ -226,10 +237,14 @@ def peak(ref, other, lag_min=None, lag_max=None, min_overlap=1, exclude=0):
     energy = (cs_r[b] - cs_r[a]) * (cs_o[b - L] - cs_o[a - L])
     ncc = float(c[k] / np.sqrt(energy)) if energy > 0 else 0.0
     rest = ok & (np.abs(lags - L) > int(exclude))
-    second = float(np.abs(c[rest]).max()) if rest.any() else 0.0
+    second, second_lag = 0.0, None
+    if rest.any():
+        j = int(np.argmax(np.where(rest, np.abs(c), -1.0)))
+        second, second_lag = float(abs(c[j])), int(lags[j])
     return {"lag": L + frac, "ncc": round(ncc, 4),
             "peak_ratio": round(min(float(abs(c[k]) / second), PEAK_RATIO_CAP), 3)
             if second > 0 else PEAK_RATIO_CAP,
+            "second_lag": second_lag if second > 0 else None,
             "polarity": "normal" if c[k] >= 0 else "inverted", "overlap": b - a}
 
 
@@ -377,6 +392,32 @@ def _measure(ref, other, spans, lag_at, warp, rate, search_s, check_cancel):
     return out
 
 
+def _rival(ref, other, lag0, lag, rate, window_s, search_s, min_ratio, min_ncc, shift_s,
+           ref_start_s, check_cancel):
+    """The coarse runner-up at `lag` measured as the match at lag0 is: its
+    windows, each with whether it passes the same checks, and match when
+    every one does. A window that lands within search_s of lag0 found the
+    match itself, so it does not pass."""
+    ov0 = max(0, int(round(lag)))
+    ov1 = min(len(ref), len(other) + int(round(lag)))
+    out = {"offset_s": round(lag / rate + shift_s, 4), "windows": [], "match": False}
+    if (ov1 - ov0) / rate < MIN_OVERLAP_S:
+        return out
+    spans = windows(ov0, ov1, rate, window_s)
+    got = _measure(ref, other, spans, lambda c: lag, 0.0, rate, search_s, check_cancel)
+    for (label, a, b), (_, found, r) in zip(spans, got):
+        w = {"label": label, "center_s": round((a + b) / 2 / rate + ref_start_s, 3),
+             "offset_s": None, "ncc": None, "peak_ratio": None, "passes": False}
+        if r is not None:
+            w.update(offset_s=round(found / rate + shift_s, 6), ncc=r["ncc"],
+                     peak_ratio=r["peak_ratio"],
+                     passes=bool(r["peak_ratio"] >= min_ratio and abs(r["ncc"]) >= min_ncc and
+                                 abs(found - lag0) > search_s * rate))
+        out["windows"].append(w)
+    out["match"] = bool(out["windows"]) and all(w["passes"] for w in out["windows"])
+    return out
+
+
 def _slope(points):
     """Least-squares slope of lag against centre, [(centre, lag)]."""
     c = np.array([p[0] for p in points], dtype=np.float64)
@@ -408,15 +449,19 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
     factor = coarse_factor(len(ref), len(other), rate)
     cr = rate / factor
     shorter = min(len(ref), len(other)) / factor
+    # The runner-up is sought beyond the fine search: within it, each window's
+    # own peak ratio already compares every lag.
     c = peak(decimate(ref, factor), decimate(other, factor),
              min_overlap=max(1, min(MIN_OVERLAP_S * cr, 0.5 * shorter)),
-             exclude=int(round(EXCLUDE_S * cr)))
+             exclude=int(round(search_s * cr)))
     if c is None:
         out["reasons"].append("the signals are too short to correlate")
         return out
     lag0 = c["lag"] * factor
     out["coarse"] = {"rate": cr, "offset_s": round(lag0 / rate + shift_s, 4),
-                     "ncc": c["ncc"], "peak_ratio": c["peak_ratio"]}
+                     "ncc": c["ncc"], "peak_ratio": c["peak_ratio"],
+                     "second_offset_s": None if c["second_lag"] is None else
+                     round(c["second_lag"] * factor / rate + shift_s, 4)}
     ov0 = max(0, int(round(lag0)))
     ov1 = min(len(ref), len(other) + int(round(lag0)))
     ov_s = (ov1 - ov0) / rate
@@ -456,6 +501,18 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
         if abs(w["ncc"]) < min_ncc:
             out["reasons"].append(f"{label} window: normalized correlation {w['ncc']:+.3f} "
                                   f"(needs {min_ncc:g})")
+    if c["peak_ratio"] < COARSE_MIN_RATIO and c["second_lag"] is not None:
+        # A second lag correlates nearly as well over the whole of both: sound
+        # that repeats (a looped bed, a sting at both ends) or a coarse pass
+        # that low-frequency noise drowned. The windows tell them apart.
+        rival = _rival(ref, other, lag0, c["second_lag"] * factor, rate, window_s, search_s,
+                       min_ratio, min_ncc, shift_s, ref_start_s, check_cancel)
+        out["rival"] = rival
+        if rival["match"]:
+            out["reasons"].append(
+                f"a second offset, {rival['offset_s']:+.3f} s, passes every window check too "
+                f"(the coarse peak is only {c['peak_ratio']:.2f}x it): the sound repeats, so "
+                "one offset cannot be chosen")
     if not out["windows"]:
         return out
     head = out["windows"][0]
@@ -526,7 +583,14 @@ def format_summary(r):
     c = r.get("coarse")
     if c:
         lines.append(f"  coarse ({c['rate']:g} Hz): {c['offset_s']:+.3f} s, ncc {c['ncc']:+.3f}, "
-                     f"peak {c['peak_ratio']:.2f}x")
+                     f"peak {c['peak_ratio']:.2f}x" +
+                     (f" the next best, at {c['second_offset_s']:+.3f} s"
+                      if c.get("second_offset_s") is not None else ""))
+    rv = r.get("rival")
+    if rv:
+        passed = sum(1 for w in rv["windows"] if w["passes"])
+        lines.append(f"  that runner-up measured too: {passed} of {len(rv['windows'])} window(s) "
+                     "pass there" + (" (the offset is ambiguous)" if rv["match"] else ""))
     ov = r.get("overlap")
     if ov:
         lines.append(f"  overlap: {ov['start_s']:.2f} to {ov['end_s']:.2f} s on the reference "

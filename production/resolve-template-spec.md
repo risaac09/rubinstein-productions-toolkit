@@ -500,6 +500,16 @@ The reference is the camera clip.
   with polarity "inverted") and the peak over the highest correlation more
   than 50 ms away. A window under 2x or under 0.1 is not a match, nor is
   an overlap under 5 s.
+- **Sound that repeats.** A window searches only 1 s either side of the
+  coarse lag, so its ratio cannot see a second match further away. The
+  coarse pass can: its peak over the best lag more than 1 s away. Under
+  2x, that runner-up is measured window by window as the match is, and
+  when every window there passes too, the pair is refused as ambiguous
+  with both offsets named (a looped music bed, one sting at both ends, a
+  repeated countdown). When the runner-up fails, the low coarse ratio came
+  from noise the fine pass sees through: on synthetic pairs with heavy
+  low-frequency rumble (wind or handling on a camera mic), 13 of 27
+  correct matches had a coarse ratio under 2x, and all 13 still match.
 - **Drift:** a straight line through every window's offset gives the
   clock drift, in ms per minute and ppm, and what it adds up to over the
   overlap. Over half a frame, the report says so and gives the speed that

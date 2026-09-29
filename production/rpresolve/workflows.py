@@ -945,7 +945,7 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
 # ---------------------------------------------------------------------------
 
 SYNC_KEYS = ("coarse", "overlap", "windows", "offset_s", "tail_offset_s", "drift", "drift_note",
-             "frames", "polarity", "match", "reasons", "groups", "thresholds")
+             "frames", "polarity", "match", "reasons", "groups", "rival", "thresholds")
 
 
 def _file_key(path):

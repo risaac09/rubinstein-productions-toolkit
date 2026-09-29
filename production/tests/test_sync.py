@@ -196,6 +196,44 @@ class TestMeasureSignals(unittest.TestCase):
         self.assertAlmostEqual(offsets[0], 10.0, delta=0.001)
         self.assertAlmostEqual(offsets[1], 10.18, delta=0.001)
 
+    def test_a_loop_heard_twice_in_the_reference_is_refused(self):
+        # The same 20 s loop plays at 10 s and at 40 s of the reference; the other
+        # holds one copy. Both offsets line up perfectly, so neither can be chosen.
+        loop = bursts(20, seed=31)
+        ref = noise(70, 32, 0.01)
+        ref[10 * RATE:30 * RATE] += loop
+        ref[40 * RATE:60 * RATE] += loop
+        other = np.concatenate([noise(3, 33, 0.01), loop, noise(3, 34, 0.01)])
+        r = sync.measure_signals(ref, other, RATE, fps=25)
+        self.assertFalse(r["match"])
+        self.assertTrue(any("the sound repeats" in x for x in r["reasons"]), r["reasons"])
+        self.assertEqual(sorted([r["coarse"]["offset_s"], r["coarse"]["second_offset_s"]]),
+                         [7.0, 37.0])
+        self.assertTrue(r["rival"]["match"])
+
+    def test_a_looping_music_bed_is_refused(self):
+        # A 40 s bed loops through the whole reference; the other is 100 s of it
+        # from 100 s, with noise. Every multiple of 40 s lines up as well.
+        ref = np.tile(bursts(40, seed=35), 7)
+        other = ref[100 * RATE:200 * RATE] + noise(100, 36, 0.05)
+        r = sync.measure_signals(ref, other, RATE, fps=25)
+        self.assertFalse(r["match"])
+        self.assertTrue(any("the sound repeats" in x for x in r["reasons"]), r["reasons"])
+        self.assertIn("ambiguous", sync.format_summary(
+            {**r, "reference": {"path": "a"}, "other": {"path": "b"}}))
+
+    def test_rumble_that_drowns_the_coarse_pass_still_matches(self):
+        # Low-frequency noise (wind, handling) on both mics, different on each,
+        # brings the coarse peak near its runner-up; measured, the runner-up
+        # fails every window, and the match stands.
+        src = bursts(300, seed=60)
+        other = src[20 * RATE:280 * RATE] + lowpass(noise(260, 260, 7.0), 80)
+        r = sync.measure_signals(src + lowpass(noise(300, 160, 7.0), 80), other, RATE, fps=25)
+        self.assertLess(r["coarse"]["peak_ratio"], sync.COARSE_MIN_RATIO)
+        self.assertFalse(r["rival"]["match"])
+        self.assertTrue(r["match"], r["reasons"])
+        self.assertAlmostEqual(r["offset_s"], 20.0, delta=0.0005)
+
     def test_short_overlap_measures_one_window_and_no_drift(self):
         src = bursts(40, seed=10)
         r = self.check(src, src[5 * RATE:25 * RATE], 5.0)
