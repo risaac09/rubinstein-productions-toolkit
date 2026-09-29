@@ -349,7 +349,11 @@ NAME] [--keep-ttml] [--json]`:
 - reads the TTML with every namespace, clock times with fractions or
   frames (`ttp:frameRate`, `ttp:frameRateMultiplier`, sub-frames), offset
   times (`12.5s`, `300f`, `500ms`), `dur`, begin offsets on `body` and
-  `div`, `<br/>` as a line break and spans flattened;
+  `div`, `<br/>` as a line break and spans flattened; media time
+  (Resolve's) or non-drop SMPTE time, where a label counts frames at
+  `ttp:frameRate` and is divided by the effective rate (TTML2 I.3), and
+  where discontinuous markers (TTML2's default) refuse `dur` and a timed
+  `body` or `div`;
 - takes off the file's start timecode (the video stream's `timecode` tag,
   else another stream's, else the format's), counted at the file's own
   frame rate; drop-frame (`;`) is counted as SMPTE drop-frame at 29.97 and

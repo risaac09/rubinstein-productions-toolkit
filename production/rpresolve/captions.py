@@ -24,7 +24,13 @@ deliver_captions(file, dest):
        500ms, 2m, 1h, 100t), begin with end or dur, timing on body and div
        (a <p> starts with its parent unless it has a begin, ends with it
        unless it has an end or dur, and is cut off where its parent ends),
-       <br/> as a line break, spans flattened.
+       <br/> as a line break, spans flattened. Media time (Resolve's) and
+       non-drop SMPTE time: under SMPTE a label's hours, minutes, seconds
+       and frames count frames at ttp:frameRate, divided by the effective
+       rate (TTML2 I.3), so 01:00:04:00 at 24 x 1000/1001 is 86496 frames;
+       with discontinuous markers (TTML2's default ttp:markerMode) a dur or
+       a timed body or div is refused, since time arithmetic is undefined
+       there.
     3. Takes off the file's start timecode (file_start: the video stream's
        "timecode" tag, else another stream's, else the format's), read
        against the file's own frame rate; drop-frame (";") at 29.97 and
@@ -107,11 +113,15 @@ def _positive_int(text, what):
 
 
 def timing_params(root):
-    """{fps, nominal, sub_frames, tick_rate, time_base} from the <tt>
-    element's ttp: parameters, with TTML's defaults (frame rate 30,
-    multiplier 1, sub-frame rate 1; tick rate the effective frame rate
-    times the sub-frame rate when a frame rate is given, else 1). fps is
-    the effective frame rate, nominal the frame count per second label."""
+    """{fps, nominal, sub_frames, tick_rate, time_base, marker_mode,
+    label_scale} from the <tt> element's ttp: parameters, with TTML's
+    defaults (frame rate 30, multiplier 1, sub-frame rate 1; tick rate the
+    effective frame rate times the sub-frame rate when a frame rate is given,
+    else 1; marker mode discontinuous, TTML2's). fps is the effective frame
+    rate, nominal the frame count per second of a label. label_scale is what
+    a second of a time expression is in real time: 1 under media time, and
+    nominal / fps under SMPTE time, where a label's hours, minutes and
+    seconds count frames at the nominal rate (TTML2 I.3)."""
     rate_attr = _attr(root, "frameRate")
     nominal = _positive_int(rate_attr, "ttp:frameRate") if rate_attr is not None else 30
     mult = _attr(root, "frameRateMultiplier")
@@ -140,8 +150,13 @@ def timing_params(root):
     if base == "smpte" and drop != "nonDrop":
         raise CaptionError(f"TTML ttp:dropMode {drop!r} under SMPTE time is not read; only "
                            "nonDrop is.")
+    marker = (_attr(root, "markerMode") or "discontinuous").strip()
+    if base == "smpte" and marker not in ("continuous", "discontinuous"):
+        raise CaptionError(f"TTML ttp:markerMode {marker!r} is neither continuous nor "
+                           "discontinuous.")
     return {"fps": fps, "nominal": nominal, "sub_frames": sub_frames, "tick_rate": tick_rate,
-            "time_base": base}
+            "time_base": base, "marker_mode": marker,
+            "label_scale": Fraction(nominal) / fps if base == "smpte" else Fraction(1)}
 
 
 def parse_time(expr, params):
@@ -156,7 +171,8 @@ def parse_time(expr, params):
         t = Fraction(int(h) * 3600 + int(mi) * 60 + int(s))
         if frac:
             t += Fraction(frac[1:]) / (10 ** (len(frac) - 1))
-        elif frames is not None:
+        t *= params["label_scale"]
+        if frames is not None:
             if int(frames) >= params["nominal"]:
                 raise CaptionError(f"TTML time {text!r}: frame {frames} at a frame rate of "
                                    f"{params['nominal']}.")
@@ -172,17 +188,15 @@ def parse_time(expr, params):
     if m:
         value = Fraction(m.group(1))
         unit = m.group(2)
-        if unit == "h":
-            return value * 3600
-        if unit == "m":
-            return value * 60
-        if unit == "s":
-            return value
-        if unit == "ms":
-            return value / 1000
         if unit == "f":
             return value / params["fps"]
-        return value / params["tick_rate"]
+        if unit == "t":
+            if params["time_base"] == "smpte":
+                raise CaptionError(f"TTML time {text!r}: a tick offset under SMPTE time is not "
+                                   "read (TTML's SMPTE count has no ticks).")
+            return value / params["tick_rate"]
+        per = {"h": 3600, "m": 60, "s": 1, "ms": Fraction(1, 1000)}[unit]
+        return value * per * params["label_scale"]
     raise CaptionError(f"TTML time {text!r} is not a clock time (HH:MM:SS.fff, HH:MM:SS:FF) "
                        "or an offset time (12.5s, 300f, 500ms).")
 
@@ -234,9 +248,19 @@ def parse_ttml(text):
     params = timing_params(root)
     cues, empty = [], 0
 
+    markers = params["time_base"] == "smpte" and params["marker_mode"] == "discontinuous"
+
     def visit(el, offset, parent_end):
         """offset: the parent's begin; parent_end: its end, or None when open."""
         begin, end, dur = _attr(el, "begin"), _attr(el, "end"), _attr(el, "dur")
+        if markers and dur is not None:
+            raise CaptionError("a dur under SMPTE time with discontinuous markers (TTML2's "
+                               "default ttp:markerMode) has no length in time; give each "
+                               "caption a begin and an end.")
+        if markers and _local(el.tag) != "p" and (begin is not None or end is not None):
+            raise CaptionError(f"a timed <{_local(el.tag)}> under SMPTE time with discontinuous "
+                               "markers: a caption's times are labels, and an offset from its "
+                               "parent is not defined there.")
         here = offset + (parse_time(begin, params) if begin is not None else 0)
         if end is not None:
             stop = offset + parse_time(end, params)

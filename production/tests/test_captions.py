@@ -129,6 +129,42 @@ class TestTTML(unittest.TestCase):
         with self.assertRaisesRegex(captions.CaptionError, "neither it nor a div"):
             captions.parse_ttml(f'<tt {TTML_NS}><body><div><p>Open</p></div></body></tt>')
 
+    def test_smpte_time_counts_labels_as_frames(self):
+        # TTML2 I.3: under SMPTE time a label's hours, minutes and seconds are
+        # counted as frames at ttp:frameRate, then divided by the effective rate.
+        ntsc = 'ttp:frameRate="24" ttp:frameRateMultiplier="1000 1001" ttp:timeBase="smpte"'
+        fps = Fraction(24000, 1001)
+        r = captions.parse_ttml(tt('<p begin="01:00:04:00" end="01:00:05:12">Example</p>',
+                                   ntsc + ' ttp:markerMode="continuous"'))
+        (a, b, _), = r["cues"]
+        self.assertEqual(a, Fraction(86496) / fps)
+        self.assertEqual(b, Fraction(86532) / fps)
+        # the same count as the file's start timecode: 96 frames in, 4.004 s
+        self.assertEqual(a - captions.parse_timecode("01:00:00:00", fps), Fraction(96) / fps)
+        self.assertAlmostEqual(float(a - captions.parse_timecode("01:00:00:00", fps)), 4.004)
+        # offset times scale the same way; frames are frames
+        r = captions.parse_ttml(tt('<p begin="2s" end="120f">Example</p>',
+                                   ntsc + ' ttp:markerMode="continuous"'))
+        self.assertEqual(r["cues"][0][:2], (Fraction(48) / fps, Fraction(120) / fps))
+        # at a whole rate a label is real time
+        r = captions.parse_ttml(tt('<p begin="01:00:04:00" end="01:00:05:00">Example</p>',
+                                   'ttp:frameRate="25" ttp:timeBase="smpte"'))
+        self.assertEqual(secs(r), [(3604.0, 3605.0, "Example")])
+        # under discontinuous markers (TTML2's default) there is no time
+        # arithmetic: no dur, no timed div, no ticks
+        refused = {
+            "dur": tt('<p begin="01:00:04:00" dur="1s">Example</p>', ntsc),
+            "offset from": (f'<tt {TTML_NS} {ntsc}><body><div begin="1s">'
+                            '<p begin="01:00:04:00" end="01:00:05:00">E</p></div></body></tt>'),
+            "tick": tt('<p begin="100t" end="200t">Example</p>',
+                       ntsc + ' ttp:markerMode="continuous"'),
+            "markerMode": tt('<p begin="1s" end="2s">E</p>', ntsc + ' ttp:markerMode="sometimes"'),
+        }
+        for why, text in refused.items():
+            with self.subTest(why=why):
+                with self.assertRaisesRegex(captions.CaptionError, why):
+                    captions.parse_ttml(text)
+
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
         self.assertEqual(r["cues"][0][2], "One\nTwo")
@@ -204,11 +240,12 @@ class TestSubRip(unittest.TestCase):
             captions.srt_time(-1)
 
 
-def make_tc(path, seconds=3.0, timecode="01:00:00:00"):
-    """A 25 fps H.264 test clip with a stereo tone and, unless None, a
-    start timecode (a tmcd track and the stream tag, as Resolve writes)."""
+def make_tc(path, seconds=3.0, timecode="01:00:00:00", rate="25"):
+    """An H.264 test clip (25 fps unless rate says otherwise) with a stereo
+    tone and, unless None, a start timecode (a tmcd track and the stream
+    tag, as Resolve writes)."""
     cmd = [dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
-           "-i", f"testsrc2=size=64x36:rate=25:duration={seconds}", "-f", "lavfi",
+           "-i", f"testsrc2=size=64x36:rate={rate}:duration={seconds}", "-f", "lavfi",
            "-i", f"sine=frequency=1000:sample_rate=48000:duration={seconds}",
            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
            "-shortest"]
@@ -227,6 +264,8 @@ class CaptionBase(unittest.TestCase):
         cls.root = os.path.realpath(cls.tmp.name)
         cls.master = make_tc(os.path.join(cls.root, "tc.mp4"))
         cls.bare_master = make_tc(os.path.join(cls.root, "bare.mp4"), timecode=None)
+        cls.ntsc_master = make_tc(os.path.join(cls.root, "ntsc.mp4"), seconds=6.0,
+                                  rate="24000/1001")
 
     @classmethod
     def tearDownClass(cls):
@@ -238,19 +277,19 @@ class CaptionBase(unittest.TestCase):
         os.makedirs(self.trash)
         self.dest = tiny("youtube_16x9")
 
-    def clip(self, cues=RESOLVE_CUES, track=TRACK, timecode=True):
+    def clip(self, cues=RESOLVE_CUES, track=TRACK, timecode=True, master=None, **kw):
         path = os.path.join(self.dir, NAME16)
-        with open(self.master if timecode else self.bare_master, "rb") as src, \
-                open(path, "wb") as out:
+        master = master or (self.master if timecode else self.bare_master)
+        with open(master, "rb") as src, open(path, "wb") as out:
             out.write(src.read())
         if cues is not None:
-            self.sidecar(path, cues, track)
+            self.sidecar(path, cues, track, **kw)
         return path
 
-    def sidecar(self, path, cues, track=TRACK):
+    def sidecar(self, path, cues, track=TRACK, **kw):
         ttml = os.path.join(self.dir, f"{os.path.splitext(os.path.basename(path))[0]}_{track}.ttml")
         with open(ttml, "w", encoding="utf-8") as f:
-            f.write(tt(ps(cues)))
+            f.write(tt(ps(cues), **kw))
         return ttml
 
     def convert(self, path, **kw):
@@ -391,6 +430,18 @@ class TestDeliverCaptions(CaptionBase):
                 self.convert(path)
         self.assertFalse(os.path.exists(deliver.sidecar_path(path)))
         self.assertEqual(len(deliver.resolve_sidecars(path)), 1)
+
+    def test_smpte_captions_on_a_23976_file(self):
+        # a TTML from another tool in SMPTE time: 01:00:04:00 is 96 frames past
+        # the file's 01:00:00:00, 4.004 s at 24000/1001
+        smpte = ('ttp:frameRate="24" ttp:frameRateMultiplier="1000 1001" '
+                 'ttp:timeBase="smpte" ttp:markerMode="continuous"')
+        path = self.clip([("01:00:04:00", "01:00:05:00", "Example caption one")],
+                         master=self.ntsc_master, params=smpte)
+        r = self.convert(path, dry_run=True)
+        self.assertEqual(r["start"]["fps"], "24000/1001")
+        self.assertAlmostEqual(r["cues"]["first"][0], 4.004, places=6)
+        self.assertAlmostEqual(r["cues"]["first"][1], 5.005, places=6)
 
     def test_refused_inside_a_git_tree(self):
         os.makedirs(os.path.join(self.dir, ".git"))
