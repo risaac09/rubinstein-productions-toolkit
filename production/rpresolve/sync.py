@@ -624,7 +624,10 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
         d = drift(out["windows"], ov0 / rate + ref_start_s, ov1 / rate + ref_start_s, fps,
                   max_drift_frames)
         out["drift"] = d
-        out["offset_s"] = d["offset_mid_s"]  # where one placement errs least
+        if d["max_residual_ms"] <= d["residual_limit_ms"]:
+            out["offset_s"] = d["offset_mid_s"]  # where one placement errs least
+        # Off the line, the line's midpoint is a value no window measured: the
+        # head's own reading stands, beside the groups.
         for w, r in zip(out["windows"], d["residuals_ms"]):
             w["residual_ms"] = r
         spread = (max(w["offset_s"] for w in out["windows"]) -
@@ -733,8 +736,10 @@ def format_summary(r):
             f"{g['offset_s']:+.4f} s ({', '.join(g['windows'])})" for g in r["groups"]))
     f = r.get("frames")
     if r.get("offset_s") is not None:
+        on_line = d and r["offset_s"] == d["offset_mid_s"]
         lines.append(f"  offset: {r['offset_s']:+.4f} s" +
-                     (" (the drift line at the overlap's midpoint)" if d else "") +
+                     (" (the drift line at the overlap's midpoint)" if on_line else
+                      " (the head window's)" if d else "") +
                      (f" = {f['exact']:+.3f} frames at {f['fps']:g} fps, placed at "
                       f"{f['placed']:+d} (residual {f['residual_ms']:+.1f} ms; inherent "
                       f"+/-{f['inherent_ms']:.1f} ms at frame precision)" if f else ""))
