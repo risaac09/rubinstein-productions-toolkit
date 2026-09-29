@@ -15,8 +15,13 @@ Commands:
     new-project         Create a new project with standard bin structure
     import-media        Import media files into camera-specific bins (recursive)
     build-timeline       Create timeline with optional intro/outro cards
-    add-subtitles        Import .srt subtitles onto timeline
-    auto-subtitle        Generate subtitles from audio (Resolve Studio only)
+    add-subtitles        Import .srt subtitles onto timeline (legacy: Resolve 21
+                         places nothing and it exits 1; use captions, or
+                         File > Import > Subtitle by hand)
+    auto-subtitle        Generate subtitles from audio (Resolve Studio only;
+                         legacy, no read-back: use captions)
+    captions             Auto captions from the audio of an [auto] timeline, with
+                         line length and breaks for its shape; read back
     render               Queue a render preset
     render-all            Queue all render presets at once
     clear-queue           Delete all pending render jobs
@@ -90,7 +95,11 @@ Known API limits (live-verified against Resolve Studio 21.0.4.5):
       calls, and piped output is lost unless flushed first. main() exits
       through rpresolve.api.exit_clean (flush, then os._exit).
     - Subtitle *styling* (font/color/position) has no scripting entry point;
-      add-subtitles places the track, styling stays a manual Edit-page step.
+      it stays a manual Edit-page step.
+    - MediaPool.AppendToTimeline of an imported .srt returns True and places
+      nothing (spike 18), so add-subtitles cannot add captions; captions
+      runs Timeline.CreateSubtitlesFromAudio on the current timeline and
+      reads the subtitle track back.
     - A sidecar render writes "<stem>_<track name>.ttml" timed from the
       timeline's timecode (01:00:00:00 and up); deliver-captions makes the
       zero-based <stem>.srt a platform reads.
@@ -477,17 +486,19 @@ def cmd_add_subtitles(args):
     appended = media_pool.AppendToTimeline(imported)
     after = timeline.GetTrackCount("subtitle")
 
-    if appended and after > before:
+    if after > before:
         print(f"Subtitles placed on timeline: {args.srt_file}")
         print(f"  Subtitle tracks: {before} -> {after}")
-    elif appended:
-        print(f"Subtitle clip appended, but subtitle track count is unchanged ({after}).")
-        print("  Resolve may have placed it as a regular clip rather than a subtitle track.")
-        print("  Verify in the Edit page; if wrong, remove it and use File > Import > Subtitle manually.")
-    else:
-        print(f"ERROR: Imported {args.srt_file} into the Media Pool but could not append it to the timeline.")
-        print("  Fallback: File > Import > Subtitle in the Resolve UI.")
-        sys.exit(1)
+        return 0
+    print(f"ERROR: the subtitle track count did not grow ({before} -> {after}); AppendToTimeline "
+          f"returned {bool(appended)}.", file=sys.stderr)
+    print("  Resolve 21 does not place an .srt through AppendToTimeline: it returns True and "
+          "adds nothing (spike 18). The .srt was imported into the Media Pool and the timeline "
+          "is unchanged.",
+          file=sys.stderr)
+    print("  Use 'captions' to transcribe an [auto] timeline, or File > Import > Subtitle in "
+          "the Resolve UI for this .srt.", file=sys.stderr)
+    return 1
 
 
 AUTO_CAPTION_LANGUAGE_CONSTANTS = {
@@ -1295,6 +1306,45 @@ def cmd_deliver_captions(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_captions(args):
+    """Auto captions on an [auto] timeline in the open project named with
+    --project: Resolve transcribes its audio with line length and breaks
+    for the timeline's shape, then the subtitle track is read back. Exit 0
+    items were made (or planned, with --dry-run), 1 refused or none made."""
+    config = _deliver_config(args)
+    resolve = get_resolve()
+    try:
+        with rpapi.ResolveLock():
+            r = rpwork.create_captions(resolve, args.project, args.timeline,
+                                       language=args.language, dry_run=args.dry_run,
+                                       project_id=args.project_id, expect_sha=args.plan_sha,
+                                       config=config)
+    except rpapi.ResolveAPIError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    tl = r["timeline"]
+    print(f"Timeline:  {tl['name']} ({tl['size'][0]}x{tl['size'][1]}, {r['shape']})")
+    print("Settings:  " + ", ".join(f"{k}={v}" for k, v in r["settings"].items()))
+    if r["dry_run"]:
+        print(f"plan_sha: {r['plan_sha']}")
+        print("Dry run: nothing transcribed. To run it, run again without --dry-run and with "
+              f"--plan-sha {r['plan_sha']}.")
+        return 0
+    print(f"CreateSubtitlesFromAudio returned {r['returned']}; subtitle items per track "
+          f"{r['subtitle_tracks_before'] or 'none'} -> {r['subtitle_tracks_after'] or 'none'}")
+    if r["items"]:
+        f = r["first_item"] or {}
+        print(f"Made {r['items']} caption item(s); the first on subtitle track {f.get('track')}, "
+              f"frames {f.get('start')} to {f.get('end')}.")
+    else:
+        print("FAILED: no caption item is on the timeline" +
+              (" although the call returned True" if r["returned"] else "") +
+              ". Check the timeline has audio, and that this is Resolve Studio.", file=sys.stderr)
+    if r["ui_restore_problems"]:
+        print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
+    return r["exit_status"]
+
+
 def cmd_deliver_fix_loudness(args):
     """Normalise a render's loudness to its destination's target into
     <stem>.loudfix<ext>, then check it. --replace swaps it in only after
@@ -1346,6 +1396,7 @@ def _locked(fn):
     return run
 
 
+cmd_add_subtitles = _locked(cmd_add_subtitles)
 cmd_apply_lut = _locked(cmd_apply_lut)
 cmd_apply_drx = _locked(cmd_apply_drx)
 cmd_clear_queue = _locked(cmd_clear_queue)
@@ -1377,11 +1428,9 @@ Examples:
   # Build timeline with intro card
   python3 resolve_workflow.py build-timeline "Main Edit" --intro /path/to/intro-4k.png
 
-  # Import subtitles
-  python3 resolve_workflow.py add-subtitles /path/to/subs.srt
-
-  # Generate auto-captions (Resolve Studio only)
-  python3 resolve_workflow.py auto-subtitle --language en
+  # Auto captions on an [auto] timeline (plan, then run with the plan_sha it prints)
+  python3 resolve_workflow.py captions --project "My Project" --timeline "Clip 9x16 [auto]" \\
+      --language en --dry-run
 
   # Apply LUT only to clips tagged as GH7 on V1
   python3 resolve_workflow.py apply-lut /path/to/GH7ToRec709.cube --track 1 --camera gh7
@@ -1458,7 +1507,8 @@ Examples:
     sp.add_argument("--intro-duration", type=float, default=4.0, help="Intro duration in seconds (default: 4)")
     sp.set_defaults(func=cmd_build_timeline)
 
-    sp = subparsers.add_parser("add-subtitles", help="Import .srt subtitles")
+    sp = subparsers.add_parser(
+        "add-subtitles", help="Import .srt subtitles (legacy; exits 1 when nothing is placed)")
     sp.add_argument("srt_file", help="Path to .srt subtitle file")
     sp.set_defaults(func=cmd_add_subtitles)
 
@@ -1643,6 +1693,20 @@ Examples:
                     help="Skip the loudness read (it reads the whole file)")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_check)
+
+    sp = subparsers.add_parser(
+        "captions", help="Auto captions from an [auto] timeline's audio, read back")
+    sp.add_argument("--project", required=True, help="Name of the open project")
+    sp.add_argument("--project-id", help="Its unique id, to pin it exactly")
+    sp.add_argument("--timeline", required=True,
+                    help="An [auto] timeline's name or unique id; it must have no subtitle items")
+    sp.add_argument("--language", default="en",
+                    choices=sorted(rpwork.CAPTION_LANGUAGES), help="Spoken language (default en)")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (deliver.captions)")
+    sp.add_argument("--dry-run", action="store_true", help="Plan only; prints the plan_sha")
+    sp.add_argument("--plan-sha", help="Refuse unless the plan still matches this dry run's")
+    sp.set_defaults(func=cmd_captions)
 
     sp = subparsers.add_parser(
         "deliver-captions",

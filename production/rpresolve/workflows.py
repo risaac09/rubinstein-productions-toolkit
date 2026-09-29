@@ -8,7 +8,7 @@ Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
 Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
-destination form, queue_destination) pin the open project by name (and
+destination form, queue_destination, create_captions) pin the open project by name (and
 unique id when given), re-check the pin before every batch of writes, and
 take a `check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from . import api, grade
@@ -784,4 +785,159 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     out["warnings"] += warnings
     out["unverified"] = unverified
     out["exit_status"] = 1 if problems else 0
+    return out
+
+
+# ---------------------------------------------------------------------------
+# create_captions: Resolve's auto captions on an [auto] timeline
+# ---------------------------------------------------------------------------
+
+# Language codes to Resolve's AUTO_CAPTION_* language constants (the "Auto
+# Caption Settings" section of the scripting README, 21.0.4.5).
+CAPTION_LANGUAGES = {
+    "auto": "AUTO_CAPTION_AUTO", "da": "AUTO_CAPTION_DANISH", "nl": "AUTO_CAPTION_DUTCH",
+    "en": "AUTO_CAPTION_ENGLISH", "fr": "AUTO_CAPTION_FRENCH", "de": "AUTO_CAPTION_GERMAN",
+    "it": "AUTO_CAPTION_ITALIAN", "ja": "AUTO_CAPTION_JAPANESE", "ko": "AUTO_CAPTION_KOREAN",
+    "zh-hans": "AUTO_CAPTION_MANDARIN_SIMPLIFIED",
+    "zh-hant": "AUTO_CAPTION_MANDARIN_TRADITIONAL", "no": "AUTO_CAPTION_NORWEGIAN",
+    "pt": "AUTO_CAPTION_PORTUGUESE", "ru": "AUTO_CAPTION_RUSSIAN", "es": "AUTO_CAPTION_SPANISH",
+    "sv": "AUTO_CAPTION_SWEDISH"}
+CAPTION_LINE_BREAKS = {"single": "AUTO_CAPTION_LINE_SINGLE",
+                       "double": "AUTO_CAPTION_LINE_DOUBLE"}
+# After CreateSubtitlesFromAudio returns True with no items yet, how long to
+# look again before calling it a failure (the live call returned only once
+# the items were there; this covers a Resolve that returns early).
+CAPTION_SETTLE_S = 3.0
+# The page CreateSubtitlesFromAudio is called from. Live, 2026-09-29: from the
+# Deliver page it returns False and makes nothing (0.2 s to 11 s); from the
+# Edit page it returns True with the items made (22 in 36 s). Other pages are
+# untried.
+CAPTION_PAGE = "edit"
+
+
+def _subtitle_items(tl):
+    """Items per subtitle track, in track order."""
+    return [len(tl.GetItemListInTrack("subtitle", i) or [])
+            for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1)]
+
+
+def _first_subtitle(tl):
+    """{track, start, end} of the first item on the first subtitle track
+    that has one, or None."""
+    for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
+        items = tl.GetItemListInTrack("subtitle", i) or []
+        if items:
+            return {"track": i, "start": api._safe_call(items[0], "GetStart"),
+                    "end": api._safe_call(items[0], "GetEnd")}
+    return None
+
+
+def _constant(resolve, name):
+    """resolve.<name>, or None when this Resolve does not define it: an
+    unknown constant reads as None, silently. The known ones are floats,
+    and some are 0.0, so only None counts as missing."""
+    return getattr(resolve, name, None)
+
+
+def create_captions(resolve, project_name, timeline, language="en", dry_run=False,
+                    project_id=None, expect_sha=None, config=None, check_cancel=None):
+    """Transcribe an ' [auto]' timeline's audio into captions with Resolve's
+    Timeline.CreateSubtitlesFromAudio, in the open project named
+    project_name. Characters per line and line breaks come from the
+    config's deliver.captions for the timeline's shape (landscape, portrait
+    or square, from its resolution). Additive only: refused when the
+    timeline already has any subtitle item, while a render runs, or when
+    Resolve lacks a constant the settings need. The timeline is made
+    current and the Edit page opened for the call (Resolve transcribes the
+    current timeline, and returns False from the Deliver page), and the
+    current timeline and page are put back after. The call returning
+    True proves nothing, so the subtitle tracks are read back: at least one
+    item must be there. Returns {project, timeline, language, shape,
+    settings, subtitle_tracks_before, subtitle_tracks_after, items,
+    first_item, returned, plan_sha, dry_run, ui_restore_problems,
+    exit_status}."""
+    from . import deliver
+    from .config import load_config
+    config = config or load_config()
+    code = str(language or "en").strip().lower()
+    if code not in CAPTION_LANGUAGES:
+        raise Refused(f"unknown caption language '{language}'; use one of "
+                      f"{', '.join(sorted(CAPTION_LANGUAGES))}.")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Captions go only onto timelines "
+                      "these tools made; duplicate it first (duplicate_timeline_auto).")
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; make captions after it finishes.")
+    before = _subtitle_items(tl)
+    if any(before):
+        raise Refused(f"'{tl_name}' already has {sum(before)} subtitle item(s) on "
+                      f"{sum(1 for n in before if n)} track(s); captions are only added to a "
+                      "timeline that has none (additive only). Duplicate the timeline without "
+                      "its captions, or remove them by hand.")
+    size = _timeline_size(project, tl)
+    shape = deliver.frame_shape(size)
+    if shape is None:
+        raise Refused(f"the resolution of '{tl_name}' could not be read ({size[0]}x{size[1]}), "
+                      "so its frame shape, and with it the caption line length, is unknown.")
+    try:
+        chosen = deliver.caption_settings(config, shape)
+    except deliver.DeliverError as e:
+        raise Refused(f"'{tl_name}' is {size[0]}x{size[1]}, {shape}: {e}")
+    names = {"SUBTITLE_LANGUAGE": CAPTION_LANGUAGES[code],
+             "SUBTITLE_CHARS_PER_LINE": chosen["chars_per_line"],
+             "SUBTITLE_LINE_BREAK": CAPTION_LINE_BREAKS[chosen["line_break"]]}
+    wanted = ["SUBTITLE_LANGUAGE", "SUBTITLE_CHARS_PER_LINE", "SUBTITLE_LINE_BREAK",
+              names["SUBTITLE_LANGUAGE"], names["SUBTITLE_LINE_BREAK"]]
+    consts = {n: _constant(resolve, n) for n in wanted}
+    missing = [n for n in wanted if consts[n] is None]
+    if missing:
+        raise Refused("this Resolve does not define " + ", ".join(f"resolve.{n}" for n in missing)
+                      + " (an unknown constant reads as None), so the caption settings cannot "
+                      "be given; check the scripting README's Auto Caption Settings.")
+    settings = {consts["SUBTITLE_LANGUAGE"]: consts[names["SUBTITLE_LANGUAGE"]],
+                consts["SUBTITLE_CHARS_PER_LINE"]: chosen["chars_per_line"],
+                consts["SUBTITLE_LINE_BREAK"]: consts[names["SUBTITLE_LINE_BREAK"]]}
+    sha = plan_sha("captions", pin.unique_id, tl_id, code, names, shape, list(size), before)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "size": list(size)},
+           "language": code, "shape": shape, "settings": names,
+           "subtitle_tracks_before": before, "subtitle_tracks_after": None, "items": 0,
+           "first_item": None, "returned": None, "plan_sha": sha, "dry_run": dry_run,
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the timeline, its captions or the "
+                      "caption settings differ); run the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if check_cancel:
+            check_cancel()
+        project = pin.check(pm)
+        if project.IsRenderingInProgress():
+            raise Refused("a render started; nothing was transcribed.")
+        if not project.SetCurrentTimeline(tl) or api._safe_call(
+                api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") != tl_id:
+            raise api.WriteNotApplied(f"could not make '{tl_name}' current to transcribe it")
+        if api._safe_call(resolve, "GetCurrentPage") != CAPTION_PAGE and not (
+                resolve.OpenPage(CAPTION_PAGE) and resolve.GetCurrentPage() == CAPTION_PAGE):
+            raise api.WriteNotApplied(f"could not open the {CAPTION_PAGE} page to transcribe "
+                                      f"'{tl_name}' (from the Deliver page Resolve returns False)")
+        if any(_subtitle_items(tl)):
+            raise Refused(f"'{tl_name}' gained subtitle items since the plan; nothing was "
+                          "transcribed.")
+        out["returned"] = bool(tl.CreateSubtitlesFromAudio(settings))
+        after = _subtitle_items(tl)
+        deadline = time.monotonic() + (CAPTION_SETTLE_S if out["returned"] else 0)
+        while not any(after) and time.monotonic() < deadline:
+            time.sleep(0.5)
+            after = _subtitle_items(tl)
+        out["first_item"] = _first_subtitle(tl)
+    out["subtitle_tracks_after"] = after
+    out["items"] = sum(after)
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 0 if out["items"] > 0 else 1
     return out

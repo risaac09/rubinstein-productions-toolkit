@@ -16,6 +16,7 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
 - Additive only: nothing that existed before is modified; grades go only onto timelines whose name ends " [auto]"; renders are queued, never started.
 - Deliverables: queue_render with a destination names the file by the house rule. After Isaac renders it: deliver_captions for a sidecar destination (Resolve's .ttml to a zero-based .srt), the loudness fix, then deliver_check.
+- Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it.
 - Output files never go inside a git repository.
 - Tool results name client media, people and transcripts. Never paste them into commits, pull requests or anything public.
 """

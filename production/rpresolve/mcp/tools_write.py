@@ -302,8 +302,43 @@ def _queue_destination(args, ctx):
 
 
 # ---------------------------------------------------------------------------
-# deliver_captions (offline, a file beside a render)
+# create_captions (Resolve) and deliver_captions (offline, a file beside a render)
 # ---------------------------------------------------------------------------
+
+def create_captions(args, ctx):
+    _require_sha(args)
+    config = deliver_config()
+    ctx.check_cancel()
+
+    def run():
+        r = workflows.create_captions(ctx.session.get(), args["project"], args["timeline"],
+                                      language=args["language"], dry_run=args["dry_run"],
+                                      project_id=args.get("project_id"),
+                                      expect_sha=args.get("plan_sha"), config=config,
+                                      check_cancel=ctx.check_cancel)
+        tl, st = r["timeline"]["name"], r["settings"]
+        how = (f"{st['SUBTITLE_CHARS_PER_LINE']} characters per line, "
+               f"{st['SUBTITLE_LINE_BREAK']} ({r['shape']})")
+        if r["dry_run"]:
+            r["summary"] = (f"would transcribe '{tl}' in {r['language']} with {how}; nothing is "
+                            "on its subtitle tracks yet. The timeline is made current and the "
+                            "Edit page opened for the call, and both are put back after" +
+                            _how(r))
+        elif r["exit_status"] == 0:
+            f = r["first_item"] or {}
+            r["summary"] = (f"made {r['items']} caption item(s) on '{tl}' with {how}; the first "
+                            f"on subtitle track {f.get('track')}, frames {f.get('start')} to "
+                            f"{f.get('end')}" + _ui(r))
+        else:
+            r["summary"] = (f"create_captions FAILED on '{tl}': no caption item is on the "
+                            "timeline" + (" although Resolve's call returned True" if
+                                          r["returned"] else "") +
+                            "; check it has audio and that this is Resolve Studio" + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("create_captions", args, run)
+
 
 def deliver_captions(args, ctx):
     from .. import captions
@@ -497,6 +532,28 @@ def register(registry):
          "required": ["project", "timeline"],
          "additionalProperties": False},
         queue_render, title="Queue a render", annotations=WRITE))
+    registry.add(Tool(
+        "create_captions",
+        "Transcribe an ' [auto]' timeline's audio into captions with Resolve's auto captions "
+        "(Timeline.CreateSubtitlesFromAudio, Resolve Studio). Characters per line and line "
+        "breaks follow the timeline's shape from the config's deliver.captions (default 42 on "
+        "one line for landscape, 20 on two lines for portrait, 24 on two lines for square), so "
+        "burnt-in captions fit a 9:16 frame. Refused when the timeline already has any subtitle "
+        "item (additive only), while a render runs, and when Resolve lacks a constant the "
+        "settings need. The timeline is made current and the Edit page opened for the call "
+        "(from the Deliver page Resolve returns False); the current timeline and page are put "
+        "back. The subtitle tracks are read back: a call that returns True but "
+        "leaves no item is a failure. Can take about as long as the timeline runs. Dry run "
+        "first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "language": {"type": "string", "enum": sorted(workflows.CAPTION_LANGUAGES),
+                         "default": "en", "description": "The spoken language."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        create_captions, title="Create auto captions", annotations=WRITE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

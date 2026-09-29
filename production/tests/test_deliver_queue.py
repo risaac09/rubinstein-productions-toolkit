@@ -536,10 +536,10 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 17)
-        for name in ("deliver_check", "deliver_captions"):
+        self.assertEqual(len(names), 18)
+        for name in ("deliver_check", "deliver_captions", "create_captions"):
             self.assertIn(name, names)
-        for name in ("deliver_captions",):
+        for name in ("deliver_captions", "create_captions"):
             self.assertFalse(REG.get(name).annotations["readOnlyHint"], name)
             self.assertTrue(REG.get(name).input_schema["properties"]["dry_run"]["default"])
         schema_ = REG.get("queue_render").input_schema

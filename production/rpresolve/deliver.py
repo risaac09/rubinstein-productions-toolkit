@@ -32,6 +32,11 @@ under the file's stem, in any case) blocks a sidecar job, and fails the
 check of a burn-in or no-captions file. Resolve 21.0.4.5 writes a sidecar
 as "<stem>_<subtitle track name>.ttml" (resolve_sidecars()), timed from the
 timeline's timecode; rpresolve.captions turns it into <stem>.srt.
+
+Auto captions (workflows.create_captions) take their line length and
+line breaks from "deliver" "captions", one entry per frame shape
+(caption_settings()): a 9:16 frame holds about 20 characters of burnt-in
+text at Resolve's default size, a 16:9 frame the default 42.
 """
 
 import os
@@ -488,6 +493,41 @@ def _shape(width, height):
     return "landscape" if ratio > 1 else "portrait"
 
 
+SHAPES = ("landscape", "portrait", "square")
+LINE_BREAKS = ("single", "double")
+
+
+def frame_shape(size):
+    """'landscape', 'portrait' or 'square' for a (width, height), or None
+    when either is missing."""
+    if not size or not all(size):
+        return None
+    return _shape(int(size[0]), int(size[1]))
+
+
+def caption_settings(config, shape):
+    """{chars_per_line, line_break} for auto captions on a frame of this
+    shape, from config["deliver"]["captions"][shape]. Raises DeliverError
+    when the entry is missing or out of range (Resolve takes 1 to 60
+    characters per line, and a single or double line break)."""
+    if shape not in SHAPES:
+        raise DeliverError(f"no caption settings for a frame shape of {shape!r}; the "
+                           f"timeline's resolution must be readable ({', '.join(SHAPES)}).")
+    entry = ((config.get("deliver") or {}).get("captions") or {}).get(shape)
+    if not isinstance(entry, dict):
+        raise DeliverError(f'the config has no deliver.captions.{shape} entry '
+                           '({"chars_per_line": N, "line_break": "single" or "double"}).')
+    chars, brk = entry.get("chars_per_line"), entry.get("line_break")
+    problems = []
+    if isinstance(chars, bool) or not isinstance(chars, int) or not 1 <= chars <= 60:
+        problems.append(f"chars_per_line must be a whole number from 1 to 60 (got {chars!r})")
+    if brk not in LINE_BREAKS:
+        problems.append(f"line_break must be one of {', '.join(LINE_BREAKS)} (got {brk!r})")
+    if problems:
+        raise DeliverError(f"deliver.captions.{shape} in the config is not usable: " +
+                           "; ".join(problems) + ".")
+    return {"chars_per_line": chars, "line_break": brk}
+
 
 def shape_problems(dest, size, timeline="the timeline"):
     """Refusals that come from the timeline's frame. A destination of a
@@ -530,7 +570,8 @@ def timeline_problems(dest, subtitle_counts, disabled_counts=()):
                 "Enable the caption track first."]
     if not subtitle_counts:
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline has no "
-                "subtitle track. Add the captions (an .srt on a subtitle track) first."]
+                "subtitle track. Add the captions first (resolve_workflow.py captions, or the "
+                "MCP create_captions, on this [auto] timeline)."]
     if not any(subtitle_counts):
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline's "
                 f"{len(subtitle_counts)} subtitle track(s) are empty."]
