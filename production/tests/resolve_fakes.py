@@ -168,6 +168,8 @@ class Project(Fake):
         self.jobs = [dict(j) for j in jobs]
         self.rendering = rendering
         self.refuse = set()  # SetRenderSettings keys this fake refuses
+        self.render_mode = 1  # 0 Individual clips, 1 Single clip
+        self.stuck_mode = False  # SetCurrentRenderMode says yes and changes nothing
         self.settings = {"colorScienceMode": "davinciYRGBColorManagedv2",
                          "timelineResolutionWidth": "3840", "timelineResolutionHeight": "2160"}
 
@@ -210,6 +212,17 @@ class Project(Fake):
         if fmt == "unknown":
             return False
         self.fmt = {"format": fmt, "codec": codec}
+        return True
+
+    def GetCurrentRenderMode(self):
+        return self.render_mode
+
+    def SetCurrentRenderMode(self, mode):
+        _log(self, "SetCurrentRenderMode", mode)
+        if mode not in (0, 1):
+            return False
+        if not self.stuck_mode:
+            self.render_mode = mode
         return True
 
     def SetRenderSettings(self, settings):

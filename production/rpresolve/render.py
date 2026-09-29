@@ -102,9 +102,12 @@ def queue_render_job(project, preset_key, output_dir, presets, custom_name=None)
 def queue_destination_job(project, dest, steps):
     """Queue one job for the current timeline from a delivery destination
     (rpresolve.deliver) and its SetRenderSettings steps (render_steps).
-    Sets the format and codec, then each step in order. When a required
-    step is refused, nothing is queued. Returns {job_id, error, warnings,
-    codec, refused_required, refused_optional}. Prints nothing."""
+    Sets the format and codec, the render mode to Single clip (one file,
+    under the name the steps set), then each step in order, and reads the
+    mode back before AddRenderJob. When the mode does not read back as
+    Single clip or a required step is refused, nothing is queued. Returns
+    {job_id, error, warnings, codec, refused_required, refused_optional}.
+    Prints nothing."""
     out = {"job_id": None, "error": None, "warnings": [], "codec": None,
            "refused_required": [], "refused_optional": []}
     codecs = project.GetRenderCodecs(dest["format"]) or {}
@@ -126,6 +129,11 @@ def queue_destination_job(project, dest, steps):
         out["error"] = (f"could not set the Deliver format/codec to {dest['format']}/"
                         f"{codec_name}; Resolve reports {actual}. Nothing was queued.")
         return out
+    from .deliver import SINGLE_CLIP
+    if not project.SetCurrentRenderMode(SINGLE_CLIP):
+        out["error"] = ("Resolve refused the render mode Single clip "
+                        f"(SetCurrentRenderMode({SINGLE_CLIP})). Nothing was queued.")
+        return out
     for step in steps:
         if not project.SetRenderSettings(step["settings"]):
             keys = ", ".join(f"{k}={v!r}" for k, v in step["settings"].items())
@@ -136,6 +144,12 @@ def queue_destination_job(project, dest, steps):
         out["error"] = ("Resolve refused " + "; ".join(out["refused_required"]) +
                         ". Nothing was queued; the Deliver page keeps the settings that did "
                         "take.")
+        return out
+    mode = project.GetCurrentRenderMode()
+    if mode != SINGLE_CLIP:
+        out["error"] = (f"the render mode reads back as {mode!r}, not Single clip "
+                        f"({SINGLE_CLIP}); a job in Individual clips mode writes files under "
+                        "names nothing here checked. Nothing was queued.")
         return out
     out["job_id"] = project.AddRenderJob() or None
     if not out["job_id"]:

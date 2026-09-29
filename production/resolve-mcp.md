@@ -85,7 +85,10 @@ absolute, since the server's working directory is not the caller's.
   back the Deliver page's settings, so the tool puts back the format and
   codec and lists the fields it changed but cannot restore (target folder,
   name, size, video and audio on, and for a destination the frame rate,
-  audio, colour tags and captions too).
+  audio, colour tags, captions and Data Burn-in too). A destination job is
+  queued in Single clip mode, read back first, and the mode is put back
+  after; the result also lists the render settings the job takes from the
+  Deliver page as it stands (`carried_over`).
 - **Deliverables by destination.** With `destination`, `name` and
   `target_dir` in place of `preset` and `output_dir`, `queue_render` names
   the file by the house rule and also refuses when a fixed-size

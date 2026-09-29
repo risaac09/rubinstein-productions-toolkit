@@ -574,6 +574,17 @@ def _restore_format(project, fmt0, warnings):
                         "format stays selected there")
 
 
+def _restore_mode(project, mode0, warnings):
+    """Put the Deliver page's render mode back to mode0 (0 Individual
+    clips, 1 Single clip), when it was read and has changed."""
+    if mode0 not in (0, 1):
+        warnings.append(f"the Deliver page's render mode read as {mode0!r} before queueing, "
+                        "so it stays on Single clip")
+    elif project.GetCurrentRenderMode() != mode0:
+        if not (project.SetCurrentRenderMode(mode0) and project.GetCurrentRenderMode() == mode0):
+            warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
+
+
 def _timeline_size(project, tl):
     """(width, height) of a timeline, falling back to the project's."""
     def read(key):
@@ -604,8 +615,9 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     job from being queued. The queued job is read back from
     GetRenderJobList. Returns {project, timeline, destination, output,
     sidecar, settings, plan_sha, dry_run, job, readback_problems,
-    unverified, deliver_changed, codec, warnings, ui_restore_problems,
-    exit_status}."""
+    unverified, deliver_changed, carried_over, codec, warnings,
+    ui_restore_problems, exit_status}. carried_over names the render
+    settings the job takes from whatever the Deliver page last held."""
     from . import deliver, render
     from .config import load_config
     config = config or load_config()
@@ -651,12 +663,14 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                         "size": list(size), "subtitle_tracks": subtitle_counts},
            "destination": {k: dest.get(k) for k in ("key", "name", "format", "codec",
                                                     "resolution", "audio", "loudness",
-                                                    "captions", "color")},
+                                                    "captions", "data_burn_in", "color")},
            "output": output,
            "sidecar": deliver.sidecar_path(output) if dest["captions"] == "sidecar" else None,
            "settings": steps, "plan_sha": sha, "dry_run": dry_run, "job": None,
            "readback_problems": [], "unverified": [],
-           "deliver_changed": ["format/codec (put back)"] + deliver.changed_fields(steps),
+           "deliver_changed": (["format/codec (put back)", "render mode Single clip (put back)"]
+                               + deliver.changed_fields(steps)),
+           "carried_over": deliver.carried_over(steps),
            "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0}
     if fps is None:
         out["warnings"].append(f"the timeline's frame rate ({fps_raw!r}) could not be read, so "
@@ -672,12 +686,14 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
             check_cancel()
         project = pin.check(pm)
         fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
+        mode0 = project.GetCurrentRenderMode()
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         try:
             q = render.queue_destination_job(project, dest, steps)
         finally:
             _restore_format(project, fmt0, restore_warnings)
+            _restore_mode(project, mode0, restore_warnings)
     out["codec"] = q["codec"]
     out["warnings"] += q["warnings"] + restore_warnings
     out["ui_restore_problems"] = snap.problems

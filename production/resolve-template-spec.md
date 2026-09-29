@@ -209,16 +209,21 @@ Names are validated when a job is queued and again when the file is checked.
    --dest <key> --show SW --episode 1 --guest Guest --index 1 --slug
    example-clip --target-dir <folder> --dry-run`, then again with
    `--plan-sha`; or the MCP `queue_render` with `destination`, `name` and
-   `target_dir`. It sets format and codec, then size, frame rate, audio
-   codec, bit depth and sample rate, colour tags, captions
-   (`ExportSubtitle`, `SubtitleFormat` `SeparateFile` or `BurnIn`), render
-   all frames, and never replace existing files. It refuses, with every
-   reason, when a destination of fixed size gets a timeline of another
-   shape, meaning another orientation or a width:height more than 1% off
-   (a 9:16 destination takes the timeline's 9:16 copy: Resolve scales a
-   16:9 picture into a 1080x1920 frame with bars, and every row of
-   deliver-check would still pass); when the target folder is missing; when it sits under `/Volumes`
-   and that share is not mounted (a dropped share leaves its folders on the
+   `target_dir`. It sets format and codec, the render mode Single clip
+   (read back before the job is added; format, codec and mode are put back
+   after), then size, frame rate, audio codec, bit depth and sample rate,
+   colour tags, captions (`ExportSubtitle`, `SubtitleFormat` `SeparateFile`
+   or `BurnIn`), Data Burn-in `None` (the house `deliver.data_burn_in`, so
+   a timecode burn-in kept for review copies stays off deliverables),
+   render all frames, and never replace existing files. Every other render
+   setting comes from the Deliver page as it stands, and the result names
+   them (`carried_over`). It refuses, with every reason, when a
+   destination of fixed size gets a timeline of another shape, meaning
+   another orientation or a width:height more than 1% off (a 9:16
+   destination takes the timeline's 9:16 copy: Resolve scales a 16:9
+   picture into a 1080x1920 frame with bars, and every row of
+   deliver-check would still pass); when the target folder is missing;
+   when it sits under `/Volumes` and that share is not mounted (a dropped share leaves its folders on the
    boot disk; `/volumes/work` and `/System/Volumes/Data/Volumes/Work` count
    as `/Volumes/Work`); when it is inside a git working tree; when the file already
    exists, or a queued job writes the same file (under any spelling); for a sidecar
@@ -266,9 +271,17 @@ seen in a file Resolve rendered with these settings yet.
 - Which fields `GetRenderJobList` reports. The queue result compares the
   ones it does report and lists the rest as unverified.
 - Channel count cannot be set through the API (the render takes the
-  timeline's output bus), and `VideoQuality` (bit rate) is not set by
-  default, so it carries over from the Deliver page; the config's
-  `resolve` block can set it per destination.
+  timeline's output bus). `VideoQuality` (bit rate), `EncodingProfile`,
+  `MultiPassEncode`, `PixelAspectRatio`, `ExportAlpha`, `AlphaMode`,
+  `UniqueFilenameStyle`, `UseFullExtents`, `AddFrameHandles`,
+  `ClipStartFrame` and `TimelineStartTimecode` are not set, so they carry
+  over from the Deliver page; every queue result lists them as
+  `carried_over`, and the config's `resolve` block can set any of them per
+  destination.
+- Whether `GetRenderJobList` reports a job's render mode, and how Resolve
+  names the files of a job queued in Individual clips mode. The queue
+  sets Single clip and reads it back with `GetCurrentRenderMode` before
+  `AddRenderJob`; it has not been seen on a live Resolve yet.
 
 ---
 

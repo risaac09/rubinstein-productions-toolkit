@@ -55,7 +55,8 @@
       "resolve": { "ColorSpaceTag": "Rec.709", "GammaTag": "Gamma 2.4" },
       "expect": { "color_primaries": "bt709", "color_space": "bt709", "color_transfer": null }
     },
-    "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"]
+    "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"],
+    "data_burn_in": "None"
   },
   "destinations": {
     "youtube_16x9": {

@@ -140,6 +140,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual((yt["audio"]["codec"], yt["audio"]["sample_rate"],
                           yt["audio"]["channels"]), ("aac", 48000, 2))
         self.assertEqual(yt["captions"], "sidecar")
+        self.assertEqual(yt["data_burn_in"], "None")
         self.assertEqual(yt["color"]["resolve"], {"ColorSpaceTag": "Rec.709",
                                                   "GammaTag": "Gamma 2.4"})
         self.assertEqual(yt["color"]["expect"], {"color_primaries": "bt709",
@@ -409,6 +410,37 @@ class TestRenderSteps(unittest.TestCase):
         optional = {k for st in steps if not st["required"] for k in st["settings"]}
         self.assertEqual(optional, {"FrameRate", "NetworkOptimization",
                                     "ReplaceExistingFilesInPlace"})
+        # a data burn-in (timecode on review copies) must not ride along
+        self.assertIn({"settings": {"DataBurnIn": "None"}, "required": True}, steps)
+
+    def test_what_the_deliver_page_still_decides_is_named(self):
+        steps = deliver.render_steps(dest("youtube_16x9"), "/tmp", "SW001_G_01_s_16x9.mp4",
+                                     fps=23.976)
+        left = deliver.carried_over(steps)
+        for key in ("VideoQuality", "EncodingProfile", "ExportAlpha", "UniqueFilenameStyle",
+                    "UseFullExtents", "AddFrameHandles", "PixelAspectRatio"):
+            self.assertIn(key, left)
+        for key in ("DataBurnIn", "FrameRate", "MarkIn", "MarkOut", "SubtitleFormat"):
+            self.assertNotIn(key, left)
+        self.assertEqual(set(left) & set(deliver.changed_fields(steps)), set())
+        # no frame rate, no data burn-in setting, no captions: each is then left as it is
+        left = deliver.carried_over(deliver.render_steps(
+            dest("client_master", data_burn_in=None), "/tmp", "C_s_master.mov", size=(8, 8)))
+        self.assertIn("FrameRate", left)
+        self.assertIn("DataBurnIn", left)
+        self.assertNotIn("SubtitleFormat", left)  # captions are off, so it has no effect
+
+    def test_the_data_burn_in_setting_is_configurable(self):
+        s = self.settings(deliver.render_steps(dest("linkedin_1x1", data_burn_in="Review TC"),
+                                               "/tmp", "x.mp4"))
+        self.assertEqual(s["DataBurnIn"], "Review TC")
+        s = self.settings(deliver.render_steps(dest("linkedin_1x1", data_burn_in=None),
+                                               "/tmp", "x.mp4"))
+        self.assertNotIn("DataBurnIn", s)
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        cfg["destinations"]["linkedin_1x1"]["data_burn_in"] = ""
+        with self.assertRaisesRegex(deliver.DeliverError, "data_burn_in"):
+            deliver.destination(cfg, "linkedin_1x1")
 
     def test_burn_in_none_and_timeline_size(self):
         s = self.settings(deliver.render_steps(dest("linkedin_1x1"), "/tmp", "x.mp4"))

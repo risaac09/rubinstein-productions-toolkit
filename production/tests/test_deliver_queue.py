@@ -117,6 +117,33 @@ class TestQueueDestination(Base):
         self.assertEqual((self.resolve.page, self.project.current), ("cut", self.here))
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
         self.assertEqual(len(self.project.jobs), 1)
+        self.assertEqual(rs["DataBurnIn"], "None")
+        self.assertIn("VideoQuality", r["carried_over"])
+        self.assertIn("render mode Single clip (put back)", r["deliver_changed"])
+
+    def test_the_job_is_queued_in_single_clip_mode_and_the_mode_put_back(self):
+        self.project.render_mode = 0  # Individual clips, as left after dailies
+        modes = []
+        add = self.project.AddRenderJob
+
+        def add_and_note():
+            modes.append(self.project.render_mode)
+            return add()
+        self.project.AddRenderJob = add_and_note
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 0, r)
+        self.assertEqual(modes, [1])
+        self.assertEqual(self.project.render_mode, 0)  # put back
+        self.assertEqual(r["warnings"], [])
+
+    def test_a_render_mode_that_does_not_take_queues_nothing(self):
+        self.project.render_mode = 0
+        self.project.stuck_mode = True  # SetCurrentRenderMode says yes, the mode stays 0
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 1)
+        self.assertIn("Single clip", r["warnings"][0])
+        self.assertEqual(self.project.jobs, [])
+        self.assertEqual(self.project.fmt, {"format": "mp4", "codec": "H264"})
 
     def test_one_job_per_destination_each_named_for_it(self):
         names = []
@@ -299,6 +326,8 @@ class TestMCP(Base):
         self.assertIn("would queue 'Clip [auto]' for LinkedIn 16:9", dry["summary"])
         self.assertIn("sidecar SW001_Guest_01_example-clip_16x9.srt", dry["summary"])
         self.assertIn(dry["plan_sha"], dry["summary"])
+        self.assertIn("render mode Single clip (put back)", dry["summary"])
+        self.assertIn("VideoQuality", dry["summary"].split("as it stands:")[1])
         self.assertEqual((self.project.jobs, self.journal()), ([], []))
         with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
             self.call(self.args(dry_run=False))

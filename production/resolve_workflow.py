@@ -1209,6 +1209,9 @@ def cmd_deliver_queue(args):
     for step in r["settings"]:
         print(f"  {'*' if step['required'] else ' '} " +
               ", ".join(f"{k}={v!r}" for k, v in step["settings"].items()))
+    print("Render mode: Single clip (the Deliver page's mode is put back after)")
+    print("Not set here, so taken from the Deliver page as it stands: " +
+          ", ".join(r["carried_over"]))
     for w in r["warnings"]:
         print(f"  WARNING: {w}", file=sys.stderr)
     if r["dry_run"]:

@@ -263,8 +263,9 @@ def _queue_destination(args, ctx):
         side = f" with sidecar {os.path.basename(r['sidecar'])}" if r["sidecar"] else ""
         if r["dry_run"]:
             r["summary"] = (f"would queue '{tl}' for {d} as {r['output']}{side} (not started); "
-                            f"this sets the Deliver page's {', '.join(r['deliver_changed'])}" +
-                            _how(r))
+                            f"this sets the Deliver page's {', '.join(r['deliver_changed'])}; "
+                            "the job takes these from the Deliver page as it stands: "
+                            f"{', '.join(r['carried_over'])}" + _how(r))
         elif r["exit_status"] == 0:
             r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}, job "
                             f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "

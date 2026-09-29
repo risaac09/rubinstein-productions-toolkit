@@ -135,6 +135,9 @@ class TestQueueCommand(unittest.TestCase):
         status, out, _ = self.call(dry_run=True)
         self.assertEqual(status, 0)
         self.assertIn("Dry run: nothing queued", out)
+        self.assertIn("Render mode: Single clip", out)
+        self.assertIn("taken from the Deliver page as it stands: ", out)
+        self.assertIn("VideoQuality", out.split("as it stands: ")[1])
         sha = out.split("plan_sha: ")[1].split()[0]
         self.assertEqual(self.project.jobs, [])
         status, out, err = self.call(plan_sha=sha)

@@ -95,6 +95,11 @@ DEFAULT_CONFIG = {
                        "color_transfer": None},
         },
         "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"],
+        # The Deliver page's Data Burn-in for every destination job: "None",
+        # so a timecode burn-in kept for review copies never reaches a
+        # deliverable. A destination may name another; null leaves whatever
+        # the Deliver page holds.
+        "data_burn_in": "None",
     },
     "destinations": {
         "youtube_16x9": _web("YouTube 16:9 UHD", "16x9", 3840, 2160, "H265", -14.0, "sidecar"),

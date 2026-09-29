@@ -259,7 +259,8 @@ def destination(config, key):
                            f"{', '.join(destination_keys(config)) or 'none'}.")
     house = config.get("deliver") or {}
     base = {"loudness": house.get("loudness") or {}, "color": house.get("color") or {},
-            "frame_rates": house.get("frame_rates") or [], "resolve": {}, "expect": {}}
+            "frame_rates": house.get("frame_rates") or [],
+            "data_burn_in": house.get("data_burn_in", "None"), "resolve": {}, "expect": {}}
     dest = merge(base, raw)
     dest["key"] = key
     problems = destination_problems(dest)
@@ -305,6 +306,10 @@ def destination_problems(dest):
         p.append("LPCM audio needs audio.bit_depth 16, 24 or 32")
     if dest.get("captions") not in CAPTIONS:
         p.append(f"captions must be one of {', '.join(CAPTIONS)}")
+    burn = dest.get("data_burn_in")
+    if burn is not None and not (isinstance(burn, str) and burn.strip()):
+        p.append('data_burn_in must be a Data Burn-in setting such as "None", or null to '
+                 "leave the Deliver page's")
     loud = dest.get("loudness") or {}
     if loud.get("integrated_lufs") is not None:
         for k in ("integrated_lufs", "tolerance_lu", "true_peak_max_dbtp"):
@@ -462,14 +467,33 @@ def fps_number(value):
     return float(m.group(1)) if m else None
 
 
+# Every SetRenderSettings key the scripting README lists. The Deliver page
+# keeps each one until something sets it again, so a key a job does not set
+# comes from whatever the page last held (carried_over()).
+RENDER_SETTING_KEYS = (
+    "SelectAllFrames", "MarkIn", "MarkOut", "TargetDir", "CustomName", "UniqueFilenameStyle",
+    "ExportVideo", "ExportAudio", "FormatWidth", "FormatHeight", "FrameRate",
+    "PixelAspectRatio", "VideoQuality", "AudioCodec", "AudioBitDepth", "AudioSampleRate",
+    "ColorSpaceTag", "GammaTag", "ExportAlpha", "EncodingProfile", "MultiPassEncode",
+    "AlphaMode", "NetworkOptimization", "ClipStartFrame", "TimelineStartTimecode",
+    "ReplaceExistingFilesInPlace", "ExportSubtitle", "SubtitleFormat", "UseFullExtents",
+    "AddFrameHandles", "DataBurnIn")
+# The render mode a destination job is queued in (Get/SetCurrentRenderMode:
+# 0 Individual clips, 1 Single clip): one file per job.
+SINGLE_CLIP = 1
+
+
 def render_steps(dest, target_dir, filename, size=None, fps=None):
     """The SetRenderSettings calls that set up `dest`, in order, as
     [{"settings": {...}, "required": bool}]. The first carries the core
     fields; each later call carries one concern, so a refusal names it. A
     required call that fails stops the job from being queued; an optional
     one is a warning. size is (width, height) for a "timeline" resolution;
-    fps is the timeline's frame rate. Every field is set every time,
-    because the Deliver page keeps whatever the last job left."""
+    fps is the timeline's frame rate. The Deliver page keeps every field
+    until something sets it again, and these steps do not set them all:
+    carried_over() names the rest, which the job takes from whatever the
+    page last held. The render mode is not a render setting; the queue
+    sets it to Single clip (SINGLE_CLIP) on its own."""
     if dest["resolution"] == "timeline":
         if not size or not all(size):
             raise DeliverError(f"'{dest['key']}' renders at the timeline's size, and the "
@@ -498,6 +522,8 @@ def render_steps(dest, target_dir, filename, size=None, fps=None):
     steps.append({"settings": ({"ExportSubtitle": True, "SubtitleFormat": SUBTITLE_FORMAT[mode]}
                                if mode in SUBTITLE_FORMAT else {"ExportSubtitle": False}),
                   "required": True})
+    if dest.get("data_burn_in") is not None:
+        steps.append({"settings": {"DataBurnIn": dest["data_burn_in"]}, "required": True})
     for key, value in sorted((dest.get("resolve") or {}).items()):
         if value is not None:
             steps.append({"settings": {key: value}, "required": False})
@@ -511,3 +537,19 @@ def changed_fields(steps):
     for s in steps:
         out += [k for k in s["settings"] if k not in out]
     return out
+
+
+def carried_over(steps):
+    """The render settings the steps leave alone, which the job takes from
+    whatever the Deliver page last held: every README key not set, less
+    MarkIn and MarkOut (ignored once SelectAllFrames is on) and
+    SubtitleFormat when subtitles are off."""
+    done = {}
+    for s in steps:
+        done.update(s["settings"])
+    moot = set()
+    if done.get("SelectAllFrames"):
+        moot |= {"MarkIn", "MarkOut"}
+    if done.get("ExportSubtitle") is False:
+        moot.add("SubtitleFormat")
+    return [k for k in RENDER_SETTING_KEYS if k not in done and k not in moot]
