@@ -96,7 +96,7 @@ class TestParsers(unittest.TestCase):
                                    "2\n00:00:01,000 --> 00:00:01,500\nA\n")
         self.assertIn("before the cue above", problems[0])
         _, problems = dc.parse_srt("1\n00:00:02,000 --> 00:00:01,000\nB\n")
-        self.assertIn("not after its start", problems[0])
+        self.assertIn("at or before its start", problems[0])
         _, problems = dc.parse_srt("1\n00:00:01.000 --> 00:00:02.000\nWebVTT dots\n")
         self.assertIn("timing line", problems[0])
         self.assertEqual(dc.parse_srt("  \n")[1], ["no cues"])

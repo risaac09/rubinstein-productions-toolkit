@@ -87,8 +87,8 @@ DEFAULT_CONFIG = {
                      "fix_true_peak_margin_db": 0.5},
         # Resolve's tag strings go to SetRenderSettings; "expect" is what
         # ffprobe should read back. Which transfer Resolve writes for
-        # "Gamma 2.4" is unverified until a real render, so it is reported
-        # and not asserted (null).
+        # "Gamma 2.4" is unverified until a real render, so the check only
+        # reports it (null).
         "color": {
             "resolve": {"ColorSpaceTag": "Rec.709", "GammaTag": "Gamma 2.4"},
             "expect": {"color_primaries": "bt709", "color_space": "bt709",

@@ -13,7 +13,7 @@ what it expected:
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
     color_*       primaries, transfer and matrix tags against the config;
-                  an expected value of null is reported, not asserted
+                  an expected value of null is only reported
     audio_*       codec, channels, sample rate, bit depth for LPCM
     captions      sidecar: <stem>.srt beside the file parses, has cues, and
                   runs in time order; burn-in or none: no sidecar and no
@@ -203,7 +203,8 @@ def parse_srt(text):
         start = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000
         end = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
         if end <= start:
-            problems.append(f"block {n}: ends at {end:.3f}s, not after its start {start:.3f}s")
+            problems.append(f"block {n}: ends at {end:.3f}s, at or before its start "
+                            f"{start:.3f}s")
         if cues and start < cues[-1][0]:
             problems.append(f"block {n}: starts at {start:.3f}s, before the cue above it")
         if len(lines) < 2:

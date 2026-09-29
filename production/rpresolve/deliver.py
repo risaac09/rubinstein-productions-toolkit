@@ -112,7 +112,7 @@ def master_name(client, slug, ext="mov"):
     client = _match(client, "client", WORD, "letters and digits only, no spaces or punctuation")
     ext = _ext(ext)
     if ext != "mov":
-        raise NameRuleError(f"a client master is a .mov, not .{ext}.")
+        raise NameRuleError(f"a client master is a .mov (got .{ext}).")
     return f"{client}_{_slug(slug)}_master.{ext}"
 
 
