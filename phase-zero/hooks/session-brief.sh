@@ -11,6 +11,9 @@
 #      without a model version so a handoff edits the file, not every repo.
 #   3. Pointers to the decisions of record and the failure catalog in
 #      stack-data, when a clone is reachable (this repo, or a sibling).
+#   4. Research routing: research, citation, bibliography, and lineage work
+#      goes to stack-data's research-bibliographer agent, printed with or
+#      without a reachable clone so a cloud sandbox still carries the rule.
 #
 # Silent when the kit payload is absent, so a repo without the kit loses
 # nothing. Exit 0 always; a context hook must never block a session.
@@ -100,5 +103,20 @@ if [ -n "$records" ]; then
     echo "Failure catalog: $records/FAILURE-MODES.md."
   fi
 fi
+
+# Research routing: stack-data owns the bibliography, so research, citation,
+# bibliography, and lineage work runs under its research-bibliographer agent.
+# The agent is defined only in stack-data, so outside it the brief names the
+# file to work from. Printed with or without a clone.
+agent="risaac09/stack-data, .claude/agents/research-bibliographer.md"
+if [ -f "$root/.claude/agents/research-bibliographer.md" ]; then
+  agent=".claude/agents/research-bibliographer.md"
+elif [ -f "$root/../stack-data/.claude/agents/research-bibliographer.md" ]; then
+  agent="../stack-data/.claude/agents/research-bibliographer.md"
+fi
+echo "Research, citation, bibliography, and lineage tasks route to stack-data's"
+echo "research-bibliographer agent ($agent). Run them from a stack-data session,"
+echo "or brief a subagent with that file, so they inherit data/sources.json,"
+echo "data/lineage.json, sd-cite, and the non-fabrication discipline."
 
 exit 0

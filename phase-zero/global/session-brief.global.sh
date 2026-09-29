@@ -46,13 +46,26 @@ if [ -f "$HOME/.claude/operating-brief.md" ]; then
   echo "Operating brief: ~/.claude/operating-brief.md. Read it before work that spans more than one repo or more than one session."
 fi
 
+stack_found=""
 for stack in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$HOME/src/stack-data"; do
   [ -n "$stack" ] || continue
   if [ -f "$stack/docs/DECISIONS.md" ]; then
+    stack_found="$stack"
     echo "Decisions of record: $stack/docs/DECISIONS.md. Cite a settled call instead of re-deriving it."
     [ -f "$stack/docs/FAILURE-MODES.md" ] && echo "Failure catalog: $stack/docs/FAILURE-MODES.md."
     break
   fi
 done
+
+# Research routing: the same rule the per-repo brief prints. The agent is
+# defined only in stack-data, so a home session gets the file path to work from.
+agent="risaac09/stack-data, .claude/agents/research-bibliographer.md"
+if [ -n "$stack_found" ] && [ -f "$stack_found/.claude/agents/research-bibliographer.md" ]; then
+  agent="$stack_found/.claude/agents/research-bibliographer.md"
+fi
+echo "Research, citation, bibliography, and lineage tasks route to stack-data's"
+echo "research-bibliographer agent ($agent). Run them from a stack-data session,"
+echo "or brief a subagent with that file, so they inherit data/sources.json,"
+echo "data/lineage.json, sd-cite, and the non-fabrication discipline."
 
 exit 0
