@@ -62,5 +62,5 @@ repos that are actually public: `alchemy`, `statehouse-dashboard`,
 `gene-keys-data`, `rubinsteinproductions`, `risaac09`,
 `three-type-evaluation` (its public paper side only — the rest of that repo
 stays private, untouched either way since this kit only ever writes under
-`.claude/`), and this repo itself. Fully independent of the `phase-zero`
+`.claude/`), `isaacrubinstein.com`, and this repo itself. Fully independent of the `phase-zero`
 `CONSUMERS` list — being on one implies nothing about the other.
