@@ -43,6 +43,14 @@ Commands:
                            approved text says
     selects                Offline: propose spans that sit inside the approved text
     cut                    Build [auto] 16:9 and 9:16 timelines from a manifest
+    deliver-queue          Queue a render for a delivery destination (YouTube,
+                           LinkedIn, Substack, client master) with the house
+                           file name; never starts it
+    deliver-check          Offline: check a rendered file against its destination
+                           (codec, size, fps, colour tags, audio, captions,
+                           loudness, name); exit 0 pass, 1 fail, 2 tool missing
+    deliver-fix-loudness   Offline: two-pass loudnorm to the destination's target,
+                           video copied untouched, into <stem>.loudfix<ext>
 
 Config:
     Camera bins, clip-color tags, and render presets are loaded from
@@ -89,6 +97,7 @@ import sys
 import os
 import json
 import argparse
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -1145,6 +1154,154 @@ def cmd_cut(args):
     return r["exit_status"]
 
 
+# ---------------------------------------------------------------------------
+# Deliver: queue for a destination, check the render, fix its loudness
+# ---------------------------------------------------------------------------
+
+def _deliver_config(args):
+    """The config for the deliver commands: --config given after the
+    command or before it. A named file that is missing, unreadable or not a
+    JSON object stops the command (exit 1); the lenient load_config would
+    warn and carry on with the defaults, checking against the wrong rules."""
+    path = getattr(args, "deliver_config", None) or args.config
+    try:
+        return rpconfig.load_config(path, strict=True)
+    except rpconfig.ConfigError as e:
+        raise SystemExit(f"ERROR: {e}")
+
+
+def _size(text):
+    """'3840x2160' -> (3840, 2160); raises ValueError."""
+    m = re.fullmatch(r"(\d+)x(\d+)", str(text or "").strip())
+    if not m:
+        raise ValueError(f"--size must be WIDTHxHEIGHT, such as 3840x2160 (got {text!r}).")
+    return int(m.group(1)), int(m.group(2))
+
+
+def _name_parts(args):
+    keys = ("show", "episode", "guest", "index", "slug", "client")
+    return {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
+
+
+def cmd_deliver_queue(args):
+    """Queue one render job for a destination, named by the house rule,
+    in the open project named with --project. Never starts it. Exit 0
+    queued and read back (or planned, with --dry-run), 1 refused or failed."""
+    from rpresolve import deliver
+    config = _deliver_config(args)
+    resolve = get_resolve()
+    try:
+        with rpapi.ResolveLock():
+            r = rpwork.queue_render(resolve, args.project, args.timeline,
+                                    output_dir=args.target_dir, destination=args.dest,
+                                    name_parts=_name_parts(args), config=config,
+                                    dry_run=args.dry_run, project_id=args.project_id,
+                                    expect_sha=args.plan_sha)
+    except (rpapi.ResolveAPIError, deliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    d, tl = r["destination"], r["timeline"]
+    print(f"Destination: {d['key']} ({d['name']})")
+    print(f"Timeline:    {tl['name']} ({tl['size'][0]}x{tl['size'][1]}, fps {tl['fps']}, "
+          f"subtitle items per track {tl['subtitle_tracks'] or 'none'})")
+    print(f"Output:      {r['output']}")
+    if r["sidecar"]:
+        print(f"Sidecar:     {r['sidecar']}")
+    print("Deliver settings, in order (* required):")
+    for step in r["settings"]:
+        print(f"  {'*' if step['required'] else ' '} " +
+              ", ".join(f"{k}={v!r}" for k, v in step["settings"].items()))
+    print("Render mode: Single clip (the Deliver page's mode is put back after)")
+    print("Not set here, so taken from the Deliver page as it stands: " +
+          ", ".join(r["carried_over"]))
+    for w in r["warnings"]:
+        print(f"  WARNING: {w}", file=sys.stderr)
+    if r["dry_run"]:
+        print(f"plan_sha: {r['plan_sha']}")
+        print("Dry run: nothing queued. To queue it, run again without --dry-run and with "
+              f"--plan-sha {r['plan_sha']}.")
+        return 0
+    if r.get("made_folder"):
+        print(f"Made folder: {r['made_folder']}")
+    if r["job"]:
+        print(f"Queued job {r['job'].get('JobId')}; NOT started (a person starts renders).")
+        print("Resolve holds: " + ", ".join(f"{k}={v!r}" for k, v in sorted(r["job"].items())))
+    for p in r["readback_problems"]:
+        print(f"  MISMATCH: {p}", file=sys.stderr)
+    if r["job"] and r["readback_problems"]:
+        print(f"  Job {r['job'].get('JobId')} stays in the render queue with those values, NOT "
+              "started: remove it or check it on the Deliver page before rendering.",
+              file=sys.stderr)
+    if r["unverified"]:
+        print("Not in the job list, so unverified until the file is checked with deliver-check: "
+              + ", ".join(r["unverified"]))
+    if r["ui_restore_problems"]:
+        print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
+    return r["exit_status"]
+
+
+def cmd_deliver_check(args):
+    """Check a rendered file against its destination. Exit 0 all pass, 1 any
+    fail (or an unreadable file), 2 ffprobe or ffmpeg missing."""
+    from rpresolve import deliver, delivercheck as dc
+    try:
+        config = _deliver_config(args)
+        dest = deliver.destination(config, args.dest)
+        size = _size(args.size) if args.size else None
+        if args.fps:
+            dc.parse_fps(args.fps)
+        r = dc.check(args.file, dest, fps=args.fps, size=size, loudness=not args.no_loudness,
+                     folders=deliver.subfolders(config))
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (dc.CheckError, deliver.DeliverError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        sys.stdout.write(dc.format_report(r))
+    return 0 if r["status"] == "pass" else 1
+
+
+def cmd_deliver_fix_loudness(args):
+    """Normalise a render's loudness to its destination's target into
+    <stem>.loudfix<ext>, then check it. --replace swaps it in only after
+    the check passes, moving the original to ~/.Trash. Exit 0 the fixed
+    file passes, 1 it does not (or the fix failed), 2 ffmpeg missing."""
+    from rpresolve import deliver, delivercheck as dc
+    try:
+        dest = deliver.destination(_deliver_config(args), args.dest)
+        size = _size(args.size) if args.size else None
+        if args.fps:
+            dc.parse_fps(args.fps)
+        r = dc.fix_loudness(args.file, dest, replace=args.replace, fps=args.fps, size=size)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (dc.CheckError, deliver.DeliverError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        m, out = r["measured"], r["result_loudnorm"]
+        print(f"Measured:  I {m['input_i']} LUFS, true peak {m['input_tp']} dBTP, "
+              f"LRA {m['input_lra']} LU")
+        print(f"loudnorm:  {out.get('normalization_type')} mode, output I {out.get('output_i')} "
+              f"LUFS, true peak {out.get('output_tp')} dBTP")
+        sys.stdout.write(dc.format_report(r["check"]))
+        print(f"Video stream bit-identical: {'yes' if r['video_identical'] else 'NO'}")
+        if r["replaced"]:
+            print(f"Replaced: {r['fixed']} (the original is in {r['trashed']})")
+        else:
+            print(f"Fixed file: {r['fixed']} (the original is untouched)")
+    for w in r["warnings"]:
+        print(f"  WARNING: {w}", file=sys.stderr)
+    return 0 if r["status"] == "pass" else 1
+
+
 def _locked(fn):
     """Run a Resolve write command under the cross-process Resolve lock, so
     it cannot interleave with an MCP session's writes."""
@@ -1234,6 +1391,17 @@ Examples:
 
   # Measure a render; camera-match numbers for two cameras by time range
   python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
+
+  # Plan, then queue, a YouTube render named SW001_Guest_01_example-clip_16x9.mp4
+  python3 resolve_workflow.py deliver-queue --project "My Project" --timeline "Clip [auto]" \\
+      --dest youtube_16x9 --show SW --episode 1 --guest Guest --index 1 \\
+      --slug example-clip --target-dir /path/to/renders --dry-run
+
+  # Check the rendered file; fix its loudness if that is all that failed
+  python3 resolve_workflow.py deliver-check /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
+      --dest youtube_16x9 --fps 23.976
+  python3 resolve_workflow.py deliver-fix-loudness /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
+      --dest youtube_16x9
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1405,6 +1573,56 @@ Examples:
     sp.add_argument("--force", action="store_true",
                     help="Build clips that fail endcheck (to reproduce an old cut); reported loudly")
     sp.set_defaults(func=cmd_cut)
+
+    def deliver_common(sp):
+        sp.add_argument("--dest", required=True,
+                        help="Destination key from resolve-config.json (youtube_16x9, "
+                             "linkedin_9x16, client_master, ...)")
+        sp.add_argument("--config", dest="deliver_config",
+                        help="A config overlay kept outside this repo (may also go before "
+                             "the command)")
+
+    sp = subparsers.add_parser(
+        "deliver-queue", help="Queue a render for a delivery destination; never starts it")
+    sp.add_argument("--project", required=True, help="Name of the open project")
+    sp.add_argument("--project-id", help="Its unique id, to pin it exactly")
+    sp.add_argument("--timeline", required=True, help="Timeline name or unique id")
+    deliver_common(sp)
+    sp.add_argument("--target-dir", help="Existing folder outside any git repo (default: the "
+                                         "destination's target_dir from the config)")
+    for flag, what in (("--show", "Show code, capital letters (SW)"),
+                       ("--episode", "Episode number (1 or 001)"),
+                       ("--guest", "Guest, letters and digits only"),
+                       ("--index", "Clip number, 1 to 99"),
+                       ("--slug", "Lowercase words joined by hyphens"),
+                       ("--client", "Client, letters and digits (client_master only)")):
+        sp.add_argument(flag, help=what)
+    sp.add_argument("--dry-run", action="store_true", help="Plan only; prints the plan_sha")
+    sp.add_argument("--plan-sha", help="Refuse unless the plan still matches this dry run's")
+    sp.set_defaults(func=cmd_deliver_queue)
+
+    sp = subparsers.add_parser(
+        "deliver-check", help="Offline: check a rendered file against its destination")
+    sp.add_argument("file")
+    deliver_common(sp)
+    sp.add_argument("--fps", help="The timeline's frame rate to assert (23.976, 25, 24000/1001)")
+    sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
+    sp.add_argument("--no-loudness", action="store_true",
+                    help="Skip the loudness read (it reads the whole file)")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_deliver_check)
+
+    sp = subparsers.add_parser(
+        "deliver-fix-loudness", help="Offline: normalise loudness, video copied untouched")
+    sp.add_argument("file")
+    deliver_common(sp)
+    sp.add_argument("--replace", action="store_true",
+                    help="After the fixed file passes, move the original to ~/.Trash and give "
+                         "the fix its name")
+    sp.add_argument("--fps", help="The timeline's frame rate to assert in the check")
+    sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_deliver_fix_loudness)
 
     args = parser.parse_args()
     if not args.command:
