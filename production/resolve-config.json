@@ -79,6 +79,7 @@
       },
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "sidecar",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
     },
@@ -101,6 +102,7 @@
       },
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "sidecar",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "hevc", "profile": null, "pix_fmt_family": "420", "bit_depth": null }
     },
@@ -123,6 +125,7 @@
       },
       "loudness": { "integrated_lufs": -16.0 },
       "captions": "sidecar",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
     },
@@ -145,6 +148,7 @@
       },
       "loudness": { "integrated_lufs": -16.0 },
       "captions": "burnin",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
     },
@@ -167,6 +171,7 @@
       },
       "loudness": { "integrated_lufs": -16.0 },
       "captions": "burnin",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
     },
@@ -189,6 +194,7 @@
       },
       "loudness": { "integrated_lufs": -16.0 },
       "captions": "sidecar",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
     },

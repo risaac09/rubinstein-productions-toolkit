@@ -117,7 +117,7 @@ class TestQueueDestination(Base):
         rs = self.project.render_settings
         self.assertEqual((rs["ColorSpaceTag"], rs["GammaTag"], rs["SubtitleFormat"],
                           rs["FrameRate"], rs["AudioCodec"], rs["CustomName"]),
-                         ("Rec.709", "Gamma 2.4", "SeparateFile", 23.976, "aac",
+                         ("Rec.709", "Rec.709-A", "SeparateFile", 23.976, "aac",
                           "SW001_Guest_01_example-clip_16x9"))
         self.assertEqual(self.project.fmt, {"format": "mp4", "codec": "H264"})  # put back
         self.assertEqual((self.resolve.page, self.project.current), ("cut", self.here))

@@ -47,7 +47,9 @@ needs_ffmpeg = unittest.skipUnless(
 
 TAGS = {"bt709": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
         "bt2020": "setparams=color_primaries=bt2020:color_trc=bt709:colorspace=bt2020nc:range=tv",
-        "full": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc"}
+        "full": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=pc",
+        # What Resolve's "Gamma 2.4" GammaTag writes: bt709 primaries and matrix, transfer unset.
+        "gamma24": "setparams=color_primaries=bt709:colorspace=bt709:range=tv"}
 
 
 def make(path, size="64x36", rate="24000/1001", codec="h264", lufs=-16.0, peaks=False,
@@ -178,10 +180,10 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(failed(r), [], dc.format_report(r))
         s = statuses(r)
         self.assertEqual((s["loudness"], s["true_peak"], s["captions"], s["color_transfer"],
-                          s["color_range"]), (dc.PASS, dc.PASS, dc.PASS, dc.SKIP, dc.PASS))
+                          s["color_range"]), (dc.PASS, dc.PASS, dc.PASS, dc.PASS, dc.PASS))
         self.assertEqual(r["status"], "pass")
         row = next(x for x in r["checks"] if x["check"] == "color_transfer")
-        self.assertEqual(row["found"], "bt709")  # reported even though not asserted
+        self.assertEqual(row["found"], "bt709")  # web files assert Rec.709-A's transfer
 
     def test_h265_passes(self):
         r = dc.check(self.clip(codec="hevc", lufs=-14.0), tiny("youtube_16x9"))
@@ -284,11 +286,14 @@ class TestCheck(unittest.TestCase):
 
     def test_wrong_or_missing_colour_tags(self):
         r = dc.check(self.clip(tags=None), tiny("linkedin_16x9"), loudness=False)
-        self.assertEqual(failed(r), ["color_primaries", "color_space"])
+        self.assertEqual(failed(r), ["color_primaries", "color_space", "color_transfer"])
         self.assertIn("unset", [x["found"] for x in r["checks"]
                                 if x["check"] == "color_primaries"])
         r = dc.check(self.clip(tags="bt2020"), tiny("linkedin_16x9"), loudness=False)
         self.assertEqual(failed(r), ["color_primaries", "color_space"])
+        # A render tagged Gamma 2.4 (transfer unset) is not a web deliverable any more.
+        self.assertEqual(failed(dc.check(self.clip(tags="gamma24"), tiny("linkedin_16x9"),
+                                         loudness=False)), ["color_transfer"])
         strict = tiny("linkedin_16x9")
         strict["color"]["expect"]["color_transfer"] = ["unknown"]
         self.assertEqual(failed(dc.check(self.clip(), strict, loudness=False)),
