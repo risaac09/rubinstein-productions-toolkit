@@ -1,0 +1,317 @@
+"""
+Offline tests for rpresolve.deliver and the delivery keys in
+rpresolve.config: the naming rule both ways, destination defaults and a
+config overlay, the checks before a render is queued (target folder,
+unmounted share, git tree, existing file or sidecar, captions without a
+subtitle track), and the Deliver settings a destination sets. Synthetic
+names and temporary folders only.
+
+Run: /usr/bin/python3 -m unittest discover production/tests -v
+"""
+
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+PRODUCTION = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PRODUCTION))
+
+from rpresolve import config as rpconfig, deliver  # noqa: E402
+
+CLIP = dict(show="SW", episode=1, guest="Guest", index=1, slug="example-clip")
+
+
+def dest(key, **over):
+    d = deliver.destination(rpconfig.load_config("/nonexistent/config.json"), key)
+    d.update(over)
+    return d
+
+
+class TestNames(unittest.TestCase):
+    def test_builds_the_example(self):
+        self.assertEqual(deliver.deliverable_name("SW", 1, "Guest", 1, "example-clip", "16x9",
+                                                  "mp4"),
+                         "SW001_Guest_01_example-clip_16x9.mp4")
+        self.assertEqual(deliver.deliverable_name("AB", "042", "G2", "12", "a-b-c", "9x16",
+                                                  ".mp4"),
+                         "AB042_G2_12_a-b-c_9x16.mp4")
+        self.assertEqual(deliver.master_name("Client", "example-slug"),
+                         "Client_example-slug_master.mov")
+
+    def test_each_part_is_validated(self):
+        bad = [dict(show="sw"), dict(show="S1"), dict(show=""), dict(episode=1000),
+               dict(episode=-1), dict(episode="1a"), dict(episode=True), dict(guest="Two Words"),
+               dict(guest="Guest_1"), dict(guest="Gäst"), dict(index=0), dict(index=100),
+               dict(slug="Example"), dict(slug="example_clip"), dict(slug="-lead"),
+               dict(slug="trail-"), dict(slug="dou--ble"), dict(slug="a" * 61)]
+        for over in bad:
+            with self.subTest(over=over):
+                with self.assertRaises(deliver.NameRuleError):
+                    p = {**CLIP, **over}
+                    deliver.deliverable_name(p["show"], p["episode"], p["guest"], p["index"],
+                                             p["slug"], "16x9", "mp4")
+        with self.assertRaisesRegex(deliver.NameRuleError, "aspect"):
+            deliver.deliverable_name("SW", 1, "G", 1, "s", "4x5", "mp4")
+        with self.assertRaisesRegex(deliver.NameRuleError, "extension"):
+            deliver.deliverable_name("SW", 1, "G", 1, "s", "16x9", "mkv")
+        with self.assertRaisesRegex(deliver.NameRuleError, "client"):
+            deliver.master_name("Client Name", "s")
+        with self.assertRaisesRegex(deliver.NameRuleError, "mov"):
+            deliver.master_name("Client", "s", "mp4")
+
+    def test_parse_round_trips(self):
+        name = "SW001_Guest_01_example-clip_16x9.mp4"
+        p = deliver.parse_name(name)
+        self.assertEqual(p, {"kind": "clip", "show": "SW", "episode": 1, "guest": "Guest",
+                             "index": 1, "slug": "example-clip", "aspect": "16x9",
+                             "ext": "mp4"})
+        self.assertEqual(deliver.deliverable_name(p["show"], p["episode"], p["guest"],
+                                                  p["index"], p["slug"], p["aspect"], p["ext"]),
+                         name)
+        self.assertEqual(deliver.parse_name("/any/dir/Client_example-slug_master.mov"),
+                         {"kind": "master", "client": "Client", "slug": "example-slug",
+                          "ext": "mov"})
+
+    def test_parse_says_what_is_wrong(self):
+        cases = {
+            "SW001_Guest_01_example-clip_16x9.mkv": "extension",
+            "SW001_Guest_01_example-clip_16x9": "no extension",
+            "SW01_Guest_01_example-clip_16x9.mp4": "3-digit episode",
+            "sw001_Guest_01_example-clip_16x9.mp4": "show code",
+            "SW001_Guest Name_01_example-clip_16x9.mp4": "guest",
+            "SW001_Guest_1_example-clip_16x9.mp4": "index",
+            "SW001_Guest_00_example-clip_16x9.mp4": "01 to 99",
+            "SW001_Guest_01_Example-Clip_16x9.mp4": "slug",
+            "SW001_Guest_01_example-clip_4x5.mp4": "aspect",
+            "SW001_Guest_01_example_clip_16x9.mp4": "five parts",
+            "Client_example-slug_master.mp4": ".mov",
+            "Client Co_example-slug_master.mov": "client",
+            "Client_Slug_master.mov": "slug",
+        }
+        for name, why in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(deliver.NameRuleError, why):
+                    deliver.parse_name(name)
+
+    def test_name_for_a_destination(self):
+        self.assertEqual(deliver.name_for(dest("linkedin_9x16"), CLIP),
+                         "SW001_Guest_01_example-clip_9x16.mp4")
+        self.assertEqual(deliver.name_for(dest("client_master"),
+                                          {"client": "Client", "slug": "example-slug"}),
+                         "Client_example-slug_master.mov")
+        with self.assertRaisesRegex(deliver.NameRuleError, "missing guest"):
+            deliver.name_for(dest("youtube_16x9"), {**CLIP, "guest": ""})
+        with self.assertRaisesRegex(deliver.NameRuleError, "not used: client"):
+            deliver.name_for(dest("youtube_16x9"), {**CLIP, "client": "X"})
+
+    def test_name_problems_against_a_destination(self):
+        yt = dest("youtube_16x9")
+        self.assertEqual(deliver.name_problems("SW001_Guest_01_example-clip_16x9.mp4", yt), [])
+        self.assertIn("aspect 9x16",
+                      deliver.name_problems("SW001_Guest_01_example-clip_9x16.mp4", yt)[0])
+        self.assertIn("master name",
+                      deliver.name_problems("Client_example-slug_master.mov", yt)[0])
+        self.assertIn("clip name", deliver.name_problems(
+            "SW001_Guest_01_example-clip_16x9.mov", dest("client_master"))[0])
+
+
+class TestConfig(unittest.TestCase):
+    def test_defaults_cover_every_destination(self):
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        self.assertEqual(deliver.destination_keys(cfg), sorted([
+            "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16",
+            "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
+        yt = deliver.destination(cfg, "youtube_16x9")
+        self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
+                         ("mp4", "H265", {"width": 3840, "height": 2160}))
+        self.assertEqual(deliver.destination(cfg, "youtube_16x9_hd")["resolution"],
+                         {"width": 1920, "height": 1080})
+        self.assertEqual((yt["loudness"]["integrated_lufs"], yt["loudness"]["tolerance_lu"],
+                          yt["loudness"]["true_peak_max_dbtp"]), (-14.0, 0.5, -1.0))
+        self.assertEqual((yt["audio"]["codec"], yt["audio"]["sample_rate"],
+                          yt["audio"]["channels"]), ("aac", 48000, 2))
+        self.assertEqual(yt["captions"], "sidecar")
+        self.assertEqual(yt["color"]["resolve"], {"ColorSpaceTag": "Rec.709",
+                                                  "GammaTag": "Gamma 2.4"})
+        self.assertEqual(yt["color"]["expect"], {"color_primaries": "bt709",
+                                                 "color_space": "bt709",
+                                                 "color_transfer": None})
+        for key, size, captions in (("linkedin_16x9", (1920, 1080), "sidecar"),
+                                    ("linkedin_9x16", (1080, 1920), "burnin"),
+                                    ("linkedin_1x1", (1080, 1080), "burnin"),
+                                    ("substack_16x9", (1920, 1080), "sidecar")):
+            d = deliver.destination(cfg, key)
+            self.assertEqual((d["codec"], d["format"], d["loudness"]["integrated_lufs"],
+                              (d["resolution"]["width"], d["resolution"]["height"]),
+                              d["captions"]), ("H264", "mp4", -16.0, size, captions))
+        m = deliver.destination(cfg, "client_master")
+        self.assertEqual((m["format"], m["codec"], m["resolution"], m["captions"]),
+                         ("mov", "ProRes422HQ", "timeline", "none"))
+        self.assertEqual((m["audio"]["codec"], m["audio"]["bit_depth"],
+                          m["audio"]["sample_rate"]), ("lpcm", 24, 48000))
+        self.assertFalse(deliver.has_loudness_target(m))
+
+    def test_the_repo_config_matches_the_built_in_defaults(self):
+        with open(PRODUCTION / "resolve-config.json", encoding="utf-8") as f:
+            repo = json.load(f)
+        for key in ("deliver", "destinations"):
+            self.assertEqual(repo[key], rpconfig.DEFAULT_CONFIG[key], key)
+        self.assertNotIn("/Volumes", json.dumps(repo))
+
+    def test_an_overlay_changes_one_field_and_keeps_the_rest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "overlay.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"deliver": {"loudness": {"tolerance_lu": 1.0}},
+                           "destinations": {
+                               "youtube_16x9": {"target_dir": "/elsewhere/out",
+                                                "loudness": {"integrated_lufs": -13}},
+                               "linkedin_1x1": None,
+                               "vimeo_16x9": {**rpconfig.DEFAULT_CONFIG["destinations"][
+                                   "substack_16x9"], "name": "Vimeo"}}}, f)
+            cfg = rpconfig.load_config(p)
+        yt = deliver.destination(cfg, "youtube_16x9")
+        self.assertEqual(yt["target_dir"], "/elsewhere/out")
+        self.assertEqual(yt["loudness"]["integrated_lufs"], -13)
+        self.assertEqual(yt["loudness"]["tolerance_lu"], 1.0)  # house rule overlaid
+        self.assertEqual(yt["loudness"]["true_peak_max_dbtp"], -1.0)  # kept
+        self.assertEqual(yt["codec"], "H265")  # kept
+        self.assertEqual(deliver.destination(cfg, "vimeo_16x9")["name"], "Vimeo")
+        self.assertNotIn("linkedin_1x1", deliver.destination_keys(cfg))
+        with self.assertRaisesRegex(deliver.DeliverError, "unknown destination 'linkedin_1x1'"):
+            deliver.destination(cfg, "linkedin_1x1")
+        # render presets still replace as before
+        self.assertEqual(sorted(cfg["render_presets"]), ["linkedin", "master", "story",
+                                                         "youtube"])
+
+    def test_merge_leaves_its_inputs_alone(self):
+        a = {"x": {"y": 1, "z": [1]}}
+        b = {"x": {"y": 2}}
+        self.assertEqual(rpconfig.merge(a, b), {"x": {"y": 2, "z": [1]}})
+        self.assertEqual(a, {"x": {"y": 1, "z": [1]}})
+
+    def test_a_broken_destination_is_refused_with_reasons(self):
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        cfg["destinations"]["youtube_16x9"].update(
+            {"format": "mkv", "captions": "subs", "resolution": {"width": 0, "height": 1},
+             "target_dir": "relative/dir"})
+        with self.assertRaises(deliver.DeliverError) as cm:
+            deliver.destination(cfg, "youtube_16x9")
+        for word in ("format", "captions", "resolution", "target_dir"):
+            self.assertIn(word, str(cm.exception))
+
+
+class TestOutputProblems(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = os.path.realpath(self.tmp.name)
+        self.name = "SW001_Guest_01_example-clip_16x9.mp4"
+        self.yt = dest("youtube_16x9")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_clean_folder_passes(self):
+        self.assertEqual(deliver.output_problems(self.dir, self.name, self.yt), [])
+
+    def test_missing_or_relative_folder(self):
+        self.assertIn("does not exist", deliver.output_problems(
+            os.path.join(self.dir, "nope"), self.name, self.yt)[0])
+        self.assertIn("absolute", deliver.output_problems("relative/out", self.name,
+                                                          self.yt)[0])
+
+    def test_a_dropped_share_left_on_the_boot_disk_is_refused(self):
+        volumes = os.path.join(self.dir, "Volumes")
+        leftover = os.path.join(volumes, "Work", "Active", "renders")
+        os.makedirs(leftover)
+        problems = deliver.output_problems(leftover, self.name, self.yt, volumes_root=volumes)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not mounted", problems[0])
+        self.assertEqual(deliver.volume_root(leftover, volumes), os.path.join(volumes, "Work"))
+        with mock.patch.object(deliver.os.path, "ismount", return_value=True):
+            self.assertEqual(deliver.output_problems(leftover, self.name, self.yt,
+                                                     volumes_root=volumes), [])
+        self.assertIsNone(deliver.volume_root(self.dir, volumes))
+
+    def test_inside_a_git_tree_is_refused(self):
+        repo = os.path.join(self.dir, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        os.makedirs(os.path.join(repo, "out"))
+        problems = deliver.output_problems(os.path.join(repo, "out"), self.name, self.yt)
+        self.assertTrue(any("git working tree" in p for p in problems))
+
+    def test_existing_file_sidecar_or_queued_job_is_refused(self):
+        out = os.path.join(self.dir, self.name)
+        open(out, "w").close()
+        self.assertIn("already exists", deliver.output_problems(self.dir, self.name,
+                                                                self.yt)[0])
+        os.remove(out)
+        open(out[:-4] + ".srt", "w").close()
+        self.assertIn("caption file", deliver.output_problems(self.dir, self.name, self.yt)[0])
+        # a burn-in destination makes no sidecar, so an .srt beside it is no clash
+        self.assertEqual(deliver.output_problems(
+            self.dir, "SW001_Guest_01_example-clip_9x16.mp4", dest("linkedin_9x16")), [])
+        os.remove(out[:-4] + ".srt")
+        self.assertIn("render queue", deliver.output_problems(self.dir, self.name, self.yt,
+                                                              queued={out})[0])
+
+    def test_captions_need_a_subtitle_track_with_something_on_it(self):
+        self.assertIn("no subtitle track", deliver.timeline_problems(self.yt, [])[0])
+        self.assertIn("empty", deliver.timeline_problems(dest("linkedin_9x16"), [0, 0])[0])
+        self.assertEqual(deliver.timeline_problems(self.yt, [0, 3]), [])
+        self.assertEqual(deliver.timeline_problems(dest("client_master"), []), [])
+
+
+class TestRenderSteps(unittest.TestCase):
+    def settings(self, steps):
+        out = {}
+        for s in steps:
+            out.update(s["settings"])
+        return out
+
+    def test_web_destination_sets_every_field(self):
+        steps = deliver.render_steps(dest("youtube_16x9"), "/tmp", "SW001_G_01_s_16x9.mp4",
+                                     fps=23.976)
+        s = self.settings(steps)
+        self.assertEqual(steps[0]["settings"]["CustomName"], "SW001_G_01_s_16x9")
+        self.assertTrue(steps[0]["required"])
+        self.assertEqual((s["FormatWidth"], s["FormatHeight"], s["FrameRate"]),
+                         (3840, 2160, 23.976))
+        self.assertEqual((s["AudioCodec"], s["AudioSampleRate"]), ("aac", 48000))
+        self.assertNotIn("AudioBitDepth", s)
+        self.assertEqual((s["ColorSpaceTag"], s["GammaTag"]), ("Rec.709", "Gamma 2.4"))
+        self.assertEqual((s["ExportSubtitle"], s["SubtitleFormat"]), (True, "SeparateFile"))
+        self.assertIs(s["NetworkOptimization"], True)
+        self.assertIs(s["ReplaceExistingFilesInPlace"], False)
+        self.assertIs(s["SelectAllFrames"], True)
+        optional = {k for st in steps if not st["required"] for k in st["settings"]}
+        self.assertEqual(optional, {"FrameRate", "NetworkOptimization",
+                                    "ReplaceExistingFilesInPlace"})
+
+    def test_burn_in_none_and_timeline_size(self):
+        s = self.settings(deliver.render_steps(dest("linkedin_1x1"), "/tmp", "x.mp4"))
+        self.assertEqual((s["ExportSubtitle"], s["SubtitleFormat"]), (True, "BurnIn"))
+        self.assertNotIn("FrameRate", s)
+        m = dest("client_master")
+        s = self.settings(deliver.render_steps(m, "/tmp", "C_s_master.mov", size=(3840, 1600),
+                                               fps=25))
+        self.assertEqual((s["FormatWidth"], s["FormatHeight"]), (3840, 1600))
+        self.assertEqual((s["AudioCodec"], s["AudioBitDepth"]), ("lpcm", 24))
+        self.assertEqual(s["ExportSubtitle"], False)
+        self.assertNotIn("SubtitleFormat", s)
+        with self.assertRaisesRegex(deliver.DeliverError, "timeline's resolution"):
+            deliver.render_steps(m, "/tmp", "C_s_master.mov", size=(None, None))
+
+    def test_fps_number(self):
+        self.assertEqual(deliver.fps_number("23.976"), 23.976)
+        self.assertEqual(deliver.fps_number("29.97 DF"), 29.97)
+        self.assertEqual(deliver.fps_number(25), 25.0)
+        self.assertIsNone(deliver.fps_number(None))
+
+
+if __name__ == "__main__":
+    unittest.main()
