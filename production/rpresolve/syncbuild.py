@@ -18,8 +18,8 @@ What Resolve 21.0.4.5 does, and what this module does about it:
     - startFrame and endFrame count source frames at the source's own
       rate, and endFrame is exclusive (cut.py, measured on Ep 002).
     - Rates come spelled short ('29.97'); every frame here is counted at
-      the rate that stands for (deliver.exact_fps: 30000/1001), and the
-      string goes only to SetSetting.
+      the rate the spelling stands for (deliver.exact_fps: 30000/1001),
+      and the string goes only to SetSetting.
     - MediaPool.AutoSyncAudio(items, settings) links the audio into the
       clips it syncs, changing media-pool items, so it runs only on clips
       this run imported. What it did is read back through a second

@@ -658,12 +658,12 @@ def register(registry):
         "from their audio (as sync_measure), then read every placement back: start and source "
         "start exactly as planned, length within a frame. reference and other are media-pool "
         "clips (unique id, file path or name), or, with bin, files imported into that new bin "
-        "at the pool's root, which the run owns. Only then may autosync run Resolve's AutoSyncAudio on "
-        "them; its result is read back through a second [auto] timeline and compared with the "
-        "measured offset, never trusted alone. A weak or inconsistent match is refused; a "
-        "placement that leaves either end of the overlap more than half a frame out (rounding "
-        "plus half the drift) is reported with the retime that would cancel the drift, never "
-        "corrected. "
+        "at the pool's root, which the run owns. Only then may autosync run Resolve's "
+        "AutoSyncAudio on them; its result is read back through a second [auto] timeline and "
+        "compared with the measured offset, never trusted alone. A weak or inconsistent match is "
+        "refused; a placement that leaves either end of the overlap more than half a frame out "
+        "(rounding plus half the drift) is reported with the retime that would cancel the "
+        "drift, never corrected. "
         "Making a multicam clip stays a hand step. Dry run first; the real run needs its "
         "plan_sha.",
         {"type": "object", "properties": {
