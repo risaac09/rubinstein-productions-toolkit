@@ -499,11 +499,10 @@ class TestRenderSteps(unittest.TestCase):
         self.assertEqual((s["ColorSpaceTag"], s["GammaTag"]), ("Rec.709", "Gamma 2.4"))
         self.assertEqual((s["ExportSubtitle"], s["SubtitleFormat"]), (True, "SeparateFile"))
         self.assertIs(s["NetworkOptimization"], True)
-        self.assertIs(s["ReplaceExistingFilesInPlace"], False)
+        self.assertNotIn("ReplaceExistingFilesInPlace", s)
         self.assertIs(s["SelectAllFrames"], True)
         optional = {k for st in steps if not st["required"] for k in st["settings"]}
-        self.assertEqual(optional, {"FrameRate", "NetworkOptimization",
-                                    "ReplaceExistingFilesInPlace"})
+        self.assertEqual(optional, {"FrameRate", "NetworkOptimization"})
         # a data burn-in (timecode on review copies) must not ride along
         self.assertIn({"settings": {"DataBurnIn": "None"}, "required": True}, steps)
 
