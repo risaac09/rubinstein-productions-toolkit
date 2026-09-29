@@ -50,10 +50,16 @@ window there passes too, the sound repeats (a looped music bed, one sting
 at both ends, a countdown) and one offset cannot be chosen. When the
 runner-up fails, the low coarse ratio came from noise the fine pass sees
 through (wind or handling rumble on a camera mic), and the match stands.
-A window below MIN_PEAK_RATIO or MIN_NCC is not called a match, and
-neither is an overlap shorter than MIN_OVERLAP_S, windows that disagree as
-above, a slope beyond any clock (MAX_PLAUSIBLE_PPM), windows of opposite
-polarity, or a runner-up that passes as above.
+A likeness must also run through the window: its correlation is measured
+again with its strongest EVENT_S left out (rest_ncc). One moment carrying
+it all, a click over digital silence or quiet noise in each of two
+unrelated files, correlates at ncc 1.0 and proves nothing; a door slam
+over talk that also lines up keeps a high rest_ncc. A window below
+MIN_PEAK_RATIO, or with ncc or rest_ncc below MIN_NCC, is not called a
+match, and neither is digital silence, an overlap shorter than
+MIN_OVERLAP_S, windows that disagree as above, a slope beyond any clock
+(MAX_PLAUSIBLE_PPM), windows of opposite polarity, or a runner-up that
+passes as above.
 
 Offsets are in the files' own time: each file's zero is its first video
 frame (its first audio sample when it has no video), so an audio stream
@@ -85,6 +91,7 @@ COARSE_MAX = 1 << 23       # samples of both coarse signals together; decimate f
 WINDOW_S = 30.0
 FINE_SEARCH_S = 1.0
 EXCLUDE_S = 0.05
+EVENT_S = 1.0     # a window must still correlate with its strongest second left out
 MIN_OVERLAP_S = 5.0
 MIN_PEAK_RATIO = 2.0
 MIN_NCC = 0.1
@@ -257,6 +264,32 @@ def peak(ref, other, lag_min=None, lag_max=None, min_overlap=1, exclude=0):
             "polarity": "normal" if c[k] >= 0 else "inverted", "overlap": b - a}
 
 
+def without_event(x, y, lag, width):
+    """(ncc, at): the normalized correlation of x against y at the integer
+    lag (as in xcorr) with the `width` samples that add most to it left out,
+    and where in x the strongest sample of that stretch is. Near the full ncc when the
+    likeness runs through the window; near zero when one moment (a click, a
+    clap, a single sample over digital silence) carries it all. What is left
+    has its own mean taken out: removing a whole file's mean leaves digital
+    silence as a constant, and two constants correlate perfectly."""
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    lo, hi = max(0, lag), min(len(x), len(y) + lag)
+    if hi - lo <= width:
+        return 0.0, lo
+    xs, ys = x[lo:hi], y[lo - lag:hi - lag]
+    p = xs * ys
+    sign = 1.0 if p.sum() >= 0 else -1.0
+    cs = np.concatenate(([0.0], np.cumsum(p)))
+    k = int(np.argmax(sign * (cs[width:] - cs[:-width])))
+    keep = np.ones(len(p), dtype=bool)
+    keep[k:k + width] = False
+    xr, yr = xs[keep] - xs[keep].mean(), ys[keep] - ys[keep].mean()
+    energy = float((xr * xr).sum() * (yr * yr).sum())
+    at = lo + k + int(np.argmax(sign * p[k:k + width]))  # the strongest sample in it
+    return (float((xr * yr).sum() / np.sqrt(energy)) if energy > 0 else 0.0), at
+
+
 def decimate(x, factor):
     """Block means of `factor` samples: a crude low-pass and downsample,
     the same on both signals, good enough for the coarse lag."""
@@ -322,6 +355,9 @@ def fine(ref, other, a, b, lag0, rate, search_s=FINE_SEARCH_S, exclude_s=EXCLUDE
              lag_max=int(np.ceil(lag0 + s - shift)), min_overlap=max(1, (b - a) // 2),
              exclude=int(round(exclude_s * rate)))
     if r:
+        rest, at = without_event(ref[a:b], seg, int(round(r["lag"])),
+                                 int(round(EVENT_S * rate)))
+        r.update(rest_ncc=round(rest, 4), event_at=a + at)
         r["lag"] += shift
     return r
 
@@ -425,6 +461,7 @@ def _rival(ref, other, lag0, lag, rate, window_s, search_s, min_ratio, min_ncc, 
             w.update(offset_s=round(found / rate + shift_s, 6), ncc=r["ncc"],
                      peak_ratio=r["peak_ratio"],
                      passes=bool(r["peak_ratio"] >= min_ratio and abs(r["ncc"]) >= min_ncc and
+                                 np.sign(r["ncc"]) * r["rest_ncc"] >= min_ncc and
                                  abs(found - lag0) > search_s * rate))
         out["windows"].append(w)
     out["match"] = bool(out["windows"]) and all(w["passes"] for w in out["windows"])
@@ -459,6 +496,11 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
     out = {"rate": rate, "thresholds": th, "coarse": None, "overlap": None,
            "windows": [], "offset_s": None, "tail_offset_s": None, "drift": None,
            "frames": None, "polarity": None, "match": False, "reasons": []}
+    silent = [role for role, x in (("reference", ref), ("other", other)) if not np.any(x)]
+    if silent:
+        out["reasons"].append(" and ".join(f"the {role}" for role in silent) +
+                              " holds no sound to correlate (digital silence)")
+        return out
     factor = coarse_factor(len(ref), len(other), rate)
     cr = rate / factor
     shorter = min(len(ref), len(other)) / factor
@@ -515,7 +557,8 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
             continue
         w = {"label": label, "center_s": round((a + b) / 2 / rate + ref_start_s, 3),
              "seconds": round((b - a) / rate, 3), "offset_s": round(lag / rate + shift_s, 6),
-             "ncc": r["ncc"], "peak_ratio": r["peak_ratio"], "polarity": r["polarity"]}
+             "ncc": r["ncc"], "rest_ncc": r["rest_ncc"], "peak_ratio": r["peak_ratio"],
+             "polarity": r["polarity"]}
         out["windows"].append(w)
         if w["peak_ratio"] < min_ratio:
             out["reasons"].append(f"{label} window: peak only {w['peak_ratio']:.2f}x the next "
@@ -523,6 +566,12 @@ def measure_signals(ref, other, rate=DECODE_RATE, fps=None, window_s=WINDOW_S,
         if abs(w["ncc"]) < min_ncc:
             out["reasons"].append(f"{label} window: normalized correlation {w['ncc']:+.3f} "
                                   f"(needs {min_ncc:g})")
+        elif np.sign(w["ncc"]) * w["rest_ncc"] < min_ncc:
+            out["reasons"].append(
+                f"{label} window: the match rests on one moment, at "
+                f"{r['event_at'] / rate + ref_start_s:.1f} s on the reference; without that "
+                f"second the rest correlates at {w['rest_ncc']:+.3f} (needs {min_ncc:g}), which "
+                "two unrelated clicks over silence or quiet noise can do too")
     if c["peak_ratio"] < COARSE_MIN_RATIO and c["second_lag"] is not None:
         # A second lag correlates nearly as well over the whole of both: sound
         # that repeats (a looped bed, a sting at both ends) or a coarse pass

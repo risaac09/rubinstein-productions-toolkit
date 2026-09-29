@@ -500,6 +500,13 @@ The reference is the camera clip.
   with polarity "inverted") and the peak over the highest correlation more
   than 50 ms away. A window under 2x or under 0.1 is not a match, nor is
   an overlap under 5 s.
+- **One moment is not a match.** Each window's correlation is measured
+  again with its strongest second left out, and must still reach 0.1. Two
+  unrelated files, each silent (a muted input, a closed noise gate) or
+  quietly noisy but for one click, line up at correlation 1.0 on that
+  click; without it the rest reads 0.000 and the report names the moment.
+  A door slam over talk that also lines up keeps the rest well above 0.1.
+  A file of digital silence is refused as that, before any correlation.
 - **Sound that repeats.** A window searches only 1 s either side of the
   coarse lag, so its ratio cannot see a second match further away. The
   coarse pass can: its peak over the best lag more than 1 s away. Under

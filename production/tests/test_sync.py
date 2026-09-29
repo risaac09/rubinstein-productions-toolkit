@@ -188,6 +188,47 @@ class TestMeasureSignals(unittest.TestCase):
         self.assertLess(r["drift"]["max_residual_ms"], 1.0)
         self.assertTrue(any("pull-down" in x for x in r["reasons"]), r["reasons"])
 
+    def test_one_click_over_digital_silence_is_refused(self):
+        # A muted input or a closed noise gate: two unrelated files, each silent
+        # but for one click (or one least-significant bit). One spike lines up
+        # with the other at ncc 1.0, which proves nothing.
+        for level in (0.5, 1 / 32768):
+            a = np.zeros(60 * RATE, np.float32)
+            b = np.zeros(60 * RATE, np.float32)
+            a[int(12.3 * RATE)], b[int(23.257 * RATE)] = level, level
+            r = sync.measure_signals(a, b, RATE, fps=25)
+            self.assertFalse(r["match"], level)
+            self.assertTrue(any("rests on one moment, at 12.3 s" in x for x in r["reasons"]),
+                            r["reasons"])
+
+    def test_one_click_each_over_quiet_unrelated_noise_is_refused(self):
+        # A level gate would pass this: the noise (-55 dBFS) is sound. Without
+        # the click's second, the rest does not correlate at all.
+        a = noise(60, 1, 10 ** (-55 / 20.0))
+        b = noise(60, 2, 10 ** (-55 / 20.0))
+        a[int(12.3 * RATE)] += 0.5
+        b[int(23.257 * RATE)] += 0.4
+        r = sync.measure_signals(a, b, RATE, fps=25)
+        self.assertFalse(r["match"])
+        self.assertLess(abs(r["windows"][0]["rest_ncc"]), 0.01)
+
+    def test_a_loud_moment_over_a_real_match_still_matches(self):
+        # A door slam louder than everything else, in both: without it the quiet
+        # talk around it still lines up, so the match stands.
+        src = bursts(60, seed=90) * 0.05
+        src[20 * RATE:int(20.3 * RATE)] += np.random.default_rng(91).standard_normal(
+            int(0.3 * RATE))
+        r = sync.measure_signals(src + noise(60, 92, 0.005),
+                                 src[5 * RATE:55 * RATE] + noise(50, 93, 0.005), RATE, fps=25)
+        self.assertTrue(r["match"], r["reasons"])
+        self.assertAlmostEqual(r["offset_s"], 5.0, delta=0.0005)
+        self.assertGreater(r["windows"][0]["rest_ncc"], 0.5)
+
+    def test_digital_silence_has_its_own_reason(self):
+        r = sync.measure_signals(np.zeros(60 * RATE), bursts(60), RATE, fps=25)
+        self.assertEqual(r["reasons"], ["the reference holds no sound to correlate "
+                                        "(digital silence)"])
+
     def test_unrelated_signals_are_not_a_match(self):
         r = sync.measure_signals(bursts(90, seed=7), bursts(60, seed=8), RATE, fps=25)
         self.assertFalse(r["match"])
