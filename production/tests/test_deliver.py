@@ -141,12 +141,22 @@ class TestConfig(unittest.TestCase):
                           yt["audio"]["channels"]), ("aac", 48000, 2))
         self.assertEqual(yt["captions"], "sidecar")
         self.assertEqual(yt["data_burn_in"], "None")
+        # web files are tagged Rec.709-A (transfer bt709); the house default stays Gamma 2.4
         self.assertEqual(yt["color"]["resolve"], {"ColorSpaceTag": "Rec.709",
-                                                  "GammaTag": "Gamma 2.4"})
+                                                  "GammaTag": "Rec.709-A"})
         self.assertEqual(yt["color"]["expect"], {"color_primaries": "bt709",
                                                  "color_space": "bt709",
-                                                 "color_transfer": None,
+                                                 "color_transfer": "bt709",
                                                  "color_range": "tv"})
+        # every web destination carries the tag; the client master keeps the house Gamma 2.4
+        for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "linkedin_9x16",
+                    "linkedin_1x1", "substack_16x9"):
+            d = dest(key)
+            self.assertEqual((d["color"]["resolve"]["GammaTag"],
+                              d["color"]["expect"]["color_transfer"]), ("Rec.709-A", "bt709"), key)
+        m = dest("client_master")
+        self.assertEqual((m["color"]["resolve"]["GammaTag"], m["color"]["expect"]["color_transfer"]),
+                         ("Gamma 2.4", None))
         for key, size, captions in (("linkedin_16x9", (1920, 1080), "sidecar"),
                                     ("linkedin_9x16", (1080, 1920), "burnin"),
                                     ("linkedin_1x1", (1080, 1080), "burnin"),
@@ -496,7 +506,7 @@ class TestRenderSteps(unittest.TestCase):
                          (3840, 2160, 23.976))
         self.assertEqual((s["AudioCodec"], s["AudioSampleRate"]), ("aac", 48000))
         self.assertNotIn("AudioBitDepth", s)
-        self.assertEqual((s["ColorSpaceTag"], s["GammaTag"]), ("Rec.709", "Gamma 2.4"))
+        self.assertEqual((s["ColorSpaceTag"], s["GammaTag"]), ("Rec.709", "Rec.709-A"))
         self.assertEqual((s["ExportSubtitle"], s["SubtitleFormat"]), (True, "SeparateFile"))
         self.assertIs(s["NetworkOptimization"], True)
         self.assertNotIn("ReplaceExistingFilesInPlace", s)
