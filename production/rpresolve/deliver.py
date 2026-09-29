@@ -318,19 +318,50 @@ def has_loudness_target(dest):
 # Before queueing: where the file goes
 # ---------------------------------------------------------------------------
 
+# The Data volume's firmlink: /System/Volumes/Data/Volumes/Work is
+# /Volumes/Work, and os.path.realpath() does not fold one into the other.
+FIRMLINK = "/System/Volumes/Data"
+
+
+def _folded(path):
+    """path's real path, casefolded, with the firmlink prefix taken off, so
+    every spelling of one folder on macOS compares equal as a string."""
+    real = os.path.realpath(path).casefold()
+    firm = FIRMLINK.casefold()
+    return real[len(firm):] if real.startswith(firm + "/") else real
+
+
 def volume_root(path, volumes_root="/Volumes"):
-    """/Volumes/<name> when path sits on one, else None."""
-    root = os.path.realpath(volumes_root).rstrip("/")
-    real = os.path.realpath(path)
-    if not real.startswith(root + "/"):
+    """/Volumes/<name> when path sits on one, else None. Matched whatever
+    the case (APFS and SMB here are case-insensitive, and realpath() does
+    not fold case) and through the firmlink. The result keeps path's own
+    spelling, so os.path.ismount() looks at the folder the path names."""
+    root = _folded(volumes_root).rstrip("/")
+    if not _folded(path).startswith(root + "/"):
         return None
-    return os.path.join(root, real[len(root) + 1:].split("/", 1)[0])
+    real = os.path.realpath(path)
+    extra = FIRMLINK.count("/") if real.casefold().startswith(FIRMLINK.casefold() + "/") else 0
+    return "/".join(real.split("/")[:root.count("/") + 2 + extra])
+
+
+def same_output(a, b):
+    """Whether two output paths name one file: the same name whatever the
+    case, in the same folder (os.path.samefile when both folders exist,
+    else their folded spellings). Errs toward a clash on a case-sensitive
+    volume, which is the safe side for a render."""
+    (da, na), (db, nb) = os.path.split(a), os.path.split(b)
+    if na.casefold() != nb.casefold():
+        return False
+    try:
+        return os.path.samefile(da, db)
+    except OSError:
+        return _folded(da) == _folded(db)
 
 
 def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volumes"):
     """Every reason a render of `filename` into `target_dir` must not be
-    queued, as a list (empty: go ahead). `queued` holds the real paths the
-    render queue already writes to."""
+    queued, as a list (empty: go ahead). `queued` holds the paths the
+    render queue already writes to, compared by same_output()."""
     if not os.path.isabs(os.path.expanduser(target_dir)):
         return [f"target dir {target_dir!r} must be an absolute path."]
     real = os.path.realpath(os.path.expanduser(target_dir))
@@ -354,8 +385,10 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
         if found:
             problems.append(f"a caption file already sits beside it ({', '.join(found)}); "
                             "the sidecar would be overwritten or misnamed.")
-    if out in {os.path.realpath(q) for q in queued}:
-        problems.append(f"a job already in the render queue writes {out}.")
+    clash = sorted(q for q in queued if same_output(out, q))
+    if clash:
+        problems.append(f"a job already in the render queue writes {out}" +
+                        (f" (as {clash[0]})" if clash[0] != out else "") + ".")
     return problems
 
 

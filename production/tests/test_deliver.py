@@ -242,6 +242,58 @@ class TestOutputProblems(unittest.TestCase):
                                                      volumes_root=volumes), [])
         self.assertIsNone(deliver.volume_root(self.dir, volumes))
 
+    def test_a_dropped_share_is_refused_under_any_spelling(self):
+        volumes = os.path.join(self.dir, "Volumes")
+        os.makedirs(os.path.join(volumes, "Work", "Active"))
+        lower = os.path.join(self.dir, "volumes", "work", "active")
+        firm = "/System/Volumes/Data" + os.path.join(volumes, "Work", "Active")
+        spellings = [lower, firm]
+        if not os.path.isdir(lower):
+            self.skipTest("this folder is on a case-sensitive file system")
+        for target in spellings:
+            with self.subTest(target=target):
+                if not os.path.isdir(target):
+                    continue  # no Data-volume firmlink on this system
+                problems = deliver.output_problems(target, self.name, self.yt,
+                                                   volumes_root=volumes)
+                self.assertEqual(len(problems), 1, problems)
+                self.assertIn("not mounted", problems[0])
+                with mock.patch.object(deliver.os.path, "ismount", return_value=True):
+                    self.assertEqual(deliver.output_problems(target, self.name, self.yt,
+                                                             volumes_root=volumes), [])
+        self.assertEqual(deliver.volume_root(lower, volumes),
+                         os.path.join(self.dir, "volumes", "work"))
+        if os.path.isdir(firm):
+            self.assertEqual(deliver.volume_root(firm, volumes),
+                             "/System/Volumes/Data" + os.path.join(volumes, "Work"))
+
+    def test_volume_root_of_the_real_volumes_folder(self):
+        # a share name that does not exist, so nothing on a real share is read
+        for path in ("/Volumes/NoSuchShare-rpresolve/a", "/volumes/NoSuchShare-rpresolve/a",
+                     "/System/Volumes/Data/Volumes/NoSuchShare-rpresolve/a"):
+            with self.subTest(path=path):
+                self.assertEqual(deliver.volume_root(path).casefold(),
+                                 path[:-2].casefold())
+        self.assertIsNone(deliver.volume_root("/Users/someone/renders"))
+        self.assertIsNone(deliver.volume_root("/Volumes"))
+
+    def test_a_queued_job_under_another_spelling_is_a_clash(self):
+        out = os.path.join(self.dir, self.name)
+        variants = [os.path.join(self.dir, self.name.upper()),
+                    "/System/Volumes/Data" + out]
+        if os.path.isdir(self.dir.upper()):
+            variants.append(os.path.join(self.dir.upper(), self.name))
+        for queued in variants:
+            with self.subTest(queued=queued):
+                problems = deliver.output_problems(self.dir, self.name, self.yt,
+                                                   queued={queued})
+                self.assertEqual(len(problems), 1, problems)
+                self.assertIn("render queue", problems[0])
+        self.assertEqual(deliver.output_problems(
+            self.dir, self.name, self.yt,
+            queued={os.path.join(self.dir, "SW001_Guest_02_example-clip_16x9.mp4"),
+                    os.path.join(self.dir, "gone", self.name)}), [])
+
     def test_inside_a_git_tree_is_refused(self):
         repo = os.path.join(self.dir, "repo")
         os.makedirs(os.path.join(repo, ".git"))

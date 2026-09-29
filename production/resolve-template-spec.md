@@ -215,8 +215,9 @@ Names are validated when a job is queued and again when the file is checked.
    all frames, and never replace existing files. It refuses, with every
    reason, when the target folder is missing; when it sits under `/Volumes`
    and that share is not mounted (a dropped share leaves its folders on the
-   boot disk); when it is inside a git working tree; when the file already
-   exists, or a queued job writes the same file; for a sidecar
+   boot disk; `/volumes/work` and `/System/Volumes/Data/Volumes/Work` count
+   as `/Volumes/Work`); when it is inside a git working tree; when the file already
+   exists, or a queued job writes the same file (under any spelling); for a sidecar
    destination, when any caption file under the file's stem already sits
    there (`.srt`, `.vtt`, `.scc`, `.ttml` or `.xml`, in any case); when
    captions are wanted and the timeline has no subtitle track, or only
