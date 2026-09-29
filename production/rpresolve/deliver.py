@@ -241,9 +241,10 @@ def sidecar_path(output_path):
 def caption_files(output_path):
     """Every caption file already beside output_path that could belong to
     it: a name that starts with its stem and ends in a caption extension
-    (CAPTION_EXTS), in any case, dangling links included. Resolve's own
-    sidecar name is unverified, so <stem>.en.srt and <stem>_x.vtt count
-    too. Sorted paths; [] when the folder cannot be read."""
+    (CAPTION_EXTS), in any case, dangling links included. Resolve names
+    its sidecar <stem>_<track>.ttml (resolve_sidecars, seen live); the
+    match stays broad so another tool's <stem>.en.srt or <stem>_x.vtt
+    counts too. Sorted paths; [] when the folder cannot be read."""
     folder, base = os.path.split(output_path)
     stem = os.path.splitext(base)[0].casefold()
     try:
