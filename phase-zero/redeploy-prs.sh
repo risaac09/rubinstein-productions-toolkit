@@ -15,21 +15,32 @@
 # Usage: KIT=<kit dir> phase-zero/redeploy-prs.sh [--dry-run]
 #   KIT defaults to the phase-zero/ directory beside this script. --dry-run
 #   prints each consumer's clone, branch, dirty count, and visibility.
+#   PZ_COAUTHOR="Claude <model> <noreply@anthropic.com>" adds a Co-Authored-By
+#   trailer naming the model running the redeploy. Unset, the commit credits
+#   no model: the script writes no content of its own.
+# Visibility is read live from GitHub, not kept in a list here, because a
+# hand list drifted (2026-09-29: isaacrubinstein.com public, listed internal).
+# It is a label only. Who merges which PR follows stack-data DECISIONS, "The
+# merge boundary", which gates three-type-evaluation although it is private.
 # Needs: gh (authenticated), git, and clones of the consumers under $HOME.
 set -uo pipefail
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 KIT="${KIT:-$(cd "$(dirname "$0")" && pwd)}"
 KITREPO="$(cd "$KIT/.." && pwd)"
 CONSUMERS="second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits"
-PUBLIC="alchemy statehouse-dashboard gene-keys-data rubinsteinproductions three-type-evaluation"
-is_public() { case " $PUBLIC " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+trailer=""
+if [ -n "${PZ_COAUTHOR:-}" ]; then trailer="
+
+Co-Authored-By: $PZ_COAUTHOR"; fi
 for name in $CONSUMERS; do
   clone="$HOME/$name"
   if [ ! -d "$clone/.git" ] && [ ! -f "$clone/.git" ]; then echo "SKIP $name: no clone at $clone"; continue; fi
   url="$(git -C "$clone" remote get-url origin 2>/dev/null || echo '?')"
+  slug="$(printf '%s' "$url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
   branch="$(git -C "$clone" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
   dirty="$(git -C "$clone" status --porcelain -uno 2>/dev/null | wc -l | tr -d ' ')"
-  kind=internal; is_public "$name" && kind=public
+  kind="$(gh repo view "$slug" --json visibility -q '.visibility|ascii_downcase' 2>/dev/null)" || kind=""
+  [ -n "$kind" ] || kind="?"
   printf '%-32s %-8s branch=%-40s dirty=%s remote=%s\n' "$name" "$kind" "$branch" "$dirty" "$url"
   [ "$DRY" -eq 1 ] && continue
   git -C "$clone" fetch -q origin main || { echo "  FAIL fetch $name"; continue; }
@@ -45,13 +56,17 @@ for name in $CONSUMERS; do
   fi
   git -C "$wt" -c commit.gpgsign=false commit -q -m "chore(phase-zero): redeploy the kit
 
-Deployed from rubinstein-productions-toolkit/phase-zero at $(git -C "$KITREPO" rev-parse --short HEAD) (branch $(git -C "$KITREPO" rev-parse --abbrev-ref HEAD)). Never edit these copies in place.
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" || { echo "  FAIL commit $name"; git -C "$clone" worktree remove --force "$wt"; continue; }
+Deployed from rubinstein-productions-toolkit/phase-zero at $(git -C "$KITREPO" rev-parse --short HEAD) (branch $(git -C "$KITREPO" rev-parse --abbrev-ref HEAD)). Never edit these copies in place.$trailer" || { echo "  FAIL commit $name"; git -C "$clone" worktree remove --force "$wt"; continue; }
+  pushed=0
   if git -C "$wt" push -q -u origin "$br"; then
-      gh pr create -R "$(printf '%s' "$url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')" --base main --head "$br" --title "phase-zero kit redeploy ($(date +%Y-%m-%d))" --body "Kit redeploy from rubinstein-productions-toolkit/phase-zero at $(git -C "$KITREPO" rev-parse --short HEAD). Merge the toolkit change that carries the kit source first; if it changes, re-run phase-zero/redeploy-prs.sh and this PR regenerates. Deployed copies, never edited in place: repeat triggers print the short form, the gear ladder rides in the portable core, and the four hooks share one sourced lib. Deployed copies, never edited in place.
+      pushed=1
+      gh pr create -R "$slug" --base main --head "$br" --title "phase-zero kit redeploy ($(date +%Y-%m-%d))" --body "Kit redeploy from rubinstein-productions-toolkit/phase-zero at $(git -C "$KITREPO" rev-parse --short HEAD). Merge the toolkit change that carries the kit source first; if it changes, re-run phase-zero/redeploy-prs.sh and this PR regenerates. These are deployed copies; never edit them in place.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>&1 | tail -1
   else echo "  FAIL push branch $name"; fi
   git -C "$clone" worktree remove --force "$wt"
+  # The pushed branch lives on the remote; drop the local ref so dated
+  # branches don't pile up in the operator's clone. A failed push keeps it,
+  # since the commit exists nowhere else.
+  if [ "$pushed" -eq 1 ]; then git -C "$clone" branch -D "$br" >/dev/null 2>&1; fi
 done
