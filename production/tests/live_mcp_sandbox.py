@@ -10,7 +10,7 @@ hand with Resolve open on the sandbox; CI never runs it.
         [--drx <.drx with its .json label manifest beside it>] \\
         [--render-dir <existing folder outside any git repo>] \\
         [--ingest <camera file not yet in the pool>] \\
-        [--manifest <cut manifest> --clip <clip name>]
+        [--manifest <cut manifest> --clip <clip name>] [--captions]
 
 It refuses unless the open project's name contains "Sandbox" and its
 unique id is --project-id. It snapshots every timeline (items, frames and
@@ -20,7 +20,9 @@ every tool, dry run then real run for the writes, plus the refusals
 (a non-[auto] grade, the wrong project, a stale plan_sha). Last, it deletes
 the one render job it queued and checks that nothing that existed before
 changed and that the UI is where it was. New timelines are named
-"MCP live <time> ... [auto]" and stay in the sandbox.
+"MCP live <time> ... [auto]" and stay in the sandbox. With --captions it
+also runs create_captions on the copy (Resolve transcribes it, about as
+long as the timeline runs); the copy must have audio and no subtitle items.
 
 Exit 0 when every check passes, 1 otherwise.
 """
@@ -131,6 +133,8 @@ def main():
     ap.add_argument("--ingest")
     ap.add_argument("--manifest")
     ap.add_argument("--clip")
+    ap.add_argument("--captions", action="store_true",
+                    help="Also run create_captions on the copy")
     a = ap.parse_args()
     if "Sandbox" not in a.project:
         print("REFUSED: --project must be a sandbox (its name contains 'Sandbox').")
@@ -197,6 +201,10 @@ def main():
         if a.ingest:
             err, r = c.both("ingest", **P, paths=[a.ingest])
             check(not err and r["exit_status"] in (0, 2), "ingest ran")
+        if a.captions:
+            err, r = c.both("create_captions", **P, timeline=dup_name)
+            check(not err and r.get("items", 0) > 0 and not r.get("ui_restore_problems"),
+                  "captions made, read back from the subtitle track, UI put back")
         if a.manifest and a.clip:
             err, r = c.both("cut", **P, manifest=a.manifest, clips=[a.clip],
                             prefix=f"MCPlive{stamp}")

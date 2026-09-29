@@ -108,6 +108,14 @@ DEFAULT_CONFIG = {
         # deliverable. A destination may name another; null leaves whatever
         # the Deliver page holds.
         "data_burn_in": "None",
+        # Auto captions (captions / create_captions) per frame shape. Resolve's
+        # default 42 characters overflow a 1080-wide 9:16 frame when burnt in
+        # (clipped at both edges, seen 2026-09-29); about 20 fit.
+        "captions": {
+            "landscape": {"chars_per_line": 42, "line_break": "single"},
+            "portrait": {"chars_per_line": 20, "line_break": "double"},
+            "square": {"chars_per_line": 24, "line_break": "double"},
+        },
     },
     "destinations": {
         "youtube_16x9": _web("YouTube 16:9 UHD", "16x9", 3840, 2160, "H265", -14.0, "sidecar"),
