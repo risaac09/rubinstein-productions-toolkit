@@ -53,7 +53,10 @@ A second hook, `SessionStart`, fires when a session starts, resumes, or
 clears, and injects the standing context every session should carry: the
 model routing check (`model-routing.md`), a pointer to the operating brief
 (`operating-brief.md`), and pointers to the decisions of record and the
-failure catalog in stack-data when a clone is reachable.
+failure catalog in stack-data when a clone is reachable. It also prints the
+research-routing rule: research, citation, bibliography, and lineage tasks go
+to stack-data's `research-bibliographer` agent, with the agent file's path
+when a clone is reachable.
 The routing check used to live as hand-copied CLAUDE.md blocks; three copies
 had drifted apart by 2026-07-12, so the kit now carries the canonical text
 and the hook injects it everywhere, including repos with no CLAUDE.md at
