@@ -611,9 +611,9 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     missing, under /Volumes without its share mounted, or inside a git
     working tree; the file or its sidecar already exists, or a queued job
     already writes it; captions are wanted and the timeline has no subtitle
-    track (or only empty ones). A required Deliver setting that Resolve refuses stops the
-    job from being queued. The queued job is read back from
-    GetRenderJobList. Returns {project, timeline, destination, output,
+    track (or only empty ones). A required Deliver setting that Resolve
+    refuses stops the job from being queued. The queued job is read back
+    from GetRenderJobList. Returns {project, timeline, destination, output,
     sidecar, settings, plan_sha, dry_run, job, readback_problems,
     unverified, deliver_changed, carried_over, codec, warnings,
     ui_restore_problems, exit_status}. carried_over names the render

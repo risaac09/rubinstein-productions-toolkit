@@ -311,8 +311,10 @@ and write down what Resolve did. None has been run yet.
    `deliver-check`. Record the transfer ffprobe reads for "Gamma 2.4" and
    set `deliver.color.expect.color_transfer` from it.
 3. **Render mode.** Leave the Deliver page in Individual clips, queue a
-   destination, and record `GetCurrentRenderMode` before and after, and
-   whether `GetRenderJobList` names the mode.
+   destination, and record `GetCurrentRenderMode` before and after,
+   whether `GetRenderJobList` names the mode, and whether putting the mode
+   back to Individual clips changes the job already queued (the format and
+   codec restore rests on the same assumption).
 4. **Job list fields.** Record which of `FrameRate`, `AudioSampleRate`,
    `AudioBitDepth`, `AudioCodec`, `ColorSpaceTag`, `GammaTag` and
    `DataBurnIn` `GetRenderJobList` reports, and how it writes each.
