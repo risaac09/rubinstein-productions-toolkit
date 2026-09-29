@@ -57,7 +57,12 @@
                   "color_range": "tv" }
     },
     "frame_rates": ["24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"],
-    "data_burn_in": "None"
+    "data_burn_in": "None",
+    "captions": {
+      "landscape": {"chars_per_line": 42, "line_break": "single"},
+      "portrait": {"chars_per_line": 20, "line_break": "double"},
+      "square": {"chars_per_line": 24, "line_break": "double"}
+    }
   },
   "destinations": {
     "youtube_16x9": {
