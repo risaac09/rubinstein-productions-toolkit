@@ -248,6 +248,17 @@ class TestCheck(unittest.TestCase):
         odd = self.clip(rate="15")
         self.assertEqual(failed(dc.check(odd, tiny("linkedin_16x9"), loudness=False)), ["fps"])
 
+    def test_an_unreadable_average_rate_fails_the_constant_rate_row(self):
+        # Nothing then shows the file is constant frame rate, so it cannot pass.
+        path = self.clip()
+        info = dc.probe(path)
+        for s in info["streams"]:
+            if s["codec_type"] == "video":
+                s["avg_frame_rate"] = "0/0"
+        with mock.patch.object(dc, "probe", return_value=info):
+            r = dc.check(path, tiny("linkedin_16x9"), loudness=False)
+        self.assertEqual(failed(r), ["fps_constant"])
+
     def test_wrong_size(self):
         r = dc.check(self.clip(), tiny("linkedin_16x9", size=(96, 54)), loudness=False)
         self.assertEqual(failed(r), ["size"])
@@ -376,6 +387,14 @@ class TestFixLoudness(unittest.TestCase):
         self.assertEqual(failed(dc.check(self.path, self.dest)), [])
         self.assertEqual(self.streamhash(self.path), before)
         self.assertFalse(os.path.exists(dc.fixed_path(self.path)))
+
+    def test_a_trash_that_cannot_be_written_replaces_nothing(self):
+        before = self.streamhash(self.path)
+        with mock.patch.object(dc, "_trash", side_effect=PermissionError(1, "not permitted")):
+            with self.assertRaisesRegex(dc.CheckError, "nothing was replaced"):
+                dc.fix_loudness(self.path, self.dest, replace=True, trash_root=self.dir, now=0)
+        self.assertEqual(self.streamhash(self.path), before)
+        self.assertTrue(os.path.isfile(dc.fixed_path(self.path)))
 
     def test_nothing_to_fix_without_a_target(self):
         with self.assertRaisesRegex(dc.CheckError, "no loudness target"):

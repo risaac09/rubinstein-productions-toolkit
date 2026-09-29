@@ -323,7 +323,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True):
         else:
             rows.append(_row("fps", r_rate in standard if standard else None, fmt_rate(r_rate),
                              "a standard rate (pass --fps to assert the timeline's)"))
-        steady = None if not (avg and r_rate) else abs(avg - r_rate) / r_rate < Fraction(1, 1000)
+        # An average rate that cannot be read fails: nothing then shows the file is constant.
+        steady = (None if r_rate is None else
+                  False if avg is None else abs(avg - r_rate) / r_rate < Fraction(1, 1000))
         rows.append(_row("fps_constant", steady, fmt_rate(avg), f"within 0.1% of {fmt_rate(r_rate)}"))
 
         chroma, bits = pix_fmt_family(video.get("pix_fmt"))
@@ -590,8 +592,16 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
         warnings.append("the video stream differs from the original's; the fix is not used.")
     if replace and passed:
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
-        r["trashed"] = _trash(path, trash_root or os.path.expanduser("~/.Trash"), stamp)
-        os.rename(out, path)
+        try:
+            r["trashed"] = _trash(path, trash_root or os.path.expanduser("~/.Trash"), stamp)
+        except OSError as e:
+            raise CheckError(f"could not move {path} to the Trash ({e}); nothing was replaced. "
+                             f"The fixed file is {out}.")
+        try:
+            os.rename(out, path)
+        except OSError as e:
+            raise CheckError(f"the original is now {r['trashed']}, but {out} could not take "
+                             f"its name ({e}); rename it by hand.")
         r["fixed"], r["replaced"] = os.path.abspath(path), True
     elif replace:
         warnings.append("not replaced: the fixed file did not pass; the original is untouched.")
