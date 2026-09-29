@@ -187,8 +187,10 @@ target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
 colour tags Rec.709 primaries and matrix with the Gamma 2.4 transfer
 (Resolve's `ColorSpaceTag` "Rec.709" and `GammaTag` "Gamma 2.4"). An overlay
 kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
-the MCP server) changes any one field of a destination, adds a private
-`target_dir`, adds a destination, or removes one with `null`. An overlay
+the MCP server) lies over `resolve-config.json`: it changes any one field
+of a destination, adds a private `target_dir`, adds a destination, or
+removes one with `null`, and leaves every other value as the repo file
+has it. An overlay
 that is missing or does not parse stops the deliver commands (exit 1)
 and the MCP tools; they never carry on with the defaults.
 

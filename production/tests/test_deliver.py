@@ -216,6 +216,41 @@ class TestConfig(unittest.TestCase):
                 rpconfig.load_config(os.path.join(tmp, "missing.json"), strict=True)
             self.assertTrue(issubclass(rpconfig.ConfigError, ValueError))
 
+    def test_an_overlay_lies_over_the_repo_config_not_the_built_in_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = json.loads(json.dumps(rpconfig.DEFAULT_CONFIG))
+            repo["destinations"]["linkedin_16x9"]["loudness"]["integrated_lufs"] = -18.0
+            repo["deliver"]["loudness"]["tolerance_lu"] = 1.0
+            repo["default_framerate"] = "25"
+            repo_path = os.path.join(tmp, "resolve-config.json")
+            with open(repo_path, "w", encoding="utf-8") as f:
+                json.dump(repo, f)
+            overlay = os.path.join(tmp, "overlay.json")
+            with open(overlay, "w", encoding="utf-8") as f:
+                json.dump({"destinations": {"linkedin_16x9": {"target_dir": "/elsewhere/out"},
+                                            "youtube_16x9": {"loudness": {
+                                                "integrated_lufs": -13.0}}}}, f)
+            with mock.patch.object(rpconfig, "CONFIG_PATH_DEFAULT", Path(repo_path)):
+                alone = rpconfig.load_config()
+                laid = rpconfig.load_config(overlay)
+                strict = rpconfig.load_config(overlay, strict=True)
+                with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+                    from rpresolve.mcp import tools_offline
+                    mcp = tools_offline.deliver_config()
+        for cfg in (laid, strict, mcp):
+            li = deliver.destination(cfg, "linkedin_16x9")
+            self.assertEqual(li["loudness"]["integrated_lufs"], -18.0)  # the repo edit holds
+            self.assertEqual(li["loudness"]["tolerance_lu"], 1.0)
+            self.assertEqual(li["target_dir"], "/elsewhere/out")  # the overlay adds to it
+            self.assertEqual(deliver.destination(cfg, "youtube_16x9")["loudness"]
+                             ["integrated_lufs"], -13.0)
+            # keys other than the delivery ones keep their rule: a named file replaces the
+            # defaults for them, and this overlay names none
+            self.assertEqual(cfg["default_framerate"], "23.976")
+        self.assertEqual(deliver.destination(alone, "linkedin_16x9")["loudness"]
+                         ["integrated_lufs"], -18.0)
+        self.assertEqual(alone["default_framerate"], "25")
+
     def test_merge_leaves_its_inputs_alone(self):
         a = {"x": {"y": 1, "z": [1]}}
         b = {"x": {"y": 2}}

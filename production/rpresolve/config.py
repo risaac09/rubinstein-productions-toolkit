@@ -6,11 +6,14 @@ Stdlib only.
 Most top-level keys in a config file replace the default outright. The two
 delivery keys, "deliver" (house loudness tolerances and colour tags) and
 "destinations", merge field by field instead, so an overlay kept outside
-this repository (--config) can change one value, or add a private
-target_dir, without restating the rest.
+this repository (--config, $RPRESOLVE_CONFIG) can change one value, or add
+a private target_dir, without restating the rest. An overlay's delivery
+keys lie over this repository's resolve-config.json, which lies over the
+built-in defaults (load_config).
 """
 
 import json
+import os
 from pathlib import Path
 
 # production/resolve-config.json, beside resolve_workflow.py.
@@ -132,41 +135,69 @@ class ConfigError(ValueError):
 
 def load_config(config_path=None, warn=None, strict=False):
     """Load resolve-config.json, falling back to built-in defaults for any
-    missing top-level key. By default it never raises: a missing or
-    malformed config degrades to defaults, and `warn` (if given) receives
-    the warning text. With strict, a named config_path that is missing, and
-    any config file that cannot be read, parsed as JSON, or is not a JSON
-    object, raises ConfigError instead; the delivery commands use this, so
-    an overlay that changes a loudness target is never silently dropped."""
-    path = Path(config_path) if config_path else CONFIG_PATH_DEFAULT
+    missing top-level key.
+
+    With a named config_path (an overlay kept outside this repository),
+    the delivery keys (MERGED_KEYS) come from the defaults, then the repo's
+    resolve-config.json, then the overlay, each merged field by field; so
+    an edit to resolve-config.json still holds under an overlay that only
+    adds a target_dir. The named file's other keys replace the defaults,
+    as they always have.
+
+    By default it never raises: a missing or malformed file is left out,
+    and `warn` (if given) receives the warning text. With strict, a named
+    config_path that is missing, and any config file that cannot be read,
+    parsed as JSON, or is not a JSON object, raises ConfigError instead;
+    the delivery commands use this, so an overlay that changes a loudness
+    target is never silently dropped."""
     config = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
+    repo = Path(CONFIG_PATH_DEFAULT)
+    named = Path(config_path) if config_path else None
+    if named is not None and os.path.realpath(named) == os.path.realpath(repo):
+        named = None
+    base = _read(repo, False, warn, strict)
+    if base:
+        _lay(config, base, MERGED_KEYS if named is not None else None)
+    if named is not None:
+        over = _read(named, True, warn, strict)
+        if over:
+            _lay(config, over)
+    return config
 
+
+def _read(path, named, warn, strict):
+    """The JSON object in a config file, or None when there is none to use."""
     if not path.exists():
-        if strict and config_path:
+        if strict and named:
             raise ConfigError(f"config {path} not found.")
-        return config
-
+        return None
     # UTF-8 always: Resolve's scripting library leaves the process in the C
     # locale once connected, where a default open() decodes as ASCII.
     try:
         with open(path, encoding="utf-8") as f:
-            user_config = json.load(f)
-        if not isinstance(user_config, dict):
-            raise ValueError(f"the top level is a JSON {type(user_config).__name__}, not an "
-                             "object")
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"the top level is a JSON {type(data).__name__}, not an object")
     except (ValueError, OSError) as e:  # JSONDecodeError and UnicodeDecodeError
         if strict:
             raise ConfigError(f"could not read config '{path}': {e}.")
         if warn:
-            warn(f"WARNING: Could not read config '{path}': {e}. Using defaults.")
-        return config
+            warn(f"WARNING: Could not read config '{path}': {e}. " +
+                 ("Using the defaults and resolve-config.json without it." if named
+                  else "Using defaults."))
+        return None
+    return data
 
-    for key, value in user_config.items():
+
+def _lay(config, data, keys=None):
+    """Lay a config file's keys (or only `keys`) over config, in place."""
+    for key, value in data.items():
+        if keys is not None and key not in keys:
+            continue
         if key in MERGED_KEYS and isinstance(value, dict) and isinstance(config.get(key), dict):
             config[key] = merge(config[key], value)
         else:
             config[key] = value
-    return config
 
 
 def merge(base, over):
