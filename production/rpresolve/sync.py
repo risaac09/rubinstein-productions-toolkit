@@ -31,7 +31,9 @@ least (the head window's offset, head_offset_s, when the overlap holds
 one window). What a placement at whole frames leaves at either end of the
 overlap, the frame rounding plus half the drift, is worst_ms; past
 MAX_DRIFT_FRAMES of a frame it is reported with the retime that would
-cancel the drift (exit 2 in the CLI); nothing here corrects it. One clock keeps every window within a millisecond or so of that line
+cancel the drift (exit 2 in the CLI); nothing here corrects it.
+
+One clock keeps every window within a millisecond or so of that line
 (the stretched pass, within microseconds on synthetic drift). A window
 more than LINE_MIN_MS or LINE_FRAMES of a frame off it, whichever is
 more, means the pair lines up differently in different places: a call
