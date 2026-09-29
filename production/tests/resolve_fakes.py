@@ -105,6 +105,9 @@ class Timeline(Fake):
         self.tracks = tracks or {"video": [[]], "audio": [[]]}  # kind -> [track items]
         self.settings = dict(settings or {})
         self.disabled = set()  # (kind, index) of tracks switched off
+        # Caption items CreateSubtitlesFromAudio makes; 0 is a Resolve that
+        # returns True and places nothing.
+        self.auto_captions = 3
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
@@ -124,6 +127,31 @@ class Timeline(Fake):
     def GetItemListInTrack(self, kind, index):
         tracks = self.tracks.get(kind, [])
         return list(tracks[index - 1]) if 1 <= index <= len(tracks) else None
+
+    def CreateSubtitlesFromAudio(self, settings=None):
+        # Live (2026-09-29): on the current timeline, from the Edit page, it returns
+        # True once the items are on a subtitle track; from the Deliver page it
+        # returns False and makes nothing. Other pages, and a timeline that is not
+        # current, are untried; this fake refuses both, so a test shows the caller
+        # made the timeline current and opened the Edit page.
+        _log(self, "CreateSubtitlesFromAudio", dict(settings or {}))
+        project = self.__dict__.get("project")  # a Fake answers any other name
+        if project is not None and project.current is not self:
+            return False
+        resolve = project.__dict__.get("resolve") if project is not None else None
+        if resolve is not None and resolve.page != "edit":
+            return False
+        if not self.auto_captions:
+            return True
+        items = [Item(f"Caption {n}", self.start + 12 * n, self.start + 12 * n + 10, None,
+                      nodes=None) for n in range(self.auto_captions)]
+        subs = self.tracks.setdefault("subtitle", [])
+        empty = next((t for t in subs if not t), None)
+        if empty is None:
+            subs.append(items)
+        else:
+            empty.extend(items)
+        return True
 
     def DuplicateTimeline(self, name=None):
         _log(self, "DuplicateTimeline", name)
@@ -158,6 +186,15 @@ class Pool(Fake):
         self.root = root
 
     def GetRootFolder(self): return self.root
+
+    def ImportMedia(self, paths):
+        _log(self, "ImportMedia", list(paths))
+        return [Clip(p.rsplit("/", 1)[-1], f"import-{len(CALLS)}") for p in paths]
+
+    def AppendToTimeline(self, items):
+        # Resolve 21.0.4.5 (spike 18): True for an imported .srt, and nothing placed.
+        _log(self, "AppendToTimeline", items)
+        return True
 
 
 class Project(Fake):
@@ -268,8 +305,27 @@ class ProjectManager(Fake):
 
 
 class Resolve(Fake):
+    # Constants as Resolve 21.0.4.5 answers them (read live, 2026-09-29): floats.
+    SUBTITLE_LANGUAGE = 0.0
+    SUBTITLE_CAPTION_PRESET = 1.0
+    SUBTITLE_CHARS_PER_LINE = 2.0
+    SUBTITLE_LINE_BREAK = 3.0
+    SUBTITLE_GAP = 4.0
+    AUTO_CAPTION_AUTO = 0.0
+    AUTO_CAPTION_ENGLISH = 3.0
+    AUTO_CAPTION_SUBTITLE_DEFAULT = 0.0
+    AUTO_CAPTION_LINE_SINGLE = 1.0
+    AUTO_CAPTION_LINE_DOUBLE = 2.0
+
     def __init__(self, project, page="edit"):
         self.pm, self.page = ProjectManager(project), page
+        project.resolve = self
+
+    def __getattr__(self, name):
+        # An unknown resolve.CONSTANT reads as None, silently, as in Resolve.
+        if name.isupper():
+            return None
+        return Fake.__getattr__(self, name)
 
     def GetProjectManager(self): return self.pm
     def GetProductName(self): return "DaVinci Resolve Studio"

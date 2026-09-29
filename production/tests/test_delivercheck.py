@@ -414,7 +414,8 @@ class TestFixLoudness(unittest.TestCase):
 
     def test_a_trash_that_cannot_be_written_replaces_nothing(self):
         before = self.streamhash(self.path)
-        with mock.patch.object(dc, "_trash", side_effect=PermissionError(1, "not permitted")):
+        with mock.patch.object(dc, "move_to_trash",
+                               side_effect=PermissionError(1, "not permitted")):
             with self.assertRaisesRegex(dc.CheckError, "nothing was replaced"):
                 dc.fix_loudness(self.path, self.dest, replace=True, trash_root=self.dir, now=0)
         self.assertEqual(self.streamhash(self.path), before)

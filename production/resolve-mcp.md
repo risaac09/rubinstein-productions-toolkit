@@ -44,7 +44,8 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project.
+tool must name that project. There are 18 tools: 5 reads, 7 offline tools
+(one of them, `deliver_captions`, writes a file) and 6 writes.
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -58,15 +59,23 @@ tool must name that project.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
-| `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions, loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
+| `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
+| `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines (and 9:16 copies) from a cut manifest, gated by endcheck. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
+| `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
 
 The offline tools never connect to Resolve. Every path they take must be
 absolute, since the server's working directory is not the caller's.
+`deliver_captions` writes `<stem>.srt` beside the render and moves
+Resolve's `.ttml` to `~/.Trash/deliver-captions-<timestamp>/`, so it
+keeps the write tools' plan-first contract below (dry run by default, the
+real run only with its `plan_sha`, a journal line before and after) while
+naming no project and taking no lock. It refuses inside any git working
+tree and never overwrites an `.srt`.
 
 ## The rules the write tools keep
 
@@ -77,7 +86,9 @@ absolute, since the server's working directory is not the caller's.
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
 - **Additive only.** Nothing that existed before is modified. New timelines
-  end in ` [auto]`. Grades go only onto ` [auto]` timelines. An item whose
+  end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
+  timelines, and `create_captions` refuses a timeline that already has any
+  subtitle item. An item whose
   grade version is remote is always refused, because a remote grade is shared
   with every timeline using the clip. A graph that is not default is refused
   unless `overwrite` is true. After a real grade run, every item on other
@@ -110,7 +121,8 @@ absolute, since the server's working directory is not the caller's.
   Deliver section of `resolve-template-spec.md`.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline
-  current. The current timeline, playhead and page are restored after each,
+  current; `create_captions` makes the timeline current and opens the Edit
+  page. The current timeline, playhead and page are restored after each,
   and any restore problem is in the result.
 - **One writer at a time.** Every Claude Code session starts its own server,
   so all Resolve access takes a lock at `~/Library/Caches/rpresolve/resolve.lock`,
@@ -145,6 +157,16 @@ choose the file.
   always leaves with `os._exit`.
 - Source frames on a timeline item count in the source clip's own frame
   rate, not the timeline's.
+- `Timeline.CreateSubtitlesFromAudio` returns False, and makes nothing,
+  when called from the Deliver page; from the Edit page it returns True
+  once the items are made (22 in 36 s on a 37 s timeline). It works on the
+  current timeline. Its settings keys and values are Resolve constants,
+  which are floats (`resolve.SUBTITLE_LANGUAGE` is 0.0), so only None
+  marks a missing one.
+- `MediaPool.AppendToTimeline` of an imported `.srt` returns True and
+  places nothing (Resolve 21.0.4.5).
+- `GetIsTrackEnabled` answers False for every track of a timeline that is
+  not current.
 
 ## Check it against a live Resolve
 
