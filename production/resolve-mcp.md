@@ -44,8 +44,9 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 18 tools: 5 reads, 7 offline tools
-(one of them, `deliver_captions`, writes a file) and 6 writes.
+tool must name that project. There are 22 tools: 5 reads, 9 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 8
+writes.
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -61,12 +62,16 @@ tool must name that project. There are 18 tools: 5 reads, 7 offline tools
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
 | `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
+| `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
+| `trim_review` | offline | Long silences from the source audio, fillers, repeats and Whisper loops from the word JSON, as proposals (keep, tighten, cut-candidate) in a TSV. Over a cut manifest the times run along each clip. Nothing is cut. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines (and 9:16 copies) from a cut manifest, gated by endcheck. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
+| `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back within a frame. Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
+| `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
 The offline tools never connect to Resolve. Every path they take must be
 absolute, since the server's working directory is not the caller's.
@@ -119,11 +124,24 @@ tree and never overwrites an `.srt`.
   the queue: the summary says so and names the job to remove or check
   (only a run that queued nothing says FAILED); `deliver_check` on the rendered file covers those. See the
   Deliver section of `resolve-template-spec.md`.
+- **Dual-system sound is placed, never retimed.** `sync` refuses a
+  measurement that is not a match (and says which windows agree on which
+  offset), places the other recording at the measured offset rounded to a
+  frame, and reports drift over half a frame with the retime that would
+  cancel it. `AutoSyncAudio` changes the clips it links, so it runs only on
+  clips the same call imported into its own new bin, and its result is
+  compared with the measured offset through a second ` [auto]` timeline.
+- **Markers only.** `trim_review_markers` adds markers to an ` [auto]`
+  timeline and reads each back; it never cuts, ripples, moves or deletes,
+  and refuses a row whose frame already holds a marker.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline
   current; `create_captions` makes the timeline current and opens the Edit
-  page. The current timeline, playhead and page are restored after each,
-  and any restore problem is in the result.
+  page; `sync` makes each new timeline current to place clips on it (and,
+  importing, opens its bin); `trim_review_markers` makes the timeline
+  current while marking. The current timeline, playhead, page and media
+  pool folder are restored after each, and any restore problem is in the
+  result.
 - **One writer at a time.** Every Claude Code session starts its own server,
   so all Resolve access takes a lock at `~/Library/Caches/rpresolve/resolve.lock`,
   shared with the CLI's write commands. `resolve_status` waits up to 5 s,
@@ -167,6 +185,16 @@ choose the file.
   places nothing (Resolve 21.0.4.5).
 - `GetIsTrackEnabled` answers False for every track of a timeline that is
   not current.
+- `MediaPool.AppendToTimeline` works on the current timeline and answers
+  truthy even when it places nothing, including for a track index that
+  does not exist yet; `sync` adds tracks with `AddTrack` first and reads
+  every placement back. `recordFrame` counts absolute timeline frames (a
+  25 fps timeline starts at 90000); `startFrame`/`endFrame` count source
+  frames at the source's own rate.
+- Timeline markers are addressed by frames from the timeline's start
+  (the scripting README's `GetMarkers` example), unlike `recordFrame`;
+  not yet confirmed on a live Resolve (see the Trim review section of
+  `resolve-template-spec.md`).
 
 ## Check it against a live Resolve
 
