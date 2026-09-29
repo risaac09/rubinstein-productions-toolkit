@@ -223,10 +223,16 @@ def render_job_readback(project, job_id, want=None):
 def _same(key, got, want):
     """Compare a queued job field with what was asked for, allowing for
     Resolve's own normalisation: folders by resolved path (a trailing slash
-    or symlink is the same folder), numbers as numbers."""
+    or symlink is the same folder), numbers as numbers, and a frame rate
+    within 0.01% whatever its wording ("23.976023", "29.97 DF"; how
+    GetRenderJobList writes it is unverified)."""
     if key == "TargetDir":
         norm = lambda p: os.path.realpath(str(p).rstrip("/") or "/")
         return norm(got) == norm(want)
+    if key == "FrameRate":
+        from .deliver import fps_number
+        a, b = fps_number(got), fps_number(want)
+        return a is not None and b is not None and abs(a - b) <= 1e-4 * b
     try:
         return float(got) == float(want)
     except (TypeError, ValueError):

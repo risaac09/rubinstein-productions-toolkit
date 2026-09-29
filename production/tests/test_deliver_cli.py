@@ -184,6 +184,20 @@ class TestQueueCommand(unittest.TestCase):
         self.assertEqual(len(self.project.jobs), 1)
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
 
+    def test_a_mismatch_says_the_job_stays_queued(self):
+        add = self.project.AddRenderJob
+
+        def add_then_differ():
+            jid = add()
+            self.project.jobs[-1]["FormatHeight"] = 720
+            return jid
+        self.project.AddRenderJob = add_then_differ
+        status, out, err = self.call()
+        self.assertEqual(status, 1)
+        self.assertIn("MISMATCH: FormatHeight", err)
+        self.assertIn("stays in the render queue", err)
+        self.assertEqual(len(self.project.jobs), 1)
+
     def test_refusals_exit_1(self):
         status, _, err = self.call(guest="Two Words", dry_run=True)
         self.assertEqual(status, 1)

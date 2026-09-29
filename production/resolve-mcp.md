@@ -104,7 +104,9 @@ absolute, since the server's working directory is not the caller's.
   timeline has no subtitle track. Each Deliver field goes in its own `SetRenderSettings`
   call; if Resolve refuses a required one, nothing is queued. The result
   shows what Resolve's job list holds and names the fields it does not
-  report; `deliver_check` on the rendered file covers those. See the
+  report. When the job list holds different values, the job is still in
+  the queue: the summary says so and names the job to remove or check
+  (only a run that queued nothing says FAILED); `deliver_check` on the rendered file covers those. See the
   Deliver section of `resolve-template-spec.md`.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline

@@ -1226,6 +1226,10 @@ def cmd_deliver_queue(args):
         print("Resolve holds: " + ", ".join(f"{k}={v!r}" for k, v in sorted(r["job"].items())))
     for p in r["readback_problems"]:
         print(f"  MISMATCH: {p}", file=sys.stderr)
+    if r["job"] and r["readback_problems"]:
+        print(f"  Job {r['job'].get('JobId')} stays in the render queue with those values, NOT "
+              "started: remove it or check it on the Deliver page before rendering.",
+              file=sys.stderr)
     if r["unverified"]:
         print("Not in the job list, so unverified until the file is checked with deliver-check: "
               + ", ".join(r["unverified"]))

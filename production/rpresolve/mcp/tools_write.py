@@ -149,6 +149,18 @@ def _ui(r):
     return "; the UI was not fully restored" if r["ui_restore_problems"] else ""
 
 
+def _not_clean(r):
+    """The summary of a real queue_render that did not come out clean. A
+    job that was queued but reads back different stays in Resolve's render
+    queue, so it is not called FAILED: Render All would render it."""
+    if r.get("job"):
+        return (f"queued job {r['job'].get('JobId')} but Resolve holds different values: " +
+                "; ".join(r["readback_problems"]) + ". The job stays in the render queue, NOT "
+                "started: remove it or check it before rendering" + _ui(r))
+    return ("queue_render FAILED, nothing queued: " +
+            "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
+
+
 def duplicate_timeline_auto(args, ctx):
     _require_sha(args)
 
@@ -236,8 +248,7 @@ def queue_render(args, ctx):
                             f"{r['job']['JobId']}; NOT started, Isaac starts renders. Deliver "
                             f"page fields now changed: {changed}" + _ui(r))
         else:
-            r["summary"] = ("queue_render FAILED: " +
-                            "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
+            r["summary"] = _not_clean(r)
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -273,8 +284,7 @@ def _queue_destination(args, ctx):
                             (", ".join(r["unverified"]) or "nothing else") +
                             "; check the rendered file with deliver_check" + _ui(r))
         else:
-            r["summary"] = ("queue_render FAILED: " +
-                            "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
+            r["summary"] = _not_clean(r)
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):

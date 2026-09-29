@@ -292,6 +292,18 @@ class TestReadback(unittest.TestCase):
         self.assertIn("AudioCodec", warnings[0])
         self.assertEqual(unverified, ["AudioSampleRate", "VideoFormat"])
 
+    def test_frame_rate_allows_for_how_resolve_writes_it(self):
+        for got in ("23.976023", "23.976", 23.976, "23.976 DF"):
+            with self.subTest(got=got):
+                self.assertEqual(render.readback_report({"FrameRate": got},
+                                                        {"FrameRate": 23.976}, {})[0], [])
+        self.assertEqual(render.readback_report({"FrameRate": "29.97 DF"},
+                                                {"FrameRate": 29.97}, {})[0], [])
+        for got in ("24", "25", "fast"):
+            with self.subTest(got=got):
+                self.assertEqual(len(render.readback_report({"FrameRate": got},
+                                                            {"FrameRate": 23.976}, {})[0]), 1)
+
     def test_queued_outputs(self):
         project = rf.Project(jobs=[{"JobId": "j1", "TargetDir": "/a", "OutputFilename": "b.mp4"},
                                    {"JobId": "j2"}])
@@ -339,6 +351,38 @@ class TestMCP(Base):
         self.assertEqual(self.journal(), ["started", "finished"])
         self.assertEqual(real["journal"]["path"], os.environ["RPRESOLVE_MCP_JOURNAL"])
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
+
+    def test_a_mismatch_says_the_job_is_still_queued(self):
+        add = self.project.AddRenderJob
+
+        def add_then_differ():
+            jid = add()
+            self.project.jobs[-1]["FormatWidth"] = 1280
+            return jid
+        self.project.AddRenderJob = add_then_differ
+        dry = self.call(self.args())
+        r = self.call(self.args(dry_run=False, plan_sha=dry["plan_sha"]))
+        self.assertEqual(r["exit_status"], 1)
+        self.assertTrue(r["summary"].startswith("queued job job-1 but Resolve holds different "
+                                                "values: FormatWidth"), r["summary"])
+        self.assertIn("remove it or check it before rendering", r["summary"])
+        self.assertNotIn("FAILED", r["summary"])
+        self.assertEqual([j["JobId"] for j in self.project.jobs], ["job-1"])
+        # the preset form says the same
+        p = self.call({"preset": "master", "output_dir": self.out})
+        r = self.call({"preset": "master", "output_dir": self.out, "dry_run": False,
+                       "plan_sha": p["plan_sha"]})
+        self.assertTrue(r["summary"].startswith("queued job job-2 but Resolve holds"),
+                        r["summary"])
+
+    def test_failed_means_nothing_was_queued(self):
+        self.project.refuse = {"GammaTag"}
+        dry = self.call(self.args())
+        r = self.call(self.args(dry_run=False, plan_sha=dry["plan_sha"]))
+        self.assertEqual(r["exit_status"], 1)
+        self.assertTrue(r["summary"].startswith("queue_render FAILED, nothing queued: "),
+                        r["summary"])
+        self.assertEqual(self.project.jobs, [])
 
     def test_preset_or_destination_never_both(self):
         with self.assertRaisesRegex(workflows.Refused, "exactly one"):
