@@ -267,9 +267,15 @@ seen in a file Resolve rendered with these settings yet.
   "Rec.709-A" issue. The check reports the transfer it finds and asserts
   nothing until `deliver.color.expect.color_transfer` is set from a real
   render.
-- The tag strings `Rec.709` and `Gamma 2.4`, and the `AudioCodec` strings
-  `aac` and `lpcm`. A string Resolve does not accept is refused by
-  `SetRenderSettings`, and the job is then not queued.
+- The tag strings `Rec.709` and `Gamma 2.4`, the `AudioCodec` strings
+  `aac` and `lpcm`, and the `DataBurnIn` string `None`. The queue assumes
+  that `SetRenderSettings` returns False for a string Resolve does not
+  accept, so that a required step fails and the job is not queued. That
+  is an assumption until the sandbox step below confirms it. If Resolve
+  instead returns True and keeps its previous value (such as "Same as
+  Project"), the job queues with the wrong tags, the read-back lists
+  `GammaTag` as unverified, and nothing downstream catches the transfer,
+  which deliver-check only reports.
 - The sidecar's name: the check expects `<stem>.srt` beside the file and
   names any near miss it finds. Whether the sidecar is SRT or WebVTT is not
   a scripting key. A burn-in or no-captions file fails the check when any
@@ -288,6 +294,33 @@ seen in a file Resolve rendered with these settings yet.
   names the files of a job queued in Individual clips mode. The queue
   sets Single clip and reads it back with `GetCurrentRenderMode` before
   `AddRenderJob`; it has not been seen on a live Resolve yet.
+
+### Live steps owed (sandbox project only)
+
+Run each in the "RP Automation Sandbox" project, pinned by its unique id,
+and write down what Resolve did. None has been run yet.
+
+1. **Invalid tag strings.** Call `SetRenderSettings({"GammaTag": "Gamma
+   2.4 (not a tag)"})`, then the same for `ColorSpaceTag`, `AudioCodec`
+   and `DataBurnIn`. Record whether each returns False. If any returns
+   True, the queue's refusal on a required step does not protect that
+   field, and the valid strings must be confirmed some other way (for
+   example `SaveAsNewRenderPreset` and reading the preset back).
+2. **Valid tag strings.** Queue `linkedin_16x9` on a short 16:9 sandbox
+   timeline with `deliver-queue`, render it by hand, and run
+   `deliver-check`. Record the transfer ffprobe reads for "Gamma 2.4" and
+   set `deliver.color.expect.color_transfer` from it.
+3. **Render mode.** Leave the Deliver page in Individual clips, queue a
+   destination, and record `GetCurrentRenderMode` before and after, and
+   whether `GetRenderJobList` names the mode.
+4. **Job list fields.** Record which of `FrameRate`, `AudioSampleRate`,
+   `AudioBitDepth`, `AudioCodec`, `ColorSpaceTag`, `GammaTag` and
+   `DataBurnIn` `GetRenderJobList` reports, and how it writes each.
+5. **Sidecar name.** Render a sidecar destination and record the caption
+   file's name and format.
+
+Remove the queued sandbox job after each step; never start a render from
+a script.
 
 ---
 
