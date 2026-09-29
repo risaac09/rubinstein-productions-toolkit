@@ -29,7 +29,9 @@ Captions modes: "sidecar" (an .srt beside the file, named <stem>.srt),
 "burnin" (drawn into the picture by Resolve) and "none". Any caption file
 already beside the target (caption_files: .srt, .vtt, .scc, .ttml or .xml
 under the file's stem, in any case) blocks a sidecar job, and fails the
-check of a burn-in or no-captions file.
+check of a burn-in or no-captions file. Resolve 21.0.4.5 writes a sidecar
+as "<stem>_<subtitle track name>.ttml" (resolve_sidecars()), timed from the
+timeline's timecode; rpresolve.captions turns it into <stem>.srt.
 """
 
 import os
@@ -248,6 +250,30 @@ def caption_files(output_path):
                   and n.rsplit(".", 1)[1].casefold() in CAPTION_EXTS)
 
 
+# The name Resolve gives a sidecar it renders: <stem>_<subtitle track name>.ttml.
+RESOLVE_SIDECAR_EXT = ".ttml"
+
+
+def resolve_sidecars(output_path):
+    """The TTML sidecars Resolve wrote beside output_path, as sorted
+    [(track name, path)]: every "<stem>_<track>.ttml" there (the stem as
+    written, the extension in any case). Spike 20 (2026-09-29) saw
+    "<stem>_Subtitle 1.ttml" for a track named "Subtitle 1". [] when the
+    folder cannot be read."""
+    folder, base = os.path.split(output_path)
+    head = os.path.splitext(base)[0] + "_"
+    try:
+        names = os.listdir(folder or ".")
+    except OSError:
+        return []
+    found = []
+    for n in names:
+        stem, ext = os.path.splitext(n)
+        if ext.casefold() == RESOLVE_SIDECAR_EXT and stem.startswith(head) and len(stem) > len(head):
+            found.append((stem[len(head):], os.path.join(folder, n)))
+    return sorted(found)
+
+
 # ---------------------------------------------------------------------------
 # Destinations
 # ---------------------------------------------------------------------------
@@ -460,6 +486,7 @@ def _shape(width, height):
     if abs(ratio - 1) <= ASPECT_TOLERANCE:
         return "square"
     return "landscape" if ratio > 1 else "portrait"
+
 
 
 def shape_problems(dest, size, timeline="the timeline"):

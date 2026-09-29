@@ -1,5 +1,6 @@
 """
-rpresolve.mcp.tools_write: tools that add to a Resolve project.
+rpresolve.mcp.tools_write: tools that add to a Resolve project, and
+deliver_captions, which adds a file beside a render.
 
 The rules every write tool keeps:
 - The call names the project (project, and project_id when known); the
@@ -9,6 +10,12 @@ The rules every write tool keeps:
   that plan_sha, and is refused when the plan has changed since.
 - Every run holds the cross-process lock; a real run is journalled
   (journal.py) before it touches Resolve and after.
+
+deliver_captions never connects to Resolve, so it names no project and
+takes no lock. It keeps the rest: it writes <stem>.srt beside a render
+(never over a file, never inside a git working tree) and moves Resolve's
+TTML to the Trash, so it plans first, runs only with the dry run's
+plan_sha, and is journalled.
 """
 
 import os
@@ -35,7 +42,9 @@ def _require_sha(args):
 def _journalled(tool, args, run):
     """Run a real write between a started and a finished journal line."""
     record = {k: v for k, v in args.items() if k not in ("offset", "limit")}
-    wid = journal.start(tool, {"name": args["project"], "id": args.get("project_id")}, record)
+    project = ({"name": args["project"], "id": args.get("project_id")} if "project" in args
+               else None)
+    wid = journal.start(tool, project, record)
     try:
         result = run()
     except BaseException as e:
@@ -293,6 +302,42 @@ def _queue_destination(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# deliver_captions (offline, a file beside a render)
+# ---------------------------------------------------------------------------
+
+def deliver_captions(args, ctx):
+    from .. import captions
+    _require_sha(args)
+    path = _existing(args["file"], "file")
+    dest = deliver.destination(deliver_config(), args["destination"])
+    ctx.check_cancel()
+
+    def run():
+        r = captions.deliver_captions(path, dest, track=args.get("track"),
+                                      keep_ttml=args["keep_ttml"], dry_run=args["dry_run"],
+                                      expect_sha=args.get("plan_sha"))
+        c, st = r["cues"], r["start"]
+        shift = (f"taking off its start {st['timecode']} ({st['seconds']:.3f} s)"
+                 if st["timecode"] else "with no timecode to take off")
+        span = f"{c['count']} cue(s), {c['first'][0]:.3f} s to {c['last'][1]:.3f} s"
+        if r["dry_run"]:
+            r["summary"] = (f"would write {os.path.basename(r['srt'])} from "
+                            f"{os.path.basename(r['ttml'])}, {shift}: {span} of a "
+                            f"{r['duration']:.3f} s video; the TTML " +
+                            ("stays" if args["keep_ttml"] else "goes to the Trash") + _how(r))
+        else:
+            r["summary"] = (f"wrote {r['srt']} ({span}, read back and matching the TTML), "
+                            f"{shift}; the TTML " +
+                            (f"is in {os.path.dirname(r['trashed'])}" if r["trashed"]
+                             else "stays beside the file") +
+                            ". Next: deliver-fix-loudness if needed, then deliver_check")
+        r["exit_status"] = 0
+        return r
+
+    return run() if args["dry_run"] else _journalled("deliver_captions", args, run)
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -452,3 +497,27 @@ def register(registry):
          "required": ["project", "timeline"],
          "additionalProperties": False},
         queue_render, title="Queue a render", annotations=WRITE))
+    registry.add(Tool(
+        "deliver_captions",
+        "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "
+        "sidecar destination ('<stem>_<track>.ttml', IMSC1, timed from the timeline's timecode "
+        "such as 01:00:00:00) into the zero-based '<stem>.srt' a platform reads. It takes off "
+        "the file's start timecode (ffprobe's timecode tag), refuses when any cue would start "
+        "before 0 or end past the video, never overwrites an .srt, reads the new .srt back "
+        "against the TTML, and moves the TTML to ~/.Trash unless keep_ttml. Refused for a "
+        "burn-in or no-captions destination, inside a git working tree, and when several "
+        "tracks' sidecars sit there and track names none. It writes and moves files, so it "
+        "plans first like the write tools: dry run, then the real run with its plan_sha.",
+        {"type": "object", "properties": {
+            "file": {"type": "string", "description": "Absolute path of the rendered file."},
+            "destination": {"type": "string", "minLength": 1,
+                            "description": "The sidecar destination it was rendered for (at "
+                            "start: " + ", ".join(destination_keys()) + ")."},
+            "track": {"type": "string", "minLength": 1,
+                      "description": "The subtitle track whose sidecar to convert, when Resolve "
+                      "wrote more than one."},
+            "keep_ttml": {"type": "boolean", "default": False,
+                          "description": "Leave the .ttml beside the file."},
+            **DRY_RUN},
+         "required": ["file", "destination"], "additionalProperties": False},
+        deliver_captions, title="Captions sidecar to .srt", annotations=WRITE))

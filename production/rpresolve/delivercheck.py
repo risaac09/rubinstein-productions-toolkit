@@ -19,11 +19,16 @@ what it expected:
                   limited ("tv") by default; a yuvj* pix_fmt counts as full
                   range, an unflagged YUV stream as limited
     audio_*       codec, channels, sample rate, bit depth for LPCM
-    captions      sidecar: <stem>.srt beside the file parses, has cues, and
-                  runs in time order; burn-in or none: no caption file for
-                  the stem beside it (deliver.caption_files: .srt, .vtt,
-                  .scc, .ttml, .xml, any case, dangling links too) and no
-                  subtitle stream (burnt-in text is not read from pixels)
+    captions      sidecar: <stem>.srt beside the file parses, has cues,
+                  runs in time order, and every cue starts at or after 0
+                  and ends by the video's duration plus CAPTION_END_SLACK_S
+                  (an .srt timed from the timeline's 01:00:00:00 runs an
+                  hour late); with no .srt but Resolve's <stem>_<track>.ttml
+                  beside it, the note says to run deliver-captions.
+                  burn-in or none: no caption file for the stem beside it
+                  (deliver.caption_files: .srt, .vtt, .scc, .ttml, .xml,
+                  any case, dangling links too) and no subtitle stream
+                  (burnt-in text is not read from pixels)
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
@@ -50,6 +55,8 @@ PROBE_TIMEOUT_S = 120
 READ_TIMEOUT_S = 3600
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
+# How long after the video's last frame a caption cue may still end.
+CAPTION_END_SLACK_S = 0.5
 # Timeline rates as written in Resolve, as exact rationals.
 NTSC = {"23.976": "24000/1001", "23.98": "24000/1001", "29.97": "30000/1001",
         "47.952": "48000/1001", "59.94": "60000/1001", "119.88": "120000/1001"}
@@ -170,6 +177,45 @@ def parse_fps(value):
 def fmt_rate(f):
     return "?" if f is None else (f"{f.numerator}/{f.denominator}" if f.denominator != 1
                                   else str(f.numerator)) + f" ({float(f):.3f} fps)"
+
+
+def duration(info):
+    """The video's duration in seconds from ffprobe's streams and format:
+    the first video stream's own duration, else the format's; None when
+    neither reads."""
+    for s in info.get("streams") or []:
+        if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic"):
+            try:
+                d = float(s.get("duration"))
+                if d > 0:
+                    return d
+            except (TypeError, ValueError):
+                pass
+            break
+    try:
+        d = float((info.get("format") or {}).get("duration"))
+        return d if d > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def cue_time_problems(cues, duration_s, slack=CAPTION_END_SLACK_S):
+    """Why caption cues (start_s, end_s, text) do not sit inside a video of
+    duration_s seconds, as a list: a cue that starts before 0, or ends more
+    than `slack` after the video does. [] when duration_s is None."""
+    if duration_s is None:
+        return []
+    problems = []
+    early = [(n, c) for n, c in enumerate(cues, 1) if c[0] < 0]
+    if early:
+        n, c = early[0]
+        problems.append(f"{len(early)} cue(s) start before 0 s (cue {n} at {c[0]:.3f} s)")
+    late = [(n, c) for n, c in enumerate(cues, 1) if c[1] > duration_s + slack]
+    if late:
+        n, c = late[0]
+        problems.append(f"{len(late)} cue(s) end after the video's {duration_s:.3f} s plus "
+                        f"{slack:g} s (cue {n} runs {c[0]:.3f} s to {c[1]:.3f} s)")
+    return problems
 
 
 def pix_fmt_family(pix_fmt):
@@ -395,7 +441,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                              "only the first audio stream is checked"))
 
     # Captions
-    rows.append(_captions(path, name, dest, streams))
+    rows.append(_captions(path, name, dest, streams, duration(info)))
 
     # Loudness
     loud = dest.get("loudness") or {}
@@ -421,7 +467,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
 
 
-def _captions(path, name, dest, streams):
+def _captions(path, name, dest, streams, duration_s=None):
     folder = os.path.dirname(os.path.abspath(path))
     sidecar = deliver.sidecar_path(os.path.join(folder, name))
     subs = [s for s in streams if s.get("codec_type") == "subtitle"
@@ -431,18 +477,29 @@ def _captions(path, name, dest, streams):
     beside = [os.path.basename(p) for p in deliver.caption_files(os.path.join(folder, name))]
     if dest["captions"] == "sidecar":
         if not os.path.isfile(sidecar):
+            ttml = [os.path.basename(p) for _, p in
+                    deliver.resolve_sidecars(os.path.join(folder, name))]
             return _row("captions", False, "no sidecar" + (f" (found {', '.join(beside)})"
                                                            if beside else ""),
-                        os.path.basename(sidecar))
+                        os.path.basename(sidecar),
+                        f"Resolve wrote {', '.join(ttml)}, timed from the timeline's timecode; "
+                        f"run deliver-captions on this file to make {os.path.basename(sidecar)}"
+                        if ttml else None)
         try:
             with open(sidecar, encoding="utf-8") as f:
                 cues, problems = parse_srt(f.read())
         except (OSError, UnicodeDecodeError) as e:
             cues, problems = [], [f"unreadable: {e}"]
+        problems += cue_time_problems(cues, duration_s)
+        span = f", {cues[0][0]:.3f} s to {max(c[1] for c in cues):.3f} s" if cues else ""
         return _row("captions", not problems,
-                    f"{os.path.basename(sidecar)}: {len(cues)} cue(s)" +
+                    f"{os.path.basename(sidecar)}: {len(cues)} cue(s){span}" +
                     (f"; {'; '.join(problems[:3])}" if problems else ""),
-                    "a parseable, non-empty, time-ordered .srt beside the file")
+                    "a parseable, non-empty, time-ordered .srt beside the file, every cue "
+                    + (f"inside the video's {duration_s:.3f} s (+{CAPTION_END_SLACK_S:g} s)"
+                       if duration_s is not None else "inside the video"),
+                    None if duration_s is not None else
+                    "the video's duration could not be read, so cue times were not checked")
     found = []
     if beside:
         found.append(f"caption file(s) {', '.join(beside)}")
@@ -521,11 +578,11 @@ def fix_command(path, out, dest, has_data, measured, target, tp, lra):
     return cmd + ["file:" + os.path.abspath(out)]
 
 
-def _trash(path, trash_root, stamp):
-    """Move path into <trash_root>/deliver-loudfix-<stamp>/ and return the
-    new path. Across devices it copies, compares sizes, then removes the
-    original."""
-    base = os.path.join(trash_root, f"deliver-loudfix-{stamp}")
+def _trash(path, trash_root, stamp, label="deliver-loudfix"):
+    """Move path into <trash_root>/<label>-<stamp>/ (a new folder each
+    call) and return the new path. Across devices it copies, compares
+    sizes, then removes the original."""
+    base = os.path.join(trash_root, f"{label}-{stamp}")
     folder, n = base, 1
     while os.path.exists(folder):
         n += 1

@@ -49,6 +49,8 @@ Commands:
     deliver-check          Offline: check a rendered file against its destination
                            (codec, size, fps, colour tags, audio, captions,
                            loudness, name); exit 0 pass, 1 fail, 2 tool missing
+    deliver-captions       Offline: turn Resolve's <stem>_<track>.ttml sidecar into a
+                           zero-based <stem>.srt beside the render
     deliver-fix-loudness   Offline: two-pass loudnorm to the destination's target,
                            video copied untouched, into <stem>.loudfix<ext>
 
@@ -89,6 +91,9 @@ Known API limits (live-verified against Resolve Studio 21.0.4.5):
       through rpresolve.api.exit_clean (flush, then os._exit).
     - Subtitle *styling* (font/color/position) has no scripting entry point;
       add-subtitles places the track, styling stays a manual Edit-page step.
+    - A sidecar render writes "<stem>_<track name>.ttml" timed from the
+      timeline's timecode (01:00:00:00 and up); deliver-captions makes the
+      zero-based <stem>.srt a platform reads.
     - The "story" vertical preset resizes the canvas only. It does not
       reframe subjects — do that per-clip before rendering vertical.
 """
@@ -1265,6 +1270,31 @@ def cmd_deliver_check(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_deliver_captions(args):
+    """Turn Resolve's TTML sidecar beside a render into a zero-based
+    <stem>.srt, read it back, and (unless --keep-ttml) move the TTML to
+    ~/.Trash. Exit 0 written and verified, 1 refused or failed, 2 ffprobe
+    missing."""
+    from rpresolve import captions, deliver, delivercheck as dc
+    try:
+        dest = deliver.destination(_deliver_config(args), args.dest)
+        r = captions.deliver_captions(args.file, dest, track=args.track,
+                                      keep_ttml=args.keep_ttml)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (dc.CheckError, deliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        sys.stdout.write(captions.format_result(r))
+    for w in r["warnings"]:
+        print(f"  WARNING: {w}", file=sys.stderr)
+    return 0 if r["status"] == "pass" else 1
+
+
 def cmd_deliver_fix_loudness(args):
     """Normalise a render's loudness to its destination's target into
     <stem>.loudfix<ext>, then check it. --replace swaps it in only after
@@ -1397,11 +1427,13 @@ Examples:
       --dest youtube_16x9 --show SW --episode 1 --guest Guest --index 1 \\
       --slug example-clip --target-dir /path/to/renders --dry-run
 
-  # Check the rendered file; fix its loudness if that is all that failed
+  # After the render: captions to a zero-based .srt, loudness, then the check
+  python3 resolve_workflow.py deliver-captions /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
+      --dest youtube_16x9
+  python3 resolve_workflow.py deliver-fix-loudness /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
+      --dest youtube_16x9 --replace
   python3 resolve_workflow.py deliver-check /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
       --dest youtube_16x9 --fps 23.976
-  python3 resolve_workflow.py deliver-fix-loudness /path/to/renders/SW001_Guest_01_example-clip_16x9.mp4 \\
-      --dest youtube_16x9
         """,
     )
     parser.add_argument("--config", help="Path to resolve-config.json (default: alongside this script)")
@@ -1611,6 +1643,18 @@ Examples:
                     help="Skip the loudness read (it reads the whole file)")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_check)
+
+    sp = subparsers.add_parser(
+        "deliver-captions",
+        help="Offline: Resolve's .ttml sidecar to a zero-based <stem>.srt beside the render")
+    sp.add_argument("file")
+    deliver_common(sp)
+    sp.add_argument("--track", help="The subtitle track's sidecar to convert, when Resolve "
+                                    "wrote more than one (<stem>_<track>.ttml)")
+    sp.add_argument("--keep-ttml", action="store_true",
+                    help="Leave the .ttml beside the file (default: moved to ~/.Trash)")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_deliver_captions)
 
     sp = subparsers.add_parser(
         "deliver-fix-loudness", help="Offline: normalise loudness, video copied untouched")
