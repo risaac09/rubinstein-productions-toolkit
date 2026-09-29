@@ -21,6 +21,7 @@ import tempfile
 import unittest
 from fractions import Fraction
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -335,6 +336,50 @@ class TestFixLoudness(unittest.TestCase):
         self.assertTrue(any("timecode" in w for w in r["warnings"]))
         tags = [s.get("tags", {}).get("timecode") for s in dc.probe(r["fixed"])["streams"]]
         self.assertIn("00:59:50:00", tags)
+
+
+@needs_ffmpeg
+class TestMCPDeliverCheck(unittest.TestCase):
+    """deliver_check as the MCP server calls it, with a test-size overlay
+    given the way the server takes one ($RPRESOLVE_CONFIG)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = os.path.realpath(self.tmp.name)
+        overlay = os.path.join(self.dir, "overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            f.write('{"destinations": {"linkedin_16x9": {"resolution": '
+                    '{"width": 64, "height": 36}}}}')
+        env = mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay})
+        env.start()
+        self.addCleanup(env.stop)
+        self.path = make(os.path.join(self.dir, NAME16))
+        with open(deliver.sidecar_path(self.path), "w", encoding="utf-8") as f:
+            f.write(SRT)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def call(self, args):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("deliver_check")
+        errors = schema.validate(tool.input_schema, args)
+        if errors:
+            raise AssertionError(errors)
+        return tool.handler(schema.with_defaults(tool.input_schema, args), ToolContext())
+
+    def test_pass_and_fail(self):
+        r = self.call({"file": self.path, "destination": "linkedin_16x9", "fps": "23.976"})
+        self.assertEqual(r["status"], "pass", r["summary"])
+        self.assertIn("every asserted rule passes", r["summary"])
+        r = self.call({"file": self.path, "destination": "linkedin_16x9", "fps": "25",
+                       "loudness": False})
+        self.assertIn("FAILED: fps", r["summary"])
+        with self.assertRaises(AssertionError):
+            self.call({"file": self.path, "destination": "linkedin_16x9", "size": "big"})
+        with self.assertRaisesRegex(ValueError, "absolute"):
+            self.call({"file": "relative.mp4", "destination": "linkedin_16x9"})
 
 
 if __name__ == "__main__":

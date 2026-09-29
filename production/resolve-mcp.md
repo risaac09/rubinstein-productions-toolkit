@@ -27,6 +27,13 @@ to start: it connects on the first tool that needs Resolve, and reconnects
 if Resolve was restarted. Resolve Studio's Preferences > System > General >
 External scripting using must be set to Local.
 
+Delivery destinations come from `production/resolve-config.json`. To lay a
+private overlay over it (a destination's `target_dir` on a share, a changed
+tolerance), keep the overlay outside any repository and add
+`-e "RPRESOLVE_CONFIG=/path/outside/any/repo/deliver-overlay.json"` to the
+registration. A named overlay that is missing stops the tool with an
+error; the defaults apply only when no overlay is named.
+
 Keep the write tools on "ask" in Claude Code's permissions. Their results
 name media files, people and transcript text, so treat anything they return
 as private.
@@ -48,11 +55,12 @@ tool must name that project.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
+| `deliver_check` | offline | A rendered file against its delivery destination: name rule, container, codec, size, exact fps, pixel format, colour tags, audio, captions, loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines (and 9:16 copies) from a cut manifest, gated by endcheck. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
-| `queue_render` | write | Queue one render job from a `resolve-config.json` preset. Never starts it. |
+| `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
 
 The offline tools never connect to Resolve. Every path they take must be
 absolute, since the server's working directory is not the caller's.
@@ -76,7 +84,19 @@ absolute, since the server's working directory is not the caller's.
   render runs and when the output file already exists. Resolve cannot read
   back the Deliver page's settings, so the tool puts back the format and
   codec and lists the fields it changed but cannot restore (target folder,
-  name, size, video and audio on).
+  name, size, video and audio on, and for a destination the frame rate,
+  audio, colour tags and captions too).
+- **Deliverables by destination.** With `destination`, `name` and
+  `target_dir` in place of `preset` and `output_dir`, `queue_render` names
+  the file by the house rule and also refuses when the folder sits under
+  `/Volumes` with its share unmounted, when it is inside any git working
+  tree, when the sidecar caption file exists or a queued job already
+  writes the same file, and when captions are wanted but the timeline has
+  no subtitle track. Each Deliver field goes in its own `SetRenderSettings`
+  call; if Resolve refuses a required one, nothing is queued. The result
+  shows what Resolve's job list holds and names the fields it does not
+  report; `deliver_check` on the rendered file covers those. See the
+  Deliver section of `resolve-template-spec.md`.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline
   current. The current timeline, playhead and page are restored after each,

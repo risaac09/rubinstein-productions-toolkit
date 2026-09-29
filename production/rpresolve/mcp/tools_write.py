@@ -13,7 +13,7 @@ The rules every write tool keeps:
 
 import os
 
-from .. import api, paths, workflows
+from .. import api, deliver, paths, workflows
 from ..config import load_config
 from .. import detect as rpdetect
 from .. import ingest as rpingest
@@ -21,7 +21,7 @@ from . import journal
 from .registry import WRITE, Tool
 
 DESTRUCTIVE = {**WRITE, "destructiveHint": True}
-from .tools_offline import _abs, _existing, _page
+from .tools_offline import _abs, _existing, _page, deliver_config, destination_keys
 
 WRITE_LOCK_WAIT = 30.0
 
@@ -204,6 +204,17 @@ def apply_grade(args, ctx):
 
 def queue_render(args, ctx):
     _require_sha(args)
+    if bool(args.get("preset")) == bool(args.get("destination")):
+        raise workflows.Refused("give exactly one of preset (a render preset, with output_dir) "
+                                "or destination (a delivery destination, with name and "
+                                "target_dir).")
+    if args.get("destination"):
+        return _queue_destination(args, ctx)
+    if args.get("name") or args.get("target_dir"):
+        raise ValueError("name and target_dir go with destination; a preset takes output_dir "
+                         "and custom_name.")
+    if not args.get("output_dir"):
+        raise ValueError("a preset needs output_dir.")
     out_dir = _abs(args["output_dir"], "output_dir")
     problem = paths.out_problem(os.path.join(out_dir, "x"), any_git_tree=True)
     if problem:
@@ -224,6 +235,42 @@ def queue_render(args, ctx):
             r["summary"] = (f"queued '{tl}' as {name} to {r['output']}, job "
                             f"{r['job']['JobId']}; NOT started, Isaac starts renders. Deliver "
                             f"page fields now changed: {changed}" + _ui(r))
+        else:
+            r["summary"] = ("queue_render FAILED: " +
+                            "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("queue_render", args, run)
+
+
+def _queue_destination(args, ctx):
+    if args.get("output_dir") or args.get("custom_name"):
+        raise ValueError("a destination takes target_dir and name; output_dir and custom_name "
+                         "go with preset.")
+    config = deliver_config()
+    target = _abs(args["target_dir"], "target_dir") if args.get("target_dir") else None
+    ctx.check_cancel()
+
+    def run():
+        r = workflows.queue_render(ctx.session.get(), args["project"], args["timeline"],
+                                   output_dir=target, destination=args["destination"],
+                                   name_parts=args.get("name") or {}, config=config,
+                                   dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                   expect_sha=args.get("plan_sha"),
+                                   check_cancel=ctx.check_cancel)
+        tl, d = r["timeline"]["name"], r["destination"]["name"]
+        side = f" with sidecar {os.path.basename(r['sidecar'])}" if r["sidecar"] else ""
+        if r["dry_run"]:
+            r["summary"] = (f"would queue '{tl}' for {d} as {r['output']}{side} (not started); "
+                            f"this sets the Deliver page's {', '.join(r['deliver_changed'])}" +
+                            _how(r))
+        elif r["exit_status"] == 0:
+            r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}, job "
+                            f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "
+                            "job list does not report " +
+                            (", ".join(r["unverified"]) or "nothing else") +
+                            "; check the rendered file with deliver_check" + _ui(r))
         else:
             r["summary"] = ("queue_render FAILED: " +
                             "; ".join(r["warnings"][:1] + r["readback_problems"]) + _ui(r))
@@ -343,25 +390,51 @@ def register(registry):
         apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "queue_render",
-        "Queue one render job for a timeline from a resolve-config.json preset. It never "
-        "starts a render: Isaac starts renders. The timeline is made current only while "
+        "Queue one render job for a timeline, from a resolve-config.json preset (with "
+        "output_dir) or a delivery destination (with name and target_dir). It never starts a "
+        "render: Isaac starts renders. A destination sets format, codec, size, frame rate, "
+        "audio, colour tags and captions, and names the file by the house rule "
+        "(SW001_Guest_01_example-clip_16x9.mp4, or Client_slug_master.mov); it is refused "
+        "when the folder is missing, on an unmounted share or in a git repository, when the "
+        "file or its sidecar exists or a queued job writes it, and when captions are wanted "
+        "but the timeline has no subtitle track. The timeline is made current only while "
         "queueing; the current timeline, page and the Deliver page's format and codec are put "
-        "back. The other Deliver fields it sets (target folder, name, size, video and audio "
-        "on) cannot be read back or restored, and every result lists them. Refused while a "
-        "render runs or when the output file exists. Dry run first; the real run needs its "
-        "plan_sha.",
+        "back. The other Deliver fields it sets cannot be read back or restored, and every "
+        "result lists them, with what Resolve's job list holds. Refused while a render runs. "
+        "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string", "description": "Timeline name or unique id."},
             "preset": {"type": "string", "enum": sorted(load_config()["render_presets"]),
                        "description": "A render preset from resolve-config.json."},
             "output_dir": {"type": "string",
-                           "description": "Absolute path of an existing folder outside any "
-                           "git repository."},
+                           "description": "With preset: absolute path of an existing folder "
+                           "outside any git repository."},
             "custom_name": {"type": "string", "pattern": "^[A-Za-z0-9 _.()-]{1,120}$",
-                            "description": "File name before the preset suffix (default: the "
-                            "timeline name)."},
+                            "description": "With preset: file name before the preset suffix "
+                            "(default: the timeline name)."},
+            "destination": {"type": "string", "enum": destination_keys(),
+                            "description": "A delivery destination from resolve-config.json."},
+            "name": {"type": "object", "properties": {
+                "show": {"type": "string", "pattern": f"^{deliver.SHOW}$",
+                         "description": "Show code in capitals, such as SW."},
+                "episode": {"type": "integer", "minimum": 0, "maximum": 999},
+                "guest": {"type": "string", "pattern": f"^{deliver.WORD}$",
+                          "description": "Letters and digits only."},
+                "index": {"type": "integer", "minimum": 1, "maximum": 99,
+                          "description": "Clip number."},
+                "slug": {"type": "string", "pattern": f"^{deliver.SLUG}$",
+                         "description": "Lowercase words joined by hyphens."},
+                "client": {"type": "string", "pattern": f"^{deliver.WORD}$",
+                           "description": "client_master only."}},
+                "additionalProperties": False,
+                "description": "With destination: show, episode, guest, index and slug; for "
+                "client_master, client and slug."},
+            "target_dir": {"type": "string",
+                           "description": "With destination: absolute path of an existing "
+                           "folder outside any git repository (default: the destination's "
+                           "target_dir in the config)."},
             **DRY_RUN},
-         "required": ["project", "timeline", "preset", "output_dir"],
+         "required": ["project", "timeline"],
          "additionalProperties": False},
         queue_render, title="Queue a render", annotations=WRITE))

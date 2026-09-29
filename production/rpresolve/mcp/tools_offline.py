@@ -4,7 +4,11 @@ rpresolve.mcp.tools_offline: tools that never connect to Resolve.
 detect and measure read media headers and frames with ffprobe, ffmpeg and
 exiftool; survey reads Resolve's project databases from disk (safe while
 Resolve is open); endcheck and selects read a transcript, an approved text
-and, for endcheck, the source audio.
+and, for endcheck, the source audio; deliver_check reads a rendered file
+with ffprobe and ffmpeg and checks it against a delivery destination.
+
+Destinations come from production/resolve-config.json, with the overlay at
+$RPRESOLVE_CONFIG laid over it when that is set (deliver_config()).
 
 Every path argument must be absolute (the server's working directory is
 not the caller's). Output files name client media and words, so they are
@@ -19,6 +23,7 @@ import time
 
 from .. import cutlist, paths, workflows
 from .. import detect as rpdetect
+from ..config import load_config
 from .registry import READ, Tool
 
 MAX_PATHS = 500
@@ -231,6 +236,49 @@ def selects(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# deliver_check
+# ---------------------------------------------------------------------------
+
+def deliver_config():
+    """resolve-config.json with the overlay at $RPRESOLVE_CONFIG, if set.
+    A named overlay that is missing raises ValueError."""
+    path = os.environ.get("RPRESOLVE_CONFIG")
+    if path and not os.path.isfile(path):
+        raise ValueError(f"RPRESOLVE_CONFIG names {path}, which is not a file.")
+    return load_config(path or None)
+
+
+def destination_keys():
+    """For the schemas: the configured destinations, or the defaults when
+    the overlay cannot be read (the handler then reports why)."""
+    from .. import deliver
+    try:
+        return deliver.destination_keys(deliver_config())
+    except ValueError:
+        return deliver.destination_keys(load_config())
+
+
+def deliver_check(args, ctx):
+    from .. import deliver, delivercheck as dc
+    path = _existing(args["file"], "file")
+    dest = deliver.destination(deliver_config(), args["destination"])
+    size = None
+    if args.get("size"):
+        w, h = args["size"].split("x")
+        size = (int(w), int(h))
+    if args.get("fps"):
+        dc.parse_fps(args["fps"])
+    ctx.check_cancel()
+    r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"])
+    c = r["counts"]
+    bad = [x["check"] for x in r["checks"] if x["status"] == dc.FAIL]
+    r["summary"] = (f"deliver_check {os.path.basename(path)} as {dest['key']}: "
+                    f"{c[dc.PASS]} pass, {c[dc.FAIL]} fail, {c[dc.SKIP]} skipped" +
+                    (f"; FAILED: {', '.join(bad)}" if bad else "; every asserted rule passes"))
+    return r
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -313,3 +361,25 @@ def register(registry):
               **PAGING, "limit": _limit(20, 200),
               "out": _out_prop("every proposal as TSV")}, ["words", "approved"]),
         selects, title="Propose selects", annotations=READ))
+    registry.add(Tool(
+        "deliver_check",
+        "Check a rendered deliverable against a delivery destination from resolve-config.json, "
+        "offline with ffprobe and ffmpeg: file name rule, container, video codec, size, fps "
+        "as an exact rational, pixel format, colour tags, audio codec, channels and sample "
+        "rate, captions (a sidecar .srt that parses, or none at all), and integrated loudness "
+        "and true peak. Every rule is PASS, FAIL or SKIP with what was found and expected. "
+        "Reads the whole file for loudness; set loudness false to skip that. Never connects "
+        "to Resolve.",
+        _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
+              "destination": {"type": "string", "enum": destination_keys(),
+                              "description": "The destination it was rendered for."},
+              "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
+                      "description": "The timeline's frame rate to assert (23.976, 25, "
+                      "24000/1001)."},
+              "size": {"type": "string", "pattern": r"^\d+x\d+$",
+                       "description": "WIDTHxHEIGHT to assert for a destination that renders "
+                       "at the timeline's size."},
+              "loudness": {"type": "boolean", "default": True,
+                           "description": "Measure loudness (reads the whole file)."}},
+             ["file", "destination"]),
+        deliver_check, title="Check a deliverable", annotations=READ))

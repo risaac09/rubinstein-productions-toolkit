@@ -8,6 +8,7 @@ back from the render queue, and that nothing is ever started.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -21,6 +22,10 @@ sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
 from rpresolve import api, config as rpconfig, render, workflows  # noqa: E402
+from rpresolve.mcp import schema, server  # noqa: E402
+from rpresolve.mcp.registry import ToolContext  # noqa: E402
+
+REG = server.build_registry()
 
 P = "RP Automation Sandbox"
 CLIP = {"show": "SW", "episode": 1, "guest": "Guest", "index": 1, "slug": "example-clip"}
@@ -224,6 +229,96 @@ class TestReadback(unittest.TestCase):
         project = rf.Project(jobs=[{"JobId": "j1", "TargetDir": "/a", "OutputFilename": "b.mp4"},
                                    {"JobId": "j2"}])
         self.assertEqual(render.queued_outputs(project), {os.path.realpath("/a/b.mp4")})
+
+
+class TestMCP(Base):
+    """queue_render with a destination, as the protocol calls it."""
+
+    def call(self, args):
+        tool = REG.get("queue_render")
+        args = schema.coerce(tool.input_schema, {"project": P, "timeline": "Clip [auto]",
+                                                 **args})
+        errors = schema.validate(tool.input_schema, args)
+        if errors:
+            raise AssertionError(errors)
+        return tool.handler(schema.with_defaults(tool.input_schema, args),
+                            ToolContext(session=rf.Session(self.resolve)))
+
+    def args(self, **kw):
+        return {"destination": "linkedin_16x9", "name": dict(CLIP), "target_dir": self.out, **kw}
+
+    def journal(self):
+        path = os.environ["RPRESOLVE_MCP_JOURNAL"]
+        if not os.path.exists(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line)["event"] for line in f]
+
+    def test_dry_run_then_real_run(self):
+        dry = self.call(self.args())
+        self.assertIn("would queue 'Clip [auto]' for LinkedIn 16:9", dry["summary"])
+        self.assertIn("sidecar SW001_Guest_01_example-clip_16x9.srt", dry["summary"])
+        self.assertIn(dry["plan_sha"], dry["summary"])
+        self.assertEqual((self.project.jobs, self.journal()), ([], []))
+        with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
+            self.call(self.args(dry_run=False))
+        real = self.call(self.args(dry_run=False, plan_sha=dry["plan_sha"]))
+        self.assertEqual(real["exit_status"], 0, real["summary"])
+        self.assertIn("NOT started", real["summary"])
+        self.assertIn("GammaTag", real["summary"])  # named as unverified
+        self.assertEqual(real["job"]["OutputFilename"], "SW001_Guest_01_example-clip_16x9.mp4")
+        self.assertEqual(self.journal(), ["started", "finished"])
+        self.assertEqual(real["journal"]["path"], os.environ["RPRESOLVE_MCP_JOURNAL"])
+        self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
+
+    def test_preset_or_destination_never_both(self):
+        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
+            self.call(self.args(preset="master"))
+        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
+            self.call({"output_dir": self.out})
+        with self.assertRaisesRegex(ValueError, "target_dir and name"):
+            self.call(self.args(output_dir=self.out))
+        with self.assertRaisesRegex(ValueError, "go with destination"):
+            self.call({"preset": "master", "output_dir": self.out, "name": dict(CLIP)})
+        # the preset form still works as before
+        r = self.call({"preset": "master", "output_dir": self.out})
+        self.assertTrue(r["output"].endswith("Clip [auto]_master.mov"))
+
+    def test_schema_and_argument_refusals(self):
+        for bad in ({"destination": "tiktok"}, {"name": {**CLIP, "slug": "Bad Slug"}},
+                    {"name": {**CLIP, "index": 0}}, {"name": {**CLIP, "extra": "x"}}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(AssertionError):
+                    self.call(self.args(**bad))
+        with self.assertRaisesRegex(ValueError, "absolute"):
+            self.call(self.args(target_dir="relative/out"))
+        with self.assertRaisesRegex(workflows.Refused, "missing guest"):
+            self.call(self.args(name={k: v for k, v in CLIP.items() if k != "guest"}))
+        with self.assertRaisesRegex(workflows.Refused, "no subtitle track"):
+            self.call(self.args(timeline="Bare [auto]"))
+
+    def test_an_overlay_can_carry_the_target_folder(self):
+        overlay = os.path.join(self.dir, "overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"destinations": {"linkedin_16x9": {"target_dir": self.out}}}, f)
+        args = {k: v for k, v in self.args().items() if k != "target_dir"}
+        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+            r = self.call(args)
+        self.assertEqual(os.path.dirname(r["output"]), self.out)
+        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay + ".missing"}):
+            with self.assertRaisesRegex(ValueError, "not a file"):
+                self.call(args)
+        with self.assertRaisesRegex(workflows.Refused, "no target folder"):
+            self.call(args)
+
+    def test_the_tool_list(self):
+        names = [t.name for t in REG.list()]
+        self.assertEqual(len(names), 16)
+        self.assertIn("deliver_check", names)
+        schema_ = REG.get("queue_render").input_schema
+        self.assertEqual(schema_["required"], ["project", "timeline"])
+        self.assertIn("client_master", schema_["properties"]["destination"]["enum"])
+        self.assertTrue(REG.get("deliver_check").annotations["readOnlyHint"])
 
 
 if __name__ == "__main__":

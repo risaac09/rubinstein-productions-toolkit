@@ -155,10 +155,112 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 15 tools: reads of the open project, the offline checks (detect,
-survey, measure, endcheck, selects), and additive writes (ingest, cut,
-duplicate, grade onto `[auto]` timelines, queue a render without starting
-it), each shown as a plan before it runs.
+as 16 tools: reads of the open project, the offline checks (detect,
+survey, measure, endcheck, selects, deliver_check), and additive writes
+(ingest, cut, duplicate, grade onto `[auto]` timelines, queue a render
+without starting it), each shown as a plan before it runs.
+
+---
+
+## Deliver
+
+A deliverable is rendered for a **destination**: what one platform wants,
+kept in `resolve-config.json` under `destinations`, laid over the house
+rules under `deliver`. These sit beside the older `render_presets`, which
+`render` and `render-all` still use.
+
+| Destination | Container, video | Size | Audio | Loudness | Captions |
+|---|---|---|---|---|---|
+| `youtube_16x9` | mp4, H.265 | 3840x2160 | AAC 48 kHz stereo | -14 LUFS | sidecar .srt |
+| `youtube_16x9_hd` | mp4, H.265 | 1920x1080 | AAC 48 kHz stereo | -14 LUFS | sidecar .srt |
+| `linkedin_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
+| `linkedin_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -16 LUFS | burnt in |
+| `linkedin_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -16 LUFS | burnt in |
+| `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
+| `client_master` | mov, ProRes 422 HQ | the timeline's | LPCM 24-bit 48 kHz | none (unnormalized) | none |
+
+Each destination sets its own frame size; the "always 4K" rule under Project
+Settings and Export Presets describes the render presets.
+
+House rules, all in the config: integrated loudness within +/-0.5 LU of the
+target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
+colour tags Rec.709 primaries and matrix with the Gamma 2.4 transfer
+(Resolve's `ColorSpaceTag` "Rec.709" and `GammaTag` "Gamma 2.4"). An overlay
+kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
+the MCP server) changes any one field of a destination, adds a private
+`target_dir`, adds a destination, or removes one with `null`.
+
+### File names
+
+```
+SW001_Guest_01_example-clip_16x9.mp4      show code, episode, guest, clip, slug, aspect
+Client_example-slug_master.mov            client master
+```
+
+Show code: 1 to 8 capital letters. Episode: 3 digits. Guest and client:
+letters and digits only. Clip index: 01 to 99. Slug: lowercase letters and
+digits in words joined by single hyphens, up to 60 characters. Aspect:
+`16x9`, `9x16` or `1x1`, taken from the destination, as is the extension.
+Names are validated when a job is queued and again when the file is checked.
+
+### The loop
+
+1. **Queue.** `resolve_workflow.py deliver-queue --project ... --timeline ...
+   --dest <key> --show SW --episode 1 --guest Guest --index 1 --slug
+   example-clip --target-dir <folder> --dry-run`, then again with
+   `--plan-sha`; or the MCP `queue_render` with `destination`, `name` and
+   `target_dir`. It sets format and codec, then size, frame rate, audio
+   codec, bit depth and sample rate, colour tags, captions
+   (`ExportSubtitle`, `SubtitleFormat` `SeparateFile` or `BurnIn`), render
+   all frames, and never replace existing files. It refuses, with every
+   reason, when the target folder is missing; when it sits under `/Volumes`
+   and that share is not mounted (a dropped share leaves its folders on the
+   boot disk); when it is inside a git working tree; when the file or its
+   `.srt` already exists, or a queued job writes the same file; when
+   captions are wanted and the timeline has no subtitle track, or only
+   empty ones. It never starts the render.
+2. **Render.** Isaac starts it on the Deliver page.
+3. **Check.** `resolve_workflow.py deliver-check <file> --dest <key> --fps
+   <timeline fps>` (or MCP `deliver_check`). Exit 0 all pass, 1 any fail,
+   2 ffprobe or ffmpeg missing; `--json` for the whole result. The client
+   master renders at the timeline's size, so pass `--size` to assert it.
+4. **Fix loudness** when that is what failed:
+   `resolve_workflow.py deliver-fix-loudness <file> --dest <key>`. A
+   two-pass loudnorm (measure, then linear with the measured values) on
+   the first audio stream, re-encoded to the destination's audio; video
+   and every other stream copied, colour tags kept. It writes
+   `<stem>.loudfix<ext>` beside the original, checks it under the
+   original's name and confirms the video stream is bit-identical. With
+   `--replace`, and only after that passes, the original moves to
+   `~/.Trash/deliver-loudfix-<timestamp>/` and the fixed file takes its
+   name. If loudnorm had to fall back from linear to dynamic mode (a linear
+   gain would have broken the true-peak limit), it says so: listen before
+   delivering.
+
+### Not verified until a live queue and a real render
+
+These are set from the scripting README and the config; none has been
+seen in a file Resolve rendered with these settings yet.
+
+- **Which transfer tag Resolve writes for "Gamma 2.4"** (bt709, that is
+  1-1-1; unspecified, 1-2-1; or something else). This decides how Macs
+  play a web upload: a file tagged 1-1-1 is shown with the Rec.709 camera
+  curve, brighter in the shadows than the Gamma 2.4 grade, which is the
+  "Rec.709-A" issue. The check reports the transfer it finds and asserts
+  nothing until `deliver.color.expect.color_transfer` is set from a real
+  render.
+- The tag strings `Rec.709` and `Gamma 2.4`, and the `AudioCodec` strings
+  `aac` and `lpcm`. A string Resolve does not accept is refused by
+  `SetRenderSettings`, and the job is then not queued.
+- The sidecar's name: the check expects `<stem>.srt` beside the file and
+  names any near miss it finds. Whether the sidecar is SRT or WebVTT is not
+  a scripting key.
+- Which fields `GetRenderJobList` reports. The queue result compares the
+  ones it does report and lists the rest as unverified.
+- Channel count cannot be set through the API (the render takes the
+  timeline's output bus), and `VideoQuality` (bit rate) is not set by
+  default, so it carries over from the Deliver page; the config's
+  `resolve` block can set it per destination.
 
 ---
 
@@ -170,4 +272,4 @@ it), each shown as a plan before it runs.
 
 ---
 
-*Version 1.2 — 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
+*Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
