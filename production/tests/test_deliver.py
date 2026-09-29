@@ -47,7 +47,8 @@ class TestNames(unittest.TestCase):
                dict(episode=-1), dict(episode="1a"), dict(episode=True), dict(guest="Two Words"),
                dict(guest="Guest_1"), dict(guest="Gäst"), dict(index=0), dict(index=100),
                dict(slug="Example"), dict(slug="example_clip"), dict(slug="-lead"),
-               dict(slug="trail-"), dict(slug="dou--ble"), dict(slug="a" * 61)]
+               dict(slug="trail-"), dict(slug="dou--ble"), dict(slug="a" * 61),
+               dict(episode="００１"), dict(index="٠١")]
         for over in bad:
             with self.subTest(over=over):
                 with self.assertRaises(deliver.NameRuleError):
@@ -91,6 +92,10 @@ class TestNames(unittest.TestCase):
             "Client_example-slug_master.mp4": ".mov",
             "Client Co_example-slug_master.mov": "client",
             "Client_Slug_master.mov": "slug",
+            # digits are ASCII 0-9 only: fullwidth and Arabic-Indic digits break the rule
+            "SW００１_Guest_０１_example-clip_16x9.mp4": "3-digit episode",
+            "SW١٢٣_Guest_01_example-clip_16x9.mp4": "3-digit episode",
+            "SW001_Guest_٠١_example-clip_16x9.mp4": "index",
         }
         for name, why in cases.items():
             with self.subTest(name=name):

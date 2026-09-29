@@ -12,8 +12,8 @@ Deliverable names, checked strictly both ways (deliverable_name builds one,
 parse_name checks a file name against the rule):
 
     clip    SW001_Guest_01_example-clip_16x9.mp4
-            show code (1 to 8 capital letters), episode (3 digits), guest
-            ([A-Za-z0-9]+), index (2 digits, 01 to 99), slug (lowercase
+            show code (1 to 8 capital letters), episode (3 ASCII digits),
+            guest ([A-Za-z0-9]+), index (2 digits, 01 to 99), slug (lowercase
             letters and digits in words joined by single hyphens), aspect
             (16x9, 9x16 or 1x1), extension from the destination.
     master  Client_example-slug_master.mov
@@ -40,8 +40,11 @@ SHOW = r"[A-Z]{1,8}"
 WORD = r"[A-Za-z0-9]+"
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 SLUG_MAX = 60
-CLIP_RE = re.compile(rf"^(?P<show>{SHOW})(?P<episode>\d{{3}})_(?P<guest>{WORD})_(?P<index>\d{{2}})"
-                     rf"_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)\.(?P<ext>mp4|mov)$")
+# Digits are written [0-9]: in a str pattern \d also matches fullwidth and
+# other Unicode digits, which the rule does not allow.
+CLIP_RE = re.compile(rf"^(?P<show>{SHOW})(?P<episode>[0-9]{{3}})_(?P<guest>{WORD})"
+                     rf"_(?P<index>[0-9]{{2}})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)"
+                     rf"\.(?P<ext>mp4|mov)$")
 MASTER_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_master\.(?P<ext>mov)$")
 
 CLIP_PARTS = ("show", "episode", "guest", "index", "slug")
@@ -65,7 +68,7 @@ def _digits(value, field, width, low, high):
         raise NameRuleError(f"{field} must be a number, got {value!r}.")
     if isinstance(value, float) and value.is_integer():
         value = int(value)
-    if isinstance(value, str) and re.fullmatch(r"\d{1,%d}" % width, value):
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,%d}" % width, value):
         value = int(value)
     if not isinstance(value, int) or not low <= value <= high:
         raise NameRuleError(f"{field} must be a whole number from {low} to {high} "
@@ -158,11 +161,11 @@ def _why_not(base):
         return ("expected <SHOW><episode>_<Guest>_<index>_<slug>_<aspect>, five parts "
                 f"joined by underscores (found {len(fields)}); or <Client>_<slug>_master.mov.")
     head, guest, index, slug, aspect = fields
-    if not re.fullmatch(rf"{SHOW}\d{{3}}", head):
+    if not re.fullmatch(rf"{SHOW}[0-9]{{3}}", head):
         return f"{head!r} must be the show code in capitals then a 3-digit episode, as SW001."
     if not re.fullmatch(WORD, guest):
         return f"guest {guest!r} must be letters and digits only."
-    if not re.fullmatch(r"\d{2}", index) or index == "00":
+    if not re.fullmatch(r"[0-9]{2}", index) or index == "00":
         return f"index {index!r} must be 2 digits, 01 to 99."
     if not re.fullmatch(SLUG, slug):
         return f"slug {slug!r} must be lowercase words joined by single hyphens."
