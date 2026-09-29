@@ -178,7 +178,8 @@ def _read(path, named, warn, strict):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            raise ValueError(f"the top level is a JSON {type(data).__name__}, not an object")
+            raise ValueError("the top level must be a JSON object; this one is a "
+                             f"{type(data).__name__}")
     except (ValueError, OSError) as e:  # JSONDecodeError and UnicodeDecodeError
         if strict:
             raise ConfigError(f"could not read config '{path}': {e}.")

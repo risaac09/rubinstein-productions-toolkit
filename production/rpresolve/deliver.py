@@ -34,7 +34,7 @@ from . import paths
 ASPECTS = ("16x9", "9x16", "1x1")
 ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0}
 # How far two width:height ratios may sit apart and still count as one
-# shape: 1920x1088 is 16:9, 4096x2160 (DCI, 6.7% wider) is not.
+# shape. 1920x1088 counts as 16:9; DCI 4096x2160, 6.7% wider, falls outside.
 ASPECT_TOLERANCE = 0.01
 CAPTIONS = ("sidecar", "burnin", "none")
 # Extensions of caption files that may sit beside a deliverable.

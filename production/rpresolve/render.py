@@ -147,9 +147,9 @@ def queue_destination_job(project, dest, steps):
         return out
     mode = project.GetCurrentRenderMode()
     if mode != SINGLE_CLIP:
-        out["error"] = (f"the render mode reads back as {mode!r}, not Single clip "
-                        f"({SINGLE_CLIP}); a job in Individual clips mode writes files under "
-                        "names nothing here checked. Nothing was queued.")
+        out["error"] = (f"the render mode reads back as {mode!r} after Single clip "
+                        f"({SINGLE_CLIP}) was set; a job in Individual clips mode writes files "
+                        "under names nothing here checked. Nothing was queued.")
         return out
     out["job_id"] = project.AddRenderJob() or None
     if not out["job_id"]:

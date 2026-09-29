@@ -372,9 +372,9 @@ def register(registry):
         "offline with ffprobe and ffmpeg: file name rule, container, video codec, size, fps "
         "as an exact rational, pixel format, colour tags and range (limited), audio codec, "
         "channels and sample rate, captions (a sidecar .srt that parses, or none at all), and "
-        "integrated loudness and true peak. Every rule is PASS, FAIL or SKIP with what was found and expected. "
-        "Reads the whole file for loudness; set loudness false to skip that. Never connects "
-        "to Resolve.",
+        "integrated loudness and true peak. Every rule is PASS, FAIL or SKIP with what was "
+        "found and expected. Reads the whole file for loudness; set loudness false to skip "
+        "that. Never connects to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "enum": destination_keys(),
                               "description": "The destination it was rendered for."},
