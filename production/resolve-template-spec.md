@@ -490,8 +490,8 @@ The reference is the camera clip.
   reference's clock. Positive when the other started later; negative when
   it started earlier. With drift measured, it is the drift line's value
   at the overlap's midpoint, where one placement errs least (the head
-  window's own reading is `head_offset_s`); with one window, that
-  window's. Each file's zero is its first video frame (its first audio
+  window's own reading is `head_offset_s`); with one window, or windows
+  that do not lie on one line, the head window's. Each file's zero is its first video frame (its first audio
   sample when it has none), so an audio stream that starts late in its
   container is counted. That assumes Resolve also plays such a stream
   from its own start time, which is not yet seen live (item 7 below); the

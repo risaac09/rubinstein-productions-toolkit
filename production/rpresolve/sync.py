@@ -27,11 +27,12 @@ clock: positive when the other recording started after the reference,
 negative when it started before. A straight line fitted through every
 window's offset gives clock drift, in ms per minute and ppm, and offset_s
 is that line's value at the overlap's midpoint, where one placement errs
-least (the head window's offset, head_offset_s, when the overlap holds
-one window). What a placement at whole frames leaves at either end of the
-overlap, the frame rounding plus half the drift, is worst_ms; past
-MAX_DRIFT_FRAMES of a frame it is reported with the retime that would
-cancel the drift (exit 2 in the CLI); nothing here corrects it.
+least (the head window's reading, head_offset_s, when the overlap holds
+one window or the windows do not lie on a line). What a placement at
+whole frames leaves at either end of the overlap, the frame rounding plus
+half the drift, is worst_ms; past MAX_DRIFT_FRAMES of a frame it is
+reported with the retime that would cancel the drift (exit 2 in the CLI);
+nothing here corrects it.
 
 One clock keeps every window within a millisecond or so of that line
 (the stretched pass, within microseconds on synthetic drift). A window
@@ -275,12 +276,13 @@ def peak(ref, other, lag_min=None, lag_max=None, min_overlap=1, exclude=0):
 
 def without_event(x, y, lag, width):
     """(ncc, at): the normalized correlation of x against y at the integer
-    lag (as in xcorr) with the `width` samples that add most to it left out,
-    and where in x the strongest sample of that stretch is. Near the full ncc when the
-    likeness runs through the window; near zero when one moment (a click, a
-    clap, a single sample over digital silence) carries it all. What is left
-    has its own mean taken out: removing a whole file's mean leaves digital
-    silence as a constant, and two constants correlate perfectly."""
+    lag (as in xcorr) with the `width` samples that add most to it left
+    out, and where in x the strongest sample of that stretch is. Near the
+    full ncc when the likeness runs through the window; near zero when one
+    moment (a click, a clap, a single sample over digital silence) carries
+    it all. What is left has its own mean taken out: removing a whole
+    file's mean leaves digital silence as a constant, and two constants
+    correlate perfectly."""
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
     lo, hi = max(0, lag), min(len(x), len(y) + lag)
