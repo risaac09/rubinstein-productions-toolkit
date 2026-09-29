@@ -21,7 +21,8 @@ deliver_captions(file, dest):
     2. Parses the TTML (parse_ttml): every namespace, clock times
        (HH:MM:SS.fff, HH:MM:SS:FF with ttp:frameRate and
        ttp:frameRateMultiplier, sub-frames), offset times (12.5s, 300f,
-       500ms, 2m, 1h, 100t), begin with end or dur, timing on body and div
+       500ms, 2m, 1h, 100t), begin with end or dur (with both, the
+       earlier of the two ends), timing on body and div
        (a <p> starts with its parent unless it has a begin, ends with it
        unless it has an end or dur, and is cut off where its parent ends;
        parallel time containers only, timeContainer="seq" is refused),
@@ -276,12 +277,13 @@ def parse_ttml(text):
                                "markers: a caption's times are labels, and an offset from its "
                                "parent is not defined there.")
         here = offset + (parse_time(begin, params) if begin is not None else 0)
+        # With both, the earlier of end and begin + dur (SMIL; TTML2 12.2.2).
+        ends = []
         if end is not None:
-            stop = offset + parse_time(end, params)
-        elif dur is not None:
-            stop = here + parse_time(dur, params)
-        else:
-            stop = parent_end
+            ends.append(offset + parse_time(end, params))
+        if dur is not None:
+            ends.append(here + parse_time(dur, params))
+        stop = min(ends) if ends else parent_end
         if stop is not None and parent_end is not None:
             stop = min(stop, parent_end)
         if _local(el.tag) == "p":

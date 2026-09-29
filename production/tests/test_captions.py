@@ -200,6 +200,16 @@ class TestTTML(unittest.TestCase):
                 '<p begin="1s" dur="1s">One</p></div></body></tt>')
         self.assertEqual(secs(captions.parse_ttml(text)), [(1.0, 2.0, "One")])
 
+    def test_end_and_dur_together_end_at_the_earlier(self):
+        # SMIL, as TTML2 12.2.2 notes: the lesser of dur and end minus begin
+        r = captions.parse_ttml(tt('<p begin="1s" end="10s" dur="1s">One</p>'
+                                   '<p begin="20s" end="21s" dur="5s">Two</p>'))
+        self.assertEqual(secs(r), [(1.0, 2.0, "One"), (20.0, 21.0, "Two")])
+        # on a div too, where it cuts off the captions inside
+        text = (f'<tt {TTML_NS}><body><div begin="1s" end="10s" dur="2s">'
+                '<p>Example caption one</p></div></body></tt>')
+        self.assertEqual(secs(captions.parse_ttml(text)), [(1.0, 3.0, "Example caption one")])
+
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
         self.assertEqual(r["cues"][0][2], "One\nTwo")
