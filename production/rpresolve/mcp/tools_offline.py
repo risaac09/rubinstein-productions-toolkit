@@ -23,7 +23,7 @@ import time
 
 from .. import cutlist, paths, workflows
 from .. import detect as rpdetect
-from ..config import load_config
+from ..config import ConfigError, load_config
 from .registry import READ, Tool
 
 MAX_PATHS = 500
@@ -241,11 +241,16 @@ def selects(args, ctx):
 
 def deliver_config():
     """resolve-config.json with the overlay at $RPRESOLVE_CONFIG, if set.
-    A named overlay that is missing raises ValueError."""
+    A named overlay that is missing, unreadable or not a JSON object raises
+    ValueError (never a quiet fall back to the defaults), as does a
+    resolve-config.json that does not parse."""
     path = os.environ.get("RPRESOLVE_CONFIG")
     if path and not os.path.isfile(path):
         raise ValueError(f"RPRESOLVE_CONFIG names {path}, which is not a file.")
-    return load_config(path or None)
+    try:
+        return load_config(path or None, strict=True)
+    except ConfigError as e:
+        raise ValueError(f"RPRESOLVE_CONFIG: {e}" if path else str(e))
 
 
 def destination_keys():

@@ -31,8 +31,9 @@ Delivery destinations come from `production/resolve-config.json`. To lay a
 private overlay over it (a destination's `target_dir` on a share, a changed
 tolerance), keep the overlay outside any repository and add
 `-e "RPRESOLVE_CONFIG=/path/outside/any/repo/deliver-overlay.json"` to the
-registration. A named overlay that is missing stops the tool with an
-error; the defaults apply only when no overlay is named.
+registration. A named overlay that is missing, does not parse, or is not
+a JSON object stops the tool with an error; it is never quietly replaced
+by the defaults.
 
 Keep the write tools on "ask" in Claude Code's permissions. Their results
 name media files, people and transcript text, so treat anything they return

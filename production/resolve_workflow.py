@@ -1160,12 +1160,14 @@ def cmd_cut(args):
 
 def _deliver_config(args):
     """The config for the deliver commands: --config given after the
-    command or before it. A named file that is missing is an error here
-    (load_config would quietly fall back to the defaults)."""
+    command or before it. A named file that is missing, unreadable or not a
+    JSON object stops the command (exit 1); the lenient load_config would
+    warn and carry on with the defaults, checking against the wrong rules."""
     path = getattr(args, "deliver_config", None) or args.config
-    if path and not os.path.isfile(path):
-        raise SystemExit(f"ERROR: config {path} not found.")
-    return rpconfig.load_config(path, warn=lambda m: print(m, file=sys.stderr))
+    try:
+        return rpconfig.load_config(path, strict=True)
+    except rpconfig.ConfigError as e:
+        raise SystemExit(f"ERROR: {e}")
 
 
 def _size(text):

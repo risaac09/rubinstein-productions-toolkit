@@ -194,6 +194,28 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(sorted(cfg["render_presets"]), ["linkedin", "master", "story",
                                                          "youtube"])
 
+    def test_a_named_overlay_that_cannot_be_read_is_an_error_when_strict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = {"trailing-comma.json": '{"destinations": {"linkedin_16x9": {"resolution": '
+                                          '{"width": 64, "height": 36}},}}',
+                   "a-list.json": "[1, 2]", "empty.json": "",
+                   "latin1.json": b'{"x": "caf\xe9"}'}
+            for name, text in bad.items():
+                p = os.path.join(tmp, name)
+                with open(p, "wb") as f:
+                    f.write(text if isinstance(text, bytes) else text.encode("utf-8"))
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(rpconfig.ConfigError, "could not read"):
+                        rpconfig.load_config(p, strict=True)
+                    warned = []
+                    cfg = rpconfig.load_config(p, warn=warned.append)  # the old, lenient way
+                    self.assertEqual(len(warned), 1)
+                    self.assertEqual(cfg["destinations"]["linkedin_16x9"]["resolution"],
+                                     {"width": 1920, "height": 1080})
+            with self.assertRaisesRegex(rpconfig.ConfigError, "not found"):
+                rpconfig.load_config(os.path.join(tmp, "missing.json"), strict=True)
+            self.assertTrue(issubclass(rpconfig.ConfigError, ValueError))
+
     def test_merge_leaves_its_inputs_alone(self):
         a = {"x": {"y": 1, "z": [1]}}
         b = {"x": {"y": 2}}

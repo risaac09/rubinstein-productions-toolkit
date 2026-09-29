@@ -22,7 +22,7 @@ sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
 from rpresolve import api, config as rpconfig, render, workflows  # noqa: E402
-from rpresolve.mcp import schema, server  # noqa: E402
+from rpresolve.mcp import schema, server, tools_offline  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 
 REG = server.build_registry()
@@ -379,6 +379,23 @@ class TestMCP(Base):
                 self.call(args)
         with self.assertRaisesRegex(workflows.Refused, "no target folder"):
             self.call(args)
+
+    def test_an_overlay_that_does_not_parse_stops_the_tool(self):
+        overlay = os.path.join(self.dir, "overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            f.write('{"destinations": {"linkedin_16x9": {"target_dir": "%s"},}}' % self.out)
+        media = os.path.join(self.dir, "SW001_Guest_01_example-clip_16x9.mp4")
+        open(media, "w").close()
+        check = REG.get("deliver_check")
+        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+            with self.assertRaisesRegex(ValueError, "RPRESOLVE_CONFIG.*could not read"):
+                tools_offline.deliver_config()
+            with self.assertRaisesRegex(ValueError, "could not read"):
+                self.call(self.args())
+            with self.assertRaisesRegex(ValueError, "could not read"):
+                check.handler(schema.with_defaults(check.input_schema, {
+                    "file": media, "destination": "linkedin_16x9"}), ToolContext())
+        self.assertEqual(self.project.jobs, [])
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]

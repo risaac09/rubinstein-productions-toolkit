@@ -100,6 +100,42 @@ class TestCheckCommands(unittest.TestCase):
         self.assertIn("already exists", p.stderr)
 
 
+class TestBadOverlay(unittest.TestCase):
+    """An overlay named with --config that does not parse stops the deliver
+    commands; it is never quietly replaced by the defaults."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = os.path.realpath(self.tmp.name)
+        self.config = os.path.join(self.dir, "overlay.json")
+        with open(self.config, "w", encoding="utf-8") as f:
+            f.write('{"destinations": {"linkedin_16x9": {"resolution": '
+                    '{"width": 64, "height": 36}},}}')
+        self.file = os.path.join(self.dir, NAME)
+        open(self.file, "w").close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_check_commands_exit_1(self):
+        for cmd in ("deliver-check", "deliver-fix-loudness"):
+            with self.subTest(cmd=cmd):
+                p = run(cmd, self.file, "--dest", "linkedin_16x9", "--config", self.config)
+                self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+                self.assertIn("could not read config", p.stderr)
+                self.assertNotIn("Using defaults", p.stderr)
+                p = run("--config", self.config, cmd, self.file, "--dest", "linkedin_16x9")
+                self.assertEqual(p.returncode, 1)
+                self.assertIn("could not read config", p.stderr)
+
+    def test_queue_command_stops_before_resolve(self):
+        args = argparse.Namespace(config=None, deliver_config=self.config)
+        with mock.patch.object(resolve_workflow, "get_resolve") as get:
+            with self.assertRaisesRegex(SystemExit, "could not read config"):
+                resolve_workflow.cmd_deliver_queue(args)
+        get.assert_not_called()
+
+
 class TestQueueCommand(unittest.TestCase):
     def setUp(self):
         rf.CALLS.clear()

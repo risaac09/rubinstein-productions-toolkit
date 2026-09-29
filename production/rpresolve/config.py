@@ -126,14 +126,24 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_config(config_path=None, warn=None):
+class ConfigError(ValueError):
+    """A config file that is missing or cannot be read, under strict=True."""
+
+
+def load_config(config_path=None, warn=None, strict=False):
     """Load resolve-config.json, falling back to built-in defaults for any
-    missing top-level key. Never raises: a missing or malformed config
-    degrades to defaults, and `warn` (if given) receives the warning text."""
+    missing top-level key. By default it never raises: a missing or
+    malformed config degrades to defaults, and `warn` (if given) receives
+    the warning text. With strict, a named config_path that is missing, and
+    any config file that cannot be read, parsed as JSON, or is not a JSON
+    object, raises ConfigError instead; the delivery commands use this, so
+    an overlay that changes a loudness target is never silently dropped."""
     path = Path(config_path) if config_path else CONFIG_PATH_DEFAULT
     config = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
 
     if not path.exists():
+        if strict and config_path:
+            raise ConfigError(f"config {path} not found.")
         return config
 
     # UTF-8 always: Resolve's scripting library leaves the process in the C
@@ -141,7 +151,12 @@ def load_config(config_path=None, warn=None):
     try:
         with open(path, encoding="utf-8") as f:
             user_config = json.load(f)
+        if not isinstance(user_config, dict):
+            raise ValueError(f"the top level is a JSON {type(user_config).__name__}, not an "
+                             "object")
     except (ValueError, OSError) as e:  # JSONDecodeError and UnicodeDecodeError
+        if strict:
+            raise ConfigError(f"could not read config '{path}': {e}.")
         if warn:
             warn(f"WARNING: Could not read config '{path}': {e}. Using defaults.")
         return config
