@@ -424,8 +424,10 @@ def register(registry):
             "custom_name": {"type": "string", "pattern": "^[A-Za-z0-9 _.()-]{1,120}$",
                             "description": "With preset: file name before the preset suffix "
                             "(default: the timeline name)."},
-            "destination": {"type": "string", "enum": destination_keys(),
-                            "description": "A delivery destination from resolve-config.json."},
+            "destination": {"type": "string", "minLength": 1,
+                            "description": "A delivery destination, a key in the config's "
+                            "destinations (checked when called, so an overlay edit needs no "
+                            "restart; at start: " + ", ".join(destination_keys()) + ")."},
             "name": {"type": "object", "properties": {
                 "show": {"type": "string", "pattern": f"^{deliver.SHOW}$",
                          "description": "Show code in capitals, such as SW."},

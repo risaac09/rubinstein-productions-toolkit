@@ -167,6 +167,13 @@ def queued_outputs(project):
     return out
 
 
+def unreported_jobs(project):
+    """JobIds of queued jobs that do not report TargetDir and OutputFilename,
+    which queued_outputs() cannot see: a clash with them goes unchecked."""
+    return [job.get("JobId") for job in project.GetRenderJobList() or []
+            if not (job.get("TargetDir") and job.get("OutputFilename"))]
+
+
 def readback_report(job, exact, loose):
     """Compare a queued job with what was asked for. exact: fields whose
     mismatch fails the queue (paths, names, numbers). loose: fields where

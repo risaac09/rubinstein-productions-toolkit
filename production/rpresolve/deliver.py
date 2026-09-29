@@ -442,11 +442,17 @@ def shape_problems(dest, size, timeline="the timeline"):
     return []
 
 
-def timeline_problems(dest, subtitle_counts):
+def timeline_problems(dest, subtitle_counts, disabled_counts=()):
     """Refusals that come from the timeline: captions wanted but no
-    subtitle track, or only empty ones. subtitle_counts: items per track."""
+    subtitle track, only empty ones, or captions only on disabled tracks.
+    subtitle_counts: items per enabled track; disabled_counts: items per
+    disabled track, which Resolve does not render."""
     if dest.get("captions") not in ("sidecar", "burnin"):
         return []
+    if not any(subtitle_counts) and any(disabled_counts):
+        return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline's only "
+                "subtitle items are on disabled track(s), which Resolve does not render. "
+                "Enable the caption track first."]
     if not subtitle_counts:
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline has no "
                 "subtitle track. Add the captions (an .srt on a subtitle track) first."]

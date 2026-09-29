@@ -635,15 +635,20 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     _, tl = api.find_timeline(project, timeline)
     if project.IsRenderingInProgress():
         raise Refused("a render is running; queue after it finishes.")
-    subtitle_counts = [len(tl.GetItemListInTrack("subtitle", i) or [])
-                       for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle")
-                                             or 0) + 1)]
+    subtitle_counts, subtitle_off = [], []
+    for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
+        count = len(tl.GetItemListInTrack("subtitle", i) or [])
+        # A disabled track does not render; a state that cannot be read counts as enabled.
+        if api._safe_call(tl, "GetIsTrackEnabled", "subtitle", i) is False:
+            subtitle_off.append(count)
+        else:
+            subtitle_counts.append(count)
     fps_raw = (api._safe_call(tl, "GetSetting", "timelineFrameRate") or
                api._safe_call(project, "GetSetting", "timelineFrameRate"))
     fps = deliver.fps_number(fps_raw)
     size = _timeline_size(project, tl)
     problems = (deliver.shape_problems(dest, size, f"timeline '{tl.GetName()}'") +
-                deliver.timeline_problems(dest, subtitle_counts) +
+                deliver.timeline_problems(dest, subtitle_counts, subtitle_off) +
                 deliver.output_problems(target_dir, filename, dest,
                                         queued=render.queued_outputs(project),
                                         volumes_root=volumes_root))
@@ -660,7 +665,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                    steps)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId(), "fps": fps_raw,
-                        "size": list(size), "subtitle_tracks": subtitle_counts},
+                        "size": list(size), "subtitle_tracks": subtitle_counts,
+                        "subtitle_tracks_disabled": subtitle_off},
            "destination": {k: dest.get(k) for k in ("key", "name", "format", "codec",
                                                     "resolution", "audio", "loudness",
                                                     "captions", "data_burn_in", "color")},
@@ -672,6 +678,11 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                                + deliver.changed_fields(steps)),
            "carried_over": deliver.carried_over(steps),
            "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0}
+    unnamed = render.unreported_jobs(project)
+    if unnamed:
+        out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
+                               "their output file (TargetDir and OutputFilename), so a clash with "
+                               "them could not be checked: " + ", ".join(map(str, unnamed)))
     if fps is None:
         out["warnings"].append(f"the timeline's frame rate ({fps_raw!r}) could not be read, so "
                                "FrameRate is not set; check fps with deliver-check.")

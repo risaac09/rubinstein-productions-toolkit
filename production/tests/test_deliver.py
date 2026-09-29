@@ -415,6 +415,13 @@ class TestOutputProblems(unittest.TestCase):
         self.assertEqual(deliver.timeline_problems(self.yt, [0, 3]), [])
         self.assertEqual(deliver.timeline_problems(dest("client_master"), []), [])
 
+    def test_captions_only_on_a_disabled_track_are_refused(self):
+        # A disabled track does not render, so its items cannot carry the captions.
+        self.assertIn("disabled", deliver.timeline_problems(self.yt, [0], [4])[0])
+        self.assertIn("disabled", deliver.timeline_problems(dest("linkedin_9x16"), [], [2])[0])
+        self.assertEqual(deliver.timeline_problems(self.yt, [3], [4]), [])
+        self.assertEqual(deliver.timeline_problems(dest("client_master"), [], [4]), [])
+
 
 class TestShape(unittest.TestCase):
     def test_shape_problems(self):

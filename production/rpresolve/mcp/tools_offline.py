@@ -376,8 +376,11 @@ def register(registry):
         "found and expected. Reads the whole file for loudness; set loudness false to skip "
         "that. Never connects to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
-              "destination": {"type": "string", "enum": destination_keys(),
-                              "description": "The destination it was rendered for."},
+              "destination": {"type": "string", "minLength": 1,
+                              "description": "The destination it was rendered for: a key "
+                              "in the config's destinations, checked when called, so an "
+                              "overlay edit needs no restart (at start: " +
+                              ", ".join(destination_keys()) + ")."},
               "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
                       "description": "The timeline's frame rate to assert (23.976, 25, "
                       "24000/1001)."},

@@ -211,6 +211,23 @@ class TestRefusals(Base):
         with self.assertRaisesRegex(workflows.Refused, "empty"):
             self.queue(dry_run=True)
 
+    def test_captions_only_on_a_disabled_track(self):
+        self.wide.disabled.add(("subtitle", 1))
+        with self.assertRaisesRegex(workflows.Refused, "disabled track"):
+            self.queue(dry_run=True)
+        self.wide.tracks["subtitle"].append(
+            [rf.Item("Subtitle 2", 86400, 86424, None, nodes=None)])
+        r = self.queue(dry_run=True)
+        self.assertEqual(r["timeline"]["subtitle_tracks"], [1])
+        self.assertEqual(r["timeline"]["subtitle_tracks_disabled"], [1])
+
+    def test_a_queued_job_that_hides_its_output_is_named(self):
+        # A job without TargetDir/OutputFilename cannot be compared for a clash.
+        self.project.jobs.append({"JobId": "j-old"})
+        r = self.queue(dry_run=True)
+        self.assertTrue(any("j-old" in w and "could not be checked" in w
+                            for w in r["warnings"]), r["warnings"])
+
     def test_existing_file_or_sidecar_or_queued_job(self):
         name = os.path.join(self.out, "SW001_Guest_01_example-clip_16x9")
         open(name + ".mp4", "w").close()
@@ -308,6 +325,7 @@ class TestReadback(unittest.TestCase):
         project = rf.Project(jobs=[{"JobId": "j1", "TargetDir": "/a", "OutputFilename": "b.mp4"},
                                    {"JobId": "j2"}])
         self.assertEqual(render.queued_outputs(project), {os.path.realpath("/a/b.mp4")})
+        self.assertEqual(render.unreported_jobs(project), ["j2"])
 
 
 class TestMCP(Base):
@@ -398,13 +416,16 @@ class TestMCP(Base):
         self.assertTrue(r["output"].endswith("Clip [auto]_master.mov"))
 
     def test_schema_and_argument_refusals(self):
-        for bad in ({"destination": "tiktok"}, {"name": {**CLIP, "slug": "Bad Slug"}},
+        for bad in ({"name": {**CLIP, "slug": "Bad Slug"}},
                     {"name": {**CLIP, "index": 0}}, {"name": {**CLIP, "extra": "x"}}):
             with self.subTest(bad=bad):
                 with self.assertRaises(AssertionError):
                     self.call(self.args(**bad))
         with self.assertRaisesRegex(ValueError, "absolute"):
             self.call(self.args(target_dir="relative/out"))
+        # destinations are checked when called, against the config as it is then
+        with self.assertRaisesRegex(workflows.Refused, "unknown destination 'tiktok'"):
+            self.call(self.args(destination="tiktok"))
         with self.assertRaisesRegex(workflows.Refused, "missing guest"):
             self.call(self.args(name={k: v for k, v in CLIP.items() if k != "guest"}))
         with self.assertRaisesRegex(workflows.Refused, "no subtitle track"):
@@ -447,7 +468,8 @@ class TestMCP(Base):
         self.assertIn("deliver_check", names)
         schema_ = REG.get("queue_render").input_schema
         self.assertEqual(schema_["required"], ["project", "timeline"])
-        self.assertIn("client_master", schema_["properties"]["destination"]["enum"])
+        self.assertNotIn("enum", schema_["properties"]["destination"])
+        self.assertIn("client_master", schema_["properties"]["destination"]["description"])
         self.assertTrue(REG.get("deliver_check").annotations["readOnlyHint"])
 
 

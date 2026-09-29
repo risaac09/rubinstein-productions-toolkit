@@ -104,12 +104,14 @@ class Timeline(Fake):
         self.name, self.uid, self.fps, self.start, self.end = name, uid, fps, start, end
         self.tracks = tracks or {"video": [[]], "audio": [[]]}  # kind -> [track items]
         self.settings = dict(settings or {})
+        self.disabled = set()  # (kind, index) of tracks switched off
 
     def GetName(self): return self.name
     def GetUniqueId(self): return self.uid
     def GetStartFrame(self): return self.start
     def GetEndFrame(self): return self.end
     def GetTrackCount(self, kind): return len(self.tracks.get(kind, []))
+    def GetIsTrackEnabled(self, kind, index): return (kind, index) not in self.disabled
 
     def GetSetting(self, key=None):
         return self.fps if key == "timelineFrameRate" else self.settings.get(key)
