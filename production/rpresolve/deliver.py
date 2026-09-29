@@ -32,6 +32,10 @@ import re
 from . import paths
 
 ASPECTS = ("16x9", "9x16", "1x1")
+ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0}
+# How far two width:height ratios may sit apart and still count as one
+# shape: 1920x1088 is 16:9, 4096x2160 (DCI, 6.7% wider) is not.
+ASPECT_TOLERANCE = 0.01
 CAPTIONS = ("sidecar", "burnin", "none")
 # Extensions of caption files that may sit beside a deliverable.
 CAPTION_EXTS = ("srt", "vtt", "scc", "ttml", "xml")
@@ -287,6 +291,11 @@ def destination_problems(dest):
                                   _num(res.get("height")) and res["width"] > 0 and
                                   res["height"] > 0):
         p.append('resolution must be {"width": W, "height": H} or "timeline"')
+    elif res != "timeline" and dest.get("aspect") in ASPECT_RATIO:
+        want = ASPECT_RATIO[dest["aspect"]]
+        if abs(res["width"] / res["height"] - want) / want > ASPECT_TOLERANCE:
+            p.append(f"resolution {res['width']}x{res['height']} is not {dest['aspect']}, the "
+                     "aspect its files are named for")
     audio = dest.get("audio") or {}
     if audio.get("codec") not in AUDIO_CODECS:
         p.append(f"audio.codec must be one of {', '.join(AUDIO_CODECS)}")
@@ -390,6 +399,42 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
         problems.append(f"a job already in the render queue writes {out}" +
                         (f" (as {clash[0]})" if clash[0] != out else "") + ".")
     return problems
+
+
+def _shape(width, height):
+    """'landscape', 'portrait' or 'square' (within ASPECT_TOLERANCE)."""
+    ratio = width / height
+    if abs(ratio - 1) <= ASPECT_TOLERANCE:
+        return "square"
+    return "landscape" if ratio > 1 else "portrait"
+
+
+def shape_problems(dest, size, timeline="the timeline"):
+    """Refusals that come from the timeline's frame. A destination of a
+    fixed size renders the timeline scaled into that frame, with bars where
+    the shapes differ (Resolve does not reframe), so the timeline must have
+    the destination's shape: the same orientation, and width:height within
+    ASPECT_TOLERANCE. size is the timeline's (width, height). A destination
+    that renders at the timeline's size has nothing to compare."""
+    if dest["resolution"] == "timeline":
+        return []
+    dw, dh = int(dest["resolution"]["width"]), int(dest["resolution"]["height"])
+    label = f"{dest.get('aspect') or _shape(dw, dh)} ({dw}x{dh})"
+    if not size or not all(size):
+        return [f"'{dest['key']}' renders {label}, and {timeline}'s resolution could not be "
+                "read to compare its shape."]
+    w, h = int(size[0]), int(size[1])
+    want, got = dw / dh, w / h
+    if _shape(w, h) != _shape(dw, dh):
+        return [f"'{dest['key']}' is {_shape(dw, dh)}, {label}, but {timeline} is {w}x{h}, "
+                f"{_shape(w, h)}: Resolve would scale the picture into the frame with bars. "
+                f"Queue the timeline made for {dest.get('aspect') or label} instead."]
+    if abs(got - want) / want > ASPECT_TOLERANCE:
+        return [f"{timeline} is {w}x{h}, {got:.3f}:1, and '{dest['key']}' is {label}, "
+                f"{want:.3f}:1: more than {ASPECT_TOLERANCE:.0%} apart, so Resolve would scale "
+                "the picture into the frame with bars. Queue a timeline of the destination's "
+                "shape."]
+    return []
 
 
 def timeline_problems(dest, subtitle_counts):

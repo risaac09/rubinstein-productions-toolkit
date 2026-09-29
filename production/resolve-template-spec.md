@@ -213,7 +213,11 @@ Names are validated when a job is queued and again when the file is checked.
    codec, bit depth and sample rate, colour tags, captions
    (`ExportSubtitle`, `SubtitleFormat` `SeparateFile` or `BurnIn`), render
    all frames, and never replace existing files. It refuses, with every
-   reason, when the target folder is missing; when it sits under `/Volumes`
+   reason, when a destination of fixed size gets a timeline of another
+   shape, meaning another orientation or a width:height more than 1% off
+   (a 9:16 destination takes the timeline's 9:16 copy: Resolve scales a
+   16:9 picture into a 1080x1920 frame with bars, and every row of
+   deliver-check would still pass); when the target folder is missing; when it sits under `/Volumes`
    and that share is not mounted (a dropped share leaves its folders on the
    boot disk; `/volumes/work` and `/System/Volumes/Data/Volumes/Work` count
    as `/Volumes/Work`); when it is inside a git working tree; when the file already

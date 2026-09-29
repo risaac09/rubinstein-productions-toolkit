@@ -1200,8 +1200,8 @@ def cmd_deliver_queue(args):
         return 1
     d, tl = r["destination"], r["timeline"]
     print(f"Destination: {d['key']} ({d['name']})")
-    print(f"Timeline:    {tl['name']} (fps {tl['fps']}, subtitle items per track "
-          f"{tl['subtitle_tracks'] or 'none'})")
+    print(f"Timeline:    {tl['name']} ({tl['size'][0]}x{tl['size'][1]}, fps {tl['fps']}, "
+          f"subtitle items per track {tl['subtitle_tracks'] or 'none'})")
     print(f"Output:      {r['output']}")
     if r["sidecar"]:
         print(f"Sidecar:     {r['sidecar']}")

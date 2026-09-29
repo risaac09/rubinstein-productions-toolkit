@@ -594,11 +594,13 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     """Queue one job that renders a timeline for a delivery destination
     (rpresolve.deliver), named from name_parts into target_dir; never start
     it. Refused, with every reason, when: the destination or name parts are
-    invalid; a render is running; the target folder is missing, under
-    /Volumes without its share mounted, or inside a git working tree; the
-    file or its sidecar already exists, or a queued job already writes it;
-    captions are wanted and the timeline has no subtitle track (or only
-    empty ones). A required Deliver setting that Resolve refuses stops the
+    invalid; a render is running; the destination has a fixed size and the
+    timeline another shape (or a size that cannot be read), since Resolve
+    would scale the picture into the frame with bars; the target folder is
+    missing, under /Volumes without its share mounted, or inside a git
+    working tree; the file or its sidecar already exists, or a queued job
+    already writes it; captions are wanted and the timeline has no subtitle
+    track (or only empty ones). A required Deliver setting that Resolve refuses stops the
     job from being queued. The queued job is read back from
     GetRenderJobList. Returns {project, timeline, destination, output,
     sidecar, settings, plan_sha, dry_run, job, readback_problems,
@@ -627,8 +629,9 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     fps_raw = (api._safe_call(tl, "GetSetting", "timelineFrameRate") or
                api._safe_call(project, "GetSetting", "timelineFrameRate"))
     fps = deliver.fps_number(fps_raw)
-    size = _timeline_size(project, tl) if dest["resolution"] == "timeline" else None
-    problems = (deliver.timeline_problems(dest, subtitle_counts) +
+    size = _timeline_size(project, tl)
+    problems = (deliver.shape_problems(dest, size, f"timeline '{tl.GetName()}'") +
+                deliver.timeline_problems(dest, subtitle_counts) +
                 deliver.output_problems(target_dir, filename, dest,
                                         queued=render.queued_outputs(project),
                                         volumes_root=volumes_root))
@@ -645,7 +648,7 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                    steps)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId(), "fps": fps_raw,
-                        "subtitle_tracks": subtitle_counts},
+                        "size": list(size), "subtitle_tracks": subtitle_counts},
            "destination": {k: dest.get(k) for k in ("key", "name", "format", "codec",
                                                     "resolution", "audio", "loudness",
                                                     "captions", "color")},

@@ -54,13 +54,26 @@ class Base(unittest.TestCase):
             "video": [[rf.Item("P1.MOV", 86400, 86500, clip)]], "audio": [[]]},
             settings={"timelineResolutionWidth": "1920", "timelineResolutionHeight": "800"})
         self.here = rf.Timeline("Where Isaac is", "tl-here")
-        self.project = rf.Project(timelines=[self.wide, self.bare, self.here],
-                                  current=self.here)
+        self.tall = self.shaped("Clip 9x16 [auto]", "tl-tall", 1080, 1920)
+        self.square = self.shaped("Clip 1x1 [auto]", "tl-square", 1080, 1080)
+        self.project = rf.Project(timelines=[self.wide, self.bare, self.here, self.tall,
+                                             self.square], current=self.here)
         self.project.fmt = {"format": "mp4", "codec": "H264"}
         self.resolve = rf.Resolve(self.project, page="cut")
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    @staticmethod
+    def shaped(name, uid, width, height):
+        """A captioned timeline of its own size."""
+        clip = rf.Clip("P1.MOV", "clip-1", {"File Path": "/w/P1.MOV"})
+        return rf.Timeline(name, uid, "23.976", tracks={
+            "video": [[rf.Item("P1.MOV", 86400, 86500, clip)]],
+            "audio": [[rf.Item("P1.MOV", 86400, 86500, clip, nodes=None)]],
+            "subtitle": [[rf.Item("Subtitle 1", 86400, 86424, None, nodes=None)]]},
+            settings={"timelineResolutionWidth": str(width),
+                      "timelineResolutionHeight": str(height)})
 
     def queue(self, dest="youtube_16x9", timeline="Clip [auto]", parts=CLIP, **kw):
         return workflows.queue_render(self.resolve, P, timeline, output_dir=kw.pop("out", self.out),
@@ -110,8 +123,10 @@ class TestQueueDestination(Base):
         for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "substack_16x9"):
             parts = {**CLIP, "slug": key.replace("_", "-")}
             names.append(self.twice(dest=key, parts=parts)[1]["job"]["OutputFilename"])
-        for key in ("linkedin_9x16", "linkedin_1x1"):
-            names.append(self.twice(dest=key)[1]["job"]["OutputFilename"])
+        for key, tl in (("linkedin_9x16", "Clip 9x16 [auto]"), ("linkedin_1x1", "Clip 1x1 [auto]")):
+            r = self.twice(dest=key, timeline=tl)[1]
+            self.assertEqual(r["exit_status"], 0, r)
+            names.append(r["job"]["OutputFilename"])
         r = self.twice(dest="client_master", timeline="Bare [auto]",
                        parts={"client": "Client", "slug": "example-slug"})[1]
         names.append(r["job"]["OutputFilename"])
@@ -135,6 +150,31 @@ class TestQueueDestination(Base):
 
 
 class TestRefusals(Base):
+    def test_a_timeline_of_another_shape_is_refused(self):
+        cases = (("linkedin_9x16", "Clip [auto]", "portrait"),    # 3840x2160, the project's
+                 ("linkedin_1x1", "Clip [auto]", "square"),
+                 ("youtube_16x9", "Clip 9x16 [auto]", "landscape"),
+                 ("linkedin_16x9", "Clip 1x1 [auto]", "landscape"),
+                 ("linkedin_9x16", "Clip 1x1 [auto]", "portrait"))
+        for key, tl, shape in cases:
+            with self.subTest(dest=key, timeline=tl):
+                with self.assertRaisesRegex(workflows.Refused, f"{shape}.*with bars"):
+                    self.queue(dest=key, timeline=tl, dry_run=True)
+        self.assertEqual((self.project.jobs, rf.mutating_calls()), ([], []))
+
+    def test_the_same_orientation_must_still_match_within_one_percent(self):
+        self.project.add(self.shaped("DCI [auto]", "tl-dci", 4096, 2160))
+        with self.assertRaisesRegex(workflows.Refused, "1.896:1.*1.778:1"):
+            self.queue(timeline="DCI [auto]", dry_run=True)
+        self.project.add(self.shaped("Near [auto]", "tl-near", 1920, 1088))  # 0.7% off
+        r = self.queue(timeline="Near [auto]", dry_run=True)
+        self.assertEqual(r["timeline"]["size"], [1920, 1088])
+
+    def test_an_unreadable_timeline_size_is_refused_for_a_fixed_size(self):
+        self.project.settings.pop("timelineResolutionWidth")
+        with self.assertRaisesRegex(workflows.Refused, "could not be read"):
+            self.queue(dry_run=True)
+
     def test_captions_without_a_subtitle_track(self):
         with self.assertRaisesRegex(workflows.Refused, "no subtitle track"):
             self.queue(timeline="Bare [auto]", dry_run=True)

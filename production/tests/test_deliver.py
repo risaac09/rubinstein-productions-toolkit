@@ -357,6 +357,33 @@ class TestOutputProblems(unittest.TestCase):
         self.assertEqual(deliver.timeline_problems(dest("client_master"), []), [])
 
 
+class TestShape(unittest.TestCase):
+    def test_shape_problems(self):
+        tall, wide, square = dest("linkedin_9x16"), dest("youtube_16x9"), dest("linkedin_1x1")
+        self.assertEqual(deliver.shape_problems(tall, (1080, 1920)), [])
+        self.assertEqual(deliver.shape_problems(tall, (2160, 3840)), [])
+        self.assertEqual(deliver.shape_problems(wide, (1920, 1080)), [])
+        self.assertEqual(deliver.shape_problems(wide, (1920, 1088)), [])  # 0.7% off
+        self.assertEqual(deliver.shape_problems(square, (1080, 1080)), [])
+        self.assertEqual(deliver.shape_problems(square, (1082, 1080)), [])  # square enough
+        for d, size, word in ((tall, (3840, 2160), "landscape"), (wide, (1080, 1920), "portrait"),
+                              (square, (1920, 1080), "landscape"),
+                              (wide, (4096, 2160), "1.896:1"), (wide, (1920, 800), "2.400:1")):
+            with self.subTest(dest=d["key"], size=size):
+                problems = deliver.shape_problems(d, size, "timeline 'T'")
+                self.assertEqual(len(problems), 1)
+                self.assertIn(word, problems[0])
+                self.assertIn("timeline 'T'", problems[0])
+        self.assertIn("could not be read", deliver.shape_problems(wide, (None, 2160))[0])
+        self.assertEqual(deliver.shape_problems(dest("client_master"), (4096, 1716)), [])
+
+    def test_a_size_that_contradicts_the_aspect_is_a_config_problem(self):
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        cfg["destinations"]["linkedin_9x16"]["resolution"] = {"width": 1920, "height": 1080}
+        with self.assertRaisesRegex(deliver.DeliverError, "9x16"):
+            deliver.destination(cfg, "linkedin_9x16")
+
+
 class TestRenderSteps(unittest.TestCase):
     def settings(self, steps):
         out = {}

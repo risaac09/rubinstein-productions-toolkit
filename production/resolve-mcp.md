@@ -88,7 +88,9 @@ absolute, since the server's working directory is not the caller's.
   audio, colour tags and captions too).
 - **Deliverables by destination.** With `destination`, `name` and
   `target_dir` in place of `preset` and `output_dir`, `queue_render` names
-  the file by the house rule and also refuses when the folder sits under
+  the file by the house rule and also refuses when a fixed-size
+  destination gets a timeline of another shape (a 9:16 destination wants
+  the 9:16 copy), when the folder sits under
   `/Volumes` with its share unmounted, when it is inside any git working
   tree, for a sidecar destination when a caption file under the file's
   stem (.srt, .vtt, .scc, .ttml or .xml, in any case) exists, when a queued
