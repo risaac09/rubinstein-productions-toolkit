@@ -556,8 +556,11 @@ def cmd_auto_subtitle(args):
     result = timeline.CreateSubtitlesFromAudio(settings)
     if result:
         print("  Auto-captions generated.")
-    else:
-        print("  ERROR: Auto-caption failed. Requires DaVinci Resolve Studio, and audio on the timeline.")
+        return 0
+    print("  ERROR: Auto-caption failed. Requires DaVinci Resolve Studio, audio on the timeline, "
+          "and the Edit page (from the Deliver page Resolve returns False). The captions "
+          "command opens the Edit page itself and reads the result back.", file=sys.stderr)
+    return 1
 
 
 # ---------------------------------------------------------------------------

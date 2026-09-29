@@ -816,20 +816,16 @@ CAPTION_PAGE = "edit"
 
 
 def _subtitle_items(tl):
-    """Items per subtitle track, in track order."""
-    return [len(tl.GetItemListInTrack("subtitle", i) or [])
-            for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1)]
-
-
-def _first_subtitle(tl):
-    """{track, start, end} of the first item on the first subtitle track
-    that has one, or None."""
+    """(items per subtitle track in track order, {track, start, end} of the
+    first item on the first track that has one, or None)."""
+    counts, first = [], None
     for i in range(1, int(api._safe_call(tl, "GetTrackCount", "subtitle") or 0) + 1):
         items = tl.GetItemListInTrack("subtitle", i) or []
-        if items:
-            return {"track": i, "start": api._safe_call(items[0], "GetStart"),
-                    "end": api._safe_call(items[0], "GetEnd")}
-    return None
+        counts.append(len(items))
+        if items and first is None:
+            first = {"track": i, "start": api._safe_call(items[0], "GetStart"),
+                     "end": api._safe_call(items[0], "GetEnd")}
+    return counts, first
 
 
 def _constant(resolve, name):
@@ -871,7 +867,7 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
                       "these tools made; duplicate it first (duplicate_timeline_auto).")
     if project.IsRenderingInProgress():
         raise Refused("a render is running; make captions after it finishes.")
-    before = _subtitle_items(tl)
+    before = _subtitle_items(tl)[0]
     if any(before):
         raise Refused(f"'{tl_name}' already has {sum(before)} subtitle item(s) on "
                       f"{sum(1 for n in before if n)} track(s); captions are only added to a "
@@ -926,16 +922,16 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
                 resolve.OpenPage(CAPTION_PAGE) and resolve.GetCurrentPage() == CAPTION_PAGE):
             raise api.WriteNotApplied(f"could not open the {CAPTION_PAGE} page to transcribe "
                                       f"'{tl_name}' (from the Deliver page Resolve returns False)")
-        if any(_subtitle_items(tl)):
+        if any(_subtitle_items(tl)[0]):
             raise Refused(f"'{tl_name}' gained subtitle items since the plan; nothing was "
                           "transcribed.")
         out["returned"] = bool(tl.CreateSubtitlesFromAudio(settings))
-        after = _subtitle_items(tl)
+        after, first = _subtitle_items(tl)
         deadline = time.monotonic() + (CAPTION_SETTLE_S if out["returned"] else 0)
         while not any(after) and time.monotonic() < deadline:
             time.sleep(0.5)
-            after = _subtitle_items(tl)
-        out["first_item"] = _first_subtitle(tl)
+            after, first = _subtitle_items(tl)
+        out["first_item"] = first
     out["subtitle_tracks_after"] = after
     out["items"] = sum(after)
     out["ui_restore_problems"] = snap.problems

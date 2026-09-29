@@ -296,8 +296,11 @@ ships.
    `~/.Trash/deliver-loudfix-<timestamp>/` and the fixed file takes its
    name; the `.srt` beside it keeps matching. If loudnorm had to fall back
    from linear to dynamic mode (a linear gain would have broken the
-   true-peak limit), it says so: listen before delivering. The client
-   master has no loudness target, so this step is skipped for it.
+   true-peak limit), it says so: listen before delivering. For a sidecar
+   destination whose TTML has not been made into an `.srt` yet, `--replace`
+   refuses before any work (the fixed file's captions row would fail):
+   run step 3 first. The client master has no loudness target, so this
+   step is skipped for it.
 5. **Check.** `resolve_workflow.py deliver-check <file> --dest <key> --fps
    <timeline fps>` (or MCP `deliver_check`). Exit 0 all pass, 1 any fail,
    2 ffprobe or ffmpeg missing; `--json` for the whole result. The client

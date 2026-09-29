@@ -21,8 +21,10 @@ deliver_captions(file, dest):
     2. Parses the TTML (parse_ttml): every namespace, clock times
        (HH:MM:SS.fff, HH:MM:SS:FF with ttp:frameRate and
        ttp:frameRateMultiplier, sub-frames), offset times (12.5s, 300f,
-       500ms, 2m, 1h, 100t), begin with end or dur, begin offsets on body
-       and div, <br/> as a line break, spans flattened.
+       500ms, 2m, 1h, 100t), begin with end or dur, timing on body and div
+       (a <p> starts with its parent unless it has a begin, ends with it
+       unless it has an end or dur, and is cut off where its parent ends),
+       <br/> as a line break, spans flattened.
     3. Takes off the file's start timecode (file_start: the video stream's
        "timecode" tag, else another stream's, else the format's), read
        against the file's own frame rate; drop-frame (";") at 29.97 and
@@ -48,6 +50,7 @@ non-integer rate. A shift the wrong way shows up as cues before 0 or past
 the end, which refuse.
 """
 
+import hashlib
 import os
 import re
 import time
@@ -231,33 +234,36 @@ def parse_ttml(text):
     params = timing_params(root)
     cues, empty = [], 0
 
-    def visit(el, offset):
-        begin = _attr(el, "begin")
+    def visit(el, offset, parent_end):
+        """offset: the parent's begin; parent_end: its end, or None when open."""
+        begin, end, dur = _attr(el, "begin"), _attr(el, "end"), _attr(el, "dur")
         here = offset + (parse_time(begin, params) if begin is not None else 0)
-        name = _local(el.tag)
-        if name == "p":
+        if end is not None:
+            stop = offset + parse_time(end, params)
+        elif dur is not None:
+            stop = here + parse_time(dur, params)
+        else:
+            stop = parent_end
+        if stop is not None and parent_end is not None:
+            stop = min(stop, parent_end)
+        if _local(el.tag) == "p":
             words = _p_text(el)
-            end, dur = _attr(el, "end"), _attr(el, "dur")
-            if begin is None:
-                raise CaptionError(f"a caption has no begin time ({words[:40]!r}).")
-            if end is not None:
-                stop = offset + parse_time(end, params)
-            elif dur is not None:
-                stop = here + parse_time(dur, params)
-            else:
-                raise CaptionError(f"a caption at {float(here):.3f} s has no end or dur.")
             if not words:
                 return 1
+            if stop is None:
+                raise CaptionError(f"a caption at {float(here):.3f} s has no end: neither it nor "
+                                   "a div or body around it gives an end or dur.")
             if stop <= here:
                 raise CaptionError(f"a caption ends at {float(stop):.3f} s, at or before its "
                                    f"begin {float(here):.3f} s.")
             cues.append((here, stop, words))
             return 0
-        return sum(visit(child, here) for child in el if _local(child.tag) in ("body", "div", "p"))
+        return sum(visit(child, here, stop) for child in el
+                   if _local(child.tag) in ("body", "div", "p"))
 
     for child in root:
         if _local(child.tag) == "body":
-            empty += visit(child, Fraction(0))
+            empty += visit(child, Fraction(0), None)
     cues.sort(key=lambda c: (c[0], c[1]))
     return {"cues": cues, "params": params, "empty": empty}
 
@@ -440,12 +446,8 @@ def plan(path, dest, track=None):
             "start": {"timecode": tc, "read_from": where,
                       "fps": None if fps is None else str(fps),
                       "seconds": float(offset)},
-            "duration": duration, "raw_sha": _sha(raw), "warnings": warnings}
-
-
-def _sha(data):
-    import hashlib
-    return hashlib.sha256(data).hexdigest()
+            "duration": duration, "raw_sha": hashlib.sha256(raw).hexdigest(),
+            "warnings": warnings}
 
 
 def _summary_of(p):
@@ -503,8 +505,9 @@ def deliver_captions(path, dest, track=None, keep_ttml=False, dry_run=False, exp
     if not keep_ttml:
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
         try:
-            out["trashed"] = dc._trash(p["ttml"], trash_root or os.path.expanduser("~/.Trash"),
-                                       stamp, label=TRASH_LABEL)
+            out["trashed"] = dc.move_to_trash(p["ttml"],
+                                              trash_root or os.path.expanduser("~/.Trash"),
+                                              stamp, label=TRASH_LABEL)
         except (OSError, dc.CheckError) as e:
             raise CaptionError(f"{p['srt']} is written and verified, but {p['ttml']} could not "
                                f"be moved to the Trash ({e}); it is still beside the file. Move "

@@ -115,8 +115,19 @@ class TestTTML(unittest.TestCase):
                                  [(3600.04, 3601.2, "Example caption one")])
 
     def test_empty_captions_are_left_out_and_counted(self):
-        r = captions.parse_ttml(tt(ps(RESOLVE_CUES) + '<p begin="5s" end="6s">  <br/> </p>'))
-        self.assertEqual((len(r["cues"]), r["empty"]), (2, 1))
+        r = captions.parse_ttml(tt(ps(RESOLVE_CUES) + '<p begin="5s" end="6s">  <br/> </p>'
+                                   '<p begin="7s"/>'))
+        self.assertEqual((len(r["cues"]), r["empty"]), (2, 2))
+
+    def test_a_caption_takes_its_timing_from_a_timed_div(self):
+        text = (f'<?xml version="1.0"?><tt {TTML_NS}><body><div begin="1s" end="3s">'
+                '<p>Example caption one</p><p begin="1s">Two</p>'
+                '<p begin="0.5s" end="5s">Three</p></div></body></tt>')
+        self.assertEqual(secs(captions.parse_ttml(text)), [
+            (1.0, 3.0, "Example caption one"), (1.5, 3.0, "Three"), (2.0, 3.0, "Two")])
+        # with no end anywhere above it, a caption without one is refused
+        with self.assertRaisesRegex(captions.CaptionError, "neither it nor a div"):
+            captions.parse_ttml(f'<tt {TTML_NS}><body><div><p>Open</p></div></body></tt>')
 
     def test_preserved_space_keeps_line_breaks(self):
         r = captions.parse_ttml(tt('<p xml:space="preserve" begin="1s" end="2s">One\nTwo</p>'))
@@ -127,8 +138,7 @@ class TestTTML(unittest.TestCase):
             "not well-formed": "<tt><body>",
             "root is <tt>": "<html/>",
             "timing": tt('<p begin="1s" end="3s">A <span begin="2s">late</span></p>'),
-            "no end or dur": tt('<p begin="1s">Example</p>'),
-            "no begin": tt('<p end="1s">Example</p>'),
+            "has no end": tt('<p begin="1s">Example</p>'),
             "at or before": tt('<p begin="2s" end="1s">Example</p>'),
             "frame 25": tt('<p begin="00:00:00:25" end="1s">Example</p>'),
             "clock time": tt('<p begin="soon" end="1s">Example</p>'),
@@ -366,7 +376,8 @@ class TestDeliverCaptions(CaptionBase):
     def test_a_trash_that_fails_loses_nothing(self):
         path = self.clip()
         ttml = deliver.resolve_sidecars(path)[0][1]
-        with mock.patch.object(dc, "_trash", side_effect=PermissionError(1, "not permitted")):
+        with mock.patch.object(dc, "move_to_trash",
+                               side_effect=PermissionError(1, "not permitted")):
             with self.assertRaisesRegex(captions.CaptionError, "still beside the file"):
                 self.convert(path)
         self.assertTrue(os.path.isfile(ttml))
@@ -419,11 +430,29 @@ class TestDeliverCheckCaptionTimes(CaptionBase):
         row = _row(dc.check(path, self.dest, loudness=False), "captions")
         self.assertEqual(row["status"], dc.FAIL)
         self.assertIn("Subtitle 1.ttml", row["note"])
-        self.assertIn("run deliver-captions", row["note"])
+        self.assertIn(f"run deliver-captions on {NAME16}", row["note"])
         self.dir = tempfile.mkdtemp(dir=self.root)  # no TTML beside this one
         row = _row(dc.check(self.clip(cues=None), self.dest, loudness=False), "captions")
         self.assertEqual(row["status"], dc.FAIL)
         self.assertNotIn("note", row)
+
+    def test_the_loudness_fix_waits_for_the_captions(self):
+        # The fixed file's check would fail its captions row, so --replace refuses up front,
+        # and a fix without it says why its check fails.
+        path = self.clip()
+        with self.assertRaisesRegex(dc.CheckError, "Run deliver-captions on it first"):
+            dc.fix_loudness(path, self.dest, replace=True, trash_root=self.trash, now=0)
+        self.assertFalse(os.path.exists(dc.fixed_path(path)))
+        r = dc.fix_loudness(path, self.dest)
+        self.assertTrue(any("not been made into an .srt" in w for w in r["warnings"]))
+        self.assertEqual(_row(r["check"], "captions")["status"], dc.FAIL)
+        os.remove(r["fixed"])
+        captions.deliver_captions(path, self.dest, trash_root=self.trash, now=0)
+        # once the .srt is there, --replace goes ahead (this H.264 test clip then fails the
+        # YouTube codec row, which is not what this test is about)
+        r = dc.fix_loudness(path, self.dest, replace=True, trash_root=self.trash, now=0)
+        self.assertEqual(_row(r["check"], "captions")["status"], dc.PASS)
+        self.assertFalse(any("not been made into an .srt" in w for w in r["warnings"]))
 
     def test_the_duration_read(self):
         self.assertEqual(dc.duration({"streams": [{"codec_type": "video", "duration": "2.5"}],

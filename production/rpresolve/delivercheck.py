@@ -483,7 +483,7 @@ def _captions(path, name, dest, streams, duration_s=None):
                                                            if beside else ""),
                         os.path.basename(sidecar),
                         f"Resolve wrote {', '.join(ttml)}, timed from the timeline's timecode; "
-                        f"run deliver-captions on this file to make {os.path.basename(sidecar)}"
+                        f"run deliver-captions on {name} to make {os.path.basename(sidecar)}"
                         if ttml else None)
         try:
             with open(sidecar, encoding="utf-8") as f:
@@ -578,7 +578,7 @@ def fix_command(path, out, dest, has_data, measured, target, tp, lra):
     return cmd + ["file:" + os.path.abspath(out)]
 
 
-def _trash(path, trash_root, stamp, label="deliver-loudfix"):
+def move_to_trash(path, trash_root, stamp, label="deliver-loudfix"):
     """Move path into <trash_root>/<label>-<stamp>/ (a new folder each
     call) and return the new path. Across devices it copies, compares
     sizes, then removes the original."""
@@ -618,6 +618,13 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
     out = fixed_path(path)
     if os.path.lexists(out):
         raise CheckError(f"{out} already exists; nothing is overwritten. Move it away first.")
+    pending = (dest["captions"] == "sidecar" and not os.path.isfile(deliver.sidecar_path(path))
+               and deliver.resolve_sidecars(path))
+    if pending and replace:
+        raise CheckError(f"{os.path.basename(path)} has Resolve's caption sidecar "
+                         f"({os.path.basename(pending[0][1])}) and no .srt yet, so the fixed "
+                         "file's check would fail its captions row and nothing would be "
+                         "replaced. Run deliver-captions on it first, then this.")
     info = probe(path)
     streams = info.get("streams") or []
     audios = [s for s in streams if s.get("codec_type") == "audio"]
@@ -628,6 +635,10 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
     if len(audios) > 1:
         warnings.append(f"{len(audios)} audio streams: only the first is normalised; the "
                         "others are copied as they are.")
+    if pending:
+        warnings.append("Resolve's caption sidecar has not been made into an .srt yet (run "
+                        "deliver-captions on the original), so the check below fails its "
+                        "captions row.")
     if dest["format"] == "mp4" and has_data:
         warnings.append("data streams (such as a timecode track) are not copied into an mp4; "
                         "ffmpeg writes the timecode track again from the video stream's tag.")
@@ -668,7 +679,8 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
     if replace and passed:
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
         try:
-            r["trashed"] = _trash(path, trash_root or os.path.expanduser("~/.Trash"), stamp)
+            r["trashed"] = move_to_trash(path, trash_root or os.path.expanduser("~/.Trash"),
+                                         stamp)
         except OSError as e:
             raise CheckError(f"could not move {path} to the Trash ({e}); nothing was replaced. "
                              f"The fixed file is {out}.")

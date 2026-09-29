@@ -121,7 +121,7 @@ class TestCreateCaptions(Base):
         # What Resolve did live when the call was made from the Deliver page.
         self.project.current = self.tall
         self.assertFalse(self.tall.CreateSubtitlesFromAudio({0.0: 3.0}))
-        self.assertEqual(workflows._subtitle_items(self.tall), [0])
+        self.assertEqual(workflows._subtitle_items(self.tall), ([0], None))
         self.resolve.page = "edit"
         self.assertTrue(self.tall.CreateSubtitlesFromAudio({0.0: 3.0}))
 
@@ -281,6 +281,19 @@ class TestCommands(Base):
         self.assertIn("use 'captions'", err.replace("Use", "use"))
         self.assertEqual([c[1] for c in rf.CALLS if c[0] == "Pool"],
                          ["ImportMedia", "AppendToTimeline"])
+
+    def test_legacy_auto_subtitle_exits_1_when_resolve_says_no(self):
+        # From the Deliver page Resolve returns False; the old command exited 0 there.
+        self.project.current = self.wide
+        status, _, err = self.cli(resolve_workflow.cmd_auto_subtitle, argparse.Namespace(
+            language="en", chars_per_line=42, gap=0))
+        self.assertEqual(status, 1)
+        self.assertIn("Edit page", err)
+        self.resolve.page = "edit"
+        status, out, _ = self.cli(resolve_workflow.cmd_auto_subtitle, argparse.Namespace(
+            language="en", chars_per_line=42, gap=0))
+        self.assertEqual(status, 0)
+        self.assertIn("generated", out)
 
     def test_add_subtitles_passes_when_a_track_is_added(self):
         srt = os.path.join(self.dir, "example.srt")
