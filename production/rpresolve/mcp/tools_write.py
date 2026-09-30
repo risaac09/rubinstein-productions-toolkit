@@ -56,7 +56,7 @@ def _journalled(tool, args, run):
     status = {0: "ok", 2: "needs_review"}.get(result.get("exit_status"), "failed")
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
-                                                      "plan_sha") if k in result})
+                                                      "left_behind", "plan_sha") if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
         result["journal"]["warning"] = warn
@@ -121,29 +121,53 @@ def cut(args, ctx):
                           force=args["force"], audio=args["audio"],
                           make_9x16=args["make_9x16"], dry_run=args["dry_run"],
                           project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
-                          expect_sha=args.get("plan_sha"), gate=gate)
+                          expect_sha=args.get("plan_sha"), gate=gate,
+                          aspects=args.get("aspects"))
         r["created"] = [x["name"] for x in r["results"] if x.get("ok")]
         blocked = r["gate"]["blocked"]
         if r["dry_run"]:
+            bars = sorted({x["timeline"] for x in r["reframes"] if x["bars"]})
             r["summary"] = (f"cut would create {len(r['would_create'])} timeline(s) in "
                             f"'{r['project']['name']}'" +
                             (f", {len(r['skipped_existing'])} already exist" if
                              r["skipped_existing"] else "") +
                             (f"; {len(blocked)} clip(s) {'forced past' if r['gate']['forced'] else 'blocked by'} "
                              "endcheck" if blocked else "") +
+                            _unreframed(r["unreframed"]) + _refused(r["refused"]) +
+                            (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
+                             if bars else "") +
                             f". To run it, call again with dry_run false and plan_sha "
                             f"{r['plan_sha']}.")
         else:
-            bad = [x["name"] for x in r["results"] if not x.get("ok")]
+            bad = [x["name"] for x in r["results"]
+                   if not x.get("ok") and not x.get("unreframed") and not x.get("refused")]
+            bars = [x["name"] for x in r["results"] if x.get("bars")]
             r["summary"] = (f"cut created {len(r['created'])} timeline(s) in "
                             f"'{r['project']['name']}'" +
                             (f"; FAILED: {', '.join(bad)}" if bad else "") +
+                            (f"; LEFT BEHIND (each exists as its failed build left it; delete "
+                             f"before a re-run): {', '.join(r['left_behind'])}"
+                             if r["left_behind"] else "") +
+                            _unreframed([f"{x['name']}: {x['reason']}" for x in r["results"]
+                                         if x.get("unreframed")]) +
+                            _refused([f"{x['name']}: {x['reason']}" for x in r["results"]
+                                      if x.get("refused")]) +
+                            (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
+                             if bars else "") +
                             ("; the UI was not fully restored" if r["ui_restore_problems"]
                              else ""))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("cut", args, run)
+
+
+def _unreframed(names):
+    return (f"; UNREFRAMED (not built): {'; '.join(names)}" if names else "")
+
+
+def _refused(names):
+    return (f"; REFUSED (not built): {'; '.join(names)}" if names else "")
 
 
 # ---------------------------------------------------------------------------
@@ -509,10 +533,15 @@ def register(registry):
     registry.add(Tool(
         "cut",
         "Build clip timelines from a cut manifest in the open project: one '<prefix>_<clip> "
-        "[auto]' timeline per clip from the source's frames, plus a 9:16 reframed copy when "
-        "the clip has a face position, reading every item back. Clips that fail endcheck are "
-        "skipped unless force is true; timelines that already exist are skipped. Dry run "
-        "first; the real run needs its plan_sha.",
+        "[auto]' timeline per clip from the source's frames, plus reframed 9:16 and 1:1 "
+        "versions ('<prefix>_<clip>_9x16 [auto]', '_1x1 [auto]'; aspects) whose items each "
+        "take their span's crop (from reframe_plan) or the clip's face_x, reading every item "
+        "and transform back. A version with no reframe is not built and is named UNREFRAMED; "
+        "one whose picture does not fill the frame is built and named BARS. Clips that fail "
+        "endcheck are skipped unless force is true. Each timeline that already exists is "
+        "skipped; a missing version beside an existing 16:9 is built from it when its items "
+        "still match the manifest's spans, and refused when they do not. "
+        "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "manifest": {"type": "string", "description": "Absolute path of the manifest JSON."},
@@ -525,6 +554,12 @@ def register(registry):
             "audio": {"type": "boolean", "default": True,
                       "description": "Run endcheck's audio check."},
             "make_9x16": {"type": "boolean", "default": True},
+            "aspects": {"type": "array", "items": {"type": "string", "enum": ["9x16", "1x1"]},
+                        "uniqueItems": True,
+                        "description": "Versions to build beside the 16:9 (default 9x16; "
+                        "[] for none). Each item takes its span's reframe from reframe_plan, "
+                        "else the clip's face_x; a version with neither is named unreframed "
+                        "and not built."},
             **DRY_RUN},
          "required": ["project", "manifest"], "additionalProperties": False},
         cut, title="Cut clip timelines", annotations=WRITE))

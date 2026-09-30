@@ -238,6 +238,43 @@ def selects(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# reframe_plan
+# ---------------------------------------------------------------------------
+
+def reframe_plan(args, ctx):
+    from .. import reframe
+    manifest_path = _existing(args["manifest"], "manifest")
+    m = cutlist.load_manifest(manifest_path)
+    out = _out(args) or _auto_out("reframe-manifest", ".json")
+    try:
+        if os.path.realpath(manifest_path) == os.path.realpath(out):
+            raise ValueError(f"out {out} is the manifest itself; give another path for the copy.")
+        stem = os.path.splitext(out)[0] + ".reframe"
+        for p in (stem + ".tsv", stem + ".json"):
+            problem = paths.out_problem(p, any_git_tree=True)
+            if problem:
+                raise paths.OutputRefused(problem)
+        report = reframe.plan(m, aspects=args["aspects"], samples=args["samples"],
+                              per_second=args["per_second"], speaker_x=args.get("speaker_x"),
+                              only=args.get("clips"), allow_bars=args["allow_bars"],
+                              check_cancel=ctx.check_cancel,
+                              progress=ctx.progress)
+    except BaseException:
+        _drop_empty(None if args.get("out") else out)
+        raise
+    write = lambda p, text: paths.write_private(p, text, any_git_tree=True)  # noqa: E731
+    write(out, json.dumps(reframe.apply(m, report), indent=1) + "\n")
+    tsv_path, json_path = reframe.write_report(stem, report, write)
+    person = reframe.needs_person(report["rows"])
+    result = {"summary": reframe.summary(report), "counts": report["counts"],
+              "verdict": "review" if person else "pass", "rule": report["rule"],
+              "manifest": out, "tsv": tsv_path, "report": json_path}
+    result.update(_page(report["rows"], args))
+    result["lines"] = [reframe.line(r) for r in result["rows"]]
+    return result
+
+
+# ---------------------------------------------------------------------------
 # deliver_check
 # ---------------------------------------------------------------------------
 
@@ -446,6 +483,40 @@ def register(registry):
               **PAGING, "limit": _limit(20, 200),
               "out": _out_prop("every proposal as TSV")}, ["words", "approved"]),
         selects, title="Propose selects", annotations=READ))
+    registry.add(Tool(
+        "reframe_plan",
+        "Plan a static crop per span of a cut manifest for its 9:16 and 1:1 versions, centred "
+        "on the speaker's face, and check it: frames are sampled across each span (ffmpeg), "
+        "faces found by macOS Vision and tracked across the samples, the primary face chosen "
+        "(present in the most samples, then the larger; or the one nearest speaker_x), the "
+        "crop centred on its median centre inside the picture area at the clip's scale "
+        "(default 2.25 output pixels per source pixel), and every sampled face box (with a "
+        "10% margin) mapped through that crop must stay inside the frame. When the default "
+        "leaves bars or loses the face, the widest scale that fills the frame is tried; "
+        "otherwise the span needs a manual reframe or a split. A span with no face gets no "
+        "crop. Writes a copy of the manifest with per-span reframes (cut reads them) and a "
+        "TSV and JSON report beside it. Never connects to Resolve.",
+        _obj({"manifest": {"type": "string",
+                           "description": "Absolute path of the cut manifest (it is not changed)."},
+              "aspects": {"type": "array", "items": {"type": "string", "enum": ["9x16", "1x1"]},
+                          "minItems": 1, "uniqueItems": True, "default": ["9x16", "1x1"],
+                          "description": "Versions to plan."},
+              "samples": {"type": "integer", "minimum": 2, "maximum": 120, "default": 8,
+                          "description": "Frames sampled per span."},
+              "per_second": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5,
+                             "description": "Fewest samples per second of a span."},
+              "speaker_x": {"type": "number", "minimum": 0,
+                            "description": "The speaker's face x in source pixels: take the "
+                            "face nearest it (two faces, as in a two-up call recording)."},
+              "clips": {"type": "array", "items": {"type": "string"},
+                        "description": "Only these clip names."},
+              "allow_bars": {"type": "boolean", "default": False,
+                             "description": "Keep the default scale when it holds the face "
+                             "but leaves black bars (status 'bars', named in the report)."},
+              **PAGING, "limit": _limit(50, 400),
+              "out": _out_prop("the manifest copy (the .reframe.tsv and .reframe.json "
+                               "reports go beside it)")}, ["manifest"]),
+        reframe_plan, title="Plan reframes", annotations=READ))
     registry.add(Tool(
         "sync_measure",
         "Where one recording sits against another, from the sound both heard (dual-system "

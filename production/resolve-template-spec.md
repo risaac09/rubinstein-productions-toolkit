@@ -136,8 +136,10 @@ script:
   clip — add it in the Color page first. The scripting API cannot create
   color-page nodes.
 - **Vertical export is resize-only.** The `story` preset changes canvas
-  dimensions; it does not reframe subjects. Set per-clip Pan/Zoom manually
-  before rendering vertical, or the crop will be arbitrary.
+  dimensions; it does not reframe subjects. `reframe-plan` plans a crop
+  per span and `cut --aspects 9x16 1x1` applies it (see Reframe below);
+  a timeline built any other way needs its Pan/Zoom set before rendering
+  vertical, or the crop will be arbitrary.
 
 ### Offline survey of existing projects
 
@@ -156,13 +158,268 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 22 tools: reads of the open project, the offline checks (detect,
-survey, measure, endcheck, selects, deliver_check, sync_measure,
-trim_review), the offline caption conversion (deliver_captions), and
+as 23 tools: reads of the open project, the offline checks (detect,
+survey, measure, endcheck, selects, reframe_plan, deliver_check,
+sync_measure, trim_review), the offline caption conversion (deliver_captions), and
 additive writes (ingest, cut, duplicate, grade onto `[auto]` timelines,
 auto captions on `[auto]` timelines, queue a render without starting it,
 stack dual-system sound on a new `[auto]` timeline, trim-review markers on
 `[auto]` timelines), each write shown as a plan before it runs.
+
+---
+
+## Reframe
+
+The 9:16 and 1:1 versions of a clip are static crops, one per span,
+centred on the speaker's face (plan A7). The check: the face box stays
+inside the crop on every sampled frame. Two steps: plan offline, then
+`cut` applies the plan and reads every transform back.
+
+### Plan
+
+`resolve_workflow.py reframe-plan <manifest> [--aspects 9x16 1x1]
+[--samples 8] [--per-second 0.5] [--speaker-x PX] [--allow-bars] [--only
+CLIP ...] --out <copy.json>`, or the MCP `reframe_plan`. Offline: ffmpeg
+reads frames, macOS Vision finds faces (the same cached helper `measure`
+uses, `rpresolve/vision.py`), nothing touches Resolve. The manifest itself
+is never changed.
+
+For each span of each clip:
+
+1. **Samples.** Frames spread evenly across `[in, out)`, each in the
+   middle of its slice: 8 a span, and at least 0.5 a second (a 25 s span
+   gets 13), never more than 120. A time at or past the source's end is
+   not read: the span is flagged, and one wholly past the end gets no
+   crop, while the rest of the plan goes on.
+2. **Picture area.** The rows and columns whose mean luma is above 24 of
+   255 in at least one sample. A call recording can letterbox its panes
+   inside the 16:9 frame, and a crop that leaves the picture shows bars.
+3. **The face.** Vision's boxes are linked across samples into tracks by
+   overlap (IoU 0.2 or more, or centres within three quarters of a box
+   width). A track in at least half as many samples as the most present
+   one is eligible: someone in the span. The primary face is the track
+   present in the most samples, a tie going to the larger median box.
+   When another eligible track is at half the primary's area or more, the
+   choice is flagged for review: on a two-up call Vision often misses the
+   speaker as they turn or lean, so the steadier listener can win on
+   presence, and "larger" says nothing about who is speaking either.
+   `--speaker-x` names the speaker (source pixels): the eligible track
+   whose median centre is nearest.
+   Every sample is judged. On a sample where the primary face is missing,
+   the box nearest its path is checked in its place when it lies within
+   three face widths and no other eligible track holds it: a lean that
+   jumps further than the linking distance starts a track of its own, and
+   may still be the speaker. Otherwise the sample is unchecked. Either case
+   flags the span for review, whatever its status.
+4. **The crop.** Centred on the median face centre, clamped so the crop
+   stays inside the picture area, at the clip's `reframe.scale` (default
+   2.25 output pixels per source pixel, `cut`'s convention). When that
+   loses the face, the middle of the checked boxes' extent (each grown by
+   the margin), clamped the same way, is tried at the same scale: a face
+   that sits still and then moves can fit a window its median cannot.
+   When any centre at a scale holds every box, the extent's middle does
+   (to the 0.1 px it is rounded to), so a crop that fails both fails at
+   that scale. The report names the centre used (`median` or `extent`).
+5. **The check.** Every checked box (the primary face's, and any taken in
+   its place), grown by 10% of its width and height on each side, is
+   mapped through that exact transform (centre and scale rounded as
+   written) and must sit inside the output frame. Reported over all the
+   span's samples: inside, unchecked, the share inside (an unchecked
+   sample never counts as inside), the worst sample's time and its slack
+   in output pixels (negative: outside by that much).
+6. **Fallback.** When the default scale leaves bars or loses the face,
+   the widest scale that still fills the frame is tried and checked the
+   same way, median then extent (rounded up at the fourth decimal, so
+   rounding never opens a bar). When that fails too, the span is
+   `manual`: it needs a manual reframe or a split. A span with no face in
+   any sample is `no_face` and gets no centre. `--allow-bars` keeps the
+   default scale when it holds the face but leaves bars (status `bars`,
+   the Ep 002 look, named as such).
+
+Statuses: `pass` (the default scale fills and holds), `fallback` (the
+widest filled scale holds), `bars` (only with `--allow-bars`), `manual`,
+`no_face`. Exit 0 when every crop holds; 2 when a span needs a person
+(`manual`, `no_face`, `bars`, or a flagged span: a choice of face, a
+face off its track, an unchecked sample); 1 on an error, including a
+Vision helper that cannot run (no face is ever invented).
+
+Output: the manifest copy at `--out`, whose spans carry an entry per
+aspect, and `<stem>.reframe.tsv` and `<stem>.reframe.json` beside it. The
+format extends the manifest: a clip-level `reframe.face_x` still works,
+and a span may carry its own.
+
+```json
+{"in": 12.0, "out": 37.5, "end_words": "...",
+ "reframe": {"9x16": {"x": 400.0, "y": 360.0, "scale": 6.0, "src": [1280, 720],
+                      "area": [0, 200, 1280, 520], "face_x": 400.0, "face_y": 380.0,
+                      "centre": "median", "status": "fallback", "inside": [13, 13]},
+             "1x1": {"status": "manual", "reason": "... needs a manual reframe or a split"}}}
+```
+
+`x`, `y` are the crop centre in source pixels and `scale` output pixels
+per source pixel; the rest is the record. An entry without `x` means no
+crop. The TSV has a row per span and aspect: `clip, span, in, out, aspect,
+status, review, samples, face_samples, face_x, face_y, hand_face_x, dx,
+centre, scale, zoom, pan, tilt, fills, inside, unchecked, share, worst_t, worst_px,
+reason` (`hand_face_x` is the clip's hand-set `face_x`, `dx` the
+difference). The JSON adds every scale tried with its check, the primary
+face's box on each sample, any box checked in its place (`off_track`) and
+the unchecked samples' times.
+
+### The transform
+
+Resolve fits a source whose size differs from the timeline's by
+`fit = min(W/sw, H/sh)` (`timelineInputResMismatchBehavior` scaleToFit,
+the default; scaleToCrop uses the max), zooms about the frame centre, then
+moves the picture in timeline pixels. A crop of `s` output pixels per
+source pixel centred on source point `(cx, cy)` is
+
+    ZoomX = ZoomY = s / fit
+    Pan  = (sw/2 - cx) * s
+    Tilt = (cy - sh/2) * s
+
+and a source point `(x, y)` lands at `X = W/2 + (x - cx) s`,
+`Y = H/2 + (y - cy) s`. The widest crop with no bars over a picture area
+`aw x ah` is `s = max(W/aw, H/ah)`.
+
+| Source | 9:16 at 2.25 | 9:16 widest filled | 1:1 widest filled |
+|---|---|---|---|
+| 1280x720 | Zoom 2.6667 | s 2.6667, Zoom 3.1605 | s 1.5, Zoom 1.7778 |
+| 1920x1080 | Zoom 4 | s 1.7778, Zoom 3.1605 | s 1.0, Zoom 1.7778 |
+| 3840x2160 | Zoom 8 | s 0.8889, Zoom 3.1605 | s 0.5, Zoom 1.7778 |
+
+At 2.25 a 720-row source covers 1620 of 1920 rows: the default, taken
+from the Ep 002 script, never filled a 9:16 frame from that source. On
+1080p and 4K sources it crops tightly (a 480x853 window of a 4K frame),
+and the fallback carries.
+
+Pan's sign and units are confirmed on a render: in the sandbox 9:16
+render (below) the face centre sits where `X = W/2 + (x - cx) s` puts it,
+within 3 pixels, from Vision on the render and on the source frame. Tilt's
+sign assumes Resolve's y axis points up; no render has confirmed it, so
+every report row whose crop sets a Tilt says so (and the summary counts
+them), and `cut` says so whenever it writes a Tilt other than 0.
+
+### Build
+
+`resolve_workflow.py cut <copy.json> --project ... --aspects 9x16 1x1`,
+or the MCP `cut` with `aspects`. Each version is a duplicate of the
+clip's 16:9, set to 1080x1920 or 1080x1080 and read back; each V1 item
+gets its span's transform (ZoomX, ZoomY, Pan, Tilt), and every property is
+read back. The input scaling is read before anything is duplicated, from
+the 16:9 (else the project; when neither reports it, scaleToFit and a
+note), and the new timeline must read the same. The dry run's `plan_sha`
+covers the source's resolution and the project's input scaling, since the
+Zoom shown depends on both: a change to either before the real run
+refuses it, and a 16:9 that reads another scaling than the plan's refuses
+its versions.
+
+- **The clip-level `face_x`** (the Ep 002 form) is built as before: every
+  item gets ZoomX, ZoomY and Pan for a crop centred on `face_x` at the
+  source's middle row, no Tilt, and the result notes that nothing checked
+  the face inside it. A span's own entry wins over it.
+- **UNREFRAMED.** A version with a span that has neither, or an entry
+  that `reframe-plan` left without a crop, is not built. The dry run lists
+  it under `unreframed` and leaves it out of `would_create`; the real run
+  names it UNREFRAMED with the span and the reason, and exits 1. A 9:16 is
+  never built quietly at Zoom 1.
+- **REFUSED.** An input scaling other than scaleToFit or scaleToCrop, or
+  a V1 item of the 16:9 with its own `Scaling` (the Inspector's per-clip
+  Crop, Fit, Fill or Stretch; the transform is computed for 0, use project
+  settings): the version is not built. An item that does not report its
+  `Scaling` is counted in a note and taken as 0. The dry run lists it under `refused` and leaves it
+  out of `would_create`; the real run names it REFUSED and exits 1.
+- **BARS.** A version whose picture does not fill the frame (by the entry's
+  picture area, else the whole source frame) is built, and its result
+  names each span ("the picture covers 1620 of 1920 rows"); exit 2.
+- **LEFT BEHIND.** A version that fails after the duplicate (a write that
+  does not read back, a different number of V1 items, a different input
+  scaling) names the timeline it left behind in `left_behind`, in the
+  result, the summary and the MCP journal, with how many of its items were
+  transformed. A re-run skips a timeline that exists, so delete that one
+  first. A 16:9 that fails its read-back is named the same way.
+- **One timeline at a time.** Each name is decided on its own: one that
+  exists is skipped and listed under `skipped_existing`. A version missing
+  beside a 16:9 that exists (the 1:1 asked for after the 9:16 was cut, say)
+  is built from that 16:9 when its V1 items are still the manifest's spans:
+  the same source clip, source frames, durations and order. When they are
+  not (a person trimmed it), the version is refused and a new prefix is
+  the way to build it.
+
+### Why the sandbox 9:16 had bars (2026-09-30)
+
+The sandbox's MCP-built 9:16 (`MCP_<clip>_9x16 [auto]`) and its copy
+`A6 deliver 9x16 [auto]` rendered with black bars above and below. The MCP
+write journal shows `cut` built it from a manifest whose clips carry a
+hand-set `reframe.face_x`, and reported the 9:16 created, which it does
+only when every ZoomX, ZoomY and Pan read back: the transform was the
+default scale, 2.25 output pixels per source pixel. The source is a call
+recording whose picture is a letterboxed band inside its 1280x720 frame,
+and the rendered picture's height matches that band at 2.25. So it was
+never a letterbox at Zoom 1: at 2.25 a 720-row source covers 1620 of 1920
+rows, a 360-row band covers 810, and nothing checked that the picture
+filled the frame. `cut` now names that case BARS, and `reframe-plan`
+measures the picture area and prefers the widest filled crop. The live
+read-back of those two timelines' transforms is owed (Resolve was closed).
+
+### A two-up call recording, planned offline (2026-09-30)
+
+A dry run of `reframe-plan` over a real episode's final manifest (a
+1280x720 two-up call recording, both aspects) showed what this kind of
+source does. Its per-span numbers stay out of this public document.
+
+- **Which face.** Both panes hold a face of similar size in every span,
+  so without `--speaker-x` the choice is a guess and is flagged; with it,
+  the named face is taken.
+- **The default scale 2.25** held the face, and every crop left bars
+  (810 of 1920 rows; 810 of 1080).
+- **9:16 filled** is a window a third of a pane's width, upscaled more
+  than five times, and a filled 9:16 of a small pane rarely holds a moving
+  speaker: most spans came out `manual`.
+- **1:1 filled** (a window the pane's height) held on nearly every span.
+
+So for such a source a filled 9:16 needs splits or manual reframes, and
+the decision between that and the letterboxed look (`--allow-bars`) is
+Isaac's.
+
+### What is known and what is not
+
+Owed live, in the sandbox ("RP Automation Sandbox"), Resolve being closed
+on 2026-09-30:
+
+1. Read back the transforms of the MCP-built 9:16 and
+   `A6 deliver 9x16 [auto]` (the diagnosis above predicts ZoomX 2.6667,
+   Pan 832.5 on every item).
+2. Build one reframed clip's 9:16 and 1:1 under a new prefix
+   (`A7reframe`) from a planned copy, and read back every transform and
+   the input scaling setting. No render queued.
+3. Tilt's sign: set a Tilt on a sandbox item, export a still
+   (`ExportCurrentFrameAsStill`), and find the face with Vision.
+4. Whether `timelineInputResMismatchBehavior` reads on a duplicated
+   timeline, and whether scaleToCrop's Pan counts the same pixels.
+5. What `GetProperty("Scaling")` reads on an item appended by `cut`
+   (expected 0, use project settings) and on one set to Fill in the
+   Inspector (expected 3).
+
+Gaps in the method:
+
+- The picture area is found by luma: a grey call-app background counts
+  as picture, and a logo or caption in a bar widens it.
+- In a two-up, a crop can cross the seam into the other pane; the check
+  covers the face and the bars only.
+- Vision's box is the face, without hair or chin; the 10% margin is a
+  guess to calibrate on stills.
+- Samples are 2 s apart at the minimum rate, so a turn or lean shorter
+  than that can be missed.
+- Rotated sources are untested. The planner works in displayed pixels, and
+  `cut` refuses an entry planned on a size other than the pool clip's
+  `Resolution`.
+- A 5.3x upscale is soft; judge it on a still before choosing it.
+- The per-span build and the 1:1 are tested against fakes only.
+
+North register: self-consuming. The manifest copy feeds `cut`; the TSV
+explains a crop `cut` refuses or names, read when a span needs a person.
+No new standing surface.
 
 ---
 

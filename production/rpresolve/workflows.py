@@ -201,14 +201,44 @@ def cut_gate(manifest_path, only=None, audio=True, force=False):
     return {"manifest": m, "clips": clips, "blocked": blocked, "forced": bool(force and blocked)}
 
 
+def cut_aspects(make_9x16=True, aspects=None):
+    """The versions to build beside the 16:9: `aspects` when given, else
+    9x16 unless make_9x16 is false. Raises Refused on an unknown aspect or
+    on make_9x16 false with 9x16 asked for."""
+    from . import cut as rpcut
+    if aspects is None:
+        return ("9x16",) if make_9x16 else ()
+    aspects = tuple(dict.fromkeys(aspects))
+    unknown = [a for a in aspects if a not in rpcut.ASPECT_SIZES]
+    if unknown:
+        raise Refused(f"unknown aspect(s) {', '.join(unknown)}; cut builds "
+                      f"{', '.join(rpcut.ASPECT_SIZES)}")
+    if not make_9x16 and "9x16" in aspects:
+        raise Refused("make_9x16 is false but aspects asks for 9x16; say one or the other")
+    return aspects
+
+
 def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=False, audio=True,
         make_9x16=True, dry_run=False, project_id=None, check_cancel=None, expect_sha=None,
-        gate=None):
+        gate=None, aspects=None):
     """Build [auto] timelines from a manifest in the open project named
-    project_name. Returns {project, gate, source_item, would_create,
-    skipped_existing, results, ui_restore_problems, plan_sha, exit_status}.
-    A dry run stops before anything is created."""
+    project_name: each clip's 16:9, then its versions in `aspects` (9x16
+    and/or 1x1; default 9x16, none with make_9x16 false). Returns {project,
+    gate, source_item, aspects, would_create, unreframed, refused,
+    reframes, skipped_existing, results, left_behind, ui_restore_problems,
+    plan_sha, exit_status}. A version with no reframe for a span is not
+    built and is named in `unreframed`, and one whose input scaling the
+    transform is not known for in `refused` (dry run and real run); a
+    version whose picture does not fill the frame is built and named in
+    each result's `bars`. A timeline a failed build left behind is named
+    in `left_behind`. Each timeline is decided on its own: one that exists
+    is skipped, and a missing version beside an existing 16:9 is built
+    from it when its V1 items still match the manifest (refused when they
+    do not). exit_status: 0 all built and read back, 2 built but some
+    version leaves bars, 1 any failure, unreframed or refused version. A
+    dry run stops before anything is created."""
     from . import cut as rpcut
+    aspects = cut_aspects(make_9x16, aspects)
     gate = gate or cut_gate(manifest_path, only, audio, force)
     m, clips = gate["manifest"], gate["clips"]
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
@@ -217,46 +247,108 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     if item is None:
         raise Refused("no media-pool clip in this project matches the manifest source's "
                       "sha256. Import the source first.")
-    src_width = int(str(item.GetClipProperty("Resolution") or "0x0").split("x")[0] or 0)
+    src = rpcut.parse_resolution(item.GetClipProperty("Resolution"))
     existing = rpcut.timeline_names(project)
-    skipped = [f"{prefix}_{c['name']}{rpcut.AUTO}" for c in clips
-               if f"{prefix}_{c['name']}{rpcut.AUTO}" in existing]
-    todo = [c for c in clips if f"{prefix}_{c['name']}{rpcut.AUTO}" not in existing]
-    would = []
-    for c in todo:
-        would.append(f"{prefix}_{c['name']}{rpcut.AUTO}")
-        if make_9x16 and (c.get("reframe") or {}).get("face_x") is not None:
-            would.append(f"{prefix}_{c['name']}_9x16{rpcut.AUTO}")
-    sha = plan_sha("cut", pin.unique_id, prefix, m["source_sha256"], make_9x16,
-                   [{"name": c["name"], "spans": c["spans"], "reframe": c.get("reframe")}
-                    for c in todo])
+    scaling, scaling_note = rpcut.input_scaling(project)
+    todo, skipped, would, unreframed, refused, reframes = [], [], [], [], [], []
+    for c in clips:
+        wide = f"{prefix}_{c['name']}{rpcut.AUTO}"
+        names = {a: f"{prefix}_{c['name']}_{a}{rpcut.AUTO}" for a in aspects}
+        e = {"clip": c, "wide": wide, "build_wide": wide not in existing,
+             "aspects": [a for a in aspects if names[a] not in existing], "base": None,
+             "mismatch": ""}
+        skipped += ([] if e["build_wide"] else [wide]) + [names[a] for a in aspects
+                                                          if names[a] in existing]
+        if e["build_wide"]:
+            would.append(wide)
+        elif e["aspects"]:
+            # Built from the 16:9 that exists: only when it is still the manifest's cut.
+            rows, _, problems = rpcut.read_back_wide(existing[wide], c, m["fps"], item)
+            e["base"] = {"id": existing[wide].GetUniqueId(),
+                         "items": [[r["start"], r["duration"], r["source_start"]] for r in rows]}
+            own, _ = rpcut.item_scaling(existing[wide].GetItemListInTrack("video", 1) or [])
+            if problems:
+                e["mismatch"] = (f"'{wide}' exists and its V1 items differ from the manifest's "
+                                 f"spans ({'; '.join(problems)}); build under a new prefix")
+            elif own:
+                e["mismatch"] = (f"'{wide}' exists and {'; '.join(own)}; the transform is "
+                                 "computed for 0 (use project settings), so set it back in the "
+                                 "Inspector or build under a new prefix")
+        if not e["build_wide"] and not e["aspects"]:
+            continue
+        todo.append(e)
+        for a in e["aspects"]:
+            name = names[a]
+            if e["mismatch"]:
+                refused.append(f"{name}: {e['mismatch']}")
+                continue
+            if rpcut.scaling_problem(scaling):
+                refused.append(f"{name}: {rpcut.scaling_problem(scaling)}")
+                continue
+            try:
+                plans = rpcut.item_plans(c, a, src, scaling)
+            except rpcut.Unreframed as err:
+                unreframed.append(f"{name}: {err}")
+                continue
+            would.append(name)
+            reframes += [{"timeline": name, "span": p["span"], "source": p["source"],
+                          "props": {k: round(v, 4) for k, v in p["props"].items()},
+                          "bars": p["bars"]} for p in plans]
+    # The transforms shown depend on the source's resolution and the input
+    # scaling, so both are part of what the dry run showed.
+    sha = plan_sha("cut", pin.unique_id, prefix, m["source_sha256"], list(aspects), list(src),
+                   scaling, [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
+                              "reframe": e["clip"].get("reframe"), "build_wide": e["build_wide"],
+                              "aspects": e["aspects"], "base": e["base"]} for e in todo])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "gate": {"blocked": gate["blocked"], "forced": gate["forced"]},
-           "source_item": {"name": item.GetName(), "file_path": item.GetClipProperty("File Path")},
-           "would_create": would, "skipped_existing": skipped, "results": [],
+           "source_item": {"name": item.GetName(), "file_path": item.GetClipProperty("File Path"),
+                           "resolution": list(src)},
+           "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
+           "unreframed": unreframed, "refused": refused, "reframes": reframes,
+           "skipped_existing": skipped, "results": [], "left_behind": [],
            "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
+    if scaling_note:
+        out["input_scaling_note"] = scaling_note
     if dry_run:
         return out
     if expect_sha and expect_sha != sha:
-        raise Refused("the plan changed since the dry run (manifest, project or existing "
-                      "timelines differ); run the dry run again and review it")
+        raise Refused("the plan changed since the dry run (manifest, project, existing "
+                      "timelines, the source's resolution or the input scaling differ); run "
+                      "the dry run again and review it")
     check = _check(pin, pm, check_cancel)
-    failed = False
+    failed = bars = False
     snap = api.UISnapshot(resolve, project)
     with snap:
-        for clip in todo:
-            r = rpcut.build_clip(project, media_pool, item, clip, m["fps"], prefix, check=check)
-            r["kind"] = "16x9"
-            out["results"].append(r)
-            failed |= not r["ok"]
-            if r["ok"] and make_9x16:
-                wide = rpcut.timeline_names(project).get(r["name"])
-                t = rpcut.build_tall(project, wide, clip, src_width, prefix, check=check)
-                t["kind"] = "9x16"
+        for e in todo:
+            clip = e["clip"]
+            if e["build_wide"]:
+                r = rpcut.build_clip(project, media_pool, item, clip, m["fps"], prefix,
+                                     check=check)
+                r["kind"] = "16x9"
+                out["results"].append(r)
+                failed |= not r["ok"]
+                if not r["ok"]:
+                    continue
+            for a in e["aspects"]:
+                if e["mismatch"]:
+                    out["results"].append({
+                        "name": f"{prefix}_{clip['name']}_{a}{rpcut.AUTO}", "kind": a,
+                        "ok": False, "refused": True, "unreframed": False,
+                        "left_behind": None, "props": None, "items": [], "bars": [],
+                        "warnings": [], "reason": f"REFUSED: {e['mismatch']}; the {a} version "
+                        "was not built"})
+                    failed = True
+                    continue
+                wide = rpcut.timeline_names(project).get(e["wide"])
+                t = rpcut.build_aspect(project, wide, clip, src, prefix, a, check=check,
+                                       scaling=scaling)
                 out["results"].append(t)
                 failed |= not t["ok"]
+                bars |= bool(t["bars"])
     out["ui_restore_problems"] = snap.problems
-    out["exit_status"] = 1 if failed else 0
+    out["left_behind"] = [x["left_behind"] for x in out["results"] if x.get("left_behind")]
+    out["exit_status"] = 1 if failed else (2 if bars else 0)
     return out
 
 

@@ -102,6 +102,15 @@ class Item(Fake):
     def GetClipEnabled(self): return True
     def GetMediaPoolItem(self): return self.clip
     def GetProperty(self, key=None): return dict(self.props) if key is None else self.props.get(key)
+
+    def SetProperty(self, key, value):
+        # A key in `ignored` answers True and keeps its old value, as a Resolve
+        # with a modal dialog open does.
+        _log(self, "SetProperty", key, value)
+        if key not in self.__dict__.get("ignored", ()):
+            self.props[key] = value
+        return True
+
     def GetNodeGraph(self): return self.graph
     def GetCurrentVersion(self): return self.version
 
@@ -224,6 +233,7 @@ class Timeline(Fake):
 def _copy_item(it):
     new = copy.copy(it)
     new.graph = Graph([tuple(n) for n in it.graph.nodes]) if it.graph else None
+    new.props = dict(it.props)  # a duplicate's transform is its own, as in Resolve
     return new
 
 

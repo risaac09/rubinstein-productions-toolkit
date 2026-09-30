@@ -536,8 +536,8 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 22)
-        for name in ("deliver_check", "deliver_captions", "create_captions"):
+        self.assertEqual(len(names), 23)
+        for name in ("deliver_check", "deliver_captions", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):
             self.assertFalse(REG.get(name).annotations["readOnlyHint"], name)

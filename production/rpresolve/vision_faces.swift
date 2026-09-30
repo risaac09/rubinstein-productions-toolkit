@@ -1,5 +1,5 @@
 // vision_faces: print the face rectangles macOS Vision finds in each image.
-// Built and cached by rpresolve.measure (swiftc -O); macOS only.
+// Built and cached by rpresolve.vision (swiftc -O); macOS only.
 //
 // Usage: vision_faces IMAGE...
 // Output: one JSON object per image, one per line:

@@ -10,7 +10,7 @@ from . import tools_offline, tools_read, tools_write
 
 INSTRUCTIONS = """\
 Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
-- detect, survey, measure, endcheck, selects, deliver_check, deliver_captions, sync_measure and trim_review never connect to Resolve; paths must be absolute.
+- detect, survey, measure, endcheck, selects, reframe_plan, deliver_check, deliver_captions, sync_measure and trim_review never connect to Resolve; paths must be absolute.
 - Before any Resolve tool, call resolve_status. Resolve is edited live by a person: never assume which project is open.
 - Every write tool must name the open project exactly (project, and project_id when you have it).
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
@@ -18,6 +18,7 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Deliverables: queue_render with a destination names the file by the house rule. After Isaac renders it: deliver_captions for a sidecar destination (Resolve's .ttml to a zero-based .srt), the loudness fix, then deliver_check.
 - Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it.
 - Dual-system sound: sync_measure first; sync stacks the pair on a new [auto] timeline at that offset. Drift is reported, never corrected; a multicam clip stays a hand step.
+- Reframes: reframe_plan writes a copy of the manifest with a crop per span, checked against the face on sampled frames; cut builds the 9:16 and 1:1 versions from that copy (aspects). A version with no crop is named unreframed and not built.
 - Trim review proposes and deletes nothing: trim_review writes the TSV, trim_review_markers marks an [auto] timeline.
 - Output files never go inside a git repository.
 - Tool results name client media, people and transcripts. Never paste them into commits, pull requests or anything public.
