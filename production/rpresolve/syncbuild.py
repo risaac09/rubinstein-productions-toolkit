@@ -28,6 +28,7 @@ What Resolve 21.0.4.5 does, and what this module does about it:
 """
 
 import os
+import re
 
 from . import api, cutlist
 from .deliver import exact_fps
@@ -119,15 +120,37 @@ def find_clip(root, ref):
     return None, f"no clip in the media pool is named or has the unique id '{ref}'"
 
 
+def tc_frames(tc, fps):
+    """The frames a non-drop timecode 'HH:MM:SS:FF' counts at fps (labels at
+    the nominal rate, as Resolve writes a clip's Duration); None for a
+    drop-frame (';') or unreadable one, or a frame field past the rate."""
+    m = re.fullmatch(r"\s*(\d+):(\d{2}):(\d{2}):(\d{2})\s*", str(tc or ""))
+    if not m or not fps:
+        return None
+    h, mi, s, f = (int(g) for g in m.groups())
+    nominal = int(round(float(fps)))
+    if nominal <= 0 or f >= nominal:
+        return None
+    return ((h * 60 + mi) * 60 + s) * nominal + f
+
+
 def clip_info(clip):
     """What placing a clip needs: {name, uid, path, fps, frames, video,
-    channels}. fps and frames are None when Resolve does not report them."""
+    channels, frames_from}. fps and frames are None when Resolve does not
+    report them. An audio-only clip reports no Frames in Resolve 21.0.4.5
+    (live, 2026-09-30): its FPS is the project's timeline rate and its
+    Duration a timecode at that rate, so its frames are counted from the
+    Duration (frames_from says which)."""
     kind = str(clip.GetClipProperty("Type") or "")
-    frames = _number(clip.GetClipProperty("Frames"))
+    fps = exact_fps(clip.GetClipProperty("FPS"))
+    frames, source = _number(clip.GetClipProperty("Frames")), "Frames"
+    if frames is None:
+        frames, source = tc_frames(clip.GetClipProperty("Duration"), fps), "Duration"
     return {"name": clip.GetName(), "uid": _uid(clip),
             "path": clip.GetClipProperty("File Path") or "",
-            "fps": exact_fps(clip.GetClipProperty("FPS")),
+            "fps": fps,
             "frames": int(frames) if frames is not None else None,
+            "frames_from": source if frames is not None else None,
             "video": "video" in kind.lower(),
             "channels": int(_number(clip.GetClipProperty("Audio Ch")) or 0)}
 

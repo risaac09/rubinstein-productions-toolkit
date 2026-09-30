@@ -390,9 +390,10 @@ on 2026-09-30:
 1. Read back the transforms of the MCP-built 9:16 and
    `A6 deliver 9x16 [auto]` (the diagnosis above predicts ZoomX 2.6667,
    Pan 832.5 on every item).
-2. Build one reframed clip's 9:16 and 1:1 under a new prefix
-   (`A7reframe`) from a planned copy, and read back every transform and
-   the input scaling setting. No render queued.
+2. Seen live on 2026-09-30 for 9:16: twelve clips planned by
+   `reframe-plan` (letterboxed, `--allow-bars`) were built by `cut`, each
+   span's item with its own Pan, every transform read back. A 1:1 build
+   is still owed.
 3. Tilt's sign: set a Tilt on a sandbox item, export a still
    (`ExportCurrentFrameAsStill`), and find the face with Vision.
 4. Whether `timelineInputResMismatchBehavior` reads on a duplicated
@@ -892,23 +893,38 @@ nothing; `recordFrame` counts absolute timeline frames (a 25 fps timeline
 starts at 90000 for 01:00:00:00); `startFrame`/`endFrame` count source
 frames at the source's own rate, `endFrame` exclusive (Ep 002).
 
-Not yet seen on a live Resolve; owed, in the sandbox, with Resolve open on
-"RP Automation Sandbox":
+Seen live on 2026-09-30, in the sandbox:
 
-1. Resolve was closed on 2026-09-29, so no stacked timeline has been
-   built yet. Build one from the named dual-system clip (a camera and a
-   recorder in one room; the sandbox manifest does not name one yet) and
-   record each placement's read-back.
+- **Stacked timelines build and read back exactly.** Two call recordings
+  (each a video file and its separate audio file, measured at 0.0000 s)
+  were built, one from pool clips and one imported into a run-owned bin:
+  V1, A1 and A2 each read back at record +0, source 0, full length.
+- **An audio-only clip reports no `Frames`.** Its `FPS` is the project's
+  timeline rate (24.0 in the sandbox), and its `Duration` is a timecode
+  at that rate (`00:01:36:01`). `clip_info` now counts the length from
+  the Duration (`frames_from` says which); a drop-frame Duration is
+  refused. Placed on a 25 fps timeline, the 24 fps audio clip read back
+  at exactly the reference's length.
+- **`AutoSyncAudio` did not finish.** Called on a 13-minute pair read over
+  the network share, its "Analyzing content" dialog sat at 1% for more
+  than ten minutes and was cancelled; it then returned False, and the run
+  reported `unverifiable` and kept the stacked timeline on the measured
+  offset, as designed. Whether it completes on short or local clips is
+  untried; the FFT measurement is the one that counts.
+
+Still owed, in the sandbox:
+
+1. A stacked timeline from a true acoustic dual-system pair (a camera and
+   a recorder in one room; none is named yet).
 2. Whether a camera clip appended with no `mediaType` at `trackIndex` 1
    puts its audio on A1, and where a clip with more than two channels
    lands.
-3. The `FPS` and `Frames` Resolve gives an audio-only clip (the project's
-   rate, or its own), which the plan uses for its length.
-4. `AutoSyncAudio`: the real values of the `AUDIO_SYNC_*` constants,
-   whether it returns True, whether the synced audio shows on a timeline
-   as an item of its own (the verification's premise; if not, every run
-   reads `unverifiable`), and whether it changes a timeline that already
-   holds the clip.
+3. (Seen, above: an audio-only clip's FPS is the project's rate and it has
+   no Frames.)
+4. `AutoSyncAudio` on a short or local pair: whether it returns True,
+   whether the synced audio shows on a timeline as an item of its own
+   (the verification's premise), and whether it changes a timeline that
+   already holds the clip.
 5. The residual on the rendered tracks: render the stacked timeline and
    measure the render's two channels with `sync-measure`, for the A7 check
    (+/-0.5 frame or better). A nudge below a frame, if ever wanted, is a
@@ -993,13 +1009,12 @@ noise gate reads as digital silence, so the threshold went to -70 dBFS),
 - Nothing is cut, rippled or deleted: the code calls `AddMarker` and
   reads, and the forbidden-call scan (any `Delete*`) covers it.
 
-Owed live (Resolve was closed on 2026-09-29): run the markers on one
-existing sandbox `[auto]` timeline (an `A5asis_*` or `SW002final_*` one)
-and record whether `AddMarker` takes frames from the timeline's start (the
-scripting README's `GetMarkers` example reads "timeline offset 96"; the
-code assumes it, unlike `recordFrame`, which is absolute), whether it
-works on a timeline that is not current, and how `GetMarkers` spells its
-keys and durations.
+Seen live on 2026-09-30: markers on a sandbox `[auto]` clip timeline (11
+rows: silences, fillers, a repeat) were added and read back 11 of 11.
+`AddMarker` takes frames from the timeline's start, as the code assumes
+(absolute frames would fall before the timeline's first frame), and
+`GetMarkers` returns them under the same keys. Adding them to a timeline
+that is not current is still untried (the workflow makes it current).
 
 ### North register
 

@@ -67,6 +67,14 @@ def report(offset_s, fps=25.0, match=True, exceeds=False, reasons=()):
             "thresholds": {}}
 
 
+
+def tc(frames, fps):
+    """frames as a non-drop timecode at fps, as Resolve writes a Duration."""
+    n = int(round(fps))
+    s, f = divmod(int(frames), n)
+    return f"{s // 3600:02d}:{s // 60 % 60:02d}:{s % 60:02d}:{f:02d}"
+
+
 class Base(unittest.TestCase):
     OFFSET = 2.5  # the recorder started 2.5 s (62.5 -> 63 frames at 25 fps) after the camera
 
@@ -107,9 +115,11 @@ class Base(unittest.TestCase):
                 "Audio Ch": "2"}
 
     @staticmethod
-    def rec_props(path, frames=1600, channels=2):
-        return {"File Path": path, "Type": "Audio", "FPS": "25", "Frames": str(frames),
-                "Audio Ch": str(channels)}
+    def rec_props(path, frames=1600, channels=2, fps=25):
+        # As Resolve 21.0.4.5 reports an audio-only clip (live, 2026-09-30): no
+        # Frames, FPS the project's rate, Duration a timecode at that rate.
+        return {"File Path": path, "Type": "Audio", "FPS": str(fps),
+                "Duration": tc(frames, fps), "Audio Ch": str(channels)}
 
     def measure(self, offset_s=None, **kw):
         def fake(reference, other, **args):
@@ -277,6 +287,7 @@ class TestSyncPool(Base):
         # 29.97 is 30000/1001. An offset of 305700.6 frames at that rate (2 h 50
         # min) is 305700.29 at a plain 29.97: a whole frame apart once rounded.
         self.cam.props["FPS"] = self.rec.props["FPS"] = "29.97"
+        self.rec.props["Duration"] = tc(1600, 30000 / 1001)  # an audio clip counts at its FPS
         dry = self.run_it(measure=self.measure(305700.6 * 1001 / 30000), dry_run=True)
         self.assertEqual(dry["rate"], "29.97")  # the string only for SetSetting
         self.assertEqual(dry["offset_frames"], 305701)
@@ -357,8 +368,8 @@ class TestSyncImport(Base):
         self.new_rec = self.file("ZOOM0001.WAV")
         rf.IMPORT_PROPS[self.new_cam] = {"Type": "Video + Audio", "FPS": "25",
                                          "Frames": "1500", "Audio Ch": "2"}
-        rf.IMPORT_PROPS[self.new_rec] = {"Type": "Audio", "FPS": "25", "Frames": "1601",
-                                         "Audio Ch": "2"}
+        rf.IMPORT_PROPS[self.new_rec] = {"Type": "Audio", "FPS": "25",
+                                         "Duration": tc(1601, 25), "Audio Ch": "2"}
 
     def run_import(self, **kw):
         return self.twice(self.new_cam, self.new_rec, bin="Sync run", **kw)
@@ -562,6 +573,39 @@ class TestSyncCommandAndTool(Base):
             events = [json.loads(line) for line in f]
         self.assertEqual([(e["event"], e["tool"]) for e in events],
                          [("started", "sync"), ("finished", "sync")])
+
+
+class TestAudioOnlyClipInfo(unittest.TestCase):
+    """Resolve reports an audio-only clip with no Frames: its length comes
+    from the Duration timecode at the FPS it reports (the project's rate)."""
+
+    def test_timecode_frames(self):
+        self.assertEqual(syncbuild.tc_frames("00:01:36:01", 25), 2401)
+        self.assertEqual(syncbuild.tc_frames("00:01:36:01", 24), 2305)
+        self.assertEqual(syncbuild.tc_frames("01:00:00:00", 23.976), 86400)  # labels at 24
+        self.assertIsNone(syncbuild.tc_frames("00:00:10;02", 29.97))  # drop-frame refused
+        self.assertIsNone(syncbuild.tc_frames("00:00:10:25", 25))  # frame field past the rate
+        self.assertIsNone(syncbuild.tc_frames("", 25))
+        self.assertIsNone(syncbuild.tc_frames("00:00:10:00", None))
+
+    def test_audio_clip_counted_from_duration_and_placed_at_the_timeline_rate(self):
+        clip = rf.Clip("rec.m4a", "rec-1", {"File Path": "/x/rec.m4a", "Type": "Audio",
+                                             "FPS": 24.0, "Duration": "00:01:36:01",
+                                             "Audio Ch": "2"})
+        info = syncbuild.clip_info(clip)
+        self.assertEqual((info["frames"], info["frames_from"], info["video"]),
+                         (2305, "Duration", False))
+        cam = {"frames": 2401, "fps": 25.0, "video": True, "channels": 2}
+        placed = syncbuild.plan(cam, info, 0, 25)["placements"]
+        # 2305 frames at the project's 24 fps is 96.04 s: 2401 frames at 25
+        self.assertEqual([p["length"] for p in placed], [2401, 2401, 2401])
+
+    def test_a_clip_that_reports_frames_keeps_them(self):
+        clip = rf.Clip("cam.mov", "cam-1", {"File Path": "/x/cam.mov", "Type": "Video + Audio",
+                                             "FPS": 25.0, "Frames": "2401",
+                                             "Duration": "00:01:36:01", "Audio Ch": "2"})
+        info = syncbuild.clip_info(clip)
+        self.assertEqual((info["frames"], info["frames_from"]), (2401, "Frames"))
 
 
 if __name__ == "__main__":
