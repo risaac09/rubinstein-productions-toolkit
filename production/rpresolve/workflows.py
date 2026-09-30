@@ -8,9 +8,10 @@ Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
 Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
-destination form, queue_destination, create_captions) pin the open project by name (and
-unique id when given), re-check the pin before every batch of writes, and
-take a `check_cancel` callable that raises to stop at the next safe point. A dry
+destination form, queue_destination, create_captions, sync,
+trim_review_markers) pin the open project by name (and unique id when
+given), re-check the pin before every batch of writes, and take a
+`check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
 would carry out differs from the one the dry run showed.
 """
@@ -936,4 +937,371 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
     out["items"] = sum(after)
     out["ui_restore_problems"] = snap.problems
     out["exit_status"] = 0 if out["items"] > 0 else 1
+    return out
+
+
+# ---------------------------------------------------------------------------
+# sync: dual-system sound as a stacked multitrack [auto] timeline
+# ---------------------------------------------------------------------------
+
+SYNC_KEYS = ("coarse", "overlap", "windows", "offset_s", "head_offset_s", "tail_offset_s", "drift",
+             "drift_note", "frames", "polarity", "match", "reasons", "groups", "rival",
+             "notes", "thresholds")
+
+
+def _file_key(path):
+    st = os.stat(path)
+    return [path, st.st_size, int(st.st_mtime)]
+
+
+def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=False,
+         window_s=None, dry_run=False, project_id=None, expect_sha=None, check_cancel=None,
+         measure=None, probe=None):
+    """Measure where `other` sits against `reference` from their audio
+    (rpresolve.sync) and build a stacked multitrack ' [auto]' timeline in
+    the open project named project_name: the reference on V1/A1, the other
+    on A2 (or V2/A2 for a second camera) at the measured offset, every
+    placement read back: its start and source start exactly as planned,
+    its length within a frame (rate conversion rounds).
+
+    reference and other name media-pool clips (unique id, file path or
+    clip name). With bin they are files instead, imported into a new bin
+    of that name at the pool's root, which the run then owns; only then
+    may autosync run MediaPool.AutoSyncAudio on them, and its result is
+    read back through a second ' [auto]' timeline and compared with the
+    measured offset. A measurement that is not a match is refused; drift
+    over the threshold is reported (exit_status 2), never corrected.
+    measure and probe default to rpresolve.sync's (numpy); tests pass
+    their own.
+    Returns {project, mode, reference, other, measurement, timeline,
+    would_create, bin, rate, offset_frames, plan, plan_sha, dry_run,
+    imported, built, autosync, problems, ui_restore_problems,
+    exit_status}."""
+    from . import deliver, syncbuild as sb
+    if measure is None or (bin and probe is None):
+        from . import sync as rpsync  # numpy
+        measure, probe = measure or rpsync.measure, probe or rpsync.probe
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    importing = bool(bin)
+    if autosync and not importing:
+        raise Refused("AutoSyncAudio links the audio into the clips it syncs, which changes "
+                      "media-pool items; it runs only on clips this run imports (give bin).")
+    if importing:
+        paths = []
+        for p in (reference, other):
+            full = os.path.expanduser(p)
+            if not os.path.isabs(full) or not os.path.isfile(full):
+                raise Refused(f"with bin, reference and other are absolute paths of files; "
+                              f"{p} is not one.")
+            paths.append(os.path.realpath(full))
+        if paths[0] == paths[1]:
+            raise Refused("reference and other are the same file.")
+        if any(f.GetName() == bin for f in root.GetSubFolderList() or []):
+            raise Refused(f"a bin named '{bin}' already exists at the media pool's root; the run "
+                          "imports into a bin it makes and owns. Choose another name.")
+        pooled = {os.path.realpath(c.GetClipProperty("File Path"))
+                  for _, c in sb.walk(root) if c.GetClipProperty("File Path")}
+        already = [p for p in paths if p in pooled]
+        if already:
+            raise Refused(f"{', '.join(already)} is already in the media pool; name the pool "
+                          "clip instead of importing it again (and without autosync).")
+        probes = [probe(p) for p in paths]
+        if not probes[0]["video"] or not probes[0]["video"]["fps"]:
+            raise Refused(f"the reference {paths[0]} has no video frame rate; the reference is "
+                          "the camera clip, whose rate the timeline takes.")
+        fps = probes[0]["video"]["fps"]
+        infos = []
+        for p, pr in zip(paths, probes):
+            f = pr["video"]["fps"] if pr["video"] and pr["video"]["fps"] else fps
+            infos.append({"name": os.path.basename(p), "uid": None, "path": p, "fps": f,
+                          "frames": int(round(pr["duration"] * f)), "video": bool(pr["video"]),
+                          "channels": pr["audio"]["channels"]})
+        clips = {}
+    else:
+        clips, infos = {}, []
+        for role, ref in (("reference", reference), ("other", other)):
+            clip, why = sb.find_clip(root, ref)
+            if clip is None:
+                raise Refused(f"{role}: {why}.")
+            clips[role] = clip
+            infos.append(sb.clip_info(clip))
+        if infos[0]["uid"] == infos[1]["uid"]:
+            raise Refused("reference and other are the same media-pool clip.")
+        for role, info in zip(("reference", "other"), infos):
+            if not info["path"] or not os.path.isfile(info["path"]):
+                raise Refused(f"the {role} clip's file {info['path'] or '(none)'} is not on disk "
+                              "(offline media); its audio cannot be measured.")
+            if not info["fps"] or not info["frames"]:
+                raise Refused(f"Resolve does not report the {role} clip's FPS and Frames.")
+        if not infos[0]["video"]:
+            raise Refused("the reference clip has no video; the reference is the camera clip, "
+                          "whose rate the timeline takes.")
+        paths = [infos[0]["path"], infos[1]["path"]]
+        fps = infos[0]["fps"]
+    rate = sb.rate_string(fps)
+    if rate is None:
+        raise Refused(f"the reference runs at {fps:g} fps, which is not a timeline frame rate "
+                      "Resolve offers.")
+    tl_fps = deliver.exact_fps(rate)  # frames count at 30000/1001; the string is for SetSetting
+    stem = os.path.splitext(infos[0]["name"])[0]
+    name = name or f"{stem} sync{AUTO}"
+    if not name.endswith(AUTO):
+        raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
+    vname = name[:-len(AUTO)] + f" (AutoSyncAudio){AUTO}"
+    existing = {project.GetTimelineByIndex(i).GetName()
+                for i in range(1, int(project.GetTimelineCount() or 0) + 1)}
+    clash = [n for n in ([name, vname] if autosync else [name]) if n in existing]
+    if clash:
+        raise Refused(f"a timeline named '{clash[0]}' already exists; nothing is overwritten.")
+    settings = None
+    if autosync:
+        settings, missing = sb.autosync_settings(resolve)
+        if missing:
+            raise Refused("this Resolve does not define " + ", ".join(
+                f"resolve.{n}" for n in missing) + " (an unknown constant reads as None), so "
+                "AutoSyncAudio's settings cannot be given.")
+    kw = {"fps": tl_fps, "check_cancel": check_cancel}
+    if window_s:
+        kw["window_s"] = window_s
+    try:
+        report = measure(paths[0], paths[1], **kw)
+    except sb.SyncError as e:
+        raise Refused(f"the audio could not be measured: {e}")
+    measurement = {k: report.get(k) for k in SYNC_KEYS if k in report}
+    if not report["match"]:
+        groups = ("; the windows agree in groups: " + "; ".join(
+            f"{g['offset_s']:+.4f} s ({', '.join(g['windows'])})" for g in report["groups"])
+            if report.get("groups") else "")
+        raise Refused("the two recordings do not match well enough to place: " +
+                      "; ".join(report["reasons"]) + groups + ". Nothing was built.")
+    offset_frames = report["frames"]["placed"]
+    the_plan = sb.plan(infos[0], infos[1], offset_frames, tl_fps)
+    drift = report.get("drift") or {}
+    sha = plan_sha("sync", pin.unique_id, "import" if importing else "pool",
+                   [_file_key(p) for p in paths], bin, name, bool(autosync), rate,
+                   round(report["offset_s"], 4), offset_frames, bool(drift.get("exceeds")),
+                   the_plan["placements"] if not importing else
+                   [{k: v for k, v in p.items() if k != "length"} for p in the_plan["placements"]])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "mode": "import" if importing else "pool",
+           "reference": {k: infos[0][k] for k in ("name", "uid", "path", "fps", "frames")},
+           "other": {k: infos[1][k] for k in ("name", "uid", "path", "fps", "frames")},
+           "measurement": measurement, "timeline": name,
+           "would_create": [name] + ([vname] if autosync else []), "bin": bin, "rate": rate,
+           "offset_frames": offset_frames, "plan": the_plan["placements"], "plan_sha": sha,
+           "dry_run": dry_run, "imported": [], "built": None, "autosync": None, "problems": [],
+           "ui_restore_problems": [], "exit_status": 0}
+    if importing:
+        out["lengths_note"] = ("lengths are from ffprobe until the files are imported; the real "
+                               "run places them at the lengths Resolve reports")
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (files, clips, timelines or the "
+                      "measured offset differ); run the dry run again and review it")
+    check = _check(pin, pm, check_cancel)
+    snap = api.UISnapshot(resolve, project)
+    previous = media_pool.GetCurrentFolder() if importing else None
+    with snap:
+        try:
+            check()
+            if importing:
+                # The new timelines go into the run's bin too (CreateEmptyTimeline
+                # adds to the current folder); the folder is put back after.
+                clips, infos = _import_pair(media_pool, root, bin, paths, rate, out)
+                build_plan = sb.plan(infos[0], infos[1], offset_frames, tl_fps)
+            else:
+                build_plan = the_plan
+            clips.update({"reference_info": infos[0], "other_info": infos[1]})
+            built = sb.build(project, media_pool, name, rate, tl_fps, clips, build_plan,
+                             check)
+            tl = built.pop("timeline")
+            out["built"] = built
+            out["problems"] += built["problems"]
+            if autosync:
+                out["autosync"] = _autosync(resolve, project, media_pool, clips, infos, tl,
+                                            built, build_plan, vname, rate, report["offset_s"],
+                                            settings, check)
+                out["problems"] += out["autosync"]["problems"]
+        finally:
+            if previous:
+                media_pool.SetCurrentFolder(previous)
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = (1 if out["problems"] else
+                          2 if drift.get("exceeds") or (out["autosync"] or {}).get("verdict")
+                          == "unverifiable" else 0)
+    return out
+
+
+def _uid(obj):
+    return api._safe_call(obj, "GetUniqueId")
+
+
+def _import_pair(media_pool, root, bin, paths, rate, out):
+    """Make the run's bin at the pool's root, open it, import the two files
+    there and read back what Resolve made of them. Leaves the bin open (the
+    caller puts the folder back). Returns ({reference, other} clips,
+    [reference info, other info])."""
+    from . import syncbuild as sb
+    folder = media_pool.AddSubFolder(root, bin)
+    if not folder or not any(f.GetName() == bin for f in root.GetSubFolderList() or []):
+        raise api.WriteNotApplied(f"could not make the bin '{bin}'")
+    if not media_pool.SetCurrentFolder(folder):
+        raise api.WriteNotApplied(f"could not open the bin '{bin}' to import into it")
+    got = media_pool.ImportMedia(paths) or []
+    by_path = {os.path.realpath(c.GetClipProperty("File Path") or ""): c for c in got if c}
+    out["imported"] = [{"path": p, "uid": _uid(by_path.get(p))} for p in paths]
+    if any(p not in by_path for p in paths):
+        raise api.WriteNotApplied("ImportMedia did not return a clip for " + ", ".join(
+            p for p in paths if p not in by_path) + f"; what it did import is in the bin "
+            f"'{bin}'. Nothing was built.")
+    clips = {"reference": by_path[paths[0]], "other": by_path[paths[1]]}
+    infos = [sb.clip_info(clips["reference"]), sb.clip_info(clips["other"])]
+    if not infos[0]["fps"] or sb.rate_string(infos[0]["fps"]) != rate or \
+            not infos[0]["frames"] or not infos[1]["frames"] or not infos[1]["fps"]:
+        raise api.WriteNotApplied(
+            f"Resolve reports the imported clips as {infos[0]['fps']} fps / "
+            f"{infos[0]['frames']} frames and {infos[1]['fps']} fps / {infos[1]['frames']} "
+            f"frames, which does not fit the plan at {rate} fps; they stay in the bin "
+            f"'{bin}'. Nothing was built.")
+    return clips, infos
+
+
+def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan, vname, rate,
+              offset_s, settings, check):
+    """Run AutoSyncAudio on the two clips this run imported, then check it:
+    the stacked timeline read again, the reference clip's properties before
+    and after, and a second [auto] timeline holding the synced reference,
+    whose items say where Resolve put the other file. Returns {returned,
+    changed_properties, verification_timeline, implied_offset_s, verdict,
+    problems}."""
+    from . import deliver, syncbuild as sb
+    fps = deliver.exact_fps(rate)
+    res = {"returned": None, "changed_properties": [], "verification_timeline": vname,
+           "implied_offset_s": None, "verdict": None, "problems": []}
+    check()
+    before = sb.clip_props(clips["reference"])
+    res["returned"] = bool(media_pool.AutoSyncAudio([clips["reference"], clips["other"]],
+                                                    settings))
+    after = sb.clip_props(clips["reference"])
+    res["changed_properties"] = sorted(k for k in set(before) | set(after)
+                                       if before.get(k) != after.get(k))
+    rows, _ = sb.read_back(tl, build_plan["placements"],
+                           {"reference": infos[0], "other": infos[1]}, built["start_frame"])
+    was = [(p["role"], p["kind"], p["track"], p["got"]) for p in built["placements"]]
+    now = [(p["role"], p["kind"], p["track"], p["got"]) for p in rows]
+    if was != now:
+        res["problems"].append("AutoSyncAudio changed the stacked timeline: " + "; ".join(
+            f"{a[0]} {a[1][0].upper()}{a[2]} {a[3]} -> {b[3]}" for a, b in zip(was, now)
+            if a != b))
+    check()
+    vt = sb.new_timeline(project, media_pool, vname, rate)
+    problem = sb.ensure_track(vt, "audio", 2, sb.audio_subtype(infos[1]["channels"]))
+    if problem:
+        res["problems"].append(problem)
+    sb.append(media_pool, clips["reference"], {"startFrame": 0, "endFrame": infos[0]["frames"],
+                                               "trackIndex": 1, "record": 0, "mediaType": None},
+              vt.GetStartFrame())
+    implied = sb.implied_offset(vt, infos[0], infos[1], fps)
+    if implied is None:
+        res["verdict"] = "unverifiable"
+        res["note"] = ("the synced reference shows no item of the other file on its own, so "
+                       "where Resolve put it cannot be read back; the stacked timeline stands "
+                       "on the measured offset alone")
+    else:
+        res["implied_offset_s"] = round(implied, 4)
+        res["verdict"] = "agrees" if abs(implied - offset_s) <= 1.0 / fps + 1e-9 else "disagrees"
+        if res["verdict"] == "disagrees":
+            res["problems"].append(f"AutoSyncAudio put the other file at {implied:+.4f} s, the "
+                                   f"measured offset is {offset_s:+.4f} s: more than a frame "
+                                   "apart")
+    if not res["returned"]:
+        res["problems"].append("AutoSyncAudio returned False")
+    return res
+
+
+# ---------------------------------------------------------------------------
+# trim-review markers: review rows as markers on an [auto] timeline
+# ---------------------------------------------------------------------------
+
+def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
+                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
+                        check_cancel=None):
+    """Review the parts of `source` an ' [auto]' timeline plays
+    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
+    per row there, reading each back with GetMarkers. Adds markers only:
+    nothing is cut, rippled, moved or deleted. A row that would land on a
+    frame already holding a marker is refused and reported. words: the
+    list from cutlist.load_words, or None for silences only. Returns
+    {project, timeline, source, items, skipped_items, rows, counts,
+    thresholds, planned, refused, results, plan_sha, dry_run,
+    ui_restore_problems, exit_status}."""
+    from . import deliver, markers as mk, trimreview as tr
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Markers go only onto timelines "
+                      "these tools made; duplicate it first (duplicate_timeline_auto).")
+    tl_fps = deliver.exact_fps(api._safe_call(tl, "GetSetting", "timelineFrameRate") or
+                               api._safe_call(project, "GetSetting", "timelineFrameRate"))
+    if not tl_fps:
+        raise Refused(f"the frame rate of '{tl_name}' could not be read.")
+    found, skipped = mk.source_items(tl, source)
+    items, slow = mk.mappable(found, tl_fps)
+    skipped += slow
+    if not items:
+        raise Refused(f"no item on '{tl_name}' plays {source} at its own speed" +
+                      (": " + "; ".join(skipped) if skipped else "") + ".")
+    if check_cancel:
+        check_cancel()
+    review = tr.review_source(source, words, ranges=mk.ranges(items), audio=audio,
+                              **(review_opts or {}))
+    existing = mk.existing_frames(tl)
+    planned, refused = mk.plan(review["rows"], items, tl.GetStartFrame(), tl_fps, set(existing))
+    shown = [{k: v for k, v in m.items() if k != "row"} for m in planned]
+    sha = plan_sha("trim-markers", pin.unique_id, tl_id, sorted(existing), shown)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "fps": tl_fps,
+                        "markers_before": len(existing)},
+           "source": source,
+           "items": [{k: it[k] for k in ("kind", "track", "start", "end", "src_start_s",
+                                         "src_end_s")} for it in items],
+           "skipped_items": skipped, "rows": len(review["rows"]),
+           "counts": tr.counts(review["rows"]), "thresholds": review["thresholds"],
+           "planned": shown,
+           "refused": [{"frame": r["frame"], "reason": r["reason"], "kind": r["row"]["kind"],
+                        "source_start": r["row"]["source_start"]} for r in refused],
+           "results": [], "problems": [], "plan_sha": sha, "dry_run": dry_run,
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the timeline, its markers or the "
+                      "review differ); run the dry run again and review it")
+    problems = []
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        if check_cancel:
+            check_cancel()
+        project = pin.check(pm)
+        if not project.SetCurrentTimeline(tl) or _uid(project.GetCurrentTimeline()) != tl_id:
+            raise api.WriteNotApplied(f"could not make '{tl_name}' current to mark it")
+        before = mk.existing_frames(tl)
+        if before != existing:
+            raise Refused(f"the markers on '{tl_name}' changed since the plan; nothing was added.")
+        out["results"] = mk.add(tl, planned, check=_check(pin, pm, check_cancel))
+        after = mk.existing_frames(tl)
+    changed = sorted(f for f in before if after.get(f) != before[f])
+    extra = sorted(set(after) - set(before) - {m["frame"] for m in planned})
+    if changed:
+        problems.append(f"{len(changed)} marker(s) that were there before changed: frames "
+                        f"{changed[:10]}")
+    if extra:
+        problems.append(f"{len(extra)} marker(s) appeared that were not planned: frames "
+                        f"{extra[:10]}")
+    out["problems"] = problems
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if problems or any(not r["ok"] for r in out["results"]) else 0
     return out
