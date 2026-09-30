@@ -47,7 +47,11 @@ Commands:
                            a pause of the audio, and that it says only what the
                            approved text says
     selects                Offline: propose spans that sit inside the approved text
-    cut                    Build [auto] 16:9 and 9:16 timelines from a manifest
+    reframe-plan           Offline: a static crop per span for 9:16 and 1:1, centred
+                           on the speaker's face (macOS Vision) and checked on
+                           sampled frames; writes a manifest copy and a report
+    cut                    Build [auto] 16:9 timelines and their 9:16 (and 1:1,
+                           --aspects) versions from a manifest
     deliver-queue          Queue a render for a delivery destination (YouTube,
                            LinkedIn, Substack, client master) with the house
                            file name; never starts it
@@ -112,7 +116,8 @@ Known API limits (live-verified against Resolve Studio 21.0.4.5):
       timeline's timecode (01:00:00:00 and up); deliver-captions makes the
       zero-based <stem>.srt a platform reads.
     - The "story" vertical preset resizes the canvas only. It does not
-      reframe subjects — do that per-clip before rendering vertical.
+      reframe subjects: reframe-plan plans a crop per span and cut applies
+      it to the 9:16 and 1:1 versions (Zoom, Pan, Tilt, each read back).
 """
 
 import sys
@@ -1185,10 +1190,55 @@ def cmd_selects(args):
     return 0
 
 
+def cmd_reframe_plan(args):
+    """Plan a static crop per span for the 9:16 and 1:1 versions, centred on
+    the speaker's face, and check the face stays inside it on every sampled
+    frame (see rpresolve/reframe.py). Writes a copy of the manifest with the
+    per-span reframes (--out) and the report beside it (<out stem>.reframe.tsv
+    and .json). Offline. Exit 0 every crop holds, 2 any span needs a person
+    (manual reframe or split, no face, a crop kept with bars, or a flagged
+    span: a choice of face, a face off its track, an unchecked sample, a
+    span past the source's end), 1 error."""
+    from rpresolve import cutlist, reframe
+    out = os.path.abspath(args.out)
+    problem = _out_problem(out)
+    if not problem and os.path.realpath(args.manifest) == os.path.realpath(out):
+        problem = f"{out} is the manifest itself; write the copy somewhere else."
+    stem = os.path.splitext(out)[0] + ".reframe"
+    for p in (stem + ".tsv", stem + ".json"):
+        problem = problem or _out_problem(p)
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        m = cutlist.load_manifest(args.manifest)
+        report = reframe.plan(m, aspects=args.aspects, samples=args.samples,
+                              per_second=args.per_second, speaker_x=args.speaker_x,
+                              only=args.only, allow_bars=args.allow_bars,
+                              progress=lambda d, n: print(f"  span {d} of {n}", file=sys.stderr))
+    except (cutlist.CutlistError, reframe.ReframeError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for r in report["rows"]:
+        print(reframe.line(r))
+    _write_private(out, json.dumps(reframe.apply(m, report), indent=1) + "\n")
+    tsv_path, json_path = reframe.write_report(stem, report, _write_private)
+    print(reframe.summary(report), file=sys.stderr)
+    print(f"Wrote {out}, {tsv_path} and {json_path}", file=sys.stderr)
+    return 2 if reframe.needs_person(report["rows"]) else 0
+
+
 def cmd_cut(args):
     """Build [auto] timelines from a manifest in the open project named with
-    --project. Exit 0 all built and read back, 1 on any failure."""
+    --project: each clip's 16:9 and its --aspects versions (default 9x16).
+    Exit 0 all built and read back, 2 built but a version leaves bars, 1 on
+    any failure, a version with no reframe (UNREFRAMED: not built) or an
+    input scaling the transform is not known for (REFUSED: not built)."""
     from rpresolve import cutlist
+    if args.no_9x16 and args.aspects:
+        print("ERROR: --no-9x16 and --aspects each choose the versions; give one of them.",
+              file=sys.stderr)
+        return 1
     try:
         gate = rpwork.cut_gate(args.manifest, args.only, audio=not args.no_audio,
                                force=args.force)
@@ -1202,7 +1252,7 @@ def cmd_cut(args):
     try:
         with rpapi.ResolveLock():
             r = rpwork.cut(resolve, args.project, args.manifest, prefix=args.prefix,
-                           make_9x16=not args.no_9x16, gate=gate)
+                           make_9x16=not args.no_9x16, gate=gate, aspects=args.aspects)
     except rpapi.ProjectChanged as e:
         print(f"ERROR: {e} cut builds timelines, so it runs only on the project named with "
               "--project.", file=sys.stderr)
@@ -1216,8 +1266,21 @@ def cmd_cut(args):
         if x["kind"] == "16x9":
             print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['frames']} frames "
                   f"(expected {x['frames_expected']}) {x['reason']}")
-        else:
-            print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['props'] or ''} {x['reason']}")
+            continue
+        flag = ("made " if x["ok"] else "UNREFRAMED" if x.get("unreframed") else
+                "REFUSED" if x.get("refused") else "FAIL ")
+        print(f"  {flag} {x['name']}  {x['props'] or ''} {x['reason']}")
+        if x["ok"] and x["props"] is None:
+            for it in x["items"]:
+                print(f"         span {it['span']}: {it['props']}")
+        for b in x.get("bars") or []:
+            print(f"         BARS {b}")
+        for w in x.get("warnings") or []:
+            print(f"         note: {w}")
+    for name in r["left_behind"]:
+        print(f"  LEFT BEHIND {name}: it exists as the failed build left it; delete it before "
+              "a re-run",
+              file=sys.stderr)
     if r["ui_restore_problems"]:
         print("  UI restore: " + "; ".join(r["ui_restore_problems"]), file=sys.stderr)
     return r["exit_status"]
@@ -1747,6 +1810,11 @@ Examples:
   # Measure a render; camera-match numbers for two cameras by time range
   python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
 
+  # Reframes: plan and check a crop per span, then build 9:16 and 1:1 from the copy
+  python3 resolve_workflow.py reframe-plan manifest.json --out /path/outside/repo/manifest.reframed.json
+  python3 resolve_workflow.py cut /path/outside/repo/manifest.reframed.json --project "My Project" \\
+      --aspects 9x16 1x1
+
   # Plan, then queue, a YouTube render named SW001_Guest_01_example-clip_16x9.mp4
   python3 resolve_workflow.py deliver-queue --project "My Project" --timeline "Clip [auto]" \\
       --dest youtube_16x9 --show SW --episode 1 --guest Guest --index 1 \\
@@ -1932,12 +2000,37 @@ Examples:
     sp.add_argument("--out", help="Write the TSV here instead of stdout")
     sp.set_defaults(func=cmd_selects)
 
+    sp = subparsers.add_parser(
+        "reframe-plan", help="Offline: a static crop per span for 9:16 and 1:1, centred on the "
+        "face, checked on sampled frames")
+    sp.add_argument("manifest")
+    sp.add_argument("--aspects", nargs="+", choices=["9x16", "1x1"], default=["9x16", "1x1"],
+                    help="Versions to plan (default both)")
+    sp.add_argument("--samples", type=int, default=8,
+                    help="Frames sampled per span (default 8; at least --per-second a second)")
+    sp.add_argument("--per-second", type=float, default=0.5,
+                    help="Fewest samples per second of a span (default 0.5)")
+    sp.add_argument("--speaker-x", type=float,
+                    help="The speaker's face x in source pixels: choose the face nearest it "
+                         "(for a two-up call recording)")
+    sp.add_argument("--only", nargs="+", metavar="CLIP", help="Only these clips")
+    sp.add_argument("--allow-bars", action="store_true",
+                    help="Keep the default scale when it holds the face but the picture does "
+                         "not fill the frame (black bars); such crops are named 'bars'")
+    sp.add_argument("--out", required=True,
+                    help="The manifest copy with per-span reframes (refused inside this repo); "
+                         "the report goes beside it as <stem>.reframe.tsv and .json")
+    sp.set_defaults(func=cmd_reframe_plan)
+
     sp = subparsers.add_parser("cut", help="Build [auto] 16:9 and 9:16 timelines from a manifest")
     sp.add_argument("manifest")
     sp.add_argument("--project", required=True, help="Name of the open project; cut refuses any other")
     sp.add_argument("--prefix", default="SW", help="Timeline name prefix (default SW)")
     sp.add_argument("--only", nargs="+", metavar="CLIP", help="Only these clips")
     sp.add_argument("--no-9x16", action="store_true", help="Skip the 9:16 versions")
+    sp.add_argument("--aspects", nargs="+", choices=["9x16", "1x1"],
+                    help="Versions to build beside the 16:9 (default 9x16): each span's reframe "
+                         "from reframe-plan, else the clip's face_x")
     sp.add_argument("--no-audio", action="store_true", help="Skip the audio part of the gate")
     sp.add_argument("--force", action="store_true",
                     help="Build clips that fail endcheck (to reproduce an old cut); reported loudly")
