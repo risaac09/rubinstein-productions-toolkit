@@ -22,23 +22,20 @@ numpy is required (the system /usr/bin/python3 has it). Face boxes need
 macOS with swiftc; without them the skin section reads UNAVAILABLE.
 """
 
-import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 
 import numpy as np
 
 from . import color
+# The Vision helper lives in vision.py (stdlib only); these names stay here too.
+from .vision import CACHE_DIR, SWIFTC, VISION_SOURCE, face_boxes, vision_binary  # noqa: F401
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 FFPROBE = os.environ.get("RPRESOLVE_FFPROBE", "/opt/homebrew/bin/ffprobe")
-SWIFTC = shutil.which("swiftc") or "/usr/bin/swiftc"
-VISION_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision_faces.swift")
-CACHE_DIR = os.path.expanduser("~/Library/Caches/rpresolve")
 
 SKIN_LINE_DEG = 123.0
 UNAVAILABLE = "UNAVAILABLE"
@@ -287,48 +284,8 @@ def camera_match(frames, segments, hero=None):
 
 
 # ---------------------------------------------------------------------------
-# Face boxes (macOS Vision, compiled once)
+# Face boxes: vision.py (macOS Vision, compiled once)
 # ---------------------------------------------------------------------------
-
-def vision_binary():
-    """Path of the compiled Vision helper, building it into the cache on
-    first use (keyed by the source's sha256). None when swiftc is missing
-    or the build fails."""
-    try:
-        with open(VISION_SOURCE, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
-    except OSError:
-        return None
-    binary = os.path.join(CACHE_DIR, f"vision_faces-{digest}")
-    if os.access(binary, os.X_OK):
-        return binary
-    if not os.access(SWIFTC, os.X_OK):
-        return None
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    proc = subprocess.run([SWIFTC, "-O", VISION_SOURCE, "-o", binary],
-                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return binary if proc.returncode == 0 and os.access(binary, os.X_OK) else None
-
-
-def face_boxes(images):
-    """{image path: [box]} from the Vision helper, or None when the helper
-    cannot run."""
-    binary = vision_binary()
-    if not binary:
-        return None
-    proc = subprocess.run([binary, *images], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          encoding="utf-8", errors="replace")
-    if proc.returncode != 0:
-        return None
-    out = {}
-    for line in proc.stdout.splitlines():
-        try:
-            doc = json.loads(line)
-        except ValueError:
-            continue
-        out[doc.get("path")] = doc.get("faces") or []
-    return out
-
 
 def _write_png(rgb, path):
     import cv2  # the system python has opencv; imported only when faces are wanted

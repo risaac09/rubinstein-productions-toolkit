@@ -44,7 +44,7 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 22 tools: 5 reads, 9 offline tools
+tool must name that project. There are 23 tools: 5 reads, 10 offline tools
 (one of them, `deliver_captions`, writes a file beside a render) and 8
 writes.
 
@@ -60,12 +60,13 @@ writes.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
+| `reframe_plan` | offline | A static crop per span for the 9:16 and 1:1 versions, centred on the speaker's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger, or the one nearest `speaker_x`), the crop kept inside the picture area, and every sampled face box (10% margin) checked inside it. When the default scale (2.25) leaves bars or loses the face, the widest filled scale is tried; else the span needs a manual reframe or a split, and a span with no face gets no crop (`allow_bars` keeps the default when it holds the face, named `bars`). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
 | `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
 | `trim_review` | offline | Long silences from the source audio, fillers, repeats and Whisper loops from the word JSON, as proposals (keep, tighten, cut-candidate) in a TSV. Over a cut manifest the times run along each clip. Nothing is cut. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
-| `cut` | write | Build `<prefix>_<clip> [auto]` timelines (and 9:16 copies) from a cut manifest, gated by endcheck. |
+| `cut` | write | Build `<prefix>_<clip> [auto]` timelines and their 9:16 and 1:1 versions (`aspects`, default 9:16) from a cut manifest, gated by endcheck. Each version's items take their span's crop from `reframe_plan` (else the clip's `face_x`), every transform read back. A version with no reframe is not built and is named UNREFRAMED, nor is one whose input scaling is not scaleToFit or scaleToCrop (REFUSED); one whose picture does not fill the frame is built and named BARS. A timeline a failed build leaves behind is named in `left_behind` and in the journal. Each timeline is decided on its own: one that exists is skipped, and a missing version beside an existing 16:9 is built from it while its items still match the manifest's spans. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
@@ -149,8 +150,9 @@ tree and never overwrites an `.srt`.
   the other reads 10 s and writes 30 s, then report Resolve as busy.
 - **A record of every write.** A real run writes a synced "started" line to
   `~/Library/Logs/rpresolve-mcp/writes.jsonl` (mode 0600) before touching
-  Resolve and a "finished" line after. If the started line cannot be
-  written, the write does not happen.
+  Resolve and a "finished" line after, which names what was created and
+  any timeline a failed build left behind (`left_behind`). If the started
+  line cannot be written, the write does not happen.
 - **Calls that are never made.** A test scans all the code the server can
   reach for `LoadProject`, `CreateProject`, `SaveProject`, `StartRendering`,
   any `Delete*`, `eval` and `exec`, as names or strings.
@@ -186,6 +188,12 @@ choose the file.
   places nothing (Resolve 21.0.4.5).
 - `GetIsTrackEnabled` answers False for every track of a timeline that is
   not current.
+- A transform can read back perfectly and still leave bars. At `cut`'s
+  default 2.25 output pixels per source pixel, a 720-row source covers
+  1620 of 1920 rows of a 9:16 frame, and a picture letterboxed to a
+  360-row band covers 810. The sandbox 9:16 that rendered with bars was
+  built at that default; `cut` now names BARS, and `reframe_plan`
+  measures the picture area.
 - `MediaPool.AppendToTimeline` works on the current timeline and answers
   truthy even when it places nothing, including for a track index that
   does not exist yet; `sync` adds tracks with `AddTrack` first and reads
