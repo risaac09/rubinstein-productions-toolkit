@@ -156,12 +156,13 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 18 tools: reads of the open project, the offline checks (detect,
-survey, measure, endcheck, selects, deliver_check), the offline caption
-conversion (deliver_captions), and additive writes (ingest, cut,
-duplicate, grade onto `[auto]` timelines, auto captions on `[auto]`
-timelines, queue a render without starting it), each write shown as a
-plan before it runs.
+as 22 tools: reads of the open project, the offline checks (detect,
+survey, measure, endcheck, selects, deliver_check, sync_measure,
+trim_review), the offline caption conversion (deliver_captions), and
+additive writes (ingest, cut, duplicate, grade onto `[auto]` timelines,
+auto captions on `[auto]` timelines, queue a render without starting it,
+stack dual-system sound on a new `[auto]` timeline, trim-review markers on
+`[auto]` timelines), each write shown as a plan before it runs.
 
 ---
 
@@ -465,6 +466,293 @@ a script.
 
 ---
 
+## Sync
+
+Dual-system sound: a camera clip plus a separately recorded audio file, or
+two cameras in one room. Two steps: measure offline, then stack the pair
+on a new `[auto]` timeline. Making a multicam clip from it stays a hand
+step (the API has no multicam call).
+
+### Measure
+
+`resolve_workflow.py sync-measure <reference> <other> [--fps F] [--window
+S] [--json]`, or the MCP `sync_measure`. Offline; nothing touches Resolve.
+The reference is the camera clip.
+
+- Both files' audio is decoded to mono at 8 kHz (ffmpeg, every channel
+  averaged) and cross-correlated with FFTs (numpy). A coarse pass runs on
+  the whole of both, block-averaged to 1 kHz (lower past about an hour
+  each), and finds the lag over everything the two could share. A fine
+  pass at 8 kHz searches 1 s either side of it on 30 s windows across the
+  overlap: a head, a tail and at least one between (up to 7), or the whole
+  overlap as one window when it is under 90 s.
+- **Offset:** where the other file's first frame lands on the
+  reference's clock. Positive when the other started later; negative when
+  it started earlier. With drift measured, it is the drift line's value
+  at the overlap's midpoint, where one placement errs least (the head
+  window's own reading is `head_offset_s`); with one window, or windows
+  that do not lie on one line, the head window's. Each file's zero is its first video frame (its first audio
+  sample when it has none), so an audio stream that starts late in its
+  container is counted. That assumes Resolve also plays such a stream
+  from its own start time, which is not yet seen live (item 7 below); the
+  report adds a note whenever either file's audio starts off its first
+  frame.
+- **Frames:** the offset times the reference's frame rate (or `--fps`),
+  placed at the whole frame by rounding half up. Frame placement leaves a
+  residual of up to half a frame (20 ms at 25 fps, 8.3 ms at 60): the
+  report gives the one this offset leaves at the midpoint, beside that
+  inherent bound; drift adds to it toward either end.
+- **Confidence**, per window: the normalized correlation at the peak
+  (-1 to 1; its sign is the polarity, and an inverted mic reads as a match
+  with polarity "inverted") and the peak over the highest correlation more
+  than 50 ms away. A window under 2x or under 0.1 is not a match, nor is
+  an overlap under 5 s.
+- **One moment is not a match.** Each window's correlation is measured
+  again with its strongest second left out, and must still reach 0.1. Two
+  unrelated files, each silent (a muted input, a closed noise gate) or
+  quietly noisy but for one click, line up at correlation 1.0 on that
+  click; without it the rest reads 0.000 and the report names the moment.
+  A door slam over talk that also lines up keeps the rest well above 0.1.
+  A file of digital silence is refused as that, before any correlation.
+- **Sound that repeats.** A window searches only 1 s either side of the
+  coarse lag, so its ratio cannot see a second match further away. The
+  coarse pass can: its peak over the best lag more than 1 s away. Under
+  2x, that runner-up is measured window by window as the match is, and
+  when every window there passes too, the pair is refused as ambiguous
+  with both offsets named (a looped music bed, one sting at both ends, a
+  repeated countdown). When the runner-up fails, the low coarse ratio came
+  from noise the fine pass sees through: on synthetic pairs with heavy
+  low-frequency rumble (wind or handling on a camera mic), 13 of 27
+  correct matches had a coarse ratio under 2x, and all 13 still match.
+- **Drift:** a straight line through every window's offset gives the
+  clock drift, in ms per minute and ppm, and what it adds up to over the
+  overlap. What counts is where the placement leaves the ends of the
+  overlap: the frame rounding plus half the drift (`worst_ms`). Over half
+  a frame, the report says so and gives the speed that would cancel the
+  drift (`retime_pct`, for the other clip) and where the clip's first
+  frame then belongs (`retime_offset_s`, retimed about that frame);
+  nothing corrects it (exit 2). Counting the drift alone, as before, let
+  25 ppm over 10 minutes (15 ms) exit 0 while one end sat 23 ms out. When the line slopes by more than a quarter sample per
+  window, the windows are measured again with the other file stretched by
+  that slope: a drifting clock smears a window's peak (50 ppm over 30 s is
+  1.5 ms), and on a synthetic 50 ppm pair the stretch took each window's
+  correlation from about 0.3 back to 0.99. The stretched pass is kept
+  only when it raises the windows' correlation; a slope fitted through a
+  step lowers it, and the first pass stands.
+- **Windows off the line:** one clock keeps every window within about a
+  millisecond of its drift line (within microseconds after the stretch,
+  on synthetic drift). A window more than 2 ms or a tenth of a frame off
+  it, whichever is more (4 ms at 25 fps), means the pair lines up
+  differently in different places: a call recorded at both ends, a
+  recorder that dropped samples, an edited file. That is not a match, and
+  the report groups the windows by the offset they agree on. A line
+  through three windows absorbs two thirds of a step at one end, so the
+  limit catches a step down to 0.3 frame; synthetic audio that lost 30 to
+  45 ms of samples (a USB or OBS dropout) is refused, where the earlier
+  half-frame limit let it pass as 140 to 230 ppm of drift.
+- **A slope beyond two clocks:** on a clean line, more than 300 ppm is not
+  a match. Two crystal clocks stay well inside it; a 0.1% pull-up or
+  pull-down (1000 ppm, a recorder set to 48.048 or 47.952 kHz) reads like
+  this, and the reason names it.
+
+Exit status: 0 a match; 2 a match whose placement leaves either end of
+the overlap more than half a frame out; 1 no match or a file that cannot
+be read.
+
+**Measured on real pairs, 2026-09-29** (read-only copies in a temp
+folder; nothing from them is in this repository):
+
+| Pair | Result |
+|---|---|
+| A video call's own video file and its separate audio file (77 min) | offset 0.0000 s, correlation +1.000, drift 0.00 ppm: MATCH |
+| The same call recorded at both ends: a screen recording and the call app's audio file (82 and 79 min) | NO MATCH. Five middle windows agree on +127.3261 s (correlation +0.94 to +0.97; within 0.001 ms of each other across 52 minutes, one computer's clock); the head and tail windows find +127.142 s, inverted (-0.43, -0.69). Each voice reaches the two files by its own path, 184 ms apart, so no one placement holds both |
+| Two unrelated recordings | peak 1.05x, correlation +0.03: NO MATCH |
+
+Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
+(decode included; the correlation alone 0.4 s).
+
+### Stack
+
+`resolve_workflow.py sync <reference> <other> --project "<open project>"
+[--project-id ID] [--bin NAME] [--name "<name> [auto]"] [--autosync]
+--dry-run`, then again with `--plan-sha`; or the MCP `sync`.
+
+- **Clips.** `reference` and `other` name media-pool clips by unique id,
+  file path or clip name (one clip each, or it is refused). With `--bin`
+  they are files instead, imported into a new bin of that name at the
+  pool's root, which the run then owns; a bin of that name that exists
+  already, or a file already in the pool, is refused. The new timelines
+  are made in that bin, and the folder Isaac had open is put back.
+- **Measured first.** The files are measured as above, at the timeline's
+  frame rate. A result that is not a match is refused with its reasons
+  (and the offset groups), and nothing is built.
+- **The timeline:** `<reference> sync [auto]` (or `--name`, which must
+  end ` [auto]`; an existing name is refused), at the reference's frame
+  rate, set while it is empty and read back. Resolve spells an NTSC rate
+  short (`29.97`); the frame math uses the rate it stands for
+  (30000/1001), since a plain 29.97 puts a placement 0.108 frame off per
+  hour of offset. The reference goes on V1/A1
+  from the start; the other on A2 (an audio file, `mediaType` 2) or V2/A2
+  (a camera) at the offset in whole frames. A negative offset moves the
+  reference later instead, so nothing is trimmed from either.
+- **Every placement is read back.** `AppendToTimeline` works on the
+  current timeline, so the new timeline is made current (and put back
+  after); tracks are made with `AddTrack` first (an added audio track's
+  type is read back: `stereo` for 2 channels, `mono` for 1); then each
+  placement must show exactly one item of its clip on its track, at
+  exactly its planned start and source start (whole frames the plan
+  chose; one frame off would add to the half frame of rounding), with its
+  length within one frame (a rate conversion can round it). An item
+  that no placement explains is a problem too. A track that already holds
+  items when a clip is due there is not placed onto.
+- **Drift:** the other clip is placed at the offset the drift line gives
+  at the overlap's midpoint. When the rounding plus half the drift leaves
+  either end more than half a frame out, that is reported (exit 2), with
+  the retime that would cancel the drift and where the retimed clip's
+  first frame belongs. Nothing retimes the clip; that is a hand step.
+- **AutoSyncAudio** (`--autosync`, MCP `autosync`) runs only with `--bin`:
+  it links the audio into the clips it syncs, changing media-pool items,
+  so it touches only clips this run imported. It runs after the stacked
+  timeline is built and read back, with waveform mode on the mix of every
+  channel, keeping the camera's own audio and metadata. Its answer is
+  never trusted alone: the stacked timeline is read again (a change there
+  is a problem), the reference clip's properties before and after are
+  compared, and a second timeline, `<name> (AutoSyncAudio) [auto]`, holds
+  the synced reference so its items show where Resolve put the other
+  file. The verdict is `agrees` (within a frame of the measured offset),
+  `disagrees` (exit 1), or `unverifiable` (exit 2) when the other file is
+  not an item of its own there.
+
+Exit status: 0 built and read back (or planned with `--dry-run`); 2 built
+with drift over the threshold or an unverifiable AutoSyncAudio; 1 refused
+or failed.
+
+### What is known and what is not
+
+From the live spikes on Resolve 21.0.4.5 (pipeline note, spikes 13 to 22),
+used here: `AppendToTimeline` returns a truthy value even when it places
+nothing; `recordFrame` counts absolute timeline frames (a 25 fps timeline
+starts at 90000 for 01:00:00:00); `startFrame`/`endFrame` count source
+frames at the source's own rate, `endFrame` exclusive (Ep 002).
+
+Not yet seen on a live Resolve; owed, in the sandbox, with Resolve open on
+"RP Automation Sandbox":
+
+1. Resolve was closed on 2026-09-29, so no stacked timeline has been
+   built yet. Build one from the named dual-system clip (a camera and a
+   recorder in one room; the sandbox manifest does not name one yet) and
+   record each placement's read-back.
+2. Whether a camera clip appended with no `mediaType` at `trackIndex` 1
+   puts its audio on A1, and where a clip with more than two channels
+   lands.
+3. The `FPS` and `Frames` Resolve gives an audio-only clip (the project's
+   rate, or its own), which the plan uses for its length.
+4. `AutoSyncAudio`: the real values of the `AUDIO_SYNC_*` constants,
+   whether it returns True, whether the synced audio shows on a timeline
+   as an item of its own (the verification's premise; if not, every run
+   reads `unverifiable`), and whether it changes a timeline that already
+   holds the clip.
+5. The residual on the rendered tracks: render the stacked timeline and
+   measure the render's two channels with `sync-measure`, for the A7 check
+   (+/-0.5 frame or better). A nudge below a frame, if ever wanted, is a
+   hand step in Fairlight (untried).
+6. A true acoustic dual-system pair has not been measured: the real pairs
+   above are a call's own files and a call recorded at both ends. Its
+   windows' distance from the drift line is the check on the 2 ms / tenth
+   of a frame limit (a talker who moves between a lav and a camera mic
+   changes the path by about 3 ms a metre).
+7. Whether Resolve honours an audio stream's start time. OBS and phone
+   files often start their audio 20 to 40 ms after the first video frame
+   (ffprobe's `start_time`); the offset counts that. If Resolve plays
+   audio sample 0 at video frame 0 instead, the stacked pair is out by
+   that much (about a frame at 25 fps), and the read-back cannot see it,
+   since it checks frames. Import a file whose audio `start_time` is not
+   zero, read its audio item's placement against its video item, and
+   record whether Resolve honours it.
+
+## Trim review
+
+Where an edit could be tightened, as a list of proposals: long silences
+from the source audio, filler words and repeats from the mlx_whisper word
+JSON. Nothing is cut, rippled or deleted, by the TSV or by the markers.
+
+### The TSV
+
+`resolve_workflow.py trim-review <manifest-or-source> [--words W] [--out
+TSV] [--silence-db -45|auto] [--min-silence 0.8] [--tighten 1.2] [--cut
+2.5] [--soft-fillers] [--no-audio]`, or the MCP `trim_review`. Offline.
+
+Columns: `start, end, kind, text, confidence, suggestion`, then `clip,
+span, source_start, source_end`. Over a cut manifest each row names its
+clip and span and its times run along that clip's timeline (spans laid end
+to end at the manifest's fps, as `cut` builds them), with the source time
+beside them; over a whole source, times are source seconds.
+
+| Kind | Marker | From | Suggestion |
+|---|---|---|---|
+| `silence` | Blue | 10 ms windows below -45 dBFS (or `auto`: the quietest tenth of the windows plus 10 dB, within -70 to -30) for at least 0.8 s | cut-candidate from 2.5 s, tighten from 1.2 s, keep below |
+| `filler` | Yellow | um, uh, erm, er (high confidence); hmm, mm, mhm, ah (medium); with `--soft-fillers` also "like", "you know", "I mean" (low) | cut-candidate; keep for the low ones |
+| `repeat` | Purple | a word or two said again back to back ("I I", "we were we were") | tighten; keep for an emphatic double ("very very", "no no", low) |
+| `asr-loop` | Red | a phrase Whisper wrote three times or more (`cutlist.repetition_loops`) | keep: re-transcribe first; rows inside it are dropped |
+
+A silence is high confidence when no word's midpoint falls inside it, and
+medium when one does (Whisper heard something quiet there, or stretched a
+word across the pause) or when there are no words.
+
+What the words cannot give: Whisper large-v3-turbo leaves most fillers
+out of its transcript, and its word times drift by about 0.2 s. A row says
+where to look; the cut is made on the waveform, and a filler Whisper did
+not write is not listed. On a 4-minute excerpt of a real call
+(2026-09-29): 38 silences (21 high confidence, 17 medium; 9 suggest
+tighten, the rest keep), 5 repeats, and no hard filler at all, since the
+transcript held none; with `--soft-fillers` and `auto` (the call app's
+noise gate reads as digital silence, so the threshold went to -70 dBFS),
+19 silences and 17 soft fillers. The review took 0.15 s.
+
+### Markers
+
+`resolve_workflow.py trim-review <manifest-or-source> [--words W]
+--markers --timeline "<name> [auto]" --project "<open project>"
+--dry-run`, then again with `--plan-sha`; or the MCP
+`trim_review_markers`.
+
+- `[auto]` timelines only. The rows are computed for the stretches of
+  the source the timeline plays: the items whose media is the source file
+  (video tracks, or audio tracks when no video item uses it) map source
+  seconds to timeline frames. An item that plays at another speed is
+  skipped and reported.
+- One marker per row, a colour per kind (table above), named for the row
+  ("filler: um", "silence 2.4 s"), with its suggestion, confidence, text
+  and source times in the note, and `rpresolve-trim-review:<n>` as custom
+  data. Its duration covers the row.
+- Resolve holds one marker per frame. A row whose frame already holds a
+  marker is refused and listed (never moved or merged), and so is a
+  second row on a frame an earlier one took.
+- Each marker is read back with `GetMarkers` (colour, name, note,
+  duration, custom data); the markers that were there before must be
+  unchanged, and none may appear that was not planned. The timeline is
+  made current while marking, then the current timeline, page and
+  playhead are put back.
+- Nothing is cut, rippled or deleted: the code calls `AddMarker` and
+  reads, and the forbidden-call scan (any `Delete*`) covers it.
+
+Owed live (Resolve was closed on 2026-09-29): run the markers on one
+existing sandbox `[auto]` timeline (an `A5asis_*` or `SW002final_*` one)
+and record whether `AddMarker` takes frames from the timeline's start (the
+scripting README's `GetMarkers` example reads "timeline offset 96"; the
+code assumes it, unlike `recordFrame`, which is absolute), whether it
+works on a timeline that is not current, and how `GetMarkers` spells its
+keys and durations.
+
+### North register
+
+The TSV is a new human-fed surface, fed once per episode by the cut run.
+Kill criterion: six unfed weeks. If six weeks pass with no review TSV read
+or acted on, the TSV retires and trim review keeps its markers only, with
+a one-line note here saying when.
+
+---
+
 ## Open Questions
 
 - Do you have a preferred V-Log / V-Log L → Rec.709 LUT for the GH7 and GH5, or are you using the Panasonic-supplied ones?
@@ -473,4 +761,4 @@ a script.
 
 ---
 
-*Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
+*Version 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*

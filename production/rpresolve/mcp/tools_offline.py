@@ -5,7 +5,9 @@ detect and measure read media headers and frames with ffprobe, ffmpeg and
 exiftool; survey reads Resolve's project databases from disk (safe while
 Resolve is open); endcheck and selects read a transcript, an approved text
 and, for endcheck, the source audio; deliver_check reads a rendered file
-with ffprobe and ffmpeg and checks it against a delivery destination.
+with ffprobe and ffmpeg and checks it against a delivery destination;
+sync_measure correlates two recordings' audio; trim_review reads a source's
+audio and its word JSON and writes a review TSV.
 
 Destinations come from production/resolve-config.json, with the overlay at
 $RPRESOLVE_CONFIG laid over it when that is set (deliver_config()).
@@ -286,6 +288,82 @@ def deliver_check(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# sync_measure and trim_review
+# ---------------------------------------------------------------------------
+
+def sync_measure(args, ctx):
+    try:
+        from .. import sync as rpsync
+    except ImportError as e:
+        raise RuntimeError(f"sync_measure needs numpy ({e}); run the server on /usr/bin/python3.")
+    ref = _existing(args["reference"], "reference")
+    other = _existing(args["other"], "other")
+    out = _out(args)
+    ctx.check_cancel()
+    r = rpsync.measure(ref, other, fps=args.get("fps"), window_s=args["window_s"],
+                       check_cancel=ctx.check_cancel)
+    result = {"summary": rpsync.format_summary(r).strip(), "match": r["match"],
+              "offset_s": r["offset_s"], "frames": r["frames"], "drift": r["drift"],
+              "reasons": r["reasons"], "report": r}
+    if out:
+        result["file"] = paths.write_private(out, _json(r), any_git_tree=True)
+    return result
+
+
+def review_opts(args):
+    """trimreview keyword options from tool arguments."""
+    return {"silence_db": "auto" if args["auto_threshold"] else args["silence_db"],
+            "min_silence_s": args["min_silence_s"], "tighten_s": args["tighten_s"],
+            "cut_s": args["cut_s"], "soft": args["soft_fillers"]}
+
+
+def trim_review(args, ctx):
+    from .. import trimreview as tr
+    if bool(args.get("manifest")) == bool(args.get("source")):
+        raise ValueError("give exactly one of manifest (a cut manifest) or source (a media file "
+                         "with words).")
+    out = _out(args)
+    ctx.check_cancel()
+    if args.get("manifest"):
+        m = cutlist.load_manifest(_existing(args["manifest"], "manifest"))
+        words = cutlist.load_words(_existing(args["words"], "words") if args.get("words")
+                                   else m["words"])
+        r = tr.review_manifest(m, words, audio=args["audio"], **review_opts(args))
+    else:
+        source = _existing(args["source"], "source")
+        words = cutlist.load_words(_existing(args["words"], "words")) if args.get("words") \
+            else None
+        r = tr.review_source(source, words, audio=args["audio"], **review_opts(args))
+    rows = r["rows"]
+    result = {"summary": tr.summary(rows), "counts": tr.counts(rows),
+              "thresholds": sorted({t for t in r["thresholds"] if t is not None})}
+    result.update(_page(rows, args))
+    result["file"] = paths.write_private(out or _auto_out("trim-review", ".tsv"), tr.tsv(rows),
+                                         any_git_tree=True)
+    return result
+
+
+REVIEW_PROPS = {
+    "silence_db": {"type": "number", "maximum": 0, "default": -45.0,
+                   "description": "Silence is audio below this dBFS (default -45)."},
+    "auto_threshold": {"type": "boolean", "default": False,
+                       "description": "Set the threshold from the recording instead: its "
+                       "quietest tenth plus 10 dB, kept within -70..-30 dBFS."},
+    "min_silence_s": {"type": "number", "minimum": 0.1, "maximum": 60, "default": 0.8,
+                      "description": "Shortest silence listed, in seconds."},
+    "tighten_s": {"type": "number", "minimum": 0.1, "maximum": 60, "default": 1.2,
+                  "description": "A silence this long suggests tighten."},
+    "cut_s": {"type": "number", "minimum": 0.1, "maximum": 600, "default": 2.5,
+              "description": "A silence this long suggests cut-candidate."},
+    "soft_fillers": {"type": "boolean", "default": False,
+                     "description": "Also list 'like', 'you know' and 'I mean' (low "
+                     "confidence, suggestion keep)."},
+    "audio": {"type": "boolean", "default": True,
+              "description": "Read the source audio for silences (false: words only)."},
+}
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -368,6 +446,48 @@ def register(registry):
               **PAGING, "limit": _limit(20, 200),
               "out": _out_prop("every proposal as TSV")}, ["words", "approved"]),
         selects, title="Propose selects", annotations=READ))
+    registry.add(Tool(
+        "sync_measure",
+        "Where one recording sits against another, from the sound both heard (dual-system "
+        "audio: a camera clip and a recorder's file, or two cameras): FFT cross-correlation of "
+        "the two mono signals at 8 kHz, on windows across the overlap. Returns the offset in "
+        "seconds (where the other file's first frame lands on the reference, positive when it "
+        "started later; with drift, the drift line's value at the overlap's midpoint) and in "
+        "frames at fps with the half-frame residual of frame placement, clock drift (ms per "
+        "minute, ppm, over the overlap, how far the placement leaves either end, and the "
+        "retime that would cancel it), and each window's normalized correlation and "
+        "peak-to-next-peak ratio. A weak, repeating or inconsistent result is not called a "
+        "match, and says why. Never connects to Resolve.",
+        _obj({"reference": {"type": "string",
+                            "description": "Absolute path of the reference (the camera clip)."},
+              "other": {"type": "string",
+                        "description": "Absolute path of the other recording."},
+              "fps": {"type": "number", "minimum": 1, "maximum": 240,
+                      "description": "Frame rate for frames (default: the reference's)."},
+              "window_s": {"type": "number", "minimum": 5, "maximum": 300, "default": 30,
+                           "description": "Seconds per measuring window."},
+              "out": _out_prop("the full JSON report")}, ["reference", "other"]),
+        sync_measure, title="Measure dual-system sync", annotations=READ))
+    registry.add(Tool(
+        "trim_review",
+        "Silence and filler review of an edit, as proposals: long silences from the source "
+        "audio, filler words (um, uh, erm; hmm, mm, ah), words said twice back to back, and "
+        "stretches where Whisper looped, from the mlx_whisper word JSON. Each row: start, end, "
+        "kind, text, confidence, suggestion (keep, tighten, cut-candidate). Over a cut "
+        "manifest, times are on each clip's timeline with the source time beside them; over a "
+        "source, in source seconds. Writes the TSV to a file; nothing is cut. Never connects "
+        "to Resolve.",
+        _obj({"manifest": {"type": "string",
+                           "description": "Absolute path of a cut manifest (its words and "
+                           "source are used)."},
+              "source": {"type": "string",
+                         "description": "Absolute path of a media file, instead of a manifest."},
+              "words": {"type": "string",
+                        "description": "Absolute path of the word JSON (default: the "
+                        "manifest's; without it a source gets silences only)."},
+              **REVIEW_PROPS, **PAGING, "limit": _limit(100, 500),
+              "out": _out_prop("the TSV")}),
+        trim_review, title="Review silences and fillers", annotations=READ))
     registry.add(Tool(
         "deliver_check",
         "Check a rendered deliverable against a delivery destination from resolve-config.json, "

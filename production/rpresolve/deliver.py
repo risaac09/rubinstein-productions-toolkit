@@ -591,6 +591,23 @@ def fps_number(value):
     return float(m.group(1)) if m else None
 
 
+# The NTSC rates Resolve spells short ('23.976', '29.97', '59.94'): n x 1000/1001.
+NTSC_RATES = tuple(n * 1000.0 / 1001 for n in (24, 30, 48, 60, 96, 120))
+
+
+def exact_fps(value):
+    """A frame rate as Resolve spells it ('29.97', '23.976', '29.97 DF',
+    25) as the rate it stands for, for frame math: an NTSC rate is n x
+    1000/1001 (29.97 is 29.97002997...), and the plain float of '29.97'
+    puts a frame 0.108 frame off per hour of offset. Other rates as
+    fps_number reads them; None when unreadable."""
+    f = fps_number(value)
+    if f is None:
+        return None
+    near = min(NTSC_RATES, key=lambda q: abs(q - f))
+    return near if abs(near - f) < 0.005 else f
+
+
 # Every SetRenderSettings key the scripting README lists. The Deliver page
 # keeps each one until something sets it again, so a key a job does not set
 # comes from whatever the page last held (carried_over()).

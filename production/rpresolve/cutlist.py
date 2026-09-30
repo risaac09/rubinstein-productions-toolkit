@@ -233,21 +233,30 @@ def end_words_for(words, out, count=3):
 # Audio: where the silences are
 # ---------------------------------------------------------------------------
 
-def envelope(source, t0, t1, ffmpeg=None):
-    """[(time, dBFS)] per 10 ms of mono 16 kHz audio from source[t0:t1]."""
+def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
+    """Mono 16 kHz signed 16-bit samples (bytes) of source[t0:t1]; t1 None
+    reads to the end."""
     t0 = max(0.0, t0)
-    cmd = [ffmpeg or FFMPEG, "-v", "error", "-ss", f"{t0:.3f}", "-t", f"{t1 - t0:.3f}",
-           "-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE),
-           "-f", "s16le", "-"]
+    cmd = [ffmpeg or FFMPEG, "-v", "error", "-ss", f"{t0:.3f}"]
+    cmd += ["-t", f"{t1 - t0:.3f}"] if t1 is not None else []
+    cmd += ["-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
     try:
-        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise CutlistError(f"ffmpeg timed out reading audio at {t0:.2f}s")
     if proc.returncode != 0:
         raise CutlistError(f"ffmpeg could not read audio at {t0:.2f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-160:]}")
+    return proc.stdout[:len(proc.stdout) // 2 * 2]
+
+
+def envelope(source, t0, t1, ffmpeg=None, timeout=120):
+    """[(time, dBFS)] per 10 ms of mono 16 kHz audio from source[t0:t1]
+    (t1 None: to the end)."""
+    t0 = max(0.0, t0)
     samples = array.array("h")
-    samples.frombytes(proc.stdout[:len(proc.stdout) // 2 * 2])
+    samples.frombytes(decode_pcm(source, t0, t1, ffmpeg, timeout))
     hop = int(AUDIO_RATE * HOP_S)
     out = []
     for i in range(0, len(samples) - hop + 1, hop):
