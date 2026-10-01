@@ -454,7 +454,7 @@ compared both renders and chose Rec.709-A for the web on 2026-09-29. Limited
 range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
 stream counts as limited, as decoders read it), and auto-caption line
 length by frame shape (`deliver.captions`: 42 characters on one line for
-landscape, 20 on up to two lines for portrait, 24 on up to two lines for
+landscape, 16 on up to two lines for portrait, 24 on up to two lines for
 square). An overlay
 kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
 the MCP server) lies over `resolve-config.json`: it changes any one field
@@ -578,7 +578,7 @@ captions (`Timeline.CreateSubtitlesFromAudio`, Resolve Studio) on one
 `deliver.captions` for the timeline's shape, read from its resolution:
 Resolve's default of 42 characters on one line overflows a 1080-wide 9:16
 frame when burnt in (clipped at both edges on the 2026-09-29 renders), and
-about 20 fit. It refuses a timeline that is not `[auto]`, one that already
+about 16 fit. It refuses a timeline that is not `[auto]`, one that already
 has any subtitle item (additive only), a run while a render is in
 progress, and a Resolve that does not define a constant the settings need
 (an unknown `resolve.CONSTANT` reads as None). It makes the timeline
@@ -587,9 +587,11 @@ timeline and page. It then reads the subtitle tracks back and fails when
 no item is there, whatever the call returned. On the sandbox the call
 took 36 s on a 37 s portrait timeline (45 s for the whole command) and
 gave 22 items, the longest line 22 characters on one or two lines (39 on
-one line at the defaults). Whether
-20 characters sit inside the frame when burnt in is checked at Isaac's
-next render.
+one line at the defaults). Checked on a render
+(2026-09-30): 20 characters ran off the frame edge on 161 of 865 frames, 16 on
+18 of 864 (about 2%, on 7 of 12 clips), and the width was accepted. Resolve
+reads the number as a ceiling, not a rule: four lines of 21 to 25 characters
+stayed on one line at 16.
 
 **The sidecar.** A render with `SubtitleFormat` `SeparateFile` writes
 `<stem>_<subtitle track name>.ttml` beside the file (such as
@@ -715,9 +717,9 @@ recorded here.
    `DataBurnIn` `GetRenderJobList` reports, and how it writes each.
 5. **Sidecar name.** Done: `<stem>_<track name>.ttml`, IMSC1 TTML (see
    Captions).
-6. **Burnt-in caption width.** Render `linkedin_9x16` from a timeline
-   captioned with the portrait settings (20 characters, two lines) and
-   look at the widest caption in the frame.
+6. **Burnt-in caption width.** Done: 20 characters ran off the frame edge
+   of a `linkedin_9x16` render on 161 of 865 frames, 16 on 18 of 864, which
+   was accepted (see Captions).
 
 Remove the queued sandbox job after each step; never start a render from
 a script.
