@@ -60,7 +60,7 @@
     "data_burn_in": "None",
     "captions": {
       "landscape": {"chars_per_line": 42, "line_break": "single"},
-      "portrait": {"chars_per_line": 20, "line_break": "double"},
+      "portrait": {"chars_per_line": 16, "line_break": "double"},
       "square": {"chars_per_line": 24, "line_break": "double"}
     }
   },

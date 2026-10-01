@@ -110,10 +110,11 @@ DEFAULT_CONFIG = {
         "data_burn_in": "None",
         # Auto captions (captions / create_captions) per frame shape. Resolve's
         # default 42 characters overflow a 1080-wide 9:16 frame when burnt in
-        # (clipped at both edges, seen 2026-09-29); about 20 fit.
+        # (clipped at both edges, seen 2026-09-29). 20 still ran off the edge
+        # on 161 of 865 frames of a render (2026-09-30); 16 on 18 of 864.
         "captions": {
             "landscape": {"chars_per_line": 42, "line_break": "single"},
-            "portrait": {"chars_per_line": 20, "line_break": "double"},
+            "portrait": {"chars_per_line": 16, "line_break": "double"},
             "square": {"chars_per_line": 24, "line_break": "double"},
         },
     },

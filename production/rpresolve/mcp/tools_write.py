@@ -669,7 +669,7 @@ def register(registry):
         "Transcribe an ' [auto]' timeline's audio into captions with Resolve's auto captions "
         "(Timeline.CreateSubtitlesFromAudio, Resolve Studio). Characters per line and line "
         "breaks follow the timeline's shape from the config's deliver.captions (default 42 on "
-        "one line for landscape, 20 on two lines for portrait, 24 on two lines for square), so "
+        "one line for landscape, 16 on two lines for portrait, 24 on two lines for square), so "
         "burnt-in captions fit a 9:16 frame. Refused when the timeline already has any subtitle "
         "item (additive only), while a render runs, and when Resolve lacks a constant the "
         "settings need. The timeline is made current and the Edit page opened for the call "
