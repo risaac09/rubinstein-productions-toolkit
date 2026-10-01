@@ -48,7 +48,7 @@
 # either, or both.
 
 set -euo pipefail
-[REMOVED FROM PUBLIC HISTORY]
+SRC="$(cd "$(dirname "$0")" && pwd)"
 
 KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-lib.sh hooks/phase-zero-trigger.sh hooks/session-brief.sh"
 
