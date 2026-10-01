@@ -35,7 +35,7 @@ timeline's timecode; rpresolve.captions turns it into <stem>.srt.
 
 Auto captions (workflows.create_captions) take their line length and
 line breaks from "deliver" "captions", one entry per frame shape
-(caption_settings()): a 9:16 frame holds about 20 characters of burnt-in
+(caption_settings()): a 9:16 frame holds about 16 characters of burnt-in
 text at Resolve's default size, a 16:9 frame the default 42.
 """
 
