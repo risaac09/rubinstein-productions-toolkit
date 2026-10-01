@@ -88,7 +88,7 @@ class Base(unittest.TestCase):
 class TestCreateCaptions(Base):
     def test_settings_follow_the_shape(self):
         for tl, shape, chars, brk in (("Clip [auto]", "landscape", 42, "SINGLE"),
-                                      ("Clip 9x16 [auto]", "portrait", 20, "DOUBLE"),
+                                      ("Clip 9x16 [auto]", "portrait", 16, "DOUBLE"),
                                       ("Clip 1x1 [auto]", "square", 24, "DOUBLE")):
             with self.subTest(tl=tl):
                 r = self.run_it(tl, dry_run=True)
@@ -109,7 +109,7 @@ class TestCreateCaptions(Base):
         self.assertEqual(r["first_item"], {"track": 1, "start": 86400, "end": 86410})
         # the settings Resolve got, keyed by its own constants (floats)
         (_, _, (settings,)), = self.made()
-        self.assertEqual(settings, {0.0: 3.0, 2.0: 20, 3.0: 2.0})
+        self.assertEqual(settings, {0.0: 3.0, 2.0: 16, 3.0: 2.0})
         # made current and the Edit page opened for the call, then both put back
         self.assertIn(("Project", "SetCurrentTimeline", ("Clip 9x16 [auto]",)), rf.CALLS)
         self.assertIn(("Resolve", "OpenPage", ("edit",)), rf.CALLS)
@@ -143,11 +143,11 @@ class TestCreateCaptions(Base):
     def test_an_overlay_changes_the_portrait_settings(self):
         overlay = os.path.join(self.dir, "overlay.json")
         with open(overlay, "w", encoding="utf-8") as f:
-            json.dump({"deliver": {"captions": {"portrait": {"chars_per_line": 16}}}}, f)
+            json.dump({"deliver": {"captions": {"portrait": {"chars_per_line": 18}}}}, f)
         config = rpconfig.load_config(overlay, strict=True)
         r = self.run_it(dry_run=True, config=config)
         self.assertEqual((r["settings"]["SUBTITLE_CHARS_PER_LINE"],
-                          r["settings"]["SUBTITLE_LINE_BREAK"]), (16, "AUTO_CAPTION_LINE_DOUBLE"))
+                          r["settings"]["SUBTITLE_LINE_BREAK"]), (18, "AUTO_CAPTION_LINE_DOUBLE"))
         bad = rpconfig.merge(self.config, {"deliver": {"captions": {"portrait":
                                                                     {"chars_per_line": 61}}}})
         with self.assertRaisesRegex(workflows.Refused, "1 to 60"):
@@ -208,7 +208,7 @@ class TestMCP(Base):
     def test_plan_then_run(self):
         base = {"project": P, "timeline": "Clip 9x16 [auto]"}
         dry = self.call(base)
-        self.assertIn("20 characters per line", dry["summary"])
+        self.assertIn("16 characters per line", dry["summary"])
         self.assertIn(dry["plan_sha"], dry["summary"])
         self.assertEqual((self.made(), self.events()), ([], []))
         with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
@@ -252,7 +252,7 @@ class TestCommands(Base):
     def test_captions_command(self):
         status, out, _ = self.captions(dry_run=True)
         self.assertEqual(status, 0)
-        self.assertIn("SUBTITLE_CHARS_PER_LINE=20", out)
+        self.assertIn("SUBTITLE_CHARS_PER_LINE=16", out)
         sha = out.split("plan_sha: ")[1].split()[0]
         self.assertEqual(self.made(), [])
         status, out, err = self.captions(plan_sha=sha)
