@@ -25,3 +25,6 @@ _site/
 
 # Scratch working copies of third-party video tooling
 tools/video-editor/
+
+# camera media staged here by mistake; never commit
+DCIM/
