@@ -42,7 +42,7 @@ so a new consumer's type is one line to add.
     # one repo
     ../phase-zero/install.sh --public ../some-repo
 
-    # every listed PUBLIC_CONSUMERS repo under the parent directory
+    # every PUBLIC_CONSUMERS repo (read from the registry) under the parent directory
     ../phase-zero/install.sh --public --all ..
 
     # verify, no writes
@@ -57,10 +57,15 @@ here) never overlap.
 
 ## Consumers
 
-The `PUBLIC_CONSUMERS` allowlist in `../phase-zero/install.sh` is scoped to
-repos that are actually public: `alchemy`, `statehouse-dashboard`,
-`gene-keys-data`, `rubinsteinproductions`, `risaac09`,
-`three-type-evaluation` (its public paper side only — the rest of that repo
-stays private, untouched either way since this kit only ever writes under
-`.claude/`), `isaacrubinstein.com`, and this repo itself. Fully independent of the `phase-zero`
-`CONSUMERS` list — being on one implies nothing about the other.
+The `PUBLIC_CONSUMERS` roster is scoped to repos that are actually public,
+and `../phase-zero/install.sh` reads it at runtime from the private stack-data
+repo registry (`data/repos.json`: visibility PUBLIC, not archived, not gone)
+rather than from a hand list, which had drifted. Without the registry or jq,
+`--public --list`, `--public --all` and `--public --check --all` exit 2.
+`--public --list` prints the current roster; `--public --check --all` names
+any registry repo with no local clone (`SKIP <name>: no clone`) and fails.
+Both `--check` modes also compare the deployed files against the consumer's
+committed default branch, since a global gitignore of `.claude/` can leave a
+current kit uncommitted. `../phase-zero/redeploy-prs.sh --public` deploys the
+kit as one pull request per repo. Fully independent of the `phase-zero`
+`CONSUMERS` list: being on one implies nothing about the other.
