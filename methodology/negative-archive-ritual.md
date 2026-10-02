@@ -1,4 +1,4 @@
-> **Canonical source:** this file (toolkit is authoritative). Companion to `counter-glossary.html` and `negative-thousand.html` (home-dir artifacts, outside this repo). Filed under the same lineage as [source-tracking-protocol.md](source-tracking-protocol.md) and the TCO framework (`stack-data/context/tco-framework.md`).
+> **Canonical source:** this file (toolkit is authoritative). Companion to `counter-glossary.html` and `negative-thousand.html` (creative-writing artifacts in the private vault corpus, outside this repo; they moved there from the home directory in June 2026). Filed under the same lineage as [source-tracking-protocol.md](source-tracking-protocol.md) and the TCO framework (`stack-data/context/tco-framework.md`).
 
 # Negative-Archive Ritual
 
@@ -21,7 +21,7 @@ Three commitments converge here:
 
 **The thousand costs** (see the TCO framework at `stack-data/context/tco-framework.md` and `~/context/thousand-costs.md`, home dir) enumerate the costs of doing the work. The scraps folder enumerates the artifacts of *not* doing some of the work, kept so that the unmade is not invisible.
 
-**The counter-glossary** (`~/counter-glossary.html`) pairs each term used to a term refused. The scraps folder is the same operation applied to artifacts: each piece kept implies the pieces unkept, and the unkept are also part of the practice (after Adorno, 1966/1973, on the non-identical; Derrida, 1995/1996, on the archive's selective violence; Hartman, 1997, on the constitutive exclusion).
+**The counter-glossary** (`counter-glossary.html`, in the vault) pairs each term used to a term refused. The scraps folder is the same operation applied to artifacts: each piece kept implies the pieces unkept, and the unkept are also part of the practice (after Adorno, 1966/1973, on the non-identical; Derrida, 1995/1996, on the archive's selective violence; Hartman, 1997, on the constitutive exclusion).
 
 ## 3. Structure
 
@@ -103,12 +103,12 @@ This ritual draws on:
 - **Schön (1983)** on the reflective practitioner whose practice is a recurring loop of action and revision.
 - **Isaac's own Source-Tracking Protocol** and **Total Cost of Ownership** docs, which already extend this thinking to citation and to cost; this ritual extends it to artifacts.
 
-Full APA citations available in the bibliography section of `~/negative-thousand.html` (entries: `bib-derrida-1995`, `bib-foucault-1969`, `bib-adorno-1966`, `bib-hartman-1997`, `bib-federici-2004`, `bib-federici-2012`, `bib-schon-1983`).
+Full APA citations available in the bibliography section of `negative-thousand.html`, in the vault (entries: `bib-derrida-1995`, `bib-foucault-1969`, `bib-adorno-1966`, `bib-hartman-1997`, `bib-federici-2004`, `bib-federici-2012`, `bib-schon-1983`).
 
 ## 9. Cross-references
 
-- `counter-glossary.html` (home dir) — the term-level companion to this ritual; what the work refuses lexically.
-- `negative-thousand.html` (home dir) — the concept-level companion; what the work refuses theoretically.
+- `counter-glossary.html` (vault) — the term-level companion to this ritual; what the work refuses lexically.
+- `negative-thousand.html` (vault) — the concept-level companion; what the work refuses theoretically.
 - TCO framework (`stack-data/context/tco-framework.md`) — what the work costs to do.
 - [source-tracking-protocol.md](source-tracking-protocol.md) — what the work owes its citations.
 - `~/context/thousand-costs.md` (home dir) — the long enumeration the protocols are layered onto.
