@@ -21,6 +21,10 @@ Kinds, colours (markers) and suggestions:
                        (cutlist.repetition_loops): the transcript is wrong
                        there, so keep, re-transcribe, and read nothing into
                        the other rows inside it
+    non-speech Rose    a span the transcript guard withheld (singing, music,
+                       a hallucination): the text is a [label], so there are
+                       no words to review there; keep, and look at it before
+                       it goes anywhere. Never carries words
 
 Confidence of a silence: high when no word's midpoint falls inside it,
 medium when one does (Whisper heard something quiet there) or when there
@@ -62,8 +66,9 @@ EMPHATIC = {"very", "really", "so", "no", "yes", "yeah", "go", "ha", "bye", "oka
 
 KEEP, TIGHTEN, CUT = "keep", "tighten", "cut-candidate"
 SILENCE, FILLER, REPEAT, LOOP = "silence", "filler", "repeat", "asr-loop"
-KINDS = (SILENCE, FILLER, REPEAT, LOOP)
-COLORS = {SILENCE: "Blue", FILLER: "Yellow", REPEAT: "Purple", LOOP: "Red"}
+NONSPEECH = "non-speech"
+KINDS = (SILENCE, FILLER, REPEAT, LOOP, NONSPEECH)
+COLORS = {SILENCE: "Blue", FILLER: "Yellow", REPEAT: "Purple", LOOP: "Red", NONSPEECH: "Rose"}
 COLUMNS = ("start", "end", "kind", "text", "confidence", "suggestion",
            "clip", "span", "source_start", "source_end")
 
@@ -195,6 +200,19 @@ def repeat_rows(words):
     return rows, loops
 
 
+def nonspeech_rows(blocks, a, b):
+    """One row per withheld span that overlaps [a, b): the label and the
+    kind, never the words (there are none)."""
+    rows = []
+    for blk in blocks:
+        s, e = max(blk["start"], a), min(blk["end"], b if b is not None else blk["end"])
+        if e <= s:
+            continue
+        rows.append(_row(s, e, NONSPEECH, f"{blk['label'] or '[inaudible]'} withheld as "
+                         f"{blk['kind']}", "high", KEEP))
+    return rows
+
+
 def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
                  min_silence_s=MIN_SILENCE_S, tighten_s=TIGHTEN_S, cut_s=CUT_S, soft=False,
                  ffmpeg=None, env=None):
@@ -202,6 +220,7 @@ def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
     every word of the source (or None for audio only); the ones whose
     midpoint falls in [a, b) count. Returns (rows, threshold used)."""
     inside = None
+    blocks = cutlist.blocks_of(words) if words is not None else []
     if words is not None:
         inside = [w for w in words if a <= cutlist.midpoint(w) and
                   (b is None or cutlist.midpoint(w) < b)]
@@ -218,6 +237,7 @@ def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
         rows += loops + reps
         rows = [r for r in rows if r["kind"] in (LOOP, SILENCE)
                 or not _overlaps(r["start"], r["end"], loop_spans)]
+    rows += nonspeech_rows(blocks, a, b)
     order = {k: i for i, k in enumerate(KINDS)}
     rows.sort(key=lambda r: (r["start"], order[r["kind"]]))
     return rows, thr

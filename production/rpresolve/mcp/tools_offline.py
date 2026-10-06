@@ -185,6 +185,24 @@ def _json(obj):
     return json.dumps(obj, indent=1, default=str) + "\n"
 
 
+def _withheld_note(words):
+    """{withheld: ...} when the transcript had text withheld (singing, music,
+    hallucination), and {unscreened: ...} when singing was not screened from
+    the audio. Numbers and kinds only."""
+    note = {}
+    blocks = getattr(words, "blocks", None)
+    if blocks:
+        kinds = sorted({b["kind"] for b in blocks})
+        note["withheld"] = (f"{len(blocks)} transcript segment(s) are withheld ({', '.join(kinds)}); "
+                            "no words from them are used, and nothing that overlaps them is "
+                            "proposed. See the kinds sidecar or `vertcut kinds`.")
+    if words is not None and not getattr(words, "audio_checked", True):
+        note["unscreened"] = ("singing was not screened from the audio for this transcript "
+                              "(it was not made by `vertcut transcribe`); label sung spans in "
+                              "a sung.tsv if there is any.")
+    return note
+
+
 # ---------------------------------------------------------------------------
 # endcheck
 # ---------------------------------------------------------------------------
@@ -230,6 +248,7 @@ def selects(args, ctx):
     rows = cutlist.selects(words, approved, args["min_seconds"], args["max_seconds"])
     result = {"summary": f"selects: {len(rows)} proposal(s) of {args['min_seconds']:g} to "
                          f"{args['max_seconds']:g} s inside the approved text"}
+    result.update(_withheld_note(words))
     result.update(_page(rows, args))
     if out or result["next_offset"] is not None:
         result["file"] = paths.write_private(out or _auto_out("selects", ".tsv"),
@@ -374,6 +393,7 @@ def trim_review(args, ctx):
     rows = r["rows"]
     result = {"summary": tr.summary(rows), "counts": tr.counts(rows),
               "thresholds": sorted({t for t in r["thresholds"] if t is not None})}
+    result.update(_withheld_note(words))
     result.update(_page(rows, args))
     result["file"] = paths.write_private(out or _auto_out("trim-review", ".tsv"), tr.tsv(rows),
                                          any_git_tree=True)

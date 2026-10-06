@@ -359,6 +359,8 @@ def create_captions(args, ctx):
                             "timeline" + (" although Resolve's call returned True" if
                                           r["returned"] else "") +
                             "; check it has audio and that this is Resolve Studio" + _ui(r))
+        if r.get("warnings"):
+            r["summary"] += " WARNING: " + " ".join(r["warnings"])
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -676,7 +678,10 @@ def register(registry):
         "(from the Deliver page Resolve returns False); the current timeline and page are put "
         "back. The subtitle tracks are read back: a call that returns True but "
         "leaves no item is a failure. Can take about as long as the timeline runs. Dry run "
-        "first; the real run needs its plan_sha.",
+        "first; the real run needs its plan_sha. The result's warnings name spans where a "
+        "source's <name>.kinds.json sidecar (from `vertcut transcribe`) says the audio is sung "
+        "or music, and sources with no sidecar: Resolve's auto captions cannot skip them, so "
+        "relabel or delete those caption blocks by hand.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",

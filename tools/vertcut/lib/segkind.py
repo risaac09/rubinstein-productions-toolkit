@@ -430,10 +430,20 @@ def _zratio(text):
     return len(raw) / float(len(zlib.compress(raw)))
 
 
+def seg_text(seg):
+    """The segment's text, counted and never shown: its text field, or the
+    words joined when a JSON has no text field (a hand-made or non-Whisper
+    export), so a missing field is not a way around the screen."""
+    text = seg.get("text")
+    if text is None:
+        text = " ".join(str(w.get("word") or w.get("text") or "") for w in seg.get("words") or [])
+    return text if isinstance(text, str) else ""
+
+
 def seg_features(seg):
     """The Whisper-side and text-side numbers of one segment."""
     start, end = _num(seg.get("start")), _num(seg.get("end"))
-    text = seg.get("text") or ""
+    text = seg_text(seg)
     toks = _tokens(text)
     words = _seg_words(seg)
     dur = (end - start) if (start is not None and end is not None) else None
@@ -465,7 +475,7 @@ def seg_features(seg):
 def cross_features(segs, feats):
     """Signals that need the other segments: a phrase repeated back to back
     (a Whisper loop) and lines that recur across the clip (a chorus)."""
-    keys = [tuple(_tokens(s.get("text"))) for s in segs]
+    keys = [tuple(_tokens(seg_text(s))) for s in segs]
     n = len(segs)
     loop = [0] * n
     i = 0
@@ -677,7 +687,7 @@ def classify(data, analysis=None, overrides=None, clip=None, policy=UNCERTAIN_LE
     feats = cross_features(segs, [seg_features(s) for s in segs])
     res = []
     for i, (seg, f) in enumerate(zip(segs, feats)):
-        if not (seg.get("text") or "").strip() and not f["n_words"]:
+        if not seg_text(seg).strip() and not f["n_words"]:
             r = _result(i, seg, "speech", None, ["empty"], {"hallucination": 0.0, "sung": 0.0},
                         "classifier", policy)
             r["empty"] = True
@@ -1022,7 +1032,13 @@ def load_guarded(path, audio_path=None, overrides=None, policy=UNCERTAIN_LEAN):
     already wrote is used as it is. A raw Whisper JSON is screened in
     memory, from the Whisper numbers and the text counts alone unless
     audio_path is given, and its withheld segments are redacted before
-    anything sees them. Returns (safe_data, results, audio_checked)."""
+    anything sees them. A .raw.json is refused by name: it is the unredacted
+    transcript, and consumers read the safe <name>.json beside it.
+    Returns (safe_data, results, audio_checked)."""
+    if os.path.basename(path).lower().endswith(".raw.json"):
+        raise SegkindError("%s is the unredacted transcript; read the safe %s.json beside it "
+                           "(made by `vertcut transcribe`, or `vertcut kinds --apply-overrides`)"
+                           % (os.path.basename(path), clip_name(path)))
     data = load_json(path)
     clip = clip_name(path)
     if is_safe(data):
@@ -1131,7 +1147,8 @@ def cmd_kinds(args, out=None):
         return 0
     clip = clip_name(jpath or raw)
     data = load_json(jpath) if jpath else None
-    if args.apply_overrides and raw:
+    write = bool(args.apply_overrides or args.write)
+    if write and raw:
         data, source_json = load_json(raw), raw     # restore needs the raw text
     elif data is None:
         data, source_json = load_json(raw), raw
@@ -1143,7 +1160,7 @@ def cmd_kinds(args, out=None):
                              bool(data["safety"].get("audio_checked")))
     sm_dur = max([r["end"] for r in results if r["end"] is not None] or [0.0])
     _report(results, clip, checked, policy, out, args.segments)
-    if args.apply_overrides:
+    if write:
         base = os.path.join(os.path.dirname(os.path.abspath(jpath or raw)), clip)
         dump_json(redact(data, results, checked, policy, clip), base + ".json")
         dump_json(sidecar(results, clip, sm_dur, checked), base + ".kinds.json")
@@ -1234,6 +1251,8 @@ def build_parser():
     k.add_argument("--overrides", metavar="SUNG_TSV", help="preview a sung.tsv; writes nothing")
     k.add_argument("--apply-overrides", metavar="SUNG_TSV",
                    help="apply a sung.tsv and rewrite <clip>.json and <clip>.kinds.json")
+    k.add_argument("--write", action="store_true",
+                   help="write <clip>.json (safe) and <clip>.kinds.json from the raw transcript")
     k.add_argument("--segments", action="store_true", help="one line per segment with scores")
     k.add_argument("--uncertain", choices=UNCERTAIN_POLICIES, default=UNCERTAIN_LEAN)
     r = sub.add_parser("redact", help="write the safe JSON and the kinds sidecar from a raw JSON")

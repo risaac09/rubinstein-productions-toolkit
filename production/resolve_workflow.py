@@ -1441,6 +1441,8 @@ def cmd_captions(args):
     tl = r["timeline"]
     print(f"Timeline:  {tl['name']} ({tl['size'][0]}x{tl['size'][1]}, {r['shape']})")
     print("Settings:  " + ", ".join(f"{k}={v}" for k, v in r["settings"].items()))
+    for w in r.get("warnings") or []:
+        print(f"WARNING:   {w}")
     if r["dry_run"]:
         print(f"plan_sha: {r['plan_sha']}")
         print("Dry run: nothing transcribed. To run it, run again without --dry-run and with "

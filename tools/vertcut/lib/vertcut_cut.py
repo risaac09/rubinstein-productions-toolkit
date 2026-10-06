@@ -5,6 +5,11 @@ Reads a TSV manifest (id, in, out, title), slices the source, reframes to
 1080x1920, burns word-grouped captions from a Whisper word-timestamp JSON, and
 writes an .srt sidecar next to each export.
 
+The words come only through segkind: text it withheld (singing, music,
+hallucination) is a [label], never words. A label is drawn as a bracketed card
+([singing], [music]) and a clip that overlaps singing or music is refused
+unless --allow-music is given.
+
 Captions are drawn as Pillow-rendered PNG overlays rather than through ffmpeg's
 subtitles filter, because Homebrew's ffmpeg ships without libass.
 """
@@ -19,6 +24,9 @@ import sys
 import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import segkind  # noqa: E402  (beside this file)
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
@@ -119,24 +127,63 @@ def has_audio_stream(src):
 # ---------------------------------------------------------------- captions
 
 def load_words(path):
-    """Flatten a Whisper JSON into [{start, end, word}] in source-time order."""
-    with open(path) as fh:
-        data = json.load(fh)
+    """([{start, end, word}] in source-time order, [{start, end, kind, label}]
+    for each segment withheld from the transcript). The JSON goes through
+    segkind.load_guarded: a safe JSON is read as it is, a raw Whisper JSON is
+    screened in memory (Whisper numbers and text counts, no audio) and its
+    withheld segments are dropped before any word is read. The .raw.json
+    itself is refused."""
+    try:
+        data, results, checked = segkind.load_guarded(path)
+    except segkind.SegkindError as e:
+        die(str(e))
+    if not checked:
+        sys.stderr.write("vertcut: warning: %s was not screened for singing from audio "
+                         "(run `vertcut transcribe`, or `vertcut kinds`)\n" % os.path.basename(path))
     words = []
-    segments = data.get("segments") or []
-    for seg in segments:
+    for seg in data.get("segments") or []:
         for w in seg.get("words") or []:
             text = (w.get("word") or w.get("text") or "").strip()
             if not text or w.get("start") is None or w.get("end") is None:
                 continue
             words.append({"start": float(w["start"]), "end": float(w["end"]), "word": text})
-    if not words:
+    blocks = [{"start": r["start"], "end": r["end"], "kind": r["kind"], "label": r["label"]}
+              for r in results if r["withheld"] and not r.get("empty")
+              and r["start"] is not None and r["end"] is not None]
+    if not words and not blocks:
         die("no word timestamps in %s (transcribe with --word-timestamps True)" % path)
-    return words
+    return words, blocks
 
 
-def group_cues(words, start, end, max_words, max_chars, gap):
-    """Slice words to [start,end], rebase to 0, and group into caption cues."""
+# --labels: which withheld spans get a bracketed card on the clip
+LABEL_SETS = {"none": (), "music": ("sung", "music"),
+              "all": ("sung", "music", "hallucination", "uncertain")}
+REFUSE_KINDS = ("sung", "music", "uncertain")   # uncertain here is withheld, i.e. sung-leaning
+
+
+def music_overlaps(blocks, start, end):
+    """The withheld spans of singing or music that [start, end] overlaps."""
+    return [b for b in blocks if b["kind"] in REFUSE_KINDS
+            and b["start"] < end and b["end"] > start]
+
+
+def label_cues(blocks, start, end, kinds):
+    """Caption cues for withheld spans, rebased to the clip: the bracketed
+    label, never words."""
+    dur = end - start
+    out = []
+    for b in blocks:
+        if b["kind"] not in kinds or b["end"] <= start or b["start"] >= end:
+            continue
+        out.append({"start": max(0.0, b["start"] - start),
+                    "end": min(dur, b["end"] - start), "text": b["label"], "label": True})
+    return [c for c in out if c["end"] > c["start"]]
+
+
+def group_cues(words, start, end, max_words, max_chars, gap, blocks=(), label_kinds=()):
+    """Slice words to [start,end], rebase to 0, and group into caption cues.
+    Withheld spans in `blocks` whose kind is in label_kinds become bracketed
+    label cues in time order."""
     dur = end - start
     picked = []
     for w in words:
@@ -174,7 +221,14 @@ def group_cues(words, start, end, max_words, max_chars, gap):
             c["end"] = nxt
         c["end"] = max(c["end"], c["start"] + 0.35)
         c["end"] = min(c["end"], dur)
-    return [c for c in cues if c["end"] > c["start"]]
+    cues = [c for c in cues if c["end"] > c["start"]]
+    if blocks and label_kinds:
+        cues = sorted(cues + label_cues(blocks, start, end, label_kinds),
+                      key=lambda c: (c["start"], c["end"]))
+        for i, c in enumerate(cues[:-1]):       # a label never runs over the next cue
+            c["end"] = min(c["end"], cues[i + 1]["start"]) if c.get("label") else c["end"]
+        cues = [c for c in cues if c["end"] > c["start"]]
+    return cues
 
 
 def wrap(draw, text, font, max_w):
@@ -191,7 +245,10 @@ def wrap(draw, text, font, max_w):
     return lines
 
 
-def render_cue(text, font, path, max_w, stroke):
+LABEL_FILL = (255, 255, 255, 200)     # a label card is the caption style, a little quieter
+
+
+def render_cue(text, font, path, max_w, stroke, label=False):
     scratch = Image.new("RGBA", (10, 10))
     d = ImageDraw.Draw(scratch)
     lines = wrap(d, text, font, max_w)
@@ -205,7 +262,7 @@ def render_cue(text, font, path, max_w, stroke):
     for i, line in enumerate(lines):
         lw = dd.textlength(line, font=font)
         dd.text(((width - lw) / 2, pad + i * lh), line, font=font,
-                fill=(255, 255, 255, 255), stroke_width=stroke,
+                fill=LABEL_FILL if label else (255, 255, 255, 255), stroke_width=stroke,
                 stroke_fill=(0, 0, 0, 235))
     img.save(path)
     return width, height
@@ -240,8 +297,15 @@ def main():
     ap.add_argument("src")
     ap.add_argument("manifest")
     ap.add_argument("-o", "--outdir", default="vertcut-out")
-    ap.add_argument("--words", help="Whisper JSON with word timestamps")
+    ap.add_argument("--words", help="safe transcript JSON from `vertcut transcribe` "
+                                    "(a raw Whisper JSON is screened in memory; a .raw.json is refused)")
     ap.add_argument("--no-captions", action="store_true")
+    ap.add_argument("--allow-music", action="store_true",
+                    help="render a clip that overlaps singing or music; its words stay "
+                         "withheld and the span gets a bracketed label card")
+    ap.add_argument("--labels", choices=sorted(LABEL_SETS), default="music",
+                    help="which withheld spans get a [label] card: music = [singing] and "
+                         "[music] (default), all = also [inaudible], none = no cards")
     ap.add_argument("--frame", choices=["crop", "fit"], default="crop")
     ap.add_argument("--x", type=float, default=0.0,
                     help="crop offset, -1 (full left) .. 1 (full right)")
@@ -274,14 +338,27 @@ def main():
         if not clips:
             die("--only matched no clip ids")
 
-    words = None
+    words, blocks = None, []
     if not args.no_captions:
         if not args.words:
             die("captions need --words FILE (or pass --no-captions)")
-        words = load_words(args.words)
+        words, blocks = load_words(args.words)
         if not os.path.isfile(args.font):
             die("font not found: %s" % args.font)
         font = ImageFont.truetype(args.font, args.font_size)
+        label_font = ImageFont.truetype(args.font, max(12, int(args.font_size * 0.8)))
+        if not args.allow_music:
+            hit = []
+            for clip in clips:
+                for b in music_overlaps(blocks, clip["start"] + args.offset,
+                                        clip["end"] + args.offset):
+                    hit.append("clip %s: %s %.1f-%.1f s" % (clip["id"], b["kind"],
+                                                            b["start"], b["end"]))
+            if hit:
+                die("these clips overlap singing or music (text withheld):\n  %s\n"
+                    "pass --allow-music to render them with a label card and no words, or "
+                    "correct the span with `vertcut kinds <json> --apply-overrides sung.tsv`"
+                    % "\n  ".join(hit))
 
     chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
     os.makedirs(args.outdir, exist_ok=True)
@@ -298,7 +375,8 @@ def main():
 
         cues = []
         if words is not None:
-            cues = group_cues(words, start, end, args.max_words, args.max_chars, args.gap)
+            cues = group_cues(words, start, end, args.max_words, args.max_chars, args.gap,
+                              blocks, LABEL_SETS[args.labels])
 
         print("vertcut: [%d/%d] %s  %.2fs  %d cues"
               % (n, len(clips), os.path.basename(out), dur, len(cues)))
@@ -312,7 +390,9 @@ def main():
             label = "[base]"
             for i, cue in enumerate(cues):
                 png = os.path.join(tmp, "cue%03d.png" % i)
-                render_cue(cue["text"], font, png, W - 140, max(4, args.font_size // 11))
+                is_label = bool(cue.get("label"))
+                render_cue(cue["text"], label_font if is_label else font, png, W - 140,
+                           max(4, args.font_size // 11), label=is_label)
                 inputs += ["-loop", "1", "-i", png]
                 nxt = "[v%d]" % i
                 filters.append(

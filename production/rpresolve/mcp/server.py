@@ -16,7 +16,8 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
 - Additive only: nothing that existed before is modified; grades go only onto timelines whose name ends " [auto]"; renders are queued, never started.
 - Deliverables: queue_render with a destination names the file by the house rule. After Isaac renders it: deliver_captions for a sidecar destination (Resolve's .ttml to a zero-based .srt), the loudness fix, then deliver_check.
-- Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it.
+- Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it. Its dry run warns where a source's kinds sidecar says the audio is sung or music: Resolve's captions cannot skip it, so relabel or delete those caption blocks by hand.
+- Transcripts are screened: text withheld as singing, music or a hallucination is a [label] with no words. Never open a .raw.json; to look at a clip, run `vertcut kinds`, which prints kinds and time ranges only.
 - Dual-system sound: sync_measure first; sync stacks the pair on a new [auto] timeline at that offset. Drift is reported, never corrected; a multicam clip stays a hand step.
 - Reframes: reframe_plan writes a copy of the manifest with a crop per span, checked against the face on sampled frames; cut builds the 9:16 and 1:1 versions from that copy (aspects). A version with no crop is named unreframed and not built.
 - Trim review proposes and deletes nothing: trim_review writes the TSV, trim_review_markers marks an [auto] timeline.

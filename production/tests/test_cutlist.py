@@ -107,7 +107,9 @@ class TestWordsAndEnds(unittest.TestCase):
     def test_repetition_loops(self):
         loop = [(w, i * 0.2, i * 0.2 + 0.2) for i, w in
                 enumerate(["learn", "how", "to"] * 5 + ["done"])]
-        words = cutlist.load_words(self._write(words_from(loop)))
+        # repetition_loops is pure over a words list. (load_words would now
+        # withhold this loop as a hallucination: test_segkind covers that.)
+        words = [{"word": w, "start": a, "end": b} for w, a, b in loop]
         loops = cutlist.repetition_loops(words)
         self.assertEqual(len(loops), 1)
         self.assertEqual(loops[0][2], "learn how to")

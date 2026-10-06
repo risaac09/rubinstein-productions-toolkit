@@ -928,6 +928,75 @@ def _constant(resolve, name):
     return getattr(resolve, name, None)
 
 
+def caption_screen(project, tl):
+    """(spans, warnings) for the audio an [auto] timeline plays, from the
+    <media stem>.kinds.json sidecars `vertcut transcribe` writes beside each
+    source: spans [{file, kind, source_start, source_end, timeline_start_s}]
+    where a sidecar says the audio is sung or music, and warnings that
+    say so in words (kinds and times, never a transcript). Resolve's auto
+    captions transcribe whatever audio is there and cannot skip a span, so
+    this cannot filter them; it makes the dry run say where the sung parts
+    are so the caption blocks there can be relabelled or deleted by hand.
+    A source with no sidecar is named too: its singing was not screened.
+    Never raises: a failure here is a warning, not a refusal."""
+    from . import deliver, guard, markers as mk
+    spans, warnings = [], []
+    try:
+        tl_fps = deliver.exact_fps(api._safe_call(tl, "GetSetting", "timelineFrameRate") or
+                                   api._safe_call(project, "GetSetting", "timelineFrameRate"))
+        files = []
+        for kind in ("video", "audio"):
+            for t in range(1, int(api._safe_call(tl, "GetTrackCount", kind) or 0) + 1):
+                for it in api._safe_call(tl, "GetItemListInTrack", kind, t) or []:
+                    clip = api._safe_call(it, "GetMediaPoolItem")
+                    path = api._safe_call(clip, "GetClipProperty", "File Path") or ""
+                    if path and path not in files:
+                        files.append(path)
+        start_frame = api._safe_call(tl, "GetStartFrame") or 0
+        unscreened = []
+        for path in files:
+            side = os.path.splitext(path)[0] + ".kinds.json"
+            if not os.path.isfile(side):
+                unscreened.append(os.path.basename(path))
+                continue
+            with open(side, encoding="utf-8") as f:
+                doc = json.load(f)
+            bad = [sp for sp in doc.get("spans") or []
+                   if sp.get("withheld") and sp.get("kind") in guard.MUSICAL]
+            if not bad or not tl_fps:
+                continue
+            found, _ = mk.source_items(tl, path)
+            items, _ = mk.mappable(found, tl_fps)
+            for it in items:
+                for sp in bad:
+                    a, b = max(sp["start"], it["src_start_s"]), min(sp["end"], it["src_end_s"])
+                    if b > a:
+                        spans.append({"file": os.path.basename(path), "kind": sp["kind"],
+                                      "source_start": round(a, 2), "source_end": round(b, 2),
+                                      "timeline_start_s": round(
+                                          (it["start"] - start_frame) / float(tl_fps) +
+                                          a - it["src_start_s"], 2)})
+        if spans:
+            where = "; ".join(f"{s['file']} {s['source_start']:g}-{s['source_end']:g} s as "
+                              f"{s['kind']} (timeline {s['timeline_start_s']:g} s)"
+                              for s in spans[:8])
+            warnings.append(
+                f"{len(spans)} span(s) of this timeline play audio the transcript guard "
+                f"screened as sung or music: {where}" + (" and more" if len(spans) > 8 else "") +
+                ". Resolve's auto captions transcribe it as words and cannot skip it: after "
+                "captioning, relabel those caption blocks as [singing] or [music], or delete "
+                "them, on the subtitle track by hand.")
+        if unscreened:
+            warnings.append(
+                f"no kinds sidecar beside {', '.join(unscreened[:5])}"
+                f"{' and more' if len(unscreened) > 5 else ''}: singing in "
+                "that audio was not screened (run `vertcut transcribe` on it to write one).")
+    except Exception as e:      # a warning that cannot be computed is not a reason to refuse
+        warnings.append(f"the caption screen could not run ({type(e).__name__}); check by hand "
+                        "that no sung audio is on the timeline.")
+    return spans, warnings
+
+
 def create_captions(resolve, project_name, timeline, language="en", dry_run=False,
                     project_id=None, expect_sha=None, config=None, check_cancel=None):
     """Transcribe an ' [auto]' timeline's audio into captions with Resolve's
@@ -943,8 +1012,10 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
     True proves nothing, so the subtitle tracks are read back: at least one
     item must be there. Returns {project, timeline, language, shape,
     settings, subtitle_tracks_before, subtitle_tracks_after, items,
-    first_item, returned, plan_sha, dry_run, ui_restore_problems,
-    exit_status}."""
+    first_item, returned, plan_sha, dry_run, withheld_spans, warnings,
+    ui_restore_problems, exit_status}. withheld_spans and warnings come
+    from caption_screen: where the sidecars say the audio is sung or music,
+    which auto captions cannot skip."""
     from . import deliver
     from .config import load_config
     config = config or load_config()
@@ -989,12 +1060,15 @@ def create_captions(resolve, project_name, timeline, language="en", dry_run=Fals
     settings = {consts["SUBTITLE_LANGUAGE"]: consts[names["SUBTITLE_LANGUAGE"]],
                 consts["SUBTITLE_CHARS_PER_LINE"]: chosen["chars_per_line"],
                 consts["SUBTITLE_LINE_BREAK"]: consts[names["SUBTITLE_LINE_BREAK"]]}
-    sha = plan_sha("captions", pin.unique_id, tl_id, code, names, shape, list(size), before)
+    withheld, warnings = caption_screen(project, tl)
+    sha = plan_sha("captions", pin.unique_id, tl_id, code, names, shape, list(size), before,
+                   *([withheld] if withheld else []))
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "size": list(size)},
            "language": code, "shape": shape, "settings": names,
            "subtitle_tracks_before": before, "subtitle_tracks_after": None, "items": 0,
            "first_item": None, "returned": None, "plan_sha": sha, "dry_run": dry_run,
+           "withheld_spans": withheld, "warnings": warnings,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out

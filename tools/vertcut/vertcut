@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # vertcut — bare-minimum AI-assisted vertical-clip workflow.
 #
-#   vertcut transcribe SRC [-o DIR] [--model M]   word-level transcript for clip picking
+#   vertcut transcribe SRC [-o DIR] [--model M]   word-level transcript for clip picking, with
+#                                                 singing, music and hallucinations withheld
+#   vertcut kinds FILE [--apply-overrides SUNG_TSV]  what each segment is: kinds and time ranges only
 #   vertcut cut SRC CLIPS.tsv [options]           9:16 captioned exports from a cuts manifest
 #
 # Full docs: tools/vertcut/README.md
@@ -13,24 +15,27 @@ PY="${VERTCUT_PYTHON:-/usr/bin/python3}"
 die() { printf 'vertcut: %s\n' "$1" >&2; exit 1; }
 
 usage() {
-  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found on PATH"; }
 
 cmd_transcribe() {
-  local src="" out="" model="mlx-community/whisper-large-v3-turbo"
+  local src="" out="" model="mlx-community/whisper-large-v3-turbo" overrides="" keep_raw=1
   while [ $# -gt 0 ]; do
     case "$1" in
       -o|--out) out="$2"; shift 2 ;;
       --model)  model="$2"; shift 2 ;;
+      --overrides) overrides="$2"; shift 2 ;;
+      --discard-raw) keep_raw=0; shift ;;
       -h|--help) usage ;;
       *) [ -z "$src" ] && src="$1" && shift || die "unexpected argument: $1" ;;
     esac
   done
   [ -n "$src" ] || usage 1
   [ -f "$src" ] || die "no such file: $src"
+  [ -z "$overrides" ] || [ -f "$overrides" ] || die "no such sung.tsv: $overrides"
 
   local mw
   mw="$(command -v mlx_whisper || echo "$HOME/Library/Python/3.9/bin/mlx_whisper")"
@@ -54,14 +59,46 @@ cmd_transcribe() {
   # Conditioning each window on the previous text lets Whisper fall into
   # repetition loops ("learn how to learn how to ..." for minutes on Say Why
   # Ep 002); off, with the silence guard, those regions transcribe cleanly.
-  echo "vertcut: transcribing with $model (word timestamps)"
+  #
+  # Whisper also writes singing as words (lyrics) and wind as sentences. The
+  # raw result goes to <name>.raw.json, which nothing reads by default; the
+  # safe <name>.json is made from it below, while the audio is still here.
+  #
+  # mlx_whisper's default --verbose True prints every segment's text to stdout,
+  # which puts lyrics in a terminal, a log, or an agent's context. It is turned
+  # off, and its stdout is discarded; progress and errors stay on stderr. It
+  # also names its output after the audio file, ignoring a dotted --output-name,
+  # so it writes into the temp dir and the raw file is moved to <name>.raw.json.
+  echo "vertcut: transcribing with $model (word timestamps; transcript text is not printed)"
   "$mw" "$wav" --model "$model" --word-timestamps True \
     --condition-on-previous-text False --hallucination-silence-threshold 2 \
-    --output-dir "$out" --output-name "$base" --output-format json
+    --output-dir "$VERTCUT_TMP" --output-name "$base" --output-format json \
+    --verbose False >/dev/null
+  [ -f "$VERTCUT_TMP/$base.json" ] || die "mlx_whisper wrote no transcript"
+  mv "$VERTCUT_TMP/$base.json" "$out/$base.raw.json"
+  chmod 600 "$out/$base.raw.json" 2>/dev/null || true
+
+  echo "vertcut: screening segments (speech, singing, music, hallucination)"
+  local args=(redact "$out/$base.raw.json" --audio "$wav" --out "$out/$base.json" --clip "$base")
+  [ -z "$overrides" ] || args+=(--overrides "$overrides")
+  if ! "$PY" "$HERE/lib/segkind.py" "${args[@]}"; then
+    rm -f "$out/$base.json"
+    die "screening failed; no safe transcript was written. The raw transcript is $out/$base.raw.json: do not open it. Fix the cause, then run: vertcut kinds \"$out/$base.raw.json\" --write"
+  fi
+  [ "$keep_raw" = 1 ] || rm -f "$out/$base.raw.json"
   rm -rf "$VERTCUT_TMP"
 
-  echo "vertcut: wrote $out/$base.json"
-  echo "         pass it to \`vertcut cut --words $out/$base.json\` to burn captions."
+  echo "vertcut: wrote $out/$base.json (safe: withheld text replaced by a label)"
+  echo "         and $out/$base.kinds.json (kinds and time ranges, no text)."
+  if [ "$keep_raw" = 1 ]; then
+    echo "         $out/$base.raw.json is the unredacted transcript; do not open or paste it."
+    echo "         Look at a clip with: vertcut kinds \"$out/$base.json\""
+  fi
+  echo "         pass the safe .json to \`vertcut cut --words $out/$base.json\` to burn captions."
+}
+
+cmd_kinds() {
+  exec "$PY" "$HERE/lib/segkind.py" kinds "$@"
 }
 
 cmd_cut() {
@@ -71,6 +108,7 @@ cmd_cut() {
 
 case "${1:-}" in
   transcribe) shift; cmd_transcribe "$@" ;;
+  kinds)      shift; cmd_kinds "$@" ;;
   cut)        shift; cmd_cut "$@" ;;
   -h|--help|"") usage ;;
   *) die "unknown command: $1 (try --help)" ;;
