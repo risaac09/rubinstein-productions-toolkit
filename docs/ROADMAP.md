@@ -31,9 +31,7 @@ Four tier-naming schemes coexist: the canonical Founder Story, Program Engagemen
 The templates and several methodology files use Obsidian `[[wiki links]]` that resolve only in the author's vault, and some of them point at superseded document names. Convert in-repo targets to relative markdown links, and mark vault-only references as such. A CI link checker (the CI workflow now exists to hang it on) keeps this fixed once it is fixed.
 
 ### 4. Publish the field guide
-**Status: executed July 2026, one switch remaining.** `scripts/build-site.py` renders the field guide as the site's front door with the system map at `/map/`, and the deploy workflow builds it on every push to `main`. The site has never actually deployed because GitHub Pages is not enabled on the repository and the workflow token cannot enable it; flip it once in Settings, Pages, Source: GitHub Actions.
-
-The GitHub Pages site currently serves only the agentic-architecture map. The field guide is markdown and could join it, either as rendered pages beside the map or by pointing the site's navigation back at the repository. Decide whether Pages is a system diagram or the toolkit's front door; right now it is a diagram with a front door's URL.
+**Status: done, live as of 2026-10-01.** `scripts/build-site.py` renders the field guide as the site's front door with the system map at `/map/`, and the deploy workflow builds it on every push to `main`. GitHub Pages is enabled with Source: GitHub Actions, and the site answers at https://risaac09.github.io/rubinstein-productions-toolkit/ (field guide at the root, map at `/map/`; both returned 200 on 2026-10-01).
 
 ### 5. Harden the CLI a step further
 The smoke test covers the happy path. The next investments, in value order: shellcheck in CI, quoting audit for org names containing `|` or `#` (they currently corrupt the sed replacements), and a guard when `python3` is absent for `rp-draft`'s URL encoding. A single `rp` umbrella command with subcommands would also make discovery easier than six separate binaries, at the cost of breaking existing muscle memory; do it only if new users matter more than current habit.
