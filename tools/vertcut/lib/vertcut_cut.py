@@ -65,6 +65,12 @@ def srt_tc(t):
     return "%02d:%02d:%02d,%03d" % (h, m, s, ms)
 
 
+def srt_text(cues):
+    """The .srt body for caption cues. A label cue is its bracketed label."""
+    return "".join("%d\n%s --> %s\n%s\n\n" % (i, srt_tc(c["start"]), srt_tc(c["end"]), c["text"])
+                   for i, c in enumerate(cues, 1))
+
+
 def slug(text, fallback):
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
     return s[:60] or fallback
@@ -420,9 +426,7 @@ def main():
 
         if cues:
             with open(os.path.splitext(out)[0] + ".srt", "w") as fh:
-                for i, cue in enumerate(cues, 1):
-                    fh.write("%d\n%s --> %s\n%s\n\n"
-                             % (i, srt_tc(cue["start"]), srt_tc(cue["end"]), cue["text"]))
+                fh.write(srt_text(cues))
 
     print("vertcut: done -> %s" % args.outdir)
 
