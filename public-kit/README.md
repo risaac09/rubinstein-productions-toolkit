@@ -58,8 +58,8 @@ here) never overlap.
 ## Consumers
 
 The `PUBLIC_CONSUMERS` allowlist in `../phase-zero/install.sh` is scoped to
-repos that are actually public: `alchemy`, `statehouse-dashboard`,
-`gene-keys-data`, `rubinsteinproductions`, `risaac09`,
+repos that are actually public: `alchemy`, `gene-keys-data`,
+`rubinsteinproductions`, `risaac09`,
 `three-type-evaluation` (its public paper side only — the rest of that repo
 stays private, untouched either way since this kit only ever writes under
 `.claude/`), `isaacrubinstein.com`, and this repo itself. Fully independent of the `phase-zero`
