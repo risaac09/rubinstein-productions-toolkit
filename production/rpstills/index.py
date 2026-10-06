@@ -69,9 +69,18 @@ def raw_twin(jpeg):
     return None
 
 
-def read_one(jpeg, proxy_dir):
+def frame_ids(files, folder):
+    """A unique id per file: the bare stem when stems are unique across the
+    shoot, else the path relative to the shoot folder with '/' as '__'."""
+    stems = [os.path.splitext(os.path.basename(f))[0] for f in files]
+    if len(set(stems)) == len(stems):
+        return stems
+    return [os.path.splitext(os.path.relpath(f, folder))[0].replace(os.sep, "__") for f in files]
+
+
+def read_one(jpeg, proxy_dir, stem=None):
     """EXIF, phash and the proxy for one original. Returns a row without faces."""
-    stem = os.path.splitext(os.path.basename(jpeg))[0]
+    stem = stem or os.path.splitext(os.path.basename(jpeg))[0]
     row = {"id": stem, "jpeg": jpeg, "raw": raw_twin(jpeg), "proxy": f"proxies/{stem}.jpg", "error": None}
     try:
         with Image.open(jpeg) as im:
@@ -79,8 +88,10 @@ def read_one(jpeg, proxy_dir):
             ifd = exif.get_ifd(EXIF_IFD) if exif else {}
             row["orientation"] = int(exif.get(TAG_ORIENTATION, 1) or 1)
             row["width"], row["height"] = im.size
-            dt = ifd.get(TAG_DATETIME)
-            row["time"] = (_dt.datetime.strptime(dt, "%Y:%m:%d %H:%M:%S").isoformat() if dt else None)
+            try:  # a blank or malformed date loses the time, not the frame
+                row["time"] = _dt.datetime.strptime(str(ifd.get(TAG_DATETIME)), "%Y:%m:%d %H:%M:%S").isoformat()
+            except (TypeError, ValueError):
+                row["time"] = None
             row["subsec"] = str(ifd.get(TAG_SUBSEC) or "").strip() or None
             row["iso"] = ifd.get(TAG_ISO)
             row["f"] = _ratio(ifd.get(TAG_FNUMBER))
@@ -90,9 +101,12 @@ def read_one(jpeg, proxy_dir):
             up = ImageOps.exif_transpose(im)
             row["phash"] = str(imagehash.phash(up)) if imagehash else None
             up.thumbnail((PROXY_EDGE, PROXY_EDGE))
-            row["upright_w"], row["upright_h"] = up.size
             proxy = os.path.join(proxy_dir, f"{stem}.jpg")
-            if not os.path.exists(proxy):
+            if os.path.exists(proxy):  # an earlier run's proxy stays; record its real size
+                with Image.open(proxy) as existing:
+                    row["upright_w"], row["upright_h"] = existing.size
+            else:
+                row["upright_w"], row["upright_h"] = up.size
                 up.save(proxy + ".part", "JPEG", quality=88)
                 os.replace(proxy + ".part", proxy)
     except Exception as e:  # one bad frame must not stop the shoot
@@ -159,10 +173,11 @@ def build(folder, out_dir, workers=4, log=print):
     proxy_dir = os.path.join(out_dir, "proxies")
     os.makedirs(proxy_dir, exist_ok=True)
     files = jpegs_in(folder)
+    ids = frame_ids(files, folder)
     log(f"index: {len(files)} JPEGs under {folder}")
     rows = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for n, row in enumerate(pool.map(lambda j: read_one(j, proxy_dir), files), 1):
+        for n, row in enumerate(pool.map(lambda ji: read_one(ji[0], proxy_dir, ji[1]), zip(files, ids)), 1):
             rows.append(row)
             if n % 100 == 0:
                 log(f"  read {n}/{len(files)}")

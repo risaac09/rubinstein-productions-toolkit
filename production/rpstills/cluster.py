@@ -61,21 +61,22 @@ def build(rows):
     prev, prev_t = None, None
     for r in rows:
         t = _t(r)
-        gap = (t - prev_t).total_seconds() if (t and prev_t) else None
+        # a frame without a time stays with its neighbours (gap 0)
+        gap = None if prev is None else ((t - prev_t).total_seconds() if (t and prev_t) else 0.0)
         cls = frame_class(r)
-        if prev is None or gap is None or gap > SEGMENT_GAP_S:
+        if prev is None or gap > SEGMENT_GAP_S:
             segments.append({"id": f"seg{len(segments) + 1:02d}", "start": r.get("time"), "end": r.get("time"), "frames": []})
         segments[-1]["frames"].append(r["id"])
         segments[-1]["end"] = r.get("time")
-        if prev is not None and gap is not None and gap <= BURST_GAP_S and _hash_distance(prev.get("phash"), r.get("phash")) <= BURST_HASH:
+        if prev is not None and gap <= BURST_GAP_S and _hash_distance(prev.get("phash"), r.get("phash")) <= BURST_HASH:
             bursts[-1].append(r["id"])
         else:
             bursts.append([r["id"]])
         person_change = False
-        if prev is not None and gap is not None and cls == "solo" and runs and runs[-1]["class"] == "solo":
+        if prev is not None and cls == "solo" and runs and runs[-1]["class"] == "solo":
             fd = _hash_distance(prev.get("face_hash"), r.get("face_hash")) if (prev.get("face_hash") and r.get("face_hash")) else 0
             person_change = (gap >= PERSON_GAP_S and fd >= PERSON_HASH) or gap >= HARD_GAP_S or fd >= HARD_HASH
-        if (prev is None or gap is None or gap > RUN_GAP_S or person_change or runs[-1]["class"] != cls
+        if (prev is None or gap > RUN_GAP_S or person_change or runs[-1]["class"] != cls
                 or runs[-1]["segment"] != segments[-1]["id"]):
             runs.append({"id": f"run{len(runs) + 1:03d}", "segment": segments[-1]["id"], "class": cls,
                          "frames": [], "start": r.get("time"), "end": r.get("time")})

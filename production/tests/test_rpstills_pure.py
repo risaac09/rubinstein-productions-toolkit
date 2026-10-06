@@ -48,9 +48,24 @@ class ClusterTest(unittest.TestCase):
         r["faces"].append({"x": 0.9, "y": 0.1, "w": 0.02, "h": 0.02, "confidence": 0.6})
         self.assertEqual(cluster.frame_class(r), "solo")
 
+    def test_timeless_frame_stays_with_its_neighbours(self):
+        rows = [row(1, "2026-09-12T16:00:00"), row(2, None), row(3, "2026-09-12T16:00:03")]
+        c = cluster.build(rows)
+        self.assertEqual(len(c["segments"]), 1)
+        self.assertEqual(len(c["runs"]), 1)
+
     def test_bad_rows_are_skipped(self):
         rows = [row(1, "2026-09-12T16:00:00"), dict(row(2, "2026-09-12T16:00:01"), error="boom")]
         self.assertEqual(len(cluster.build(rows)["runs"][0]["frames"]), 1)
+
+
+class IndexTest(unittest.TestCase):
+    def test_frame_ids_fall_back_to_relative_paths_on_collision(self):
+        from rpstills import index
+        files = ["/s/a/P1.JPG", "/s/b/P2.JPG"]
+        self.assertEqual(index.frame_ids(files, "/s"), ["P1", "P2"])
+        files = ["/s/a/P1.JPG", "/s/b/P1.JPG"]
+        self.assertEqual(index.frame_ids(files, "/s"), ["a__P1", "b__P1"])
 
 
 class CullTest(unittest.TestCase):
