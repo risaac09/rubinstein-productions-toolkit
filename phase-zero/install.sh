@@ -48,7 +48,7 @@
 # either, or both.
 
 set -euo pipefail
-[REMOVED FROM PUBLIC HISTORY]
+SRC="$(cd "$(dirname "$0")" && pwd)"
 
 KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-lib.sh hooks/phase-zero-trigger.sh hooks/session-brief.sh"
 
@@ -65,7 +65,7 @@ RETIRED_FILES="opus-4-8-brief.md"
 # the kit files and wasn't on this list either, so --check --all couldn't
 # even see the gap. Added here so future drift is caught; a parallel session
 # is deploying the actual kit files to three-bits directly.
-CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits rubinstein-productions-toolkit"
+CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits rubinstein-productions-toolkit circle-governance stack-finance"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
