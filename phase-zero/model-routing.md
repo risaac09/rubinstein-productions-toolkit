@@ -25,7 +25,9 @@ pool follows Q4.
 
 - Deterministic work with no judgment: a script, not a model call.
 - Bulk reads, search, mechanical edits, validation, low-impact preprocessing:
-  Haiku 4.5 at low. There is no local lane (retired 2026-09-13), so batch it.
+  Haiku 4.5 at low, batched. Private drafting that must not leave the machine
+  goes to the local base-model lane (stack-data DECISIONS 2026-10-05); it
+  never verifies, cites or arbitrates.
 - Routine synthesis, continuity, component edits, extraction, research legwork:
   Sonnet 5 at medium.
 - Orchestration, architecture, hard reasoning, final synthesis: start on

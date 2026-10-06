@@ -55,11 +55,16 @@ to start.
   effort low to high.
 - Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
 - Low-impact preprocessing (markitdown conversion, summarization, bulk
-  classification, light drafts): Haiku 4.5 at low. There is no local lane.
-  It was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
-  one and the models stopped fitting. Name the consequence rather than
-  forgetting it: this work used to be free and private, and now it costs
-  subscription quota, so batch it instead of running it per item.
+  classification, light drafts): Haiku 4.5 at low, batched. The old local
+  lane was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
+  one and its models stopped fitting, so this work costs subscription quota.
+  A narrower lane returned 2026-10-05 (stack-data DECISIONS): base
+  Qwen3.6-35B-A3B on demand behind Ollama, for private drafting that must
+  not leave the machine. A blind probe of thirty of Isaac's prompts found it
+  refused nothing and marked its uncertainty better than two abliterated
+  builds, and it still invented a citation it did not know. So it drafts and
+  never verifies, cites or arbitrates, and it does not take the bulk floor
+  until a Phase 1 eval shows which tasks it wins.
 
 ## Capacity contract, effective 2026-08-12
 
