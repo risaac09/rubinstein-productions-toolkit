@@ -39,9 +39,9 @@ pool follows Q4.
 Importance is not difficulty. Model and effort are separate levers; the same
 model at a lower effort is often right.
 
-## Capacity contract (2026-08-12)
+## Capacity contract (2026-09-13)
 
-Claude runs on Max 5x; ChatGPT Plus is a separate pool. No usage credits or
+Claude runs on Max 20x; ChatGPT Plus is a separate pool. No usage credits or
 silent API overage on either. At a Claude limit, hand eligible execution work
 to Codex or wait for the reset. Keep 20 percent of Claude's weekly capacity for
 urgent synthesis and continuity. Escalations are rationed by this budget, not
