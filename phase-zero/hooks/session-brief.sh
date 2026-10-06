@@ -98,7 +98,7 @@ elif [ -f "$root/../stack-data/docs/DECISIONS.md" ]; then
   records="../stack-data/docs"
 fi
 if [ -n "$records" ]; then
-  echo "Decisions of record: $records/DECISIONS.md. Cite a settled call instead of re-deriving it."
+  echo "Decisions of record: $records/DECISIONS.md (ledger, frozen 2026-10-05) and $records/decisions/ (one file each since). In force: ${records%docs}scripts/sd-decisions --open. Cite a settled call instead of re-deriving it."
   if [ -f "$root/$records/FAILURE-MODES.md" ]; then
     echo "Failure catalog: $records/FAILURE-MODES.md."
   fi
