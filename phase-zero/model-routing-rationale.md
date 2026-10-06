@@ -70,9 +70,9 @@ to start.
   arbitrates, never supplies citations or identifiers, runs no tools, and does
   not take the bulk floor until a Phase 1 eval shows which tasks it wins.
 
-## Capacity contract, effective 2026-08-12
+## Capacity contract, effective 2026-09-13
 
-- Claude runs on Max 5x. ChatGPT Plus is a separate paid pool. Claude carries
+- Claude runs on Max 20x. ChatGPT Plus is a separate paid pool. Claude carries
   synthesis, continuity, Isaac-voice work, and Claude-native projects. Work
   that clears Q4 with no Claude-context dependence goes to Codex at a tier set
   by Q1 and Q2, not automatically to Terra at medium.
