@@ -74,6 +74,12 @@ writes.
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
+`production/rpresolve/grade.py` is a helper library, not a tool and not a
+stub. It uses the standard library only and holds the LUT and `.drx`
+apply-and-read-back code and the grade reader that `apply_grade` and
+`timeline_items` use. It registers no MCP tool, and no `grade` or `match`
+tool exists.
+
 The offline tools never connect to Resolve. Every path they take must be
 absolute, since the server's working directory is not the caller's.
 `deliver_captions` writes `<stem>.srt` beside the render and moves
