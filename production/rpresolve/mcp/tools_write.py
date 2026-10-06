@@ -20,7 +20,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, deliver, paths, syncbuild, workflows
+from .. import api, deliver, paths, settingsguard, syncbuild, workflows
 from ..config import load_config
 from .. import detect as rpdetect
 from .. import ingest as rpingest
@@ -56,7 +56,8 @@ def _journalled(tool, args, run):
     status = {0: "ok", 2: "needs_review"}.get(result.get("exit_status"), "failed")
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
-                                                      "left_behind", "plan_sha") if k in result})
+                                                      "left_behind", "plan_sha",
+                                                      "settings_drift_rows") if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
         result["journal"]["warning"] = warn
@@ -154,6 +155,7 @@ def cut(args, ctx):
                                       if x.get("refused")]) +
                             (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
                              if bars else "") +
+                            settingsguard.clause(r.get("settings_drift_rows")) +
                             ("; the UI was not fully restored" if r["ui_restore_problems"]
                              else ""))
         return r
@@ -440,6 +442,7 @@ def sync(args, ctx):
             r["summary"] = (f"built '{r['timeline']}': {ok} of {n} placement(s) read back as "
                             f"planned; {where}{drift}" +
                             (f"; AutoSyncAudio {a['verdict']}" if a else "") +
+                            settingsguard.clause(r.get("settings_drift_rows")) +
                             (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "") +
                             _ui(r))
         return r
@@ -540,7 +543,10 @@ def register(registry):
         "one whose picture does not fill the frame is built and named BARS. Clips that fail "
         "endcheck are skipped unless force is true. Each timeline that already exists is "
         "skipped; a missing version beside an existing 16:9 is built from it when its items "
-        "still match the manifest's spans, and refused when they do not. "
+        "still match the manifest's spans, and refused when they do not. A timeline whose "
+        "settings read differently after its custom-settings write is named SETTINGS DRIFT "
+        "(settings_drift_rows); it is reported, nothing is set back, and the exit status does "
+        "not change. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
@@ -698,7 +704,9 @@ def register(registry):
         "compared with the measured offset, never trusted alone. A weak or inconsistent match is "
         "refused; a placement that leaves either end of the overlap more than half a frame out "
         "(rounding plus half the drift) is reported with the retime that would cancel the "
-        "drift, never corrected. "
+        "drift, never corrected. A timeline whose settings read differently after its "
+        "custom-settings write is named SETTINGS DRIFT (settings_drift_rows); it is reported, "
+        "nothing is set back, and the exit status does not change. "
         "Making a multicam clip stays a hand step. Dry run first; the real run needs its "
         "plan_sha.",
         {"type": "object", "properties": {
