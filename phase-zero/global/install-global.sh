@@ -14,7 +14,7 @@
 # so phase zero and the routing brief never print twice.
 
 set -euo pipefail
-[REMOVED FROM PUBLIC HISTORY]      # .../phase-zero/global
+SRC="$(cd "$(dirname "$0")" && pwd)"      # .../phase-zero/global
 KITROOT="$(cd "$SRC/.." && pwd)"          # .../phase-zero
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
 
