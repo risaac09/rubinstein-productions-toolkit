@@ -65,7 +65,9 @@ RETIRED_FILES="opus-4-8-brief.md"
 # the kit files and wasn't on this list either, so --check --all couldn't
 # even see the gap. Added here so future drift is caught; a parallel session
 # is deploying the actual kit files to three-bits directly.
-CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation statehouse-dashboard isaacrubinstein.com three-bits rubinstein-productions-toolkit circle-governance stack-finance"
+# statehouse-dashboard dropped 2026-10-05: archived 2026-10-01 (stack-data
+# DECISIONS), so it is read-only and every redeploy push to it failed.
+CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation isaacrubinstein.com three-bits rubinstein-productions-toolkit circle-governance stack-finance"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
@@ -88,7 +90,8 @@ PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURI
 # its public paper side only; the rest of that repo stays private, untouched
 # either way since this kit only ever writes under .claude/public-kit/.
 # isaacrubinstein.com added 2026-09-29: public on GitHub, confirmed by Isaac.
-PUBLIC_CONSUMERS="alchemy statehouse-dashboard gene-keys-data rubinsteinproductions risaac09 three-type-evaluation rubinstein-productions-toolkit isaacrubinstein.com"
+# statehouse-dashboard dropped 2026-10-05: archived, so it takes no writes.
+PUBLIC_CONSUMERS="alchemy gene-keys-data rubinsteinproductions risaac09 three-type-evaluation rubinstein-productions-toolkit isaacrubinstein.com"
 
 is_public_consumer() {
   case " $PUBLIC_CONSUMERS " in
