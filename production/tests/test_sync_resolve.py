@@ -142,6 +142,19 @@ class Base(unittest.TestCase):
         dry = self.run_it(*a, dry_run=True, **kw)
         return dry, self.run_it(*a, expect_sha=dry["plan_sha"], **kw)
 
+    def cli(self, **extra):
+        ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
+                  name=None, autosync=False, window=None, dry_run=False, plan_sha=None)
+        ns.update(extra)
+        sync = functools.partial(workflows.sync, measure=self.measure(), probe=self.probe)
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
+                mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
+                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
+                redirect_stdout(out), redirect_stderr(err):
+            status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
+        return status, out.getvalue(), err.getvalue()
+
     def built(self, name="A001 sync [auto]"):
         return next(t for t in self.project.timelines if t.GetName() == name)
 
@@ -432,6 +445,17 @@ class TestSyncImport(Base):
         names = [c[1] for c in rf.CALLS]
         self.assertLess(names.index("AppendToTimeline"), names.index("AutoSyncAudio"))
 
+    def test_the_autosync_verification_timeline_is_read_for_drift_too(self):
+        self.project.pool.autosync_offset = 63
+        self.project.settings.update({"isAutoColorManage": "0"})
+        self.project.flip_resets = {"isAutoColorManage": "1"}
+        dry, r = self.run_import(autosync=True)
+        self.assertEqual(r["exit_status"], 0, r["problems"])
+        self.assertEqual([(x["timeline"], x["state"], x["count"]) for x in r["settings_drift_rows"]],
+                         [("C001 sync [auto]", "drift", 1),
+                          ("C001 sync (AutoSyncAudio) [auto]", "drift", 1)])
+        self.assertEqual(r["autosync"]["settings_drift"]["state"], "drift")
+
     def test_autosync_that_disagrees_fails(self):
         self.project.pool.autosync_offset = 70
         dry, r = self.run_import(autosync=True)
@@ -488,19 +512,6 @@ class TestRateAndPlan(unittest.TestCase):
 
 
 class TestSyncCommandAndTool(Base):
-    def cli(self, **extra):
-        ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
-                  name=None, autosync=False, window=None, dry_run=False, plan_sha=None)
-        ns.update(extra)
-        sync = functools.partial(workflows.sync, measure=self.measure(), probe=self.probe)
-        out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
-                mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
-                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
-                redirect_stdout(out), redirect_stderr(err):
-            status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
-        return status, out.getvalue(), err.getvalue()
-
     def test_cli_without_numpy_stops_before_resolve(self):
         ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
                   name=None, autosync=False, window=None, dry_run=True, plan_sha=None)
@@ -573,6 +584,82 @@ class TestSyncCommandAndTool(Base):
             events = [json.loads(line) for line in f]
         self.assertEqual([(e["event"], e["tool"]) for e in events],
                          [("started", "sync"), ("finished", "sync")])
+
+
+class TestSyncSettingsDrift(Base):
+    """The settings drift guard through sync: the stacked timeline's own custom
+    settings write is read, reported in the result, the CLI and the MCP
+    summary, and never changes the exit status."""
+
+    def flip(self):
+        self.project.settings.update({"isAutoColorManage": "0", "rcmPresetMode": "Custom"})
+        self.project.flip_resets = {"isAutoColorManage": "1", "rcmPresetMode": "SDR"}
+
+    def test_a_clean_sync_reports_clean(self):
+        dry, r = self.twice()
+        self.assertEqual(r["exit_status"], 0, r["problems"])
+        self.assertEqual(r["settings_drift_rows"], [])
+        self.assertEqual(r["built"]["settings_drift"]["state"], "clean")
+
+    def test_a_flip_is_reported_and_the_exit_status_is_unchanged(self):
+        self.flip()
+        dry, r = self.twice()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        d = r["built"]["settings_drift"]
+        self.assertEqual(d["state"], "drift")
+        self.assertEqual(sorted(c["key"] for c in d["changed"]), ["isAutoColorManage", "rcmPresetMode"])
+        self.assertEqual([(x["timeline"], x["state"], x["count"]) for x in r["settings_drift_rows"]],
+                         [("A001 sync [auto]", "drift", 2)])
+        self.assertEqual(self.built().settings["isAutoColorManage"], "1")  # nothing is set back
+        self.assertEqual(self.project.settings["isAutoColorManage"], "0")
+
+    def test_settings_that_cannot_be_read_do_not_fail_the_sync(self):
+        with mock.patch.object(rf.Timeline, "GetSettings", side_effect=RuntimeError("boom")):
+            dry, r = self.twice()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual([(x["timeline"], x["state"]) for x in r["settings_drift_rows"]],
+                         [("A001 sync [auto]", "unchecked")])
+
+    def test_a_dry_run_reads_nothing(self):
+        self.flip()
+        with mock.patch.object(rf.Timeline, "GetSettings") as g:
+            r = self.run_it(dry_run=True)
+        g.assert_not_called()
+        self.assertEqual(r["settings_drift_rows"], [])
+
+    def test_the_cli_prints_the_drift_and_the_status_is_unchanged(self):
+        self.flip()
+        status, out, err = self.cli(dry_run=True)
+        self.assertEqual((status, "Settings:" in out), (0, False), err)
+        sha = out.split("plan_sha: ")[1].split()[0]
+        status, out, err = self.cli(plan_sha=sha)
+        self.assertEqual(status, 0, err)
+        self.assertIn("Settings:  stacked timeline: settings drift:", out)
+        self.assertIn("isAutoColorManage '0' -> '1' (at custom write)", out)
+
+    @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
+    def test_the_mcp_summary_and_journal_name_a_flip(self):
+        from rpresolve import sync as rpsync
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+
+        def call(args):
+            args = schema.with_defaults(tool.input_schema, {"project": P, **args})
+            self.assertEqual(schema.validate(tool.input_schema, args), [])
+            return tool.handler(args, ToolContext(session=rf.Session(self.resolve)))
+        self.flip()
+        with mock.patch.object(rpsync, "measure", self.measure()):
+            dry = call({"reference": "clip-cam", "other": "clip-rec"})
+            self.assertNotIn("SETTINGS", dry["summary"])
+            r = call({"reference": "clip-cam", "other": "clip-rec", "dry_run": False,
+                      "plan_sha": dry["plan_sha"]})
+        self.assertIn("; SETTINGS DRIFT (", r["summary"])
+        self.assertIn("A001 sync [auto]: 2 setting(s)", r["summary"])
+        with open(os.environ["RPRESOLVE_MCP_JOURNAL"], encoding="utf-8") as f:
+            events = [json.loads(line) for line in f]
+        self.assertEqual(events[-1]["event"], "finished")
+        self.assertIn("isAutoColorManage", json.dumps(events[-1]))
 
 
 class TestAudioOnlyClipInfo(unittest.TestCase):

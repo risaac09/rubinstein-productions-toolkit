@@ -226,7 +226,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     and/or 1x1; default 9x16, none with make_9x16 false). Returns {project,
     gate, source_item, aspects, would_create, unreframed, refused,
     reframes, skipped_existing, results, left_behind, ui_restore_problems,
-    plan_sha, exit_status}. A version with no reframe for a span is not
+    plan_sha, exit_status, settings_drift_rows}. A version with no reframe for a span is not
     built and is named in `unreframed`, and one whose input scaling the
     transform is not known for in `refused` (dry run and real run); a
     version whose picture does not fill the frame is built and named in
@@ -236,8 +236,12 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     from it when its V1 items still match the manifest (refused when they
     do not). exit_status: 0 all built and read back, 2 built but some
     version leaves bars, 1 any failure, unreframed or refused version. A
-    dry run stops before anything is created."""
+    dry run stops before anything is created. Each result carries
+    settings_drift (settingsguard's report on the timeline's settings around
+    the custom-settings writes), and settings_drift_rows lists the timelines that
+    drifted or could not be checked; it never changes exit_status."""
     from . import cut as rpcut
+    from . import settingsguard as rpguard
     aspects = cut_aspects(make_9x16, aspects)
     gate = gate or cut_gate(manifest_path, only, audio, force)
     m, clips = gate["manifest"], gate["clips"]
@@ -307,7 +311,8 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
            "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
            "unreframed": unreframed, "refused": refused, "reframes": reframes,
            "skipped_existing": skipped, "results": [], "left_behind": [],
-           "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
+           "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0,
+           "settings_drift_rows": []}
     if scaling_note:
         out["input_scaling_note"] = scaling_note
     if dry_run:
@@ -322,10 +327,12 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     with snap:
         for e in todo:
             clip = e["clip"]
+            wide_drift = None  # the 16:9's report, when this run built it
             if e["build_wide"]:
                 r = rpcut.build_clip(project, media_pool, item, clip, m["fps"], prefix,
                                      check=check)
                 r["kind"] = "16x9"
+                wide_drift = r.get("settings_drift")
                 out["results"].append(r)
                 failed |= not r["ok"]
                 if not r["ok"]:
@@ -336,18 +343,25 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                         "name": f"{prefix}_{clip['name']}_{a}{rpcut.AUTO}", "kind": a,
                         "ok": False, "refused": True, "unreframed": False,
                         "left_behind": None, "props": None, "items": [], "bars": [],
-                        "warnings": [], "reason": f"REFUSED: {e['mismatch']}; the {a} version "
+                        "warnings": [], "settings_drift": None,
+                        "reason": f"REFUSED: {e['mismatch']}; the {a} version "
                         "was not built"})
                     failed = True
                     continue
                 wide = rpcut.timeline_names(project).get(e["wide"])
                 t = rpcut.build_aspect(project, wide, clip, src, prefix, a, check=check,
                                        scaling=scaling)
+                if t.get("refused") and wide_drift:
+                    # The 'plan was made for X' refusal can be the custom-settings write's doing;
+                    # explain() answers only for a refusal that names the input scaling.
+                    t["reason"] += rpguard.explain(wide_drift, rpcut.INPUT_SCALING, t["reason"])
                 out["results"].append(t)
                 failed |= not t["ok"]
                 bars |= bool(t["bars"])
     out["ui_restore_problems"] = snap.problems
     out["left_behind"] = [x["left_behind"] for x in out["results"] if x.get("left_behind")]
+    out["settings_drift_rows"] = rpguard.digest([(x["name"], x.get("settings_drift"))
+                                           for x in out["results"]])
     out["exit_status"] = 1 if failed else (2 if bars else 0)
     return out
 
@@ -1068,8 +1082,11 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     Returns {project, mode, reference, other, measurement, timeline,
     would_create, bin, rate, offset_frames, plan, plan_sha, dry_run,
     imported, built, autosync, problems, ui_restore_problems,
-    exit_status}."""
-    from . import deliver, syncbuild as sb
+    exit_status, settings_drift_rows}. built and autosync each carry
+    settings_drift (settingsguard's report on that timeline), and the
+    top-level list names the timelines that drifted or could not be checked;
+    it is not in problems and never changes exit_status."""
+    from . import deliver, settingsguard as rpguard, syncbuild as sb
     if measure is None or (bin and probe is None):
         from . import sync as rpsync  # numpy
         measure, probe = measure or rpsync.measure, probe or rpsync.probe
@@ -1183,7 +1200,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
            "would_create": [name] + ([vname] if autosync else []), "bin": bin, "rate": rate,
            "offset_frames": offset_frames, "plan": the_plan["placements"], "plan_sha": sha,
            "dry_run": dry_run, "imported": [], "built": None, "autosync": None, "problems": [],
-           "ui_restore_problems": [], "exit_status": 0}
+           "ui_restore_problems": [], "exit_status": 0, "settings_drift_rows": []}
     if importing:
         out["lengths_note"] = ("lengths are from ffprobe until the files are imported; the real "
                                "run places them at the lengths Resolve reports")
@@ -1220,6 +1237,9 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
             if previous:
                 media_pool.SetCurrentFolder(previous)
     out["ui_restore_problems"] = snap.problems
+    out["settings_drift_rows"] = rpguard.digest([
+        (name, (out["built"] or {}).get("settings_drift")),
+        (vname, (out["autosync"] or {}).get("settings_drift"))])
     out["exit_status"] = (1 if out["problems"] else
                           2 if drift.get("exceeds") or (out["autosync"] or {}).get("verdict")
                           == "unverifiable" else 0)
@@ -1267,11 +1287,11 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
     and after, and a second [auto] timeline holding the synced reference,
     whose items say where Resolve put the other file. Returns {returned,
     changed_properties, verification_timeline, implied_offset_s, verdict,
-    problems}."""
+    problems, settings_drift}."""
     from . import deliver, syncbuild as sb
     fps = deliver.exact_fps(rate)
     res = {"returned": None, "changed_properties": [], "verification_timeline": vname,
-           "implied_offset_s": None, "verdict": None, "problems": []}
+           "implied_offset_s": None, "verdict": None, "problems": [], "settings_drift": None}
     check()
     before = sb.clip_props(clips["reference"])
     res["returned"] = bool(media_pool.AutoSyncAudio([clips["reference"], clips["other"]],
@@ -1288,7 +1308,7 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
             f"{a[0]} {a[1][0].upper()}{a[2]} {a[3]} -> {b[3]}" for a, b in zip(was, now)
             if a != b))
     check()
-    vt = sb.new_timeline(project, media_pool, vname, rate)
+    vt = sb.new_timeline(project, media_pool, vname, rate, report=res)  # sets res['settings_drift']
     problem = sb.ensure_track(vt, "audio", 2, sb.audio_subtype(infos[1]["channels"]))
     if problem:
         res["problems"].append(problem)

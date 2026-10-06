@@ -61,3 +61,5 @@ jobs:
         run: python -m unittest -v production.tests.test_mcp_writes production.tests.test_mcp_writes2
       - name: Library and workflows
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib
+      - name: Cut, sync and settings drift guard
+        run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard

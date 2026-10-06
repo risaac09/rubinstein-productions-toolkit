@@ -38,6 +38,12 @@ Gates before anything is built:
 Every write is read back: timeline settings, each item's source frames and
 duration, and the reframe properties.
 
+Switching a timeline to custom settings is reported to change more than
+itself (colour management, input and output scaling). settingsguard reads
+each new timeline's settings around those writes and names any key that
+reads differently in the result's settings_drift. It is reported, never
+corrected.
+
 A span covers source frames [round(in*fps), round(out*fps)). Resolve's
 AppendToTimeline endFrame is exclusive (measured on Ep 002: the old script's
 round(out*fps) - 1 lost one frame per span), so endFrame = round(out*fps).
@@ -49,6 +55,7 @@ import re
 from . import api
 from . import cutlist
 from . import reframe as rf
+from . import settingsguard
 
 AUTO = " [auto]"
 WIDE = (1920, 1080)
@@ -108,13 +115,15 @@ def _setup(timeline, fps, size):
 
 def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
     """Build one clip's 16:9 timeline and read it back. Returns
-    {name, frames_expected, frames, items, ok, reason, left_behind}: a
-    timeline created and then failing its read-back is named there."""
+    {name, frames_expected, frames, items, ok, reason, left_behind, warnings,
+    settings_drift}: a timeline created and then failing its read-back is
+    named there. settings_drift is settingsguard's report on the timeline's
+    settings around the custom-settings writes (None when none was made)."""
     name = f"{prefix}_{clip['name']}{AUTO}"
     spans = clip["spans"]
     expected = cutlist.clip_frames(clip, fps)
     out = {"name": name, "frames_expected": expected, "frames": None, "items": [], "ok": False,
-           "reason": "", "left_behind": None}
+           "reason": "", "left_behind": None, "warnings": [], "settings_drift": None}
     if check:
         check()
     tl = media_pool.CreateEmptyTimeline(name)
@@ -125,10 +134,13 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
             out["reason"] += f"; LEFT BEHIND: it made '{tl.GetName()}' instead"
         return out
     project.SetCurrentTimeline(tl)
+    watch = settingsguard.Watch(tl, settingsguard.WROTE_CLIP, project)
+    watch.mark("new timeline")  # still following the project's settings
     # Frame rate is fixed once a timeline holds a clip; set it while empty.
     # Resolve reads it back as a float (25.0), so compare numbers.
     tl.SetSetting("useCustomSettings", "1")
     tl.SetSetting("timelineFrameRate", str(int(fps)) if float(fps).is_integer() else str(fps))
+    watch.mark("first custom write")
     got = tl.GetSetting("timelineFrameRate")
     try:
         rate_ok = abs(float(got) - float(fps)) < 1e-3
@@ -138,9 +150,12 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
         if not rate_ok:
             raise api.WriteNotApplied(f"timelineFrameRate: wrote {fps}, read back {got!r}")
         _setup(tl, fps, WIDE)
+        watch.mark("second custom write")  # _setup writes the flag again
     except api.WriteNotApplied as e:
         raise api.WriteNotApplied(f"{e}; LEFT BEHIND: '{name}' exists, empty; delete it "
-                                  "before a re-run")
+                                  "before a re-run" + watch.tail())
+    out["settings_drift"] = watch.report()
+    out["warnings"] += settingsguard.warnings(out["settings_drift"])
     start = tl.GetStartFrame()
     record = start
     for s in spans:
@@ -317,7 +332,8 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     """Duplicate a built 16:9 timeline as the clip's `aspect` version (9x16
     or 1x1): set its resolution, give each V1 item its span's transform and
     read every property back. Returns {name, kind, ok, reason, unreframed,
-    refused, left_behind, props, items, bars, warnings, input_scaling}.
+    refused, left_behind, props, items, bars, warnings, input_scaling,
+    settings_drift}.
     Nothing is duplicated for a version with no reframe (unreframed), an
     input scaling the transform is not known for, or one other than
     `scaling` (the one the plan was made for, when given) (refused); a
@@ -325,7 +341,7 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     name = f"{prefix}_{clip['name']}_{aspect}{AUTO}"
     out = {"name": name, "kind": aspect, "ok": False, "reason": "", "unreframed": False,
            "refused": False, "left_behind": None, "props": None, "items": [], "bars": [],
-           "warnings": [], "input_scaling": None}
+           "warnings": [], "input_scaling": None, "settings_drift": None}
     planned = scaling
     scaling, note = input_scaling(project, wide_tl)
     out["input_scaling"] = scaling
@@ -348,6 +364,10 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     if check:
         check()
     project.SetCurrentTimeline(wide_tl)
+    # The baseline is the 16:9, read from its own handle before the copy exists (the copy
+    # becomes current), so a version reports only what its own write did.
+    watch = settingsguard.Watch(wide_tl, settingsguard.WROTE_ASPECT, baseline="the 16:9")
+    watch.mark("16:9")
     tl = wide_tl.DuplicateTimeline(name)
     if not tl:
         out["reason"] = "DuplicateTimeline failed"
@@ -360,15 +380,21 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
         done = len(out["items"])
         state = ("no item transformed" if not done else
                  f"{done} of its {seen['items']} V1 items transformed and the rest untransformed")
+        out["settings_drift"] = watch.report()
         out["reason"] = (f"{reason}; LEFT BEHIND: '{out['left_behind']}' exists with {state}; "
-                         "delete it before a re-run, which skips a timeline that exists")
+                         "delete it before a re-run, which skips a timeline that exists"
+                         + settingsguard.tail(out["settings_drift"]))
         return out
     if tl.GetName() != name:
         return left(f"DuplicateTimeline made '{tl.GetName()}', expected '{name}'", tl.GetName())
+    watch.mark("copy", tl)
     try:
         _setup(tl, None, ASPECT_SIZES[aspect])
     except api.WriteNotApplied as e:
+        watch.mark("custom write", tl)
         return left(str(e))
+    watch.mark("custom write", tl)
+    out["settings_drift"] = watch.report()
     got_scaling, note = input_scaling(project, tl)
     out["input_scaling"] = got_scaling
     if got_scaling != scaling:
@@ -407,6 +433,7 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     if any(abs(p["props"].get("Tilt", 0.0)) > 1e-6 for p in plans):
         warnings.append("Tilt is set on at least one item; its sign (up is positive) is not yet "
                         "confirmed on a render, so check a still")
+    warnings += settingsguard.warnings(out["settings_drift"])
     out["warnings"] = warnings
     out["ok"] = True
     return out

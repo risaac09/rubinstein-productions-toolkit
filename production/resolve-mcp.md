@@ -106,6 +106,28 @@ tree and never overwrites an `.srt`.
   unless `overwrite` is true. After a real grade run, every item on other
   timelines that uses the same media is compared with before, and any change
   is reported as a leak.
+- **Settings the first custom write changes are reported, never corrected.**
+  `cut` and `sync` switch each new timeline to custom settings
+  (`useCustomSettings` 1). A Blackmagic forum report (board 12, topic 212784;
+  Windows and Linux, Resolve 20.3 to 21.1.1; none from a Mac) says that write
+  also changes colour management, input and output scaling and the monitor
+  format, and that some of those keys cannot be set back. The guard has not
+  yet run against a live project, so what happens on this Mac is not known.
+  Each tool reads the timeline's settings
+  (`Timeline.GetSettings()`, else `GetSetting()` with no key) before and
+  after its writes and names any key that reads differently, apart from the
+  ones it wrote on purpose (the custom flag, the frame rate, the size). The
+  result carries it as `settings_drift` (on each timeline's entry) and
+  `settings_drift_rows` (a list on the whole result), and the summary names
+  it SETTINGS DRIFT. A 16:9 or a sync
+  timeline is compared with itself before the write; a 9:16 or 1:1 with the
+  16:9 it was copied from. Nothing is set back, and `exit_status` and
+  `problems` do not change. SETTINGS NOT CHECKED means the settings could not
+  be read, or the last reading failed, so the comparison is missing or
+  partial; the result's `notes` say why. Only keys that both readings hold are
+  compared, so a few that exist only on a custom timeline are not seen.
+  `RPRESOLVE_SETTINGS_GUARD=off` (set in the MCP server's environment, then
+  restart the server) skips the reads and reports nothing.
 - **Renders are queued, never started.** `queue_render` refuses while a
   render runs and when the output file already exists. Resolve cannot read
   back the Deliver page's settings, so the tool puts back the format and
@@ -210,6 +232,15 @@ choose the file.
   (the scripting README's `GetMarkers` example), unlike `recordFrame`;
   not yet confirmed on a live Resolve (see the Trim review section of
   `resolve-template-spec.md`).
+- Whether a second `useCustomSettings` write on an already custom timeline
+  changes those keys again is not known. `cut` makes that write twice on
+  every 16:9 (once in `build_clip`, once in its size step) and once on each
+  version, and `settings_drift` names the write after which each key changed.
+  `Timeline.GetSettings()` is in the 21.1 scripting README and stub, and
+  `GetSetting()` with no key is its older, deprecated form; neither was tried
+  live when the guard was written. A key that reads differently because the
+  tool wrote the frame rate or the size would be a false alarm; the guard
+  leaves those writes out.
 
 ## Check it against a live Resolve
 
