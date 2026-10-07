@@ -1233,9 +1233,11 @@ def cmd_cut(args):
     --project: each clip's 16:9 and its --aspects versions (default 9x16).
     Exit 0 all built and read back, 2 built but a version leaves bars, 1 on
     any failure, a version with no reframe (UNREFRAMED: not built) or an
-    input scaling the transform is not known for (REFUSED: not built). A
-    timeline whose settings read differently after its custom-settings write
-    prints a note and SETTINGS rows; the exit status does not change."""
+    input scaling the transform is not known for (REFUSED: not built). When
+    the settings guard is enabled (RPRESOLVE_SETTINGS_GUARD=on; off by
+    default), a timeline whose settings read differently after its
+    custom-settings write prints a note and SETTINGS rows; the exit status
+    does not change."""
     from rpresolve import cutlist, settingsguard
     if args.no_9x16 and args.aspects:
         print("ERROR: --no-9x16 and --aspects each choose the versions; give one of them.",

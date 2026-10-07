@@ -236,10 +236,13 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     from it when its V1 items still match the manifest (refused when they
     do not). exit_status: 0 all built and read back, 2 built but some
     version leaves bars, 1 any failure, unreframed or refused version. A
-    dry run stops before anything is created. Each result carries
-    settings_drift (settingsguard's report on the timeline's settings around
-    the custom-settings writes), and settings_drift_rows lists the timelines that
-    drifted or could not be checked; it never changes exit_status."""
+    dry run stops before anything is created. The settings guard is off by
+    default (RPRESOLVE_SETTINGS_GUARD=on enables it): then each result's
+    settings_drift is None and settings_drift_rows is []. When it is enabled,
+    each result carries settings_drift (settingsguard's report on the
+    timeline's settings around the custom-settings writes), and
+    settings_drift_rows lists the timelines that drifted or could not be
+    checked; it never changes exit_status."""
     from . import cut as rpcut
     from . import settingsguard as rpguard
     aspects = cut_aspects(make_9x16, aspects)
@@ -1082,10 +1085,13 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     Returns {project, mode, reference, other, measurement, timeline,
     would_create, bin, rate, offset_frames, plan, plan_sha, dry_run,
     imported, built, autosync, problems, ui_restore_problems,
-    exit_status, settings_drift_rows}. built and autosync each carry
-    settings_drift (settingsguard's report on that timeline), and the
-    top-level list names the timelines that drifted or could not be checked;
-    it is not in problems and never changes exit_status."""
+    exit_status, settings_drift_rows}. The settings guard is off by default
+    (RPRESOLVE_SETTINGS_GUARD=on enables it): then built and autosync carry
+    settings_drift None and settings_drift_rows is []. When it is enabled,
+    built and autosync each carry settings_drift (settingsguard's report on
+    that timeline), and the top-level list names the timelines that drifted
+    or could not be checked; it is not in problems and never changes
+    exit_status."""
     from . import deliver, settingsguard as rpguard, syncbuild as sb
     if measure is None or (bin and probe is None):
         from . import sync as rpsync  # numpy

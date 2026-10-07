@@ -39,10 +39,11 @@ Every write is read back: timeline settings, each item's source frames and
 duration, and the reframe properties.
 
 Switching a timeline to custom settings is reported to change more than
-itself (colour management, input and output scaling). settingsguard reads
-each new timeline's settings around those writes and names any key that
+itself (colour management, input and output scaling). When the guard is
+enabled (RPRESOLVE_SETTINGS_GUARD=on; it is off by default), settingsguard
+reads each new timeline's settings around those writes and names any key that
 reads differently in the result's settings_drift. It is reported, never
-corrected.
+corrected. With the guard off, nothing is read and settings_drift is None.
 
 A span covers source frames [round(in*fps), round(out*fps)). Resolve's
 AppendToTimeline endFrame is exclusive (measured on Ep 002: the old script's
@@ -118,7 +119,8 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
     {name, frames_expected, frames, items, ok, reason, left_behind, warnings,
     settings_drift}: a timeline created and then failing its read-back is
     named there. settings_drift is settingsguard's report on the timeline's
-    settings around the custom-settings writes (None when none was made)."""
+    settings around the custom-settings writes (None when the guard is off,
+    which is the default, or none was made)."""
     name = f"{prefix}_{clip['name']}{AUTO}"
     spans = clip["spans"]
     expected = cutlist.clip_frames(clip, fps)

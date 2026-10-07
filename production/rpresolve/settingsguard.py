@@ -1,6 +1,7 @@
 """
 rpresolve.settingsguard: say what Resolve changed on a new timeline besides
-what the build wrote. Stdlib only.
+what the build wrote. Stdlib only. Opt-in: off unless RPRESOLVE_SETTINGS_GUARD
+is on, 1, yes or true.
 
 A Blackmagic forum thread (board 12, topic 212784) reports that switching a
 timeline to custom settings (useCustomSettings 1) also changes its colour
@@ -8,9 +9,9 @@ management, its input and output scaling and its monitor format, and that
 some of those keys cannot be set back. The reports are from Windows and
 Linux (20.3 to 21.1.1). None is from a Mac, and nothing here has reproduced
 it. cut and sync switch every [auto] timeline they make to custom settings,
-so a Watch reads the timeline's whole settings before and after those
-writes and names every key that reads differently, apart from the keys the
-build writes on purpose.
+so with the guard enabled a Watch reads the timeline's whole settings before
+and after those writes and names every key that reads differently, apart
+from the keys the build writes on purpose.
 
     watch = Watch(timeline, WROTE_CLIP, project)
     watch.mark("new timeline")
@@ -19,14 +20,23 @@ build writes on purpose.
     report = watch.report()    # {state, baseline, compared, changed, ...}
 
 The rules:
+    - Off by default. The guard reads only when RPRESOLVE_SETTINGS_GUARD is
+      on, 1, yes or true (any case, spaces ignored), set in the environment of
+      the process that runs the build (the MCP server's, or the CLI's). Unset,
+      empty and any other value, off included, leave it off: a Watch then
+      makes no reads, report() is None and nothing is warned. The reason is
+      that Timeline.GetSettings() and GetSetting() with no key have not been
+      confirmed on Resolve 21.1.1.10, and a call that hangs inside Resolve
+      cannot be caught by try/except. Enable it first on a scratch project,
+      never a client project.
     - Reads only: Timeline.GetSettings() (Resolve 21.1), else the older
       GetSetting() with no key. Nothing here sets, creates or duplicates.
     - Reported, never corrected. A report says which write each key changed
       at, so a repeat write or a copy that re-resets shows up as its own stage.
     - Never raises. A read that fails ends as state "unchecked" with the
       reason in notes, and the build goes on. A guard that could read nothing
-      says so; it never says "clean". RPRESOLVE_SETTINGS_GUARD=off skips
-      every read.
+      says so; it never says "clean". A read that never returns is not a
+      failure this module can see.
     - Compares by text the keys both readings hold, less the keys the build
       writes on purpose. A key only one reading holds is counted, not judged
       (a project reading has about 158 keys and a custom timeline's about
@@ -36,7 +46,8 @@ The rules:
 import os
 from collections.abc import Mapping
 
-ENV_OFF = "RPRESOLVE_SETTINGS_GUARD"
+ENV = "RPRESOLVE_SETTINGS_GUARD"
+ON = ("on", "1", "yes", "true")  # the only values that enable the guard
 FLAG = "useCustomSettings"
 # The keys each call site writes on purpose; they are left out of the comparison.
 WROTE_CLIP = (FLAG, "timelineFrameRate", "timelineResolutionWidth", "timelineResolutionHeight")
@@ -50,7 +61,9 @@ SHOWN = 4
 
 
 def enabled():
-    return os.environ.get(ENV_OFF, "").strip().lower() not in ("off", "0", "no", "false")
+    """True only when RPRESOLVE_SETTINGS_GUARD is on, 1, yes or true (spaces
+    and case ignored). Unset, empty and every other value are off."""
+    return os.environ.get(ENV, "").strip().lower() in ON
 
 
 def snapshot(obj):
@@ -140,7 +153,7 @@ class Watch:
     def __init__(self, timeline, wrote, project=None, baseline=OWN):
         self.timeline, self.wrote, self.project = timeline, tuple(wrote), project
         self.baseline, self.via = baseline, ""
-        self.off = not enabled()  # switched off: no reads and no report, so no warnings
+        self.off = not enabled()  # off (the default): no reads and no report, so no warnings
         self.marks, self.notes, self._done = [], [], None  # marks: [(stage, dict or None)]
 
     def mark(self, stage, obj=None):

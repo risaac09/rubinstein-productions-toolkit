@@ -190,7 +190,8 @@ def new_timeline(project, media_pool, name, rate, report=None):
     the current one) and set its frame rate while it is empty, reading
     each back. Returns the timeline; raises WriteNotApplied. When report is
     a dict, report['settings_drift'] is settingsguard's report on the
-    timeline's settings around the custom-settings write."""
+    timeline's settings around the custom-settings write (None while the
+    guard is off, which is the default)."""
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
@@ -285,7 +286,8 @@ def build(project, media_pool, name, rate, fps, clips, the_plan, check=None):
     """Make the stacked timeline and read every placement back. clips is
     {"reference": clip, "other": clip, plus their clip_info under
     "reference_info"/"other_info"}. Returns {name, unique_id,
-    start_frame, placements, returned, problems, settings_drift}."""
+    start_frame, placements, returned, problems, settings_drift}.
+    settings_drift is None unless the settings guard is enabled."""
     if check:
         check()
     drift = {}

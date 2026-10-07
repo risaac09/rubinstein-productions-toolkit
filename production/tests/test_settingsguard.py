@@ -1,9 +1,12 @@
 """
 settingsguard: the settings Resolve changes on a new timeline besides what
-cut and sync wrote, read and reported and never corrected. Pure tests of the
-module, then cut and sync's call sites against the shared Resolve fakes, and
-against thin fakes that cannot report their settings. Synthetic setting names
-and values only; nothing here touches Resolve.
+cut and sync wrote, read and reported and never corrected. The guard is
+opt-in: RPRESOLVE_SETTINGS_GUARD must be on, 1, yes or true, so every test
+that expects a report turns it on for itself and puts the environment back.
+Pure tests of the module, then cut and sync's call sites against the shared
+Resolve fakes, and against thin fakes that cannot report their settings, and
+the guard's default of making no reads at all. Synthetic setting names and
+values only; nothing here touches Resolve.
 
 Run: /usr/bin/python3 -m unittest -v production.tests.test_settingsguard
 """
@@ -29,13 +32,29 @@ _SAVED_SWITCH = {}
 
 
 def setUpModule():
-    # An inherited kill switch would hide the guard from every test here.
-    _SAVED_SWITCH["value"] = os.environ.pop(sg.ENV_OFF, None)
+    # An inherited switch would change which tests run with the guard on or off.
+    _SAVED_SWITCH["value"] = os.environ.pop(sg.ENV, None)
 
 
 def tearDownModule():
+    leaked = os.environ.get(sg.ENV)  # setUpModule left it unset; no test may leave it set
     if _SAVED_SWITCH.get("value") is not None:
-        os.environ[sg.ENV_OFF] = _SAVED_SWITCH["value"]
+        os.environ[sg.ENV] = _SAVED_SWITCH["value"]
+    if leaked is not None:
+        raise AssertionError(f"a test left {sg.ENV} set to {leaked!r}")
+
+
+def switch(value):
+    """RPRESOLVE_SETTINGS_GUARD set to `value` (None: unset) inside a with block."""
+    return rf.scoped_env(sg.ENV, value)
+
+
+class Guarded(unittest.TestCase):
+    """A test that expects the guard to read: the switch is on for it alone."""
+
+    def setUp(self):
+        super().setUp()
+        rf.set_env(self, sg.ENV, "on")  # the whole environment is restored when the test ends
 
 
 BEFORE = {"isAutoColorManage": "0", "rcmPresetMode": "Custom", "colorSpaceOutputGamma": "Gamma 2.4"}
@@ -139,7 +158,7 @@ class TestSnapshot(unittest.TestCase):
         self.assertEqual(got["a"], 1)
 
 
-class TestWatch(unittest.TestCase):
+class TestWatch(Guarded):
     def test_stages_and_transient(self):
         s0 = {"a": "0", "b": "0", "c": "0"}
         s1 = {"a": "1", "b": "1", "c": "0"}
@@ -225,22 +244,6 @@ class TestWatch(unittest.TestCase):
         self.assertEqual(tl.calls, calls)
         self.assertEqual(w.report()["state"], "unchecked")
 
-    def test_the_kill_switch_reads_nothing_and_says_nothing(self):
-        for value in ("off", "OFF", " 0 ", "no", "false"):
-            stub = Stub({"a": "0"})
-            with mock.patch.dict(os.environ, {sg.ENV_OFF: value}):
-                w = sg.Watch(stub, sg.WROTE_CLIP)
-                w.mark("x"), w.mark("y")
-            self.assertEqual(stub.calls, 0, value)
-            r = w.report()
-            self.assertIsNone(r, value)
-            self.assertEqual((sg.warnings(r), sg.tail(r), sg.digest([("T", r)])), ([], "", []))
-        stub = Stub({"a": "0"})
-        with mock.patch.dict(os.environ, {sg.ENV_OFF: "maybe"}):  # not a recognised value: stays on
-            w = sg.Watch(stub, sg.WROTE_CLIP)
-            w.mark("x"), w.mark("y")
-        self.assertEqual(w.report()["state"], "clean")
-
     def test_a_last_reading_that_fails_is_unchecked_unless_drift_was_seen(self):
         class Flaky:
             def __init__(self, *dicts):
@@ -303,7 +306,67 @@ class TestWatch(unittest.TestCase):
             self.assertNotIn(token, src)
 
 
-class TestText(unittest.TestCase):
+class TestSwitch(unittest.TestCase):
+    """RPRESOLVE_SETTINGS_GUARD is opt-in: unset is off, and only on, 1, yes and
+    true (any case, spaces ignored) turn the guard on. Each case sets the switch
+    inside its own block, so the environment is back as it was after every one."""
+
+    ON = ("on", "ON", "On", "oN", "1", "yes", "YES", "Yes", "true", "TRUE", "True", " on ",
+          "\ttrue\n", "  1")
+    OFF = ("off", "OFF", "Off", "0", "no", "NO", "false", "FALSE", "False", "", " ", "garbage",
+           "maybe", "2", "enabled", "enable", "y", "t", "on!", "onn", "true1", "-1", "none")
+
+    def check_off(self, value):
+        label = repr(value)
+        stub = Stub({"a": "0"})
+        with switch(value):
+            self.assertFalse(sg.enabled(), label)
+            w = sg.Watch(stub, sg.WROTE_CLIP)
+            w.mark("x"), w.mark("y")
+        self.assertEqual(stub.calls, 0, label)  # no GetSettings and no GetSetting
+        r = w.report()
+        self.assertIsNone(r, label)
+        rows = sg.digest([("T", r)])
+        self.assertEqual((w.tail(), sg.warnings(r), sg.lines(r), sg.tail(r), rows, sg.clause(rows)),
+                         ("", [], [], "", [], ""), label)
+
+    def test_unset_is_off_and_reads_nothing_and_says_nothing(self):
+        self.check_off(None)
+
+    def test_on_1_yes_and_true_in_any_case_turn_it_on(self):
+        for value in self.ON:
+            label = repr(value)
+            stub = Stub({"a": "0"})
+            with switch(value):
+                self.assertTrue(sg.enabled(), label)
+                w = sg.Watch(stub, sg.WROTE_CLIP)
+                w.mark("x"), w.mark("y")
+            self.assertEqual(stub.calls, 2, label)
+            self.assertEqual(w.report()["state"], "clean", label)
+
+    def test_off_0_no_false_empty_and_anything_else_leave_it_off(self):
+        for value in self.OFF:
+            self.check_off(value)
+
+    def test_the_environment_is_put_back_after_each_case(self):
+        os.environ.pop(sg.ENV, None)
+        for value in ("on", "garbage", None):
+            with switch(value):
+                pass
+            self.assertNotIn(sg.ENV, os.environ)
+        with mock.patch.dict(os.environ, {sg.ENV: "yes"}):
+            with switch("off"):
+                self.assertFalse(sg.enabled())
+            self.assertEqual(os.environ[sg.ENV], "yes")
+
+    def test_the_switch_is_read_when_a_watch_is_made(self):
+        with switch(None):
+            self.assertTrue(sg.Watch(Stub({"a": "0"}), sg.WROTE_CLIP).off)
+        with switch("on"):
+            self.assertFalse(sg.Watch(Stub({"a": "0"}), sg.WROTE_CLIP).off)
+
+
+class TestText(Guarded):
     def drifted(self):
         s0 = {f"k{i}": "0" for i in range(6)}
         s1 = dict({f"k{i}": "1" for i in range(5)}, k5="")
@@ -385,8 +448,9 @@ class TestText(unittest.TestCase):
         json.dumps(rows)
 
 
-class World(unittest.TestCase):
+class World(Guarded):
     def setUp(self):
+        super().setUp()
         rf.CALLS.clear()
         self.source = rf.Clip("source.mp4", "clip-1", {"File Path": "/nowhere/source.mp4",
                                                        "Resolution": "1280x720", "FPS": 25,
@@ -535,6 +599,78 @@ class TestBuilds(World):
         self.assertNotIn("settings drift", str(cm.exception))
 
 
+class TestBuildsOffByDefault(World):
+    """With RPRESOLVE_SETTINGS_GUARD unset, cut's and sync's builds read no
+    settings through the guard, report nothing and make the writes they always
+    made. A flip is set up so that the guard, were it on, would name it."""
+
+    def setUp(self):
+        super().setUp()
+        rf.set_env(self, sg.ENV, None)
+
+    def test_nothing_is_read_and_nothing_is_reported(self):
+        self.flip()
+        with rf.SettingsReads() as reads:
+            r = self.wide()
+            t = self.tall()
+        self.assertEqual(reads.calls, [])  # no GetSettings and no key-less GetSetting
+        self.assertTrue(r["ok"], r["reason"])
+        self.assertTrue(t["ok"], t["reason"])
+        self.assertIsNone(r["settings_drift"])
+        self.assertIsNone(t["settings_drift"])
+        self.assertEqual(r["warnings"], [])
+        self.assertFalse([w for w in t["warnings"] if "settings drift" in w])
+        self.assertEqual(self.timeline("T_hi [auto]").settings["isAutoColorManage"], "1")
+        off = self.sets()
+        self.assertEqual(len(off), 8)
+        self.setUp()  # the same build with the guard on makes the same writes
+        rf.set_env(self, sg.ENV, "on")
+        self.flip()
+        with rf.SettingsReads() as reads:
+            self.wide()
+            self.tall()
+        self.assertTrue(reads.calls)  # the spy sees the guard when it does read
+        self.assertEqual(self.sets(), off)
+
+    def test_a_failed_version_has_no_drift_text(self):
+        self.flip()
+        self.wide()
+        real = rf._copy_item
+
+        def stubborn(it):
+            new = real(it)
+            new.ignored = {"Pan"}
+            return new
+        with mock.patch.object(rf, "_copy_item", stubborn):
+            t = self.tall()
+        self.assertEqual(t["left_behind"], "T_hi_1x1 [auto]")
+        self.assertIsNone(t["settings_drift"])
+        self.assertIn("LEFT BEHIND: 'T_hi_1x1 [auto]' exists", t["reason"])
+        self.assertNotIn("settings drift", t["reason"])
+
+    def test_a_failed_16x9_error_has_no_drift_text(self):
+        self.flip()
+        real = rf.Timeline.SetSetting
+
+        def stubborn(tl, key, value):
+            return True if key == "timelineFrameRate" else real(tl, key, value)
+        with mock.patch.object(rf.Timeline, "SetSetting", stubborn):
+            with self.assertRaises(api.WriteNotApplied) as cm:
+                self.wide(fps=24)
+        self.assertIn("LEFT BEHIND: 'T_hi [auto]' exists, empty", str(cm.exception))
+        self.assertNotIn("settings drift", str(cm.exception))
+
+    def test_a_timeline_that_cannot_report_its_settings_is_not_called_unchecked(self):
+        with mock.patch.object(rf.Timeline, "GetSettings", side_effect=RuntimeError("boom")) as g:
+            r = self.wide()
+            t = self.tall()
+        g.assert_not_called()
+        for x in (r, t):
+            self.assertTrue(x["ok"], x["reason"])
+            self.assertIsNone(x["settings_drift"])
+            self.assertFalse([w for w in x["warnings"] if "settings drift" in w])
+
+
 class TestNewTimeline(World):
     def test_report_and_unchanged_writes(self):
         self.flip()
@@ -558,6 +694,33 @@ class TestNewTimeline(World):
             with self.assertRaises(api.WriteNotApplied) as cm:
                 sb.new_timeline(self.project, self.project.pool, "S [auto]", "24")
         self.assertTrue(str(cm.exception).endswith("; settings drift on it: 3 setting(s)"))
+
+
+class TestNewTimelineOffByDefault(World):
+    def setUp(self):
+        super().setUp()
+        rf.set_env(self, sg.ENV, None)
+
+    def test_report_stays_none_and_the_writes_are_unchanged(self):
+        self.flip()
+        rep = {}
+        with rf.SettingsReads() as reads:
+            sb.new_timeline(self.project, self.project.pool, "S [auto]", "25", report=rep)
+        self.assertEqual(reads.calls, [])
+        self.assertEqual(rep, {"settings_drift": None})
+        self.assertEqual(self.sets(), [("useCustomSettings", "1"), ("timelineFrameRate", "25")])
+
+    def test_a_failed_rate_read_back_has_no_drift_text(self):
+        self.flip()
+        real = rf.Timeline.SetSetting
+
+        def stubborn(tl, key, value):
+            return True if key == "timelineFrameRate" else real(tl, key, value)
+        with mock.patch.object(rf.Timeline, "SetSetting", stubborn):
+            with self.assertRaises(api.WriteNotApplied) as cm:
+                sb.new_timeline(self.project, self.project.pool, "S [auto]", "24")
+        self.assertIn("timelineFrameRate on 'S [auto]': wrote 24", str(cm.exception))
+        self.assertNotIn("settings drift", str(cm.exception))
 
 
 class ThinItem:
@@ -609,7 +772,7 @@ class ThinProject:
     def SetCurrentTimeline(self, tl): return True
 
 
-class TestThinFakes(unittest.TestCase):
+class TestThinFakes(Guarded):
     def test_a_timeline_that_reports_no_settings_still_builds(self):
         r = cut.build_clip(ThinProject(), ThinPool(), object(), CLIP, 25, "T")
         self.assertTrue(r["ok"], r["reason"])
@@ -620,6 +783,19 @@ class TestThinFakes(unittest.TestCase):
         t = cut.build_tall(ThinProject(), wide, CLIP, 1280, "T")
         self.assertTrue(t["ok"], t["reason"])
         self.assertEqual(t["settings_drift"]["state"], "unchecked")
+
+    def test_off_by_default_it_builds_with_no_report_and_no_warning(self):
+        rf.set_env(self, sg.ENV, None)
+        r = cut.build_clip(ThinProject(), ThinPool(), object(), CLIP, 25, "T")
+        self.assertTrue(r["ok"], r["reason"])
+        self.assertIsNone(r["settings_drift"])
+        self.assertEqual(r["warnings"], [])
+        wide = ThinTimeline("T_hi [auto]")
+        wide.items = [ThinItem(90000, 44, 25)]
+        t = cut.build_tall(ThinProject(), wide, CLIP, 1280, "T")
+        self.assertTrue(t["ok"], t["reason"])
+        self.assertIsNone(t["settings_drift"])
+        self.assertFalse([w for w in t["warnings"] if "settings drift" in w])
 
 
 def span_entry(x, y=360.0, scale=1.5):
@@ -681,7 +857,9 @@ class TestCutWorkflow(World):
         self.assertEqual(r["results"][1]["settings_drift"]["state"], "clean")
         self.assertEqual(r["left_behind"], [])
 
-    def test_the_mcp_summary_and_journal_name_a_flip(self):
+    def run_mcp(self):
+        """The MCP cut tool, dry then real, on a project that flips settings.
+        Returns (dry, real, the journal's last event)."""
         from rpresolve.mcp import schema, server
         from rpresolve.mcp.registry import ToolContext
         tool = server.build_registry().get("cut")
@@ -706,26 +884,110 @@ class TestCutWorkflow(World):
         base = {"project": "RP Automation Sandbox", "manifest": self.path, "prefix": "T",
                 "audio": False, "aspects": ["1x1"]}
         dry = call(base)
-        self.assertNotIn("SETTINGS", dry["summary"])
         r = call({**base, "dry_run": False, "plan_sha": dry["plan_sha"]})
-        self.assertIn("; SETTINGS DRIFT (", r["summary"])
-        self.assertIn("T_hi [auto]: 3 setting(s)", r["summary"])
         with open(os.path.join(d, "writes.jsonl"), encoding="utf-8") as f:
             events = [json.loads(line) for line in f]
-        self.assertEqual(events[-1]["event"], "finished")
-        self.assertIn("isAutoColorManage", json.dumps(events[-1]))
+        return dry, r, events[-1]
 
-    def test_a_scaling_flip_is_named_beside_the_existing_refusal(self):
+    def test_the_mcp_summary_and_journal_name_a_flip(self):
+        dry, r, last = self.run_mcp()
+        self.assertNotIn("SETTINGS", dry["summary"])
+        self.assertIn("; SETTINGS DRIFT (", r["summary"])
+        self.assertIn("T_hi [auto]: 3 setting(s)", r["summary"])
+        self.assertEqual(last["event"], "finished")
+        self.assertIn("isAutoColorManage", json.dumps(last))
+
+    def test_off_by_default_the_mcp_summary_and_journal_are_silent(self):
+        rf.set_env(self, sg.ENV, None)
+        dry, r, last = self.run_mcp()
+        self.assertNotIn("SETTINGS", dry["summary"])
+        self.assertNotIn("SETTINGS", r["summary"])
+        self.assertEqual((r["exit_status"], r["settings_drift_rows"]), (0, []))
+        self.assertEqual(last["event"], "finished")
+        self.assertNotIn("isAutoColorManage", json.dumps(last))
+
+    def test_off_by_default_nothing_is_read_and_nothing_is_reported(self):
+        rf.set_env(self, sg.ENV, None)
+        self.flip()  # the guard, were it on, would name this
+        with rf.SettingsReads() as reads:
+            r = self.run_cut()
+        self.assertEqual(reads.calls, [])
+        self.assertEqual(r["exit_status"], 0, [x["reason"] for x in r["results"]])
+        self.assertEqual(len(r["results"]), 2)
+        self.assertEqual([x["settings_drift"] for x in r["results"]], [None, None])
+        self.assertEqual([w for x in r["results"] for w in x["warnings"]
+                          if "settings drift" in w], [])
+        self.assertEqual(r["settings_drift_rows"], [])
+        self.assertEqual(sg.clause(r["settings_drift_rows"]), "")
+        self.assertEqual(self.timeline("T_hi [auto]").settings["isAutoColorManage"], "1")
+        self.assertEqual(r["left_behind"], [])
+
+    def reset(self):
+        """The project as it was before any build: the new timelines gone, the same files."""
+        self.project.timelines[:] = [self.home]
+        self.project.current = self.home
+
+    def outcome(self, value, reasons=True):
+        """What cut answers with the switch at `value`, less the guard's own report:
+        the dry run's and the real run's plan_sha, the exit status, and every
+        place a problem would show (each result's reason, left_behind, UI restore)."""
+        self.reset()
+        with switch(value):
+            dry = self.run_cut(dry_run=True)
+            r = self.run_cut(expect_sha=dry["plan_sha"])
+        return {"dry_sha": dry["plan_sha"], "sha": r["plan_sha"], "exit_status": r["exit_status"],
+                "would_create": dry["would_create"], "left_behind": r["left_behind"],
+                "ui_restore_problems": r["ui_restore_problems"],
+                "results": [(x["name"], x["kind"], x["ok"], x["refused"] if "refused" in x
+                             else None, x["reason"] if reasons else None) for x in r["results"]]}
+
+    def test_exit_status_problems_and_plan_sha_are_the_same_on_and_off(self):
+        for flipped in (False, True):
+            if flipped:
+                self.flip()
+            off, on = self.outcome(None), self.outcome("on")
+            self.assertEqual(off, on, f"flipped={flipped}")
+            self.assertEqual(self.outcome("off"), off)
+            self.assertEqual(off["exit_status"], 0)
+            self.assertEqual(off["dry_sha"], off["sha"])
+            self.assertEqual(len(off["dry_sha"]), 64)
+
+    def test_a_refusal_has_the_same_status_and_sha_on_and_off_but_names_the_drift_only_on(self):
         self.project.settings[cut.INPUT_SCALING] = "scaleToCrop"
         self.project.flip_resets = {cut.INPUT_SCALING: "scaleToFit"}
-        r = self.run_cut()
-        tall = r["results"][1]
-        self.assertTrue(tall["refused"])
-        self.assertIn("the plan was made for 'scaleToCrop'", tall["reason"])
-        self.assertIn("settings drift: Resolve changed it from 'scaleToCrop' to 'scaleToFit'",
-                      tall["reason"])
-        self.assertEqual(r["exit_status"], 1)
-        self.assertEqual([x["timeline"] for x in r["settings_drift_rows"]], ["T_hi [auto]"])
+        off, on = self.outcome(None, reasons=False), self.outcome("on", reasons=False)
+        self.assertEqual(off, on)
+        self.assertEqual(off["exit_status"], 1)
+        reason_off = self.outcome(None)["results"][1][-1]
+        reason_on = self.outcome("on")["results"][1][-1]
+        self.assertIn("the plan was made for 'scaleToCrop'", reason_off)
+        self.assertNotIn("settings drift", reason_off)
+        self.assertTrue(reason_on.startswith(reason_off))
+        self.assertIn("settings drift: Resolve changed it", reason_on)
+
+    def cli_cut(self):
+        import argparse
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        import resolve_workflow as rw
+        args = argparse.Namespace(manifest=self.path, only=None, no_audio=True, force=False,
+                                  no_9x16=False, aspects=["1x1"], project="RP Automation Sandbox",
+                                  prefix="T")
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(rw, "get_resolve", return_value=self.resolve), \
+                redirect_stdout(out), redirect_stderr(err):
+            status = rw.cmd_cut(args)
+        return status, out.getvalue(), err.getvalue()
+
+    def test_off_by_default_the_cli_prints_no_drift_and_no_note(self):
+        rf.set_env(self, sg.ENV, None)
+        self.flip()
+        status, out, err = self.cli_cut()
+        self.assertEqual(status, 0, err)
+        self.assertNotIn("SETTINGS", out)
+        self.assertNotIn("settings drift", out)
+        self.assertEqual(out.count("note:"), 2)  # the build's own two notes are untouched
+        self.assertEqual(out.count("made "), 2)
 
 
 if __name__ == "__main__":
