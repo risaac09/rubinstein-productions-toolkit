@@ -8,8 +8,11 @@ SetCurrentFolder, ...) that the fake does not implement. The setters the
 write tools need are implemented, and record themselves in CALLS too.
 """
 
+import contextlib
 import copy
 import itertools
+import os
+from unittest import mock
 
 
 CALLS = []
@@ -24,6 +27,32 @@ def mutating_calls():
 
 def _log(obj, name, *args):
     CALLS.append((type(obj).__name__, name, args))
+
+
+def _put_env(name, value):
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = value
+
+
+def set_env(test, name, value):
+    """Set the environment variable `name` to `value` (None unsets it) for one
+    test. The whole environment is put back when the test ends, so nothing
+    leaks into the next one."""
+    patcher = mock.patch.dict(os.environ)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    _put_env(name, value)
+
+
+@contextlib.contextmanager
+def scoped_env(name, value):
+    """`name` set to `value` (None unsets it) inside the block only; the whole
+    environment is as it was after it."""
+    with mock.patch.dict(os.environ):
+        _put_env(name, value)
+        yield
 
 
 # path -> [(label, lut, tools)]: the graph ApplyGradeFromDRX leaves behind.
@@ -545,3 +574,31 @@ class Session:
     def project(self):
         pm = self.resolve.GetProjectManager()
         return self.resolve, pm, pm.GetCurrentProject()
+
+
+class SettingsReads:
+    """Context manager: records each GetSettings() and each GetSetting() with
+    no key on the fake timelines and projects, the two forms the settings guard
+    reads with. A keyed GetSetting is the build's own read-back and is not
+    counted. `calls` holds 'Timeline.GetSettings' style names."""
+
+    def __init__(self):
+        self.calls = []
+        self._patches = []
+
+    def __enter__(self):
+        for cls in (Timeline, Project):
+            for name in ("GetSettings", "GetSetting"):
+                def spy(obj, *args, _real=getattr(cls, name), _cls=cls, _name=name, **kw):
+                    key = args[0] if args else kw.get("key")
+                    if _name == "GetSettings" or key is None:
+                        self.calls.append(f"{_cls.__name__}.{_name}")
+                    return _real(obj, *args, **kw)
+                patch = mock.patch.object(cls, name, spy)
+                patch.start()
+                self._patches.append(patch)
+        return self
+
+    def __exit__(self, *exc):
+        while self._patches:
+            self._patches.pop().stop()
