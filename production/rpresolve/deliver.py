@@ -571,9 +571,9 @@ def timeline_problems(dest, subtitle_counts, disabled_counts=()):
                 "Enable the caption track first."]
     if not subtitle_counts:
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline has no "
-                "subtitle track. Add the captions first: resolve_workflow.py captions, or the "
-                "MCP create_captions, on an [auto] timeline (duplicate_timeline_auto makes "
-                "one from a timeline that is not)."]
+                "subtitle track. Add the captions first: the MCP create_captions, on an "
+                "[auto] timeline (duplicate_timeline_auto makes one from a timeline that "
+                "is not)."]
     if not any(subtitle_counts):
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline's "
                 f"{len(subtitle_counts)} subtitle track(s) are empty."]
