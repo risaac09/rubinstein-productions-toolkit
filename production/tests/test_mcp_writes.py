@@ -1,16 +1,22 @@
 """
 Tests for the MCP write tools (rpresolve.mcp.tools_write) and the write
 journal: the dry-run-then-plan_sha contract, journalling, refusals that
-write nothing, and a static scan that no code the server can reach calls
-LoadProject, CreateProject, SaveProject, StartRendering, any Delete*, eval
-or exec.
+write nothing, and the static write-path guard over every non-test .py
+under production/: no file names LoadProject, CreateProject, SaveProject,
+StartRendering, any Delete*, eval or exec (or the other calls that open,
+create, export or close a project), and nothing outside rpresolve/ (the
+library and the MCP server) names a call that changes the open project
+or the Resolve UI. No file is exempt, the legacy resolve_workflow.py
+script included.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
 import ast
+import builtins
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -220,39 +226,152 @@ class TestCut(Base):
             call("cut", {"project": "Sandbox", "manifest": manifest, "prefix": "a b"}, None)
 
 
+# The write-path guard. api.py's rules put every Resolve write behind one layer, the
+# library (production/rpresolve/) that the MCP server calls: a pinned project, a plan the
+# caller confirms, a read-back, the UI put back, a journal line. This scan fails the build if
+# any other non-test file under production/ reaches Resolve's write API, or if any file,
+# the layer included, makes a call api.py rules out. It reads names, so it is a tripwire for
+# a call written out in source, not a sandbox: a name built at run time gets past it.
+
+# Never, in any file: opening, creating, closing, importing, restoring, archiving, saving or
+# exporting a project is a human decision made in Resolve (api.py rule 2); starting a render
+# is the person's step; nothing is deleted; no eval or exec.
 FORBIDDEN = {"LoadProject", "CreateProject", "SaveProject", "StartRendering", "eval", "exec",
-             "DeleteProject", "ImportProject"}
+             "DeleteProject", "ImportProject", "CloseProject", "RestoreProject",
+             "ArchiveProject", "ExportProject"}
+
+# Writes to the open project, its media pool, timelines, grades, render queue and settings,
+# and the UI state writes (page, current timeline, playhead) that api.py rule 3 wraps in
+# UISnapshot. Only the layer may make them; everything else under production/ is read-only
+# or offline. The names are those the layer calls today, plus the verbs Resolve's API uses
+# for changes, so a write the layer does not use yet is caught too.
+WRITE_CALLS = {"AddMarker", "AddRenderJob", "AddSubFolder", "AddTrack", "AppendToTimeline",
+               "ApplyGradeFromDRX", "AutoSyncAudio", "CreateEmptyTimeline",
+               "CreateSubtitlesFromAudio", "DuplicateTimeline", "ImportMedia", "OpenPage",
+               "RefreshLUTList", "SetClipColor", "SetClipProperty", "SetCurrentFolder",
+               "SetCurrentRenderFormatAndCodec", "SetCurrentRenderMode", "SetCurrentTimecode",
+               "SetCurrentTimeline", "SetEnd", "SetLUT", "SetProperty", "SetRenderSettings",
+               "SetSetting"}
+WRITE_VERB = re.compile(r"^(?:Set|Add|Create|Import|Append|Insert|Apply|Duplicate|Open|Start|"
+                        r"Stop|Move|Replace|Relink|Link|Unlink|Clear|Update|Remove|Reset)[A-Z]")
+
+WRITE_LAYER = "rpresolve"
 
 
-def forbidden_uses(path):
-    """(line, name) for every attribute, name or string constant in the file
-    that is a forbidden call: FORBIDDEN, or any Delete* method."""
+def _names(path):
+    """(line, name) for every attribute, name or string constant in the file."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=str(path))
-    hits = []
     for node in ast.walk(tree):
         name = (node.attr if isinstance(node, ast.Attribute) else
                 node.id if isinstance(node, ast.Name) else
                 node.value if isinstance(node, ast.Constant) and isinstance(node.value, str)
                 else None)
-        if name and (name in FORBIDDEN or (name.startswith("Delete") and name.isidentifier())):
-            hits.append((node.lineno, name))
-    return hits
+        if name:
+            yield node.lineno, name
+
+
+def forbidden_uses(path):
+    """(line, name) for every attribute, name or string constant in the file
+    that is a forbidden call: FORBIDDEN, or any Delete* method."""
+    return [(line, name) for line, name in _names(path)
+            if name in FORBIDDEN or (name.startswith("Delete") and name.isidentifier())]
+
+
+def write_uses(path):
+    """(line, name) for every name in the file that is a write call: WRITE_CALLS, or a
+    CamelCase name that starts with one of Resolve's change verbs (a Python builtin such as
+    ImportError is not one)."""
+    return [(line, name) for line, name in _names(path)
+            if name in WRITE_CALLS or (name.isidentifier() and WRITE_VERB.match(name)
+                                       and not hasattr(builtins, name))]
+
+
+def production_files(root):
+    """Every non-test .py under root: the library, the MCP server, the scripts."""
+    return sorted(f for f in Path(root).rglob("*.py")
+                  if "tests" not in f.relative_to(root).parts and "__pycache__" not in f.parts)
+
+
+def scan_production(root):
+    """{relative path: [(line, name)]} for every file that breaks the guard: a forbidden call
+    anywhere, or a write call outside the write layer (root/rpresolve/). No file is exempt."""
+    found = {}
+    for f in production_files(root):
+        rel = f.relative_to(root)
+        hits = forbidden_uses(f)
+        if rel.parts[0] != WRITE_LAYER:
+            hits += write_uses(f)
+        if hits:
+            found[str(rel)] = sorted(set(hits))
+    return found
 
 
 class TestForbiddenCalls(unittest.TestCase):
-    def test_nothing_the_server_reaches_calls_them(self):
-        files = sorted((PRODUCTION / "rpresolve").rglob("*.py")) + [PRODUCTION / "resolve_mcp.py"]
-        self.assertGreater(len(files), 15)
-        found = {str(f.relative_to(PRODUCTION)): forbidden_uses(f) for f in files}
-        self.assertEqual({k: v for k, v in found.items() if v}, {})
+    def test_no_file_under_production_breaks_the_write_path_guard(self):
+        files = {str(f.relative_to(PRODUCTION)) for f in production_files(PRODUCTION)}
+        # The glob must not quietly shrink: the script, the launcher and the survey are
+        # scanned like the library is.
+        self.assertGreater(len(files), 30)
+        for must in ("resolve_workflow.py", "resolve_mcp.py", "resolve_survey.py",
+                     "rpresolve/api.py", "rpresolve/workflows.py", "rpresolve/mcp/tools_write.py"):
+            self.assertIn(must, files)
+        self.assertEqual(scan_production(PRODUCTION), {})
+
+    def test_the_layer_does_make_the_write_calls(self):
+        # The guard is not vacuous: the sanctioned layer names real write calls.
+        layer = [f for f in production_files(PRODUCTION)
+                 if f.relative_to(PRODUCTION).parts[0] == WRITE_LAYER]
+        named = {name for f in layer for _, name in write_uses(f)}
+        self.assertTrue({"ImportMedia", "AddRenderJob", "SetLUT", "AddMarker",
+                         "CreateEmptyTimeline", "DuplicateTimeline"} <= named, named)
 
     def test_the_scan_catches_each_form(self):
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
             f.write("pm.LoadProject('x')\nt.DeleteClips([])\n_safe_call(p, 'StartRendering')\n"
-                    "eval('1')\n'''Never call LoadProject.'''\n")
+                    "eval('1')\n'''Never call LoadProject.'''\npm.ExportProject(n, p)\n"
+                    "pm.CloseProject(p)\n")
         self.addCleanup(os.unlink, f.name)
         self.assertEqual([n for _, n in sorted(forbidden_uses(f.name))],
-                         ["LoadProject", "DeleteClips", "StartRendering", "eval"])
+                         ["LoadProject", "DeleteClips", "StartRendering", "eval",
+                          "ExportProject", "CloseProject"])
+
+    def test_the_guard_fails_a_write_in_any_script_and_names_it(self):
+        # A scratch tree shaped like production/: a write call in the legacy script, in the
+        # launcher or in a new script fails the guard; the same call in the layer passes; test
+        # code is not scanned. The script gets no exemption.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "rpresolve" / "mcp").mkdir(parents=True)
+            (root / "tests").mkdir()
+            files = {
+                "resolve_workflow.py": "pm.CreateProject(name)\npm.SaveProject()\n",
+                "resolve_mcp.py": "project.StartRendering()\n",
+                "new_tool.py": "pool.ImportMedia(files)\nitem.SetClipColor('Blue')\n"
+                               "project.DeleteAllRenderJobs()\nresolve.OpenPage('color')\n",
+                "survey_helper.py": "project.GetName()\nraise ImportError('x')\n",
+                "rpresolve/ok.py": "pool.ImportMedia(files)\ntimeline.SetSetting('k', 'v')\n",
+                "rpresolve/mcp/bad.py": "project.DeleteAllRenderJobs()\npm.ExportProject(n, p)\n",
+                "tests/test_fake.py": "pm.CreateProject('x')\n",
+            }
+            for rel, text in files.items():
+                (root / rel).write_text(text, encoding="utf-8")
+            found = scan_production(root)
+        self.assertEqual(found, {
+            "resolve_workflow.py": [(1, "CreateProject"), (2, "SaveProject")],
+            "resolve_mcp.py": [(1, "StartRendering")],
+            "new_tool.py": [(1, "ImportMedia"), (2, "SetClipColor"), (3, "DeleteAllRenderJobs"),
+                            (4, "OpenPage")],
+            "rpresolve/mcp/bad.py": [(1, "DeleteAllRenderJobs"), (2, "ExportProject")],
+        })
+
+    def test_a_write_verb_the_layer_does_not_use_yet_is_caught_outside_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "script.py").write_text("tl.InsertGeneratorIntoTimeline('x')\n"
+                                            "pool.RelinkClips(c, p)\n", encoding="utf-8")
+            found = scan_production(root)
+        self.assertEqual(found, {"script.py": [(1, "InsertGeneratorIntoTimeline"),
+                                               (2, "RelinkClips")]})
 
 
 if __name__ == "__main__":
