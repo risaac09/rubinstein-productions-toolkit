@@ -33,8 +33,8 @@ Tab-separated, one row per clip. Comments and blank lines are ignored.
 
 ```
 # id	in	out	title
-2	00:35:18	00:36:17	the twenty percent line
-4	00:41:59	00:43:18	where the rigor comes from
+1	00:00:10	00:00:40	first example clip
+2	00:01:05	00:01:50	second example clip
 ```
 
 In/out accept `SS.mmm`, `MM:SS`, `HH:MM:SS.mmm`, or DaVinci `HH:MM:SS:FF`
@@ -66,7 +66,7 @@ normalizes audio to -16 LUFS, and writes an `.srt` sidecar next to the `.mp4`
 | `--no-captions` | off | Reframe only. |
 | `--max-words` / `--max-chars` | `3` / `26` | Caption density. |
 | `--font-size` / `--caption-y` | `66` / `1400` | Caption size and baseline. |
-| `--only 2,4` | all | Render a subset while dialling in the framing. |
+| `--only 1,2` | all | Render a subset while dialling in the framing. |
 | `--dry-run` | off | Print what would be rendered. |
 
 ### Dialling in the framing
