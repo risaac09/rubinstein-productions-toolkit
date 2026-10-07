@@ -117,6 +117,14 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   temp worktrees, for a machine whose auto-mode clamp refuses agent merges;
   the operator merges them after the toolkit change that holds the kit source.
   It reads its roster from `install.sh --list`, so the two never disagree.
+  `--public` does the same for the public-kit (`chore/public-kit-<date>`
+  branches, roster from `install.sh --public --list`); `--dry-run` works in
+  both modes.
+- `--check` (both kits) also compares each deployed file with the consumer's
+  committed default branch (`origin/HEAD`, no fetch) and prints
+  `DRIFT uncommitted` when the file on disk is missing there or differs.
+  `global/install-global.sh --check` verifies the per-machine install the
+  same way, read-only.
 
 ## Source of truth
 
