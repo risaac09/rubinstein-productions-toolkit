@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "note": "Standard output profiles for the stills lane. A client overlay may only narrow these. crop_height_in_face_heights is the crop's height as a multiple of the main face's box height (Vision's box runs forehead to chin); eye_line is where the face box's eye line lands from the top of the crop. union profiles fit every counted face and ignore both.",
+  "color": {"tag": "sRGB", "forbid_tag": "Rec. 709"},
+  "profiles": {
+    "headshot_square": {"aspect": [1, 1], "out": [2048, 2048], "format": "jpeg", "quality": 92, "classes": ["solo"], "crop_height_in_face_heights": 2.6, "eye_line": 0.35},
+    "headshot_4x5":    {"aspect": [4, 5], "out": [1080, 1350], "format": "jpeg", "quality": 90, "classes": ["solo"], "crop_height_in_face_heights": 3.2, "eye_line": 0.33},
+    "portrait_16x9":   {"aspect": [16, 9], "out": [2400, 1350], "format": "jpeg", "quality": 90, "classes": ["solo", "pair"], "crop_height_in_face_heights": 3.6, "eye_line": 0.38, "union_for": ["pair"]},
+    "group_16x9":      {"aspect": [16, 9], "out": [2400, 1350], "format": "jpeg", "quality": 90, "classes": ["group"], "union": true, "union_margin": 0.3},
+    "archive_master":  {"aspect": null, "out": null, "format": "tiff16", "classes": ["solo", "pair", "group"]},
+    "review_2048":     {"aspect": null, "out": [2048, 2048], "fit": "long_edge", "format": "jpeg", "quality": 85, "classes": ["solo", "pair", "group"]}
+  }
+}

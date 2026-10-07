@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpstills import cluster, cull
+from rpstills import cluster, crops, cull
 
 
 def row(i, t, faces=1, quality=0.5, eyes=0.3, sharp=100.0, phash="0" * 16, h=0.2, face_hash="0" * 16):
@@ -57,6 +57,47 @@ class ClusterTest(unittest.TestCase):
     def test_bad_rows_are_skipped(self):
         rows = [row(1, "2026-09-12T16:00:00"), dict(row(2, "2026-09-12T16:00:01"), error="boom")]
         self.assertEqual(len(cluster.build(rows)["runs"][0]["frames"]), 1)
+
+
+class CropsTest(unittest.TestCase):
+    CFG = crops.load_config(str(Path(__file__).resolve().parent.parent / "stills-config.json"))
+
+    def frame(self, w=6000, h=4000, orient=1, faces=None):
+        return {"id": "F1", "width": w, "height": h, "orientation": orient,
+                "faces": faces if faces is not None else [{"x": 0.45, "y": 0.30, "w": 0.10, "h": 0.15}]}
+
+    def test_upright_size_swaps_for_rotated_frames(self):
+        self.assertEqual(crops.upright_size(self.frame(orient=6)), (4000, 6000))
+        self.assertEqual(crops.upright_size(self.frame(orient=1)), (6000, 4000))
+
+    def test_square_headshot_holds_the_face_with_the_eye_line_near_a_third(self):
+        big = self.frame(faces=[{"x": 0.43, "y": 0.22, "w": 0.14, "h": 0.22}])
+        p = crops.plan_frame(big, "solo", self.CFG)["crops"]["headshot_square"]
+        x, y, w, h = p["px"]
+        self.assertEqual(w, h)
+        face_cx, eye_y = 0.50 * 6000, (0.22 + 0.4 * 0.22) * 4000
+        self.assertTrue(x < face_cx < x + w)
+        self.assertAlmostEqual((eye_y - y) / h, 0.35, delta=0.02)
+        self.assertEqual(p["flags"], [])
+
+    def test_a_small_face_flags_upscale(self):
+        small = self.frame(faces=[{"x": 0.45, "y": 0.30, "w": 0.03, "h": 0.04}])
+        self.assertIn("upscale", crops.plan_frame(small, "solo", self.CFG)["crops"]["headshot_square"]["flags"])
+
+    def test_crop_stays_inside_the_frame_and_flags_tight(self):
+        edge = self.frame(w=4000, h=6000, faces=[{"x": 0.02, "y": 0.02, "w": 0.30, "h": 0.20}])
+        p = crops.plan_frame(edge, "solo", self.CFG)["crops"]["portrait_16x9"]
+        x, y, w, h = p["px"]
+        self.assertTrue(x >= 0 and y >= 0 and x + w <= 4000 and y + h <= 6000)
+        self.assertIn("tight", p["flags"])
+
+    def test_group_crop_contains_every_face(self):
+        faces = [{"x": 0.05 + 0.1 * i, "y": 0.4, "w": 0.04, "h": 0.06} for i in range(8)]
+        p = crops.plan_frame(self.frame(faces=faces), "group", self.CFG)["crops"]["group_16x9"]
+        self.assertNotIn("face_cut", p["flags"])
+
+    def test_frames_without_a_counted_face_get_no_crops(self):
+        self.assertEqual(crops.plan_frame(self.frame(faces=[]), "none", self.CFG)["crops"], {})
 
 
 class IndexTest(unittest.TestCase):

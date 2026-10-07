@@ -26,6 +26,15 @@ tier is the house place). It receives:
 | `cull.json` | cull | a score per frame inside its run and a proposal: 3 picks per solo run, 3 per pair or group run, one per burst at most |
 | `review.html` | review | the sheet: every frame per run, proposals in yellow; click to keep or drop, name the run, export `selects.json` |
 
+A fifth stage, `crops`, reads `selects.json` (exported from the sheet and
+placed beside `index.jsonl`; without it the cull proposal stands in) and
+writes `crops.json` and `crops-preview.jpg`: a crop per standard profile in
+`production/stills-config.json`, normalized and in pixels on the upright
+frame. Flags per crop: `tight` (the frame could not hold the wanted crop),
+`face_cut` (a counted face is not fully inside) and `upscale` (fewer pixels
+than the profile's output size). Run it with
+`/usr/bin/python3 -m rpstills crops <out dir>`.
+
 Every stage can be rerun on its own (`index`, `cluster`, `cull`, `review`)
 and every output is additive; no frame is moved, renamed or deleted. A
 rerun of `index` skips proxies that already exist and rewrites the rest.
