@@ -247,6 +247,8 @@ class Server:
         args = {} if args is None else args
         problems = validate(tool.input_schema, args) if isinstance(args, dict) else \
             ["arguments: expected object"]
+        if problems and isinstance(args, dict):
+            problems = tool.explain_retired(problems, args)
         if not problems:
             args = coerce(tool.input_schema, args)
         if problems:
