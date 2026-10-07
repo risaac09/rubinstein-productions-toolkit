@@ -1228,13 +1228,27 @@ def cmd_reframe_plan(args):
     return 2 if reframe.needs_person(report["rows"]) else 0
 
 
+def _cut_notes(x):
+    """A cut result's warnings for its note lines. The settings guard's own drift
+    warning is left out when SETTINGS rows follow it, so each timeline's drift
+    prints once; its 'not checked' warning stays, since no row repeats it."""
+    from rpresolve import settingsguard
+    rep = x.get("settings_drift")
+    own = settingsguard.warnings(rep) if settingsguard.lines(rep) else []
+    return [w for w in x.get("warnings") or [] if w not in own]
+
+
 def cmd_cut(args):
     """Build [auto] timelines from a manifest in the open project named with
     --project: each clip's 16:9 and its --aspects versions (default 9x16).
     Exit 0 all built and read back, 2 built but a version leaves bars, 1 on
     any failure, a version with no reframe (UNREFRAMED: not built) or an
-    input scaling the transform is not known for (REFUSED: not built)."""
-    from rpresolve import cutlist
+    input scaling the transform is not known for (REFUSED: not built). When
+    the settings guard is enabled (RPRESOLVE_SETTINGS_GUARD=on; off by
+    default), a timeline whose settings read differently after its
+    custom-settings write prints SETTINGS rows, once; the exit status does
+    not change."""
+    from rpresolve import cutlist, settingsguard
     if args.no_9x16 and args.aspects:
         print("ERROR: --no-9x16 and --aspects each choose the versions; give one of them.",
               file=sys.stderr)
@@ -1266,6 +1280,10 @@ def cmd_cut(args):
         if x["kind"] == "16x9":
             print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['frames']} frames "
                   f"(expected {x['frames_expected']}) {x['reason']}")
+            for w in _cut_notes(x):
+                print(f"         note: {w}")
+            for line in settingsguard.lines(x.get("settings_drift")):
+                print(f"         SETTINGS {line}")
             continue
         flag = ("made " if x["ok"] else "UNREFRAMED" if x.get("unreframed") else
                 "REFUSED" if x.get("refused") else "FAIL ")
@@ -1275,8 +1293,10 @@ def cmd_cut(args):
                 print(f"         span {it['span']}: {it['props']}")
         for b in x.get("bars") or []:
             print(f"         BARS {b}")
-        for w in x.get("warnings") or []:
+        for w in _cut_notes(x):
             print(f"         note: {w}")
+        for line in settingsguard.lines(x.get("settings_drift")):
+            print(f"         SETTINGS {line}")
     for name in r["left_behind"]:
         print(f"  LEFT BEHIND {name}: it exists as the failed build left it; delete it before "
               "a re-run",
@@ -1608,6 +1628,13 @@ def cmd_sync(args):
               (f" (Resolve placed it at {a['implied_offset_s']:+.4f} s)"
                if a["implied_offset_s"] is not None else "") +
               (f"; {a['note']}" if a.get("note") else ""))
+    from rpresolve import settingsguard
+    for label, rep in (("stacked timeline", b.get("settings_drift")),
+                       ("verification timeline", (a or {}).get("settings_drift"))):
+        for w in settingsguard.warnings(rep):
+            print(f"Settings:  {label}: {w}")
+        for line in settingsguard.lines(rep):
+            print(f"           {line}")
     for p in r["problems"]:
         print(f"  PROBLEM: {p}", file=sys.stderr)
     if r["ui_restore_problems"]:
