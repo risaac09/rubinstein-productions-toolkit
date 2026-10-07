@@ -4,8 +4,9 @@ pieces that don't touch DaVinciResolveScript, so they run without Resolve
 installed or running), the codec and config code it shares with the
 library, and what is left of the script's surface once its write commands
 are retired: the parser holds only the read-only and offline commands, and
-each retired command, and trim-review --markers, exits 2 naming the MCP
-tool that replaced it without connecting to Resolve.
+each retired command, and trim-review --markers with its flags, exits 2 without
+connecting to Resolve, naming the MCP tool that replaced it or, for the
+commands that have no tool, saying so and what to do by hand.
 
 stdlib unittest only — no pytest/dependency to install for a public kit.
 
@@ -15,6 +16,7 @@ Run: python3 production/tests/test_resolve_workflow_pure.py
 import argparse
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34,6 +36,7 @@ from resolve_workflow import (
 )
 from rpresolve import config as rpconfig
 from rpresolve.config import DEFAULT_CONFIG
+from rpresolve.mcp import server
 from rpresolve.render import pick_codec
 
 
@@ -224,9 +227,29 @@ class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
                 self.assertEqual(status, 2)
                 self.assertEqual(out, "")
                 self.assertIn(f"'{name}' is retired", err)
-                self.assertIn("The MCP server is the only way to write to Resolve", err)
                 self.assertIn(resolve_workflow.RETIRED[name], err)
+                self.assertNotIn("only way to write to Resolve", err)
                 self.assertNotIn("Traceback", err)
+
+    def test_a_command_with_no_tool_says_so_and_the_others_name_their_tool(self):
+        self.assertEqual(sorted(resolve_workflow.BY_HAND),
+                         ["build-timeline", "clear-queue", "export-project", "new-project",
+                          "open-page"])
+        tools = {t.name for t in server.build_registry().list()}
+        for name in RETIRED_COMMANDS:
+            with self.subTest(command=name):
+                _, _, err = run_main(name)
+                text = resolve_workflow.RETIRED[name]
+                if name in resolve_workflow.BY_HAND:
+                    self.assertIn(f"'{name}' is retired and has no MCP tool; do it by hand "
+                                  f"in Resolve: {text}", err)
+                    self.assertNotIn("use the MCP", text)
+                else:
+                    self.assertNotIn("no MCP tool", err)
+                    named = re.findall(r"MCP (\w+) tool", text)
+                    self.assertTrue(named, text)
+                    for tool in named:
+                        self.assertIn(tool, tools)
 
     def test_a_retired_command_with_its_old_arguments_still_stops_at_the_parser(self):
         for argv in (["new-project", "Example"], ["render-all", "--output", "/x", "--start"],
@@ -241,14 +264,40 @@ class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
         status, _, err = run_main("trim-review", "m.json", "--markers", "--timeline", "T",
                                   "--project", "P")
         self.assertEqual(status, 2)
-        self.assertIn("trim-review --markers is retired", err)
+        self.assertIn("trim-review no longer takes", err)
         self.assertIn("trim_review_markers", err)
+        self.assertNotIn("only way to write to Resolve", err)
         status, out, _ = run_main("trim-review", "--help")
         self.assertEqual(status, 0)
         for flag in ("--words", "--out", "--silence-db", "--no-audio"):
             self.assertIn(flag, out)
         for flag in ("--markers", "--timeline", "--project", "--dry-run", "--plan-sha"):
             self.assertNotIn(flag, out)
+
+    def test_each_removed_trim_review_flag_alone_gets_the_pointer(self):
+        for flag, value in (("--markers", None), ("--timeline", "T"), ("--project", "P"),
+                            ("--project-id", "id"), ("--dry-run", None), ("--plan-sha", "abc")):
+            for argv in (["trim-review", "m.json", flag] + ([value] if value else []),
+                         ["trim-review", "m.json", f"{flag}=x"]):
+                with self.subTest(argv=argv):
+                    status, out, err = run_main(*argv)
+                    self.assertEqual(status, 2)
+                    self.assertEqual(out, "")
+                    self.assertIn("trim-review no longer takes", err)
+                    self.assertIn("trim_review_markers", err)
+
+    def test_the_trim_review_pointer_fires_for_no_other_command_or_flag(self):
+        for argv in (["detect", "/x", "--markers"], ["info", "--markers"],
+                     ["info", "--project", "P"], ["list-timelines", "--dry-run"],
+                     ["measure", "r.mov", "--timeline", "T"],
+                     ["trim-review", "m.json", "--bogus"]):
+            with self.subTest(argv=argv):
+                status, out, err = run_main(*argv)
+                self.assertEqual(status, 2)
+                self.assertEqual(out, "")
+                self.assertIn("unrecognized arguments", err)
+                self.assertNotIn("no longer takes", err)
+                self.assertNotIn("trim_review_markers", err)
 
     def test_each_kept_command_still_has_a_help_page_without_resolve(self):
         for name in KEPT:

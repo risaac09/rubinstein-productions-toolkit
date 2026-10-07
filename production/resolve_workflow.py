@@ -2,12 +2,14 @@
 """
 resolve_workflow.py: the read-only and offline commands for DaVinci Resolve work.
 
-This script does not write to Resolve. Every write (create a project, import
-media, build a timeline, grade, queue or start a render, add captions or
-markers) goes through the MCP server, production/resolve_mcp.py. That server
-is the only write path: a dry run by default, a plan_sha for the real run, and
-a journal line for every write. See production/resolve-mcp.md, which names the
-tool that replaced each retired command.
+This script does not write to Resolve. Writes go through the MCP server,
+production/resolve_mcp.py, which imports media, builds [auto] timelines, grades
+them, queues render jobs, makes captions and trim-review markers, and stacks
+dual-system sound: a dry run by default, a plan_sha for the real run, and a
+journal line for every write. It creates no project and starts no render:
+projects are created by hand in Resolve, and a person starts each render on the
+Deliver page. See production/resolve-mcp.md, which says what replaced each
+retired command.
 
 Usage:
     python3 resolve_workflow.py <command> [options]
@@ -88,13 +90,14 @@ except ImportError as e:
 SURVEY_PYTHON = rpwork.SURVEY_PYTHON
 SURVEY_SCRIPT = rpwork.SURVEY_SCRIPT
 
-# The commands that wrote to Resolve are gone: the MCP server is the only write
-# path. Running one prints what to use instead and exits 2.
+# The commands that wrote to Resolve are gone. Running one exits 2 and says what to
+# use instead. Most have an MCP tool; the BY_HAND ones have none, and the text says
+# what to do in Resolve itself.
 RETIRED = {
-    "new-project": "create the project by hand in Resolve and set its colour science to "
-                   "DaVinci YRGB Color Managed (the MCP ingest tool refuses any other)",
+    "new-project": "create the project and set its colour science to DaVinci YRGB Color "
+                   "Managed (the MCP ingest tool refuses any other)",
     "import-media": "use the MCP ingest tool",
-    "build-timeline": "no MCP tool builds an intro and outro timeline; make it by hand in Resolve",
+    "build-timeline": "build the intro and outro timeline",
     "add-subtitles": "use the MCP create_captions tool on an [auto] timeline, or "
                      "File > Import > Subtitle in Resolve (Resolve 21 places no .srt from a script)",
     "auto-subtitle": "use the MCP create_captions tool",
@@ -102,19 +105,25 @@ RETIRED = {
               "render on the Deliver page",
     "render-all": "use the MCP queue_render tool, once per preset or destination; a person "
                   "starts the renders on the Deliver page",
-    "clear-queue": "remove render jobs on the Deliver page",
+    "clear-queue": "remove the render jobs on the Deliver page",
     "apply-lut": "use the MCP apply_grade tool on an [auto] timeline",
     "apply-drx": "use the MCP apply_grade tool on an [auto] timeline (a .drx needs its "
                  "<name>.json label manifest beside it)",
-    "open-page": "no MCP tool switches pages; click the page tab in Resolve",
-    "export-project": "export it from Resolve's Project Manager",
+    "open-page": "click the page tab",
+    "export-project": "export the project from the Project Manager, or with File > Export "
+                      "Project Archive",
     "ingest": "use the MCP ingest tool",
     "cut": "use the MCP cut tool",
     "deliver-queue": "use the MCP queue_render tool with a destination",
     "captions": "use the MCP create_captions tool",
     "sync": "use the MCP sync tool",
 }
+BY_HAND = frozenset({"new-project", "build-timeline", "clear-queue", "open-page",
+                     "export-project"})
 RETIRED_MARKERS = "use the MCP trim_review_markers tool"
+# The flags trim-review lost with --markers. Only trim-review gets the tombstone for them.
+RETIRED_MARKER_FLAGS = ("--markers", "--timeline", "--project", "--project-id", "--dry-run",
+                        "--plan-sha")
 
 
 # ---------------------------------------------------------------------------
@@ -677,14 +686,27 @@ class _Parser(argparse.ArgumentParser):
     def error(self, message):
         m = re.search(r"invalid choice: '([^']*)'", message)
         if m and m.group(1) in RETIRED:
-            self.exit(2, f"{self.prog}: '{m.group(1)}' is retired. The MCP server is the only "
-                         f"way to write to Resolve: {RETIRED[m.group(1)]}. See "
-                         "production/resolve-mcp.md.\n")
-        if "unrecognized arguments" in message and "--markers" in message:
-            self.exit(2, f"{self.prog}: trim-review --markers is retired. The MCP server is the "
-                         f"only way to write to Resolve: {RETIRED_MARKERS}. See "
+            name = m.group(1)
+            how = (" and has no MCP tool; do it by hand in Resolve: "
+                   if name in BY_HAND else ": ")
+            self.exit(2, f"{self.prog}: '{name}' is retired{how}{RETIRED[name]}. See "
                          "production/resolve-mcp.md.\n")
         super().error(message)
+
+    def parse_args(self, args=None, namespace=None):
+        ns, extras = self.parse_known_args(args, namespace)
+        if extras:
+            # Only trim-review lost --markers and its flags; any other command that is
+            # given one of them gets the ordinary unrecognized-arguments error.
+            if getattr(ns, "command", None) == "trim-review" and any(
+                    a.split("=", 1)[0] in RETIRED_MARKER_FLAGS for a in extras):
+                self.exit(2, f"{self.prog}: trim-review no longer takes "
+                             f"{', '.join(RETIRED_MARKER_FLAGS[:-1])} or "
+                             f"{RETIRED_MARKER_FLAGS[-1]}: it writes the TSV only. To mark an "
+                             f"[auto] timeline, {RETIRED_MARKERS}. See "
+                             "production/resolve-mcp.md.\n")
+            self.error("unrecognized arguments: " + " ".join(extras))
+        return ns
 
 
 def main():
