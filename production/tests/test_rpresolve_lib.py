@@ -157,15 +157,23 @@ class TestApiAdditions(unittest.TestCase):
 
 class TestConfigLocale(unittest.TestCase):
     def test_config_reads_as_utf8_under_the_c_locale(self):
-        """Connected to Resolve, the process runs in the C locale; the
-        config's non-ASCII note must still load (the MCP queue_render bug)."""
+        """Connected to Resolve, the process runs in the C locale, where a
+        default open() decodes ASCII. A config with a non-ASCII character in
+        it must still load (the MCP queue_render bug, found with a note in
+        the repo config that has since gone, so this writes its own)."""
         import subprocess
-        env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
-        code = ("import sys; sys.path.insert(0, %r); from rpresolve.config import load_config; "
-                "print('\\u2014' in load_config(warn=print)['render_presets']['story']['note'])"
-                % str(Path(__file__).resolve().parent.parent))
-        out = subprocess.run([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+        with tempfile.TemporaryDirectory() as d:
+            overlay = os.path.join(d, "overlay.json")
+            with open(overlay, "w", encoding="utf-8") as f:
+                f.write('{"note": "resize only \u2014 no reframe"}')
+            env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0",
+                       PYTHONCOERCECLOCALE="0")
+            code = ("import sys; sys.path.insert(0, %r); from rpresolve.config import "
+                    "load_config; cfg = load_config(%r, warn=print, strict=True); "
+                    "print('\\u2014' in cfg['note'])"
+                    % (str(Path(__file__).resolve().parent.parent), overlay))
+            out = subprocess.run([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
         self.assertEqual(out.returncode, 0, out.stderr.decode()[-300:])
         self.assertEqual(out.stdout.strip(), b"True")
 

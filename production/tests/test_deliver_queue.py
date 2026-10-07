@@ -211,6 +211,19 @@ class TestQueueDestination(Base):
         self.assertEqual((r["settings"][0]["settings"]["FormatWidth"],
                           r["settings"][0]["settings"]["FormatHeight"]), (3840, 2160))
 
+    def test_an_old_overlay_that_still_has_render_presets_queues_the_same_job(self):
+        overlay = os.path.join(self.dir, "old-overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"render_presets": {"master": {"name": "Master ProRes", "suffix": "_master",
+                                                     "format": "mov", "codec": "ProRes422HQ"}}}, f)
+        old = rpconfig.load_config(overlay, strict=True)  # read without complaint
+        plain = self.queue(dry_run=True)
+        kept = workflows.queue_render(self.resolve, P, "Clip [auto]", output_dir=self.out,
+                                      destination="youtube_16x9", name_parts=CLIP, config=old,
+                                      dry_run=True)
+        self.assertEqual(kept["plan_sha"], plain["plan_sha"])
+        self.assertEqual((kept["output"], kept["settings"]), (plain["output"], plain["settings"]))
+
     def test_stale_sha_is_refused(self):
         with self.assertRaisesRegex(workflows.Refused, "plan changed"):
             self.queue(expect_sha="0" * 64)
