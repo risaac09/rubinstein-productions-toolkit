@@ -117,13 +117,17 @@ tree and never overwrites an `.srt`.
   **The guard is off by default.** It reads settings through
   `Timeline.GetSettings()` (else `GetSetting()` with no key), and
   `GetSettings()` on Resolve 21.1.1.10 is unconfirmed. A call that hangs
-  inside Resolve cannot be caught by a try/except, so nothing reads settings
-  until someone turns the guard on. With it off, `cut` and `sync` make no
-  settings reads, `settings_drift` is null on every timeline's entry,
+  inside Resolve cannot be caught by a try/except, so the guard makes no
+  whole-settings read until someone turns it on. With it off, `cut` and `sync`
+  make no `GetSettings()` call and no `GetSetting()` call without a key (they
+  still read back single keys such as the frame rate and the input scaling),
+  `settings_drift` is null on every timeline's entry,
   `settings_drift_rows` is empty and nothing is warned. To enable it, set
   `RPRESOLVE_SETTINGS_GUARD=on` in the MCP server's environment (`1`, `yes`
   and `true` also work; any other value, `off` included, leaves it off),
-  then restart the server. Make the first measurement on a scratch project,
+  then restart the server (with the Claude CLI, add
+  `-e "RPRESOLVE_SETTINGS_GUARD=on"` to the registration, as for
+  `RPRESOLVE_CONFIG` above). Make the first measurement on a scratch project,
   never a client project.
   With the guard on, each tool reads the timeline's settings before and
   after its writes and names any key that reads differently, apart from the
@@ -132,8 +136,9 @@ tree and never overwrites an `.srt`.
   `settings_drift_rows` (a list on the whole result), and the summary names
   it SETTINGS DRIFT. A 16:9 or a sync
   timeline is compared with itself before the write; a 9:16 or 1:1 with the
-  16:9 it was copied from. Nothing is set back, and `exit_status`, `problems`
-  and `plan_sha` are the same with the guard on or off. SETTINGS NOT CHECKED
+  16:9 it was copied from. Nothing is set back, and `exit_status` and `plan_sha`
+  are the same with the guard on or off; a failure's message gains a short
+  settings-drift clause when the guard is on and found drift. SETTINGS NOT CHECKED
   means the settings could not be read, or the last reading failed, so the
   comparison is missing or partial; the result's `notes` say why. Only keys
   that both readings hold are compared, so a few that exist only on a custom
