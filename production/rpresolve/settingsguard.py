@@ -22,7 +22,7 @@ from the keys the build writes on purpose.
 The rules:
     - Off by default. The guard reads only when RPRESOLVE_SETTINGS_GUARD is
       on, 1, yes or true (any case, spaces ignored), set in the environment of
-      the process that runs the build (the MCP server's, or the CLI's). Unset,
+      the process that runs the build (the MCP server's). Unset,
       empty and any other value, off included, leave it off: a Watch then
       makes no reads, report() is None and nothing is warned. The reason is
       that Timeline.GetSettings() and GetSetting() with no key have not been
@@ -278,7 +278,9 @@ def warnings(report):
 
 
 def lines(report):
-    """One line per changed key, for the CLI."""
+    """One line per changed key. Nothing outside the tests calls it since the
+    cut and sync commands of resolve_workflow.py were retired; the MCP summaries
+    use clause()."""
     if not report or report.get("state") != "drift":
         return []
     return [f"{_pair(r)} (at {r['at']})" for r in report["changed"]]

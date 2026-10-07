@@ -524,15 +524,23 @@ class TestMCP(Base):
         media = os.path.join(self.dir, "SW001_Guest_01_example-clip_16x9.mp4")
         open(media, "w").close()
         check = REG.get("deliver_check")
-        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+        # Resolve must never be reached: any use of the session fails the test where it
+        # happens, and the call counts are asserted too.
+        reached = AssertionError("the tool reached Resolve with an overlay it could not read")
+        with mock.patch.object(rf.Session, "get", side_effect=reached) as get, \
+                mock.patch.object(rf.Session, "project", side_effect=reached) as project, \
+                mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
             with self.assertRaisesRegex(ValueError, "RPRESOLVE_CONFIG.*could not read"):
                 tools_offline.deliver_config()
             with self.assertRaisesRegex(ValueError, "could not read"):
                 self.call(self.args())
             with self.assertRaisesRegex(ValueError, "could not read"):
+                self.call(self.args(dry_run=False, plan_sha="0" * 64))
+            with self.assertRaisesRegex(ValueError, "could not read"):
                 check.handler(schema.with_defaults(check.input_schema, {
                     "file": media, "destination": "linkedin_16x9"}), ToolContext())
-        self.assertEqual(self.project.jobs, [])
+        self.assertEqual((get.call_count, project.call_count), (0, 0))
+        self.assertEqual((self.project.jobs, rf.CALLS, self.journal()), ([], [], []))
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]

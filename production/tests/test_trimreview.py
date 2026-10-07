@@ -218,8 +218,7 @@ class TestAudio(unittest.TestCase):
 
     def cli(self, *argv, **extra):
         ns = dict(input=argv[0], words=None, out=None, silence_db="-45", min_silence=0.8,
-                  tighten=1.2, cut=2.5, soft_fillers=False, no_audio=False, markers=False,
-                  timeline=None, project=None, project_id=None, dry_run=False, plan_sha=None)
+                  tighten=1.2, cut=2.5, soft_fillers=False, no_audio=False)
         ns.update(extra)
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -252,11 +251,6 @@ class TestAudio(unittest.TestCase):
         rows = [line.split("\t") for line in out.splitlines()[1:]]
         self.assertTrue(rows)
         self.assertEqual({r[tr.COLUMNS.index("clip")] for r in rows}, {"c1"})
-
-    def test_cli_markers_need_a_timeline_and_project(self):
-        status, _, err = self.cli(self.wav, words=self.words, markers=True)
-        self.assertEqual(status, 1)
-        self.assertIn("--timeline and --project", err)
 
     def test_mcp_tool_writes_the_tsv(self):
         from rpresolve.mcp import schema, server
