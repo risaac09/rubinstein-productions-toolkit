@@ -77,8 +77,9 @@ def cube_text(params, size=33, title="rpstills look"):
 
 
 def write_cube(path, params, size=33, title="rpstills look"):
-    """Write the LUT beside nothing else: refuses to overwrite and refuses a git work tree
-    is the caller's check; this function only refuses to overwrite."""
+    """Write the LUT atomically. Refuses to overwrite: a look is versioned, never edited in
+    place, and Resolve caches a LUT by path. Keeping the output out of a git work tree is
+    the caller's check."""
     if os.path.exists(path):
         raise FileExistsError(path)
     with open(path + ".part", "w") as f:

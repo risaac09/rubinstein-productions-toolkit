@@ -2,10 +2,12 @@
   "version": "0.1.0",
   "note": "Standard output profiles for the stills lane. A client overlay may only narrow these. crop_height_in_face_heights is the crop's height as a multiple of the main face's box height (Vision's box runs forehead to chin); eye_line is where the face box's eye line lands from the top of the crop. union profiles fit every counted face and ignore both.",
   "color": {
+    "tag": "sRGB",
+    "forbid_tag": "Rec. 709",
     "timeline_output": "sRGB",
     "output_node": false,
     "embed_profile": "sRGB",
-    "note": "Set the timeline's output colour space to sRGB (verified 2026-10-06); no output transform node. Resolve's JPEG render embeds no profile, so delivery embeds sRGB and checks for it."
+    "note": "Set the timeline's output colour space to sRGB (verified 2026-10-06); no output transform node. Resolve's JPEG render embeds no profile, so delivery embeds sRGB and the delivery check requires tag sRGB and rejects forbid_tag."
   },
   "profiles": {
     "headshot_square": {

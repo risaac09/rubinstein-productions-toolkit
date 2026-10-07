@@ -30,7 +30,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "look":
         doc = look.load_params(a.params)
-        print(look.write_cube(os.path.abspath(a.cube), doc.get("params", doc), a.size, doc.get("name", "rpstills look")))
+        try:
+            print(look.write_cube(os.path.abspath(a.cube), doc.get("params", doc), a.size, doc.get("name", "rpstills look")))
+        except FileExistsError as e:
+            print(f"refusing to overwrite {e}; a look is versioned, write a new file name", file=sys.stderr)
+            return 1
         return 0
     out = os.path.abspath(a.out)
     if a.cmd in ("index", "run"):
