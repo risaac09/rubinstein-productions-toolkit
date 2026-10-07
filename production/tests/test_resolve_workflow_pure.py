@@ -23,17 +23,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from resolve_workflow import (
-    pick_codec,
     collect_media_files,
     duration_to_frames,
     parse_framerate,
     safe_fps,
-    load_config,
     build_survey_command,
-    DEFAULT_CONFIG,
     SURVEY_PYTHON,
     SURVEY_SCRIPT,
 )
+from rpresolve import config as rpconfig
+from rpresolve.config import DEFAULT_CONFIG
+from rpresolve.render import pick_codec
+
+
+def load_config(path):
+    """resolve-config.json merged over the defaults; a malformed file prints a
+    warning and degrades to the defaults (rpresolve.config)."""
+    return rpconfig.load_config(path, warn=print)
 
 
 class TestPickCodec(unittest.TestCase):

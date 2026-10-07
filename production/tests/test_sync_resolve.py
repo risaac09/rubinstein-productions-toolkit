@@ -575,6 +575,30 @@ class TestSyncCommandAndTool(Base):
         self.assertEqual(status, 1)
         self.assertIn("same media-pool clip", err)
 
+    def test_mcp_tool_without_numpy_stops_before_resolve(self):
+        import rpresolve
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+
+        class NoResolve:
+            def get(self):
+                raise AssertionError("the tool connected to Resolve")
+        args = schema.with_defaults(tool.input_schema, {"project": P, "reference": "clip-cam",
+                                                        "other": "clip-rec"})
+        had = hasattr(rpresolve, "sync")
+        saved = getattr(rpresolve, "sync", None)
+        if had:
+            del rpresolve.sync  # `from .. import sync` would otherwise find it without importing
+        try:
+            with mock.patch.dict(sys.modules, {"rpresolve.sync": None}):  # numpy's importer
+                with self.assertRaisesRegex(RuntimeError, "sync needs numpy"):
+                    tool.handler(args, ToolContext(session=NoResolve()))
+        finally:
+            if had:
+                rpresolve.sync = saved
+        self.assertFalse(os.path.exists(os.environ["RPRESOLVE_LOCK"]))
+
     @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
     def test_mcp_tool_dry_run_then_real_run_journalled(self):
         from rpresolve import sync as rpsync

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live one
     tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 
-from rpresolve import api, detect, ingest
+from rpresolve import api, detect, ingest, workflows
 
 
 def row(path, camera="Panasonic DC-GH7", profile="V-Log", cs=detect.CS_VLOG,
@@ -302,6 +302,48 @@ class TestCmdIngest(unittest.TestCase):
         refusing = FakeProject()
         refusing.pool.refuse = ("Input Color Space",)
         self.assertEqual(self.run_cmd(refusing, [row("/media/card/a.mov")])[0], 1)
+
+
+class TestIngestGates(unittest.TestCase):
+    """The ingest gates through rpresolve.workflows.ingest, the call the MCP
+    ingest tool makes: a refused precondition raises before anything is
+    written, and the exit status says what a person must look at."""
+
+    def run_ingest(self, project, rows, name="Sandbox", **kw):
+        return workflows.ingest(FakeResolve(project), name, ["/media/card"], rows=rows, **kw)
+
+    def test_refuses_a_project_it_was_not_named_for(self):
+        p = FakeProject()
+        with self.assertRaisesRegex(api.ProjectChanged, "expected 'Other'"):
+            self.run_ingest(p, [row("/media/card/a.mov")], name="Other")
+        self.assertEqual(p.pool.imports, [])
+
+    def test_refuses_a_project_without_color_management(self):
+        p = FakeProject(mode="davinciYRGB")
+        with self.assertRaisesRegex(workflows.Refused, "Color Managed"):
+            self.run_ingest(p, [row("/media/card/a.mov")])
+        self.assertEqual((p.pool.imports, p.pool.created), ([], []))
+
+    def test_dry_run_writes_nothing(self):
+        p = FakeProject()
+        r = self.run_ingest(p, [row("/media/card/a.mov")], dry_run=True)
+        self.assertEqual(r["exit_status"], 0)
+        self.assertEqual([x["result"] for x in r["results"]], ["planned"])
+        self.assertEqual((p.pool.imports, p.pool.created), ([], []))
+
+    def test_exit_status_and_folder_restore(self):
+        p = FakeProject()
+        r = self.run_ingest(p, [row("/media/card/a.mov")])
+        self.assertEqual(r["exit_status"], 0)
+        self.assertEqual([x["result"] for x in r["results"]], ["tagged"])
+        self.assertIs(p.pool.current, p.root)  # the current bin is put back
+        for extra in (row("/media/card/r.mp4", profile=detect.REVIEW, cs=""),
+                      row("/media/card/v.mov", vfr="yes")):
+            r = self.run_ingest(FakeProject(), [row("/media/card/a.mov"), extra])
+            self.assertEqual(r["exit_status"], 2, extra["path"])
+        refusing = FakeProject()
+        refusing.pool.refuse = ("Input Color Space",)
+        self.assertEqual(self.run_ingest(refusing, [row("/media/card/a.mov")])["exit_status"], 1)
 
 
 class TestSetClipPropertyChecked(unittest.TestCase):

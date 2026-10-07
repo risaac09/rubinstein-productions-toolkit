@@ -1,7 +1,7 @@
 """
-Offline unit tests for rpresolve.api and the per-item apply-lut / apply-drx
-logic in resolve_workflow.py. Resolve is never imported: every project,
-timeline, item, and node graph here is a small fake object.
+Offline unit tests for rpresolve.api and the per-item LUT and .drx logic in
+rpresolve.grade. Resolve is never imported: every project, timeline, item,
+and node graph here is a small fake object.
 
 stdlib unittest only.
 
@@ -23,12 +23,12 @@ os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live o
     tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 
 from rpresolve import api
-from resolve_workflow import (
+from rpresolve.grade import (
+    _path_under,
     apply_drx_to_item,
     apply_drx_to_items,
     apply_lut_to_item,
     lut_paths_match,
-    report_item_results,
 )
 
 
@@ -357,7 +357,6 @@ class TestLutPathsMatch(unittest.TestCase):
         link = os.path.join(self.root, "Look.cube")
         os.symlink(outside, link)
         self.assertTrue(lut_paths_match(link, "Look.cube", [self.root]))
-        from resolve_workflow import _path_under
         self.assertTrue(_path_under(link, self.root, follow_links=False))
         self.assertFalse(_path_under(link, self.root))
 
@@ -453,26 +452,18 @@ class TestApplyDrx(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("empty", detail)
 
-    def test_items_report_counts_and_status(self):
+    def test_items_report_each_clip_by_name_with_its_own_status(self):
         good = FakeGraph(["a"]); good.drx_labels = ["x", "y"]
         bad = FakeGraph(["a"]); bad.drx_ok = False
         results = apply_drx_to_items([FakeItem("c1", good), FakeItem("c2", bad)], "/g/look.drx", 0)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            status = report_item_results(results, "Applied DRX grade to")
-        out = buf.getvalue()
-        self.assertEqual(status, 1)
-        self.assertIn("[ok] c1", out)
-        self.assertIn("[FAIL] c2", out)
-        self.assertIn("1/2 clips", out)
+        self.assertEqual([(name, ok) for name, ok, _ in results], [("c1", True), ("c2", False)])
+        self.assertIn("2 node(s)", results[0][2])
 
-    def test_all_ok_status_zero(self):
+    def test_all_ok_for_every_clip(self):
         g = FakeGraph(["a"]); g.drx_labels = ["x"]
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            status = report_item_results(apply_drx_to_items([FakeItem("c1", g)], "/g/l.drx", 2), "Applied")
-        self.assertEqual(status, 0)
-
+        results = apply_drx_to_items([FakeItem("c1", g)], "/g/l.drx", 2)
+        self.assertEqual([(name, ok) for name, ok, _ in results], [("c1", True)])
+        self.assertEqual(g.calls, [("ApplyGradeFromDRX", "/g/l.drx", 2)])
 
 
 class TestCommandsEndToEnd(unittest.TestCase):

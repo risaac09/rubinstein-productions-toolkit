@@ -170,6 +170,14 @@ class TestIngest(Base):
         with self.assertRaisesRegex(ValueError, "absolute"):
             call("ingest", {"project": "Sandbox", "paths": ["card"]}, FakeProject())
 
+    def test_a_project_without_colour_management_is_refused_and_nothing_is_written(self):
+        project = FakeProject(mode="davinciYRGB")
+        with self.assertRaisesRegex(workflows.Refused, "Color Managed"):
+            self.run_tool(project)
+        with self.assertRaisesRegex(workflows.Refused, "Color Managed"):
+            self.run_tool(project, dry_run=False, plan_sha="0" * 64)
+        self.assertEqual((project.pool.imports, project.pool.created), ([], []))
+
 
 class TestCut(Base):
     def manifest(self):
