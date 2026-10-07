@@ -118,9 +118,16 @@ def selection(out_dir, cull_doc):
 
 
 def build(rows, clusters, ids, cfg):
+    """Plan every selected id. Ids the index does not have are an error, not
+    a quiet omission: a selects.json from another session or from before a
+    re-index would otherwise lose frames without a trace."""
     by_id = {r["id"]: r for r in rows}
+    missing = [fid for fid in ids if fid not in by_id]
+    if missing:
+        raise ValueError(f"{len(missing)} selected ids are not in the index (first: {missing[:5]}); "
+                         "re-export selects.json from this session's review sheet")
     cls_of = {fid: run["class"] for run in clusters["runs"] for fid in run["frames"]}
-    return {fid: plan_frame(by_id[fid], cls_of.get(fid, "none"), cfg) for fid in ids if fid in by_id}
+    return {fid: plan_frame(by_id[fid], cls_of.get(fid, "none"), cfg) for fid in ids}
 
 
 def write(out_dir, plan, source, cfg):
@@ -141,10 +148,15 @@ def summary(plan):
 
 
 def preview(out_dir, rows, plan, cfg, limit=24):
+    """Preview sheet: every flagged frame first (they are what a reviewer
+    must see), then unflagged frames up to limit rows in all. Returns
+    (path, shown, total)."""
     from PIL import Image, ImageDraw
     by_id = {r["id"]: r for r in rows}
     names = [n for n in cfg["profiles"] if cfg["profiles"][n].get("aspect")]
-    ids = list(plan)[:limit]
+    flagged = [f for f, fp in plan.items() if any(c["flags"] for c in fp["crops"].values())]
+    clean = [f for f in plan if f not in set(flagged)]
+    ids = (flagged + clean)[:max(limit, len(flagged))]
     T = 200
     sheet = Image.new("RGB", (T * (len(names) + 1), (T + 16) * len(ids)), "#101010")
     d = ImageDraw.Draw(sheet)
@@ -162,4 +174,4 @@ def preview(out_dir, rows, plan, cfg, limit=24):
             d.text((j * T + 4, i * (T + 16) + T + 2), n + (" " + ",".join(c["flags"]) if c["flags"] else ""), fill="white")
     path = os.path.join(out_dir, "crops-preview.jpg")
     sheet.save(path, quality=82)
-    return path
+    return path, len(ids), len(plan)

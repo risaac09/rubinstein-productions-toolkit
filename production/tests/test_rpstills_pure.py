@@ -96,6 +96,12 @@ class CropsTest(unittest.TestCase):
         p = crops.plan_frame(self.frame(faces=faces), "group", self.CFG)["crops"]["group_16x9"]
         self.assertNotIn("face_cut", p["flags"])
 
+    def test_unknown_selected_ids_raise(self):
+        rows = [self.frame()]
+        clusters = {"runs": [{"class": "solo", "frames": ["F1"]}]}
+        with self.assertRaises(ValueError):
+            crops.build(rows, clusters, ["F1", "GONE"], self.CFG)
+
     def test_frames_without_a_counted_face_get_no_crops(self):
         self.assertEqual(crops.plan_frame(self.frame(faces=[]), "none", self.CFG)["crops"], {})
 

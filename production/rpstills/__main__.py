@@ -49,7 +49,8 @@ def main(argv=None):
         ids, src = crops.selection(out, cu)
         plan = crops.build(rows, cl, ids, cfg)
         print(crops.write(out, plan, src, cfg)); print("selection:", src); print(crops.summary(plan))
-        print(crops.preview(out, rows, plan, cfg))
+        path, shown, total = crops.preview(out, rows, plan, cfg)
+        print(path); print(f"preview shows {shown} of {total} frames, every flagged one first")
         return 0
     source = rows[0]["jpeg"].rsplit("/", 1)[0] if rows else a.shoot if hasattr(a, "shoot") else out
     print(review.build(out, a.session, source, rows, cl, cu, title=a.title))
