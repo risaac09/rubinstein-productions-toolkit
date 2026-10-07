@@ -1228,6 +1228,16 @@ def cmd_reframe_plan(args):
     return 2 if reframe.needs_person(report["rows"]) else 0
 
 
+def _cut_notes(x):
+    """A cut result's warnings for its note lines. The settings guard's own drift
+    warning is left out when SETTINGS rows follow it, so each timeline's drift
+    prints once; its 'not checked' warning stays, since no row repeats it."""
+    from rpresolve import settingsguard
+    rep = x.get("settings_drift")
+    own = settingsguard.warnings(rep) if settingsguard.lines(rep) else []
+    return [w for w in x.get("warnings") or [] if w not in own]
+
+
 def cmd_cut(args):
     """Build [auto] timelines from a manifest in the open project named with
     --project: each clip's 16:9 and its --aspects versions (default 9x16).
@@ -1236,8 +1246,8 @@ def cmd_cut(args):
     input scaling the transform is not known for (REFUSED: not built). When
     the settings guard is enabled (RPRESOLVE_SETTINGS_GUARD=on; off by
     default), a timeline whose settings read differently after its
-    custom-settings write prints a note and SETTINGS rows; the exit status
-    does not change."""
+    custom-settings write prints SETTINGS rows, once; the exit status does
+    not change."""
     from rpresolve import cutlist, settingsguard
     if args.no_9x16 and args.aspects:
         print("ERROR: --no-9x16 and --aspects each choose the versions; give one of them.",
@@ -1270,7 +1280,7 @@ def cmd_cut(args):
         if x["kind"] == "16x9":
             print(f"  {'made ' if x['ok'] else 'FAIL '} {x['name']}  {x['frames']} frames "
                   f"(expected {x['frames_expected']}) {x['reason']}")
-            for w in x.get("warnings") or []:
+            for w in _cut_notes(x):
                 print(f"         note: {w}")
             for line in settingsguard.lines(x.get("settings_drift")):
                 print(f"         SETTINGS {line}")
@@ -1283,7 +1293,7 @@ def cmd_cut(args):
                 print(f"         span {it['span']}: {it['props']}")
         for b in x.get("bars") or []:
             print(f"         BARS {b}")
-        for w in x.get("warnings") or []:
+        for w in _cut_notes(x):
             print(f"         note: {w}")
         for line in settingsguard.lines(x.get("settings_drift")):
             print(f"         SETTINGS {line}")
