@@ -52,8 +52,9 @@ Commands that never connect to Resolve:
     trim-review           Silence, filler and repeat review of an edit as a
                           TSV; deletes nothing
 
-Retired: the commands that wrote to Resolve. Running one prints the MCP tool
-to use instead (RETIRED below; the same table is in production/resolve-mcp.md).
+Retired: the commands that wrote to Resolve. Running one exits 2 and says what
+to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
+it (RETIRED below; the same table is in production/resolve-mcp.md).
 
 Config:
     deliver-check, deliver-captions and deliver-fix-loudness read delivery
@@ -714,7 +715,7 @@ def main():
         prog="resolve_workflow",
         description="Read-only and offline commands for DaVinci Resolve work. This script "
                     "does not write to Resolve: the MCP server (production/resolve_mcp.py) is "
-                    "the only write path, and a retired command prints the tool that replaced it.",
+                    "the only write path, and a retired command says what to use instead.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
