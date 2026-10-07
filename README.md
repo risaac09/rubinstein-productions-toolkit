@@ -76,8 +76,8 @@ The tools run on macOS and Linux, every command answers `--help`, and `scripts/c
 ### `production/`
 Generic film/video production tooling. *(Also kept as a default — see below.)*
 
-- DaVinci Resolve workflow script
-- [Resolve MCP server](production/resolve-mcp.md): the same automation as MCP tools for Claude Code, reads plus additive, plan-first writes
+- DaVinci Resolve command-line script: read-only and offline commands only
+- [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
 - PowerGrade template spec
 - iPhone filming guide for the camera-shipping model
 

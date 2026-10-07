@@ -1,10 +1,13 @@
 # The Resolve MCP server
 
 `resolve_mcp.py` is a Model Context Protocol server over stdio that lets an
-MCP client (Claude Code here) drive DaVinci Resolve through the same library
-the `resolve_workflow.py` CLI uses. It is standard-library Python, with no
-SDK and nothing to install, and runs on macOS's `/usr/bin/python3` (3.9),
-where Resolve's scripting module, numpy and OpenCV live.
+MCP client (Claude Code here) drive DaVinci Resolve through the `rpresolve`
+library beside it. It is the only way this toolkit writes to Resolve:
+`resolve_workflow.py` keeps read-only and offline commands only (see
+[The command-line script](#the-command-line-script)). The server is
+standard-library Python, with no SDK and nothing to install, and runs on
+macOS's `/usr/bin/python3` (3.9), where Resolve's scripting module, numpy and
+OpenCV live.
 
 Resolve is edited live by a person while the server runs. Everything below
 follows from that: the server reads freely, writes only in addition to what
@@ -189,16 +192,73 @@ tree and never overwrites an `.srt`.
   result.
 - **One writer at a time.** Every Claude Code session starts its own server,
   so all Resolve access takes a lock at `~/Library/Caches/rpresolve/resolve.lock`,
-  shared with the CLI's write commands. `resolve_status` waits up to 5 s,
+  shared by every session's server. `resolve_status` waits up to 5 s,
   the other reads 10 s and writes 30 s, then report Resolve as busy.
 - **A record of every write.** A real run writes a synced "started" line to
   `~/Library/Logs/rpresolve-mcp/writes.jsonl` (mode 0600) before touching
   Resolve and a "finished" line after, which names what was created and
   any timeline a failed build left behind (`left_behind`). If the started
   line cannot be written, the write does not happen.
-- **Calls that are never made.** A test scans all the code the server can
-  reach for `LoadProject`, `CreateProject`, `SaveProject`, `StartRendering`,
-  any `Delete*`, `eval` and `exec`, as names or strings.
+- **Calls that are never made, and one place that writes.** A test scans
+  every non-test `.py` under `production/`, the script and the launcher
+  included and none exempt, for `LoadProject`, `CreateProject`,
+  `SaveProject`, `StartRendering`, any `Delete*`, `eval`, `exec` and the other
+  calls that close, import, restore, archive or export a project, as names or
+  strings. The same scan fails any call that changes the open project or the
+  Resolve UI (`ImportMedia`, `SetLUT`, `AddRenderJob`, `OpenPage` and the
+  rest) in a file outside `production/rpresolve/`, so the library and this
+  server are the only code in the toolkit that writes to Resolve. It reads
+  names, so a call assembled at run time would pass it.
+
+## The command-line script
+
+`resolve_workflow.py` no longer writes to Resolve. A write goes through the
+server above: the project is named and pinned, the plan is shown first, the
+real run needs its `plan_sha`, every change is read back, and each real run
+leaves a journal line. The script's write commands kept no journal, made the
+dry run and the `plan_sha` optional, and several acted on whatever project or
+timeline was current. `render --start` started every queued job and
+`clear-queue` deleted every queued job, the ones the server had queued
+included. They are retired, not hidden: running one exits 2 and prints the
+line in the table below, without connecting to Resolve.
+
+| Retired command | Do this instead |
+|---|---|
+| `new-project` | Create the project by hand in Resolve and set Project Settings > Color Management > Color science to DaVinci YRGB Color Managed. `ingest` refuses any other colour science and makes its own camera bins, so the old bin tree is not needed. Set the resolution and frame rate in Project Settings too. |
+| `import-media` | `ingest`: media goes under camera bins in `parent` (default `Source`) and each clip's Input Color Space and Data Level are tagged from `detect`. There is no custom bin and no clip colour; `timeline_items` shows each item's input colour space. |
+| `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync` and `duplicate_timeline_auto` make ` [auto]` timelines. |
+| `add-subtitles`, `auto-subtitle`, `captions` | `create_captions` on an ` [auto]` timeline. An `.srt` cannot be placed by script on Resolve 21: use File > Import > Subtitle by hand. |
+| `render`, `render-all`, `deliver-queue` | `queue_render`: with `preset` for a preset in `resolve-config.json`, or with `destination` for a delivery destination under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per preset. |
+| `clear-queue` | Remove jobs on the Deliver page. No tool deletes anything. |
+| `apply-lut`, `apply-drx` | `apply_grade` on an ` [auto]` timeline. A `.drx` needs a label manifest beside it, a hand-written `<name>.json` holding `{"num_nodes": 3, "labels": ["CST IN", "", "CST OUT"]}`: the node count and the node labels the graph should show after the apply, so the result can be read back (either key may be left out). The `--camera` filter by clip colour is gone; choose items by number with `items` (`timeline_items` lists them). |
+| `open-page` | No tool. Click the page tab in Resolve. |
+| `export-project` | Export from Resolve's Project Manager. |
+| `ingest`, `cut`, `sync` | The tools of the same names. |
+| `trim-review --markers` | `trim_review_markers`. |
+
+Still in the script, with `python3 resolve_workflow.py <command> --help`:
+
+- Read Resolve and change nothing (Resolve Studio must be running):
+  `list-projects`, `list-timelines`, `list-render-formats` and `info`.
+- Never connect to Resolve: `survey`, `detect`, `measure`, `manifest`,
+  `endcheck`, `selects`, `reframe-plan`, `deliver-check`, `deliver-captions`,
+  `deliver-fix-loudness`, `sync-measure` and `trim-review` (the TSV).
+
+Four of these have no tool yet: `manifest` (it builds the cut manifest that
+`endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
+(the loudness step of the deliver loop), `list-projects` and
+`list-render-formats`. `info` is covered by `resolve_status`,
+`list_timelines` and `render_queue_status` together. Each other command has a
+tool of the same name (with underscores), with a few flags left behind: the
+script's `sync-measure` takes `--ref-stream` and
+`--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
+and `--no-metadata-cache`, none of which the tools do.
+
+To run a read-only command from a terminal, export the two variables the
+registration above sets (`RESOLVE_SCRIPT_API` and `RESOLVE_SCRIPT_LIB`).
+`rpresolve.api.connect` adds Resolve's `Scripting/Modules` folder to the
+import path itself, so `PYTHONPATH` is needed only for a Resolve installed
+somewhere else.
 
 ## Where output goes
 
@@ -258,6 +318,40 @@ choose the file.
   until one run on a scratch project confirms the calls. A key that reads
   differently because the tool wrote the frame rate or the size would be a
   false alarm; the guard leaves those writes out.
+- Live-verified against Resolve Studio 21.0.4.5, from the script these notes
+  used to live in. `Timeline.ApplyGradeFromDRX(path, mode, items)` does not
+  exist in 21.0.4, and the scripting README's example for it is stale. The
+  working call is per item: `item.GetNodeGraph().ApplyGradeFromDRX(path,
+  gradeMode)` returns a bool, with `gradeMode` 0 for no keyframes, 1 for
+  source timecode aligned and 2 for start frames aligned. It very likely
+  replaces the item's node graph, which is why `apply_grade` reads the graph
+  back and checks it against the label manifest.
+- Grades go through the `Graph` object from `item.GetNodeGraph()`:
+  `GetNumNodes()`, `GetNodeLabel(i)`, `GetLUT(i)`, `SetLUT(i, path)`,
+  `GetToolsInNode(i)` and `SetNodeEnabled(i, bool)`. Node indexes are
+  1-based. `TimelineItem.GetNumNodes`, `SetLUT` and `GetLUT` are deprecated
+  aliases.
+- `SetLUT` only accepts a LUT Resolve has scanned (`Project.RefreshLUTList()`
+  rescans), and `GetLUT` may report the path relative to a LUT folder.
+  `apply_grade` rescans first, sends the path it was given (a link in a LUT
+  folder goes by its own path, not its target's) and reports a read-back that
+  differs as a failure.
+- `GetToolsInNode(i)` returns None for a node whose corrections are all at
+  their defaults; it is reliable only for OFX nodes.
+- The scripting API cannot create colour-page nodes. A LUT onto a node
+  beyond what the clip already has is refused (`cannot add node N`). Add the
+  node on the Color page first, or apply a `.drx` that already contains it.
+- Unknown `resolve.CONSTANT` names return None silently, so a missing
+  constant reads as a value rather than an error. Check them.
+- Piped output from the Resolve client is lost unless flushed before the
+  interpreter exits, and the client can segfault at shutdown after some
+  calls: the server and the script both leave through
+  `rpresolve.api.exit_clean` (flush both streams, then `os._exit`).
+- Subtitle styling (font, colour, position) has no scripting entry point. It
+  stays a manual Edit-page step.
+- The `story` vertical preset resizes the canvas only; it does not reframe
+  subjects. `reframe_plan` plans a crop per span and `cut` applies it to the
+  9:16 and 1:1 versions (Zoom, Pan and Tilt, each read back).
 
 ## Check it against a live Resolve
 
