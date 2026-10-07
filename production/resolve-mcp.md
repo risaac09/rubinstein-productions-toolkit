@@ -199,16 +199,22 @@ tree and never overwrites an `.srt`.
   Resolve and a "finished" line after, which names what was created and
   any timeline a failed build left behind (`left_behind`). If the started
   line cannot be written, the write does not happen.
-- **Calls that are never made, and one place that writes.** A test scans
-  every non-test `.py` under `production/`, the script and the launcher
-  included and none exempt, for `LoadProject`, `CreateProject`,
-  `SaveProject`, `StartRendering`, any `Delete*`, `eval`, `exec` and the other
-  calls that close, import, restore, archive or export a project, as names or
-  strings. The same scan fails any call that changes the open project or the
-  Resolve UI (`ImportMedia`, `SetLUT`, `AddRenderJob`, `OpenPage` and the
-  rest) in a file outside `production/rpresolve/`, so the library and this
-  server are the only code in the toolkit that writes to Resolve. It reads
-  names, so a call assembled at run time would pass it.
+- **Calls that are never made, and one place that writes.** A test scans the
+  non-test `.py` files under `production/` (everything except the top-level
+  `production/tests/`), the script and the launcher among them.
+  It fails any file that names `LoadProject`, `CreateProject`, `SaveProject`,
+  `StartRendering`, any `Delete*`, `eval`, `exec` or one of the other calls that
+  close, import, restore, archive or export a project, as a name or a string.
+  It also fails any file outside `production/rpresolve/` that names a call on
+  its list of Resolve write calls (`ImportMedia`, `SetLUT`, `AddRenderJob`,
+  `OpenPage`, `LoadRenderPreset`, `GrabStill`, `Quit` and the rest) or a name
+  that starts with a change verb (Set, Add, Create, Import, Load, Save, Grab,
+  Export, Convert, Render and the others). It is a name tripwire and nothing
+  more: a call built at run time (a string assembled and passed to `getattr`)
+  and a direct python import of Resolve's own module are not caught, and test
+  files, the hand-run live harness `production/tests/live_mcp_sandbox.py`
+  among them, are not scanned. The library and this server are the only code
+  the scan allows those write calls in.
 
 ## The command-line script
 
@@ -219,22 +225,27 @@ leaves a journal line. The script's write commands kept no journal, made the
 dry run and the `plan_sha` optional, and several acted on whatever project or
 timeline was current. `render --start` started every queued job and
 `clear-queue` deleted every queued job, the ones the server had queued
-included. They are retired, not hidden: running one exits 2 and prints the
-line in the table below, without connecting to Resolve.
+included. They are retired, not hidden: running one exits 2 and says what to
+use instead (the table below says the same), without connecting to Resolve.
 
 | Retired command | Do this instead |
 |---|---|
-| `new-project` | Create the project by hand in Resolve and set Project Settings > Color Management > Color science to DaVinci YRGB Color Managed. `ingest` refuses any other colour science and makes its own camera bins, so the old bin tree is not needed. Set the resolution and frame rate in Project Settings too. |
+| `new-project` | No tool creates a project. Create it by hand in Resolve and set Project Settings > Color Management > Color science to DaVinci YRGB Color Managed. `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin; it does not make the old Audio, Selects, Timeline, Graphics and Exports tree, which you can make by hand if you want it. Set the resolution and frame rate in Project Settings too. |
 | `import-media` | `ingest`: media goes under camera bins in `parent` (default `Source`) and each clip's Input Color Space and Data Level are tagged from `detect`. There is no custom bin and no clip colour; `timeline_items` shows each item's input colour space. |
 | `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync` and `duplicate_timeline_auto` make ` [auto]` timelines. |
 | `add-subtitles`, `auto-subtitle`, `captions` | `create_captions` on an ` [auto]` timeline. An `.srt` cannot be placed by script on Resolve 21: use File > Import > Subtitle by hand. |
 | `render`, `render-all`, `deliver-queue` | `queue_render`: with `preset` for a preset in `resolve-config.json`, or with `destination` for a delivery destination under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per preset. |
-| `clear-queue` | Remove jobs on the Deliver page. No tool deletes anything. |
+| `clear-queue` | No tool. Remove jobs on the Deliver page; no tool deletes anything. |
 | `apply-lut`, `apply-drx` | `apply_grade` on an ` [auto]` timeline. A `.drx` needs a label manifest beside it, a hand-written `<name>.json` holding `{"num_nodes": 3, "labels": ["CST IN", "", "CST OUT"]}`: the node count and the node labels the graph should show after the apply, so the result can be read back (either key may be left out). The `--camera` filter by clip colour is gone; choose items by number with `items` (`timeline_items` lists them). |
 | `open-page` | No tool. Click the page tab in Resolve. |
-| `export-project` | Export from Resolve's Project Manager. |
+| `export-project` | No tool. Export the project by hand in Resolve: from the Project Manager, or with File > Export Project Archive. The command only wrote a project file to disk and changed nothing in Resolve; it is retired with the rest. |
 | `ingest`, `cut`, `sync` | The tools of the same names. |
 | `trim-review --markers` | `trim_review_markers`. |
+
+The menu paths this table gives for creating and exporting a project
+(Project Settings > Color Management > Color science, the Project Manager,
+File > Export Project Archive) are written from memory and have not been
+checked against a live Resolve; the labels may differ by version.
 
 Still in the script, with `python3 resolve_workflow.py <command> --help`:
 
