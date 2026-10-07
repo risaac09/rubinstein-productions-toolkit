@@ -338,6 +338,22 @@ its versions.
   result, the summary and the MCP journal, with how many of its items were
   transformed. A re-run skips a timeline that exists, so delete that one
   first. A 16:9 that fails its read-back is named the same way.
+- **SETTINGS DRIFT (opt-in, off by default).** Setting a timeline to custom
+  settings is reported to change colour management and scaling settings (see
+  `resolve-mcp.md`). With the guard enabled (`RPRESOLVE_SETTINGS_GUARD=on` in
+  the environment of the process that runs `cut`), `cut` reads each new
+  timeline's settings before and after its writes and lists
+  every key that reads differently, other than the ones it wrote (the custom
+  flag, the frame rate, the size), under the result's `settings_drift`, with
+  the write each changed at. A 16:9 is compared with itself before its first
+  write; a version with the 16:9 it was copied from. The timeline is built and
+  read back, so this is neither a failure nor `left_behind`, and the exit
+  status does not change. Nothing is set back. A timeline whose settings could
+  not be read says `unchecked` and why. If the key that changed is the input
+  scaling, a version refused for it names this as the cause. A re-run skips a
+  timeline that exists and does not read it, so the first run's result and
+  journal summary are the record. With the guard off, which is the default,
+  `cut` makes none of these reads and `settings_drift` is null.
 - **One timeline at a time.** Each name is decided on its own: one that
   exists is skipped and listed under `skipped_existing`. A version missing
   beside a 16:9 that exists (the 1:1 asked for after the 9:16 was cut, say)
@@ -401,6 +417,15 @@ on 2026-09-30:
 5. What `GetProperty("Scaling")` reads on an item appended by `cut`
    (expected 0, use project settings) and on one set to Fill in the
    Inspector (expected 3).
+6. What a timeline's first and repeat `useCustomSettings` write change on
+   this Mac (the forum reports are from Windows and Linux): which keys move,
+   whether a repeat write on a custom timeline moves them again, whether a
+   duplicate of a custom timeline keeps them, whether `GetSettings()` answers
+   on 21.1.1.10, and whether `timelineInputResMismatchBehavior` is one of them.
+   `sync` makes the same write on its stacked and verification timelines. Run it
+   on a scratch project, never a client project, with
+   `RPRESOLVE_SETTINGS_GUARD=on`; the guard is off by default until this
+   confirms the calls.
 
 Gaps in the method:
 

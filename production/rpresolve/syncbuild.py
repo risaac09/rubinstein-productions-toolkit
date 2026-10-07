@@ -30,7 +30,7 @@ What Resolve 21.0.4.5 does, and what this module does about it:
 import os
 import re
 
-from . import api, cutlist
+from . import api, cutlist, settingsguard
 from .deliver import exact_fps
 from .deliver import fps_number as _number  # the leading number of a property ('25.000')
 
@@ -185,21 +185,29 @@ def plan(ref, other, offset_frames, fps):
     return {"appends": appends, "placements": placements, "tracks": tracks}
 
 
-def new_timeline(project, media_pool, name, rate):
+def new_timeline(project, media_pool, name, rate, report=None):
     """Create an empty timeline, make it current (AppendToTimeline works on
     the current one) and set its frame rate while it is empty, reading
-    each back. Returns the timeline; raises WriteNotApplied."""
+    each back. Returns the timeline; raises WriteNotApplied. When report is
+    a dict, report['settings_drift'] is settingsguard's report on the
+    timeline's settings around the custom-settings write (None while the
+    guard is off, which is the default)."""
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
     if not project.SetCurrentTimeline(tl) or _uid(project.GetCurrentTimeline()) != _uid(tl):
         raise api.WriteNotApplied(f"could not make '{name}' current to place clips on it")
+    watch = settingsguard.Watch(tl, settingsguard.WROTE_SYNC, project)
+    watch.mark("new timeline")  # still following the project's settings
     tl.SetSetting("useCustomSettings", "1")
     tl.SetSetting("timelineFrameRate", rate)
+    watch.mark("custom write")
+    if report is not None:
+        report["settings_drift"] = watch.report()
     got = _number(tl.GetSetting("timelineFrameRate"))
     if got is None or abs(got - float(rate)) > 1e-3:
         raise api.WriteNotApplied(f"timelineFrameRate on '{name}': wrote {rate}, read back "
-                                  f"{tl.GetSetting('timelineFrameRate')!r}")
+                                  f"{tl.GetSetting('timelineFrameRate')!r}" + watch.tail())
     return tl
 
 
@@ -278,13 +286,15 @@ def build(project, media_pool, name, rate, fps, clips, the_plan, check=None):
     """Make the stacked timeline and read every placement back. clips is
     {"reference": clip, "other": clip, plus their clip_info under
     "reference_info"/"other_info"}. Returns {name, unique_id,
-    start_frame, placements, returned, problems}."""
+    start_frame, placements, returned, problems, settings_drift}.
+    settings_drift is None unless the settings guard is enabled."""
     if check:
         check()
-    tl = new_timeline(project, media_pool, name, rate)
+    drift = {}
+    tl = new_timeline(project, media_pool, name, rate, report=drift)
     start = tl.GetStartFrame()
     out = {"name": name, "unique_id": _uid(tl), "start_frame": start, "placements": [],
-           "returned": {}, "problems": []}
+           "returned": {}, "problems": [], "settings_drift": drift.get("settings_drift")}
     by_role = {a["role"]: a for a in the_plan["appends"]}
     for role in ("reference", "other"):
         a = by_role[role]
