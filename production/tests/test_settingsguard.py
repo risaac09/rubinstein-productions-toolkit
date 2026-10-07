@@ -979,6 +979,28 @@ class TestCutWorkflow(World):
             status = rw.cmd_cut(args)
         return status, out.getvalue(), err.getvalue()
 
+    def test_the_cli_prints_each_timelines_drift_once(self):
+        self.flip()
+        status, out, err = self.cli_cut()
+        self.assertEqual(status, 0, err)
+        lines = out.splitlines()
+        self.assertEqual([x for x in lines if "note:" in x and "settings drift" in x], [])
+        rows = [x for x in lines if x.strip().startswith("SETTINGS ")]
+        self.assertEqual(sorted(x.split()[1] for x in rows), sorted(AFTER))
+        self.assertIn("(at first custom write)", rows[0])
+        for key in AFTER:
+            self.assertEqual(out.count(key), 1, key)
+        self.assertNotIn("settings drift", out)  # the warning's own wording, left to the rows
+
+    def test_the_cli_keeps_the_not_checked_note_since_no_row_repeats_it(self):
+        with mock.patch.object(rf.Timeline, "GetSettings", side_effect=RuntimeError("boom")):
+            status, out, err = self.cli_cut()
+        self.assertEqual(status, 0, err)
+        notes = [x for x in out.splitlines() if "settings drift not checked" in x]
+        self.assertEqual(len(notes), 2)  # the 16:9 and the 1:1, one each
+        self.assertTrue(all(x.strip().startswith("note: ") for x in notes))
+        self.assertEqual([x for x in out.splitlines() if x.strip().startswith("SETTINGS ")], [])
+
     def test_off_by_default_the_cli_prints_no_drift_and_no_note(self):
         rf.set_env(self, sg.ENV, None)
         self.flip()
@@ -988,6 +1010,37 @@ class TestCutWorkflow(World):
         self.assertNotIn("settings drift", out)
         self.assertEqual(out.count("note:"), 2)  # the build's own two notes are untouched
         self.assertEqual(out.count("made "), 2)
+
+    def test_the_note_loop_drops_only_the_drift_line_its_rows_repeat(self):
+        import resolve_workflow as rw
+        w = sg.Watch(Stub({"k": "0"}, {"k": "1"}), sg.WROTE_CLIP)
+        w.mark("a"), w.mark("b")
+        drift = w.report()
+        (line,) = sg.warnings(drift)
+        other = ["Tilt is set on at least one item", "another note"]
+        self.assertEqual(rw._cut_notes({"settings_drift": drift, "warnings": other[:1] + [line]
+                                        + other[1:]}), other)
+        w = sg.Watch(Stub(None), sg.WROTE_CLIP)
+        w.mark("a"), w.mark("b")
+        blind = w.report()
+        (said,) = sg.warnings(blind)
+        self.assertEqual(rw._cut_notes({"settings_drift": blind, "warnings": [said, "x"]}),
+                         [said, "x"])  # no SETTINGS row repeats a 'not checked' note
+        self.assertEqual(rw._cut_notes({"settings_drift": None, "warnings": ["x"]}), ["x"])
+        self.assertEqual(rw._cut_notes({"warnings": ["x"]}), ["x"])
+        self.assertEqual(rw._cut_notes({"settings_drift": drift}), [])
+
+    def test_a_scaling_flip_is_named_beside_the_existing_refusal(self):
+        self.project.settings[cut.INPUT_SCALING] = "scaleToCrop"
+        self.project.flip_resets = {cut.INPUT_SCALING: "scaleToFit"}
+        r = self.run_cut()
+        tall = r["results"][1]
+        self.assertTrue(tall["refused"])
+        self.assertIn("the plan was made for 'scaleToCrop'", tall["reason"])
+        self.assertIn("settings drift: Resolve changed it from 'scaleToCrop' to 'scaleToFit'",
+                      tall["reason"])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertEqual([x["timeline"] for x in r["settings_drift_rows"]], ["T_hi [auto]"])
 
 
 if __name__ == "__main__":
