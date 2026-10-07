@@ -51,11 +51,15 @@ Match styling to the document's job. Getting this wrong is more damaging than ge
 
 A working doc dressed as a durable instrument wastes effort and makes the client afraid to edit it. A durable instrument shipped as raw defaults will not survive being used.
 
+**When the brand source is a document the audience already uses, start at its tier, and say so out loud when you leave it.** Its furniture (banner art, title block, header logos, heading color and weight, table header style) is how readers recognize the document as theirs. Downgrading it to a working doc is a real choice with a real cost, so state it to the user, with the reason, before building. In one real build, the tier dropped silently. A client's comm plan template came back without its banner, its title block, or its section of drafted audience messages, and nobody had chosen to lose any of them.
+
 ---
 
 ## Phase 2. Extract template truth (never guess it)
 
 Across five real artifacts in one program, five slightly different teals were used, because everyone approximated the brand by eye. Pin exact tokens before the first build.
+
+**0. Render the source and look at every page before reading its XML.** Grepping the XML gives you tokens. Only the pages show you what the reader sees: art, title blocks, which sections are prose and which are tables. Keep those renders, because Phase 6 compares against them.
 
 ```bash
 python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" template.docx tpl/
@@ -178,7 +182,7 @@ rm -f pg-*.jpg && pdftoppm -jpeg -r 120 out.pdf pg
 ls -1 "$PWD"/pg-*.jpg
 ```
 
-Then look at every page.
+Then look at every page, and then put the source's pages beside yours. A build checked only against itself can pass every check below and still look nothing like the template it came from.
 
 | # | Check |
 |---|---|
@@ -192,6 +196,9 @@ Then look at every page.
 | 8 | Internal scaffolding stripped from client-facing builds |
 | 9 | Provenance preserved if the file was received |
 | 10 | Voice rules applied: em-dashes swept, promotional verbs gone, active voice |
+| 11 | Side by side with the Phase 2 source render: banner or header art, title block, logos, heading color and weight, and table header style match, or the user was told why they don't |
+| 12 | Section inventory: every section in the source is kept, converted, or cut, and every cut has a reason the user has seen |
+| 13 | No blank pages, including around section and orientation breaks |
 
 ---
 
