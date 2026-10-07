@@ -5,7 +5,8 @@
 
 ## Project Settings
 
-- **Resolution:** 3840 × 2160 (UHD 4K) — all exports, no exceptions
+- **Resolution:** 3840 × 2160 (UHD 4K) for the project and its timelines; each delivery
+  destination sets its own frame size (see Deliver)
 - **Timeline framerate:** 23.976 fps (default) or 29.97 fps — set per project
 - **Color science:** DaVinci YRGB Color Managed
 
@@ -66,17 +67,6 @@ Tag each clip on import so you know which source node to apply.
 
 ---
 
-## Export Presets — Always 4K (3840 × 2160)
-
-| Preset | Codec | Bitrate | Use |
-|--------|-------|---------|-----|
-| YouTube | H.265 | 40–60 Mbps | Primary web delivery |
-| LinkedIn | H.264 | 20–30 Mbps | Social feed |
-| Master | ProRes 422 HQ | — | Archive / highest quality |
-| Instagram / Story | H.264 (1080×1920 crop) | 15–20 Mbps | Vertical reformat |
-
----
-
 ## Project Bin Structure
 
 ```
@@ -109,8 +99,8 @@ create the other bins, which are made by hand.
 7. Manual creative grade (Node 3) — per clip, match across cameras
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
-10. Queue 4K export presets in Deliver page
-11. Render
+10. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
+11. Render the queued jobs on the Deliver page (no tool starts one)
 
 ---
 
@@ -131,7 +121,7 @@ and re-read against the MCP tools on 2026-10-07:
 | Bullet | Status |
 |---|---|
 | Auto-create project with bin structure | Not scripted. Create the project by hand and set its colour science to DaVinci YRGB Color Managed (Project Settings > Color Management; the menu path is from memory, not checked against a live Resolve). `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin under `parent` (default `Source`). It does not create the Audio, Selects, Timeline, Graphics and Exports tree in Project Bin Structure above; make those bins by hand if you want them. |
-| Auto-queue render presets | Done (`queue_render`, with `preset` or a delivery `destination`). It queues the job and never starts it. |
+| Auto-queue renders | Done (`queue_render`, for a delivery `destination`; the older render presets are gone, and a call that passes one is refused). It queues the job and never starts it. |
 | Auto-apply source conversion nodes by camera tag | Changed, and only partly there. Nothing applies a node or LUT by camera tag now: the clip-colour camera tag and the `--camera` filter went with the retired commands. What exists is `ingest`, which tags each clip's Input Color Space from `detect`, and `apply_grade`, which puts a LUT on one node of the items of an `[auto]` timeline that you choose by item number (`timeline_items` lists them with their input colour space). Choosing the items that belong to one camera is a person's step. |
 | Auto-sort media into camera bins by metadata | Done (`ingest` bins by the camera `detect` reads from the file headers; a file it cannot classify goes to a Review bin). |
 | Auto-apply Low Contrast PowerGrade | Not done: no PowerGrade or gallery-still API call exists. `apply_grade` applies a hand-exported `.drx`, checked against a label manifest beside it. |
@@ -151,11 +141,13 @@ tools:
   the Low Contrast PowerGrade) only works if that node already exists on the
   clip: add it in the Color page first. The scripting API cannot create
   color-page nodes.
-- **Vertical export is resize-only.** The `story` preset changes canvas
-  dimensions; it does not reframe subjects. `reframe_plan` plans a crop
-  per span and `cut` with `aspects` applies it (see Reframe below);
-  a timeline built any other way needs its Pan/Zoom set before rendering
-  vertical, or the crop will be arbitrary.
+- **Vertical needs a timeline of its own.** Queueing never reframes. A
+  destination of fixed shape (`linkedin_9x16`, `linkedin_1x1`) refuses a
+  timeline of another shape, since Resolve would scale the picture into the
+  frame with bars. `reframe_plan` plans a crop per span and `cut` with
+  `aspects` builds the 9:16 and 1:1 timelines with it applied (see Reframe
+  below); a timeline built any other way needs its Pan/Zoom set before
+  queueing vertical, or the crop will be arbitrary.
 
 ### Offline survey of existing projects
 
@@ -470,8 +462,7 @@ No new standing surface.
 
 A deliverable is rendered for a **destination**: what one platform wants,
 kept in `resolve-config.json` under `destinations`, laid over the house
-rules under `deliver`. These sit beside the older `render_presets`, which
-`queue_render` takes as `preset`.
+rules under `deliver`. `queue_render` takes a destination and nothing else.
 
 | Destination | Container, video | Size | Audio | Loudness | Captions |
 |---|---|---|---|---|---|
@@ -483,8 +474,7 @@ rules under `deliver`. These sit beside the older `render_presets`, which
 | `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `client_master` | mov, ProRes 422 HQ | the timeline's | LPCM 24-bit 48 kHz | none (unnormalized) | none |
 
-Each destination sets its own frame size; the "always 4K" rule under Project
-Settings and Export Presets describes the render presets.
+Each destination sets its own frame size.
 
 House rules, all in the config: integrated loudness within +/-0.5 LU of the
 target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
@@ -1075,4 +1065,4 @@ a one-line note here saying when.
 
 ---
 
-*Version 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Version 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
+*Version 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Version 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Version 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
