@@ -7,16 +7,12 @@ stdlib unittest only.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
-import argparse
-import io
 import os
 import tempfile
 import sys
 import unicodedata
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live one
@@ -253,55 +249,6 @@ class FakeResolve:
 
     def GetCurrentProject(self):
         return self.project
-
-
-class TestCmdIngest(unittest.TestCase):
-    def run_cmd(self, project, rows, **kw):
-        import resolve_workflow as rw
-        args = argparse.Namespace(paths=["/media/card"], project=kw.get("name", "Sandbox"),
-                                  bin="Source", dry_run=kw.get("dry_run", False), out=None)
-        out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(rw, "get_resolve", return_value=FakeResolve(project)), \
-                mock.patch.object(rw.rpdetect, "detect_paths", return_value=(rows, [])), \
-                redirect_stdout(out), redirect_stderr(err):
-            code = rw.cmd_ingest(args)
-        return code, out.getvalue(), err.getvalue()
-
-    def test_refuses_a_project_it_was_not_named_for(self):
-        p = FakeProject()
-        code, _, err = self.run_cmd(p, [row("/media/card/a.mov")], name="Other")
-        self.assertEqual(code, 1)
-        self.assertIn("expected 'Other'", err)
-        self.assertEqual(p.pool.imports, [])
-
-    def test_refuses_a_project_without_color_management(self):
-        p = FakeProject(mode="davinciYRGB")
-        code, _, err = self.run_cmd(p, [row("/media/card/a.mov")])
-        self.assertEqual(code, 1)
-        self.assertIn("Color Managed", err)
-        self.assertEqual(p.pool.imports, [])
-
-    def test_dry_run_writes_nothing(self):
-        p = FakeProject()
-        code, out, err = self.run_cmd(p, [row("/media/card/a.mov")], dry_run=True)
-        self.assertEqual(code, 0)
-        self.assertIn("planned", out)
-        self.assertEqual(p.pool.imports, [])
-        self.assertEqual(p.pool.created, [])
-
-    def test_exit_codes_and_folder_restore(self):
-        p = FakeProject()
-        code, out, _ = self.run_cmd(p, [row("/media/card/a.mov")])
-        self.assertEqual(code, 0)
-        self.assertIn("tagged", out)
-        self.assertIs(p.pool.current, p.root)  # the current bin is put back
-        for extra in (row("/media/card/r.mp4", profile=detect.REVIEW, cs=""),
-                      row("/media/card/v.mov", vfr="yes")):
-            code, _, _ = self.run_cmd(FakeProject(), [row("/media/card/a.mov"), extra])
-            self.assertEqual(code, 2, extra["path"])
-        refusing = FakeProject()
-        refusing.pool.refuse = ("Input Color Space",)
-        self.assertEqual(self.run_cmd(refusing, [row("/media/card/a.mov")])[0], 1)
 
 
 class TestIngestGates(unittest.TestCase):

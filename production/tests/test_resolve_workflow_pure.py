@@ -1,9 +1,11 @@
 """
-Offline unit tests for resolve_workflow.py's pure-logic functions — the
+Offline unit tests for resolve_workflow.py: its pure-logic functions (the
 pieces that don't touch DaVinciResolveScript, so they run without Resolve
-installed or running. Everything Resolve-shaped (connection, media pool,
-timeline calls) is deliberately excluded from this file; test it by hand
-against a live instance instead.
+installed or running), the codec and config code it shares with the
+library, and what is left of the script's surface once its write commands
+are retired: the parser holds only the read-only and offline commands, and
+each retired command, and trim-review --markers, exits 2 naming the MCP
+tool that replaced it without connecting to Resolve.
 
 stdlib unittest only — no pytest/dependency to install for a public kit.
 
@@ -17,15 +19,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import resolve_workflow
 from resolve_workflow import (
-    collect_media_files,
-    duration_to_frames,
-    parse_framerate,
     safe_fps,
     build_survey_command,
     SURVEY_PYTHON,
@@ -77,52 +78,7 @@ class TestPickCodec(unittest.TestCase):
         self.assertFalse(matched)
 
 
-class TestCollectMediaFiles(unittest.TestCase):
-    def test_recursive(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "DCIM" / "100_PANA").mkdir(parents=True)
-            (root / "DCIM" / "100_PANA" / "clip1.mov").write_bytes(b"x")
-            (root / "DCIM" / "100_PANA" / "notes.txt").write_bytes(b"x")
-            (root / "top.mp4").write_bytes(b"x")
-
-            files, skipped = collect_media_files([str(root)])
-            names = sorted(Path(f).name for f in files)
-
-            self.assertEqual(names, ["clip1.mov", "top.mp4"])
-            self.assertEqual(skipped, [])
-
-    def test_reports_missing_paths(self):
-        files, skipped = collect_media_files(["/definitely/not/a/real/path.mov"])
-        self.assertEqual(files, [])
-        self.assertEqual(skipped, ["/definitely/not/a/real/path.mov"])
-
-    def test_single_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            f = Path(tmp) / "clip.mov"
-            f.write_bytes(b"x")
-            files, skipped = collect_media_files([str(f)])
-            # collect_media_files resolves paths (e.g. macOS /tmp -> /private/tmp),
-            # so compare against the same resolution rather than the raw string.
-            self.assertEqual(files, [str(f.resolve())])
-
-
-class TestDurationAndFramerate(unittest.TestCase):
-    def test_duration_to_frames(self):
-        self.assertEqual(duration_to_frames(4.0, 24), 96)
-        self.assertEqual(duration_to_frames(4.0, 23.976), 96)
-        self.assertEqual(duration_to_frames(1.5, 30), 45)
-
-    def test_parse_framerate_known(self):
-        value, known = parse_framerate("23.976")
-        self.assertEqual(value, "23.976")
-        self.assertTrue(known)
-
-    def test_parse_framerate_unknown_still_passes_through(self):
-        value, known = parse_framerate("24fps")
-        self.assertEqual(value, "24fps")
-        self.assertFalse(known)
-
+class TestSafeFps(unittest.TestCase):
     def test_safe_fps_valid(self):
         self.assertEqual(safe_fps("23.976"), 23.976)
 
@@ -219,6 +175,95 @@ class TestSurveyCommand(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stderr.decode())
         self.assertIn(b"inside this repository", proc.stderr)
         self.assertFalse(target.exists())
+
+
+KEPT = ["list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect",
+        "measure", "manifest", "endcheck", "selects", "reframe-plan", "deliver-check",
+        "deliver-captions", "deliver-fix-loudness", "sync-measure", "trim-review"]
+RETIRED_COMMANDS = ["new-project", "import-media", "build-timeline", "add-subtitles",
+                    "auto-subtitle", "render", "render-all", "clear-queue", "apply-lut",
+                    "apply-drx", "open-page", "export-project", "ingest", "cut", "deliver-queue",
+                    "captions", "sync"]
+
+
+def run_main(*argv):
+    """main() with this argv; (exit status, stdout, stderr). Resolve is not
+    reachable: a call to get_resolve fails the test."""
+    out, err = io.StringIO(), io.StringIO()
+    connect = mock.Mock(side_effect=AssertionError("connected to Resolve"))
+    # main() leaves through os._exit; here it raises SystemExit so the runner survives.
+    leave = mock.Mock(side_effect=lambda code=0: sys.exit(code))
+    status = None
+    with mock.patch.object(resolve_workflow, "get_resolve", connect), \
+            mock.patch.object(resolve_workflow.rpapi, "exit_clean", leave), \
+            mock.patch.object(sys, "argv", ["resolve_workflow.py", *argv]), \
+            redirect_stdout(out), redirect_stderr(err):
+        try:
+            resolve_workflow.main()
+        except SystemExit as e:
+            status = e.code
+    return status, out.getvalue(), err.getvalue()
+
+
+class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
+    def parser_commands(self):
+        status, _, err = run_main("not-a-command")
+        self.assertEqual(status, 2)
+        return err
+
+    def test_the_parser_holds_exactly_the_kept_commands(self):
+        err = self.parser_commands()
+        listed = err.split("(choose from ")[1].rstrip(")\n").replace("'", "").split(", ")
+        self.assertEqual(listed, KEPT)
+
+    def test_every_retired_command_exits_2_and_names_its_replacement(self):
+        self.assertEqual(sorted(resolve_workflow.RETIRED), sorted(RETIRED_COMMANDS))
+        for name in RETIRED_COMMANDS:
+            with self.subTest(command=name):
+                status, out, err = run_main(name)
+                self.assertEqual(status, 2)
+                self.assertEqual(out, "")
+                self.assertIn(f"'{name}' is retired", err)
+                self.assertIn("The MCP server is the only way to write to Resolve", err)
+                self.assertIn(resolve_workflow.RETIRED[name], err)
+                self.assertNotIn("Traceback", err)
+
+    def test_a_retired_command_with_its_old_arguments_still_stops_at_the_parser(self):
+        for argv in (["new-project", "Example"], ["render-all", "--output", "/x", "--start"],
+                     ["ingest", "/card", "--project", "P", "--dry-run"],
+                     ["--config", "/x.json", "cut", "m.json", "--project", "P"]):
+            with self.subTest(argv=argv):
+                status, _, err = run_main(*argv)
+                self.assertEqual(status, 2)
+                self.assertIn("is retired", err)
+
+    def test_trim_review_markers_is_retired_and_the_tsv_flags_are_not(self):
+        status, _, err = run_main("trim-review", "m.json", "--markers", "--timeline", "T",
+                                  "--project", "P")
+        self.assertEqual(status, 2)
+        self.assertIn("trim-review --markers is retired", err)
+        self.assertIn("trim_review_markers", err)
+        status, out, _ = run_main("trim-review", "--help")
+        self.assertEqual(status, 0)
+        for flag in ("--words", "--out", "--silence-db", "--no-audio"):
+            self.assertIn(flag, out)
+        for flag in ("--markers", "--timeline", "--project", "--dry-run", "--plan-sha"):
+            self.assertNotIn(flag, out)
+
+    def test_each_kept_command_still_has_a_help_page_without_resolve(self):
+        for name in KEPT:
+            with self.subTest(command=name):
+                status, out, _ = run_main(name, "--help")
+                self.assertEqual(status, 0)
+                self.assertIn(f"resolve_workflow {name}", out)
+
+    def test_the_help_says_where_writes_go(self):
+        status, out, _ = run_main("--help")
+        self.assertEqual(status, 0)
+        self.assertIn("does not write to Resolve", out)
+        self.assertIn("production/resolve_mcp.py", out)
+        for name in RETIRED_COMMANDS:
+            self.assertNotIn(f"resolve_workflow.py {name} ", out)
 
 
 if __name__ == "__main__":
