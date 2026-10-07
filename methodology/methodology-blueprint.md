@@ -124,7 +124,7 @@ Tier definitions, pricing, revenue projections, unit economics, and the
 go-to-market plan are operational internals. They live in the private
 `rp-intranet` repo, not here:
 
-- `docs/operations/pricing-guardrails.md` — tier pricing and the floor rate
+- `docs/operations/pricing-guardrails.md` — pricing guardrails
 - `docs/strategy/business-plan-elements.md` — projections, cost structure,
   unit economics, go-to-market, risks
 
