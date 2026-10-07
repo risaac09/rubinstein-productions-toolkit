@@ -16,8 +16,9 @@ voice, prompts. stack-data is the single source of truth.
 
 - stack-data `CLAUDE.md` is the canonical orientation: repo hierarchy, merge
   boundary, context layer, voice rules, how to read Isaac. Read it before
-  substantive work in that repo. Cite `stack-data/docs/DECISIONS.md` instead
-  of re-deriving a settled call. Check `stack-data/docs/LEARNINGS.md` and
+  substantive work in that repo. Cite `stack-data/docs/DECISIONS.md` and
+  `docs/decisions/` (one file per decision since 2026-10-05) instead of
+  re-deriving a settled call. Check `stack-data/docs/LEARNINGS.md` and
   `stack-data/docs/FAILURE-MODES.md` when a task rhymes with an old failure.
 - Repo identity comes from `git remote get-url origin`, never the folder name.
 - Re-read before editing anything not read this session. If you cannot quote

@@ -25,7 +25,11 @@ pool follows Q4.
 
 - Deterministic work with no judgment: a script, not a model call.
 - Bulk reads, search, mechanical edits, validation, low-impact preprocessing:
-  Haiku 4.5 at low. There is no local lane (retired 2026-09-13), so batch it.
+  Haiku 4.5 at low, batched. Private drafting that must not leave the machine
+  can go to the local base-model lane when Isaac has it running (stack-data
+  DECISIONS, "The local lane returns as a base-model lane (2026-10-05)";
+  endpoint and rules in model-routing-rationale.md). It never arbitrates,
+  never supplies citations or identifiers, and runs no tools.
 - Routine synthesis, continuity, component edits, extraction, research legwork:
   Sonnet 5 at medium.
 - Orchestration, architecture, hard reasoning, final synthesis: start on
@@ -35,9 +39,9 @@ pool follows Q4.
 Importance is not difficulty. Model and effort are separate levers; the same
 model at a lower effort is often right.
 
-## Capacity contract (2026-08-12)
+## Capacity contract (2026-09-13)
 
-Claude runs on Max 5x; ChatGPT Plus is a separate pool. No usage credits or
+Claude runs on Max 20x; ChatGPT Plus is a separate pool. No usage credits or
 silent API overage on either. At a Claude limit, hand eligible execution work
 to Codex or wait for the reset. Keep 20 percent of Claude's weekly capacity for
 urgent synthesis and continuity. Escalations are rationed by this budget, not
