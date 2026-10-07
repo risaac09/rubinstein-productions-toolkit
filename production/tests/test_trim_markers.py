@@ -1,7 +1,7 @@
 """
 Tests for trim-review markers in Resolve (rpresolve.workflows
-.trim_review_markers, rpresolve.markers, the MCP trim_review_markers tool
-and trim-review --markers) against the shared Resolve fakes: rows mapped
+.trim_review_markers, rpresolve.markers and the MCP trim_review_markers
+tool) against the shared Resolve fakes: rows mapped
 from source seconds to marker frames through the items that play the
 source, a colour per kind, each marker read back with GetMarkers, a frame
 that already holds a marker refused, [auto] timelines only, and nothing
@@ -10,14 +10,11 @@ cut, rippled or deleted. Synthetic words and audio only.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
-import argparse
-import io
 import json
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -26,7 +23,6 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-import resolve_workflow  # noqa: E402
 from rpresolve import api, cutlist, markers, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
@@ -192,7 +188,7 @@ class TestAdd(Base):
                                 if v["color"] == "Blue"), [50.0, 175.0])
 
 
-class TestToolAndCommand(Base):
+class TestTool(Base):
     def call(self, args):
         tool = server.build_registry().get("trim_review_markers")
         args = schema.with_defaults(tool.input_schema, {"project": P, **args})
@@ -220,29 +216,6 @@ class TestToolAndCommand(Base):
                          "words": self.words_path, "audio": False})
         self.assertIn("refused, left unmarked: 1 (a marker is already at this frame)",
                       dry["summary"])
-
-    def test_cli_markers(self):
-        ns = dict(input=self.source, words=self.words_path, out=None, silence_db="-45",
-                  min_silence=0.8, tighten=1.2, cut=2.5, soft_fillers=False, no_audio=True,
-                  markers=True, timeline="Clip [auto]", project=P, project_id=None,
-                  dry_run=True, plan_sha=None)
-
-        def run(**extra):
-            out, err = io.StringIO(), io.StringIO()
-            with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
-                    redirect_stdout(out), redirect_stderr(err):
-                status = resolve_workflow.cmd_trim_review(argparse.Namespace(**{**ns, **extra}))
-            return status, out.getvalue(), err.getvalue()
-        status, out, _ = run()
-        self.assertEqual(status, 0)
-        sha = out.split("plan_sha: ")[1].split()[0]
-        status, out, err = run(dry_run=False, plan_sha=sha)
-        self.assertEqual(status, 0, err)
-        self.assertIn("Added and read back 3 of 3 marker(s); nothing was cut.", out)
-        status, _, err = run(timeline="Isaac's edit")
-        self.assertEqual(status, 1)
-        self.assertIn("not an [auto] timeline", err)
-
 
 if __name__ == "__main__":
     unittest.main()

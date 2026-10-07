@@ -1,6 +1,6 @@
 """
 Tests for the Resolve half of sync (rpresolve.workflows.sync,
-rpresolve.syncbuild, the MCP sync tool and the sync command) against the
+rpresolve.syncbuild and the MCP sync tool) against the
 shared Resolve fakes, with the measurement stubbed: the stacked [auto]
 timeline and every placement read back, AddTrack before a new track
 index, an AppendToTimeline that answers truthy and places nothing, the
@@ -10,16 +10,12 @@ on clips the run imported and checked against the measured offset.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
-import argparse
 import copy
-import functools
-import io
 import json
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -28,7 +24,6 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-import resolve_workflow  # noqa: E402
 from rpresolve import api, settingsguard, syncbuild, workflows  # noqa: E402
 
 try:
@@ -65,7 +60,6 @@ def report(offset_s, fps=25.0, match=True, exceeds=False, reasons=()):
                       "span_s": 30.0, "residuals_ms": [0.0], "max_residual_ms": 0.0,
                       "residual_limit_ms": 4.0},
             "thresholds": {}}
-
 
 
 def tc(frames, fps):
@@ -144,19 +138,6 @@ class Base(unittest.TestCase):
     def twice(self, *a, **kw):
         dry = self.run_it(*a, dry_run=True, **kw)
         return dry, self.run_it(*a, expect_sha=dry["plan_sha"], **kw)
-
-    def cli(self, **extra):
-        ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
-                  name=None, autosync=False, window=None, dry_run=False, plan_sha=None)
-        ns.update(extra)
-        sync = functools.partial(workflows.sync, measure=self.measure(), probe=self.probe)
-        out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
-                mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
-                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
-                redirect_stdout(out), redirect_stderr(err):
-            status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
-        return status, out.getvalue(), err.getvalue()
 
     def built(self, name="A001 sync [auto]"):
         return next(t for t in self.project.timelines if t.GetName() == name)
@@ -527,53 +508,30 @@ class TestRateAndPlan(unittest.TestCase):
         self.assertEqual(p["appends"][1]["endFrame"], 500)  # source frames at its own rate
 
 
-class TestSyncCommandAndTool(Base):
-    def test_cli_without_numpy_stops_before_resolve(self):
-        ns = dict(reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
-                  name=None, autosync=False, window=None, dry_run=True, plan_sha=None)
-        err = io.StringIO()
-        connect = mock.Mock(return_value=self.resolve)
-        with mock.patch.dict(sys.modules, {"numpy": None}), \
-                mock.patch.object(resolve_workflow, "get_resolve", connect), \
-                redirect_stdout(io.StringIO()), redirect_stderr(err):
-            status = resolve_workflow.cmd_sync(argparse.Namespace(**ns))
-        self.assertEqual(status, 1)
-        self.assertIn("sync needs numpy", err.getvalue())
-        connect.assert_not_called()
+class TestSyncTool(Base):
+    def test_mcp_tool_without_numpy_stops_before_resolve(self):
+        import rpresolve
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+
+        class NoResolve:
+            def get(self):
+                raise AssertionError("the tool connected to Resolve")
+        args = schema.with_defaults(tool.input_schema, {"project": P, "reference": "clip-cam",
+                                                        "other": "clip-rec"})
+        had = hasattr(rpresolve, "sync")
+        saved = getattr(rpresolve, "sync", None)
+        if had:
+            del rpresolve.sync  # `from .. import sync` would otherwise find it without importing
+        try:
+            with mock.patch.dict(sys.modules, {"rpresolve.sync": None}):  # numpy's importer
+                with self.assertRaisesRegex(RuntimeError, "sync needs numpy"):
+                    tool.handler(args, ToolContext(session=NoResolve()))
+        finally:
+            if had:
+                rpresolve.sync = saved
         self.assertFalse(os.path.exists(os.environ["RPRESOLVE_LOCK"]))
-
-    def test_cli_dry_run_then_real_run(self):
-        status, out, _ = self.cli(dry_run=True)
-        self.assertEqual(status, 0)
-        self.assertIn("placed at +63", out)
-        sha = out.split("plan_sha: ")[1].split()[0]
-        status, out, err = self.cli(plan_sha=sha)
-        self.assertEqual(status, 0, err)
-        self.assertIn("ok   other     A2: read back from +63", out)
-
-    def test_cli_names_an_audio_start_it_counted(self):
-        real = self.measure()
-
-        def noted(reference, other, **args):
-            return {**real(reference, other, **args), "notes": [
-                "the reference's audio starts +21.0 ms from its first frame; the offset counts "
-                "that, and whether Resolve places the audio the same way is not yet checked live"]}
-        sync = functools.partial(workflows.sync, measure=noted, probe=self.probe)
-        out = io.StringIO()
-        with mock.patch.object(resolve_workflow, "get_resolve", return_value=self.resolve), \
-                mock.patch.object(resolve_workflow.rpwork, "sync", sync), \
-                mock.patch.object(resolve_workflow, "_numpy_missing", return_value=None), \
-                redirect_stdout(out), redirect_stderr(io.StringIO()):
-            status = resolve_workflow.cmd_sync(argparse.Namespace(
-                reference="clip-cam", other="clip-rec", project=P, project_id=None, bin=None,
-                name=None, autosync=False, window=None, dry_run=True, plan_sha=None))
-        self.assertEqual(status, 0)
-        self.assertIn("Note:      the reference's audio starts +21.0 ms", out.getvalue())
-
-    def test_cli_refusal_exits_1(self):
-        status, _, err = self.cli(other="clip-cam")
-        self.assertEqual(status, 1)
-        self.assertIn("same media-pool clip", err)
 
     @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
     def test_mcp_tool_dry_run_then_real_run_journalled(self):
@@ -604,8 +562,8 @@ class TestSyncCommandAndTool(Base):
 
 class TestSyncSettingsDrift(Base):
     """The settings drift guard through sync: the stacked timeline's own custom
-    settings write is read, reported in the result, the CLI and the MCP
-    summary, and never changes the exit status. The guard is opt-in, so these
+    settings write is read, reported in the result and the MCP summary, and
+    never changes the exit status. The guard is opt-in, so these
     tests turn it on (RPRESOLVE_SETTINGS_GUARD=on) for themselves."""
 
     def setUp(self):
@@ -647,16 +605,6 @@ class TestSyncSettingsDrift(Base):
             r = self.run_it(dry_run=True)
         g.assert_not_called()
         self.assertEqual(r["settings_drift_rows"], [])
-
-    def test_the_cli_prints_the_drift_and_the_status_is_unchanged(self):
-        self.flip()
-        status, out, err = self.cli(dry_run=True)
-        self.assertEqual((status, "Settings:" in out), (0, False), err)
-        sha = out.split("plan_sha: ")[1].split()[0]
-        status, out, err = self.cli(plan_sha=sha)
-        self.assertEqual(status, 0, err)
-        self.assertIn("Settings:  stacked timeline: settings drift:", out)
-        self.assertIn("isAutoColorManage '0' -> '1' (at custom write)", out)
 
     @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
     def test_the_mcp_summary_and_journal_name_a_flip(self):
@@ -710,16 +658,6 @@ class TestSyncSettingsGuardOffByDefault(Base):
         g.assert_not_called()
         self.assertEqual((r["exit_status"], r["problems"], r["settings_drift_rows"]), (0, [], []))
         self.assertIsNone(r["built"]["settings_drift"])
-
-    def test_the_cli_prints_no_settings_rows(self):
-        self.flip()
-        status, out, err = self.cli(dry_run=True)
-        sha = out.split("plan_sha: ")[1].split()[0]
-        status, out, err = self.cli(plan_sha=sha)
-        self.assertEqual(status, 0, err)
-        self.assertNotIn("Settings:", out)
-        self.assertNotIn("isAutoColorManage", out)
-        self.assertIn("A001 sync [auto]", out)
 
     @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
     def test_the_mcp_summary_and_journal_are_silent(self):

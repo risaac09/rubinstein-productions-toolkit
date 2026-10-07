@@ -1,21 +1,19 @@
 """
-Offline unit tests for rpresolve.api and the per-item apply-lut / apply-drx
-logic in resolve_workflow.py. Resolve is never imported: every project,
-timeline, item, and node graph here is a small fake object.
+Offline unit tests for rpresolve.api and the per-item LUT and .drx logic in
+rpresolve.grade. Resolve is never imported: every project, timeline, item,
+and node graph here is a small fake object.
 
 stdlib unittest only.
 
 Run: python3 -m unittest discover production/tests -v
 """
 
-import io
 import os
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,12 +21,12 @@ os.environ["RPRESOLVE_LOCK"] = os.path.join(  # a private lock: never the live o
     tempfile.gettempdir(), f"rpresolve-test-{os.getpid()}.lock")
 
 from rpresolve import api
-from resolve_workflow import (
+from rpresolve.grade import (
+    _path_under,
     apply_drx_to_item,
     apply_drx_to_items,
     apply_lut_to_item,
     lut_paths_match,
-    report_item_results,
 )
 
 
@@ -357,7 +355,6 @@ class TestLutPathsMatch(unittest.TestCase):
         link = os.path.join(self.root, "Look.cube")
         os.symlink(outside, link)
         self.assertTrue(lut_paths_match(link, "Look.cube", [self.root]))
-        from resolve_workflow import _path_under
         self.assertTrue(_path_under(link, self.root, follow_links=False))
         self.assertFalse(_path_under(link, self.root))
 
@@ -453,97 +450,18 @@ class TestApplyDrx(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("empty", detail)
 
-    def test_items_report_counts_and_status(self):
+    def test_items_report_each_clip_by_name_with_its_own_status(self):
         good = FakeGraph(["a"]); good.drx_labels = ["x", "y"]
         bad = FakeGraph(["a"]); bad.drx_ok = False
         results = apply_drx_to_items([FakeItem("c1", good), FakeItem("c2", bad)], "/g/look.drx", 0)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            status = report_item_results(results, "Applied DRX grade to")
-        out = buf.getvalue()
-        self.assertEqual(status, 1)
-        self.assertIn("[ok] c1", out)
-        self.assertIn("[FAIL] c2", out)
-        self.assertIn("1/2 clips", out)
+        self.assertEqual([(name, ok) for name, ok, _ in results], [("c1", True), ("c2", False)])
+        self.assertIn("2 node(s)", results[0][2])
 
-    def test_all_ok_status_zero(self):
+    def test_all_ok_for_every_clip(self):
         g = FakeGraph(["a"]); g.drx_labels = ["x"]
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            status = report_item_results(apply_drx_to_items([FakeItem("c1", g)], "/g/l.drx", 2), "Applied")
-        self.assertEqual(status, 0)
-
-
-
-class TestCommandsEndToEnd(unittest.TestCase):
-    """cmd_apply_drx / cmd_apply_lut against a fake Resolve, to pin that the
-    commands go through the per-item Graph path and return a status."""
-
-    def _resolve_with(self, items):
-        timeline = FakeTimelineNoDRX()
-        timeline.GetItemListInTrack = lambda kind, idx: items
-        project = FakeProject("abc", "Sandbox")
-        project.current = timeline
-        project.refreshed = False
-        def refresh():
-            project.refreshed = True
-            return True
-        project.RefreshLUTList = refresh
-        resolve = FakeResolve()
-        resolve.GetProjectManager = lambda: FakePM(project)
-        return resolve, project
-
-    def test_apply_drx_command(self):
-        import argparse
-        from unittest import mock
-        import resolve_workflow as rw
-        g = FakeGraph(["a"]); g.drx_labels = ["x", "y"]
-        resolve, _ = self._resolve_with([FakeItem("c1", g)])
-        with tempfile.NamedTemporaryFile(suffix=".drx") as drx:
-            args = argparse.Namespace(drx_file=drx.name, track=1, mode=2, camera=None, config=None)
-            buf = io.StringIO()
-            with mock.patch.object(rw, "get_resolve", return_value=resolve), redirect_stdout(buf):
-                status = rw.cmd_apply_drx(args)
-            self.assertEqual(status, 0, buf.getvalue())
-            self.assertEqual(g.calls, [("ApplyGradeFromDRX", str(Path(drx.name).resolve()), 2)])
-
-    def test_apply_lut_command_reports_mismatch(self):
-        import argparse
-        from unittest import mock
-        import resolve_workflow as rw
-        g = FakeGraph(["CST"], lut_report="Other/Wrong.cube")
-        resolve, project = self._resolve_with([FakeItem("c1", g)])
-        with tempfile.NamedTemporaryFile(suffix=".cube") as lut:
-            args = argparse.Namespace(lut_file=lut.name, track=1, node=1, camera=None, config=None)
-            buf = io.StringIO()
-            with mock.patch.object(rw, "get_resolve", return_value=resolve), redirect_stdout(buf):
-                status = rw.cmd_apply_lut(args)
-        self.assertEqual(status, 1)
-        self.assertTrue(project.refreshed)
-        self.assertIn("[FAIL] c1", buf.getvalue())
-
-    def test_apply_lut_sends_symlink_path_not_target(self):
-        import argparse
-        from unittest import mock
-        import resolve_workflow as rw
-        with tempfile.TemporaryDirectory() as tmp:
-            root = os.path.join(tmp, "LUT")
-            os.makedirs(root)
-            target = os.path.join(tmp, "repo", "Look.cube")
-            os.makedirs(os.path.dirname(target))
-            Path(target).write_text("LUT_3D_SIZE 2\n")
-            link = os.path.join(root, "Look.cube")
-            os.symlink(target, link)
-            g = FakeGraph(["CST"], lut_report="Look.cube")
-            resolve, _ = self._resolve_with([FakeItem("c1", g)])
-            args = argparse.Namespace(lut_file=link, track=1, node=1, camera=None, config=None)
-            buf = io.StringIO()
-            with mock.patch.object(rw, "get_resolve", return_value=resolve), \
-                    mock.patch.object(rw.rpapi, "DEFAULT_LUT_ROOTS", (root,)), redirect_stdout(buf):
-                status = rw.cmd_apply_lut(args)
-            self.assertEqual(status, 0, buf.getvalue())
-            self.assertEqual(g.calls, [("SetLUT", 1, os.path.abspath(link))])
-            self.assertNotIn("WARNING", buf.getvalue())
+        results = apply_drx_to_items([FakeItem("c1", g)], "/g/l.drx", 2)
+        self.assertEqual([(name, ok) for name, ok, _ in results], [("c1", True)])
+        self.assertEqual(g.calls, [("ApplyGradeFromDRX", "/g/l.drx", 2)])
 
 
 PRODUCTION = Path(__file__).resolve().parent.parent

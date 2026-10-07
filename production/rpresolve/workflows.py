@@ -1,7 +1,8 @@
 """
-rpresolve.workflows: the orchestration behind the CLI's detect, ingest,
-survey and cut, as functions that return a dict and raise typed errors.
-The CLI and the MCP server call these, so both enforce the same gates.
+rpresolve.workflows: the orchestration behind the MCP tools (and the
+script's offline detect and survey), as functions that return a dict and
+raise typed errors. The MCP server calls the write paths, so every write
+enforces the same gates.
 
 Nothing here prints or exits the interpreter. Preconditions that fail raise
 Refused (a ResolveAPIError); Resolve problems raise api's own errors;

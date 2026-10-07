@@ -418,22 +418,6 @@ class TestLoud(Base):
         self.assertNotIn("FAILED", r["summary"])
 
 
-class TestCLI(unittest.TestCase):
-    def test_no_9x16_with_aspects_is_one_error_line_before_any_work(self):
-        import argparse
-        import io
-        from contextlib import redirect_stderr
-        import resolve_workflow as rw
-        args = argparse.Namespace(manifest="/nonexistent/m.json", only=None, no_audio=True,
-                                  force=False, no_9x16=True, aspects=["1x1"], project="P",
-                                  prefix="T")
-        err = io.StringIO()
-        with redirect_stderr(err):
-            self.assertEqual(rw.cmd_cut(args), 1)
-        self.assertEqual(err.getvalue(), "ERROR: --no-9x16 and --aspects each choose the "
-                         "versions; give one of them.\n")
-
-
 class TestItemPlans(unittest.TestCase):
     CLIP = {"name": "c", "spans": [{"in": 0, "out": 1}], "reframe": {"face_x": 270}}
 

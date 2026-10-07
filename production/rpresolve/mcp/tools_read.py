@@ -88,7 +88,7 @@ def resolve_status(args, ctx):
                           (f"project '{p['name']}' open ({p['timeline_count']} timelines)"
                            if p.get("open") else "no project open"))
     elif r.get("busy"):
-        out["summary"] = "Resolve is busy with another session or the CLI"
+        out["summary"] = "Resolve is busy with another session"
     else:
         out["summary"] = "Resolve is not connected: " + r.get("error", "")
     if out["server"].get("dirty"):

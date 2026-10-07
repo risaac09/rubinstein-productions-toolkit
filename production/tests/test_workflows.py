@@ -1,7 +1,8 @@
 """
-Offline tests for rpresolve.workflows (the orchestration the CLI and the
-MCP server share) and api.ResolveLock. Fake Resolve objects and synthetic
-files only.
+Offline tests for rpresolve.workflows (the orchestration behind the MCP
+server's tools; resolve_workflow.py calls only its survey and detect
+functions) and api.ResolveLock. Fake Resolve objects and synthetic files
+only.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """

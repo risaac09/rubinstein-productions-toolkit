@@ -141,6 +141,25 @@ class TestApplyGrade(Base):
         self.assertEqual(self.origin.tracks["video"][0][0].graph.nodes, [("", "", None)])
         self.assertEqual(self.ui(), ("cut", self.here))
 
+    def test_a_lut_symlink_is_sent_by_its_own_path_and_the_lut_list_is_rescanned(self):
+        # A link in Resolve's LUT folder to a file kept elsewhere: Resolve scanned the
+        # link's path, so SetLUT must get that path and not the link's target.
+        root = os.path.join(self.dir, "LUT")
+        os.makedirs(root)
+        target = os.path.join(self.dir, "repo", "Look.cube")
+        os.makedirs(os.path.dirname(target))
+        open(target, "w").close()
+        link = os.path.join(root, "Look.cube")
+        os.symlink(target, link)
+        auto = self.make_auto()
+        rf.CALLS.clear()
+        dry, real = run_twice("apply_grade", {"timeline": "Edit [auto]", "lut": {"path": link}},
+                              self.resolve)
+        self.assertEqual([r["ok"] for r in real["results"]], [True, True])
+        self.assertEqual(auto.tracks["video"][0][0].graph.nodes[0][1], link)
+        self.assertEqual(auto.tracks["video"][0][1].graph.nodes[0][1], link)
+        self.assertIn("RefreshLUTList", [c[1] for c in rf.CALLS])
+
     def test_existing_grades_need_overwrite(self):
         auto = self.make_auto()
         auto.tracks["video"][0][0].graph.nodes[:] = [("Hand", "", ["Contrast"])]

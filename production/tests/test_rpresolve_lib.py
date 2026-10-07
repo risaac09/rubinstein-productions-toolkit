@@ -1,7 +1,7 @@
 """
-Offline tests for the library modules the CLI and the MCP server share:
-rpresolve.config, paths, grade, render, and the api additions. Fake Resolve
-objects only.
+Offline tests for library modules the MCP server uses: rpresolve.config,
+paths, grade, render, and the api additions (config and paths also serve the
+offline commands of resolve_workflow.py). Fake Resolve objects only.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
