@@ -22,7 +22,7 @@ from the keys the build writes on purpose.
 The rules:
     - Off by default. The guard reads only when RPRESOLVE_SETTINGS_GUARD is
       on, 1, yes or true (any case, spaces ignored), set in the environment of
-      the process that runs the build (the MCP server's, or the CLI's). Unset,
+      the process that runs the build (the MCP server's). Unset,
       empty and any other value, off included, leave it off: a Watch then
       makes no reads, report() is None and nothing is warned. The reason is
       that Timeline.GetSettings() and GetSetting() with no key have not been

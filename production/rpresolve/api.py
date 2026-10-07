@@ -8,10 +8,9 @@ Safety rules for every script built on this module:
        ProjectPin at start and call check() before each batch of writes;
        Isaac edits live, so a script must stop if he switched projects.
     2. Never call ProjectManager.LoadProject or CreateProject. Opening or
-       creating projects is a human decision made in the Resolve UI. The
-       one exception is resolve_workflow.py new-project, which Isaac runs
-       by hand to create a named project; nothing automated may call it
-       or copy its CreateProject call.
+       creating projects is a human decision made in the Resolve UI, with
+       no exception: a test fails the build if any non-test file under
+       production/ names either call.
     3. UI state writes (page, current timeline, playhead) happen only in
        the sandbox project or with an explicit opt-in flag, and are wrapped
        in UISnapshot so the UI is put back afterwards.
@@ -91,7 +90,7 @@ def connect():
             raise ResolveUnavailable(
                 "Cannot import DaVinciResolveScript. Make sure DaVinci Resolve "
                 "is running and the scripting environment variables are set "
-                "(see resolve_workflow.py --help)."
+                "(see production/resolve-mcp.md, Register it)."
             )
 
     resolve = dvr.scriptapp("Resolve")
@@ -206,9 +205,9 @@ class ResolveBusy(ResolveAPIError):
 
 class ResolveLock:
     """Cross-process lock around Resolve work. Every Claude Code session
-    starts its own MCP server, and the CLI can run beside them; the lock
-    keeps two of them from interleaving writes (or UI snapshots) in the one
-    open project. An fcntl.flock on RPRESOLVE_LOCK (default
+    starts its own MCP server; the lock keeps two of them from
+    interleaving writes (or UI snapshots) in the one open project. An
+    fcntl.flock on RPRESOLVE_LOCK (default
     ~/Library/Caches/rpresolve/resolve.lock), released when the holder
     exits even if it crashes. Waits up to `timeout` seconds, then raises
     ResolveBusy."""
@@ -233,7 +232,7 @@ class ResolveLock:
                     raise
                 if time.monotonic() >= deadline:
                     self._close()
-                    raise ResolveBusy("Another Claude session or the CLI is using Resolve; "
+                    raise ResolveBusy("Another Claude session is using Resolve; "
                                       f"waited {self.timeout:.0f}s. Try again when it finishes.")
                 time.sleep(0.2)
 
