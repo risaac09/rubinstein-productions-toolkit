@@ -8,7 +8,7 @@ hand with Resolve open on the sandbox; CI never runs it.
         --timeline "<an existing timeline to copy>" \\
         --lut "<a .cube, absolute or relative to Resolve's LUT folder>" \\
         [--drx <.drx with its .json label manifest beside it>] \\
-        [--render-dir <existing folder outside any git repo>] \\
+        [--render-dir <existing folder outside any git repo; a client_master job is queued for it>] \\
         [--ingest <camera file not yet in the pool>] \\
         [--manifest <cut manifest> --clip <clip name>] [--captions]
 
@@ -18,8 +18,9 @@ grade fingerprints), every pool clip's properties, the UI, the render
 queue and the Deliver format; then drives the server over stdio through
 every tool, dry run then real run for the writes, plus the refusals
 (a non-[auto] grade, the wrong project, a stale plan_sha). Last, it deletes
-the one render job it queued and checks that nothing that existed before
-changed and that the UI is where it was. New timelines are named
+the one render job it queued (and the empty folder that job's destination
+made) and checks that nothing that existed before changed and that the UI
+is where it was. New timelines are named
 "MCP live <time> ... [auto]" and stay in the sandbox. With --captions it
 also runs create_captions on the copy (Resolve transcribes it, about as
 long as the timeline runs); the copy must have audio and no subtitle items.
@@ -156,7 +157,7 @@ def main():
     dup_name = f"MCP live {stamp} [auto]"
     P = {"project": a.project, "project_id": a.project_id}
     c = Client()
-    job_id = None
+    job_id = made_folder = None
     try:
         print("Reads")
         err, st = c.tool("resolve_status")
@@ -193,11 +194,14 @@ def main():
         elif a.drx:
             print("  skip  .drx: the timeline has one item on V1 (the LUT took it)")
         if a.render_dir:
-            err, r = c.both("queue_render", **P, timeline=dup_name, preset="master",
-                            output_dir=a.render_dir, custom_name=f"mcp_live_{stamp}")
+            err, r = c.both("queue_render", **P, timeline=dup_name, destination="client_master",
+                            target_dir=a.render_dir,
+                            name={"client": "McpLive", "slug": f"live-{stamp}"})
             job_id = (r.get("job") or {}).get("JobId")
+            made_folder = r.get("made_folder")
             check(not err and job_id and r["readback_problems"] == [], "render queued and read back")
-            check(not r.get("warnings"), "Deliver format put back without warnings")
+            restore = [w for w in r.get("warnings", []) if "back to" in w or "stays" in w]
+            check(not restore, "Deliver format and render mode put back without warnings")
         if a.ingest:
             err, r = c.both("ingest", **P, paths=[a.ingest])
             check(not err and r["exit_status"] in (0, 2), "ingest ran")
@@ -219,6 +223,12 @@ def main():
                 check(not rendering, "no render was started")
                 if not rendering:
                     check(bool(project.DeleteRenderJob(job_id)), "the test render job was deleted")
+            if made_folder:
+                # The folder the destination made for the job; empty, as nothing rendered.
+                try:
+                    os.rmdir(made_folder)
+                except OSError:
+                    pass
     check(code == 0, "the server exited cleanly")
 
     with api.ResolveLock():

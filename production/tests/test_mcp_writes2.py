@@ -3,7 +3,7 @@ Tests for duplicate_timeline_auto, apply_grade and queue_render
 (rpresolve.workflows and rpresolve.mcp.tools_write) against the shared
 Resolve fakes: dry run then plan_sha, the [auto]-only and default-graph
 guards, the grade-leak check, UI restore, and that a render is queued
-but never started.
+for a delivery destination, the only way to queue one, but never started.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
@@ -21,9 +21,10 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import paths, workflows  # noqa: E402
+from rpresolve import workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
+from test_mcp import Harness, init  # noqa: E402
 
 REG = server.build_registry()
 P = "RP Automation Sandbox"
@@ -231,13 +232,21 @@ class TestApplyGrade(Base):
 
 
 class TestQueueRender(Base):
+    """queue_render queues for a delivery destination and nothing else.
+    client_master is the one destination that takes the timeline's own size,
+    so these timelines need no shape of their own."""
+
     def args(self, **kw):
-        return {"timeline": "Edit", "preset": "master", "output_dir": self.dir, **kw}
+        return {"timeline": "Edit", "destination": "client_master",
+                "name": {"client": "Acme", "slug": "edit"}, "target_dir": self.dir, **kw}
+
+    def out(self, slug="edit"):
+        return os.path.join(self.dir, "client_master", f"Acme_{slug}_master.mov")
 
     def test_queued_never_started_and_ui_and_format_restored(self):
         self.project.fmt = {"format": "mp4", "codec": "H264"}
         dry, real = run_twice("queue_render", self.args(), self.resolve)
-        self.assertEqual(dry["output"], os.path.join(self.dir, "Edit_master.mov"))
+        self.assertEqual(dry["output"], self.out())
         self.assertIn("TargetDir", dry["deliver_changed"])
         self.assertEqual(real["job"]["TimelineName"], "Edit")
         self.assertEqual(real["job"]["VideoFormat"], "mov")
@@ -247,6 +256,17 @@ class TestQueueRender(Base):
         self.assertEqual(self.ui(), ("cut", self.here))
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
         self.assertEqual(len(self.project.jobs), 1)
+        self.assertEqual(self.journal(), ["started", "finished"])
+
+    def test_a_dry_run_queues_and_journals_nothing(self):
+        dry = call("queue_render", self.args(), self.resolve)
+        self.assertEqual(len(dry["plan_sha"]), 64)
+        self.assertEqual((self.project.jobs, self.journal()), ([], []))
+        with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
+            call("queue_render", self.args(dry_run=False), self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            call("queue_render", self.args(dry_run=False, plan_sha="0" * 64), self.resolve)
+        self.assertEqual(self.project.jobs, [])
 
     def test_unset_deliver_format_is_reported(self):
         self.project.fmt = {"format": "unknown", "codec": ""}
@@ -254,25 +274,89 @@ class TestQueueRender(Base):
         self.assertTrue(any("no format set" in w for w in real["warnings"]))
 
     def test_refusals(self):
-        open(os.path.join(self.dir, "Edit_master.mov"), "w").close()
+        os.makedirs(os.path.dirname(self.out()))
+        open(self.out(), "w").close()
         with self.assertRaisesRegex(workflows.Refused, "already exists"):
             call("queue_render", self.args(), self.resolve)
         self.project.rendering = True
         with self.assertRaisesRegex(workflows.Refused, "render is running"):
-            call("queue_render", self.args(custom_name="other"), self.resolve)
+            call("queue_render", self.args(name={"client": "Acme", "slug": "other"}),
+                 self.resolve)
         self.project.rendering = False
         repo = os.path.join(self.dir, "repo")
         os.makedirs(os.path.join(repo, ".git"))
-        with self.assertRaises(paths.OutputRefused):
-            call("queue_render", self.args(output_dir=repo), self.resolve)
-        with self.assertRaisesRegex(workflows.Refused, "not an existing folder"):
-            call("queue_render", self.args(output_dir=os.path.join(self.dir, "nope")),
+        with self.assertRaisesRegex(workflows.Refused, "git working tree"):
+            call("queue_render", self.args(target_dir=repo), self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "does not exist"):
+            call("queue_render", self.args(target_dir=os.path.join(self.dir, "nope")),
                  self.resolve)
         with self.assertRaises(AssertionError):
-            call("queue_render", self.args(custom_name="../escape"), self.resolve)
-        with self.assertRaises(AssertionError):
-            call("queue_render", self.args(preset="nope"), self.resolve)
+            call("queue_render", self.args(name={"client": "Acme", "slug": "../escape"}),
+                 self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "unknown destination 'nope'"):
+            call("queue_render", self.args(destination="nope"), self.resolve)
         self.assertEqual(self.project.jobs, [])
+
+
+class TestQueueRenderIsDestinationOnly(Base):
+    """What a client of the server sees: no preset in the schema, and a call
+    that still passes one is told to pass a destination."""
+
+    def setUp(self):
+        super().setUp()
+        self.h = Harness(REG)
+        self.addCleanup(self.close)
+        init(self.h)
+
+    def close(self):
+        try:
+            self.h.close()
+        except OSError:
+            pass
+
+    def call_tool(self, arguments):
+        self.h.send({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                     "params": {"name": "queue_render",
+                                "arguments": {"project": P, "timeline": "Edit", **arguments}}})
+        return self.h.recv()["result"]
+
+    def test_the_listed_tool_has_no_preset(self):
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {t["name"]: t for t in self.h.recv()["result"]["tools"]}
+        self.assertEqual(len(tools), 23)  # no tool was added
+        tool = tools["queue_render"]
+        props = tool["inputSchema"]["properties"]
+        self.assertEqual(sorted(props), ["destination", "dry_run", "name", "plan_sha", "project",
+                                         "project_id", "target_dir", "timeline"])
+        self.assertEqual(tool["inputSchema"]["required"], ["project", "timeline", "destination"])
+        self.assertNotIn("enum", props["destination"])
+        self.assertNotIn("preset", json.dumps(tool).lower())
+
+    def test_a_call_that_still_passes_a_preset_is_told_to_pass_a_destination(self):
+        r = self.call_tool({"preset": "master", "output_dir": self.dir, "custom_name": "cut"})
+        self.assertTrue(r["isError"])
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        for name in ("preset", "output_dir", "custom_name"):
+            hit = [e for e in errors if f"'{name}' was removed" in e]
+            self.assertEqual(len(hit), 1, errors)
+            self.assertIn("'destination'", hit[0])
+        self.assertTrue(any("missing required 'destination'" in e for e in errors), errors)
+        self.assertFalse(any("unknown property" in e for e in errors), errors)
+
+    def test_a_preset_beside_a_destination_is_refused_too(self):
+        r = self.call_tool({"destination": "client_master", "name": {"client": "Acme",
+                            "slug": "edit"}, "target_dir": self.dir, "preset": "master"})
+        self.assertTrue(r["isError"])
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("'preset' was removed", errors[0])
+        self.assertIn("'destination'", errors[0])
+
+    def test_nothing_reaches_resolve_or_the_journal(self):
+        self.call_tool({"preset": "master", "output_dir": self.dir})
+        self.call_tool({"preset": "master", "output_dir": self.dir, "dry_run": False,
+                        "plan_sha": "0" * 64})
+        self.assertEqual((self.project.jobs, self.journal(), rf.CALLS), ([], [], []))
 
 
 if __name__ == "__main__":
