@@ -104,65 +104,22 @@ class TestGrade(unittest.TestCase):
         self.assertEqual(grade.item_version(remote)["type"], "remote")
 
 
-class FakeTimeline:
-    def GetName(self): return "Cut [auto]"
-
-
-class FakeRenderProject:
-    def __init__(self, codecs=None, queue_ok=True):
-        self.codecs = {"H.265 Main": "H265"} if codecs is None else codecs
-        self.queue_ok, self.format_codec, self.settings, self.jobs = queue_ok, {}, None, []
-
-    def GetCurrentTimeline(self): return FakeTimeline()
-    def GetRenderCodecs(self, fmt): return self.codecs
-    def SetCurrentRenderFormatAndCodec(self, fmt, codec):
-        self.format_codec = {"format": fmt, "codec": codec}
-        return True
-    def GetCurrentRenderFormatAndCodec(self): return self.format_codec
-    def SetRenderSettings(self, s): self.settings = s; return True
-    def AddRenderJob(self):
-        if not self.queue_ok:
-            return ""
-        jid = f"job-{len(self.jobs) + 1}"
-        self.jobs.append({"JobId": jid, "TargetDir": self.settings["TargetDir"],
-                          "OutputFilename": self.settings["CustomName"] + ".mp4"})
-        return jid
+class FakeQueue:
+    def __init__(self, jobs): self.jobs = jobs
     def GetRenderJobList(self): return list(self.jobs)
-    def GetRenderJobStatus(self, jid): return {"JobStatus": "Ready", "CompletionPercentage": 0}
-    def StartRendering(self, *a): raise AssertionError("rendering must never start")
+    def GetRenderJobStatus(self, jid):
+        return {"JobStatus": "Ready", "CompletionPercentage": 0} if jid == "job-1" else {}
 
 
 class TestRender(unittest.TestCase):
-    PRESETS = {"youtube": {"name": "YouTube 4K", "resolution": {"width": 3840, "height": 2160},
-                           "format": "mp4", "codec": "H265", "codec_fallbacks": [], "suffix": "_yt"}}
-
-    def test_queue_and_read_back(self):
-        p = FakeRenderProject()
-        with tempfile.TemporaryDirectory() as d:
-            r = render.queue_render_job(p, "youtube", d, self.PRESETS)
-            self.assertEqual(r["job_id"], "job-1")
-            self.assertIsNone(r["error"])
-            self.assertTrue(r["codec"]["matched"])
-            self.assertEqual(r["settings"]["CustomName"], "Cut [auto]_yt")
-            job, problems = render.render_job_readback(
-                p, "job-1", {"TargetDir": str(Path(d).resolve())})
-            self.assertEqual((job["JobId"], problems), ("job-1", []))
-            _, problems = render.render_job_readback(p, "job-1", {"TargetDir": "/elsewhere"})
-            self.assertTrue(problems)
-            p.jobs[0]["TargetDir"] += "/"      # Resolve's own trailing slash is the same folder
-            p.jobs[0]["FormatWidth"] = "3840"  # and a number as text is the same number
-            _, problems = render.render_job_readback(
-                p, "job-1", {"TargetDir": str(Path(d).resolve()), "FormatWidth": 3840})
-            self.assertEqual(problems, [])
-            self.assertEqual(render.render_job_readback(p, "nope")[0], None)
-            self.assertEqual(render.list_jobs(p)[0]["JobStatus"], "Ready")
-
-    def test_errors_are_values_not_exceptions(self):
-        self.assertIn("Unknown preset", render.queue_render_job(FakeRenderProject(), "nope", "/tmp", self.PRESETS)["error"])
-        self.assertIn("No codecs", render.queue_render_job(FakeRenderProject(codecs={}), "youtube", "/tmp", self.PRESETS)["error"])
-        r = render.queue_render_job(FakeRenderProject(queue_ok=False), "youtube", "/tmp", self.PRESETS)
-        self.assertIsNone(r["job_id"])
-        self.assertIn("Failed to queue", r["error"])
+    def test_list_jobs_merges_each_jobs_status_and_leaves_the_queue_alone(self):
+        jobs = [{"JobId": "job-1", "TargetDir": "/out"}, {"JobId": "job-2"}, {"TargetDir": "/x"}]
+        rows = render.list_jobs(FakeQueue(jobs))
+        self.assertEqual([r.get("JobId") for r in rows], ["job-1", "job-2", None])
+        self.assertEqual((rows[0]["JobStatus"], rows[0]["CompletionPercentage"]), ("Ready", 0))
+        self.assertEqual((rows[1]["JobStatus"], rows[1]["Error"]), (None, None))
+        self.assertEqual(rows[2]["JobStatus"], None)
+        self.assertNotIn("JobStatus", jobs[0])
 
 
 class FakePM:
@@ -200,15 +157,23 @@ class TestApiAdditions(unittest.TestCase):
 
 class TestConfigLocale(unittest.TestCase):
     def test_config_reads_as_utf8_under_the_c_locale(self):
-        """Connected to Resolve, the process runs in the C locale; the
-        config's non-ASCII note must still load (the MCP queue_render bug)."""
+        """Connected to Resolve, the process runs in the C locale, where a
+        default open() decodes ASCII. A config with a non-ASCII character in
+        it must still load (the MCP queue_render bug, found with a note in
+        the repo config that has since gone, so this writes its own)."""
         import subprocess
-        env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
-        code = ("import sys; sys.path.insert(0, %r); from rpresolve.config import load_config; "
-                "print('\\u2014' in load_config(warn=print)['render_presets']['story']['note'])"
-                % str(Path(__file__).resolve().parent.parent))
-        out = subprocess.run([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+        with tempfile.TemporaryDirectory() as d:
+            overlay = os.path.join(d, "overlay.json")
+            with open(overlay, "w", encoding="utf-8") as f:
+                f.write('{"note": "resize only \u2014 no reframe"}')
+            env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONUTF8="0",
+                       PYTHONCOERCECLOCALE="0")
+            code = ("import sys; sys.path.insert(0, %r); from rpresolve.config import "
+                    "load_config; cfg = load_config(%r, warn=print, strict=True); "
+                    "print('\\u2014' in cfg['note'])"
+                    % (str(Path(__file__).resolve().parent.parent), overlay))
+            out = subprocess.run([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
         self.assertEqual(out.returncode, 0, out.stderr.decode()[-300:])
         self.assertEqual(out.stdout.strip(), b"True")
 

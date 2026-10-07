@@ -1,6 +1,6 @@
 """
-rpresolve.config: resolve-config.json (camera bins, clip colours, render
-presets, delivery destinations) with built-in defaults for any missing key.
+rpresolve.config: resolve-config.json (camera bins, clip colours, delivery
+destinations) with built-in defaults for any missing key.
 Stdlib only.
 
 Most top-level keys in a config file replace the default outright. The two
@@ -64,29 +64,6 @@ DEFAULT_CONFIG = {
     "default_resolution": {"width": 3840, "height": 2160},
     "default_framerate": "23.976",
     "color_science_mode": "davinciYRGBColorManagedv2",
-    "render_presets": {
-        "youtube": {
-            "name": "YouTube 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H265", "codec_fallbacks": ["HEVC", "H.265"],
-            "suffix": "_youtube",
-        },
-        "linkedin": {
-            "name": "LinkedIn 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_linkedin",
-        },
-        "master": {
-            "name": "Master ProRes", "resolution": {"width": 3840, "height": 2160},
-            "format": "mov", "codec": "ProRes422HQ",
-            "codec_fallbacks": ["Apple ProRes 422 HQ"], "suffix": "_master",
-        },
-        "story": {
-            "name": "Instagram Story", "resolution": {"width": 1080, "height": 1920},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_story",
-            "note": "Resize only, no automatic reframe. Set per-clip Pan/Zoom before rendering vertical.",
-        },
-    },
     # House delivery rules every destination starts from (rpresolve.deliver).
     # A destination's own "loudness" and "color" override these field by field.
     "deliver": {

@@ -73,7 +73,7 @@ writes.
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
-| `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
+| `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
@@ -155,8 +155,11 @@ tree and never overwrites an `.srt`.
   queued in Single clip mode, read back first, and the mode is put back
   after; the result also lists the render settings the job takes from the
   Deliver page as it stands (`carried_over`).
-- **Deliverables by destination.** With `destination`, `name` and
-  `target_dir` in place of `preset` and `output_dir`, `queue_render` names
+- **Deliverables by destination.** `queue_render` takes a `destination`,
+  with `name` and `target_dir`, and nothing else: the render presets, with
+  their `preset`, `output_dir` and `custom_name` arguments, are gone, and a
+  call that still passes one is refused before it runs, with a message that
+  says to give a `destination`. It names
   the file by the house rule and also refuses when a fixed-size
   destination gets a timeline of another shape (a 9:16 destination wants
   the 9:16 copy), when the folder sits under
@@ -234,7 +237,7 @@ use instead (the table below says the same), without connecting to Resolve.
 | `import-media` | `ingest`: media goes under camera bins in `parent` (default `Source`) and each clip's Input Color Space and Data Level are tagged from `detect`. There is no custom bin and no clip colour; `timeline_items` shows each item's input colour space. |
 | `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync` and `duplicate_timeline_auto` make ` [auto]` timelines. |
 | `add-subtitles`, `auto-subtitle`, `captions` | `create_captions` on an ` [auto]` timeline. An `.srt` cannot be placed by script on Resolve 21: use File > Import > Subtitle by hand. |
-| `render`, `render-all`, `deliver-queue` | `queue_render`: with `preset` for a preset in `resolve-config.json`, or with `destination` for a delivery destination under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per preset. |
+| `render`, `render-all`, `deliver-queue` | `queue_render` with a `destination`, a delivery destination in `resolve-config.json`, under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per destination. The four render presets `render` and `render-all` took (`youtube`, `linkedin`, `master`, `story`) no longer exist; the Deliver section of `resolve-template-spec.md` lists the destinations and their frame sizes. |
 | `clear-queue` | No tool. Remove jobs on the Deliver page; no tool deletes anything. |
 | `apply-lut`, `apply-drx` | `apply_grade` on an ` [auto]` timeline. A `.drx` needs a label manifest beside it, a hand-written `<name>.json` holding `{"num_nodes": 3, "labels": ["CST IN", "", "CST OUT"]}`: the node count and the node labels the graph should show after the apply, so the result can be read back (either key may be left out). The `--camera` filter by clip colour is gone; choose items by number with `items` (`timeline_items` lists them). |
 | `open-page` | No tool. Click the page tab in Resolve. |
@@ -360,9 +363,9 @@ choose the file.
   `rpresolve.api.exit_clean` (flush both streams, then `os._exit`).
 - Subtitle styling (font, colour, position) has no scripting entry point. It
   stays a manual Edit-page step.
-- The `story` vertical preset resizes the canvas only; it does not reframe
-  subjects. `reframe_plan` plans a crop per span and `cut` applies it to the
-  9:16 and 1:1 versions (Zoom, Pan and Tilt, each read back).
+- Queueing a render never reframes. A 9:16 or 1:1 destination refuses a
+  timeline of another shape. `reframe_plan` plans a crop per span and `cut`
+  applies it to the 9:16 and 1:1 versions (Zoom, Pan and Tilt, each read back).
 
 ## Check it against a live Resolve
 

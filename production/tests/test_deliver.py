@@ -179,6 +179,14 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(repo[key], rpconfig.DEFAULT_CONFIG[key], key)
         self.assertNotIn("/Volumes", json.dumps(repo))
 
+    def test_there_are_no_render_presets_in_the_defaults_or_the_repo_config(self):
+        with open(PRODUCTION / "resolve-config.json", encoding="utf-8") as f:
+            repo = json.load(f)
+        self.assertNotIn("render_presets", rpconfig.DEFAULT_CONFIG)
+        self.assertNotIn("render_presets", repo)
+        self.assertNotIn("render_presets", rpconfig.load_config("/nonexistent/config.json"))
+        self.assertNotIn("render_presets", rpconfig.load_config())
+
     def test_an_overlay_changes_one_field_and_keeps_the_rest(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = os.path.join(tmp, "overlay.json")
@@ -201,9 +209,8 @@ class TestConfig(unittest.TestCase):
         self.assertNotIn("linkedin_1x1", deliver.destination_keys(cfg))
         with self.assertRaisesRegex(deliver.DeliverError, "unknown destination 'linkedin_1x1'"):
             deliver.destination(cfg, "linkedin_1x1")
-        # render presets still replace as before
-        self.assertEqual(sorted(cfg["render_presets"]), ["linkedin", "master", "story",
-                                                         "youtube"])
+        # the render presets are gone: nothing in a loaded config brings them back
+        self.assertNotIn("render_presets", cfg)
 
     def test_a_named_overlay_that_cannot_be_read_is_an_error_when_strict(self):
         with tempfile.TemporaryDirectory() as tmp:
