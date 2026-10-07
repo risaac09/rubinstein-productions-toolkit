@@ -61,7 +61,7 @@ Tag each clip on import so you know which source node to apply.
 - **Font:** Inter 500
 - **Color:** White or Bone (#f2ece4) on semi-transparent dark bar
 - **Position:** Lower third, consistent
-- **Source:** Auto captions on the `[auto]` timeline (`captions`, see Deliver),
+- **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand
 
 ---
@@ -93,6 +93,8 @@ Tag each clip on import so you know which source node to apply.
 ```
 
 Separate source bins by camera so you can batch-apply the correct source conversion node.
+The MCP `ingest` tool makes the camera bins and a Review bin under `Source`; it does not
+create the other bins, which are made by hand.
 
 ---
 
@@ -128,14 +130,20 @@ and re-read against the MCP tools on 2026-10-07:
 
 | Bullet | Status |
 |---|---|
-| Auto-create project with bin structure | Not scripted. Create the project by hand and set its colour science to DaVinci YRGB Color Managed; `ingest` makes the camera bins. |
+| Auto-create project with bin structure | Not scripted. Create the project by hand and set its colour science to DaVinci YRGB Color Managed (Project Settings > Color Management; the menu path is from memory, not checked against a live Resolve). `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin under `parent` (default `Source`). It does not create the Audio, Selects, Timeline, Graphics and Exports tree in Project Bin Structure above; make those bins by hand if you want them. |
 | Auto-queue render presets | Done (`queue_render`, with `preset` or a delivery `destination`). It queues the job and never starts it. |
-| Auto-apply source conversion nodes by camera tag | Done in another shape: `ingest` tags each clip's Input Color Space from `detect`, and `apply_grade` puts a LUT on one node of an `[auto]` timeline's items, chosen by number. The clip-colour camera tag and its `--camera` filter went with the retired commands. |
+| Auto-apply source conversion nodes by camera tag | Changed, and only partly there. Nothing applies a node or LUT by camera tag now: the clip-colour camera tag and the `--camera` filter went with the retired commands. What exists is `ingest`, which tags each clip's Input Color Space from `detect`, and `apply_grade`, which puts a LUT on one node of the items of an `[auto]` timeline that you choose by item number (`timeline_items` lists them with their input colour space). Choosing the items that belong to one camera is a person's step. |
 | Auto-sort media into camera bins by metadata | Done (`ingest` bins by the camera `detect` reads from the file headers; a file it cannot classify goes to a Review bin). |
 | Auto-apply Low Contrast PowerGrade | Not done: no PowerGrade or gallery-still API call exists. `apply_grade` applies a hand-exported `.drx`, checked against a label manifest beside it. |
 | Subtitle import | Auto captions done (`create_captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so import an .srt by hand (File > Import > Subtitle). The retired `add-subtitles` command counted the items on every track before and after and exited 1 unless subtitle items alone grew. |
 | Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently; don't wait for it to get built. |
 | Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
+
+The menu paths named in this table (Project Settings > Color Management,
+File > Import > Subtitle) and in resolve-mcp.md's replacement table for the
+retired commands are written from memory. They were not checked against a live
+Resolve when the commands were retired, and a Resolve version may label them
+differently.
 
 Two other hard API limits worth knowing before you file a bug against the
 tools:
@@ -330,17 +338,17 @@ its versions.
 - **UNREFRAMED.** A version with a span that has neither, or an entry
   that `reframe-plan` left without a crop, is not built. The dry run lists
   it under `unreframed` and leaves it out of `would_create`; the real run
-  names it UNREFRAMED with the span and the reason, and exits 1. A 9:16 is
+  names it UNREFRAMED with the span and the reason, and its `exit_status` is 1. A 9:16 is
   never built quietly at Zoom 1.
 - **REFUSED.** An input scaling other than scaleToFit or scaleToCrop, or
   a V1 item of the 16:9 with its own `Scaling` (the Inspector's per-clip
   Crop, Fit, Fill or Stretch; the transform is computed for 0, use project
   settings): the version is not built. An item that does not report its
   `Scaling` is counted in a note and taken as 0. The dry run lists it under `refused` and leaves it
-  out of `would_create`; the real run names it REFUSED and exits 1.
+  out of `would_create`; the real run names it REFUSED and its `exit_status` is 1.
 - **BARS.** A version whose picture does not fill the frame (by the entry's
   picture area, else the whole source frame) is built, and its result
-  names each span ("the picture covers 1620 of 1920 rows"); exit 2.
+  names each span ("the picture covers 1620 of 1920 rows"); its `exit_status` is 2.
 - **LEFT BEHIND.** A version that fails after the duplicate (a write that
   does not read back, a different number of V1 items, a different input
   scaling) names the timeline it left behind in `left_behind`, in the
@@ -356,8 +364,8 @@ its versions.
   flag, the frame rate, the size), under the result's `settings_drift`, with
   the write each changed at. A 16:9 is compared with itself before its first
   write; a version with the 16:9 it was copied from. The timeline is built and
-  read back, so this is neither a failure nor `left_behind`, and the exit
-  status does not change. Nothing is set back. A timeline whose settings could
+  read back, so this is neither a failure nor `left_behind`, and the `exit_status`
+  does not change. Nothing is set back. A timeline whose settings could
   not be read says `unchecked` and why. If the key that changed is the input
   scaling, a version refused for it names this as the cause. A re-run skips a
   timeline that exists and does not read it, so the first run's result and
@@ -900,7 +908,7 @@ the real run with its `plan_sha`.
   items when a clip is due there is not placed onto.
 - **Drift:** the other clip is placed at the offset the drift line gives
   at the overlap's midpoint. When the rounding plus half the drift leaves
-  either end more than half a frame out, that is reported (exit 2), with
+  either end more than half a frame out, that is reported (`exit_status` 2), with
   the retime that would cancel the drift and where the retimed clip's
   first frame belongs. Nothing retimes the clip; that is a hand step.
 - **AutoSyncAudio** (`autosync`) runs only with `bin`:
@@ -913,7 +921,7 @@ the real run with its `plan_sha`.
   compared, and a second timeline, `<name> (AutoSyncAudio) [auto]`, holds
   the synced reference so its items show where Resolve put the other
   file. The verdict is `agrees` (within a frame of the measured offset),
-  `disagrees` (exit 1), or `unverifiable` (exit 2) when the other file is
+  `disagrees` (`exit_status` 1), or `unverifiable` (`exit_status` 2) when the other file is
   not an item of its own there.
 
 The result's `exit_status`: 0 built and read back (or planned, on a dry run);
