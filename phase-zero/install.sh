@@ -49,7 +49,10 @@
 #
 # PUBLIC_CONSUMERS is not a hand list. It is read at runtime from the private
 # stack-data repo registry (data/repos.json: visibility PUBLIC, not archived,
-# not gone), the same source and read order the pre-push privacy hook uses.
+# not gone, not a fork), the same source and read order the pre-push privacy
+# hook uses. Forks are excluded: they are other people's code, not ours to
+# deploy a kit into. The one hand-kept input is the short named list
+# PUBLIC_KIT_EXCLUDE below, for public repos deliberately left out.
 # A hand list here drifted: by 2026-10-01 it named a repo gone private and an
 # archived one, and missed five public repos. Without the registry or jq, the
 # roster-reading modes (--public --list, --public --all, --public --check
@@ -109,6 +112,14 @@ PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURI
 PUBLIC_CONSUMERS=""
 SD_ROOT="${SD_ROOT:-$HOME/stack-data}"
 
+# Public repos deliberately left out of the roster, space-separated. The
+# registry records facts about a repo (visibility, archived, fork, gone) and
+# has no field for "public, but outside the kit", so that decision is stated
+# here by name instead of being inferred from an unrelated field. Add a name
+# only on a decision, with the date; remove it when the decision changes.
+# ritc-brand: left out, decision 2026-10-07, for now.
+PUBLIC_KIT_EXCLUDE="ritc-brand"
+
 registry_fail() {
   echo "ERROR: cannot build the public-kit roster: $1" >&2
   echo "  The roster is read from stack-data's data/repos.json (SD_ROOT=$SD_ROOT)," >&2
@@ -131,11 +142,13 @@ load_public_consumers() {
     echo "WARNING: registry read from the stack-data working tree, not origin/main" >&2
   fi
   [ -n "$registry" ] || registry_fail "no data/repos.json at origin/main, main, or the working tree"
-  PUBLIC_CONSUMERS="$(printf '%s' "$registry" | jq -r '
-    (if type=="array" then . else .repos end)[]
-    | select(.visibility=="PUBLIC" and .isArchived==false and (.gone // false)==false)
+  PUBLIC_CONSUMERS="$(printf '%s' "$registry" | jq -r --arg excl "$PUBLIC_KIT_EXCLUDE" '
+    ($excl | split(" ")) as $out
+    | (if type=="array" then . else .repos end)[]
+    | select(.visibility=="PUBLIC" and .isArchived==false and .isFork==false
+        and (.gone // false)==false and (.name | IN($out[]) | not))
     | .name')" || registry_fail "data/repos.json did not parse"
-  [ -n "$PUBLIC_CONSUMERS" ] || registry_fail "the registry lists no active PUBLIC repos"
+  [ -n "$PUBLIC_CONSUMERS" ] || registry_fail "the registry lists no eligible PUBLIC repos (public, not archived, not gone, not a fork, not in PUBLIC_KIT_EXCLUDE)"
 }
 
 # Per-repo-type default for which LICENSE template a public-kit install

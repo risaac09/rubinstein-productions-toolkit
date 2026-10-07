@@ -59,8 +59,10 @@ here) never overlap.
 
 The `PUBLIC_CONSUMERS` roster is scoped to repos that are actually public,
 and `../phase-zero/install.sh` reads it at runtime from the private stack-data
-repo registry (`data/repos.json`: visibility PUBLIC, not archived, not gone)
-rather than from a hand list, which had drifted. Without the registry or jq,
+repo registry (`data/repos.json`: visibility PUBLIC, not archived, not gone,
+not a fork; forks are excluded) rather than from a hand list, which had
+drifted. A short named list, `PUBLIC_KIT_EXCLUDE` in the script, holds public
+repos deliberately left out. Without the registry or jq,
 `--public --list`, `--public --all` and `--public --check --all` exit 2.
 `--public --list` prints the current roster; `--public --check --all` names
 any registry repo with no local clone (`SKIP <name>: no clone`) and fails.
