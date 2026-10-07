@@ -278,7 +278,9 @@ def warnings(report):
 
 
 def lines(report):
-    """One line per changed key, for the CLI."""
+    """One line per changed key. Nothing outside the tests calls it since the
+    cut and sync commands of resolve_workflow.py were retired; the MCP summaries
+    use clause()."""
     if not report or report.get("state") != "drift":
         return []
     return [f"{_pair(r)} (at {r['at']})" for r in report["changed"]]
