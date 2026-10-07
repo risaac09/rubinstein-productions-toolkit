@@ -48,3 +48,35 @@ The sheet never names a person. The name field is Isaac's, from the
 roster, and it travels into `selects.json` for the delivery file names.
 
 Tests: `/usr/bin/python3 production/tests/test_rpstills_pure.py`.
+
+## Grading a stills session (RAW only for paid work)
+
+The look is a measured fit, not a guess. Paid deliverables are graded and
+rendered from the RAW files; the camera JPEG twins stay proxies.
+
+1. **Colour management.** Set the stills timeline's output colour space to
+   `sRGB` (`SetSetting("colorSpaceOutput", "sRGB")`, read it back). No output
+   transform node. An RW2's Input Color Space has no effect, and the raw
+   decode settings are in the Color page's Camera Raw panel, not the API.
+2. **Neutral render.** Render every selected frame from RAW with no grade, one
+   single-frame job per still (single clip mode, `MarkIn` = `MarkOut` = the
+   item's start frame).
+3. **Measure.** `rpstills.measure` samples skin in the face box and reports
+   CIELAB. Look at the session medians and spreads before choosing targets.
+4. **Fit.** `measure.fit_look` gives a first exposure and white balance guess
+   for the target skin colour. Then close the loop in Resolve: write the LUT
+   (`python3 -m rpstills look params.json out.cube`, put it under Resolve's
+   LUT folder, `RefreshLUTList()`), `SetLUT` on node 1 of each item, render a
+   spread subset, measure, and correct. Damp the white balance correction by
+   half; the first run oscillated without it. Use a new LUT file name for every
+   iteration so Resolve cannot serve a cached copy. Two iterations were enough.
+5. **Trims.** `look.trim_ev` gives a bounded per-shot exposure trim from the
+   neutral skin lightness; each distinct trim is one LUT variant.
+6. **Verify on every frame.** Compare skin lightness spread, hue and chroma
+   against the neutral render and look at the extremes.
+
+The scripting API cannot create nodes, so the look lives in node 1 as a LUT.
+Hand tweaks go in nodes 2 and up in the Color page, on top of it.
+
+`stills-looks/portrait-natural-v1.json` holds the first look with its fit and
+validation numbers. Refit for a new session; do not reuse the numbers.

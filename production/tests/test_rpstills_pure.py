@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpstills import cluster, crops, cull
+from rpstills import cluster, crops, cull, look, measure
 
 
 def row(i, t, faces=1, quality=0.5, eyes=0.3, sharp=100.0, phash="0" * 16, h=0.2, face_hash="0" * 16):
@@ -104,6 +104,70 @@ class CropsTest(unittest.TestCase):
 
     def test_frames_without_a_counted_face_get_no_crops(self):
         self.assertEqual(crops.plan_frame(self.frame(faces=[]), "none", self.CFG)["crops"], {})
+
+
+class LookTest(unittest.TestCase):
+    import numpy as np
+
+    def test_di_round_trip(self):
+        x = self.np.array([0.0, 0.001, 0.00262409, 0.01, 0.18, 1.0, 10.0, 80.0])
+        self.assertTrue(self.np.allclose(look.di_decode(look.di_encode(x)), x, atol=1e-9))
+
+    def test_default_look_is_the_identity(self):
+        rgb = self.np.random.RandomState(1).rand(500, 3)
+        self.assertTrue(self.np.allclose(look.apply(rgb, {}), rgb, atol=1e-9))
+
+    def test_exposure_plus_one_stop_doubles_linear(self):
+        grey = look.di_encode(self.np.array([0.18, 0.18, 0.18]))
+        out = look.di_decode(look.apply(grey, {"exposure_ev": 1.0}))
+        self.assertTrue(self.np.allclose(out, 0.36, atol=1e-6))
+
+    def test_shoulder_is_identity_below_the_knee_and_never_exceeds_one(self):
+        x = self.np.linspace(0, 40, 4001)
+        y = look.shoulder(x, 0.65)
+        self.assertTrue(self.np.allclose(y[x <= 0.65], x[x <= 0.65]))
+        self.assertTrue(y.max() < 1.0 + 1e-9)
+        self.assertTrue(self.np.all(self.np.diff(y) >= -1e-12))
+
+    def test_trim_ev_is_zero_at_the_median_signed_clamped_and_snapped(self):
+        self.assertEqual(look.trim_ev(38.0, 38.0), 0.0)
+        self.assertGreater(look.trim_ev(30.0, 38.0), 0.0)      # darker than the median gets lifted
+        self.assertLess(look.trim_ev(46.0, 38.0), 0.0)         # brighter gets pulled down
+        self.assertEqual(look.trim_ev(5.0, 60.0), 0.6)         # clamped
+        v = look.trim_ev(33.0, 38.0)
+        self.assertAlmostEqual(v / 0.2, round(v / 0.2), places=6)  # snapped to the step
+
+    def test_cube_has_the_right_size_and_red_varies_fastest(self):
+        text = look.cube_text({}, size=5)
+        lines = text.strip().splitlines()
+        self.assertIn("LUT_3D_SIZE 5", lines)
+        data = [l for l in lines if l and l[0].isdigit()]
+        self.assertEqual(len(data), 125)
+        self.assertAlmostEqual(float(data[1].split()[0]), 0.25, places=5)  # second entry: red = 0.25
+
+
+class MeasureTest(unittest.TestCase):
+    def test_lab_of_white_and_black(self):
+        w = measure.lab([255, 255, 255]); b = measure.lab([0, 0, 0])
+        self.assertAlmostEqual(w[0], 100.0, places=1); self.assertAlmostEqual(w[1], 0.0, delta=0.2)
+        self.assertAlmostEqual(b[0], 0.0, places=1)
+
+    def test_fit_look_recovers_a_known_move(self):
+        import numpy as np
+        start = np.array([100.0, 78.0, 74.0])
+        lin = measure.srgb_to_linear(start) * (2.0 ** 0.8) * np.array([1.12, 1.0, 0.86])
+        enc = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * lin ** (1 / 2.4) - 0.055) * 255.0
+        ev, wb, resid = measure.fit_look(start, measure.lab(enc))
+        self.assertAlmostEqual(ev, 0.8, delta=0.08)
+        self.assertAlmostEqual(wb[0], 1.12, delta=0.04)
+        self.assertAlmostEqual(wb[2], 0.86, delta=0.04)
+        self.assertLess(resid, 1.0)
+
+    def test_region_maps_into_the_rendered_crop_and_off_frame_is_none(self):
+        from PIL import Image
+        box = measure.face_region((6000, 4000), [1000, 500, 2000, 2000], {"x": 0.25, "y": 0.2, "w": 0.1, "h": 0.15}, 2048)
+        self.assertTrue(0 <= box[0] < box[2] <= 2048 and 0 <= box[1] < box[3] <= 2048)
+        self.assertIsNone(measure.skin_rgb(Image.new("RGB", (100, 100)), [90, 90, 120, 120]))
 
 
 class IndexTest(unittest.TestCase):

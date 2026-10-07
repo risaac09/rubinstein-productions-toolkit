@@ -4,6 +4,7 @@
   cluster <out dir>                          segments, bursts, runs -> clusters.json
   cull    <out dir>                          scores and proposal -> cull.json
   review  <out dir> --session NAME [--title] -> review.html
+  look    <params.json> <out.cube> [--size N]   write a look as a DWG/DI 3D LUT (refuses to overwrite)
   crops   <out dir> [--config PATH]          crop plan per profile -> crops.json, crops-preview.jpg
   run     <shoot folder> <out dir> --session NAME   all four in order
 """
@@ -12,7 +13,7 @@ import argparse
 import os
 import sys
 
-from . import cluster, crops, cull, index, review
+from . import cluster, crops, cull, index, look, review
 
 
 def main(argv=None):
@@ -22,10 +23,15 @@ def main(argv=None):
     p = sub.add_parser("cluster"); p.add_argument("out")
     p = sub.add_parser("cull"); p.add_argument("out")
     p = sub.add_parser("review"); p.add_argument("out"); p.add_argument("--session", required=True); p.add_argument("--title")
+    p = sub.add_parser("look"); p.add_argument("params"); p.add_argument("cube"); p.add_argument("--size", type=int, default=33)
     p = sub.add_parser("crops"); p.add_argument("out"); p.add_argument("--config")
     p = sub.add_parser("run"); p.add_argument("shoot"); p.add_argument("out"); p.add_argument("--session", required=True)
     p.add_argument("--title"); p.add_argument("--workers", type=int, default=4)
     a = ap.parse_args(argv)
+    if a.cmd == "look":
+        doc = look.load_params(a.params)
+        print(look.write_cube(os.path.abspath(a.cube), doc.get("params", doc), a.size, doc.get("name", "rpstills look")))
+        return 0
     out = os.path.abspath(a.out)
     if a.cmd in ("index", "run"):
         rows = index.build(os.path.abspath(a.shoot), out, workers=a.workers)
