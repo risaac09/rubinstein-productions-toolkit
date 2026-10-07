@@ -597,82 +597,18 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     return out
 
 
-def queue_render(resolve, project_name, timeline, preset_key=None, output_dir=None, presets=None,
-                 custom_name=None, dry_run=False, project_id=None, expect_sha=None,
-                 destination=None, name_parts=None, config=None, check_cancel=None,
-                 volumes_root="/Volumes"):
-    """Queue one render job for a timeline from a preset, never start it.
-    Makes the timeline current only while queueing, then puts back the
-    current timeline, page and the Deliver page's format and codec. The
-    other Deliver fields it sets cannot be read back or restored, so every
-    result lists them. Refuses when a render is running or the output file
-    exists. Returns {project, timeline, preset, output, plan_sha, dry_run,
-    job, readback_problems, deliver_changed, warnings, ui_restore_problems,
-    exit_status}.
-
-    With destination (a key in config["destinations"]) instead of a preset,
-    output_dir is the target folder (default: the destination's
-    target_dir) and name_parts name the file; see queue_destination."""
-    if destination:
-        return queue_destination(resolve, project_name, timeline, destination, output_dir,
-                                 name_parts, config=config, dry_run=dry_run,
-                                 project_id=project_id, expect_sha=expect_sha,
-                                 check_cancel=check_cancel, volumes_root=volumes_root)
-    from . import render
-    if not presets or not preset_key or not output_dir:
-        raise Refused("give a preset and an output folder, or a destination.")
-    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
-    _, tl = api.find_timeline(project, timeline)
-    preset = presets.get(preset_key)
-    if not preset:
-        raise Refused(f"unknown preset '{preset_key}'; configured: {', '.join(presets)}")
-    if not os.path.isdir(output_dir):
-        raise Refused(f"output_dir {output_dir} is not an existing folder.")
-    if project.IsRenderingInProgress():
-        raise Refused("a render is running; queue after it finishes.")
-    base = (custom_name or tl.GetName()) + preset["suffix"]
-    target = os.path.join(os.path.realpath(output_dir), f"{base}.{preset['format']}")
-    if os.path.exists(target):
-        raise Refused(f"{target} already exists; a render would overwrite it. Choose another "
-                      "custom_name or folder.")
-    sha = plan_sha("render", pin.unique_id, tl.GetUniqueId(), preset_key, preset,
-                   os.path.realpath(output_dir), base)
-    out = {"project": {"name": pin.name, "id": pin.unique_id},
-           "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId()},
-           "preset": {"key": preset_key, **preset}, "output": target, "plan_sha": sha,
-           "dry_run": dry_run, "job": None, "readback_problems": [],
-           "deliver_changed": list(render.DELIVER_FIELDS), "warnings": [],
-           "ui_restore_problems": [], "exit_status": 0}
-    if dry_run:
-        return out
-    if expect_sha and expect_sha != sha:
-        raise Refused("the plan changed since the dry run; run the dry run again and review it")
-    snap = api.UISnapshot(resolve, project)
-    with snap:
-        project = pin.check(pm)
-        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
-        if not project.SetCurrentTimeline(tl):
-            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
-        try:
-            q = render.queue_render_job(project, preset_key, os.path.realpath(output_dir),
-                                        presets, custom_name)
-        finally:
-            _restore_format(project, fmt0, out["warnings"])
-    out["warnings"] = q["warnings"] + out["warnings"]
-    out["ui_restore_problems"] = snap.problems
-    if q["error"] or not q["job_id"]:
-        out["exit_status"] = 1
-        out["warnings"].insert(0, q["error"] or "no job id")
-        return out
-    job, problems = render.render_job_readback(
-        project, q["job_id"], {"TargetDir": os.path.realpath(output_dir),
-                               "TimelineName": tl.GetName(),
-                               "FormatWidth": preset["resolution"]["width"],
-                               "FormatHeight": preset["resolution"]["height"]})
-    out["job"] = job
-    out["readback_problems"] = problems
-    out["exit_status"] = 1 if problems else 0
-    return out
+def queue_render(resolve, project_name, timeline, destination, output_dir=None,
+                 name_parts=None, config=None, dry_run=False, project_id=None, expect_sha=None,
+                 check_cancel=None, volumes_root="/Volumes"):
+    """Queue one render job for a timeline for a delivery destination (a key
+    in config["destinations"]), never start it. output_dir is the target
+    folder (default: the destination's target_dir) and name_parts name the
+    file; see queue_destination, which does the work and whose result this
+    returns."""
+    return queue_destination(resolve, project_name, timeline, destination, output_dir,
+                             name_parts, config=config, dry_run=dry_run,
+                             project_id=project_id, expect_sha=expect_sha,
+                             check_cancel=check_cancel, volumes_root=volumes_root)
 
 
 def _restore_format(project, fmt0, warnings):

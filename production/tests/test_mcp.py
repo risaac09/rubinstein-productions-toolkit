@@ -267,6 +267,55 @@ class TestProtocol(unittest.TestCase):
         self.assertEqual(self.h.exit_codes, [0])
 
 
+class TestRetiredArguments(unittest.TestCase):
+    """A schema that forbids unknown properties would answer an argument a
+    tool has dropped with "unknown property"; retired_args says what to pass."""
+
+    SCHEMA = {"type": "object", "required": ["new"], "additionalProperties": False,
+              "properties": {"new": {"type": "string"}}}
+
+    def setUp(self):
+        reg = Registry()
+        reg.add(Tool("moved", "moved", self.SCHEMA, lambda args, ctx: {"summary": "ran"},
+                     retired_args={"old": "Pass 'new' instead."}))
+        self.h = Harness(reg)
+        init(self.h)
+
+    def tearDown(self):
+        try:
+            self.h.close()
+        except OSError:
+            pass
+
+    def call(self, arguments):
+        self.h.send({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                     "params": {"name": "moved", "arguments": arguments}})
+        return self.h.recv()["result"]
+
+    def test_a_retired_argument_is_told_what_replaced_it(self):
+        r = self.call({"new": "x", "old": "y"})
+        self.assertTrue(r["isError"])
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        self.assertEqual(errors, ["arguments: 'old' was removed. Pass 'new' instead."])
+
+    def test_other_unknown_arguments_keep_the_generic_message(self):
+        r = self.call({"new": "x", "old": "y", "other": 1})
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        self.assertEqual(errors, ["arguments: 'old' was removed. Pass 'new' instead.",
+                                  "arguments: unknown property 'other'"])
+
+    def test_the_schema_a_client_sees_does_not_list_it(self):
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tool = self.h.recv()["result"]["tools"][0]
+        self.assertEqual(tool["inputSchema"], self.SCHEMA)
+        self.assertNotIn("old", json.dumps(tool))
+
+    def test_a_valid_call_is_untouched(self):
+        r = self.call({"new": "x"})
+        self.assertFalse(r["isError"])
+        self.assertEqual(r["structuredContent"]["summary"], "ran")
+
+
 class TestSchema(unittest.TestCase):
     S = {"type": "object", "required": ["paths"], "additionalProperties": False, "properties": {
         "paths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},

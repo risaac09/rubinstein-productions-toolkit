@@ -104,7 +104,7 @@ RETIRED = {
     "auto-subtitle": "use the MCP create_captions tool",
     "render": "use the MCP queue_render tool; it queues the job and a person starts the "
               "render on the Deliver page",
-    "render-all": "use the MCP queue_render tool, once per preset or destination; a person "
+    "render-all": "use the MCP queue_render tool, once per destination; a person "
                   "starts the renders on the Deliver page",
     "clear-queue": "remove the render jobs on the Deliver page",
     "apply-lut": "use the MCP apply_grade tool on an [auto] timeline",
@@ -225,7 +225,7 @@ def cmd_list_render_formats(args):
             for description, name in codecs.items():
                 print(f"      {name}  ({description})")
         print()
-    print("Pass the [format key] and a codec NAME (right column above) into resolve-config.json presets.")
+    print("Pass the [format key] and a codec NAME (right column above) into a destination in resolve-config.json.")
 
 
 def cmd_info(args):
@@ -719,7 +719,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # List available render codecs (use this to fix resolve-config.json presets)
+  # List available render codecs (use this to fix a destination's codec in resolve-config.json)
   python3 resolve_workflow.py list-render-formats
 
   # Show project info

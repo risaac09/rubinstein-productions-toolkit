@@ -1,9 +1,9 @@
 """
-Tests for queueing a render for a delivery destination
-(rpresolve.workflows.queue_render with destination=, render.py's
-destination helpers) against the shared Resolve fakes: dry run then
-plan_sha, every pre-check refusal, a refused Deliver setting, the read
-back from the render queue, and that nothing is ever started.
+Tests for queueing a render for a delivery destination, the only way to
+queue one (rpresolve.workflows.queue_render, render.py's destination
+helpers) against the shared Resolve fakes: dry run then plan_sha, every
+pre-check refusal, a refused Deliver setting, the read back from the
+render queue, and that nothing is ever started.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
@@ -211,6 +211,19 @@ class TestQueueDestination(Base):
         self.assertEqual((r["settings"][0]["settings"]["FormatWidth"],
                           r["settings"][0]["settings"]["FormatHeight"]), (3840, 2160))
 
+    def test_an_old_overlay_that_still_has_render_presets_queues_the_same_job(self):
+        overlay = os.path.join(self.dir, "old-overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"render_presets": {"master": {"name": "Master ProRes", "suffix": "_master",
+                                                     "format": "mov", "codec": "ProRes422HQ"}}}, f)
+        old = rpconfig.load_config(overlay, strict=True)  # read without complaint
+        plain = self.queue(dry_run=True)
+        kept = workflows.queue_render(self.resolve, P, "Clip [auto]", output_dir=self.out,
+                                      destination="youtube_16x9", name_parts=CLIP, config=old,
+                                      dry_run=True)
+        self.assertEqual(kept["plan_sha"], plain["plan_sha"])
+        self.assertEqual((kept["output"], kept["settings"]), (plain["output"], plain["settings"]))
+
     def test_stale_sha_is_refused(self):
         with self.assertRaisesRegex(workflows.Refused, "plan changed"):
             self.queue(expect_sha="0" * 64)
@@ -386,6 +399,14 @@ class TestReadback(unittest.TestCase):
                 self.assertEqual(len(render.readback_report({"FrameRate": got},
                                                             {"FrameRate": 23.976}, {})[0]), 1)
 
+    def test_a_trailing_slash_and_a_number_as_text_are_the_same(self):
+        job = {"TargetDir": "/out/", "FormatWidth": "3840", "FormatHeight": 2160.0}
+        problems, warnings, unverified = render.readback_report(
+            job, {"TargetDir": "/out", "FormatWidth": 3840, "FormatHeight": 2160}, {})
+        self.assertEqual((problems, warnings, unverified), ([], [], []))
+        self.assertEqual(len(render.readback_report({"TargetDir": "/out"},
+                                                    {"TargetDir": "/elsewhere"}, {})[0]), 1)
+
     def test_queued_outputs(self):
         project = rf.Project(jobs=[{"JobId": "j1", "TargetDir": "/a", "OutputFilename": "b.mp4"},
                                    {"JobId": "j2"}])
@@ -451,12 +472,6 @@ class TestMCP(Base):
         self.assertIn("remove it or check it before rendering", r["summary"])
         self.assertNotIn("FAILED", r["summary"])
         self.assertEqual([j["JobId"] for j in self.project.jobs], ["job-1"])
-        # the preset form says the same
-        p = self.call({"preset": "master", "output_dir": self.out})
-        r = self.call({"preset": "master", "output_dir": self.out, "dry_run": False,
-                       "plan_sha": p["plan_sha"]})
-        self.assertTrue(r["summary"].startswith("queued job job-2 but Resolve holds"),
-                        r["summary"])
 
     def test_failed_means_nothing_was_queued(self):
         self.project.refuse = {"GammaTag"}
@@ -467,18 +482,17 @@ class TestMCP(Base):
                         r["summary"])
         self.assertEqual(self.project.jobs, [])
 
-    def test_preset_or_destination_never_both(self):
-        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
-            self.call(self.args(preset="master"))
-        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
-            self.call({"output_dir": self.out})
-        with self.assertRaisesRegex(ValueError, "target_dir and name"):
-            self.call(self.args(output_dir=self.out))
-        with self.assertRaisesRegex(ValueError, "go with destination"):
-            self.call({"preset": "master", "output_dir": self.out, "name": dict(CLIP)})
-        # the preset form still works as before
-        r = self.call({"preset": "master", "output_dir": self.out})
-        self.assertTrue(r["output"].endswith("Clip [auto]_master.mov"))
+    def test_a_destination_is_required_and_the_preset_arguments_are_gone(self):
+        with self.assertRaisesRegex(AssertionError, "missing required 'destination'"):
+            self.call({"target_dir": self.out})
+        for gone in ({"preset": "master"}, {"output_dir": self.out}, {"custom_name": "x"}):
+            with self.subTest(gone=gone):
+                with self.assertRaisesRegex(AssertionError, "unknown property"):
+                    self.call(self.args(**gone))
+        # the destination form needs no preset, so a bare one is refused, not queued
+        with self.assertRaisesRegex(AssertionError, "missing required 'destination'"):
+            self.call({"preset": "master", "output_dir": self.out})
+        self.assertEqual((self.project.jobs, rf.CALLS, self.journal()), ([], [], []))
 
     def test_schema_and_argument_refusals(self):
         for bad in ({"name": {**CLIP, "slug": "Bad Slug"}},
@@ -551,7 +565,10 @@ class TestMCP(Base):
             self.assertFalse(REG.get(name).annotations["readOnlyHint"], name)
             self.assertTrue(REG.get(name).input_schema["properties"]["dry_run"]["default"])
         schema_ = REG.get("queue_render").input_schema
-        self.assertEqual(schema_["required"], ["project", "timeline"])
+        self.assertEqual(schema_["required"], ["project", "timeline", "destination"])
+        for gone in ("preset", "output_dir", "custom_name"):
+            self.assertNotIn(gone, schema_["properties"])
+        self.assertNotIn("preset", REG.get("queue_render").description.lower())
         self.assertNotIn("enum", schema_["properties"]["destination"])
         self.assertIn("client_master", schema_["properties"]["destination"]["description"])
         self.assertTrue(REG.get("deliver_check").annotations["readOnlyHint"])

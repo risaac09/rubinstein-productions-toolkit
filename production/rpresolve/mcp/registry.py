@@ -4,6 +4,11 @@ rpresolve.mcp.registry: tools and the context a handler runs in.
 A Tool is a name, a description, an input JSON Schema, MCP annotations and
 a handler(args, ctx) returning a dict. Handlers raise to fail; the protocol
 turns any exception into an isError result.
+
+A Tool may also name retired_args: arguments its schema no longer lists,
+each with a message saying what to pass instead. The input schema forbids
+unknown properties, so without the message a call that still passes one
+would hear only "unknown property"; the protocol swaps in the message.
 """
 
 READ = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True,
@@ -18,13 +23,26 @@ class Cancelled(Exception):
 
 class Tool:
     def __init__(self, name, description, input_schema, handler, title=None,
-                 annotations=None):
+                 annotations=None, retired_args=None):
         self.name = name
         self.title = title or name.replace("_", " ")
         self.description = description
         self.input_schema = input_schema
         self.handler = handler
         self.annotations = dict(annotations or READ)
+        # {argument name: what to do instead}. Not part of the published schema.
+        self.retired_args = dict(retired_args or {})
+
+    def explain_retired(self, problems, args):
+        """problems (schema.validate's messages for args) with the generic
+        "unknown property" line for each retired argument the call passed
+        replaced by that argument's own message."""
+        out = list(problems)
+        for name, message in self.retired_args.items():
+            generic = f"arguments: unknown property '{name}'"
+            if name in args and generic in out:
+                out[out.index(generic)] = f"arguments: '{name}' was removed. {message}"
+        return out
 
     def describe(self, with_title=True):
         d = {"name": self.name, "description": self.description,
