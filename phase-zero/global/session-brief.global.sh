@@ -53,6 +53,7 @@ for stack in "${STACK_DATA_DIR:-}" "$HOME/stack-data" "$HOME/code/stack-data" "$
     stack_found="$stack"
     echo "Decisions of record: $stack/docs/DECISIONS.md (ledger, frozen 2026-10-05) and $stack/docs/decisions/ (one file each since). In force: $stack/scripts/sd-decisions --open. Cite a settled call instead of re-deriving it."
     [ -f "$stack/docs/FAILURE-MODES.md" ] && echo "Failure catalog: $stack/docs/FAILURE-MODES.md."
+    [ -f "$stack/docs/LEARNINGS.md" ] && echo "Durable learnings: $stack/docs/LEARNINGS.md."
     break
   fi
 done
