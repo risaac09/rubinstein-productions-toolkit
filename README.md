@@ -50,10 +50,10 @@ The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: 
 Generic automation: the doc-link checker, the vault/toolkit boundary drift detector, the pre-commit hook chain, and the methodology sync script. Nothing RP-specific.
 
 ### `phase-zero/`
-The deployment kit for AI-agent session infrastructure (hooks, operating brief, model routing, retrospective, settings) — deployed byte-identical into consuming repos' `.claude/` directories via `phase-zero/install.sh`. See that file's `CONSUMERS` allowlist for who's on it.
+The deployment kit for AI-agent session infrastructure (hooks, operating brief, model routing, retrospective, settings), deployed byte-identical into consuming repos' `.claude/` directories via `phase-zero/install.sh`. See that file's `CONSUMERS` allowlist for who's on it. This directory is an exported mirror: the source lives in a private repo beside the decisions and tests that warrant it, and every change here arrives as an `Export kit from stack-data` commit. Fork it freely; fixes sent here are not merged back by hand.
 
 ### `public-kit/`
-A second, smaller deployment kit for public-repo hygiene: license templates, a README-shape standard, `CONTRIBUTING.md`/`SECURITY.md` templates, and the canonical public-facing voice rules. Deployed independently of `phase-zero/` via `public-kit/install.sh` (or the `--public` mode of the shared installer — see that script) to repos that are actually public. A repo can take either kit, both, or neither.
+A second, smaller deployment kit for public-repo hygiene: license templates, a README-shape standard, `CONTRIBUTING.md`/`SECURITY.md` templates, and the canonical public-facing voice rules. Deployed independently of `phase-zero/` by the `--public` mode of the shared installer, `phase-zero/install.sh`, to repos that are actually public. Exported from the same private source as `phase-zero/`. A repo can take either kit, both, or neither.
 
 ### `prompts/`
 What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.

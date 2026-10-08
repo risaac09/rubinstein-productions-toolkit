@@ -27,8 +27,10 @@
 # a stale deployed copy (third-information-lab missed the merge-boundary
 # section for a day) is invisible until something reads it.
 #
-# This is the rp-shared-style distribution path: the kit is versioned here in
-# the toolkit, and synced out, so every repo runs the same infrastructure.
+# This is the rp-shared-style distribution path: the kit is versioned in
+# stack-data/kit/ (private), exported to the public toolkit by
+# stack-data/scripts/sd-kit-export, and synced out, so every repo runs the
+# same infrastructure.
 #
 # A second, independent kit shares this script: public-kit/, for public-repo
 # hygiene (license templates, README shape, CONTRIBUTING/SECURITY templates,
@@ -93,6 +95,16 @@ CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-int
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
 # conditional. This form returns cleanly from any context.
+# A listed consumer with no clone under the parent was passed over without a
+# word until 2026-10-07 (stack-finance). --all and --check --all name it. A
+# missing clone is not drift, so it leaves the exit code alone.
+report_missing_clones() {
+  local name
+  for name in $CONSUMERS; do
+    [ -e "$1/$name/.git" ] || echo "SKIP $name: no clone under $1"
+  done
+}
+
 is_consumer() {
   case " $CONSUMERS " in
     *" $(basename "$1") "*) return 0 ;;
@@ -419,6 +431,7 @@ elif [ "${1:-}" = "--check" ]; then
         check_one "${d%/}" || RC=1
       fi
     done
+    report_missing_clones "$parent"
   else
     check_one "${1:?usage: install.sh --check <target-repo-dir>}" || RC=1
   fi
@@ -434,6 +447,7 @@ elif [ "${1:-}" = "--all" ]; then
       fi
     fi
   done
+  report_missing_clones "$parent"
 else
   install_one "${1:?usage: install.sh <target-repo-dir>   (or --all <parent-dir>)}"
 fi

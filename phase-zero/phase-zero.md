@@ -43,7 +43,7 @@ claude-ecosystem, open-source), the physical estate (one machine, the NAS,
 iCloud, the git-primary corpus), the orchestration prompts and dispatchers,
 and the governance and sovereignty stance.
 Consult it when the task needs more than this core. The shared kit that carries
-this file is versioned in `rubinstein-productions-toolkit/phase-zero/`.
+this file is versioned in `stack-data/kit/phase-zero/`.
 
 ## Gear and blast radius
 

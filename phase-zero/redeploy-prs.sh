@@ -8,9 +8,9 @@
 # other path, written 2026-09-17 when the auto-mode classifier refused an agent
 # merge as "merge without review": every consumer gets a branch
 # (chore/phase-zero-kit-<date>) and a PR carrying the kit copies, public and
-# private alike, and the operator merges them after the toolkit PR that holds
-# the kit source. Re-run after the kit changes; a consumer already current
-# prints "nothing to deploy".
+# private alike, and the operator merges them after the stack-data PR that
+# holds the kit source and the toolkit PR that carries its export. Re-run after
+# the kit changes; a consumer already current prints "nothing to deploy".
 #
 # Usage: KIT=<kit dir> phase-zero/redeploy-prs.sh [--public] [--dry-run]
 #   KIT defaults to the phase-zero/ directory beside this script. The roster
@@ -52,12 +52,15 @@ else
   KITNAME="phase-zero kit"; KITSRC="phase-zero"
 fi
 # The roster comes from install.sh, the list of record, never a copy here: a
-# hand copy left out stack-data and the 2026-09-29 redeploy skipped it. The
-# toolkit itself is dropped, because its own .claude/ ships in the same PR as
-# the kit source change. Named literally: KITREPO is often a worktree, so its
-# basename is the worktree's name, not the repo's.
+# hand copy left out stack-data and the 2026-09-29 redeploy skipped it. Two
+# repos are dropped, because each deploys to itself in its own PR: stack-data,
+# which holds the kit source (kit/), and the toolkit, whose own .claude/ ships
+# in the same PR as the export (scripts/sd-kit-export redeploys both of its
+# kits, phase-zero and public-kit, into it). Named literally:
+# KITREPO is often a worktree, so its basename is the worktree's name, not the
+# repo's.
 roster="$(bash "$KIT/install.sh" ${PUBFLAG:+"$PUBFLAG"} --list)" || { echo "FAIL: install.sh ${PUBFLAG:+$PUBFLAG }--list failed; roster unavailable" >&2; exit 1; }
-CONSUMERS="$(printf '%s\n' "$roster" | grep -vx 'rubinstein-productions-toolkit')"
+CONSUMERS="$(printf '%s\n' "$roster" | grep -vx -e 'rubinstein-productions-toolkit' -e 'stack-data')"
 if [ -z "$CONSUMERS" ]; then echo "FAIL: install.sh ${PUBFLAG:+$PUBFLAG }--list returned no consumers" >&2; exit 1; fi
 trailer=""
 if [ -n "${PZ_COAUTHOR:-}" ]; then trailer="
@@ -92,11 +95,11 @@ for name in $CONSUMERS; do
   fi
   git -C "$wt" -c commit.gpgsign=false commit -q -m "chore($KITSRC): redeploy the $KITNAME
 
-Deployed from rubinstein-productions-toolkit/$KITSRC at $(git -C "$KITREPO" rev-parse --short HEAD) (branch $(git -C "$KITREPO" rev-parse --abbrev-ref HEAD)). Never edit these copies in place.$trailer" || { echo "  FAIL commit $name"; drop_wt; continue; }
+Deployed from stack-data/kit/$KITSRC at $(git -C "$KITREPO" rev-parse --short HEAD) (branch $(git -C "$KITREPO" rev-parse --abbrev-ref HEAD)). Never edit these copies in place.$trailer" || { echo "  FAIL commit $name"; drop_wt; continue; }
   pushed=0
   if git -C "$wt" push -q -u origin "$br"; then
       pushed=1
-      gh pr create -R "$slug" --base main --head "$br" --title "$KITNAME redeploy ($(date +%Y-%m-%d))" --body "Kit redeploy from rubinstein-productions-toolkit/$KITSRC at $(git -C "$KITREPO" rev-parse --short HEAD). Merge the toolkit change that carries the kit source first; if it changes, re-run phase-zero/redeploy-prs.sh ${PUBFLAG:+$PUBFLAG }and this PR regenerates. These are deployed copies; never edit them in place.
+      gh pr create -R "$slug" --base main --head "$br" --title "$KITNAME redeploy ($(date +%Y-%m-%d))" --body "Kit redeploy from stack-data/kit/$KITSRC at $(git -C "$KITREPO" rev-parse --short HEAD). Merge the stack-data change that carries the kit source first; if it changes, re-run kit/phase-zero/redeploy-prs.sh ${PUBFLAG:+$PUBFLAG }and this PR regenerates. These are deployed copies; never edit them in place.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>&1 | tail -1
   else echo "  FAIL push branch $name"; fi

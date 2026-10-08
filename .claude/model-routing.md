@@ -54,8 +54,8 @@ Log the tier and whether the work needed a second review round:
     sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
 
 The reasoning behind each rule, the known failure mode, and worked examples:
-`rubinstein-productions-toolkit/phase-zero/model-routing-rationale.md`.
+`stack-data/kit/phase-zero/model-routing-rationale.md`.
 
 This copy is kit-deployed. The source lives in
-`rubinstein-productions-toolkit/phase-zero/model-routing.md`; edit it there
+`stack-data/kit/phase-zero/model-routing.md`; edit it there
 and redeploy. Never edit the deployed copy.

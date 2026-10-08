@@ -3,6 +3,14 @@
 The portable global-awareness layer. It travels into every repo so every clone
 session, local or remote, runs the same infrastructure.
 
+Source and export. The source of this kit is `stack-data/kit/phase-zero/`
+(private), beside the decisions, retros and tests that warrant it.
+`stack-data/scripts/sd-kit-export` copies it byte for byte into the public
+toolkit at `rubinstein-productions-toolkit/phase-zero/`. Edit the source in
+stack-data and export; never edit the toolkit copy, which the next export
+overwrites. Decision of record: "The kit source lives in stack-data; the
+toolkit carries an export" (2026-10-07).
+
 A separate, independent kit for public-repo hygiene (license templates,
 README shape, CONTRIBUTING/SECURITY templates, public voice rules) lives
 alongside this one at `../public-kit/`, sharing this directory's
@@ -115,7 +123,7 @@ SessionStart hook when one exists, so the routing brief never prints twice.
 - `install.sh` — the distribution path.
 - `redeploy-prs.sh` — the same deploy as one pull request per consumer from
   temp worktrees, for a machine whose auto-mode clamp refuses agent merges;
-  the operator merges them after the toolkit change that holds the kit source.
+  the operator merges them after the stack-data change that holds the kit source.
   It reads its roster from `install.sh --list`, so the two never disagree.
   `--public` does the same for the public-kit (`chore/public-kit-<date>`
   branches, roster from `install.sh --public --list`); `--dry-run` works in

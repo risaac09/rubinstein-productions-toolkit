@@ -18,7 +18,7 @@
 # Silent when the kit payload is absent, so a repo without the kit loses
 # nothing. Exit 0 always; a context hook must never block a session.
 #
-# Source of truth: rubinstein-productions-toolkit/phase-zero/. Deployed
+# Source of truth: stack-data/kit/phase-zero/. Deployed
 # copies are overwritten on every install; edit the source and redeploy.
 
 set -euo pipefail

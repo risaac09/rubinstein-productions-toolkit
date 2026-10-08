@@ -27,7 +27,7 @@
 # again. No session_id in the event means full every time.
 #
 # Source of truth: stack-data/PHASE-ZERO.md. This kit is versioned in
-# rubinstein-productions-toolkit/phase-zero/ and installed into each repo's
+# stack-data/kit/phase-zero/ and installed into each repo's
 # .claude/ so every clone session shares the same infrastructure. It resolves
 # the richest awareness available in the current repo, in order:
 #   1. scripts/phase-zero   (stack-data: full hierarchy + live state)
@@ -95,7 +95,7 @@ emit_full() {
   if [ -f "$root/.claude/phase-zero.md" ]; then
     cat "$root/.claude/phase-zero.md" && return 0
   fi
-  echo "(portable core missing in this repo; run the kit installer: rubinstein-productions-toolkit/phase-zero/install.sh)"
+  echo "(portable core missing in this repo; run the kit installer: stack-data/kit/phase-zero/install.sh)"
   return 1
 }
 

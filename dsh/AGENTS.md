@@ -137,5 +137,5 @@ zero back.
 ## Kit discipline
 
 This file is kit-deployed. The operating brief, model routing, and phase-zero
-core live in `rubinstein-productions-toolkit/phase-zero/`. Edit the kit and
-redeploy. Never edit deployed copies.
+core live in `rubinstein-productions-toolkit/phase-zero/`, itself an export
+of a private source. Edit the source and redeploy. Never edit deployed copies.
