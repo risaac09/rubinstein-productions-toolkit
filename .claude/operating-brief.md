@@ -126,5 +126,5 @@ house rule under all four slips is the same one the bibliography build proved: a
 named gap beats a smooth fabrication, every time.
 
 This copy is kit-deployed. The source lives in
-`rubinstein-productions-toolkit/phase-zero/operating-brief.md`; edit it there and
+`stack-data/kit/phase-zero/operating-brief.md`; edit it there and
 redeploy. Never edit the deployed copy.
