@@ -84,4 +84,3 @@ The anti-extractive production model (camera shipped to participant, all footage
 - Say Why - Grant Concept
 - Say Why - Evaluation Framework
 - Say Why - Canonical Positioning & Skill Embedding (the v2 integrated canonical, supersedes the former RP Methodology Blueprint)
-x
