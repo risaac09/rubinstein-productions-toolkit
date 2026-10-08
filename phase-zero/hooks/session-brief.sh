@@ -102,6 +102,11 @@ if [ -n "$records" ]; then
   if [ -f "$root/$records/FAILURE-MODES.md" ]; then
     echo "Failure catalog: $records/FAILURE-MODES.md."
   fi
+  # The return edge of the session loop (Torus report 2, 2026-10-07): no hook
+  # named LEARNINGS, and 0 of 80 retros since 2026-09-02 cited it.
+  if [ -f "$root/$records/LEARNINGS.md" ]; then
+    echo "Durable learnings: $records/LEARNINGS.md."
+  fi
 fi
 
 # Research routing: stack-data owns the bibliography, so research, citation,
