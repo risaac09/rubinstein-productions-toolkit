@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Say Why - Theory of Change.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/Say Why - Theory of Change.md` in vault, last synced 2026-10-08. Edit there; this file is a snapshot for skills and public repo use.
 
 # Say Why - Theory of Change
 ### A Rubinstein Productions Social Impact Initiative
@@ -84,3 +84,4 @@ The anti-extractive production model (camera shipped to participant, all footage
 - Say Why - Grant Concept
 - Say Why - Evaluation Framework
 - Say Why - Canonical Positioning & Skill Embedding (the v2 integrated canonical, supersedes the former RP Methodology Blueprint)
+x
