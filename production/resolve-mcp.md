@@ -47,8 +47,8 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 23 tools: 5 reads, 10 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 8
+tool must name that project. There are 24 tools: 5 reads, 10 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 9
 writes.
 
 | Tool | Kind | What it does |
@@ -75,6 +75,7 @@ writes.
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
+| `relink` | write, changes an offline clip | Point the open project's offline clips (File Path missing on disk) at files under `search_roots` that verify as the same take: start timecode, frame count (one frame of slack), resolution and frame rate must all be known and agree. Never on a name alone; a clip with no timecode, a still and an audio-only clip are UNVERIFIABLE and left alone; two verified files of different sizes are AMBIGUOUS and left alone; identical copies resolve to the earliest search root. An online clip is never touched. Uses `MediaPool.RelinkClips` (the folder only), so the clip keeps its identity, timeline items, grade and tags; each clip is read back, and a property that reads differently afterwards is reported, never set back. `max_items` relinks a sample; dry run again before the rest. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
 `production/rpresolve/grade.py` is a helper library, not a tool and not a
@@ -100,7 +101,7 @@ tree and never overwrites an `.srt`.
 - **Plan first.** `dry_run` defaults to true and returns a `plan_sha`. A real
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
-- **Additive only.** Nothing that existed before is modified. New timelines
+- **Additive only, with one exception.** Nothing that existed before is modified, except by `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take. It never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
   end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
   timelines, and `create_captions` refuses a timeline that already has any
   subtitle item. An item whose

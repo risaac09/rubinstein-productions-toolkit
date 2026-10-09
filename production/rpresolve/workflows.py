@@ -24,9 +24,10 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import api, grade
+from . import api, captions, grade
 from . import detect as rpdetect
 from . import ingest as rpingest
+from . import relink as rprelink
 
 SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
 SURVEY_SCRIPT = Path(__file__).resolve().parent.parent / "resolve_survey.py"
@@ -124,6 +125,175 @@ def ingest(resolve, project_name, paths, parent="Source", dry_run=False, project
             "plan": plan, "results": results, "counts": counts, "missing": missing,
             "flagged": flagged, "plan_sha": sha,
             "exit_status": 1 if failed else (2 if flagged else 0)}
+
+
+# ---------------------------------------------------------------------------
+# relink
+# ---------------------------------------------------------------------------
+
+def _probe_file(path):
+    """Comparable facts of a media file from ffprobe, or None when it cannot be read."""
+    info, _ = rpdetect.run_ffprobe(path)
+    if not info:
+        return None
+    return rprelink.probe_facts(info, captions.file_start(info)[0])
+
+
+def _find_bin(root, path):
+    current = root
+    for part in [p for p in path.split("/") if p]:
+        current = next((f for f in current.GetSubFolderList() or [] if f.GetName() == part), None)
+        if current is None:
+            raise Refused(f"there is no bin '{path}' in the media pool")
+    return current
+
+
+def _walk_bins(folder, prefix=""):
+    """(bin path, clip) for every clip under folder, depth first."""
+    for clip in folder.GetClipList() or []:
+        yield prefix or "Master", clip
+    for sub in folder.GetSubFolderList() or []:
+        yield from _walk_bins(sub, f"{prefix}/{sub.GetName()}" if prefix else sub.GetName())
+
+
+def _same_path(a, b):
+    return rprelink.nfc(os.path.normpath(a)) == rprelink.nfc(os.path.normpath(b))
+
+
+def relink(resolve, project_name, search_roots, folder=None, dry_run=True, project_id=None,
+           max_items=None, check_cancel=None, expect_sha=None, probe=None,
+           exists=os.path.exists, stat=os.stat):
+    """Point offline clips of the open project at files under search_roots that
+    verify as the same take (rpresolve.relink: timecode, frames, resolution and
+    frame rate). Only a clip that is offline at plan time is touched; the clip
+    keeps its identity, timeline items, grade and tags, and each relink is read
+    back. Returns {project, dry_run, results, counts, online, relinked,
+    problems, ui_restore_problems, plan_sha, exit_status}. exit_status: 0 every
+    offline clip relinked, 2 some offline clip remains (nothing verified for
+    it, or max_items stopped the run), 1 any relink failed or drifted."""
+    probe = probe or _probe_file
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    start = _find_bin(root, folder) if folder else root
+    pool, offline = {}, []
+    for bin_path, clip in _walk_bins(start):
+        props = clip.GetClipProperty() or {}
+        path = props.get("File Path") or ""
+        if not path:
+            continue  # generators, compound clips, titles: not file-backed
+        pool[clip.GetUniqueId()] = clip
+        if not exists(path):
+            offline.append((bin_path, clip, props))
+    online = len(pool) - len(offline)
+
+    index = rprelink.index_roots(search_roots)
+    votes = rprelink.folder_votes([os.path.basename(p["File Path"]) for _, _, p in offline], index)
+    entries = []
+    for bin_path, clip, props in offline:
+        if check_cancel:
+            check_cancel()
+        facts = rprelink.clip_facts(props)
+        probed = []
+        if facts["kind"] == "video":
+            for cand in rprelink.rank_candidates(index.get(rprelink.nfc(os.path.basename(facts["path"])), []), votes):
+                try:
+                    probed.append((cand, probe(cand), stat(cand).st_size))
+                except OSError:
+                    probed.append((cand, None, None))
+        decision = rprelink.decide(facts, probed, search_roots)
+        mtime = None
+        if decision["status"] == rprelink.VERIFIED:
+            try:
+                mtime = stat(decision["path"]).st_mtime
+            except OSError:
+                decision.update(status=rprelink.NO_MATCH, path="", reason="the file vanished while planning")
+        entries.append({"id": clip.GetUniqueId(), "name": clip.GetName(), "bin": bin_path,
+                        "old_path": facts["path"], "new_path": decision["path"],
+                        "status": decision["status"], "reason": decision["reason"],
+                        "alternates": decision["alternates"], "size": decision["size"], "mtime": mtime})
+    sha = plan_sha("relink", pin.unique_id,
+                   [[e["id"], e["old_path"], e["status"], e["new_path"], e["size"], e["mtime"]]
+                    for e in entries])
+    verified = [e for e in entries if e["status"] == rprelink.VERIFIED]
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run,
+           "plan_sha": sha, "online": online, "problems": [], "ui_restore_problems": [],
+           "relinked": [], "exit_status": 0}
+
+    def row(e, result, **more):
+        return {"id": e["id"], "name": e["name"], "bin": e["bin"], "old_path": e["old_path"],
+                "new_path": e["new_path"], "status": e["status"], "reason": e["reason"],
+                "alternates": e["alternates"], "result": result, **more}
+
+    if dry_run:
+        out["results"] = [row(e, "planned" if e["status"] == rprelink.VERIFIED else "refused")
+                          for e in entries]
+    else:
+        if expect_sha and expect_sha != sha:
+            raise Refused("the plan changed since the dry run (the media pool or the files under "
+                          "the search roots differ); run the dry run again and review it")
+        todo = verified[:max_items] if max_items else verified
+        done = {e["id"]: None for e in todo}
+        check = _check(pin, pm, check_cancel)
+        previous = media_pool.GetCurrentFolder()
+        snap = api.UISnapshot(resolve, project)
+        with snap:
+            try:
+                for e in todo:
+                    check()
+                    done[e["id"]] = _relink_one(media_pool, pool[e["id"]], e, exists, stat)
+            finally:
+                if previous:
+                    media_pool.SetCurrentFolder(previous)
+        out["ui_restore_problems"] = snap.problems
+        results = []
+        for e in entries:
+            if e["id"] in done and done[e["id"]] is not None:
+                r = done[e["id"]]
+                results.append(row(e, r["result"], drift=r.get("drift") or {}))
+                if r["result"] == "relinked":
+                    out["relinked"].append({"id": e["id"], "name": e["name"],
+                                            "old_path": e["old_path"], "new_path": e["new_path"]})
+                if r.get("drift"):
+                    out["problems"].append(f"{e['name']}: {', '.join(r['drift'])} read differently "
+                                           "after the relink; nothing was set back")
+            elif e["status"] == rprelink.VERIFIED:
+                results.append(row(e, "not attempted (max_items)"))
+            else:
+                results.append(row(e, "refused"))
+        out["results"] = results
+        failed = any(r["result"].startswith("FAILED") for r in results)
+        left = any(r["result"] != "relinked" for r in results)
+        out["exit_status"] = 1 if failed or out["problems"] else (2 if left else 0)
+    counts = {}
+    for r in out["results"]:
+        key = r["result"].split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+    out["counts"] = counts
+    out["status_counts"] = {}
+    for e in entries:
+        out["status_counts"][e["status"]] = out["status_counts"].get(e["status"], 0) + 1
+    return out
+
+
+def _relink_one(media_pool, clip, e, exists, stat):
+    """Relink one verified clip and read it back: {result, drift}."""
+    props = clip.GetClipProperty() or {}
+    if exists(props.get("File Path") or ""):
+        return {"result": "skipped: the clip is online now"}
+    try:
+        size = stat(e["new_path"]).st_size
+    except OSError:
+        return {"result": "FAILED: the file is gone"}
+    if size != e["size"]:
+        return {"result": "FAILED: the file changed since the plan"}
+    before = {k: props.get(k) for k in rprelink.STABLE_PROPS}
+    ok = media_pool.RelinkClips([clip], os.path.dirname(e["new_path"]))
+    after = clip.GetClipProperty() or {}
+    if not ok:
+        return {"result": "FAILED: Resolve's RelinkClips returned false"}
+    if not _same_path(after.get("File Path") or "", e["new_path"]):
+        return {"result": f"FAILED: File Path reads '{after.get('File Path')}' after the relink"}
+    return {"result": "relinked", "drift": rprelink.drift(before, after)}
 
 
 # ---------------------------------------------------------------------------

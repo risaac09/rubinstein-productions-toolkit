@@ -14,7 +14,7 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Before any Resolve tool, call resolve_status. Resolve is edited live by a person: never assume which project is open.
 - Every write tool must name the open project exactly (project, and project_id when you have it).
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
-- Additive only: nothing that existed before is modified; grades go only onto timelines whose name ends " [auto]"; renders are queued, never started.
+- Additive only: nothing that existed before is modified; grades go only onto timelines whose name ends " [auto]"; renders are queued, never started. The one exception is relink, which points a clip that is offline at plan time at a file that verifies as the same take (timecode, frames, resolution and frame rate; never on a name alone, never an online clip, never a still).
 - Deliverables: queue_render with a destination names the file by the house rule. After Isaac renders it: deliver_captions for a sidecar destination (Resolve's .ttml to a zero-based .srt), the loudness fix, then deliver_check.
 - Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it.
 - Dual-system sound: sync_measure first; sync stacks the pair on a new [auto] timeline at that offset. Drift is reported, never corrected; a multicam clip stays a hand step.

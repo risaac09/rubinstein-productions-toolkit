@@ -5,7 +5,9 @@ deliver_captions, which adds a file beside a render.
 The rules every write tool keeps:
 - The call names the project (project, and project_id when known); the
   open project must match, and is re-checked before every change.
-- Additive only: nothing that already exists is modified.
+- Additive only: nothing that already exists is modified. The one exception
+  is relink, which points a clip that is offline at plan time at a file that
+  verifies as the same take (never an online clip, never on a name alone).
 - dry_run defaults to true and returns a plan_sha. A real run must pass
   that plan_sha, and is refused when the plan has changed since.
 - Every run holds the cross-process lock; a real run is journalled
@@ -68,7 +70,8 @@ def _journalled(tool, args, run):
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
                                                       "left_behind", "plan_sha",
-                                                      "settings_drift_rows") if k in result})
+                                                      "settings_drift_rows", "relinked")
+                           if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
         result["journal"]["warning"] = warn
@@ -464,6 +467,48 @@ def trim_review_markers(args, ctx):
         return run() if args["dry_run"] else _journalled("trim_review_markers", args, run)
 
 
+def relink(args, ctx):
+    _require_sha(args)
+    roots = []
+    for p in args["search_roots"]:
+        root = _existing(p, "search_roots")
+        if not os.path.isdir(root):
+            raise ValueError(f"search_roots {root} is not a folder.")
+        roots.append(os.path.normpath(root))
+    ctx.check_cancel()
+
+    def run():
+        r = workflows.relink(ctx.session.get(), args["project"], roots, folder=args.get("folder"),
+                             dry_run=args["dry_run"], project_id=args.get("project_id"),
+                             max_items=args.get("max_items"), check_cancel=ctx.check_cancel,
+                             expect_sha=args.get("plan_sha"))
+        sc = r["status_counts"]
+        offline = sum(sc.values())
+        left = "; ".join(f"{n} {k}" for k, n in sorted(sc.items()) if k != "VERIFIED")
+        left = f"; not relinked: {left}" if left else ""
+        if r["dry_run"]:
+            r["summary"] = (f"would relink {sc.get('VERIFIED', 0)} of {offline} offline clip(s) "
+                            f"({r['online']} online clip(s) are not touched){left}" + _how(r))
+        else:
+            c = r["counts"]
+            r["summary"] = (f"relinked {c.get('relinked', 0)} of {offline} offline clip(s), each "
+                            f"read back{left}"
+                            + (f"; {c['FAILED']} FAILED" if c.get("FAILED") else "")
+                            + (f"; {c['not attempted (max_items)']} not attempted (max_items): "
+                               "dry run again to plan the rest"
+                               if c.get("not attempted (max_items)") else "")
+                            + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
+                            + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        r = run() if args["dry_run"] else _journalled("relink", args, run)
+    page = _page(r.pop("results"), args)
+    r["results"] = page.pop("rows")
+    r.update(page)
+    return r
+
+
 # ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
@@ -716,6 +761,34 @@ def register(registry):
             **REVIEW_PROPS, **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         trim_review_markers, title="Mark silences and fillers", annotations=WRITE))
+    registry.add(Tool(
+        "relink",
+        "Point the open project's offline clips (File Path missing on disk) at files under "
+        "search_roots that verify as the same take: start timecode, frame count (one frame of "
+        "slack), resolution and frame rate must all be known and agree. A name alone never "
+        "relinks; stills and audio-only clips are reported UNVERIFIABLE and left alone; two "
+        "verified files of different sizes are AMBIGUOUS and left alone. Online clips are never "
+        "touched. Uses Resolve's RelinkClips (the folder only): the clip keeps its identity, "
+        "timeline items, grade and tags, and each clip is read back; a property that reads "
+        "differently afterwards is reported, never set back. This is the one write that changes "
+        "an existing clip, and only an offline one. max_items relinks a sample first; dry run "
+        "again before the rest. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "search_roots": {"type": "array", "minItems": 1, "maxItems": 20,
+                             "items": {"type": "string"},
+                             "description": "Absolute folders to search for the files (walked "
+                             "recursively; earlier folders win between identical copies)."},
+            "folder": {"type": "string",
+                       "description": "Only the clips in this media pool bin and below, "
+                       "e.g. 'Source/GH7'. Default: the whole pool."},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 5000,
+                          "description": "Relink at most this many verified clips (a sample)."},
+            **DRY_RUN,
+            "offset": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}},
+         "required": ["project", "search_roots"], "additionalProperties": False},
+        relink, title="Relink offline clips", annotations=WRITE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "
