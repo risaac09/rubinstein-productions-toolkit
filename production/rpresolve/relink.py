@@ -41,6 +41,21 @@ def nfc(s):
     return unicodedata.normalize("NFC", s)
 
 
+def name_key(name):
+    """The key a file name is indexed and looked up by: normalization form and
+    case do not tell two files apart on macOS or SMB, so neither does this."""
+    return nfc(name).casefold()
+
+
+def volume_of(path):
+    """Where a path lives, for the plan's summary: /Volumes/<name>, ~/<folder>
+    style roots are cut to the first two components."""
+    parts = [p for p in os.path.normpath(path).split("/") if p]
+    if parts[:1] == ["Volumes"] and len(parts) > 1:
+        return "/Volumes/" + parts[1]
+    return "/" + "/".join(parts[:2]) if parts else "/"
+
+
 def kind_of(path, type_prop=""):
     """'still', 'audio' or 'video' for a clip, by extension first, then Resolve's Type."""
     ext = os.path.splitext(path)[1].lower()
@@ -137,17 +152,20 @@ def compare(clip, cand):
     return True, ""
 
 
-def index_roots(roots, walk=os.walk):
-    """{NFC file name: [absolute paths]} for every file under the roots, in
-    root order (earlier roots win ties). Hidden and AppleDouble files are left out."""
+def index_roots(roots, walk=os.walk, check=None):
+    """{name_key: [absolute paths]} for every file under the roots, in root
+    order (earlier roots win ties). Hidden and AppleDouble files are left out.
+    check, when given, is called once per folder so a cancel can stop the walk."""
     index = {}
     for root in roots:
         for dirpath, dirnames, files in walk(root):
+            if check:
+                check()
             dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
             for name in sorted(files):
                 if name.startswith("."):
                     continue
-                index.setdefault(nfc(name), []).append(os.path.join(dirpath, name))
+                index.setdefault(name_key(name), []).append(os.path.join(dirpath, name))
     return index
 
 
@@ -161,7 +179,7 @@ def folder_votes(offline_names, index):
     """{folder: number of offline clip names it holds}."""
     votes = {}
     for name in offline_names:
-        for folder in {os.path.dirname(p) for p in index.get(nfc(name), ())}:
+        for folder in {os.path.dirname(p) for p in index.get(name_key(name), ())}:
             votes[folder] = votes.get(folder, 0) + 1
     return votes
 
@@ -177,6 +195,10 @@ def decide(clip, probed, roots):
     if clip["kind"] != "video":
         out.update(status=UNVERIFIABLE, reason=f"{clip['kind']} clips are not verified by this tool")
         return out
+    absent = [k for k in ("tc", "frames", "resolution", "fps") if not clip.get(k)]
+    if absent:  # nothing a candidate says can settle it
+        out.update(status=UNVERIFIABLE, reason="Resolve reports no " + ", ".join(absent) + " for this clip")
+        return out
     if not probed:
         out["reason"] = "no file with this name under the search roots"
         return out
@@ -191,9 +213,7 @@ def decide(clip, probed, roots):
         else:
             why.append(f"{os.path.basename(os.path.dirname(path)) or '.'}: {reason}")
     if not verified:
-        no_data = [w for w in why if "no " in w and "Resolve reports" in w]
-        out.update(status=UNVERIFIABLE if no_data and len(no_data) == len(why) else NO_MATCH,
-                   reason="; ".join(why[:3]))
+        out.update(status=NO_MATCH, reason="; ".join(why[:3]))
         return out
     sizes = {s for _, s in verified}
     if len(sizes) > 1:

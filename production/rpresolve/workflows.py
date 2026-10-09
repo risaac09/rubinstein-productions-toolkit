@@ -171,7 +171,14 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
     problems, ui_restore_problems, plan_sha, exit_status}. exit_status: 0 every
     offline clip relinked, 2 some offline clip remains (nothing verified for
     it, or max_items stopped the run), 1 any relink failed or drifted."""
-    probe = probe or _probe_file
+    probe_file = probe or _probe_file
+    cache = {}
+
+    def probe(path):  # one ffprobe per file per call, however many clips name it
+        if path not in cache:
+            cache[path] = probe_file(path)
+        return cache[path]
+
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
     start = _find_bin(root, folder) if folder else root
@@ -186,7 +193,11 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
             offline.append((bin_path, clip, props))
     online = len(pool) - len(offline)
 
-    index = rprelink.index_roots(search_roots)
+    index = rprelink.index_roots(search_roots, check=check_cancel)
+    volumes = {}
+    for _, _, p in offline:
+        v = rprelink.volume_of(p["File Path"])
+        volumes[v] = volumes.get(v, 0) + 1
     votes = rprelink.folder_votes([os.path.basename(p["File Path"]) for _, _, p in offline], index)
     entries = []
     for bin_path, clip, props in offline:
@@ -195,7 +206,7 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
         facts = rprelink.clip_facts(props)
         probed = []
         if facts["kind"] == "video":
-            for cand in rprelink.rank_candidates(index.get(rprelink.nfc(os.path.basename(facts["path"])), []), votes):
+            for cand in rprelink.rank_candidates(index.get(rprelink.name_key(os.path.basename(facts["path"])), []), votes):
                 try:
                     probed.append((cand, probe(cand), stat(cand).st_size))
                 except OSError:
@@ -216,7 +227,8 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
                     for e in entries])
     verified = [e for e in entries if e["status"] == rprelink.VERIFIED]
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run,
-           "plan_sha": sha, "online": online, "problems": [], "ui_restore_problems": [],
+           "plan_sha": sha, "online": online, "offline_volumes": dict(sorted(volumes.items())),
+           "problems": [], "ui_restore_problems": [],
            "relinked": [], "exit_status": 0}
 
     def row(e, result, **more):
@@ -241,6 +253,17 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
                 for e in todo:
                     check()
                     done[e["id"]] = _relink_one(media_pool, pool[e["id"]], e, exists, stat)
+                    if done[e["id"]]["result"] == "relinked":
+                        out["relinked"].append({"id": e["id"], "name": e["name"],
+                                                "old_path": e["old_path"], "new_path": e["new_path"]})
+            except BaseException as stop:
+                # A stop part-way (project switched, cancel, a Resolve error) must not lose
+                # which clips already moved: the journal's error line carries them.
+                stop.relinked = list(out["relinked"])
+                if out["relinked"]:
+                    stop.args = (f"{stop.args[0] if stop.args else stop} ({len(out['relinked'])} clip(s) "
+                                 "were already relinked; the journal lists them)",) + tuple(stop.args[1:])
+                raise
             finally:
                 if previous:
                     media_pool.SetCurrentFolder(previous)
@@ -250,9 +273,6 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
             if e["id"] in done and done[e["id"]] is not None:
                 r = done[e["id"]]
                 results.append(row(e, r["result"], drift=r.get("drift") or {}))
-                if r["result"] == "relinked":
-                    out["relinked"].append({"id": e["id"], "name": e["name"],
-                                            "old_path": e["old_path"], "new_path": e["new_path"]})
                 if r.get("drift"):
                     out["problems"].append(f"{e['name']}: {', '.join(r['drift'])} read differently "
                                            "after the relink; nothing was set back")

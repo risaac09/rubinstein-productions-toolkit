@@ -62,7 +62,8 @@ def _journalled(tool, args, run):
     try:
         result = run()
     except BaseException as e:
-        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}")
+        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}",
+                              {"relinked": e.relinked} if getattr(e, "relinked", None) else None)
         if warn:
             e.args = (f"{e} ({warn})",) + e.args[1:]
         raise
@@ -487,8 +488,12 @@ def relink(args, ctx):
         left = "; ".join(f"{n} {k}" for k, n in sorted(sc.items()) if k != "VERIFIED")
         left = f"; not relinked: {left}" if left else ""
         if r["dry_run"]:
+            where = ", ".join(f"{v} ({n})" for v, n in sorted(r["offline_volumes"].items(),
+                                                              key=lambda kv: -kv[1])[:5])
             r["summary"] = (f"would relink {sc.get('VERIFIED', 0)} of {offline} offline clip(s) "
-                            f"({r['online']} online clip(s) are not touched){left}" + _how(r))
+                            f"({r['online']} online clip(s) are not touched){left}. Offline paths are "
+                            f"under: {where or 'none'}; check that every share and drive you expect "
+                            "is mounted, since an unmounted one reads as offline" + _how(r))
         else:
             c = r["counts"]
             r["summary"] = (f"relinked {c.get('relinked', 0)} of {offline} offline clip(s), each "
@@ -768,11 +773,14 @@ def register(registry):
         "slack), resolution and frame rate must all be known and agree. A name alone never "
         "relinks; stills and audio-only clips are reported UNVERIFIABLE and left alone; two "
         "verified files of different sizes are AMBIGUOUS and left alone. Online clips are never "
-        "touched. Uses Resolve's RelinkClips (the folder only): the clip keeps its identity, "
-        "timeline items, grade and tags, and each clip is read back; a property that reads "
-        "differently afterwards is reported, never set back. This is the one write that changes "
-        "an existing clip, and only an offline one. max_items relinks a sample first; dry run "
-        "again before the rest. Dry run first; the real run needs its plan_sha.",
+        "touched. Uses Resolve's RelinkClips (the folder only), which should leave the clip's "
+        "identity, timeline items, grade and tags alone; each clip is read back, and a property "
+        "that reads differently afterwards is reported, never set back. That has not yet been "
+        "confirmed on a live project: try it on a scratch project first. This is the one write "
+        "that changes an existing clip, and only an offline one. An unmounted share or drive "
+        "reads as offline, so check the dry run's offline paths. Keep search_roots narrow: they "
+        "are walked while the lock is held. max_items relinks a sample first; dry run again "
+        "before the rest. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "search_roots": {"type": "array", "minItems": 1, "maxItems": 20,

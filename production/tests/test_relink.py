@@ -124,12 +124,11 @@ class TestIndex(unittest.TestCase):
     def test_walks_roots_in_order_and_skips_hidden(self):
         with tempfile.TemporaryDirectory() as t:
             t = os.path.realpath(t)
-            for rel in ("a/P1.MOV", "a/._P1.MOV", ".hid/P1.MOV", "b/P1.MOV"):
+            for rel in ("a/P1.MOV", "a/._P1.MOV", "a/.hid/P1.MOV", "b/P1.MOV"):
                 os.makedirs(os.path.join(t, os.path.dirname(rel)), exist_ok=True)
                 Path(t, rel).write_bytes(b"x")
-            idx = rl.index_roots([os.path.join(t, "b"), os.path.join(t, "a"), os.path.join(t, ".hid")])
-            self.assertEqual(idx["P1.MOV"], [os.path.join(t, "b", "P1.MOV"), os.path.join(t, "a", "P1.MOV"),
-                                             os.path.join(t, ".hid", "P1.MOV")][:2] + [os.path.join(t, ".hid", "P1.MOV")])
+            idx = rl.index_roots([os.path.join(t, "b"), os.path.join(t, "a")])
+            self.assertEqual(idx["p1.mov"], [os.path.join(t, "b", "P1.MOV"), os.path.join(t, "a", "P1.MOV")])
             self.assertNotIn("._P1.MOV", idx)
 
     def test_names_are_nfc(self):
@@ -137,12 +136,12 @@ class TestIndex(unittest.TestCase):
         nfd = unicodedata.normalize("NFD", "Café.mov")
         with tempfile.TemporaryDirectory() as t:
             Path(t, nfd).write_bytes(b"x")
-            self.assertIn(unicodedata.normalize("NFC", "Café.mov"), rl.index_roots([t]))
+            self.assertIn(rl.name_key("CAFÉ.mov"), rl.index_roots([t]))  # case and form do not matter
 
     def test_rank_prefers_the_folder_holding_most_offline_names(self):
-        index = {"A.MOV": ["/n/x/A.MOV", "/n/y/A.MOV"], "B.MOV": ["/n/y/B.MOV"]}
+        index = {"a.mov": ["/n/x/A.MOV", "/n/y/A.MOV"], "b.mov": ["/n/y/B.MOV"]}
         votes = rl.folder_votes(["A.MOV", "B.MOV"], index)
-        self.assertEqual(rl.rank_candidates(index["A.MOV"], votes), ["/n/y/A.MOV", "/n/x/A.MOV"])
+        self.assertEqual(rl.rank_candidates(index["a.mov"], votes), ["/n/y/A.MOV", "/n/x/A.MOV"])
 
     def test_drift_names_only_what_changed(self):
         self.assertEqual(rl.drift({"Start TC": "1", "FPS": "25"}, {"Start TC": "2", "FPS": "25"}),
@@ -342,6 +341,51 @@ class TestRelinkTool(Base):
         r = workflows._relink_one(self.project.pool, self.c1, entry, os.path.exists, os.stat)
         self.assertEqual(r["result"], "FAILED: the file changed since the plan")
         self.assertEqual(self.c1.props["File Path"], "/card/DCIM/P1.MOV")
+
+    def test_a_stop_part_way_keeps_the_pairs_already_relinked(self):
+        dry = self.run_tool()
+        def stopping(pin, pm, check_cancel):
+            n = [0]
+
+            def check():
+                n[0] += 1
+                if n[0] == 2:
+                    raise workflows.api.ProjectChanged("project switched")
+            return check
+
+        with mock.patch.object(workflows, "_check", stopping):
+            with self.assertRaisesRegex(workflows.api.ProjectChanged, "already relinked"):
+                self.run_tool(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual(self.c1.props["File Path"], os.path.join(self.nas, "P1.MOV"))
+        self.assertEqual(self.c2.props["File Path"], "/card/DCIM/P2.MOV")
+        ev = self.events()
+        self.assertEqual(ev[1]["status"], "error")
+        self.assertEqual([r["old_path"] for r in ev[1]["detail"]["relinked"]], ["/card/DCIM/P1.MOV"])
+
+    def test_the_plan_names_where_the_offline_paths_live(self):
+        dry = self.run_tool()
+        self.assertEqual(dry["offline_volumes"], {"/card/DCIM": 2})
+        self.assertIn("/card/DCIM (2)", dry["summary"])
+        self.assertIn("is mounted", dry["summary"])
+
+    def test_names_match_without_regard_to_case(self):
+        self.c1.props["File Path"] = "/card/DCIM/p1.mov"
+        self.assertEqual(self.run_tool()["status_counts"], {"VERIFIED": 2})
+
+    def test_each_candidate_is_probed_once(self):
+        seen = []
+        self.probe.stop()
+        with mock.patch.object(workflows, "_probe_file", side_effect=lambda p: seen.append(p) or GOOD):
+            self.c2.props["File Path"] = "/other/P1.MOV"  # a second clip naming the same file
+            self.run_tool()
+        self.addCleanup(self.probe.start)
+        self.assertEqual(len([p for p in seen if p.endswith("P1.MOV")]), 1)
+
+    def test_a_clip_with_no_timecode_is_unverifiable_in_the_plan(self):
+        self.c1.props["Start TC"] = ""
+        dry = self.run_tool()
+        self.assertEqual(dry["status_counts"], {"VERIFIED": 1, "UNVERIFIABLE": 1})
+        self.assertIn("no tc", [r for r in dry["results"] if r["status"] == "UNVERIFIABLE"][0]["reason"])
 
     def test_folder_limits_the_walk(self):
         self.root.subs.append(rf.Folder("Other", clips=[rf.Clip("P9.MOV", "id-9", props("/card/P9.MOV"))]))
