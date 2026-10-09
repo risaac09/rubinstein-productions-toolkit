@@ -558,7 +558,7 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 23)
+        self.assertEqual(len(names), 24)
         for name in ("deliver_check", "deliver_captions", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):
