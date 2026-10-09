@@ -158,7 +158,7 @@ jobs:
       - name: MCP read tools
         run: python -m unittest -v production.tests.test_mcp_reads
       - name: MCP write tools, journal, forbidden calls
-        run: python -m unittest -v production.tests.test_mcp_writes production.tests.test_mcp_writes2
+        run: python -m unittest -v production.tests.test_mcp_writes production.tests.test_mcp_writes2 production.tests.test_mcp_project_timeline
       - name: Library, workflows and the script's command set
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib production.tests.test_resolve_workflow_pure
       - name: Cut, sync and settings drift guard
