@@ -495,8 +495,10 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
     following the project's frame rate and size. Every item is read back.
     The current timeline, playhead and page are put back. Returns {project,
     timeline, rate, order, plan, skipped, total_frames, conformed, plan_sha,
-    dry_run, created, problems, left_behind, ui_restore_problems,
-    exit_status}."""
+    dry_run, created, items, problems, left_behind, lands_in_bin,
+    ui_restore_problems, exit_status}. The new timeline goes into the media-pool
+    folder that is open in Resolve (CreateEmptyTimeline adds it there);
+    lands_in_bin names it."""
     from . import clipline as cl
     from . import deliver
     if not name.endswith(AUTO):
@@ -523,7 +525,8 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
            "order": order, "plan": rows, "skipped": planned["skipped"],
            "total_frames": sum(r["length"] for r in rows),
            "conformed": [r["name"] for r in rows if r["conformed"]], "plan_sha": sha,
-           "dry_run": dry_run, "created": None, "problems": [], "left_behind": None,
+           "dry_run": dry_run, "created": None, "items": [], "problems": [], "left_behind": None,
+           "lands_in_bin": api._safe_call(media_pool.GetCurrentFolder(), "GetName"),
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
@@ -536,7 +539,8 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
         built = cl.build(project, media_pool, name, rows, planned["clips"],
                          _check(pin, pm, check_cancel))
     out["created"] = {"name": built["name"], "unique_id": built["unique_id"],
-                      "items": built["items"]}
+                      "items": len(built["items"])}  # the rows go in out["items"], not the journal
+    out["items"] = built["items"]
     out["problems"] = built["problems"]
     out["left_behind"] = built["left_behind"]
     out["ui_restore_problems"] = snap.problems

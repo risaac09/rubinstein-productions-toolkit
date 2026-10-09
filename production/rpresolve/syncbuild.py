@@ -95,10 +95,13 @@ def walk(root):
     return out
 
 
-def find_clip(root, ref):
+def find_clip(root, ref, clips=None):
     """The one media-pool clip `ref` names: its unique id, else its file's
-    absolute path, else its clip name. Returns (clip, None) or (None, why)."""
-    clips = [c for _, c in walk(root)]
+    absolute path, else its clip name. Returns (clip, None) or (None, why).
+    `clips` is the pool's clips when the caller has walked it already (a
+    caller resolving many refs walks once)."""
+    if clips is None:
+        clips = [c for _, c in walk(root)]
     by_id = [c for c in clips if _uid(c) == ref]
     if by_id:
         return by_id[0], None

@@ -215,7 +215,7 @@ def main():
             tl_name = f"MCP live {stamp} ladder [auto]"
             err, r = c.both("timeline_from_clips", **P, name=tl_name, bin=a.bin)
             check(not err and r["problems"] == [] and r["created"] and
-                  all(i["ok"] for i in r["created"]["items"]),
+                  all(i["ok"] for i in r["items"]),
                   "timeline_from_clips built the bin in order and read every item back")
             check(not r.get("ui_restore_problems"), "its UI (timeline, playhead, page) was put back")
         if a.ingest:

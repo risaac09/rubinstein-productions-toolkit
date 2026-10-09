@@ -94,9 +94,9 @@ def plan(root, tl_fps, bin_path=None, refs=None, order="name"):
         raise PlanError(f"order must be one of {', '.join(ORDERS)} (got '{order}')")
     strict = refs is not None
     if strict:
-        clips = []
+        clips, pool = [], [c for _, c in sb.walk(root)]  # walked once, not once per ref
         for ref in refs:
-            clip, why = sb.find_clip(root, ref)
+            clip, why = sb.find_clip(root, ref, pool)
             if why:
                 raise PlanError(why)
             clips.append(clip)
@@ -190,9 +190,10 @@ def read_back(tl, rows):
 def build(project, media_pool, name, rows, clips, check=None):
     """Make the timeline, make it current, append every row, read it back.
     Raises api.WriteNotApplied before anything exists (the timeline could
-    not be made). After that a problem is returned, never raised, with the
-    timeline named under left_behind: nothing is deleted, so a person
-    removes a timeline that is not right. Returns {name, unique_id,
+    not be made). After that a Resolve problem, or the project changing, is
+    returned, never raised, with the timeline named under left_behind:
+    nothing is deleted, so a person removes a timeline that is not right. A
+    cancel is raised, its message naming the timeline it left behind. Returns {name, unique_id,
     start_frame, items, problems, left_behind}."""
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
@@ -210,8 +211,15 @@ def build(project, media_pool, name, rows, clips, check=None):
                                           "endFrame": row["frames"], "mediaType": VIDEO,
                                           "trackIndex": 1}])
         out["items"], out["problems"] = read_back(tl, rows)
+    except api.ProjectChanged as e:
+        out["problems"].append(f"stopped, the open project changed: {e}")
     except api.ResolveAPIError as e:
         out["problems"].append(f"{type(e).__name__}: {e}")
+    except BaseException as e:  # a cancel: the timeline exists, so say so before stopping
+        e.args = (f"{e} (the timeline '{name}' was made and is left in the project, holding "
+                  f"{len(api._safe_call(tl, 'GetItemListInTrack', 'video', 1) or [])} item(s); "
+                  "check or delete it)",) + e.args[1:]
+        raise
     if out["problems"]:
         out["left_behind"] = name
     return out

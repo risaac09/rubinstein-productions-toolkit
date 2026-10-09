@@ -250,8 +250,10 @@ def set_color_management(args, ctx):
             r["summary"] = (f"would set {', '.join(r['would_change'])} on '{name}' (a fresh "
                             f"project, '{r['preset']}' preset)" + _how(r))
         elif r["failed"]:
-            r["summary"] = (f"set_color_management FAILED on {r['failed']['key']} after "
-                            f"{len(r['applied'])} write(s): {r['failed']['problem']}")
+            kept = ", ".join(a["key"] for a in r["applied"]) or "none"
+            r["summary"] = (f"set_color_management FAILED on {r['failed']['key']}: "
+                            f"{r['failed']['problem']} Nothing is rolled back; keys already "
+                            f"set and left as they are: {kept}")
         elif r["drift"]:
             r["summary"] = ("set " + ", ".join(a["key"] for a in r["applied"]) + f" on '{name}', "
                             "but Resolve changed something afterwards: " + "; ".join(r["drift"]))
@@ -280,7 +282,7 @@ def timeline_from_clips(args, ctx):
         if r["dry_run"]:
             r["summary"] = (f"would build '{r['timeline']}' from {n} clip(s), "
                             f"{r['total_frames']} frames at {r['rate']} fps, in {r['order']} "
-                            "order" + extra + _how(r))
+                            f"order, in the open bin '{r['lands_in_bin']}'" + extra + _how(r))
         elif r["problems"]:
             r["summary"] = (f"timeline_from_clips FAILED: '{r['timeline']}' was made but does "
                             "not match the plan, and is left in the project for you to check or "
@@ -648,6 +650,7 @@ def register(registry):
         "frame rate is conformed by Resolve to real time and the plan says so. Items in a bin "
         "that cannot be placed (timelines, audio-only clips) are listed under skipped. Every "
         "item is read back (the clip, its first source frame, its length, no gap or overlap). "
+        "The timeline is added to the media-pool bin that is open in Resolve (lands_in_bin). "
         "Nothing existing is modified or removed; a timeline that does not read back is named "
         "under left_behind. The current timeline, playhead and page are put back. Dry run "
         "first; the real run needs its plan_sha.",

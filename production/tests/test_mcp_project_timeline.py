@@ -163,6 +163,7 @@ class TestSetColorManagement(Base):
         self.assertEqual(real["failed"]["key"], "colorScienceMode")
         self.assertIn("modal dialog", real["failed"]["problem"])
         self.assertIn("FAILED", real["summary"])
+        self.assertIn("Nothing is rolled back", real["summary"])
         self.assertEqual(self.journal()[1]["status"], "failed")
 
     def test_the_wrong_project_is_refused(self):
@@ -235,9 +236,9 @@ class TestTimelineFromClips(Base):
         self.assertEqual(dry["conformed"], [])
         self.assertEqual(real["exit_status"], 0)
         self.assertEqual(real["problems"], [])
-        self.assertEqual([i["name"] for i in real["created"]["items"]],
+        self.assertEqual([i["name"] for i in real["items"]],
                          ["P1.MOV", "P2.MOV", "P10.MOV"])
-        self.assertTrue(all(i["ok"] for i in real["created"]["items"]))
+        self.assertTrue(all(i["ok"] for i in real["items"]))
         self.assertIn(self.name, self.tl_names())
         self.assertIn("every item read back", real["summary"])
 
@@ -371,6 +372,56 @@ class TestTimelineFromClips(Base):
         self.assertIn("FAILED", real["summary"])
         self.assertEqual(self.journal()[1]["status"], "failed")
         self.assertEqual(self.journal()[1]["detail"]["left_behind"], self.name)
+
+    def test_the_journal_carries_a_count_not_every_item_and_the_bin_is_named(self):
+        _, real = run_twice("timeline_from_clips", {"name": self.name, "bin": "Ladder"},
+                            self.resolve)
+        self.assertEqual(real["created"]["items"], 3)
+        self.assertEqual(len(real["items"]), 3)
+        self.assertEqual(self.journal()[1]["detail"]["created"]["items"], 3)
+        self.assertEqual(real["lands_in_bin"], "Master")  # the open bin, as the fake keeps it
+
+    def test_naming_many_clips_walks_the_pool_once(self):
+        walks = []
+        real_walk = clipline.sb.walk
+
+        def counting(root):
+            walks.append(1)
+            return real_walk(root)
+        with mock.patch.object(clipline.sb, "walk", counting):
+            clipline.plan(self.root, 25.0, refs=["c-1", "c-2", "c-10"])
+        self.assertEqual(len(walks), 1)
+
+    def test_a_cancel_mid_build_names_the_timeline_it_left_behind(self):
+        from rpresolve.mcp.registry import Cancelled
+        n = []
+
+        def cancel_on_second():
+            n.append(1)
+            if len(n) == 2:
+                raise Cancelled("cancelled")
+        with self.assertRaises(Cancelled) as cm:
+            workflows.timeline_from_clips(self.resolve, P, self.name, bin="Ladder",
+                                          dry_run=False, check_cancel=cancel_on_second)
+        self.assertIn(self.name, str(cm.exception))
+        self.assertIn("left in the project", str(cm.exception))
+        self.assertIn(self.name, self.tl_names())
+
+    def test_the_project_changing_mid_build_is_a_stop_not_a_mismatch(self):
+        real_check = api.ProjectPin.check
+        calls = []
+
+        def flaky(pin, pm):
+            calls.append(1)
+            if len(calls) == 3:  # after the timeline exists and one clip is placed
+                raise api.ProjectChanged("Open project is now 'Another'. Stopping.")
+            return real_check(pin, pm)
+        with mock.patch.object(api.ProjectPin, "check", flaky):
+            r = workflows.timeline_from_clips(self.resolve, P, self.name, bin="Ladder",
+                                              dry_run=False)
+        self.assertEqual(r["exit_status"], 1)
+        self.assertEqual(r["left_behind"], self.name)
+        self.assertTrue(any("stopped, the open project changed" in p for p in r["problems"]))
 
     def test_a_gap_between_clips_is_caught(self):
         real_append = self.project.pool.AppendToTimeline
