@@ -19,6 +19,8 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Captions: create_captions transcribes an [auto] timeline with line lengths for its shape; queue a captioned destination after it.
 - Dual-system sound: sync_measure first; sync stacks the pair on a new [auto] timeline at that offset. Drift is reported, never corrected; a multicam clip stays a hand step.
 - Reframes: reframe_plan writes a copy of the manifest with a crop per span, checked against the face on sampled frames; cut builds the 9:16 and 1:1 versions from that copy (aspects). A version with no crop is named unreframed and not built.
+- Project setup: a person makes the project in Resolve; set_color_management then sets its colour science (a fresh, empty project only), and ingest tags the media.
+- Ordered timelines: timeline_from_clips builds a new [auto] timeline from the clips in a bin, or named clips, in name, path or given order; picture only, every item read back.
 - Trim review proposes and deletes nothing: trim_review writes the TSV, trim_review_markers marks an [auto] timeline.
 - Output files never go inside a git repository.
 - Tool results name client media, people and transcripts. Never paste them into commits, pull requests or anything public.

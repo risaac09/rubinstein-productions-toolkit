@@ -5,7 +5,8 @@ deliver_captions, which adds a file beside a render.
 The rules every write tool keeps:
 - The call names the project (project, and project_id when known); the
   open project must match, and is re-checked before every change.
-- Additive only: nothing that already exists is modified.
+- Additive only: nothing that already exists is modified. (set_color_management
+  is the one exception, and only on a fresh project: no timeline, no clip.)
 - dry_run defaults to true and returns a plan_sha. A real run must pass
   that plan_sha, and is refused when the plan has changed since.
 - Every run holds the cross-process lock; a real run is journalled
@@ -27,8 +28,8 @@ from . import journal
 from .registry import WRITE, Tool
 
 DESTRUCTIVE = {**WRITE, "destructiveHint": True}
-from .tools_offline import (REVIEW_PROPS, _abs, _existing, _page, deliver_config,
-                            destination_keys)
+from .tools_offline import (PAGING, REVIEW_PROPS, _abs, _existing, _limit, _page,
+                            deliver_config, destination_keys)
 
 WRITE_LOCK_WAIT = 30.0
 
@@ -67,7 +68,7 @@ def _journalled(tool, args, run):
     status = {0: "ok", 2: "needs_review"}.get(result.get("exit_status"), "failed")
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
-                                                      "left_behind", "plan_sha",
+                                                      "applied", "left_behind", "plan_sha",
                                                       "settings_drift_rows") if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
@@ -228,6 +229,73 @@ def duplicate_timeline_auto(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("duplicate_timeline_auto", args, run)
+
+
+# ---------------------------------------------------------------------------
+# set_color_management, timeline_from_clips
+# ---------------------------------------------------------------------------
+
+def set_color_management(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.set_color_management(
+            ctx.session.get(), args["project"], args.get("preset"), dry_run=args["dry_run"],
+            project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
+            expect_sha=args.get("plan_sha"))
+        name = r["project"]["name"]
+        if not r["would_change"]:
+            r["summary"] = (f"'{name}' already has the '{r['preset']}' settings; nothing to set")
+        elif r["dry_run"]:
+            r["summary"] = (f"would set {', '.join(r['would_change'])} on '{name}' (a fresh "
+                            f"project, '{r['preset']}' preset)" + _how(r))
+        elif r["failed"]:
+            r["summary"] = (f"set_color_management FAILED on {r['failed']['key']} after "
+                            f"{len(r['applied'])} write(s): {r['failed']['problem']}")
+        elif r["drift"]:
+            r["summary"] = ("set " + ", ".join(a["key"] for a in r["applied"]) + f" on '{name}', "
+                            "but Resolve changed something afterwards: " + "; ".join(r["drift"]))
+        else:
+            r["summary"] = (f"set {', '.join(a['key'] for a in r['applied'])} on '{name}' and "
+                            "read each back")
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("set_color_management", args, run)
+
+
+def timeline_from_clips(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.timeline_from_clips(
+            ctx.session.get(), args["project"], args["name"], bin=args.get("bin"),
+            clips=args.get("clips"), order=args["order"], dry_run=args["dry_run"],
+            project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
+            expect_sha=args.get("plan_sha"))
+        n, skipped, conf = len(r["plan"]), len(r["skipped"]), len(r["conformed"])
+        extra = ((f"; {skipped} item(s) in the bin skipped (not placeable)" if skipped else "") +
+                 (f"; {conf} clip(s) at another frame rate than the timeline, conformed by "
+                  "Resolve to real time" if conf else ""))
+        if r["dry_run"]:
+            r["summary"] = (f"would build '{r['timeline']}' from {n} clip(s), "
+                            f"{r['total_frames']} frames at {r['rate']} fps, in {r['order']} "
+                            "order" + extra + _how(r))
+        elif r["problems"]:
+            r["summary"] = (f"timeline_from_clips FAILED: '{r['timeline']}' was made but does "
+                            "not match the plan, and is left in the project for you to check or "
+                            "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
+        else:
+            r["summary"] = (f"built '{r['timeline']}' from {n} clip(s), every item read back in "
+                            "order" + extra + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        r = run() if args["dry_run"] else _journalled("timeline_from_clips", args, run)
+    page = _page(r["plan"], args)
+    r["plan"] = page.pop("rows")
+    r.update(page)
+    return r
 
 
 def apply_grade(args, ctx):
@@ -553,6 +621,54 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         duplicate_timeline_auto, title="Duplicate a timeline as [auto]", annotations=WRITE))
+    registry.add(Tool(
+        "set_color_management",
+        "Set the colour-management Project Settings that `ingest` needs (preset 'managed': "
+        "colorScienceMode davinciYRGBColorManagedv2) on the open project, each value read "
+        "back, then every key read again to catch one Resolve reset. Refuses unless the "
+        "project is fresh: no timelines and no clips in the media pool, because changing "
+        "colour science under existing work changes how it looks. Never creates, loads or "
+        "saves a project: a person makes the project in Resolve, then calls this. Dry run "
+        "first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "preset": {"type": "string", "enum": ["managed"], "default": "managed",
+                       "description": "The settings to apply (rpresolve.colormgmt.PRESETS)."},
+            **DRY_RUN},
+         "required": ["project"], "additionalProperties": False},
+        set_color_management, title="Set colour management on a fresh project",
+        annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "timeline_from_clips",
+        "Build a new timeline whose name ends ' [auto]' from media-pool clips, one after "
+        "another in a stated order: the clips directly in a bin (bin, as a path from the root "
+        "such as 'GH7'), or clips named in `clips` (unique ids, absolute file paths or "
+        "names). order is name or path (natural order, so P2 comes before P10) or given. "
+        "Picture only, on V1, following the project's frame rate and size; a clip at another "
+        "frame rate is conformed by Resolve to real time and the plan says so. Items in a bin "
+        "that cannot be placed (timelines, audio-only clips) are listed under skipped. Every "
+        "item is read back (the clip, its first source frame, its length, no gap or overlap). "
+        "Nothing existing is modified or removed; a timeline that does not read back is named "
+        "under left_behind. The current timeline, playhead and page are put back. Dry run "
+        "first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "name": {"type": "string", "pattern": " \\[auto\\]$", "minLength": 8,
+                     "description": "Name for the timeline; must end ' [auto]'."},
+            "bin": {"type": "string", "minLength": 1,
+                    "description": "A bin path from the root; its clips are placed. Give this "
+                    "or clips."},
+            "clips": {"type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": True,
+                      "items": {"type": "string", "minLength": 1},
+                      "description": "Clips to place, by unique id, absolute file path or "
+                      "clip name. Give this or bin."},
+            "order": {"type": "string", "enum": ["name", "path", "given"], "default": "name",
+                      "description": "name or path: natural order of the clip name or file "
+                      "path. given: the order of clips (or the bin as Resolve lists it)."},
+            **DRY_RUN,
+            **PAGING, "limit": _limit(100, 500)},
+         "required": ["project", "name"], "additionalProperties": False},
+        timeline_from_clips, title="Build a timeline from clips", annotations=WRITE))
     registry.add(Tool(
         "apply_grade",
         "Apply a LUT (to one node) or a .drx grade still (with its {num_nodes, labels} "

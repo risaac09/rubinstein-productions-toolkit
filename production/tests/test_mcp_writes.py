@@ -81,7 +81,7 @@ class Base(unittest.TestCase):
 
 class TestRegistry(unittest.TestCase):
     def test_write_tools_are_marked_as_writes(self):
-        for name in ("ingest", "cut"):
+        for name in ("ingest", "cut", "set_color_management", "timeline_from_clips"):
             tool = REG.get(name)
             self.assertFalse(tool.annotations["readOnlyHint"], name)
             self.assertIn("project", tool.input_schema["required"])

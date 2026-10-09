@@ -8,9 +8,9 @@ Nothing here prints or exits the interpreter. Preconditions that fail raise
 Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
-Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
-destination form, queue_destination, create_captions, sync,
-trim_review_markers) pin the open project by name (and unique id when
+Write paths (ingest, cut, duplicate_auto, set_color_management,
+timeline_from_clips, apply_grade, queue_render and its destination form,
+queue_destination, create_captions, sync, trim_review_markers) pin the open project by name (and unique id when
 given), re-check the pin before every batch of writes, and take a
 `check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
@@ -434,6 +434,113 @@ def duplicate_auto(resolve, project_name, timeline, new_name=None, dry_run=False
                          for k in sorted(set(frames) | set(got)) if frames.get(k) != got.get(k)]
     out["ui_restore_problems"] = snap.problems
     out["exit_status"] = 1 if out["mismatches"] else 0
+    return out
+
+
+def set_color_management(resolve, project_name, preset=None, dry_run=False, project_id=None,
+                         expect_sha=None, check_cancel=None):
+    """Set a colour-management preset (rpresolve.colormgmt) on the open
+    project, so `ingest` will take it. Refuses unless the project is fresh:
+    no timelines and no clip in the media pool. Writes each key of the
+    preset in order, reads each back, then reads them all again to catch a
+    key Resolve reset when another changed. Never creates, loads or saves a
+    project. Returns {project, preset, plan, would_change, applied, failed,
+    drift, plan_sha, dry_run, ui_restore_problems, exit_status}: exit_status
+    0 done or nothing to do, 1 a write failed or drifted."""
+    from . import colormgmt as cm
+    preset = preset or cm.DEFAULT_PRESET
+    keys = cm.PRESETS.get(preset)
+    if keys is None:
+        raise Refused(f"unknown preset '{preset}'; the presets are {', '.join(sorted(cm.PRESETS))}.")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, root = api.media_pool_root(project)
+    rows = cm.plan_rows(project, keys)
+    todo = [r for r in rows if r["action"] == "set"]
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "preset": preset, "plan": rows,
+           "would_change": [r["key"] for r in todo], "applied": [], "failed": None, "drift": [],
+           "dry_run": dry_run, "ui_restore_problems": [], "exit_status": 0}
+    if todo:
+        reasons = cm.not_fresh(project, root)
+        if reasons:
+            raise Refused(f"'{pin.name}' is not a fresh project: it has " + " and ".join(reasons) +
+                          ". Changing colour science under existing timelines and clips changes "
+                          "how they look, so this tool sets it only on an empty project; change "
+                          "it in Project Settings by hand.")
+    out["plan_sha"] = plan_sha("color_management", pin.unique_id, preset, rows)
+    if dry_run or not todo:
+        return out
+    if expect_sha and expect_sha != out["plan_sha"]:
+        raise Refused("the plan changed since the dry run (the project's settings, timelines or "
+                      "media pool differ); run the dry run again and review it")
+    check = _check(pin, pm, check_cancel)
+    for r in todo:
+        check()
+        try:
+            got = api.set_setting_checked(project, r["key"], r["wanted"])
+        except api.WriteNotApplied as e:
+            out["failed"] = {"key": r["key"], "problem": str(e)}
+            break
+        out["applied"].append({"key": r["key"], "was": r["now"], "now": got})
+    if not out["failed"]:
+        out["drift"] = cm.final_drift(project, keys)
+    out["exit_status"] = 1 if out["failed"] or out["drift"] else 0
+    return out
+
+
+def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order="name",
+                        dry_run=False, project_id=None, expect_sha=None, check_cancel=None):
+    """Build a new ' [auto]' timeline from media-pool clips in order
+    (rpresolve.clipline): the clips directly in a bin, or the clips named in
+    `clips` (unique ids, absolute file paths or names). Picture only, on V1,
+    following the project's frame rate and size. Every item is read back.
+    The current timeline, playhead and page are put back. Returns {project,
+    timeline, rate, order, plan, skipped, total_frames, conformed, plan_sha,
+    dry_run, created, problems, left_behind, ui_restore_problems,
+    exit_status}."""
+    from . import clipline as cl
+    from . import deliver
+    if not name.endswith(AUTO):
+        raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
+    if bool(bin) == bool(clips):
+        raise Refused("give exactly one of bin (the clips directly in a bin) and clips (the "
+                      "clips to place, by unique id, absolute path or name).")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    count = int(project.GetTimelineCount() or 0)
+    if any(project.GetTimelineByIndex(i).GetName() == name for i in range(1, count + 1)):
+        raise Refused(f"a timeline named '{name}' already exists; nothing is overwritten.")
+    rate = str(project.GetSetting("timelineFrameRate") or "")
+    tl_fps = deliver.exact_fps(rate)
+    if not tl_fps:
+        raise Refused(f"the project's timelineFrameRate reads '{rate}'; cannot plan lengths.")
+    try:
+        planned = cl.plan(root, tl_fps, bin_path=bin, refs=clips, order=order)
+    except cl.PlanError as e:
+        raise Refused(str(e))
+    rows = planned["rows"]
+    sha = plan_sha("clip_timeline", pin.unique_id, name, rate, order, rows)
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
+           "order": order, "plan": rows, "skipped": planned["skipped"],
+           "total_frames": sum(r["length"] for r in rows),
+           "conformed": [r["name"] for r in rows if r["conformed"]], "plan_sha": sha,
+           "dry_run": dry_run, "created": None, "problems": [], "left_behind": None,
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the clips, their order or the project's "
+                      "frame rate differ); run the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        project = pin.check(pm)
+        built = cl.build(project, media_pool, name, rows, planned["clips"],
+                         _check(pin, pm, check_cancel))
+    out["created"] = {"name": built["name"], "unique_id": built["unique_id"],
+                      "items": built["items"]}
+    out["problems"] = built["problems"]
+    out["left_behind"] = built["left_behind"]
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if built["problems"] else 0
     return out
 
 
