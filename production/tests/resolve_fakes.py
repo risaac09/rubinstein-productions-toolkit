@@ -311,6 +311,9 @@ class Pool(Fake):
         self.root, self.project, self.current = root, project, root
         self.autosync_separate = True  # the synced audio is an item of its own on a timeline
         self.autosync_offset = 0  # timeline frames: where the synced audio's start lands
+        self.relink_ok = True  # RelinkClips says yes and moves the clips
+        self.relink_stuck = False  # RelinkClips says yes and moves nothing
+        self.relink_drift = {}  # properties every relinked clip then reads differently
 
     def GetRootFolder(self): return self.root
     def GetCurrentFolder(self): return self.current
@@ -325,6 +328,17 @@ class Pool(Fake):
         folder = Folder(name)
         parent.subs.append(folder)
         return folder
+
+    def RelinkClips(self, clips, folder_path):
+        _log(self, "RelinkClips", [c.name for c in clips], folder_path)
+        if not self.relink_ok:
+            return False
+        if self.relink_stuck:
+            return True
+        for c in clips:  # Resolve updates the folder; the file name stays
+            c.props["File Path"] = os.path.join(folder_path, os.path.basename(c.props["File Path"]))
+            c.props.update(self.relink_drift)
+        return True
 
     def ImportMedia(self, paths):
         _log(self, "ImportMedia", list(paths))
