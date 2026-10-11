@@ -40,9 +40,11 @@ overlay that only adds a `target_dir`. A named overlay that is missing,
 does not parse, or is not a JSON object stops the tool with an error; it
 is never quietly replaced by the defaults.
 
-Keep the write tools on "ask" in Claude Code's permissions. Their results
-name media files, people and transcript text, so treat anything they return
-as private.
+Whether the write tools sit on "ask" in Claude Code's permissions is the
+operator's call: each dry-runs first, needs its plan_sha, journals every
+run and never starts a render, so a dialog per write adds little. Their
+results name media files, people and transcript text, so treat anything
+they return as private.
 
 ## Tools
 
