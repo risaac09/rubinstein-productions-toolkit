@@ -10,7 +10,8 @@ hand with Resolve open on the sandbox; CI never runs it.
         [--drx <.drx with its .json label manifest beside it>] \\
         [--render-dir <existing folder outside any git repo; a client_master job is queued for it>] \\
         [--ingest <camera file not yet in the pool>] \\
-        [--manifest <cut manifest> --clip <clip name>] [--captions]
+        [--manifest <cut manifest> --clip <clip name>] [--captions] \\
+        [--bin <a media-pool bin of video clips; timeline_from_clips builds from it>]
 
 It refuses unless the open project's name contains "Sandbox" and its
 unique id is --project-id. It snapshots every timeline (items, frames and
@@ -134,6 +135,7 @@ def main():
     ap.add_argument("--ingest")
     ap.add_argument("--manifest")
     ap.add_argument("--clip")
+    ap.add_argument("--bin", help="a media-pool bin of video clips for timeline_from_clips")
     ap.add_argument("--captions", action="store_true",
                     help="Also run create_captions on the copy")
     a = ap.parse_args()
@@ -182,6 +184,13 @@ def main():
                         dry_run=False, plan_sha="0" * 64)
         check(err and "plan changed" in r["summary"], "a stale plan_sha is refused")
 
+        # The sandbox holds work, so set_color_management must refuse it (or have nothing to do,
+        # when it is already managed). Either way it writes nothing.
+        err, r = c.tool("set_color_management", **P)
+        check(err and "not a fresh project" in r["summary"] or
+              not err and not r.get("would_change"),
+              "set_color_management refuses a project that holds work, or has nothing to set")
+
         print("Writes")
         err, r = c.both("duplicate_timeline_auto", **P, timeline=a.timeline, new_name=dup_name)
         check(not err and r.get("mismatches") == [], "duplicate matches its origin")
@@ -202,6 +211,13 @@ def main():
             check(not err and job_id and r["readback_problems"] == [], "render queued and read back")
             restore = [w for w in r.get("warnings", []) if "back to" in w or "stays" in w]
             check(not restore, "Deliver format and render mode put back without warnings")
+        if a.bin:
+            tl_name = f"MCP live {stamp} ladder [auto]"
+            err, r = c.both("timeline_from_clips", **P, name=tl_name, bin=a.bin)
+            check(not err and r["problems"] == [] and r["created"] and
+                  all(i["ok"] for i in r["items"]),
+                  "timeline_from_clips built the bin in order and read every item back")
+            check(not r.get("ui_restore_problems"), "its UI (timeline, playhead, page) was put back")
         if a.ingest:
             err, r = c.both("ingest", **P, paths=[a.ingest])
             check(not err and r["exit_status"] in (0, 2), "ingest ran")
