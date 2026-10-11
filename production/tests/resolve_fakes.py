@@ -422,6 +422,8 @@ class Project(Fake):
         self.refuse = set()  # SetRenderSettings keys this fake refuses
         self.render_mode = 1  # 0 Individual clips, 1 Single clip
         self.stuck_mode = False  # SetCurrentRenderMode says yes and changes nothing
+        self.ignore_settings = set()  # project SetSetting keys a modal dialog swallows
+        self.reset_on = {}  # project SetSetting key -> {other key: value} Resolve changes with it
         self.flip_resets = {}  # settings a timeline's first useCustomSettings write changes
         self.flip_each_time = False  # a repeat write changes them again
         self.dup_copies_settings = False  # DuplicateTimeline keeps a custom timeline's settings
@@ -440,6 +442,17 @@ class Project(Fake):
     def GetMediaPool(self): return self.pool
     def GetSetting(self, key=None): return self.settings.get(key)
     def GetSettings(self): return dict(self.settings)
+
+    def SetSetting(self, key, value):
+        # Project-level settings, as a timeline's: the call says True. `ignore_settings` is a
+        # Resolve with a modal dialog open, which swallows a write and still says True;
+        # `reset_on` ({key: {other key: value}}) is a key whose write makes Resolve change another.
+        _log(self, "SetSetting", key, value)
+        if key not in self.ignore_settings:
+            self.settings[key] = str(value)
+            self.settings.update(self.reset_on.get(key, {}))
+        return True
+
     def GetRenderJobList(self): return [dict(j) for j in self.jobs]
 
     def GetRenderJobStatus(self, job_id):

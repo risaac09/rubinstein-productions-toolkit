@@ -47,8 +47,8 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 23 tools: 5 reads, 10 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 8
+tool must name that project. There are 25 tools: 5 reads, 10 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 10
 writes.
 
 | Tool | Kind | What it does |
@@ -71,6 +71,8 @@ writes.
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines and their 9:16 and 1:1 versions (`aspects`, default 9:16) from a cut manifest, gated by endcheck. Each version's items take their span's crop from `reframe_plan` (else the clip's `face_x`), every transform read back. A version with no reframe is not built and is named UNREFRAMED, nor is one whose input scaling is not scaleToFit or scaleToCrop (REFUSED); one whose picture does not fill the frame is built and named BARS. A timeline a failed build leaves behind is named in `left_behind` and in the journal. Each timeline is decided on its own: one that exists is skipped, and a missing version beside an existing 16:9 is built from it while its items still match the manifest's spans. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
+| `set_color_management` | write | Set the colour-management Project Settings `ingest` needs (preset `managed`: `colorScienceMode` `davinciYRGBColorManagedv2`) on the open project, each value read back and every key read again after. Refuses unless the project is fresh: no timelines and no clips in the media pool. Never creates, loads or saves a project; a person makes the project in Resolve. |
+| `timeline_from_clips` | write | A new ` [auto]` timeline from media-pool clips one after another: the clips directly in a bin, or clips named by unique id, path or name, in name, path or given order (natural order, so P2 comes before P10). Picture only, on V1, following the project's frame rate and size; a clip at another rate is conformed by Resolve to real time and the plan says so. Every item is read back: the clip, its first source frame, its length, no gap or overlap. The timeline goes into the media-pool bin open in Resolve (`lands_in_bin` says which). |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
@@ -101,7 +103,11 @@ tree and never overwrites an `.srt`.
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
 - **Additive only.** Nothing that existed before is modified. New timelines
-  end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
+  end in ` [auto]`. One tool sets a project setting, `set_color_management`,
+  and it does so only on a fresh project, one with no timeline and no clip in
+  its media pool, so nothing anyone has made is reached; it refuses any other
+  project, never creates, loads or saves one, and is annotated destructive so
+  a client asks first. Grades and auto captions go only onto ` [auto]`
   timelines, and `create_captions` refuses a timeline that already has any
   subtitle item. An item whose
   grade version is remote is always refused, because a remote grade is shared
@@ -188,8 +194,9 @@ tree and never overwrites an `.srt`.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline
   current; `create_captions` makes the timeline current and opens the Edit
-  page; `sync` makes each new timeline current to place clips on it (and,
-  importing, opens its bin); `trim_review_markers` makes the timeline
+  page; `sync` and `timeline_from_clips` make each new timeline current to
+  place clips on it (and, `sync` importing, opens its bin);
+  `trim_review_markers` makes the timeline
   current while marking. The current timeline, playhead, page and media
   pool folder are restored after each, and any restore problem is in the
   result.
@@ -233,9 +240,9 @@ use instead (the table below says the same), without connecting to Resolve.
 
 | Retired command | Do this instead |
 |---|---|
-| `new-project` | No tool creates a project. Create it by hand in Resolve and set Project Settings > Color Management > Color science to DaVinci YRGB Color Managed. `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin; it does not make the old Audio, Selects, Timeline, Graphics and Exports tree, which you can make by hand if you want it. Set the resolution and frame rate in Project Settings too. |
+| `new-project` | No tool creates a project: a person makes it in Resolve (`CreateProject` makes the new project current, which can drop an editor's unsaved work). Then `set_color_management` sets Color science to DaVinci YRGB Color Managed on that fresh, empty project, or set it by hand in Project Settings > Color Management. `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin; it does not make the old Audio, Selects, Timeline, Graphics and Exports tree, which you can make by hand if you want it. Set the resolution and frame rate in Project Settings too. |
 | `import-media` | `ingest`: media goes under camera bins in `parent` (default `Source`) and each clip's Input Color Space and Data Level are tagged from `detect`. There is no custom bin and no clip colour; `timeline_items` shows each item's input colour space. |
-| `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync` and `duplicate_timeline_auto` make ` [auto]` timelines. |
+| `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync`, `duplicate_timeline_auto` and `timeline_from_clips` make ` [auto]` timelines; `timeline_from_clips` is the one for "these clips, in this order" (a test ladder, a camera comparison, a selects reel). |
 | `add-subtitles`, `auto-subtitle`, `captions` | `create_captions` on an ` [auto]` timeline. An `.srt` cannot be placed by script on Resolve 21: use File > Import > Subtitle by hand. |
 | `render`, `render-all`, `deliver-queue` | `queue_render` with a `destination`, a delivery destination in `resolve-config.json`, under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per destination. The four render presets `render` and `render-all` took (`youtube`, `linkedin`, `master`, `story`) no longer exist; the Deliver section of `resolve-template-spec.md` lists the destinations and their frame sizes. |
 | `clear-queue` | No tool. Remove jobs on the Deliver page; no tool deletes anything. |
@@ -283,6 +290,23 @@ with `offset` and `limit` and writes every row to
 choose the file.
 
 ## Things that cost time to find
+
+- `set_color_management` and `timeline_from_clips` are tested against the
+  shared fakes only (`tests/test_mcp_project_timeline.py`). Neither has run
+  against a live Resolve yet. Run `tests/live_mcp_sandbox.py` on a sandbox
+  project before relying on them. What is unconfirmed: that
+  `Project.SetSetting('colorScienceMode', ...)` takes effect and reads back on
+  21.1.1.10 (the 21.1 README marks `SetSetting` deprecated for
+  `SetSettings`), and how `AppendToTimeline` with no `recordFrame` places a
+  conformed clip. Both tools read everything back and refuse to call a
+  mismatch a success. What a live dry run did confirm (2026-10-08, read
+  only): both plans read a real project's bins and clips; GH7 and S5II
+  plans matched the timelines made by hand frame for frame (3030 and 3135);
+  Resolve truncates a conformed clip's length (35 PYXIS clips at 30 fps on a
+  29.97 fps timeline, 7723 frames against 7758 rounded), so the plan
+  truncates too.
+- `timeline_from_clips` places picture only. How Resolve lays a multichannel
+  clip's sound over audio tracks that do not exist yet has not been checked.
 
 - Resolve's scripting library leaves the process in the C locale once
   connected. A text file opened without `encoding="utf-8"` then decodes as
