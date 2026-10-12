@@ -79,18 +79,20 @@ class Client:
             if msg.get("id") == self.n:
                 return msg
 
-    def tool(self, name, **args):
-        r = self.rpc("tools/call", {"name": name, "arguments": args})["result"]
+    # The tool's own name is positional and called tool_name, because a tool's
+    # arguments may themselves include "name" (queue_render's file-name parts).
+    def tool(self, tool_name, **args):
+        r = self.rpc("tools/call", {"name": tool_name, "arguments": args})["result"]
         body = r.get("structuredContent") or {"summary": r["content"][0]["text"][:300]}
-        print(f"  {name}{'' if args.get('dry_run', True) is not False else ' (real)'}: "
+        print(f"  {tool_name}{'' if args.get('dry_run', True) is not False else ' (real)'}: "
               f"{'ERROR ' if r['isError'] else ''}{body.get('summary', '')[:220]}")
         return r["isError"], body
 
-    def both(self, name, **args):
-        err, dry = self.tool(name, **args)
+    def both(self, tool_name, **args):
+        err, dry = self.tool(tool_name, **args)
         if err or "plan_sha" not in dry:
             return err, dry
-        return self.tool(name, **args, dry_run=False, plan_sha=dry["plan_sha"])
+        return self.tool(tool_name, **args, dry_run=False, plan_sha=dry["plan_sha"])
 
     def close(self):
         self.proc.stdin.close()
@@ -278,6 +280,13 @@ if __name__ == "__main__":
     status = 1
     try:
         status = main()
+    except BaseException:
+        # os._exit below skips the interpreter's own traceback print, so
+        # print it here or the run ends silent with exit 1.
+        import traceback
+        traceback.print_exc()
+        print("FAIL: the harness stopped on the exception above", flush=True)
     finally:
         sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(status)
