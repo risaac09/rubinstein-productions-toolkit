@@ -33,6 +33,7 @@ compaction.
 - Voice rules: the isaac-voice and stop-slop skills are the one source (decision "Voice rules live in isaac-voice and stop-slop", 2026-10-08). Echo his words.
 - How to read Isaac: co-regulation before content. Draft first, ask second.
   Redirect over interrogate.
+- The full identity lives in the private corpus `00_OPERATING_MODEL/00_twin_kernel.md`, which is the source; Level 0 is its public summary.
 
 ## Source of truth
 
