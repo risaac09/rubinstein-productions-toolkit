@@ -51,7 +51,10 @@ by rarity.
 
 Log the tier and whether the work needed a second review round:
 
-    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
+    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false,"items":["OPS-07"]}' --land
+
+`items` names the planning ids the work moved (`scripts/sd-ref --list --state
+open`); the session id is filled from the environment.
 
 The reasoning behind each rule, the known failure mode, and worked examples:
 `stack-data/kit/phase-zero/model-routing-rationale.md`.
