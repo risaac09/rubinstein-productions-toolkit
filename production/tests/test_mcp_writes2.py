@@ -331,11 +331,23 @@ class TestStabilize(Base):
         self.assertTrue(real["ui_restore_problems"], real)
         self.assertIn("UI was not fully restored", real["summary"])
 
+    def test_one_call_is_capped(self):
+        # A call holds the Resolve lock, so it never runs more than the cap.
+        with self.assertRaisesRegex(workflows.Refused, "max_items must be 1 to 25"):
+            self.stab(max_items=26)
+        dry = self.stab()
+        self.assertEqual(dry["remaining"], [])
+
+    def test_the_journal_keeps_the_rows_for_stabilize_only(self):
+        real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertEqual(real["stabilized"], real["results"])
+
     def test_max_items_is_honoured(self):
         dry = self.stab(max_items=2)
         self.assertEqual([t["index"] for t in dry["targets"]], [1, 2])
         self.assertEqual(dry["planned_total"], 3)
-        self.assertIn("a sample: 2 of 3", dry["summary"])
+        self.assertIn("2 of 3 item(s); call again with item 3 for the rest", dry["summary"])
+        self.assertEqual(dry["remaining"], [3])
         self.assertNotEqual(dry["plan_sha"], self.stab()["plan_sha"])
         real = self.stab(max_items=2, dry_run=False, plan_sha=dry["plan_sha"])
         self.assertEqual(self.stabilized(), [self.items[0].uid, self.items[1].uid])

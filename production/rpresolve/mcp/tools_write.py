@@ -72,7 +72,7 @@ def _journalled(tool, args, run):
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
                                                       "applied", "left_behind", "plan_sha",
-                                                      "settings_drift_rows", "relinked", "results")
+                                                      "settings_drift_rows", "relinked", "stabilized")
                            if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
@@ -345,8 +345,12 @@ def stabilize(args, ctx):
                                 project_id=args.get("project_id"),
                                 check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
         tl, n = r["timeline"]["name"], len(r["targets"])
-        sample = (f" (a sample: {n} of {r['planned_total']} item(s))"
-                  if n < r["planned_total"] else "")
+        rest = r["remaining"]
+        sample = ((f" ({n} of {r['planned_total']} item(s); call again with "
+                   + (f"item {rest[0]}" if len(rest) == 1 else f"items {rest[0]} to {rest[-1]}")
+                   + " for the rest)") if rest else "")
+        if not r["dry_run"]:
+            r["stabilized"] = r["results"]
         if r["dry_run"]:
             r["summary"] = (f"would call Stabilize() on {n} item(s) on '{tl}' V"
                             f"{r['timeline']['track']}{sample}; it can take a long time on large "
@@ -795,8 +799,8 @@ def register(registry):
         "stabilization is not visible through GetProperty (a 2026-09-26 spike found "
         "SmartReframe's result invisible there; the same is assumed), so the tool reports "
         "only what Stabilize() returned. It can take a long time on large (6K) items, and the "
-        "call holds the Resolve lock throughout, so use max_items to stabilize a sample first, "
-        "check it by eye, then dry run again for the rest. A cancel stops before the next "
+        "call holds the Resolve lock throughout, so one call does at most max_items (default "
+        "10, at most 25) and names the rest; stabilize a small sample first and check it by eye. A cancel stops before the next "
         "item. The current timeline, page and playhead are put back. Dry run first; the real "
         "run needs its plan_sha.",
         {"type": "object", "properties": {
@@ -807,9 +811,10 @@ def register(registry):
             "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Item numbers on the track, from 1 (default: all)."},
-            "max_items": {"type": "integer", "minimum": 1, "maximum": 5000,
-                          "description": "Stabilize at most this many items, the first of the "
-                          "selection (a sample); dry run again before the rest."},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10,
+                          "description": "Stabilize at most this many items per call, the first "
+                          "of the selection (default 10, at most 25: one call holds the Resolve "
+                          "lock); the result's remaining lists the item numbers left."},
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         stabilize, title="Stabilize items", annotations=WRITE))

@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import subprocess
+import re
 import time
 from pathlib import Path
 
@@ -899,6 +900,10 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
 
 
 STABILIZE_PAGE = "color"
+# Items per real call. Stabilize() can take minutes on a 6K item and the call holds the
+# Resolve lock, so one call does at most this many; the result names what is left.
+STABILIZE_DEFAULT_ITEMS = 10
+STABILIZE_MAX_ITEMS = 25
 STABILIZE_NOTE = (
     "Stabilize() returned the value reported per item. Stabilization is not visible through "
     "GetProperty (a 2026-09-26 spike found SmartReframe's result invisible there, and the "
@@ -961,11 +966,14 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
-    if max_items is not None and max_items < 1:
-        raise Refused("max_items must be at least 1.")
+    if max_items is None:
+        max_items = STABILIZE_DEFAULT_ITEMS
+    if not 1 <= max_items <= STABILIZE_MAX_ITEMS:
+        raise Refused(f"max_items must be 1 to {STABILIZE_MAX_ITEMS} (one call holds the Resolve "
+                      "lock while it runs; call again with items for the rest).")
     planned_total = len(wanted)
-    if max_items is not None:
-        wanted = wanted[:max_items]
+    remaining = wanted[max_items:]
+    wanted = wanted[:max_items]
     if not wanted:
         raise Refused(f"no items on V{track} of '{tl_name}' to stabilize.")
     targets = []
@@ -980,7 +988,8 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
                     for t in targets])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
-           "targets": targets, "planned_total": planned_total, "results": [],
+           "targets": targets, "planned_total": planned_total, "remaining": remaining,
+           "results": [],
            "verified": False, "note": STABILIZE_NOTE, "plan_sha": sha, "dry_run": dry_run,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
@@ -988,8 +997,14 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (the items or their source frames "
                       "differ); run the dry run again and review it")
-    fps = float(api._safe_call(tl, "GetSetting", "timelineFrameRate") or 24)
-    drop = str(api._safe_call(tl, "GetSetting", "timelineDropFrameTimecode")) == "1"
+    raw_fps = str(api._safe_call(tl, "GetSetting", "timelineFrameRate") or "")
+    m = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)", raw_fps)
+    if not m:
+        raise Refused(f"the frame rate of '{tl_name}' could not be read ({raw_fps!r}), so the "
+                      "playhead cannot be placed on each item.")
+    fps = float(m.group(1))
+    drop = (str(api._safe_call(tl, "GetSetting", "timelineDropFrameTimecode")) == "1"
+            or "DF" in raw_fps.upper())
     snap = api.UISnapshot(resolve, project)
     try:
         with snap:
