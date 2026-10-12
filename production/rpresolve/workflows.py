@@ -9,7 +9,7 @@ Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
 Write paths (ingest, cut, duplicate_auto, set_color_management,
-timeline_from_clips, apply_grade, queue_render and its destination form,
+timeline_from_clips, apply_grade, stabilize, queue_render and its destination form,
 queue_destination, create_captions, sync, trim_review_markers) pin the open project by name (and unique id when
 given), re-check the pin before every batch of writes, and take a
 `check_cancel` callable that raises to stop at the next safe point. A dry
@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import subprocess
+import re
 import time
 from pathlib import Path
 
@@ -895,6 +896,157 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     out["ui_restore_problems"] = snap.problems
     failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
     out["exit_status"] = 1 if failed else 0
+    return out
+
+
+STABILIZE_PAGE = "color"
+# Items per real call. Stabilize() can take minutes on a 6K item and the call holds the
+# Resolve lock, so one call does at most this many; the result names what is left.
+STABILIZE_DEFAULT_ITEMS = 10
+STABILIZE_MAX_ITEMS = 25
+STABILIZE_NOTE = (
+    "Stabilize() returned the value reported per item. Stabilization is not visible through "
+    "GetProperty (a 2026-09-26 spike found SmartReframe's result invisible there, and the "
+    "same is assumed here until a live run shows otherwise), so nothing was read back and "
+    "the effect is not verified. Stabilize() uses each item's current stabilizer settings "
+    "(mode, strength, smooth, zoom) from the Color page, which the API cannot set.")
+
+
+def _frames_to_timecode(frame, fps, drop=False):
+    """HH:MM:SS:FF for an absolute frame count at a nominal rate (23.976 counts as
+    24); with drop (29.97 and 59.94 only) the drop-frame form with ';'."""
+    base = int(round(float(fps)))
+    frame = int(frame)
+    sep = ":"
+    if drop and base in (30, 60):
+        skip = 2 if base == 30 else 4
+        per_10 = base * 600 - skip * 9
+        per_min = base * 60 - skip
+        tens, rem = divmod(frame, per_10)
+        if rem > skip:
+            frame += skip * 9 * tens + skip * ((rem - skip) // per_min)
+        else:
+            frame += skip * 9 * tens
+        sep = ";"
+    ff = frame % base
+    ss = (frame // base) % 60
+    mm = (frame // (base * 60)) % 60
+    hh = frame // (base * 3600)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}{sep}{ff:02d}"
+
+
+def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=None,
+              dry_run=False, project_id=None, check_cancel=None, expect_sha=None):
+    """Call TimelineItem.Stabilize() on video items of one track of an ' [auto]'
+    timeline in the open project named project_name. items are 1-based item
+    numbers on the track (default all); max_items keeps only the first N of
+    those (a sample: stabilize a few, look, dry run again for the rest). The
+    timeline is made current, the Color page opened and the playhead put at
+    each item's start for the call; the current timeline, page and playhead are
+    put back after. Each result records what Stabilize() returned and the
+    seconds it took. The effect is NOT verified: stabilization is not visible
+    through GetProperty. Returns {project, timeline, targets, planned_total,
+    results, verified, note, plan_sha, dry_run, ui_restore_problems,
+    exit_status}; exit_status 1 when any item returned False. An error or a
+    cancel mid-run carries the items done so far on the exception's
+    `stabilized`."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Stabilization goes only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; stabilize after it finishes.")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    if max_items is None:
+        max_items = STABILIZE_DEFAULT_ITEMS
+    if not 1 <= max_items <= STABILIZE_MAX_ITEMS:
+        raise Refused(f"max_items must be 1 to {STABILIZE_MAX_ITEMS} (one call holds the Resolve "
+                      "lock while it runs; call again with items for the rest).")
+    planned_total = len(wanted)
+    remaining = wanted[max_items:]
+    wanted = wanted[:max_items]
+    if not wanted:
+        raise Refused(f"no items on V{track} of '{tl_name}' to stabilize.")
+    targets = []
+    for n in wanted:
+        it = all_items[n - 1]
+        targets.append({"index": n, "name": it.GetName(),
+                        "item_id": api._safe_call(it, "GetUniqueId"),
+                        "source_start": api._safe_call(it, "GetSourceStartFrame"),
+                        "source_end": api._safe_call(it, "GetSourceEndFrame")})
+    sha = plan_sha("stabilize", pin.unique_id, tl_id, track,
+                   [(t["index"], t["item_id"], t["source_start"], t["source_end"])
+                    for t in targets])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "targets": targets, "planned_total": planned_total, "remaining": remaining,
+           "results": [],
+           "verified": False, "note": STABILIZE_NOTE, "plan_sha": sha, "dry_run": dry_run,
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the items or their source frames "
+                      "differ); run the dry run again and review it")
+    raw_fps = str(api._safe_call(tl, "GetSetting", "timelineFrameRate") or "")
+    m = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)", raw_fps)
+    if not m:
+        raise Refused(f"the frame rate of '{tl_name}' could not be read ({raw_fps!r}), so the "
+                      "playhead cannot be placed on each item.")
+    fps = float(m.group(1))
+    drop = (str(api._safe_call(tl, "GetSetting", "timelineDropFrameTimecode")) == "1"
+            or "DF" in raw_fps.upper())
+    snap = api.UISnapshot(resolve, project)
+    try:
+        with snap:
+            if check_cancel:
+                check_cancel()
+            project = pin.check(pm)
+            if project.IsRenderingInProgress():
+                raise Refused("a render started; nothing was stabilized.")
+            if not project.SetCurrentTimeline(tl) or api._safe_call(
+                    api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") != tl_id:
+                raise api.WriteNotApplied(f"could not make '{tl_name}' current to stabilize it")
+            if api._safe_call(resolve, "GetCurrentPage") != STABILIZE_PAGE and not (
+                    resolve.OpenPage(STABILIZE_PAGE)
+                    and resolve.GetCurrentPage() == STABILIZE_PAGE):
+                raise api.WriteNotApplied(f"could not open the {STABILIZE_PAGE} page to "
+                                          f"stabilize on '{tl_name}'")
+            for t in targets:
+                if check_cancel:
+                    check_cancel()
+                pin.check(pm)
+                it = all_items[t["index"] - 1]
+                tc = _frames_to_timecode(it.GetStart(), fps, drop)
+                at_item = bool(tl.SetCurrentTimecode(tc))
+                row = {"index": t["index"], "name": t["name"], "item_id": t["item_id"],
+                       "playhead": tc, "playhead_set": at_item}
+                began = time.monotonic()
+                try:
+                    row["ok"] = bool(it.Stabilize())
+                    row["detail"] = ("Stabilize() returned True" if row["ok"]
+                                     else "Stabilize() returned False")
+                except Exception as e:
+                    row["ok"] = False
+                    row["detail"] = f"Stabilize() raised {type(e).__name__}: {e}"
+                row["elapsed_s"] = round(time.monotonic() - began, 3)
+                if not at_item:
+                    row["detail"] += "; the playhead could not be put at the item's start"
+                out["results"].append(row)
+    except BaseException as e:
+        e.stabilized = list(out["results"])
+        raise
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
     return out
 
 

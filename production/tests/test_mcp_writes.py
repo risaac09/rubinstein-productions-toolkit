@@ -260,7 +260,7 @@ WRITE_CALLS = {"AddMarker", "AddRenderJob", "AddSubFolder", "AddTrack", "AppendT
                "SaveAsNewRenderPreset", "SaveLayoutPreset", "SetClipColor", "SetClipProperty",
                "SetCurrentFolder", "SetCurrentRenderFormatAndCodec", "SetCurrentRenderMode",
                "SetCurrentTimecode", "SetCurrentTimeline", "SetEnd", "SetLUT", "SetProperty",
-               "SetRenderSettings", "SetSetting"}
+               "SetRenderSettings", "SetSetting", "Stabilize"}
 WRITE_VERB = re.compile(r"^(?:Set|Add|Create|Import|Append|Insert|Apply|Duplicate|Open|Start|"
                         r"Stop|Move|Replace|Relink|Link|Unlink|Clear|Update|Remove|Reset|"
                         r"Load|Save|Grab|Export|Convert|Render)[A-Z]")

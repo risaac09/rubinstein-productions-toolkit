@@ -63,8 +63,8 @@ def _journalled(tool, args, run):
     try:
         result = run()
     except BaseException as e:
-        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}",
-                              {"relinked": e.relinked} if getattr(e, "relinked", None) else None)
+        done = {k: getattr(e, k) for k in ("relinked", "stabilized") if getattr(e, k, None)}
+        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}", done or None)
         if warn:
             e.args = (f"{e} ({warn})",) + e.args[1:]
         raise
@@ -72,7 +72,7 @@ def _journalled(tool, args, run):
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
                                                       "applied", "left_behind", "plan_sha",
-                                                      "settings_drift_rows", "relinked")
+                                                      "settings_drift_rows", "relinked", "stabilized")
                            if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
@@ -333,6 +333,38 @@ def apply_grade(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("apply_grade", args, run)
+
+
+def stabilize(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.stabilize(ctx.session.get(), args["project"], args["timeline"],
+                                track=args["track"], items=args.get("items"),
+                                max_items=args.get("max_items"), dry_run=args["dry_run"],
+                                project_id=args.get("project_id"),
+                                check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        rest = r["remaining"]
+        sample = ((f" ({n} of {r['planned_total']} item(s); call again with "
+                   + (f"item {rest[0]}" if len(rest) == 1 else f"items {rest[0]} to {rest[-1]}")
+                   + " for the rest)") if rest else "")
+        if not r["dry_run"]:
+            r["stabilized"] = r["results"]
+        if r["dry_run"]:
+            r["summary"] = (f"would call Stabilize() on {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']}{sample}; it can take a long time on large "
+                            "items, and the effect cannot be read back" + _how(r))
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            secs = sum(x["elapsed_s"] for x in r["results"])
+            r["summary"] = (f"Stabilize() returned True for {ok} of {len(r['results'])} item(s) "
+                            f"on '{tl}' in {secs:.1f} s{sample}; the effect is NOT verified "
+                            "(stabilization is not visible through GetProperty)" + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("stabilize", args, run)
 
 
 def queue_render(args, ctx):
@@ -756,6 +788,36 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "stabilize",
+        "Call Resolve's TimelineItem.Stabilize() on video items of one track of an ' [auto]' "
+        "timeline only (any other timeline is refused). It makes the timeline current, opens "
+        "the Color page and puts the playhead at each item's start, then calls Stabilize() "
+        "item by item and records what it returned (True or False) and the seconds it took. "
+        "Stabilize() uses each item's current stabilizer settings (mode, strength, smooth, "
+        "zoom) from the Color page, which the API cannot set. THE EFFECT IS NOT VERIFIED: "
+        "stabilization is not visible through GetProperty (a 2026-09-26 spike found "
+        "SmartReframe's result invisible there; the same is assumed), so the tool reports "
+        "only what Stabilize() returned. It can take a long time on large (6K) items, and the "
+        "call holds the Resolve lock throughout, so one call does at most max_items (default "
+        "10, at most 25) and names the rest; stabilize a small sample first and check it by eye. A cancel stops before the next "
+        "item. The current timeline, page and playhead are put back. Dry run first; the real "
+        "run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10,
+                          "description": "Stabilize at most this many items per call, the first "
+                          "of the selection (default 10, at most 25: one call holds the Resolve "
+                          "lock); the result's remaining lists the item numbers left."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        stabilize, title="Stabilize items", annotations=WRITE))
     registry.add(Tool(
         "queue_render",
         "Queue one render job for a timeline for a delivery destination (with name and "

@@ -21,9 +21,9 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import workflows  # noqa: E402
+from rpresolve import api, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
-from rpresolve.mcp.registry import ToolContext  # noqa: E402
+from rpresolve.mcp.registry import Cancelled, ToolContext  # noqa: E402
 from test_mcp import Harness, init  # noqa: E402
 
 REG = server.build_registry()
@@ -231,6 +231,188 @@ class TestApplyGrade(Base):
                                  "lut": {"path": self.lut}}, self.resolve)
 
 
+class TestStabilize(Base):
+    def setUp(self):
+        super().setUp()
+        self.auto = self.make_auto()
+        self.items = self.auto.tracks["video"][0]
+        self.items.append(rf.Item("P3.MOV", 86500, 86560, self.clip, source=(100, 160)))
+        self.seen = []  # (item id, page, current timeline, playhead) at each Stabilize()
+        for it in self.items:
+            it.on_stabilize = lambda it=it: self.seen.append(
+                (it.uid, self.resolve.page, self.project.current, self.auto.playhead))
+        rf.CALLS.clear()
+
+    def stab(self, args=None, **more):
+        return call("stabilize", {"timeline": "Edit [auto]", **(args or {}), **more},
+                    self.resolve)
+
+    def stabilized(self):
+        return [c[2][0] for c in rf.CALLS if c[1] == "Stabilize"]
+
+    def test_only_auto_timelines(self):
+        with self.assertRaisesRegex(workflows.Refused, "not an \\[auto\\]"):
+            self.stab(timeline="Edit")
+        self.assertEqual(rf.mutating_calls(), [])
+
+    def test_wrong_project_is_refused(self):
+        with self.assertRaises(api.ProjectChanged):
+            self.stab(project="Another Project")
+        with self.assertRaises(api.ProjectChanged):
+            self.stab(project_id="not-this-id")
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.stabilized(), [])
+
+    def test_dry_run_gives_a_plan_sha_and_touches_nothing(self):
+        dry = self.stab()
+        self.assertEqual(len(dry["plan_sha"]), 64)
+        self.assertEqual([t["index"] for t in dry["targets"]], [1, 2, 3])
+        self.assertEqual([t["source_start"] for t in dry["targets"]], [10, 0, 100])
+        self.assertEqual([t["item_id"] for t in dry["targets"]], [i.uid for i in self.items])
+        self.assertFalse(dry["verified"])
+        self.assertIn("not visible through GetProperty", dry["note"])
+        self.assertIn(dry["plan_sha"], dry["summary"])
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.ui(), ("cut", self.here))
+
+    def test_a_real_run_needs_the_plan_sha(self):
+        with self.assertRaisesRegex(workflows.Refused, "needs the plan_sha"):
+            self.stab(dry_run=False)
+        self.assertEqual(self.stabilized(), [])
+
+    def test_a_stale_plan_sha_is_refused(self):
+        dry = self.stab()
+        self.items[1].source = (5, 55)  # the plan changed since the dry run
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            self.stab(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual(self.stabilized(), [])
+        dry2 = self.stab(items=[1])
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            self.stab(dry_run=False, plan_sha=dry2["plan_sha"], items=[1, 3])
+        self.assertEqual(self.stabilized(), [])
+
+    def test_real_run_stabilizes_exactly_the_planned_items(self):
+        dry, real = run_twice("stabilize", {"timeline": "Edit [auto]", "items": [1, 3]},
+                              self.resolve)
+        self.assertEqual(self.stabilized(), [self.items[0].uid, self.items[2].uid])
+        self.assertEqual([r["index"] for r in real["results"]], [1, 3])
+        self.assertEqual([r["ok"] for r in real["results"]], [True, True])
+        for r in real["results"]:
+            self.assertIsInstance(r["elapsed_s"], float)
+            self.assertGreaterEqual(r["elapsed_s"], 0)
+            self.assertTrue(r["playhead_set"])
+        self.assertEqual(real["exit_status"], 0)
+        self.assertFalse(real["verified"])
+        self.assertIn("NOT verified", real["summary"])
+        self.assertEqual(self.journal()[2:], ["started", "finished"])  # after make_auto's own pair
+        # Nothing else changed: the other timelines' items were not touched.
+        self.assertEqual([c for c in rf.CALLS if c[1] == "Stabilize"
+                          and c[2][0] in (i.uid for i in self.origin.tracks["video"][0])], [])
+
+    def test_the_timeline_is_current_on_the_color_page_for_each_call(self):
+        self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertEqual(len(self.seen), 3)
+        for uid, page, current, playhead in self.seen:
+            self.assertEqual((page, current), ("color", self.auto))
+        # The playhead went to each item's start (start frames 86400, 86450, 86500 at 25 fps).
+        self.assertEqual([s[3] for s in self.seen], ["00:57:36:00", "00:57:38:00", "00:57:40:00"])
+
+    def test_ui_is_put_back(self):
+        self.here.playhead = "01:00:09:12"
+        real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertEqual(self.ui(), ("cut", self.here))
+        self.assertEqual(self.here.playhead, "01:00:09:12")
+        self.assertEqual(real["ui_restore_problems"], [])
+
+    def test_a_restore_problem_is_reported(self):
+        # Where Isaac was vanishes while Resolve works: the restore says so.
+        self.items[2].on_stabilize = lambda: self.project.timelines.remove(self.here)
+        real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertTrue(real["ui_restore_problems"], real)
+        self.assertIn("UI was not fully restored", real["summary"])
+
+    def test_one_call_is_capped(self):
+        # A call holds the Resolve lock, so it never runs more than the cap.
+        with self.assertRaisesRegex(AssertionError, "max_items: 26 is above the maximum 25"):
+            self.stab(max_items=26)
+        with self.assertRaisesRegex(workflows.Refused, "max_items must be 1 to 25"):
+            workflows.stabilize(self.resolve, P, "Edit [auto]", max_items=26, dry_run=True)
+        dry = self.stab()
+        self.assertEqual(dry["remaining"], [])
+
+    def test_the_journal_keeps_the_rows_for_stabilize_only(self):
+        real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertEqual(real["stabilized"], real["results"])
+
+    def test_max_items_is_honoured(self):
+        dry = self.stab(max_items=2)
+        self.assertEqual([t["index"] for t in dry["targets"]], [1, 2])
+        self.assertEqual(dry["planned_total"], 3)
+        self.assertIn("2 of 3 item(s); call again with item 3 for the rest", dry["summary"])
+        self.assertEqual(dry["remaining"], [3])
+        self.assertNotEqual(dry["plan_sha"], self.stab()["plan_sha"])
+        real = self.stab(max_items=2, dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual(self.stabilized(), [self.items[0].uid, self.items[1].uid])
+        self.assertEqual(len(real["results"]), 2)
+        # max_items counts from the selection, not from the track.
+        dry = self.stab(items=[3, 2], max_items=1)
+        self.assertEqual([t["index"] for t in dry["targets"]], [2])
+
+    def test_a_false_from_stabilize_is_reported_per_item(self):
+        self.items[1].stabilize_returns = False
+        dry = self.stab()
+        real = self.stab(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual([r["ok"] for r in real["results"]], [True, False, True])
+        self.assertIn("returned False", real["results"][1]["detail"])
+        self.assertEqual(real["exit_status"], 1)
+        self.assertIn("True for 2 of 3", real["summary"])
+        self.assertEqual(self.stabilized(), [i.uid for i in self.items])  # it went on
+        self.assertEqual(self.journal()[2:], ["started", "finished"])  # after make_auto's own pair
+
+    def test_a_raise_from_stabilize_is_a_failed_item(self):
+        self.items[0].stabilize_returns = RuntimeError("no tracking data")
+        real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
+        self.assertFalse(real["results"][0]["ok"])
+        self.assertIn("RuntimeError: no tracking data", real["results"][0]["detail"])
+        self.assertEqual(real["exit_status"], 1)
+
+    def test_a_cancel_stops_between_items_and_keeps_what_was_done(self):
+        dry = self.stab()
+        calls = []
+
+        def cancel():
+            calls.append(1)
+            if len(self.stabilized()) >= 1:
+                raise Cancelled("cancelled by the client")
+
+        with self.assertRaises(Cancelled) as cm:
+            workflows.stabilize(self.resolve, P, "Edit [auto]", dry_run=False,
+                                check_cancel=cancel, expect_sha=dry["plan_sha"])
+        self.assertEqual(self.stabilized(), [self.items[0].uid])
+        self.assertEqual(len(cm.exception.stabilized), 1)
+        self.assertEqual(self.ui(), ("cut", self.here))
+
+    def test_item_and_track_checks(self):
+        with self.assertRaisesRegex(workflows.Refused, "no item\\(s\\) \\[9\\]"):
+            self.stab(items=[9])
+        with self.assertRaisesRegex(workflows.Refused, "1 video track"):
+            self.stab(track=2)
+        with self.assertRaises(AssertionError):
+            self.stab(max_items=0)
+
+    def test_a_render_in_progress_refuses(self):
+        self.project.rendering = True
+        with self.assertRaisesRegex(workflows.Refused, "render is running"):
+            self.stab()
+
+    def test_timecode_helper(self):
+        tc = workflows._frames_to_timecode
+        self.assertEqual(tc(86400, 24), "01:00:00:00")
+        self.assertEqual(tc(90050, 25), "01:00:02:00")
+        self.assertEqual(tc(1800, 30, drop=True), "00:01:00;02")
+        self.assertEqual(tc(17982, 30, drop=True), "00:10:00;00")
+
+
 class TestQueueRender(Base):
     """queue_render queues for a delivery destination and nothing else.
     client_master is the one destination that takes the timeline's own size,
@@ -323,7 +505,7 @@ class TestQueueRenderIsDestinationOnly(Base):
     def test_the_listed_tool_has_no_preset(self):
         self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         tools = {t["name"]: t for t in self.h.recv()["result"]["tools"]}
-        self.assertEqual(len(tools), 26)  # 23, plus set_color_management, timeline_from_clips and relink
+        self.assertEqual(len(tools), 27)  # 23, plus set_color_management, timeline_from_clips, relink and stabilize
         tool = tools["queue_render"]
         props = tool["inputSchema"]["properties"]
         self.assertEqual(sorted(props), ["destination", "dry_run", "name", "plan_sha", "project",
