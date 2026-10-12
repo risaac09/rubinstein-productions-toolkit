@@ -1,4 +1,4 @@
-> **Canonical source:** this file (toolkit is authoritative — vault archived its copy 2026-04-27; this file reflects the v2 April 2026 update).
+> **Canonical source:** this file, for the blueprint as a whole (toolkit is authoritative; the vault archived its copy 2026-04-27; this file reflects the v2 April 2026 update). The four phase definitions follow the canonical positioning doc, and each tier's deliverables follow `services.yaml` `typicalDeliverables`.
 
 # Rubinstein Productions — Methodology Blueprint
 *Working Document | Created: 2026-03-30*
