@@ -16,7 +16,9 @@
 #   ./install.sh --check --all <parent-dir> verify every listed consumer, no writes
 #   ./install.sh --list                     print the consumer roster, one per line
 #
-# CONSUMERS below is the list of record. redeploy-prs.sh reads it through
+# CONSUMERS is built at run time from stack-data's data/repos.json
+# (phaseZeroConsumer: true; load_consumers below), the same registry that feeds
+# PUBLIC_CONSUMERS. redeploy-prs.sh reads it through
 # --list instead of carrying a copy: a hand copy there left out stack-data,
 # and the 2026-09-29 redeploy skipped it without a word.
 # --check byte-compares the seven kit files against source and confirms both
@@ -81,16 +83,18 @@ KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md ho
 # dropped; drop the line once every clone has run an install past the change.
 RETIRED_FILES="opus-4-8-brief.md"
 
-# The current consumer roster. --all touches only these basenames; a direct
-# install.sh <repo> still works for an intentional one-off. The local path
-# `scripts` is the home-scripts repository. three-bits added 2026-08-21: its
-# own CLAUDE.md claimed the kit was deployed there, but it carried none of
-# the kit files and wasn't on this list either, so --check --all couldn't
-# even see the gap. Added here so future drift is caught; a parallel session
-# is deploying the actual kit files to three-bits directly.
-# statehouse-dashboard dropped 2026-10-05: archived 2026-10-01 (stack-data
-# DECISIONS), so it is read-only and every redeploy push to it failed.
-CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation isaacrubinstein.com three-bits rubinstein-productions-toolkit circle-governance stack-finance"
+# The current consumer roster, built from the registry by load_consumers
+# (further down, beside load_public_consumers) and filled before any use. --all
+# touches only these basenames; a direct install.sh <repo> still works for an
+# intentional one-off. A repo joins by getting `phaseZeroConsumer: true` in
+# stack-data data/repos.json; its local clone dir is `cloneName` when that
+# differs from the repo name (home-scripts is cloned as `scripts`).
+CONSUMERS=""
+
+# Consumers whose repo does not exist on GitHub yet, so the registry cannot list
+# them. stack-finance: planned (2026-10-07 split), no repo as of 2026-10-08. Drop
+# the name once the repo exists and carries phaseZeroConsumer in the registry.
+PLANNED_CONSUMERS="stack-finance"
 
 # Ask rules the kit used to ship and has retired. The merge removes them from
 # every consumer. Retired 2026-10-12 with the move to bypass mode: osascript and
@@ -106,12 +110,14 @@ RETIRED_ASK="mcp__Control_your_Mac__osascript mcp__Desktop_Commander__start_proc
 # missing clone is not drift, so it leaves the exit code alone.
 report_missing_clones() {
   local name
+  ensure_consumers
   for name in $CONSUMERS; do
     [ -e "$1/$name/.git" ] || echo "SKIP $name: no clone under $1"
   done
 }
 
 is_consumer() {
+  ensure_consumers
   case " $CONSUMERS " in
     *" $(basename "$1") "*) return 0 ;;
     *) return 1 ;;
@@ -139,7 +145,7 @@ SD_ROOT="${SD_ROOT:-$HOME/stack-data}"
 PUBLIC_KIT_EXCLUDE="ritc-brand"
 
 registry_fail() {
-  echo "ERROR: cannot build the public-kit roster: $1" >&2
+  echo "ERROR: cannot build the consumer roster: $1" >&2
   echo "  The roster is read from stack-data's data/repos.json (SD_ROOT=$SD_ROOT)," >&2
   echo "  never from a list in this script. Fix the prerequisite and re-run." >&2
   exit 2
@@ -147,7 +153,8 @@ registry_fail() {
 
 # Read order matches the pre-push privacy hook: fetched origin/main first, then
 # local main, then the working tree, with a WARNING for either fallback.
-load_public_consumers() {
+# Sets REGISTRY (the repos.json text).
+read_registry() {
   command -v jq >/dev/null 2>&1 || registry_fail "jq is not installed"
   local registry=""
   registry="$(git -C "$SD_ROOT" show origin/main:data/repos.json 2>/dev/null || true)"
@@ -160,6 +167,30 @@ load_public_consumers() {
     echo "WARNING: registry read from the stack-data working tree, not origin/main" >&2
   fi
   [ -n "$registry" ] || registry_fail "no data/repos.json at origin/main, main, or the working tree"
+  REGISTRY="$registry"
+}
+
+# CONSUMERS from the registry: every repo with phaseZeroConsumer true, not
+# archived and not gone, named by cloneName when set, else name; plus
+# PLANNED_CONSUMERS.
+load_consumers() {
+  read_registry
+  CONSUMERS="$(printf '%s' "$REGISTRY" | jq -r '
+    (if type=="array" then . else .repos end)[]
+    | select((.phaseZeroConsumer // false)==true and (.isArchived // false)==false
+        and (.gone // false)==false)
+    | (.cloneName // .name)')" || registry_fail "data/repos.json did not parse"
+  [ -n "$CONSUMERS" ] || registry_fail "the registry lists no phaseZeroConsumer repos"
+  CONSUMERS="$(printf '%s\n' "$CONSUMERS" $PLANNED_CONSUMERS | tr '\n' ' ')"
+}
+
+ensure_consumers() {
+  [ -n "$CONSUMERS" ] || load_consumers
+}
+
+load_public_consumers() {
+  read_registry
+  local registry="$REGISTRY"
   PUBLIC_CONSUMERS="$(printf '%s' "$registry" | jq -r --arg excl "$PUBLIC_KIT_EXCLUDE" '
     ($excl | split(" ")) as $out
     | (if type=="array" then . else .repos end)[]
@@ -380,6 +411,7 @@ install_one_public() {
 }
 
 if [ "${1:-}" = "--list" ]; then
+  ensure_consumers
   # shellcheck disable=SC2086  # one name per line: splitting is the point
   printf '%s\n' $CONSUMERS
   exit 0

@@ -58,9 +58,13 @@ jobs:
         run: |
           set -eu
           export GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@localhost GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@localhost
-          n="$(bash phase-zero/install.sh --list | wc -l)"
-          [ "$n" -gt 0 ] || { echo "install.sh --list printed nothing" >&2; exit 1; }
-          echo "install.sh --list: $n consumer(s)"
+          # Since 2026-10-08 the consumer roster is read from the private
+          # stack-data registry (phaseZeroConsumer in data/repos.json), which
+          # CI does not have: --list must refuse with exit 2 and say why.
+          rc=0; err="$(SD_ROOT="$RUNNER_TEMP/no-stack-data" bash phase-zero/install.sh --list 2>&1 >/dev/null)" || rc=$?
+          [ "$rc" -eq 2 ] || { echo "install.sh --list exited $rc without the registry, want 2" >&2; exit 1; }
+          echo "$err" | grep -q 'cannot build the .*roster' || { echo "$err"; echo "no clear message for --list" >&2; exit 1; }
+          echo "install.sh --list: refuses without the registry, as expected"
           # A target with no origin: install, then check (the committed-state
           # compare is skipped and says why).
           t="$(mktemp -d)"; git -C "$t" init -q
@@ -107,7 +111,7 @@ jobs:
             rc=0
             err="$(bash phase-zero/install.sh --public $mode 2>&1 >/dev/null)" || rc=$?
             if [ "$rc" -ne 2 ]; then echo "install.sh --public $mode exited $rc, want 2" >&2; exit 1; fi
-            echo "$err" | grep -q 'cannot build the public-kit roster' || { echo "$err"; echo "no clear message for --public $mode" >&2; exit 1; }
+            echo "$err" | grep -q 'cannot build the .*roster' || { echo "$err"; echo "no clear message for --public $mode" >&2; exit 1; }
             echo "install.sh --public $mode: exit 2 as expected"
           done
       # The 2026-09 history purge left its marker inside two scripts. Fail on
