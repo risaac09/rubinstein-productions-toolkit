@@ -16,7 +16,10 @@ Read the session and answer in four directions, briefly:
 
 Then log it. In stack-data:
 
-    scripts/sd-retro --json '{"surface":"code","north":"...","east":"...","south":"...","west":"...","keep":"...","tags":[]}'
+    scripts/sd-retro --json '{"surface":"code","north":"...","east":"...","south":"...","west":"...","keep":"...","tags":[],"items":[]}'
+
+`items` names the planning ids this session moved (`scripts/sd-ref --list
+--state open` shows them), or stays `[]`. An unknown id refuses the entry.
 
 If `scripts/sd-retro` is not in this repo, you are not in stack-data. Emit the
 structured entry above so the operator can log it there. The log is private and
