@@ -1,6 +1,6 @@
 ---
 name: outreach-email-manager
-description: 'Draft Rubinstein Productions outreach emails (cold outreach, follow-ups, proposals) as Gmail drafts and log each contact to the corpus 07 Outreach drafts log and staging note. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".'
+description: 'Draft Rubinstein Productions outreach emails (cold outreach, follow-ups, proposals) as Gmail drafts and log each draft to the corpus 07 Outreach drafts log and staging note, with the contact recorded in stack-data. Trigger for "draft an outreach email", "follow up with [name]", "reach out to [org]", "write an email to", or "log this contact".'
 ---
 
 > **Canonical Say Why positioning source:** `~/vault/Second Brain/00 Canonical/Say Why - Canonical Positioning & Skill Embedding.md`
@@ -105,6 +105,8 @@ Log the contact after drafting in two places, both in the corpus's 07 Outreach f
 1. **Drafts log.** Append the draft to the dated drafts note `~/vault/Second Brain/03 Projects/Rubinstein Productions/07 Outreach/outreach-drafts-YYYY-MM-DD.md` (today's date; the folder already keeps this naming). One block per draft, capturing organization, contact, title, email, status, subject, body, and the personalization rationale.
 
 2. **Corpus 07 Outreach staging note.** Mirror the entry into the corpus "07 Outreach" staging note so the pipeline has a human-readable surface. Keep it to a one-line-per-contact log: date, org, contact, status, next-step timing.
+
+3. **Contact record.** Record the contact in stack-data with `scripts/sd-add-contact` (run from `~/stack-data`). Contact and client state live in stack-data (decision "Client state lives in stack-data"); only the drafts and the staging note stay in the corpus.
 
 Do not use Airtable. The drafts log plus the staging note are the pipeline of record.
 

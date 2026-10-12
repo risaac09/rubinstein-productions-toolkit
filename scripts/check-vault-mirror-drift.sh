@@ -78,6 +78,17 @@ done < <(find "$TOOLKIT_ROOT" -mindepth 1 -maxdepth 3 -type d 2>/dev/null)
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 TODAY=$(date '+%Y-%m-%d')
 
+# Report line: methodology snapshots vs the vault canonicals. Informational
+# only, never changes the exit code. Skipped where the vault is absent (CI).
+if [ -d "$VAULT_ROOT/00 Canonical" ] && [ -f "$TOOLKIT_ROOT/scripts/sync-methodology.sh" ]; then
+  if SYNC_OUT=$(bash "$TOOLKIT_ROOT/scripts/sync-methodology.sh" --check 2>&1); then
+    echo "[$TIMESTAMP] methodology-sync: no drift from the vault canonicals"
+  else
+    echo "[$TIMESTAMP] methodology-sync: DRIFT (informational; run scripts/sync-methodology.sh)"
+    echo "$SYNC_OUT" | sed 's/^/  /'
+  fi
+fi
+
 if [ ${#FINDINGS[@]} -eq 0 ]; then
   echo "[$TIMESTAMP] check-vault-mirror-drift: CLEAN ($TOOLKIT_ROOT)"
   exit 0
