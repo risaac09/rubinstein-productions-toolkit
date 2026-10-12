@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/RP Session Facilitation Guide.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
+> **Canonical source:** `00 Canonical/RP Session Facilitation Guide.md` in vault, last synced 2026-10-08. Edit there; this file is a snapshot for skills and public repo use.
 
 # Rubinstein Productions - Session Facilitation Guide
 *Tactical playbook for conducting facilitated conversations*

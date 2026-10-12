@@ -1,16 +1,13 @@
 # RP Service Tiers — public extract
 #
-# Source of truth: vault `Say Why - Canonical Positioning & Skill Embedding.md`
-# (v2, 2026-04-27). This public copy carries only the two publicly offered
-# tiers and the four methodology phases, and deliberately no prices: as of
-# 2026-08-23 rubinsteinproductions.com/services publishes none either, so the
-# earlier note here claiming the ranges matched the site was stale, and this
-# file was the only public surface carrying them. The full binding, with
-# prices, the internal tier, the COO enforcement rules, and the terminology
-# lock, lives in
-# rp-intranet/docs/operations/services.yaml (moved 2026-07-16); automation
-# reads that copy. When the two disagree, intranet wins; when either disagrees
-# with the canonical vault doc, the canonical doc wins.
+# Precedence: prices live only in the private ops repo's services.yaml
+# (rp-intranet/docs/operations/services.yaml, moved 2026-07-16); this public
+# copy carries none, and automation reads that copy. The segments and
+# methodology phases here derive from the vault canonical positioning doc,
+# `Say Why - Canonical Positioning & Skill Embedding.md`; where they disagree,
+# that doc wins.
+# This public extract carries only the two publicly offered tiers and the four
+# methodology phases.
 
 services:
 

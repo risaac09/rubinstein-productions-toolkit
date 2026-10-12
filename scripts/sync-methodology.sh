@@ -15,10 +15,21 @@
 #     header exists yet, a generic default is written.
 #   - Idempotent: re-running with no vault changes is a no-op.
 #
-# Usage: bash scripts/sync-methodology.sh
+# Usage: bash scripts/sync-methodology.sh [--check]
+#   --check  compare what would be written to each methodology/ target (the
+#            "last synced" date line ignored); write nothing; exit 1 on any
+#            content drift, 0 if none.
 # Run after editing any vault canonical, then commit the toolkit changes.
 
 set -euo pipefail
+
+CHECK=0
+if [[ "${1:-}" == "--check" ]]; then
+  CHECK=1
+elif [[ $# -gt 0 ]]; then
+  echo "usage: $0 [--check]" >&2
+  exit 2
+fi
 
 VAULT="$HOME/vault/Second Brain"
 TOOLKIT="$(cd "$(dirname "$0")/.." && pwd)/methodology"
@@ -59,7 +70,11 @@ for pair in "${PAIRS[@]}"; do
   if [[ -f "$TFILE" ]]; then
     FIRST=$(head -1 "$TFILE")
     if [[ "$FIRST" == "> **Canonical source:**"* ]]; then
-      HEADER=$(printf '%s' "$FIRST" | sed -E "s|last synced [0-9]{4}-[0-9]{2}-[0-9]{2}|last synced $DATE|")
+      if [[ "$CHECK" -eq 1 ]]; then
+        HEADER="$FIRST"   # keep the existing date so it never counts as drift
+      else
+        HEADER=$(printf '%s' "$FIRST" | sed -E "s|last synced [0-9]{4}-[0-9]{2}-[0-9]{2}|last synced $DATE|")
+      fi
     fi
   fi
   if [[ -z "$HEADER" ]]; then
@@ -97,6 +112,16 @@ for pair in "${PAIRS[@]}"; do
     printf '%s\n' "$BODY"
   } > "$TMP"
 
+  # 3b. Check mode: report drift, write nothing.
+  if [[ "$CHECK" -eq 1 ]]; then
+    if ! cmp -s "$TMP" "$TFILE"; then
+      echo "  DRIFT: methodology/$TFILE_NAME"
+      CHANGED=$((CHANGED + 1))
+    fi
+    rm "$TMP"
+    continue
+  fi
+
   # 4. Compare; rewrite only if different (avoid touching mtime when no change)
   if ! cmp -s "$TMP" "$TFILE"; then
     mv "$TMP" "$TFILE"
@@ -107,6 +132,15 @@ for pair in "${PAIRS[@]}"; do
     echo "  unchanged: methodology/$TFILE_NAME"
   fi
 done
+
+if [[ "$CHECK" -eq 1 ]]; then
+  if [[ "$CHANGED" -gt 0 ]]; then
+    echo "sync-methodology --check: $CHANGED file(s) drifted from the vault."
+    exit 1
+  fi
+  echo "sync-methodology --check: no drift."
+  exit 0
+fi
 
 echo ""
 echo "Snapshots regenerated: $CHANGED file(s) changed."
