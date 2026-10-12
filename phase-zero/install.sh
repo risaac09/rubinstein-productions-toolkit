@@ -92,6 +92,12 @@ RETIRED_FILES="opus-4-8-brief.md"
 # DECISIONS), so it is read-only and every redeploy push to it failed.
 CONSUMERS="stack-data second-brain-mirror rp-shared rubinsteinproductions rp-intranet alchemy material-and-meaning-institute scripts gene-keys-data three-type-evaluation isaacrubinstein.com three-bits rubinstein-productions-toolkit circle-governance stack-finance"
 
+# Ask rules the kit used to ship and has retired. The merge removes them from
+# every consumer. Retired 2026-10-12 with the move to bypass mode: osascript and
+# Desktop Commander process control no longer prompt; sending an iMessage still
+# does (vault _INBOX/2026-10-12-agent-autonomy-investigation.md, tier 1).
+RETIRED_ASK="mcp__Control_your_Mac__osascript mcp__Desktop_Commander__start_process mcp__Desktop_Commander__interact_with_process mcp__Desktop_Commander__kill_process"
+
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
 # conditional. This form returns cleanly from any context.
@@ -299,8 +305,11 @@ install_one() {
     # kit permission clamps into the target. Existing entries keep their order;
     # kit rules are appended only when missing. An ask rule the target already
     # denies is not re-added to ask (deny wins, the stricter posture stands).
-    # Nothing the repo already carries is dropped.
-    jq --arg pz "$pz_cmd" --arg sb "$sb_cmd" --slurpfile kit "$SRC/settings.json" '
+    # Nothing the repo already carries is dropped, except a rule named in
+    # RETIRED_ASK: the kit once shipped it, so removing it from the kit alone
+    # would leave every consumer still carrying it.
+    jq --arg pz "$pz_cmd" --arg sb "$sb_cmd" --slurpfile kit "$SRC/settings.json" \
+       --argjson retired "$(printf '%s' "$RETIRED_ASK" | tr ' ' '\n' | jq -R . | jq -sc 'map(select(length>0))')" '
       .hooks //= {} |
       .hooks.UserPromptSubmit //= [] |
       (if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
@@ -310,7 +319,7 @@ install_one() {
        then . else .hooks.SessionStart += [{hooks:[{type:"command",command:$sb}]}] end) |
       .permissions //= {} |
       .permissions.deny = ((.permissions.deny // []) + (($kit[0].permissions.deny // []) - (.permissions.deny // []))) |
-      .permissions.ask = ((.permissions.ask // []) + (($kit[0].permissions.ask // []) - (.permissions.ask // []) - (.permissions.deny // [])))
+      .permissions.ask = ((.permissions.ask // []) + (($kit[0].permissions.ask // []) - (.permissions.ask // []) - (.permissions.deny // [])) - $retired)
     ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
   elif [ -f "$settings" ]; then
     # jq is missing and a settings.json exists: never clobber it. Fail loudly.
