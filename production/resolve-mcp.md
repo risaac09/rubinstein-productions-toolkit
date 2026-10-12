@@ -47,8 +47,8 @@ as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 26 tools: 5 reads, 10 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 11
+tool must name that project. There are 27 tools: 5 reads, 10 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 12
 writes.
 
 | Tool | Kind | What it does |
@@ -78,6 +78,7 @@ writes.
 | `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
 | `relink` | write, changes an offline clip | Point the open project's offline clips (File Path missing on disk) at files under `search_roots` that verify as the same take: start timecode, frame count (one frame of slack), resolution and frame rate must all be known and agree. Never on a name alone; a clip with no timecode, a still and an audio-only clip are UNVERIFIABLE and left alone; two verified files of different sizes are AMBIGUOUS and left alone; identical copies resolve to the earliest search root. An online clip is never touched. Uses `MediaPool.RelinkClips` (the folder only), which should leave the clip's identity, timeline items, grade and tags alone (not yet confirmed on a live project: try a scratch project first); each clip is read back, and a property that reads differently afterwards is reported, never set back. `max_items` relinks a sample; dry run again before the rest. |
+| `stabilize` | write, changes an item | Call `TimelineItem.Stabilize()` on video items of one track (`track`, default 1) of an ` [auto]` timeline (any other is refused); `items` picks item numbers from 1 (default all) and `max_items` keeps only the first N of them, so a sample can go first. Makes the timeline current, opens the Color page and puts the playhead at each item's start, then calls `Stabilize()` item by item, recording the bool it returned and the seconds it took; a cancel stops before the next item. **The effect is not verified:** stabilization is not visible through `GetProperty` (a 2026-09-26 spike found SmartReframe's result invisible there, and the same is assumed until a live run shows otherwise), so the result says what `Stabilize()` returned and nothing more (`verified` is false). `Stabilize()` uses the item's current stabilizer settings (mode, strength, smooth, zoom) from the Color page, which the API cannot set. It can take a long time on 6K items; the call holds the Resolve lock throughout, so use `max_items` first. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
 `production/rpresolve/grade.py` is a helper library, not a tool and not a
@@ -103,7 +104,7 @@ tree and never overwrites an `.srt`.
 - **Plan first.** `dry_run` defaults to true and returns a `plan_sha`. A real
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
-- **Additive only, with two exceptions.** Nothing that existed before is modified. The exceptions are `set_color_management`, which sets a project setting only on a fresh project, one with no timeline and no clip in its media pool, so nothing anyone has made is reached (it refuses any other project, never creates, loads or saves one, and is annotated destructive so a client asks first), and `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take. `relink` never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
+- **Additive only, with three exceptions.** Nothing that existed before is modified. The exceptions are `set_color_management`, which sets a project setting only on a fresh project, one with no timeline and no clip in its media pool, so nothing anyone has made is reached (it refuses any other project, never creates, loads or saves one, and is annotated destructive so a client asks first), `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take, and `stabilize`, which runs Resolve's stabilizer on items, changing them, but only on ` [auto]` timelines, the same boundary grades keep. `relink` never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
   end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
   timelines, and `create_captions` refuses a timeline that already has any
   subtitle item. An item whose
@@ -185,6 +186,20 @@ tree and never overwrites an `.srt`.
   than half a frame out, with the retime that would cancel the drift. `AutoSyncAudio` changes the clips it links, so it runs only on
   clips the same call imported into its own new bin, and its result is
   compared with the measured offset through a second ` [auto]` timeline.
+- **Stabilization changes the item, and is not read back.** `stabilize`
+  calls `TimelineItem.Stabilize()` only on ` [auto]` timelines and only on the
+  items its dry run listed (`plan_sha` covers the timeline, the track, the
+  item ids and their source frames; `max_items` shortens the list before it is
+  hashed, so a sample and the full run have different plans). Each item's
+  result is the bool `Stabilize()` returned plus its elapsed seconds. Nothing
+  else is checked: stabilization does not show in `GetProperty`, so
+  `verified` is false in every result and a True means only that Resolve said
+  so. Judge a sample by eye before the rest. The stabilizer's mode, strength,
+  smooth and zoom are whatever the item has on the Color page; the API cannot
+  set them. The call is long and the Resolve lock is held throughout, so other
+  Resolve tools wait and may report Resolve as busy. A cancel or an error
+  between items stops there and the journal's finished line keeps the items
+  done so far.
 - **Markers only.** `trim_review_markers` adds markers to an ` [auto]`
   timeline and reads each back; it never cuts, ripples, moves or deletes,
   and refuses a row whose frame already holds a marker.
@@ -194,7 +209,8 @@ tree and never overwrites an `.srt`.
   page; `sync` and `timeline_from_clips` make each new timeline current to
   place clips on it (and, `sync` importing, opens its bin);
   `trim_review_markers` makes the timeline
-  current while marking. The current timeline, playhead, page and media
+  current while marking; `stabilize` makes the timeline current, opens the
+  Color page and moves the playhead to each item. The current timeline, playhead, page and media
   pool folder are restored after each, and any restore problem is in the
   result.
 - **One writer at a time.** Every Claude Code session starts its own server,

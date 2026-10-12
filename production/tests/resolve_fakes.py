@@ -113,6 +113,9 @@ class Clip(Fake):
         return dict(self.props) if key is None else self.props.get(key, "")
 
 
+_ITEM_IDS = itertools.count(1)
+
+
 class Item(Fake):
     def __init__(self, name, start, end, clip=None, nodes=(("", "", None),), props=None,
                  source=(0, None), version=None):
@@ -120,6 +123,19 @@ class Item(Fake):
         self.graph = Graph(list(nodes)) if nodes is not None else None
         self.props = dict(props or {})
         self.source, self.version = source, version
+        self.uid = "item-%d" % next(_ITEM_IDS)
+        self.stabilize_returns = True  # what Stabilize() answers; a raised Exception is also possible
+
+    def GetUniqueId(self): return self.uid
+
+    def Stabilize(self):
+        _log(self, "Stabilize", self.uid)
+        hook = self.__dict__.get("on_stabilize")
+        if hook:
+            hook()
+        if isinstance(self.stabilize_returns, Exception):
+            raise self.stabilize_returns
+        return self.stabilize_returns
 
     def GetName(self): return self.name
     def GetStart(self): return self.start
@@ -149,6 +165,8 @@ class Timeline(Fake):
         self.name, self.uid, self.fps, self.start, self.end = name, uid, fps, start, end
         self.tracks = tracks or {"video": [[]], "audio": [[]]}  # kind -> [track items]
         self.settings = dict(settings or {})
+        self.playhead = "01:00:00:00"
+        self.refuse_playhead = False  # SetCurrentTimecode answers False and does not move
         self.disabled = set()  # (kind, index) of tracks switched off
         # Caption items CreateSubtitlesFromAudio makes; 0 is a Resolve that
         # returns True and places nothing.
@@ -172,6 +190,13 @@ class Timeline(Fake):
 
     def GetSetting(self, key=None):
         return self.fps if key == "timelineFrameRate" else self.settings.get(key)
+
+    def GetCurrentTimecode(self): return self.playhead
+
+    def SetCurrentTimecode(self, tc):
+        _log(self, "SetCurrentTimecode", tc)
+        self.playhead = tc
+        return not self.refuse_playhead
 
     def GetSettings(self):
         # As the 21.1 README says: the project's settings while the timeline follows them, its
@@ -288,6 +313,7 @@ def _copy_item(it):
     new = copy.copy(it)
     new.graph = Graph([tuple(n) for n in it.graph.nodes]) if it.graph else None
     new.props = dict(it.props)  # a duplicate's transform is its own, as in Resolve
+    new.uid = "item-%d" % next(_ITEM_IDS)  # and so is its unique id
     return new
 
 
