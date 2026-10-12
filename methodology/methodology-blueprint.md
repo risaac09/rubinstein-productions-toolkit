@@ -96,12 +96,14 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 ### Phase 4: The Translation
 *The living thing becomes an artifact that can travel.*
 
+*Phase definitions follow the canonical positioning doc and the `typicalDeliverables` in `services.yaml`; the bundle below is the typical case, not a fixed one.*
+
 **Goal:** Turn raw truth into a professional video that carries the inside version to audiences who weren't in the room.
 
 **What Isaac does:**
-- Produces a 3-minute brand video from the client's raw footage
+- Produces the artifact the tier calls for (for example a brand video) from the client's raw footage
 - Returns ALL footage, performance data, and final video to the client
-- Delivers Bilingual Dashboard (Tier 2+): Royal metrics (institutional ROI language) + Nomadic indicators (relational health, emergence)
+- Delivers the Bilingual Dashboard only where the tier lists it (Tier 2+): Royal metrics (institutional ROI language) + Nomadic indicators (relational health, emergence)
 - Nothing is kept. The client owns everything.
 
 **What the client experiences:**
@@ -110,7 +112,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - The capacity for honest expression has been practiced, not just talked about
 - The witness has been partially internalized — they know what it feels like to hold truth in front of a camera
 
-**Deliverable:** 3-minute brand video + all raw footage returned + all data returned + Bilingual Dashboard (Tier 2+)
+**Deliverable:** The artifact the tier calls for (see `typicalDeliverables`) + all raw footage returned + all data returned + Bilingual Dashboard where the tier lists it (Tier 2+)
 
 **Duration:** 1-2 weeks post-filming
 
