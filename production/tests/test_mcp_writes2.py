@@ -333,8 +333,10 @@ class TestStabilize(Base):
 
     def test_one_call_is_capped(self):
         # A call holds the Resolve lock, so it never runs more than the cap.
-        with self.assertRaisesRegex(workflows.Refused, "max_items must be 1 to 25"):
+        with self.assertRaisesRegex(AssertionError, "max_items: 26 is above the maximum 25"):
             self.stab(max_items=26)
+        with self.assertRaisesRegex(workflows.Refused, "max_items must be 1 to 25"):
+            workflows.stabilize(self.resolve, P, "Edit [auto]", max_items=26, dry_run=True)
         dry = self.stab()
         self.assertEqual(dry["remaining"], [])
 
