@@ -91,11 +91,6 @@ RETIRED_FILES="opus-4-8-brief.md"
 # differs from the repo name (home-scripts is cloned as `scripts`).
 CONSUMERS=""
 
-# Consumers whose repo does not exist on GitHub yet, so the registry cannot list
-# them. stack-finance: planned (2026-10-07 split), no repo as of 2026-10-08. Drop
-# the name once the repo exists and carries phaseZeroConsumer in the registry.
-PLANNED_CONSUMERS="stack-finance"
-
 # Ask rules the kit used to ship and has retired. The merge removes them from
 # every consumer. Retired 2026-10-12 with the move to bypass mode: osascript and
 # Desktop Commander process control no longer prompt; sending an iMessage still
@@ -171,8 +166,7 @@ read_registry() {
 }
 
 # CONSUMERS from the registry: every repo with phaseZeroConsumer true, not
-# archived and not gone, named by cloneName when set, else name; plus
-# PLANNED_CONSUMERS.
+# archived and not gone, named by cloneName when set, else name.
 load_consumers() {
   read_registry
   CONSUMERS="$(printf '%s' "$REGISTRY" | jq -r '
@@ -181,7 +175,7 @@ load_consumers() {
         and (.gone // false)==false)
     | (.cloneName // .name)')" || registry_fail "data/repos.json did not parse"
   [ -n "$CONSUMERS" ] || registry_fail "the registry lists no phaseZeroConsumer repos"
-  CONSUMERS="$(printf '%s\n' "$CONSUMERS" $PLANNED_CONSUMERS | tr '\n' ' ')"
+  CONSUMERS="$(printf '%s\n' "$CONSUMERS" | tr '\n' ' ')"
 }
 
 ensure_consumers() {
