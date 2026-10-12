@@ -1,6 +1,8 @@
 # Public voice rules
 
-The canonical, reconciled version of rules that were hand-duplicated (and
+Public subset derived from the isaac-voice and stop-slop skills, which are the source (decision "Voice rules live in isaac-voice and stop-slop", 2026-10-08). Change the skills first; this file follows.
+
+The reconciled version of rules that were hand-duplicated (and
 drifting) across `rubinsteinproductions/CLAUDE.md` and `stack-data/CLAUDE.md`.
 Apply these to all public-facing copy: READMEs, marketing sites, published
 content, public repo docs.

@@ -30,8 +30,7 @@ compaction.
   first: it carries the Three-Record Evaluation into datafied care.
 - Four directions: North = work, East = innocence, South = transition,
   West = clarity. Name the one the task faces before acting.
-- Voice rules: no em-dashes, no rule-of-three, no promotional verbs, active
-  voice, concrete nouns, short sentences. Echo his words.
+- Voice rules: the isaac-voice and stop-slop skills are the one source (decision "Voice rules live in isaac-voice and stop-slop", 2026-10-08). Echo his words.
 - How to read Isaac: co-regulation before content. Draft first, ask second.
   Redirect over interrogate.
 
