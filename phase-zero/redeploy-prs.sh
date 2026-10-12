@@ -71,7 +71,11 @@ for name in $CONSUMERS; do
   clone="$HOME/$name"
   if [ ! -d "$clone/.git" ] && [ ! -f "$clone/.git" ]; then echo "SKIP $name: no clone at $clone"; continue; fi
   url="$(git -C "$clone" remote get-url origin 2>/dev/null || echo '?')"
-  slug="$(printf '%s' "$url" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
+  # Four URL forms reach here: scp-style SSH, ssh:// on github.com or on
+  # ssh.github.com with an optional port (the global insteadOf rewrite of
+  # 2026-10-11 makes get-url report ssh://git@ssh.github.com:443/...), and
+  # http(s). An unmatched form leaves the whole URL as the slug, so gh fails.
+  slug="$(printf '%s' "$url" | sed -E 's#^(git@github\.com:|ssh://git@(ssh\.)?github\.com(:[0-9]+)?/|https?://github\.com/)##; s#\.git$##')"
   branch="$(git -C "$clone" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
   dirty="$(git -C "$clone" status --porcelain -uno 2>/dev/null | wc -l | tr -d ' ')"
   kind="$(gh repo view "$slug" --json visibility -q '.visibility|ascii_downcase' 2>/dev/null)" || kind=""
