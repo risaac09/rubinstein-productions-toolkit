@@ -189,8 +189,10 @@ inside the crop on every sampled frame. Two steps: plan offline, then
 ### Plan
 
 `resolve_workflow.py reframe-plan <manifest> [--aspects 9x16 1x1]
-[--samples 8] [--per-second 0.5] [--speaker-x PX] [--allow-bars] [--only
-CLIP ...] --out <copy.json>`, or the MCP `reframe_plan`. Offline: ffmpeg
+[--samples 8] [--per-second 0.5] [--speaker-x PX [--speaker-y PX]]
+[--subject-region X0 Y0 X1 Y1] [--min-face-height SHARE] [--prefer
+present|largest] [--min-checked 0.5] [--allow-bars] [--only CLIP ...]
+--out <copy.json>`, or the MCP `reframe_plan`. Offline: ffmpeg
 reads frames, macOS Vision finds faces (the same cached helper `measure`
 uses, `rpresolve/vision.py`), nothing touches Resolve. The manifest itself
 is never changed.
@@ -202,9 +204,15 @@ For each span of each clip:
    gets 13), never more than 120. A time at or past the source's end is
    not read: the span is flagged, and one wholly past the end gets no
    crop, while the rest of the plan goes on.
-2. **Picture area.** The rows and columns whose mean luma is above 24 of
-   255 in at least one sample. A call recording can letterbox its panes
-   inside the 16:9 frame, and a crop that leaves the picture shows bars.
+2. **Picture area.** The frame less its black bars. A bar is a run of
+   rows or columns from an edge whose brightest pixel is at or below 40 of
+   255 in every sample: flat and black. A call recording can letterbox its
+   panes inside the 16:9 frame, and a crop that leaves the picture shows
+   bars. A dark scene is not a bar: a night stage has lights and sensor
+   speckle above that level in every row and keeps its whole frame. (An
+   earlier version took the rows whose mean luma was above 24, which cannot
+   tell a bar from a dark room: a night frame lost 88% of its height and
+   the "widest filled scale" became a zoom of 33.)
 3. **The face.** Vision's boxes are linked across samples into tracks by
    overlap (IoU 0.2 or more, or centres within three quarters of a box
    width). A track in at least half as many samples as the most present
@@ -215,7 +223,16 @@ For each span of each clip:
    speaker as they turn or lean, so the steadier listener can win on
    presence, and "larger" says nothing about who is speaking either.
    `--speaker-x` names the speaker (source pixels): the eligible track
-   whose median centre is nearest.
+   whose median centre is nearest, by distance in both axes when
+   `--speaker-y` is given too.
+   Where the footage has no single speaker (a stage with an audience), the
+   subject is steered instead: `--subject-region` keeps only faces whose
+   centre is inside a source-pixel rectangle, `--min-face-height` drops
+   faces shorter than a share of the frame height (the audience in the
+   distance), and `--prefer largest` ranks the eligible faces by size
+   before presence. What these left out is counted in the report
+   (`ignored`). Nothing here guesses: with two comparable faces and no
+   hint the span is still flagged.
    Every sample is judged. On a sample where the primary face is missing,
    the box nearest its path is checked in its place when it lies within
    three face widths and no other eligible track holds it: a lean that
@@ -223,8 +240,12 @@ For each span of each clip:
    may still be the speaker. Otherwise the sample is unchecked. Either case
    flags the span for review, whatever its status.
 4. **The crop.** Centred on the median face centre, clamped so the crop
-   stays inside the picture area, at the clip's `reframe.scale` (default
-   2.25 output pixels per source pixel, `cut`'s convention). When that
+   stays inside the picture area, at the clip's `reframe.scale` (output
+   pixels per source pixel, `cut`'s convention). With no scale named the
+   planner derives one from the source and the aspect: the widest scale
+   that fills the frame (0.7257 for a 5952x2646 source into 9:16, a zoom of
+   about 4; 2.6667 for a 720p one). With `--allow-bars` and no scale the
+   Ep 002 punch-in, 2.25, is the starting scale instead. When the scale
    loses the face, the middle of the checked boxes' extent (each grown by
    the margin), clamped the same way, is tried at the same scale: a face
    that sits still and then moves can fit a window its median cannot.
@@ -232,24 +253,33 @@ For each span of each clip:
    (to the 0.1 px it is rounded to), so a crop that fails both fails at
    that scale. The report names the centre used (`median` or `extent`).
 5. **The check.** Every checked box (the primary face's, and any taken in
-   its place), grown by 10% of its width and height on each side, is
+   its place), grown by 10% of its width and height on each side and
+   clipped to the picture area (a margin the frame does not hold cannot be
+   required: a face at the top edge of the source has none above it), is
    mapped through that exact transform (centre and scale rounded as
-   written) and must sit inside the output frame. Reported over all the
+   written) and must sit inside the output frame. A box that reaches past
+   the picture's edge is flagged for review; the crop keeps the face but
+   not the usual margin there. A crop also needs enough evidence: at least
+   `--min-checked` (default half) of the span's samples, and never fewer
+   than 3, must have a checked face. A face seen on one frame of fifteen
+   passes nothing, however well that one box sits: the span is `manual`
+   and says how many samples showed the face. Reported over all the
    span's samples: inside, unchecked, the share inside (an unchecked
    sample never counts as inside), the worst sample's time and its slack
    in output pixels (negative: outside by that much).
-6. **Fallback.** When the default scale leaves bars or loses the face,
-   the widest scale that still fills the frame is tried and checked the
-   same way, median then extent (rounded up at the fourth decimal, so
+6. **Fallback.** When a scale the clip named (or the punch-in) leaves bars
+   or loses the face, the widest scale that still fills the frame is tried
+   and checked the same way, median then extent (rounded up at the fourth decimal, so
    rounding never opens a bar). When that fails too, the span is
    `manual`: it needs a manual reframe or a split. A span with no face in
    any sample is `no_face` and gets no centre. `--allow-bars` keeps the
    default scale when it holds the face but leaves bars (status `bars`,
    the Ep 002 look, named as such).
 
-Statuses: `pass` (the default scale fills and holds), `fallback` (the
-widest filled scale holds), `bars` (only with `--allow-bars`), `manual`,
-`no_face`. Exit 0 when every crop holds; 2 when a span needs a person
+Statuses: `pass` (the scale fills and holds; with no scale named, the
+widest filled one), `fallback` (a named scale failed and the widest filled
+one holds), `bars` (only with `--allow-bars`), `manual` (no crop holds, or
+too few samples had a face), `no_face`. Exit 0 when every crop holds; 2 when a span needs a person
 (`manual`, `no_face`, `bars`, or a flagged span: a choice of face, a
 face off its track, an unchecked sample); 1 on an error, including a
 Vision helper that cannot run (no face is ever invented).
@@ -299,17 +329,63 @@ and a source point `(x, y)` lands at `X = W/2 + (x - cx) s`,
 | 1920x1080 | Zoom 4 | s 1.7778, Zoom 3.1605 | s 1.0, Zoom 1.7778 |
 | 3840x2160 | Zoom 8 | s 0.8889, Zoom 3.1605 | s 0.5, Zoom 1.7778 |
 
-At 2.25 a 720-row source covers 1620 of 1920 rows: the default, taken
+At 2.25 a 720-row source covers 1620 of 1920 rows: that scale, taken
 from the Ep 002 script, never filled a 9:16 frame from that source. On
-1080p and 4K sources it crops tightly (a 480x853 window of a 4K frame),
-and the fallback carries.
+1080p and 4K sources it crops tightly (a 480x853 window of a 4K frame) and
+on a 5952x2646 anamorphic source it is a zoom of 12.4, a face filling the
+frame. So it is no longer the default: with no scale named the planner
+derives the widest filled one for the source, and 2.25 is kept only for
+`--allow-bars` and for a clip that names it.
 
 Pan's sign and units are confirmed on a render: in the sandbox 9:16
 render (below) the face centre sits where `X = W/2 + (x - cx) s` puts it,
 within 3 pixels, from Vision on the render and on the source frame. Tilt's
 sign assumes Resolve's y axis points up; no render has confirmed it, so
-every report row whose crop sets a Tilt says so (and the summary counts
-them), and `cut` says so whenever it writes a Tilt other than 0.
+every report row whose crop sets a Tilt of half a pixel or more says so
+(and the summary counts them), and `cut` says so whenever it writes a Tilt
+other than 0.
+
+### Settling Tilt's sign (a hand step)
+
+`TILT_CONFIRMED` in `rpresolve/reframe.py` is `False`, and only a commit
+that cites the result below may change it. Nothing in the tools sets it.
+
+1. `python3 resolve_workflow.py tilt-fixture --out <new folder outside any
+   repo>` writes a short UHD clip with three markers (white at the crop
+   centre, red at the middle of the source, yellow above the white one)
+   and `tilt-expect.json`, and prints the numbers for step 3.
+2. In a scratch project, make a 1080x1920 timeline with input scaling at
+   its default (scale entire image to fit) and put the clip on it.
+3. In the Inspector set Zoom X and Zoom Y, Pan and Tilt to the printed
+   values (3.1605, 136.535, -384.0048 for the stock fixture).
+4. Deliver one still of any frame. **Only a person presses Render.**
+5. `python3 resolve_workflow.py tilt-check <still> --fixture <folder>`
+   finds the white and red markers and says, for Pan and Tilt separately,
+   `confirmed` (both markers where this module's convention puts them),
+   `inverted` (where the flipped reading puts them: a flipped Tilt puts the
+   white marker near the top, hundreds of pixels from the centre) or
+   `unclear` (somewhere else; check the typed values and the input
+   scaling). It writes `tilt-result.json` beside the fixture and exits 0
+   only when both are confirmed.
+6. Cite the output in a commit that changes `TILT_CONFIRMED`. If Tilt is
+   inverted, fix `resolve_props` (and `cut`'s transform) in the same
+   commit; the fixture's expected numbers and the tests move with it.
+
+### Footage with no speech
+
+A performance or a landscape has no words and no approved text. Mark the
+manifest `"speech": false` and `reframe_plan` (the CLI and the MCP tool)
+needs only `source_path` and `clips`; `words`, `approved_text`,
+`source_sha256` and `fps` are optional and are not read. The manifest copy
+keeps `"speech": false`. Every other tool that loads a manifest (`cut`,
+`endcheck`, `selects`, `trim_review`) refuses it with a message saying why,
+because they check words: building the 9:16 timeline for such footage with
+`cut` is not supported yet, and the report's crops are then applied by hand.
+
+```json
+{"speech": false, "source_path": "/abs/performance.mov",
+ "clips": [{"name": "set_one", "spans": [{"in": 30, "out": 60}]}]}
+```
 
 ### Build
 
@@ -421,8 +497,8 @@ on 2026-09-30:
    `reframe-plan` (letterboxed, `--allow-bars`) were built by `cut`, each
    span's item with its own Pan, every transform read back. A 1:1 build
    is still owed.
-3. Tilt's sign: set a Tilt on a sandbox item, export a still
-   (`ExportCurrentFrameAsStill`), and find the face with Vision.
+3. Tilt's sign: the hand step above ("Settling Tilt's sign"): the
+   fixture, one rendered still, and `tilt-check`.
 4. Whether `timelineInputResMismatchBehavior` reads on a duplicated
    timeline, and whether scaleToCrop's Pan counts the same pixels.
 5. What `GetProperty("Scaling")` reads on an item appended by `cut`

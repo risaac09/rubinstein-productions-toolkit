@@ -65,7 +65,7 @@ writes.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
-| `reframe_plan` | offline | A static crop per span for the 9:16 and 1:1 versions, centred on the speaker's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger, or the one nearest `speaker_x`), the crop kept inside the picture area, and every sampled face box (10% margin) checked inside it. When the default scale (2.25) leaves bars or loses the face, the widest filled scale is tried; else the span needs a manual reframe or a split, and a span with no face gets no crop (`allow_bars` keeps the default when it holds the face, named `bars`). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
+| `reframe_plan` | offline | A static crop per span for the 9:16 and 1:1 versions, centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. Tilt's sign is unconfirmed until the hand step in `resolve-template-spec.md` (Reframe) is done. |
 | `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
@@ -277,13 +277,16 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
 - Read Resolve and change nothing (Resolve Studio must be running):
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
 - Never connect to Resolve: `survey`, `detect`, `measure`, `manifest`,
-  `endcheck`, `selects`, `reframe-plan`, `deliver-check`, `deliver-captions`,
-  `deliver-fix-loudness`, `sync-measure` and `trim-review` (the TSV).
+  `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
+  `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`
+  and `trim-review` (the TSV). `tilt-fixture` and `tilt-check` are script
+  commands only; they have no MCP tool.
 
-Four of these have no tool yet: `manifest` (it builds the cut manifest that
+Six of these have no tool: `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
 (the loudness step of the deliver loop), `list-projects` and
-`list-render-formats`. `info` is covered by `resolve_status`,
+`list-render-formats`, and `tilt-fixture` and `tilt-check` (a hand step: a
+person renders the still, so no tool is planned). `info` is covered by `resolve_status`,
 `list_timelines` and `render_queue_status` together. Each other command has a
 tool of the same name (with underscores), with a few flags left behind: the
 script's `sync-measure` takes `--ref-stream` and
@@ -349,7 +352,8 @@ choose the file.
   1620 of 1920 rows of a 9:16 frame, and a picture letterboxed to a
   360-row band covers 810. The sandbox 9:16 that rendered with bars was
   built at that default; `cut` now names BARS, and `reframe_plan`
-  measures the picture area.
+  measures the picture area and, with no scale named, derives the widest
+  one that fills the frame instead of starting from 2.25.
 - `MediaPool.AppendToTimeline` works on the current timeline and answers
   truthy even when it places nothing, including for a track index that
   does not exist yet; `sync` adds tracks with `AddTrack` first and reads

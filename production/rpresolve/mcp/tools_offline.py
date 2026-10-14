@@ -244,7 +244,7 @@ def selects(args, ctx):
 def reframe_plan(args, ctx):
     from .. import reframe
     manifest_path = _existing(args["manifest"], "manifest")
-    m = cutlist.load_manifest(manifest_path)
+    m = cutlist.load_manifest(manifest_path, allow_no_speech=True)
     out = _out(args) or _auto_out("reframe-manifest", ".json")
     try:
         if os.path.realpath(manifest_path) == os.path.realpath(out):
@@ -256,7 +256,12 @@ def reframe_plan(args, ctx):
                 raise paths.OutputRefused(problem)
         report = reframe.plan(m, aspects=args["aspects"], samples=args["samples"],
                               per_second=args["per_second"], speaker_x=args.get("speaker_x"),
+                              speaker_y=args.get("speaker_y"),
                               only=args.get("clips"), allow_bars=args["allow_bars"],
+                              min_checked=args["min_checked"],
+                              subject_region=args.get("subject_region"),
+                              min_face_height=args.get("min_face_height"),
+                              prefer=args["prefer"],
                               check_cancel=ctx.check_cancel,
                               progress=ctx.progress)
     except BaseException:
@@ -486,16 +491,25 @@ def register(registry):
     registry.add(Tool(
         "reframe_plan",
         "Plan a static crop per span of a cut manifest for its 9:16 and 1:1 versions, centred "
-        "on the speaker's face, and check it: frames are sampled across each span (ffmpeg), "
+        "on the subject's face, and check it: frames are sampled across each span (ffmpeg), "
         "faces found by macOS Vision and tracked across the samples, the primary face chosen "
-        "(present in the most samples, then the larger; or the one nearest speaker_x), the "
-        "crop centred on its median centre inside the picture area at the clip's scale "
-        "(default 2.25 output pixels per source pixel), and every sampled face box (with a "
-        "10% margin) mapped through that crop must stay inside the frame. When the default "
-        "leaves bars or loses the face, the widest scale that fills the frame is tried; "
-        "otherwise the span needs a manual reframe or a split. A span with no face gets no "
-        "crop. Writes a copy of the manifest with per-span reframes (cut reads them) and a "
-        "TSV and JSON report beside it. Never connects to Resolve.",
+        "(present in the most samples, then the larger; or the one nearest speaker_x and "
+        "speaker_y; or, with prefer largest, the largest), the crop centred on its median "
+        "centre inside the picture area, and every sampled face box (with a 10% margin, "
+        "clipped to the picture) mapped through that crop must stay inside the frame. The "
+        "scale is the clip's reframe.scale, else derived from the source and the aspect: the "
+        "widest scale that fills the frame (a zoom of about 4 for a 5952x2646 source into "
+        "9:16). With allow_bars and no clip scale the Ep 002 punch-in (2.25, calibrated on "
+        "720p) is tried first, and kept when it holds the face though it leaves bars. A "
+        "crop passes only when enough samples had a checked face (min_checked, default half, "
+        "never fewer than 3): a face seen in one frame of fifteen is a manual span, not a "
+        "pass. Where the footage has an audience, name the subject with subject_region or "
+        "min_face_height. Footage with no speech needs a manifest with \"speech\": false and "
+        "only source_path and clips (no words, approved text or hash); cut still needs a "
+        "speech manifest. A span with no face gets no crop. Writes a copy of the manifest "
+        "with per-span reframes (cut reads them) and a TSV and JSON report beside it. "
+        "Tilt's sign is unconfirmed until a render says so (resolve-template-spec.md, "
+        "Reframe). Never connects to Resolve.",
         _obj({"manifest": {"type": "string",
                            "description": "Absolute path of the cut manifest (it is not changed)."},
               "aspects": {"type": "array", "items": {"type": "string", "enum": ["9x16", "1x1"]},
@@ -508,11 +522,30 @@ def register(registry):
               "speaker_x": {"type": "number", "minimum": 0,
                             "description": "The speaker's face x in source pixels: take the "
                             "face nearest it (two faces, as in a two-up call recording)."},
+              "speaker_y": {"type": "number", "minimum": 0,
+                            "description": "With speaker_x, the face's y in source pixels: "
+                            "the nearest face by distance in both."},
+              "subject_region": {"type": "array", "items": {"type": "number", "minimum": 0},
+                                 "minItems": 4, "maxItems": 4,
+                                 "description": "x0, y0, x1, y1 in source pixels: only faces "
+                                 "whose centre is inside can be the subject (leave out an "
+                                 "audience)."},
+              "min_face_height": {"type": "number", "minimum": 0.001, "maximum": 1,
+                                  "description": "Ignore faces shorter than this share of "
+                                  "the frame height (an audience in the distance)."},
+              "min_checked": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+                              "description": "The share of a span's samples that must have a "
+                              "checked face before its crop can pass (never fewer than 3)."},
+              "prefer": {"type": "string", "enum": ["present", "largest"], "default": "present",
+                         "description": "Which face is the subject when nothing names it: "
+                         "present in the most samples, or the largest of those present in at "
+                         "least half as many."},
               "clips": {"type": "array", "items": {"type": "string"},
                         "description": "Only these clip names."},
               "allow_bars": {"type": "boolean", "default": False,
-                             "description": "Keep the default scale when it holds the face "
-                             "but leaves black bars (status 'bars', named in the report)."},
+                             "description": "Try the Ep 002 punch-in (2.25) first when the clip "
+                             "names no scale, and keep it when it holds the face but leaves "
+                             "black bars (status 'bars', named in the report)."},
               **PAGING, "limit": _limit(50, 400),
               "out": _out_prop("the manifest copy (the .reframe.tsv and .reframe.json "
                                "reports go beside it)")}, ["manifest"]),
