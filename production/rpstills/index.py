@@ -357,9 +357,15 @@ def build(folder, out_dir, workers=4, log=print, times_file=None, interval=None,
             if n % 100 == 0:
                 log(f"  read {n}/{len(files)}")
     if start_dt is not None:
-        prefixes = {times_mod.sequence_of(os.path.splitext(os.path.basename(r["jpeg"]))[0])[0]
-                    for r in rows if not r.get("time") and
-                    times_mod.sequence_of(os.path.splitext(os.path.basename(r["jpeg"]))[0])}
+        by_id = (sidecar or {}).get("by_id", {})
+        prefixes = set()
+        for r in rows:   # only frames that would fall through to a sequence time count
+            name = os.path.basename(r["jpeg"])
+            stem = os.path.splitext(name)[0]
+            seq = times_mod.sequence_of(stem)
+            if (not r.get("time") and seq and r["id"] not in by_id and stem not in by_id
+                    and times_mod.from_filename(name) is None):
+                prefixes.add(seq[0])
         prefixes -= set((sidecar or {}).get("starts", {}))
         if len(prefixes) > 1:
             log(f"index: --start names one sequence but the undated frames carry {len(prefixes)} "

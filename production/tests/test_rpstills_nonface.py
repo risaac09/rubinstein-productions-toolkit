@@ -249,7 +249,8 @@ class TestCullFrames(unittest.TestCase):
 
     def test_a_face_run_of_frame_grabs_skips_a_frame_that_is_all_but_identical(self):
         self.assertEqual(self.near_duplicates("sequence"), ["G000", "G002"])
-        self.assertEqual(self.near_duplicates(None), ["G000", "G002"])     # no time at all: a grab too
+        self.assertEqual(self.near_duplicates("filename"), ["G000", "G002"])
+        self.assertEqual(self.near_duplicates(None), ["G000", "G001", "G002"])   # no time at all (a corrupt EXIF date too): kept
 
     def test_camera_jpegs_keep_every_frame(self):
         # Two near-identical shots can differ in the eyes or the expression, which a hash cannot see.
