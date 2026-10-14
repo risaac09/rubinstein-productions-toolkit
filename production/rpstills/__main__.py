@@ -1,12 +1,16 @@
 """python3 -m rpstills <command> ...
 
-  index   <shoot folder> <out dir>           read originals, write proxies and index.jsonl
+  index   <shoot folder> <out dir> [--tiles auto|off|all] [--times FILE] [--interval S] [--start ISO]
+                                             read originals, write proxies and index.jsonl
+                                             (--tiles: a second Vision pass over tiles of the original for frames
+                                             with no subject face, default auto; --times, --interval, --start:
+                                             a time for frames with no EXIF time, see rpstills/times.py)
   cluster <out dir>                          segments, bursts, runs -> clusters.json
   cull    <out dir>                          scores and proposal -> cull.json
   review  <out dir> --session NAME [--title] -> review.html
   look    <params.json> <out.cube> [--size N]   write a look as a DWG/DI 3D LUT (refuses to overwrite)
   crops   <out dir> [--config PATH]          crop plan per profile -> crops.json, crops-preview.jpg
-  run     <shoot folder> <out dir> --session NAME   all four in order
+  run     <shoot folder> <out dir> --session NAME   all four in order (takes the index options)
 """
 
 import argparse
@@ -19,14 +23,20 @@ from . import cluster, crops, cull, index, look, review
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="rpstills")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("index"); p.add_argument("shoot"); p.add_argument("out"); p.add_argument("--workers", type=int, default=4)
+    def index_options(p):
+        p.add_argument("--workers", type=int, default=4)
+        p.add_argument("--tiles", choices=index.TILES_MODES, default="auto")
+        p.add_argument("--times", help="sidecar of frame times (JSON or TSV); default times.json or times.tsv in the shoot folder")
+        p.add_argument("--interval", type=float, help="seconds between numbered frame grabs (shot_001, shot_002, ...)")
+        p.add_argument("--start", help="ISO time of the first numbered grab, for prefixes the sidecar does not start")
+    p = sub.add_parser("index"); p.add_argument("shoot"); p.add_argument("out"); index_options(p)
     p = sub.add_parser("cluster"); p.add_argument("out")
     p = sub.add_parser("cull"); p.add_argument("out")
     p = sub.add_parser("review"); p.add_argument("out"); p.add_argument("--session", required=True); p.add_argument("--title")
     p = sub.add_parser("look"); p.add_argument("params"); p.add_argument("cube"); p.add_argument("--size", type=int, default=33)
     p = sub.add_parser("crops"); p.add_argument("out"); p.add_argument("--config")
     p = sub.add_parser("run"); p.add_argument("shoot"); p.add_argument("out"); p.add_argument("--session", required=True)
-    p.add_argument("--title"); p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--title"); index_options(p)
     a = ap.parse_args(argv)
     if a.cmd == "look":
         doc = look.load_params(a.params)
@@ -38,12 +48,18 @@ def main(argv=None):
         return 0
     out = os.path.abspath(a.out)
     if a.cmd in ("index", "run"):
-        rows = index.build(os.path.abspath(a.shoot), out, workers=a.workers)
+        try:
+            rows = index.build(os.path.abspath(a.shoot), out, workers=a.workers, times_file=a.times,
+                               interval=a.interval, start=a.start, tiles=a.tiles)
+        except (ValueError, OSError) as e:
+            print(f"rpstills: {e}", file=sys.stderr)
+            return 1
     else:
         rows = index.load(out)
     if a.cmd == "index":
         return 0
     rows = index.augment_face_hash(out, rows)
+    rows = index.augment_frame_metrics(out, rows)
     cl = cluster.build(rows)
     if a.cmd in ("cluster", "run"):
         print(cluster.write(out, cl)); print(cluster.summary(cl))

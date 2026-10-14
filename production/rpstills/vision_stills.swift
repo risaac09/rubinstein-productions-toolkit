@@ -6,7 +6,11 @@
 //   {"path": "...", "width": W, "height": H, "faces": [
 //      {"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87,
 //       "quality": 0.62, "eye_left": 0.31, "eye_right": 0.29,
-//       "roll": 0.02, "yaw": -0.1}]}
+//       "roll": 0.02, "yaw": -0.1}],
+//    "people": [{"x": 0.30, "y": 0.10, "w": 0.25, "h": 0.80, "confidence": 0.9}]}
+// people are whole-body boxes (VNDetectHumanRectanglesRequest), for frames
+// where no face is large enough to find: a performer seen from a distance, or
+// from behind. Same normalized, top-left convention as faces.
 // Boxes are normalized with the origin at the TOP left. quality is Vision's
 // face capture quality (0 to 1, comparable only between faces of the same
 // person). eye_* is the eye aspect ratio (height over width of the eye
@@ -56,6 +60,16 @@ for path in CommandLine.arguments.dropFirst() {
             }
         }
     }
+    let humans = VNDetectHumanRectanglesRequest()
+    humans.upperBodyOnly = false
+    var people: [[String: Any]] = []
+    if (try? handler.perform([humans])) != nil {
+        for p in humans.results ?? [] {
+            let b = p.boundingBox
+            people.append(["x": Double(b.minX), "y": Double(1 - b.maxY), "w": Double(b.width),
+                           "h": Double(b.height), "confidence": Double(p.confidence)])
+        }
+    }
     var faces: [[String: Any]] = []
     for (i, face) in found.enumerated() {
         let b = face.boundingBox
@@ -68,5 +82,6 @@ for path in CommandLine.arguments.dropFirst() {
         if let yaw = face.yaw { d["yaw"] = yaw.doubleValue }
         faces.append(d)
     }
-    print(jsonString(["path": path, "width": cg.width, "height": cg.height, "faces": faces]))
+    print(jsonString(["path": path, "width": cg.width, "height": cg.height, "faces": faces,
+                      "people": people]))
 }
