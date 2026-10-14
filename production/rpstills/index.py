@@ -132,6 +132,7 @@ def read_one(jpeg, proxy_dir, stem=None):
             up = ImageOps.exif_transpose(im)
             row["phash"] = str(imagehash.phash(up)) if imagehash else None
             up.thumbnail((PROXY_EDGE, PROXY_EDGE))
+            row["frame"] = frames.metrics_image(up)   # on the proxy-size image already in hand, in the worker
             proxy = os.path.join(proxy_dir, f"{stem}.jpg")
             if os.path.exists(proxy):  # an earlier run's proxy stays; record its real size
                 with Image.open(proxy) as existing:
@@ -281,6 +282,12 @@ def detect_tiles(rows, out_dir, workers=4, log=print):
                     jobs.append((row["id"], box, width, height, path))
         except Exception as e:  # an unreadable original costs its tiles, not the shoot
             log(f"index: no tiles for {row['id']}: {type(e).__name__}: {e}")
+            for j in jobs:   # and leaves no half a frame's tiles on disk
+                try:
+                    os.remove(j[4])
+                except OSError:
+                    pass
+            jobs = []
         return jobs
 
     found = {}
@@ -349,6 +356,16 @@ def build(folder, out_dir, workers=4, log=print, times_file=None, interval=None,
             rows.append(row)
             if n % 100 == 0:
                 log(f"  read {n}/{len(files)}")
+    if start_dt is not None:
+        prefixes = {times_mod.sequence_of(os.path.splitext(os.path.basename(r["jpeg"]))[0])[0]
+                    for r in rows if not r.get("time") and
+                    times_mod.sequence_of(os.path.splitext(os.path.basename(r["jpeg"]))[0])}
+        prefixes -= set((sidecar or {}).get("starts", {}))
+        if len(prefixes) > 1:
+            log(f"index: --start names one sequence but the undated frames carry {len(prefixes)} "
+                f"prefixes ({', '.join(sorted(prefixes)[:5])}); it is not applied. "
+                "Name each prefix's start in a times.json sidecar.")
+            start_dt = None
     for r in rows:   # a frame with no EXIF time: sidecar, a stamp in its name, or its place in a sequence
         if r.get("time"):
             continue
@@ -374,7 +391,7 @@ def build(folder, out_dir, workers=4, log=print, times_file=None, interval=None,
         r["tiled"] = False
         if doc and doc.get("error") and not r["error"]:
             r["error"] = doc["error"]
-        r["frame"] = None if r["error"] else frames.metrics(os.path.join(out_dir, r["proxy"]))
+        r.setdefault("frame", None)
     if tiles != "off" and seen is not None:
         todo = [r for r in rows if not r["error"] and (tiles == "all" or not cluster.counted_faces(r))]
         if todo:

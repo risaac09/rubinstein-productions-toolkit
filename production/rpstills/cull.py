@@ -18,9 +18,11 @@ Vision found a person. Such a run proposes NONE_PICKS frames, one more for
 each NONE_PER_FRAMES frames it holds up to NONE_MAX, one per burst, none
 whose score is under NONE_FLOOR (a blank, flat or out-of-focus frame never
 makes it), and none that is a near-duplicate (perceptual hash within
-NEAR_DUPLICATE bits) of one already picked. A face run skips only a frame that
-is all but identical (within NEAR_DUPLICATE_FACE bits) to a pick of its own,
-which a static camera and a performer who sits still produce by the dozen. An index written before the frame measures existed
+NEAR_DUPLICATE bits) of one already picked. A face run from frame grabs (a row whose time did not come from EXIF) skips a
+frame that is all but identical (within NEAR_DUPLICATE_FACE bits) to a pick of
+its own, which a static camera and a performer who sits still produce by the
+dozen. Camera JPEGs keep every frame: a perceptual hash cannot see the eyes or
+the expression that make two near-identical shots different pictures. An index written before the frame measures existed
 has none to rank by and proposes nothing for such a run, as before; running
 any later stage on it adds the measures.
 
@@ -170,7 +172,9 @@ def propose(rows, clusters, scored):
             if s.get("burst") in used_bursts:
                 continue
             phash = by_id.get(f, {}).get("phash")
-            if any(hash_distance(phash, by_id.get(p, {}).get("phash")) <= NEAR_DUPLICATE_FACE for p in picks):
+            if (by_id.get(f, {}).get("time_source", "exif") != "exif" and
+                    any(hash_distance(phash, by_id.get(p, {}).get("phash")) <= NEAR_DUPLICATE_FACE
+                        for p in picks)):
                 continue
             picks.append(f)
             used_bursts.add(s.get("burst"))

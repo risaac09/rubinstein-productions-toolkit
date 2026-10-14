@@ -76,9 +76,11 @@ grabs (2976x1324) of a wide stage:
   says how many.
 
 Measured on those 125 grabs: faces on 24 frames and 19 picks (none for the 101
-face-less frames) became faces on 67 frames, with picks for 14 of the 15
-face-less runs. The numbers depend on the footage; the parameters are at the
-top of `cluster.py`, `cull.py`, `frames.py` and `index.py`.
+face-less frames) became a subject face on 67 frames and 67 picks over 42 runs,
+18 of them frame picks in 11 of the 15 runs with no subject face. The other
+four held only out-of-focus frames (three runs) or blank ones (one). The
+numbers depend on the footage; the parameters are at the top of `cluster.py`,
+`cull.py`, `frames.py` and `index.py`.
 
 A fifth stage, `crops`, reads `selects.json` (exported from the sheet and
 placed beside `index.jsonl`; without it the cull proposal stands in) and

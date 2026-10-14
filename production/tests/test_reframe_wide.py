@@ -173,6 +173,12 @@ class TestEdgeMargin(unittest.TestCase):
                                ["9x16"], scale=reframe.AUTO)
         self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.MANUAL)
 
+    def test_a_pixel_of_overshoot_is_not_an_edge(self):
+        # Vision's box may overshoot the frame by float noise: 0.0005 of 1080 rows is half a pixel.
+        sp = reframe.plan_span(samples(self.HD, [[(960, 100 - 0.5 + 0.0, 200, 200)]] * 8), self.HD,
+                               full(self.HD), ["9x16"], scale=reframe.AUTO)
+        self.assertEqual(sp["review"], [])
+
     def test_a_face_that_fits_inside_the_picture_notes_nothing(self):
         sp = reframe.plan_span(samples(self.HD, [[(960, 540, 200, 200)]] * 8), self.HD, full(self.HD),
                                ["9x16"], scale=reframe.AUTO)
@@ -317,6 +323,11 @@ class TestSubject(unittest.TestCase):
         sp = reframe.plan_span(spec, WIDE, full(WIDE), ["9x16"], scale=reframe.AUTO,
                                speaker_x=1000, speaker_y=400)
         self.assertEqual(sp["face"]["y"], 400.0)
+
+    def test_speaker_y_without_speaker_x_is_refused(self):
+        m = {"source_path": "/x/s.mp4", "clips": [{"name": "c", "spans": [{"in": 0, "out": 5}]}]}
+        with self.assertRaisesRegex(reframe.ReframeError, "together with speaker_x"):
+            reframe.plan(m, reader=FakeReader(), detect=fake_detect, speaker_y=900)
 
     def test_speaker_x_alone_is_unchanged(self):
         spec = samples(WIDE, [[(1000, 400, 200, 200), (3000, 400, 200, 200)] for _ in range(8)])

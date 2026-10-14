@@ -112,6 +112,7 @@ MIN_PER_SECOND = 0.5
 MAX_SAMPLES = 120
 MARGIN = 0.10              # of the face box's width and height, on each side
 BAR_LEVEL = 40            # brightest pixel (0..255) at or below which an edge row or column is a black bar
+EDGE_NOTE_PX = 1.0       # how far a face box may reach past the picture before the span is flagged
 MIN_CHECKED_SHARE = 0.5   # of a span's samples that must have a checked face before a crop can pass
 MIN_CHECKED_SAMPLES = 3   # and never fewer than this many
 PREFER_PRESENT, PREFER_LARGEST = "present", "largest"
@@ -619,8 +620,9 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
         out["review"].append(f"no face is checked at {_times(unchecked)} ({len(unchecked)} of "
                              f"{len(samples)} samples): the face may leave the crop there")
     boxes = sorted(primary + stray, key=lambda r: r[0])
-    edge = [t for t, b in boxes
-            if b[0] < area[0] or b[1] < area[1] or b[2] > area[2] or b[3] > area[3]]
+    edge = [t for t, b in boxes   # a source pixel of overshoot is Vision's float noise, not an edge
+            if b[0] < area[0] - EDGE_NOTE_PX or b[1] < area[1] - EDGE_NOTE_PX
+            or b[2] > area[2] + EDGE_NOTE_PX or b[3] > area[3] + EDGE_NOTE_PX]
     if edge:
         out["review"].append(
             f"the face box reaches past the edge of the picture at {_times(edge)}: the crop "
@@ -795,6 +797,8 @@ def plan(manifest, aspects=tuple(ASPECTS), samples=DEFAULT_SAMPLES, per_second=M
     if unknown or not aspects:
         raise ReframeError(f"aspects must be among {', '.join(ASPECTS)} (got {', '.join(unknown) or 'none'})")
     subject_region = _subject_args(min_checked, subject_region, min_face_height, prefer)
+    if speaker_y is not None and speaker_x is None:
+        raise ReframeError("speaker_y names a point only together with speaker_x")
     clips = manifest["clips"]
     if only:
         missing = set(only) - {c["name"] for c in clips}

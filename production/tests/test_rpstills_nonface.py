@@ -237,13 +237,24 @@ class TestCullFrames(unittest.TestCase):
         self.assertEqual((p["kind"], p["picks"][0]), ("face", "G003"))
         self.assertEqual(doc["scores"]["G003"]["kind"], "face")
 
-    def test_a_face_run_skips_a_frame_that_is_all_but_identical(self):
+    def near_duplicates(self, source):
         rows = [row(0, "2026-01-15T10:00:00", faces=[face(0.2)], phash=ZERO),
                 row(1, "2026-01-15T10:00:04", faces=[face(0.2)], phash="0" * 15 + "3"),   # 2 bits away
                 row(2, "2026-01-15T10:00:08", faces=[face(0.2)], phash=ONES)]
-        rows[0]["faces"][0]["quality"], rows[1]["faces"][0]["quality"], rows[2]["faces"][0]["quality"] = 0.9, 0.8, 0.7
-        _, doc = self.build(rows)
-        self.assertEqual(doc["proposal"][0]["picks"], ["G000", "G002"])
+        for r, q in zip(rows, (0.9, 0.8, 0.7)):
+            r["faces"][0]["quality"] = q
+            if source is not False:
+                r["time_source"] = source
+        return self.build(rows)[1]["proposal"][0]["picks"]
+
+    def test_a_face_run_of_frame_grabs_skips_a_frame_that_is_all_but_identical(self):
+        self.assertEqual(self.near_duplicates("sequence"), ["G000", "G002"])
+        self.assertEqual(self.near_duplicates(None), ["G000", "G002"])     # no time at all: a grab too
+
+    def test_camera_jpegs_keep_every_frame(self):
+        # Two near-identical shots can differ in the eyes or the expression, which a hash cannot see.
+        self.assertEqual(self.near_duplicates("exif"), ["G000", "G001", "G002"])
+        self.assertEqual(self.near_duplicates(False), ["G000", "G001", "G002"])   # an index from before time_source
 
     def test_the_summary_names_frame_picks(self):
         _, doc = self.build(self.stage())
@@ -451,6 +462,40 @@ class TestBuild(unittest.TestCase):
         rows, _ = self.build(fv, interval=4.0, start="2026-01-15T10:00:00")
         self.assertEqual((rows["S_002"]["time"], rows["S_002"]["time_source"]), ("2026-01-15T12:00:00", "sidecar"))
         self.assertEqual(rows["S_003"]["time_source"], "sequence")
+
+    def test_a_global_start_is_not_applied_across_several_sequences(self):
+        # Camera counters (IMG_1234) and a grab prefix in one folder: one --start cannot be right for both.
+        for old, new in (("S_001", "IMG_1234"), ("S_002", "IMG_1235")):
+            os.rename(os.path.join(self.shoot, old + ".jpg"), os.path.join(self.shoot, new + ".jpg"))
+        rows, logs = self.build(fake_vision({}, {}), interval=4.0, start="2026-01-15T10:00:00")
+        self.assertTrue(any("not applied" in m for m in logs), logs)
+        self.assertEqual({r["time"] for r in rows.values()}, {None})
+        shutil.rmtree(self.out)
+        with open(os.path.join(self.shoot, "times.json"), "w") as f:
+            json.dump({"starts": {"IMG": "2026-01-15T10:00:00", "S": "2026-01-15T11:00:00"}, "interval": 4}, f)
+        rows, _ = self.build(fake_vision({}, {}))
+        self.assertEqual(rows["S_003"]["time"], "2026-01-15T11:00:08")
+        self.assertEqual(rows["IMG_1234"]["time_source"], "sequence")
+
+    def test_the_measures_come_from_the_workers_without_a_second_pass(self):
+        with mock.patch.object(frames, "metrics", side_effect=AssertionError("re-read a proxy")):
+            rows, _ = self.build(fake_vision({}, {}))
+        self.assertTrue(all(r["frame"] and r["frame"]["sharp"] > 0 for r in rows.values()))
+
+    def test_a_frame_that_fails_mid_tiling_leaves_no_files(self):
+        real = Image.Image.save
+        count = {"n": 0}
+
+        def flaky(self, path, *a, **k):
+            if "_t" in os.path.basename(str(path)) and "S_002" in str(path):
+                count["n"] += 1
+                if count["n"] == 3:
+                    raise OSError("disk full")
+            return real(self, path, *a, **k)
+        with mock.patch.object(Image.Image, "save", flaky):
+            rows, logs = self.build(fake_vision({}, {}))
+        self.assertTrue(any("no tiles for S_002" in m for m in logs), logs)
+        self.assertFalse(os.path.exists(os.path.join(self.out, "tiles")))
 
     def test_a_bad_start_is_an_error(self):
         with self.assertRaises(ValueError):

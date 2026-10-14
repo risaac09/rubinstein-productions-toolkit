@@ -48,23 +48,32 @@ def _laplacian_variance(im):
         return sum(c * (i - mean) ** 2 for i, c in enumerate(hist)) / n
 
 
+def metrics_image(im):
+    """{"sharp", "mean", "contrast", "clip_lo", "clip_hi"} of a Pillow image
+    (left unchanged): sharp as above; mean and contrast (standard deviation)
+    of luma as shares of full scale; clip_lo and clip_hi the shares of pixels
+    at or below CLIP_LOW and at or above CLIP_HIGH. None when it cannot be
+    measured."""
+    try:
+        g = im.convert("L")
+        g.thumbnail((SHARP_SIDE, SHARP_SIDE))
+        hist = g.histogram()
+        n = float(sum(hist))
+        mean = sum(i * c for i, c in enumerate(hist)) / n
+        var = sum(c * (i - mean) ** 2 for i, c in enumerate(hist)) / n
+        return {"sharp": round(_laplacian_variance(g), 3), "mean": round(mean / 255.0, 4),
+                "contrast": round((var ** 0.5) / 255.0, 4),
+                "clip_lo": round(sum(hist[:CLIP_LOW + 1]) / n, 4),
+                "clip_hi": round(sum(hist[CLIP_HIGH:]) / n, 4)}
+    except Exception:
+        return None
+
+
 def metrics(path):
-    """{"sharp", "mean", "contrast", "clip_lo", "clip_hi"} of an image file:
-    sharp as above; mean and contrast (standard deviation) of luma as shares
-    of full scale; clip_lo and clip_hi the shares of pixels at or below
-    CLIP_LOW and at or above CLIP_HIGH. None when the file cannot be read."""
+    """metrics_image() of an image file; None when the file cannot be read."""
     try:
         with Image.open(path) as im:
-            g = im.convert("L")
-            g.thumbnail((SHARP_SIDE, SHARP_SIDE))
-            hist = g.histogram()
-            n = float(sum(hist))
-            mean = sum(i * c for i, c in enumerate(hist)) / n
-            var = sum(c * (i - mean) ** 2 for i, c in enumerate(hist)) / n
-            return {"sharp": round(_laplacian_variance(g), 3), "mean": round(mean / 255.0, 4),
-                    "contrast": round((var ** 0.5) / 255.0, 4),
-                    "clip_lo": round(sum(hist[:CLIP_LOW + 1]) / n, 4),
-                    "clip_hi": round(sum(hist[CLIP_HIGH:]) / n, 4)}
+            return metrics_image(im)
     except Exception:
         return None
 
