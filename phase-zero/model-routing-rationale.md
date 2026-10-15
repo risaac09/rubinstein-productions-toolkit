@@ -40,22 +40,22 @@ Claude-context dependence goes to a strong Codex model, not to Opus.
 
 Tier follows Q1 and Q2. Effort follows Q3 and the surface area. Pool follows
 Q4 and the capacity contract. Three levers, not one lookup. The anchor is
-Sonnet 5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
+Sonnet 5.5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
 to start.
 
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
 - Routine synthesis, continuity work, component edits, extraction, and
-  research legwork: Sonnet 5 at medium.
+  research legwork: Sonnet 5.5 at medium.
 - Orchestration, architecture, hard reasoning, and final synthesis: begin on
-  Sonnet 5 at medium. Escalate to Opus 5 only when a named difficulty survives
+  Sonnet 5.5 at medium. Escalate to Opus 5.5 only when a named difficulty survives
   that pass.
-- The single hardest long-horizon task worth the premium: Fable 5, sweep
+- The single hardest long-horizon task worth the premium: Fable 5.1, sweep
   effort low to high.
-- Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
+- Bulk reads, search, mechanical edits, validation: Haiku 5.5 at low.
 - Low-impact preprocessing (markitdown conversion, summarization, bulk
-  classification, light drafts): Haiku 4.5 at low, batched. The old local
+  classification, light drafts): Haiku 5.5 at low, batched. The old local
   lane was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
   one and its models stopped fitting, so this work costs subscription quota.
   A narrower lane returned 2026-10-05 (stack-data DECISIONS, "The local lane
