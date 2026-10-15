@@ -1,9 +1,86 @@
 {
  "lutlab_delta": 1,
  "name": "RP Ice Blue",
- "description": "Cool and clean: blue-cyan shadows, cold whites, overall saturation down, skin held so faces do not go grey.",
- "white_balance": {"temp": -24},
- "split_tone": {"L=0.10": {"hue": 235, "amount": 1.2}, "L=0.25": {"hue": 230, "amount": 1.4}, "L=0.85": {"hue": 210, "amount": 0.6}},
- "sat_gain": {"all": 0.9, "mids": {"060 orange": 1.12, "090 amber": 1.08}},
- "tone": {"contrast": 1.04}
+ "description": "Cool and clean: blue-cyan shadows, cold whites, overall saturation down, skin held (measured on 11 faces: skin chroma and hue stay within about 2 percent and half a degree of Neutral) so faces do not go grey.",
+ "white_balance": {
+  "temp": -24
+ },
+ "split_tone": {
+  "L=0.10": {
+   "hue": 235,
+   "amount": 1.2
+  },
+  "L=0.25": {
+   "hue": 230,
+   "amount": 1.4
+  },
+  "L=0.85": {
+   "hue": 210,
+   "amount": 0.6
+  }
+ },
+ "sat_gain": {
+  "shadows": {
+   "000 pink": 0.9,
+   "030 red": 1.17,
+   "060 orange": 1.26,
+   "090 amber": 1.035,
+   "120 yellow": 0.9,
+   "150 green": 0.9,
+   "180 teal": 0.9,
+   "210 cyan": 0.9,
+   "240 azure": 0.9,
+   "270 blue": 0.9,
+   "300 violet": 0.9,
+   "330 magenta": 0.9
+  },
+  "mids": {
+   "000 pink": 0.9,
+   "030 red": 1.17,
+   "060 orange": 1.26,
+   "090 amber": 1.035,
+   "120 yellow": 0.9,
+   "150 green": 0.9,
+   "180 teal": 0.9,
+   "210 cyan": 0.9,
+   "240 azure": 0.9,
+   "270 blue": 0.9,
+   "300 violet": 0.9,
+   "330 magenta": 0.9
+  },
+  "highlights": {
+   "000 pink": 0.9,
+   "030 red": 1.17,
+   "060 orange": 1.26,
+   "090 amber": 1.035,
+   "120 yellow": 0.9,
+   "150 green": 0.9,
+   "180 teal": 0.9,
+   "210 cyan": 0.9,
+   "240 azure": 0.9,
+   "270 blue": 0.9,
+   "300 violet": 0.9,
+   "330 magenta": 0.9
+  }
+ },
+ "tone": {
+  "contrast": 1.04
+ },
+ "hue_shift": {
+  "shadows": {
+   "030 red": 4,
+   "060 orange": 4,
+   "090 amber": 2
+  },
+  "mids": {
+   "030 red": 4,
+   "060 orange": 4,
+   "090 amber": 2
+  },
+  "highlights": {
+   "030 red": 4,
+   "060 orange": 4,
+   "090 amber": 2
+  }
+ }
 }
