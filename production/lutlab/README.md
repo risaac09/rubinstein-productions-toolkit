@@ -110,8 +110,7 @@ lookups, but Resolve does not scan it.
 **What the node sees.** A camera LUT expects that camera's log on the node.
 In a non-managed project (DaVinci YRGB) it does, so use the `[S5II]` and
 `[Pyxis]` files there. Under Resolve Color Management the node sees the
-timeline space (DaVinci Intermediate unless you changed it), whatever the
-camera, so use the `[RCM]` set:
+timeline space, whatever the camera, so use the `[RCM]` set:
 
 ```bash
 /usr/bin/python3 -m lutlab looks BASE/params.json --camera rcm --size 65 --out "$LUTLAB_OUT/RP Looks RCM"
@@ -119,19 +118,27 @@ camera, so use the `[RCM]` set:
 
 An `[RCM]` look reads DaVinci Intermediate and writes the finished Rec.709
 picture back in DaVinci Intermediate code values. Resolve's output transform
-(output colour space Rec.709 Gamma 2.4, tone mapping and gamut mapping set to
-None; confirm both in Project Settings, Color Management) then turns it into
-the same Rec.709 the camera LUT would have given. One set serves both cameras and anything else Resolve
-can convert, with no per-clip input colour space to set. Measured against the
-camera LUT on natural colours (print-teal on the ARRI base, V-Log): median
-Delta E 0.22 at 33 points and 0.08 at 65, so bake `--size 65`. Resolve render check (S5II V-Log clip, RCM Print Teal, a project whose output
-space was DaVinci Intermediate, `verify-render --out-space di`): the render
-matches lutlab's model at median Delta E 0.43 (p95 1.4), and against the
-camera look through Resolve's own V-Log input transform at 0.93 (p95 3.0),
-the same ballpark as the camera-LUT renders (0.7 to 0.9). The Rec.709 output
-transform itself was not in that test. Leave tone
-mapping off: it would compress the picture a second time. A Rec.709-out
-camera LUT in an RCM project needs the alternative below; do not mix them.
+then turns it into the same Rec.709 the camera LUT would have given. One set
+serves both cameras and anything else Resolve can convert, with no per-clip
+input colour space to set.
+
+It needs Project Settings, Color Management to read: timeline colour space
+DaVinci WG/Intermediate, output colour space Rec.709 Gamma 2.4, tone mapping
+and gamut mapping None. A fresh Color Managed project does not start there:
+its timeline and output are both Rec.709 (Scene), so change them first
+(Animist Folk Fest 2026-10 is set up this way). Leave tone mapping off: it
+would compress the picture a second time. Do not put a Rec.709-out camera LUT
+in such a project; see the alternative below.
+
+Measured, on an S5II V-Log clip with RCM Print Teal and Neutral:
+- Bake size: against the camera LUT on natural colours (print-teal, ARRI
+  base, V-Log), median Delta E 0.22 at 33 points and 0.08 at 65, so bake
+  `--size 65`.
+- LUT applied by Resolve: in a project whose output was DaVinci Intermediate,
+  the render matches lutlab's model at median Delta E 0.43 (p95 1.4).
+- End to end: in a project set up as above, the Rec.709 render is 0.79
+  (Neutral) and 0.82 (Print Teal) from the camera look, p95 2.4 to 2.8, the
+  same ballpark as the camera-LUT renders (0.7 to 0.9).
 
 The alternative, with no second set: give each clip an Input Color Space equal
 to the timeline space, so the node sees the camera's code values, and put a
@@ -150,6 +157,9 @@ expects Cine-D, so its guess is `unknown`). Byte-identical copies are grouped.
 It never moves or deletes anything. Hand fixes go in
 `library-overrides.json` beside the registry, keyed by sha256:
 `{"<sha256>": {"space": "vlog", "note": "..."}}`.
+To see which LUTs projects really use, search the project databases for LUT
+paths: `grep -a -o -E '[A-Za-z0-9 _()/.-]{3,120}\.(cube|CUBE|dat)'` over
+`~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Resolve Project Library/Resolve Projects/Users/guest/Projects/*/Project.db`.
 
 **apply** previews before anything reaches Resolve: each frame through each
 LUT, plus `contact.jpg`, or one LUT over a clip as H.264 through ffmpeg's
@@ -176,7 +186,7 @@ round because Resolve caches a LUT by path:
 
 `frames` decodes the way `verify-render` does, so the previews match what
 Resolve renders. For a Pyxis, take a Gen 5 render from a plain YRGB project
-(ffmpeg cannot read BRAW). Edit the numbers in `production/lutlab-looks/`,
+(ffmpeg cannot read BRAW): import the clips into a plain YRGB project, then with the timeline open on the Color page call `Timeline.GrabStill()` at each playhead position and `GalleryStillAlbum.ExportStills(stills, folder, prefix, "tif")` through the scripting API, which writes 16-bit Gen 5 TIFFs without rendering. Edit the numbers in `production/lutlab-looks/`,
 bake into a new folder, compare; copy a round into Resolve's LUT root only
 when it is the one you want.
 
