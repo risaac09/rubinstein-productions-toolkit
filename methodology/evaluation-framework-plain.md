@@ -2,6 +2,8 @@
 
 > **Canonical doc:** [`methodology/evaluation-framework.md`](evaluation-framework.md). That file is the source of truth, a snapshot of the vault canonical. This is the teaching layer for readers with no evaluation background.
 
+> **Status:** operational.
+
 ## The problem it answers
 
 Most program evaluation counts what is easy to count: sessions held, people reached, videos produced. Those numbers satisfy funders, and they say almost nothing about whether anything changed for the people involved. The framework refuses to choose between the two. It measures in both languages at once and calls the result the Bilingual Dashboard.

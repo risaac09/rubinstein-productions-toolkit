@@ -482,14 +482,18 @@ def cmd_reframe_plan(args):
 
 TILT_STEPS = """\
 Hand steps (only a person presses Render). In a scratch Resolve project:
-  1. Make a timeline of 1080x1920 with input scaling left at the default (scale entire image to fit).
+  1. Make a timeline of {size} with input scaling set to {scaling_ui}.
   2. Import {video}; put it on the timeline.
   3. In the Inspector, set Zoom X and Zoom Y to {zoom}, Pan to {pan} and Tilt to {tilt}.
-  4. Deliver ONE still of any frame (PNG or JPEG, 1080x1920 or any size of that shape).
+  4. Deliver ONE still of any frame (PNG or JPEG, {size} or any size of that shape).
   5. Run: python3 resolve_workflow.py tilt-check <the still> --fixture {folder}
 White marker: the crop centre, so it must land at the middle of the frame. Red marker: the middle of
 the source. Yellow marker: above the white one, so you can see which way is up.
-Until a commit cites this result, reframe-plan keeps saying Tilt's sign is unconfirmed."""
+Pan and Tilt were confirmed on 2026-10-15; a run now re-checks a new Resolve version."""
+
+
+TILT_SCALING_UI = {"scaleToFit": "Scale entire image to fit (the default)",
+                   "scaleToCrop": "Scale full frame with crop"}
 
 
 def cmd_tilt_fixture(args):
@@ -503,13 +507,15 @@ def cmd_tilt_fixture(args):
             print(f"ERROR: {problem}", file=sys.stderr)
             return 1
     try:
-        expect = reframe.tilt_fixture(folder)
+        expect = reframe.tilt_fixture(folder, variant=getattr(args, "variant", "9x16"))
     except (reframe.ReframeError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     p = expect["props"]
     print(TILT_STEPS.format(video=os.path.join(folder, reframe.TILT_VIDEO), zoom=p["ZoomX"],
-                            pan=p["Pan"], tilt=p["Tilt"], folder=folder))
+                            pan=p["Pan"], tilt=p["Tilt"], folder=folder,
+                            size="x".join(str(v) for v in expect["out"]),
+                            scaling_ui=TILT_SCALING_UI[expect["input_scaling"]]))
     return 0
 
 
@@ -953,6 +959,11 @@ Examples:
         "Tilt's sign (needs ffmpeg); prints the hand steps")
     sp.add_argument("--out", required=True,
                     help="A new folder outside any repository for tilt-fixture.mp4 and tilt-expect.json")
+    sp.add_argument("--variant", choices=("9x16", "master", "1x1", "9x16-6k", "master-fit",
+                                          "16x9-crop"), default="9x16",
+                    help="9x16: UHD into 1080x1920 at scale-to-fit (default). master: 6048x4032 "
+                         "into 5952x2646 at scale-full-frame-with-crop, a festival project's setup. The "
+                         "rest vary the shapes and scaling (reframe.TILT_VARIANTS)")
     sp.set_defaults(func=cmd_tilt_fixture)
 
     sp = subparsers.add_parser(

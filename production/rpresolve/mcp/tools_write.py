@@ -335,6 +335,40 @@ def apply_grade(args, ctx):
         return run() if args["dry_run"] else _journalled("apply_grade", args, run)
 
 
+def reframe_apply(args, ctx):
+    _require_sha(args)
+    plan = _abs(args["plan"], "plan")
+
+    def run():
+        r = workflows.reframe_apply(ctx.session.get(), args["project"], args["timeline"], plan,
+                                    track=args["track"], items=args.get("items"),
+                                    allow_bars=args["allow_bars"], dry_run=args["dry_run"],
+                                    project_id=args.get("project_id"),
+                                    check_cancel=ctx.check_cancel,
+                                    expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        rest = (f"; {len(r['unchanged'])} unchanged" if r["unchanged"] else "") + \
+               (f"; {len(r['refused'])} refused" if r["refused"] else "")
+        if any("squeeze" in w for w in r["warnings"]):
+            rest += "; squeezed items: the anamorphic transform is unchecked live, look at them"
+        if r["dry_run"]:
+            r["summary"] = (f"would set Zoom, Pan and Tilt on {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']}{rest}" + _how(r))
+        elif not n:
+            r["summary"] = f"nothing to write on '{tl}'{rest}"
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["applied"] = ok
+            r["summary"] = (f"set and read back the framing of {ok} of {len(r['results'])} "
+                            f"item(s) on '{tl}'{rest}" +
+                            (f"; FRAMING LEAKED to {len(r['leaks'])} item(s) elsewhere"
+                             if r["leaks"] else "; no other timeline changed"))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("reframe_apply", args, run)
+
+
 def stabilize(args, ctx):
     _require_sha(args)
 
@@ -788,6 +822,33 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "reframe_apply",
+        "Set ZoomX, ZoomY, Pan and Tilt on video items of one track of an ' [auto]' timeline "
+        "from a framing plan (reframe_plan with items), and read each back. Each item takes "
+        "the plan entry for its file; the props are computed for this timeline's size and "
+        "input scaling, which must be the plan's. Refused: a timeline not ending ' [auto]', "
+        "an item with its own Scaling, a clip of another resolution than planned, an entry "
+        "with no crop, a zoom below the fill scale (black would show) unless allow_bars. An "
+        "entry whose move is 'none' writes nothing: centre fill already keeps the head. "
+        "After the real run every item on other timelines using the same media is compared "
+        "and any change is reported as a leak. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "plan": {"type": "string",
+                     "description": "Absolute path of the framing plan JSON reframe_plan wrote."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            "allow_bars": {"type": "boolean", "default": False,
+                           "description": "Allow a scale below the fill scale (black bars)."},
+            **DRY_RUN},
+         "required": ["project", "timeline", "plan"], "additionalProperties": False},
+        reframe_apply, title="Apply a framing plan", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "stabilize",
         "Call Resolve's TimelineItem.Stabilize() on video items of one track of an ' [auto]' "

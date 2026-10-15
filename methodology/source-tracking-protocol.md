@@ -13,6 +13,8 @@ companion-to:
 tags: [canonical, sources, protocol, meta-prompt]
 ---
 
+> **Status:** draft.
+
 # Source-Tracking Protocol
 
 A meta-protocol for responses where sources matter. Applies to canonical doc authoring, research synthesis, public-facing writing, and any response that makes claims attributable to a named source.

@@ -2,6 +2,8 @@
 
 > **Canonical doc:** [`methodology/theory-of-change.md`](theory-of-change.md). That file is the source of truth, a snapshot of the vault canonical. This is the teaching layer for readers with no evaluation background.
 
+> **Status:** operational.
+
 ## What a theory of change is
 
 A theory of change is the standard document funders use to check whether a program's logic holds: what goes in, what happens, what comes out, and why anyone should expect the chain to connect. This one belongs to Say Why, the social impact initiative of Rubinstein Productions.
