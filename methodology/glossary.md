@@ -1,5 +1,7 @@
 > **Canonical source:** this file (toolkit is authoritative — no live vault counterpart as of 2026-04-27).
 
+> **Status:** operational.
+
 # Glossary of Key Terms — Ethical, Nervous-System Aware Videography
 
 ---

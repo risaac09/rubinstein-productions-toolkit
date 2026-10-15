@@ -1,5 +1,7 @@
 > **Canonical source:** this file, for the blueprint as a whole (toolkit is authoritative; the vault archived its copy 2026-04-27; this file reflects the v2 April 2026 update). The four phase definitions follow the canonical positioning doc, and each tier's deliverables follow `services.yaml` `typicalDeliverables`.
 
+> **Status:** draft. The list under "What's still missing" is dated April 2026 and has not been revisited.
+
 # Rubinstein Productions — Methodology Blueprint
 *Working Document | Created: 2026-03-30*
 *Purpose: Consolidate the RP methodology into a client-legible, market-ready framework*
@@ -134,10 +136,10 @@ This file carries the methodology. The four phases above are the whole of
 what the public kit needs to reproduce the practice.
 
 
-## WHAT'S STILL MISSING
+## WHAT'S STILL MISSING (as of the April 2026 update)
 
 1. **A named methodology.** The four phases (Container → Excavation → Performance → Translation) are solid but unnamed as a whole. The Dual Architecture document addresses this.
-2. **A completed client journey.** No one has gone through the full camera-shipping process yet. This needs to happen in Q2 2026.
+2. **A completed client journey.** As of the April 2026 update, no client had gone through the full camera-shipping process. This document does not record whether one has since.
 3. **A case study.** The cohort video is the only proof of process. First Tier 2 engagement becomes the first case study.
 4. **Pricing validation.** The tiers are set by value-based logic but untested in the market.
 5. **The camera-shipping logistics.** Insurance, shipping timelines, backup equipment, international shipping.

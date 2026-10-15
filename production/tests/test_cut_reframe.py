@@ -98,10 +98,10 @@ class TestPerSpan(Base):
         self.assertIsNone(tall["props"])  # the spans differ
         items = self.items("T_hi_9x16 [auto]")
         self.assertEqual([round(i.props["Pan"], 4) for i in items], [832.5, -810.0])
-        self.assertEqual([round(i.props["Tilt"], 4) for i in items], [0.0, -135.0])
+        self.assertEqual([round(i.props["Tilt"], 4) for i in items], [0.0, -426.6667])
         self.assertEqual({round(i.props["ZoomX"], 4) for i in items}, {2.6667})
         self.assertEqual([x["read_back"]["Pan"] for x in tall["items"]], [832.5, -810.0])
-        self.assertTrue(any("Tilt" in w for w in tall["warnings"]))
+        self.assertFalse(any("Tilt" in w for w in tall["warnings"]))  # confirmed 2026-10-15
         self.assertTrue(any("scaleToFit assumed" in w for w in tall["warnings"]))
         # The 16:9 is untouched, and so is the UI.
         self.assertEqual([i.props for i in self.items("T_hi [auto]")], [{}, {}])

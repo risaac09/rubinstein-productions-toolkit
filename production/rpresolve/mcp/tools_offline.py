@@ -241,8 +241,65 @@ def selects(args, ctx):
 # reframe_plan
 # ---------------------------------------------------------------------------
 
+def _framing_plan(args, ctx):
+    """reframe_plan with items: a framing plan for a timeline's items."""
+    from .. import reframe
+    if bool(args.get("items")) == bool(args.get("manifest")):
+        raise ValueError("give a manifest (a cut's spans) or items (a timeline's clips): one "
+                         "of them, not both and not neither")
+    aspects = args.get("aspects") or [reframe.MASTER]
+    if len(aspects) != 1:
+        raise ValueError("a framing plan for items is for one shape; give one aspect")
+    items = []
+    for it in args["items"]:
+        it = dict(it)
+        it["path"] = _abs(it["path"], "items.path")
+        if it.get("stills"):
+            it["stills"] = [_existing(p, "items.stills") for p in it["stills"]]
+        elif not os.path.isfile(it["path"]):
+            raise ValueError(f"{it['path']} does not exist; give stills for a file that is "
+                             "not on this machine or that ffmpeg cannot read (BRAW)")
+        items.append(it)
+    out = _out(args) or _auto_out("framing-plan", ".json")
+    stem = os.path.splitext(out)[0]
+    problem = paths.out_problem(stem + ".tsv", any_git_tree=True)
+    if problem:
+        raise paths.OutputRefused(problem)
+    try:
+        p = reframe.plan_items(items, aspect=aspects[0], master_size=args.get("master_size"),
+                               scaling=args["input_scaling"], samples=args["samples"],
+                               per_second=args["per_second"], min_checked=args["min_checked"],
+                               subject_region=args.get("subject_region"),
+                               min_face_height=args.get("min_face_height"),
+                               prefer=args["prefer"], allow_bars=args["allow_bars"],
+                               check_cancel=ctx.check_cancel)
+    except BaseException:
+        _drop_empty(None if args.get("out") else out)
+        raise
+    write = lambda q, text: paths.write_private(q, text, any_git_tree=True)  # noqa: E731
+    write(out, json.dumps(p, indent=1) + "\n")
+    write(stem + ".tsv", reframe.tsv(p["rows"]))
+    n = p["counts"]
+    person = reframe.needs_person(p["rows"])
+    result = {"summary": (f"framing plan for {len(p['items'])} item(s) at {aspects[0]} "
+                          f"{p['out'][0]}x{p['out'][1]}: {n['none']} need nothing, "
+                          f"{n[reframe.PASS] - n['none']} pass with a move, "
+                          f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
+                          f"{n[reframe.NO_FACE]} no face"),
+              "counts": n, "verdict": "review" if person else "pass", "plan": out,
+              "tsv": stem + ".tsv"}
+    result.update(_page(p["rows"], args))
+    result["lines"] = [reframe.line(r) for r in result["rows"]]
+    return result
+
+
 def reframe_plan(args, ctx):
     from .. import reframe
+    if args.get("items") or not args.get("manifest"):
+        return _framing_plan(args, ctx)
+    args = dict(args, aspects=args.get("aspects") or ["9x16", "1x1"])
+    if reframe.MASTER in args["aspects"] and not args.get("master_size"):
+        raise ValueError("the master shape needs master_size: the timeline's width and height")
     manifest_path = _existing(args["manifest"], "manifest")
     m = cutlist.load_manifest(manifest_path, allow_no_speech=True)
     out = _out(args) or _auto_out("reframe-manifest", ".json")
@@ -261,7 +318,8 @@ def reframe_plan(args, ctx):
                               min_checked=args["min_checked"],
                               subject_region=args.get("subject_region"),
                               min_face_height=args.get("min_face_height"),
-                              prefer=args["prefer"],
+                              prefer=args["prefer"], master_size=args.get("master_size"),
+                              scaling=args["input_scaling"], squeeze=args.get("squeeze"),
                               check_cancel=ctx.check_cancel,
                               progress=ctx.progress)
     except BaseException:
@@ -490,8 +548,9 @@ def register(registry):
         selects, title="Propose selects", annotations=READ))
     registry.add(Tool(
         "reframe_plan",
-        "Plan a static crop per span of a cut manifest for its 9:16 and 1:1 versions, centred "
-        "on the subject's face, and check it: frames are sampled across each span (ffmpeg), "
+        "Plan a static crop per span of a cut manifest for its 9:16, 1:1, 4:5 or 16:9 "
+        "versions or the master shape, or (with items) a framing plan for the clips of a "
+        "timeline that reframe_apply writes, centred on the subject's face, and check it: frames are sampled across each span (ffmpeg), "
         "faces found by macOS Vision and tracked across the samples, the primary face chosen "
         "(present in the most samples, then the larger; or the one nearest speaker_x and "
         "speaker_y; or, with prefer largest, the largest), the crop centred on its median "
@@ -508,13 +567,51 @@ def register(registry):
         "only source_path and clips (no words, approved text or hash); cut still needs a "
         "speech manifest. A span with no face gets no crop. Writes a copy of the manifest "
         "with per-span reframes (cut reads them) and a TSV and JSON report beside it. "
-        "Tilt's sign is unconfirmed until a render says so (resolve-template-spec.md, "
-        "Reframe). Never connects to Resolve.",
+        "Heads: the face box stops at the brows, so the head's top is taken 0.6 face heights "
+        "above it; the crop moves up, never down, to keep the whole head and 0.65 face "
+        "heights of room above it where the picture has that room. A head past the top of "
+        "the picture, or a crop that cannot give the room the picture holds, is a fallback "
+        "with the reason. The master shape keeps the shot as shot (centre fill) and moves "
+        "only for a head; 'move' says what changed (none, zoom, pan, tilt). Pan and Tilt "
+        "are in Resolve's units, confirmed on six stills exported from Resolve 2026-10-15. An anamorphic source "
+        "is planned desqueezed: squeeze from the manifest, the argument or the file's tag. "
+        "Never connects to Resolve.",
         _obj({"manifest": {"type": "string",
-                           "description": "Absolute path of the cut manifest (it is not changed)."},
-              "aspects": {"type": "array", "items": {"type": "string", "enum": ["9x16", "1x1"]},
-                          "minItems": 1, "uniqueItems": True, "default": ["9x16", "1x1"],
-                          "description": "Versions to plan."},
+                           "description": "Absolute path of the cut manifest (it is not changed). "
+                           "Give this or items."},
+              "items": {"type": "array", "minItems": 1, "items": {
+                  "type": "object", "properties": {
+                      "name": {"type": "string"},
+                      "path": {"type": "string", "description": "The clip's file, absolute, as "
+                               "Resolve's media pool names it (reframe_apply matches on it)."},
+                      "in": {"type": "number", "minimum": 0, "description": "Source seconds."},
+                      "out": {"type": "number", "minimum": 0, "description": "Source seconds."},
+                      "squeeze": {"type": "number", "minimum": 0.5, "maximum": 3},
+                      "stills": {"type": "array", "items": {"type": "string"},
+                                 "description": "Images of the picture to judge in place of "
+                                 "the file (BRAW, which ffmpeg cannot read): any size of the "
+                                 "source's shape."},
+                      "src": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                              "minItems": 2, "maxItems": 2,
+                              "description": "With stills: the source's size as Resolve reads "
+                              "it (6048x4032 for the Pyxis)."}},
+                  "required": ["path"], "additionalProperties": False},
+                  "description": "A timeline's clips, for a framing plan (one aspect)."},
+              "master_size": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                              "minItems": 2, "maxItems": 2,
+                              "description": "The master timeline's width and height."},
+              "input_scaling": {"type": "string", "enum": ["scaleToFit", "scaleToCrop"],
+                                "default": "scaleToFit",
+                                "description": "The timeline's input scaling (Scale full frame "
+                                "with crop is scaleToCrop)."},
+              "squeeze": {"type": "number", "minimum": 0.5, "maximum": 3,
+                          "description": "The source's anamorphic squeeze, when the manifest "
+                          "and file do not say."},
+              "aspects": {"type": "array", "items": {"type": "string", "enum": [
+                              "9x16", "1x1", "4x5", "16x9", "master"]},
+                          "minItems": 1, "uniqueItems": True,
+                          "description": "Versions to plan (default 9x16 and 1x1 for a "
+                          "manifest, master for items)."},
               "samples": {"type": "integer", "minimum": 2, "maximum": 120, "default": 8,
                           "description": "Frames sampled per span."},
               "per_second": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5,
@@ -548,7 +645,7 @@ def register(registry):
                              "black bars (status 'bars', named in the report)."},
               **PAGING, "limit": _limit(50, 400),
               "out": _out_prop("the manifest copy (the .reframe.tsv and .reframe.json "
-                               "reports go beside it)")}, ["manifest"]),
+                               "reports go beside it), or the framing plan")}, []),
         reframe_plan, title="Plan reframes", annotations=READ))
     registry.add(Tool(
         "sync_measure",

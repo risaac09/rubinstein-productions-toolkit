@@ -42,7 +42,7 @@ Reusable templates for the client and grant lifecycle.
 - Pipeline dashboards (outreach + grants)
 
 ### `docs/`, `architecture/`
-Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role.
+Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports.
 
 The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: their prompts and fixtures are real RP business scenarios carrying balances, revenue targets, pricing bands, and a client engagement, which is the same material this README says stays private.
 
@@ -59,12 +59,12 @@ A second, smaller deployment kit for public-repo hygiene: license templates, a R
 What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.
 
 ### `cli/`
-Shell scripts for outreach and grant pipeline management. Obsidian-native (markdown + YAML frontmatter). No external dependencies, no API keys, no cost. *(Kept here as a default, not a settled call — see "A judgment call" below.)*
+Shell scripts for outreach and grant pipeline management. Obsidian-native (markdown + YAML frontmatter). No API keys, no cost, no dependencies beyond bash and coreutils (`rp-draft` also needs `python3` to URL-encode). *(Kept here as a default, not a settled call — see "A judgment call" below.)*
 
 - `rp-prospect`: Create and track prospects (interactive or CLI args)
 - `rp-pipeline`: View outreach pipeline by status
 - `rp-update`: Update prospect status and log touches
-- `rp-draft`: Draft emails and open Gmail compose
+- `rp-draft`: Draft emails and open Gmail compose (needs `python3`; reads your signature from `~/.config/rp/signature` or `$RP_SIGNATURE_FILE`)
 - `rp-followup`: Surface overdue follow-ups
 - `rp-grant`: Grant funder tracking, deadlines, and status management
 - `install.sh`: Add to PATH in one step
@@ -80,6 +80,25 @@ Generic film/video production tooling. *(Also kept as a default — see below.)*
 - [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
 - PowerGrade template spec
 - iPhone filming guide for the camera-shipping model
+
+### `production/lutlab/`
+Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.9 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
+
+### `production/rpstills/`
+The offline front end of the stills lane: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. It decodes no RAW and talks to no Resolve; grading stays in Resolve. Faces come from macOS Vision when `swiftc` is present, and the ranking falls back to the frame alone when it is not. Look presets are in `production/stills-looks/`. See [its README](production/rpstills/README.md).
+
+### `tools/`
+- **`tools/vertcut/`**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`. Bash plus one small Python file; ffmpeg, Pillow and `mlx-whisper` do the work. See [its README](tools/vertcut/README.md).
+- **`tools/video-editor/`**: a bounded prototype that drives video editing through Claude Code by wrapping the vendored third-party `video-use` skill (MIT). Not a finished tool, and not Rubinstein Productions code.
+
+### `dsh/`
+The deployment kit for a DeepSeek Harness agent on the OpenRouter lane: the session brief, the model routing table for that lane, and an installer that keeps the shared skill home in step with `prompts/skills/`. It is the counterpart to `phase-zero/`, which targets Claude Code. See [its README](dsh/README.md).
+
+### `seed-bed/`
+One skill, `seed-bed/SKILL.md`: an incubation space for ideas that are not yet a service, tool or practice. It holds an idea without forcing a category and brings it back on a weekly cadence.
+
+### `requirements.txt`
+Each tool's interpreter and the pinned Python packages, in one file. CI installs from it.
 
 ### `research/`
 What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc is business strategy with revenue models, so it lives in the private `rp-intranet` repo.)
@@ -156,7 +175,7 @@ rp-pipeline
 rp-grant help
 ```
 ### Prompt Stack
-The `prompts/skills/` directory contains `.skill` and `.md` files designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
+The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
 
 ### Methodology
 Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.

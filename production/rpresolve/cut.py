@@ -61,7 +61,7 @@ from . import settingsguard
 AUTO = " [auto]"
 WIDE = (1920, 1080)
 TALL = (1080, 1920)
-ASPECT_SIZES = dict(rf.ASPECTS)  # "9x16": (1080, 1920), "1x1": (1080, 1080)
+ASPECT_SIZES = {a: rf.ASPECTS[a] for a in ("9x16", "1x1")}  # the versions cut builds
 DEFAULT_SCALE = rf.DEFAULT_SCALE
 INPUT_SCALING = "timelineInputResMismatchBehavior"
 ITEM_SCALING = "Scaling"  # an item's own: 0 use the project's, then Crop, Fit, Fill, Stretch
@@ -299,7 +299,9 @@ def item_plans(clip, aspect, src, scaling=rf.SCALE_TO_FIT):
                 raise Unreframed(f"span {i} has no {aspect} crop (reframe-plan: "
                                  f"{e.get('status', 'no x or scale')}"
                                  + (f": {e['reason']}" if e.get("reason") else "") + ")")
-            planned = [int(v) for v in e.get("src") or []]
+            # A squeezed source is planned on its desqueezed picture (src) and recorded
+            # with the file's own size (stored); the clip reports the stored size.
+            planned = [int(v) for v in e.get("stored") or e.get("src") or []]
             if planned and sh and planned != [sw, sh]:
                 raise Unreframed(f"span {i}: its {aspect} crop was planned on a "
                                  f"{planned[0]}x{planned[1]} source, and this clip is {sw}x{sh}")
@@ -308,8 +310,9 @@ def item_plans(clip, aspect, src, scaling=rf.SCALE_TO_FIT):
                                  "crop cannot be placed")
             y = e.get("y")
             scale, centre = float(e["scale"]), (float(e["x"]), sh / 2.0 if y is None else float(y))
-            area = e.get("area") or (0, 0, sw, sh)
-            props = rf.resolve_props((sw, sh), out, scale, centre, scaling)
+            pic = tuple(int(v) for v in e.get("src") or (sw, sh))
+            area = e.get("area") or (0, 0) + pic
+            props = rf.resolve_props(pic, out, scale, centre, scaling)
             source, review = "span", e.get("review", "")
         elif clip_rf.get("face_x") is not None:
             scale = float(clip_rf.get("scale", DEFAULT_SCALE))
@@ -432,7 +435,7 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
         warnings.append("reframed from the clip's hand-set face_x; nothing checked the face "
                         "inside this crop (reframe-plan does)")
     warnings += [f"span {p['span']}: {p['review']}" for p in plans if p["review"]]
-    if any(abs(p["props"].get("Tilt", 0.0)) > 1e-6 for p in plans):
+    if not rf.TILT_CONFIRMED and any(abs(p["props"].get("Tilt", 0.0)) > 1e-6 for p in plans):
         warnings.append("Tilt is set on at least one item; its sign (up is positive) is not yet "
                         "confirmed on a render, so check a still")
     warnings += settingsguard.warnings(out["settings_drift"])

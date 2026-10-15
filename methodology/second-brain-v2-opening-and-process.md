@@ -8,6 +8,8 @@ companion: "stack-data/context/tco-framework.md, methodology/source-tracking-pro
 description: "What V2 is, the opening sequence, the iteration loop, the nomadic-scientist epistemology, the lineages, the extension protocol for new domains, and the failure modes."
 ---
 
+> **Status:** operational.
+
 # Second Brain V2: Opening and Process
 
 > The thinking ability of a nomadic scientist, the lineages of a polymath, and a working loop between a practitioner and an AI that produces new artifacts in new domains. This is the door, the protocol, and the way back through it.

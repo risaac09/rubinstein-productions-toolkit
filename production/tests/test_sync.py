@@ -416,7 +416,7 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(sync.drift(ws, 0.0, 120.0)["worst_ms"], 1.0)
 
 
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 
 
 @needs_numpy
