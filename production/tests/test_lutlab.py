@@ -8,6 +8,8 @@ Run: /usr/bin/python3 production/tests/test_lutlab.py
 """
 
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -236,6 +238,275 @@ class GuardTest(unittest.TestCase):
     def test_allows_temp(self):
         d = guard.check_out_dir(Path(tempfile.mkdtemp()) / "x")
         self.assertTrue(d.is_dir())
+
+
+class CameraSpacesTest(unittest.TestCase):
+    def test_published_mid_grey(self):
+        # 18% grey code values from the vendors' documents
+        for name, want in (("logc3", 0.3910), ("logc4", 0.2784), ("bmdfilm5", 0.3836), ("vlog", 0.4233)):
+            enc = spaces.SPACES[name][1]
+            self.assertAlmostEqual(float(enc(np.array(0.18))), want, places=3, msg=name)
+
+    def test_continuous_at_the_cut(self):
+        for enc, cut in ((spaces.bmdfilm5_encode, 0.005), (spaces.logc4_encode, spaces._C4T)):
+            a, b = enc(np.array([cut - 1e-9, cut]))
+            self.assertAlmostEqual(float(a), float(b), places=6)
+
+    def test_cameras(self):
+        self.assertEqual(spaces.camera("Pyxis"), ("bmdfilm5", "Pyxis"))
+        self.assertEqual(spaces.camera("s5ii")[0], "vlog")
+        with self.assertRaises(ValueError):
+            spaces.camera("fx3")
+
+
+class DatTest(unittest.TestCase):
+    def test_resolve_dat_is_blue_fastest(self):
+        tmp = Path(tempfile.mkdtemp())
+        rows = ["3DLUTSIZE 2", ""] + [f"{r} {g} {b}" for r in (0, 1) for g in (0, 1) for b in (0, 1)]
+        (tmp / "x.dat").write_text("\n".join(rows) + "\n")
+        lut = cube.read_cube(str(tmp / "x.dat"))
+        np.testing.assert_allclose(lut["table"][1, 0, 0], [1, 0, 0])
+        np.testing.assert_allclose(lut["table"][0, 0, 1], [0, 0, 1])
+
+
+def look_lut(in_space, size=33):
+    """A synthetic camera LUT: the synthetic look, read from in_space."""
+    p = synthetic_params()
+    X = cube.lattice(size)
+    return {"table": np.clip(model.evaluate(p, X, in_space), 0, 1), "domain_min": np.zeros(3),
+            "domain_max": np.ones(3), "title": "synthetic"}
+
+
+class PortTest(unittest.TestCase):
+    def test_port_to_own_space_is_identity(self):
+        from lutlab import port
+        lut = look_lut("vlog")
+        t, share = port.port_table(lut, "vlog", "vlog", 33)
+        np.testing.assert_allclose(t, lut["table"], atol=1e-9)
+        self.assertEqual(share, 0.0)
+
+    def test_port_equals_composition(self):
+        from lutlab import port
+        lut = look_lut("vlog", 65)
+        t, _ = port.port_table(lut, "vlog", "bmdfilm5", 65)
+        ported = {"table": t, "domain_min": np.zeros(3), "domain_max": np.ones(3)}
+        x = pipeline.natural_samples(ported, "bmdfilm5")
+        want = cube.sample(lut, spaces.from_lin709(spaces.to_lin709(x, "bmdfilm5"), "vlog"))
+        d = np.abs(cube.sample(ported, x) - want).max(-1)
+        # re-sampling onto a new lattice softens hard clips a little; the bulk is exact
+        self.assertLess(np.median(d), 0.003)
+        self.assertLess(np.percentile(d, 99), 0.05)
+
+    def test_round_trip_and_diff(self):
+        from lutlab import port
+        lut = look_lut("vlog", 65)
+        there, _ = port.port_table(lut, "vlog", "bmdfilm5", 65)
+        back, _ = port.port_table({"table": there, "domain_min": np.zeros(3), "domain_max": np.ones(3)},
+                                  "bmdfilm5", "vlog", 65)
+        d = port.diff(lut, {"table": back, "domain_min": np.zeros(3), "domain_max": np.ones(3)}, "vlog")
+        self.assertLess(d["all"]["median"], 0.3)
+        self.assertEqual(port.diff(lut, lut, "vlog")["all"]["max"], 0.0)
+
+    def test_exposure_offset(self):
+        from lutlab import port
+        lut = look_lut("vlog")
+        t0, _ = port.port_table(lut, "vlog", "vlog", 33, 0.0)
+        t1, _ = port.port_table(lut, "vlog", "vlog", 33, 1.0)
+        self.assertGreater(t1[16, 16, 16].mean(), t0[16, 16, 16].mean())
+
+
+class DeltaTest(unittest.TestCase):
+    def test_empty_delta_and_zero_white_balance_are_identity(self):
+        p = synthetic_params("vlog")
+        x = np.random.default_rng(5).uniform(0.1, 0.8, (200, 3))
+        q = model.apply_delta(p, {"lutlab_delta": 1, "white_balance": {"temp": 0, "tint": 0}})
+        np.testing.assert_allclose(model.evaluate(q, x), model.evaluate(p, x), atol=1e-12)
+        np.testing.assert_allclose(model.white_balance_matrix(0, 0), np.eye(3))
+
+    def test_warm_is_warm(self):
+        g = model.white_balance_matrix(30, 0) @ np.full(3, 0.18)
+        self.assertGreater(g[0], g[2])
+        g = model.white_balance_matrix(-30, 0) @ np.full(3, 0.18)
+        self.assertLess(g[0], g[2])
+
+    def test_delta_arithmetic(self):
+        p = synthetic_params()
+        d = {"tone": {"contrast": 1.1, "mid": 0.01}, "sat_gain": {"all": 0.5, "mids": {"060 orange": 2.0}},
+             "hue_shift": {"shadows": 3}, "split_tone": {"L=0.25": {"hue": 220.0, "amount": 1.5}}}
+        q = model.apply_delta(p, d)
+        self.assertAlmostEqual(q["tone"]["contrast"], p["tone"]["contrast"] * 1.1)
+        self.assertAlmostEqual(q["tone"]["mid"], p["tone"]["mid"] + 0.01)
+        self.assertAlmostEqual(q["sat_gain"]["mids"]["060 orange"], p["sat_gain"]["mids"]["060 orange"] * 2.0)
+        self.assertAlmostEqual(q["sat_gain"]["shadows"]["030 red"], p["sat_gain"]["shadows"]["030 red"] * 0.5)
+        self.assertAlmostEqual(q["hue_shift"]["shadows"]["060 orange"], p["hue_shift"]["shadows"]["060 orange"] + 3)
+        self.assertAlmostEqual(q["split_tone"]["L=0.25"]["amount"], 3.0, places=3)  # same hue: amounts add
+
+    def test_bad_delta_refused(self):
+        p = synthetic_params()
+        for d in ({"sat": 1}, {"tone": {"gamma": 2}}, {"tone": {"mode": "lum"}}, {"sat_gain": {"lows": 1}},
+                  {"hue_shift": {"all": {"999 x": 1}}}, {"hue_lum": {"orange": 2}}, {"sat_rolloff": {"C=9": 1}}):
+            with self.assertRaises(ValueError, msg=d):
+                model.apply_delta(p, d)
+
+    def test_shipped_looks_load_and_bake(self):
+        looks = Path(__file__).resolve().parent.parent / "lutlab-looks"
+        tmp = Path(tempfile.mkdtemp())
+        base = tmp / "base"
+        base.mkdir()
+        (base / "params.json").write_text(json.dumps(synthetic_params("logc3")))
+        files = sorted(looks.glob("*.json"))
+        self.assertGreaterEqual(len(files), 6)
+        out = pipeline.looks(base / "params.json", [str(f) for f in files], ["pyxis", "s5ii"], tmp, size=9)
+        self.assertEqual(len(out), 2 * len(files))
+        for f in out:
+            self.assertTrue(np.isfinite(cube.read_cube(f)["table"]).all(), f)
+
+
+class RcmTest(unittest.TestCase):
+    """The colour-managed set: DaVinci Intermediate in and out, so Resolve's output transform finishes the job."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        base = self.tmp / "base"
+        base.mkdir()
+        (base / "params.json").write_text(json.dumps(synthetic_params("logc3")))
+        self.base = base / "params.json"
+        self.rng = np.random.default_rng(7)
+
+    def test_target(self):
+        self.assertEqual(spaces.target("RCM"), ("di", "RCM", "di"))
+        self.assertEqual(spaces.target("s5ii"), ("vlog", "S5II", None))
+        with self.assertRaises(ValueError):
+            spaces.camera("rcm")  # port --camera rcm would map a Rec.709 LUT twice
+
+    def test_output_transform_undoes_the_container(self):
+        # what Resolve does after the node, tone and gamut mapping off: DI -> linear -> Rec.709 primaries -> gamma 2.4
+        p = pipeline.load(self.base)
+        cam = pipeline.make_fn(p, "vlog")
+        rcm = pipeline.make_fn(p, "di", out_encoding="di")
+        lin = np.exp(self.rng.uniform(np.log(0.002), np.log(4.0), (400, 3)))
+        lin = np.stack([lin[:, 0], lin[:, 0] * self.rng.uniform(0.5, 1.5, 400), lin[:, 1]], -1)  # colours, not only greys
+        want = np.clip(cam(spaces.from_lin709(lin, "vlog")), 0, 1)
+        seen_by_resolve = spaces.from_lin709(spaces.to_lin709(rcm(spaces.from_lin709(lin, "di")), "di"), "r709")
+        np.testing.assert_allclose(seen_by_resolve, want, atol=1e-6)
+
+    def test_baked_set_matches_the_camera_set(self):
+        d = self.tmp / "delta.json"
+        d.write_text(json.dumps({"name": "warm", "white_balance": {"temp": 20}}))
+        out = pipeline.looks(self.base, [str(d)], ["s5ii", "rcm"], self.tmp, size=65)
+        self.assertEqual([Path(f).name for f in out], ["warm [S5II].cube", "warm [RCM].cube"])
+        cam, rcm = (cube.read_cube(f) for f in out)
+        lin = np.exp(self.rng.uniform(np.log(0.01), np.log(2.0), (500, 3)))
+        want = cube.sample(cam, spaces.from_lin709(lin, "vlog"))
+        got = spaces.from_lin709(spaces.to_lin709(cube.sample(rcm, spaces.from_lin709(lin, "di")), "di"), "r709")
+        de = spaces.delta_e2000(spaces.cielab(spaces.to_lin709(np.clip(want, 0, 1), "r709")),
+                                spaces.cielab(spaces.to_lin709(np.clip(got, 0, 1), "r709")))
+        self.assertLess(float(np.median(de)), 0.5)
+
+    def test_display_codes_stay_in_range(self):
+        rcm = pipeline.make_fn(pipeline.load(self.base), "di", out_encoding="di")
+        out = rcm(cube.lattice(17))
+        white = spaces.from_lin709(np.ones(3), "di")  # display white in DI
+        self.assertTrue((out <= white.max() + 1e-6).all())
+        self.assertTrue((out >= spaces.from_lin709(np.zeros(3), "di").min() - 1e-6).all())
+
+    def test_build_camera_rcm_matches_looks(self):
+        a, b = self.tmp / "a.cube", self.tmp / "b.cube"
+        pipeline.build(self.base, str(a), 9, "di", out_encoding="di")
+        from lutlab.__main__ import main
+        main(["build", str(self.base), "--cube", str(b), "--size", "9", "--camera", "rcm"])
+        np.testing.assert_allclose(cube.read_cube(str(a))["table"], cube.read_cube(str(b))["table"], atol=1e-9)
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+class VerifyRenderTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from lutlab import apply
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.src = cls.tmp / "src.mp4"
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=1",
+                        "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv444p", "-color_primaries", "bt709",
+                        "-colorspace", "bt709", str(cls.src)], check=True)
+        cls.lut = cls.tmp / "look.cube"
+        cube.write_cube(str(cls.lut), look_lut("vlog", 33)["table"], "look")
+        cls.other = cls.tmp / "other.cube"
+        cube.write_cube(str(cls.other), cube.lattice(33), "identity")
+        cls.render = cls.tmp / "render.mp4"
+        apply.video(str(cls.lut), str(cls.src), str(cls.render), crf=0)
+
+    def test_render_matches_its_own_lut(self):
+        from lutlab import verify
+        r = verify.verify(str(self.src), str(self.render), str(self.lut), 0.5)
+        self.assertLess(r["dE2000"]["median"], 1.0)
+
+    def test_wrong_lut_is_far(self):
+        from lutlab import verify
+        right = verify.verify(str(self.src), str(self.render), str(self.lut), 0.5)
+        wrong = verify.verify(str(self.src), str(self.render), str(self.other), 0.5)
+        self.assertGreater(wrong["dE2000"]["median"], max(3.0, 5 * right["dE2000"]["median"]))
+
+    def test_render_in_converts_before_comparing(self):
+        from lutlab import verify
+        # the same render, re-encoded as DaVinci Intermediate: wrong read as Rec.709, right with render_in="di"
+        di = self.tmp / "render_di.mp4"
+        lut_di = self.tmp / "di.cube"
+        t = cube.read_cube(str(self.lut))["table"]
+        cube.write_cube(str(lut_di), spaces.from_lin709(spaces.to_lin709(t, "r709"), "di"), "di-out")
+        from lutlab import apply
+        apply.video(str(lut_di), str(self.src), str(di), crf=0)
+        plain = verify.verify(str(self.src), str(di), str(self.lut), 0.5)
+        fixed = verify.verify(str(self.src), str(di), str(self.lut), 0.5, render_in="di")
+        # not near zero: the 8-bit H.264 render and a DI container that a 33-point table interpolates in
+        self.assertGreater(plain["dE2000"]["median"], 3 * fixed["dE2000"]["median"])
+        self.assertLess(fixed["dE2000"]["median"], 3.0)
+
+    def test_grab_writes_16bit_pngs_and_rotates(self):
+        import cv2
+        from lutlab import verify
+        out, out_r = self.tmp / "grab", self.tmp / "grab-r"
+        out.mkdir()
+        out_r.mkdir()
+        a = verify.grab(str(self.src), [0.5], out, width=640)[0]
+        b = verify.grab(str(self.src), [0.5], out_r, width=640, rotate=90)[0]
+        ia, ib = cv2.imread(a, cv2.IMREAD_UNCHANGED), cv2.imread(b, cv2.IMREAD_UNCHANGED)
+        self.assertEqual((ia.dtype, ia.shape), (np.dtype("uint16"), (360, 640, 3)))
+        self.assertEqual(ib.shape, (640, 360, 3))
+        np.testing.assert_array_equal(ib, np.rot90(ia, -1))  # clockwise
+        with self.assertRaises(FileExistsError):
+            verify.grab(str(self.src), [0.5], out, width=640)
+
+    def test_bad_margin_refused(self):
+        from lutlab import verify
+        with self.assertRaises(ValueError):
+            verify.verify(str(self.src), str(self.render), str(self.lut), 0.5, margin=0.5)
+
+    def test_content_box_skips_bars(self):
+        from lutlab import verify
+        x0, x1, y0, y1 = verify.content_box((1000, 1000), 1920, 1080, 0.1)
+        self.assertEqual((y0, y1), (108, 972))
+        self.assertGreater(x0, (1920 - 1080) // 2)
+
+
+class LibraryTest(unittest.TestCase):
+    def test_scan_guess_and_copies(self):
+        from lutlab import library
+        root = Path(tempfile.mkdtemp())
+        (root / "Panasonic").mkdir()
+        lut = cube.cube_text(cube.lattice(2))
+        (root / "Panasonic" / "V-Log to V-709.cube").write_text(lut)
+        (root / "Look.CUBE").write_text(lut)
+        (root / "Look.CUBE 2").write_text(lut)
+        (root / "GH5 Cine-D to VLog.cube").write_text(cube.cube_text(cube.lattice(3)))
+        (root / "shaper.cube").write_text("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n")
+        (root / "notes.txt").write_text("x")
+        e = {x["rel"]: x for x in library.scan([str(root)])}
+        self.assertEqual(set(e), {"Panasonic/V-Log to V-709.cube", "Look.CUBE", "Look.CUBE 2", "GH5 Cine-D to VLog.cube"})
+        self.assertEqual(e["Panasonic/V-Log to V-709.cube"]["space"], "vlog")
+        self.assertEqual(e["GH5 Cine-D to VLog.cube"]["guess"], "unknown")  # the input is Cine-D, not V-Log
+        self.assertEqual(len(library.duplicate_groups(list(e.values()))), 1)  # three identical files, one group
+        o = library.scan([str(root)], {e["Look.CUBE"]["sha256"]: {"space": "r709", "note": "creative"}})
+        self.assertTrue(all(x["space"] == "r709" for x in o if x["name"].startswith("Look")))
 
 
 if __name__ == "__main__":

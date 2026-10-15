@@ -1,0 +1,8 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Tungsten",
+ "description": "Warm, as if balanced a little cool of the light: golden highlights, a trace of teal kept in the deep shadows for separation.",
+ "white_balance": {"temp": 28, "tint": -1},
+ "split_tone": {"L=0.10": {"hue": 200, "amount": 0.6}, "L=0.85": {"hue": 70, "amount": 0.8}},
+ "sat_gain": {"all": 1.03}
+}

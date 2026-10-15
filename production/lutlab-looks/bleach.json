@@ -1,0 +1,8 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Bleach",
+ "description": "Bleach-bypass feel: colour pulled well down, harder contrast, deeper black, a cool steel cast in the shadows.",
+ "tone": {"contrast": 1.2},
+ "sat_gain": {"all": 0.58, "highlights": 0.85},
+ "split_tone": {"L=0.25": {"hue": 240, "amount": 0.5}}
+}
