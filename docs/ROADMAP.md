@@ -60,6 +60,8 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 
    **Status: executed 2026-10-15.** `requirements.txt` at the root names each tool's interpreter and its packages in a header, and pins numpy, scipy, Pillow, OpenCV and imagehash at the versions the suite ran against on 3.9. `resolve_survey` is listed on 3.14. The file is a pip requirements file, so CI installs from it directly instead of keeping a second list.
 3. **`tools/video-editor/` is 835 MB of vendored code.** It is third-party (Browser Use, MIT), tracked in git and listed in `.gitignore` at the same time, with lockfiles, a test mp4 and a PNG inside. Fix: decide between a subtree or a submodule pointing at upstream and plain untracking, then do it and keep the clone small.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Untracking removes the files from the tip but not from history, so the clone stays large unless history is rewritten, and a history rewrite on a public repo breaks every fork and open pull request. A subtree keeps the weight, and a submodule pointing at upstream removes it. Which of the three is his decision; nothing was changed.
 4. **The README omits half the repo.** "What's Inside" does not mention lutlab, rpstills, vertcut, `tools/`, `dsh/` or `seed-bed/`, which breaks rule 4 of `public-kit/README-SHAPE.md`. The repo also never promoted the public-kit CONTRIBUTING and SECURITY templates to its own root. Fix: complete the README table and promote both templates.
 
    **Status: half executed 2026-10-15.** "What's Inside" now has a subsection for `production/lutlab/`, `production/rpstills/`, `tools/` (vertcut and the vendored video-editor), `dsh/`, `seed-bed/` and `requirements.txt`, each a few sentences with a link to the owner's README. **Open: needs Isaac** for the second half. `public-kit/CONTRIBUTING.md.template` and `SECURITY.md.template` need a real security contact and a decision on whether outside pull requests are welcome, and a template promoted with placeholders would publish a reporting address that does not exist.
@@ -67,10 +69,14 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 
    **Status: executed 2026-10-15, with one correction to the finding.** The source for every skill is `prompts/skills/<name>.md`: the private install registry points there, and `dsh/install.sh` links from there. The two branded-build files under `.agents/skills/` were never copies. Git tracks them as symlinks to the source, and the audit read through the links, so they stay as they are. The real duplicates were the two `.skill` bundles, `outreach-email-manager-v2` and `project-management-coordinator-v1`. Both predate the rewrite of their `.md` files: the outreach bundle still logs to Airtable and calls the practice Voice Liberation. They are deleted, and their entries left `.binary-allowlist`. Nothing in `scripts/` referenced them; the README's description of `prompts/skills/` now says one Markdown file per skill. **Open: needs Isaac.** The project-management bundle also carried capacity-management, pre-production checklist and client-communication reference files and a tracking template that the `.md` does not have. They remain in git history before this change, and restoring them as plain files beside the skill is his call.
 6. **Worktrees and branches have piled up.** 15 worktrees under `.claude/worktrees` and 23 branches remain against the "merged or deleted before wrap" rule. Fix: prune the merged ones and add a count check to session close.
+
+   **Status: inventoried 2026-10-15, nothing deleted. Open: needs Isaac.** Against `origin/main` after a fetch: 16 worktrees including the main checkout, 8 local branches that are ancestors of main, 9 more whose upstream is gone and so were probably squash-merged, 3 still on origin and unmerged, and 1 local-only and unmerged. Ancestry cannot confirm a squash merge, so the nine need a look at their pull requests first, and a worktree with uncommitted work does not show here. The full list is in the session notes, not in this public file. The session-close count check is also open, and belongs in the phase-zero source, not here.
 7. **`cli/rp-draft` is unsafe and not generic.** Line 78 passes `$SUBJECT` into `python -c` inside single quotes, so a quote in the subject breaks the call or injects code. It falls back to no encoding without saying so when `python3` is absent, and it hard-codes one person's signature in a tool the README calls generic. Item 5 above is still open. Fix: pass the subject as an argument or on stdin, fail loudly without `python3`, and read the signature from config.
 
    **Status: executed 2026-10-15.** `rp-draft` now passes the subject, the address and the body to Python as arguments through a `urlencode` helper in `cli/_rp-common.sh`, so nothing typed is ever run as code. The old version also left the body unencoded, so an `&` or `#` in it cut the message off; that is fixed with the rest. Without `python3` the tool stops before it asks for anything and says why. The signature is read from `~/.config/rp/signature` (or `$RP_SIGNATURE_FILE`); with no file the draft has none and says so, and no name is hard-coded. The draft log line goes into the prospect file through `awk` and the environment instead of a `sed` expression, so `/`, `&` and `\` in a subject stay literal. `scripts/cli-smoke-test.sh` gained eight cases: a subject with a quote, `&`, `/` and `%`, the encoded body, the signature file, a missing signature file, and a PATH with no `python3`. Against the old script, eight of them fail.
 8. **No versions.** There are no tags, releases or CHANGELOG, and the Resolve spec carries its own inline "Version 1.7". Kit consumers cannot pin a version. Fix: tag releases, keep a CHANGELOG, and point the spec's version at the repo's.
+
+   **Status: half executed 2026-10-15.** `CHANGELOG.md` exists, written from the git history and organized by date because there are no versions to organize by. **Open: needs Isaac.** I created no tag or release, as instructed. Tagging, and the numbering scheme for it, is his call, and so is whether the Resolve spec's inline "Version 1.7" line should follow the repo's number or stay its own document revision. Until a tag exists a consumer can pin a commit.
 
 ### Operations
 
@@ -78,23 +84,47 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 
    **Status: executed 2026-10-15.** All 16 documents in `methodology/` now carry `**Status:**` with one of operational, draft, aspirational or superseded: 13 operational, 3 draft (the blueprint, the negative-archive ritual and the source-tracking protocol), none aspirational or superseded today. I assigned them by reading the documents, so Isaac can change any of them; the word is the only thing to edit. The six files `sync-methodology.sh` mirrors from the vault carry it on their first line, which is the one line the sync preserves, and `sync-methodology.sh --check` still reports no drift. `scripts/check-methodology-status.sh` runs in CI and fails any methodology document without one. Blueprint line 140 now says that no client had completed the camera-shipping process as of the April 2026 update and that the document does not record whether one has since, and the heading above it is dated. Whether one has is a fact only Isaac holds.
 10. **The measurement framework describes a data layer that does not exist.** Section 4 of `measurement-framework.md` specifies an Airtable implementation, while the stack's data spine is JSON files in stack-data. Fix: rewrite section 4 against the real store or mark it as an unbuilt option.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Which of the two it is depends on what he built.
 11. **No instrument ships.** The framework names seven Likert items, NPS at five points and consistency statements, but the repo has no form, scoring sheet or CSV schema, so an evaluator cannot run it from here. Fix: publish the items verbatim with a CSV schema and a worked scoring example.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** The items are his instrument and I did not draft them.
 12. **Two pipelines coexist.** The `rp-*` Markdown CLI and the stack-data contacts and projects files both track prospects, and the README has called the CLI "a default, not a settled call" since August. Fix: settle it in one decision and state which tool is the record.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** This is a decision about his workflow, between keeping the `rp-*` CLI as a standalone default, making it a view over stack-data, or retiring it. The truth-ownership index records the question and does not answer it.
 13. **The blueprint's April gaps have no owner.** Camera-shipping logistics (insurance, timelines, backup gear) are listed as still missing and no document has followed. Fix: assign an owner and a target document, or strike the claim.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** The blueprint list is now dated April 2026 (item 9), but whether the claim stands is his to say.
 
 ### Cinematography and design
 
 14. **No capture standard.** `production/filming-guide.md` is a one-day shoot plan dated March 31 that points at a vault footage path, yet the field guide presents it as the filming guide. Frame rate and log profile per camera, audio capture, sync and slate practice, and card naming are written down nowhere. Fix: write a general capture standard and rename or relocate the shoot plan as an example.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 15. **No client-side shooting brief.** For the camera-shipping model, what the client films, how, and what the footage must satisfy does not exist anywhere in `production/`. Fix: write the brief as a client-readable page.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 16. **Three colour pipelines, no canonical statement.** `resolve-template-spec.md` puts conversion LUTs on node 1, `resolve-config.json` sets RCM v2, and lutlab's `rcm` works in DaVinci Intermediate in and out. The spec's Open Questions (which V-Log LUT, the Open Gate crop) remain open. Fix: one table per camera that names the pipeline in force, then close or date the open questions.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 17. **No design tokens for deliverable form.** The Resolve spec names Marrow, Bone and amber without values. There is no lower-third or caption style standard, and vertcut's PNG captions and Resolve's captions diverge. The six lutlab looks have no look book or reference frames. Fix: publish token values, one caption standard, and a reference frame per look.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 
 ### Producer and distributor
 
 18. **Consent tiers have no evidence behind them.** The tiers are defined, but no appearance or talent release, location release, or music and font licence register exists, and the case-study template records a tier with nothing that evidences it. Fix: add release templates and a licence register, and make the case-study template link to them.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 19. **"Everything is returned" has no spec.** No return package defines formats, media, manifest or checksums, and the repo has no archive naming or folder standard. Working, final and scraps appear only in the negative-archive ritual. Fix: write the return-package spec and the folder and naming standard.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 20. **The production flow has no approval or delivery gate.** Client final approval exists only as a safeguard in the measurement framework. There is no delivery manifest, no platform spec per destination, and no credits or AI-disclosure standard for produced work. Fix: add the gate and the manifest to the production flow and write the platform and credits standards.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 21. **Footage copyright is unstated.** Nothing says who owns footage the client shoots on RP-shipped cameras. The repo licenses code and methodology but not deliverables. Fix: state ownership and licence for footage and deliverables in one short document, reviewed by counsel before it ships.
+
+   **Status: open, 2026-10-15. Open: needs Isaac.** A legal position, and counsel reviews it before it ships.
 
 ### Cross-cutting
 
