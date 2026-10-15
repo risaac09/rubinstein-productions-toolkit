@@ -8,6 +8,8 @@ Run: /usr/bin/python3 production/tests/test_lutlab.py
 """
 
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -358,6 +360,46 @@ class DeltaTest(unittest.TestCase):
         self.assertEqual(len(out), 2 * len(files))
         for f in out:
             self.assertTrue(np.isfinite(cube.read_cube(f)["table"]).all(), f)
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+class VerifyRenderTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from lutlab import apply
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.src = cls.tmp / "src.mp4"
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=1",
+                        "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv444p", "-color_primaries", "bt709",
+                        "-colorspace", "bt709", str(cls.src)], check=True)
+        cls.lut = cls.tmp / "look.cube"
+        cube.write_cube(str(cls.lut), look_lut("vlog", 33)["table"], "look")
+        cls.other = cls.tmp / "other.cube"
+        cube.write_cube(str(cls.other), cube.lattice(33), "identity")
+        cls.render = cls.tmp / "render.mp4"
+        apply.video(str(cls.lut), str(cls.src), str(cls.render), crf=0)
+
+    def test_render_matches_its_own_lut(self):
+        from lutlab import verify
+        r = verify.verify(str(self.src), str(self.render), str(self.lut), 0.5)
+        self.assertLess(r["dE2000"]["median"], 1.0)
+
+    def test_wrong_lut_is_far(self):
+        from lutlab import verify
+        right = verify.verify(str(self.src), str(self.render), str(self.lut), 0.5)
+        wrong = verify.verify(str(self.src), str(self.render), str(self.other), 0.5)
+        self.assertGreater(wrong["dE2000"]["median"], max(3.0, 5 * right["dE2000"]["median"]))
+
+    def test_bad_margin_refused(self):
+        from lutlab import verify
+        with self.assertRaises(ValueError):
+            verify.verify(str(self.src), str(self.render), str(self.lut), 0.5, margin=0.5)
+
+    def test_content_box_skips_bars(self):
+        from lutlab import verify
+        x0, x1, y0, y1 = verify.content_box((1000, 1000), 1920, 1080, 0.1)
+        self.assertEqual((y0, y1), (108, 972))
+        self.assertGreater(x0, (1920 - 1080) // 2)
 
 
 class LibraryTest(unittest.TestCase):

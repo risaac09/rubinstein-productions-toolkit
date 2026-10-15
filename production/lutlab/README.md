@@ -125,6 +125,15 @@ LUT, plus `contact.jpg`, or one LUT over a clip as H.264 through ffmpeg's
 `lut3d`. ffmpeg can't read BRAW, so export the Pyxis still from Resolve
 first (Gen 5, or DaVinci Intermediate with a DI-input LUT).
 
+**verify-render** checks a Resolve render against the LUT it should carry:
+`verify-render SOURCE RENDER LUT --t SECONDS`. ffmpeg decodes one frame of
+each (read as BT.709), the source is fit to the render's frame, run through
+the LUT, and compared with the render over the interior (`--margin`, default
+10%) in Delta E 2000. Median under about 1 means Resolve did what lutlab
+models. The source must be in the LUT's input encoding, so for Pyxis render a
+Gen 5 frame or clip out of Resolve first. `--render-t` covers a render that
+starts at a different time than the source.
+
 For video, lutlab replaces the darktable skill's `generate_lut.py`, which
 stays for stills presets.
 
