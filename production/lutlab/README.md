@@ -95,10 +95,22 @@ camera. If a commercial pack still earns its price, buy it for one camera
 and `port` it to the other. `diff` gives the distance between your look and
 theirs, and between a port and its source.
 
-**Where to point `LUTLAB_OUT`.** `~/DaVinci Resolve/LUT/lutlab` is outside
-git and iCloud and inside one of Resolve's LUT roots. Baked looks then show
-in Resolve's LUT browser after a refresh, and the Resolve MCP `apply_grade`
-can put them on `[auto]` timelines.
+**Where to point `LUTLAB_OUT`.** On macOS, Resolve scans
+`/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT`, and
+`SetLUT` refuses a file anywhere else (tested on Resolve Studio 21.1.1). Point
+`LUTLAB_OUT` at a `lutlab` folder inside it. It is outside git and iCloud, and
+the Resolve MCP `apply_grade` can put baked looks on `[auto]` timelines
+straight away. `~/DaVinci Resolve/LUT` is in `DEFAULT_LUT_ROOTS` for path
+lookups, but Resolve does not scan it.
+
+**What the node sees.** A camera LUT expects that camera's log on the node.
+In a non-managed project (DaVinci YRGB) it does. Under Resolve Color
+Management the clip is converted to the timeline space first, so set that
+clip's Input Color Space to the timeline's own space; the node then sees the
+camera's code values unchanged. With the output space equal to the timeline
+space and tone and gamut mapping off, the LUT's Rec.709 result passes
+straight through. A V-Log LUT fed Rec.709 (Scene) instead clips everything
+above about +2.5 stops.
 
 **library** walks Resolve's LUT folders and writes `registry.json`. Each
 entry gets an input-space guess, taken from the part of the name before
