@@ -6,8 +6,10 @@ space only needs to say how its code values get there and back.
 
 Display encodings (r709, srgb) decode to display light; lutlab treats that as
 the linear quantity for a creative Rec.709-in LUT, the usual convention.
-Constants: Panasonic V-Log, ARRI LogC3 (EI 800), Blackmagic DaVinci
-Intermediate, BT.1886 (2.4) and IEC 61966-2-1 sRGB, all as published."""
+Constants: Panasonic V-Log, ARRI LogC3 (EI 800) and LogC4, Blackmagic Film
+Gen 5, Blackmagic DaVinci Intermediate, BT.1886 (2.4) and IEC 61966-2-1 sRGB,
+all as published. The house cameras are in CAMERAS: the S5II shoots V-Log,
+the Pyxis BRAW (decoded as Gen 5)."""
 
 import numpy as np
 
@@ -19,6 +21,8 @@ PRIMARIES = {
     "vgamut": [(0.730, 0.280), (0.165, 0.840), (0.100, -0.030)],
     "awg3": [(0.6840, 0.3130), (0.2210, 0.8480), (0.0861, -0.1020)],
     "dwg": [(0.8000, 0.3130), (0.1682, 0.9877), (0.0790, -0.1155)],
+    "bmdwg5": [(0.7177215, 0.3171181), (0.2280410, 0.8615690), (0.1005841, -0.0820452)],
+    "awg4": [(0.7347, 0.2653), (0.1424, 0.8576), (0.0991, -0.0308)],
     "2020": [(0.708, 0.292), (0.170, 0.797), (0.131, 0.046)],
 }
 
@@ -63,6 +67,36 @@ def logc3_decode(y):
     return np.where(y > 0.149658, (10 ** ((y - 0.385537) / 0.247190) - 0.052272) / 5.555556, (y - 0.092809) / 5.367655)
 
 
+# ARRI LogC4 (ALEXA 35 and ARRI's current Rec.709 LUTs), from ARRI's LogC4 specification
+_C4A = (2.0 ** 18 - 16) / 117.45
+_C4B = (1023.0 - 95) / 1023
+_C4C = 95.0 / 1023
+_C4S = (7 * np.log(2) * 2.0 ** (7 - 14 * _C4C / _C4B)) / (_C4A * _C4B)
+_C4T = (2.0 ** (14 * (-_C4C / _C4B) + 6) - 64) / _C4A
+
+
+def logc4_encode(x):
+    return np.where(x >= _C4T, (np.log2(np.maximum(_C4A * x + 64, 1e-12)) - 6) / 14 * _C4B + _C4C, (x - _C4T) / _C4S)
+
+
+def logc4_decode(y):
+    return np.where(y >= 0, (2.0 ** (14 * (y - _C4C) / _C4B + 6) - 64) / _C4A, y * _C4S + _C4T)
+
+
+# Blackmagic Film Generation 5 (Pyxis, BRAW decoded as Gen 5), from Blackmagic's
+# Generation 5 Color Science document
+_G5A, _G5B, _G5C = 0.08692876065491224, 0.005494072432257808, 0.5300133392291939
+_G5D, _G5E, _G5CUT = 8.283605932402494, 0.09246575342465753, 0.005
+
+
+def bmdfilm5_encode(x):
+    return np.where(x < _G5CUT, _G5D * x + _G5E, _G5A * np.log(np.maximum(x + _G5B, 1e-12)) + _G5C)
+
+
+def bmdfilm5_decode(y):
+    return np.where(y < _G5D * _G5CUT + _G5E, (y - _G5E) / _G5D, np.exp((y - _G5C) / _G5A) - _G5B)
+
+
 
 
 def srgb_decode(y):
@@ -77,11 +111,41 @@ SPACES = {
     # name: (decode, encode, gamut, description)
     "vlog": (vlog_decode, vlog_encode, "vgamut", "Panasonic V-Log / V-Gamut"),
     "logc3": (logc3_decode, logc3_encode, "awg3", "ARRI LogC3 (EI 800) / ARRI Wide Gamut 3"),
+    "logc4": (logc4_decode, logc4_encode, "awg4", "ARRI LogC4 / ARRI Wide Gamut 4"),
+    "bmdfilm5": (bmdfilm5_decode, bmdfilm5_encode, "bmdwg5", "Blackmagic Film Gen 5 / Wide Gamut Gen 5"),
     "di": (di_decode, di_encode, "dwg", "DaVinci Intermediate / DaVinci Wide Gamut"),
     "r709": (lambda y: _spow(y, 2.4), lambda x: _spow(x, 1 / 2.4), "709", "Rec.709, BT.1886 gamma 2.4"),
     "srgb": (srgb_decode, srgb_encode, "709", "sRGB"),
     "lin709": (lambda y: y, lambda x: x, "709", "linear Rec.709"),
 }
+
+
+# The house cameras: --camera NAME -> (space, label for file names)
+CAMERAS = {
+    "s5ii": ("vlog", "S5II"),
+    "pyxis": ("bmdfilm5", "Pyxis"),
+}
+
+
+def camera(name):
+    if name.lower() not in CAMERAS:
+        raise ValueError(f"unknown camera {name!r}; known: {', '.join(CAMERAS)}")
+    return CAMERAS[name.lower()]
+
+
+# A node in a Resolve Color Managed project sees the timeline space (DaVinci Intermediate by default), and
+# Resolve's output transform follows it. A Rec.709-out LUT there would be mapped a second time, so the "rcm"
+# target takes DI in and puts the finished Rec.709 picture back into DI code values. With the output colour
+# space at Rec.709 Gamma 2.4 and tone and gamut mapping off, the output transform undoes that exactly.
+RCM = ("di", "RCM", "di")
+
+
+def target(name):
+    """--camera NAME for `looks`: (input space, file label, output encoding or None for the look's own)."""
+    if name.lower() == "rcm":
+        return RCM
+    space, label = camera(name)
+    return space, label, None
 
 
 def check_space(name):

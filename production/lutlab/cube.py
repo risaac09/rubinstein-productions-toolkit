@@ -1,8 +1,10 @@
 """lutlab.cube: read, sample and write 3D LUTs (.cube) and Hald CLUT PNGs.
 
 A LUT here is a dict: table (N, N, N, 3) indexed [r, g, b], domain_min and
-domain_max (3 each), title. The .cube text lists red fastest. 1D and shaper
-LUTs are refused with an error rather than read wrong."""
+domain_max (3 each), title. The .cube text lists red fastest. Resolve's own
+.dat 3D LUTs (a `3DLUTSIZE N` header, blue fastest, domain 0..1) read too, so
+the LUTs Resolve ships are usable as sources. 1D and shaper LUTs are refused
+with an error rather than read wrong."""
 
 import os
 import struct
@@ -12,14 +14,16 @@ import numpy as np
 
 
 def read_cube(path):
-    size, dmin, dmax, title, rows = None, [0.0] * 3, [1.0] * 3, "", []
+    size, dmin, dmax, title, rows, blue_fastest = None, [0.0] * 3, [1.0] * 3, "", [], False
     with open(path, errors="ignore") as f:
         for line in f:
             t = line.split()
             if not t or t[0].startswith("#"):
                 continue
             key = t[0].upper()
-            if key == "LUT_3D_SIZE":
+            if key == "3DLUTSIZE":
+                size, blue_fastest = int(t[1]), True
+            elif key == "LUT_3D_SIZE":
                 size = int(t[1])
             elif key in ("LUT_1D_SIZE", "LUT_1D_INPUT_RANGE"):
                 raise ValueError(f"{path}: 1D or shaper LUTs are not supported ({t[0]})")
@@ -38,7 +42,9 @@ def read_cube(path):
     if not size or len(rows) != size ** 3:
         raise ValueError(f"{path}: LUT_3D_SIZE {size} but {len(rows)} entries")
     flat = np.array(rows, dtype=np.float64)
-    table = flat.reshape(size, size, size, 3).transpose(2, 1, 0, 3)  # [b, g, r] -> [r, g, b]
+    table = flat.reshape(size, size, size, 3)
+    if not blue_fastest:
+        table = table.transpose(2, 1, 0, 3)  # [b, g, r] -> [r, g, b]
     return {"table": np.ascontiguousarray(table), "domain_min": np.array(dmin), "domain_max": np.array(dmax),
             "title": title}
 

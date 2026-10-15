@@ -108,14 +108,21 @@ def decompose(path, in_space, out, outdir, name=None, overwrite=False):
     return p
 
 
-def load(params_path):
+def load(params_path, delta=None):
+    """A look's params.json, optionally with a delta file layered on (model.apply_delta)."""
     p = json.loads(Path(params_path).read_text())
     p["_dir"] = str(Path(params_path).resolve().parent)
+    if delta:
+        p = model.apply_delta(p, json.loads(Path(delta).read_text()))
     return p
 
 
-def make_fn(p, in_space=None, residual=True):
-    """Input codes (in in_space, default the look's own) -> output codes, clipped to the source's range."""
+def make_fn(p, in_space=None, residual=True, out_encoding=None):
+    """Input codes (in in_space, default the look's own) -> output codes, clipped to the source's range.
+
+    out_encoding re-encodes the finished display picture (clipped to 0..1 in the look's own out space) into
+    another space's code values, e.g. "di" for a LUT that sits before a colour-managed project's output
+    transform. The picture is the same; only the container changes."""
     model.check(p)
     in_space = spaces.check_space(in_space or p["in"])
     res = None
@@ -131,13 +138,19 @@ def make_fn(p, in_space=None, residual=True):
             # outside the source's domain the residual knows nothing: add none rather than the clamped edge
             inside = ((src >= res["domain_min"] - 1e-9) & (src <= res["domain_max"] + 1e-9)).all(-1)
             out = out + cube.sample(res, src) * inside[..., None]
-        return np.clip(out, lo, hi)
+        out = np.clip(out, lo, hi)
+        if out_encoding:
+            out = spaces.from_lin709(spaces.to_lin709(np.clip(out, 0, 1), p["out"]), out_encoding)
+        return out
     return fn
 
 
-def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False):
-    p = load(params_path)
-    fn = make_fn(p, in_space, residual)
+def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False,
+          delta=None, out_encoding=None):
+    p = load(params_path, delta)
+    if out_encoding:
+        spaces.check_space(out_encoding)
+    fn = make_fn(p, in_space, residual, out_encoding)
     same = (in_space or p["in"]) == p["in"]
     src = p.get("source", {})
     dmin = src.get("domain_min", [0, 0, 0]) if same else [0, 0, 0]
@@ -149,4 +162,18 @@ def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hal
         written.append(cube.write_cube(str(out_cube), fn(X), title, dmin, dmax, overwrite=overwrite))
     if hald:
         written.append(cube.write_hald(str(hald), fn, hald_level, overwrite=overwrite))  # Hald inputs are 0..1 codes
+    return written
+
+
+def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False):
+    """Bake every delta on the base for every target: <outdir>/<look> [<Label>].cube.
+    A target is a camera (its log in, Rec.709 out) or "rcm" (DaVinci Intermediate in and out, for a node
+    in a Resolve Color Managed project; see spaces.RCM)."""
+    written = []
+    for d in deltas:
+        name = json.loads(Path(d).read_text()).get("name") or Path(d).stem
+        for cam in cameras:
+            space, label, enc = spaces.target(cam)
+            out = Path(outdir) / f"{name} [{label}].cube"
+            written += build(base_params, str(out), size, space, True, overwrite=overwrite, delta=d, out_encoding=enc)
     return written
