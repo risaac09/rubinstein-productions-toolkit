@@ -10,7 +10,9 @@ read BRAW). Both files are read as BT.709 video."""
 
 import json
 import subprocess
+from pathlib import Path
 
+import cv2
 import numpy as np
 
 from . import cube, fit, spaces
@@ -74,8 +76,6 @@ def grab(clip, times, outdir, width=1280, rotate=0, overwrite=False):
     """Stills of a clip, decoded the way verify reads it (BT.709 matrix, full range), as 16-bit PNGs:
     the inputs `apply` wants for a log camera. rotate is 0, 90, 180 or 270 degrees clockwise, for a clip
     whose rotation flag ffmpeg did not honour. Returns the paths: <clip stem> t<seconds>s.png."""
-    import cv2
-    from pathlib import Path
     if rotate % 90:
         raise ValueError("rotate must be a multiple of 90")
     w0, h0 = probe_size(clip)

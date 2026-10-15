@@ -45,7 +45,7 @@ def _in_space(ap, a):
     if getattr(a, "camera", None):
         if a.in_space:
             ap.error("give --in or --camera, not both")
-        return spaces.camera(a.camera)[0]
+        return spaces.target(a.camera)[0]
     return a.in_space
 
 
@@ -147,7 +147,7 @@ def main(argv=None):
             if f:
                 guard.check_out_dir(Path(f).expanduser().resolve().parent)
         for f in pipeline.build(a.params, a.cube, a.size, _in_space(ap, a), not a.no_residual, a.hald, a.hald_level,
-                                a.overwrite, a.delta, a.out_encoding):
+                                a.overwrite, a.delta, a.out_encoding or (spaces.target(a.camera)[2] if a.camera else None)):
             print(f)
     elif a.cmd == "looks":
         out = guard.out_dir(a.out, "looks")

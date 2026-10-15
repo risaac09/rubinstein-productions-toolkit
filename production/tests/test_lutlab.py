@@ -408,6 +408,14 @@ class RcmTest(unittest.TestCase):
         out = rcm(cube.lattice(17))
         white = spaces.from_lin709(np.ones(3), "di")  # display white in DI
         self.assertTrue((out <= white.max() + 1e-6).all())
+        self.assertTrue((out >= spaces.from_lin709(np.zeros(3), "di").min() - 1e-6).all())
+
+    def test_build_camera_rcm_matches_looks(self):
+        a, b = self.tmp / "a.cube", self.tmp / "b.cube"
+        pipeline.build(self.base, str(a), 9, "di", out_encoding="di")
+        from lutlab.__main__ import main
+        main(["build", str(self.base), "--cube", str(b), "--size", "9", "--camera", "rcm"])
+        np.testing.assert_allclose(cube.read_cube(str(a))["table"], cube.read_cube(str(b))["table"], atol=1e-9)
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
