@@ -167,3 +167,53 @@ jobs:
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib production.tests.test_resolve_workflow_pure
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
+
+  # The full production suite: all 34 modules, on the same Python 3.9 the Mac
+  # ships with Xcode, with the image and numeric packages that lutlab, rpstills,
+  # measure, sync, trim review and vertcut import (requirements.txt). The job
+  # above stays stdlib-only on purpose, so a stdlib regression still fails
+  # there. Without the packages 85 tests skip themselves and three modules
+  # fail to import, which is why the install is not optional here. The last
+  # step fails on any skip that is not the known zstd one, so a missing
+  # package cannot turn the suite quietly green again.
+  production-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install the pinned packages
+        run: python -m pip install -r requirements.txt
+      - name: ffmpeg is on the runner
+        run: ffmpeg -version | head -1
+      - name: All production test modules
+        run: |
+          set -eu
+          mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+      - name: No skips except the Python 3.14 zstd ones
+        run: |
+          set -eu
+          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -v "compression.zstd"; then
+            echo "a test skipped for a reason other than compression.zstd; a package or tool is missing" >&2
+            exit 1
+          fi
+          echo "skips: only compression.zstd (run on 3.14 below)"
+
+  # resolve_survey decodes zstd with compression.zstd, new in Python 3.14, so
+  # its 24 zstd-bound tests only run here. Stdlib only, no packages.
+  resolve-survey-3-14:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: resolve_survey, every test
+        run: |
+          set -eu
+          python -m unittest -v production.tests.test_resolve_survey 2>&1 | tee "$RUNNER_TEMP/survey.log"
+          if grep -qE "skipped '|skipped=" "$RUNNER_TEMP/survey.log"; then
+            echo "resolve_survey skipped tests on 3.14" >&2; exit 1
+          fi
