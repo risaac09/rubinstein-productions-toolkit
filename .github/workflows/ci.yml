@@ -18,6 +18,8 @@ jobs:
         run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
       - name: Markdown link check
         run: scripts/check-doc-links.sh
+      - name: Methodology status headers
+        run: scripts/check-methodology-status.sh
       - name: Unresolved merge marker check
         run: |
           if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then

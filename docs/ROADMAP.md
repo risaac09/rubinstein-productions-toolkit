@@ -41,6 +41,8 @@ The smoke test covers the happy path. The next investments, in value order: shel
 ### 6. Keep the aspirational separate from the operational
 The blueprint's revenue projections and the instantiation prompt's automated-expansion sections read as plans, and some are marked speculative while others are not. A one-line status header on each methodology document (operational, draft, aspirational, superseded) would cost an afternoon and prevent the most expensive category of misreading: a stranger adopting a forecast as a fact.
 
+**Status: executed 2026-10-15,** under Amendment 2, item 9.
+
 ## What not to change
 
 The bash-and-markdown architecture is a feature. It keeps the toolkit runnable in ten years, inspectable by non-programmers, and free of the platform dependencies the methodology itself argues against. The pressure to turn this into a web application will recur; the correct answer remains a better map of the files, which is what the field guide is.
@@ -73,6 +75,8 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 ### Operations
 
 9. **Status headers are still unwritten.** Item 6 above is unexecuted: only `source-tracking-protocol.md` has a status header. `methodology-blueprint.md` line 140 still says no client has completed the camera-shipping journey and names Q2 2026. Fix: add the one-line header to every methodology document and update or cut the dated claim.
+
+   **Status: executed 2026-10-15.** All 16 documents in `methodology/` now carry `**Status:**` with one of operational, draft, aspirational or superseded: 13 operational, 3 draft (the blueprint, the negative-archive ritual and the source-tracking protocol), none aspirational or superseded today. I assigned them by reading the documents, so Isaac can change any of them; the word is the only thing to edit. The six files `sync-methodology.sh` mirrors from the vault carry it on their first line, which is the one line the sync preserves, and `sync-methodology.sh --check` still reports no drift. `scripts/check-methodology-status.sh` runs in CI and fails any methodology document without one. Blueprint line 140 now says that no client had completed the camera-shipping process as of the April 2026 update and that the document does not record whether one has since, and the heading above it is dated. Whether one has is a fact only Isaac holds.
 10. **The measurement framework describes a data layer that does not exist.** Section 4 of `measurement-framework.md` specifies an Airtable implementation, while the stack's data spine is JSON files in stack-data. Fix: rewrite section 4 against the real store or mark it as an unbuilt option.
 11. **No instrument ships.** The framework names seven Likert items, NPS at five points and consistency statements, but the repo has no form, scoring sheet or CSV schema, so an evaluator cannot run it from here. Fix: publish the items verbatim with a CSV schema and a worked scoring example.
 12. **Two pipelines coexist.** The `rp-*` Markdown CLI and the stack-data contacts and projects files both track prospects, and the README has called the CLI "a default, not a settled call" since August. Fix: settle it in one decision and state which tool is the record.
