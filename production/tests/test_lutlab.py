@@ -446,6 +446,21 @@ class VerifyRenderTest(unittest.TestCase):
         wrong = verify.verify(str(self.src), str(self.render), str(self.other), 0.5)
         self.assertGreater(wrong["dE2000"]["median"], max(3.0, 5 * right["dE2000"]["median"]))
 
+    def test_render_in_converts_before_comparing(self):
+        from lutlab import verify
+        # the same render, re-encoded as DaVinci Intermediate: wrong read as Rec.709, right with render_in="di"
+        di = self.tmp / "render_di.mp4"
+        lut_di = self.tmp / "di.cube"
+        t = cube.read_cube(str(self.lut))["table"]
+        cube.write_cube(str(lut_di), spaces.from_lin709(spaces.to_lin709(t, "r709"), "di"), "di-out")
+        from lutlab import apply
+        apply.video(str(lut_di), str(self.src), str(di), crf=0)
+        plain = verify.verify(str(self.src), str(di), str(self.lut), 0.5)
+        fixed = verify.verify(str(self.src), str(di), str(self.lut), 0.5, render_in="di")
+        # not near zero: the 8-bit H.264 render and a DI container that a 33-point table interpolates in
+        self.assertGreater(plain["dE2000"]["median"], 3 * fixed["dE2000"]["median"])
+        self.assertLess(fixed["dE2000"]["median"], 3.0)
+
     def test_grab_writes_16bit_pngs_and_rotates(self):
         import cv2
         from lutlab import verify

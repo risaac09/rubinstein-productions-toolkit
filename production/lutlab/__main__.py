@@ -15,7 +15,7 @@
   apply <lut ...> --frame F [--frame F ...] [--width 960] [--out DIR]
   apply <lut> --video IN.mov [--out DIR]
         preview: graded stills and a contact sheet, or an H.264 clip via ffmpeg
-  verify-render SOURCE RENDER LUT --t SECONDS [--render-t S] [--out-space r709] [--margin 0.10]
+  verify-render SOURCE RENDER LUT --t SECONDS [--render-t S] [--out-space r709] [--render-in SPACE] [--margin 0.10]
         Delta E 2000 between a Resolve render and the source frame run through the LUT
   frames CLIP --t S [--t S ...] [--width 1280] [--rotate 0|90|180|270] [--out DIR]
         stills from a clip as 16-bit PNGs, read the way verify-render reads it: inputs for apply
@@ -117,6 +117,7 @@ def main(argv=None):
     p.add_argument("--t", type=float, required=True, help="seconds into the source")
     p.add_argument("--render-t", type=float, help="seconds into the render (default: same as --t)")
     p.add_argument("--out-space", default="r709")
+    p.add_argument("--render-in", help="space the render's code values are in, if not --out-space (e.g. di)")
     p.add_argument("--margin", type=float, default=0.10, help="fraction of the picture trimmed on every side")
     p = sub.add_parser("frames")
     p.add_argument("clip")
@@ -195,7 +196,8 @@ def main(argv=None):
             print(f)
     elif a.cmd == "verify-render":
         from . import verify
-        print(json.dumps(verify.verify(a.source, a.render, a.lut, a.t, a.render_t, a.out_space, a.margin), indent=1))
+        print(json.dumps(verify.verify(a.source, a.render, a.lut, a.t, a.render_t, a.out_space, a.margin,
+                                    render_in=a.render_in), indent=1))
     elif a.cmd == "frames":
         from . import verify
         for f in verify.grab(a.clip, a.t, guard.out_dir(a.out, "frames"), a.width, a.rotate, a.overwrite):

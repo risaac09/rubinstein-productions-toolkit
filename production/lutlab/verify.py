@@ -55,7 +55,10 @@ def content_box(src_size, width, height, margin):
             int(np.ceil(y0 + ch * margin)), int(np.floor(y0 + ch * (1 - margin))))
 
 
-def verify(source, render, lut_path, t, render_t=None, out="r709", margin=0.10, fit_to=None):
+def verify(source, render, lut_path, t, render_t=None, out="r709", margin=0.10, fit_to=None, render_in=None):
+    """render_in names the space the render's code values are in when that is not `out` (a render from a
+    project whose output colour space is DaVinci Intermediate: render_in="di"); it is converted to `out`
+    before the comparison."""
     if not 0 <= margin < 0.5:
         raise ValueError("margin must be from 0 up to (not including) 0.5")
     lut = cube.read_cube(lut_path)
@@ -64,6 +67,8 @@ def verify(source, render, lut_path, t, render_t=None, out="r709", margin=0.10, 
     ren = decode_frame(render, t if render_t is None else render_t, width, height)
     x0, x1, y0, y1 = content_box(probe_size(source), width, height, margin)
     src, ren = src[y0:y1, x0:x1], ren[y0:y1, x0:x1]
+    if render_in:
+        ren = spaces.from_lin709(spaces.to_lin709(ren, render_in), out)
     want = cube.sample(lut, src)
     lab = lambda y: spaces.cielab(np.maximum(spaces.to_lin709(np.clip(y, 0, 1), out), 0))
     de = spaces.delta_e2000(lab(want).reshape(-1, 3), lab(ren).reshape(-1, 3))
