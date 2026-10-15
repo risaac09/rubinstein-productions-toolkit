@@ -64,7 +64,7 @@ Shell scripts for outreach and grant pipeline management. Obsidian-native (markd
 - `rp-prospect`: Create and track prospects (interactive or CLI args)
 - `rp-pipeline`: View outreach pipeline by status
 - `rp-update`: Update prospect status and log touches
-- `rp-draft`: Draft emails and open Gmail compose
+- `rp-draft`: Draft emails and open Gmail compose (needs `python3`; reads your signature from `~/.config/rp/signature` or `$RP_SIGNATURE_FILE`)
 - `rp-followup`: Surface overdue follow-ups
 - `rp-grant`: Grant funder tracking, deadlines, and status management
 - `install.sh`: Add to PATH in one step

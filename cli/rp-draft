@@ -3,6 +3,9 @@
 # Usage: rp-draft <org-slug>
 # Reads prospect file, opens Gmail compose in default browser
 # You write the email body — this handles the plumbing
+#
+# Needs python3 (URL encoding). The signature comes from $RP_SIGNATURE_FILE,
+# default ~/.config/rp/signature; with no file the draft has none.
 
 # Resolve this script's real directory (through the install.sh symlink) and load shared helpers.
 src="${BASH_SOURCE[0]}"
@@ -61,35 +64,48 @@ echo "  • Not coaching, not marketing — relational process"
 echo "  • Digital Liver test: Is it filtered? Processed? Nourishing?"
 echo ""
 
+# Fail before prompting, not after the body is typed
+urlencode x >/dev/null || exit 1
+
 # Prompt for subject and body
-read -p "Subject line: " SUBJECT
+read -r -p "Subject line: " SUBJECT
 echo ""
 echo "Email body (end with a line containing just 'END'):"
 BODY=""
 while IFS= read -r line; do
   [ "$line" = "END" ] && break
-  BODY="$BODY$line%0A"
+  BODY="$BODY$line"$'\n'
 done
 
-# Add signature
-BODY="${BODY}%0A---%0AIsaac Rubinstein%0ARubinstein Productions%0Arubinsteinproductions.com"
+# Add signature from config, if there is one
+if [ -f "$RP_SIGNATURE_FILE" ]; then
+  BODY="${BODY}"$'\n'"---"$'\n'"$(cat "$RP_SIGNATURE_FILE")"
+else
+  echo "  (no signature: $RP_SIGNATURE_FILE not found)"
+fi
 
-# URL-encode subject
-ENCODED_SUBJECT=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SUBJECT'))" 2>/dev/null || echo "$SUBJECT")
+# URL-encode every field that goes into the query
+ENC_TO=$(urlencode "$EMAIL") || exit 1
+ENC_SUBJECT=$(urlencode "$SUBJECT") || exit 1
+ENC_BODY=$(urlencode "$BODY") || exit 1
 
 # Open Gmail compose
-GMAIL_URL="https://mail.google.com/mail/?view=cm&to=${EMAIL}&su=${ENCODED_SUBJECT}&body=${BODY}"
+GMAIL_URL="https://mail.google.com/mail/?view=cm&to=${ENC_TO}&su=${ENC_SUBJECT}&body=${ENC_BODY}"
 open_url "$GMAIL_URL"
 
 echo ""
 echo "✓ Gmail compose opened for $CONTACT at $ORG"
 echo ""
 
-# Log the draft to the prospect file
+# Log the draft to the prospect file. The subject goes in through the
+# environment, not into a sed expression, so / & \ | in it stay literal.
 TODAY=$(date +%Y-%m-%d)
-sedi "/## Draft History/a\\
-\\
-- **$TODAY** | Subject: $SUBJECT" "$FILEPATH"
+TMP=$(mktemp)
+LOGLINE="- **$TODAY** | Subject: $SUBJECT" awk '
+  { print }
+  /^## Draft History/ { print ""; print ENVIRON["LOGLINE"] }
+' "$FILEPATH" > "$TMP" && cat "$TMP" > "$FILEPATH"
+rm -f "$TMP"
 
 echo "  Draft logged. Send it, then run:"
 echo "  rp-update $SLUG contacted \"Sent: $SUBJECT\""
