@@ -39,6 +39,10 @@ Commands that never connect to Resolve:
     reframe-plan          A static crop per span for 9:16 and 1:1, centred on
                           the speaker's face (macOS Vision) and checked on
                           sampled frames; writes a manifest copy and a report
+    tilt-fixture          A short clip with markers, and the Pan, Tilt and Zoom to
+                          type into Resolve, for the render that settles Tilt's sign
+    tilt-check            Find the markers in the still you rendered and say whether
+                          Pan and Tilt landed where reframe-plan's convention puts them
     deliver-check         Check a rendered file against its destination (codec,
                           size, fps, colour tags, audio, captions, loudness,
                           name); exit 0 pass, 1 fail, 2 tool missing
@@ -454,10 +458,15 @@ def cmd_reframe_plan(args):
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
     try:
-        m = cutlist.load_manifest(args.manifest)
+        m = cutlist.load_manifest(args.manifest, allow_no_speech=True)
         report = reframe.plan(m, aspects=args.aspects, samples=args.samples,
                               per_second=args.per_second, speaker_x=args.speaker_x,
+                              speaker_y=getattr(args, "speaker_y", None),
                               only=args.only, allow_bars=args.allow_bars,
+                              min_checked=getattr(args, "min_checked", reframe.MIN_CHECKED_SHARE),
+                              subject_region=getattr(args, "subject_region", None),
+                              min_face_height=getattr(args, "min_face_height", None),
+                              prefer=getattr(args, "prefer", reframe.PREFER_PRESENT),
                               progress=lambda d, n: print(f"  span {d} of {n}", file=sys.stderr))
     except (cutlist.CutlistError, reframe.ReframeError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -469,6 +478,77 @@ def cmd_reframe_plan(args):
     print(reframe.summary(report), file=sys.stderr)
     print(f"Wrote {out}, {tsv_path} and {json_path}", file=sys.stderr)
     return 2 if reframe.needs_person(report["rows"]) else 0
+
+
+TILT_STEPS = """\
+Hand steps (only a person presses Render). In a scratch Resolve project:
+  1. Make a timeline of 1080x1920 with input scaling left at the default (scale entire image to fit).
+  2. Import {video}; put it on the timeline.
+  3. In the Inspector, set Zoom X and Zoom Y to {zoom}, Pan to {pan} and Tilt to {tilt}.
+  4. Deliver ONE still of any frame (PNG or JPEG, 1080x1920 or any size of that shape).
+  5. Run: python3 resolve_workflow.py tilt-check <the still> --fixture {folder}
+White marker: the crop centre, so it must land at the middle of the frame. Red marker: the middle of
+the source. Yellow marker: above the white one, so you can see which way is up.
+Until a commit cites this result, reframe-plan keeps saying Tilt's sign is unconfirmed."""
+
+
+def cmd_tilt_fixture(args):
+    """Write the Tilt fixture clip and tilt-expect.json into --out (outside
+    any repository) and print the hand steps. Needs ffmpeg."""
+    from rpresolve import reframe
+    folder = os.path.abspath(args.out)
+    for name in (reframe.TILT_VIDEO, reframe.TILT_EXPECT_FILE):
+        problem = _out_problem(os.path.join(folder, name))
+        if problem:
+            print(f"ERROR: {problem}", file=sys.stderr)
+            return 1
+    try:
+        expect = reframe.tilt_fixture(folder)
+    except (reframe.ReframeError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    p = expect["props"]
+    print(TILT_STEPS.format(video=os.path.join(folder, reframe.TILT_VIDEO), zoom=p["ZoomX"],
+                            pan=p["Pan"], tilt=p["Tilt"], folder=folder))
+    return 0
+
+
+def cmd_tilt_check(args):
+    """Find the fixture's markers in a rendered still and say whether Pan and
+    Tilt landed where reframe-plan's convention puts them. Writes
+    tilt-result.json beside the fixture. Exit 0 both confirmed, 2 inverted or
+    unclear, 1 error. It confirms nothing by itself: the constant that drops
+    the unconfirmed note changes in a commit that cites this output."""
+    from rpresolve import reframe
+    folder = os.path.abspath(args.fixture)
+    try:
+        with open(os.path.join(folder, reframe.TILT_EXPECT_FILE), encoding="utf-8") as f:
+            expect = json.load(f)
+        w, h, rgb = reframe.read_rgb(os.path.abspath(args.still))
+        result = reframe.tilt_check(rgb, (w, h), expect, tolerance=args.tolerance)
+    except (reframe.ReframeError, OSError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    result["still"] = os.path.basename(args.still)
+    result["input_scaling"] = expect.get("input_scaling")
+    path = os.path.join(folder, reframe.TILT_RESULT_FILE)
+    problem = _out_problem(path)
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    _write_private(path, json.dumps(result, indent=1) + "\n")
+    f = result["found"]
+    print(f"render {w}x{h}; white marker found at {f['a']}, expected {result['expected']['a']}; "
+          f"red marker found at {f['b']}, expected {result['expected']['b']} "
+          f"(tolerance {result['tolerance']:g} px)")
+    print(f"Pan {result['pan'].upper()}, Tilt {result['tilt'].upper()}")
+    for n in result["notes"]:
+        print(f"  {n}")
+    if result["ok"]:
+        print("Both match this module's convention. To drop the unconfirmed note, change "
+              "TILT_CONFIRMED in rpresolve/reframe.py in a commit that cites this result.")
+    print(f"Wrote {path}", file=sys.stderr)
+    return 0 if result["ok"] else 2
 
 
 # ---------------------------------------------------------------------------
@@ -844,14 +924,45 @@ Examples:
     sp.add_argument("--speaker-x", type=float,
                     help="The speaker's face x in source pixels: choose the face nearest it "
                          "(for a two-up call recording)")
+    sp.add_argument("--speaker-y", type=float,
+                    help="With --speaker-x, the face's y in source pixels (distance in both)")
+    sp.add_argument("--subject-region", nargs=4, type=float, metavar=("X0", "Y0", "X1", "Y1"),
+                    help="Only faces centred inside this source-pixel rectangle can be the "
+                         "subject (leaves out an audience)")
+    sp.add_argument("--min-face-height", type=float, metavar="SHARE",
+                    help="Ignore faces shorter than this share of the frame height (0 to 1)")
+    sp.add_argument("--min-checked", type=float, default=0.5, metavar="SHARE",  # reframe.MIN_CHECKED_SHARE
+                    help="Share of a span's samples that must have a checked face before its "
+                         "crop can pass (default 0.5, never fewer than 3)")
+    sp.add_argument("--prefer", choices=["present", "largest"], default="present",
+                    help="Which face is the subject when nothing names it: present in the most "
+                         "samples (default) or the largest of those present in at least half as "
+                         "many")
     sp.add_argument("--only", nargs="+", metavar="CLIP", help="Only these clips")
     sp.add_argument("--allow-bars", action="store_true",
-                    help="Keep the default scale when it holds the face but the picture does "
-                         "not fill the frame (black bars); such crops are named 'bars'")
+                    help="Try the Ep 002 punch-in (2.25) first when a clip names no scale, and "
+                         "keep it when it holds the face though the picture does not fill the "
+                         "frame (black bars); such crops are named 'bars'")
     sp.add_argument("--out", required=True,
                     help="The manifest copy with per-span reframes (refused inside this repo); "
                          "the report goes beside it as <stem>.reframe.tsv and .json")
     sp.set_defaults(func=cmd_reframe_plan)
+
+    sp = subparsers.add_parser(
+        "tilt-fixture", help="Offline: write the clip and numbers for the render that settles "
+        "Tilt's sign (needs ffmpeg); prints the hand steps")
+    sp.add_argument("--out", required=True,
+                    help="A new folder outside any repository for tilt-fixture.mp4 and tilt-expect.json")
+    sp.set_defaults(func=cmd_tilt_fixture)
+
+    sp = subparsers.add_parser(
+        "tilt-check", help="Offline: find the fixture's markers in the still you rendered and "
+        "say whether Pan and Tilt landed where reframe-plan puts them (exit 0 both, 2 not)")
+    sp.add_argument("still", help="The rendered still (PNG, JPEG, TIFF)")
+    sp.add_argument("--fixture", required=True, help="The folder tilt-fixture wrote")
+    sp.add_argument("--tolerance", type=float, metavar="PX",
+                    help="Pixels the markers may be off (default 1%% of the render width, at least 4)")
+    sp.set_defaults(func=cmd_tilt_check)
 
     def deliver_common(sp):
         sp.add_argument("--dest", required=True,

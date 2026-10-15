@@ -499,8 +499,8 @@ class TestPlanManifest(unittest.TestCase):
         self.assertEqual(len(reader.times), 8 + 8 + 8)  # 10 s and 4 s spans take the 8 minimum
         rows = report["rows"]
         self.assertEqual([(r["clip"], r["span"], r["aspect"], r["status"]) for r in rows],
-                         [("a_30", 1, "9x16", "fallback"), ("a_30", 1, "1x1", "fallback"),
-                          ("a_30", 2, "9x16", "fallback"), ("a_30", 2, "1x1", "fallback"),
+                         [("a_30", 1, "9x16", "pass"), ("a_30", 1, "1x1", "pass"),
+                          ("a_30", 2, "9x16", "pass"), ("a_30", 2, "1x1", "pass"),
                           ("b_30", 1, "9x16", "no_face"), ("b_30", 1, "1x1", "no_face")])
         self.assertEqual((rows[0]["face_x"], rows[0]["hand_face_x"], rows[0]["dx"]), (400.0, 270, 130.0))
         self.assertIn("two faces", rows[0]["review"])
@@ -597,7 +597,8 @@ class TestPlanManifest(unittest.TestCase):
             stdout = io.StringIO()
             with redirect_stderr(io.StringIO()), redirect_stdout(stdout):
                 self.assertEqual(rw.cmd_reframe_plan(args), 0)
-        self.assertIn("FALLBACK", stdout.getvalue())
+        # No scale in the manifest, so the planner derives one: the widest that fills the frame.
+        self.assertIn("PASS", stdout.getvalue())
         with open(out) as f:
             copy = json.load(f)
         self.assertEqual(copy["clips"][0]["spans"][1]["reframe"]["9x16"]["x"], 900.0)

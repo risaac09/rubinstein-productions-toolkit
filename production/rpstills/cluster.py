@@ -4,6 +4,12 @@
   different segments (a headshot session and the event after it).
 - burst: consecutive frames within BURST_GAP_S whose phash distance is at
   most BURST_HASH; one pick per burst at most.
+- counted faces: a face counts when its height is at least MIN_FACE of the
+  upright image and at least SUBJECT_RATIO of the largest face in the frame.
+  The second test is what keeps an audience out of the count: a performer
+  and forty people behind them are one subject, not a group. Detection that
+  reaches small faces (index.py's tiled pass) would otherwise turn every
+  stage frame into a group.
 - run: consecutive frames of the same class (solo, pair, group, none) with
   no gap over RUN_GAP_S. Inside solo frames a run also ends when the next
   person steps in: a pause of PERSON_GAP_S or more together with a face-crop
@@ -29,6 +35,8 @@ PERSON_GAP_S = 10
 PERSON_HASH = 16
 HARD_GAP_S = 30
 HARD_HASH = 30
+MIN_FACE = 0.04
+SUBJECT_RATIO = 0.5
 
 
 def _t(row):
@@ -47,11 +55,23 @@ def _hash_distance(a, b):
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
-def frame_class(row, min_face=0.04):
-    """solo, pair, group or none, counting faces whose height is at least
-    min_face of the upright image (a bystander in the background does not
-    make a group)."""
-    n = sum(1 for f in row.get("faces") or [] if f.get("h", 0) >= min_face)
+hash_distance = _hash_distance
+
+
+def counted_faces(row, min_face=MIN_FACE, ratio=SUBJECT_RATIO):
+    """The faces of a row that count as its subjects: at least min_face of the
+    upright image's height, and at least `ratio` of the largest such face
+    (a bystander or an audience in the background is not a second subject)."""
+    faces = [f for f in row.get("faces") or [] if f.get("h", 0) >= min_face]
+    if not faces:
+        return []
+    top = max(f["h"] for f in faces)
+    return [f for f in faces if f["h"] >= ratio * top]
+
+
+def frame_class(row, min_face=MIN_FACE, ratio=SUBJECT_RATIO):
+    """solo, pair, group or none, counting the faces counted_faces() keeps."""
+    n = len(counted_faces(row, min_face, ratio))
     return "none" if n == 0 else "solo" if n == 1 else "pair" if n == 2 else "group"
 
 
@@ -86,7 +106,8 @@ def build(rows):
     return {"segments": segments, "bursts": bursts, "runs": runs,
             "params": {"segment_gap_s": SEGMENT_GAP_S, "burst_gap_s": BURST_GAP_S,
                        "burst_hash": BURST_HASH, "run_gap_s": RUN_GAP_S, "person_gap_s": PERSON_GAP_S,
-                       "person_hash": PERSON_HASH, "hard_gap_s": HARD_GAP_S, "hard_hash": HARD_HASH}}
+                       "person_hash": PERSON_HASH, "hard_gap_s": HARD_GAP_S, "hard_hash": HARD_HASH,
+                       "min_face": MIN_FACE, "subject_ratio": SUBJECT_RATIO}}
 
 
 def write(out_dir, clusters):

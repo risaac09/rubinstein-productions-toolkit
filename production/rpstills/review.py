@@ -48,7 +48,7 @@ footer{padding:20px 16px;color:var(--mut);font-size:12px}
 <span class="legend"><b style="color:var(--pick)">yellow</b> proposed · <b style="color:var(--keep)">green</b> kept · click to keep, click again to drop, third click clears</span>
 </header>
 <main id="main"></main>
-<footer>Scores compare only within a run. Names are yours to fill; the pipeline never guesses one. selects.json goes beside this file.</footer>
+<footer>Scores compare only within a run. A score marked f is a frame score (sharpness, exposure, composition) for a run with no subject face; hover for its parts. Names are yours to fill; the pipeline never guesses one. selects.json goes beside this file.</footer>
 <script>
 const DATA = __DATA__;
 const KEY = "rpstills:" + DATA.session;
@@ -80,7 +80,7 @@ function render(){
       const el = document.createElement("div"); el.className = "fr " + statusOf(id); el.dataset.id = id;
       const sc = f.score != null ? f.score.toFixed(2) : "";
       el.innerHTML = `<img loading="lazy" src="${f.proxy}" alt="${id}"><span class="tag">${id}</span>` +
-        (sc ? `<span class="sc">${sc}</span>` : "") + (f.eyes === 0 ? `<span class="warn">eyes</span>` : "") +
+        (sc ? `<span class="sc" title="${f.why || ""}">${sc}${f.kind === "frame" ? " f" : ""}</span>` : "") + (f.eyes === 0 ? `<span class="warn">eyes</span>` : "") +
         (f.faces === 0 ? `<span class="warn">no face</span>` : "");
       el.addEventListener("click", () => { const cur = state.marks[id];
         state.marks[id] = cur === "keep" ? "drop" : cur === "drop" ? undefined : "keep";
@@ -110,6 +110,17 @@ render();
 """
 
 
+def _why(s):
+    """What a frame's score rests on, for the tooltip: the parts of a frame
+    score (a run with no subject face), or nothing for a face score."""
+    if s.get("kind") != "frame" or s.get("exposure") is None:
+        return ""
+    parts = [f"sharp rank {s['sharp_rank']}", f"exposure {s['exposure']}"]
+    if s.get("composition") is not None:
+        parts.append(f"composition {s['composition']}")
+    return "frame score: " + ", ".join(parts)
+
+
 def build(out_dir, session, source, rows, clusters, cull, title=None):
     scores = cull["scores"]
     frames = []
@@ -118,7 +129,8 @@ def build(out_dir, session, source, rows, clusters, cull, title=None):
             continue
         s = scores.get(r["id"], {})
         frames.append({"id": r["id"], "proxy": r["proxy"], "time": r.get("time"),
-                       "score": s.get("score"), "eyes": s.get("eyes"), "faces": len(r.get("faces") or [])})
+                       "score": s.get("score"), "eyes": s.get("eyes"), "faces": len(r.get("faces") or []),
+                       "kind": s.get("kind"), "why": _why(s)})
     data = {"session": session, "source": source, "frames": frames,
             "segments": {s["id"]: {"start": s["start"], "end": s["end"], "frames": len(s["frames"])} for s in clusters["segments"]},
             "runs": {r["id"]: r for r in clusters["runs"]},

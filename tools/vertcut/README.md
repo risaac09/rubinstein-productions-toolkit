@@ -9,8 +9,11 @@ only does the two mechanical parts — hearing the words, and cutting the frame.
 
 ## Requirements
 
-- `ffmpeg` / `ffprobe` (Homebrew). Note its build has **no libass**, which is why
-  captions are Pillow-rendered PNG overlays rather than a `subtitles` filter.
+- `ffmpeg` / `ffprobe` (Homebrew). Note its default build has **no libass**, which is
+  why captions are Pillow-rendered PNG overlays rather than a `subtitles` filter.
+  `brew install ffmpeg-full` (keg-only, so it does not replace the default) adds
+  libass and libvidstab if you want the filter or stabilisation; the PNG path stays
+  the default here because it needs nothing beyond Pillow.
 - `mlx_whisper` (`pip3 install --user mlx-whisper`) for the transcribe step.
 - Pillow on the Python that runs it (system `python3` already has it).
 
@@ -21,8 +24,8 @@ tools/vertcut/vertcut transcribe "/Volumes/DRIVE/Episode Folder/master.mov"
 ```
 
 Extracts 16k mono audio, runs `whisper-large-v3-turbo` locally with word
-timestamps, writes `<name>.json` beside the source. Roughly real-time / 3 on the
-M2 Pro. Nothing leaves the machine.
+timestamps, writes `<name>.json` beside the source. Roughly real-time / 3 on an
+M2 Pro (measured then; newer Apple silicon is faster). Nothing leaves the machine.
 
 The DaVinci ASR export is fine for *finding* moments, but its timings are too
 coarse to drive captions. This JSON is what the caption burner reads.
@@ -54,8 +57,9 @@ tools/vertcut/vertcut cut SOURCE.mov clips.tsv \
 ```
 
 For each row: trims, reframes to 1080x1920, burns word-grouped captions,
-normalizes audio to -16 LUFS, and writes an `.srt` sidecar next to the `.mp4`
-(LinkedIn and YouTube both accept the sidecar if you would rather not burn in).
+normalizes audio to -16 LUFS (the LinkedIn level; `--lufs -14` for YouTube and
+short-form feeds), and writes an `.srt` sidecar next to the `.mp4` (LinkedIn and
+YouTube both accept the sidecar if you would rather not burn in).
 
 ### Options worth knowing
 
@@ -65,6 +69,8 @@ normalizes audio to -16 LUFS, and writes an `.srt` sidecar next to the `.mp4`
 | `--x -1..1` | `0` | Shifts the crop window. `-0.4` when the speaker sits left of centre. |
 | `--no-captions` | off | Reframe only. |
 | `--max-words` / `--max-chars` | `3` / `26` | Caption density. |
+| `--lufs` / `--tp` / `--lra` | `-16` / `-1.5` / `11` | Loudness target, true-peak ceiling and range. `-14` suits YouTube and short-form feeds. |
+| `--crf` / `--preset` | `20` / `veryfast` | x264 quality and speed. `--preset slow` is smaller at the same quality. |
 | `--font-size` / `--caption-y` | `66` / `1400` | Caption size and baseline. |
 | `--only 1,2` | all | Render a subset while dialling in the framing. |
 | `--dry-run` | off | Print what would be rendered. |

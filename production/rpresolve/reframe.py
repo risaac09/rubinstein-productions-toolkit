@@ -9,10 +9,14 @@ For each span of each clip:
   1. Frames are sampled evenly across [in, out): `samples` per span
      (default 8) and at least `per_second` a second (default 0.5), at
      in + (i + 0.5) * length / n, never more than MAX_SAMPLES.
-  2. The picture area: the rows and columns whose mean luma is above
-     ACTIVE_LEVEL (24 of 255) in at least one sample. A call recording
-     that letterboxes its panes inside the 16:9 frame has a picture area
-     smaller than the frame, and a crop that leaves it shows black bars.
+  2. The picture area: the frame less its black bars. A bar is a row or
+     column at the edge of the frame whose brightest pixel is at or below
+     BAR_LEVEL (40 of 255) in every sample, so it is flat and black; a dark
+     scene (a night stage) has specks and texture above that and keeps its
+     whole frame. A call recording that letterboxes its panes inside the
+     16:9 frame has a picture area smaller than the frame, and a crop that
+     leaves it shows black bars. Mean luma is not used: it cannot tell a
+     bar from a dark room.
   3. Faces: Vision's boxes, linked into tracks across the samples by overlap
      (IoU at least LINK_IOU, or centres within LINK_DISTANCE box widths).
      The primary face (RULE) is the track present in the most samples, a
@@ -24,6 +28,12 @@ For each span of each clip:
      makes the choice ambiguous, and the span is flagged for review: on a
      two-up call Vision often misses the speaker as they turn or lean, so
      the steadier listener can win on presence.
+     The subject can be steered where the footage has no single speaker
+     (a stage with an audience): subject_region keeps only faces whose
+     centre is inside a source-pixel rectangle, min_face_height drops faces
+     smaller than a share of the frame height (the audience), speaker_x with
+     speaker_y names a point, and prefer="largest" ranks eligible faces by
+     size before presence. What was ignored is counted in the report.
      Every sample is judged: one where the primary face is missing has
      the box nearest its path checked in its place, when that box is
      within NEAR_PATH face widths and no other eligible track holds it (a
@@ -31,17 +41,28 @@ For each span of each clip:
      own); else the sample is unchecked. Either way the span is flagged.
   4. The crop: centred on the median face centre, clamped so the crop stays
      inside the picture area, at `scale` output pixels per source pixel
-     (cut.py's convention; the clip's reframe.scale, else DEFAULT_SCALE).
+     (cut.py's convention). The scale is the clip's reframe.scale; with none
+     it is AUTO, the widest scale that fills the frame for the source and the
+     target aspect (0.7257 for a 5952x2646 source into 9:16, a zoom of
+     about 4). With allow_bars and no scale it is DEFAULT_SCALE, the Ep 002
+     punch-in, which was calibrated on 720p sources and is far too tight on
+     a wide high-resolution one.
      When that loses the face, the middle of the checked boxes' extent
      (each grown by MARGIN), clamped the same way, is tried at the same
      scale before any other: when any centre at a scale holds every box,
      that one does (to the 0.1 px the centre is rounded to). The result
      records which centre was used.
   5. The check: every checked box (the primary face's, and any taken in
-     its place), grown by MARGIN of its size on each side, is mapped
-     through that exact transform and must sit inside the output frame.
-     Reported over all the span's samples: inside, unchecked, the share
-     inside, the worst sample and by how many output pixels.
+     its place), grown by MARGIN of its size on each side and clipped to
+     the picture area (a margin that does not exist in the frame cannot be
+     required), is mapped through that exact transform and must sit inside
+     the output frame. Reported over all the span's samples: inside,
+     unchecked, the share inside, the worst sample and by how many output
+     pixels. A crop passes only on enough evidence: at least
+     MIN_CHECKED_SAMPLES samples and `min_checked` (default half) of the
+     span's samples must have a checked face. Fewer and the span is manual,
+     however well the few boxes sit: a face seen in one frame of fifteen
+     says nothing about the other fourteen.
   6. The fallback: when the default scale leaves bars (the crop is larger
      than the picture area) or loses the face, the widest scale that still
      fills the frame is tried and checked the same way (the median, then
@@ -64,6 +85,9 @@ the face centre measured in the render is where this puts it, within 3
 pixels). Tilt's sign assumes Resolve's y axis points up; it is not yet
 confirmed on a render (see resolve-template-spec.md, Reframe), so every
 report row whose crop sets a Tilt says so, and the summary counts them.
+TILT_CONFIRMED stays False until a commit cites a tilt-check result from a
+render a person pressed; nothing here sets it. tilt_fixture and tilt_check
+below make that render a ten-minute hand step.
 """
 
 import copy
@@ -81,12 +105,20 @@ FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 TIMEOUT_S = 120  # per ffmpeg frame grab
 
 ASPECTS = {"9x16": (1080, 1920), "1x1": (1080, 1080)}
-DEFAULT_SCALE = 2.25       # output pixels per source pixel (the Ep 002 script's crop)
+DEFAULT_SCALE = 2.25       # output pixels per source pixel (the Ep 002 script's crop; 720p calibration)
+AUTO = "auto"              # the widest scale that fills the frame, derived per source and aspect
 DEFAULT_SAMPLES = 8
 MIN_PER_SECOND = 0.5
 MAX_SAMPLES = 120
 MARGIN = 0.10              # of the face box's width and height, on each side
-ACTIVE_LEVEL = 24          # mean luma (0..255) above which a row or column is picture
+BAR_LEVEL = 40            # brightest pixel (0..255) at or below which an edge row or column is a black bar
+EDGE_NOTE_PX = 1.0       # how far a face box may reach past the picture before the span is flagged
+MIN_CHECKED_SHARE = 0.5   # of a span's samples that must have a checked face before a crop can pass
+MIN_CHECKED_SAMPLES = 3   # and never fewer than this many
+PREFER_PRESENT, PREFER_LARGEST = "present", "largest"
+PREFERS = (PREFER_PRESENT, PREFER_LARGEST)
+TILT_CONFIRMED = False    # True only in a commit that cites a tilt-check result from a person's render
+TILT_NEGLIGIBLE_PX = 0.5  # a Tilt this small moves the picture less than a pixel: a wrong sign shows nothing
 LINK_IOU = 0.2
 LINK_DISTANCE = 0.75       # box widths between centres
 AMBIGUOUS_AREA = 0.5       # another eligible face at this share of the primary's area: ambiguous
@@ -95,6 +127,7 @@ FILL_TOLERANCE_PX = 0.5
 SCALE_TO_FIT, SCALE_TO_CROP = "scaleToFit", "scaleToCrop"
 SCALINGS = (SCALE_TO_FIT, SCALE_TO_CROP)
 RULE = "the face present in the most samples, a tie going to the larger median box"
+RULE_LARGEST = "the largest face among those present in at least half as many samples as the most present"
 
 PASS, BARS, FALLBACK, MANUAL, NO_FACE = "pass", "bars", "fallback", "manual", "no_face"
 STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE)
@@ -183,38 +216,77 @@ def bars_text(out, scale, centre, area):
     return ("the picture covers " + " and ".join(parts)) if parts else ""
 
 
-def slack(box, out, scale, centre, margin=MARGIN):
+def slack(box, out, scale, centre, margin=MARGIN, area=None):
     """Output pixels between the face box, grown by `margin` of its size on
     each side, and the nearest edge of the output frame; negative when the
-    grown box crosses that edge by so much."""
+    grown box crosses that edge by so much. With `area`, the grown box is
+    clipped to the picture first: a face at the edge of the source has no
+    margin beyond it, and no crop can include what the frame does not hold."""
     x0, y0, x1, y1 = box
     mx, my = margin * (x1 - x0), margin * (y1 - y0)
-    a = to_output((x0 - mx, y0 - my), out, scale, centre)
-    b = to_output((x1 + mx, y1 + my), out, scale, centre)
-    return min(a[0], a[1], out[0] - b[0], out[1] - b[1])
+    gx0, gy0, gx1, gy1 = x0 - mx, y0 - my, x1 + mx, y1 + my
+    clipped = [False] * 4
+    if area is not None:
+        if gx0 < area[0]:
+            gx0, clipped[0] = area[0], True
+        if gy0 < area[1]:
+            gy0, clipped[1] = area[1], True
+        if gx1 > area[2]:
+            gx1, clipped[2] = area[2], True
+        if gy1 > area[3]:
+            gy1, clipped[3] = area[3], True
+        if gx0 >= gx1 or gy0 >= gy1:   # nothing of the face is in the picture
+            return -max(gx0 - gx1, gy0 - gy1, 1.0) * scale
+    a = to_output((gx0, gy0), out, scale, centre)
+    b = to_output((gx1, gy1), out, scale, centre)
+    sides = [a[0], a[1], out[0] - b[0], out[1] - b[1]]
+    # The fill scale is rounded up so no bar opens, which leaves the window a hair
+    # smaller than the picture: a box clipped to the picture's edge may overshoot the
+    # window's edge by that hair. Half a pixel is not a face leaving the crop.
+    sides = [0.0 if c and -FILL_TOLERANCE_PX <= v < 0 else v for c, v in zip(clipped, sides)]
+    return min(sides)
 
 
-def check(boxes, out, scale, centre, margin=MARGIN, samples=None):
+def needed(total, share=MIN_CHECKED_SHARE):
+    """The fewest checked samples a crop needs before it can pass: `share` of
+    the span's `total` samples and at least MIN_CHECKED_SAMPLES, never more
+    than the span has."""
+    if not total:
+        return 0
+    return min(int(total), max(MIN_CHECKED_SAMPLES, int(math.ceil(share * total - 1e-9))))
+
+
+def check(boxes, out, scale, centre, margin=MARGIN, samples=None, area=None,
+          min_checked=MIN_CHECKED_SHARE):
     """The inside-crop check over [(t, box)] of a span that sampled
     `samples` frames (default: one per box): {inside, checked, unchecked,
-    total, share, worst_t, worst_px}. A sample with no box is unchecked and
-    never counts as inside; share is inside over all samples. worst_px is
-    the smallest slack (negative: outside)."""
-    rows = [(t, slack(b, out, scale, centre, margin)) for t, b in boxes]
+    total, need, share, worst_t, worst_px}. A sample with no box is unchecked
+    and never counts as inside; share is inside over all samples. worst_px
+    is the smallest slack (negative: outside). need is the fewest checked
+    samples a crop must have to pass (see needed()); `area` clips each grown
+    box to the picture (see slack())."""
+    rows = [(t, slack(b, out, scale, centre, margin, area)) for t, b in boxes]
     total = len(rows) if samples is None else int(samples)
+    need = needed(total, min_checked)
     if not rows:
-        return {"inside": 0, "checked": 0, "unchecked": total, "total": total,
+        return {"inside": 0, "checked": 0, "unchecked": total, "total": total, "need": need,
                 "share": 0.0 if total else None, "worst_t": None, "worst_px": None}
     inside = sum(1 for _, s in rows if s >= -1e-6)
     t, worst = min(rows, key=lambda r: r[1])
     return {"inside": inside, "checked": len(rows), "unchecked": max(0, total - len(rows)),
-            "total": total, "share": round(inside / float(total), 3), "worst_t": t,
+            "total": total, "need": need, "share": round(inside / float(total), 3), "worst_t": t,
             "worst_px": round(worst, 1)}
 
 
 def held(c):
-    """Every checked box inside, and at least one checked."""
-    return bool(c["checked"]) and c["inside"] == c["checked"]
+    """Every checked box inside, and enough of them checked: at least one,
+    and the span's `need` (a face seen on one frame of fifteen holds nothing)."""
+    return bool(c["checked"]) and c["inside"] == c["checked"] and c["checked"] >= c.get("need", 1)
+
+
+def thin(c):
+    """Every checked box sits inside but too few were checked to trust it."""
+    return bool(c["checked"]) and c["inside"] == c["checked"] and c["checked"] < c.get("need", 1)
 
 
 def resolve_props(src, out, scale, centre, scaling=SCALE_TO_FIT):
@@ -292,32 +364,59 @@ def eligible(tracks):
     return [i for i, t in enumerate(tracks) if 2 * len(t) >= most]
 
 
-def choose(tracks, speaker_x=None):
-    """(index of the primary track, the rule used, a review note or '')."""
+def choose(tracks, speaker_x=None, speaker_y=None, prefer=PREFER_PRESENT):
+    """(index of the primary track, the rule used, a review note or '').
+    Without a hint the primary is the face present in the most samples, a
+    tie going to the larger; prefer=PREFER_LARGEST ranks the eligible faces
+    (see eligible()) by median area first, for footage where the subject is
+    nearest the camera and the audience is not. speaker_x, with speaker_y
+    when given, names a point: the eligible face nearest it."""
     if not tracks:
         return None, "", ""
     stats = [track_stats(t) for t in tracks]
-    order = sorted(range(len(tracks)), key=lambda i: (-stats[i]["samples"], -stats[i]["area"]))
+    ok = set(eligible(tracks))
+    if prefer == PREFER_LARGEST:
+        order = sorted((i for i in range(len(tracks)) if i in ok),
+                       key=lambda i: (-stats[i]["area"], -stats[i]["samples"]))
+    else:
+        order = sorted(range(len(tracks)), key=lambda i: (-stats[i]["samples"], -stats[i]["area"]))
     if speaker_x is not None:
-        ok = set(eligible(tracks))
         eligible_ = [i for i in order if i in ok]
-        pick = min(eligible_, key=lambda i: abs(stats[i]["x"] - speaker_x))
-        rule = (f"the face nearest speaker_x {speaker_x:g}, among faces in at least half as "
+
+        def away(i):
+            dx = stats[i]["x"] - speaker_x
+            dy = 0.0 if speaker_y is None else stats[i]["y"] - speaker_y
+            return math.hypot(dx, dy)
+        pick = min(eligible_, key=away)
+        where = f"speaker_x {speaker_x:g}" + ("" if speaker_y is None else f", speaker_y {speaker_y:g}")
+        rule = (f"the face nearest {where}, among faces in at least half as "
                 "many samples as the most present")
-        off = abs(stats[pick]["x"] - speaker_x)
-        note = (f"the nearest face is {off:.0f} px from speaker_x {speaker_x:g}"
-                if off > stats[pick]["w"] else "")
+        off = away(pick)
+        note = (f"the nearest face is {off:.0f} px from {where}" if off > stats[pick]["w"] else "")
         return pick, rule, note
     pick = order[0]
-    rivals = set(eligible(tracks))
+    rule = RULE if prefer == PREFER_PRESENT else RULE_LARGEST
     for i in order[1:]:
-        if i in rivals and stats[i]["area"] >= AMBIGUOUS_AREA * stats[pick]["area"]:
-            return pick, RULE, (
+        if i in ok and stats[i]["area"] >= AMBIGUOUS_AREA * stats[pick]["area"]:
+            return pick, rule, (
                 f"two faces: the chosen one at x {stats[pick]['x']:.0f} (in "
                 f"{stats[pick]['samples']} samples) and another at x {stats[i]['x']:.0f} (in "
                 f"{stats[i]['samples']}, at {stats[i]['area'] / stats[pick]['area']:.0%} of its "
-                "size); name the speaker with speaker_x")
-    return pick, RULE, ""
+                "size); name the speaker with speaker_x, or the subject with subject_region")
+    return pick, rule, ""
+
+
+def admit(b, src, region=None, min_face_height=None):
+    """Whether a face box (source pixels) may be the subject: tall enough
+    (min_face_height is a share of the frame height, to leave out an
+    audience) and centred inside `region` (x0, y0, x1, y1 in source pixels)."""
+    if min_face_height and (b[3] - b[1]) < min_face_height * src[1]:
+        return False
+    if region:
+        cx, cy = _centre(b)
+        if not (region[0] <= cx <= region[2] and region[1] <= cy <= region[3]):
+            return False
+    return True
 
 
 def off_track(tracks, pick):
@@ -354,11 +453,15 @@ def _times(ts):
 # ---------------------------------------------------------------------------
 
 def plan_aspect(boxes, face, src, area, aspect, scale=DEFAULT_SCALE, margin=MARGIN,
-                allow_bars=False, samples=None):
+                allow_bars=False, samples=None, min_checked=MIN_CHECKED_SHARE):
     """The crop for one aspect: try `scale`, then the widest scale that
     fills the frame. boxes: [(t, box)] to check (the primary face's, and
     any taken in its place); face: the primary's (x, y) median centre;
-    samples: how many frames the span sampled (default len(boxes)). With
+    samples: how many frames the span sampled (default len(boxes)). scale
+    may be AUTO: the widest scale that fills the frame is then the one
+    candidate, and holding the face there is a pass, not a fallback.
+    min_checked: the share of samples that must have a checked face (see
+    needed()). With
     allow_bars, the default scale is kept when it holds the face even
     though the picture does not fill the frame (status BARS, a named
     choice). At each scale the median centre is tried first, then, when it
@@ -368,6 +471,10 @@ def plan_aspect(boxes, face, src, area, aspect, scale=DEFAULT_SCALE, margin=MARG
     before the check, so the check holds for the values written."""
     out = ASPECTS[aspect]
     widest = fill_scale(out, area)
+    auto = scale == AUTO
+    if auto:
+        scale = widest
+    named = "the widest filled scale" if auto else "the default scale"
     candidates = [("default", round(float(scale), 4))]
     if abs(widest - scale) > 1e-4:
         candidates.append(("widest filled", round(widest, 4)))
@@ -381,7 +488,7 @@ def plan_aspect(boxes, face, src, area, aspect, scale=DEFAULT_SCALE, margin=MARG
             centre = tuple(round(v, 1) for v in place(point, out, s, area))
             if how != "median" and (tried[-1]["x"], tried[-1]["y"]) == centre:
                 continue  # the extent's middle is where the median already put the crop
-            c = check(boxes, out, s, centre, margin, samples)
+            c = check(boxes, out, s, centre, margin, samples, area, min_checked)
             tried.append({"label": label, "centre": how, "scale": s, "x": centre[0],
                           "y": centre[1], "bars": bars_text(out, s, centre, area), "check": c})
             if held(c):
@@ -393,7 +500,7 @@ def plan_aspect(boxes, face, src, area, aspect, scale=DEFAULT_SCALE, margin=MARG
     ok = held(last["check"]) and (not last["bars"] or allow_bars)
     first = [t for t in tried if t["label"] == "default"][-1]
     face_there = _held_text(first["check"])
-    why_not_default = (f"at the default scale {first['scale']:g} " +
+    why_not_default = (f"at {named} {first['scale']:g} " +
                        (f"{first['bars']} ({face_there})" if first["bars"] else face_there))
     if first["centre"] == "extent":
         why_not_default += " (centred on the middle of the face's extent)"
@@ -414,6 +521,12 @@ def plan_aspect(boxes, face, src, area, aspect, scale=DEFAULT_SCALE, margin=MARG
     elif ok:
         result.update(status=FALLBACK, reason=f"{why_not_default}; the widest filled scale "
                       f"{last['scale']:g} holds the face" + (f", {moved}" if moved else ""))
+    elif thin(last["check"]):
+        c = last["check"]
+        result.update(status=MANUAL, reason=(
+            f"the face is checked on only {c['checked']} of {c['total']} samples (at least "
+            f"{c['need']} needed), so no crop can be trusted: sample more (--samples), name the "
+            "subject (subject_region or speaker_x), or reframe by hand"))
     else:
         result.update(status=MANUAL, reason=(
             f"{why_not_default}" + ("" if last["label"] == "default" else
@@ -432,6 +545,9 @@ def _held_text(c):
     where = (f"all {c['total']} samples" if not c["unchecked"] else
              f"all {c['checked']} checked samples of {c['total']}")
     if c["inside"] == c["checked"]:
+        if thin(c):
+            return (f"the face is checked on only {c['checked']} of {c['total']} samples "
+                    f"(at least {c['need']} needed)")
         return f"the face stays inside on {where}"
     return (f"the face leaves the crop on {c['checked'] - c['inside']} of {c['checked']} checked "
             f"samples (worst {c['worst_px']} px at {c['worst_t']} s)")
@@ -441,28 +557,48 @@ def no_crop(samples, aspects, reason, area=None):
     """A span's result with no crop for any aspect (status no_face), and
     why."""
     return {"samples": samples, "face_samples": 0, "area": list(area) if area else None,
-            "face": None, "rule": "", "review": [], "tracks": 0, "track": [], "off_track": [],
-            "unchecked": [], "aspects": {a: {"aspect": a, "status": NO_FACE, "reason": reason}
-                                         for a in aspects}}
+            "face": None, "rule": "", "review": [], "tracks": 0, "ignored": 0, "track": [],
+            "off_track": [], "unchecked": [],
+            "aspects": {a: {"aspect": a, "status": NO_FACE, "reason": reason} for a in aspects}}
 
 
 def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, margin=MARGIN,
-              allow_bars=False):
+              allow_bars=False, min_checked=MIN_CHECKED_SHARE, subject_region=None,
+              min_face_height=None, speaker_y=None, prefer=PREFER_PRESENT):
     """samples: [(t, [Vision box])] for one span; area: the picture area or
     None (every sample black). Returns {samples, face_samples, area, face,
-    rule, review, tracks, track, off_track, unchecked, aspects: {aspect:
-    plan_aspect(...) or a no_face result}}. Every sample is judged: the
-    primary face's box, else a box taken in its place (off_track), else
-    the sample is unchecked; either of the last two flags the span."""
-    tracks = link([(t, [box_px(f, src) for f in faces]) for t, faces in samples])
-    pick, rule, note = choose(tracks, speaker_x)
+    rule, review, tracks, ignored, track, off_track, unchecked, aspects:
+    {aspect: plan_aspect(...) or a no_face result}}. Every sample is judged:
+    the primary face's box, else a box taken in its place (off_track), else
+    the sample is unchecked; either of the last two flags the span.
+    subject_region, min_face_height, speaker_y and prefer steer which face is
+    the subject (see the module docstring); `ignored` counts the boxes they
+    left out. scale may be AUTO."""
+    ignored = 0
+    kept = []
+    for t, faces in samples:
+        boxes_t = []
+        for f in faces:
+            b = box_px(f, src)
+            if admit(b, src, subject_region, min_face_height):
+                boxes_t.append(b)
+            else:
+                ignored += 1
+        kept.append((t, boxes_t))
+    tracks = link(kept)
+    pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer)
     if area is None or pick is None:
-        out = no_crop(len(samples), aspects, "every sampled frame is black" if area is None else
-                      f"no face in any of the {len(samples)} sampled frames", area)
+        why = ("every sampled frame is black" if area is None else
+               f"no face in any of the {len(samples)} sampled frames" if not ignored else
+               f"no face in any of the {len(samples)} sampled frames inside the subject region "
+               f"at the minimum size ({ignored} face boxes ignored)")
+        out = no_crop(len(samples), aspects, why, area)
         out["tracks"] = len(tracks)
+        out["ignored"] = ignored
         return out
     out = no_crop(len(samples), (), "", area)
     out["tracks"] = len(tracks)
+    out["ignored"] = ignored
     primary = tracks[pick]
     st = track_stats(primary)
     stray = off_track(tracks, pick)
@@ -484,9 +620,16 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
         out["review"].append(f"no face is checked at {_times(unchecked)} ({len(unchecked)} of "
                              f"{len(samples)} samples): the face may leave the crop there")
     boxes = sorted(primary + stray, key=lambda r: r[0])
+    edge = [t for t, b in boxes   # a source pixel of overshoot is Vision's float noise, not an edge
+            if b[0] < area[0] - EDGE_NOTE_PX or b[1] < area[1] - EDGE_NOTE_PX
+            or b[2] > area[2] + EDGE_NOTE_PX or b[3] > area[3] + EDGE_NOTE_PX]
+    if edge:
+        out["review"].append(
+            f"the face box reaches past the edge of the picture at {_times(edge)}: the crop "
+            "keeps the face but not the usual margin there")
     for a in aspects:
         out["aspects"][a] = plan_aspect(boxes, (st["x"], st["y"]), src, area, a, scale, margin,
-                                        allow_bars, samples=len(samples))
+                                        allow_bars, samples=len(samples), min_checked=min_checked)
     return out
 
 
@@ -566,44 +709,96 @@ class SourceReader:
         return out
 
 
-def picture_area(lumas, size, level=ACTIVE_LEVEL):
-    """(x0, y0, x1, y1): the bounding box of the rows and columns whose mean
-    luma is above `level` in at least one frame; None when every frame is
-    black."""
+def picture_area(lumas, size, level=BAR_LEVEL):
+    """(x0, y0, x1, y1): the frame less its black bars; None when every frame
+    is black. A bar is a run of rows (or columns) from an edge whose
+    brightest pixel is at or below `level` in every frame, so it is flat and
+    black. A dark scene is not a bar: it has specks, lights and sensor noise
+    above `level`, and the mean luma that an earlier version used could not
+    tell the two apart (a night stage lost 88% of its frame)."""
     w, h = size
-    rows, cols = [False] * h, [False] * w
-    for buf in lumas:
-        for r in range(h):
-            if not rows[r] and sum(buf[r * w:(r + 1) * w]) > level * w:
-                rows[r] = True
-        for c in range(w):
-            if not cols[c] and sum(buf[c::w]) > level * h:
-                cols[c] = True
-    if not any(rows) or not any(cols):
+
+    def first_active(n, line_max):
+        for i in range(n):
+            if any(line_max(buf, i) > level for buf in lumas):
+                return i
         return None
-    y0, y1 = rows.index(True), h - rows[::-1].index(True)
-    x0, x1 = cols.index(True), w - cols[::-1].index(True)
-    return (x0, y0, x1, y1)
+
+    def row_max(buf, r):
+        return max(buf[r * w:(r + 1) * w])
+
+    def col_max(buf, c):
+        return max(buf[c::w])
+
+    top = first_active(h, row_max)
+    if top is None:
+        return None
+    bottom = first_active(h, lambda buf, i: row_max(buf, h - 1 - i))
+    left = first_active(w, col_max)
+    right = first_active(w, lambda buf, i: col_max(buf, w - 1 - i))
+    return (left, top, w - right, h - bottom)
 
 
 # ---------------------------------------------------------------------------
 # A manifest
 # ---------------------------------------------------------------------------
 
+def clip_scale(clip, allow_bars=False):
+    """The scale a clip asks for. Its own reframe.scale wins. With none the
+    scale is AUTO (the widest scale that fills the frame, derived from the
+    source and the aspect), or, when allow_bars is set, DEFAULT_SCALE: the
+    Ep 002 punch-in, whose look is bars on a letterboxed call recording."""
+    s = (clip.get("reframe") or {}).get("scale")
+    if s == AUTO:
+        return AUTO
+    if s is None:
+        return DEFAULT_SCALE if allow_bars else AUTO
+    return float(s)
+
+
+def _subject_args(min_checked, subject_region, min_face_height, prefer):
+    """Validate the steering arguments; returns subject_region as a tuple."""
+    if not isinstance(min_checked, (int, float)) or isinstance(min_checked, bool) \
+            or not 0 <= min_checked <= 1:
+        raise ReframeError(f"min_checked must be a share between 0 and 1 (got {min_checked!r})")
+    if min_face_height is not None and not (isinstance(min_face_height, (int, float))
+                                            and 0 < min_face_height <= 1):
+        raise ReframeError(f"min_face_height must be a share of the frame height above 0 and "
+                           f"at most 1 (got {min_face_height!r})")
+    if prefer not in PREFERS:
+        raise ReframeError(f"prefer must be one of {', '.join(PREFERS)} (got {prefer!r})")
+    if subject_region is not None:
+        try:
+            x0, y0, x1, y1 = (float(v) for v in subject_region)
+        except (TypeError, ValueError):
+            raise ReframeError("subject_region must be four numbers: x0 y0 x1 y1 in source pixels")
+        if not (x0 < x1 and y0 < y1):
+            raise ReframeError(f"subject_region must have x0 < x1 and y0 < y1 (got {subject_region!r})")
+        subject_region = (x0, y0, x1, y1)
+    return subject_region
+
+
 def plan(manifest, aspects=tuple(ASPECTS), samples=DEFAULT_SAMPLES, per_second=MIN_PER_SECOND,
          speaker_x=None, only=None, allow_bars=False, reader=None, detect=None, check_cancel=None,
-         progress=None):
+         progress=None, min_checked=MIN_CHECKED_SHARE, subject_region=None, min_face_height=None,
+         speaker_y=None, prefer=PREFER_PRESENT):
     """Plan every span of the manifest's clips (or only those named).
     reader: a SourceReader (default: the manifest's source); detect:
     images -> {path: [Vision box]} or None (default: vision.face_boxes).
     Sample times at or past the source's end (reader.duration, when it
     knows one) are not read; the span says so, and a span wholly past the
-    end gets no crop.
+    end gets no crop. min_checked, subject_region, min_face_height,
+    speaker_y and prefer are described in the module docstring; the scale
+    comes from clip_scale().
     Returns the report: {source, size, aspects, samples, per_second,
-    speaker_x, rule, margin, spans: [...], rows: [...], counts}."""
+    speaker_x, speaker_y, rule, margin, min_checked, subject_region,
+    min_face_height, prefer, spans: [...], rows: [...], counts}."""
     unknown = [a for a in aspects if a not in ASPECTS]
     if unknown or not aspects:
         raise ReframeError(f"aspects must be among {', '.join(ASPECTS)} (got {', '.join(unknown) or 'none'})")
+    subject_region = _subject_args(min_checked, subject_region, min_face_height, prefer)
+    if speaker_y is not None and speaker_x is None:
+        raise ReframeError("speaker_y names a point only together with speaker_x")
     clips = manifest["clips"]
     if only:
         missing = set(only) - {c["name"] for c in clips}
@@ -615,14 +810,20 @@ def plan(manifest, aspects=tuple(ASPECTS), samples=DEFAULT_SAMPLES, per_second=M
     src = reader.size
     end = float(getattr(reader, "duration", 0) or 0)
     total = sum(len(c["spans"]) for c in clips)
+    if speaker_x is not None:
+        rule = f"nearest speaker_x {speaker_x:g}" + ("" if speaker_y is None else f", speaker_y {speaker_y:g}")
+    else:
+        rule = RULE if prefer == PREFER_PRESENT else RULE_LARGEST
     report = {"source": manifest["source_path"], "size": list(src), "aspects": list(aspects),
               "samples": samples, "per_second": per_second, "speaker_x": speaker_x,
-              "rule": RULE if speaker_x is None else f"nearest speaker_x {speaker_x:g}",
-              "margin": MARGIN, "allow_bars": bool(allow_bars), "spans": []}
+              "speaker_y": speaker_y, "rule": rule, "margin": MARGIN,
+              "allow_bars": bool(allow_bars), "min_checked": min_checked,
+              "subject_region": list(subject_region) if subject_region else None,
+              "min_face_height": min_face_height, "prefer": prefer, "spans": []}
     done = 0
     with tempfile.TemporaryDirectory(prefix="rpresolve-reframe-") as tmp:
         for clip in clips:
-            scale = float((clip.get("reframe") or {}).get("scale", DEFAULT_SCALE))
+            scale = clip_scale(clip, allow_bars)
             hand_x = (clip.get("reframe") or {}).get("face_x")
             for i, s in enumerate(clip["spans"], 1):
                 if check_cancel:
@@ -640,7 +841,10 @@ def plan(manifest, aspects=tuple(ASPECTS), samples=DEFAULT_SAMPLES, per_second=M
                                            "so no face was found and no crop is planned")
                     area = picture_area([luma for _, _, luma in frames], src)
                     sp = plan_span([(t, boxes.get(png, [])) for t, png, _ in frames], src, area,
-                                   aspects, scale, speaker_x, allow_bars=allow_bars)
+                                   aspects, scale, speaker_x, allow_bars=allow_bars,
+                                   min_checked=min_checked, subject_region=subject_region,
+                                   min_face_height=min_face_height, speaker_y=speaker_y,
+                                   prefer=prefer)
                 else:
                     sp = no_crop(0, aspects, f"the span lies past the source's end ({end:g} s): "
                                  "no frame to read")
@@ -691,7 +895,9 @@ def apply(manifest, report):
             rf[a] = entry(p, report["size"], sp["area"], sp["face"], sp["review"])
         span["reframe"] = rf
     m["reframe_plan"] = {k: report[k] for k in ("size", "aspects", "samples", "per_second",
-                                                "speaker_x", "rule", "margin", "allow_bars")}
+                                                "speaker_x", "speaker_y", "rule", "margin",
+                                                "allow_bars", "min_checked", "subject_region",
+                                                "min_face_height", "prefer")}
     return m
 
 
@@ -716,7 +922,8 @@ def rows(report):
             dx = (round(face["x"] - sp["hand_face_x"], 1)
                   if face and sp.get("hand_face_x") is not None else None)
             reason = p.get("reason", "")
-            if p["status"] in (PASS, BARS, FALLBACK) and abs(props.get("Tilt") or 0.0) > 1e-6:
+            if (not TILT_CONFIRMED and p["status"] in (PASS, BARS, FALLBACK)
+                    and abs(props.get("Tilt") or 0.0) > TILT_NEGLIGIBLE_PX):
                 reason = "; ".join(x for x in (reason, TILT_NOTE.format(tilt=props["Tilt"])) if x)
             out.append({"clip": sp["clip"], "span": sp["span"], "in": sp["in"], "out": sp["out"],
                         "aspect": a, "status": p["status"], "review": "; ".join(sp["review"]),
@@ -737,8 +944,8 @@ def counts(rows):
     for r in rows:
         n[r["status"]] += 1
     n["review"] = sum(1 for r in rows if r["review"])
-    n["tilt"] = sum(1 for r in rows if r["status"] in (PASS, BARS, FALLBACK)
-                    and abs(r["tilt"] or 0.0) > 1e-6)
+    n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in (PASS, BARS, FALLBACK)
+                                             and abs(r["tilt"] or 0.0) > TILT_NEGLIGIBLE_PX)
     return n
 
 
@@ -791,3 +998,195 @@ def write_report(path_stem, report, write):
     write(tsv_path, tsv(report["rows"]))
     write(json_path, json.dumps(report, indent=1, default=str) + "\n")
     return tsv_path, json_path
+
+
+# ---------------------------------------------------------------------------
+# The Tilt sign: a fixture to render, and the check on what comes back
+# ---------------------------------------------------------------------------
+#
+# Pan's sign was confirmed on a render. Tilt's was not, and a wrong sign moves
+# every crop that sets one off the face. This does not confirm it; it makes
+# the render that does a ten-minute hand step. tilt_fixture writes a short UHD
+# clip with a white marker at the crop centre and a red one at the middle of
+# the source, and the Pan, Tilt and Zoom a person types into Resolve's
+# Inspector on a 1080x1920 timeline. The person renders one still (only a
+# person presses Render). tilt_check finds the markers in it and says whether
+# they landed where this module's convention puts them, where a flipped Tilt
+# (or a flipped Pan) would put them, or somewhere else.
+
+TILT_SRC = (3840, 2160)
+TILT_ASPECT = "9x16"
+TILT_CENTRE = (0.46, 0.30)    # the crop centre as a share of the source: off the middle on both axes
+TILT_MARK = 120               # marker side in source pixels
+TILT_SECONDS, TILT_FPS = 2, 24
+TILT_VIDEO, TILT_EXPECT_FILE, TILT_RESULT_FILE = "tilt-fixture.mp4", "tilt-expect.json", "tilt-result.json"
+TILT_COLOURS = {"a": "white", "b": "red", "c": "yellow"}
+
+
+def tilt_expect(src=TILT_SRC, aspect=TILT_ASPECT, centre_share=TILT_CENTRE, scaling=SCALE_TO_FIT):
+    """What a render of the fixture must show if Pan and Tilt follow this
+    module's convention. Marker a (white) sits at the crop centre, so it must
+    land at the middle of the output; marker b (red) at the middle of the
+    source; marker c (yellow) 300 source pixels above a, for a human to see
+    which way is up. A source point (x, y) lands at
+        X = W/2 + (x - sw/2) * scale + Pan        (Pan moves the image right)
+        Y = H/2 + (y - sh/2) * scale - Tilt       (Tilt moves the image up)
+    and if Tilt's sign were the other way, at Y = H/2 + (y - sh/2) * scale +
+    Tilt; likewise for Pan. 'expect', 'if_tilt_flipped' and 'if_pan_flipped'
+    give the landing of a and b under each reading."""
+    out = ASPECTS[aspect]
+    sw, sh = src
+    scale = fill_scale(out, (0, 0, sw, sh))
+    cx, cy = centre_share[0] * sw, centre_share[1] * sh
+    raw = resolve_props(src, out, scale, (cx, cy), scaling)
+    marks = {"a": (cx, cy), "b": (sw / 2.0, sh / 2.0), "c": (cx, cy - 300.0)}
+
+    def land(point, pan_dir=1, tilt_dir=1):
+        return [round(out[0] / 2.0 + (point[0] - sw / 2.0) * scale + pan_dir * raw["Pan"], 2),
+                round(out[1] / 2.0 + (point[1] - sh / 2.0) * scale - tilt_dir * raw["Tilt"], 2)]
+
+    return {
+        "source": [sw, sh], "aspect": aspect, "out": list(out), "scale": scale,
+        "input_scaling": scaling, "centre": [round(cx, 2), round(cy, 2)],
+        "props": {k: round(v, 4) for k, v in raw.items()},
+        "markers": {k: {"colour": TILT_COLOURS[k], "at": [round(v[0], 2), round(v[1], 2)]}
+                    for k, v in marks.items()},
+        "expect": {k: land(marks[k]) for k in ("a", "b", "c")},
+        "if_tilt_flipped": {k: land(marks[k], tilt_dir=-1) for k in ("a", "b")},
+        "if_pan_flipped": {k: land(marks[k], pan_dir=-1) for k in ("a", "b")},
+        "marker_side": TILT_MARK,
+    }
+
+
+def tilt_filter(expect):
+    """The ffmpeg video filter that draws the three markers."""
+    half = TILT_MARK / 2.0
+    colour = {"white": "white", "red": "red", "yellow": "yellow"}
+    boxes = []
+    for k in ("a", "b", "c"):
+        m = expect["markers"][k]
+        boxes.append(f"drawbox=x={m['at'][0] - half:.0f}:y={m['at'][1] - half:.0f}:"
+                     f"w={TILT_MARK}:h={TILT_MARK}:color={colour[m['colour']]}:t=fill")
+    return ",".join(boxes)
+
+
+def tilt_fixture(folder, ffmpeg=None):
+    """Write the fixture clip and tilt-expect.json into `folder` (created).
+    Returns the expect dict. Needs ffmpeg with libx264."""
+    ffmpeg = ffmpeg or FFMPEG
+    expect = tilt_expect()
+    os.makedirs(folder, exist_ok=True)
+    video = os.path.join(folder, TILT_VIDEO)
+    sw, sh = expect["source"]
+    cmd = [ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i",
+           f"color=c=black:s={sw}x{sh}:r={TILT_FPS}:d={TILT_SECONDS}",
+           "-vf", tilt_filter(expect), "-c:v", "libx264", "-preset", "veryfast", "-crf", "12",
+           "-pix_fmt", "yuv420p", video]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ReframeError(f"cannot run ffmpeg to write the fixture: {e}")
+    if proc.returncode != 0 or not os.path.exists(video):
+        raise ReframeError("ffmpeg could not write the fixture: "
+                           f"{proc.stderr.decode(errors='replace').strip()[-300:]}")
+    with open(os.path.join(folder, TILT_EXPECT_FILE), "w", encoding="utf-8") as f:
+        json.dump(expect, f, indent=1)
+        f.write("\n")
+    return expect
+
+
+def read_rgb(path, ffmpeg=None):
+    """(width, height, rgb24 bytes) of a still, decoded by ffmpeg."""
+    ffmpeg = ffmpeg or FFMPEG
+    info = probe(path)
+    w, h = info["width"], info["height"]
+    cmd = [ffmpeg, "-v", "error", "-i", "file:" + path, "-frames:v", "1", "-f", "rawvideo",
+           "-pix_fmt", "rgb24", "-"]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ReframeError(f"cannot decode {path}: {e}")
+    if proc.returncode != 0 or len(proc.stdout) < w * h * 3:
+        raise ReframeError(f"ffmpeg could not decode {path}: "
+                           f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
+    return w, h, proc.stdout[:w * h * 3]
+
+
+def find_marker(rgb, size, test, stride=1):
+    """(x, y, pixels) of the centroid of the pixels `test(r, g, b)` accepts,
+    sampled every `stride` pixels (pixels is the count of samples); None when
+    no pixel matches."""
+    w, h = size
+    sx = sy = n = 0
+    for y in range(0, h, stride):
+        row = rgb[y * w * 3:(y + 1) * w * 3]
+        for x in range(0, w, stride):
+            i = x * 3
+            if test(row[i], row[i + 1], row[i + 2]):
+                sx += x
+                sy += y
+                n += 1
+    return (sx / float(n), sy / float(n), n) if n else None
+
+
+def _is_white(r, g, b):
+    return r > 170 and g > 170 and b > 170
+
+
+def _is_red(r, g, b):
+    return r > 150 and g < 100 and b < 100
+
+
+def tilt_check(rgb, size, expect, tolerance=None):
+    """Compare the markers in a render (rgb24 bytes of `size`) with `expect`
+    (tilt_expect()). Returns {size, tolerance, found: {a, b}, expected,
+    pan, tilt, ok, notes}. pan and tilt are 'confirmed' (both markers landed
+    where this module's convention puts them on that axis), 'inverted' (where
+    the flipped reading puts them) or 'unclear'. The render may be any size of
+    the fixture's shape; positions scale with it. ok needs both confirmed."""
+    w, h = size
+    out_w, out_h = expect["out"]
+    if w * out_h != h * out_w:
+        raise ReframeError(f"the render is {w}x{h}; the fixture is {out_w}x{out_h} (any size of "
+                           "that shape will do)")
+    k = w / float(out_w)
+    tol = float(tolerance) if tolerance is not None else max(4.0, 0.01 * w)
+    stride = max(1, w // 1200)
+    least = max(4, int(0.2 * ((expect["marker_side"] * expect["scale"] * k) / stride) ** 2))
+    found = {}
+    notes = []
+    for key, test in (("a", _is_white), ("b", _is_red)):
+        m = find_marker(rgb, size, test, stride)
+        if m and m[2] >= least:
+            found[key] = [round(m[0], 1), round(m[1], 1)]
+        else:
+            found[key] = None
+            notes.append(f"marker {key} ({TILT_COLOURS[key]}) not found in the render: it is "
+                         "off the frame, or the render is not of the fixture")
+
+    def axis(i):
+        if found["a"] is None or found["b"] is None:
+            return "unclear"
+
+        def holds(table):
+            return all(abs(found[m][i] - table[m][i] * k) <= tol for m in ("a", "b"))
+        flipped = expect["if_pan_flipped"] if i == 0 else expect["if_tilt_flipped"]
+        if holds(expect["expect"]):
+            return "confirmed"
+        if holds(flipped):
+            return "inverted"
+        return "unclear"
+
+    pan, tilt = axis(0), axis(1)
+    for name, verdict in (("Pan", pan), ("Tilt", tilt)):
+        if verdict == "unclear" and found["a"] is not None and found["b"] is not None:
+            notes.append(f"{name}: the markers landed where neither reading puts them; check the "
+                         "Zoom, Pan and Tilt typed into Resolve and that input scaling is "
+                         f"{expect['input_scaling']}")
+    return {"size": [w, h], "tolerance": tol, "found": found,
+            "expected": {m: [round(v * k, 1) for v in expect["expect"][m]] for m in ("a", "b")},
+            "pan": pan, "tilt": tilt, "ok": pan == "confirmed" and tilt == "confirmed",
+            "notes": notes}
+

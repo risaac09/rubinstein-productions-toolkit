@@ -15,7 +15,8 @@ left, plus "px" on the full-resolution upright frame. Flags, per crop:
 import json
 import os
 
-MIN_FACE = 0.04
+from .cluster import MIN_FACE, counted_faces
+
 FACE_PAD = 0.05  # a face must clear the crop edge by this share of its own size
 
 
@@ -30,7 +31,8 @@ def upright_size(row):
 
 
 def counted(row):
-    return [f for f in row.get("faces") or [] if f.get("h", 0) >= MIN_FACE]
+    """The row's subject faces (see cluster.counted_faces)."""
+    return counted_faces(row, MIN_FACE)
 
 
 def _fit(box, aspect, W, H):

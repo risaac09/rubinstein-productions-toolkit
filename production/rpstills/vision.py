@@ -1,11 +1,12 @@
-"""rpstills.vision: faces with capture quality and eye state from macOS
-Vision through vision_stills.swift, compiled once into
-~/Library/Caches/rpstills (keyed by the source's sha256). The helper is
-run over batches of upright proxy images; a face is
+"""rpstills.vision: faces with capture quality and eye state, and whole-body
+person boxes, from macOS Vision through vision_stills.swift, compiled once
+into ~/Library/Caches/rpstills (keyed by the source's sha256). The helper is
+run over batches of upright images; a face is
     {"x", "y", "w", "h", "confidence", "quality", "eye_left", "eye_right",
      "roll", "yaw"}
-with the box normalized from the top left. faces() returns None when the
-helper cannot run, and callers say so."""
+and a person {"x", "y", "w", "h", "confidence"}, boxes normalized from the
+top left. faces() returns None when the helper cannot run, and callers say
+so."""
 
 import hashlib
 import json
@@ -38,7 +39,8 @@ def binary():
 
 
 def faces(images):
-    """{image path: {"width", "height", "faces": [...]}} or None."""
+    """{image path: {"width", "height", "faces": [...], "people": [...]}} or
+    None."""
     exe = binary()
     if not exe:
         return None
@@ -59,5 +61,6 @@ def faces(images):
             except ValueError:
                 continue
             out[doc.get("path")] = {"width": doc.get("width"), "height": doc.get("height"),
-                                    "faces": doc.get("faces") or [], "error": doc.get("error")}
+                                    "faces": doc.get("faces") or [],
+                                    "people": doc.get("people") or [], "error": doc.get("error")}
     return out
