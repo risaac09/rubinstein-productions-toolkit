@@ -20,6 +20,11 @@
 # already inside the folder, is not caught here; the auto-mode classifier
 # and the twin's own privacy-law prose are the layers for that. Fail-open on
 # jq errors: a broken detector must not brick reads.
+#
+# Each deny also appends {ts, session, reason, tool} to
+# ~/.claude/logs/denials.jsonl (hook change zero, 2026-10-14, the same line
+# floors-guard.sh writes), so denials are countable by reason without
+# grepping transcripts. Best effort: a failed write never changes the verdict.
 
 set -u
 
@@ -34,6 +39,13 @@ case "$target" in
   *"$MATCH"*) ;;
   *) exit 0 ;;
 esac
+
+{ mkdir -p "$HOME/.claude/logs" && jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg session "$(printf '%s' "$input" | jq -r '.session_id // empty')" \
+    --arg reason "05_RELATIONS read" \
+    --arg tool "$(printf '%s' "$input" | jq -r '.tool_name // empty')" \
+    '{ts:$ts, session:$session, reason:$reason, tool:$tool}' \
+    >> "$HOME/.claude/logs/denials.jsonl"; } 2>/dev/null || true
 
 jq -nc --arg t "$target" '{
   hookSpecificOutput: {

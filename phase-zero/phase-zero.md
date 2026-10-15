@@ -90,14 +90,14 @@ Centralize the map. Delegate the work.
 ## The merge boundary
 
 Decided 2026-07-16 (stack-data `docs/DECISIONS.md`, "The merge boundary").
-The human gate sits at the public edge of the system, not at merge. Ask of
+The human blocker sits at the public edge of the system, not at merge. Ask of
 any change: does it leave the stack and reach another human? Public-facing
 work (site copy, live apps, public datasets, papers, outreach) opens ready
 and waits for Isaac. Internal work is agent-owned: merge behind green
 validation, green CI, and an adversarial self-review of the diff, then log
 the ripple after the fact. Post-hoc audit replaces pre-approval; Isaac
 samples one internal merge a week. Two things never move under this rule:
-Mercer's outbound send authority (its charter owns that gate) and any
+Mercer's outbound send authority (its charter owns that rule) and any
 locked pre-registration.
 
 ## The bookend: retrospective
