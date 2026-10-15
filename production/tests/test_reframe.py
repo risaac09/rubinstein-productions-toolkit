@@ -72,9 +72,11 @@ class TestTransform(unittest.TestCase):
             self.assertTrue(reframe.fills(TALL, s, (src[0] / 2, src[1] / 2), full(src)))
 
     def test_1x1(self):
-        # 1280x720 into 1080x1080: fit min(0.84375, 1.5) = 0.84375.
+        # 1280x720 into 1080x1080: fit min(0.84375, 1.5) = 0.84375. The picture moves
+        # 135 rows down; Tilt counts against the fitted height (720 * 0.84375 = 607.5
+        # rows of 1080), so it is -135 * 1080 / 607.5.
         self.assertEqual(self.props(HD720, SQUARE, 2.25, (270, 300)),
-                         {"ZoomX": 2.6667, "ZoomY": 2.6667, "Pan": 832.5, "Tilt": -135.0})
+                         {"ZoomX": 2.6667, "ZoomY": 2.6667, "Pan": 832.5, "Tilt": -240.0})
         # Widest filled: 1080/sh, so 1.5, 1.0, 0.5, each a zoom of 16/9.
         for src, want_scale, centre, pan in ((HD720, 1.5, (270, 360), 555.0),
                                               (HD, 1.0, (700, 540), 260.0),
@@ -281,7 +283,7 @@ class TestPlanSpan(unittest.TestCase):
                          (reframe.PASS, "extent", 2.25, 650.0, 540.0))
         self.assertEqual((p["check"]["inside"], p["check"]["total"], p["check"]["worst_px"]),
                          (8, 8, 0.0))
-        self.assertIn("the median centre (x 500) loses the face on 2 of 8", p["reason"])
+        self.assertIn("the median face centre (x 500) loses the face on 2 of 8", p["reason"])
         self.assertEqual([(t["label"], t["centre"]) for t in p["tried"]],
                          [("default", "median"), ("default", "extent")])
         self.assertEqual(p["props"]["Pan"], (960 - 650) * 2.25)
@@ -341,22 +343,29 @@ class TestPlanSpan(unittest.TestCase):
 
     def test_a_crop_that_sets_a_tilt_says_its_sign_is_unconfirmed(self):
         # 1:1 at 2.25 from 1920x1080: a 480-row window, so a face at y 400 moves
-        # the crop off the middle row and Tilt is (400 - 540) * 2.25. A face on
-        # the middle row sets none.
+        # the crop off the middle row by (540 - 400) * 2.25 = 315 rows, a Tilt of
+        # -315 * 1080 / (1080 * 0.5625) = -560. The head rule lifts both: the head top
+        # sits 0.6 face heights above the box, and 0.65 face heights of room are wanted
+        # above it, so a 150 px face needs its box top 187.5 px below the window's top.
+        # Lifted 40 px (face at 400) and 22.5 px (face on the middle row): -650 and -90.
+        # The note shows only while TILT_CONFIRMED is False.
         def span(i, y):
             sp = reframe.plan_span(self.spec([[(700, y, 150, 150)]] * 8, HD), HD, full(HD),
                                    ["1x1"])
             return dict(sp, clip="c", span=i, hand_face_x=None, **{"in": 0, "out": 1})
         report = {"spans": [span(1, 400), span(2, 540)]}
+        patch = mock.patch.object(reframe, "TILT_CONFIRMED", False)
+        patch.start()
+        self.addCleanup(patch.stop)
         report["rows"] = reframe.rows(report)
         report["counts"] = reframe.counts(report["rows"])
         up, level = report["rows"]
-        self.assertEqual((up["status"], up["tilt"], level["tilt"]), (reframe.PASS, -315.0, 0.0))
-        self.assertIn("Tilt -315 assumes Resolve's y axis points up", up["reason"])
-        self.assertNotIn("Tilt", level["reason"])
-        self.assertEqual(report["counts"]["tilt"], 1)
-        self.assertIn("1 set a Tilt, whose sign no render has confirmed", reframe.summary(report))
-        self.assertIn("Tilt -315", reframe.line(up))
+        self.assertEqual((up["status"], up["tilt"], level["tilt"]), (reframe.PASS, -650.0, -90.0))
+        self.assertIn("Tilt -650 assumes Resolve's y axis points up", up["reason"])
+        self.assertIn("Tilt -90 assumes", level["reason"])
+        self.assertEqual(report["counts"]["tilt"], 2)
+        self.assertIn("2 set a Tilt, whose sign no render has confirmed", reframe.summary(report))
+        self.assertIn("tilt -650", reframe.line(up))
 
     def test_manual_when_nothing_fits(self):
         area = (0, 180, 1280, 540)
@@ -527,7 +536,7 @@ class TestPlanManifest(unittest.TestCase):
         with self.assertRaises(reframe.ReframeError):
             reframe.plan(self.m, only=["nope"], reader=FakeReader(), detect=fake_detect)
         with self.assertRaises(reframe.ReframeError):
-            reframe.plan(self.m, aspects=["4x5"], reader=FakeReader(), detect=fake_detect)
+            reframe.plan(self.m, aspects=["3x2"], reader=FakeReader(), detect=fake_detect)
 
     def test_a_span_past_the_source_end_is_read_up_to_it(self):
         # b_30 runs 110..118 s: on a 115 s source its last 3 of 8 samples are past
@@ -631,7 +640,7 @@ class TestMCPTool(unittest.TestCase):
                 tool.handler(schema.with_defaults(tool.input_schema,
                                                   {"manifest": path, "out": path}), ToolContext())
             self.assertTrue(schema.validate(tool.input_schema, {"manifest": path,
-                                                                "aspects": ["4x5"]}))
+                                                                "aspects": ["3x2"]}))
 
 
 FFMPEG = reframe.FFMPEG
