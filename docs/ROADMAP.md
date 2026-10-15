@@ -42,3 +42,44 @@ The blueprint's revenue projections and the instantiation prompt's automated-exp
 ## What not to change
 
 The bash-and-markdown architecture is a feature. It keeps the toolkit runnable in ten years, inspectable by non-programmers, and free of the platform dependencies the methodology itself argues against. The pressure to turn this into a web application will recur; the correct answer remains a better map of the files, which is what the field guide is.
+
+## Amendment 2 (2026-10-15): cross-discipline gap audit
+
+On 2026-10-15 four readers went through the repository at `main` 2e91950: an engineer, an operator, a cinematographer and designer, and a producer and distributor. Each asked what they could not do from here. This section records what they found. Nothing below is fixed yet; each item names the fix and leaves it for its own pull request. The numbers belong to this amendment and restart at 1. Items 1 to 6 of the review above keep their own numbers.
+
+### Engineering
+
+1. **CI runs 13 of 34 test modules.** `.github/workflows/ci.yml` skips 21 modules and 643 tests: lutlab, rpstills, deliver*, detect, ingest, reframe*, relink, sync, trim*, vertcut_flags, captions*, measure and rpresolve_api. They pass locally on `/usr/bin/python3`. `test_resolve_survey` raises `SkipTest` at import, which aborts any batched `unittest` run that lists it. Fix: move that skip to a per-test decorator, then add the 21 modules to CI.
+2. **No dependency manifest.** There is no `pyproject.toml` or `requirements.txt`. numpy, scipy, Pillow, OpenCV and imagehash come from the Python 3.9 that ships with Xcode, while `resolve_survey` needs 3.14. Fix: one file that states each tool's interpreter and packages.
+3. **`tools/video-editor/` is 835 MB of vendored code.** It is third-party (Browser Use, MIT), tracked in git and listed in `.gitignore` at the same time, with lockfiles, a test mp4 and a PNG inside. Fix: decide between a subtree or a submodule pointing at upstream and plain untracking, then do it and keep the clone small.
+4. **The README omits half the repo.** "What's Inside" does not mention lutlab, rpstills, vertcut, `tools/`, `dsh/` or `seed-bed/`, which breaks rule 4 of `public-kit/README-SHAPE.md`. The repo also never promoted the public-kit CONTRIBUTING and SECURITY templates to its own root. Fix: complete the README table and promote both templates.
+5. **Skills live in two places.** `prompts/skills/branded-deck-build.md` and `.agents/skills/branded-deck-build/SKILL.md` are byte-identical copies, as are the two branded-doc-build files. outreach-email-manager and project-management-coordinator exist as both `.skill` bundles and `.md` files. Fix: name one source per skill and generate or delete the other.
+6. **Worktrees and branches have piled up.** 15 worktrees under `.claude/worktrees` and 23 branches remain against the "merged or deleted before wrap" rule. Fix: prune the merged ones and add a count check to session close.
+7. **`cli/rp-draft` is unsafe and not generic.** Line 78 passes `$SUBJECT` into `python -c` inside single quotes, so a quote in the subject breaks the call or injects code. It falls back to no encoding without saying so when `python3` is absent, and it hard-codes one person's signature in a tool the README calls generic. Item 5 above is still open. Fix: pass the subject as an argument or on stdin, fail loudly without `python3`, and read the signature from config.
+8. **No versions.** There are no tags, releases or CHANGELOG, and the Resolve spec carries its own inline "Version 1.7". Kit consumers cannot pin a version. Fix: tag releases, keep a CHANGELOG, and point the spec's version at the repo's.
+
+### Operations
+
+9. **Status headers are still unwritten.** Item 6 above is unexecuted: only `source-tracking-protocol.md` has a status header. `methodology-blueprint.md` line 140 still says no client has completed the camera-shipping journey and names Q2 2026. Fix: add the one-line header to every methodology document and update or cut the dated claim.
+10. **The measurement framework describes a data layer that does not exist.** Section 4 of `measurement-framework.md` specifies an Airtable implementation, while the stack's data spine is JSON files in stack-data. Fix: rewrite section 4 against the real store or mark it as an unbuilt option.
+11. **No instrument ships.** The framework names seven Likert items, NPS at five points and consistency statements, but the repo has no form, scoring sheet or CSV schema, so an evaluator cannot run it from here. Fix: publish the items verbatim with a CSV schema and a worked scoring example.
+12. **Two pipelines coexist.** The `rp-*` Markdown CLI and the stack-data contacts and projects files both track prospects, and the README has called the CLI "a default, not a settled call" since August. Fix: settle it in one decision and state which tool is the record.
+13. **The blueprint's April gaps have no owner.** Camera-shipping logistics (insurance, timelines, backup gear) are listed as still missing and no document has followed. Fix: assign an owner and a target document, or strike the claim.
+
+### Cinematography and design
+
+14. **No capture standard.** `production/filming-guide.md` is a one-day shoot plan dated March 31 that points at a vault footage path, yet the field guide presents it as the filming guide. Frame rate and log profile per camera, audio capture, sync and slate practice, and card naming are written down nowhere. Fix: write a general capture standard and rename or relocate the shoot plan as an example.
+15. **No client-side shooting brief.** For the camera-shipping model, what the client films, how, and what the footage must satisfy does not exist anywhere in `production/`. Fix: write the brief as a client-readable page.
+16. **Three colour pipelines, no canonical statement.** `resolve-template-spec.md` puts conversion LUTs on node 1, `resolve-config.json` sets RCM v2, and lutlab's `rcm` works in DaVinci Intermediate in and out. The spec's Open Questions (which V-Log LUT, the Open Gate crop) remain open. Fix: one table per camera that names the pipeline in force, then close or date the open questions.
+17. **No design tokens for deliverable form.** The Resolve spec names Marrow, Bone and amber without values. There is no lower-third or caption style standard, and vertcut's PNG captions and Resolve's captions diverge. The six lutlab looks have no look book or reference frames. Fix: publish token values, one caption standard, and a reference frame per look.
+
+### Producer and distributor
+
+18. **Consent tiers have no evidence behind them.** The tiers are defined, but no appearance or talent release, location release, or music and font licence register exists, and the case-study template records a tier with nothing that evidences it. Fix: add release templates and a licence register, and make the case-study template link to them.
+19. **"Everything is returned" has no spec.** No return package defines formats, media, manifest or checksums, and the repo has no archive naming or folder standard. Working, final and scraps appear only in the negative-archive ritual. Fix: write the return-package spec and the folder and naming standard.
+20. **The production flow has no approval or delivery gate.** Client final approval exists only as a safeguard in the measurement framework. There is no delivery manifest, no platform spec per destination, and no credits or AI-disclosure standard for produced work. Fix: add the gate and the manifest to the production flow and write the platform and credits standards.
+21. **Footage copyright is unstated.** Nothing says who owns footage the client shoots on RP-shipped cameras. The repo licenses code and methodology but not deliverables. Fix: state ownership and licence for footage and deliverables in one short document, reviewed by counsel before it ships.
+
+### Cross-cutting
+
+22. **No index of truth ownership.** `CLAUDE.md` calls this repo "the public projection, not a data store", so it cannot be the single source of truth. It lacks a one-page index of which repo or note owns each domain: pricing, pipeline, decisions, kit source and the methodology canonicals, with what is exported here. Fix: write that index and link it from the README and the field guide.
