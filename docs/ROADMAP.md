@@ -49,7 +49,7 @@ The bash-and-markdown architecture is a feature. It keeps the toolkit runnable i
 
 ## Amendment 2 (2026-10-15): cross-discipline gap audit
 
-On 2026-10-15 four readers went through the repository at `main` 2e91950: an engineer, an operator, a cinematographer and designer, and a producer and distributor. Each asked what they could not do from here. This section records what they found. Nothing below is fixed yet; each item names the fix and leaves it for its own pull request. The numbers belong to this amendment and restart at 1. Items 1 to 6 of the review above keep their own numbers.
+On 2026-10-15 four readers went through the repository at `main` 2e91950: an engineer, an operator, a cinematographer and designer, and a producer and distributor. Each asked what they could not do from here. This section records what they found. Each item names its fix. Items dated with a status line below were worked on 2026-10-15; the rest are open. The numbers belong to this amendment and restart at 1. Items 1 to 6 of the review above keep their own numbers.
 
 ### Engineering
 
