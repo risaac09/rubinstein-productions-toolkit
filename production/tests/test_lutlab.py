@@ -362,6 +362,54 @@ class DeltaTest(unittest.TestCase):
             self.assertTrue(np.isfinite(cube.read_cube(f)["table"]).all(), f)
 
 
+class RcmTest(unittest.TestCase):
+    """The colour-managed set: DaVinci Intermediate in and out, so Resolve's output transform finishes the job."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        base = self.tmp / "base"
+        base.mkdir()
+        (base / "params.json").write_text(json.dumps(synthetic_params("logc3")))
+        self.base = base / "params.json"
+        self.rng = np.random.default_rng(7)
+
+    def test_target(self):
+        self.assertEqual(spaces.target("RCM"), ("di", "RCM", "di"))
+        self.assertEqual(spaces.target("s5ii"), ("vlog", "S5II", None))
+        with self.assertRaises(ValueError):
+            spaces.camera("rcm")  # port --camera rcm would map a Rec.709 LUT twice
+
+    def test_output_transform_undoes_the_container(self):
+        # what Resolve does after the node, tone and gamut mapping off: DI -> linear -> Rec.709 primaries -> gamma 2.4
+        p = pipeline.load(self.base)
+        cam = pipeline.make_fn(p, "vlog")
+        rcm = pipeline.make_fn(p, "di", out_encoding="di")
+        lin = np.exp(self.rng.uniform(np.log(0.002), np.log(4.0), (400, 3)))
+        lin = np.stack([lin[:, 0], lin[:, 0] * self.rng.uniform(0.5, 1.5, 400), lin[:, 1]], -1)  # colours, not only greys
+        want = np.clip(cam(spaces.from_lin709(lin, "vlog")), 0, 1)
+        seen_by_resolve = spaces.from_lin709(spaces.to_lin709(rcm(spaces.from_lin709(lin, "di")), "di"), "r709")
+        np.testing.assert_allclose(seen_by_resolve, want, atol=1e-6)
+
+    def test_baked_set_matches_the_camera_set(self):
+        d = self.tmp / "delta.json"
+        d.write_text(json.dumps({"name": "warm", "white_balance": {"temp": 20}}))
+        out = pipeline.looks(self.base, [str(d)], ["s5ii", "rcm"], self.tmp, size=65)
+        self.assertEqual([Path(f).name for f in out], ["warm [S5II].cube", "warm [RCM].cube"])
+        cam, rcm = (cube.read_cube(f) for f in out)
+        lin = np.exp(self.rng.uniform(np.log(0.01), np.log(2.0), (500, 3)))
+        want = cube.sample(cam, spaces.from_lin709(lin, "vlog"))
+        got = spaces.from_lin709(spaces.to_lin709(cube.sample(rcm, spaces.from_lin709(lin, "di")), "di"), "r709")
+        de = spaces.delta_e2000(spaces.cielab(spaces.to_lin709(np.clip(want, 0, 1), "r709")),
+                                spaces.cielab(spaces.to_lin709(np.clip(got, 0, 1), "r709")))
+        self.assertLess(float(np.median(de)), 0.5)
+
+    def test_display_codes_stay_in_range(self):
+        rcm = pipeline.make_fn(pipeline.load(self.base), "di", out_encoding="di")
+        out = rcm(cube.lattice(17))
+        white = spaces.from_lin709(np.ones(3), "di")  # display white in DI
+        self.assertTrue((out <= white.max() + 1e-6).all())
+
+
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class VerifyRenderTest(unittest.TestCase):
     @classmethod

@@ -133,6 +133,21 @@ def camera(name):
     return CAMERAS[name.lower()]
 
 
+# A node in a Resolve Color Managed project sees the timeline space (DaVinci Intermediate by default), and
+# Resolve's output transform follows it. A Rec.709-out LUT there would be mapped a second time, so the "rcm"
+# target takes DI in and puts the finished Rec.709 picture back into DI code values. With the output colour
+# space at Rec.709 Gamma 2.4 and tone and gamut mapping off, the output transform undoes that exactly.
+RCM = ("di", "RCM", "di")
+
+
+def target(name):
+    """--camera NAME for `looks`: (input space, file label, output encoding or None for the look's own)."""
+    if name.lower() == "rcm":
+        return RCM
+    space, label = camera(name)
+    return space, label, None
+
+
 def check_space(name):
     if name not in SPACES:
         raise ValueError(f"unknown space {name!r}; known: {', '.join(SPACES)}")

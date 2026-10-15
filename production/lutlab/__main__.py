@@ -5,8 +5,9 @@
   build <params.json> [--delta LOOK.json] [--cube OUT.cube] [--size N] [--in SPACE|--camera C]
         [--no-residual] [--hald OUT.png] [--hald-level L] [--overwrite]
         rebuild a LUT and/or a Hald CLUT from parameters, optionally with a look delta on top
-  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii [--size N] [--out DIR]
-        bake every look delta on the base for every camera: "<look> [<Camera>].cube"
+  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii,rcm [--size N] [--out DIR]
+        bake every look delta on the base for every camera: "<look> [<Camera>].cube"; rcm is DaVinci
+        Intermediate in and out, for a node in a Resolve Color Managed project
   port <lut> --from SPACE (--to SPACE | --camera C) [--size 33] [--ev 0] [--monitor] [--out DIR]
         re-address a LUT made for one log to another (exact; no model)
   diff <a> <b> --in SPACE [--out-space r709]
@@ -63,6 +64,7 @@ def main(argv=None):
     p.add_argument("--size", type=int, default=33)
     p.add_argument("--in", dest="in_space")
     p.add_argument("--camera")
+    p.add_argument("--out-encoding", help="re-encode the finished picture into this space's code values (e.g. di)")
     p.add_argument("--no-residual", action="store_true")
     p.add_argument("--hald")
     p.add_argument("--hald-level", type=int, default=8)
@@ -136,7 +138,7 @@ def main(argv=None):
             if f:
                 guard.check_out_dir(Path(f).expanduser().resolve().parent)
         for f in pipeline.build(a.params, a.cube, a.size, _in_space(ap, a), not a.no_residual, a.hald, a.hald_level,
-                                a.overwrite, a.delta):
+                                a.overwrite, a.delta, a.out_encoding):
             print(f)
     elif a.cmd == "looks":
         out = guard.out_dir(a.out, "looks")

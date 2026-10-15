@@ -18,7 +18,7 @@ cd production
 /usr/bin/python3 -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
 /usr/bin/python3 -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 /usr/bin/python3 -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
-/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii --out DIR
+/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm --out DIR
 /usr/bin/python3 -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
 /usr/bin/python3 -m lutlab diff A.cube B.cube --in vlog
 /usr/bin/python3 -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
@@ -29,7 +29,7 @@ Spaces: `vlog` (V-Log/V-Gamut), `bmdfilm5` (Blackmagic Film Gen 5/Wide Gamut
 Gen 5), `logc3` (LogC3 EI 800/AWG3), `logc4` (LogC4/AWG4), `di` (DaVinci
 Intermediate/DWG), `r709` (gamma 2.4), `srgb`, `lin709`. Output spaces for the
 model: `r709`, `srgb`. Cameras (`--camera`): `s5ii` is V-Log, `pyxis` is BRAW
-decoded as Gen 5. LUT inputs can be `.cube` or Resolve's own `.dat`.
+decoded as Gen 5; `rcm` (for `looks` only) is DaVinci Intermediate in and out. LUT inputs can be `.cube` or Resolve's own `.dat`.
 
 ## Cameras, ports and looks
 
@@ -104,13 +104,36 @@ straight away. `~/DaVinci Resolve/LUT` is in `DEFAULT_LUT_ROOTS` for path
 lookups, but Resolve does not scan it.
 
 **What the node sees.** A camera LUT expects that camera's log on the node.
-In a non-managed project (DaVinci YRGB) it does. Under Resolve Color
-Management the clip is converted to the timeline space first, so set that
-clip's Input Color Space to the timeline's own space; the node then sees the
-camera's code values unchanged. With the output space equal to the timeline
-space and tone and gamut mapping off, the LUT's Rec.709 result passes
-straight through. A V-Log LUT fed Rec.709 (Scene) instead clips everything
-above about +2.5 stops.
+In a non-managed project (DaVinci YRGB) it does, so use the `[S5II]` and
+`[Pyxis]` files there. Under Resolve Color Management the node sees the
+timeline space (DaVinci Intermediate unless you changed it), whatever the
+camera, so use the `[RCM]` set:
+
+```bash
+/usr/bin/python3 -m lutlab looks BASE/params.json --camera rcm --size 65 --out "$LUTLAB_OUT/RP Looks RCM"
+```
+
+An `[RCM]` look reads DaVinci Intermediate and writes the finished Rec.709
+picture back in DaVinci Intermediate code values. Resolve's output transform
+(output colour space Rec.709 Gamma 2.4, tone mapping and gamut mapping set to
+None; confirm both in Project Settings, Color Management, as the maths here is
+checked but not yet against a Resolve render) then turns it into the same Rec.709 the camera
+LUT would have given. One set serves both cameras and anything else Resolve
+can convert, with no per-clip input colour space to set. Measured against the
+camera LUT on natural colours (print-teal on the ARRI base, V-Log): median
+Delta E 0.22 at 33 points and 0.08 at 65, so bake `--size 65`. Leave tone
+mapping off: it would compress the picture a second time. A Rec.709-out
+camera LUT in an RCM project needs the alternative below; do not mix them.
+
+The alternative, with no second set: give each clip an Input Color Space equal
+to the timeline space, so the node sees the camera's code values, and put a
+camera LUT on it. It works, but it is a hand step per clip, it switches off
+the colour management those clips were in the project for, and a V-Log LUT
+fed Rec.709 (Scene) instead clips everything above about +2.5 stops. The
+`[RCM]` set replaces it.
+
+`verify-render` and `apply` read a LUT's output as Rec.709, so they do not
+suit an `[RCM]` file; check the look through the matching camera LUT.
 
 **library** walks Resolve's LUT folders and writes `registry.json`. Each
 entry gets an input-space guess, taken from the part of the name before
