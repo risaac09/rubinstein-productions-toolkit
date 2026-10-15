@@ -16,6 +16,11 @@ in and out are seconds in the source. A span keeps source time [in, out):
 the out-point is where the next frame would start, so a cut covers
 round(out * fps) - round(in * fps) frames.
 
+Footage with no spoken words (a performance, a landscape) has no words to
+check and no approved text. Mark its manifest "speech": false and it needs
+only source_path and clips; reframe_plan reads such a manifest (and nothing
+else does: cut, endcheck and selects refuse it, since they check words).
+
 The words JSON is the one ASR source of truth: end_words and source_text
 are read from it, and endcheck checks every out-point against it.
 
@@ -368,15 +373,22 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def load_manifest(path):
+def load_manifest(path, allow_no_speech=False):
     with open(path, encoding="utf-8") as f:
         m = json.load(f)
-    validate_manifest(m)
+    validate_manifest(m, allow_no_speech=allow_no_speech)
     return m
 
 
-def validate_manifest(m):
-    for key in ("source_path", "source_sha256", "fps", "words", "approved_text", "clips"):
+def validate_manifest(m, allow_no_speech=False):
+    no_speech = m.get("speech") is False
+    if no_speech and not allow_no_speech:
+        raise CutlistError('manifest is marked "speech": false (footage with no spoken words); '
+                           "only reframe_plan reads such a manifest. This tool checks words, so it "
+                           "needs words, approved_text and source_sha256")
+    required = (("source_path", "clips") if no_speech else
+                ("source_path", "source_sha256", "fps", "words", "approved_text", "clips"))
+    for key in required:
         if key not in m:
             raise CutlistError(f"manifest has no '{key}'")
     names = set()

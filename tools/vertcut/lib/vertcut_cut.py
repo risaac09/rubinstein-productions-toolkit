@@ -22,11 +22,30 @@ from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+DEFAULT_LUFS, DEFAULT_TP, DEFAULT_LRA = -16.0, -1.5, 11.0   # the LinkedIn targets; -14 for YouTube and short-form feeds
+X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 
 
 def die(msg):
     sys.stderr.write("vertcut: %s\n" % msg)
     raise SystemExit(1)
+
+
+# ---------------------------------------------------------------- encoding
+
+def loudnorm_filter(lufs=DEFAULT_LUFS, tp=DEFAULT_TP, lra=DEFAULT_LRA):
+    """The ffmpeg loudnorm filter for a loudness target, in LUFS, true peak in dBTP."""
+    if not -30.0 <= lufs <= -5.0:
+        die("--lufs %g is outside -30 .. -5" % lufs)
+    if not -9.0 <= tp <= 0.0:
+        die("--tp %g is outside -9 .. 0" % tp)
+    if not 1.0 <= lra <= 20.0:
+        die("--lra %g is outside 1 .. 20" % lra)
+    return "loudnorm=I=%g:TP=%g:LRA=%g" % (lufs, tp, lra)
+
+
+def video_codec_args(crf, preset):
+    return ["-c:v", "libx264", "-crf", str(crf), "-preset", preset]
 
 
 # ---------------------------------------------------------------- timecodes
@@ -257,6 +276,13 @@ def main():
     ap.add_argument("--max-chars", type=int, default=26)
     ap.add_argument("--gap", type=float, default=0.6, help="silence that breaks a cue")
     ap.add_argument("--crf", type=int, default=20)
+    ap.add_argument("--preset", choices=X264_PRESETS, default="veryfast",
+                    help="x264 preset (slower is smaller at the same quality)")
+    ap.add_argument("--lufs", type=float, default=DEFAULT_LUFS,
+                    help="integrated loudness target (default %g, the LinkedIn level; "
+                         "use -14 for YouTube and short-form feeds)" % DEFAULT_LUFS)
+    ap.add_argument("--tp", type=float, default=DEFAULT_TP, help="true-peak ceiling in dBTP (default %g)" % DEFAULT_TP)
+    ap.add_argument("--lra", type=float, default=DEFAULT_LRA, help="loudness range target (default %g)" % DEFAULT_LRA)
     ap.add_argument("--only", help="comma-separated clip ids to render")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
@@ -266,6 +292,7 @@ def main():
     src_w, src_h, src_fps = probe(args.src)
     has_audio = has_audio_stream(args.src)
     fps = args.fps or src_fps
+    audio_filter = loudnorm_filter(args.lufs, args.tp, args.lra)   # validated before any work
 
     clips = read_manifest(args.manifest, fps)
     if args.only:
@@ -325,11 +352,11 @@ def main():
                    + ["-filter_complex", ";".join(filters),
                       "-map", label] + (["-map", "0:a"] if has_audio else []) + [
                       "-t", "%.3f" % dur,
-                      "-c:v", "libx264", "-crf", str(args.crf), "-preset", "veryfast",
+                      ] + video_codec_args(args.crf, args.preset) + [
                       "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0),
                       "-movflags", "+faststart"]
                    + (["-c:a", "aac", "-b:a", "192k",
-                       "-af", "loudnorm=I=-16:TP=-1.5:LRA=11"] if has_audio else ["-an"])
+                       "-af", audio_filter] if has_audio else ["-an"])
                    + [out])
 
             r = subprocess.run(cmd)
