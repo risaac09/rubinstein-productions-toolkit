@@ -1,0 +1,9 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Print Teal",
+ "description": "Print-style contrast with a teal and orange split: greens pushed toward teal, skin and warm tones forward, a slightly lifted black.",
+ "tone": {"contrast": 1.08, "black": 0.012},
+ "hue_shift": {"all": {"150 green": 12, "120 yellow": 4, "180 teal": 5}},
+ "sat_gain": {"all": {"180 teal": 1.1, "210 cyan": 1.08, "060 orange": 1.06, "150 green": 0.85}},
+ "split_tone": {"L=0.25": {"hue": 205, "amount": 1.4}, "L=0.70": {"hue": 60, "amount": 0.7}, "L=0.85": {"hue": 70, "amount": 0.9}}
+}

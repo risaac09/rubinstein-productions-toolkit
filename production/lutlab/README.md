@@ -18,11 +18,99 @@ cd production
 /usr/bin/python3 -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
 /usr/bin/python3 -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 /usr/bin/python3 -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
+/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii --out DIR
+/usr/bin/python3 -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
+/usr/bin/python3 -m lutlab diff A.cube B.cube --in vlog
+/usr/bin/python3 -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
+/usr/bin/python3 -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
 ```
 
-Spaces: `vlog` (V-Log/V-Gamut), `logc3` (LogC3 EI 800/AWG3), `di` (DaVinci
+Spaces: `vlog` (V-Log/V-Gamut), `bmdfilm5` (Blackmagic Film Gen 5/Wide Gamut
+Gen 5), `logc3` (LogC3 EI 800/AWG3), `logc4` (LogC4/AWG4), `di` (DaVinci
 Intermediate/DWG), `r709` (gamma 2.4), `srgb`, `lin709`. Output spaces for the
-model: `r709`, `srgb`.
+model: `r709`, `srgb`. Cameras (`--camera`): `s5ii` is V-Log, `pyxis` is BRAW
+decoded as Gen 5. LUT inputs can be `.cube` or Resolve's own `.dat`.
+
+## Cameras, ports and looks
+
+**One LUT, both cameras.** A LUT only knows the code values it expects, not
+the camera. `port` builds a lattice in the target camera's log, sends every
+node through scene linear into the log the LUT was made for, and samples the
+LUT there. There's no model and no fit, so inside the source's domain it is
+the same LUT, re-addressed. It prints the share of natural scene colours the
+source LUT never saw, which are clamped at its edge. Use `--size 65`: putting
+a LUT onto a new lattice softens hard clips slightly, and 65 points keeps
+that under the noise (V-Log to Gen 5 and back: median Delta E 0.12 on a
+real 65-point LUT). `--monitor` adds a 33-point copy clipped to 0..1 for the
+camera itself; the Pyxis loads 33-point `.cube`. For the S5II's Real Time LUT,
+check the accepted format on the body before relying on it. Check a bought
+pack's license before porting it to a camera it wasn't sold for, and keep
+the ports local.
+
+**Looks as a base plus a delta.** `build BASE/params.json --delta LOOK.json`
+layers a look on a decomposed base, and `looks` does every delta for every
+camera at once, writing `<look> [<Camera>].cube`. The deltas ship in
+`production/lutlab-looks/`, our own numbers:
+
+| Delta | What it does |
+|---|---|
+| `neutral` | the base unchanged |
+| `tungsten` | white balance +28 mireds, golden highlights, a little teal in the deepest shadows |
+| `ice-blue` | white balance -24 mireds, blue-cyan shadows, saturation down, skin held |
+| `print-teal` | print contrast, greens to teal, teal and orange split, black lifted slightly |
+| `soft-print` | low contrast and saturation, open shadows, long soft shoulder |
+| `bleach` | saturation to about 60%, harder contrast, steel shadows |
+
+Delta arithmetic (`model.apply_delta`):
+- **Added:** tone `black`/`white`/`mid`/`toe_start`/`shoulder_start`; `hue_lum`; `hue_shift`; `split_tone` (as OKLab vectors); `white_balance`.
+- **Multiplied:** tone `contrast` and strengths; `sat_gain`; `sat_rolloff`.
+- `sat_gain` and `hue_shift` take a number, `{band: number}`, `{"all": {hue: number}}` or `{band: {hue: number}}`.
+- The base's residual stays under the look.
+
+`white_balance` is a new optional stage in scene linear before the curve:
+`temp` in mireds (+ warmer), `tint` in thousandths of CIE 1960 v
+(+ magenta), via Bradford adaptation along the daylight locus. At zero it is
+the identity.
+
+**The ARRI base, without buying anything.** Resolve ships ARRI's LogC3 to
+Rec.709 transform as `Arri/Arri Alexa LogC to Rec709.dat`, and lutlab reads it
+directly:
+
+```bash
+/usr/bin/python3 -m lutlab decompose "$HOME/DaVinci Resolve/LUT/Arri/Arri Alexa LogC to Rec709.dat" \
+  --in logc3 --out "$LUTLAB_OUT/arri-base" --name arri-logc3-709
+/usr/bin/python3 -m lutlab looks "$LUTLAB_OUT/arri-base/params.json" --camera pyxis,s5ii --out "$LUTLAB_OUT/looks"
+```
+
+The decomposition fits that LUT to a median Delta E 0.5 before the residual
+(exact after it). ARRI's LogC4 LUTs work the same way with `--in logc4`. The
+base carries ARRI's values, so it stays local; the guard refuses a repository.
+
+**Buying a pack.** Build the looks first and grade a test shot from each
+camera. If a commercial pack still earns its price, buy it for one camera
+and `port` it to the other. `diff` gives the distance between your look and
+theirs, and between a port and its source.
+
+**Where to point `LUTLAB_OUT`.** `~/DaVinci Resolve/LUT/lutlab` is outside
+git and iCloud and inside one of Resolve's LUT roots. Baked looks then show
+in Resolve's LUT browser after a refresh, and the Resolve MCP `apply_grade`
+can put them on `[auto]` timelines.
+
+**library** walks Resolve's LUT folders and writes `registry.json`. Each
+entry gets an input-space guess, taken from the part of the name before
+" to " and then the nearest folder (a conversion such as "GH5 Cine-D to VLog"
+expects Cine-D, so its guess is `unknown`). Byte-identical copies are grouped.
+It never moves or deletes anything. Hand fixes go in
+`library-overrides.json` beside the registry, keyed by sha256:
+`{"<sha256>": {"space": "vlog", "note": "..."}}`.
+
+**apply** previews before anything reaches Resolve: each frame through each
+LUT, plus `contact.jpg`, or one LUT over a clip as H.264 through ffmpeg's
+`lut3d`. ffmpeg can't read BRAW, so export the Pyxis still from Resolve
+first (Gen 5, or DaVinci Intermediate with a DI-input LUT).
+
+For video, lutlab replaces the darktable skill's `generate_lut.py`, which
+stays for stills presets.
 
 ## Where output goes
 
@@ -127,5 +215,10 @@ strength; grain as size, amplitude by luma, and chroma amount.
 - `rawtherapee-cli` 5.12 crashed on start (SIGTRAP, even for `-v`) on
   2026-10-15, so the Hald export was checked numerically against the cube,
   not yet inside RawTherapee or darktable.
+
+- `white_balance` reaches only from 4000 K to 25000 K on the daylight
+  locus (about +96 mireds warm at most), which is plenty for a look but not
+  for correcting a tungsten-lit shot. Correct white balance in Resolve
+  first.
 
 Tests: `/usr/bin/python3 production/tests/test_lutlab.py` (synthetic LUTs only).

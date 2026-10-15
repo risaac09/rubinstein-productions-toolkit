@@ -2,7 +2,9 @@
 
 Order of operations, input code values to output code values:
   1. decode the input space to scene linear, Rec.709 primaries; exposure is
-     e = log2(linear / 0.18), stops from mid grey.
+     e = log2(linear / 0.18), stops from mid grey. white_balance (optional)
+     adapts the scene here, before the curve: temp in mireds (+ warmer),
+     tint in thousandths of CIE 1960 v (+ magenta).
   2. tone: the same filmic curve on each channel, stops -> output code value.
   3. colour, in OKLab on the tone-mapped result:
        hue_lum      lightness change by hue, in L points (x100) at chroma 0.10
@@ -159,6 +161,50 @@ def exposure(lin):
 TONE_MODES = ("per_channel", "luminance", "max_rgb")
 
 
+# --- white balance -----------------------------------------------------------
+
+_BRADFORD = np.array([[0.8951, 0.2664, -0.1614], [-0.7502, 1.7135, 0.0367], [0.0389, -0.0685, 1.0296]])
+D65_MIRED = 1e6 / 6504.0
+
+
+def daylight_xy(cct):
+    """CIE daylight locus chromaticity, valid 4000 K to 25000 K (clamped)."""
+    t = float(np.clip(cct, 4000.0, 25000.0))
+    if t <= 7000:
+        x = -4.6070e9 / t ** 3 + 2.9678e6 / t ** 2 + 0.09911e3 / t + 0.244063
+    else:
+        x = -2.0064e9 / t ** 3 + 1.9018e6 / t ** 2 + 0.24748e3 / t + 0.237040
+    return x, -3.0 * x * x + 2.870 * x - 0.275
+
+
+def _xy_to_xyz(x, y):
+    return np.array([x / y, 1.0, (1 - x - y) / y])
+
+
+def white_balance_matrix(temp=0.0, tint=0.0):
+    """Linear Rec.709 -> linear Rec.709 adaptation that renders a D65 neutral as
+    the colour of a white `temp` mireds warmer and `tint` (x 0.001 v') more
+    magenta. Both 0 is exactly the identity."""
+    if not temp and not tint:
+        return np.eye(3)
+    src = _xy_to_xyz(*daylight_xy(1e6 / D65_MIRED))
+    x, y = daylight_xy(1e6 / (D65_MIRED + temp))
+    u, v = 4 * x / (-2 * x + 12 * y + 3), 6 * y / (-2 * x + 12 * y + 3)  # xy -> CIE 1960 uv
+    v -= tint / 1000.0
+    d = 2 * u - 8 * v + 4
+    dst = _xy_to_xyz(3 * u / d, 2 * v / d)
+    lms = _BRADFORD @ dst / (_BRADFORD @ src)
+    m = np.linalg.inv(_BRADFORD) @ np.diag(lms) @ _BRADFORD
+    x709 = spaces.XYZ["709"]
+    return np.linalg.inv(x709) @ m @ x709
+
+
+def white_balance(lin, wb):
+    if not wb or not (wb.get("temp") or wb.get("tint")):
+        return lin
+    return np.einsum("ij,...j->...i", white_balance_matrix(wb.get("temp", 0.0), wb.get("tint", 0.0)), lin)
+
+
 def base(p, codes, in_space=None):
     """Input codes -> tone-mapped output codes (no colour stage).
 
@@ -167,7 +213,7 @@ def base(p, codes, in_space=None):
     is steep. luminance / max_rgb: the curve maps that one norm and the
     channels keep their scene ratios, so hue and scene saturation survive the
     curve and every colour change is left to the colour stage."""
-    lin = spaces.to_lin709(codes, in_space or p["in"])
+    lin = white_balance(spaces.to_lin709(codes, in_space or p["in"]), p.get("white_balance"))
     mode = p["tone"].get("mode", "per_channel")
     if mode == "per_channel":
         return tone_curve(exposure(lin), p["tone"])
@@ -216,3 +262,87 @@ def evaluate(p, codes, in_space=None, stage="full"):
         return b
     lab = colour(p, spaces.oklab(spaces.to_lin709(b, p["out"])), stage)
     return spaces.from_lin709(spaces.oklab_to_lin709(lab), p["out"])
+
+
+# --- looks as deltas on a base -----------------------------------------------
+
+TONE_ADD = ("black", "white", "mid", "toe_start", "shoulder_start")
+TONE_MUL = ("contrast", "toe_strength", "shoulder_strength")
+
+
+def _grid(v):
+    """A delta's band x hue entry: a number (every band and hue), {band: number},
+    or {band: {hue: number}}. Returns {band: {hue: number or None}}."""
+    out = {b: {h: None for h in HUES} for b in BANDS}
+    if isinstance(v, (int, float)):
+        return {b: {h: float(v) for h in HUES} for b in BANDS}
+    for b, row in v.items():
+        bands = BANDS if b == "all" else [b]
+        for bb in bands:
+            if bb not in out:
+                raise ValueError(f"unknown band {b!r}; known: all, {', '.join(BANDS)}")
+            if isinstance(row, (int, float)):
+                out[bb] = {h: float(row) for h in HUES}
+            else:
+                for h, x in row.items():
+                    if h not in out[bb]:
+                        raise ValueError(f"unknown hue knot {h!r}; known: {', '.join(HUES)}")
+                    out[bb][h] = float(x)
+    return out
+
+
+DELTA_KEYS = {"lutlab_delta", "name", "description", "white_balance", "tone", "hue_lum", "sat_gain",
+              "sat_rolloff", "hue_shift", "split_tone"}
+
+
+def apply_delta(p, d):
+    """A look (params) plus a delta -> a new look. Additive: tone black, white,
+    mid, toe_start, shoulder_start; hue_lum; hue_shift; split_tone (as OKLab
+    vectors); white_balance temp and tint. Multiplicative: tone contrast and
+    strengths; sat_gain; sat_rolloff. tone.mode replaces. An empty delta is
+    the identity. The base's residual is kept: it is the detail of the base
+    the numbers miss, and stays under the look."""
+    unknown = set(d) - DELTA_KEYS
+    if unknown:
+        raise ValueError(f"unknown delta keys: {', '.join(sorted(unknown))}")
+    p = copy.deepcopy(p)
+    wb = dict(p.get("white_balance") or {})
+    for k in ("temp", "tint"):
+        wb[k] = round(wb.get(k, 0.0) + float(d.get("white_balance", {}).get(k, 0.0)), 4)
+    if wb["temp"] or wb["tint"]:
+        p["white_balance"] = wb
+    for k, v in d.get("tone", {}).items():
+        if k in TONE_ADD:
+            p["tone"][k] = round(p["tone"][k] + v, 6)
+        elif k in TONE_MUL:
+            p["tone"][k] = round(p["tone"][k] * v, 6)
+        elif k == "mode":
+            if v not in TONE_MODES:
+                raise ValueError(f"tone.mode must be one of {TONE_MODES}")
+            p["tone"]["mode"] = v
+        else:
+            raise ValueError(f"unknown tone key {k!r}")
+    for h, v in d.get("hue_lum", {}).items():
+        if h not in p["hue_lum"]:
+            raise ValueError(f"unknown hue knot {h!r}; known: {', '.join(HUES)}")
+        p["hue_lum"][h] += float(v)
+    for key, op in (("hue_shift", lambda a, b: a + b), ("sat_gain", lambda a, b: a * b)):
+        if key in d:
+            for b, row in _grid(d[key]).items():
+                for h, v in row.items():
+                    if v is not None:
+                        p[key][b][h] = round(op(p[key][b][h], v), 6)
+    for c, v in d.get("sat_rolloff", {}).items():
+        if c not in p["sat_rolloff"]:
+            raise ValueError(f"unknown sat_rolloff knot {c!r}; known: {', '.join(p['sat_rolloff'])}")
+        p["sat_rolloff"][c] = round(p["sat_rolloff"][c] * v, 6)
+    for lk, sv in d.get("split_tone", {}).items():
+        if lk not in p["split_tone"]:
+            raise ValueError(f"unknown split_tone level {lk!r}; known: {', '.join(p['split_tone'])}")
+        cur = p["split_tone"][lk]
+        vec = (cur["amount"] * np.cos(np.radians(cur["hue"])) + sv["amount"] * np.cos(np.radians(sv["hue"])),
+               cur["amount"] * np.sin(np.radians(cur["hue"])) + sv["amount"] * np.sin(np.radians(sv["hue"])))
+        p["split_tone"][lk] = {"hue": round(float(np.degrees(np.arctan2(vec[1], vec[0])) % 360), 3),
+                               "amount": round(float(np.hypot(*vec)), 4)}
+    p["look"] = d.get("name") or p.get("look")
+    return p

@@ -108,9 +108,12 @@ def decompose(path, in_space, out, outdir, name=None, overwrite=False):
     return p
 
 
-def load(params_path):
+def load(params_path, delta=None):
+    """A look's params.json, optionally with a delta file layered on (model.apply_delta)."""
     p = json.loads(Path(params_path).read_text())
     p["_dir"] = str(Path(params_path).resolve().parent)
+    if delta:
+        p = model.apply_delta(p, json.loads(Path(delta).read_text()))
     return p
 
 
@@ -135,8 +138,9 @@ def make_fn(p, in_space=None, residual=True):
     return fn
 
 
-def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False):
-    p = load(params_path)
+def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False,
+          delta=None):
+    p = load(params_path, delta)
     fn = make_fn(p, in_space, residual)
     same = (in_space or p["in"]) == p["in"]
     src = p.get("source", {})
@@ -149,4 +153,16 @@ def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hal
         written.append(cube.write_cube(str(out_cube), fn(X), title, dmin, dmax, overwrite=overwrite))
     if hald:
         written.append(cube.write_hald(str(hald), fn, hald_level, overwrite=overwrite))  # Hald inputs are 0..1 codes
+    return written
+
+
+def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False):
+    """Bake every delta on the base for every camera: <outdir>/<look> [<Camera>].cube."""
+    written = []
+    for d in deltas:
+        name = json.loads(Path(d).read_text()).get("name") or Path(d).stem
+        for cam in cameras:
+            space, label = spaces.camera(cam)
+            out = Path(outdir) / f"{name} [{label}].cube"
+            written += build(base_params, str(out), size, space, True, overwrite=overwrite, delta=d)
     return written

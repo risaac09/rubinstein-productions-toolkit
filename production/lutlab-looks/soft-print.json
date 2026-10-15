@@ -1,0 +1,9 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Soft Print",
+ "description": "A low-contrast, low-saturation stock feel: open shadows, a long soft shoulder, greens cooled toward cyan.",
+ "tone": {"contrast": 0.9, "black": 0.02, "white": -0.02, "toe_strength": 0.3, "shoulder_strength": 0.04},
+ "sat_gain": {"all": 0.82, "mids": {"060 orange": 1.08}},
+ "hue_shift": {"all": {"150 green": 8, "120 yellow": 3}},
+ "split_tone": {"L=0.25": {"hue": 190, "amount": 0.8}}
+}

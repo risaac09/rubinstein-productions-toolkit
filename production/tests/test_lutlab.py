@@ -238,5 +238,148 @@ class GuardTest(unittest.TestCase):
         self.assertTrue(d.is_dir())
 
 
+class CameraSpacesTest(unittest.TestCase):
+    def test_published_mid_grey(self):
+        # 18% grey code values from the vendors' documents
+        for name, want in (("logc3", 0.3910), ("logc4", 0.2784), ("bmdfilm5", 0.3836), ("vlog", 0.4233)):
+            enc = spaces.SPACES[name][1]
+            self.assertAlmostEqual(float(enc(np.array(0.18))), want, places=3, msg=name)
+
+    def test_continuous_at_the_cut(self):
+        for enc, cut in ((spaces.bmdfilm5_encode, 0.005), (spaces.logc4_encode, spaces._C4T)):
+            a, b = enc(np.array([cut - 1e-9, cut]))
+            self.assertAlmostEqual(float(a), float(b), places=6)
+
+    def test_cameras(self):
+        self.assertEqual(spaces.camera("Pyxis"), ("bmdfilm5", "Pyxis"))
+        self.assertEqual(spaces.camera("s5ii")[0], "vlog")
+        with self.assertRaises(ValueError):
+            spaces.camera("fx3")
+
+
+class DatTest(unittest.TestCase):
+    def test_resolve_dat_is_blue_fastest(self):
+        tmp = Path(tempfile.mkdtemp())
+        rows = ["3DLUTSIZE 2", ""] + [f"{r} {g} {b}" for r in (0, 1) for g in (0, 1) for b in (0, 1)]
+        (tmp / "x.dat").write_text("\n".join(rows) + "\n")
+        lut = cube.read_cube(str(tmp / "x.dat"))
+        np.testing.assert_allclose(lut["table"][1, 0, 0], [1, 0, 0])
+        np.testing.assert_allclose(lut["table"][0, 0, 1], [0, 0, 1])
+
+
+def look_lut(in_space, size=33):
+    """A synthetic camera LUT: the synthetic look, read from in_space."""
+    p = synthetic_params()
+    X = cube.lattice(size)
+    return {"table": np.clip(model.evaluate(p, X, in_space), 0, 1), "domain_min": np.zeros(3),
+            "domain_max": np.ones(3), "title": "synthetic"}
+
+
+class PortTest(unittest.TestCase):
+    def test_port_to_own_space_is_identity(self):
+        from lutlab import port
+        lut = look_lut("vlog")
+        t, share = port.port_table(lut, "vlog", "vlog", 33)
+        np.testing.assert_allclose(t, lut["table"], atol=1e-9)
+        self.assertEqual(share, 0.0)
+
+    def test_port_equals_composition(self):
+        from lutlab import port
+        lut = look_lut("vlog", 65)
+        t, _ = port.port_table(lut, "vlog", "bmdfilm5", 65)
+        ported = {"table": t, "domain_min": np.zeros(3), "domain_max": np.ones(3)}
+        x = pipeline.natural_samples(ported, "bmdfilm5")
+        want = cube.sample(lut, spaces.from_lin709(spaces.to_lin709(x, "bmdfilm5"), "vlog"))
+        d = np.abs(cube.sample(ported, x) - want).max(-1)
+        # re-sampling onto a new lattice softens hard clips a little; the bulk is exact
+        self.assertLess(np.median(d), 0.003)
+        self.assertLess(np.percentile(d, 99), 0.05)
+
+    def test_round_trip_and_diff(self):
+        from lutlab import port
+        lut = look_lut("vlog", 65)
+        there, _ = port.port_table(lut, "vlog", "bmdfilm5", 65)
+        back, _ = port.port_table({"table": there, "domain_min": np.zeros(3), "domain_max": np.ones(3)},
+                                  "bmdfilm5", "vlog", 65)
+        d = port.diff(lut, {"table": back, "domain_min": np.zeros(3), "domain_max": np.ones(3)}, "vlog")
+        self.assertLess(d["all"]["median"], 0.3)
+        self.assertEqual(port.diff(lut, lut, "vlog")["all"]["max"], 0.0)
+
+    def test_exposure_offset(self):
+        from lutlab import port
+        lut = look_lut("vlog")
+        t0, _ = port.port_table(lut, "vlog", "vlog", 33, 0.0)
+        t1, _ = port.port_table(lut, "vlog", "vlog", 33, 1.0)
+        self.assertGreater(t1[16, 16, 16].mean(), t0[16, 16, 16].mean())
+
+
+class DeltaTest(unittest.TestCase):
+    def test_empty_delta_and_zero_white_balance_are_identity(self):
+        p = synthetic_params("vlog")
+        x = np.random.default_rng(5).uniform(0.1, 0.8, (200, 3))
+        q = model.apply_delta(p, {"lutlab_delta": 1, "white_balance": {"temp": 0, "tint": 0}})
+        np.testing.assert_allclose(model.evaluate(q, x), model.evaluate(p, x), atol=1e-12)
+        np.testing.assert_allclose(model.white_balance_matrix(0, 0), np.eye(3))
+
+    def test_warm_is_warm(self):
+        g = model.white_balance_matrix(30, 0) @ np.full(3, 0.18)
+        self.assertGreater(g[0], g[2])
+        g = model.white_balance_matrix(-30, 0) @ np.full(3, 0.18)
+        self.assertLess(g[0], g[2])
+
+    def test_delta_arithmetic(self):
+        p = synthetic_params()
+        d = {"tone": {"contrast": 1.1, "mid": 0.01}, "sat_gain": {"all": 0.5, "mids": {"060 orange": 2.0}},
+             "hue_shift": {"shadows": 3}, "split_tone": {"L=0.25": {"hue": 220.0, "amount": 1.5}}}
+        q = model.apply_delta(p, d)
+        self.assertAlmostEqual(q["tone"]["contrast"], p["tone"]["contrast"] * 1.1)
+        self.assertAlmostEqual(q["tone"]["mid"], p["tone"]["mid"] + 0.01)
+        self.assertAlmostEqual(q["sat_gain"]["mids"]["060 orange"], p["sat_gain"]["mids"]["060 orange"] * 2.0)
+        self.assertAlmostEqual(q["sat_gain"]["shadows"]["030 red"], p["sat_gain"]["shadows"]["030 red"] * 0.5)
+        self.assertAlmostEqual(q["hue_shift"]["shadows"]["060 orange"], p["hue_shift"]["shadows"]["060 orange"] + 3)
+        self.assertAlmostEqual(q["split_tone"]["L=0.25"]["amount"], 3.0, places=3)  # same hue: amounts add
+
+    def test_bad_delta_refused(self):
+        p = synthetic_params()
+        for d in ({"sat": 1}, {"tone": {"gamma": 2}}, {"tone": {"mode": "lum"}}, {"sat_gain": {"lows": 1}},
+                  {"hue_shift": {"all": {"999 x": 1}}}, {"hue_lum": {"orange": 2}}, {"sat_rolloff": {"C=9": 1}}):
+            with self.assertRaises(ValueError, msg=d):
+                model.apply_delta(p, d)
+
+    def test_shipped_looks_load_and_bake(self):
+        looks = Path(__file__).resolve().parent.parent / "lutlab-looks"
+        tmp = Path(tempfile.mkdtemp())
+        base = tmp / "base"
+        base.mkdir()
+        (base / "params.json").write_text(json.dumps(synthetic_params("logc3")))
+        files = sorted(looks.glob("*.json"))
+        self.assertGreaterEqual(len(files), 6)
+        out = pipeline.looks(base / "params.json", [str(f) for f in files], ["pyxis", "s5ii"], tmp, size=9)
+        self.assertEqual(len(out), 2 * len(files))
+        for f in out:
+            self.assertTrue(np.isfinite(cube.read_cube(f)["table"]).all(), f)
+
+
+class LibraryTest(unittest.TestCase):
+    def test_scan_guess_and_copies(self):
+        from lutlab import library
+        root = Path(tempfile.mkdtemp())
+        (root / "Panasonic").mkdir()
+        lut = cube.cube_text(cube.lattice(2))
+        (root / "Panasonic" / "V-Log to V-709.cube").write_text(lut)
+        (root / "Look.CUBE").write_text(lut)
+        (root / "Look.CUBE 2").write_text(lut)
+        (root / "GH5 Cine-D to VLog.cube").write_text(cube.cube_text(cube.lattice(3)))
+        (root / "shaper.cube").write_text("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n")
+        (root / "notes.txt").write_text("x")
+        e = {x["rel"]: x for x in library.scan([str(root)])}
+        self.assertEqual(set(e), {"Panasonic/V-Log to V-709.cube", "Look.CUBE", "Look.CUBE 2", "GH5 Cine-D to VLog.cube"})
+        self.assertEqual(e["Panasonic/V-Log to V-709.cube"]["space"], "vlog")
+        self.assertEqual(e["GH5 Cine-D to VLog.cube"]["guess"], "unknown")  # the input is Cine-D, not V-Log
+        self.assertEqual(len(library.duplicate_groups(list(e.values()))), 1)  # three identical files, one group
+        o = library.scan([str(root)], {e["Look.CUBE"]["sha256"]: {"space": "r709", "note": "creative"}})
+        self.assertTrue(all(x["space"] == "r709" for x in o if x["name"].startswith("Look")))
+
+
 if __name__ == "__main__":
     unittest.main()
