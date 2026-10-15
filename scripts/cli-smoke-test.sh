@@ -50,9 +50,10 @@ check "rp-followup runs" "$CLI/rp-followup"
 # launching a browser; the signature comes from a file, not from the script.
 SIG="$(mktemp)"; printf 'Test Sender\nTest Studio\n' > "$SIG"
 SUBJ="O'Brien \"grant\" & co / 100%"
+drc=0
 DRAFT_OUT="$(printf '%s\nLine one & two\nLine three\nEND\n' "$SUBJ" \
-  | RP_NO_OPEN=1 RP_SIGNATURE_FILE="$SIG" "$CLI/rp-draft" acme-org 2>&1)"
-check "rp-draft exits 0 with a hostile subject" test -n "$DRAFT_OUT"
+  | RP_NO_OPEN=1 RP_SIGNATURE_FILE="$SIG" "$CLI/rp-draft" acme-org 2>&1)" || drc=$?
+check "rp-draft exits 0 with a hostile subject" test "$drc" -eq 0
 check "draft URL has the encoded subject" grep -qF 'su=O%27Brien%20%22grant%22%20%26%20co%20%2F%20100%25&' <<<"$DRAFT_OUT"
 check "draft URL has the encoded body" grep -qF 'body=Line%20one%20%26%20two%0ALine%20three%0A' <<<"$DRAFT_OUT"
 check "signature read from config" grep -qF 'Test%20Sender%0ATest%20Studio' <<<"$DRAFT_OUT"

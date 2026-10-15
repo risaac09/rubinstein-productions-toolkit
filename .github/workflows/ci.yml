@@ -170,14 +170,16 @@ jobs:
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
 
-  # The full production suite: all 34 modules, on the same Python 3.9 the Mac
+  # The full production suite: every module in production/tests, on the same Python 3.9 the Mac
   # ships with Xcode, with the image and numeric packages that lutlab, rpstills,
   # measure, sync, trim review and vertcut import (requirements.txt). The job
   # above stays stdlib-only on purpose, so a stdlib regression still fails
   # there. Without the packages 85 tests skip themselves and three modules
   # fail to import, which is why the install is not optional here. The last
-  # step fails on any skip that is not the known zstd one, so a missing
-  # package cannot turn the suite quietly green again.
+  # step fails on any skip that names a missing Python package, so a missing
+  # package cannot turn the suite quietly green again. Skips for macOS-only
+  # pieces (swiftc, the Vision helper, the 3.14 survey interpreter) are
+  # expected on Linux and are only counted.
   production-unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -191,17 +193,20 @@ jobs:
         run: ffmpeg -version | head -1
       - name: All production test modules
         run: |
-          set -eu
+          set -euo pipefail
+          # The tools default to Homebrew paths; point them at the runner's.
+          export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)"
           mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
           python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
-      - name: No skips except the Python 3.14 zstd ones
+      - name: No skips for a missing package
         run: |
           set -eu
-          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -v "compression.zstd"; then
-            echo "a test skipped for a reason other than compression.zstd; a package or tool is missing" >&2
+          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -iE "numpy|pillow|PIL|opencv|cv2|scipy|imagehash|ffmpeg|ffprobe"; then
+            echo "a test skipped because a package or ffmpeg is missing" >&2
             exit 1
           fi
-          echo "skips: only compression.zstd (run on 3.14 below)"
+          echo "skips for packages and ffmpeg: none. Other skips:"
+          grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
 
   # resolve_survey decodes zstd with compression.zstd, new in Python 3.14, so
   # its 24 zstd-bound tests only run here. Stdlib only, no packages.
@@ -214,7 +219,7 @@ jobs:
           python-version: "3.14"
       - name: resolve_survey, every test
         run: |
-          set -eu
+          set -euo pipefail
           python -m unittest -v production.tests.test_resolve_survey 2>&1 | tee "$RUNNER_TEMP/survey.log"
           if grep -qE "skipped '|skipped=" "$RUNNER_TEMP/survey.log"; then
             echo "resolve_survey skipped tests on 3.14" >&2; exit 1
