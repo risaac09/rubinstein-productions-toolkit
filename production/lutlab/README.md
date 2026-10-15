@@ -120,12 +120,16 @@ camera, so use the `[RCM]` set:
 An `[RCM]` look reads DaVinci Intermediate and writes the finished Rec.709
 picture back in DaVinci Intermediate code values. Resolve's output transform
 (output colour space Rec.709 Gamma 2.4, tone mapping and gamut mapping set to
-None; confirm both in Project Settings, Color Management, as the maths here is
-checked but not yet against a Resolve render) then turns it into the same Rec.709 the camera
-LUT would have given. One set serves both cameras and anything else Resolve
+None; confirm both in Project Settings, Color Management) then turns it into
+the same Rec.709 the camera LUT would have given. One set serves both cameras and anything else Resolve
 can convert, with no per-clip input colour space to set. Measured against the
 camera LUT on natural colours (print-teal on the ARRI base, V-Log): median
-Delta E 0.22 at 33 points and 0.08 at 65, so bake `--size 65`. Leave tone
+Delta E 0.22 at 33 points and 0.08 at 65, so bake `--size 65`. Resolve render check (S5II V-Log clip, RCM Print Teal, a project whose output
+space was DaVinci Intermediate, `verify-render --out-space di`): the render
+matches lutlab's model at median Delta E 0.43 (p95 1.4), and against the
+camera look through Resolve's own V-Log input transform at 0.93 (p95 3.0),
+the same ballpark as the camera-LUT renders (0.7 to 0.9). The Rec.709 output
+transform itself was not in that test. Leave tone
 mapping off: it would compress the picture a second time. A Rec.709-out
 camera LUT in an RCM project needs the alternative below; do not mix them.
 
