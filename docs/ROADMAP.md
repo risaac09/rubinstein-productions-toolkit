@@ -99,3 +99,5 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 ### Cross-cutting
 
 22. **No index of truth ownership.** `CLAUDE.md` calls this repo "the public projection, not a data store", so it cannot be the single source of truth. It lacks a one-page index of which repo or note owns each domain: pricing, pipeline, decisions, kit source and the methodology canonicals, with what is exported here. Fix: write that index and link it from the README and the field guide.
+
+   **Status: executed 2026-10-15.** [`docs/TRUTH-OWNERSHIP.md`](TRUTH-OWNERSHIP.md) is one page: a table of who owns pricing, positioning, pipeline, decisions, kit source, methodology, skills and tooling, which methodology files the corpus owns and which this repo owns, and what arrives here by export. It is linked from the README and the field guide, and it states a tie-break for when sources disagree. It also surfaced two loose ends it records rather than fixes: the pipeline record is still undecided (item 12), and `second-brain-v2-opening-and-process.md` points at a corpus file that does not exist. It names repos but no private paths beyond what the docs here already cite.

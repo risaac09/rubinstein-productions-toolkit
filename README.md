@@ -42,7 +42,7 @@ Reusable templates for the client and grant lifecycle.
 - Pipeline dashboards (outreach + grants)
 
 ### `docs/`, `architecture/`
-Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role.
+Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports.
 
 The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: their prompts and fixtures are real RP business scenarios carrying balances, revenue targets, pricing bands, and a client engagement, which is the same material this README says stays private.
 
