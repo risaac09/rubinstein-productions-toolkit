@@ -1,5 +1,7 @@
 > **Canonical source:** this file (toolkit is authoritative). Companion to `counter-glossary.html` and `negative-thousand.html` (creative-writing artifacts in the private vault corpus, outside this repo; they moved there from the home directory in June 2026). Filed under the same lineage as [source-tracking-protocol.md](source-tracking-protocol.md) and the TCO framework (`stack-data/context/tco-framework.md`).
 
+> **Status:** draft.
+
 # Negative-Archive Ritual
 
 *Working Document | Created: 2026-05-23*

@@ -1,5 +1,7 @@
 > **Canonical source:** this file (toolkit is authoritative — no live vault counterpart as of 2026-04-27).
 
+> **Status:** operational.
+
 # Facilitation Protocol for Ethical, Nervous-System Aware Production
 
 ### _(Solo & Micro-Crew Version — Interview-Style Documentary Work)_

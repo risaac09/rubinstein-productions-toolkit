@@ -1,5 +1,7 @@
 # Orchestration Model (canonical)
 
+> **Status:** operational.
+
 One model for how work moves through the RP system. This reconciles five
 artifacts that were each describing a piece of the same machine in a different
 vocabulary. Nothing here is new. It names which layer owns what, marks where two

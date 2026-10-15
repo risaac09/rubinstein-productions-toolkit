@@ -4,5 +4,4 @@
 # privacy scans, so each one is a deliberate entry, never a default.
 # One repo-relative path per line; lines starting with # are comments.
 # Seeded 2026-10-01 with what was tracked that day.
-prompts/skills/outreach-email-manager-v2.skill
-prompts/skills/project-management-coordinator-v1.skill
+# Empty since 2026-10-15: the two .skill bundles were deleted, prompts/skills/*.md is the source.

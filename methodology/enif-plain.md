@@ -2,6 +2,8 @@
 
 > **Canonical doc:** [`methodology/measurement-framework.md`](measurement-framework.md). That file is the source of truth, a snapshot of the vault canonical and the April 2026 consolidation of the original 780-line ENIF. This is the teaching layer for readers with no evaluation background.
 
+> **Status:** operational.
+
 ## What it is
 
 This is the client-work measurement system for Rubinstein Productions, the practice-level counterpart to the grant-facing Say Why evaluation framework. Most agencies pick a side: art, which goes unmeasured, or ROI, which goes soulless. This framework tracks every engagement in two registers at once and reports them together as the Bilingual Dashboard.

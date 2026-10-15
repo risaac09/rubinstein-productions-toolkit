@@ -41,10 +41,28 @@ date_add_days() {
   date -v+"$1"d +%Y-%m-%d 2>/dev/null || date -d "+$1 days" +%Y-%m-%d
 }
 
+# urlencode TEXT — percent-encode TEXT for a URL query value, newlines included.
+# TEXT travels as an argument, never as code, so quotes and backslashes in it are
+# inert. Needs python3 and says so when it is missing; there is no unencoded
+# fallback, because a half-encoded URL sends a different message than the one typed.
+urlencode() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "✗ python3 is required to URL-encode the draft and was not found on PATH." >&2
+    return 127
+  fi
+  python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+# Signature for outgoing drafts: the contents of this file, if it exists.
+# Nothing is hard-coded; with no file there is no signature.
+RP_SIGNATURE_FILE="${RP_SIGNATURE_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/rp/signature}"
+
 # open_url URL — open in the default browser: macOS open, then xdg-open,
-# else print the URL for manual copy.
+# else print the URL for manual copy. RP_NO_OPEN=1 prints it and opens nothing
+# (the smoke test uses this so it never launches a browser).
 open_url() {
-  if command -v open >/dev/null 2>&1; then open "$1"
+  if [ -n "${RP_NO_OPEN:-}" ]; then echo "$1"
+  elif command -v open >/dev/null 2>&1; then open "$1"
   elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$1"
   else echo "  Open this URL manually:"; echo "  $1"
   fi
