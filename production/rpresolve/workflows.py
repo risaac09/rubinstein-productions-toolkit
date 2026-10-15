@@ -899,6 +899,212 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     return out
 
 
+TRANSFORM_KEYS = ("ZoomX", "ZoomY", "Pan", "Tilt")
+FRAMING_FINGERPRINT = ("ZoomX", "ZoomY", "Pan", "Tilt", "RotationAngle", "CropLeft",
+                       "CropRight", "CropTop", "CropBottom", "FlipX", "FlipY")
+
+
+def _transforms(items):
+    return [tuple(api._safe_call(it, "GetProperty", k) for k in FRAMING_FINGERPRINT)
+            for it in items]
+
+
+def _item_path(item):
+    clip = api._safe_call(item, "GetMediaPoolItem")
+    return api._safe_call(clip, "GetClipProperty", "File Path") or ""
+
+
+def _source_seconds(item):
+    """(in, out) of the item's source in seconds, or None when unread."""
+    clip = api._safe_call(item, "GetMediaPoolItem")
+    try:
+        fps = float(api._safe_call(clip, "GetClipProperty", "FPS") or 0)
+        a = api._safe_call(item, "GetSourceStartFrame")
+        b = api._safe_call(item, "GetSourceEndFrame")
+        if fps > 0 and a is not None and b is not None:
+            return float(a) / fps, float(b) / fps
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def load_framing(plan):
+    """A framing plan (reframe.plan_items) from a dict or a JSON path."""
+    if isinstance(plan, dict):
+        p = plan
+    else:
+        path = os.path.expanduser(str(plan))
+        if not os.path.isfile(path):
+            raise Refused(f"framing plan '{path}' not found")
+        with open(path, encoding="utf-8") as f:
+            p = json.load(f)
+    if p.get("kind") != "framing" or not isinstance(p.get("items"), list):
+        raise Refused("not a framing plan: reframe_plan with items writes one")
+    return p
+
+
+def _pick(entries, span):
+    """The plan item for a timeline item: the only one for its file, else
+    the one whose [in, out) overlaps the item's source range most; None
+    when the file has several and the item's range cannot be read, or none
+    of them overlaps it."""
+    if len(entries) == 1:
+        return entries[0]
+    if span is None:
+        return None
+    best = max(entries, key=lambda e: min(e["out"], span[1]) - max(e["in"], span[0]))
+    return best if min(best["out"], span[1]) > max(best["in"], span[0]) else None
+
+
+def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, allow_bars=False,
+                  dry_run=False, project_id=None, check_cancel=None, expect_sha=None):
+    """Set ZoomX, ZoomY, Pan and Tilt on items of one video track of an
+    ' [auto]' timeline from a framing plan (reframe.plan_items), read each
+    back, and check that nothing changed on any other timeline using the
+    same media, nor on items of this one that were not targets. Each item
+    takes the plan entry for its file (by path; by source range when the
+    file has several). The props are computed here, for the timeline's own
+    size and input scaling, from the entry's centre and scale.
+    Refused: a timeline not ending ' [auto]'; a timeline whose size, or
+    input scaling, is not the plan's; an item whose own Scaling is not 0
+    (cut.item_scaling). Per item, refused: no plan entry, an entry with no
+    crop (manual, no_face), a clip whose resolution is not the one planned,
+    a scale below the fill scale unless allow_bars (it would show black).
+    An entry whose move is 'none' writes nothing (centre fill already keeps
+    the head), nor does one the item already carries. Returns {project,
+    timeline, plan, targets, unchanged, refused, results, leaks, plan_sha,
+    dry_run, exit_status}."""
+    from . import cut as rpcut
+    from . import reframe as rf
+    fp = load_framing(plan)
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Framing goes only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    size = _timeline_size(project, tl)
+    if list(size) != list(fp["out"]):
+        raise Refused(f"'{tl_name}' is {size[0]}x{size[1]}; the plan was made for "
+                      f"{fp['out'][0]}x{fp['out'][1]}")
+    scaling, note = rpcut.input_scaling(project, tl)
+    if scaling != fp.get("scaling"):
+        raise Refused(f"{rpcut.INPUT_SCALING} reads '{scaling}' on '{tl_name}' and the plan was "
+                      f"made for '{fp.get('scaling')}'; plan again for this timeline")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    own, _ = rpcut.item_scaling([all_items[n - 1] for n in wanted])
+    if own:
+        raise Refused(f"on '{tl_name}', {'; '.join(own)}; the transform is computed for 0 "
+                      "(use project settings), so set it back in the Inspector first")
+    by_path = {}
+    for e in fp["items"]:
+        by_path.setdefault(os.path.realpath(e["path"]), []).append(e)
+    out_size = tuple(fp["out"])
+    targets, unchanged, refusals = [], [], []
+    for n in wanted:
+        it = all_items[n - 1]
+        name, path = it.GetName(), _item_path(it)
+        row = {"index": n, "name": name, "media_id": _media_id(it)}
+        entries = by_path.get(os.path.realpath(path)) if path else None
+        if not entries:
+            refusals.append({**row, "reasons": ["no plan entry for its file"]})
+            continue
+        pe = _pick(entries, _source_seconds(it))
+        if pe is None:
+            refusals.append({**row, "reasons": [
+                f"the plan has {len(entries)} entries for its file and the item's source range "
+                "is unread or overlaps none of them"]})
+            continue
+        e = pe["entry"]
+        row["plan_item"] = pe["name"]
+        if e.get("x") is None or e.get("scale") is None:
+            refusals.append({**row, "reasons": [f"the plan has no crop for it ({e.get('status')}: "
+                                                f"{e.get('reason', '')})"]})
+            continue
+        clip = api._safe_call(it, "GetMediaPoolItem")
+        res = rpcut.parse_resolution(api._safe_call(clip, "GetClipProperty", "Resolution"))
+        stored = tuple(e.get("stored") or e["src"])
+        if res[1] and tuple(res) != stored:
+            refusals.append({**row, "reasons": [f"the clip is {res[0]}x{res[1]} and the plan was "
+                                                f"made on {stored[0]}x{stored[1]}"]})
+            continue
+        src, area, scale = tuple(e["src"]), tuple(e["area"]), float(e["scale"])
+        widest = rf.fill_scale(out_size, area)
+        if scale < widest - 1e-4 and not allow_bars:
+            refusals.append({**row, "reasons": [f"scale {scale:g} is below the fill scale "
+                                                f"{widest:g}: it would show black (allow_bars)"]})
+            continue
+        props = {k: round(v, 4) for k, v in
+                 rf.resolve_props(src, out_size, scale, (e["x"], e["y"]), scaling).items()}
+        if not rf.TILT_CONFIRMED:
+            props.pop("Tilt")
+        now = {k: api._safe_call(it, "GetProperty", k) for k in props}
+        if float(e.get("squeeze") or 1.0) != 1.0:
+            row["warning"] = (f"squeeze {e['squeeze']:g}: the transform assumes Resolve fits the "
+                              "desqueezed picture (the clip's Pixel Aspect Ratio set); no live "
+                              "run has checked that, so look at the frame")
+        row.update(move=e.get("move"), props=props, current=now,
+                   headroom_px=e.get("headroom_px"), status=e.get("status"))
+        same = all(isinstance(now[k], (int, float)) and abs(now[k] - v) <= 1e-3
+                   for k, v in props.items())
+        if e.get("move") == "none" or same:
+            row["why"] = ("centre fill already keeps the head" if e.get("move") == "none" else
+                          "the item already carries this framing")
+            unchanged.append(row)
+        else:
+            targets.append(row)
+    sha = plan_sha("reframe_apply", pin.unique_id, tl_id, track, list(out_size), scaling,
+                   [(t["index"], t["name"], t["props"]) for t in targets], allow_bars)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "size": list(size), "input_scaling": scaling},
+           "plan": {"aspect": fp.get("aspect"), "out": fp["out"], "scaling": fp.get("scaling")},
+           "targets": [{k: v for k, v in t.items() if k != "media_id"} for t in targets],
+           "unchanged": [{k: v for k, v in t.items() if k != "media_id"} for t in unchanged],
+           "refused": refusals, "results": [], "leaks": [], "plan_sha": sha,
+           "dry_run": dry_run, "warnings": ([note] if note else []) +
+           [f"#{t['index']} {t['name']}: {t['warning']}" for t in targets + unchanged
+            if t.get("warning")], "exit_status": 0}
+    if dry_run or not targets:
+        out["exit_status"] = 2 if refusals else 0
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (items or their framing differ); "
+                      "run the dry run again and review it")
+    media = {t["media_id"] for t in targets if t["media_id"]}
+    shared = _shared_items(project, tl_id, media)
+    before = _transforms([it for _, it in shared])
+    idx = {t["index"] for t in targets}
+    untouched = [it for n, it in enumerate(all_items, 1) if n not in idx]
+    untouched_before = _transforms(untouched)
+    for t in targets:
+        if check_cancel:
+            check_cancel()
+        pin.check(pm)
+        it = all_items[t["index"] - 1]
+        try:
+            back = {k: api.set_property_checked(it, k, v) for k, v in t["props"].items()}
+            out["results"].append({"index": t["index"], "name": t["name"], "ok": True,
+                                   "read_back": back})
+        except api.WriteNotApplied as e:
+            out["results"].append({"index": t["index"], "name": t["name"], "ok": False,
+                                   "detail": str(e)})
+    after = _transforms([it for _, it in shared])
+    out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
+    if _transforms(untouched) != untouched_before:
+        out["leaks"].append(f"{tl_name}: an item that was not a target changed")
+    failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
+    out["exit_status"] = 1 if failed else (2 if refusals else 0)
+    return out
+
+
 STABILIZE_PAGE = "color"
 # Items per real call. Stabilize() can take minutes on a 6K item and the call holds the
 # Resolve lock, so one call does at most this many; the result names what is left.

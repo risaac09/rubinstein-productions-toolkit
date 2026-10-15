@@ -65,7 +65,7 @@ writes.
 | `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
-| `reframe_plan` | offline | A static crop per span for the 9:16 and 1:1 versions, centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. Tilt's sign is unconfirmed until the hand step in `resolve-template-spec.md` (Reframe) is done. |
+| `reframe_plan` | offline | A static crop per span for the 9:16, 1:1, 4:5 or 16:9 versions or the master shape (`aspects`; `master` needs `master_size`), or, with `items`, a framing plan for a timeline's clips that `reframe_apply` writes (see Framing below). Each crop is centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. The crop keeps the whole head and room above it (Framing). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
 | `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
@@ -81,6 +81,7 @@ writes.
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
 | `relink` | write, changes an offline clip | Point the open project's offline clips (File Path missing on disk) at files under `search_roots` that verify as the same take: start timecode, frame count (one frame of slack), resolution and frame rate must all be known and agree. Never on a name alone; a clip with no timecode, a still and an audio-only clip are UNVERIFIABLE and left alone; two verified files of different sizes are AMBIGUOUS and left alone; identical copies resolve to the earliest search root. An online clip is never touched. Uses `MediaPool.RelinkClips` (the folder only), which should leave the clip's identity, timeline items, grade and tags alone (not yet confirmed on a live project: try a scratch project first); each clip is read back, and a property that reads differently afterwards is reported, never set back. `max_items` relinks a sample; dry run again before the rest. |
 | `stabilize` | write, changes an item | Call `TimelineItem.Stabilize()` on video items of one track (`track`, default 1) of an ` [auto]` timeline (any other is refused); `items` picks item numbers from 1 (default all) and `max_items` keeps only the first N of them, so a sample can go first. Makes the timeline current, opens the Color page and puts the playhead at each item's start, then calls `Stabilize()` item by item, recording the bool it returned and the seconds it took; a cancel stops before the next item. **The effect is not verified:** stabilization is not visible through `GetProperty` (a 2026-09-26 spike found SmartReframe's result invisible there, and the same is assumed until a live run shows otherwise), so the result says what `Stabilize()` returned and nothing more (`verified` is false). `Stabilize()` uses the item's current stabilizer settings (mode, strength, smooth, zoom) from the Color page, which the API cannot set. It can take a long time on 6K items; the call holds the Resolve lock throughout, so use `max_items` first. |
+| `reframe_apply` | write, changes an item | Set ZoomX, ZoomY, Pan and Tilt on the video items of one track of an ` [auto]` timeline from a framing plan (`reframe_plan` with `items`), each read back. Each item takes the plan entry for its file (by source range when the file has several). The timeline's size and input scaling must be the plan's; an item with its own Scaling, a clip of another resolution, an entry with no crop and a zoom below fill (unless `allow_bars`) are refused. An entry whose move is `none`, or one the item already carries, writes nothing. After the real run, a change on another timeline using the same media is reported as a leak. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
 
 `production/rpresolve/grade.py` is a helper library, not a tool and not a
@@ -106,7 +107,7 @@ tree and never overwrites an `.srt`.
 - **Plan first.** `dry_run` defaults to true and returns a `plan_sha`. A real
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
-- **Additive only, with three exceptions.** Nothing that existed before is modified. The exceptions are `set_color_management`, which sets a project setting only on a fresh project, one with no timeline and no clip in its media pool, so nothing anyone has made is reached (it refuses any other project, never creates, loads or saves one, and is annotated destructive so a client asks first), `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take, and `stabilize`, which runs Resolve's stabilizer on items, changing them, but only on ` [auto]` timelines, the same boundary grades keep. `relink` never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
+- **Additive only, with four exceptions.** Nothing that existed before is modified. The exceptions are `set_color_management`, which sets a project setting only on a fresh project, one with no timeline and no clip in its media pool, so nothing anyone has made is reached (it refuses any other project, never creates, loads or saves one, and is annotated destructive so a client asks first), `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take, `stabilize`, which runs Resolve's stabilizer on items, changing them, but only on ` [auto]` timelines, the same boundary grades keep, and `reframe_apply`, which sets Zoom, Pan and Tilt on items of ` [auto]` timelines only and compares every other use of the same media before and after. `relink` never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
   end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
   timelines, and `create_captions` refuses a timeline that already has any
   subtitle item. An item whose
@@ -409,6 +410,58 @@ choose the file.
 - Queueing a render never reframes. A 9:16 or 1:1 destination refuses a
   timeline of another shape. `reframe_plan` plans a crop per span and `cut`
   applies it to the 9:16 and 1:1 versions (Zoom, Pan and Tilt, each read back).
+- **Pan and Tilt are not timeline pixels** (Resolve 21.1.1.10, measured
+  2026-10-15 on six fixtures). Each is measured against the fitted picture
+  on its own axis: a Pan of P moves the picture right by
+  P × (source width × fit) / timeline width, and a Tilt of T moves it up by
+  T × (source height × fit) / timeline height, where fit is the input
+  scaling's factor before Zoom. They read as pixels only on an axis where
+  the fitted picture spans the timeline, which is why Pan looked confirmed
+  on the Ep 002 9:16 and Tilt did not. A 9:16 from a UHD source needs a
+  Tilt 3.16 times the pixel move; a 2.25:1 master (3:2 at scale full
+  frame with crop into 5952x2646) needs 0.667 of it. Negative Tilt moves
+  the picture down and shows the top of the source. `tilt-fixture
+  --variant` rebuilds any of the six; `tilt-check` reads a still of it.
+
+## Framing
+
+Every crop the toolkit plans, for the master timeline shape or a platform
+version, keeps the subject's whole head. The rules, in `rpresolve/reframe.py`:
+
+- **The head is above the face box.** Vision's face box stops near the
+  brows, so the head's top is taken `HEAD_ABOVE` (0.6) face heights above
+  it, and the check covers the head, not only the face.
+- **Room above the head.** The crop moves up, never down, until the median
+  head has `HEADROOM` (0.65) face heights of room above it and no sample's
+  head is cut. Both values are tunable constants. HEADROOM came from Isaac's
+  hand fixes on two standing performers (a 2026-10 festival shoot), so those
+  two clips are its calibration, not its proof.
+- **Do nothing when nothing is needed.** The master shape starts from
+  centre fill (the shot as shot). When that already keeps every head with
+  its room, the plan's `move` is `none` and `reframe_apply` writes nothing.
+  Platform versions start centred on the face, as before.
+- **Fallbacks say why.** A head that runs past the top of the picture (the
+  subject at the sensor's edge), or a crop that cannot give the room the
+  picture holds without losing the face below, is `fallback` with the
+  reason. A shot the camera framed tight passes with a note: nothing above
+  the head was there to keep.
+- **Squeeze is read.** An anamorphic source is planned on its desqueezed
+  picture (width × squeeze). The squeeze comes from the manifest's
+  `squeeze`, the `squeeze` argument or the file's tag (BRAW writes
+  `anamorphic`), in that order; with none it is 1.0, and the summary says
+  it was assumed. The S5II container carries no squeeze flag, so give it.
+  The transform for a squeezed clip assumes Resolve fits its desqueezed
+  picture once the clip's Pixel Aspect Ratio is set. No live run has
+  checked that yet, so `reframe_apply` warns on every squeezed item.
+- **BRAW is judged on stills.** ffmpeg cannot decode BRAW. Give `stills`
+  (any size of the source's shape: Resolve's exported frames, a proxy) and
+  `src`, the size Resolve reads (6048x4032 for the Pyxis). A still of
+  another shape is refused, and stills are never removed.
+- **Zoom never goes below fill** unless `allow_bars` is set.
+
+The order on a live project: `reframe_plan` with `items` (offline) writes
+the framing plan, `duplicate_timeline_auto` makes the ` [auto]` copy, then
+`reframe_apply` writes the plan onto it, dry run first.
 
 ## Check it against a live Resolve
 
