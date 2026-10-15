@@ -186,6 +186,10 @@ centred on the speaker's face (plan A7). The check: the face box stays
 inside the crop on every sampled frame. Two steps: plan offline, then
 `cut` applies the plan and reads every transform back.
 
+Every crop keeps the subject's whole head with room above it, and the same
+planner frames the master timeline's own shape (a 2.25:1
+festival timeline, say) for `reframe_apply`: see Framing in `resolve-mcp.md`.
+
 ### Plan
 
 `resolve_workflow.py reframe-plan <manifest> [--aspects 9x16 1x1]
@@ -312,12 +316,16 @@ the unchecked samples' times.
 Resolve fits a source whose size differs from the timeline's by
 `fit = min(W/sw, H/sh)` (`timelineInputResMismatchBehavior` scaleToFit,
 the default; scaleToCrop uses the max), zooms about the frame centre, then
-moves the picture in timeline pixels. A crop of `s` output pixels per
-source pixel centred on source point `(cx, cy)` is
+moves the picture. A crop of `s` output pixels per source pixel centred on
+source point `(cx, cy)` moves the picture by `dx = (sw/2 - cx) * s` and
+`dy = (sh/2 - cy) * s` output pixels (y down), and
 
     ZoomX = ZoomY = s / fit
-    Pan  = (sw/2 - cx) * s
-    Tilt = (cy - sh/2) * s
+    Pan  = dx * W / (sw * fit)
+    Tilt = -dy * H / (sh * fit)
+
+because Pan and Tilt are measured against the fitted picture on each axis,
+not in timeline pixels (settled 2026-10-15, below).
 
 and a source point `(x, y)` lands at `X = W/2 + (x - cx) s`,
 `Y = H/2 + (y - cy) s`. The widest crop with no bars over a picture area
@@ -337,28 +345,32 @@ frame. So it is no longer the default: with no scale named the planner
 derives the widest filled one for the source, and 2.25 is kept only for
 `--allow-bars` and for a clip that names it.
 
-Pan's sign and units are confirmed on a render: in the sandbox 9:16
-render (below) the face centre sits where `X = W/2 + (x - cx) s` puts it,
-within 3 pixels, from Vision on the render and on the source frame. Tilt's
-sign assumes Resolve's y axis points up; no render has confirmed it, so
-every report row whose crop sets a Tilt of half a pixel or more says so
-(and the summary counts them), and `cut` says so whenever it writes a Tilt
-other than 0.
+Pan and Tilt are confirmed, sign and units, on Resolve 21.1.1.10
+(2026-10-15). Six fixtures (`tilt-fixture --variant` 9x16, master, 1x1,
+9x16-6k, master-fit, 16x9-crop: two input scalings, four timeline shapes,
+UHD and 3:2 6K sources) were built in a sandbox project and exported as
+stills with `ExportCurrentFrameAsStill`. That run was Claude's, at Isaac's
+request, not a person pressing Render. Typed as timeline pixels, Tilt moved
+the picture by 0.315 to 1.496 of its value, each within 0.8% of
+`(sh * fit) / H`, and Pan by 0.664 where `(sw * fit) / W` is 0.667. Typed
+with the formulas above, `tilt-check` confirmed Pan and Tilt on all six,
+every marker within a pixel. Negative Tilt moves the picture down and shows
+the top of the source. The earlier sandbox 9:16 confirmed Pan only because
+a 9:16 at scaleToFit is fit by width. `TILT_CONFIRMED` is `True` and the
+unconfirmed notes are gone; they come back if it is set to `False`.
 
-### Settling Tilt's sign (a hand step)
-
-`TILT_CONFIRMED` in `rpresolve/reframe.py` is `False`, and only a commit
-that cites the result below may change it. Nothing in the tools sets it.
+### Re-checking Pan and Tilt (a new Resolve version)
 
 1. `python3 resolve_workflow.py tilt-fixture --out <new folder outside any
    repo>` writes a short UHD clip with three markers (white at the crop
    centre, red at the middle of the source, yellow above the white one)
    and `tilt-expect.json`, and prints the numbers for step 3.
-2. In a scratch project, make a 1080x1920 timeline with input scaling at
-   its default (scale entire image to fit) and put the clip on it.
+2. In a scratch project, make a timeline of the size and input scaling
+   the fixture prints (1080x1920 at scale entire image to fit for the
+   stock one) and put the clip on it.
 3. In the Inspector set Zoom X and Zoom Y, Pan and Tilt to the printed
-   values (3.1605, 136.535, -384.0048 for the stock fixture).
-4. Deliver one still of any frame. **Only a person presses Render.**
+   values (3.1605, 136.535, -1213.6448 for the stock fixture).
+4. Deliver one still of any frame, or export the current frame as a still.
 5. `python3 resolve_workflow.py tilt-check <still> --fixture <folder>`
    finds the white and red markers and says, for Pan and Tilt separately,
    `confirmed` (both markers where this module's convention puts them),
@@ -367,9 +379,9 @@ that cites the result below may change it. Nothing in the tools sets it.
    `unclear` (somewhere else; check the typed values and the input
    scaling). It writes `tilt-result.json` beside the fixture and exits 0
    only when both are confirmed.
-6. Cite the output in a commit that changes `TILT_CONFIRMED`. If Tilt is
-   inverted, fix `resolve_props` (and `cut`'s transform) in the same
-   commit; the fixture's expected numbers and the tests move with it.
+6. If either is not confirmed, set `TILT_CONFIRMED` to `False` and fix
+   `resolve_props` in a commit that cites the output; the fixtures'
+   expected numbers (pinned in `tests/test_reframe_wide.py`) move with it.
 
 ### Footage with no speech
 
@@ -497,10 +509,11 @@ on 2026-09-30:
    `reframe-plan` (letterboxed, `--allow-bars`) were built by `cut`, each
    span's item with its own Pan, every transform read back. A 1:1 build
    is still owed.
-3. Tilt's sign: the hand step above ("Settling Tilt's sign"): the
-   fixture, one rendered still, and `tilt-check`.
+3. Tilt's sign and both units: settled 2026-10-15 on six exported stills
+   (above). A Deliver render of the same fixture is not yet compared.
 4. Whether `timelineInputResMismatchBehavior` reads on a duplicated
-   timeline, and whether scaleToCrop's Pan counts the same pixels.
+   timeline. (scaleToCrop's Pan and Tilt follow the same rule as
+   scaleToFit's: settled 2026-10-15.)
 5. What `GetProperty("Scaling")` reads on an item appended by `cut`
    (expected 0, use project settings) and on one set to Fill in the
    Inspector (expected 3).

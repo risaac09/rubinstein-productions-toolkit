@@ -159,11 +159,14 @@ class TestEdgeMargin(unittest.TestCase):
         self.assertLess(reframe.slack(b, TALL, scale, centre), 0)
         self.assertGreaterEqual(reframe.slack(b, TALL, scale, centre, area=full(self.HD)), -1e-6)
 
-    def test_a_face_at_the_top_edge_passes_and_says_so(self):
+    def test_a_face_at_the_top_edge_is_a_fallback_and_says_so(self):
+        # The box top is 40 px down, so the head (0.6 face heights above it) runs past the
+        # top of the picture: no crop keeps the whole head.
         sp = reframe.plan_span(samples(self.HD, [[(960, 40, 200, 200)]] * 8), self.HD, full(self.HD),
                                ["9x16"], scale=reframe.AUTO)
         p = sp["aspects"]["9x16"]
-        self.assertEqual(p["status"], reframe.PASS)
+        self.assertEqual(p["status"], reframe.FALLBACK)
+        self.assertIn("the subject is at the top edge of the picture", p["reason"])
         self.assertEqual(p["check"]["worst_px"], 0.0)
         self.assertTrue(any("reaches past the edge of the picture" in r for r in sp["review"]), sp["review"])
 
@@ -498,7 +501,7 @@ class TestTiltFixture(unittest.TestCase):
         e = reframe.tilt_expect()
         self.assertEqual(e["scale"], 0.8889)
         self.assertEqual(e["centre"], [1766.4, 648.0])
-        self.assertEqual(e["props"], {"ZoomX": 3.1605, "ZoomY": 3.1605, "Pan": 136.535, "Tilt": -384.0048})
+        self.assertEqual(e["props"], {"ZoomX": 3.1605, "ZoomY": 3.1605, "Pan": 136.535, "Tilt": -1213.6448})
         # The marker at the crop centre lands in the middle of the output; the source's middle
         # lands where Pan and Tilt put it.
         self.assertEqual(e["expect"]["a"], [540.0, 960.0])
@@ -513,6 +516,22 @@ class TestTiltFixture(unittest.TestCase):
         self.assertGreater(abs(e["props"]["Tilt"]), 100)
         self.assertGreater(abs(e["props"]["Pan"]), 100)
 
+    def test_the_six_fixtures_resolve_confirmed(self):
+        # The Zoom, Pan and Tilt typed into Resolve 21.1.1.10 on 2026-10-15; every marker
+        # landed within a pixel of tilt_expect on the exported stills.
+        confirmed = {
+            "9x16": {"ZoomX": 3.1605, "ZoomY": 3.1605, "Pan": 136.535, "Tilt": -1213.6448},
+            "master": {"ZoomX": 1.0001, "ZoomY": 1.0001, "Pan": 238.0977, "Tilt": -264.6196},
+            "1x1": {"ZoomX": 1.7778, "ZoomY": 1.7778, "Pan": 76.8, "Tilt": -288.0},
+            "9x16-6k": {"ZoomX": 2.6667, "ZoomY": 2.6667, "Pan": 115.2023, "Tilt": -768.0154},
+            "master-fit": {"ZoomX": 1.4997, "ZoomY": 1.4997, "Pan": 357.0565, "Tilt": -396.8294},
+            "16x9-crop": {"ZoomX": 1.0, "ZoomY": 1.0, "Pan": 76.8, "Tilt": -162.0},
+        }
+        for name, v in reframe.TILT_VARIANTS.items():
+            e = reframe.tilt_expect(v["src"], centre_share=v["centre"], scaling=v["scaling"],
+                                    out=v["out"])
+            self.assertEqual(e["props"], confirmed[name], name)
+
     def test_every_marker_stays_on_the_frame_under_every_reading(self):
         e = reframe.tilt_expect()
         half = e["marker_side"] * e["scale"] / 2.0
@@ -522,19 +541,20 @@ class TestTiltFixture(unittest.TestCase):
                 x, y = table[key]
                 self.assertTrue(half <= x <= w - half and half <= y <= h - half, (key, x, y))
 
-    def test_the_note_stays_until_the_constant_changes(self):
-        self.assertIs(reframe.TILT_CONFIRMED, False)
+    def test_the_note_shows_only_while_the_constant_is_false(self):
+        # Confirmed on six fixtures exported from Resolve 21.1.1.10 on 2026-10-15.
+        self.assertIs(reframe.TILT_CONFIRMED, True)
         sp = reframe.plan_span(samples(UHD, [[(1500, 400, 200, 200)]] * 8), UHD, full(UHD), ["9x16"],
                                scale=2.25)
         p = sp["aspects"]["9x16"]
         rows = reframe.rows({"spans": [dict(sp, clip="c", span=1, hand_face_x=None, **{"in": 0, "out": 1})]})
         self.assertNotEqual(p["props"]["Tilt"], 0)
-        self.assertIn("no render has confirmed", rows[0]["reason"])
-        self.assertEqual(reframe.counts(rows)["tilt"], 1)
-        with mock.patch.object(reframe, "TILT_CONFIRMED", True):
+        self.assertNotIn("no render has confirmed", rows[0]["reason"])
+        self.assertEqual(reframe.counts(rows)["tilt"], 0)
+        with mock.patch.object(reframe, "TILT_CONFIRMED", False):
             rows = reframe.rows({"spans": [dict(sp, clip="c", span=1, hand_face_x=None, **{"in": 0, "out": 1})]})
-            self.assertNotIn("no render has confirmed", rows[0]["reason"])
-            self.assertEqual(reframe.counts(rows)["tilt"], 0)
+            self.assertIn("no render has confirmed", rows[0]["reason"])
+            self.assertEqual(reframe.counts(rows)["tilt"], 1)
 
 
 def ppm(path, size, squares):
@@ -642,9 +662,11 @@ class TestTiltCheck(unittest.TestCase):
         outw, outh = e["out"]
 
         def emulate(name, tilt_dir):
-            # Place the scaled source so that its pixel (x, y) lands at the module's formula.
-            ox = outw / 2.0 + (0 - sw / 2.0) * s + e["props"]["Pan"]
-            oy = outh / 2.0 + (0 - sh / 2.0) * s - tilt_dir * e["props"]["Tilt"]
+            # Place the scaled source so that its pixel (x, y) lands at the module's formula:
+            # moved by the crop's shift in output pixels (Pan and Tilt are not pixels).
+            dx, dy = reframe.shift_px((sw, sh), s, (cx, cy))
+            ox = outw / 2.0 + (0 - sw / 2.0) * s + dx
+            oy = outh / 2.0 + (0 - sh / 2.0) * s + tilt_dir * dy
             path = os.path.join(self.dir, name)
             fc = (f"color=c=black:s={outw}x{outh}:r=1:d=1[bg];"
                   f"[0:v]scale={round(sw * s)}:{round(sh * s)}[fg];"
@@ -681,7 +703,7 @@ class TestTiltCheck(unittest.TestCase):
                                                       fixture=folder, tolerance=None))
         self.assertEqual(rc, 2)
         self.assertIn("Tilt INVERTED", out.getvalue())
-        self.assertFalse(reframe.TILT_CONFIRMED)   # a check never sets it
+        self.assertIs(reframe.TILT_CONFIRMED, True)   # a check never changes it
 
     def test_the_fixture_command_refuses_a_folder_in_a_repository(self):
         import resolve_workflow as rw
