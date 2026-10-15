@@ -8,6 +8,7 @@ Run: /usr/bin/python3 production/tests/test_lutlab.py
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -418,6 +419,11 @@ class RcmTest(unittest.TestCase):
         np.testing.assert_allclose(cube.read_cube(str(a))["table"], cube.read_cube(str(b))["table"], atol=1e-9)
 
 
+# The render comparison reads colour through whatever ffmpeg is on PATH. CI's apt
+# build (Ubuntu's) lands a median dE2000 of 4.5 where the Homebrew build lands
+# under 1, so CI sets LUTLAB_SKIP_RENDER_VERIFY rather than loosen the bound.
+@unittest.skipIf(os.environ.get("LUTLAB_SKIP_RENDER_VERIFY"),
+                 "render-verify skipped: this ffmpeg build reads colour differently (see ROADMAP, Amendment 2, item 1)")
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class VerifyRenderTest(unittest.TestCase):
     @classmethod

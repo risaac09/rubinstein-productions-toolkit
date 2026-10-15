@@ -1,0 +1,28 @@
+# Interpreters and packages, one place. `pip install -r requirements.txt` installs
+# the packages for the Python 3.9 column; CI does exactly that (.github/workflows/ci.yml).
+#
+# Interpreter per tool
+#   cli/rp-*, scripts/*.sh, tools/vertcut/vertcut   bash 3.2+ and coreutils. No Python except
+#                                                   cli/rp-draft (python3, any version).
+#   production/resolve_mcp.py (Resolve MCP server)  /usr/bin/python3 (Xcode's 3.9). Stdlib only.
+#   production/rpresolve/, resolve_workflow.py      3.9. numpy for measure, sync, color, trim review.
+#   production/lutlab/                              3.9. numpy, scipy, Pillow, OpenCV.
+#   production/rpstills/                            3.9. numpy, Pillow, OpenCV, imagehash.
+#   tools/vertcut/lib/vertcut_cut.py                3.9. Pillow.
+#   production/resolve_survey.py                    /opt/homebrew/bin/python3.14. Stdlib only, but it
+#                                                   reads Resolve's zstd blobs with compression.zstd,
+#                                                   which exists only from 3.14. On 3.9 its 24 zstd tests skip.
+#
+# Programs outside pip
+#   ffmpeg, ffprobe   production/, tools/vertcut. Homebrew on the Mac; preinstalled on CI's ubuntu-latest.
+#   exiftool          optional, read by detect when present.
+#   mlx-whisper       vertcut transcribe only (Apple silicon): pip3 install --user mlx-whisper
+#   DaVinci Resolve   its own scripting module, loaded by the MCP server at run time. Not on pip.
+#
+# Pins are the versions CI installs and the suite was run against on 3.9 (numpy 2.0.2 is the last
+# NumPy that supports 3.9). The Mac's own set is newer in places (opencv 5.0.0.93) and passes too.
+numpy==2.0.2
+scipy==1.13.1
+Pillow==11.3.0
+opencv-python-headless==4.10.0.84
+imagehash==4.3.2
