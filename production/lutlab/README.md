@@ -78,9 +78,13 @@ directly:
 
 ```bash
 /usr/bin/python3 -m lutlab decompose "$HOME/DaVinci Resolve/LUT/Arri/Arri Alexa LogC to Rec709.dat" \
-  --in logc3 --out "$LUTLAB_OUT/arri-base" --name arri-logc3-709
-/usr/bin/python3 -m lutlab looks "$LUTLAB_OUT/arri-base/params.json" --camera pyxis,s5ii --out "$LUTLAB_OUT/looks"
+  --in logc3 --out "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709" --name arri-logc3-709
+/usr/bin/python3 -m lutlab looks "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709/params.json" \
+  --camera pyxis,s5ii --out "$LUTLAB_OUT/RP Looks"
 ```
+
+Keep the base outside Resolve's LUT folders: its `.residual.cube` holds
+deltas, not a look, and Resolve would list it as one.
 
 The decomposition fits that LUT to a median Delta E 0.5 before the residual
 (exact after it). ARRI's LogC4 LUTs work the same way with `--in logc4`. The
