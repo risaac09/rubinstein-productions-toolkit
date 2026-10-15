@@ -189,13 +189,21 @@ jobs:
           python-version: "3.9"
       - name: Install the pinned packages
         run: python -m pip install -r requirements.txt
-      - name: ffmpeg is on the runner
-        run: ffmpeg -version | head -1
+      # ubuntu-latest does not carry ffmpeg; the apt build has libx264, libx265
+      # and prores_ks, which the render and reframe tests probe for.
+      - name: Install ffmpeg
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | sed -n 1p
+          ffprobe -version | sed -n 1p
       - name: All production test modules
         run: |
           set -euo pipefail
           # The tools default to Homebrew paths; point them at the runner's.
-          export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
           mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
           python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
       - name: No skips for a missing package
