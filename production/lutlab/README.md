@@ -139,6 +139,8 @@ Measured, on an S5II V-Log clip with RCM Print Teal and Neutral:
 - End to end: in a project set up as above, the Rec.709 render is 0.79
   (Neutral) and 0.82 (Print Teal) from the camera look, p95 2.4 to 2.8, the
   same ballpark as the camera-LUT renders (0.7 to 0.9).
+- Pyxis: the same RCM Print Teal on a Pyxis BRAW clip (Resolve's own Gen 5 to
+  DaVinci Wide Gamut decode) renders 0.95 from the Pyxis camera look, p95 3.0.
 
 The alternative, with no second set: give each clip an Input Color Space equal
 to the timeline space, so the node sees the camera's code values, and put a
