@@ -438,6 +438,21 @@ class VerifyRenderTest(unittest.TestCase):
         wrong = verify.verify(str(self.src), str(self.render), str(self.other), 0.5)
         self.assertGreater(wrong["dE2000"]["median"], max(3.0, 5 * right["dE2000"]["median"]))
 
+    def test_grab_writes_16bit_pngs_and_rotates(self):
+        import cv2
+        from lutlab import verify
+        out, out_r = self.tmp / "grab", self.tmp / "grab-r"
+        out.mkdir()
+        out_r.mkdir()
+        a = verify.grab(str(self.src), [0.5], out, width=640)[0]
+        b = verify.grab(str(self.src), [0.5], out_r, width=640, rotate=90)[0]
+        ia, ib = cv2.imread(a, cv2.IMREAD_UNCHANGED), cv2.imread(b, cv2.IMREAD_UNCHANGED)
+        self.assertEqual((ia.dtype, ia.shape), (np.dtype("uint16"), (360, 640, 3)))
+        self.assertEqual(ib.shape, (640, 360, 3))
+        np.testing.assert_array_equal(ib, np.rot90(ia, -1))  # clockwise
+        with self.assertRaises(FileExistsError):
+            verify.grab(str(self.src), [0.5], out, width=640)
+
     def test_bad_margin_refused(self):
         from lutlab import verify
         with self.assertRaises(ValueError):

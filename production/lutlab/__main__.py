@@ -17,6 +17,8 @@
         preview: graded stills and a contact sheet, or an H.264 clip via ffmpeg
   verify-render SOURCE RENDER LUT --t SECONDS [--render-t S] [--out-space r709] [--margin 0.10]
         Delta E 2000 between a Resolve render and the source frame run through the LUT
+  frames CLIP --t S [--t S ...] [--width 1280] [--rotate 0|90|180|270] [--out DIR]
+        stills from a clip as 16-bit PNGs, read the way verify-render reads it: inputs for apply
   library [--scan] [--list] [--space S] [--dupes] [--out DIR]
         registry of the LUTs in Resolve's LUT folders: input-space guess, copies
   fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG ...] [--out DIR] [--name NAME]
@@ -116,6 +118,13 @@ def main(argv=None):
     p.add_argument("--render-t", type=float, help="seconds into the render (default: same as --t)")
     p.add_argument("--out-space", default="r709")
     p.add_argument("--margin", type=float, default=0.10, help="fraction of the picture trimmed on every side")
+    p = sub.add_parser("frames")
+    p.add_argument("clip")
+    p.add_argument("--t", type=float, action="append", required=True, help="seconds into the clip")
+    p.add_argument("--width", type=int, default=1280)
+    p.add_argument("--rotate", type=int, default=0, choices=(0, 90, 180, 270), help="clockwise, for a clip ffmpeg did not rotate")
+    p.add_argument("--out")
+    p.add_argument("--overwrite", action="store_true")
     p = sub.add_parser("library")
     p.add_argument("--scan", action="store_true", help="rescan Resolve's LUT folders (default when no registry yet)")
     p.add_argument("--list", action="store_true")
@@ -187,6 +196,10 @@ def main(argv=None):
     elif a.cmd == "verify-render":
         from . import verify
         print(json.dumps(verify.verify(a.source, a.render, a.lut, a.t, a.render_t, a.out_space, a.margin), indent=1))
+    elif a.cmd == "frames":
+        from . import verify
+        for f in verify.grab(a.clip, a.t, guard.out_dir(a.out, "frames"), a.width, a.rotate, a.overwrite):
+            print(f)
     elif a.cmd == "library":
         from . import library
         out = guard.out_dir(a.out, "library")

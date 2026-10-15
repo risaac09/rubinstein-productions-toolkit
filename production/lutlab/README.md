@@ -157,6 +157,21 @@ models. The source must be in the LUT's input encoding, so for Pyxis render a
 Gen 5 frame or clip out of Resolve first. `--render-t` covers a render that
 starts at a different time than the source.
 
+**Tuning the looks on footage.** The loop, with a new output folder each
+round because Resolve caches a LUT by path:
+
+```bash
+/usr/bin/python3 -m lutlab frames CLIP.MOV --t 2 --t 6 --out "$WORK/frames/s5ii"
+/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii --out "$WORK/looks-v2"
+/usr/bin/python3 -m lutlab apply "$WORK/looks-v2/RP Neutral [S5II].cube" ... --frame "$WORK/frames/s5ii/CLIP t2s.png" --width 420 --out "$WORK/contact-s5ii"
+```
+
+`frames` decodes the way `verify-render` does, so the previews match what
+Resolve renders. For a Pyxis, take a Gen 5 render from a plain YRGB project
+(ffmpeg cannot read BRAW). Edit the numbers in `production/lutlab-looks/`,
+bake into a new folder, compare; copy a round into Resolve's LUT root only
+when it is the one you want.
+
 For video, lutlab replaces the darktable skill's `generate_lut.py`, which
 stays for stills presets.
 

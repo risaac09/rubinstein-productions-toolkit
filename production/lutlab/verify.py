@@ -68,3 +68,24 @@ def verify(source, render, lut_path, t, render_t=None, out="r709", margin=0.10, 
     bias = (ren - want).reshape(-1, 3).mean(0)
     return {"lut": str(lut_path), "frame": [width, height], "t": t, "pixels": int(de.size),
             "dE2000": fit.stats(de), "mean render minus lut (r,g,b, 0..1)": [round(float(b), 4) for b in bias]}
+
+
+def grab(clip, times, outdir, width=1280, rotate=0, overwrite=False):
+    """Stills of a clip, decoded the way verify reads it (BT.709 matrix, full range), as 16-bit PNGs:
+    the inputs `apply` wants for a log camera. rotate is 0, 90, 180 or 270 degrees clockwise, for a clip
+    whose rotation flag ffmpeg did not honour. Returns the paths: <clip stem> t<seconds>s.png."""
+    import cv2
+    from pathlib import Path
+    if rotate % 90:
+        raise ValueError("rotate must be a multiple of 90")
+    w0, h0 = probe_size(clip)
+    height = int(round(width * h0 / w0))
+    written = []
+    for t in times:
+        dst = Path(outdir) / f"{Path(clip).stem} t{t:g}s.png"
+        if dst.exists() and not overwrite:
+            raise FileExistsError(dst)
+        img = np.rot90(decode_frame(clip, t, width, height), -(rotate // 90))  # np.rot90 turns counter-clockwise
+        cv2.imwrite(str(dst), np.round(img[..., ::-1] * 65535).astype(np.uint16))
+        written.append(str(dst))
+    return written
