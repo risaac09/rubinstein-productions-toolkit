@@ -42,8 +42,12 @@ source LUT never saw, which are clamped at its edge. Use `--size 65`: putting
 a LUT onto a new lattice softens hard clips slightly, and 65 points keeps
 that under the noise (V-Log to Gen 5 and back: median Delta E 0.12 on a
 real 65-point LUT). `--monitor` adds a 33-point copy clipped to 0..1 for the
-camera itself; the Pyxis loads 33-point `.cube`. For the S5II's Real Time LUT,
-check the accepted format on the body before relying on it. Check a bought
+camera itself; the Pyxis loads 33-point `.cube`. The S5II's LUT Library takes
+`.cube` (2 to 33 points) or Panasonic's `.vlt`, from the card's root, 10 slots,
+full range, and on a FAT32 (SD/SDHC) card the file name is 8 characters at most
+([manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5M2/html/DC-S5M2_DVQP2839_eng/0071.html)).
+So a 33-point `--monitor` file loads as it is: no `.vlt` writer is needed.
+Copy it to the card under a short name (`RPNEUT.cube`). Check a bought
 pack's license before porting it to a camera it wasn't sold for, and keep
 the ports local.
 
