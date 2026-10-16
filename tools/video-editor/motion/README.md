@@ -1,54 +1,38 @@
-# Remotion video
+# motion
 
-<p align="center">
-  <a href="https://github.com/remotion-dev/logo">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-dark.apng">
-      <img alt="Animated Remotion Logo" src="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-light.gif">
-    </picture>
-  </a>
-</p>
+Remotion project for graphics that sit over footage. One component today, the lower third, registered as three compositions. Work on it from the toolkit's `tools/video-editor/README.md`, which also has the alpha render recipe.
 
-Welcome to your Remotion project!
+## Compositions
+
+| Id | Size | Use |
+|---|---|---|
+| `LowerThird` | 3840 by 2160 | Landscape, the project default |
+| `LowerThirdPortrait` | 2160 by 3840 | 9:16, raised above the vertcut caption bar |
+| `LowerThirdSquare` | 2160 by 2160 | 1:1, same raised offset |
+
+All three run at 24000/1001 fps (23.976) and last 76 frames, about 3.2 seconds: a slide in, a hold and a slide out, timed in seconds so the length stays the same at another frame rate.
+
+## Props
+
+| Prop | Default | Meaning |
+|---|---|---|
+| `name` | Isaac Rubinstein | Title line |
+| `role` | Facilitator / Filmmaker | Subtitle line |
+| `width` | The composition's own | Frame width in pixels |
+| `height` | The composition's own | Frame height in pixels |
+| `fps` | 24000/1001 | Frame rate. The frame count follows it. |
+
+Geometry is a set of fractions of the frame, so any width and height scale cleanly. The fractions are listed in `production/design-tokens.md`, under the lower-third geometry. Colours and type in the component are still literals, not tokens.
 
 ## Commands
 
-**Install Dependencies**
-
 ```console
-npm i
+npm ci               # install from the lockfile
+npm run dev          # Remotion Studio
+npx tsc --noEmit     # typecheck
+npx remotion compositions src/index.ts
 ```
 
-**Start Preview**
+Render recipes, including the ProRes 4444 file with alpha, are in `tools/video-editor/README.md`. Rendered files go to `out/`, which git ignores.
 
-```console
-npm run dev
-```
-
-**Render video**
-
-```console
-npx remotion render
-```
-
-**Upgrade Remotion**
-
-```console
-npx remotion upgrade
-```
-
-## Docs
-
-Get started with Remotion by reading the [fundamentals page](https://www.remotion.dev/docs/the-fundamentals).
-
-## Help
-
-We provide help on our [Discord server](https://discord.gg/6VzzNDwUwV).
-
-## Issues
-
-Found an issue with Remotion? [File an issue here](https://github.com/remotion-dev/remotion/issues/new).
-
-## License
-
-Note that for some entities a company license is needed. [Read the terms here](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md).
+Read Remotion's licence terms before a larger team uses it.

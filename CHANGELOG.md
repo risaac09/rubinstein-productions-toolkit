@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- LowerThird renders at UHD and 23.976 by default with width, height and fps props, gains portrait and square compositions, and the video-editor README gains a ProRes 4444 alpha recipe; the design tokens gain portrait and square geometry and the intro layout (Amendment 3, item 15).
 - The capture standard gains white balance, exposure and ND rules, the iPhone 15 Pro floor and a per-camera table of numbers still to be measured; the Resolve spec marks its Inter 500 caption line superseded by `type.caption`, and the caption line rule says which shapes get two lines (Amendment 3, items 12 and 14).
 - Added `production/remote-session-runbook.md`, the runbook for the remote filming phase (Amendment 3, item 10): the 30-minute setup-call script, prompts written from the question bank, the spoken consent loop, the debrief within 48 hours, and unrecorded calls. Linked from the producers path and the README.
 - The instrument's seven Likert items are now the record: the onboarding baseline and the case-study tables quote them, `templates/respondent-sheet.md` is the client-facing form, Narrative Clarity is asked at pre-engagement, each assessment point is tied to an engagement event, and the instrument says a funded cohort runs the evaluation waves and the survey side by side (Amendment 3, items 5 to 7).
