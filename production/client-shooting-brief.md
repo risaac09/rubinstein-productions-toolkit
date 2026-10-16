@@ -48,7 +48,7 @@ If one take is not right, film it again. Leave the first one on the card too. No
 
 A dead battery, a full card, a broken part, a camera that will not turn on: stop. Do not open the camera, do not try to fix it, and do not change settings to get round it. Call or write to us. Your filming session moves; the camera does not go to a shop. We work out what to do together, and a spare may already be in the box.
 
-If you drop or damage something, tell us, take photographs, and pack it back as usual. We record it as damage and nothing more.
+If you drop or damage something, tell us, take photographs, and pack it back as usual. We record it as damage.
 
 ## How it comes back
 
