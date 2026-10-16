@@ -63,7 +63,7 @@ Resolve reads the number as a ceiling and not a rule, and the style itself (colo
 
 ### Bar opacity
 
-The bar is `color.marrow` at 88% opacity, the number the lower-third panel already uses. Resolve and `tools/vertcut` both use it (decided 2026-10-16).
+The bar is `color.marrow` at 88% opacity, the number the lower-third panel already uses. `tools/vertcut` applies it in code. In Resolve the bar is set by hand, so use the same number there (decided 2026-10-16).
 
 ### vertcut and the standard
 

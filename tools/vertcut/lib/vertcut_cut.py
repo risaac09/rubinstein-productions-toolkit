@@ -254,7 +254,7 @@ def resolve_style(file_path, text_color, bar_color, font):
         if unknown:
             raise CaptionError("caption style %s: unknown keys %s (allowed: %s)"
                                % (path, ", ".join(unknown), ", ".join(STYLE_KEYS)))
-        style.update(data)
+        style.update({k: v for k, v in data.items() if v})
     for key, val in (("text_color", text_color), ("bar_color", bar_color), ("font", font)):
         if val:
             style[key] = val
