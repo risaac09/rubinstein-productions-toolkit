@@ -14,11 +14,13 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- ROADMAP gains Amendment 3, a second cross-discipline audit with a fifth reader, the client: 29 verified gaps, filed and not yet fixed. (#157)
+- CI now runs shellcheck at warning level over the first-party shell outside phase-zero. The file list comes from the tracked files, so new scripts are picked up. Three scripts needed `cd ... || exit`; behavior is unchanged. Review item 5 remainder.
 - Added the version scheme and this changelog shape (Amendment 2, item 8). The Resolve spec's footer now says "Document revision" so it is not mistaken for the repository's version. ROADMAP item 12 records that the `cli-final` tag exists. (#148)
 
 ### 2026-10-16
 
-- ROADMAP gains Amendment 3, a second cross-discipline audit with a fifth reader, the client: 29 verified gaps, filed and not yet fixed.
+- The Likert anchors decided 2026-10-16 (1 "strongly disagree", 5 "strongly agree", middle unlabeled) are in the corpus canonical measurement framework and synced here; the other methodology snapshots carry the new sync date only.
 - Added `production/spikes/colour-space-api-spike.md`, a plan for a sandbox spike on whether the scripting API can set the timeline and output colour spaces and the tone and gamut mapping, so that `set_color_management` could set more than `colorScienceMode`. It records what Resolve's README and type stubs confirm and leave unconfirmed, and changes no tool behaviour. Linked from `production/resolve-mcp.md`.
 - vertcut's captions now follow the caption standard in `production/design-tokens.md`: a bar at 88% opacity instead of the outline, text and bar colours and the face from options or an untracked `captions.local.json`, 16 characters a line and two lines at most, and `--caption-y` as the bar's bottom edge. The bar opacity is decided. Amendment 2, item 17.
 - The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.

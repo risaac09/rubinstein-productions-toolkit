@@ -36,7 +36,7 @@ Items are quoted exactly. The label in parentheses is the framework's own name f
 6. "This was collaborative, not extractive" (Co-Creation Quality)
 7. "We're proud to share this publicly" (Representative Pride)
 
-**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The framework says "Likert 1-5" and gives no labels; this line sets them, and the corpus copy of the framework should gain the same line.
+**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The same line is in [Measurement Framework](measurement-framework.md) section 1, synced from the corpus canonical.
 
 ### 2.2 Net Promoter question, rated 0 to 10
 
@@ -83,7 +83,8 @@ Any form tool that exports CSV will do, as long as the exported columns can be r
 ```
 Respondent code: ______   Group: ______   Date: ______
 
-For each statement, circle a number from 1 to 5.            1  2  3  4  5
+For each statement, circle a number from 1 to 5,
+1 is "strongly disagree" and 5 is "strongly agree".         1  2  3  4  5
   We can articulate our mission with ease and specificity
   ... (items 2 to 7 of section 2.1, one line each)
 
