@@ -1,6 +1,5 @@
 """
-rpresolve.config: resolve-config.json (camera bins, clip colours, delivery
-destinations) with built-in defaults for any missing key.
+rpresolve.config: resolve-config.json (delivery house rules and destinations) with built-in defaults for any missing key.
 Stdlib only.
 
 Most top-level keys in a config file replace the default outright. The two
@@ -55,11 +54,6 @@ DEFAULT_CONFIG = {
         "Timeline": [],
         "Graphics": [],
         "Exports": [],
-    },
-    "cameras": {
-        "iphone": {"bin": ["Source", "iPhone"], "clip_color": "Blue"},
-        "gh7": {"bin": ["Source", "GH7"], "clip_color": "Orange"},
-        "gh5": {"bin": ["Source", "GH5"], "clip_color": "Yellow"},
     },
     "default_resolution": {"width": 3840, "height": 2160},
     "default_framerate": "23.976",
