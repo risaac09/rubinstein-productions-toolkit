@@ -9,7 +9,9 @@ clip as shot, or a Pyxis frame rendered out of Resolve in Gen 5 (ffmpeg can't
 read BRAW). Both files are read as BT.709 video."""
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 import cv2
@@ -83,6 +85,8 @@ def grab(clip, times, outdir, width=1280, rotate=0, overwrite=False):
     whose rotation flag ffmpeg did not honour. Returns the paths: <clip stem> t<seconds>s.png."""
     if rotate % 90:
         raise ValueError("rotate must be a multiple of 90")
+    if str(clip).lower().endswith(".braw"):
+        return _grab_braw(clip, times, outdir, width, rotate, overwrite)
     w0, h0 = probe_size(clip)
     height = int(round(width * h0 / w0))
     written = []
@@ -92,5 +96,42 @@ def grab(clip, times, outdir, width=1280, rotate=0, overwrite=False):
             raise FileExistsError(dst)
         img = np.rot90(decode_frame(clip, t, width, height), -(rotate // 90))  # np.rot90 turns counter-clockwise
         cv2.imwrite(str(dst), np.round(img[..., ::-1] * 65535).astype(np.uint16))
+        written.append(str(dst))
+    return written
+
+
+def braw_helper():
+    """The braw2ppm helper (lutlab/braw/build.sh), from LUTLAB_BRAW2PPM or beside its source."""
+    p = Path(os.environ.get("LUTLAB_BRAW2PPM") or Path(__file__).resolve().parent / "braw" / "braw2ppm")
+    if not p.exists():
+        raise FileNotFoundError(f"{p} not built; run lutlab/braw/build.sh (needs the Blackmagic RAW SDK)")
+    return str(p)
+
+
+def read_ppm16(path):
+    with open(path, "rb") as f:
+        if f.readline().strip() != b"P6":
+            raise ValueError(f"{path} is not a binary PPM")
+        w, h = map(int, f.readline().split())
+        f.readline()
+        return np.frombuffer(f.read(), dtype=">u2").reshape(h, w, 3).astype(np.float32) / 65535
+
+
+def _grab_braw(clip, times, outdir, width, rotate, overwrite):
+    """BRAW stills as Film Gen 5: ffmpeg cannot read BRAW, the SDK helper can."""
+    helper, written = braw_helper(), []
+    for t in times:
+        dst = Path(outdir) / f"{Path(clip).stem} t{t:g}s.png"
+        if dst.exists() and not overwrite:
+            raise FileExistsError(dst)
+        with tempfile.TemporaryDirectory() as tmp:
+            ppm = os.path.join(tmp, "f.ppm")
+            r = subprocess.run([helper, str(clip), f"{t}s", ppm], capture_output=True, text=True)
+            if r.returncode or not os.path.exists(ppm):
+                raise RuntimeError(f"braw2ppm failed on {clip} at {t}s: {r.stderr[-300:]}")
+            img = read_ppm16(ppm)
+        h = int(round(width * img.shape[0] / img.shape[1]))
+        img = np.rot90(cv2.resize(img, (width, h), interpolation=cv2.INTER_AREA), -(rotate // 90))
+        cv2.imwrite(str(dst), np.round(np.clip(img, 0, 1)[..., ::-1] * 65535).astype(np.uint16))
         written.append(str(dst))
     return written
