@@ -4,7 +4,7 @@
 
 Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism — not the business behind it — is the useful, reusable part.
 
-Forks welcome, pull requests unreviewed: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me.
+Forks welcome, pull requests not reviewed or merged: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
 
 ---
 
@@ -134,7 +134,7 @@ Three lanes, matching the rest of this practice's repos:
 - **Methodology, protocols, and practice-writing** (`methodology/`, `templates/`, `docs/`) — **CC BY-SA 4.0**. Share and adapt, with attribution, alike.
 - **Data** — none of consequence lives in this repo; where it would, it's CC0.
 
-See `LICENSE` for the full texts and scope note, and `public-kit/` for the templates this policy is built from.
+See [`LICENSE`](LICENSE) for the code license and scope note, [`LICENSE-CONTENT`](LICENSE-CONTENT) for the methodology license, and `public-kit/` for the templates this policy is built from. Contribution terms are in [`CONTRIBUTING.md`](CONTRIBUTING.md), and the reporting channel for security issues is in [`SECURITY.md`](SECURITY.md).
 
 ---
 
