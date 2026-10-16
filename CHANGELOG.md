@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- Add `templates/scope-checklist.md`, a consent tier step in the onboarding template, and a per-participant consent evidence table in the case-study template (Amendment 3, items 9 and 24).
 - Delivery documents for the client: attribution column in the licence register and a licences extract in the manifest, review-copy name and checksum in the manifest header, a client key and approval message, and macOS and Windows verify steps in the return package (Amendment 3, items 20, 22, 25, 29).
 - Platform specs gain rows for the YouTube UHD, YouTube HD and LinkedIn 16:9 destinations, so every key in the Resolve config has one, and a test fails if a key goes missing. (Amendment 3, item 18)
 - The vertcut README and the Resolve spec now say vertcut is a draft path: its clips fail the `linkedin_9x16` name row and, from an untagged source, the `color_transfer` row, and the deliverable route for a vertical cut is `reframe_plan` with `cut`, then `queue_render`.
