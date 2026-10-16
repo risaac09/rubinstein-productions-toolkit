@@ -10,6 +10,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 - Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
 - Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
 - ROADMAP Amendment 2, items 10 and 11, carry status lines.
+- Drafted the producer gaps from Amendment 2, items 13 and 20: `production/camera-shipping-logistics.md`, `production/delivery-manifest.md`, `production/platform-specs.md`, `production/credits-and-disclosure.md`, and a final-approval gate in the Resolve spec's Deliver section. All are marked draft and end in a "Needs Isaac" list.
 
 ## 2026-10-15
 

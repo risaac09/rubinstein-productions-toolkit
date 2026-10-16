@@ -1,6 +1,6 @@
 > **Canonical source:** this file, for the blueprint as a whole (toolkit is authoritative; the vault archived its copy 2026-04-27; this file reflects the v2 April 2026 update). The four phase definitions follow the canonical positioning doc, and each tier's deliverables follow `services.yaml` `typicalDeliverables`.
 
-> **Status:** draft. The list under "What's still missing" is dated April 2026 and has not been revisited.
+> **Status:** draft. The list under "What's still missing" is dated April 2026. Item 5 was revisited 2026-10-16 and now points at a draft document; the other items have not been revisited.
 
 # Rubinstein Productions — Methodology Blueprint
 *Working Document | Created: 2026-03-30*
@@ -76,7 +76,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 **Goal:** Capture the inside version on camera — on the client's terms, in their space, with their hands.
 
 **What Isaac does:**
-- Ships camera and lens to the client
+- Ships camera and lens to the client (logistics: [`production/camera-shipping-logistics.md`](../production/camera-shipping-logistics.md), a draft)
 - Facilitates remotely while the client films themselves
 - Minimal constraints: natural light, eye level, say what's true
 - Holds the witness position — listening, co-regulating, not directing
@@ -104,6 +104,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 
 **What Isaac does:**
 - Produces the artifact the tier calls for (for example a brand video) from the client's raw footage
+- Shows the client a review copy and, under the draft standard, delivers only what the client has approved in writing (the final-approval gate in the [Resolve spec](../production/resolve-template-spec.md#the-final-approval-gate); the delivered files are listed in a [manifest](../production/delivery-manifest.md), and the [platform specs](../production/platform-specs.md) and [credits and disclosure standard](../production/credits-and-disclosure.md) apply; all drafts)
 - Returns ALL footage, performance data, and final video to the client
 - Delivers the Bilingual Dashboard only where the tier lists it (Tier 2+): Royal metrics (institutional ROI language) + Nomadic indicators (relational health, emergence)
 - Nothing is kept. The client owns everything.
@@ -142,7 +143,7 @@ what the public kit needs to reproduce the practice.
 2. **A completed client journey.** As of the April 2026 update, no client had gone through the full camera-shipping process. This document does not record whether one has since.
 3. **A case study.** The cohort video is the only proof of process. First Tier 2 engagement becomes the first case study.
 4. **Pricing validation.** The tiers are set by value-based logic but untested in the market.
-5. **The camera-shipping logistics.** Insurance, shipping timelines, backup equipment, international shipping.
+5. **The camera-shipping logistics.** Insurance, shipping timelines, backup equipment, international shipping. A draft standard exists as of 2026-10-16: [`production/camera-shipping-logistics.md`](../production/camera-shipping-logistics.md), with its owner (the kit owner role), lifecycle, kit checklist and return. Insurance, carrier, international shipping and who bears damage costs stay open there as written questions, so this item is drafted, not closed.
 
 ---
 
