@@ -61,29 +61,22 @@ One caption style for every deliverable, taken from the Resolve spec's Subtitles
 
 Resolve reads the number as a ceiling and not a rule, and the style itself (colour, face, bar) is applied by hand in Resolve, since the scripting API does not set it. The character numbers are verified against `production/resolve-config.json` and the defaults in `production/rpresolve/config.py`, which agree; `create_captions` passes them to Resolve as the subtitle characters-per-line and line-break settings. See [Captions in the Resolve spec](resolve-template-spec.md#captions) for how the ceiling behaved on real renders.
 
-### How vertcut differs today
+### Bar opacity
 
-`tools/vertcut/lib/vertcut_cut.py` draws captions as Pillow PNG overlays on a 1080 by 1920 frame. Against the standard:
+The bar is `color.marrow` at 88% opacity, the number the lower-third panel already uses. Resolve and `tools/vertcut` both use it (decided 2026-10-16).
 
-| | Standard | vertcut today |
+### vertcut and the standard
+
+`tools/vertcut/lib/vertcut_cut.py` draws captions as Pillow PNG overlays on a 1080 by 1920 frame and follows the standard:
+
+| | Standard | vertcut |
 |---|---|---|
-| Ground | Semi-transparent `color.marrow` bar | No bar. White text with a black outline, stroke width one eleventh of the font size, at least 4 px. |
-| Text colour | `color.text-on-dark` | Literal white. |
-| Typeface | `type.caption` | Arial Bold from the macOS system folder by default; `--font` overrides it. |
-| Size | By token | 66 px by default (3.4% of the 1920 height); `--font-size` overrides it. |
-| Line length | 16 characters per line for portrait | A cue holds at most 3 words and 26 characters (`--max-words`, `--max-chars`); lines wrap by pixel width within the frame width less 140 px. |
-| Lines | Two at most | Not capped in code. |
-| Position | Lower third, fixed | The top of the cue image sits 1400 px down the 1920 px frame (72.9%), centred (`--caption-y`). |
+| Ground | `color.marrow` bar at 88% | A bar at `--bar-opacity` (0.88), in `--bar-color`; no outline. |
+| Text colour and face | `color.text-on-dark`, `type.caption` | `--text-color` and `--font`, or a local untracked style file (`--caption-style`, else `tools/vertcut/captions.local.json`). Neutral white and Arial Bold when none is given; no brand value ships. |
+| Line length and lines | 16 characters, two lines at most for portrait | `--line-chars` 16. A cue that would need a third line is split into more cues; a word longer than a line stops the run. |
+| Position | Lower third, the same place on every cue | The bar's bottom edge at y 1680 of 1920 (`--caption-y`), so one-line and two-line cues share a baseline. |
 
-### Open: bring vertcut into line
-
-A follow-up change to vertcut, not made in this PR:
-
-1. Draw a `color.marrow` bar at partial opacity behind each cue and drop the outline.
-2. Set the cue text in `color.text-on-dark` and the face from `type.caption`, resolved from the private brand context when the tool runs. vertcut is a public tool, so it takes the resolved values as options or from a local file, and ships none.
-3. Wrap by the portrait standard, 16 characters a line and two lines, and refuse or re-group a cue that will not fit.
-4. Keep `--caption-y` as an override, with the default moved to the standard's lower-third position.
-5. Decide the bar opacity once, here, and use it in both Resolve and vertcut.
+Size stays `--font-size` (66 px); the type token's size is not yet published.
 
 ## Look book (stub)
 
