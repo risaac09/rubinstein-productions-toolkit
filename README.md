@@ -76,7 +76,7 @@ The offline front end of the stills lane: index, cluster and cull a shoot's came
 
 ### `tools/`
 - **`tools/vertcut/`**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`. Bash plus one small Python file; ffmpeg, Pillow and `mlx-whisper` do the work. See [its README](tools/vertcut/README.md).
-- **`tools/video-editor/`**: a bounded prototype that drives video editing through Claude Code by wrapping the vendored third-party `video-use` skill (MIT). Not a finished tool, and not Rubinstein Productions code.
+- **`tools/video-editor/`**: a bounded prototype that drives video editing through Claude Code. The Remotion lower-third in `motion/` and the notes in its [README](tools/video-editor/README.md) are Rubinstein Productions work. `video-use`, the editing skill the notes wrap, is third-party (Browser Use, MIT). It is not stored in this repo; `tools/video-editor/fetch-video-use.sh` fetches it at a pinned commit. Not a finished tool.
 
 ### `dsh/`
 The deployment kit for a DeepSeek Harness agent on the OpenRouter lane: the session brief, the model routing table for that lane, and an installer that keeps the shared skill home in step with `prompts/skills/`. It is the counterpart to `phase-zero/`, which targets Claude Code. See [its README](dsh/README.md).

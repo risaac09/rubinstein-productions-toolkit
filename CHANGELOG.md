@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- Untracked `tools/video-editor/video-use/` (third-party Browser Use `video-use`, MIT), which settles Amendment 2, item 3. `tools/video-editor/fetch-video-use.sh` fetches it at the pinned commit. `motion/` and the video-editor README stay. History still carries the files, so the clone size is unchanged. `.gitignore` now ignores `tools/video-editor/video-use/` instead of the whole `tools/video-editor/` tree.
 - CI now runs shellcheck at warning level over the first-party shell outside phase-zero. The file list comes from the tracked files, so new scripts are picked up. Three scripts needed `cd ... || exit`; behavior is unchanged. Review item 5 remainder.
 - Added the version scheme and this changelog shape (Amendment 2, item 8). The Resolve spec's footer now says "Document revision" so it is not mistaken for the repository's version. ROADMAP item 12 records that the `cli-final` tag exists. (#148)
 
