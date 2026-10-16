@@ -12,6 +12,10 @@
 
 The principle that participants maintain control over their narrative, image, and story use. Derived from participatory research ethics and Self-Determination Theory (Deci & Ryan, 1985).
 
+### **Assemblage**
+
+The deliberate juxtaposition of distinct knowledge enactments without collapsing them into one. The three-type architecture uses it in place of mixed-methods triangulation, so that what cannot be said in one enactment becomes visible by its absence in the others. See [Three-Type Architecture](three-type-architecture.md), section 3.4 and its glossary.
+
 ### **Authenticity**
 
 A state of congruence between internal experience and external expression; the alignment of nervous-system safety, psychological coherence, and communicative integrity. Anchored in Edmondson’s work on psychological safety and Porges’ ventral vagal regulation model.
@@ -19,6 +23,10 @@ A state of congruence between internal experience and external expression; the a
 ### **Behavioral Extraction**
 
 A process within surveillance capitalism where human behavior is captured, analyzed, and monetized as data (Zuboff, 2019). In traditional videography, extraction occurs when footage is taken without reciprocal benefit to subjects.
+
+### **Bilingual Dashboard**
+
+The measurement deliverable for Tier 2 and above. It sets Royal Metrics and Nomadic Indicators side by side in one report, so the work is legible to funders and honest about what changed. Both are necessary and neither is sufficient. See the [Measurement Framework](measurement-framework.md), section 5, and the [plain-language evaluation framework](evaluation-framework-plain.md).
 
 ### **Calm Companion Mode**
 
@@ -80,6 +88,10 @@ The act of shared observation where both filmmaker and subject remain present to
 
 An unconscious evaluation mechanism by which the nervous system detects cues of safety or danger (Porges, 2011). Camera presence often triggers threat neuroception until trust is established.
 
+### **Nomadic Indicators**
+
+The second of the two measurement languages. They capture what the counts miss: relational quality, narrative coherence, emergent capacity and the felt experience of the work. They are tracked through coded observations and structured interviews rather than standard counts. The [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) is the coding reference. See also [Evaluation Framework](evaluation-framework.md).
+
 ### **Nervous-System Awareness**
 
 The conscious tracking of physiological states—heart rate, breath, muscle tension—to regulate presence and authenticity during production.
@@ -112,6 +124,10 @@ A shared belief that one can express oneself without risk of punishment or humil
 
 ## **S–Z**
 
+### **Royal Metrics**
+
+The first of the two measurement languages: the counts institutions already trust, such as deliverables, timelines, quantities and ROI. They meet funder reporting requirements and show accountability. See [Evaluation Framework](evaluation-framework.md) and the [plain-language version](evaluation-framework-plain.md).
+
 ### **Self-Authorship**
 
 A developmental concept where individuals define their own identity and values, essential for authentic storytelling (Kegan, 1982). Applied here to narrative sovereignty.
@@ -124,6 +140,10 @@ An economic logic that commodifies human experience as behavioral data for predi
 
 A physiological state of mobilization (“fight or flight”) triggered by perceived threat or evaluation. Reduces spontaneity and expressive range on camera.
 
+### **Three Consistency Questions**
+
+Three statements that diverse stakeholders rate from 1 to 10 to score consistency, meaning how well a narrative holds contradiction without flattening it. The statements are: "This narrative holds my contradictory experience," "I can locate myself in this story without erasing complexity," and "This makes our conflicts generative rather than destructive." See the [Measurement Framework](measurement-framework.md), section 2, and the [Codebook](nomadic-indicators-codebook.md).
+
 ### **Ventral Vagal State**
 
 The polyvagal system’s social engagement mode—characterized by calm attention, prosody, and emotional expressiveness. Optimal state for authentic communication.
@@ -131,6 +151,10 @@ The polyvagal system’s social engagement mode—characterized by calm attentio
 ### **Witnessing vs. Capturing**
 
 The distinction between documenting as presence (witnessing) and recording as possession (capturing). Central ethical divide between extractive and facilitative filming practices.
+
+### **Zero-Measurement Zone**
+
+The protocol for the on-camera conversation (Type 3, production): no extractive data collection, and the facilitator follows energy, not agenda. See the [Session Facilitation Guide](session-facilitation-guide.md).
 
 ---
 
