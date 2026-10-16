@@ -54,7 +54,8 @@ project-local venv pinned to 3.10 was necessary).
 ```bash
 # from the repo root: fetch video-use at the pinned commit
 # (refuses to run if video-use/ already has files in it; if you have an older
-# checkout with the vendored copy, move that folder aside first)
+# checkout with the vendored copy, move that folder aside first, then copy
+# back any .venv, edit/ or .env you kept in it once the fetch has run)
 sh tools/video-editor/fetch-video-use.sh
 
 cd tools/video-editor/video-use

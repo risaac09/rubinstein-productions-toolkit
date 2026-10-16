@@ -22,6 +22,8 @@ cleanup() {
   rm -rf "$dest"
 }
 trap cleanup EXIT
+# A signal must run the EXIT trap too; plain sh does not do that on its own.
+trap 'exit 1' INT TERM HUP
 
 mkdir -p "$dest"
 git -C "$dest" init -q
