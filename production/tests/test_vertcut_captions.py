@@ -96,6 +96,11 @@ class TestStyle(unittest.TestCase):
         self.v.LOCAL_STYLE = self.write({"bar_color": "#010203"})
         self.assertEqual(self.v.resolve_style(None, None, None, None)["bar_rgb"], (1, 2, 3))
 
+    def test_an_empty_value_in_the_file_keeps_the_default(self):
+        s = self.v.resolve_style(self.write({"font": None, "bar_color": ""}), None, None, None)
+        self.assertEqual(s["font"], self.v.DEFAULT_FONT)
+        self.assertEqual(s["bar_rgb"], (0, 0, 0))
+
     def test_bad_style_is_refused(self):
         for data in ({"bar_color": "navy"}, {"colour": "#000000"}):
             with self.subTest(data=data):
