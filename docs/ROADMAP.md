@@ -108,6 +108,8 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 14. **No capture standard.** `production/filming-guide.md` is a one-day shoot plan dated March 31 that points at a vault footage path, yet the field guide presents it as the filming guide. Frame rate and log profile per camera, audio capture, sync and slate practice, and card naming are written down nowhere. Fix: write a general capture standard and rename or relocate the shoot plan as an example.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
+
+   **Status: executed 2026-10-16, PR pending.** [`production/capture-standard.md`](../production/capture-standard.md) sets frame rate and shutter, profile and codec, resolution, audio, sync, slate and card naming per camera, checked against the sync tools and `resolve-config.json`. The March 31 plan moved to `production/examples/2026-03-31-shoot-plan.md` with its vault path removed, and `production/filming-guide.md` is now a pointer. Open: the standard's values for the S5II and the Pyxis settings are not checked against any measurement in the repo.
 15. **No client-side shooting brief.** For the camera-shipping model, what the client films, how, and what the footage must satisfy does not exist anywhere in `production/`. Fix: write the brief as a client-readable page.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
