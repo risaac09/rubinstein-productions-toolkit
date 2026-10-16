@@ -4,7 +4,7 @@
 
 Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism — not the business behind it — is the useful, reusable part.
 
-Forks welcome, pull requests unreviewed: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me.
+Forks welcome, pull requests not reviewed or merged: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
 
 ---
 
@@ -65,6 +65,7 @@ Generic film/video production tooling. *(Kept as a default — see below.)*
 - [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
 - [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
 - [Client shooting brief](production/client-shooting-brief.md): a two-page brief for the person filming, to print and put in the box (draft)
+- [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
 - [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16); the [return package](production/return-package.md) sets what comes back to the client and how it is checked. The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
 ### `production/lutlab/`
@@ -135,7 +136,7 @@ Three lanes, matching the rest of this practice's repos:
 - **Methodology, protocols, and practice-writing** (`methodology/`, `templates/`, `docs/`) — **CC BY-SA 4.0**. Share and adapt, with attribution, alike.
 - **Data** — none of consequence lives in this repo; where it would, it's CC0.
 
-See `LICENSE` for the full texts and scope note, and `public-kit/` for the templates this policy is built from.
+See [`LICENSE`](LICENSE) for the code license and scope note, [`LICENSE-CONTENT`](LICENSE-CONTENT) for the methodology license, and `public-kit/` for the templates this policy is built from. Contribution terms are in [`CONTRIBUTING.md`](CONTRIBUTING.md), and the reporting channel for security issues is in [`SECURITY.md`](SECURITY.md).
 
 ---
 
