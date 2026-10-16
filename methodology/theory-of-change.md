@@ -53,6 +53,8 @@ OUTCOMES (Short-term)            OUTCOMES (Medium-term)           IMPACT (Long-t
                                                                    social impact storytelling
 ```
 
+In the Inputs column, PIPA is Participatory Impact Pathways Analysis: in the Container phase the group maps the project's linear logic, and stakeholders get a logic model they can sign off on. CBSD is Community Based System Dynamics: in the Excavation phase the group maps the feedback loops that keep honest expression contained.
+
 ## Mechanism of Change
 
 The mechanism is **witnessing under conditions of relational safety**. This is grounded in:
