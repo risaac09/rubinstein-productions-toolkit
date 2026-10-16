@@ -8,7 +8,7 @@
 - **Resolution:** 3840 × 2160 (UHD 4K) for the project and its timelines; each delivery
   destination sets its own frame size (see Deliver)
 - **Timeline framerate:** 23.976 fps (default) or 29.97 fps — set per project
-- **Color science:** DaVinci YRGB Color Managed v2, timeline DaVinci WG/Intermediate, output Rec.709 Gamma 2.4 (see Colour Pipeline of Record)
+- **Color science:** DaVinci YRGB Color Managed v2, timeline DaVinci WG/Intermediate, output Rec.709 Gamma 2.4 (see [Colour Pipeline of Record](#colour-pipeline-of-record))
 
 ---
 
@@ -29,7 +29,7 @@ A fresh colour-managed project starts with its timeline and output both at Rec.7
 
 ### Per camera
 
-Capture settings for each camera are in the capture standard (`production/capture-standard.md`). After capture, every camera takes the same path: `ingest` tags each clip's Input Color Space from what `detect` reads in the file, Resolve converts it into the timeline space, and the grade happens there.
+Capture settings for each camera are in the [capture standard](capture-standard.md). After capture, every camera takes the same path: `ingest` tags each clip's Input Color Space from what `detect` reads in the file, Resolve converts it into the timeline space, and the grade happens there.
 
 | Camera | Records | Input Color Space (`ingest`) | Conversion | Look |
 |---|---|---|---|---|
@@ -109,7 +109,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 📁 Exports
 ```
 
-Separate source bins by camera so footage is easy to find and match. Conversion needs no bin: it follows each clip's Input Color Space (see Colour Pipeline of Record).
+Separate source bins by camera so footage is easy to find and match. Conversion needs no bin: it follows each clip's Input Color Space (see [Colour Pipeline of Record](#colour-pipeline-of-record)).
 The MCP `ingest` tool makes the camera bins and a Review bin under `Source`; it does not
 create the other bins, which are made by hand.
 
@@ -129,7 +129,7 @@ create the other bins, which are made by hand.
 10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing is queued before the record exists
 11. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
 12. Render the queued jobs on the Deliver page (no tool starts one)
-13. Write the delivery manifest once `deliver_check` passes (`delivery-manifest.md`)
+13. Write the delivery manifest once `deliver_check` passes ([delivery manifest](delivery-manifest.md))
 
 ---
 
@@ -666,9 +666,9 @@ Delivery waits for the client's approval of a review copy. The gate sits after t
 - the picture and sound of the cut at the length it will ship;
 - the captions as they will appear, burnt in or from the sidecar;
 - the 9:16 and 1:1 versions, where they are going to ship, because a reframe is a different edit of the frame;
-- the credits line, so each person named has read their own credit (see `credits-and-disclosure.md`);
-- the list of machine-assisted steps used, as `credits-and-disclosure.md` defines them;
-- the destinations the cut will go to, from `platform-specs.md`.
+- the credits line, so each person named has read their own credit (see [credits and AI disclosure](credits-and-disclosure.md));
+- the list of machine-assisted steps used, as [credits and AI disclosure](credits-and-disclosure.md) defines them;
+- the destinations the cut will go to, from [platform specs](platform-specs.md).
 
 **What counts as approval.** A written statement from the approver, from an address the approver controls, that names the review copy by file name and checksum and says it is approved. A spoken approval on a call is noted, then confirmed in writing before anything is queued. Silence, a thumbs-up in passing, and "looks good" about a different version are not approval. An approval covers exactly one review copy: any change to the picture, the words or the credits after approval returns to the gate with a new review copy.
 
@@ -1223,7 +1223,7 @@ a one-line note here saying when.
 
 ## Open Questions
 
-- ~~Which V-Log / V-Log L to Rec.709 LUT for the GH7 and GH5?~~ Closed 2026-10-16: none. Under colour management Resolve converts V-Log and V-Log L from the Input Color Space tag (see Colour Pipeline of Record).
+- ~~Which V-Log / V-Log L to Rec.709 LUT for the GH7 and GH5?~~ Closed 2026-10-16: none. Under colour management Resolve converts V-Log and V-Log L from the Input Color Space tag (see [Colour Pipeline of Record](#colour-pipeline-of-record)).
 - ~~Does GH7 Open Gate (5.7K) need a crop or scale?~~ Closed 2026-10-16 by rule: shoot UHD 16:9 unless the scope plans a vertical or square cut; then shoot Open Gate, and `reframe_plan` and `reframe_apply` frame each shape from it (see Reframe and the capture standard).
 - Do you want an outro card or is the intro sufficient for personal work?
 
