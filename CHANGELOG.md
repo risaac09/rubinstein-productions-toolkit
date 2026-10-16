@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
 - Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
 - Promoted the public-kit templates to the repo root as `CONTRIBUTING.md` and `SECURITY.md`, which settles the second half of Amendment 2, item 4 ([#150](https://github.com/risaac09/rubinstein-productions-toolkit/pull/150)). Pull requests stay unreviewed, issues are read, and security reports go through private vulnerability reporting only. Merging waits on that repo setting being enabled.
 - Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera. The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
