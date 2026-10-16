@@ -15,11 +15,11 @@ if [ -e "$dest" ] && [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
   exit 1
 fi
 
-# If anything below fails before the pin is verified, remove the .git folder we
-# just made (and the folder itself if it is then empty), so a re-run starts clean.
+# The guard above means $dest was absent or empty, so everything in it now came
+# from this run. If anything below fails before the pin is verified, remove it
+# so a re-run starts clean.
 cleanup() {
-  rm -rf "$dest/.git"
-  rmdir "$dest" 2>/dev/null || true
+  rm -rf "$dest"
 }
 trap cleanup EXIT
 
