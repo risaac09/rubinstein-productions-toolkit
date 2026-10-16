@@ -7,6 +7,8 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 ## 2026-10-16
 
 - The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
+- Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
+- Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera. The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
 - The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
 - Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
 - Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
