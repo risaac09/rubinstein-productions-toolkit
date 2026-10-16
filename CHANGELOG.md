@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- The final-approval gate in the Resolve spec is accepted and its open points are settled: both the participant and a separate commissioner must approve, no round count in the document (each scope writes `R`), a SHA-256 in the approval message, no standalone verbal approval, and queueing without a record flagged, not blocked. ROADMAP Amendment 2, item 20, carries the status line.
 - The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
 - Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
 - Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
