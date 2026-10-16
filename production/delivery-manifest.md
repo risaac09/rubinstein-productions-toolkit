@@ -1,10 +1,10 @@
 # Delivery Manifest
 
-> **Status:** draft, 2026-10-16. A template and the rules for filling it, written to match the deliver tooling's naming rule and checks. No tool writes a manifest yet; a person or an agent fills it from `deliver_check` output after the last render.
+> **Status:** accepted 2026-10-16. A template and the rules for filling it, written to match the deliver tooling's naming rule and checks. No tool writes a manifest; a person or an agent fills it from `deliver_check` output after the last render. A tool is worth revisiting after three real deliveries, once a hand-filled manifest shows which columns matter.
 
 A manifest is the list of what was delivered for one piece of work: every file, what it is, where it went and which approval it carries. It is written once, after the [final-approval gate](resolve-template-spec.md#the-final-approval-gate) and after the last `deliver_check` passes, and it travels with the delivery. A client who opens it should be able to confirm that each file is the one that was approved, and an auditor six months on should be able to tell the same.
 
-The manifest covers produced deliverables. It does not cover the return of raw footage and data to the client; that return package is a separate gap (ROADMAP Amendment 2, item 19).
+The manifest covers produced deliverables. It does not cover the return of raw footage and data to the client; that return is set out in `production/return-package.md`.
 
 ## File and folder names
 
@@ -68,7 +68,7 @@ Checksums are taken last. A loudness fix, a caption change or a re-render after 
 2. **Only `deliver_check` PASS files are listed as delivered.** A file with a FAIL is either fixed and checked again or listed in a short "Not delivered" note with the reason.
 3. **The approval reference is required.** A file with no approval reference was not approved, and does not ship. See the gate.
 4. **The manifest is not edited after delivery.** A correction is a new manifest with a new date, and the first one is kept.
-5. **Nothing client-identifying goes in a public copy.** The manifest holds a project slug and a guest field in the file names. A manifest published in this repo or anywhere public uses placeholders.
+5. **The client sees the manifest in full.** It is their delivery. Nothing client-identifying goes in a public copy: the manifest holds a project slug and a guest field in the file names, and a manifest published in this repo or anywhere public uses placeholders.
 
 ## A filled example
 
@@ -90,11 +90,3 @@ Values here are placeholders, not measurements.
 | SW001_Guest_01_example-clip_16x9.srt | srt | n/a | n/a | n/a | <hh:mm:ss.ff> | n/a | <sha256> | substack_16x9 | AP-<n> |
 | Client_example-slug_master.mov | mov | prores HQ, yuv422p10 | <timeline size> | 25 | <hh:mm:ss.ff> | <LUFS>, <dBTP> | <sha256> | client_master | AP-<n> |
 ```
-
-## Needs Isaac
-
-1. **File name `manifest.md` at the delivery root.** A default; any single fixed name works.
-2. **SHA-256 for checksums.** Chosen because the cut tooling already uses it.
-3. **One approval reference per approved cut, repeated on every row.** The alternative is one per file.
-4. **The manifest is a Markdown table a person fills.** A tool could write it from `deliver_check`'s JSON; say whether that is worth building.
-5. **Public copies use placeholders.** Whether a client sees the manifest in full is yours to decide.
