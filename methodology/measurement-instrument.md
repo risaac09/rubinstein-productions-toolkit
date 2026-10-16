@@ -62,23 +62,37 @@ The framework collects satisfaction scores at five points. These are the values 
 | `followup-2wk` | 2-Week Follow-up |
 | `followup-3mo` | 3-Month Follow-up |
 
-**Items per point (decided 2026-10-16).** The framework does not say which items are asked at which point, and some are plainly unanswerable early: nobody can rate whether the facilitation honored their experience before it has begun. The schedule is:
+**Items per point (decided 2026-10-16).** The framework does not say which items are asked at which point, and some are plainly unanswerable early: nobody can rate whether the facilitation honored their experience before it has begun. Narrative Clarity can be asked early, and the framework's Narrative Clarity score is a pre and post measure, so it needs a Before figure. The schedule is:
 
 | Assessment point | Items asked |
 |---|---|
-| `pre-engagement` | The three consistency questions |
+| `pre-engagement` | Likert item 1 (Narrative Clarity) and the three consistency questions |
 | `mid-point` | Likert item 4 (Safety in Vulnerability) |
 | `delivery` | The seven Likert items and NPS |
 | `followup-2wk` | None |
 | `followup-3mo` | The three consistency questions and NPS |
 
-Asking consistency before and after gives the dashboard a delta. The response file still allows any item to be blank at any point. The example file holds two of the five points, `delivery` and `followup-3mo`, and follows this schedule for both.
+Asking clarity and consistency before and after gives the dashboard a delta for each. The response file still allows any item to be blank at any point, so `score.sh` needed no change for the clarity item; it reports `narrative_clarity` at `pre-engagement` like any other cell. The example file holds two of the five points, `delivery` and `followup-3mo`, and follows this schedule for both.
+
+**When each point falls (decided 2026-10-16).** Each point is tied to an event in the engagement. The phases are Discovery, Development, Production and Delivery, as in the [case study template](../templates/case-study-template.md).
+
+| Assessment point | Falls at | Sent by | Respondent-code key |
+|---|---|---|---|
+| `pre-engagement` | When the scope is signed, before the first session | The facilitator, as a link to the form | Only in the private engagement record |
+| `mid-point` | The end of Phase 2 (Development), never in the filming session | The facilitator, as a link | Only in the private engagement record |
+| `delivery` | At final approval | The facilitator, as a link | Only in the private engagement record |
+| `followup-2wk` | 14 days after delivery. A conversation; the schedule above asks no survey items | The facilitator | Only in the private engagement record |
+| `followup-3mo` | 90 days after delivery | The facilitator, as a link | Only in the private engagement record |
+
+A Founder Story has no mid-point. The filming session is the Zero-Measurement Zone (see the [Session Facilitation Guide](session-facilitation-guide.md), session type 3), so no form is sent in it or around it. The key from respondent code to person is never written into the response file, the form or any shared document. The client-facing form is [`templates/respondent-sheet.md`](../templates/respondent-sheet.md).
+
+**Funded cohorts.** A funded cohort runs both schedules side by side. The [evaluation framework](evaluation-framework.md) waves (intake, 30 days, 60 days, 6 months) are interview-coded narrative coherence; the survey runs at the five points above, and `score.sh` stays at five.
 
 Framework section 6 lists five more Likert dimensions for the 2-week conversation: Narrative Accuracy, Functional Utility, Representative Pride, Future Willingness and Stakeholder Clarity. It gives names and no statements, so they stay out of the response file until the corpus canonical gives the statements (decided 2026-10-16); the corpus owns that wording. Representative Pride appears in both lists; the statement in 2.1 is the only text the canon provides for it.
 
 ### 2.5 A plain-text form
 
-Any form tool that exports CSV will do, as long as the exported columns can be renamed to match section 3. One form per assessment point, with the items that point uses:
+Any form tool that exports CSV will do, as long as the exported columns can be renamed to match section 3. One form per assessment point, with the items that point uses. [`templates/respondent-sheet.md`](../templates/respondent-sheet.md) is a client-facing version of it:
 
 ```
 Respondent code: ______   Group: ______   Date: ______

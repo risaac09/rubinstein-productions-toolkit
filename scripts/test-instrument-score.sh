@@ -30,6 +30,10 @@ done
 # 3. Engagement filter: an unknown id scores zero rows and prints no tables.
 if "$SCORE" --engagement nope "$EX" | grep -q '^rows: 0$'; then ok "filter to an unknown engagement scores 0 rows"; else bad "engagement filter"; fi
 
+# 3b. The pre-engagement point carries the Narrative Clarity item (Before figure) beside the consistency questions.
+printf '%s\n%s\n%s\n' "$(head -1 "$EX")" "d,r1,staff,pre-engagement,2000-01-01,3,,,,,,,,5,5,4" "d,r2,staff,pre-engagement,2000-01-01,2,,,,,,,,4,4,3" > "$TMP/pre.csv"
+if "$SCORE" "$TMP/pre.csv" | grep -q '^pre-engagement  narrative_clarity           2   2.50$'; then ok "pre-engagement scores narrative_clarity"; else bad "pre-engagement narrative_clarity"; fi
+
 # 4. CRLF line endings score the same as LF.
 sed 's/$/\r/' "$EX" > "$TMP/crlf.csv"
 if "$SCORE" "$TMP/crlf.csv" | tail -n +2 | diff -q <(tail -n +2 methodology/instrument/expected-output.txt) - >/dev/null; then ok "CRLF input scores the same"; else bad "CRLF input"; fi
