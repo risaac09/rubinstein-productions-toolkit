@@ -23,6 +23,7 @@ Read the [RP Measurement Framework](../../methodology/measurement-framework.md) 
 
 ## Working with the data
 
+- **Funded cohorts run two schedules.** The evaluation framework's waves are interview-coded narrative coherence, and the survey runs at the instrument's five points. The line is in [Measurement Instrument](../../methodology/measurement-instrument.md#24-assessment-points), section 2.4.
 - **Consent tiers.** Three tiers govern every piece of participant data, set at intake and recorded in the [Case Study template](../../templates/case-study-template.md). Publication is governed by the tier the participant chose, and [Consent evidence](../../production/consent-evidence.md) says what proves each tier.
 - **[Source Tracking Protocol](../../methodology/source-tracking-protocol.md)**. Provenance categories and claim-level tracing for anything externally cited. Grant reports that survive scrutiny are built this way.
 - **Reporting cadence.** The frameworks specify who hears what and when: funders quarterly in their register, participants after engagement in theirs, the field annually.
