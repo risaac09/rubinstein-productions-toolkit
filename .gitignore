@@ -1,6 +1,8 @@
 .DS_Store
 *.xlsx
 *.csv
+# the invented worked example for the measurement instrument is tracked on purpose
+!methodology/instrument/responses-example.csv
 node_modules/
 .env
 *.dpx
