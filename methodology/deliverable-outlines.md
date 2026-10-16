@@ -96,4 +96,6 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 The framework's two audience framings (funders and board, mission-driven leaders) say how to introduce the page. The framework also says the internal register names are not client-facing language.
 
-**Left open.** The decision sheet describes the dashboard as five sections; section 5 of the framework has four category rows, and no other repo document names a fifth. This outline follows the framework until the corpus says what the fifth section is. The repo does not say who picks the metrics that fill each row.
+The dashboard has these four sections and no fifth; Isaac confirmed the framework's four rows on 2026-10-16.
+
+**Left open.** The repo does not say who picks the metrics that fill each row.

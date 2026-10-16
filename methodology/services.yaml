@@ -79,10 +79,10 @@ services:
 methodologyPhases:
   container:
     name: "Container"
-    description: "Establishing the facilitated space. Neuroceptive safety, co-regulation, institutional permission via a co-created logic model."
+    description: "Establishing the facilitated space. Neuroceptive safety, co-regulation, institutional permission via PIPA logic model."
   excavation:
     name: "Excavation"
-    description: "Surfacing the inside version. Feedback-loop mapping. What would they say if they knew it would land?"
+    description: "Surfacing the inside version. CBSD feedback-loop mapping. What would they say if they knew it would land?"
   performance:
     name: "Performance"
     description: "Camera ships to client. They film themselves. Zero-measurement zone."

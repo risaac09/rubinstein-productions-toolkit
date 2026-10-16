@@ -28,7 +28,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 **Goal:** Establish relational safety and institutional permission simultaneously.
 
 **What Isaac does:**
-- Facilitated intake
+- Facilitated intake using PIPA (Participatory Impact Pathways Analysis) principles
 - Co-creates a logic model with the client: inputs, activities, outputs, outcomes
 - Maps the project in the language the client's organization already speaks
 - Creates the institutional cover that allows deeper work to proceed
@@ -52,7 +52,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 **Goal:** Surface the "inside version" — what the client actually knows, believes, and would say in trusted company.
 
 **What Isaac does:**
-- Facilitated conversations
+- Facilitated conversations using CBSD (Community Based System Dynamics) principles
 - Maps the feedback loops that keep honest expression contained
 - Moves from surface (elevator pitch, about page) to depth (what would you say if you knew it would land?)
 - Identifies where the living thing is being filtered into something inert

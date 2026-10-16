@@ -14,7 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
-- New `methodology/deliverable-outlines.md` with one-screen outlines for six named deliverables. The names PIPA and CBSD and the 5-day post-latency window are struck from the repo-owned files, because no source states what they mean or why. (Amendment 3, items 8 and 11)
+- New `methodology/deliverable-outlines.md` with one-screen outlines for six named deliverables. The glossary defines PIPA and CBSD, which the blueprint and `services.yaml` keep, and the dashboard outline has four sections. The 5-day post-latency window is struck from the repo-owned files, because no source states why. (Amendment 3, items 8 and 11)
 - The instrument's seven Likert items are now the record: the onboarding baseline and the case-study tables quote them, `templates/respondent-sheet.md` is the client-facing form, Narrative Clarity is asked at pre-engagement, each assessment point is tied to an engagement event, and the instrument says a funded cohort runs the evaluation waves and the survey side by side (Amendment 3, items 5 to 7).
 - The Remotion lower-third prototype under `tools/video-editor/motion` has its lockfile refreshed within the existing version ranges, which clears the open advisories on brace-expansion, fast-uri, postcss-selector-parser and source-map-js.
 - Glossary gains Assemblage, Bilingual Dashboard, Nomadic Indicators, Royal Metrics, Three Consistency Questions and Zero-Measurement Zone, each linked to its source file (Amendment 3, item 11, term-bank half).
