@@ -30,7 +30,8 @@ from . import detect as rpdetect
 from . import ingest as rpingest
 from . import relink as rprelink
 
-SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
+# RPRESOLVE_SURVEY_PYTHON names another Python 3.14+ (the survey needs compression.zstd).
+SURVEY_PYTHON = os.environ.get("RPRESOLVE_SURVEY_PYTHON") or "/opt/homebrew/bin/python3.14"
 SURVEY_SCRIPT = Path(__file__).resolve().parent.parent / "resolve_survey.py"
 
 
@@ -350,7 +351,8 @@ def survey(out, json_out=None, projects=None, projects_dir=None, metadata_cache=
     missing."""
     if not os.path.exists(SURVEY_PYTHON):
         raise Refused(f"{SURVEY_PYTHON} not found. The survey needs Python 3.14+ "
-                      "(compression.zstd); install it with Homebrew (python@3.14).")
+                      "(compression.zstd); install it with Homebrew (python@3.14) "
+                      "or set RPRESOLVE_SURVEY_PYTHON.")
     if not SURVEY_SCRIPT.exists():
         raise Refused(f"{SURVEY_SCRIPT} not found; keep resolve_survey.py next to "
                       "resolve_workflow.py.")

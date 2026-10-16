@@ -7,18 +7,20 @@ time, links between guide pages become .html links, and links into the rest
 of the repository become GitHub blob URLs.
 
 Requires the `markdown` package (pip install markdown). Run from anywhere:
-    python3 scripts/build-site.py
-Output: _site/ at the repository root (gitignored).
+    python3 scripts/build-site.py [OUTDIR]
+Output: OUTDIR, else _site/ at the repository root (gitignored). Pull-request CI
+passes a temporary OUTDIR to check that the build runs, and deploys nothing.
 """
 
 import re
 import shutil
+import sys
 from pathlib import Path
 
 import markdown
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "_site"
+OUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "_site"
 REPO_URL = "https://github.com/risaac09/rubinstein-productions-toolkit"
 
 # source markdown -> (output name, page title)
@@ -156,7 +158,7 @@ def main() -> None:
             repo=REPO_URL,
         )
         (OUT / name).write_text(page)
-        print(f"  {src} -> _site/{name}")
+        print(f"  {src} -> {name}")
     print(f"build-site: {len(PAGES)} pages + map -> {OUT}")
 
 

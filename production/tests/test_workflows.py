@@ -9,6 +9,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -91,6 +92,21 @@ class TestSurvey(unittest.TestCase):
         with mock.patch.object(workflows, "SURVEY_PYTHON", "/nonexistent/python3.14"):
             with self.assertRaises(workflows.Refused):
                 workflows.survey("/tmp/s.md")
+
+    def test_survey_python_override(self):
+        code = "from rpresolve import workflows; print(workflows.SURVEY_PYTHON)"
+        root = str(Path(__file__).resolve().parent.parent)
+
+        def run(**extra):
+            env = {k: v for k, v in os.environ.items() if k != "RPRESOLVE_SURVEY_PYTHON"}
+            env.update(extra)
+            env["PYTHONPATH"] = root
+            return subprocess.run([sys.executable, "-c", code], env=env, check=True,
+                                  capture_output=True, text=True).stdout.strip()
+
+        self.assertEqual(run(), "/opt/homebrew/bin/python3.14")
+        self.assertEqual(run(RPRESOLVE_SURVEY_PYTHON="/opt/x/python3.14"), "/opt/x/python3.14")
+        self.assertEqual(run(RPRESOLVE_SURVEY_PYTHON=""), "/opt/homebrew/bin/python3.14")
 
 
 class FakeCutItem:

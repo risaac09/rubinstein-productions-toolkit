@@ -13,6 +13,7 @@ on:
       - architecture/**
       - docs/**
       - scripts/build-site.py
+      - requirements.txt
       - .github/workflows/deploy-architecture.yml
   workflow_dispatch:
 
@@ -35,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build site
         run: |
-          pip install markdown
+          pip install "$(grep -E '^markdown==' requirements.txt)"
           python3 scripts/build-site.py
       - uses: actions/configure-pages@v5
         with:
