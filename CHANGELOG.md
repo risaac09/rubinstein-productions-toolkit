@@ -19,6 +19,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 ### 2026-10-16
 
 - Applied Isaac's answers to the camera-shipping, delivery-manifest, platform-specs and credits drafts and the measurement-instrument open points (#145). The delivery standards are accepted, not drafts.
+- Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15 (#140).
 - Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera (#139). The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
 - The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12 (#138): `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
 - Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here (#136).
