@@ -677,7 +677,7 @@ Delivery waits for the client's approval of a review copy. The gate sits after t
 | Field | Content |
 |---|---|
 | Approval reference | A short id, such as `AP-1`, repeated on every manifest row of this cut. One id covers a cut only once every required approver has approved it |
-| Review copy | File name and SHA-256 |
+| Review copy | File name and SHA-256. The same copy for every approver; a change after one approval returns the cut to the gate for all of them |
 | Approver | Name and role of each approver; where two approve, both are listed |
 | Date and method | The date and how the approval arrived, with the message kept |
 | Rounds | How many change rounds ran before this approval |
