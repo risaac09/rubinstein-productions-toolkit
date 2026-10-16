@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The capture standard gains white balance, exposure and ND rules, the iPhone 15 Pro floor and a per-camera table of numbers still to be measured; the Resolve spec marks its Inter 500 caption line superseded by `type.caption`, and the caption line rule says which shapes get two lines (Amendment 3, items 12 and 14).
 - ROADMAP gains Amendment 3, a second cross-discipline audit with a fifth reader, the client: 29 verified gaps, filed and not yet fixed. (#157)
 - Sibling documents from Amendment 2, items 14 to 19, cite each other as relative links, including the Colour Pipeline of Record section of the Resolve spec, and the 2026-10-16 list reads newest first in merge order with no duplicate bullets (#155).
 - Untracked `tools/video-editor/video-use/` (third-party Browser Use `video-use`, MIT), which settles Amendment 2, item 3. `tools/video-editor/fetch-video-use.sh` fetches it at the pinned commit. `motion/` and the video-editor README stay. History still carries the files, so the clone size is unchanged. `.gitignore` now ignores `tools/video-editor/video-use/` instead of the whole `tools/video-editor/` tree.
