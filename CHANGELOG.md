@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The Resolve MCP document now states 28 tools with 13 writes, matching the registry, and the Resolve spec agrees. A new test fails when either figure drifts (Amendment 3, item 4).
 - `requirements.txt` carries a table of every environment override and pins `markdown` for the site build, the README has a Testing section, the survey interpreter reads `RPRESOLVE_SURVEY_PYTHON`, and CI builds the site on pull requests (Amendment 3, items 1 to 3).
 - ROADMAP gains Amendment 3, a second cross-discipline audit with a fifth reader, the client: 29 verified gaps, filed and not yet fixed. (#157)
 - Sibling documents from Amendment 2, items 14 to 19, cite each other as relative links, including the Colour Pipeline of Record section of the Resolve spec, and the 2026-10-16 list reads newest first in merge order with no duplicate bullets (#155).
