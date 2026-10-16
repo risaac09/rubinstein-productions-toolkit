@@ -54,6 +54,26 @@ jobs:
           shellcheck --version | sed -n 2p
           shellcheck -S style -e SC1090,SC2015 $(git ls-files 'phase-zero/*.sh' 'phase-zero/**/*.sh')
           echo "phase-zero: shellcheck clean"
+      # The rest of the first-party shell, at warning level. The set comes
+      # from git, so a new script is picked up with no list to maintain: every
+      # tracked *.sh, plus extensionless files whose first line is a shell
+      # shebang. Left out: phase-zero (its own step above), the deployed kit
+      # copies in public-kit and .claude, and the vendored video-use tree.
+      - name: First-party shellcheck
+        run: |
+          set -eu
+          shellcheck --version | sed -n 2p
+          list=$(mktemp)
+          git ls-files -z | grep -zvE '^(phase-zero|public-kit|\.claude)/|/video-use/' | while IFS= read -r -d '' f; do
+            [ -f "$f" ] || continue
+            if [ "${f%.sh}" != "$f" ]; then printf '%s\0' "$f"
+            elif head -n 1 "$f" | grep -qE '^#!.*[/ ](ba)?sh( |$)'; then printf '%s\0' "$f"
+            fi
+          done > "$list"
+          [ -s "$list" ] || { echo "no first-party scripts found" >&2; exit 1; }
+          tr '\0' '\n' < "$list"
+          xargs -0 shellcheck -S warning < "$list"
+          echo "first-party scripts: shellcheck clean"
       # Run the installers for real. A syntax check cannot see a script that
       # parses but dies on its first line (an unset SRC under set -u).
       - name: Phase-zero install and check, for real
