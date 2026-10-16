@@ -63,15 +63,16 @@ jobs:
         run: |
           set -eu
           shellcheck --version | sed -n 2p
-          files=$(git ls-files | grep -vE '^(phase-zero|public-kit|\.claude)/|/video-use/' | while IFS= read -r f; do
-            if [ "${f%.sh}" != "$f" ]; then echo "$f"
-            elif [ -f "$f" ] && head -n 1 "$f" | grep -qE '^#!.*[/ ](ba)?sh( |$)'; then echo "$f"
+          list=$(mktemp)
+          git ls-files -z | grep -zvE '^(phase-zero|public-kit|\.claude)/|/video-use/' | while IFS= read -r -d '' f; do
+            [ -f "$f" ] || continue
+            if [ "${f%.sh}" != "$f" ]; then printf '%s\0' "$f"
+            elif head -n 1 "$f" | grep -qE '^#!.*[/ ](ba)?sh( |$)'; then printf '%s\0' "$f"
             fi
-          done)
-          echo "$files"
-          [ -n "$files" ] || { echo "no first-party scripts found" >&2; exit 1; }
-          # One path per line; this repo keeps no spaces in script paths.
-          echo "$files" | xargs shellcheck -S warning
+          done > "$list"
+          [ -s "$list" ] || { echo "no first-party scripts found" >&2; exit 1; }
+          tr '\0' '\n' < "$list"
+          xargs -0 shellcheck -S warning < "$list"
           echo "first-party scripts: shellcheck clean"
       # Run the installers for real. A syntax check cannot see a script that
       # parses but dies on its first line (an unset SRC under set -u).
