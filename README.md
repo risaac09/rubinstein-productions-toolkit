@@ -37,6 +37,7 @@ Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
 Reusable templates for the client lifecycle.
 
 - Client onboarding template
+- [Scope checklist](templates/scope-checklist.md)
 - Case study template
 
 ### `docs/`, `architecture/`

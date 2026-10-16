@@ -15,6 +15,8 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 ## Unreleased
 
 - The theory of change spells out PIPA and CBSD below its model, synced from the corpus canonical. Isaac confirmed both terms and the four-row Bilingual Dashboard on 2026-10-16.
+- Add `templates/scope-checklist.md`, a consent tier step in the onboarding template, and a per-participant consent evidence table in the case-study template (Amendment 3, items 9 and 24).
+- Delivery documents for the client: attribution column in the licence register and a licences extract in the manifest, review-copy name and checksum in the manifest header, a client key and approval message, and macOS and Windows verify steps in the return package (Amendment 3, items 20, 22, 25, 29).
 - Platform specs gain rows for the YouTube UHD, YouTube HD and LinkedIn 16:9 destinations, so every key in the Resolve config has one, and a test fails if a key goes missing. (Amendment 3, item 18)
 - The vertcut README and the Resolve spec now say vertcut is a draft path: its clips fail the `linkedin_9x16` name row and, from an untagged source, the `color_transfer` row, and the deliverable route for a vertical cut is `reframe_plan` with `cut`, then `queue_render`.
 - `lutlab looks --monitor` writes a 33-point copy clipped to 0..1 for each camera look, with an 8-character card file name; the capture standard gains a Monitoring section (Amendment 3, item 13).
