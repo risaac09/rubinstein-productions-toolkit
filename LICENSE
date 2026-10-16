@@ -1,4 +1,4 @@
-Scope: this MIT license covers code and tooling only — `cli/`, `scripts/`,
+Scope: this MIT license covers code and tooling only — `scripts/`,
 `production/resolve_workflow.py`, and the `phase-zero/` and `public-kit/`
 deployment mechanisms. Methodology, templates, and docs (`methodology/`,
 `templates/`, `docs/`) are licensed CC BY-SA 4.0 instead — see

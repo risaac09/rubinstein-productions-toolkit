@@ -4,6 +4,10 @@ What changed in this repo, newest first. There are no version numbers, tags or r
 
 Written 2026-10-15 from the git history. Add an entry in the pull request that makes the change.
 
+## 2026-10-16
+
+- The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
+
 ## 2026-10-15
 
 - Added `requirements.txt`: each tool's interpreter and pinned packages in one file.
