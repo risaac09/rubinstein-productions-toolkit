@@ -7,23 +7,28 @@ The judgment stays with Isaac and Claude: which moments become clips is decided
 in the cuts worksheet, the same artifact the pipeline already produces. vertcut
 only does the two mechanical parts — hearing the words, and cutting the frame.
 
-## A draft path, not the delivery route
+## Delivery
 
-vertcut makes clips for review and quick social drafts. Its files do not pass
-`deliver_check` for `linkedin_9x16`, and they skip the final-approval gate and
-the delivery manifest. Two rows fail:
+vertcut's clips pass `deliver_check` for `linkedin_9x16` (checked 2026-10-16 on
+a synthetic untagged 16:9 source: every asserted row passes). Three things make
+that so:
 
-- `name`: vertcut writes `<id>-<title-slug>.mp4` (`1-first-example-clip.mp4`).
-  The destination takes the house clip name, five parts joined by underscores
-  and ending in the aspect (`SW001_Guest_01_example-clip_9x16.mp4`).
-- `color_transfer`: vertcut sets no colour tags. The destination expects
-  `bt709`. The output carries a transfer tag only if the source file does, so
-  from an untagged source the row fails (a 720p test file without tags came
-  out with all three colour tags unset).
+- The file is named by the house rule, built by `rpresolve.deliver.name_for`
+  from `--show`, `--episode` and `--guest`, the clip's place in the manifest
+  (the index) and its title (the slug): `SW001_Guest_01_example-clip_9x16.mp4`.
+  The three flags are required; `--draft-names` gives the old
+  `<id>-<title-slug>.mp4` for a review copy that will not pass the name row.
+- The video is tagged bt709 (primaries, transfer and matrix, limited range)
+  whatever the source carried.
+- The audio is AAC at the destination's bitrate, sample rate and channel count
+  (320 kbps, 48 kHz, stereo for `linkedin_9x16`), read from
+  `production/resolve-config.json`; `--destination` picks another key.
 
-The deliverable route for a vertical cut is `reframe_plan` with `cut` (or
-`reframe_apply`), then `queue_render`. See Reframe and Deliver in
-[`production/resolve-template-spec.md`](../../production/resolve-template-spec.md).
+Two limits remain. The loudness row passes only because the loudnorm target
+(`--lufs`, default -16) matches the destination; run `deliver_check` after any
+`--lufs` change. And vertcut files still skip the final-approval gate and the
+delivery manifest, which belong to the `reframe_plan`, `cut` and `queue_render`
+route in [`production/resolve-template-spec.md`](../../production/resolve-template-spec.md).
 
 ## Requirements
 
@@ -71,13 +76,15 @@ came out an hour early. Do not assume; check one clip first.
 
 ```
 tools/vertcut/vertcut cut SOURCE.mov clips.tsv \
-  --words SOURCE.json -o out/
+  --words SOURCE.json -o out/ --show SW --episode 1 --guest Guest
 ```
 
 For each row: trims, reframes to 1080x1920, burns word-grouped captions,
 normalizes audio to -16 LUFS (the level `linkedin_9x16` expects; `--lufs -14` for
-short-form feeds), and writes an `.srt` sidecar next to the `.mp4` for review
-copies where you would rather not burn in.
+short-form feeds), and writes an `.srt` with the same stem for review copies
+where you would rather not burn in. For a burn-in destination such as
+`linkedin_9x16` the `.srt` goes to `review-srt/` inside the output folder,
+because `deliver_check` fails a burn-in file with a caption file beside it.
 
 ### Options worth knowing
 
@@ -85,6 +92,9 @@ copies where you would rather not burn in.
 |---|---|---|
 | `--frame crop\|fit` | `crop` | `crop` fills 9:16 from a 16:9 subject; `fit` letterboxes the full frame over a blurred copy. Use `fit` for two-shots. |
 | `--x -1..1` | `0` | Shifts the crop window. `-0.4` when the speaker sits left of centre. |
+| `--show` / `--episode` / `--guest` | required | Parts of the house file name. The index and slug come from the manifest row. |
+| `--destination` | `linkedin_9x16` | Key in `resolve-config.json` that sets the aspect in the name and the audio format. |
+| `--draft-names` | off | Old `<id>-<title-slug>.mp4` names, for review copies. They fail the name row. |
 | `--no-captions` | off | Reframe only. |
 | `--max-words` / `--max-chars` | `3` / `32` | Caption density. A cue never runs past two lines of `--line-chars`. |
 | `--line-chars` | `16` | Characters per caption line, two lines at most (the portrait standard). A single word longer than this stops the run. |

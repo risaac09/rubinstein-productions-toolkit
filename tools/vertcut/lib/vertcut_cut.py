@@ -20,6 +20,11 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
+# The file-name rule and the destination live in rpresolve (production/), not here.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "production"))
+from rpresolve import deliver  # noqa: E402
+from rpresolve.config import ConfigError, load_config  # noqa: E402
+
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 # Neutral stand-ins. The house values (color.marrow, color.text-on-dark, type.caption in
@@ -32,6 +37,7 @@ STYLE_KEYS = ("text_color", "bar_color", "font")
 LINE_CHARS, MAX_LINES = 16, 2       # the portrait standard
 CAPTION_BOTTOM = 1680               # bottom edge of the bar: lower third (from 1280), clear of the feed UI
 DEFAULT_LUFS, DEFAULT_TP, DEFAULT_LRA = -16.0, -1.5, 11.0   # the LinkedIn targets; -14 for YouTube and short-form feeds
+DEFAULT_DEST = "linkedin_9x16"
 X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 
 
@@ -51,6 +57,58 @@ def loudnorm_filter(lufs=DEFAULT_LUFS, tp=DEFAULT_TP, lra=DEFAULT_LRA):
     if not 1.0 <= lra <= 20.0:
         die("--lra %g is outside 1 .. 20" % lra)
     return "loudnorm=I=%g:TP=%g:LRA=%g" % (lufs, tp, lra)
+
+
+def load_destination(key):
+    """The destination `key` from resolve-config.json (with $RPRESOLVE_CONFIG laid over it, as
+    deliver_check reads it), which names the file's aspect, audio and loudness."""
+    try:
+        return deliver.destination(load_config(os.environ.get("RPRESOLVE_CONFIG") or None, strict=True), key)
+    except (ConfigError, deliver.DeliverError) as e:
+        die(str(e))
+
+
+def audio_codec_args(dest):
+    """AAC at the destination's bitrate, sample rate and channel count."""
+    a = dest.get("audio") or {}
+    args = ["-c:a", "aac"]
+    if a.get("bitrate_kbps"):
+        args += ["-b:a", "%dk" % a["bitrate_kbps"]]
+    if a.get("sample_rate"):
+        args += ["-ar", str(a["sample_rate"])]
+    if a.get("channels"):
+        args += ["-ac", str(a["channels"])]
+    return args
+
+
+# Written explicitly so an untagged source still yields a tagged file (deliver_check asserts the
+# transfer tag). The picture is Rec. 709, limited range, as the destination's colour block says.
+# setparams is what makes the primaries and transfer reach the file: with only the encoder flags,
+# ffmpeg 9 wrote the matrix and range but left primaries and transfer unset on an untagged source.
+COLOR_TAG_FILTER = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv"
+COLOR_TAG_ARGS = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+                  "-color_range", "tv"]
+
+
+def srt_path(out, dest):
+    """Where the .srt goes. Beside the file (deliver.sidecar_path) unless the destination burns its
+    captions in: deliver_check fails a burn-in file with any caption file beside it, so that srt
+    goes to a review-srt/ folder inside the output folder instead."""
+    path = deliver.sidecar_path(out)
+    if dest.get("captions") != "burnin":
+        return path
+    folder = os.path.join(os.path.dirname(out), "review-srt")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, os.path.basename(path))
+
+
+def clip_name(dest, parts, title):
+    """The house file name for one clip: parts are show, episode, guest, index. The slug comes
+    from the title. Exits with the rule's own message when a part breaks it."""
+    try:
+        return deliver.name_for(dest, dict(parts, slug=slug(title, "clip")))
+    except deliver.NameRuleError as e:
+        die("clip name: %s" % e)
 
 
 def video_codec_args(crf, preset):
@@ -87,7 +145,7 @@ def srt_tc(t):
 
 def slug(text, fallback):
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
-    return s[:60] or fallback
+    return s[:deliver.SLUG_MAX].strip("-") or fallback
 
 
 # ---------------------------------------------------------------- manifest
@@ -351,6 +409,15 @@ def main():
     ap.add_argument("--lra", type=float, default=DEFAULT_LRA, help="loudness range target (default %g)" % DEFAULT_LRA)
     ap.add_argument("--only", help="comma-separated clip ids to render")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--destination", default=DEFAULT_DEST,
+                    help="destination in resolve-config.json that sets the file name's aspect "
+                         "and the audio format (default %s)" % DEFAULT_DEST)
+    ap.add_argument("--show", help="show code for the house file name, such as SW")
+    ap.add_argument("--episode", help="episode number for the house file name, such as 1 or 001")
+    ap.add_argument("--guest", help="guest name for the house file name, letters and digits only")
+    ap.add_argument("--draft-names", action="store_true",
+                    help="name files <id>-<title-slug>.mp4 instead of the house name; these "
+                         "fail deliver_check, so use them for review copies only")
     args = ap.parse_args()
 
     if not os.path.isfile(args.src):
@@ -359,8 +426,19 @@ def main():
     has_audio = has_audio_stream(args.src)
     fps = args.fps or src_fps
     audio_filter = loudnorm_filter(args.lufs, args.tp, args.lra)   # validated before any work
+    dest = load_destination(args.destination)
+    name_parts = {"show": args.show, "episode": args.episode, "guest": args.guest}
+    if not args.draft_names:
+        missing = [k for k, v in name_parts.items() if not v]
+        if missing:
+            die("the house file name needs --%s (or --draft-names for a review copy "
+                "that will not pass deliver_check)" % ", --".join(missing))
+        if dest.get("naming") != "clip":
+            die("destination '%s' takes a %s name, not a clip name" % (dest["key"], dest.get("naming")))
 
     clips = read_manifest(args.manifest, fps)
+    for pos, clip in enumerate(clips, 1):
+        clip["index"] = pos        # the row's place in the whole manifest, so --only keeps names stable
     if args.only:
         want = {c.strip() for c in args.only.split(",")}
         clips = [c for c in clips if c["id"] in want]
@@ -394,7 +472,10 @@ def main():
         end = clip["end"] + args.offset
         dur = end - start
         safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", clip["id"]).strip("-") or "clip"
-        name = "%s-%s" % (safe_id, slug(clip["title"], "clip"))
+        if args.draft_names:
+            name = "%s-%s" % (safe_id, slug(clip["title"], "clip"))
+        else:
+            name = os.path.splitext(clip_name(dest, dict(name_parts, index=clip["index"]), clip["title"]))[0]
         out = os.path.join(args.outdir, name + ".mp4")
 
         cues = []
@@ -429,16 +510,18 @@ def main():
                     % (label, i + 1, args.caption_y, cue["start"], cue["end"], nxt))
                 label = nxt
 
+            filters.append("%s%s[vout]" % (label, COLOR_TAG_FILTER))
+            label = "[vout]"
+
             cmd = (["ffmpeg", "-hide_banner", "-loglevel", "error", "-stats", "-y"]
                    + inputs
                    + ["-filter_complex", ";".join(filters),
                       "-map", label] + (["-map", "0:a"] if has_audio else []) + [
                       "-t", "%.3f" % dur,
                       ] + video_codec_args(args.crf, args.preset) + [
-                      "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0),
-                      "-movflags", "+faststart"]
-                   + (["-c:a", "aac", "-b:a", "192k",
-                       "-af", audio_filter] if has_audio else ["-an"])
+                      "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0)]
+                   + COLOR_TAG_ARGS + ["-movflags", "+faststart"]
+                   + (audio_codec_args(dest) + ["-af", audio_filter] if has_audio else ["-an"])
                    + [out])
 
             r = subprocess.run(cmd)
@@ -448,7 +531,7 @@ def main():
             shutil.rmtree(tmp, ignore_errors=True)
 
         if cues:
-            with open(os.path.splitext(out)[0] + ".srt", "w") as fh:
+            with open(srt_path(out, dest), "w") as fh:
                 for i, cue in enumerate(cues, 1):
                     fh.write("%d\n%s --> %s\n%s\n\n"
                              % (i, srt_tc(cue["start"]), srt_tc(cue["end"]), cue["text"]))
