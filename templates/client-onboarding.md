@@ -197,6 +197,22 @@ Decision-makers involved:
 
 ---
 
+### Consent tier (before the session closes)
+
+Offer the participant a tier from [Consent Evidence](../production/consent-evidence.md) and record what will prove it. Evidence for tier 1 is the consent clause in the signed scope, so the clause goes in the scope before work begins.
+
+```
+Participant code (P1, P2; never a name):
+
+Tier offered (1 Internal / 2 Anonymized / 3 Identified):
+
+Evidence that will prove it (scope clause / written opt-in / signed release):
+
+Where the evidence will be kept (the engagement record, not this file):
+```
+
+---
+
 ### Closing (5-10 minutes)
 
 **Reflect back:**
@@ -207,6 +223,8 @@ Decision-makers involved:
 
 **Next steps:**
 > "I'll send you a summary of what we discussed and a proposal within [X days]. Before we end—any questions for me?"
+
+The proposal's scope covers the fields in the [Scope Checklist](scope-checklist.md).
 
 **Final question:**
 > "What's one thing you're taking away from this conversation?"
@@ -329,6 +347,6 @@ engagement, not the rate card.*
 
 *Template Version: 1.0*
 *Based on: [Measurement Framework](../methodology/measurement-framework.md), brand context (private, `rp-intranet/docs/strategy/brand-context.md`)*
-*Related: [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
+*Related: [Scope Checklist](scope-checklist.md), [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
 
 **Tags:** #template #client-work #onboarding #phase-0

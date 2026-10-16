@@ -15,9 +15,16 @@ This case study is the researcher register of the foundational unit (`stack-data
 
 ## Consent evidence
 
-**Consent evidence:** Tier ___ / evidence id ___ *(required; see [Consent Evidence](../production/consent-evidence.md))*
+*Required. See [Consent Evidence](../production/consent-evidence.md) for the one artifact that proves each tier.*
 
-A case study with no tier 3 evidence id is not published. The id points to the signed release in the private engagement record. Never paste the release, a name from it, or its contents here.
+| Participant (code) | Tier (1, 2 or 3) | Evidence id |
+|--------------------|------------------|-------------|
+| P1 | | |
+| P2 | | |
+
+Add a row for every person the study draws on. Use a code (P1, P2), never a name, and keep the key from code to person in the private engagement record. The evidence id points to the artifact in that record. Never paste a release, a name from it, or its contents here.
+
+Any participant identified in the published study needs tier 3 evidence. A case study that identifies a participant whose row lacks a tier 3 evidence id is not published.
 
 ---
 
@@ -31,7 +38,6 @@ A case study with no tier 3 evidence id is not published. The id points to the s
 | **Duration:** | |
 | **Dates:** | Start: _____ End: _____ |
 | **Deliverables Created:** | |
-| **Consent Level:** | Tier 1 (Internal) / Tier 2 (Anonymized) / Tier 3 (Identified) |
 | **Case Study Status:** | Draft / Internal Review / Published |
 
 ---
@@ -309,7 +315,7 @@ Week 3: [Activity]
 
 ## Part 7: Publication Package
 
-*Only complete if Consent Level = Tier 3 (Identified)*
+*Only complete if the Consent evidence table shows tier 3 evidence for every participant identified here*
 
 ### Short Version (Website/Portfolio)
 
