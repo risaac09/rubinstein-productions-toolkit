@@ -1,6 +1,6 @@
 # Credits and AI Disclosure
 
-> **Status:** draft, 2026-10-16. Two short standards for produced work. The repo states no credits convention and no disclosure practice, so both are proposals built from what the production tooling does and what the consent tiers already promise. [Needs Isaac](#needs-isaac) lists the choices made by default. This document states no copyright or licence terms.
+> **Status:** accepted 2026-10-16. Two short standards for produced work, built from what the production tooling does and what the consent tiers already promise. This document states no copyright or licence terms.
 
 ## Credits
 
@@ -20,8 +20,8 @@ Other roles are credited when a person did them and agreed to be named. Nobody i
 
 **Form.**
 
-- On the work: a short end card or a closing line, readable at the platform's smallest frame. It names roles and people and nothing else. It carries no slogan.
-- In the description, caption or page text: the same names in the same order, in plain text, so the credit survives a platform that crops the end card.
+- On the work: a short end card or a closing line, readable at the platform's smallest frame. It names roles and people and nothing else. It carries no slogan. A cut under 60 seconds has no end card, and the credit goes in the post text.
+- In the description, caption or page text: the same names in the same order, in plain text, so the credit survives a platform that crops the end card. On a cut under 60 seconds this is the only place the credit appears.
 - In the [manifest](delivery-manifest.md): a line saying where the credits appear, or "none requested".
 
 **Names.** Spelled as each person spells them, checked at the gate. A name is never abbreviated, anglicized or made up from an email address.
@@ -30,7 +30,7 @@ Other roles are credited when a person did them and agreed to be named. Nobody i
 
 ## AI disclosure
 
-Some steps in the production flow are machine-assisted. Nothing in this repo generates a face, a voice or footage. The standard says what is stated, to whom, and where.
+Some steps in the production flow are machine-assisted. Nothing in this repo generates a face, a voice or footage, and the practice uses no generative content in client deliverables. The standard says what is stated, to whom, and where.
 
 ### What counts as machine-assisted
 
@@ -40,16 +40,15 @@ The steps the tooling in this repo performs, which a client may want to know abo
 - **Face-tracked reframing.** macOS Vision finds the speaker's face to place the 9:16 and 1:1 crops, and a person checks the result.
 - **Stabilization.** Resolve's stabilizer changes the picture of an item.
 - **Loudness correction.** An ffmpeg two-pass normalization adjusts the audio level. Video is copied untouched.
-- **Analysis and drafting.** Where an AI model reads a transcript to code it, to draft a summary or to propose a cut, the output is a proposal that a person accepts or discards. The trim review works this way: it writes a proposals file and marks a timeline, and deletes nothing. The same rule is the draft default for any model-assisted coding or summary.
+- **Analysis and drafting.** Where an AI model reads a transcript to code it, to draft a summary or to propose a cut, the output is a proposal that a person accepts or discards. The trim review works this way: it writes a proposals file and marks a timeline, and deletes nothing. The same rule holds for any model-assisted coding or summary.
 
-Generative content is a separate class and is named separately: a synthesized voice, a generated or altered image of a person, generated footage or music, or any picture or sound the camera did not record. The standard below treats it more strictly than the assistive steps above.
+Generative content is a separate class and is named separately: a synthesized voice, a generated or altered image of a person, generated footage or music, or any picture or sound the camera did not record. Client deliverables contain none of it. Promising that is simpler than labelling it well.
 
 ### What is stated, to whom
 
 1. **To the client, before work starts and again at handover.** The scope names which machine-assisted steps will be used. The [manifest](delivery-manifest.md) lists the ones that were. A client can ask for a step to be left out, and the answer is yes unless it makes the work impossible, in which case the scope is renegotiated.
-2. **On the work, when the work contains generative content.** A line on the end card and in the description says what was generated and what part. Plain wording, for example: "The background music was generated with an AI tool." It sits where the credits sit.
-3. **On the work, never for assistive steps.** A caption file produced by speech recognition and corrected by a person is a captioned video. It does not carry a label. A caption file not checked by a person does not ship.
-4. **Platform labels.** Some platforms ask for a label on synthetic or altered media and change their rules often. The kit owner looks up the current rule for each destination at queue time and applies it.
+2. **On the work, never for assistive steps.** A caption file produced by speech recognition and corrected by a person is a captioned video. It does not carry a label. A caption file not checked by a person does not ship.
+3. **Platform labels.** Some platforms ask for a label on synthetic or altered media and change their rules often. The kit owner looks up the current rule for each destination at queue time and applies it.
 
 ### Rules that do not bend
 
@@ -64,15 +63,4 @@ Plain statements, one per fact, with no apology and no boast.
 
 - "Captions were generated by speech recognition and corrected by a person."
 - "The vertical and square versions were reframed with face detection and checked by a person."
-- "The background music was generated with an AI tool."
-- "No part of this film was generated by AI." Use it only when it is true of the whole piece.
-
-## Needs Isaac
-
-1. **Whether the participant is credited as "Filmed by".** It describes the method accurately. It also names a person on work they may not want their name on, so it applies only where they consented.
-2. **Credit order and the role names.** Defaults chosen from how the footage is made.
-3. **The line between assistive and generative.** Draft position: stabilization, face-tracked reframing, caption transcription and loudness correction are assistive and unlabeled on the work; anything the camera did not record is generative and labeled.
-4. **Disclosing to the client by default, in the scope,** and the promise that a client can ask for any assistive step to be left out. Both are defaults. Whether the scope document in the private operations repo already says this is for you to check.
-5. **The no-synthetic-likeness rule** and its written-consent exception.
-6. **Whether an end card is wanted at all** on short social cuts, where it costs screen time.
-7. **Whether the practice ever uses generative content.** The standard allows it with a label. Say if the practice would rather forbid it.
+- "No part of this film was generated by AI." Use it only when it is true of the whole piece, which is every client deliverable.
