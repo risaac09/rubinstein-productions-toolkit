@@ -20,7 +20,7 @@ The tiers come from [Consent Layering in the measurement framework](../methodolo
 | 2 | A written opt-in: a signature or a reply email | Kept with the engagement |
 | 3 | A signed case-study release | Kept with the engagement; its id goes on the case study |
 
-Tier 1 needs no separate document. If the signed scope has no consent clause, tier 1 has no evidence and the engagement does not start.
+Tier 1 needs no separate document. If the signed scope has no consent clause, tier 1 has no evidence: add the clause before work begins.
 
 Tier 2 is an opt-in, so silence is not evidence. A reply email counts when it says yes to the aggregate use. Keep the email itself, not a note that one arrived.
 
