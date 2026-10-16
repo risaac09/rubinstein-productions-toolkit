@@ -76,7 +76,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 ## Branded Intro
 
 - **Asset:** `say-why-intro-4k.png` (3840 × 2160)
-- Marrow background, "Say Why" in Bone, amber accent line
+- `color.marrow` background, "Say Why" in `color.bone`, `color.amber` accent line
 - Optional — use only when the project calls for it
 - This is a personal creative brand, not RP client delivery
 
@@ -85,7 +85,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 ## Subtitles
 
 - **Font:** Inter 500
-- **Color:** White or Bone (#f2ece4) on semi-transparent dark bar
+- **Color:** `color.text-on-dark` on a semi-transparent `color.marrow` bar (see [design tokens](design-tokens.md#caption-standard))
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand

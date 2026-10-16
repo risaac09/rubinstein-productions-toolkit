@@ -127,11 +127,15 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
 
+   **Status: executed 2026-10-16, [#144](https://github.com/risaac09/rubinstein-productions-toolkit/pull/144).** [`production/design-tokens.md`](../production/design-tokens.md) names seven tokens and what each is for, states the lower-third geometry as fractions of frame size with the 1080p pixels, sets one caption standard from the Resolve spec and `deliver.captions`, and holds a look-book stub with one row per lutlab look. Token values stay in the private brand context and are not published, so the finding's "publish token values" is met by names and geometry only. Open: `LowerThird.tsx` still uses literal colours and type, and the look-book reference frames are to add. vertcut's captions were brought into line afterward, with the bar opacity set at 88% (see the vertcut PR stacked on #144).
+
 ### Producer and distributor
 
 18. **Consent tiers have no evidence behind them.** The tiers are defined, but no appearance or talent release, location release, or music and font licence register exists, and the case-study template records a tier with nothing that evidences it. Fix: add release templates and a licence register, and make the case-study template link to them.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
+
+   **Status: executed 2026-10-16, [#143](https://github.com/risaac09/rubinstein-productions-toolkit/pull/143).** `production/consent-evidence.md` names the one artifact that proves each tier, gives checklists (not wording) for appearance, location and talent releases, and a per-engagement licence register for music and fonts. The case-study template has a required "Consent evidence" line and a rule that a case study with no tier 3 evidence id is not published. Open: how long evidence is kept after an engagement ends, and the release templates themselves, which come from the reader's own counsel.
 19. **"Everything is returned" has no spec.** No return package defines formats, media, manifest or checksums, and the repo has no archive naming or folder standard. Working, final and scraps appear only in the negative-archive ritual. Fix: write the return-package spec and the folder and naming standard.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
