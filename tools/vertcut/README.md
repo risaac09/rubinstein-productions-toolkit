@@ -68,12 +68,33 @@ YouTube both accept the sidecar if you would rather not burn in).
 | `--frame crop\|fit` | `crop` | `crop` fills 9:16 from a 16:9 subject; `fit` letterboxes the full frame over a blurred copy. Use `fit` for two-shots. |
 | `--x -1..1` | `0` | Shifts the crop window. `-0.4` when the speaker sits left of centre. |
 | `--no-captions` | off | Reframe only. |
-| `--max-words` / `--max-chars` | `3` / `26` | Caption density. |
+| `--max-words` / `--max-chars` | `3` / `32` | Caption density. A cue never runs past two lines of `--line-chars`. |
+| `--line-chars` | `16` | Characters per caption line, two lines at most (the portrait standard). A single word longer than this stops the run. |
+| `--caption-style FILE` | none | JSON with `text_color`, `bar_color` and `font`. Without the flag, `tools/vertcut/captions.local.json` is read if it exists. |
+| `--text-color` / `--bar-color` | `#FFFFFF` / `#000000` | `#RRGGBB`, over the style file. |
+| `--bar-opacity` | `0.88` | Opacity of the bar behind each cue. |
 | `--lufs` / `--tp` / `--lra` | `-16` / `-1.5` / `11` | Loudness target, true-peak ceiling and range. `-14` suits YouTube and short-form feeds. |
 | `--crf` / `--preset` | `20` / `veryfast` | x264 quality and speed. `--preset slow` is smaller at the same quality. |
-| `--font-size` / `--caption-y` | `66` / `1400` | Caption size and baseline. |
+| `--font-size` / `--caption-y` | `66` / `1680` | Caption size, and the y of the bar's bottom edge (lower third). |
 | `--only 1,2` | all | Render a subset while dialling in the framing. |
 | `--dry-run` | off | Print what would be rendered. |
+
+### Caption style
+
+Captions follow the caption standard in
+[`production/design-tokens.md`](../../production/design-tokens.md): text on a
+partial-opacity bar, no outline, 16 characters a line, two lines at most, bottom
+edge fixed so every cue sits in the same place. The house colours and face are
+brand values and stay out of this public repo. Put them in
+`tools/vertcut/captions.local.json` (git-ignored) or pass `--caption-style`:
+
+```json
+{"text_color": "#RRGGBB", "bar_color": "#RRGGBB", "font": "/path/to/face.ttf"}
+```
+
+Read the values for `color.text-on-dark`, `color.marrow` and `type.caption` from
+the private brand context. With no file the tool uses plain white on black and
+Arial Bold.
 
 ### Dialling in the framing
 
