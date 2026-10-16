@@ -123,6 +123,8 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 18. **Consent tiers have no evidence behind them.** The tiers are defined, but no appearance or talent release, location release, or music and font licence register exists, and the case-study template records a tier with nothing that evidences it. Fix: add release templates and a licence register, and make the case-study template link to them.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
+
+   **Status: executed 2026-10-16, PR pending.** `production/consent-evidence.md` names the one artifact that proves each tier, gives checklists (not wording) for appearance, location and talent releases, and a per-engagement licence register for music and fonts. The case-study template has a required "Consent evidence" line and a rule that a case study with no tier 3 evidence id is not published. Open: how long evidence is kept after an engagement ends, and the release templates themselves, which come from the reader's own counsel.
 19. **"Everything is returned" has no spec.** No return package defines formats, media, manifest or checksums, and the repo has no archive naming or folder standard. Working, final and scraps appear only in the negative-archive ritual. Fix: write the return-package spec and the folder and naming standard.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
