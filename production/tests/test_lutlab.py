@@ -535,5 +535,68 @@ class LibraryTest(unittest.TestCase):
         self.assertTrue(all(x["space"] == "r709" for x in o if x["name"].startswith("Look")))
 
 
+class LooksMonitorTest(unittest.TestCase):
+    """looks --monitor: 33-point, 0..1, card-safe names, never for rcm."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.looks = Path(__file__).resolve().parent.parent / "lutlab-looks"
+        cls.tmp = Path(tempfile.mkdtemp())
+        (cls.tmp / "base").mkdir()
+        (cls.tmp / "base" / "params.json").write_text(json.dumps(synthetic_params("logc3")))
+        cls.base = cls.tmp / "base" / "params.json"
+        cls.files = sorted(str(f) for f in cls.looks.glob("*.json"))
+
+    def test_monitor_files(self):
+        out = self.tmp / "m"
+        out.mkdir()
+        written = pipeline.looks(self.base, self.files, ["pyxis", "s5ii"], out, size=9, monitor=True)
+        mon = [Path(f) for f in written if "[" not in Path(f).name]
+        self.assertEqual(len(mon), 2 * len(self.files))
+        for f in mon:
+            self.assertLessEqual(len(f.stem), 8, f.name)
+            self.assertRegex(f.stem, r"^[A-Z0-9]+$")
+            lut = cube.read_cube(str(f))
+            self.assertEqual(lut["table"].shape, (33, 33, 33, 3))
+            self.assertGreaterEqual(lut["table"].min(), 0.0)
+            self.assertLessEqual(lut["table"].max(), 1.0)
+        self.assertEqual(len({f.name for f in mon}), len(mon))  # no collisions across the six looks
+        self.assertEqual(sorted(f.name for f in mon if f.name.startswith("S5")),
+                         ["S5BLEA.cube", "S5ICEB.cube", "S5NEUT.cube", "S5PRIN.cube", "S5SOFT.cube", "S5TUNG.cube"])
+        self.assertEqual(len(written), 4 * len(self.files))
+
+    def test_monitor_matches_the_look_when_unclipped(self):
+        out = self.tmp / "m2"
+        out.mkdir()
+        d = self.tmp / "d.json"
+        d.write_text(json.dumps({"name": "warm", "white_balance": {"temp": 20}}))
+        a, b = pipeline.looks(self.base, [str(d)], ["s5ii"], out, size=33, monitor=True)
+        ta, tb = cube.read_cube(a)["table"], cube.read_cube(b)["table"]
+        np.testing.assert_allclose(tb, np.clip(ta, 0, 1), atol=1e-5)
+
+    def test_names_collide_then_disambiguate(self):
+        n = pipeline.monitor_names(["print-teal", "print-red"], ["S5II"])
+        self.assertEqual(len(set(n.values())), 2)
+        self.assertTrue(all(len(v) <= 8 for v in n.values()))
+        self.assertEqual(pipeline.monitor_names(["neutral"], ["S5II", "Pyxis"]),
+                         {("neutral", "S5II"): "S5NEUT", ("neutral", "Pyxis"): "PYNEUT"})
+
+    def test_rcm_gets_no_monitor_copy(self):
+        out = self.tmp / "m3"
+        out.mkdir()
+        w = pipeline.looks(self.base, self.files[:1], ["s5ii", "rcm"], out, size=9, monitor=True)
+        self.assertEqual(len(w), 3)  # two S5II files and one RCM file
+        from lutlab.__main__ import main
+        with self.assertRaises(SystemExit):
+            main(["looks", str(self.base), "--camera", "rcm", "--monitor", "--out", str(self.tmp / "m4")])
+
+    def test_cli_option(self):
+        from lutlab.__main__ import main
+        out = self.tmp / "m5"
+        main(["looks", str(self.base), "--deltas", str(self.looks / "neutral.json"), "--camera", "s5ii",
+              "--size", "9", "--monitor", "--out", str(out)])
+        self.assertEqual(sorted(p.name for p in out.glob("*.cube")), ["RP Neutral [S5II].cube", "S5NEUT.cube"])
+
+
 if __name__ == "__main__":
     unittest.main()
