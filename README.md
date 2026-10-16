@@ -71,7 +71,7 @@ Generic film/video production tooling. *(Kept as a default — see below.)*
 - [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16); the [return package](production/return-package.md) sets what comes back to the client and how it is checked. The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
 ### `production/lutlab/`
-Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.9 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
+Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.14 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
 
 ### `production/rpstills/`
 The offline front end of the stills lane: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. It decodes no RAW and talks to no Resolve; grading stays in Resolve. Faces come from macOS Vision when `swiftc` is present, and the ranking falls back to the frame alone when it is not. Look presets are in `production/stills-looks/`. See [its README](production/rpstills/README.md).
@@ -150,11 +150,12 @@ New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, produ
 The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
 
 ### Testing
-The production tests run on the system Python 3.9. Install the pinned packages, then run every module in `production/tests` from the repository root, as CI does:
+The production tests run on Homebrew Python 3.14, in a venv outside the repository (the Resolve MCP server stays on Xcode's 3.9 and is covered by its own CI job). Make the venv, install the pinned packages, then run every module in `production/tests` from the repository root, as CI does:
 
 ```
-/usr/bin/python3 -m pip install -r requirements.txt
-/usr/bin/python3 -m unittest $(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')
+/opt/homebrew/bin/python3.14 -m venv ~/.venvs/rp-tools
+~/.venvs/rp-tools/bin/python -m pip install -r requirements.txt
+~/.venvs/rp-tools/bin/python -m unittest $(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')
 ```
 
 On a Homebrew Mac that is all. Anywhere else, point the tools at your ffmpeg and ffprobe, and skip the one test that compares colour against Homebrew's ffmpeg build:
@@ -163,7 +164,7 @@ On a Homebrew Mac that is all. Anywhere else, point the tools at your ffmpeg and
 export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)" LUTLAB_SKIP_RENDER_VERIFY=1
 ```
 
-The table at the top of [`requirements.txt`](requirements.txt) lists the other variables. The survey tests need Python 3.14 and skip on 3.9.
+The table at the top of [`requirements.txt`](requirements.txt) lists the other variables. The survey tests need Python 3.14 and skip on 3.9, so the 3.14 venv runs all of them.
 
 ### Methodology
 Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.

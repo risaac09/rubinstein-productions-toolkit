@@ -6,23 +6,25 @@ into a LUT. A look can come from a `.cube` (decompose) or from image pairs
 graded frame. The numbers rebuild as a `.cube` for Resolve and as a Hald CLUT
 PNG for stills tools (darktable lut3d, RawTherapee film simulation).
 
-Runs on macOS's `/usr/bin/python3` (3.9), which has numpy, scipy, Pillow and
-OpenCV. Homebrew's python3, python3.12 and python3.14 have no numpy. RAW
+Runs on the venv at `~/.venvs/rp-tools` (Homebrew Python 3.14 with numpy, scipy,
+Pillow and OpenCV from `requirements.txt`; `/opt/homebrew/bin/python3.14 -m venv
+~/.venvs/rp-tools && ~/.venvs/rp-tools/bin/python -m pip install -r requirements.txt`).
+Xcode's `/usr/bin/python3` (3.9) no longer runs it: Pillow's security fixes need 3.10 or later. RAW
 develop uses darktable-cli from the app bundle
 (`/Applications/darktable.app/Contents/MacOS/darktable-cli`); nothing to
 install.
 
 ```bash
 cd production
-/usr/bin/python3 -m lutlab decompose LOOK.cube --in vlog --out-space r709 --out DIR
-/usr/bin/python3 -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
-/usr/bin/python3 -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
-/usr/bin/python3 -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
-/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
-/usr/bin/python3 -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
-/usr/bin/python3 -m lutlab diff A.cube B.cube --in vlog
-/usr/bin/python3 -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
-/usr/bin/python3 -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
+~/.venvs/rp-tools/bin/python -m lutlab decompose LOOK.cube --in vlog --out-space r709 --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
+~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab diff A.cube B.cube --in vlog
+~/.venvs/rp-tools/bin/python -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
 ```
 
 Spaces: `vlog` (V-Log/V-Gamut), `bmdfilm5` (Blackmagic Film Gen 5/Wide Gamut
@@ -97,9 +99,9 @@ Rec.709 transform as `Arri/Arri Alexa LogC to Rec709.dat`, and lutlab reads it
 directly:
 
 ```bash
-/usr/bin/python3 -m lutlab decompose "$HOME/DaVinci Resolve/LUT/Arri/Arri Alexa LogC to Rec709.dat" \
+~/.venvs/rp-tools/bin/python -m lutlab decompose "$HOME/DaVinci Resolve/LUT/Arri/Arri Alexa LogC to Rec709.dat" \
   --in logc3 --out "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709" --name arri-logc3-709
-/usr/bin/python3 -m lutlab looks "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709/params.json" \
+~/.venvs/rp-tools/bin/python -m lutlab looks "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709/params.json" \
   --camera pyxis,s5ii --out "$LUTLAB_OUT/RP Looks"
 ```
 
@@ -129,7 +131,7 @@ In a non-managed project (DaVinci YRGB) it does, so use the `[S5II]` and
 timeline space, whatever the camera, so use the `[RCM]` set:
 
 ```bash
-/usr/bin/python3 -m lutlab looks BASE/params.json --camera rcm --size 65 --out "$LUTLAB_OUT/RP Looks RCM"
+~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera rcm --size 65 --out "$LUTLAB_OUT/RP Looks RCM"
 ```
 
 An `[RCM]` look reads DaVinci Intermediate and writes the finished Rec.709
@@ -203,9 +205,9 @@ points at another build). Checked against Resolve's Gen 5 render of the same fra
 round because Resolve caches a LUT by path:
 
 ```bash
-/usr/bin/python3 -m lutlab frames CLIP.MOV --t 2 --t 6 --out "$WORK/frames/s5ii"
-/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii --out "$WORK/looks-v2"
-/usr/bin/python3 -m lutlab apply "$WORK/looks-v2/RP Neutral [S5II].cube" ... --frame "$WORK/frames/s5ii/CLIP t2s.png" --width 420 --out "$WORK/contact-s5ii"
+~/.venvs/rp-tools/bin/python -m lutlab frames CLIP.MOV --t 2 --t 6 --out "$WORK/frames/s5ii"
+~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera pyxis,s5ii --out "$WORK/looks-v2"
+~/.venvs/rp-tools/bin/python -m lutlab apply "$WORK/looks-v2/RP Neutral [S5II].cube" ... --frame "$WORK/frames/s5ii/CLIP t2s.png" --width 420 --out "$WORK/contact-s5ii"
 ```
 
 `frames` decodes the way `verify-render` does, so the previews match what
@@ -326,4 +328,4 @@ strength; grain as size, amplitude by luma, and chroma amount.
   for correcting a tungsten-lit shot. Correct white balance in Resolve
   first.
 
-Tests: `/usr/bin/python3 production/tests/test_lutlab.py` (synthetic LUTs only).
+Tests: `~/.venvs/rp-tools/bin/python production/tests/test_lutlab.py` (synthetic LUTs only).
