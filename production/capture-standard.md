@@ -32,14 +32,14 @@ The lutlab looks were measured on S5II V-Log and Pyxis BRAW clips (see [lutlab's
 
 **Auto ISO** on the GH7 is capped at 3200. The camera allows more, but 3200 is the house ceiling for noise.
 
-Native ISO figures are the makers' published specs, not measurements on RP's bodies; a row says when the figure was also confirmed in the camera's menu. Middle grey is where 18% grey falls on each log curve, from the maker's curve definition. The one cell still marked "to be measured" is the iPhone's native ISO, because Apple publishes none for Apple Log. Do not copy one camera's figure to another.
+Native ISO figures are the makers' published specs, not measurements on RP's bodies; a row says when the figure was also confirmed in the camera's menu. Middle grey is where 18% grey falls on each log curve, from the maker's curve definition, given as a percentage of the full-range signal so the rows compare on one scale. The one cell still marked "to be measured" is the iPhone's native ISO, because Apple publishes none for Apple Log. Do not copy one camera's figure to another.
 
 | Camera | Native ISO in log | Middle grey on the log curve | Open Gate size | Open Gate top frame rate |
 |---|---|---|---|---|
 | iPhone 15 Pro or later | to be measured | about 49% (Apple Log curve) | not shot | not shot |
-| Panasonic GH7 | 500 (Panasonic spec, confirmed in the menu 2026-10-16) | 42% IRE (V-Log) | 5760x4320, 5.8K 4:3 (Panasonic spec) | 29.97p, in MOV at 4:2:0 10-bit Long GOP, 200 Mbps, LPCM, HLG available (Panasonic spec, confirmed in the menu 2026-10-16) |
-| Panasonic GH5 | 400, the V-Log L floor (Panasonic spec) | 42% IRE (V-Log L) | not shot | not shot |
-| Panasonic S5II | 640 and 4000, dual native (Panasonic spec) | 42% IRE (V-Log) | not shot | not shot |
+| Panasonic GH7 | 500 (Panasonic spec, confirmed in the menu 2026-10-16) | 42% (V-Log) | 5760x4320, 5.8K 4:3 (Panasonic spec) | 29.97p, in MOV at 4:2:0 10-bit Long GOP, 200 Mbps, LPCM, HLG available (Panasonic spec, confirmed in the menu 2026-10-16) |
+| Panasonic GH5 | 400, the V-Log L floor (Panasonic spec) | 42% (V-Log L) | not shot | not shot |
+| Panasonic S5II | 640 and 4000, dual native (Panasonic spec) | 42% (V-Log) | not shot | not shot |
 | Blackmagic Pyxis | 400 and 3200, dual native (Blackmagic spec) | 38.4% (Blackmagic Film Gen 5) | not shot | not shot |
 
 ## Resolution and framing
