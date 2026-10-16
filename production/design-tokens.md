@@ -2,7 +2,7 @@
 
 > **Status:** draft, 2026-10-16. Token names, lower-third geometry, the caption standard and a look-book stub. The values behind the names (colours, typefaces, type sizes from the brand) live in the private brand context and are not published here.
 
-A deliverable carries the brand through a small set of named tokens. A graphic, a caption or a title refers to a token by name and never to a literal colour or font. The build step resolves each name to a value from the private brand context, so a brand change is made once, in one place, and no value is copied into this repo. This document is the public side of that arrangement: the names, what each is for, and the geometry that places them in the frame.
+A deliverable carries the brand through a small set of named tokens. A graphic, a caption or a title refers to a token by name and never to a literal colour or font. Each name resolves to a value in the private brand context, so a brand change is made once, in one place, and no value is copied into this repo. This document is the public side of that arrangement: the names, what each is for, and the geometry that places them in the frame.
 
 ## Tokens
 
@@ -16,7 +16,7 @@ A deliverable carries the brand through a small set of named tokens. A graphic, 
 | `type.body` | Secondary lines: the lower-third role line and any running text on a frame. |
 | `type.caption` | Subtitles, burnt in or imported. |
 
-Values are resolved at build time from the private brand context. If a name has no value there, the build stops and does not fall back to a literal.
+No build step resolves the names yet. Until one does, a person reads each value from the private brand context when making a graphic, and nothing in this repo carries a literal in place of a name.
 
 `color.amber` is the only token that marks emphasis. A second accent colour is a change to the token set, not a one-off.
 

@@ -60,7 +60,7 @@ Tag each clip on import so you know which source node to apply.
 ## Subtitles
 
 - **Font:** Inter 500
-- **Color:** White or `color.bone` on semi-transparent dark bar
+- **Color:** `color.text-on-dark` on a semi-transparent `color.marrow` bar (see [design tokens](design-tokens.md#caption-standard))
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand
