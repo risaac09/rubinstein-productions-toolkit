@@ -10,6 +10,7 @@ Four documents share the same core idea and serve different jobs. The core idea 
 |---|---|---|
 | [RP Measurement Framework](../../methodology/measurement-framework.md) | The operational framework for a running practice: both registers, reporting cadence, data safeguards | You are measuring ongoing client work |
 | [Evaluation Framework](../../methodology/evaluation-framework.md) | Assessment design for grant-funded cohorts, written to be funder-legible | You are designing evaluation for a funded program |
+| [Measurement Instrument](../../methodology/measurement-instrument.md) | The survey items, a response CSV, the scoring procedure and a worked example, with a script (draft) | You are collecting and scoring the Likert, NPS and consistency items |
 | [Nomadic Indicators Codebook](../../methodology/nomadic-indicators-codebook.md) | The coding manual: per-code definitions, examples, and markers across six domains | You are coding transcripts, recordings, or field notes |
 | [Theory of Change](../../methodology/theory-of-change.md) | The logic model connecting the methodology to public-health outcomes | You are writing the grant narrative |
 

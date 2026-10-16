@@ -52,7 +52,7 @@ The corpus owns six files, which `scripts/sync-methodology.sh` copies here with 
 - `evaluation-framework.md`
 - `three-type-architecture.md`
 
-This repo owns these, and a search of the corpus on 2026-10-15 found no live copy of any of them: `facilitation-protocol.md`, `glossary.md`, `methodology-blueprint.md`, `negative-archive-ritual.md`, `orchestration-model.md`, `source-tracking-protocol.md` and `second-brain-v2-opening-and-process.md`. The last one names a corpus path in its frontmatter that does not exist, so that line is a stale pointer and this file is the only copy.
+This repo owns these, and a search of the corpus on 2026-10-15 found no live copy of any of them: `measurement-instrument.md` (added 2026-10-16, with its `instrument/` folder), `facilitation-protocol.md`, `glossary.md`, `methodology-blueprint.md`, `negative-archive-ritual.md`, `orchestration-model.md`, `source-tracking-protocol.md` and `second-brain-v2-opening-and-process.md`. The last one names a corpus path in its frontmatter that does not exist, so that line is a stale pointer and this file is the only copy.
 
 The three `*-plain.md` files are plain-language companions to their canonical document and follow it.
 
