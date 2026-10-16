@@ -2,7 +2,7 @@
 # test-instrument-score.sh: check methodology/instrument/score.sh against the
 # worked example and against files it must refuse. Exit 1 on any failure.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 SCORE=methodology/instrument/score.sh
 EX=methodology/instrument/responses-example.csv
 TMP=$(mktemp -d)
