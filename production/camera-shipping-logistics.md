@@ -49,7 +49,7 @@ Tick each line on the bench test, again on the client's arrival check, and again
 - [ ] Audio: microphone, windscreen, cable or receiver
 - [ ] Support: a stand, a clamp or a small tripod, whichever the kit uses
 - [ ] Cleaning cloth
-- [ ] Padded case or the wrapping cloth and padding the [filming guide](filming-guide.md) shows
+- [ ] Padded case or the wrapping cloth and padding the [example shoot plan](examples/2026-03-31-shoot-plan.md) shows
 - [ ] Outbound box, return label, tape, the one-page setup sheet, and a printed copy of this checklist
 
 **Backup gear.** Backup is decided per category, not per item.
