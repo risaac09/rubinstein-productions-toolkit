@@ -64,6 +64,7 @@ Generic film/video production tooling. *(Kept as a default — see below.)*
 - PowerGrade template spec
 - [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
 - [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
+- [Client shooting brief](production/client-shooting-brief.md): a two-page brief for the person filming, to print and put in the box (draft)
 - [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
 - [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16). The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
