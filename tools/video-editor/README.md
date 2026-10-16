@@ -190,7 +190,7 @@ npx remotion render src/index.ts LowerThird out/lower-third.mov \
 
 `npx remotion render` has no per-flag `--help`; `npx remotion help render`
 lists commands only. The flags above were checked by running them on Remotion
-4.0.518.
+4.0.518, and the alpha recipe again on 4.0.536.
 
 **Verified, not just written (first version, 1920 by 1080 at 30 fps):**
 
