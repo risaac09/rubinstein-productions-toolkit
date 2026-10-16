@@ -1,0 +1,1 @@
+The motion prototype moves to Remotion 4.0.536 and `eslint` 9.39.5, patch and minor moves that clear the last 12 `npm audit` advisories in the lint chain without a forced fix; lint, bundle and compositions still pass. (#178)
