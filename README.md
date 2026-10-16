@@ -23,6 +23,7 @@ The intellectual core: how the practice works, why it works, and how to measure 
 
 - **Facilitation Protocol**: Nervous-system aware, co-regulatory interview methodology
 - **Measurement Framework**: The "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence). Formerly ENIF; consolidated April 2026.
+- **Measurement Instrument** (draft): The framework's survey items as a runnable instrument: response CSV, scoring procedure, worked example and a small scoring script in `methodology/instrument/`
 - **Nomadic Indicators Codebook**: Qualitative coding guide for tracking transformation
 - **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
@@ -33,13 +34,10 @@ Three core docs carry a plain-language companion for readers with no evaluation 
 Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
 
 ### `templates/`
-Reusable templates for the client and grant lifecycle.
+Reusable templates for the client lifecycle.
 
-- Prospect tracking template (YAML frontmatter for Obsidian/Dataview)
-- Funder tracking template
 - Client onboarding template
 - Case study template
-- Pipeline dashboards (outreach + grants)
 
 ### `docs/`, `architecture/`
 Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports.
@@ -58,28 +56,17 @@ A second, smaller deployment kit for public-repo hygiene: license templates, a R
 ### `prompts/`
 What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.
 
-### `cli/`
-Shell scripts for outreach and grant pipeline management. Obsidian-native (markdown + YAML frontmatter). No API keys, no cost, no dependencies beyond bash and coreutils (`rp-draft` also needs `python3` to URL-encode). *(Kept here as a default, not a settled call — see "A judgment call" below.)*
-
-- `rp-prospect`: Create and track prospects (interactive or CLI args)
-- `rp-pipeline`: View outreach pipeline by status
-- `rp-update`: Update prospect status and log touches
-- `rp-draft`: Draft emails and open Gmail compose (needs `python3`; reads your signature from `~/.config/rp/signature` or `$RP_SIGNATURE_FILE`)
-- `rp-followup`: Surface overdue follow-ups
-- `rp-grant`: Grant funder tracking, deadlines, and status management
-- `install.sh`: Add to PATH in one step
-
-By default the tools file everything under an Obsidian vault path. Set `RP_OUTREACH_DIR` to point the whole pipeline anywhere else; directories are created on first use and the bundled `templates/` are used when no vault templates exist.
-
-The tools run on macOS and Linux, every command answers `--help`, and `scripts/cli-smoke-test.sh` exercises the full prospect and grant lifecycle against a throwaway directory (CI runs it on every pull request).
-
 ### `production/`
-Generic film/video production tooling. *(Also kept as a default — see below.)*
+Generic film/video production tooling. *(Kept as a default — see below.)*
 
 - DaVinci Resolve command-line script: read-only and offline commands only
 - [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
 - PowerGrade template spec
-- iPhone filming guide for the camera-shipping model
+- [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
+- [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
+- [Client shooting brief](production/client-shooting-brief.md): a two-page brief for the person filming, to print and put in the box (draft)
+- [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
+- [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16); the [return package](production/return-package.md) sets what comes back to the client and how it is checked. The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
 ### `production/lutlab/`
 Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.9 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
@@ -131,9 +118,13 @@ A second pass on 2026-08-23 caught what the first one missed. The August reorg s
 
 History still holds all of it. Scrubbing that is a separate decision.
 
+One removal came later, on 2026-10-16: the `rp-*` prospect and grant command-line tools (`cli/`, its four templates and its smoke test). They tracked the same prospects and funders as the private stack-data repo, and a fact should have one home, so the record is stack-data and the tools went. The last commit that carries them is `2ffe87a`; take them from git history if you want a Markdown-file tracker to start from.
+
 ### A judgment call
 
-`cli/` and most of `production/` (everything except `badwords-rp/`, which moved) are kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and neither directory carries names, numbers, or strategy — but this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
+Most of `production/` (everything except `badwords-rp/`, which moved) is kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and the directory carries no names, numbers, or strategy — but this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
+
+The same flag once sat on `cli/`, the prospect and grant command-line tools. It was settled on 2026-10-16: the pipeline record is the private stack-data repo, a second tracker for the same facts was the problem, and the tools were retired. See the paragraph above and [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md).
 
 ---
 
@@ -141,7 +132,7 @@ History still holds all of it. Scrubbing that is a separate decision.
 
 Three lanes, matching the rest of this practice's repos:
 
-- **Code and tooling** (`cli/`, `scripts/`, `production/resolve_workflow.py`, the `phase-zero/` and `public-kit/` mechanisms themselves) — **MIT**. Use it, fork it, adapt it.
+- **Code and tooling** (`scripts/`, `production/resolve_workflow.py`, the `phase-zero/` and `public-kit/` mechanisms themselves) — **MIT**. Use it, fork it, adapt it.
 - **Methodology, protocols, and practice-writing** (`methodology/`, `templates/`, `docs/`) — **CC BY-SA 4.0**. Share and adapt, with attribution, alike.
 - **Data** — none of consequence lives in this repo; where it would, it's CC0.
 
@@ -153,27 +144,6 @@ See `LICENSE` for the full texts and scope note, and `public-kit/` for the templ
 
 New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, producers, and evaluators to a reading order and a first working session.
 
-### Outreach + Grant CLI
-```bash
-# Clone the repo
-git clone https://github.com/risaac09/rubinstein-productions-toolkit.git
-
-# Add CLI tools to your PATH
-echo 'export PATH="$HOME/rubinstein-productions-toolkit/cli:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# Optional: choose where pipeline files live (defaults to an Obsidian vault path)
-echo 'export RP_OUTREACH_DIR="$HOME/rp-pipeline"' >> ~/.zshrc
-
-# Create your first prospect
-rp-prospect
-
-# View your pipeline
-rp-pipeline
-
-# Manage grant funders
-rp-grant help
-```
 ### Prompt Stack
 The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
 

@@ -10,6 +10,7 @@ Four documents share the same core idea and serve different jobs. The core idea 
 |---|---|---|
 | [RP Measurement Framework](../../methodology/measurement-framework.md) | The operational framework for a running practice: both registers, reporting cadence, data safeguards | You are measuring ongoing client work |
 | [Evaluation Framework](../../methodology/evaluation-framework.md) | Assessment design for grant-funded cohorts, written to be funder-legible | You are designing evaluation for a funded program |
+| [Measurement Instrument](../../methodology/measurement-instrument.md) | The survey items, a response CSV, the scoring procedure and a worked example, with a script (draft) | You are collecting and scoring the Likert, NPS and consistency items |
 | [Nomadic Indicators Codebook](../../methodology/nomadic-indicators-codebook.md) | The coding manual: per-code definitions, examples, and markers across six domains | You are coding transcripts, recordings, or field notes |
 | [Theory of Change](../../methodology/theory-of-change.md) | The logic model connecting the methodology to public-health outcomes | You are writing the grant narrative |
 
@@ -21,13 +22,13 @@ Read the [RP Measurement Framework](../../methodology/measurement-framework.md) 
 
 ## Working with the data
 
-- **Consent tiers.** Three tiers govern every piece of participant data, set at intake and recorded in the [Case Study template](../../templates/case-study-template.md). Publication is governed by the tier the participant chose.
+- **Consent tiers.** Three tiers govern every piece of participant data, set at intake and recorded in the [Case Study template](../../templates/case-study-template.md). Publication is governed by the tier the participant chose, and [Consent evidence](../../production/consent-evidence.md) says what proves each tier.
 - **[Source Tracking Protocol](../../methodology/source-tracking-protocol.md)**. Provenance categories and claim-level tracing for anything externally cited. Grant reports that survive scrutiny are built this way.
 - **Reporting cadence.** The frameworks specify who hears what and when: funders quarterly in their register, participants after engagement in theirs, the field annually.
 
 ## The grant pipeline
 
-`rp-grant` tracks funders as markdown files with YAML frontmatter: `add` for intake, `list` by status, `deadlines` sorted by date, `update` and `log` as the relationship moves. Statuses run research, loi-prep, submitted, reviewed, awarded or declined. Run `rp-grant --help` for the full command set, and see the [Funder template](../../templates/funder-template.md) for the fields.
+Funders are tracked as contacts with a status that runs research, loi-prep, submitted, reviewed, awarded or declined, and a deadline per application. This repo ships no tracker for it: the command-line tool that did was retired on 2026-10-16, and it is in git history. Keep the funder record in the one contact store you already use, and see [`TRUTH-OWNERSHIP.md`](../TRUTH-OWNERSHIP.md) for how this practice splits the record from the methodology.
 
 ## First working session
 

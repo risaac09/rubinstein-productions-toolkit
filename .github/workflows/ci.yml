@@ -8,18 +8,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  cli-smoke-test:
+  hygiene-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: CLI smoke test (GNU userland)
-        run: scripts/cli-smoke-test.sh
       - name: Vault-mirror drift check
         run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
       - name: Markdown link check
         run: scripts/check-doc-links.sh
       - name: Methodology status headers
         run: scripts/check-methodology-status.sh
+      - name: Measurement instrument scoring test
+        run: scripts/test-instrument-score.sh
       - name: Unresolved merge marker check
         run: |
           if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then

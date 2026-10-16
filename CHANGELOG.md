@@ -4,6 +4,21 @@ What changed in this repo, newest first. There are no version numbers, tags or r
 
 Written 2026-10-15 from the git history. Add an entry in the pull request that makes the change.
 
+## 2026-10-16
+
+- vertcut's captions now follow the caption standard in `production/design-tokens.md`: a bar at 88% opacity instead of the outline, text and bar colours and the face from options or an untracked `captions.local.json`, 16 characters a line and two lines at most, and `--caption-y` as the bar's bottom edge. The bar opacity is decided. Amendment 2, item 17.
+- The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
+- Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
+- Added `production/design-tokens.md` (draft), which settles Amendment 2, item 17 as far as the public repo can: token names without values, lower-third geometry as fractions of frame size, one caption standard, how vertcut's captions differ (follow-up open), and a look-book stub. The Resolve spec's colour names now use token names.
+- Added `production/consent-evidence.md` (draft): the one artifact that proves each consent tier, checklists for appearance, location and talent releases, and a per-engagement licence register for music and fonts. The case-study template has a required "Consent evidence" line and a rule that a case study with no tier 3 evidence id is not published. Amendment 2, item 18.
+- Added `production/return-package.md` (draft), the return-package spec and folder standard, which settles Amendment 2, item 19: contents, medium, `<YYYY-MM>_<engagement-id>/` layout, SHA-256 checksums with make and verify commands, client confirmation and RP's 90-day retention. Linked from the README and the producers guide.
+- Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera. The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
+- The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
+- Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
+- Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
+- ROADMAP Amendment 2, items 10 and 11, carry status lines.
+- Drafted the producer gaps from Amendment 2, items 13 and 20: `production/camera-shipping-logistics.md`, `production/delivery-manifest.md`, `production/platform-specs.md`, `production/credits-and-disclosure.md`, and a final-approval gate in the Resolve spec's Deliver section. All are marked draft and end in a "Needs Isaac" list.
+
 ## 2026-10-15
 
 - Added `requirements.txt`: each tool's interpreter and pinned packages in one file.

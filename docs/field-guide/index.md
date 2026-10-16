@@ -1,11 +1,11 @@
 # Field Guide
 
-The toolkit is organized by artifact type: methodology, prompts, CLI, templates, production. That layout serves the person who built it. If you arrived here wanting to use these practices, the better map is by role. This guide gives you three entry paths, each a reading order plus a first working session.
+The toolkit is organized by artifact type: methodology, prompts, templates, production. That layout serves the person who built it. If you arrived here wanting to use these practices, the better map is by role. This guide gives you three entry paths, each a reading order plus a first working session.
 
 ## Pick your path
 
 - **[Writers](writers.md)**: narrative, copy, story development, publishing. You want the voice system, the question bank, and the editorial disciplines.
-- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the pipeline tools.
+- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the camera-shipping logistics and delivery standards (drafts).
 - **[Evaluators](evaluators.md)**: measurement, impact, grants. You want the Bilingual Dashboard, the coding manual, and the grant infrastructure.
 
 The paths overlap on purpose. A facilitated documentary session produces footage for the producer, language for the writer, and coded evidence for the evaluator. Read your own path first, then skim the other two to see what your collaborators will be working from.
@@ -29,6 +29,6 @@ A few things to know before you open the source documents.
 
 ## How the pieces connect
 
-The practice runs as a loop. Methodology defines how a session works. Prompts encode that methodology so an AI collaborator holds it during real work. Templates capture what a session produces. The CLI moves prospects and funders through a pipeline so sessions keep happening. Production turns sessions into deliverable film. Evaluation reads the whole loop and reports what changed, in two registers at once.
+The practice runs as a loop. Methodology defines how a session works. Prompts encode that methodology so an AI collaborator holds it during real work. Templates capture what a session produces. A contact record outside this repo moves prospects and funders through a pipeline so sessions keep happening. Production turns sessions into deliverable film. Evaluation reads the whole loop and reports what changed, in two registers at once.
 
 Take any single piece on its own if that is all you need. The posture is take what's useful: code and tooling are [MIT](../../LICENSE), methodology and docs are [CC BY-SA 4.0](../../LICENSE-CONTENT).
