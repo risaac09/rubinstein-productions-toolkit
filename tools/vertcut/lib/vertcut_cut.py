@@ -68,6 +68,19 @@ def load_destination(key):
         die(str(e))
 
 
+def check_destination(dest):
+    """vertcut writes a W x H AAC file, so a destination of another size or audio codec would get a
+    name and audio settings its picture does not match. Refuse it before any work."""
+    res = dest.get("resolution")
+    if not isinstance(res, dict) or (res.get("width"), res.get("height")) != (W, H):
+        die("destination '%s' is %s; vertcut writes %dx%d only"
+            % (dest["key"], "%sx%s" % (res.get("width"), res.get("height"))
+               if isinstance(res, dict) else res, W, H))
+    codec = (dest.get("audio") or {}).get("codec")
+    if codec not in (None, "aac"):
+        die("destination '%s' takes %s audio; vertcut writes AAC only" % (dest["key"], codec))
+
+
 def audio_codec_args(dest):
     """AAC at the destination's bitrate, sample rate and channel count."""
     a = dest.get("audio") or {}
@@ -402,9 +415,9 @@ def main():
     ap.add_argument("--crf", type=int, default=20)
     ap.add_argument("--preset", choices=X264_PRESETS, default="veryfast",
                     help="x264 preset (slower is smaller at the same quality)")
-    ap.add_argument("--lufs", type=float, default=DEFAULT_LUFS,
-                    help="integrated loudness target (default %g, the LinkedIn level; "
-                         "use -14 for YouTube and short-form feeds)" % DEFAULT_LUFS)
+    ap.add_argument("--lufs", type=float,
+                    help="integrated loudness target (default: the destination's, -16 for "
+                         "linkedin_9x16; %g when the destination names none)" % DEFAULT_LUFS)
     ap.add_argument("--tp", type=float, default=DEFAULT_TP, help="true-peak ceiling in dBTP (default %g)" % DEFAULT_TP)
     ap.add_argument("--lra", type=float, default=DEFAULT_LRA, help="loudness range target (default %g)" % DEFAULT_LRA)
     ap.add_argument("--only", help="comma-separated clip ids to render")
@@ -425,8 +438,11 @@ def main():
     src_w, src_h, src_fps = probe(args.src)
     has_audio = has_audio_stream(args.src)
     fps = args.fps or src_fps
-    audio_filter = loudnorm_filter(args.lufs, args.tp, args.lra)   # validated before any work
     dest = load_destination(args.destination)
+    check_destination(dest)
+    lufs = args.lufs if args.lufs is not None else (
+        (dest.get("loudness") or {}).get("integrated_lufs") or DEFAULT_LUFS)
+    audio_filter = loudnorm_filter(lufs, args.tp, args.lra)   # validated before any work
     name_parts = {"show": args.show, "episode": args.episode, "guest": args.guest}
     if not args.draft_names:
         missing = [k for k, v in name_parts.items() if not v]

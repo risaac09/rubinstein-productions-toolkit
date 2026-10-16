@@ -24,11 +24,15 @@ that so:
   (320 kbps, 48 kHz, stereo for `linkedin_9x16`), read from
   `production/resolve-config.json`; `--destination` picks another key.
 
-Two limits remain. The loudness row passes only because the loudnorm target
-(`--lufs`, default -16) matches the destination; run `deliver_check` after any
-`--lufs` change. And vertcut files still skip the final-approval gate and the
-delivery manifest, which belong to the `reframe_plan`, `cut` and `queue_render`
-route in [`production/resolve-template-spec.md`](../../production/resolve-template-spec.md).
+Write into a folder named for the destination (`-o .../linkedin_9x16`) and the
+`folder` row passes too; elsewhere it is skipped.
+
+The loudnorm target comes from the destination too (-16 LUFS for
+`linkedin_9x16`); a `--lufs` that differs from it fails the loudness row.
+`--destination` refuses a key whose frame is not 1080x1920 or whose audio is not
+AAC, since vertcut writes only that. One limit remains: vertcut files still
+skip the final-approval gate and the delivery manifest, which belong to the
+`reframe_plan`, `cut` and `queue_render` route in [`production/resolve-template-spec.md`](../../production/resolve-template-spec.md).
 
 ## Requirements
 

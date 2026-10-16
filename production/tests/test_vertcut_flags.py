@@ -75,6 +75,13 @@ class TestFlags(unittest.TestCase):
         self.assertEqual(self.v.audio_codec_args(dest),
                          ["-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-ac", "2"])
 
+    def test_a_destination_vertcut_cannot_write_is_refused(self):
+        self.v.check_destination(self.v.load_destination("linkedin_9x16"))
+        for key in ("linkedin_1x1", "youtube_16x9", "client_master"):
+            with self.subTest(key=key):
+                with self.assertRaises(SystemExit):
+                    self.v.check_destination(self.v.load_destination(key))
+
     def test_the_colour_tags_are_explicit_bt709_limited_range(self):
         a = self.v.COLOR_TAG_ARGS
         for flag, val in (("-color_primaries", "bt709"), ("-color_trc", "bt709"),
