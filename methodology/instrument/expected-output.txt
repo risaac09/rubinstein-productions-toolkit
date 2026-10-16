@@ -1,0 +1,26 @@
+instrument-score: methodology/instrument/responses-example.csv
+engagement: all
+rows: 12
+
+LIKERT (1-5), mean per item
+point           item                        n   mean
+delivery        narrative_clarity           6   4.17
+delivery        internal_alignment          6   3.33
+delivery        feeling_heard               6   4.50
+delivery        safety_in_vulnerability     6   4.33
+delivery        clarity_gained              6   4.33
+delivery        co_creation_quality         6   4.67
+delivery        representative_pride        6   4.33
+
+NPS (0-10), mean and net
+point             n   mean promoters passives detractors     net
+delivery          6   8.67         4        1          1    50.0
+followup-3mo      6   8.83         4        2          0    66.7
+
+CONSISTENCY (1-10), mean per group
+point           group            n     q1     q2     q3    avg  band
+followup-3mo    leadership       2   8.50   8.00   7.50   8.00  strong
+followup-3mo    staff            3   6.00   6.67   5.00   5.89  moderate
+followup-3mo    beneficiaries    1   9.00   9.00   8.00   8.67  strong
+followup-3mo    all              6   7.33   7.50   6.33   7.06  strong
+followup-3mo    spread between group averages: 2.78 (highest 8.67, lowest 5.89)

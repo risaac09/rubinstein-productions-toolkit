@@ -20,6 +20,8 @@ jobs:
         run: scripts/check-doc-links.sh
       - name: Methodology status headers
         run: scripts/check-methodology-status.sh
+      - name: Measurement instrument scoring test
+        run: scripts/test-instrument-score.sh
       - name: Unresolved merge marker check
         run: |
           if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then
