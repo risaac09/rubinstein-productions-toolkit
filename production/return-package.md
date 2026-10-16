@@ -82,20 +82,50 @@ shasum -a 256 -c SHA256SUMS
 
 Every line prints `OK`. Any `FAILED` line names a file that changed or did not copy. Files added after the sums were made are not listed, so the originals folder is checked last, after the copy is complete.
 
-**Finals** are not in `SHA256SUMS`. Their hashes are the Checksum column of the manifest table, taken after the last loudness fix as the delivery manifest requires. A client checks one with `shasum -a 256 <file>` and compares it to the row.
+**Finals** are not in `SHA256SUMS`. Their hashes are the Checksum column of the manifest table, taken after the last loudness fix as the delivery manifest requires. A client checks one with the steps below and compares the result to the row.
+
+## How the client verifies
+
+A checksum is a string worked out from a file's exact contents. If the string you work out matches the one RP wrote down, the file arrived whole. Nothing here needs more than the built-in terminal on your computer. Do the steps for your system.
+
+**macOS.** Open Terminal, then move into the folder.
+
+- The originals, all at once: `cd 01_originals`, then `shasum -a 256 -c SHA256SUMS`. Each line ends in `OK` or `FAILED`.
+- One final: `shasum -a 256 <file>`. Compare the result to the Checksum column in `manifest.md`.
+
+**Windows.** Open PowerShell, then move into the folder with `cd`. PowerShell ships with Windows. This is untested on Windows: the commands are standard PowerShell and the loop was checked by reading it through, not by running it.
+
+- One final: `Get-FileHash -Algorithm SHA256 <file>`. Compare the Hash it prints to the Checksum column in `manifest.md`. PowerShell prints capitals and the manifest uses lowercase; they are the same value.
+- The originals, all at once, from inside `01_originals`:
+
+```powershell
+Get-Content SHA256SUMS | ForEach-Object {
+  if (-not $_) { return }
+  $hash, $path = $_ -split '  ', 2
+  $path = $path -replace '^\./', ''
+  $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $path -ErrorAction SilentlyContinue).Hash
+  if ($actual -and $actual -eq $hash) { "OK: $path" } else { "FAILED: $path" }
+}
+```
+
+The loop reads each line of `SHA256SUMS`, skips a blank line, splits it into the hash and the path, drops the leading `./`, works out the file's hash and prints `OK` or `FAILED` for it. A file that is missing prints `FAILED`. On a large originals folder it takes a while, because it reads every file.
+
+**If a line says FAILED.** Tell RP which file, and keep the files you have; do not delete or re-download the whole package. RP sends that one file again, and you check it again. A file is confirmed when its line says `OK`. The other files that said `OK` stand.
+
+**What opens the `.drp`.** DaVinci Resolve opens it. Clips show offline until you relink the folder to `01_originals/`, as described under "What is in it". This repo states no Resolve version for opening the file, so ask RP which version the project was saved in before you install one.
 
 ## How the client confirms receipt
 
 The client does one of two things and says so by reply:
 
-- Runs the verify command above and reports that every line is `OK`.
-- Reads the manifest, checks that each listed file is present, and spot-checks finals against the table.
+- Runs the verify steps above for their system and reports that every line is `OK`.
+- Reads the manifest, checks that each listed file is present, and spot-checks finals against the table with the steps above.
 
 RP records the date of that reply. It starts the retention clock below.
 
 ## The manifest
 
-`manifest.md` here is the same file the [delivery manifest](delivery-manifest.md) describes, at the package root beside the numbered folders. The delivery manifest's rules hold: one row per file, a checksum per row, an approval reference on every row, no edits after delivery. For the package, the file list also covers `03_captions/`, `04_project/` and `05_session/`. The `.drp` gets a row with its SHA-256 and `n/a` in the video columns. The originals are covered by `SHA256SUMS` and named in the manifest as one line pointing to it, not listed row by row.
+`manifest.md` here is the same file the [delivery manifest](delivery-manifest.md) describes, at the package root beside the numbered folders. The delivery manifest's rules hold: one row per file, a checksum per row, an approval reference on every row, no edits after delivery. For the package, the file list also covers `03_captions/`, `04_project/` and `05_session/`. The `.drp` gets a row with its SHA-256 and `n/a` in the video columns. The originals are covered by `SHA256SUMS` and named in the manifest as one line pointing to it, not listed row by row. The manifest also carries the client-safe extract of the licence register, as its "Licences used" block: asset, licence and attribution required, with the private columns left out. The client therefore sees which licensed music and fonts the work uses and what credit each asks for.
 
 ## What RP keeps afterward
 

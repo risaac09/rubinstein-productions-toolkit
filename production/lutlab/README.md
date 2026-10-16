@@ -18,7 +18,7 @@ cd production
 /usr/bin/python3 -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
 /usr/bin/python3 -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 /usr/bin/python3 -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
-/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm --out DIR
+/usr/bin/python3 -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
 /usr/bin/python3 -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
 /usr/bin/python3 -m lutlab diff A.cube B.cube --in vlog
 /usr/bin/python3 -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
@@ -64,6 +64,22 @@ camera at once, writing `<look> [<Camera>].cube`. The deltas ship in
 | `print-teal` | print contrast, greens to teal, teal and orange split, black lifted slightly |
 | `soft-print` | low contrast and saturation, open shadows, long soft shoulder |
 | `bleach` | saturation to about 60%, harder contrast, steel shadows |
+
+**Looks on a camera monitor.** `looks --monitor` also writes, for each camera look, a 33-point copy clipped
+to 0..1 beside the full-size file. It is the same copy `port --monitor` makes (one shared function), and
+`rcm` gets none: that set is for a Resolve node and no camera loads it. With `--camera pyxis,s5ii,rcm
+--monitor` the `rcm` files are still written and the monitor copies skip it, with a note on stderr; with
+`--camera rcm` alone the command refuses. The file name is the camera's first two letters or digits plus the
+first four of the look's name without its leading "RP ", upper case, so it fits the S5II's 8-character FAT32
+limit: `S5PRIN.cube` is Print Teal for the S5II, `PYPRIN.cube` for the Pyxis. The six shipped looks give
+`BLEA`, `ICEB`, `NEUT`, `PRIN`, `SOFT` and `TUNG`, which do not collide. If two looks in one run would, the
+last two characters become two hex digits of a hash of the look's name, and the run refuses if they still
+collide. Copy the file to the root of the card.
+
+Which cameras can load the files:
+- **S5II:** yes, from the card, as the first section above describes (`.cube`, 2 to 33 points, 8 characters on FAT32).
+- **Pyxis:** yes, 33-point `.cube`, as the first section above says.
+- **GH7, GH5 and iPhone:** this repo knows no route. Nothing here writes or loads a LUT for them.
 
 Delta arithmetic (`model.apply_delta`):
 - **Added:** tone `black`/`white`/`mid`/`toe_start`/`shoulder_start`; `hue_lum`; `hue_shift`; `split_tone` (as OKLab vectors); `white_balance`.

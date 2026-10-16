@@ -15,9 +15,16 @@ This case study is the researcher register of the foundational unit (`stack-data
 
 ## Consent evidence
 
-**Consent evidence:** Tier ___ / evidence id ___ *(required; see [Consent Evidence](../production/consent-evidence.md))*
+*Required. See [Consent Evidence](../production/consent-evidence.md) for the one artifact that proves each tier.*
 
-A case study with no tier 3 evidence id is not published. The id points to the signed release in the private engagement record. Never paste the release, a name from it, or its contents here.
+| Participant (code) | Tier (1, 2 or 3) | Evidence id |
+|--------------------|------------------|-------------|
+| P1 | | |
+| P2 | | |
+
+Add a row for every person the study draws on. Use a code (P1, P2), never a name, and keep the key from code to person in the private engagement record. The evidence id points to the artifact in that record. Never paste a release, a name from it, or its contents here.
+
+Any participant identified in the published study needs tier 3 evidence. A case study that identifies a participant whose row lacks a tier 3 evidence id is not published.
 
 ---
 
@@ -31,7 +38,6 @@ A case study with no tier 3 evidence id is not published. The id points to the s
 | **Duration:** | |
 | **Dates:** | Start: _____ End: _____ |
 | **Deliverables Created:** | |
-| **Consent Level:** | Tier 1 (Internal) / Tier 2 (Anonymized) / Tier 3 (Identified) |
 | **Case Study Status:** | Draft / Internal Review / Published |
 
 ---
@@ -72,16 +78,14 @@ A case study with no tier 3 evidence id is not published. The id points to the s
 
 ### Initial Assessment Scores
 
-*From the [Client Onboarding template](client-onboarding.md)*
+*From the `pre-engagement` point of the [Measurement Instrument](../methodology/measurement-instrument.md). The baseline steps are in the [Client Onboarding template](client-onboarding.md).*
 
-| Dimension | Score (1-5) |
-|-----------|-------------|
-| Narrative Clarity | |
-| Internal Alignment | |
-| Psychological Safety | |
-| Developmental Capacity | |
-| Facilitation Trust | |
-| **TOTAL** | /25 |
+| Item | Scale | Before |
+|------|-------|--------|
+| Narrative Clarity: "We can articulate our mission with ease and specificity" | 1-5 | |
+| Consistency, question 1: "This narrative holds my contradictory experience." | 1-10 | |
+| Consistency, question 2: "I can locate myself in this story without erasing complexity." | 1-10 | |
+| Consistency, question 3: "This makes our conflicts generative rather than destructive." | 1-10 | |
 
 ### Assemblage Map (Summary)
 
@@ -186,11 +190,12 @@ Week 3: [Activity]
 
 ### Quantitative Results
 
+*Before is the `pre-engagement` point. After is `delivery` for Narrative Clarity and `followup-3mo` for consistency. Both come from the response file the [Measurement Instrument](../methodology/measurement-instrument.md) scores.*
+
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
-| Clarity Score (self-reported) | | | |
-| Confidence Score (self-reported) | | | |
-| Stakeholder Understanding | | | |
+| Narrative Clarity (1-5) | | | |
+| Consistency average, all respondents (1-10) | | | |
 | Specific Outcome 1 | | | |
 | Specific Outcome 2 | | | |
 
@@ -207,17 +212,19 @@ Week 3: [Activity]
 
 ### Post-Engagement Assessment
 
-*From follow-up conversation*
+*From the `delivery` point of the [Measurement Instrument](../methodology/measurement-instrument.md). Enter the mean for each item.*
 
-| Statement | Score (1-5) |
-|-----------|-------------|
-| "This captures our lived reality" | |
-| "This serves our intended purposes" | |
-| "We're proud to share this publicly" | |
-| "We'd engage in this process again" | |
-| "Others understand us better through this" | |
+| Statement | Mean (1-5) |
+|-----------|------------|
+| "We can articulate our mission with ease and specificity" (Narrative Clarity) | |
+| "Our lived culture matches our public narrative" (Internal Alignment) | |
+| "The facilitation process honored my actual experience" (Feeling Heard) | |
+| "I felt secure being authentically seen" (Safety in Vulnerability) | |
+| "I understand my work differently through this process" (Clarity Gained) | |
+| "This was collaborative, not extractive" (Co-Creation Quality) | |
+| "We're proud to share this publicly" (Representative Pride) | |
 
-**Net Promoter Score:** ___ / 10
+**Net Promoter question (mean, 0-10):** ___ / 10, with the net score ___
 
 ---
 
@@ -225,7 +232,7 @@ Week 3: [Activity]
 
 ### Consistency Mapping
 
-*How well does the final narrative hold heterogeneous elements together?*
+*How well does the final narrative hold heterogeneous elements together? Group averages at `followup-3mo` from the [Measurement Instrument](../methodology/measurement-instrument.md).*
 
 | Stakeholder Type | Consistency Score (1-10) | Notes |
 |-----------------|-------------------------|-------|
@@ -309,7 +316,7 @@ Week 3: [Activity]
 
 ## Part 7: Publication Package
 
-*Only complete if Consent Level = Tier 3 (Identified)*
+*Only complete if the Consent evidence table shows tier 3 evidence for every participant identified here*
 
 ### Short Version (Website/Portfolio)
 
