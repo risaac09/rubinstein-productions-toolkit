@@ -107,7 +107,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - Shows the client a review copy and, under the draft standard, delivers only what the client has approved in writing (the final-approval gate in the [Resolve spec](../production/resolve-template-spec.md#the-final-approval-gate); the delivered files are listed in a [manifest](../production/delivery-manifest.md), and the [platform specs](../production/platform-specs.md) and [credits and disclosure standard](../production/credits-and-disclosure.md) apply; all drafts)
 - Returns ALL footage, performance data, and final video to the client
 - Delivers the Bilingual Dashboard only where the tier lists it (Tier 2+): Royal metrics (institutional ROI language) + Nomadic indicators (relational health, emergence)
-- Nothing is kept. The client owns everything.
+- Everything returns. RP keeps a copy for 90 days after you confirm receipt, then deletes it, unless you agree otherwise in writing. The client owns everything.
 
 **What the client experiences:**
 - The story can now travel without them. Funders, audiences, websites — the artifact does the work.
