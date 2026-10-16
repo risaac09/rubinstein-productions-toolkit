@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- The Likert anchors decided 2026-10-16 (1 "strongly disagree", 5 "strongly agree", middle unlabeled) are in the corpus canonical measurement framework and synced here; the other methodology snapshots carry the new sync date only.
 - vertcut's captions now follow the caption standard in `production/design-tokens.md`: a bar at 88% opacity instead of the outline, text and bar colours and the face from options or an untracked `captions.local.json`, 16 characters a line and two lines at most, and `--caption-y` as the bar's bottom edge. The bar opacity is decided. Amendment 2, item 17.
 - The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
 - Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.

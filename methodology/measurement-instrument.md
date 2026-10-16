@@ -36,7 +36,7 @@ Items are quoted exactly. The label in parentheses is the framework's own name f
 6. "This was collaborative, not extractive" (Co-Creation Quality)
 7. "We're proud to share this publicly" (Representative Pride)
 
-**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The framework says "Likert 1-5" and gives no labels; this line sets them, and the corpus copy of the framework should gain the same line.
+**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The same line is in [Measurement Framework](measurement-framework.md) section 1, synced from the corpus canonical.
 
 ### 2.2 Net Promoter question, rated 0 to 10
 
