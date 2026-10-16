@@ -79,7 +79,7 @@ git -C "$R" merge -q --no-edit par-one && git -C "$R" merge -q --no-edit par-two
 
 inrepo "$CF" compile --dry-run 2>/dev/null | grep -q 'Entry from branch one' && ok "compile --dry-run lists entries" || bad "dry run missing an entry"
 inrepo "$CF" compile >/dev/null && ok "compile runs" || bad "compile failed"
-[ -z "$(ls "$R/changelog.d" | grep -v README.md)" ] && ok "compile removes the fragments" || bad "fragments left behind"
+[ -z "$(find "$R/changelog.d" -type f ! -name README.md)" ] && ok "compile removes the fragments" || bad "fragments left behind"
 sed -n '/^## Unreleased/,/^### /p' "$R/CHANGELOG.md" > "$TMP/unrel"
 grep -q 'Entry from branch one' "$TMP/unrel" && grep -q 'Entry from branch two' "$TMP/unrel" && grep -q 'Old entry' "$TMP/unrel" && ok "compile keeps old entries and adds new" || bad "Unreleased wrong: $(cat "$TMP/unrel")"
 [ "$(grep -c '^- ' "$R/CHANGELOG.md")" -eq 4 ] && ok "no entry lost or duplicated" || bad "entry count: $(grep -c '^- ' "$R/CHANGELOG.md")"
