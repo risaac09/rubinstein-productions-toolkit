@@ -54,7 +54,7 @@ public:
 };
 
 int main(int argc, const char* argv[]) {
-    if (argc < 4) { std::cerr << "usage: braw2ppm clip.braw (frame | seconds"s") out.ppm\n"; return 1; }
+    if (argc < 4) { std::cerr << "usage: braw2ppm clip.braw (frame | SECONDSs) out.ppm\n"; return 1; }
     g_out = argv[3];
     const char* env = getenv("BRAW_SDK");   // the SDK's Mac folder, as for build.sh
     std::string libs = std::string(env ? env : "/Applications/Blackmagic RAW/Blackmagic RAW SDK/Mac") + "/Libraries";
