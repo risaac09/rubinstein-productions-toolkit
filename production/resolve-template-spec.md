@@ -8,43 +8,68 @@
 - **Resolution:** 3840 × 2160 (UHD 4K) for the project and its timelines; each delivery
   destination sets its own frame size (see Deliver)
 - **Timeline framerate:** 23.976 fps (default) or 29.97 fps — set per project
-- **Color science:** DaVinci YRGB Color Managed
+- **Color science:** DaVinci YRGB Color Managed v2, timeline DaVinci WG/Intermediate, output Rec.709 Gamma 2.4 (see Colour Pipeline of Record)
 
 ---
 
-## Camera Sources & Color Pipeline
+## Colour Pipeline of Record
 
-Three cameras, three different log profiles. Each needs its own conversion path before the shared creative grade.
+*Decided 2026-10-16 (Amendment 2, item 16).* One pipeline is in force: Resolve Color Management v2 with a DaVinci Wide Gamut timeline. It replaces the earlier design, where a camera LUT on node 1 turned each camera's log into Rec.709 before the shared grade. That design is kept below as the alternative for a project that is not colour managed. Where this section and `resolve-config.json` or lutlab's README disagree, this section is the record and the others get fixed.
 
-| Camera | Log Profile | Conversion | Notes |
-|--------|-----------|------------|-------|
-| **iPhone 15 Pro** | Apple Log | TheOneLUT (AppleLog → Arri709 V5, 33pt .cube) | Already in Powergrades folder |
-| **Panasonic GH7** | V-Log L (or V-Log) | V-Log to Rec.709 LUT (Panasonic-supplied or custom) | GH7 shoots 5.7K Open Gate — may need to scale/crop to 4K timeline |
-| **Panasonic GH5** | V-Log L | V-Log L to Rec.709 LUT (Panasonic-supplied or custom) | Different sensor / color response than GH7 — may need separate base correction |
+### Project settings
 
-### Node Structure (per clip)
+| Setting | Value | Who sets it |
+|---|---|---|
+| Color science | DaVinci YRGB Color Managed v2 (`davinciYRGBColorManagedv2`) | `set_color_management` on a fresh project, or by hand |
+| Timeline colour space | DaVinci WG/Intermediate | By hand, in Project Settings, Color Management |
+| Output colour space | Rec.709 Gamma 2.4 | By hand, same place |
+| Tone mapping, gamut mapping | None | By hand, same place |
+
+A fresh colour-managed project starts with its timeline and output both at Rec.709 (Scene), so the last three rows are a hand step after `set_color_management`, which sets the first row only. Its preset gains a key only after that key has been set through the API on a live Resolve (see `rpresolve/colormgmt.py`), and the timeline and output keys have not been. Tone mapping stays off because the looks already compress the picture once.
+
+### Per camera
+
+Capture settings for each camera are in the capture standard (`production/capture-standard.md`). After capture, every camera takes the same path: `ingest` tags each clip's Input Color Space from what `detect` reads in the file, Resolve converts it into the timeline space, and the grade happens there.
+
+| Camera | Records | Input Color Space (`ingest`) | Conversion | Look |
+|---|---|---|---|---|
+| iPhone 15 Pro | Apple Log | `Apple Log` | Resolve, from the tag | `[RCM]` set |
+| Panasonic GH7 | V-Log | `Panasonic V-Gamut/V-Log` | Resolve, from the tag | `[RCM]` set |
+| Panasonic GH5 | V-Log L | `Panasonic V-Gamut/V-Log` | Resolve, from the tag; V-Log L uses the V-Log curve | `[RCM]` set |
+| Panasonic S5II | V-Log | `Panasonic V-Gamut/V-Log` | Resolve, from the tag | `[RCM]` set |
+| Pyxis | BRAW, decoded as Film Gen 5 | `auto (camera RAW)` | Resolve's RAW decode into DaVinci Wide Gamut, no per-clip tag | `[RCM]` set |
+
+`detect` marks the GH5's V-Log L gamut as unverified and gives that row medium confidence; a clip it cannot pin goes to the Review bin with an empty tag, and a person sets it. Of these names, only `Panasonic V-Gamut/V-Log` has been written through the API and read back; the others are Resolve's own auto-tag strings (see `rpresolve/detect.py`).
+
+### The look
+
+The shared look is one of lutlab's six, from its `[RCM]` set, baked at 65 points (`lutlab looks BASE/params.json --camera rcm --size 65`). An `[RCM]` look reads DaVinci Intermediate and writes the finished picture back in DaVinci Intermediate, and Resolve's output transform turns that into Rec.709 Gamma 2.4. One file serves every camera in the table. Measured on an S5II V-Log clip, the Rec.709 render lands 0.79 (Neutral) and 0.82 (Print Teal) median Delta E from the camera look, and on a Pyxis BRAW clip 0.95; the numbers and their method are in [lutlab's README](lutlab/README.md).
+
+`apply_grade` puts the look on a node of an `[auto]` timeline's items. The scripting API cannot make nodes, so the node has to exist on each clip before the apply.
+
+### Node structure (per clip)
 
 ```
-Node 1: Source Conversion (camera-specific LUT)
-  → iPhone: TheOneLUT
-  → GH7: V-Log to Rec.709
-  → GH5: V-Log L to Rec.709
-
-Node 2: PowerGrade — Low Contrast (shared across all sources)
-
-Node 3: Manual creative grade (per clip, as needed)
+Node 1: Balance (per clip: exposure, white balance, matching across cameras)
+Node 2: Look (one [RCM] look, the same file on every clip in the piece)
+Node 3: Creative grade (per clip, as needed)
 ```
 
-The key: Node 1 normalizes all three cameras to the same Rec.709 starting point. Node 2 applies the unified Low Contrast look. Node 3 is where you do per-clip work to match across cameras or push the creative grade.
+Node 1 works in DaVinci Intermediate on every camera, which is what makes matching across cameras one job rather than three.
 
-### PowerGrades to Save in Resolve
+### In-camera LUTs
 
-- **Low Contrast** — the base creative look (already exists)
-- **iPhone Source** — TheOneLUT as a saved node
-- **GH7 Source** — V-Log conversion as a saved node
-- **GH5 Source** — V-Log L conversion as a saved node
+The S5II and the Pyxis can load a 33-point `--monitor` copy of a look for the screen on set. It is for monitoring only. The camera records log, and the grade starts from the log.
 
-Tag each clip on import so you know which source node to apply.
+### The alternative: no colour management
+
+A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: a camera LUT on node 1 turns that camera's log into Rec.709, and the looks come from the per-camera sets (`[S5II]`, `[Pyxis]`). For the iPhone that LUT was TheOneLUT (Apple Log to Arri709 V5, 33 points, in the PowerGrades folder). Choosing the items for each camera is a person's step, since nothing applies a LUT by camera tag. `ingest` refuses such a project, so this path has no ingest and no tags. Use it only for a project that already exists that way. Do not mix the two: a Rec.709-out camera LUT in a colour-managed project is converted twice, and a V-Log LUT fed Rec.709 (Scene) clips everything above about 2.5 stops over.
+
+### Dated open points
+
+- **The Low Contrast PowerGrade (open, 2026-10-16).** It was built for the old chain, where it saw Rec.709 after the node-1 LUT. In the managed pipeline its node sees DaVinci Intermediate, so it is not part of the pipeline of record until someone rebuilds it in the timeline space or checks it there. Until then the `[RCM]` looks are the shared look.
+- **The camera map in `resolve-config.json` (open, 2026-10-16).** It lists the iPhone, GH7 and GH5 only, with bins and clip colours from the retired commands, and no code reads it now. Add the S5II and Pyxis or remove the map; until then this table is the camera list.
+- **GH5 against GH7 (open, 2026-10-16).** No base correction for the GH5 until a side-by-side of both cameras on one scene, through this pipeline, shows a need. That test closes it either way.
 
 ---
 
@@ -74,6 +99,8 @@ Tag each clip on import so you know which source node to apply.
    📁 iPhone
    📁 GH7
    📁 GH5
+   📁 S5II
+   📁 Pyxis
    📁 Audio (external)
 📁 Selects
 📁 Timeline
@@ -82,7 +109,7 @@ Tag each clip on import so you know which source node to apply.
 📁 Exports
 ```
 
-Separate source bins by camera so you can batch-apply the correct source conversion node.
+Separate source bins by camera so footage is easy to find and match. Conversion needs no bin: it follows each clip's Input Color Space (see Colour Pipeline of Record).
 The MCP `ingest` tool makes the camera bins and a Review bin under `Source`; it does not
 create the other bins, which are made by hand.
 
@@ -91,12 +118,12 @@ create the other bins, which are made by hand.
 ## Workflow
 
 1. Import media → Source bins (separated by camera)
-2. Tag clips by camera source
+2. Input Color Space tagged per clip by `ingest` (a Review clip is tagged by hand)
 3. Pull selects
 4. Build timeline
-5. Apply camera-specific source conversion (Node 1) — batch per camera bin
-6. Apply Low Contrast PowerGrade (Node 2) — all clips
-7. Manual creative grade (Node 3) — per clip, match across cameras
+5. Balance (Node 1), per clip, matching across cameras
+6. Apply the look (Node 2), one `[RCM]` look on every clip
+7. Manual creative grade (Node 3), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
 10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing is queued before the record exists
@@ -140,7 +167,7 @@ differently.
 Two other hard API limits worth knowing before you file a bug against the
 tools:
 - **No node creation.** `apply_grade` with `lut.node` 2 (this spec's Node 2,
-  the Low Contrast PowerGrade) only works if that node already exists on the
+  the look) only works if that node already exists on the
   clip: add it in the Color page first. The scripting API cannot create
   color-page nodes.
 - **Vertical needs a timeline of its own.** Queueing never reframes. A
@@ -1196,10 +1223,10 @@ a one-line note here saying when.
 
 ## Open Questions
 
-- Do you have a preferred V-Log / V-Log L → Rec.709 LUT for the GH7 and GH5, or are you using the Panasonic-supplied ones?
-- Is the GH7 shooting in Open Gate (5.7K) that needs crop/scale, or are you already shooting in a 4K mode?
+- ~~Which V-Log / V-Log L to Rec.709 LUT for the GH7 and GH5?~~ Closed 2026-10-16: none. Under colour management Resolve converts V-Log and V-Log L from the Input Color Space tag (see Colour Pipeline of Record).
+- ~~Does GH7 Open Gate (5.7K) need a crop or scale?~~ Closed 2026-10-16 by rule: shoot UHD 16:9 unless the scope plans a vertical or square cut; then shoot Open Gate, and `reframe_plan` and `reframe_apply` frame each shape from it (see Reframe and the capture standard).
 - Do you want an outro card or is the intro sufficient for personal work?
 
 ---
 
-*Document revision 1.8, 2026-10-16: the final-approval gate before the loop and two workflow steps, approval and manifest. Document revision 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Document revision 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Document revision 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Document revision 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Document revision 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Document revision 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable. This is the revision of this document. The repository's own version is in `CHANGELOG.md`.*
+*Document revision 1.9, 2026-10-16: the Colour Pipeline of Record replaces Camera Sources & Color Pipeline (Resolve Color Management v2 with a DaVinci Wide Gamut timeline and lutlab's `[RCM]` looks; node-1 camera LUTs kept as the alternative for a project that is not colour managed), and two Open Questions closed. Document revision 1.8, 2026-10-16: the final-approval gate before the loop and two workflow steps, approval and manifest. Document revision 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Document revision 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Document revision 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Document revision 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Document revision 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Document revision 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable. This is the revision of this document. The repository's own version is in `CHANGELOG.md`.*

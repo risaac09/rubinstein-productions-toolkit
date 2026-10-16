@@ -18,6 +18,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ### 2026-10-16
 
+- The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
 - Applied Isaac's answers to the camera-shipping, delivery-manifest, platform-specs and credits drafts and the measurement-instrument open points (#145). The delivery standards are accepted, not drafts.
 - Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15 (#140).
 - Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera (#139). The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
