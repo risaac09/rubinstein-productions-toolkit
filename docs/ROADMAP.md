@@ -117,6 +117,8 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 15. **No client-side shooting brief.** For the camera-shipping model, what the client films, how, and what the footage must satisfy does not exist anywhere in `production/`. Fix: write the brief as a client-readable page.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
+
+   **Status: executed 2026-10-16, [#140](https://github.com/risaac09/rubinstein-productions-toolkit/pull/140).** [`production/client-shooting-brief.md`](../production/client-shooting-brief.md) is written to the client in the second person and fits two printed pages: what to film, setup, a footage checklist, and the return. It follows the decision sheet: the kit ships locked, footage is landscape, cards travel back in the kit and are never wiped, and an upload is an optional second copy. A note for the kit owner at the end points to the logistics document and to `production/capture-standard.md`, which is written on a sibling branch. Open: the prompts, the contact details and the setup-call date are not in the brief and go in the box beside it.
 16. **Three colour pipelines, no canonical statement.** `resolve-template-spec.md` puts conversion LUTs on node 1, `resolve-config.json` sets RCM v2, and lutlab's `rcm` works in DaVinci Intermediate in and out. The spec's Open Questions (which V-Log LUT, the Open Gate crop) remain open. Fix: one table per camera that names the pipeline in force, then close or date the open questions.
 
    **Status: open, 2026-10-15. Open: needs Isaac.** Each choice here is his policy or his design, so nothing was drafted.
