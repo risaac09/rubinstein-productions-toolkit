@@ -5,9 +5,10 @@
   build <params.json> [--delta LOOK.json] [--cube OUT.cube] [--size N] [--in SPACE|--camera C]
         [--no-residual] [--hald OUT.png] [--hald-level L] [--overwrite]
         rebuild a LUT and/or a Hald CLUT from parameters, optionally with a look delta on top
-  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii,rcm [--size N] [--out DIR]
+  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii,rcm [--size N] [--monitor] [--out DIR]
         bake every look delta on the base for every camera: "<look> [<Camera>].cube"; rcm is DaVinci
-        Intermediate in and out, for a node in a Resolve Color Managed project
+        Intermediate in and out, for a node in a Resolve Color Managed project; --monitor also writes
+        a 33-point 0..1 copy per camera look as <CC><LLLL>.cube (8 characters at most), never for rcm
   port <lut> --from SPACE (--to SPACE | --camera C) [--size 33] [--ev 0] [--monitor] [--out DIR]
         re-address a LUT made for one log to another (exact; no model)
   diff <a> <b> --in SPACE [--out-space r709]
@@ -86,6 +87,8 @@ def main(argv=None):
     p.add_argument("--deltas", nargs="+", default=[str(LOOKS_DIR)])
     p.add_argument("--camera", default="pyxis,s5ii")
     p.add_argument("--size", type=int, default=33)
+    p.add_argument("--monitor", action="store_true",
+                   help="also write a 33-point copy clipped to 0..1 per camera look, named for an 8-character card limit (not rcm)")
     p.add_argument("--out")
     p.add_argument("--overwrite", action="store_true")
     p = sub.add_parser("port")
@@ -157,7 +160,11 @@ def main(argv=None):
         for d in a.deltas:
             deltas += sorted(str(x) for x in Path(d).glob("*.json")) if Path(d).is_dir() else [d]
         cams = [c.strip() for c in a.camera.split(",") if c.strip()]
-        for f in pipeline.looks(a.base, deltas, cams, out, a.size, a.overwrite):
+        if a.monitor and "rcm" in [c.lower() for c in cams]:
+            if all(c.lower() == "rcm" for c in cams):
+                ap.error("--monitor is for cameras; rcm is for a Resolve node and no camera loads it")
+            print("--monitor skips rcm: that set is for a Resolve node, not a camera", file=sys.stderr)
+        for f in pipeline.looks(a.base, deltas, cams, out, a.size, a.overwrite, monitor=a.monitor):
             print(f)
     elif a.cmd == "port":
         from . import cube, port
@@ -173,8 +180,8 @@ def main(argv=None):
         path = out / f"{name} [{label}].cube"
         print(cube.write_cube(str(path), table, f"{name} [{label}] from {src}", overwrite=a.overwrite))
         if a.monitor:
-            mt = table if a.size == 33 else port.port_table(lut, src, dst, 33, a.ev)[0]
-            print(cube.write_cube(str(out / f"{name} [{label} monitor].cube"), mt.clip(0, 1),
+            mt = port.monitor_copy(table, a.size, lambda n: port.port_table(lut, src, dst, n, a.ev)[0])
+            print(cube.write_cube(str(out / f"{name} [{label} monitor].cube"), mt,
                                   f"{name} [{label} monitor]", overwrite=a.overwrite))
         print(f"natural colours outside the source LUT's domain (clamped): {share:.1%}")
     elif a.cmd == "diff":
