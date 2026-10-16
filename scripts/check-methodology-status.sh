@@ -13,7 +13,7 @@
 # For the six files scripts/sync-methodology.sh mirrors from the vault, the
 # status sits on the first line, because the sync preserves only that line.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 bad=0
 for f in methodology/*.md; do
   if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)\b'; then
