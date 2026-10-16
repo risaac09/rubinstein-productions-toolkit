@@ -78,7 +78,7 @@ A spoken ident at the head of every take: date, camera, take. Then the clap. If 
 
 One folder per card, named `YYYYMMDD_<CAM>_<card>`, for example `20261016_GH7_A01`. The camera writes its own file names inside, and they are never renamed. `detect` uses the native names as one of its clues (the Blackmagic and Lumix file patterns, for example), and a renamed file loses that clue. `relink` never matches on a name, so it is unaffected either way.
 
-Cards are not wiped until the footage is safely copied and, for a shipped kit, until the client has their footage; see [camera-shipping logistics](camera-shipping-logistics.md).
+Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package. See [camera-shipping logistics](camera-shipping-logistics.md).
 
 ## Example
 

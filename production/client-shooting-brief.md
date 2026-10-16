@@ -2,7 +2,7 @@
 
 > **Status:** draft, 2026-10-16. The client-side brief for the camera-shipping model, written to the choices Isaac made on Amendment 2, item 15. No client has used it yet.
 
-This page is written for you, the person filming. Print it and put it in the box. It should take about ten minutes to read, and it fits on two pages.
+This page is written for you, the person filming. Print it and put it in the box. It should take about ten minutes to read, and it runs to three pages.
 
 The camera arrives set up. Your job is to point it at yourself and your place, answer some questions, and send it back.
 
@@ -18,6 +18,10 @@ Two words you will see a lot. A **take** is one recording, from the moment you p
 1. **Your answers.** You get a list of prompts. Answer each one on camera, in your own words. There are no right answers and no need to rehearse.
 2. **Your place and your work.** Film the rooms, the tools, the hands, the light through the afternoon. Hold each shot still for ten seconds or more. Editors call these shots b-roll: the pictures that play over your voice and cover the gaps between your answers. More is better than less.
 3. **Room tone.** This is the sound of a room with nobody talking. In each place you film, stay quiet and film thirty seconds of nothing happening. Do not talk, and ask anyone nearby to stay quiet too. The editor uses it to make the sound smooth.
+
+## Who is in the picture
+
+Film only people who have signed the release form in the box. If someone has not signed, keep their face out of the frame. You need a location release only for a place you do not control.
 
 ## Setting up
 
@@ -52,15 +56,26 @@ If you drop or damage something, tell us, take photographs, and pack it back as 
 
 ## How it comes back
 
-- **The cards stay put.** Leave them in the camera or in the card case. Do not copy, delete or wipe anything, and do not format a card, even if the camera offers to.
-- **Everything goes in the box.** Camera, lens, microphone, cables, batteries, charger, stand, and the card case, in the same box it came in, with the kit checklist.
+- **The cards stay put.** Leave them in the camera or in the card case. Do not copy, delete or wipe anything, and do not format a card, even if the camera offers to. Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package.
+- **Everything goes in the box.** Camera, lens, microphone, cables, batteries, charger, stand, the card case and the signed release forms, in the same box it came in, with the kit checklist.
 - **The return label is already inside.** Stick it over the old one, close the box and hand it to the carrier. Send us the tracking number.
-- **An upload is optional.** If we give you a link, you can upload a second copy of your footage there. It is a backup. The cards in the box are the copy that counts.
+- **An upload is optional.** If we give you a link, you can upload a second copy of your footage there. It is a backup.
 
-Your footage comes back to you. Nobody wipes a card before you have it.
+## What you get back and when
+
+Your footage is the files on the cards. It comes back to you as a package, not as the cards.
+
+1. **We copy it when the box arrives.** We copy everything off the cards and check that every copy matches.
+2. **You get a link.** The package holds everything you shot, takes that did not make the edit included, the finished videos, the captions, the editing project, and the recordings and transcripts of your sessions. A list of every file comes with it. If you ask for a drive instead, we send one.
+3. **The link is private.** Nobody can guess it and you need no account to open it. It stops working 30 days after we send it, or when you confirm you have everything, whichever comes first. Ask and we send it again, for as long as we still hold our copy.
+4. **You confirm.** Check the files against the list and reply to say you have them. Your reply starts a 90-day clock.
+5. **We delete our copy.** We keep a copy for 90 days after you confirm, then delete it, unless you agree otherwise in writing. That includes the master file the videos were cut from. If you want us to keep the master, ask us in writing. If you have agreed to a case study, we keep the finished videos for it.
+6. **Then we wipe the cards.** We wipe a card only after you confirm.
+
+Anything we learn from your sessions, such as coded passages and totals, stays under the level of permission you chose. It is not in the package.
 
 Questions at any point: call or write to us. You are never bothering us.
 
 ---
 
-**Note for the kit owner (remove before printing).** This page assumes the kit left locked: profile, frame rate and resolution set by you, per the [capture standard](capture-standard.md). The return steps match [camera-shipping logistics](camera-shipping-logistics.md): label in the outbound box, cards travel with the kit, cards never wiped before the client has the footage. Put the prompts, the contact details, the date of the setup call and the date the kit checklist is due in the box beside this page. The "If something goes wrong" section follows the damage table in camera-shipping logistics, which leaves who bears the cost open; the brief states no terms.
+**Note for the kit owner (remove before printing).** This page assumes the kit left locked: profile, frame rate and resolution set by you, per the [capture standard](capture-standard.md). The retention steps in "What you get back and when" follow [return package](return-package.md). The return steps match [camera-shipping logistics](camera-shipping-logistics.md): label in the outbound box, cards travel with the kit, cards wiped only after the client confirms the checksums, and the return package, not the cards, carries the footage to the client. Put the prompts, the contact details, the date of the setup call and the date the kit checklist is due in the box beside this page. The "If something goes wrong" section follows the damage table in camera-shipping logistics, which leaves who bears the cost open; the brief states no terms.
