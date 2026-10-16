@@ -2,7 +2,7 @@
 
 > **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. No tool builds the package yet; a person or an agent assembles it by hand with the commands here.
 
-The anti-extractive promise in the [measurement framework](../methodology/measurement-framework.md) says the client keeps the raw material, not only the cut. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
+The anti-extractive safeguards in section 8 of the [measurement framework](../methodology/measurement-framework.md) give clients their raw data on request. The camera-shipping model goes further and returns everything, cut and raw material both. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
 
 It covers the return of footage, finals and project files to the client. The [delivery manifest](delivery-manifest.md) covers what shipped to destinations. The physical kit returns to RP under [camera shipping logistics](camera-shipping-logistics.md).
 
@@ -39,7 +39,7 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
   manifest.md
 ```
 
-Card folders are named `YYYYMMDD_<CAM>_<card>` under the capture standard in `production/capture-standard.md`: the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed, because `detect` and `ingest` read the native names and `relink` matches a clip on timecode, frames, resolution and frame rate, not on its name.
+Card folders are named `YYYYMMDD_<CAM>_<card>` under the capture standard in `production/capture-standard.md`: the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
 
 `02_finals/` keeps the destination subfolders the render queue wrote, so the file names stay under the house rule from the [Deliver section](resolve-template-spec.md#file-names). `03_captions/` holds a copy of each sidecar `.srt`; the originals also stay beside their videos in `02_finals/`, and the manifest lists both.
 
@@ -99,10 +99,3 @@ RP records the date of that reply. It starts the retention clock below.
 - **Manifest:** kept. It names no client and holds hashes, not footage.
 
 Until the client confirms, RP keeps everything. A package the client never confirms is chased, not deleted.
-
-## Needs Isaac
-
-All of the choices above are decisions of record as of 2026-10-16. Two details are mine.
-
-1. **The month in the folder name is the month of return,** not the month of the shoot. A multi-month engagement then has one folder, dated when it closes.
-2. **The `.drp` is exported by hand in Resolve.** No tool in `production/` exports a project, so this step has no check behind it.
