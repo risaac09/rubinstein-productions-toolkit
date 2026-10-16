@@ -8,7 +8,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY="${VERTCUT_PYTHON:-/usr/bin/python3}"
+PY="${VERTCUT_PYTHON:-$HOME/.venvs/rp-tools/bin/python}"
 
 die() { printf 'vertcut: %s\n' "$1" >&2; exit 1; }
 

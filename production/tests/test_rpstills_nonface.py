@@ -5,7 +5,7 @@ count, whole-body person boxes, a frame score so a run with no face still gets
 picks, and times for frames with no EXIF. Synthetic images generated here and
 a fake Vision: no real media, no macOS Vision, no network.
 
-Run: /usr/bin/python3 production/tests/test_rpstills_nonface.py
+Run: ~/.venvs/rp-tools/bin/python production/tests/test_rpstills_nonface.py
 """
 
 import datetime as dt

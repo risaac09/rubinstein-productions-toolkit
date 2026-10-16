@@ -69,7 +69,7 @@ are one link in a chain of responsible parties:
   (DaVinci Intermediate in and out, for Color Managed projects set to a
   DaVinci WG/Intermediate timeline and Rec.709 Gamma 2.4 output). Resolve scans
   only its own LUT root; give each bake a new folder name, it caches by path.
-- Tests: `/usr/bin/python3 production/tests/test_lutlab.py`.
+- Tests: `~/.venvs/rp-tools/bin/python production/tests/test_lutlab.py`.
 
 ## State when this was written
 

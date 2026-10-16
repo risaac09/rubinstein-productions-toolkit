@@ -1,4 +1,4 @@
-"""/usr/bin/python3 -m lutlab <command> ...   (run from production/)
+"""~/.venvs/rp-tools/bin/python -m lutlab <command> ...   (run from production/)
 
   decompose <lut.cube> --in SPACE --out-space r709|srgb [--out DIR] [--name NAME] [--overwrite]
         fit the look model to a LUT: params.json, <name>.residual.cube, report.md, plots
