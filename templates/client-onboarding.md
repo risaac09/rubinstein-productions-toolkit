@@ -197,6 +197,22 @@ Decision-makers involved:
 
 ---
 
+### Consent tier (before the session closes)
+
+Offer the participant a tier from [Consent Evidence](../production/consent-evidence.md) and record what will prove it. Evidence for tier 1 is the consent clause in the signed scope, so the clause goes in the scope before work begins.
+
+```
+Participant code (P1, P2; never a name):
+
+Tier offered (1 Internal / 2 Anonymized / 3 Identified):
+
+Evidence that will prove it (scope clause / written opt-in / signed release):
+
+Where the evidence will be kept (the engagement record, not this file):
+```
+
+---
+
 ### Closing (5-10 minutes)
 
 **Reflect back:**
@@ -208,32 +224,25 @@ Decision-makers involved:
 **Next steps:**
 > "I'll send you a summary of what we discussed and a proposal within [X days]. Before we end—any questions for me?"
 
+The proposal's scope covers the fields in the [Scope Checklist](scope-checklist.md).
+
 **Final question:**
 > "What's one thing you're taking away from this conversation?"
 
 ---
 
-## Quantitative Baseline Assessment
+## Quantitative Baseline
 
-*Have client complete during or after session*
+The baseline is the `pre-engagement` point of the [Measurement Instrument](../methodology/measurement-instrument.md) (section 2.4). It is sent when the scope is signed and before the first session, not in this discovery conversation. Send the participant the [respondent sheet](respondent-sheet.md) as a link with the items for that point: Likert statement 1 and the three consistency questions. Record the answers in the response file kept with the engagement record.
 
-### Likert Scale (1-5)
+| Item | Scale | Value |
+|------|-------|-------|
+| "We can articulate our mission with ease and specificity" (Narrative Clarity) | 1-5 | |
+| "This narrative holds my contradictory experience." | 1-10 | |
+| "I can locate myself in this story without erasing complexity." | 1-10 | |
+| "This makes our conflicts generative rather than destructive." | 1-10 | |
 
-| Statement | Score |
-|-----------|-------|
-| "We can articulate our mission with ease and specificity" | |
-| "Our lived culture matches our public narrative" | |
-| "We're comfortable with visible vulnerability" | |
-| "We see reflection as essential, not optional" | |
-| "We're ready to co-create rather than delegate" | |
-
-**Total Score:** ___ / 25
-
-**Interpretation:**
-- 20-25: High readiness, likely Program Engagement or deeper
-- 15-19: Moderate readiness, may need a Founder Story first
-- 10-14: Significant work needed, start with a Founder Story session
-- Below 10: May not be ready—consider whether to proceed
+Nothing here is added into a total, and no score decides whether to proceed. That decision stays in the fit assessment below.
 
 ---
 
@@ -329,6 +338,6 @@ engagement, not the rate card.*
 
 *Template Version: 1.0*
 *Based on: [Measurement Framework](../methodology/measurement-framework.md), brand context (private, `rp-intranet/docs/strategy/brand-context.md`)*
-*Related: [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
+*Related: [Scope Checklist](scope-checklist.md), [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Case Study template](case-study-template.md)*
 
 **Tags:** #template #client-work #onboarding #phase-0

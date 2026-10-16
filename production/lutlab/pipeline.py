@@ -1,6 +1,8 @@
 """lutlab.pipeline: decompose a .cube, and build a .cube / Hald CLUT from parameters."""
 
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -165,15 +167,44 @@ def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hal
     return written
 
 
-def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False):
+def monitor_names(looks, labels):
+    """Card file names (without .cube) for the in-camera copies: {(look, label): name}. A name is the camera's
+    first two letters or digits plus the first four of the look's name without its leading "RP ", upper case,
+    so it fits the S5II's FAT32 limit of 8 characters ("RP Print Teal" on the S5II is S5PRIN). Where two collide, the look part's last two characters
+    become the first two hex digits of a hash of the look's full name; if that still collides, ValueError."""
+    alnum = lambda s, n: re.sub(r"[^A-Za-z0-9]", "", s).upper()[:n]
+    house = lambda s: re.sub(r"^RP\s+", "", s, flags=re.I)  # the shipped looks all start "RP "
+    names = {(lk, lb): alnum(lb, 2) + alnum(house(lk), 4) for lk in looks for lb in labels}
+    count = {}
+    for n in names.values():
+        count[n] = count.get(n, 0) + 1
+    for (lk, lb), n in list(names.items()):
+        if count[n] > 1:
+            names[(lk, lb)] = n[:-2] + hashlib.sha1(lk.encode()).hexdigest()[:2].upper()
+    if len(set(names.values())) != len(names):
+        raise ValueError("monitor file names still collide; rename a look")
+    return names
+
+
+def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False, monitor=False):
     """Bake every delta on the base for every target: <outdir>/<look> [<Label>].cube.
     A target is a camera (its log in, Rec.709 out) or "rcm" (DaVinci Intermediate in and out, for a node
-    in a Resolve Color Managed project; see spaces.RCM)."""
+    in a Resolve Color Managed project; see spaces.RCM).
+    monitor also writes, per camera look, a 33-point copy clipped to 0..1 named by monitor_names (port's
+    monitor_copy does the resampling and the clip). rcm gets none: no camera loads it."""
+    from . import port
     written = []
-    for d in deltas:
-        name = json.loads(Path(d).read_text()).get("name") or Path(d).stem
+    names = [json.loads(Path(d).read_text()).get("name") or Path(d).stem for d in deltas]
+    labels = [spaces.target(c)[1] for c in cameras if c.lower() != "rcm"]
+    short = monitor_names(names, labels) if monitor else {}
+    for d, name in zip(deltas, names):
         for cam in cameras:
             space, label, enc = spaces.target(cam)
             out = Path(outdir) / f"{name} [{label}].cube"
             written += build(base_params, str(out), size, space, True, overwrite=overwrite, delta=d, out_encoding=enc)
+            if monitor and cam.lower() != "rcm":
+                fn = make_fn(load(base_params, d), space, True, enc)
+                table = port.monitor_copy(None, size, lambda n: fn(cube.lattice(n)))
+                written.append(cube.write_cube(str(Path(outdir) / f"{short[(name, label)]}.cube"), table,
+                                               f"{name} [{label} monitor]", overwrite=overwrite))
     return written

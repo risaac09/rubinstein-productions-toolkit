@@ -48,6 +48,14 @@ The GH7 shoots Open Gate only when the scope plans a vertical or square cut. The
 
 Frame landscape even for a vertical deliverable. Vertical versions come from the reframe tools, so landscape loses nothing.
 
+## Monitoring
+
+A monitoring LUT is for the screen only. The camera records log, with the profile in the table above, whatever the monitor shows.
+
+`lutlab looks --monitor` writes the house looks as files a camera can load: 33 points, clipped to 0..1, with names of 8 characters or fewer. The S5II loads them from the card and the Pyxis loads 33-point `.cube`; see [lutlab's README](lutlab/README.md) for the file names and the card route. The repo knows no route for the GH7, GH5 or iPhone. On those, monitor in log or with the camera's own assist.
+
+Exposure targets are not set here.
+
 ## Audio
 
 Any speaking take gets a separate recorder or a lavalier, 48 kHz, 24-bit WAV, in 32-bit float if the recorder has it. Camera scratch audio stays on for every take, on every camera.
