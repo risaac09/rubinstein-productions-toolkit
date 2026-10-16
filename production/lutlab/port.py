@@ -26,6 +26,13 @@ def port_table(lut, src_space, dst_space, size=33, ev=0.0):
     return cube.sample(lut, to_src(cube.lattice(size))), share
 
 
+def monitor_copy(table, size, resample):
+    """The in-camera copy of a table: 33 points, clipped to 0..1. `table` is reused when it is already 33
+    points; otherwise resample(33) builds the 33-point one (putting a LUT onto a new lattice, not clipping a
+    bigger one, so the copy is the LUT and not a subsample)."""
+    return np.clip(table if (table is not None and size == 33) else resample(33), 0, 1)
+
+
 def diff(lut_a, lut_b, in_space, out="r709"):
     """Delta E 2000 between two LUTs' outputs on natural colours: overall stats
     and the median by output hue (the 12 model knots)."""
