@@ -326,6 +326,10 @@ choose the file.
   truncates too.
 - `timeline_from_clips` places picture only. How Resolve lays a multichannel
   clip's sound over audio tracks that do not exist yet has not been checked.
+- Whether the timeline and output colour spaces and the tone and gamut mapping
+  can be set through the API, so that `set_color_management` could set more
+  than `colorScienceMode`, is open. The run plan is
+  [spikes/colour-space-api-spike.md](spikes/colour-space-api-spike.md).
 
 - Resolve's scripting library leaves the process in the C locale once
   connected. A text file opened without `encoding="utf-8"` then decodes as

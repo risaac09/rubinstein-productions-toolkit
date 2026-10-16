@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- Added `production/spikes/colour-space-api-spike.md`, a plan for a sandbox spike on whether the scripting API can set the timeline and output colour spaces and the tone and gamut mapping, so that `set_color_management` could set more than `colorScienceMode`. It records what Resolve's README and type stubs confirm and leave unconfirmed, and changes no tool behaviour. Linked from `production/resolve-mcp.md`.
 - vertcut's captions now follow the caption standard in `production/design-tokens.md`: a bar at 88% opacity instead of the outline, text and bar colours and the face from options or an untracked `captions.local.json`, 16 characters a line and two lines at most, and `--caption-y` as the bar's bottom edge. The bar opacity is decided. Amendment 2, item 17.
 - The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
 - The final-approval gate in the Resolve spec is accepted and its open points are settled: both the participant and a separate commissioner must approve, no round count in the document (each scope writes `R`), a SHA-256 in the approval message, no standalone verbal approval, and queueing without a record flagged, not blocked. ROADMAP Amendment 2, item 20, carries the status line.
