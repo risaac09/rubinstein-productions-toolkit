@@ -239,6 +239,21 @@ jobs:
           echo "skips for packages and ffmpeg: none. Other skips:"
           grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
 
+  # The Pages site builds from scripts/build-site.py, and the deploy workflow
+  # runs only on pushes to main. Build into a temp directory here so a docs
+  # change that breaks the build fails the pull request, and deploy nothing.
+  site-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install the pinned markdown
+        run: python -m pip install "$(grep -E '^markdown==' requirements.txt)"
+      - name: Build the site into a temp directory
+        run: python scripts/build-site.py "$RUNNER_TEMP/site"
+
   # resolve_survey decodes zstd with compression.zstd, new in Python 3.14, so
   # its 24 zstd-bound tests only run here. Stdlib only, no packages.
   resolve-survey-3-14:

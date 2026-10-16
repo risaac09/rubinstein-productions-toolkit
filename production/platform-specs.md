@@ -1,19 +1,22 @@
 # Platform Specs
 
-> **Status:** accepted 2026-10-16. The rows restate what the deliver tooling already enforces. The stand-in destination for each class is the one named in its row.
+> **Status:** accepted 2026-10-16. The rows restate what the deliver tooling already enforces.
 
-One row per destination class. A destination class is a kind of place a deliverable goes. Each row names the destination key in `production/resolve-config.json` that implements it, so `queue_render` and `deliver_check` apply the row's numbers, or says that none exists. The source of every value is the [Deliver section of the Resolve spec](resolve-template-spec.md#deliver) and the config file; this document does not replace either. If they disagree, the config wins.
+One row per destination key in `production/resolve-config.json`, and the config has seven. A destination class is a kind of place a deliverable goes, and each row names the class its key belongs to. Where two keys share a class, each still gets its own row, because `queue_render` and `deliver_check` apply that key's numbers. A test in `production/tests/test_platform_specs.py` fails when a key in the config has no row here. The source of every value is the [Deliver section of the Resolve spec](resolve-template-spec.md#deliver) and the config file; this document does not replace either. If they disagree, the config wins.
 
 ## The table
 
 | Destination class | Destination key | Container, video | Size | Frame rate | Audio | Loudness | Captions |
 |---|---|---|---|---|---|---|---|
+| Long-form video, UHD | `youtube_16x9` | mp4, H.265, 4:2:0 | 3840x2160 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | sidecar `.srt` |
+| Long-form video, HD | `youtube_16x9_hd` | mp4, H.265, 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | sidecar `.srt` |
+| Social landscape 16:9 | `linkedin_16x9` | mp4, H.264, 8-bit 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | sidecar `.srt` |
 | Web embed | `substack_16x9` | mp4, H.264, 8-bit 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | sidecar `.srt` |
 | Social vertical 9:16 | `linkedin_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Social square 1:1 | `linkedin_1x1` | mp4, H.264, 8-bit 4:2:0 | 1080x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Archive master | `client_master` | mov, ProRes 422 HQ, 10-bit 4:2:2 | the timeline's | the timeline's | LPCM 24-bit 48 kHz | none, unnormalized | none |
 
-Every row is the repo's own numbers, from `resolve-config.json`. The practice delivers no broadcast masters, so the table has no broadcast row.
+Every value is the repo's own, copied from `resolve-config.json`. The practice delivers no broadcast masters, so the table has no broadcast row.
 
 ## What every row shares
 
@@ -28,7 +31,11 @@ These come from the house rules under `deliver` in the config and are checked on
 
 ## Notes by class
 
-**Web embed.** The row is the Substack destination, used here as the stand-in for a page that plays an mp4 inline. A client's own site may take a different player and a different container; check the host's current spec before a first delivery. H.264 at 8-bit 4:2:0 is the repo's choice for every web destination; whether a given host plays it is for the host's current spec to say. `NetworkOptimization` is on, so the file starts playing before it finishes loading.
+**Long-form video, UHD and HD.** The two keys differ only in size. Both are H.265 with no bit depth asserted, and the check expects an `hevc` stream at 4:2:0. The loudness target is -14 LUFS, the only class that uses it. Both keys are named for YouTube in the config.
+
+**Social landscape 16:9.** The LinkedIn 16:9 destination. Its numbers match the web embed row. Captions are a sidecar `.srt`, where the two social shapes below burn them in.
+
+**Web embed.** The row is the Substack destination, used here for a page that plays an mp4 inline. A client's own site may take a different player and a different container; check the host's current spec before a first delivery. H.264 at 8-bit 4:2:0 is the repo's choice for every web destination; whether a given host plays it is for the host's current spec to say. `NetworkOptimization` is on, so the file starts playing before it finishes loading.
 
 **Social vertical 9:16.** Built from the timeline's 9:16 copy. `queue_render` refuses a 16:9 timeline for a 9:16 destination, because Resolve would scale it into the frame with bars and every check would still pass. The 9:16 copy comes from `reframe_plan` and `cut`, or `reframe_apply` for a planned timeline, which keep the subject's whole head with room above it. Captions are burnt in at 16 characters per line on up to two lines, because 42 characters overflows a 1080-wide frame. The 4:5 shape is planned by `reframe_plan` but has no destination, and none is added until a client asks.
 
