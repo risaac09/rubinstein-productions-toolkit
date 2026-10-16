@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# changelog-fragments: the changelog.d/ convention, in one script.
+#
+# Every pull request used to edit CHANGELOG.md under "## Unreleased", so two
+# open pull requests always conflicted and merged one at a time. Now each pull
+# request adds its own file under changelog.d/ and the maintainer compiles the
+# files into CHANGELOG.md when tagging. Two pull requests never touch the same
+# file.
+#
+# Usage:
+#   changelog-fragments new SLUG TEXT...   write changelog.d/<date>-<slug>.md
+#   changelog-fragments lint               validate every fragment in the tree
+#   changelog-fragments pr [BASE]          the pull-request rules, against BASE
+#                                          (default origin/main, else main)
+#   changelog-fragments compile [--dry-run]
+#                                          move fragments into CHANGELOG.md
+#
+# Runs against the repository holding the current directory. Pure bash, git
+# and awk. Exit 1 on any finding.
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in a git repository" >&2; exit 2; }
+cd "$ROOT" || exit 2
+DIR=changelog.d
+LOG=CHANGELOG.md
+# A pull request that touches only these prefixes needs no fragment: the kit
+# exports are listed once by their commit titles, never itemized.
+EXEMPT_RE='^(phase-zero|public-kit|\.claude)/'
+
+die() { echo "changelog-fragments: $*" >&2; exit 1; }
+
+# Fragment files on disk, one per line, README excluded.
+list_fragments() {
+  [ -d "$DIR" ] || return 0
+  find "$DIR" -maxdepth 1 -type f -name '*.md' ! -name README.md | sort
+}
+
+default_base() {
+  if git rev-parse --verify -q origin/main >/dev/null; then echo origin/main; else echo main; fi
+}
+
+# lint_one FILE: print a reason and return 1 when the fragment is malformed.
+lint_one() {
+  f="$1"
+  case "$(basename "$f")" in
+    [a-z0-9]*.md) ;;
+    *) echo "$f: file name must start with a lowercase letter or digit"; return 1 ;;
+  esac
+  case "$(basename "$f")" in
+    *[!a-z0-9._-]*) echo "$f: file name may use only a-z, 0-9, dot, dash and underscore"; return 1 ;;
+  esac
+  body="$(sed -e 's/[[:space:]]*$//' "$f")"
+  [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || { echo "$f: empty"; return 1; }
+  # $(...) already dropped trailing blank lines, so any blank line left is
+  # leading or inside the entry.
+  if printf '%s\n' "$body" | grep -qE '^[[:space:]]*$'; then
+    echo "$f: one entry per fragment, no blank lines"; return 1
+  fi
+  first="$(printf '%s\n' "$body" | sed -n '1p')"
+  case "$first" in
+    '#'*)    echo "$f: no headings; the entry is plain text"; return 1 ;;
+    '- '*|'* '*) echo "$f: no leading bullet marker; compile adds it"; return 1 ;;
+  esac
+  case "$first" in
+    skip:*) [ "$(printf '%s\n' "$body" | wc -l | tr -d ' ')" -eq 1 ] || { echo "$f: a skip fragment is one line: 'skip: reason'"; return 1; }
+            [ -n "$(printf '%s' "${first#skip:}" | tr -d '[:space:]')" ] || { echo "$f: skip needs a reason"; return 1; } ;;
+  esac
+  return 0
+}
+
+cmd_lint() {
+  fail=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    msg="$(lint_one "$f")" || { echo "$msg"; fail=1; }
+  done < <(list_fragments)
+  [ "$fail" -eq 0 ] && echo "changelog fragments: $(list_fragments | wc -l | tr -d ' ') valid"
+  return "$fail"
+}
+
+cmd_new() {
+  [ $# -ge 2 ] || die "usage: new SLUG TEXT..."
+  slug="$1"; shift
+  mkdir -p "$DIR"
+  f="$DIR/$(date -u +%Y-%m-%d)-$slug.md"
+  [ ! -e "$f" ] || die "$f exists"
+  printf '%s\n' "$*" > "$f"
+  msg="$(lint_one "$f")" || { rm -f "$f"; die "$msg"; }
+  echo "$f"
+}
+
+# New-file line ranges inside "## Unreleased" of CHANGELOG.md at HEAD: prints
+# "start end", or nothing when the heading is absent.
+unreleased_range() {
+  git show "HEAD:$LOG" 2>/dev/null | awk '
+    /^## / { if (inside) { print start, NR - 1; inside = 0; done = 1 } if ($0 == "## Unreleased") { inside = 1; start = NR } }
+    END { if (inside && !done) print start, NR }'
+}
+
+cmd_pr() {
+  base="${1:-$(default_base)}"
+  git rev-parse --verify -q "$base" >/dev/null || die "base ref '$base' not found (fetch it, or pass one)"
+  changed="$(git diff --name-only "$base...HEAD")"
+  [ -n "$changed" ] || { echo "no changes against $base"; return 0; }
+  if ! printf '%s\n' "$changed" | grep -qvE "$EXEMPT_RE"; then
+    echo "changelog: only kit-export paths changed; no fragment needed"; return 0
+  fi
+  added="$(git diff --name-only --diff-filter=A "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' | grep '\.md$' || true)"
+  deleted="$(git diff --name-only --diff-filter=D "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' || true)"
+  fail=0
+  if printf '%s\n' "$changed" | grep -qx "$LOG"; then
+    if [ -z "$deleted" ]; then
+      range="$(unreleased_range)"
+      if [ -n "$range" ]; then
+        # Added lines of this diff that land inside the Unreleased section.
+        hit="$(git diff -U0 "$base...HEAD" -- "$LOG" | awk -v lo="${range% *}" -v hi="${range#* }" '
+          /^@@/ { split($3, a, ","); n = substr(a[1], 2) + 0; next }
+          /^\+\+\+/ { next }
+          /^\+/ { if (n >= lo && n <= hi) c++; n++ }
+          END { print c + 0 }')"
+        if [ "$hit" -gt 0 ]; then
+          echo "FAIL: $LOG gained $hit line(s) under '## Unreleased'. Add a fragment instead: scripts/changelog-fragments new SLUG TEXT"
+          fail=1
+        fi
+      fi
+    fi
+  fi
+  if [ -z "$added" ] && [ -z "$deleted" ]; then
+    echo "FAIL: no changelog fragment added. Run: scripts/changelog-fragments new SLUG TEXT (or a one-line 'skip: reason' fragment)"
+    fail=1
+  fi
+  # Added fragments must be well formed.
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    msg="$(lint_one "$f")" || { echo "FAIL: $msg"; fail=1; }
+  done <<EOF2
+$added
+EOF2
+  [ "$fail" -eq 0 ] && echo "changelog: fragment rules satisfied against $base"
+  return "$fail"
+}
+
+cmd_compile() {
+  dry=0
+  [ "${1:-}" = "--dry-run" ] && dry=1
+  cmd_lint >/dev/null || { cmd_lint; die "fix the fragments first"; }
+  files="$(list_fragments | sort -r)"
+  [ -n "$files" ] || { echo "no fragments to compile"; return 0; }
+  out="$(mktemp)"; trap 'rm -f "$out"' EXIT
+  n=0
+  while IFS= read -r f; do
+    first="$(sed -n '1p' "$f")"
+    case "$first" in skip:*) continue ;; esac
+    awk 'NF { if (!s) { print "- " $0; s = 1 } else print "  " $0 }' "$f" >> "$out"
+    n=$((n + 1))
+  done <<EOF2
+$files
+EOF2
+  if [ "$dry" -eq 1 ]; then cat "$out"; echo "($n entries, dry run, nothing written)" >&2; return 0; fi
+  grep -qx '## Unreleased' "$LOG" || die "no '## Unreleased' heading in $LOG"
+  new="$(mktemp)"
+  awk -v ins="$out" '
+    { print }
+    $0 == "## Unreleased" && !d { getline nxt; print nxt; while ((getline line < ins) > 0) print line; d = 1 }' "$LOG" > "$new"
+  cat "$new" > "$LOG"; rm -f "$new"
+  while IFS= read -r f; do
+    git ls-files --error-unmatch "$f" >/dev/null 2>&1 && git rm -q -f "$f" || rm -f "$f"
+  done <<EOF2
+$files
+EOF2
+  echo "compiled $n entries into $LOG and removed $(printf '%s\n' "$files" | wc -l | tr -d ' ') fragment file(s)"
+}
+
+case "${1:-}" in
+  new) shift; cmd_new "$@" ;;
+  lint) cmd_lint ;;
+  pr) shift; cmd_pr "$@" ;;
+  compile) shift; cmd_compile "$@" ;;
+  *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
