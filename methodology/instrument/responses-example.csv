@@ -1,0 +1,13 @@
+engagement_id,respondent_id,stakeholder_group,assessment_point,response_date,narrative_clarity,internal_alignment,feeling_heard,safety_in_vulnerability,clarity_gained,co_creation_quality,representative_pride,nps,consistency_q1,consistency_q2,consistency_q3
+demo-001,r01,leadership,delivery,2000-01-15,5,4,5,5,4,5,5,10,,,
+demo-001,r02,leadership,delivery,2000-01-15,4,4,4,5,4,4,5,9,,,
+demo-001,r03,staff,delivery,2000-01-15,4,3,5,4,5,5,4,9,,,
+demo-001,r04,staff,delivery,2000-01-15,3,2,4,3,4,4,3,6,,,
+demo-001,r05,staff,delivery,2000-01-15,4,3,4,4,4,5,4,8,,,
+demo-001,r06,beneficiaries,delivery,2000-01-15,5,4,5,5,5,5,5,10,,,
+demo-001,r01,leadership,followup-3mo,2000-04-15,,,,,,,,9,8,8,7
+demo-001,r02,leadership,followup-3mo,2000-04-15,,,,,,,,10,9,8,8
+demo-001,r03,staff,followup-3mo,2000-04-15,,,,,,,,8,6,7,5
+demo-001,r04,staff,followup-3mo,2000-04-15,,,,,,,,7,5,6,4
+demo-001,r05,staff,followup-3mo,2000-04-15,,,,,,,,9,7,7,6
+demo-001,r06,beneficiaries,followup-3mo,2000-04-15,,,,,,,,10,9,9,8

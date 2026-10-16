@@ -4,6 +4,12 @@ What changed in this repo, newest first. There are no version numbers, tags or r
 
 Written 2026-10-15 from the git history. Add an entry in the pull request that makes the change.
 
+## 2026-10-16
+
+- Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
+- Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
+- ROADMAP Amendment 2, items 10 and 11, carry status lines.
+
 ## 2026-10-15
 
 - Added `requirements.txt`: each tool's interpreter and pinned packages in one file.
