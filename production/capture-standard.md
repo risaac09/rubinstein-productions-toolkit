@@ -8,17 +8,37 @@ Capture decides what the edit can do. A frame rate that differs from the timelin
 
 | Camera | Profile | Codec | Resolution |
 |---|---|---|---|
-| iPhone | Apple Log | ProRes 422 HQ | UHD 3840x2160 |
+| iPhone 15 Pro or later | Apple Log | ProRes 422 HQ | UHD 3840x2160 |
 | Panasonic GH7 | V-Log | 10-bit 4:2:2 | UHD 3840x2160; Open Gate only for a planned vertical or square cut |
 | Panasonic GH5 | V-Log L | 10-bit 4:2:2 | UHD 3840x2160 |
 | Panasonic S5II | V-Log | 10-bit 4:2:2 | UHD 3840x2160 |
 | Blackmagic Pyxis | Blackmagic RAW, decoded as Film Gen 5 | BRAW, constant bitrate 8:1 | UHD 3840x2160 |
+
+The iPhone floor is the 15 Pro, the first model with Apple Log. `detect` verifies one Apple Log tag, the one the first Apple Log writes, and pins that clip as Apple Log. A clip that carries any other Apple Log variant tag goes to review with no input colour space until a person checks it (rules 5 and 6 in `production/rpresolve/detect.py`). Apple Log 2 tagging is unverified.
 
 The lutlab looks were measured on S5II V-Log and Pyxis BRAW clips (see [lutlab's README](lutlab/README.md)), so those two rows are the tested ones. Constant bitrate makes card capacity predictable, which matters when cards ship.
 
 ## Frame rate and shutter
 
 23.976 fps on every camera, shutter at 180 degrees (1/48 s). That is `default_framerate` in `production/resolve-config.json` and the timeline default, so capture matches the project and nothing is retimed. 29.97 only when a project's scope says so, and then on every camera of that project. Never mix rates inside one shoot.
+
+## White balance and exposure
+
+**White balance** is set by hand and fixed for each scene: 5600 K for daylight, 3200 K for tungsten. Never auto, on any camera.
+
+**Exposure** is set on the log image. Use the camera's own zebras or false colour, with middle grey at the maker's recommended level for that profile. Read that level from the camera or its manual.
+
+**ND** holds the 180-degree shutter from the section above. The shutter does not move to change exposure.
+
+The numbers below come from the hardware checklist and are not yet measured. Until a row is filled in, read the figure from the camera or its manual, and do not copy one camera's figure to another.
+
+| Camera | Native ISO in log | Middle-grey target | Open Gate size | Open Gate top frame rate |
+|---|---|---|---|---|
+| iPhone 15 Pro or later | to be measured | to be measured | not shot | not shot |
+| Panasonic GH7 | to be measured | to be measured | to be measured | to be measured |
+| Panasonic GH5 | to be measured | to be measured | not shot | not shot |
+| Panasonic S5II | to be measured | to be measured | not shot | not shot |
+| Blackmagic Pyxis | to be measured | to be measured | not shot | not shot |
 
 ## Resolution and framing
 

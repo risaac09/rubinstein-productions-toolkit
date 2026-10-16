@@ -84,7 +84,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 
 ## Subtitles
 
-- **Font:** Inter 500
+- **Font:** ~~Inter 500~~ Superseded by `type.caption`; this spec publishes no value (see [design tokens](design-tokens.md#caption-standard))
 - **Color:** `color.text-on-dark` on a semi-transparent `color.marrow` bar (see [design tokens](design-tokens.md#caption-standard))
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
