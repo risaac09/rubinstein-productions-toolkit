@@ -4,6 +4,10 @@ What changed in this repo, newest first. There are no version numbers, tags or r
 
 Written 2026-10-15 from the git history. Add an entry in the pull request that makes the change.
 
+## 2026-10-16
+
+- Drafted the producer gaps from Amendment 2, items 13 and 20: `production/camera-shipping-logistics.md`, `production/delivery-manifest.md`, `production/platform-specs.md`, `production/credits-and-disclosure.md`, and a final-approval gate in the Resolve spec's Deliver section. All are marked draft and end in a "Needs Isaac" list.
+
 ## 2026-10-15
 
 - Added `requirements.txt`: each tool's interpreter and pinned packages in one file.
