@@ -51,7 +51,7 @@ Tag each clip on import so you know which source node to apply.
 ## Branded Intro
 
 - **Asset:** `say-why-intro-4k.png` (3840 × 2160)
-- Marrow background, "Say Why" in Bone, amber accent line
+- `color.marrow` background, "Say Why" in `color.bone`, `color.amber` accent line
 - Optional — use only when the project calls for it
 - This is a personal creative brand, not RP client delivery
 
@@ -60,7 +60,7 @@ Tag each clip on import so you know which source node to apply.
 ## Subtitles
 
 - **Font:** Inter 500
-- **Color:** White or Bone (#f2ece4) on semi-transparent dark bar
+- **Color:** White or `color.bone` on semi-transparent dark bar
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand

@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- Added `production/design-tokens.md` (draft), which settles Amendment 2, item 17 as far as the public repo can: token names without values, lower-third geometry as fractions of frame size, one caption standard, how vertcut's captions differ (follow-up open), and a look-book stub. The Resolve spec's colour names now use token names.
 - The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
 - Measurement framework section 4 rewritten around plain-file records (engagement, session, response, outcome, asset use) with Airtable kept as an unbuilt alternative. The edit was made in the corpus canonical and synced here.
 - Added `methodology/measurement-instrument.md` (draft), `methodology/instrument/` (response CSV example, expected output, `score.sh`) and `scripts/test-instrument-score.sh`, run in CI.
