@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
 - The final-approval gate in the Resolve spec is accepted and its open points are settled: both the participant and a separate commissioner must approve, no round count in the document (each scope writes `R`), a SHA-256 in the approval message, no standalone verbal approval, and queueing without a record flagged, not blocked. ROADMAP Amendment 2, item 20, carries the status line.
 - Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
 - Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera. The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
