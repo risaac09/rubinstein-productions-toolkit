@@ -63,7 +63,7 @@ In a narrow frame a measure taken from the height would be far too large across 
 
 **Why the bottom offset is 26%.** vertcut puts the bottom edge of the caption bar at y 1680 of 1920, which is 12.5% of the height up from the bottom. A two-line cue at the default 66 px Arial Bold is 202 px tall (measured with Pillow, using vertcut's own height formula), so the bar spans from 23% to 12.5% of the height up from the bottom. The lower third's bottom edge at 26% clears that by 3% of the height. A different caption font changes the bar height, so recheck this if `type.caption` resolves to a taller face. vertcut makes portrait captions only; no repo file places a square caption, so the square frame takes the same 26% by analogy and has not been checked against a real square caption.
 
-The portrait and square fractions were chosen for this table, not derived from a brand source. They have not been checked on a phone screen.
+The portrait and square fractions were chosen for this table, not derived from a brand source. On 2026-10-16 a mid-hold frame of each was viewed full screen on a phone: both read, and the size is right. The square caption position is still unchecked against a real square caption.
 
 ### Motion
 
