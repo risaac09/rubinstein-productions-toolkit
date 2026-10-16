@@ -1,10 +1,19 @@
 # video-editor (prototype)
 
 Driving video editing through Claude Code instead of a GUI editor. This wraps
-[`video-use`](https://github.com/browser-use/video-use) (MIT), vendored at
-`video-use/` (commit `92c2b34e44c205cbc2acae7f6ca7c1c219d5dd66`, 2026-07-01).
+[`video-use`](https://github.com/browser-use/video-use) (MIT), which is not
+stored in this repo. `fetch-video-use.sh` clones it into `video-use/` at commit
+`92c2b34e44c205cbc2acae7f6ca7c1c219d5dd66` (2026-07-01), and `.gitignore` keeps
+that folder out of version control. The `motion/` folder and these notes are
+Rubinstein Productions work. `video-use` is Browser Use's work under its own
+MIT licence; the `LICENSE` file lives in the upstream repo and in the folder
+the script creates. The current tree no longer carries those files. Earlier
+commits still do, with the same licence file.
 
 Bounded prototype of the deterministic edit-cutting core. Not a finished tool.
+
+Paths below that start with `video-use/` exist only after you run the fetch
+script (see Setup).
 
 ## What video-use actually does
 
@@ -43,8 +52,11 @@ system default is 3.9.6; video-use's `pyproject.toml` requires `>=3.10`, so a
 project-local venv pinned to 3.10 was necessary).
 
 ```bash
-# vendored already at tools/video-editor/video-use; for a fresh clone elsewhere:
-git clone https://github.com/browser-use/video-use.git
+# from the repo root: fetch video-use at the pinned commit
+# (refuses to run if video-use/ already has files in it; if you have an older
+# checkout with the vendored copy, move that folder aside first, then copy
+# back any .venv, edit/ or .env you kept in it once the fetch has run)
+sh tools/video-editor/fetch-video-use.sh
 
 cd tools/video-editor/video-use
 uv venv .venv --python 3.10
@@ -67,6 +79,10 @@ environment. See below for what that does and doesn't block.
   and waveform composite. Ran against a synthetic 8s test clip
   (`test-footage/synthetic_clip.mp4`, generated with `ffmpeg -f lavfi
   testsrc+sine`), produced a correct 10-frame filmstrip with waveform.
+  The clip and a `uv.lock` were local additions to the earlier vendored
+  copy, not upstream files, so the fetched copy has neither. Regenerate
+  the clip with that ffmpeg command, and `uv sync` makes its own lock, so
+  dependency versions can differ from the earlier runs recorded here.
 - `helpers/render.py edit/edl.json -o edit/preview.mp4 --preview
   --no-subtitles`: the full deterministic render stage, run against a
   hand-authored EDL (`edit/edl.json`, not committed, a session output)
