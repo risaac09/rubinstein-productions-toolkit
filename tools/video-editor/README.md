@@ -154,12 +154,45 @@ result. The gap above is real, not papered over.
 
 A minimal Remotion project at `motion/`, scaffolded with `create-video`'s
 `--blank` template (free tier, no license needed at this scale: Remotion is
-free for teams up to 3). One working composition: `src/LowerThird.tsx`, a
-name + role title card at 1920x1080/30fps with a spring-eased entrance
-(20 frames), a hold (60 frames), and an eased exit (15 frames), 95 frames
-total, about 3.2s. Registered as composition id `LowerThird` in `src/Root.tsx`.
+free for teams up to 3). One component, `src/LowerThird.tsx`, a name + role
+title card with a spring-eased entrance, a hold and an eased exit, timed in
+seconds (about 3.2s). It is registered in `src/Root.tsx` as `LowerThird`
+(3840 by 2160), `LowerThirdPortrait` (2160 by 3840) and `LowerThirdSquare`
+(2160 by 2160), all at 24000/1001 fps (23.976). Width, height and fps are
+props. The first version was 1920 by 1080 at 30 fps (95 frames); the
+verification notes below describe that version.
 
-**Verified, not just written:**
+### Alpha render recipe
+
+A lower third that goes over footage in Resolve needs a transparent background.
+The recipe below was run on `LowerThirdPortrait` and, with `--props`, on
+`LowerThird`, then probed with `ffprobe` and `ffmpeg`: ProRes 4444, 24000/1001
+fps, 76 frames, a transparent first frame and an opaque frame mid-hold. The
+Resolve import was not tested.
+
+```bash
+cd tools/video-editor/motion
+npm ci
+npx remotion render src/index.ts LowerThird out/lower-third.mov \
+  --codec=prores --prores-profile=4444 \
+  --pixel-format=yuva444p10le --image-format=png \
+  --props='{"name":"Name Here","role":"Role Here"}'
+```
+
+- `--codec=prores` with `--prores-profile=4444` writes ProRes 4444 in a `.mov`.
+- `--pixel-format=yuva444p10le` carries the alpha channel.
+- `--image-format=png` is required with that pixel format. `motion/remotion.config.ts`
+  sets JPEG for frames, and a JPEG frame has no alpha, so Remotion refuses the
+  render without the PNG flag.
+- Swap `LowerThird` for `LowerThirdPortrait` or `LowerThirdSquare` for 9:16 or 1:1.
+- `--props` also takes `width`, `height` and `fps`, for example
+  `'{"name":"A","role":"B","width":1920,"height":1080,"fps":25}'` for an HD, 25 fps project.
+
+`npx remotion render` has no per-flag `--help`; `npx remotion help render`
+lists commands only. The flags above were checked by running them on Remotion
+4.0.518.
+
+**Verified, not just written (first version, 1920 by 1080 at 30 fps):**
 
 ```bash
 cd motion
