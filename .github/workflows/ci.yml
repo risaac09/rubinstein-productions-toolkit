@@ -190,6 +190,39 @@ jobs:
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
 
+  # rpresolve runs under the Resolve MCP server on the Mac's Python 3.9 and imports numpy for
+  # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
+  # every module except lutlab, rpstills and vertcut (which live on 3.14) on 3.9 with numpy
+  # alone, at the 3.9 pin in requirements.txt. A 3.10+ construct in rpresolve fails here.
+  rpresolve-tests-3-9:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install numpy at the 3.9 pin
+        run: python -m pip install "$(grep -E '^numpy==.*python_version < "3.10"' requirements.txt | sed 's/;.*//')"
+      - name: Install ffmpeg
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Every module but lutlab, rpstills and vertcut
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          mods="$(ls production/tests/test_*.py | grep -vE 'lutlab|rpstills|vertcut' | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+      - name: No skips for numpy or ffmpeg
+        run: |
+          set -eu
+          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -iE "numpy|ffmpeg missing|needs ffmpeg|ffprobe"; then
+            echo "a test skipped because numpy or ffmpeg is missing" >&2
+            exit 1
+          fi
+
   # The full production suite: every module in production/tests, on the Homebrew Python 3.14
   # the Mac's tool venv uses (~/.venvs/rp-tools), with the image and numeric packages that lutlab, rpstills,
   # measure, sync, trim review and vertcut import (requirements.txt). The job

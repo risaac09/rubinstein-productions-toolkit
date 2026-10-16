@@ -9,9 +9,9 @@
 # Interpreter per tool
 #   scripts/*.sh, tools/vertcut/vertcut             bash 3.2+ and coreutils.
 #   production/resolve_mcp.py (Resolve MCP server)  /usr/bin/python3 (Xcode's 3.9). Stdlib only. Stays on 3.9.
-#   production/rpresolve/, resolve_workflow.py      3.9 under the MCP server. numpy for measure, sync, color, trim review
-#                                                   comes from the Mac's own 3.9 site-packages (numpy 2.0.2, the last
-#                                                   NumPy for 3.9), not from this file; the 3.14 pins below also run them.
+#   production/rpresolve/, resolve_workflow.py      3.9 under the MCP server. numpy for measure, sync, color, trim review:
+#                                                   the 3.9 line below (numpy 2.0.2, the last NumPy for 3.9), which CI's
+#                                                   rpresolve-tests-3-9 job installs alone; the 3.14 pins also run them.
 #   production/lutlab/                              ~/.venvs/rp-tools (Homebrew 3.14). numpy, scipy, Pillow, OpenCV.
 #   production/rpstills/                            ~/.venvs/rp-tools (3.14). numpy, Pillow, OpenCV, imagehash.
 #   tools/vertcut/lib/vertcut_cut.py                ~/.venvs/rp-tools (3.14). Pillow.
@@ -59,10 +59,12 @@
 # markdown serves scripts/build-site.py (the GitHub Pages site build) and nothing else. The deploy workflow and
 # the pull-request site build both install the version pinned below.
 #
-# Pins are the versions CI installs and the suite was run against on 3.14 (numpy 2.3.2 and scipy 1.16.2
-# are the first releases with 3.14 wheels; Pillow 12.3 is the release the security alerts need).
-# The Mac's own 3.9 set (numpy 2.0.2, scipy 1.13.1, opencv 5.0.0.93) gave identical lutlab Delta E figures.
-numpy==2.3.5
+# Pins are the versions CI installs and the suite was run against on 3.14 (numpy 2.3.5 and scipy 1.16.3
+# have 3.14 wheels; Pillow 12.3 is the release the security alerts need). The marked numpy line is for
+# rpresolve on 3.9 only. The Mac's own 3.9 set (numpy 2.0.2, scipy 1.13.1, opencv 5.0.0.93) gave
+# identical lutlab Delta E figures.
+numpy==2.3.5; python_version >= "3.10"
+numpy==2.0.2; python_version < "3.10"
 scipy==1.16.3
 Pillow==12.3.0
 opencv-python-headless==4.10.0.84
