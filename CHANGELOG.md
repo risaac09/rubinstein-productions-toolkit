@@ -15,6 +15,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 ## Unreleased
 
 - The theory of change spells out PIPA and CBSD below its model, synced from the corpus canonical. Isaac confirmed both terms and the four-row Bilingual Dashboard on 2026-10-16.
+- Added `production/remote-session-runbook.md`, the runbook for the remote filming phase (Amendment 3, item 10): the 30-minute setup-call script, prompts written from the question bank, the spoken consent loop, the debrief within 48 hours, and unrecorded calls. Linked from the producers path and the README.
 - The instrument's seven Likert items are now the record: the onboarding baseline and the case-study tables quote them, `templates/respondent-sheet.md` is the client-facing form, Narrative Clarity is asked at pre-engagement, each assessment point is tied to an engagement event, and the instrument says a funded cohort runs the evaluation waves and the survey side by side (Amendment 3, items 5 to 7).
 - The Remotion lower-third prototype under `tools/video-editor/motion` has its lockfile refreshed within the existing version ranges, which clears the open advisories on brace-expansion, fast-uri, postcss-selector-parser and source-map-js.
 - Glossary gains Assemblage, Bilingual Dashboard, Nomadic Indicators, Royal Metrics, Three Consistency Questions and Zero-Measurement Zone, each linked to its source file (Amendment 3, item 11, term-bank half).
