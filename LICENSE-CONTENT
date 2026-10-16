@@ -4,7 +4,7 @@ Copyright (c) 2026 Isaac Rubinstein / Rubinstein Productions
 
 Scope: this license covers the methodology, protocols, and practice-writing
 in this repository — `methodology/`, `templates/`, and `docs/`. Code and
-tooling elsewhere in this repo (`cli/`, `scripts/`, `production/`,
+tooling elsewhere in this repo (`scripts/`, `production/`,
 `phase-zero/`, `public-kit/`) are MIT-licensed instead; see `LICENSE`.
 
 Why CC BY-SA and not MIT for this material: this is a practice built on

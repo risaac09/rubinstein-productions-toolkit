@@ -11,7 +11,7 @@ You make film or video, run client engagements, or facilitate recorded sessions.
 
 The engagement has a defined shape from first contact to published case study.
 
-- **Prospecting**: the [CLI tools](../../cli/) move prospects through research, ready, contacted, and responded states. `rp-prospect` creates the file, `rp-update` logs each touch, `rp-followup` surfaces what is due. Every tool answers `--help`. Set `RP_OUTREACH_DIR` and the whole pipeline lives wherever you point it.
+- **Prospecting**: a prospect moves through research, ready, contacted, and responded. This repo carries no tracker for it: in the practice that built this toolkit the record is a contact entry in a private data repo, and a stranger's equivalent is whatever contact list they already trust. [`TRUTH-OWNERSHIP.md`](../TRUTH-OWNERSHIP.md) says where each fact lives. A command-line tracker used to ship here; it was retired on 2026-10-16 and is in git history.
 - **Intake**: the [Client Onboarding template](../../templates/client-onboarding.md) structures a recorded discovery session before any proposal: current narrative state, organizational context, readiness, and an honest fit check. Note it uses legacy tier names; the current ones are in the [Methodology Blueprint](../../methodology/methodology-blueprint.md).
 - **Delivery**: the blueprint's four phases define what the client experiences and what ships at each step, tier by tier.
 - **Close**: the [Case Study template](../../templates/case-study-template.md) captures the engagement in both measurement registers, with consent tiers recorded per participant.
@@ -29,4 +29,4 @@ The methodology's distinguishing commitment is anti-extraction: visible consent 
 
 ## First working session
 
-Install the CLI (`cli/install.sh`), set `RP_OUTREACH_DIR` to a scratch directory, and run one prospect through the full cycle: create, update to contacted, draft, follow up. Twenty minutes, and you will know whether the pipeline fits your practice before you touch the methodology.
+Take one engagement you already ran, or one you are about to quote. Walk it through the four lifecycle steps above: first contact, intake, delivery, close. Write down, for each step, where the record of it lives today. The step with no answer is the first thing to fix, before you touch the methodology.
