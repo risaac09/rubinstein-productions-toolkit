@@ -2,7 +2,7 @@
 
 *Drafted 2026-10-16 (Amendment 2, item 16 follow-up). A plan, not a result. Nothing here has been run, and no preset key has been added.*
 
-You run this in Resolve, in a throwaway project. The question: can `set_color_management` take more than `colorScienceMode`, so that a fresh colour-managed project arrives with the timeline colour space, output colour space and tone and gamut mapping of the Colour Pipeline of Record ([resolve-template-spec.md](../resolve-template-spec.md)) instead of a hand step?
+You run this in Resolve, in a throwaway project. The target is the Colour Pipeline of Record section of [resolve-template-spec.md](../resolve-template-spec.md). That section is in pull request #141, open when this was drafted, and is not on `main` yet; the spec edits named under "Pass or fail" wait for that merge. The question: can `set_color_management` take more than `colorScienceMode`, so that a fresh colour-managed project arrives with the timeline colour space, output colour space and tone and gamut mapping of the Colour Pipeline of Record ([resolve-template-spec.md](../resolve-template-spec.md)) instead of a hand step?
 
 `rpresolve/colormgmt.py` allows a new preset key only after it has been set through the API on a live Resolve and read back. This plan is that check. It changes no tool behaviour.
 
@@ -29,7 +29,7 @@ What is confirmed, quoted as written:
 
 UNCONFIRMED, because no file on this Mac says it:
 
-- The value strings for the colour spaces. `"DaVinci WG/Intermediate"` and `"Rec.709 Gamma 2.4"` appear in this repo's spec, lutlab notes and one test fixture, as the names the UI shows. No Resolve file lists them as API values. The `.pyi` gives only 'Rec.709' and 'Gamma 2.4' as examples.
+- The value strings for the colour spaces. `"DaVinci WG/Intermediate"` and `"Rec.709 Gamma 2.4"` are the names the UI shows, as this repo writes them (`lutlab/OWNER.md`, `lutlab/README.md`, the spec in #141, and a fake-backed test fixture). `"Rec.709 Gamma 2.4"` is also an Input Color Space value read from live clips (`detect.py`, `resolve_survey.py`), which suggests Resolve spells it that way, but that is a clip property and not a project setting. No Resolve file lists either as an API value for these keys. The `.pyi` gives only 'Rec.709' and 'Gamma 2.4' as examples.
 - Whether the combined names go in `colorSpaceTimeline` and `colorSpaceOutput` alone, or the pair (`colorSpace...` plus `colorSpace...Gamma`) is needed, and what `separateColorSpaceAndGamma` does to that. That checkbox is named from memory of the UI.
 - Which of `colorSpaceOutputToneMapping` and `outputDRT` the UI's Tone Mapping dropdown is. Both list the same six values.
 - Whether any colour key can be written while `isAutoColorManage` is '1', and whether writing one key resets another (the Output DRT after the output colour space is the suspected case, noted in `colormgmt.py`).
@@ -46,6 +46,7 @@ The target state, from the Colour Pipeline of Record, on a fresh project:
 | Setting | Key | Candidate value | Level |
 |---|---|---|---|
 | Colour science | `colorScienceMode` | `davinciYRGBColorManagedv2` | project (already shipped) |
+| Automatic colour management off (prerequisite, if it reads '1') | `isAutoColorManage` | `0` | project |
 | Timeline colour space | `colorSpaceTimeline` | `DaVinci WG/Intermediate` | project |
 | Output colour space | `colorSpaceOutput` | `Rec.709 Gamma 2.4` | project |
 | Tone mapping | `colorSpaceOutputToneMapping` | `None` | project |
@@ -70,17 +71,17 @@ Use a project made for this and deleted after. Name it so it cannot be mistaken 
 
 **Step 2. Return to the default.** Delete the project and make a new one (Step 0) so the writes start from a fresh state. Run the script with `MODE = "dump"` once and keep the output as the baseline.
 
-**Step 3. Scripted writes, in order.** Run the script with `MODE = "write"` and `STEPS = STEPS_A`. Each row does the write, reads the same key back, and lists any other watched key that changed. Fill Table 2 from its output. Order matters: `colorScienceMode` first, then timeline, then output, then tone and gamut. If a step fails, note it and carry on, so every row has a result.
+**Step 3. Scripted writes, in order.** Run the script with `MODE = "write"` and `VARIANT = "A"`. It first reads the baseline key by key, then each row does the write, reads the same key back, and lists any other watched key that changed. After the last step it reads every written key again and prints a `FINAL` line for each, `PASS` or `DRIFT`; that is pass rule 2. Fill Table 2 from its output. Order matters: `colorScienceMode` first, then timeline, then output, then tone and gamut. If a step fails, note it and carry on, so every row has a result.
 
 **Step 4. Writable, not just defaulted.** A key that reads 'None' before and after has proved nothing. The script's last four steps set tone and gamut mapping to a different value ('Simple', 'Saturation Mapping') and back to 'None'. Fill the Table 2 rows for them.
 
 **Step 5. Restart read-back.** With the project from Step 3 still holding the target: save it (File, Save Project), close it to the Project Manager, reopen it, and run `MODE = "dump"`. Then quit Resolve, start it, open the project, dump again. Fill Table 3. A value that survives a close but not a quit, or the other way, is a fail.
 
-**Step 6. Timeline probe (read only).** Make one empty timeline, run the dump with `TIMELINE = True` (it reads `Timeline.GetSetting` for the same keys), and note whether `useCustomSettings` reads '0' and the colour keys equal the project's. This ends the project's freshness, so it is last. Do not set `useCustomSettings`.
+**Step 6. Timeline probe (read only).** Make one empty timeline, run the dump with `TIMELINE = True` (it reads `Timeline.GetSetting` for the same keys), and note whether `useCustomSettings` reads '0' and the colour keys equal the project's. This ends the project's freshness, so it is last. Do not set `useCustomSettings`. After this step the project is no longer fresh, so any later dump needs `TIMELINE = True`; Steps 5 and 7 are run before it or on a different project.
 
 **Step 7. Repeat.** Delete the project. Make a second new project and repeat Steps 0, 3 and 5 only, with the order and strings that passed. Fill Table 4. One run can be luck; the rule below needs two.
 
-**Step 8. Alternates, only if a candidate failed.** Run `STEPS_B` (split pair) and `STEPS_C` (the `SetSettings` dict form, all keys in one call) on fresh projects, each from a new project, and add their rows to Table 2 with the variant named.
+**Step 8. Alternates, only if a candidate failed.** Run `VARIANT = "B"` (split pair) and `VARIANT = "C"` (the `SetSettings` dict form, all keys in one call), each on a new fresh project, and add their rows to Table 2 with the variant named.
 
 ### Console script
 
@@ -88,6 +89,7 @@ Paste into Workspace, Console, Python 3 tab. `resolve` is predefined in Resolve'
 
 ```python
 MODE = "dump"          # "dump" reads the watch list; "write" runs STEPS
+VARIANT = "A"         # "A" SetSetting; "B" split pair; "C" one SetSettings call
 TIMELINE = False       # True: also read the current timeline's settings (Step 6)
 WATCH = ["colorScienceMode", "isAutoColorManage", "rcmPresetMode", "separateColorSpaceAndGamma",
          "colorSpaceTimeline", "colorSpaceTimelineGamma", "colorSpaceInput", "colorSpaceInputGamma",
@@ -97,6 +99,7 @@ WATCH = ["colorScienceMode", "isAutoColorManage", "rcmPresetMode", "separateColo
 S, M = "SetSetting", "SetSettings"
 STEPS_A = [
     (S, "colorScienceMode", "davinciYRGBColorManagedv2"),
+    (S, "isAutoColorManage", "0"),
     (S, "colorSpaceTimeline", "DaVinci WG/Intermediate"),
     (S, "colorSpaceOutput", "Rec.709 Gamma 2.4"),
     (S, "colorSpaceOutputToneMapping", "None"),
@@ -106,6 +109,7 @@ STEPS_A = [
 ]
 STEPS_B = [   # split pair; fix the strings from Step 1 first
     (S, "colorScienceMode", "davinciYRGBColorManagedv2"),
+    (S, "isAutoColorManage", "0"),
     (S, "separateColorSpaceAndGamma", "1"),
     (S, "colorSpaceTimeline", "DaVinci WG/Intermediate"),
     (S, "colorSpaceOutput", "Rec.709"), (S, "colorSpaceOutputGamma", "Gamma 2.4"),
@@ -113,11 +117,11 @@ STEPS_B = [   # split pair; fix the strings from Step 1 first
 ]
 STEPS_C = [   # one SetSettings call; the printed row is the whole call
     (M, "colorScienceMode+timeline+output+tone+gamut",
-     {"colorScienceMode": "davinciYRGBColorManagedv2", "colorSpaceTimeline": "DaVinci WG/Intermediate",
+     {"colorScienceMode": "davinciYRGBColorManagedv2", "isAutoColorManage": "0", "colorSpaceTimeline": "DaVinci WG/Intermediate",
       "colorSpaceOutput": "Rec.709 Gamma 2.4", "colorSpaceOutputToneMapping": "None",
       "colorSpaceOutputGamutMapping": "None"}),
 ]
-STEPS = STEPS_A
+STEPS = {"A": STEPS_A, "B": STEPS_B, "C": STEPS_C}[VARIANT]
 
 if "resolve" not in globals() or not hasattr(resolve, "GetVersion"):
     import DaVinciResolveScript as dvr
@@ -127,8 +131,13 @@ p = resolve.GetProjectManager().GetCurrentProject()
 def clips(folder):
     return len(folder.GetClipList() or []) + sum(clips(f) for f in folder.GetSubFolderList() or [])
 
-def snap(obj):
-    return {k: obj.GetSetting(k) for k in WATCH}
+def snap(obj, trace=False):
+    out = {}
+    for k in WATCH:
+        if trace:
+            print("read", k, flush=True)   # the last line printed names a key that hung
+        out[k] = obj.GetSetting(k)
+    return out
 
 assert "Spike" in p.GetName(), "REFUSED: the project name must contain 'Spike'"
 if not TIMELINE:
@@ -136,14 +145,16 @@ if not TIMELINE:
 assert clips(p.GetMediaPool().GetRootFolder()) == 0, "REFUSED: the project holds a clip"
 print("Resolve", resolve.GetVersionString(), "| project", p.GetName())
 if MODE == "dump":
-    for k, v in snap(p).items():
+    for k, v in snap(p, trace=True).items():
         print(f"| {k} | {v!r} |")
     if TIMELINE:
         t = p.GetCurrentTimeline()
         print("timeline useCustomSettings:", t.GetSetting("useCustomSettings"))
-        for k, v in snap(t).items():
+        for k, v in snap(t, trace=True).items():
             print(f"| timeline {k} | {v!r} |")
 else:
+    print("baseline:", snap(p, trace=True))
+    final = {}
     for api, key, val in STEPS:
         before = snap(p)
         ret = p.SetSetting(key, val) if api == S else p.SetSettings(val)
@@ -152,10 +163,14 @@ else:
         ok = got == val
         wrote = {key} if api == S else set(val)
         moved = {k: (before[k], after[k]) for k in WATCH if k not in wrote and before[k] != after[k]}
-        print(f"| {api} | {key} | {val!r} | ret={ret} | read={got!r} | {'PASS' if ok else 'FAIL'} | moved={moved} |")
+        final.update({key: val} if api == S else val)
+        print(f"| {VARIANT} | {api} | {key} | {val!r} | ret={ret} | read={got!r} | {'PASS' if ok else 'FAIL'} | moved={moved} |")
+    after = snap(p)
+    for k, v in final.items():
+        print(f"FINAL | {k} | wanted {v!r} | now {after[k]!r} | {'PASS' if after[k] == v else 'DRIFT'}")
 ```
 
-If `p.SetSettings` does not exist on this build the script raises `AttributeError` on a `STEPS_C` run; record that in Table 2 as "no SetSettings on 21.1.1.10". If a dump or write call hangs the console, quit Resolve, note which key was read last, and treat it as a fail for that call.
+If `p.SetSettings` does not exist on this build the script raises `AttributeError` on a `STEPS_C` run; record that in Table 2 as "no SetSettings on 21.1.1.10". If a call hangs the console, quit Resolve and treat it as a fail for that call. Every key is printed as `read <key>` just before it is read, so the last line printed names the key that hung.
 
 ## Results
 
@@ -179,13 +194,16 @@ Fill these in. Keep the tables in this file or paste them under the spike's date
 | Variant | API | Key | Value written | Return | Read back | Pass | Other keys moved |
 |---|---|---|---|---|---|---|---|
 | A | SetSetting | `colorScienceMode` | `davinciYRGBColorManagedv2` | | | | |
+| A | SetSetting | `isAutoColorManage` | `0` | | | | |
 | A | SetSetting | `colorSpaceTimeline` | `DaVinci WG/Intermediate` | | | | |
 | A | SetSetting | `colorSpaceOutput` | `Rec.709 Gamma 2.4` | | | | |
 | A | SetSetting | `colorSpaceOutputToneMapping` | `None` | | | | |
 | A | SetSetting | `colorSpaceOutputGamutMapping` | `None` | | | | |
 | A | SetSetting | tone mapping to `Simple` and back to `None` | | | | | |
 | A | SetSetting | gamut mapping to `Saturation Mapping` and back to `None` | | | | | |
-| B or C | | | | | | | |
+| B, C | | | | | | | |
+
+Add one row per script line for variants B and C, with the variant letter in the first column. The script prints its `FINAL` lines last; paste them under the table.
 
 **Table 3. Restart read-back (Step 5).**
 
