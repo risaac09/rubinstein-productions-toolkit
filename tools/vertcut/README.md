@@ -41,7 +41,7 @@ skip the final-approval gate and the delivery manifest, which belong to the
   `brew install ffmpeg-full` (keg-only, so it does not replace the default) adds
   libass and libvidstab if you want the filter or stabilisation; the PNG path stays
   the default here because it needs nothing beyond Pillow.
-- `mlx_whisper` (`pip3 install --user mlx-whisper`) for the transcribe step.
+- `mlx_whisper` for the transcribe step, in the same venv: `~/.venvs/rp-tools/bin/python -m pip install -c requirements.txt mlx-whisper==0.4.3` (or set `VERTCUT_MLX_WHISPER`).
 - Pillow on the Python that runs it: the `~/.venvs/rp-tools` venv by default (see `requirements.txt`), or set `VERTCUT_PYTHON`.
 
 ## 1. Transcribe

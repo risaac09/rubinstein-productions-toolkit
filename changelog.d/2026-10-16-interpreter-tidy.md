@@ -1,0 +1,1 @@
+vertcut transcribe uses mlx-whisper 0.4.3 from the `~/.venvs/rp-tools` venv (override: `VERTCUT_MLX_WHISPER`), and the separate `resolve-survey-3-14` CI job is folded into the 3.14 `production-unit-tests` job, which now fails on a skipped zstd test (Amendment 3, item 30).

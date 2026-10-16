@@ -22,7 +22,9 @@
 # Programs outside pip
 #   ffmpeg, ffprobe   production/, tools/vertcut. Homebrew on the Mac; preinstalled on CI's ubuntu-latest.
 #   exiftool          optional, read by detect when present.
-#   mlx-whisper       vertcut transcribe only (Apple silicon): pip3 install --user mlx-whisper
+#   mlx-whisper       vertcut transcribe only, Apple silicon, so not pinned in this file (CI runs on Linux).
+#                     Into the same venv, held at these pins:
+#                     ~/.venvs/rp-tools/bin/python -m pip install -c requirements.txt mlx-whisper==0.4.3
 #   DaVinci Resolve   its own scripting module, loaded by the MCP server at run time. Not on pip.
 #
 # Environment overrides
@@ -43,6 +45,7 @@
 #   RPRESOLVE_MCP_NO_RESOLVE     Resolve MCP session               unset                                     tests: 1 makes every Resolve connect fail.
 #   RPRESOLVE_SETTINGS_GUARD     rpresolve settingsguard           off                                       you want new-timeline settings reported: on, 1, yes or true.
 #   VERTCUT_PYTHON               tools/vertcut/vertcut             ~/.venvs/rp-tools/bin/python              the Python with Pillow is another one.
+#   VERTCUT_MLX_WHISPER          tools/vertcut/vertcut transcribe  ~/.venvs/rp-tools/bin/mlx_whisper         mlx_whisper is installed elsewhere.
 #   LUTLAB_OUT                   production/lutlab                 none                                      always, unless every command gets --out.
 #   LUTLAB_BRAW2PPM              lutlab/verify.py (BRAW)            lutlab/braw/braw2ppm, beside the source   the BRAW helper was built elsewhere.
 #   BRAW_SDK                     lutlab/braw/build.sh, braw2ppm    /Applications/Blackmagic RAW/Blackmagic   the Blackmagic RAW SDK is installed elsewhere.
