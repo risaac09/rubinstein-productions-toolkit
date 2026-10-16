@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The client shooting brief gains "When the box arrives" and "If something goes wrong", names the kit and footage checklists apart, matches its slate to the capture standard and explains each film term (Amendment 3, items 26 and 28).
 - Add `templates/scope-checklist.md`, a consent tier step in the onboarding template, and a per-participant consent evidence table in the case-study template (Amendment 3, items 9 and 24).
 - Delivery documents for the client: attribution column in the licence register and a licences extract in the manifest, review-copy name and checksum in the manifest header, a client key and approval message, and macOS and Windows verify steps in the return package (Amendment 3, items 20, 22, 25, 29).
 - Platform specs gain rows for the YouTube UHD, YouTube HD and LinkedIn 16:9 destinations, so every key in the Resolve config has one, and a test fails if a key goes missing. (Amendment 3, item 18)
