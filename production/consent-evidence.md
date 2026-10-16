@@ -78,13 +78,15 @@ For anyone who performs, presents or is directed on camera as part of the work, 
 
 Keep one register per engagement. Every piece of music and every font in the delivered work gets a row, whether it was bought, free, bundled with a tool or supplied by the client. A row is complete when someone else can find the proof without asking you.
 
-| Asset | Source | Licence | Scope of use | Proof | Checked |
-|---|---|---|---|---|---|
-| `<track title and artist>` | `<where it was obtained>` | `<licence name or type>` | `<what it may be used for, where, for how long>` | `<id or path of the receipt, licence file or email>` | `<YYYY-MM-DD>` |
-| `<font family and style>` | `<foundry or library>` | `<licence name or type>` | `<screen, print, embedding, number of users>` | `<id or path>` | `<YYYY-MM-DD>` |
-| `<asset>` | `<source>` | `<licence>` | `<scope>` | `<id or path>` | `<YYYY-MM-DD>` |
+| Asset | Source | Licence | Scope of use | Attribution required | Proof | Checked |
+|---|---|---|---|---|---|---|
+| `<track title and artist>` | `<where it was obtained>` | `<licence name or type>` | `<what it may be used for, where, for how long>` | `<the credit the licence demands, in its words, or "none">` | `<id or path of the receipt, licence file or email>` | `<YYYY-MM-DD>` |
+| `<font family and style>` | `<foundry or library>` | `<licence name or type>` | `<screen, print, embedding, number of users>` | `<credit demanded, or "none">` | `<id or path>` | `<YYYY-MM-DD>` |
+| `<asset>` | `<source>` | `<licence>` | `<scope>` | `<credit demanded, or "none">` | `<id or path>` | `<YYYY-MM-DD>` |
 
 Check the register against the final cut before the [delivery manifest](delivery-manifest.md) is written. An asset with no proof is replaced or cleared before delivery. The checked date is the day a person compared the scope of use against where the work is going, not the day the row was made.
+
+The attribution column holds the credit the licence asks for, copied as the licence words it, or "none" when it asks for nothing. Leaving it blank is not the same as "none". Where that credit appears in the work is set in [credits and AI disclosure](credits-and-disclosure.md#credits). The client sees a short extract of the register in the [delivery manifest](delivery-manifest.md#licences-used): asset, licence, attribution required, and nothing else.
 
 ## Where the evidence lives
 
