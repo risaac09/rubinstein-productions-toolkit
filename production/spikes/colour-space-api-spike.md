@@ -30,7 +30,7 @@ What is confirmed, quoted as written:
 UNCONFIRMED, because no file on this Mac says it:
 
 - The value strings for the colour spaces. `"DaVinci WG/Intermediate"` and `"Rec.709 Gamma 2.4"` are the names the UI shows, as this repo writes them (`lutlab/OWNER.md`, `lutlab/README.md`, the spec in #141, and a fake-backed test fixture). `"Rec.709 Gamma 2.4"` is also an Input Color Space value read from live clips (`detect.py`, `resolve_survey.py`), which suggests Resolve spells it that way, but that is a clip property and not a project setting. No Resolve file lists either as an API value for these keys. The `.pyi` gives only 'Rec.709' and 'Gamma 2.4' as examples.
-- Whether the combined names go in `colorSpaceTimeline` and `colorSpaceOutput` alone, or the pair (`colorSpace...` plus `colorSpace...Gamma`) is needed, and what `separateColorSpaceAndGamma` does to that. That checkbox is named from memory of the UI.
+- Whether the combined names go in `colorSpaceTimeline` and `colorSpaceOutput` alone, or the pair (`colorSpace...` plus `colorSpace...Gamma`) is needed, and what `separateColorSpaceAndGamma` does to that. The key name is in the `.pyi`; the label of the UI checkbox it matches is from memory.
 - Which of `colorSpaceOutputToneMapping` and `outputDRT` the UI's Tone Mapping dropdown is. Both list the same six values.
 - Whether any colour key can be written while `isAutoColorManage` is '1', and whether writing one key resets another (the Output DRT after the output colour space is the suspected case, noted in `colormgmt.py`).
 - That `SetSetting` still works on 21.1.1.10 for these keys. The repo's own note (`resolve-mcp.md`, "Things that cost time to find") says even `colorScienceMode` has not been checked live on this build.
@@ -79,7 +79,7 @@ Use a project made for this and deleted after. Name it so it cannot be mistaken 
 
 **Step 5. Restart read-back.** With the project from Step 3 still holding the target: save it (File, Save Project), close it to the Project Manager, reopen it, and run `MODE = "dump"`. Then quit Resolve, start it, open the project, dump again. Fill Table 3. A value that survives a close but not a quit, or the other way, is a fail.
 
-**Step 6. Timeline probe (read only).** Make one empty timeline, run the dump with `TIMELINE = True` (it reads `Timeline.GetSetting` for the same keys), and note whether `useCustomSettings` reads '0' and the colour keys equal the project's. This ends the project's freshness, so it is last. Do not set `useCustomSettings`. This is the last thing done in that project: it is no longer fresh, the script's write mode refuses it, and its dump needs `TIMELINE = True`. Step 7 starts a new project.
+**Step 6. Timeline probe (read only).** Make one empty timeline, run the dump with `TIMELINE = True` (it reads `Timeline.GetSetting` for the same keys), and note whether `useCustomSettings` reads '0' and the colour keys equal the project's. Do not set `useCustomSettings`. This is the last thing done in that project: it is no longer fresh, the script's write mode refuses it, and its dump needs `TIMELINE = True`. Step 7 starts a new project, which skips this probe; the timeline-level read is a one-project observation.
 
 **Step 7. Repeat.** Delete the project. Make a second new project and repeat Steps 0, 3 and 5 only, with the order and strings that passed. Fill Table 4. One run can be luck; the rule below needs two.
 
@@ -122,7 +122,7 @@ STEPS_B = [   # split pair; fix the strings from Step 1 first
     (S, "colorSpaceOutputGamutMapping", "Saturation Mapping"), (S, "colorSpaceOutputGamutMapping", "None"),
 ]
 STEPS_C = [   # SetSettings; the second item is only a label, the dict is the whole call
-    (M, "all five", {"colorScienceMode": "davinciYRGBColorManagedv2", "isAutoColorManage": "0",
+    (M, "all six", {"colorScienceMode": "davinciYRGBColorManagedv2", "isAutoColorManage": "0",
                      "colorSpaceTimeline": "DaVinci WG/Intermediate", "colorSpaceOutput": "Rec.709 Gamma 2.4",
                      "colorSpaceOutputToneMapping": "None", "colorSpaceOutputGamutMapping": "None"}),
     (M, "tone and gamut away", {"colorSpaceOutputToneMapping": "Simple",
@@ -135,6 +135,7 @@ if "resolve" not in globals() or not hasattr(resolve, "GetVersion"):
     import DaVinciResolveScript as dvr
     resolve = dvr.scriptapp("Resolve")
 p = resolve.GetProjectManager().GetCurrentProject()
+assert p is not None, "REFUSED: no project is open"
 
 def clips(folder):
     return len(folder.GetClipList() or []) + sum(clips(f) for f in folder.GetSubFolderList() or [])
@@ -165,25 +166,32 @@ if MODE == "dump":
         for k, v in snap(t, TL_WATCH).items():
             print(f"| timeline {k} | {v!r} |")
 else:
-    print("baseline:", snap(p))
+    after = snap(p)
+    print("baseline:", after)
     final = {}
     for api, key, val in STEPS:
-        before = snap(p)
-        print("writing:", key, flush=True)
-        ret = p.SetSetting(key, val) if api == S else p.SetSettings(val)
-        after = snap(p)
+        before = after
         wrote = {key: val} if api == S else val
+        final.update(wrote)
+        print("writing:", key, flush=True)
+        try:
+            ret = p.SetSetting(key, val) if api == S else p.SetSettings(val)
+            after = snap(p)
+        except Exception as e:          # a rejected key is a result, not the end of the run
+            print(f"| {VARIANT} | {api} | {key} | {val!r} | RAISED {type(e).__name__}: {e} | FAIL |")
+            after = before
+            continue
         bad = {k: after[k] for k, v in wrote.items() if norm(after[k]) != v}
         moved = {k: (before[k], after[k]) for k in WATCH if k not in wrote and before[k] != after[k]}
-        final.update(wrote)
         read = {k: after[k] for k in wrote}
-        print(f"| {VARIANT} | {api} | {key} | {val!r} | ret={ret} | read={read!r} | {'PASS' if not bad else 'FAIL'} | moved={moved} |")
+        ok = ret and not bad            # pass rule 1: the call returns True and the read-back matches
+        print(f"| {VARIANT} | {api} | {key} | {val!r} | ret={ret} | read={read!r} | {'PASS' if ok else 'FAIL'} | moved={moved} |")
     after = snap(p)
     for k, v in final.items():
         print(f"FINAL | {k} | wanted {v!r} | now {after[k]!r} | {'PASS' if norm(after[k]) == v else 'DRIFT'}")
 ```
 
-If `p.SetSettings` does not exist on this build the script raises `AttributeError` on a `STEPS_C` run; record that in Table 2 as "no SetSettings on 21.1.1.10". If a call hangs the console, quit Resolve and treat it as a fail for that call. Every key name is printed just before it is read, and each write is announced as `writing: <key>`, so the last name printed is the call that hung.
+A call that raises (for example `AttributeError` if `SetSettings` does not exist on this build) is printed as `RAISED` and the run carries on; copy that line into Table 2. If a call hangs the console, quit Resolve and treat it as a fail for that call. Every key name is printed just before it is read, and each write is announced as `writing: <key>`, so the last name printed is the call that hung.
 
 ## Results
 
@@ -240,7 +248,7 @@ A key joins a preset only if every line holds for it:
 4. The UI, looked at, shows the intended dropdown. A read-back string the UI does not reflect is a fail.
 5. Steps 3 to 5 pass again on a second fresh project (Table 4).
 6. For tone and gamut mapping, the key also changed to a different value and back (Step 4), so a pass is not just the default.
-7. Compare end states, not paths. After Step 3, a full dump of the watch list equals Step 1's last dump (the hand-set result) for every key, not only the preset keys. A key that differs is explained or it is a fail. Knock-on changes that show in a row's `moved` column are fine so long as the two end states agree.
+7. Compare end states, not paths. After Step 3, a full dump of the watch list matches Step 1's last dump (the hand-set result) for every key the variant did not write itself. A variant that writes a key Step 1 left alone (variant B and `separateColorSpaceAndGamma`) is compared on that key against what the variant intended, not against Step 1. Any other difference is named in the results before the key is accepted. Knock-on changes in a row's `moved` column are fine so long as the end states agree.
 
 Outcomes:
 
@@ -273,4 +281,4 @@ def check_colour_preset(c, P, project, preset):
     # writes and only repeats the GetSetting loop above.
 ```
 
-Wire it as `--fresh-colour <preset>` with its own project name and id arguments, so one flag never runs against the work-bearing sandbox. The fake-backed tests in `tests/test_mcp_project_timeline.py` need the same new preset exercised, as they do for `managed`.
+The result fields it reads (`would_change`, `plan_sha`, `exit_status`, `failed`, `drift`) are the ones `workflows.set_color_management` returns; the writes leave the project fresh, since they touch only settings, so the second dry run is not refused by the gate. Wire it as `--fresh-colour <preset>` with its own project name and id arguments, so one flag never runs against the work-bearing sandbox. The fake-backed tests in `tests/test_mcp_project_timeline.py` need the same new preset exercised, as they do for `managed`.
