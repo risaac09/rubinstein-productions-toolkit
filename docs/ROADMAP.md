@@ -40,6 +40,8 @@ The smoke test covers the happy path. The next investments, in value order: shel
 
 **Status: moot 2026-10-16.** The CLI was retired under Amendment 2, item 12, so the open parts of this item (shellcheck on `cli/`, the quoting audit, the umbrella command) no longer apply.
 
+**Status: remainder executed 2026-10-16, [#NNN](https://github.com/risaac09/rubinstein-productions-toolkit/pull/NNN).** Shellcheck at warning level now covers the first-party scripts outside phase-zero, from a list CI derives from git. The umbrella command and the quoting audit stay moot.
+
 ### 6. Keep the aspirational separate from the operational
 The blueprint's revenue projections and the instantiation prompt's automated-expansion sections read as plans, and some are marked speculative while others are not. A one-line status header on each methodology document (operational, draft, aspirational, superseded) would cost an afternoon and prevent the most expensive category of misreading: a stranger adopting a forecast as a fact.
 
