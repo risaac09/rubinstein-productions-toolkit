@@ -22,6 +22,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+# Neutral stand-ins. The house values (color.marrow, color.text-on-dark, type.caption in
+# production/design-tokens.md) live in the private brand context and reach the tool through
+# --caption-style or the untracked captions.local.json beside this tool's README.
+DEFAULT_TEXT_COLOR, DEFAULT_BAR_COLOR = "#FFFFFF", "#000000"
+DEFAULT_BAR_OPACITY = 0.88          # the lower-third panel's number in production/design-tokens.md
+LOCAL_STYLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "captions.local.json")
+STYLE_KEYS = ("text_color", "bar_color", "font")
+LINE_CHARS, MAX_LINES = 16, 2       # the portrait standard
+CAPTION_BOTTOM = 1680               # bottom edge of the bar: lower third (from 1280), clear of the feed UI
 DEFAULT_LUFS, DEFAULT_TP, DEFAULT_LRA = -16.0, -1.5, 11.0   # the LinkedIn targets; -14 for YouTube and short-form feeds
 X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 
@@ -154,7 +163,7 @@ def load_words(path):
     return words
 
 
-def group_cues(words, start, end, max_words, max_chars, gap):
+def group_cues(words, start, end, max_words, max_chars, gap, line_chars=LINE_CHARS):
     """Slice words to [start,end], rebase to 0, and group into caption cues."""
     dur = end - start
     picked = []
@@ -178,9 +187,14 @@ def group_cues(words, start, end, max_words, max_chars, gap):
             del cur[:]
 
     for w in picked:
+        if len(w["word"]) > line_chars:
+            raise CaptionError("the word %r is %d characters; a caption line holds %d "
+                               "(raise --line-chars or fix the transcript)"
+                               % (w["word"], len(w["word"]), line_chars))
         if cur:
-            chars = sum(len(x["word"]) + 1 for x in cur) + len(w["word"])
-            if (len(cur) >= max_words or chars > max_chars
+            joined = " ".join([x["word"] for x in cur] + [w["word"]])
+            if (len(cur) >= max_words or len(joined) > max_chars
+                    or len(wrap_chars(joined, line_chars)) > MAX_LINES
                     or w["start"] - cur[-1]["end"] > gap):
                 flush()
         cur.append(w)
@@ -196,11 +210,16 @@ def group_cues(words, start, end, max_words, max_chars, gap):
     return [c for c in cues if c["end"] > c["start"]]
 
 
-def wrap(draw, text, font, max_w):
-    words, lines, cur = text.split(), [], ""
-    for w in words:
+class CaptionError(ValueError):
+    pass
+
+
+def wrap_chars(text, limit):
+    """Greedy wrap by character count. A word longer than the limit gets its own line."""
+    lines, cur = [], ""
+    for w in text.split():
         trial = (cur + " " + w).strip()
-        if draw.textlength(trial, font=font) <= max_w or not cur:
+        if len(trial) <= limit or not cur:
             cur = trial
         else:
             lines.append(cur)
@@ -210,22 +229,59 @@ def wrap(draw, text, font, max_w):
     return lines
 
 
-def render_cue(text, font, path, max_w, stroke):
-    scratch = Image.new("RGBA", (10, 10))
-    d = ImageDraw.Draw(scratch)
-    lines = wrap(d, text, font, max_w)
+def parse_color(value, what):
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", str(value).strip())
+    if not m:
+        raise CaptionError("%s must be a #RRGGBB colour, got %r" % (what, value))
+    h = m.group(1)
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def resolve_style(file_path, text_color, bar_color, font):
+    """Defaults, then the style file, then flags. The file is --caption-style, else the
+    untracked captions.local.json if it exists."""
+    style = {"text_color": DEFAULT_TEXT_COLOR, "bar_color": DEFAULT_BAR_COLOR, "font": DEFAULT_FONT}
+    path = file_path or (LOCAL_STYLE if os.path.isfile(LOCAL_STYLE) else None)
+    if path:
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError) as e:
+            raise CaptionError("cannot read caption style %s: %s" % (path, e))
+        if not isinstance(data, dict):
+            raise CaptionError("caption style %s must be a JSON object" % path)
+        unknown = sorted(set(data) - set(STYLE_KEYS))
+        if unknown:
+            raise CaptionError("caption style %s: unknown keys %s (allowed: %s)"
+                               % (path, ", ".join(unknown), ", ".join(STYLE_KEYS)))
+        style.update({k: v for k, v in data.items() if v})
+    for key, val in (("text_color", text_color), ("bar_color", bar_color), ("font", font)):
+        if val:
+            style[key] = val
+    style["text_rgb"] = parse_color(style["text_color"], "text colour")
+    style["bar_rgb"] = parse_color(style["bar_color"], "bar colour")
+    return style
+
+
+def render_cue(lines, font, path, style, opacity):
+    """Draw one cue: text on a partial-opacity bar. Returns (width, height)."""
+    scratch = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     asc, desc = font.getmetrics()
     lh = int((asc + desc) * 1.15)
-    pad = stroke + 8
-    width = int(max(d.textlength(l, font=font) for l in lines)) + pad * 2
-    height = lh * len(lines) + pad * 2
+    pad_x, pad_y = font.size // 2, font.size // 4
+    width = int(max(scratch.textlength(l, font=font) for l in lines)) + pad_x * 2
+    height = lh * len(lines) + pad_y * 2
+    if width > W:
+        raise CaptionError("a caption line is %d px wide, wider than the %d px frame; "
+                           "lower --font-size or --line-chars" % (width, W))
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     dd = ImageDraw.Draw(img)
+    dd.rounded_rectangle((0, 0, width - 1, height - 1), radius=max(2, font.size // 16),
+                         fill=style["bar_rgb"] + (round(opacity * 255),))
     for i, line in enumerate(lines):
         lw = dd.textlength(line, font=font)
-        dd.text(((width - lw) / 2, pad + i * lh), line, font=font,
-                fill=(255, 255, 255, 255), stroke_width=stroke,
-                stroke_fill=(0, 0, 0, 235))
+        dd.text(((width - lw) / 2, pad_y + i * lh), line, font=font,
+                fill=style["text_rgb"] + (255,))
     img.save(path)
     return width, height
 
@@ -269,11 +325,21 @@ def main():
                          "manifest's zero is not the media file's zero; verify "
                          "the sign on one clip before rendering the set")
     ap.add_argument("--fps", type=float, help="frame rate for HH:MM:SS:FF timecodes")
-    ap.add_argument("--font", default=DEFAULT_FONT)
+    ap.add_argument("--caption-style", metavar="JSON",
+                    help="local file with text_color, bar_color and font (default: "
+                         "tools/vertcut/captions.local.json if present; never committed)")
+    ap.add_argument("--text-color", help="#RRGGBB, over the style file")
+    ap.add_argument("--bar-color", help="#RRGGBB, over the style file")
+    ap.add_argument("--bar-opacity", type=float, default=DEFAULT_BAR_OPACITY,
+                    help="caption bar opacity, 0-1 (default %g)" % DEFAULT_BAR_OPACITY)
+    ap.add_argument("--font", help="font file, over the style file (default Arial Bold)")
     ap.add_argument("--font-size", type=int, default=66)
-    ap.add_argument("--caption-y", type=int, default=1400)
+    ap.add_argument("--caption-y", type=int, default=CAPTION_BOTTOM,
+                    help="y of the caption bar's bottom edge (default %d)" % CAPTION_BOTTOM)
+    ap.add_argument("--line-chars", type=int, default=LINE_CHARS,
+                    help="characters per caption line, two lines at most (default %d)" % LINE_CHARS)
     ap.add_argument("--max-words", type=int, default=3)
-    ap.add_argument("--max-chars", type=int, default=26)
+    ap.add_argument("--max-chars", type=int, default=LINE_CHARS * MAX_LINES)
     ap.add_argument("--gap", type=float, default=0.6, help="silence that breaks a cue")
     ap.add_argument("--crf", type=int, default=20)
     ap.add_argument("--preset", choices=X264_PRESETS, default="veryfast",
@@ -306,9 +372,17 @@ def main():
         if not args.words:
             die("captions need --words FILE (or pass --no-captions)")
         words = load_words(args.words)
-        if not os.path.isfile(args.font):
-            die("font not found: %s" % args.font)
-        font = ImageFont.truetype(args.font, args.font_size)
+        if not 0 < args.bar_opacity <= 1:
+            die("--bar-opacity must be above 0 and at most 1")
+        if args.line_chars < 1:
+            die("--line-chars must be at least 1")
+        try:
+            style = resolve_style(args.caption_style, args.text_color, args.bar_color, args.font)
+        except CaptionError as e:
+            die(str(e))
+        if not os.path.isfile(style["font"]):
+            die("font not found: %s" % style["font"])
+        font = ImageFont.truetype(style["font"], args.font_size)
 
     chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
     os.makedirs(args.outdir, exist_ok=True)
@@ -325,7 +399,11 @@ def main():
 
         cues = []
         if words is not None:
-            cues = group_cues(words, start, end, args.max_words, args.max_chars, args.gap)
+            try:
+                cues = group_cues(words, start, end, args.max_words, args.max_chars,
+                                  args.gap, args.line_chars)
+            except CaptionError as e:
+                die("clip %s: %s" % (clip["id"], e))
 
         print("vertcut: [%d/%d] %s  %.2fs  %d cues"
               % (n, len(clips), os.path.basename(out), dur, len(cues)))
@@ -339,11 +417,15 @@ def main():
             label = "[base]"
             for i, cue in enumerate(cues):
                 png = os.path.join(tmp, "cue%03d.png" % i)
-                render_cue(cue["text"], font, png, W - 140, max(4, args.font_size // 11))
+                try:
+                    render_cue(wrap_chars(cue["text"], args.line_chars), font, png,
+                               style, args.bar_opacity)
+                except CaptionError as e:
+                    die("clip %s: %s" % (clip["id"], e))
                 inputs += ["-loop", "1", "-i", png]
                 nxt = "[v%d]" % i
                 filters.append(
-                    "%s[%d:v]overlay=x=(W-w)/2:y=%d:enable='between(t,%.3f,%.3f)'%s"
+                    "%s[%d:v]overlay=x=(W-w)/2:y=%d-h:enable='between(t,%.3f,%.3f)'%s"
                     % (label, i + 1, args.caption_y, cue["start"], cue["end"], nxt))
                 label = nxt
 
