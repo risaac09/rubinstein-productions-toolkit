@@ -18,7 +18,11 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ### 2026-10-16
 
+- vertcut's captions now follow the caption standard in `production/design-tokens.md`: a bar at 88% opacity instead of the outline, text and bar colours and the face from options or an untracked `captions.local.json`, 16 characters a line and two lines at most, and `--caption-y` as the bar's bottom edge. The bar opacity is decided. Amendment 2, item 17.
 - The Resolve spec's colour section is now the Colour Pipeline of Record (Amendment 2, item 16): Resolve Color Management v2 on a DaVinci Wide Gamut timeline, one table per camera, lutlab's `[RCM]` looks as the shared look, node-1 camera LUTs kept as the unmanaged alternative. Its two colour Open Questions are closed.
+- Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
+- Added `production/design-tokens.md` (draft), which settles Amendment 2, item 17 as far as the public repo can: token names without values, lower-third geometry as fractions of frame size, one caption standard, how vertcut's captions differ (follow-up open), and a look-book stub. The Resolve spec's colour names now use token names.
+- Added `production/consent-evidence.md` (draft): the one artifact that proves each consent tier, checklists for appearance, location and talent releases, and a per-engagement licence register for music and fonts. The case-study template has a required "Consent evidence" line and a rule that a case study with no tier 3 evidence id is not published. Amendment 2, item 18.
 - Added `production/return-package.md` (draft), the return-package spec and folder standard, which settles Amendment 2, item 19: contents, medium, `<YYYY-MM>_<engagement-id>/` layout, SHA-256 checksums with make and verify commands, client confirmation and RP's 90-day retention. Linked from the README and the producers guide.
 - Applied Isaac's answers to the camera-shipping, delivery-manifest, platform-specs and credits drafts and the measurement-instrument open points (#145). The delivery standards are accepted, not drafts.
 - Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15 (#140).
