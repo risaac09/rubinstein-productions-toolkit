@@ -8,7 +8,7 @@ Versions are `vMAJOR.MINOR.PATCH`. MINOR goes up for a new document or tool. PAT
 
 The first tag will be `v0.1.0`, the state after the open Amendment 2 pull requests merge. Until that tag exists, consumers who need a fixed state pin a commit. The maintainer creates each tag after merge; a pull request never does.
 
-Each pull request adds its entry under `## Unreleased`. At tag time the maintainer renames that heading to the version and date, and a new empty `## Unreleased` starts above it. The phase-zero and public-kit exports are listed once by their `Export kit from stack-data <sha>` commits and not itemized here. History before 2026-08 is in `git log`.
+Each pull request adds its entry as a file in `changelog.d/` (see its README) and does not edit this file under `## Unreleased`, so parallel pull requests never conflict here. At tag time the maintainer runs `scripts/changelog-fragments compile`, which moves the fragments to the top of `## Unreleased`, then renames that heading to the version and date, and a new empty `## Unreleased` starts above it. The phase-zero and public-kit exports are listed once by their `Export kit from stack-data <sha>` commits and not itemized here. History before 2026-08 is in `git log`.
 
 The Resolve spec keeps its own document revision in its footer. It is not the repository's version.
 

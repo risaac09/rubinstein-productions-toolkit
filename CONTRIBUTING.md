@@ -12,7 +12,7 @@ Fork it. [`LICENSE`](LICENSE) is the MIT license for the code and tooling it nam
 
 ## Changes to this repo
 
-The maintainer's own changes go in a pull request with a dated entry in [`CHANGELOG.md`](CHANGELOG.md).
+The maintainer's own changes go in a pull request with a fragment in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time.
 
 ## Code of conduct
 
