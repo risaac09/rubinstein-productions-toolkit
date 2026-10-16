@@ -83,7 +83,8 @@ Any form tool that exports CSV will do, as long as the exported columns can be r
 ```
 Respondent code: ______   Group: ______   Date: ______
 
-For each statement, circle a number from 1 to 5.            1  2  3  4  5
+For each statement, circle a number from 1 to 5,
+1 is "strongly disagree" and 5 is "strongly agree".         1  2  3  4  5
   We can articulate our mission with ease and specificity
   ... (items 2 to 7 of section 2.1, one line each)
 
