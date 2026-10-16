@@ -85,7 +85,7 @@ On 2026-10-15 four readers went through the repository at `main` 2e91950: an eng
 
    **Status: half executed 2026-10-15.** `CHANGELOG.md` exists, written from the git history and organized by date because there are no versions to organize by. **Open: needs Isaac.** I created no tag or release, as instructed. Tagging, and the numbering scheme for it, is his call, and so is whether the Resolve spec's inline "Version 1.7" line should follow the repo's number or stay its own document revision. Until a tag exists a consumer can pin a commit.
 
-   **Status: executed 2026-10-16, [#NNN](https://github.com/risaac09/rubinstein-productions-toolkit/pull/NNN), except the tag itself, which Isaac creates after merge.**
+   **Status: executed 2026-10-16, [#148](https://github.com/risaac09/rubinstein-productions-toolkit/pull/148), except the tag itself, which Isaac creates after merge.**
 
 ### Operations
 
