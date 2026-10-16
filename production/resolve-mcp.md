@@ -49,8 +49,8 @@ they return as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 27 tools: 5 reads, 10 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 12
+tool must name that project. There are 28 tools: 5 reads, 10 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 13
 writes.
 
 | Tool | Kind | What it does |
