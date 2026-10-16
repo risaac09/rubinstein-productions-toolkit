@@ -7,6 +7,24 @@ The judgment stays with Isaac and Claude: which moments become clips is decided
 in the cuts worksheet, the same artifact the pipeline already produces. vertcut
 only does the two mechanical parts — hearing the words, and cutting the frame.
 
+## A draft path, not the delivery route
+
+vertcut makes clips for review and quick social drafts. Its files do not pass
+`deliver_check` for `linkedin_9x16`, and they skip the final-approval gate and
+the delivery manifest. Two rows fail:
+
+- `name`: vertcut writes `<id>-<title-slug>.mp4` (`1-first-example-clip.mp4`).
+  The destination takes the house clip name, five parts joined by underscores
+  and ending in the aspect (`SW001_Guest_01_example-clip_9x16.mp4`).
+- `color_transfer`: vertcut sets no colour tags. The destination expects
+  `bt709`. The output carries a transfer tag only if the source file does, so
+  from an untagged source the row fails (a 720p test file without tags came
+  out with all three colour tags unset).
+
+The deliverable route for a vertical cut is `reframe_plan` with `cut` (or
+`reframe_apply`), then `queue_render`. See Reframe and Deliver in
+[`production/resolve-template-spec.md`](../../production/resolve-template-spec.md).
+
 ## Requirements
 
 - `ffmpeg` / `ffprobe` (Homebrew). Note its default build has **no libass**, which is
@@ -57,9 +75,9 @@ tools/vertcut/vertcut cut SOURCE.mov clips.tsv \
 ```
 
 For each row: trims, reframes to 1080x1920, burns word-grouped captions,
-normalizes audio to -16 LUFS (the LinkedIn level; `--lufs -14` for YouTube and
-short-form feeds), and writes an `.srt` sidecar next to the `.mp4` (LinkedIn and
-YouTube both accept the sidecar if you would rather not burn in).
+normalizes audio to -16 LUFS (the level `linkedin_9x16` expects; `--lufs -14` for
+short-form feeds), and writes an `.srt` sidecar next to the `.mp4` for review
+copies where you would rather not burn in.
 
 ### Options worth knowing
 
