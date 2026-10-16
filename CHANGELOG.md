@@ -8,13 +8,13 @@ Versions are `vMAJOR.MINOR.PATCH`. MINOR goes up for a new document or tool. PAT
 
 The first tag will be `v0.1.0`, the state after the open Amendment 2 pull requests merge. Until that tag exists, consumers who need a fixed state pin a commit. The maintainer creates each tag after merge; a pull request never does.
 
-Each pull request adds its entry under `## Unreleased`. At tag time the maintainer renames that heading to the version and date, and a new empty `## Unreleased` starts above it. The phase-zero and public-kit exports are listed once by their `Export kit from stack-data <sha>` commits and not itemized here. History before 2026-08 is in `git log`.
+Each pull request adds its entry as a file in `changelog.d/` (see its README) and does not edit this file under `## Unreleased`, so parallel pull requests never conflict here. At tag time the maintainer runs `scripts/changelog-fragments compile`, which moves the fragments to the top of `## Unreleased`, then renames that heading to the version and date, and a new empty `## Unreleased` starts above it. The phase-zero and public-kit exports are listed once by their `Export kit from stack-data <sha>` commits and not itemized here. History before 2026-08 is in `git log`.
 
 The Resolve spec keeps its own document revision in its footer. It is not the repository's version.
 
 ## Unreleased
 
-- The motion prototype moves to Remotion 4.0.536 and `eslint` 9.39.5, patch and minor moves that clear the last 12 `npm audit` advisories in the lint chain without a forced fix; lint, bundle and compositions still pass.
+- The theory of change spells out PIPA and CBSD below its model, synced from the corpus canonical. Isaac confirmed both terms and the four-row Bilingual Dashboard on 2026-10-16.
 - New `methodology/deliverable-outlines.md` with one-screen outlines for six named deliverables. The glossary defines PIPA and CBSD, which the blueprint and `services.yaml` keep, and the dashboard outline has four sections. The 5-day post-latency window is struck from the repo-owned files, because no source states why. (Amendment 3, items 8 and 11)
 - ROADMAP Amendment 3 gains item 30: Pillow's fixes need Python 3.10 or later. The 18 Pillow alerts are dismissed as tolerable risk until the tools move interpreter.
 - Cards are RP's kit and the footage is the files: one no-wipe rule in the logistics, return package and client brief, a release step in the shipment lifecycle, `05_session/` in the return package, a hosting rule and a retention rule that deletes the master with the finals, and a "What you get back and when" section in a client brief that now runs to three pages (Amendment 3, items 19, 21, 22, 23, 27).
