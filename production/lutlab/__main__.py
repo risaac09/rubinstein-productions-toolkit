@@ -19,6 +19,7 @@
         Delta E 2000 between a Resolve render and the source frame run through the LUT
   frames CLIP --t S [--t S ...] [--width 1280] [--rotate 0|90|180|270] [--out DIR]
         stills from a clip as 16-bit PNGs, read the way verify-render reads it: inputs for apply
+        (.braw clips decode as Film Gen 5 through lutlab/braw/braw2ppm)
   library [--scan] [--list] [--space S] [--dupes] [--out DIR]
         registry of the LUTs in Resolve's LUT folders: input-space guess, copies
   fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG ...] [--out DIR] [--name NAME]
