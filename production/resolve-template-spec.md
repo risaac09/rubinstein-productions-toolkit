@@ -126,7 +126,7 @@ create the other bins, which are made by hand.
 7. Manual creative grade (Node 3), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
-10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing is queued before the record exists
+10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (queueing without it is flagged, not blocked, see the gate)
 11. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
 12. Render the queued jobs on the Deliver page (no tool starts one)
 13. Write the delivery manifest once `deliver_check` passes (`delivery-manifest.md`)
@@ -655,11 +655,11 @@ folder no destination owns.
 
 ### The final-approval gate
 
-> **Status:** draft, 2026-10-16. No tool enforces this gate. `queue_render` does not know whether a cut was approved, and the house file name has no place for an approval reference, so the gate is a step a person holds and a record a person keeps. The choices made by default are listed at the end of this section.
+> **Status:** accepted 2026-10-16. No tool enforces this gate. `queue_render` does not know whether a cut was approved, and the house file name has no place for an approval reference, so the gate is a step a person holds and a record a person keeps.
 
 Delivery waits for the client's approval of a review copy. The gate sits after the audio work and before the first deliverable is queued, because a deliverable is a final file and the loop's later steps (captions to `.srt`, the loudness fix, the check) change the container, the audio level and the sidecar and leave the picture and the words alone. The audio level does change, so the review copy is rendered at the destination's loudness target (run the loudness fix on it first) and the approver hears what ships.
 
-**Who approves.** The person on camera approves their own words and likeness. Where an organization commissioned the work and the commissioner is a different person, the commissioner approves as well. The approver is named at scope and the name goes in the record. Approval by anyone else is not approval.
+**Who approves.** The person on camera approves their own words and likeness. Where an organization commissioned the work and the commissioner is a different person, the commissioner approves as well, and both must approve. Where the participant is also the commissioner, there is one person and one approval. The approver is named at scope and the name goes in the record. Approval by anyone else is not approval.
 
 **What is shown.** A review copy: a render of the cut that is not a deliverable. No `queue_render` destination makes one, so a person renders it on the Deliver page, with a timecode burn-in so a change request can cite a time (the config keeps the burn-in off deliverables for this reason). The approver sees, in one sitting:
 
@@ -670,32 +670,26 @@ Delivery waits for the client's approval of a review copy. The gate sits after t
 - the list of machine-assisted steps used, as `credits-and-disclosure.md` defines them;
 - the destinations the cut will go to, from `platform-specs.md`.
 
-**What counts as approval.** A written statement from the approver, from an address the approver controls, that names the review copy by file name and checksum and says it is approved. A spoken approval on a call is noted, then confirmed in writing before anything is queued. Silence, a thumbs-up in passing, and "looks good" about a different version are not approval. An approval covers exactly one review copy: any change to the picture, the words or the credits after approval returns to the gate with a new review copy.
+**What counts as approval.** A written statement from the approver, from an address the approver controls, that names the review copy by file name, carries its SHA-256 checksum and says it is approved. The checksum ties the approval to one file. A spoken approval never stands alone: it is noted, then confirmed in writing before anything is queued. Silence, a thumbs-up in passing, and "looks good" about a different version are not approval. An approval covers exactly one review copy: any change to the picture, the words or the credits after approval returns to the gate with a new review copy.
 
 **The record.** One record per approved cut, kept with the project and not in this repository:
 
 | Field | Content |
 |---|---|
-| Approval reference | A short id, such as `AP-1`, repeated on every manifest row of this cut |
-| Review copy | File name and SHA-256 |
-| Approver | Name and role |
+| Approval reference | A short id, such as `AP-1`, repeated on every manifest row of this cut. One id covers a cut only once every required approver has approved it |
+| Review copy | File name and SHA-256. The same copy for every approver; a change after one approval returns the cut to the gate for all of them |
+| Approver | Name and role of each approver; where two approve, both are listed |
 | Date and method | The date and how the approval arrived, with the message kept |
 | Rounds | How many change rounds ran before this approval |
 | Conditions | Anything the approval depends on, or "none" |
 
 The approval reference goes in the [delivery manifest](delivery-manifest.md). It does not go in the file name: the house rule is validated by the tools and has no field for it.
 
-**Change requests.** Changes are asked for by timecode against the review copy, in one list per round. Each round produces a new review copy and a new request for approval, so the approved copy is always one the approver has seen whole. The number of rounds that a scope includes is a parameter, `R`, written into the scope and never into this document. What happens when `R` is used up is an open question (see below).
+**Change requests.** Changes are asked for by timecode against the review copy, in one list per round. Each round produces a new review copy and a new request for approval, so the approved copy is always one the approver has seen whole. This document states no number of rounds. Each scope writes its own, `R`. When `R` is used up, a further round is a change the commissioner agrees in writing before it starts.
 
 Two kinds of request never count as a round. A participant removing or correcting their own words, or withdrawing consent, is the measurement framework's data-sovereignty right and holds at every stage. A correction to the file itself, such as a wrong name in the credits or a caption error against the audio, is a defect in the work and not a request to change it.
 
-**Needs Isaac (the gate).**
-
-1. Whether a commissioner who is a different person from the participant approves in addition to the participant (default: yes, both).
-2. `R`, the number of rounds, and what happens after it. This text states no number.
-3. Whether approval needs a checksum in the message (default: yes, because it ties approval to one file).
-4. Whether a verbal approval ever stands alone (default: no).
-5. Whether the delivery is blocked, or only flagged, if a deliverable is queued without a record. Today nothing blocks it.
+**Queueing without a record.** Queueing a deliverable with no approval record is flagged, not blocked: the person queuing writes that down in the project record before the render starts. `queue_render` has no field for an approval reference and the record is kept outside this repository, so the tool has nothing to check. The one place a record is already required is the manifest step: the [delivery manifest](delivery-manifest.md) rule is that no row is written without an approval reference. That is a rule for whoever fills the manifest, not code, since no tool writes a manifest yet. Revisit this after three real deliveries, the same trigger the manifest uses.
 
 ### The loop
 
@@ -1229,4 +1223,4 @@ a one-line note here saying when.
 
 ---
 
-*Document revision 1.9, 2026-10-16: the Colour Pipeline of Record replaces Camera Sources & Color Pipeline (Resolve Color Management v2 with a DaVinci Wide Gamut timeline and lutlab's `[RCM]` looks; node-1 camera LUTs kept as the alternative for a project that is not colour managed), and two Open Questions closed. Document revision 1.8, 2026-10-16: the final-approval gate before the loop and two workflow steps, approval and manifest. Document revision 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Document revision 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Document revision 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Document revision 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Document revision 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Document revision 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable. This is the revision of this document. The repository's own version is in `CHANGELOG.md`.*
+*Document revision 1.10, 2026-10-16: the final-approval gate's open points settled. Document revision 1.9, 2026-10-16: the Colour Pipeline of Record replaces Camera Sources & Color Pipeline (Resolve Color Management v2 with a DaVinci Wide Gamut timeline and lutlab's `[RCM]` looks; node-1 camera LUTs kept as the alternative for a project that is not colour managed), and two Open Questions closed. Document revision 1.8, 2026-10-16: the final-approval gate before the loop and two workflow steps, approval and manifest. Document revision 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Document revision 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Document revision 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Document revision 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Document revision 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Document revision 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable. This is the revision of this document. The repository's own version is in `CHANGELOG.md`.*
