@@ -22,6 +22,7 @@ Other roles are credited when a person did them and agreed to be named. Nobody i
 
 - On the work: a short end card or a closing line, readable at the platform's smallest frame. It names roles and people and nothing else. It carries no slogan. A cut under 60 seconds has no end card, and the credit goes in the post text.
 - In the description, caption or page text: the same names in the same order, in plain text, so the credit survives a platform that crops the end card. On a cut under 60 seconds this is the only place the credit appears.
+- **Licence-required credit.** A credit that a licence demands, such as a track or a font, goes in the end card or closing line when the work has one, and in the post text always. A cut under 60 seconds has no end card, so there it appears in the post text and nowhere else. The register's attribution column, in [consent evidence](consent-evidence.md#licence-register), says what each licence asks for. This credit goes through the gate with the rest of the credits line.
 - In the [manifest](delivery-manifest.md): a line saying where the credits appear, or "none requested".
 
 **Names.** Spelled as each person spells them, checked at the gate. A name is never abbreviated, anglicized or made up from an email address.
