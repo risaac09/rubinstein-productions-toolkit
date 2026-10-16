@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The motion prototype moves to Remotion 4.0.536 and `eslint` 9.39.5, patch and minor moves that clear the last 12 `npm audit` advisories in the lint chain without a forced fix; lint, bundle and compositions still pass.
 - New `methodology/deliverable-outlines.md` with one-screen outlines for six named deliverables. The glossary defines PIPA and CBSD, which the blueprint and `services.yaml` keep, and the dashboard outline has four sections. The 5-day post-latency window is struck from the repo-owned files, because no source states why. (Amendment 3, items 8 and 11)
 - ROADMAP Amendment 3 gains item 30: Pillow's fixes need Python 3.10 or later. The 18 Pillow alerts are dismissed as tolerable risk until the tools move interpreter.
 - Cards are RP's kit and the footage is the files: one no-wipe rule in the logistics, return package and client brief, a release step in the shipment lifecycle, `05_session/` in the return package, a hosting rule and a retention rule that deletes the master with the finals, and a "What you get back and when" section in a client brief that now runs to three pages (Amendment 3, items 19, 21, 22, 23, 27).

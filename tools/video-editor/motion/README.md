@@ -35,4 +35,8 @@ npx remotion compositions src/index.ts
 
 Render recipes, including the ProRes 4444 file with alpha, are in `tools/video-editor/README.md`. Rendered files go to `out/`, which git ignores.
 
+## Dependency audit
+
+On 2026-10-16 the project moved from Remotion 4.0.518 to 4.0.536 (every `@remotion` package and `remotion` together, as Remotion requires) and from `eslint` 9.19.0 to 9.39.5. That cleared the last 12 `npm audit` advisories, all in the lint chain: `braces` (GHSA-vfj7-8cjw-p6xm) through `fast-glob` and `typescript-eslint`, and `@eslint/plugin-kit` (GHSA-xffm-g5w8-qvg7). Both are patch or minor moves within the pinned lines; no `npm audit fix --force`. After the move `npm audit` reports 0, `npm run lint` passes, and `npx remotion bundle` and `npx remotion compositions` succeed. The render recipes in `tools/video-editor/README.md` were checked on 4.0.518 and not re-run.
+
 Read Remotion's licence terms before a larger team uses it.
