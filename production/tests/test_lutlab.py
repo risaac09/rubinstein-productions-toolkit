@@ -482,6 +482,26 @@ class VerifyRenderTest(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             verify.grab(str(self.src), [0.5], out, width=640)
 
+    def test_braw_frames_come_from_the_helper(self):
+        import cv2
+        from lutlab import verify
+        stub = self.tmp / "braw2ppm"
+        stub.write_text("#!/usr/bin/python3\nimport sys\nopen(sys.argv[3], 'wb').write(b'P6\\n4 2\\n65535\\n' + b'\\x80\\x00' * 24)\n")
+        stub.chmod(0o755)
+        clip = self.tmp / "A001_C001.braw"
+        clip.write_bytes(b"x")
+        out = self.tmp / "braw_out"
+        out.mkdir()
+        old = os.environ.get("LUTLAB_BRAW2PPM")
+        os.environ["LUTLAB_BRAW2PPM"] = str(stub)
+        try:
+            f = verify.grab(str(clip), [1.5], out, width=8)[0]
+        finally:
+            os.environ.pop("LUTLAB_BRAW2PPM") if old is None else os.environ.__setitem__("LUTLAB_BRAW2PPM", old)
+        img = cv2.imread(f, cv2.IMREAD_UNCHANGED)
+        self.assertEqual((img.dtype, img.shape), (np.dtype("uint16"), (4, 8, 3)))
+        self.assertTrue(f.endswith("A001_C001 t1.5s.png"))
+
     def test_bad_margin_refused(self):
         from lutlab import verify
         with self.assertRaises(ValueError):

@@ -177,6 +177,12 @@ models. The source must be in the LUT's input encoding, so for Pyxis render a
 Gen 5 frame or clip out of Resolve first. `--render-t` covers a render that
 starts at a different time than the source.
 
+**BRAW stills without Resolve.** `lutlab frames CLIP.braw --t 3` decodes a Blackmagic RAW
+frame as Film Gen 5 / Wide Gamut through `lutlab/braw/braw2ppm`, a small helper built from the
+Blackmagic RAW SDK (`sh lutlab/braw/build.sh`; the binary stays out of git, and `LUTLAB_BRAW2PPM`
+points at another build). Checked against Resolve's Gen 5 render of the same frame: median Delta E
+0.3 once both are blurred, so colour agrees and only resampling differs.
+
 **Tuning the looks on footage.** The loop, with a new output folder each
 round because Resolve caches a LUT by path:
 

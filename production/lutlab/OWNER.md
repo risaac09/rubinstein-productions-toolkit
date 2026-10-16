@@ -75,17 +75,21 @@ are one link in a chain of responsible parties:
 
 Merged. Checked against Resolve renders (median Delta E): camera look vs
 lutlab 0.7 to 0.9; `[RCM]` vs lutlab 0.43; `[RCM]` Rec.709 end to end 0.8 to 0.95
-for both cameras. Skin on 11 faces (S5II, Vision face boxes, OKLab):
-Neutral hue 47.9 degrees, chroma 0.063; Ice Blue now holds both to within a
-few percent, Soft Print and Bleach intentionally pull chroma down 30 percent.
+for both cameras. Skin on 11 S5II faces and 14 Pyxis faces (Vision face boxes, OKLab):
+Neutral hue about 47.7 degrees, chroma 0.059 to 0.063; Ice Blue holds both,
+Soft Print and Bleach intentionally pull chroma down about 30 percent.
 
 Open:
+- Needs Isaac: Resolve Magic Mask for skin, and the final eye on the six looks
+  (sheets in his tuning folder; see its README).
 - Resolve's Magic Mask cannot be created through the scripting API
   (`CreateMagicMask` returns False without a UI selection) and the UI does not
   repaint reliably in a background window. Masking in Resolve needs a person at
   the keyboard or full-screen control approved by Isaac. The skin measurements
   use Apple Vision face boxes instead.
-- Pyxis skin is untested: no sampled Pyxis clip has a person in it.
+- Pyxis skin: measured on 14 faces from 20 Pyxis Gen 5 frames (decoded with
+  the BRAW helper, `lutlab/braw/`); Neutral skin sits at chroma 0.059, hue 47.6,
+  matching the S5II (0.063, 47.8). The six looks behave the same on both cameras.
 - Looks are first guesses tuned on a handful of frames; Isaac's eye is the
   final judge.
 - The S5II LUT Library takes `.cube` up to 33 points from the card root, 8
