@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The instrument's seven Likert items are now the record: the onboarding baseline and the case-study tables quote them, `templates/respondent-sheet.md` is the client-facing form, Narrative Clarity is asked at pre-engagement, each assessment point is tied to an engagement event, and the instrument says a funded cohort runs the evaluation waves and the survey side by side (Amendment 3, items 5 to 7).
 - The Remotion lower-third prototype under `tools/video-editor/motion` has its lockfile refreshed within the existing version ranges, which clears the open advisories on brace-expansion, fast-uri, postcss-selector-parser and source-map-js.
 - Glossary gains Assemblage, Bilingual Dashboard, Nomadic Indicators, Royal Metrics, Three Consistency Questions and Zero-Measurement Zone, each linked to its source file (Amendment 3, item 11, term-bank half).
 - The client shooting brief gains "When the box arrives" and "If something goes wrong", names the kit and footage checklists apart, matches its slate to the capture standard and explains each film term (Amendment 3, items 26 and 28).
