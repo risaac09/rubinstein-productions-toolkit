@@ -27,11 +27,13 @@ Phase 3 runs one to three filming sessions over one to two weeks, and the bluepr
 | 5. Ship | T minus 10 days | Handed to the carrier with tracking and the signature requirement chosen in [Carrier](#carrier). The client gets the tracking reference and the arrival window. | Kit owner |
 | 6. Arrival check | T minus 7 days | The receiving person unboxes on camera or on a call, ticks the checklist, and reports any damage or missing item the same day. Late reports are harder to attribute, which is why the check has a deadline. | Receiving person |
 | 7. Setup call | T minus 5 days | A short facilitated call: power on, record a test clip, play it back, confirm the framing and sound. Fix anything now. The call is the last point where a replacement can still arrive before T. | Isaac with receiving person |
-| 8. Filming | T to T plus 14 days | The filming sessions. The kit stays with the client. | Client |
-| 9. Return pack | Within 2 days after the last session | The receiving person packs the kit in the same box, with the checklist, using the prepaid return label that came in the outbound box. Tracking goes to Isaac. | Receiving person |
-| 10. Return transit | Counted from the carrier's quote | Tracked. If the box is not scanned as moving within a few days of drop-off, the kit owner opens a [loss case](#damage-and-loss). | Kit owner |
-| 11. Check-in | The day it arrives | Unboxed against the outbound photographs and the checklist. Any difference is a [damage case](#damage-and-loss) the same day. | Kit owner |
-| 12. Offload and close | Within 2 days of check-in | Cards are offloaded and verified, the client's copy is prepared under the [return package](return-package.md), and the kit is reset and returned to inventory. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
+| 8. Releases | Before the first session | Every person who will appear on camera signs an appearance release, and the receiving person signs or collects a location release for any place the client does not control. The forms are in the box and the wording comes from counsel. Anyone who has not signed stays out of frame. The signed forms go to the kit owner with the return, and the evidence is filed under [consent evidence](consent-evidence.md). | Receiving person |
+| 9. Filming | T to T plus 14 days | The filming sessions. The kit stays with the client. | Client |
+| 10. Return pack | Within 2 days after the last session | The receiving person packs the kit in the same box, with the checklist and the signed release forms, using the prepaid return label that came in the outbound box. Tracking goes to Isaac. | Receiving person |
+| 11. Return transit | Counted from the carrier's quote | Tracked. If the box is not scanned as moving within a few days of drop-off, the kit owner opens a [loss case](#damage-and-loss). | Kit owner |
+| 12. Check-in | The day it arrives | Unboxed against the outbound photographs and the checklist. Any difference is a [damage case](#damage-and-loss) the same day. | Kit owner |
+| 13. Offload and send | Within 2 days of check-in | Cards are offloaded and verified, and the client's return package is prepared and sent under the [return package](return-package.md). The cards are not wiped. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
+| 14. Confirm and reset | When the client confirms the checksums | The kit is reset and returned to inventory. Cards are wiped and formatted only now. | Kit owner |
 
 If a step slips, everything after it slips by the same amount, and the setup call stays before T. If T moves, the whole table moves with it. The step order does not change.
 
@@ -50,6 +52,7 @@ Tick each line on the bench test, again on the client's arrival check, and again
 - [ ] Support: a stand, a clamp or a small tripod, whichever the kit uses
 - [ ] Cleaning cloth
 - [ ] Padded case or the wrapping cloth and padding the [example shoot plan](examples/2026-03-31-shoot-plan.md) shows
+- [ ] Release forms: appearance releases and a location release, in your counsel's wording, with enough copies for everyone who may appear
 - [ ] Outbound box, return label, tape, the one-page setup sheet, and a printed copy of this checklist
 
 **Backup gear.** Backup is decided per category, not per item.
@@ -78,11 +81,14 @@ The number of spares per category is open (see [Open parameters](#open-parameter
 
 1. Every item on the checklist arrived, with the serial numbers matching the inventory.
 2. Nothing is damaged beyond ordinary wear, judged against the outbound photographs.
-3. The cards that held the client's footage have been offloaded, the offload verified, and the client's copy prepared. Offload comes before cards are wiped for the next shipment. Cards are never wiped before the client has the footage.
-4. The kit is reset: batteries charged, cards formatted in the camera, settings returned, firmware noted, and the inventory marked available.
-5. The return rate is recorded.
+3. The cards that held the client's footage have been offloaded, the offload verified, and the client's return package prepared and sent. Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package.
+4. The signed release forms are in hand and filed.
+5. The kit is reset, which waits for the client's confirmation: batteries charged, cards formatted in the camera, settings returned, firmware noted, and the inventory marked available.
+6. The return rate is recorded.
 
-Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. They travel with the kit, in their case, and the offload in step 12 happens on arrival.
+Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. They travel with the kit, in their case, and the offload in step 13 happens on arrival.
+
+The cards are RP's kit. The client's footage is the files on them, and it reaches the client in the return package. A card that is waiting for the client's confirmation stays out of the next shipment until it is wiped.
 
 ## Carrier
 

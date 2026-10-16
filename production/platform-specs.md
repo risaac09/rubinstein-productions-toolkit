@@ -34,7 +34,7 @@ These come from the house rules under `deliver` in the config and are checked on
 
 **Social square 1:1.** Same rules as vertical. Burnt-in captions run 24 characters per line on up to two lines.
 
-**Archive master.** The client master. ProRes 422 HQ at the timeline's own size, LPCM 24-bit 48 kHz, no loudness normalization, no captions. The check expects a 10-bit 4:2:2 profile and takes `--size` to assert the timeline's size. It is the file the platform versions can be re-made from, and it is kept with the project.
+**Archive master.** The client master. ProRes 422 HQ at the timeline's own size, LPCM 24-bit 48 kHz, no loudness normalization, no captions. The check expects a 10-bit 4:2:2 profile and takes `--size` to assert the timeline's size. It is the file the platform versions can be re-made from while RP holds it. RP deletes it with the finals under the [retention rule](return-package.md#what-rp-keeps-afterward), unless the client asks in writing for RP to keep it. Re-making a version ends with retention, and the client holds the master.
 
 ## Not recorded here
 

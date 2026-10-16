@@ -12,13 +12,16 @@ It covers the return of footage, finals and project files to the client. The [de
 2. **The finals.** Every deliverable that passed `deliver_check`, as shipped.
 3. **Captions.** The sidecar `.srt` for each final that has one.
 4. **The Resolve project as a `.drp`, with media not consolidated.** The project file holds the timelines, grades and links, and points at the originals by path. It does not carry a copy of the media. A person exports it in Resolve with Export Project, not Export Project Archive, which would copy media into the file. When the client opens it on their machine, the clips show offline until the folder is relinked to `01_originals/`.
-5. **The manifest.** `manifest.md` at the package root.
+5. **The session recordings and transcripts.** Every recording and transcript of the client's sessions, in `05_session/`. Coded passages and aggregate response rows are not in the package. They stay under the consent tier the client chose, as section 8 of the [measurement framework](../methodology/measurement-framework.md) sets out.
+6. **The manifest.** `manifest.md` at the package root.
 
-The client's own cards come back in the kit, as [camera shipping logistics](camera-shipping-logistics.md) sets out. RP copies them into `01_originals/` and sends the cards back with the original files still on them. Cards are never wiped.
+The cards are not in the package and are not the client's. The footage on them is, and it reaches the client as the files in `01_originals/`. The cards travel in the kit, as [camera shipping logistics](camera-shipping-logistics.md) sets out. Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package.
 
 ## Medium
 
 A download link is the default. A drive ships only when the client asks for one, or when the size passes a limit written into the scope. The limit lives in the scope for each engagement and is not stated here.
+
+**Hosting rule for the link.** The link is private and unguessable, and opens without an account. It expires 30 days after RP sends it, or when the client confirms receipt, whichever comes first. RP sends it again on request until RP deletes its copy. The rule names no vendor.
 
 ## Folder standard
 
@@ -36,6 +39,8 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
   03_captions/
   04_project/
     <project>.drp
+  05_session/
+    recordings and transcripts
   manifest.md
 ```
 
@@ -51,7 +56,7 @@ The [negative archive ritual](../methodology/negative-archive-ritual.md) keeps a
 
 | Ritual folder | Package folder | Notes |
 |---|---|---|
-| `working/` | `04_project/` and the cards in `01_originals/` | The live draft is the Resolve project. The footage it uses is the originals. |
+| `working/` | `04_project/` and the footage in `01_originals/` | The live draft is the Resolve project. The footage it uses is the originals. |
 | `final/` | `02_finals/` and `03_captions/` | What shipped. |
 | `scraps/` | `01_originals/` | Unused takes are footage, so they return with every other take. The ritual's cut drafts, notes and `COLOPHON.md` are RP's internal record and are not part of the package unless the client asks. |
 
@@ -90,12 +95,15 @@ RP records the date of that reply. It starts the retention clock below.
 
 ## The manifest
 
-`manifest.md` here is the same file the [delivery manifest](delivery-manifest.md) describes, at the package root beside the numbered folders. The delivery manifest's rules hold: one row per file, a checksum per row, an approval reference on every row, no edits after delivery. For the package, the file list also covers `03_captions/` and `04_project/`. The `.drp` gets a row with its SHA-256 and `n/a` in the video columns. The originals are covered by `SHA256SUMS` and named in the manifest as one line pointing to it, not listed row by row.
+`manifest.md` here is the same file the [delivery manifest](delivery-manifest.md) describes, at the package root beside the numbered folders. The delivery manifest's rules hold: one row per file, a checksum per row, an approval reference on every row, no edits after delivery. For the package, the file list also covers `03_captions/`, `04_project/` and `05_session/`. The `.drp` gets a row with its SHA-256 and `n/a` in the video columns. The originals are covered by `SHA256SUMS` and named in the manifest as one line pointing to it, not listed row by row.
 
 ## What RP keeps afterward
 
 - **Originals:** RP deletes its copy 90 days after the client confirms the checksums. The date of confirmation and the date of deletion go in the engagement record.
+- **Session recordings and transcripts:** RP deletes its copy on the same 90-day clock as the originals.
 - **Finals:** RP keeps them only where the client has granted consent tier 3, defined in section 8 of the [measurement framework](../methodology/measurement-framework.md). The evidence that a client granted it is set out in [consent evidence](consent-evidence.md). Without tier 3 evidence, RP deletes its copy of the finals on the same 90-day clock.
+- **The client master:** RP deletes it with the finals on the 90-day clock, unless the client asks in writing for RP to keep it. Tier 3 keeps the finals and does not keep the master. The client holds the master, and re-making a version ends with retention. [Platform specs](platform-specs.md) says the same.
+- **Coded passages and aggregate rows:** kept under the consent tier the client chose.
 - **Manifest:** kept. It names no client and holds hashes, not footage.
 
 Until the client confirms, RP keeps everything. A package the client never confirms is chased, not deleted.
