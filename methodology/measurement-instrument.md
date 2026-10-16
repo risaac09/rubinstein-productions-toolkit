@@ -1,4 +1,4 @@
-> **Status:** draft. The item wording is quoted from the [Measurement Framework](measurement-framework.md) and the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) and is not changed here. The response file, the scoring procedure and the script are a first working version. Every place the canonical text does not settle a question is marked "draft: needs Isaac" and listed in section 8. This file is owned by this repo; the two documents it quotes are owned by the private corpus (see [TRUTH-OWNERSHIP](../docs/TRUTH-OWNERSHIP.md)), so if the wording below and theirs differ, theirs is right.
+> **Status:** draft. The item wording is quoted from the [Measurement Framework](measurement-framework.md) and the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) and is not changed here. The open points were decided 2026-10-16, and the instrument is a first working version until it has run on an engagement. This file is owned by this repo; the two documents it quotes are owned by the private corpus (see [TRUTH-OWNERSHIP](../docs/TRUTH-OWNERSHIP.md)), so if the wording below and theirs differ, theirs is right.
 
 # Measurement Instrument
 
@@ -15,12 +15,12 @@ The Measurement Framework names the questions a client is asked. This file turns
 
 | Part | Source | Status |
 |---|---|---|
-| Seven Likert statements, 1 to 5 | Framework section 1, "Client Satisfaction Scores" | Wording canonical. Anchors and schedule are not stated. |
-| NPS question, 0 to 10 | Framework section 1 | Wording and scale canonical. Calculation is not stated. |
-| Five assessment points | Framework section 1 | Canonical. Which items go at which point is not stated. |
-| Three Consistency Questions, 1 to 10 | Framework section 2 and Codebook, "Consistency Scoring Protocol" | Wording and bands canonical. Aggregation is not stated. |
-| Stakeholder groups | Codebook, cross-stakeholder table | Five names canonical. No definitions. |
-| Response file, procedure, script | This file | Draft. |
+| Seven Likert statements, 1 to 5 | Framework section 1, "Client Satisfaction Scores" | Wording canonical. Anchors and schedule decided 2026-10-16. |
+| NPS question, 0 to 10 | Framework section 1 | Wording and scale canonical. Calculation decided 2026-10-16. |
+| Five assessment points | Framework section 1 | Canonical. Which items go at which point decided 2026-10-16. |
+| Three Consistency Questions, 1 to 10 | Framework section 2 and Codebook, "Consistency Scoring Protocol" | Wording and bands canonical. Aggregation decided 2026-10-16. |
+| Stakeholder groups | Codebook, cross-stakeholder table | Five names canonical. A founder counts as `leadership` (2026-10-16). |
+| Response file, procedure, script | This file | First working version. |
 
 ## 2. The items
 
@@ -36,7 +36,7 @@ Items are quoted exactly. The label in parentheses is the framework's own name f
 6. "This was collaborative, not extractive" (Co-Creation Quality)
 7. "We're proud to share this publicly" (Representative Pride)
 
-Draft: needs Isaac. The framework says "Likert 1-5" and gives no labels for the points. A form must show something at each end. Until he sets the anchors, a form should show the bare numbers 1 to 5 and say only that a higher number means more agreement, which is what a Likert item is. Any wording for the endpoints, such as "strongly disagree", would be an invention.
+**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The framework says "Likert 1-5" and gives no labels; this line sets them, and the corpus copy of the framework should gain the same line.
 
 ### 2.2 Net Promoter question, rated 0 to 10
 
@@ -62,9 +62,19 @@ The framework collects satisfaction scores at five points. These are the values 
 | `followup-2wk` | 2-Week Follow-up |
 | `followup-3mo` | 3-Month Follow-up |
 
-Draft: needs Isaac. The framework does not say which items are asked at which point. Some are plainly unanswerable early (nobody can rate whether the facilitation honored their experience before it has begun), and the benchmark "Mid-Process Safety Scores" implies that item 4 is asked at the mid-point. The codebook says the consistency questions are "for use in follow-up assessments", while the framework's dashboard table says "pre/post surveys". The response file therefore allows any item to be blank at any point, and the example uses one reading: Likert and NPS at delivery, NPS and consistency at the 3-month follow-up.
+**Items per point (decided 2026-10-16).** The framework does not say which items are asked at which point, and some are plainly unanswerable early: nobody can rate whether the facilitation honored their experience before it has begun. The schedule is:
 
-Draft: needs Isaac. Framework section 6 lists five more Likert dimensions for the 2-week conversation: Narrative Accuracy, Functional Utility, Representative Pride, Future Willingness and Stakeholder Clarity. It gives names and no statements, so they are not in the response file. Representative Pride appears in both lists; the statement in 2.1 is the only text the canon provides for it.
+| Assessment point | Items asked |
+|---|---|
+| `pre-engagement` | The three consistency questions |
+| `mid-point` | Likert item 4 (Safety in Vulnerability) |
+| `delivery` | The seven Likert items and NPS |
+| `followup-2wk` | None |
+| `followup-3mo` | The three consistency questions and NPS |
+
+Asking consistency before and after gives the dashboard a delta. The response file still allows any item to be blank at any point. The example file holds two of the five points, `delivery` and `followup-3mo`, and follows this schedule for both.
+
+Framework section 6 lists five more Likert dimensions for the 2-week conversation: Narrative Accuracy, Functional Utility, Representative Pride, Future Willingness and Stakeholder Clarity. It gives names and no statements, so they stay out of the response file until the corpus canonical gives the statements (decided 2026-10-16); the corpus owns that wording. Representative Pride appears in both lists; the statement in 2.1 is the only text the canon provides for it.
 
 ### 2.5 A plain-text form
 
@@ -94,7 +104,7 @@ One CSV file, one row per respondent per assessment point. The header row is fix
 |---|---|---|
 | `engagement_id` | text | Letters, digits, `-` and `_`. Matches the engagement record in [measurement-framework.md](measurement-framework.md) section 4. |
 | `respondent_id` | text | A code, never a name. Same character rule. The key from code to person is kept apart from this file. |
-| `stakeholder_group` | text | Lowercase letters, digits and `-`. The codebook's five are `leadership`, `staff`, `board`, `beneficiaries`, `funders`. Other values are accepted and sorted after those. `all` is reserved. |
+| `stakeholder_group` | text | Lowercase letters, digits and `-`. The codebook's five are `leadership`, `staff`, `board`, `beneficiaries`, `funders`. A founder counts as `leadership`. Other values are accepted and sorted after those. `all` is reserved. |
 | `assessment_point` | enum | One of the five values in 2.4. |
 | `response_date` | date | `YYYY-MM-DD`. |
 | `narrative_clarity` | integer 1 to 5, or blank | Item 1 of 2.1. |
@@ -121,7 +131,7 @@ Run these steps in order on the rows that remain after the file passes validatio
 
 **NPS, net.** On the same values, count promoters (9 or 10), passives (7 or 8) and detractors (0 to 6). The net score is 100 times (promoters minus detractors) divided by the number of values, shown to one decimal; it runs from -100 to 100.
 
-Draft: needs Isaac. The framework states the 0 to 10 scale and not the method. The mean is what its benchmark uses; the net score is the standard definition of an NPS, and the cut points above are that standard's. The script prints both. Which one the Bilingual Dashboard headlines is his decision.
+**Headline (decided 2026-10-16).** The mean is the headline NPS, with the net score shown beside it. The framework states the 0 to 10 scale and not the method; the mean is what its benchmark uses, and the net score is the standard definition of an NPS, whose cut points are the ones above. The script prints both.
 
 **Consistency, per respondent.** For each row with all three consistency values, the respondent's consistency average is `(q1 + q2 + q3) / 3`.
 
@@ -129,9 +139,9 @@ Draft: needs Isaac. The framework states the 0 to 10 scale and not the method. T
 
 **Consistency, band.** Read each `avg` against the codebook's bands without rounding it first: 9 or more is exceptional, 7 up to 9 is strong, 5 up to 7 is moderate, 3 up to 5 is low, below 3 is incoherent. The canonical bands are the integer ranges 9-10, 7-8, 5-6, 3-4 and 1-2 and do not say where an average of 8.4 falls; reading each band as starting at its lower number is the choice made here.
 
-**Consistency, spread.** For each assessment point, spread is the highest group `avg` minus the lowest. The framework says high variance between groups "indicates consistency failure at intersections" and sets no threshold, so the script reports the spread and does not call it high or low.
+**Consistency, spread.** For each assessment point, spread is the highest group `avg` minus the lowest. The framework says high variance between groups "indicates consistency failure at intersections" and sets no threshold, and none is set here, so the script reports the spread and does not call it high or low.
 
-Draft: needs Isaac. The band edges, the equal weight per respondent, and the use of spread in place of a variance are mine. The first one changes the label a borderline score gets.
+**Decided 2026-10-16.** The band edges, the equal weight per respondent and the use of spread in place of a variance stand as written. There is no spread threshold until three engagements give data to set one.
 
 ## 5. Running it
 
@@ -190,14 +200,3 @@ For `all`, q1 is (8 + 9 + 6 + 5 + 7 + 9) / 6 = 7.33, and `avg` is (7.67 + 8.33 +
 ## 7. Using it on a real engagement
 
 Copy the header row from the example into a new file kept with the engagement's other records, add rows, and run the script. Keep real responses out of any public repository. The example's engagement `demo-001` and its respondent codes are placeholders and carry no information about any client.
-
-## 8. Open points
-
-Draft: needs Isaac, in one place:
-
-1. The wording for the ends of the 1 to 5 scale (2.1).
-2. Which items go at which of the five assessment points, and whether consistency is asked before delivery (2.4).
-3. The statements behind the five Likert dimensions named in framework section 6 (2.4).
-4. Whether the mean or the net score is the headline NPS (section 4).
-5. The band edges for averages between whole numbers, the weighting of groups, and whether spread needs a threshold (section 4).
-6. Definitions for the five stakeholder groups, and whether a founder or other single respondent belongs in one of them (section 3).
