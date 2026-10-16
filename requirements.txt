@@ -2,8 +2,7 @@
 # the packages for the Python 3.9 column; CI does exactly that (.github/workflows/ci.yml).
 #
 # Interpreter per tool
-#   cli/rp-*, scripts/*.sh, tools/vertcut/vertcut   bash 3.2+ and coreutils. No Python except
-#                                                   cli/rp-draft (python3, any version).
+#   scripts/*.sh, tools/vertcut/vertcut             bash 3.2+ and coreutils.
 #   production/resolve_mcp.py (Resolve MCP server)  /usr/bin/python3 (Xcode's 3.9). Stdlib only.
 #   production/rpresolve/, resolve_workflow.py      3.9. numpy for measure, sync, color, trim review.
 #   production/lutlab/                              3.9. numpy, scipy, Pillow, OpenCV.

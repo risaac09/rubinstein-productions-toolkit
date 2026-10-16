@@ -28,7 +28,7 @@ Read the [RP Measurement Framework](../../methodology/measurement-framework.md) 
 
 ## The grant pipeline
 
-`rp-grant` tracks funders as markdown files with YAML frontmatter: `add` for intake, `list` by status, `deadlines` sorted by date, `update` and `log` as the relationship moves. Statuses run research, loi-prep, submitted, reviewed, awarded or declined. Run `rp-grant --help` for the full command set, and see the [Funder template](../../templates/funder-template.md) for the fields.
+Funders are tracked as contacts with a status that runs research, loi-prep, submitted, reviewed, awarded or declined, and a deadline per application. This repo ships no tracker for it: the command-line tool that did was retired on 2026-10-16, and it is in git history. Keep the funder record in the one contact store you already use, and see [`TRUTH-OWNERSHIP.md`](../TRUTH-OWNERSHIP.md) for how this practice splits the record from the methodology.
 
 ## First working session
 
