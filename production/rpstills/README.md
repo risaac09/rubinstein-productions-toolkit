@@ -5,15 +5,16 @@ Nothing here decodes a RAW file or talks to DaVinci Resolve; the grade and
 the render stay in Resolve through the `rpresolve` tools. Plan of record:
 corpus note "2026-10-06 Stills production pipeline plan".
 
-Runs on macOS's `/usr/bin/python3` (Pillow, imagehash, numpy and OpenCV
-live there). Faces and whole-body person boxes come from macOS Vision through
+Runs on the venv at `~/.venvs/rp-tools` (Homebrew Python 3.14 with Pillow,
+imagehash, numpy and OpenCV from `requirements.txt`; see the lutlab README for
+the one-line setup). Faces and whole-body person boxes come from macOS Vision through
 `vision_stills.swift`, compiled once into `~/Library/Caches/rpstills` by
 `vision.py`; without `swiftc` the index still runs with empty faces, and a run
 is then ranked by the frame alone (see "Frames with no face" below).
 
 ```bash
 cd production
-/usr/bin/python3 -m rpstills run <shoot folder> <out dir> --session <name>
+~/.venvs/rp-tools/bin/python -m rpstills run <shoot folder> <out dir> --session <name>
 ```
 
 `<out dir>` must sit outside any git repository (the Work volume's `Active`
@@ -89,7 +90,7 @@ writes `crops.json` and `crops-preview.jpg`: a crop per standard profile in
 frame. Flags per crop: `tight` (the frame could not hold the wanted crop),
 `face_cut` (a counted face is not fully inside) and `upscale` (fewer pixels
 than the profile's output size). Run it with
-`/usr/bin/python3 -m rpstills crops <out dir>`.
+`~/.venvs/rp-tools/bin/python -m rpstills crops <out dir>`.
 
 Every stage can be rerun on its own (`index`, `cluster`, `cull`, `review`)
 and every output is additive; no frame is moved, renamed or deleted. A
@@ -104,7 +105,7 @@ and `frames.py` and are reported in each output file's `params`.
 The sheet never names a person. The name field is Isaac's, from the
 roster, and it travels into `selects.json` for the delivery file names.
 
-Tests: `/usr/bin/python3 production/tests/test_rpstills_pure.py` and
+Tests: `~/.venvs/rp-tools/bin/python production/tests/test_rpstills_pure.py` and
 `production/tests/test_rpstills_nonface.py` (synthetic images and a fake
 Vision; no real media, no network).
 

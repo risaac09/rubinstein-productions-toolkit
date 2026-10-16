@@ -2,7 +2,7 @@
 Offline tests for rpstills.cluster and rpstills.cull: the pure logic over
 an index, with no images, Vision or NAS. stdlib unittest only.
 
-Run: /usr/bin/python3 production/tests/test_rpstills_pure.py
+Run: ~/.venvs/rp-tools/bin/python production/tests/test_rpstills_pure.py
 """
 
 import sys

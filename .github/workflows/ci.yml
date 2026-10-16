@@ -190,8 +190,8 @@ jobs:
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
 
-  # The full production suite: every module in production/tests, on the same Python 3.9 the Mac
-  # ships with Xcode, with the image and numeric packages that lutlab, rpstills,
+  # The full production suite: every module in production/tests, on the Homebrew Python 3.14
+  # the Mac's tool venv uses (~/.venvs/rp-tools), with the image and numeric packages that lutlab, rpstills,
   # measure, sync, trim review and vertcut import (requirements.txt). The job
   # above stays stdlib-only on purpose, so a stdlib regression still fails
   # there. Without the packages 85 tests skip themselves and three modules
@@ -206,7 +206,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.14"
       - name: Install the pinned packages
         run: python -m pip install -r requirements.txt
       # ubuntu-latest does not carry ffmpeg; the apt build has libx264, libx265
@@ -248,7 +248,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.14"
       - name: Install the pinned markdown
         run: python -m pip install "$(grep -E '^markdown==' requirements.txt)"
       - name: Build the site into a temp directory

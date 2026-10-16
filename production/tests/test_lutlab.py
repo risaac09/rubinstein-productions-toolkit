@@ -1,10 +1,10 @@
 """
 Offline tests for lutlab: colour maths, .cube and Hald I/O, the look model,
 decompose and build round trips on synthetic LUTs, and the output guard.
-No licensed LUTs, no images. stdlib unittest; numpy/scipy/OpenCV from macOS's
-/usr/bin/python3.
+No licensed LUTs, no images. stdlib unittest; numpy/scipy/OpenCV from the
+~/.venvs/rp-tools venv.
 
-Run: /usr/bin/python3 production/tests/test_lutlab.py
+Run: ~/.venvs/rp-tools/bin/python production/tests/test_lutlab.py
 """
 
 import json
