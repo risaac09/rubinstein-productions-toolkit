@@ -318,7 +318,10 @@ choose the file.
   21.1.1.10 (the 21.1 README marks `SetSetting` deprecated for
   `SetSettings`), and how `AppendToTimeline` with no `recordFrame` places a
   conformed clip. Both tools read everything back and refuse to call a
-  mismatch a success. What a live dry run did confirm (2026-10-08, read
+  mismatch a success. Whether the timeline and output colour spaces and the
+  tone and gamut mapping can be set through the API is a separate open
+  question, with a run plan in
+  [spikes/colour-space-api-spike.md](spikes/colour-space-api-spike.md). What a live dry run did confirm (2026-10-08, read
   only): both plans read a real project's bins and clips; GH7 and S5II
   plans matched the timelines made by hand frame for frame (3030 and 3135);
   Resolve truncates a conformed clip's length (35 PYXIS clips at 30 fps on a
