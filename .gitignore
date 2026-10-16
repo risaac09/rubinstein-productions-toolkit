@@ -30,6 +30,7 @@ tools/video-editor/
 
 # camera media staged here by mistake; never commit
 DCIM/
+production/lutlab/braw/braw2ppm
 
 # Local caption style for vertcut (brand colours and face); the repo is public
 tools/vertcut/captions.local.json

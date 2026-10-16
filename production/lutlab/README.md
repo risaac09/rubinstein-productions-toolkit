@@ -125,10 +125,10 @@ input colour space to set.
 It needs Project Settings, Color Management to read: timeline colour space
 DaVinci WG/Intermediate, output colour space Rec.709 Gamma 2.4, tone mapping
 and gamut mapping None. A fresh Color Managed project does not start there:
-its timeline and output are both Rec.709 (Scene), so change them first
-(Animist Folk Fest 2026-10 is set up this way). Leave tone mapping off: it
-would compress the picture a second time. Do not put a Rec.709-out camera LUT
-in such a project; see the alternative below.
+its timeline and output are both Rec.709 (Scene), so change them first in
+each project. Leave tone mapping off: it would compress the picture a second
+time. Do not put a Rec.709-out camera LUT in such a project; see the
+alternative below.
 
 Measured, on an S5II V-Log clip with RCM Print Teal and Neutral:
 - Bake size: against the camera LUT on natural colours (print-teal, ARRI
@@ -176,6 +176,12 @@ the LUT, and compared with the render over the interior (`--margin`, default
 models. The source must be in the LUT's input encoding, so for Pyxis render a
 Gen 5 frame or clip out of Resolve first. `--render-t` covers a render that
 starts at a different time than the source.
+
+**BRAW stills without Resolve.** `lutlab frames CLIP.braw --t 3` decodes a Blackmagic RAW
+frame as Film Gen 5 / Wide Gamut through `lutlab/braw/braw2ppm`, a small helper built from the
+Blackmagic RAW SDK (`sh lutlab/braw/build.sh`; the binary stays out of git, and `LUTLAB_BRAW2PPM`
+points at another build). Checked against Resolve's Gen 5 render of the same frame: median Delta E
+0.3 once both are blurred, so colour agrees and only resampling differs.
 
 **Tuning the looks on footage.** The loop, with a new output folder each
 round because Resolve caches a LUT by path:
