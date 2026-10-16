@@ -33,8 +33,10 @@ cmd_transcribe() {
   [ -f "$src" ] || die "no such file: $src"
 
   local mw
-  mw="$(command -v mlx_whisper || echo "$HOME/Library/Python/3.9/bin/mlx_whisper")"
-  [ -x "$mw" ] || die "mlx_whisper not found (pip3 install --user mlx-whisper)"
+  mw="${VERTCUT_MLX_WHISPER:-$HOME/.venvs/rp-tools/bin/mlx_whisper}"
+  [ -x "$mw" ] || die "mlx_whisper not found at $mw (install it into the venv:
+  ~/.venvs/rp-tools/bin/python -m pip install -c requirements.txt mlx-whisper==0.4.3,
+  or set VERTCUT_MLX_WHISPER)"
   need ffmpeg
 
   local base; base="$(basename "${src%.*}")"
