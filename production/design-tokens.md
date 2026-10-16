@@ -22,7 +22,11 @@ No build step resolves the names yet. Until one does, a person reads each value 
 
 ## Lower-third geometry
 
-The lower third is built in `tools/video-editor/motion/src/LowerThird.tsx` (Remotion, 1920 by 1080). Geometry is stated as a fraction of frame width for horizontal measures and of frame height for vertical ones, with the 1080p pixel value beside it. A render at another frame size scales the fractions, not the pixels.
+The lower third is built in `tools/video-editor/motion/src/LowerThird.tsx` (Remotion). It has three compositions: landscape at 3840 by 2160, portrait at 2160 by 3840 and square at 2160 by 2160, each at 24000/1001 fps (23.976). Width, height and fps are props, so another size renders from the same fractions.
+
+### Landscape
+
+Horizontal measures are a fraction of frame width and vertical ones a fraction of frame height. The 1080p pixel value sits beside each, as the numbers were first set at 1920 by 1080; at UHD every pixel value doubles.
 
 | Element | Measure | Fraction | At 1920 by 1080 | Token |
 |---|---|---|---|---|
@@ -35,13 +39,50 @@ The lower third is built in `tools/video-editor/motion/src/LowerThird.tsx` (Remo
 | Panel | Vertical padding | 1.48% of height | 16 px | `color.marrow` at 88% opacity |
 | Panel | Corner radius | 0.37% of height | 4 px | none |
 | Title line | Size | 3.89% of height | 42 px, bold, line height 1.1 | `type.display`, `color.text-on-dark` |
-| Subtitle line | Size | 2.22% of height | 24 px, regular, 4 px above | `type.body`, `color.text-on-dark` |
+| Subtitle line | Size | 2.22% of height | 24 px, regular, 1/6 of its size above | `type.body`, `color.text-on-dark` |
 
-The bar and the panel sit on one row, centred on each other. The bar is a fixed 90 px tall and the panel grows around its text.
+The bar and the panel sit on one row, centred on each other. The panel grows around its text.
 
-Motion: the block slides 80 px in from the left over 20 frames, holds for 60, and slides 80 px back out over 15 frames, 95 frames in all, while fading and while the bar scales on its vertical axis from the bottom. Those numbers are the file's defaults, not a standard of their own.
+### Portrait and square
+
+In a narrow frame a measure taken from the height would be far too large across the width, so every measure except the bottom offset is a fraction of frame width. Portrait and square share one set of fractions. The pixel values are for a frame 2160 wide.
+
+| Element | Measure | Fraction | At 2160 wide | Token |
+|---|---|---|---|---|
+| Block | Left offset | 1/18 of width (5.56%) | 120 px | none |
+| Block | Bottom offset | 26% of height | 998 px portrait, 562 px square | none |
+| Accent bar | Width | 0.4% of width | 9 px | `color.amber` |
+| Accent bar | Height | 7% of width | 151 px | `color.amber` |
+| Accent bar | Gap to the panel | 1.6% of width | 35 px | none |
+| Panel | Horizontal padding | 2.5% of width | 54 px | `color.marrow` at 88% opacity |
+| Panel | Vertical padding | 1.2% of width | 26 px | `color.marrow` at 88% opacity |
+| Panel | Corner radius | 0.3% of width | 6 px | none |
+| Title line | Size | 4.4% of width | 95 px, bold, line height 1.1 | `type.display`, `color.text-on-dark` |
+| Subtitle line | Size | 2.6% of width | 56 px, regular | `type.body`, `color.text-on-dark` |
+| Slide-in distance | Travel | 5% of width | 108 px | none |
+
+**Why the bottom offset is 26%.** vertcut puts the bottom edge of the caption bar at y 1680 of 1920, which is 12.5% of the height up from the bottom. A two-line cue at the default 66 px Arial Bold is 202 px tall (measured with Pillow, using vertcut's own height formula), so the bar spans from 23% to 12.5% of the height up from the bottom. The lower third's bottom edge at 26% clears that by 3% of the height. A different caption font changes the bar height, so recheck this if `type.caption` resolves to a taller face. vertcut makes portrait captions only; no repo file places a square caption, so the square frame takes the same 26% by analogy and has not been checked against a real square caption.
+
+The portrait and square fractions were chosen for this table, not derived from a brand source. They have not been checked on a phone screen.
+
+### Motion
+
+The block slides in from the left over 2/3 of a second, holds for 2 seconds and slides back out over 1/2 second, while fading and while the bar scales on its vertical axis from the bottom. That is 76 frames at 23.976. The timing is in seconds so the motion lasts the same at another frame rate. These numbers are the file's defaults, not a standard of their own.
 
 **The file does not use the tokens yet.** `LowerThird.tsx` carries literal colours and a system sans-serif for both lines. Wiring it to the token names is an open follow-up: the geometry above is already the standard, the colour and type are not.
+
+## Intro layout (`say-why-intro`)
+
+The Resolve spec lists a branded intro as `say-why-intro-4k.png`. No image ships in this repo, since the file is a brand asset. This is the layout a person or a script builds it from, at 3840 by 2160. All measures are fractions, so any 16:9 size follows.
+
+| Element | Rule | Fraction | Token |
+|---|---|---|---|
+| Ground | Fills the frame | all | `color.marrow` |
+| Wording | The words "Say Why", centred horizontally, one line | Cap height 9% of frame height; the line's visual centre at 46% of the height down | `type.display`, `color.bone` |
+| Accent line | A horizontal rule centred under the wording | Width 1/6 of frame width, thickness 0.4% of height, top edge 5% of height below the wording's baseline | `color.amber` |
+| Margins | Nothing else on the frame | none | none |
+
+The values in this table were drafted from the Resolve spec's description (a Marrow ground, the wording in Bone, an Amber accent line). The spec gives no sizes, so the fractions are a proposal until someone builds the image and looks at it.
 
 ## Caption standard
 
@@ -50,7 +91,7 @@ One caption style for every deliverable, taken from the Resolve spec's Subtitles
 - Text in `color.text-on-dark`, set in `type.caption`.
 - On a semi-transparent bar in `color.marrow`. The spec says "semi-transparent" and states no opacity; the number is open (see below).
 - Lower third of the frame, in the same place on every caption of a piece.
-- Two lines at most.
+- Two lines at most for portrait and square, one line for landscape, as the table below sets.
 - Line length by frame shape, as `create_captions` sets it from `deliver.captions` in `production/resolve-config.json`:
 
 | Shape | Characters per line | Lines |
