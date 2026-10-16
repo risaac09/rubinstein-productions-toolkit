@@ -50,7 +50,7 @@ One caption style for every deliverable, taken from the Resolve spec's Subtitles
 - Text in `color.text-on-dark`, set in `type.caption`.
 - On a semi-transparent bar in `color.marrow`. The spec says "semi-transparent" and states no opacity; the number is open (see below).
 - Lower third of the frame, in the same place on every caption of a piece.
-- Two lines at most.
+- Two lines at most for portrait and square, one line for landscape, as the table below sets.
 - Line length by frame shape, as `create_captions` sets it from `deliver.captions` in `production/resolve-config.json`:
 
 | Shape | Characters per line | Lines |
