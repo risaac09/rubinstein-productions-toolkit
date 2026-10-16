@@ -13,6 +13,14 @@ This case study is the researcher register of the foundational unit (`stack-data
 
 ---
 
+## Consent evidence
+
+**Consent evidence:** Tier ___ / evidence id ___ *(required; see [Consent Evidence](../production/consent-evidence.md))*
+
+A case study with no tier 3 evidence id is not published. The id points to the signed release in the private engagement record. Never paste the release, a name from it, or its contents here.
+
+---
+
 ## Case Study Metadata
 
 | Field | Value |
