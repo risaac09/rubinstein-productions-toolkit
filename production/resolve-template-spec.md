@@ -68,6 +68,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 ### Dated open points
 
 - **The Low Contrast PowerGrade (open, 2026-10-16).** It was built for the old chain, where it saw Rec.709 after the node-1 LUT. In the managed pipeline its node sees DaVinci Intermediate, so it is not part of the pipeline of record until someone rebuilds it in the timeline space or checks it there. Until then the `[RCM]` looks are the shared look.
+- **The camera map in `resolve-config.json` (open, 2026-10-16).** It lists the iPhone, GH7 and GH5 only, with bins and clip colours from the retired commands, and no code reads it now. Add the S5II and Pyxis or remove the map; until then this table is the camera list.
 - **GH5 against GH7 (open, 2026-10-16).** No base correction for the GH5 until a side-by-side of both cameras on one scene, through this pipeline, shows a need. That test closes it either way.
 
 ---
@@ -98,6 +99,8 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
    📁 iPhone
    📁 GH7
    📁 GH5
+   📁 S5II
+   📁 Pyxis
    📁 Audio (external)
 📁 Selects
 📁 Timeline
@@ -106,7 +109,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 📁 Exports
 ```
 
-Separate source bins by camera so you can batch-apply the correct source conversion node.
+Separate source bins by camera so footage is easy to find and match. Conversion needs no bin: it follows each clip's Input Color Space (see Colour Pipeline of Record).
 The MCP `ingest` tool makes the camera bins and a Review bin under `Source`; it does not
 create the other bins, which are made by hand.
 
@@ -115,12 +118,12 @@ create the other bins, which are made by hand.
 ## Workflow
 
 1. Import media → Source bins (separated by camera)
-2. Tag clips by camera source
+2. Input Color Space tagged per clip by `ingest` (a Review clip is tagged by hand)
 3. Pull selects
 4. Build timeline
-5. Apply camera-specific source conversion (Node 1) — batch per camera bin
-6. Apply Low Contrast PowerGrade (Node 2) — all clips
-7. Manual creative grade (Node 3) — per clip, match across cameras
+5. Balance (Node 1), per clip, matching across cameras
+6. Apply the look (Node 2), one `[RCM]` look on every clip
+7. Manual creative grade (Node 3), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
 10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing is queued before the record exists
@@ -164,7 +167,7 @@ differently.
 Two other hard API limits worth knowing before you file a bug against the
 tools:
 - **No node creation.** `apply_grade` with `lut.node` 2 (this spec's Node 2,
-  the Low Contrast PowerGrade) only works if that node already exists on the
+  the look) only works if that node already exists on the
   clip: add it in the Color page first. The scripting API cannot create
   color-page nodes.
 - **Vertical needs a timeline of its own.** Queueing never reframes. A
