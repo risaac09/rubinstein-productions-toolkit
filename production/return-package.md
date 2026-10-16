@@ -39,7 +39,7 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
   manifest.md
 ```
 
-Card folders are named `YYYYMMDD_<CAM>_<card>` under the capture standard in `production/capture-standard.md`: the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
+Card folders are named `YYYYMMDD_<CAM>_<card>` under the [capture standard](capture-standard.md): the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
 
 `02_finals/` keeps the destination subfolders the render queue wrote, so the file names stay under the house rule from the [Deliver section](resolve-template-spec.md#file-names). `03_captions/` holds a copy of each sidecar `.srt`; the originals also stay beside their videos in `02_finals/`, and the manifest lists both.
 
@@ -95,7 +95,7 @@ RP records the date of that reply. It starts the retention clock below.
 ## What RP keeps afterward
 
 - **Originals:** RP deletes its copy 90 days after the client confirms the checksums. The date of confirmation and the date of deletion go in the engagement record.
-- **Finals:** RP keeps them only where the client has granted consent tier 3, defined in section 8 of the [measurement framework](../methodology/measurement-framework.md). The evidence that a client granted it is `production/consent-evidence.md`. Without tier 3 evidence, RP deletes its copy of the finals on the same 90-day clock.
+- **Finals:** RP keeps them only where the client has granted consent tier 3, defined in section 8 of the [measurement framework](../methodology/measurement-framework.md). The evidence that a client granted it is set out in [consent evidence](consent-evidence.md). Without tier 3 evidence, RP deletes its copy of the finals on the same 90-day clock.
 - **Manifest:** kept. It names no client and holds hashes, not footage.
 
 Until the client confirms, RP keeps everything. A package the client never confirms is chased, not deleted.

@@ -4,7 +4,7 @@
 
 A manifest is the list of what was delivered for one piece of work: every file, what it is, where it went and which approval it carries. It is written once, after the [final-approval gate](resolve-template-spec.md#the-final-approval-gate) and after the last `deliver_check` passes, and it travels with the delivery. A client who opens it should be able to confirm that each file is the one that was approved, and an auditor six months on should be able to tell the same.
 
-The manifest covers produced deliverables. It does not cover the return of raw footage and data to the client; that return is set out in `production/return-package.md`.
+The manifest covers produced deliverables. It does not cover the return of raw footage and data to the client; that return is set out in the [return package](return-package.md).
 
 ## File and folder names
 
