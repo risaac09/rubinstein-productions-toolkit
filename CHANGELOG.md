@@ -4,7 +4,7 @@ What changed in this repo, newest first. Each entry carries the pull request whe
 
 ## Versions
 
-Versions are `vMAJOR.MINOR.PATCH`. MINOR goes up for a new document or tool. PATCH goes up for fixes and wording. While the major number is 0, shapes may still move.
+Versions are `vMAJOR.MINOR.PATCH`. MINOR goes up for a new document or tool. PATCH goes up for fixes and wording. A removed or changed tool also raises MINOR while the major number is 0, and MAJOR after 1.0. While the major number is 0, shapes may still move.
 
 The first tag will be `v0.1.0`, the state after the open Amendment 2 pull requests merge. Until that tag exists, consumers who need a fixed state pin a commit. The maintainer creates each tag after merge; a pull request never does.
 
@@ -14,7 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
-- Added the version scheme and this changelog shape (Amendment 2, item 8). The Resolve spec's footer now says "Document revision" so it is not mistaken for the repository's version. ROADMAP item 12 records that the `cli-final` tag exists.
+- Added the version scheme and this changelog shape (Amendment 2, item 8). The Resolve spec's footer now says "Document revision" so it is not mistaken for the repository's version. ROADMAP item 12 records that the `cli-final` tag exists. (#148)
 
 ### 2026-10-16
 
