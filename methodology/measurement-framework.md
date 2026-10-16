@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/RP Measurement Framework.md` in vault, last synced 2026-10-08. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot. Renamed from `enif.md` in July 2026 to match the framework's current name. For qualitative coding, the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) is canonical; Section 3 here is a pointer to it, and the vault canonical carries the same cut as of 2026-09-07. **Status:** operational.
+> **Canonical source:** `00 Canonical/RP Measurement Framework.md` in vault, last synced 2026-10-16. This file replaces the original 780-line ENIF with the April 2026 consolidated operational version (aspirational AI/agent-based material cut; revisit at 25+ client engagements). Edit vault file; this is a snapshot. Renamed from `enif.md` in July 2026 to match the framework's current name. For qualitative coding, the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) is canonical; Section 3 here is a pointer to it, and the vault canonical carries the same cut as of 2026-09-07. **Status:** operational.
 
 # Rubinstein Productions - Measurement Framework
 *The Bilingual Dashboard: Tracking what counts and what emerges*
@@ -50,6 +50,8 @@ Collected at five assessment points: Pre-Engagement, Mid-Point, Delivery, 2-Week
 - "We're proud to share this publicly" (Representative Pride)
 
 **Net Promoter Score (0-10):** "How likely are you to recommend this process to similar organizations?"
+
+The items as a runnable instrument, with a response file, scoring procedure and worked example, are in the [Measurement Instrument](measurement-instrument.md).
 
 ---
 
@@ -126,26 +128,61 @@ synthesis narrative. Findings land in the case study template and the client rec
 
 ## 4. Implementation Architecture
 
-### Data Collection
+*Rewritten 2026-10-16. The earlier version specified a hosted database that was never built. This one describes what exists and marks what does not.*
 
-| Tool | Purpose |
+### Principle: records are plain files
+
+Engagement records, session records and survey responses are plain text files in a version-controlled folder: JSON for records, CSV for responses, Markdown for synthesis. Nothing requires a hosted database. Backing up is committing. The safeguards in Section 8 become mechanical: a client's raw data is a set of files that can be handed over, corrected or deleted, and the history shows what changed.
+
+### What is captured
+
+Three levels, from the engagement down to the person answering.
+
+**Engagement** (one per client project). In the author's practice this is an entry in a JSON file of projects, checked against a JSON Schema by a validation script. The names below are written in snake_case; the author's file spells them in camelCase, and calls `service_type` simply `service`. Fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `engagement_id` | text | Stable, never reused. |
+| `service_type` | enum | `founder-story`, `program-engagement` or `org-embedding`. |
+| `status` | enum | `pipeline`, `active`, `delivered`, `complete` or `cancelled`. |
+| `start_date`, `delivery_date` | date or null | ISO 8601. |
+| `hours_logged` | number | Feeds the effective-rate figure in Section 9. |
+| `referral_source`, `industry` | text | Specified here; not yet fields in the author's file. |
+| `consent_tier` | 1, 2 or 3 | The tier chosen in Section 8. Specified here; not yet a field in the author's file. |
+| `deliverables` | list | Each has an id, a type (`session`, `narrative-synthesis`, `video`, `dashboard`, `review` and so on), a status and a delivery date. |
+
+Money fields (contract value, effective hourly rate, monthly revenue, conversion rate) are not part of the engagement record. They live in the books and link to the engagement by `engagement_id`. Register 1's financial metrics are computed from there.
+
+**Session** (one per recorded conversation). A deliverable of type `session` on the engagement, plus a transcript file.
+
+| Field | Type | Notes |
+|---|---|---|
+| `session_id` | text | |
+| `engagement_id` | text | |
+| `date`, `duration_minutes` | date, integer | |
+| `recording_ref`, `transcript_ref` | text or null | Pointers to files kept outside the records. Raw recordings are not stored in the repository. |
+| `codes` | list of text | Code names exactly as the Nomadic Indicators Codebook spells them, with a timestamp for each passage. |
+
+**Response** (one per respondent per assessment point). A row in a CSV file with a fixed header. The columns, allowed values and scoring procedure are in the [Measurement Instrument](measurement-instrument.md), which also ships a worked example and a scoring script. In short: `engagement_id`, `respondent_id` (a code, never a name), `stakeholder_group`, `assessment_point`, `response_date`, seven Likert columns (1 to 5), `nps` (0 to 10) and three consistency columns (1 to 10). Free text such as testimonials goes in a separate file keyed the same way, so the CSV never needs quoting.
+
+**Outcomes and assets.** Two further record shapes support Register 1.
+
+| Record | Fields |
 |---|---|
-| **Airtable** | Primary database: Client Projects (institutional metrics), Conversational Data (coded transcripts), Consistency Scores, Practice Tracking |
-| **Transcription (Otter.ai / Rev)** | All recorded conversations |
-| **Google Forms** | Likert scale distribution and collection |
-| **Obsidian** | Qualitative synthesis, bi-directional linking, pattern recognition |
+| Outcome | `outcome_id`, `engagement_id`, `type` (funding secured, partnership formed, media coverage, team alignment and so on), `value` (number or null), `date`, `verified` (yes/no), `usable_in_marketing` (yes/no; only under consent tier 3). |
+| Asset use | `asset_id`, `engagement_id`, `asset_type`, `delivery_date`, `usage_count`, `usage_contexts` (list), `in_use_at_3mo` (yes/no or null). |
 
-### Airtable Structure
+### What exists and what does not
 
-**Table 1: Client Projects**, Client name, project ID, engagement type (Founder Story / Program Engagement / Organizational Embedding), dates, status, contract value, hours invested, effective hourly rate, referral source, industry
+*As of 2026-10-16.* Built: the engagement and deliverable records, validated in the author's private data repository (every engagement field above except `referral_source`, `industry` and `consent_tier`), and a separate financial record linked to them by id. Specified and shipped as a public format: the response CSV and its scorer. Specified and not built: those three engagement fields, session records with coded passages, outcome records and asset-use records.
 
-**Table 2: Financial Metrics**, Monthly revenue, new/repeat clients, referrals, proposals sent/accepted, conversion rate, average project value, hours worked, effective rate
+### Collection tools
 
-**Table 3: Client Outcomes**, Linked to project, outcome type (funding secured, partnership formed, media coverage, team alignment, etc.), quantified value, date, verified, usable in marketing
+Any transcription service for recorded conversations. Any form tool that exports CSV for the Likert, NPS and consistency items, as long as the exported columns can be renamed to match the response header. A folder of Markdown notes, with links between them, for qualitative synthesis and pattern recognition.
 
-**Table 4: Satisfaction Scores**, Linked to project, assessment point, all Likert ratings, NPS, testimonial
+### Unbuilt alternative: a hosted relational base
 
-**Table 5: Asset Utilization**, Linked to project, asset type, delivery date, usage count, usage contexts, still in use at 3-month check-in
+The first design of this section used Airtable, with one table each for projects, financial metrics, outcomes, satisfaction scores and asset utilization. It was never built. It remains a reasonable choice for a practice that wants a form-and-grid interface or has several people entering data. If adopted, keep the field names above, treat the CSV export as the record of truth for scoring, and keep the Section 8 promises: a client's rows must be exportable and deletable on request.
 
 ### Reporting Cadence
 
@@ -265,4 +302,4 @@ Last Friday of each month. 2-3 hours. Uninterrupted, contemplative space.
 This document supersedes and consolidates:
 - `Emergent Narrative Impact Framework.md` (780-line full framework, aspirational future-state material on AI analysis, agent-based modeling, and certification programs has been cut; revisit when client base reaches 25+ engagements)
 - `Nomadic Indicators Codebook.md` (qualitative coding guide, absorbed into Section 3)
-- `Royal Metrics Dashboard.md` (Airtable structure, absorbed into Section 4)
+- `Royal Metrics Dashboard.md` (Airtable structure; Section 4 was rewritten on 2026-10-16 around plain-file records, and the Airtable design is kept there only as an unbuilt alternative)

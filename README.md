@@ -23,6 +23,7 @@ The intellectual core: how the practice works, why it works, and how to measure 
 
 - **Facilitation Protocol**: Nervous-system aware, co-regulatory interview methodology
 - **Measurement Framework**: The "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence). Formerly ENIF; consolidated April 2026.
+- **Measurement Instrument** (draft): The framework's survey items as a runnable instrument: response CSV, scoring procedure, worked example and a small scoring script in `methodology/instrument/`
 - **Nomadic Indicators Codebook**: Qualitative coding guide for tracking transformation
 - **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
