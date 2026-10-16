@@ -85,7 +85,7 @@ The deployment kit for a DeepSeek Harness agent on the OpenRouter lane: the sess
 One skill, `seed-bed/SKILL.md`: an incubation space for ideas that are not yet a service, tool or practice. It holds an idea without forcing a category and brings it back on a weekly cadence.
 
 ### `requirements.txt`
-Each tool's interpreter and the pinned Python packages, in one file. CI installs from it.
+Each tool's interpreter, the pinned Python packages, and a table of every environment override the tools read, in one file. CI installs from it. The commands that run the tests are under [Testing](#testing).
 
 ### `research/`
 What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc is business strategy with revenue models, so it lives in the private `rp-intranet` repo.)
@@ -146,6 +146,22 @@ New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, produ
 
 ### Prompt Stack
 The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
+
+### Testing
+The production tests run on the system Python 3.9. Install the pinned packages, then run every module in `production/tests` from the repository root, as CI does:
+
+```
+/usr/bin/python3 -m pip install -r requirements.txt
+/usr/bin/python3 -m unittest $(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')
+```
+
+On a Homebrew Mac that is all. Anywhere else, point the tools at your ffmpeg and ffprobe, and skip the one test that compares colour against Homebrew's ffmpeg build:
+
+```
+export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)" LUTLAB_SKIP_RENDER_VERIFY=1
+```
+
+The table at the top of [`requirements.txt`](requirements.txt) lists the other variables. The survey tests need Python 3.14 and skip on 3.9.
 
 ### Methodology
 Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.
