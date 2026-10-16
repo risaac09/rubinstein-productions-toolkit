@@ -28,7 +28,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 **Goal:** Establish relational safety and institutional permission simultaneously.
 
 **What Isaac does:**
-- Facilitated intake using PIPA (Participatory Impact Pathways Analysis) principles
+- Facilitated intake
 - Co-creates a logic model with the client: inputs, activities, outputs, outcomes
 - Maps the project in the language the client's organization already speaks
 - Creates the institutional cover that allows deeper work to proceed
@@ -38,7 +38,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - They can explain to leadership what's happening and why
 - Relational trust begins building through the quality of listening
 
-**Deliverable:** Logic model and project roadmap
+**Deliverable:** Logic model and project roadmap (one-screen outlines in [Deliverable Outlines](deliverable-outlines.md))
 
 **Duration:** 1-2 sessions (Tier 1 stays here; Tiers 2-3 proceed)
 
@@ -52,7 +52,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 **Goal:** Surface the "inside version" — what the client actually knows, believes, and would say in trusted company.
 
 **What Isaac does:**
-- Facilitated conversations using CBSD (Community Based System Dynamics) principles
+- Facilitated conversations
 - Maps the feedback loops that keep honest expression contained
 - Moves from surface (elevator pitch, about page) to depth (what would you say if you knew it would land?)
 - Identifies where the living thing is being filtered into something inert
@@ -62,7 +62,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - The inside version becomes conscious and articulable
 - The structural nature of their communication gap becomes visible (it's the system, not them)
 
-**Deliverable:** Clear narrative direction + map of what's been containing the honest version
+**Deliverable:** Clear narrative direction (the Founder Story document and written synthesis have outlines in [Deliverable Outlines](deliverable-outlines.md)) + map of what's been containing the honest version
 
 **Duration:** 2-3 sessions
 

@@ -12,10 +12,11 @@ The paths overlap on purpose. A facilitated documentary session produces footage
 
 ## Shared foundation
 
-Two documents underlie every path. Read them before or alongside your first session.
+Three documents underlie every path. Read them before or alongside your first session.
 
 1. **[Methodology Blueprint](../../methodology/methodology-blueprint.md)**. The single best orientation to the whole practice: the four phases (Container, Excavation, Performance, Translation), the service tiers, and how the pieces earn their keep.
-2. **[Glossary](../../methodology/glossary.md)**. The term bank, with citations. When a guide says co-regulation, consent loop, or ventral vagal state, this is where the definition lives.
+2. **[Deliverable Outlines](../../methodology/deliverable-outlines.md)**. One-screen outlines (draft) for the logic model, project roadmap, Founder Story document, written synthesis, Impact Evaluation Report and Bilingual Dashboard (Lite).
+3. **[Glossary](../../methodology/glossary.md)**. The term bank, with citations. When a guide says co-regulation, consent loop, or ventral vagal state, this is where the definition lives.
 
 ## Reading conventions
 
