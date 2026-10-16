@@ -49,6 +49,8 @@ Collected at five assessment points: Pre-Engagement, Mid-Point, Delivery, 2-Week
 - "This was collaborative, not extractive" (Co-Creation Quality)
 - "We're proud to share this publicly" (Representative Pride)
 
+Scale anchors (decided 2026-10-16): 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label.
+
 **Net Promoter Score (0-10):** "How likely are you to recommend this process to similar organizations?"
 
 The items as a runnable instrument, with a response file, scoring procedure and worked example, are in the [Measurement Instrument](measurement-instrument.md).
