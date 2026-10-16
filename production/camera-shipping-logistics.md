@@ -1,20 +1,20 @@
 # Camera-Shipping Logistics
 
-> **Status:** draft, 2026-10-16. A first standard written from what the repo already states. Insurance terms, carrier choice and the client's liability are not in the repo, so they appear below as open questions, not as policy. [Needs Isaac](#needs-isaac) lists every default chosen here.
+> **Status:** accepted 2026-10-16, with open parameters. A first standard written from what the repo already states. The timing offsets, spare counts, carrier, insurance and cost of damage or loss are not decided; [Open parameters](#open-parameters) lists them.
 
 The camera-shipping model sends a camera and lens to the client, who films themselves while Isaac facilitates remotely. The [blueprint](../methodology/methodology-blueprint.md) calls this Phase 3 and lists its logistics as missing. This document is the logistics standard: the shipment lifecycle, the kit, the return, insurance, and what happens when something breaks or goes missing.
 
-Two things come back at the end, and this document covers one of them. The footage and data return to the client; that return package is a separate gap (ROADMAP Amendment 2, item 19). The physical kit returns to RP; that return is here.
+Two things come back at the end, and this document covers one of them. The footage and data return to the client; that return is set out in `production/return-package.md`. The physical kit returns to RP; that return is here.
 
 ## Owner
 
-**Kit owner.** One role is accountable for the kit's inventory, every shipment, the insurance record, and every return. It does not rotate per shipment. Draft default: Isaac holds the role until the practice has someone else to hand it to. A name goes in the inventory header when the role changes hands.
+**Kit owner.** One role is accountable for the kit's inventory, every shipment, the insurance record, and every return. It does not rotate per shipment. Isaac holds the role until the practice has someone else to hand it to. A name goes in the inventory header when the role changes hands.
 
 The client names a **receiving person** before anything ships: the one who signs for the box, checks the contents, and packs the return. The receiving person is often the participant, but need not be.
 
 ## The shipment lifecycle
 
-T is the day of the client's first filming session. Steps are counted back from T (T minus N) or forward from it (T plus N). The values are draft defaults and unverified, since no completed shipment is on record in the repo (the blueprint says only that none had completed as of April 2026). Replace them with real transit times after the first full cycle. Calendar dates never go in this document; they go in the shipment record.
+T is the day of the client's first filming session. Steps are counted back from T (T minus N) or forward from it (T plus N). The offsets are placeholders, since no transit time is on record in the repo; they are listed under [Open parameters](#open-parameters). Replace them with real transit times after the first full cycle. Calendar dates never go in this document; they go in the shipment record.
 
 Phase 3 runs one to three filming sessions over one to two weeks, and the blueprint puts Phase 4 at one to two weeks after filming. Those are the only durations the repo states. The return window below sits inside them.
 
@@ -28,10 +28,10 @@ Phase 3 runs one to three filming sessions over one to two weeks, and the bluepr
 | 6. Arrival check | T minus 7 days | The receiving person unboxes on camera or on a call, ticks the checklist, and reports any damage or missing item the same day. Late reports are harder to attribute, which is why the check has a deadline. | Receiving person |
 | 7. Setup call | T minus 5 days | A short facilitated call: power on, record a test clip, play it back, confirm the framing and sound. Fix anything now. The call is the last point where a replacement can still arrive before T. | Isaac with receiving person |
 | 8. Filming | T to T plus 14 days | The filming sessions. The kit stays with the client. | Client |
-| 9. Return pack | Within 2 days after the last session | The receiving person packs the kit in the same box, with the checklist, using the prepaid return label that came in the outbound box (draft default). Tracking goes to Isaac. | Receiving person |
+| 9. Return pack | Within 2 days after the last session | The receiving person packs the kit in the same box, with the checklist, using the prepaid return label that came in the outbound box. Tracking goes to Isaac. | Receiving person |
 | 10. Return transit | Counted from the carrier's quote | Tracked. If the box is not scanned as moving within a few days of drop-off, the kit owner opens a [loss case](#damage-and-loss). | Kit owner |
 | 11. Check-in | The day it arrives | Unboxed against the outbound photographs and the checklist. Any difference is a [damage case](#damage-and-loss) the same day. | Kit owner |
-| 12. Offload and close | Within 2 days of check-in | Cards are offloaded and verified, the client's copy is prepared under the return package, and the kit is reset and returned to inventory. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
+| 12. Offload and close | Within 2 days of check-in | Cards are offloaded and verified, the client's copy is prepared under `production/return-package.md`, and the kit is reset and returned to inventory. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
 
 If a step slips, everything after it slips by the same amount, and the setup call stays before T. If T moves, the whole table moves with it. The step order does not change.
 
@@ -49,7 +49,7 @@ Tick each line on the bench test, again on the client's arrival check, and again
 - [ ] Audio: microphone, windscreen, cable or receiver
 - [ ] Support: a stand, a clamp or a small tripod, whichever the kit uses
 - [ ] Cleaning cloth
-- [ ] Padded case or the wrapping cloth and padding the [filming guide](filming-guide.md) shows
+- [ ] Padded case or the wrapping cloth and padding the [example shoot plan](examples/2026-03-31-shoot-plan.md) shows
 - [ ] Outbound box, return label, tape, the one-page setup sheet, and a printed copy of this checklist
 
 **Backup gear.** Backup is decided per category, not per item.
@@ -61,7 +61,7 @@ Tick each line on the bench test, again on the client's arrival check, and again
 - [ ] Spare charger, or confirmation that the charger can be bought locally in the client's country
 - [ ] Spare cap, hood and small hardware that is cheap and loses easily
 
-The number of spares per category is open (see [Needs Isaac](#needs-isaac)). So is whether a whole spare body is ever shipped, or whether a failed body is covered by sending a replacement, which cannot arrive in less than the carrier's transit time.
+The number of spares per category is open (see [Open parameters](#open-parameters)). No spare body ships, because a second body doubles the insured value. A failed body is covered by sending a replacement, which cannot arrive in less than the carrier's transit time.
 
 ## Packing
 
@@ -82,11 +82,11 @@ The number of spares per category is open (see [Needs Isaac](#needs-isaac)). So 
 4. The kit is reset: batteries charged, cards formatted in the camera, settings returned, firmware noted, and the inventory marked available.
 5. The return rate is recorded.
 
-Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. Whether they travel with the kit, travel separately, or are replaced by an upload from the client is an open question.
+Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. They travel with the kit, in their case, and the offload in step 12 happens on arrival.
 
 ## Carrier
 
-No carrier is named anywhere in the repo. Choose from these questions, and record the answer in the shipment record:
+No carrier is named anywhere in the repo, and the choice stays open. Choose from these questions, and record the answer in the shipment record:
 
 - Does the carrier ship to the client's address and country, and with what delivery windows?
 - Can it require a signature, and can the client schedule the delivery?
@@ -105,11 +105,11 @@ The blueprint lists international shipping as missing. This document does not so
 - Who pays duties or taxes if the carrier asks for them, and is the return leg affected?
 - Is the transit time long enough that the Phase 3 schedule needs to move?
 
-Until these have answers on paper, the default is not to ship outside the home country.
+Until these have answers on paper, no kit ships outside the home country.
 
 ## Insurance
 
-This section states what must be decided. It states no amounts and recommends no insurer.
+This section states what must be decided, and every decision is open. It states no amounts and recommends no insurer.
 
 **Decisions to make**
 
@@ -149,21 +149,15 @@ Every case opens a record the day it is found. The record has: the case number, 
 | Not returned | The kit owner contacts the receiving person after the return window and finds out what happened. | At what point, and with what remedy, is the kit declared lost? Open. |
 | Cards or footage lost | The most serious case. Tell the client first and at once. | Is a copy elsewhere, and what does the client decide? Open. |
 
-The first move in every case is to find out what happened, which follows the practice's anti-extractive posture. Who bears the cost is not decided here; each "Open" above is listed in [Needs Isaac](#needs-isaac).
+The first move in every case is to find out what happened, which follows the practice's anti-extractive posture. Who bears the cost is not decided here; each "Open" above is listed under [Open parameters](#open-parameters).
 
-## Needs Isaac
+## Open parameters
 
-Defaults chosen in this draft. Each is yours to change; none is a statement of current practice.
+These are not decided. None is a statement of current practice.
 
-1. **Owner.** Kit owner is a role, held by you for now.
-2. **T and every N.** T is the first filming session. The offsets (21, 18, 14, 12, 10, 7, 5 days before; 2 days after the last session) are placeholders, to be replaced with real transit times.
-3. **Return label inside the outbound box.** Chosen so the client is not asked to arrange a return.
-4. **Arrival-check deadline and setup call before T.** Chosen so a failure can still be fixed before filming.
-5. **Cards never wiped before the client has the footage.** Chosen from the anti-extractive posture. How the footage returns is item 19.
-6. **Default not to ship internationally** until the questions above have answers.
-7. **Spares per category.** Categories listed, counts not decided. Also open: whether a spare body ever ships.
-8. **Carrier.** Not chosen; the questions are there.
-9. **Insurance.** Every decision above is open, including who carries risk while the kit is with the client.
-10. **Damage, loss and non-return.** Who bears repair or replacement cost, when a kit counts as lost, and any deposit or agreement are open. The repo states no legal terms and this document adds none.
-11. **Cards in transit.** Together with the kit, separately, or replaced by an upload.
-12. **Whether a client has completed the cycle.** The blueprint says none had as of April 2026. This document does not know either.
+- **T and every offset.** The offsets (21, 18, 14, 12, 10, 7, 5 days before T; 2 days after the last session) are placeholders until real transit times exist.
+- **Spares per category.** The categories are listed; the counts are not set.
+- **Carrier.** Not chosen; the questions are in [Carrier](#carrier).
+- **Insurance.** Every decision in [Insurance](#insurance) is open, including who carries the risk while the kit is with the client.
+- **Damage, loss and non-return.** Who bears repair or replacement cost, when a kit counts as lost, and any deposit or agreement are open. The repo states no legal terms and this document adds none.
+- **Whether a client has completed the cycle.** The blueprint says none had as of April 2026. This document does not record a later answer.
