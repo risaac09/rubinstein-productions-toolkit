@@ -177,6 +177,12 @@ tools:
   `aspects` builds the 9:16 and 1:1 timelines with it applied (see Reframe
   below); a timeline built any other way needs its Pan/Zoom set before
   queueing vertical, or the crop will be arbitrary.
+- **`tools/vertcut` is a draft path.** Its clips are for review and quick
+  social drafts. They fail `deliver_check` for `linkedin_9x16` on the name
+  and, from an untagged source, on `color_transfer`, and they skip the
+  final-approval gate and the delivery manifest; see the
+  [vertcut README](../tools/vertcut/README.md). A vertical deliverable goes
+  through `reframe_plan` with `cut`, then `queue_render`.
 
 ### Offline survey of existing projects
 
