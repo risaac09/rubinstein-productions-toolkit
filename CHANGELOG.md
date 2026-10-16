@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The vertcut README and the Resolve spec now say vertcut is a draft path: its clips fail the `linkedin_9x16` name row and, from an untagged source, the `color_transfer` row, and the deliverable route for a vertical cut is `reframe_plan` with `cut`, then `queue_render`.
 - ROADMAP gains Amendment 3, a second cross-discipline audit with a fifth reader, the client: 29 verified gaps, filed and not yet fixed. (#157)
 - Sibling documents from Amendment 2, items 14 to 19, cite each other as relative links, including the Colour Pipeline of Record section of the Resolve spec, and the 2026-10-16 list reads newest first in merge order with no duplicate bullets (#155).
 - Untracked `tools/video-editor/video-use/` (third-party Browser Use `video-use`, MIT), which settles Amendment 2, item 3. `tools/video-editor/fetch-video-use.sh` fetches it at the pinned commit. `motion/` and the video-editor README stay. History still carries the files, so the clone size is unchanged. `.gitignore` now ignores `tools/video-editor/video-use/` instead of the whole `tools/video-editor/` tree.
