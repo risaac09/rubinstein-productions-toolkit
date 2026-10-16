@@ -93,7 +93,6 @@ class TestSafeFps(unittest.TestCase):
 class TestLoadConfig(unittest.TestCase):
     def test_missing_file_returns_defaults(self):
         config = load_config("/definitely/not/a/config.json")
-        self.assertEqual(config["cameras"]["iphone"]["clip_color"], "Blue")
         self.assertEqual(config, DEFAULT_CONFIG)
 
     def test_merges_real_file(self):
@@ -103,7 +102,7 @@ class TestLoadConfig(unittest.TestCase):
             config = load_config(str(p))
             self.assertEqual(config["default_framerate"], "29.97")
             # untouched keys still fall back to defaults
-            self.assertEqual(config["cameras"]["gh7"]["clip_color"], "Orange")
+            self.assertIn("24", config["deliver"]["frame_rates"])
 
     def test_malformed_file_warns_and_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
