@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- ROADMAP Amendment 3 gains item 30: Pillow's fixes need Python 3.10 or later. The 18 Pillow alerts are dismissed as tolerable risk until the tools move interpreter.
 - Cards are RP's kit and the footage is the files: one no-wipe rule in the logistics, return package and client brief, a release step in the shipment lifecycle, `05_session/` in the return package, a hosting rule and a retention rule that deletes the master with the finals, and a "What you get back and when" section in a client brief that now runs to three pages (Amendment 3, items 19, 21, 22, 23, 27).
 - LowerThird renders at UHD and 23.976 by default with width, height and fps props, gains portrait and square compositions, and the video-editor README gains a ProRes 4444 alpha recipe; the design tokens gain portrait and square geometry and the intro layout (Amendment 3, item 15).
 - The capture standard gains white balance, exposure and ND rules, the iPhone 15 Pro floor and a per-camera table of numbers still to be measured; the Resolve spec marks its Inter 500 caption line superseded by `type.caption`, and the caption line rule says which shapes get two lines (Amendment 3, items 12 and 14).
