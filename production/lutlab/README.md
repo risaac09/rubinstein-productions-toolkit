@@ -125,10 +125,10 @@ input colour space to set.
 It needs Project Settings, Color Management to read: timeline colour space
 DaVinci WG/Intermediate, output colour space Rec.709 Gamma 2.4, tone mapping
 and gamut mapping None. A fresh Color Managed project does not start there:
-its timeline and output are both Rec.709 (Scene), so change them first
-(Animist Folk Fest 2026-10 is set up this way). Leave tone mapping off: it
-would compress the picture a second time. Do not put a Rec.709-out camera LUT
-in such a project; see the alternative below.
+its timeline and output are both Rec.709 (Scene), so change them first in
+each project. Leave tone mapping off: it would compress the picture a second
+time. Do not put a Rec.709-out camera LUT in such a project; see the
+alternative below.
 
 Measured, on an S5II V-Log clip with RCM Print Teal and Neutral:
 - Bake size: against the camera LUT on natural colours (print-teal, ARRI
