@@ -20,7 +20,7 @@ services:
     positioning: "Help me say what I've become."
     # price: see rp-intranet/docs/operations/services.yaml
     duration:
-      typical: "1–2 sessions + 5-day post-latency + delivery"
+      typical: "1–2 sessions + delivery"
       maxWeeks: 3
     audience: "Individuals in transition — burnout recovery, career shift, grad school, layoff"
     goal: "Front door. Every engagement starts here or passes through it."

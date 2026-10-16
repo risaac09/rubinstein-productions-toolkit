@@ -38,7 +38,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - They can explain to leadership what's happening and why
 - Relational trust begins building through the quality of listening
 
-**Deliverable:** Logic model and project roadmap
+**Deliverable:** Logic model and project roadmap (one-screen outlines in [Deliverable Outlines](deliverable-outlines.md))
 
 **Duration:** 1-2 sessions (Tier 1 stays here; Tiers 2-3 proceed)
 
@@ -62,7 +62,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 - The inside version becomes conscious and articulable
 - The structural nature of their communication gap becomes visible (it's the system, not them)
 
-**Deliverable:** Clear narrative direction + map of what's been containing the honest version
+**Deliverable:** Clear narrative direction (the Founder Story document and written synthesis have outlines in [Deliverable Outlines](deliverable-outlines.md)) + map of what's been containing the honest version
 
 **Duration:** 2-3 sessions
 
