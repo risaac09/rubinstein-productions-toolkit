@@ -84,7 +84,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 
 ## Subtitles
 
-- **Font:** Inter 500
+- **Font:** ~~Inter 500~~ Superseded by `type.caption`; this spec publishes no value (see [design tokens](design-tokens.md#caption-standard))
 - **Color:** `color.text-on-dark` on a semi-transparent `color.marrow` bar (see [design tokens](design-tokens.md#caption-standard))
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
@@ -177,6 +177,12 @@ tools:
   `aspects` builds the 9:16 and 1:1 timelines with it applied (see Reframe
   below); a timeline built any other way needs its Pan/Zoom set before
   queueing vertical, or the crop will be arbitrary.
+- **`tools/vertcut` is a draft path.** Its clips are for review and quick
+  social drafts. They fail `deliver_check` for `linkedin_9x16` on the name
+  and, from an untagged source, on `color_transfer`, and they skip the
+  final-approval gate and the delivery manifest; see the
+  [vertcut README](../tools/vertcut/README.md). A vertical deliverable goes
+  through `reframe_plan` with `cut`, then `queue_render`.
 
 ### Offline survey of existing projects
 
@@ -195,7 +201,7 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 27 tools: reads of the open project, the offline checks (detect,
+as 28 tools: reads of the open project, the offline checks (detect,
 survey, measure, endcheck, selects, reframe_plan, deliver_check,
 sync_measure, trim_review), the offline caption conversion (deliver_captions), and
 additive writes (ingest, cut, duplicate, a timeline from clips in order,

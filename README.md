@@ -37,6 +37,7 @@ Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
 Reusable templates for the client lifecycle.
 
 - Client onboarding template
+- [Scope checklist](templates/scope-checklist.md)
 - Case study template
 
 ### `docs/`, `architecture/`
@@ -65,6 +66,7 @@ Generic film/video production tooling. *(Kept as a default — see below.)*
 - [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
 - [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
 - [Client shooting brief](production/client-shooting-brief.md): a two-page brief for the person filming, to print and put in the box (draft)
+- [Remote session runbook](production/remote-session-runbook.md): the setup-call script, prompts, the spoken consent loop, and the debrief for the remote filming phase; calls are not recorded
 - [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
 - [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16); the [return package](production/return-package.md) sets what comes back to the client and how it is checked. The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
@@ -85,7 +87,7 @@ The deployment kit for a DeepSeek Harness agent on the OpenRouter lane: the sess
 One skill, `seed-bed/SKILL.md`: an incubation space for ideas that are not yet a service, tool or practice. It holds an idea without forcing a category and brings it back on a weekly cadence.
 
 ### `requirements.txt`
-Each tool's interpreter and the pinned Python packages, in one file. CI installs from it.
+Each tool's interpreter, the pinned Python packages, and a table of every environment override the tools read, in one file. CI installs from it. The commands that run the tests are under [Testing](#testing).
 
 ### `research/`
 What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc is business strategy with revenue models, so it lives in the private `rp-intranet` repo.)
@@ -146,6 +148,22 @@ New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, produ
 
 ### Prompt Stack
 The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
+
+### Testing
+The production tests run on the system Python 3.9. Install the pinned packages, then run every module in `production/tests` from the repository root, as CI does:
+
+```
+/usr/bin/python3 -m pip install -r requirements.txt
+/usr/bin/python3 -m unittest $(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')
+```
+
+On a Homebrew Mac that is all. Anywhere else, point the tools at your ffmpeg and ffprobe, and skip the one test that compares colour against Homebrew's ffmpeg build:
+
+```
+export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)" LUTLAB_SKIP_RENDER_VERIFY=1
+```
+
+The table at the top of [`requirements.txt`](requirements.txt) lists the other variables. The survey tests need Python 3.14 and skip on 3.9.
 
 ### Methodology
 Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.
