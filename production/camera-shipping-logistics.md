@@ -4,7 +4,7 @@
 
 The camera-shipping model sends a camera and lens to the client, who films themselves while Isaac facilitates remotely. The [blueprint](../methodology/methodology-blueprint.md) calls this Phase 3 and lists its logistics as missing. This document is the logistics standard: the shipment lifecycle, the kit, the return, insurance, and what happens when something breaks or goes missing.
 
-Two things come back at the end, and this document covers one of them. The footage and data return to the client; that return is set out in `production/return-package.md`. The physical kit returns to RP; that return is here.
+Two things come back at the end, and this document covers one of them. The footage and data return to the client; that return is set out in the [return package](return-package.md). The physical kit returns to RP; that return is here.
 
 ## Owner
 
@@ -31,7 +31,7 @@ Phase 3 runs one to three filming sessions over one to two weeks, and the bluepr
 | 9. Return pack | Within 2 days after the last session | The receiving person packs the kit in the same box, with the checklist, using the prepaid return label that came in the outbound box. Tracking goes to Isaac. | Receiving person |
 | 10. Return transit | Counted from the carrier's quote | Tracked. If the box is not scanned as moving within a few days of drop-off, the kit owner opens a [loss case](#damage-and-loss). | Kit owner |
 | 11. Check-in | The day it arrives | Unboxed against the outbound photographs and the checklist. Any difference is a [damage case](#damage-and-loss) the same day. | Kit owner |
-| 12. Offload and close | Within 2 days of check-in | Cards are offloaded and verified, the client's copy is prepared under `production/return-package.md`, and the kit is reset and returned to inventory. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
+| 12. Offload and close | Within 2 days of check-in | Cards are offloaded and verified, the client's copy is prepared under the [return package](return-package.md), and the kit is reset and returned to inventory. Return rate is recorded for the [evaluation framework](../methodology/evaluation-framework.md), which tracks equipment shipped and returned against a target of 100%. | Kit owner |
 
 If a step slips, everything after it slips by the same amount, and the setup call stays before T. If T moves, the whole table moves with it. The step order does not change.
 

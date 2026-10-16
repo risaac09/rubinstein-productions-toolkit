@@ -50,4 +50,4 @@ Questions at any point: call or write to us. You are never bothering us.
 
 ---
 
-**Note for the kit owner (remove before printing).** This page assumes the kit left locked: profile, frame rate and resolution set by you, per the capture settings in `production/capture-standard.md`. The return steps match [camera-shipping logistics](camera-shipping-logistics.md): label in the outbound box, cards travel with the kit, cards never wiped before the client has the footage. Put the prompts, the contact details and the date of the setup call in the box beside this page.
+**Note for the kit owner (remove before printing).** This page assumes the kit left locked: profile, frame rate and resolution set by you, per the [capture standard](capture-standard.md). The return steps match [camera-shipping logistics](camera-shipping-logistics.md): label in the outbound box, cards travel with the kit, cards never wiped before the client has the footage. Put the prompts, the contact details and the date of the setup call in the box beside this page.

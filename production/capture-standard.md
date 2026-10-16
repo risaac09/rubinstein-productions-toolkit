@@ -1,6 +1,6 @@
 # Capture Standard
 
-> **Status:** draft, 2026-10-16. The settings below are decisions of record for how RP shoots and how a client camera ships. They match the Resolve tooling's defaults in `production/resolve-config.json`. Colour handling after capture is defined in the colour pipeline section of `production/resolve-template-spec.md`; this document stops at the card.
+> **Status:** draft, 2026-10-16. The settings below are decisions of record for how RP shoots and how a client camera ships. They match the Resolve tooling's defaults in [`resolve-config.json`](resolve-config.json). Colour handling after capture is defined in the [Colour Pipeline of Record](resolve-template-spec.md#colour-pipeline-of-record) of the Resolve template spec; this document stops at the card.
 
 Capture decides what the edit can do. A frame rate that differs from the timeline, a profile the tools cannot recognise, or a take with no shared sound all cost hours later. Every camera below shoots the same way unless its row says otherwise, so footage from several cameras on one project cuts together without conversion.
 
@@ -50,7 +50,7 @@ A spoken ident at the head of every take: date, camera, take. Then the clap. If 
 
 One folder per card, named `YYYYMMDD_<CAM>_<card>`, for example `20261016_GH7_A01`. The camera writes its own file names inside, and they are never renamed. `detect` uses the native names as one of its clues (the Blackmagic and Lumix file patterns, for example), and a renamed file loses that clue. `relink` never matches on a name, so it is unaffected either way.
 
-Cards are not wiped until the footage is safely copied and, for a shipped kit, until the client has their footage; see `production/camera-shipping-logistics.md`.
+Cards are not wiped until the footage is safely copied and, for a shipped kit, until the client has their footage; see [camera-shipping logistics](camera-shipping-logistics.md).
 
 ## Example
 
