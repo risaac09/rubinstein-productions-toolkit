@@ -64,7 +64,7 @@ Generic film/video production tooling. *(Kept as a default — see below.)*
 - PowerGrade template spec
 - iPhone filming guide for the camera-shipping model
 - [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
-- [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (drafts). The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
+- [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16). The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
 
 ### `production/lutlab/`
 Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.9 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
