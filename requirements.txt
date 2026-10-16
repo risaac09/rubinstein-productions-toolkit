@@ -18,6 +18,40 @@
 #   mlx-whisper       vertcut transcribe only (Apple silicon): pip3 install --user mlx-whisper
 #   DaVinci Resolve   its own scripting module, loaded by the MCP server at run time. Not on pip.
 #
+# Environment overrides
+# Every variable the tools read. The defaults suit a Homebrew Mac; set the variable when a program
+# lives elsewhere (Intel Mac, MacPorts, Linux, CI). Unset means the default.
+#
+#   Variable                     Read by                           Default                                   Set it when
+#   RPRESOLVE_FFMPEG             rpresolve measure, sync,          /opt/homebrew/bin/ffmpeg                  ffmpeg is not at the default path.
+#                                delivercheck, reframe, cutlist
+#   RPRESOLVE_FFPROBE            rpresolve measure, sync,          /opt/homebrew/bin/ffprobe                 ffprobe is not at the default path.
+#                                delivercheck, detect
+#   RPRESOLVE_EXIFTOOL           rpresolve detect                  /usr/local/bin/exiftool                   exiftool is not at the default path.
+#   RPRESOLVE_SURVEY_PYTHON      rpresolve workflows (survey)      /opt/homebrew/bin/python3.14              a Python 3.14+ lives elsewhere.
+#   RPRESOLVE_CONFIG             Resolve MCP deliver_check         none (resolve-config.json alone)          you keep a local overlay of the config.
+#   RPRESOLVE_LOCK               rpresolve ResolveLock             ~/Library/Caches/rpresolve/resolve.lock   the lock file needs another place.
+#   RPRESOLVE_MCP_OUT            Resolve MCP server                ~/Library/Caches/rpresolve/mcp            tool output needs another folder.
+#   RPRESOLVE_MCP_JOURNAL        Resolve MCP server                ~/Library/Logs/rpresolve-mcp/writes.jsonl the write journal needs another file.
+#   RPRESOLVE_MCP_NO_RESOLVE     Resolve MCP session               unset                                     tests: 1 makes every Resolve connect fail.
+#   RPRESOLVE_SETTINGS_GUARD     rpresolve settingsguard           off                                       you want new-timeline settings reported: on, 1, yes or true.
+#   VERTCUT_PYTHON               tools/vertcut/vertcut             /usr/bin/python3                          the Python with Pillow is another one.
+#   LUTLAB_OUT                   production/lutlab                 none                                      always, unless every command gets --out.
+#   LUTLAB_BRAW2PPM              lutlab/verify.py (BRAW)            lutlab/braw/braw2ppm, beside the source   the BRAW helper was built elsewhere.
+#   BRAW_SDK                     lutlab/braw/build.sh, braw2ppm    /Applications/Blackmagic RAW/Blackmagic   the Blackmagic RAW SDK is installed elsewhere.
+#                                                                  RAW SDK/Mac
+#   LUTLAB_SKIP_RENDER_VERIFY    production/tests/test_lutlab.py   unset                                     tests: any value skips the render-verify test. Needed with
+#                                                                                                            an ffmpeg build whose colour differs from Homebrew's (CI's apt build).
+#   TOOLKIT_ROOT, VAULT_ROOT     scripts/check-vault-mirror-drift.sh  ~/rubinstein-productions-toolkit,     the checkout or the vault is somewhere else.
+#                                                                  ~/vault/Second Brain
+#
+# The tools do not find ffmpeg the same way. rpresolve reads RPRESOLVE_FFMPEG and RPRESOLVE_FFPROBE and
+# otherwise uses the Homebrew paths. lutlab and tools/vertcut call bare ffmpeg and ffprobe from PATH, so
+# for lutlab the fix is PATH, and RPRESOLVE_FFMPEG does not reach it.
+#
+# markdown serves scripts/build-site.py (the GitHub Pages site build) and nothing else. The deploy workflow and
+# the pull-request site build both install the version pinned below.
+#
 # Pins are the versions CI installs and the suite was run against on 3.9 (numpy 2.0.2 is the last
 # NumPy that supports 3.9). The Mac's own set is newer in places (opencv 5.0.0.93) and passes too.
 numpy==2.0.2
@@ -25,3 +59,4 @@ scipy==1.13.1
 Pillow==11.3.0
 opencv-python-headless==4.10.0.84
 imagehash==4.3.2
+markdown==3.9
