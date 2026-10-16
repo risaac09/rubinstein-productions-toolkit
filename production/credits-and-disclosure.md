@@ -42,7 +42,7 @@ The steps the tooling in this repo performs, which a client may want to know abo
 - **Loudness correction.** An ffmpeg two-pass normalization adjusts the audio level. Video is copied untouched.
 - **Analysis and drafting.** Where an AI model reads a transcript to code it, to draft a summary or to propose a cut, the output is a proposal that a person accepts or discards. The trim review works this way: it writes a proposals file and marks a timeline, and deletes nothing. The same rule holds for any model-assisted coding or summary.
 
-Generative content is a separate class and is named separately: a synthesized voice, a generated or altered image of a person, generated footage or music, or any picture or sound the camera did not record. Client deliverables contain none of it. Promising that is simpler than labelling it well.
+Generative content is a separate class and is named separately: a synthesized voice, a generated or altered image of a person, generated footage or music, or any picture or sound the camera did not record. Client deliverables contain none of it.
 
 ### What is stated, to whom
 
@@ -52,7 +52,7 @@ Generative content is a separate class and is named separately: a synthesized vo
 
 ### Rules that do not bend
 
-- **No synthetic likeness or voice of a participant.** No cloned voice, no face swap, no generated stand-in, unless that person gave written consent for that use, and the consent sits in the approval record. A participant never needs to give this consent to be filmed.
+- **No synthetic likeness or voice of a participant.** No cloned voice, no face swap, no generated stand-in. In a client deliverable the ban on generative content already covers this, with no exception. In any other work the one exception is the person's written consent for that use, kept in the approval record. A participant never needs to give this consent to be filmed.
 - **Words stay the participant's own.** A machine does not write, rephrase or fill a participant's words on camera. Captions follow what was said. A correction to a caption is made against the audio.
 - **A person checks what a machine drafted.** Captions are read against the audio, reframes are watched, and an AI-drafted summary or cut list is read before anyone acts on it. The gate shows the client the captions as burnt in or as the sidecar file.
 - **The disclosure is true.** If a step was machine-assisted and the manifest does not say so, the manifest is wrong and is written again.
