@@ -44,6 +44,10 @@ A dynamic process of continuous consent rather than one-time approval, revisited
 
 The mental effort required to manage self-monitoring and performance under observation. Elevated cognitive load during filming increases stress hormones and reduces authenticity (Sweller, 1988).
 
+### **Community Based System Dynamics (CBSD)**
+
+A participatory method for mapping non-linear feedback loops. In the Excavation phase the group uses it to map the structural forces that keep honest expression contained. See the [Theory of Change](theory-of-change.md) and the [Methodology Blueprint](methodology-blueprint.md).
+
 ---
 
 ## **D–H**
@@ -107,6 +111,10 @@ A neurochemical system associated with bonding and trust. Activated through eye 
 ### **Participatory Filming**
 
 A collaborative approach where subjects contribute to story design, consent framing, and editing decisions. Derived from participatory action research and community-based documentation models.
+
+### **Participatory Impact Pathways Analysis (PIPA)**
+
+A participatory evaluation method for mapping a project's linear logic. In the Container phase it produces the logic model stakeholders sign off on, which gives the deeper work institutional cover. See the [Theory of Change](theory-of-change.md) and the [Methodology Blueprint](methodology-blueprint.md).
 
 ### **Performance Anxiety Cascade**
 

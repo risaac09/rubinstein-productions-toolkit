@@ -12,6 +12,7 @@ Four documents share the same core idea and serve different jobs. The core idea 
 | [Evaluation Framework](../../methodology/evaluation-framework.md) | Assessment design for grant-funded cohorts, written to be funder-legible | You are designing evaluation for a funded program |
 | [Measurement Instrument](../../methodology/measurement-instrument.md) | The survey items, a response CSV, the scoring procedure and a worked example, with a script (draft) | You are collecting and scoring the Likert, NPS and consistency items |
 | [Nomadic Indicators Codebook](../../methodology/nomadic-indicators-codebook.md) | The coding manual: per-code definitions, examples, and markers across six domains | You are coding transcripts, recordings, or field notes |
+| [Deliverable Outlines](../../methodology/deliverable-outlines.md) | One-screen outlines (draft) for the Impact Evaluation Report and the Bilingual Dashboard (Lite), among others | You are scoping what a Program Engagement hands over |
 | [Theory of Change](../../methodology/theory-of-change.md) | The logic model connecting the methodology to public-health outcomes | You are writing the grant narrative |
 
 One note on provenance: the codebook is the canonical coding reference. The framework document points to it rather than carrying its own copy of the codes. (The `grants/` directory that used to hold pointer stubs to these files was removed 2026-08-21 — `methodology/theory-of-change.md` and `methodology/evaluation-framework.md` are directly canonical now.)

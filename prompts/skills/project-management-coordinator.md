@@ -65,12 +65,12 @@ Every engagement moves through four methodological moves. Map the operational ph
 - Maximum 2 Program Engagements per quarter.
 - Founder Story sessions 3-4 per month, never displacing deep work blocks.
 - Minimum 3 mornings per week protected for deep work, no calls before noon.
-- Filming requires 24-hour prep plus 5-day post-latency, blocked in advance.
+- Filming requires 24-hour prep, blocked in advance.
 
 **Before taking any new project:**
 
 1. Count active engagements by tier (Organizational Embedding, Program Engagement, Founder Story)
-2. Check timeline against the protected deep-work mornings and any filming prep/post-latency windows
+2. Check timeline against the protected deep-work mornings and any filming prep windows
 3. Check energy, last 2 weeks averaging 7+? If below 6, need rest
 4. Sacral check, immediate "hell yes" or mental "should"?
 
@@ -111,7 +111,7 @@ RP-YYYY-###-ClientName-ProjectType/
 | Program Engagement | Max 2 per quarter |
 | Founder Story | 3-4 per month |
 | Protected deep-work mornings | Min 3 per week |
-| Filming | 24-hr prep + 5-day post-latency |
+| Filming | 24-hr prep |
 | Urgent response | Same day |
 | Question response | 24 hours |
 | Pre-shoot confirmation | 48 hours before |
