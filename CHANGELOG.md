@@ -14,6 +14,7 @@ The Resolve spec keeps its own document revision in its footer. It is not the re
 
 ## Unreleased
 
+- The Remotion lower-third prototype under `tools/video-editor/motion` has its lockfile refreshed within the existing version ranges, which clears the open advisories on brace-expansion, fast-uri, postcss-selector-parser and source-map-js.
 - Glossary gains Assemblage, Bilingual Dashboard, Nomadic Indicators, Royal Metrics, Three Consistency Questions and Zero-Measurement Zone, each linked to its source file (Amendment 3, item 11, term-bank half).
 - The client shooting brief gains "When the box arrives" and "If something goes wrong", names the kit and footage checklists apart, matches its slate to the capture standard and explains each film term (Amendment 3, items 26 and 28).
 - Add `templates/scope-checklist.md`, a consent tier step in the onboarding template, and a per-participant consent evidence table in the case-study template (Amendment 3, items 9 and 24).
