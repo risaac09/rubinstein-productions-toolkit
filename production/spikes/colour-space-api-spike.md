@@ -69,9 +69,9 @@ Use a project made for this and deleted after. Name it so it cannot be mistaken 
 
 **Step 0. Make the project.** New project, nothing imported. Note the Resolve version (Help, About) in the results header. In Project Settings, Color Management, leave colour science at its default.
 
-**Step 1. UI first, then read.** Set the target by hand, one dropdown at a time, in this order: Color science to DaVinci YRGB Color Managed, Automatic colour management off, timeline colour space DaVinci WG/Intermediate, output colour space Rec.709 Gamma 2.4, tone mapping None, gamut mapping None. After each change, paste the console script below with `MODE = "dump"` and fill Table 1. This gives the exact strings Resolve holds, which of the keys each dropdown moves, and what else moves with it.
+**Step 1. UI first, then read.** Set the target by hand, one dropdown at a time, in this order: Color science to DaVinci YRGB Color Managed, Automatic colour management off, timeline colour space DaVinci WG/Intermediate, output colour space Rec.709 Gamma 2.4, tone mapping None, gamut mapping None. After each change, paste the console script below with `MODE = "dump"` and fill Table 1. This gives the exact strings Resolve holds, which of the keys each dropdown moves, and what else moves with it. Last, run one more dump and paste the whole output under Table 1 as the hand-set end state; pass rule 7 compares against it after the project is gone.
 
-**Step 2. Return to the default.** Delete the project and make a new one (Step 0) so the writes start from a fresh state. Run the script with `MODE = "dump"` once and keep the output as the baseline.
+**Step 2. Return to the default.** Delete the project and make a new one (Step 0) so the writes start from a fresh state. Do not dump it first; write mode prints the baseline itself, and that is the baseline Table 2 uses. Look at the Color Management panel only if you must, and change nothing in it.
 
 **Step 3. Scripted writes, in order.** Run the script with `MODE = "write"` and `VARIANT = "A"`. It first reads the baseline key by key, then each row does the write, reads the same key back, and lists any other watched key that changed. After the last step it reads every written key again and prints a `FINAL` line for each, `PASS` or `DRIFT`; that is pass rule 2. Fill Table 2 from its output. Order matters: `colorScienceMode` first, then timeline, then output, then tone and gamut. If a step fails, note it and carry on, so every row has a result.
 
@@ -141,7 +141,7 @@ def clips(folder):
     return len(folder.GetClipList() or []) + sum(clips(f) for f in folder.GetSubFolderList() or [])
 
 def norm(v):
-    return str(v or "")      # the same normalisation as colormgmt.final_drift
+    return "" if v is None else str(v)   # like colormgmt.final_drift, except an int 0 stays '0'
 
 def snap(obj, keys=None):
     out = {}
@@ -172,15 +172,15 @@ else:
     for api, key, val in STEPS:
         before = after
         wrote = {key: val} if api == S else val
-        final.update(wrote)
         print("writing:", key, flush=True)
         try:
             ret = p.SetSetting(key, val) if api == S else p.SetSettings(val)
-            after = snap(p)
         except Exception as e:          # a rejected key is a result, not the end of the run
             print(f"| {VARIANT} | {api} | {key} | {val!r} | RAISED {type(e).__name__}: {e} | FAIL |")
-            after = before
             continue
+        after = snap(p)
+        if ret:
+            final.update(wrote)         # FINAL only judges keys whose write was accepted
         bad = {k: after[k] for k, v in wrote.items() if norm(after[k]) != v}
         moved = {k: (before[k], after[k]) for k in WATCH if k not in wrote and before[k] != after[k]}
         read = {k: after[k] for k in wrote}
@@ -191,13 +191,13 @@ else:
         print(f"FINAL | {k} | wanted {v!r} | now {after[k]!r} | {'PASS' if norm(after[k]) == v else 'DRIFT'}")
 ```
 
-A call that raises (for example `AttributeError` if `SetSettings` does not exist on this build) is printed as `RAISED` and the run carries on; copy that line into Table 2. If a call hangs the console, quit Resolve and treat it as a fail for that call. Every key name is printed just before it is read, and each write is announced as `writing: <key>`, so the last name printed is the call that hung.
+A write that raises (for example `AttributeError` if `SetSettings` does not exist on this build) is printed as `RAISED` and the run carries on; copy that line into Table 2. A key whose write was rejected is left out of the `FINAL` lines, so `DRIFT` means a key moved after an accepted write. Reads use the keyed `GetSetting`, which the 21.1 README lists as deprecated, not removed; `GetSettings()` is avoided for the hang risk above. If keyed reads fail outright on this build, say so in the results and rerun with `GetSettings()` on a throwaway project. If a call hangs the console, quit Resolve and treat it as a fail for that call. Every key name is printed just before it is read, and each write is announced as `writing: <key>`, so the last name printed is the call that hung.
 
 ## Results
 
 Fill these in. Keep the tables in this file or paste them under the spike's dated result in the PR that acts on it.
 
-**Header.** Date; Resolve version; macOS; project name (throwaway, not a work project); "fresh" confirmed (no timeline, no clip).
+**Header.** Date; Resolve version (the installed build is 21.1.1; the live checks recorded in the spec ran on 21.0.4.5, so say which this is); macOS; project name (throwaway, not a work project); "fresh" confirmed (no timeline, no clip).
 
 **Table 1. Set by hand (Step 1).** One row per dropdown moved.
 
@@ -255,7 +255,7 @@ Outcomes:
 - All keys pass: add them to a new preset (a second name in `PRESETS`, leaving `managed` as it is), in the order tested, with the exact strings Table 1 reported. Then update the tool description in `rpresolve/mcp/tools_write.py`, `resolve-mcp.md`, and the "Who sets it" column and the sentence under it in the spec's Colour Pipeline of Record. Record the Resolve version in `colormgmt.py` next to the keys.
 - Some keys pass: add only those, each with its position in the order. The rest stay hand steps and the spec row says why.
 - None pass, or the strings differ per project: the settings stay a hand step. Say so in the spec (it already does) and record the reason there, so nobody repeats the spike.
-- Either way, a pass on this build is a pass on this build. Re-run after a Resolve update before relying on it.
+- Either way, a pass on this build is a pass on this build. Run it on the build the tool will drive, and re-run after a Resolve update before relying on it.
 
 ## The live sandbox test to add if keys pass
 
@@ -276,9 +276,9 @@ def check_colour_preset(c, P, project, preset):
     for key, wanted in keys:
         check(str(project.GetSetting(key)) == wanted, f"{key} reads '{wanted}' straight from Resolve")
     err, again = c.tool("set_color_management", **P, preset=preset)
-    check(not err and again.get("would_change") == [], "a second dry run has nothing left to set")
+    check(not err and not again.get("would_change"), "a second dry run has nothing left to set")
     # Then, by hand: save, quit, relaunch, reopen, and run this with --reread, which skips the
-    # writes and only repeats the GetSetting loop above.
+    # writes and only repeats the GetSetting loop above (a flag the sketch assumes the harness adds).
 ```
 
 The result fields it reads (`would_change`, `plan_sha`, `exit_status`, `failed`, `drift`) are the ones `workflows.set_color_management` returns; the writes leave the project fresh, since they touch only settings, so the second dry run is not refused by the gate. Wire it as `--fresh-colour <preset>` with its own project name and id arguments, so one flag never runs against the work-bearing sandbox. The fake-backed tests in `tests/test_mcp_project_timeline.py` need the same new preset exercised, as they do for `managed`.
