@@ -6,6 +6,7 @@ Written 2026-10-15 from the git history. Add an entry in the pull request that m
 
 ## 2026-10-16
 
+- Added `production/client-shooting-brief.md` (draft), a two-page brief written to the client for the camera-shipping model, which settles Amendment 2, item 15.
 - Added `production/consent-evidence.md` (draft): the one artifact that proves each consent tier, checklists for appearance, location and talent releases, and a per-engagement licence register for music and fonts. The case-study template has a required "Consent evidence" line and a rule that a case study with no tier 3 evidence id is not published. Amendment 2, item 18.
 - Added `production/capture-standard.md` (draft), settling Amendment 2, item 14: frame rate, profile, resolution, audio, sync, slate and card naming per camera. The March 31 shoot plan moved to `production/examples/` and `production/filming-guide.md` is now a pointer.
 - The `rp-*` prospect and grant CLI is retired, which settles Amendment 2, item 12: `cli/`, its four templates, the smoke test and the CLI text in the field guide are removed, and the CI job that ran the smoke test is now `hygiene-checks`. The record for prospects and funders is the private stack-data repo. The last commit that carries the tools is `2ffe87a`. `docs/TRUTH-OWNERSHIP.md` gained a "Who owns which job" table.
