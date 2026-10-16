@@ -20,6 +20,12 @@ jobs:
         run: scripts/check-methodology-status.sh
       - name: Measurement instrument scoring test
         run: scripts/test-instrument-score.sh
+      - name: Changelog fragment and burst-gate tests
+        run: |
+          scripts/test-changelog-fragments.sh
+          scripts/test-burst-gate.sh
+      - name: Changelog fragments are well formed
+        run: scripts/changelog-fragments lint
       - name: Unresolved merge marker check
         run: |
           if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then
@@ -189,6 +195,19 @@ jobs:
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib production.tests.test_resolve_workflow_pure
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
+
+  # Every pull request adds a changelog.d/ fragment and never edits
+  # CHANGELOG.md under Unreleased, so parallel pull requests cannot conflict
+  # there. Kit-export pull requests are exempt (see changelog.d/README.md).
+  changelog-fragment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fragment rules against the base branch
+        run: scripts/changelog-fragments pr "origin/${{ github.base_ref }}"
 
   # The full production suite: every module in production/tests, on the same Python 3.9 the Mac
   # ships with Xcode, with the image and numeric packages that lutlab, rpstills,
