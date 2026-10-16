@@ -161,7 +161,7 @@ EOF2
   new="$(mktemp)"
   awk -v ins="$out" '
     { print }
-    $0 == "## Unreleased" && !d { getline nxt; print nxt; while ((getline line < ins) > 0) print line; d = 1 }' "$LOG" > "$new"
+    $0 == "## Unreleased" && !d { getline nxt; print ""; while ((getline line < ins) > 0) print line; if (nxt != "") print nxt; d = 1 }' "$LOG" > "$new"
   cat "$new" > "$LOG"; rm -f "$new"
   while IFS= read -r f; do
     git ls-files --error-unmatch "$f" >/dev/null 2>&1 && git rm -q -f "$f" || rm -f "$f"

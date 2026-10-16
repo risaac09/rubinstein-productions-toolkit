@@ -113,22 +113,26 @@ g1() {
 # bracket around one character, so this file passes its own scan.
 g2() {
   skipped G2 && return
+  # Built-in patterns match case-sensitively; the denylist matches without
+  # regard to case. The sk- shape needs a non-word character before it, or
+  # "task-based-..." in prose would match.
   pats='[/]Users[/][A-Za-z0-9._-]+[/]
 [/]home[/][a-z][a-z0-9_-]*[/]
 [~][/](vault|stack-data|rp-intranet|stack-finance|sch-work|second-brain-mirror|[.]secrets|[.]ssh|[.]config[/](gh|rclone))
 gh[pousr]_[A-Za-z0-9]{20,}
 github_pat_[A-Za-z0-9_]{20,}
-sk-[A-Za-z0-9_-]{20,}
+(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}
 AKIA[0-9A-Z]{16}
 xox[abprs]-[A-Za-z0-9-]{10,}
 -----BEGIN [A-Z ]*PRIVATE KEY-----'
-  if [ -n "${BURST_GATE_DENYLIST:-}" ]; then
-    [ -f "$BURST_GATE_DENYLIST" ] || { fail "G2 privacy: BURST_GATE_DENYLIST '$BURST_GATE_DENYLIST' not found"; return; }
-    pats="$pats
-$(grep -v '^[[:space:]]*\(#.*\)\?$' "$BURST_GATE_DENYLIST")"
-  fi
   pf="$(mktemp)"; printf '%s\n' "$pats" > "$pf"
-  hits="$(added_lines | grep -E -i -f "$pf" || true)"
+  hits="$(added_lines | grep -E -f "$pf" || true)"
+  if [ -n "${BURST_GATE_DENYLIST:-}" ]; then
+    [ -f "$BURST_GATE_DENYLIST" ] || { rm -f "$pf"; fail "G2 privacy: BURST_GATE_DENYLIST '$BURST_GATE_DENYLIST' not found"; return; }
+    grep -v '^[[:space:]]*\(#.*\)\?$' "$BURST_GATE_DENYLIST" > "$pf"
+    hits="$hits
+$(added_lines | grep -E -i -f "$pf" || true)"
+  fi
   rm -f "$pf"
   # Placeholder user names in examples are fine.
   hits="$(printf '%s\n' "$hits" | grep -v -E '[/]Users[/](you|me|name|user|username|example|yourname|someone)[/]' | grep -v '^$' || true)"
