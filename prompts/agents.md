@@ -1,4 +1,5 @@
 # Agents — Orchestrator Trigger
+> **Status:** operational.
 
 Drop-in prompt. Says the word that wakes the orchestration spine.
 Activates the full architecture, runs it end to end, gates on quality before shipping.

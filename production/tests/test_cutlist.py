@@ -10,7 +10,6 @@ import json
 import math
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 import unittest

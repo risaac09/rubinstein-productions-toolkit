@@ -5,8 +5,8 @@ The toolkit is organized by artifact type: methodology, prompts, templates, prod
 ## Pick your path
 
 - **[Writers](writers.md)**: narrative, copy, story development, publishing. You want the voice system, the question bank, and the editorial disciplines.
-- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the camera-shipping logistics and delivery standards (drafts).
-- **[Evaluators](evaluators.md)**: measurement, impact, grants. You want the Bilingual Dashboard, the coding manual, and the grant infrastructure.
+- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the production standards. Camera-shipping logistics is accepted with open parameters; delivery manifest, platform specs, and credits and disclosure are accepted; return package, capture standard, client shooting brief, and design tokens are draft.
+- **[Evaluators](evaluators.md)**: measurement, impact, grants. You want the Bilingual Dashboard, the coding manual, and grant-reporting practice.
 
 The paths overlap on purpose. A facilitated documentary session produces footage for the producer, language for the writer, and coded evidence for the evaluator. Read your own path first, then skim the other two to see what your collaborators will be working from.
 

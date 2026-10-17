@@ -1,1 +1,1 @@
-Public surface and frontier sweep: README em-dashes removed, template and methodology navigation linked, prompts/ described accurately, retired model ids updated or dated in the prompt stack, machine names generalised, and the machine-specific handoff note removed.
+Public surface and frontier sweep: README em-dashes removed, template and methodology navigation linked, prompts/ described accurately, retired model ids updated or dated in the prompt stack and machine names generalised.

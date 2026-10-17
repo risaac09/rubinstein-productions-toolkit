@@ -1,4 +1,5 @@
 # Respondent Sheet
+> **Status:** operational.
 
 *The form a participant fills in. Items and wording come from the [Measurement Instrument](../methodology/measurement-instrument.md).*
 

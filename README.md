@@ -10,7 +10,7 @@ Forks welcome, pull requests not reviewed or merged: this is a solo practitioner
 
 ## What This Is
 
-A kit, not a company. This repo carries the methodology, the evaluation frameworks, the AI prompt/skill stack, and the deployment mechanism (`phase-zero/`, `public-kit/`) that make a solo AI-assisted practice legible and replicable. It does not carry the practice itself: strategy, pricing internals, brand voice, grant pipeline, and client-facing production tooling live in a private operations repo, `rp-intranet`, and stay there.
+A kit, not a company. This repo carries the methodology, the evaluation frameworks, the AI prompt/skill stack, and the deployment mechanism (`phase-zero/`, `public-kit/`) that make a solo AI-assisted practice legible and replicable. It does not carry the practice itself: strategy, pricing internals, brand voice, grant-reporting practice, and client-facing production tooling live in a private operations repo, `rp-intranet`, and stay there.
 
 The methodology draws on polyvagal co-regulation theory, relational ontology, and critical information ecology. At the practice level it's careful listening and honest expression; here, it's the frameworks and tools that operationalize that.
 
@@ -28,6 +28,13 @@ The intellectual core: how the practice works, why it works, and how to measure 
 - **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
 - **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
 - **Evaluation Framework**: Assessment design using the Bilingual Dashboard
+- **Methodology Blueprint**: Orientation to the four phases, service tiers, and how the methodology pieces connect
+- **Glossary**: Definitions and citations for the practice's key terms
+- **Source Tracking Protocol**: Provenance categories and claim-level source tracing
+- **Negative-Archive Ritual**: A practice for preserving what a project refused, cut, or withheld
+- **Orchestration Model**: The canonical model for how work moves through the system
+- **Deliverable Outlines**: Draft one-screen shapes for six methodology deliverables
+- **Service tiers** (`services.yaml`): The public tier names, segments, and methodology phases, without prices
 
 New to the directory? Start at [`methodology-blueprint.md`](methodology/methodology-blueprint.md); the [glossary](methodology/glossary.md) and the [source-tracking protocol](methodology/source-tracking-protocol.md) are shared by every other doc.
 
@@ -44,12 +51,12 @@ Reusable templates for the client lifecycle.
 - [Respondent sheet](templates/respondent-sheet.md)
 
 ### `docs/`, `architecture/`
-Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports.
+Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports. [`docs/deliverable-portability.md`](docs/deliverable-portability.md) documents the draft procedure for carrying document and deck quality across models.
 
 The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: their prompts and fixtures are real RP business scenarios carrying balances, revenue targets, pricing bands, and a client engagement, which is the same material this README says stays private.
 
 ### `scripts/`
-Generic automation: the doc-link checker, the vault/toolkit boundary drift detector, the pre-commit hook chain, the methodology sync script, the site builder (`build-site.py`), the burst gate and the changelog-fragment compiler, the last two with test scripts. Nothing RP-specific. Release notes collect as one fragment per pull request in [`changelog.d/`](changelog.d/README.md) and compile into [`CHANGELOG.md`](CHANGELOG.md) at tag time.
+Generic automation. `build-site.py` assembles the field guide and system map into the GitHub Pages site. `burst-gate` runs five mechanical gates against a worker branch. `changelog-fragments` creates, validates, and compiles the per-pull-request fragments documented in [`changelog.d/README.md`](changelog.d/README.md). `check-methodology-status.sh` verifies that every methodology document declares how far to trust it. `test-burst-gate.sh` exercises each burst gate in throwaway branches. `test-changelog-fragments.sh` exercises the fragment workflow in throwaway repositories. `test-instrument-score.sh` checks the measurement scoring script against its worked example and refusal cases. The directory also carries the doc-link checker, vault/toolkit boundary drift detector, pre-commit hook chain, and methodology sync script. Nothing RP-specific.
 
 ### `phase-zero/`
 The deployment kit for AI-agent session infrastructure (hooks, operating brief, model routing, retrospective, settings), deployed byte-identical into consuming repos' `.claude/` directories via `phase-zero/install.sh`. See that file's `CONSUMERS` allowlist for who's on it. This directory is an exported mirror: the source lives in a private repo beside the decisions and tests that warrant it, and every change here arrives as an `Export kit from stack-data` commit. Fork it freely; fixes sent here are not merged back by hand.
@@ -67,7 +74,7 @@ Generic film/video production tooling. *(Kept as a default; see below.)*
 - [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
 - PowerGrade template spec
 - [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
-- [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (draft)
+- [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (accepted 2026-10-16, with open parameters)
 - [Client shooting brief](production/client-shooting-brief.md): a three-page brief for the person filming, to print and put in the box (draft)
 - [Remote session runbook](production/remote-session-runbook.md): the setup-call script, prompts, the spoken consent loop, and the debrief for the remote filming phase; calls are not recorded
 - [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
@@ -137,8 +144,8 @@ The same flag once sat on `cli/`, the prospect and grant command-line tools. It 
 
 Three lanes, matching the rest of this practice's repos:
 
-- **Code and tooling** (`scripts/`, `production/resolve_workflow.py`, the `phase-zero/` and `public-kit/` mechanisms themselves): **MIT**. Use it, fork it, adapt it.
-- **Methodology, protocols, and practice-writing** (`methodology/`, `templates/`, `docs/`): **CC BY-SA 4.0**. Share and adapt, with attribution, alike.
+Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
+
 - **Data**: none of consequence lives in this repo; where it would, it's CC0.
 
 See [`LICENSE`](LICENSE) for the code license and scope note, [`LICENSE-CONTENT`](LICENSE-CONTENT) for the methodology license, and `public-kit/` for the templates this policy is built from. Contribution terms are in [`CONTRIBUTING.md`](CONTRIBUTING.md), and the reporting channel for security issues is in [`SECURITY.md`](SECURITY.md).
@@ -180,7 +187,7 @@ The **[Field Guide](docs/field-guide/index.md)** gives each audience a reading o
 
 - **[Writers](docs/field-guide/writers.md)**: the question bank that generates client language and the editorial disciplines (the voice system itself is private)
 - **[Producers](docs/field-guide/producers.md)**: the session methodology, the client lifecycle from prospect to case study, shoot and post workflow
-- **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, the grant reporting cadence and consent tiers
+- **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, and grant-reporting practice
 
 If none of those labels fit, you may still be at home here:
 

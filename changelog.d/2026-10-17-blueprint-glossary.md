@@ -1,0 +1,1 @@
+Align the methodology blueprint with the public service phase paths, mark the obsolete orchestration handoff as superseded, and add owner-linked glossary entries for service, phase, register, consent, and methodology terms.

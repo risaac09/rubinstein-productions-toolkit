@@ -8,11 +8,15 @@ Open an issue. Issues are enabled on this repo. It may not get a response quickl
 
 ## If you want to build on this
 
-Fork it. [`LICENSE`](LICENSE) is the MIT license for the code and tooling it names (`scripts/`, `production/resolve_workflow.py`, and the `phase-zero/` and `public-kit/` mechanisms). [`LICENSE-CONTENT`](LICENSE-CONTENT) is CC BY-SA 4.0 for the methodology, templates and docs it names (`methodology/`, `templates/`, `docs/`), and an adaptation of that material has to carry the same license. Read those two files for the exact scope and terms.
+Fork it.
+
+Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
+
+An adaptation of the CC BY-SA material has to carry the same license. Read those two files for the exact terms.
 
 ## Changes to this repo
 
-The maintainer's own changes go in a pull request with a fragment in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time.
+The maintainer's own changes go in a pull request with a fragment in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time. A pull request that moves a [`docs/ROADMAP.md`](docs/ROADMAP.md) item adds a status fragment in `changelog.d/roadmap/` rather than editing that file. Neither shared file is edited by hand; CI fails a pull request that does.
 
 ## Code of conduct
 
