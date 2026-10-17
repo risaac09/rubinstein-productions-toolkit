@@ -2,7 +2,7 @@
 
 **Public methodology, evaluation frameworks, prompt-stack tooling, and deployment kits for AI-assisted solo practices.**
 
-Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism — not the business behind it — is the useful, reusable part.
+Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism is the useful, reusable part, and the business behind it is not.
 
 Forks welcome, pull requests not reviewed or merged: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
 
@@ -36,16 +36,19 @@ The intellectual core: how the practice works, why it works, and how to measure 
 - **Deliverable Outlines**: Draft one-screen shapes for six methodology deliverables
 - **Service tiers** (`services.yaml`): The public tier names, segments, and methodology phases, without prices
 
+New to the directory? Start at [`methodology-blueprint.md`](methodology/methodology-blueprint.md); the [glossary](methodology/glossary.md) and the [source-tracking protocol](methodology/source-tracking-protocol.md) are shared by every other doc.
+
 Three core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, and `enif-plain.md`. The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
 
-Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
+Licensed CC BY-SA 4.0 (practice-writing, not code; see License below).
 
 ### `templates/`
 Reusable templates for the client lifecycle.
 
-- Client onboarding template
+- [Client onboarding template](templates/client-onboarding.md)
 - [Scope checklist](templates/scope-checklist.md)
-- Case study template
+- [Case study template](templates/case-study-template.md)
+- [Respondent sheet](templates/respondent-sheet.md)
 
 ### `docs/`, `architecture/`
 Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports. [`docs/deliverable-portability.md`](docs/deliverable-portability.md) documents the draft procedure for carrying document and deck quality across models.
@@ -62,10 +65,10 @@ The deployment kit for AI-agent session infrastructure (hooks, operating brief, 
 A second, smaller deployment kit for public-repo hygiene: license templates, a README-shape standard, `CONTRIBUTING.md`/`SECURITY.md` templates, and the canonical public-facing voice rules. Deployed independently of `phase-zero/` by the `--public` mode of the shared installer, `phase-zero/install.sh`, to repos that are actually public. Exported from the same private source as `phase-zero/`. A repo can take either kit, both, or neither.
 
 ### `prompts/`
-What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.
+What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, and [`prompts/skills/`](prompts/skills/), eight Cowork/Claude Code skill files: outreach, project management, agentic development, idea-to-pilot, branded deck and document builds, the agentic orchestrator, and a prompting pattern library. The agentic-development and prompting-library files are October 2025 snapshots and say so at the top.
 
 ### `production/`
-Generic film/video production tooling. *(Kept as a default — see below.)*
+Generic film/video production tooling. *(Kept as a default; see below.)*
 
 - DaVinci Resolve command-line script: read-only and offline commands only
 - [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
@@ -103,7 +106,7 @@ What's left after the position papers and grant-concept research moved to `stack
 Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
 
 - **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
-- **Royal Metrics**: ENIF business performance dashboard (lives at `three-type-evaluation/instrument/` since 2026-07-20, standalone repo archived; the measurement framework it implements is in `methodology/`)
+- **Royal Metrics**: ENIF business performance dashboard (folded into a private evaluation repo on 2026-07-20, standalone repo archived; the measurement framework it implements is in `methodology/`)
 - **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
 
 ---
@@ -115,7 +118,7 @@ This repo's own `CLAUDE.md` used to claim "nothing private lands here." An audit
 - **Grant strategy, brand/creative-strategy prompts, the identity-instantiation prompt, the content strategy, and RP-specific production tooling** (`badwords-rp/`) moved to `rp-intranet`, a private operations repo. They were business strategy and voice/positioning material, not reusable methodology.
 - **Position papers and grant-concept research** moved to `stack-data`, alongside near-identical or adjacent material already living there.
 - **Duplicate Total Cost of Ownership methodology files** were deleted outright; `stack-data/context/tco-framework.md` is the canonical version now.
-- **Context Provenance** — the self-contained AI-attribution and provenance tool that happened to live in this tree now has its own repository: **[`risaac09/context-provenance`](https://github.com/risaac09/context-provenance)**. Its original subtree history moved with it.
+- **Context Provenance**: the self-contained AI-attribution and provenance tool that happened to live in this tree now has its own repository: **[`risaac09/context-provenance`](https://github.com/risaac09/context-provenance)**. Its original subtree history moved with it.
 
 A second pass on 2026-08-23 caught what the first one missed. The August reorg scoped itself to `prompts/`, `research/`, `grants/`, and `production/`, so these were never in range:
 
@@ -131,7 +134,7 @@ One removal came later, on 2026-10-16: the `rp-*` prospect and grant command-lin
 
 ### A judgment call
 
-Most of `production/` (everything except `badwords-rp/`, which moved) is kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and the directory carries no names, numbers, or strategy — but this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
+Most of `production/` (everything except `badwords-rp/`, which moved) is kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and the directory carries no names, numbers, or strategy. But this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
 
 The same flag once sat on `cli/`, the prospect and grant command-line tools. It was settled on 2026-10-16: the pipeline record is the private stack-data repo, a second tracker for the same facts was the problem, and the tools were retired. See the paragraph above and [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md).
 
@@ -143,7 +146,7 @@ Three lanes, matching the rest of this practice's repos:
 
 Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
 
-- **Data** — none of consequence lives in this repo; where it would, it's CC0.
+- **Data**: none of consequence lives in this repo; where it would, it's CC0.
 
 See [`LICENSE`](LICENSE) for the code license and scope note, [`LICENSE-CONTENT`](LICENSE-CONTENT) for the methodology license, and `public-kit/` for the templates this policy is built from. Contribution terms are in [`CONTRIBUTING.md`](CONTRIBUTING.md), and the reporting channel for security issues is in [`SECURITY.md`](SECURITY.md).
 
@@ -182,7 +185,7 @@ Start with `methodology/facilitation-protocol.md` for the session-level practice
 
 The **[Field Guide](docs/field-guide/index.md)** gives each audience a reading order and a first working session:
 
-- **[Writers](docs/field-guide/writers.md)**: the voice system, the question bank that generates client language, the editorial disciplines
+- **[Writers](docs/field-guide/writers.md)**: the question bank that generates client language and the editorial disciplines (the voice system itself is private)
 - **[Producers](docs/field-guide/producers.md)**: the session methodology, the client lifecycle from prospect to case study, shoot and post workflow
 - **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, and grant-reporting practice
 
@@ -201,9 +204,9 @@ This repo and the Obsidian vault are separate stacks. Directory names like `02 P
 
 Three guards enforce this:
 
-- **Drift detector** — `scripts/check-vault-mirror-drift.sh`. Pure bash. Run anytime.
-- **Pre-commit hook** — `scripts/hooks/pre-commit-vault-mirror-check.sh`. Chains the secret scanner and the drift detector. Install on a clean checkout with `cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
-- **Daily detector** — `~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`. Runs at 04:30 daily, writes a dated note to the vault on drift. The pre-commit hook only fires on git commits; the daily run catches misroutes from other automation.
+- **Drift detector**: `scripts/check-vault-mirror-drift.sh`. Pure bash. Run anytime.
+- **Pre-commit hook**: `scripts/hooks/pre-commit-vault-mirror-check.sh`. Chains the secret scanner and the drift detector. Install on a clean checkout with `cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
+- **Daily run** (optional, not shipped): schedule `scripts/check-vault-mirror-drift.sh --emit-vault-report` with cron or launchd. The pre-commit hook only fires on git commits; a daily run catches misroutes from other automation.
 
 ---
 

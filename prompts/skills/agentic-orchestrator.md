@@ -62,7 +62,7 @@ Read as of: <repo>@<sha> (<fetch time>), open PRs: N, uncommitted: N.
 
 The single command is `stack-data/scripts/sd-fleet-sync`, which fetches every registry repo, records head versus origin, open-PR count, and dirty-file count, and writes `dist/fleet-state.json`. Read that manifest first.
 
-**The honesty rule a cloud session must state.** A remote or cloud session sees GitHub, not the working trees on the M2 Pro or the Mini. Uncommitted local work is invisible until pushed (the physical-estate survey found 22 such files). So two rules hold: push local work before asking for a global refresh, and when running from the cloud, the stamp says "GitHub state as of X, local Mac working trees not visible from here." Never present a GitHub read as the whole truth.
+**The honesty rule a cloud session must state.** A remote or cloud session sees GitHub, not the working trees on your local machines. Uncommitted local work is invisible until pushed (the physical-estate survey found 22 such files). So two rules hold: push local work before asking for a global refresh, and when running from the cloud, the stamp says "GitHub state as of X, local Mac working trees not visible from here." Never present a GitHub read as the whole truth.
 
 If a repo cannot be fetched, name it in the stamp and mark its slice CANT-VERIFY. A missed fetch is a known unknown, not a silent gap.
 

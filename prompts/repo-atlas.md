@@ -1,7 +1,7 @@
 # Repo atlas: interconnection map and thin-down verdict
 > **Status:** operational.
 
-A ready-to-run prompt for a strong orchestration model (Opus 4.8 at high
+A ready-to-run prompt for a strong orchestration model (Opus 5.5 at high
 effort, or better) with local clones of every candidate repo one level down
 from a single parent directory. Fill the two parameters, then paste
 everything below the line as the task.

@@ -93,11 +93,9 @@ cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-### 3. Daily detector
+### 3. Daily detector (optional, not shipped)
 
-`~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`
-
-launchd job. Runs the detector daily at 04:30 local with `--emit-vault-report`. On drift, writes a dated note to the vault at `00 System/Maintenance/YYYY-MM-DD-toolkit-mirror-drift.md`. Logs to `~/Library/Logs/toolkit-mirror-check.log`.
+The author runs a machine-local launchd job, `~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`; the plist is not in this repo. To do the same, schedule the detector with cron or launchd. The author's job runs it daily at 04:30 local with `--emit-vault-report`. On drift, writes a dated note to the vault at `00 System/Maintenance/YYYY-MM-DD-toolkit-mirror-drift.md`. Logs to `~/Library/Logs/toolkit-mirror-check.log`.
 
 This is the part that catches misroutes from non-git automation (the way the Arena V2 misroute happened).
 
