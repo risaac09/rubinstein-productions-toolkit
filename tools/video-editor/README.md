@@ -144,11 +144,9 @@ result. The gap above is real, not papered over.
   cuts.
 - Register as a Claude Code skill (`ln -sfn` into `~/.claude/skills/`) once
   there's real footage to edit against, per `video-use/install.md`.
-- Phase 2: Remotion for titles and motion graphics. `SKILL.md` already
-  names Remotion (and HyperFrames, Manim) as pluggable animation engines for
-  the `overlays` stage of the EDL. None of that was built or exercised here.
-  That's the next increment once the cut-and-render core above is trusted
-  against real transcripts.
+- Finish Phase 2: the lower third is built and renders with alpha (see
+  the next section). What remains is compositing it into `render.py`, so
+  the `overlays` stage lays it over the base video at set timestamps.
 
 ## Phase 2: Remotion motion graphics (`motion/`)
 
