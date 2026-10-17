@@ -2,9 +2,9 @@
 
 > **Canonical spec:** [`methodology/orchestration-model.md`](../methodology/orchestration-model.md). This is the plain-language explainer of that model, cut as six layers. The spec is the source of truth for the brand decision, what the model retires, and the open build work; this is the teaching layer.
 
-Five orchestration vocabularies grew in parallel across stack-data and this toolkit. Left alone they read as five competing frameworks. They are not competing. They operate at different altitudes. This document explains the canonical model in `methodology/orchestration-model.md` by stacking those vocabularies rather than merging them. Nothing here invents a new vocabulary; it places the ones that exist.
+Six orchestration vocabularies grew in parallel across stack-data and this toolkit. Left alone they read as six competing frameworks. They are not competing. They operate at different altitudes. This document explains the canonical model in `methodology/orchestration-model.md` by stacking those vocabularies rather than merging them. Nothing here invents a new vocabulary; it places the ones that exist.
 
-## The five that accreted
+## The six that accreted
 
 - `agentic-orchestrator` (toolkit skill): how a single request runs.
 - `idea-to-pilot` (toolkit skill): how an idea matures across many runs.
