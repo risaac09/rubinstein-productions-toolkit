@@ -21,10 +21,12 @@ Every idea in Isaac's system eventually becomes one of six things:
 | **Claim** | A tested intellectual position | Arena |
 | **Expression** | Content under Isaac's name | Content Arc / Voice / Writing |
 | **Tool** | Infrastructure someone uses | Projects / skill-creation |
-| **Practice** | Something done in rooms with people | PM Coordinator / QM |
+| **Practice** | Something done in rooms with people | PM Coordinator / Quantum Mirror |
 | **Signal** | Pre-categorical. This is the seed. | **Stays here.** |
 
 **The demarcation question ("what kind of thing is this?") is answered by the incubation process, not at intake.**
+
+> Arena, Content Arc, Projects, Proposal Builder and Quantum Mirror are vault-side skills. They are named here as routes and are not shipped in this repo's `prompts/skills/`.
 
 ## Intake Protocol
 
@@ -110,8 +112,8 @@ When Isaac wants to process `07 Capture/`:
 
 ## Connection to Existing Skills
 
-**Called BY:** `isaac-twin` (when idea doesn't fit existing routing table; formerly `rubinstein-productions-agent`, retired 2026-06-29)
-**Feeds INTO:** Any downstream skill when a seed matures — COO, Arena, Content Arc, Projects, PM Coordinator, Writing, Quantum Mirror
+**Called BY:** `isaac-twin` (when idea doesn't fit existing routing table; see [`methodology/orchestration-model.md`](../methodology/orchestration-model.md) for the retired predecessor and current orchestration model)
+**Feeds INTO:** Any downstream skill when a seed matures: COO, Arena, Content Arc, Projects, PM Coordinator, Writing, Quantum Mirror
 **Never calls:** COO triage, Proposal Builder, or any output-oriented skill during incubation. The seed-bed is pre-output.
 
 **Vault interaction (ordinary file reads and writes under `~/vault/`; the osascript-for-iCloud rail was retired 2026-09-02):**
@@ -128,9 +130,9 @@ When Isaac wants to process `07 Capture/`:
 | "What's growing?" | Weekly Seed Review |
 | Seed has a buyer | → Service → COO |
 | Seed can be wrong | → Claim → Arena |
-| Seed has a voice | → Expression → Content/Writing |
+| Seed has a voice | → Expression → Content Arc / Writing |
 | Seed has a use case | → Tool → Projects |
-| Seed wants to be lived | → Practice → PM/QM |
+| Seed wants to be lived | → Practice → PM Coordinator / Quantum Mirror |
 | Seed won't differentiate | Zero-Measurement Zone |
 | Backlog of phone notes | Capture Backlog Processing |
 | "I should turn this into..." | Flag cognitive override |
