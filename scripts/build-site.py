@@ -138,7 +138,17 @@ def nav_html(current: str) -> str:
     return "\n".join(items)
 
 
+def guard_out() -> None:
+    """Refuse an OUT that rmtree would turn into data loss."""
+    if OUT in (ROOT, *ROOT.parents):
+        sys.exit(f"build-site: refusing OUT={OUT}: it is or contains the repository")
+    default = ROOT / "_site"
+    if OUT != default and OUT.exists() and any(OUT.iterdir()) and not (OUT / "site.css").exists():
+        sys.exit(f"build-site: refusing OUT={OUT}: not empty and no site.css, so not a previous build")
+
+
 def main() -> None:
+    guard_out()
     if OUT.exists():
         shutil.rmtree(OUT)
     (OUT / "map").mkdir(parents=True)

@@ -75,10 +75,6 @@ def apply_lut_to_item(item, node_index, lut_path, lut_roots=()):
     return (True, f"node {node_index} LUT = {reported}")
 
 
-def apply_lut_to_items(items, node_index, lut_path, lut_roots=()):
-    return [(item.GetName(), *apply_lut_to_item(item, node_index, lut_path, lut_roots)) for item in items]
-
-
 def graph_fingerprint(graph):
     """What the scripting API can read of a node graph: per node its label,
     LUT, and (where the build has GetToolsInNode) tool list. Used to tell
