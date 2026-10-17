@@ -61,8 +61,8 @@ are one link in a chain of responsible parties:
 
 ## What the system is
 
-- `production/lutlab/`: decompose, build, port, looks, diff, apply, frames,
-  verify-render, library. `README.md` is the reference; this file is the role.
+- `production/lutlab/`: decompose, build, fit-pairs, port, looks, diff, apply,
+  frames, verify-render, library. `README.md` is the reference; this file is the role.
 - `production/lutlab-looks/`: the six look deltas (Neutral, Tungsten, Ice Blue,
   Print Teal, Soft Print, Bleach). The deltas are the product.
 - Three bakes per look: `[S5II]` (V-Log in), `[Pyxis]` (Gen 5 in), `[RCM]`
