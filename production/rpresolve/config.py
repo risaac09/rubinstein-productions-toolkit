@@ -49,7 +49,7 @@ def _web(name, aspect, width, height, codec, lufs, captions):
 
 DEFAULT_CONFIG = {
     "bins": {
-        "Source": ["iPhone", "GH7", "GH5", "Audio"],
+        "Source": ["iPhone", "GH7", "GH5", "S5II", "Pyxis", "Audio"],
         "Selects": [],
         "Timeline": [],
         "Graphics": [],
