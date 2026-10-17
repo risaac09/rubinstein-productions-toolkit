@@ -48,6 +48,14 @@ The mental effort required to manage self-monitoring and performance under obser
 
 A participatory method for mapping non-linear feedback loops. In the Excavation phase the group uses it to map the structural forces that keep honest expression contained. See the [Theory of Change](theory-of-change.md) and the [Methodology Blueprint](methodology-blueprint.md).
 
+### **Consent Tier**
+
+One of three promises governing how engagement material may be used. See [Consent Evidence](../production/consent-evidence.md) for the tiers and the artifact that proves each one.
+
+### **Container**
+
+The first engagement phase. See the [Methodology Blueprint](methodology-blueprint.md) for its goal, activities, and deliverable.
+
 ---
 
 ## **D–H**
@@ -60,6 +68,14 @@ Synthetic video content that undermines trust in visual evidence, leading to ero
 
 A polyvagal response characterized by immobilization, shutdown, or dissociation in response to perceived threat. Common in subjects who feel overexposed or objectified by the camera (Porges, 2011).
 
+### **Digital Liver**
+
+A theoretical and applied framework for information metabolism. See the [Theory of Change](theory-of-change.md) for its grounding and core insight.
+
+### **Excavation**
+
+The second engagement phase. See the [Methodology Blueprint](methodology-blueprint.md) for its goal, activities, and deliverable.
+
 ### **Facilitation Before Technology**
 
 A production principle asserting that relational and psychological preparation precedes technical setup. Grounded in Layer 2 “Permission-Based Framing.”
@@ -67,6 +83,10 @@ A production principle asserting that relational and psychological preparation p
 ### **Freeze Response**
 
 A stress-induced immobility state where the body halts expressive movement to minimize threat exposure. Common under evaluative observation or intense lighting conditions.
+
+### **Founder Story**
+
+A publicly offered service that traverses Container, Performance, and Translation while skipping Excavation. See [`services.yaml`](services.yaml) for the service definition.
 
 ### **Grounding**
 
@@ -100,6 +120,10 @@ The second of the two measurement languages. They capture what the counts miss: 
 
 The conscious tracking of physiological states—heart rate, breath, muscle tension—to regulate presence and authenticity during production.
 
+### **Nomadic Science**
+
+A practice of following matter in flow rather than imposing form from outside. See [Second Brain V2: Opening and Process](second-brain-v2-opening-and-process.md) for the frame and its operational translation.
+
 ---
 
 ## **O–R**
@@ -116,9 +140,17 @@ A collaborative approach where subjects contribute to story design, consent fram
 
 A participatory evaluation method for mapping a project's linear logic. In the Container phase it produces the logic model stakeholders sign off on, which gives the deeper work institutional cover. See the [Theory of Change](theory-of-change.md) and the [Methodology Blueprint](methodology-blueprint.md).
 
+### **Performance**
+
+The third engagement phase. See the [Methodology Blueprint](methodology-blueprint.md) for its goal, activities, and deliverable.
+
 ### **Performance Anxiety Cascade**
 
 A feedback loop of nervous-system activation caused by perceived judgment on camera. Manifests as elevated cortisol, self-monitoring, and speech disruption.
+
+### **Program Engagement**
+
+A publicly offered service that runs all four engagement phases. See [`services.yaml`](services.yaml) for the service definition.
 
 ### **Polyvagal Theory**
 
@@ -127,6 +159,10 @@ A framework by Stephen Porges explaining how three branches of the vagus nerve�
 ### **Psychological Safety**
 
 A shared belief that one can express oneself without risk of punishment or humiliation (Edmondson, 1999). In filming, it enables subjects to speak truthfully rather than performatively.
+
+### **Register**
+
+Used in three senses: the Institutional and Relational measurement registers, the three registers of the single act, and the sixty-four modes of speech and presence. See the [Measurement Framework](measurement-framework.md), [Nomadic Indicators Codebook](nomadic-indicators-codebook.md), and [Sixty-Four Registers thesis](../research/say-why-64-registers-thesis.md), respectively.
 
 ---
 
@@ -140,6 +176,10 @@ The first of the two measurement languages: the counts institutions already trus
 
 A developmental concept where individuals define their own identity and values, essential for authentic storytelling (Kegan, 1982). Applied here to narrative sovereignty.
 
+### **Service Tier**
+
+A level of the public service offering. See [`services.yaml`](services.yaml) for the current public tiers and their definitions.
+
 ### **Surveillance Capitalism**
 
 An economic logic that commodifies human experience as behavioral data for prediction and control (Zuboff, 2019). Filmmaking can resist this logic by emphasizing reciprocity and participant agency.
@@ -152,6 +192,10 @@ A physiological state of mobilization (“fight or flight”) triggered by perce
 
 Three statements that diverse stakeholders rate from 1 to 10 to score consistency, meaning how well a narrative holds contradiction without flattening it. The statements are: "This narrative holds my contradictory experience," "I can locate myself in this story without erasing complexity," and "This makes our conflicts generative rather than destructive." See the [Measurement Framework](measurement-framework.md), section 2, and the [Codebook](nomadic-indicators-codebook.md).
 
+### **Translation**
+
+The fourth engagement phase. See the [Methodology Blueprint](methodology-blueprint.md) for its goal, activities, and deliverable.
+
 ### **Ventral Vagal State**
 
 The polyvagal system’s social engagement mode—characterized by calm attention, prosody, and emotional expressiveness. Optimal state for authentic communication.
@@ -162,7 +206,9 @@ The distinction between documenting as presence (witnessing) and recording as po
 
 ### **Zero-Measurement Zone**
 
-The protocol for the on-camera conversation (Type 3, production): no extractive data collection, and the facilitator follows energy, not agenda. See the [Session Facilitation Guide](session-facilitation-guide.md).
+The protocol for the on-camera conversation (session type 3, production): no extractive data collection, and the facilitator follows energy, not agenda. See the [Session Facilitation Guide](session-facilitation-guide.md).
+
+Terminology note: "Tier" means either service tier or consent tier; "Type" means either session type or information Type in the [Three-Type Architecture](three-type-architecture.md).
 
 ---
 
