@@ -66,13 +66,15 @@ fi
 
 # 2. Skill sync: symlink toolkit files into the shared agent skill home.
 if [ "$SKILLS_ALL" -eq 1 ]; then
-  mapfile -t map < <(cd "$SKILL_SRC_DIR" && ls *.md 2>/dev/null | sed 's/\.md$//' || true)
+  # mapfile needs bash 4; macOS ships 3.2.
+  map=()
+  while IFS= read -r skill; do map+=("$skill"); done < <(cd "$SKILL_SRC_DIR" && ls *.md 2>/dev/null | sed 's/\.md$//' || true)
 else
   map=("${DEFAULT_MAP[@]}")
 fi
 
 [ "$DRY_RUN" -eq 1 ] || mkdir -p "$SKILLS_DIR"
-for name in "${map[@]}"; do
+for name in ${map[@]+"${map[@]}"}; do
   src="$SKILL_SRC_DIR/$name.md"
   dst="$SKILLS_DIR/$name/SKILL.md"
   if [ ! -f "$src" ]; then
