@@ -1,0 +1,1 @@
+Wire the Remotion lower third to the design-token names through a tokens prop, document and verify that video-use's render.py composites the alpha render with no new code, and fix small contradictions in the camera-shipping logistics, the client shooting brief, the design-tokens look book and the deliverable-portability status line.

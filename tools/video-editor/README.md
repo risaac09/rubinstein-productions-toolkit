@@ -144,9 +144,10 @@ result. The gap above is real, not papered over.
   cuts.
 - Register as a Claude Code skill (`ln -sfn` into `~/.claude/skills/`) once
   there's real footage to edit against, per `video-use/install.md`.
-- Finish Phase 2: the lower third is built and renders with alpha (see
-  the next section). What remains is compositing it into `render.py`, so
-  the `overlays` stage lays it over the base video at set timestamps.
+- Decide what to do about the frame rate. `render.py` extracts every
+  segment with `-r 24`, so a 23.976 source comes out at 24 fps, off the
+  capture standard. The fix belongs upstream or in a local patch; neither
+  exists yet.
 
 ## Phase 2: Remotion motion graphics (`motion/`)
 
@@ -187,6 +188,10 @@ npx remotion render src/index.ts LowerThird out/lower-third.mov \
 - Swap `LowerThird` for `LowerThirdPortrait` or `LowerThirdSquare` for 9:16 or 1:1.
 - `--props` also takes `width`, `height` and `fps`, for example
   `'{"name":"A","role":"B","width":1920,"height":1080,"fps":25}'` for an HD, 25 fps project.
+- `--props` also takes `tokens`, the brand values by token name (see
+  `production/design-tokens.md`). Keep them in a props file outside the repo,
+  or in `motion/*.local.json`, which git ignores, and pass the path:
+  `--props=./brand.local.json`. The file holds `name` and `role` too.
 
 `npx remotion render` has no per-flag `--help`; `npx remotion help render`
 lists commands only. The flags above were checked by running them on Remotion
@@ -217,20 +222,42 @@ out; the last frame showed a faint ghost of the card instead of black.
 Fixed by ending the exit window at `TOTAL_DURATION - 1`; re-rendered and
 confirmed frame 94 is now fully black.
 
-**How this fits with the video-use core, honestly:**
+**How this fits with the video-use core:**
 
-Not wired together. This is a standalone Remotion composition, rendered to
-its own MP4, independent of `video-use/edit/edl.json`. The intended shape,
-per `SKILL.md`'s existing mention of Remotion as an `overlays` engine: `video-use`
-produces the cut base video from source footage via its EDL; Remotion
-renders graphics elements (lower thirds, titles, intro/outro cards) as
-separate clips with alpha or as their own MP4s; a compositing step (ffmpeg
-overlay filter, most likely inside `helpers/render.py`'s existing overlay
-stage) lays the Remotion output on top of the base video at specified
-timestamps. None of that compositing step exists yet; this phase only
-proves the Remotion side renders deterministically and can iterate the same
-way any other React code does (edit `LowerThird.tsx`, re-render, diff the
-frame). Wiring the two together is the next increment, not this one.
+No new code is needed. `render.py`'s overlay stage already composites any
+file named in the EDL's `overlays` list: it shifts the overlay so its first
+frame lands at `start_in_output`, lays it over the base video with ffmpeg's
+`overlay` filter for `duration` seconds, and burns subtitles after it. The
+ffmpeg `overlay` filter reads the ProRes 4444 alpha channel, so the alpha
+render from the recipe above goes straight in:
+
+```json
+"overlays": [
+  {"file": "lower-third.mov", "start_in_output": 1.0, "duration": 3.17}
+]
+```
+
+A relative `file` resolves against the EDL's own folder.
+
+Verified 2026-10-17, at the pinned commit with ffmpeg 9.0.2: a 1920 by 1080
+lower third rendered with the alpha recipe (`"width":1920,"height":1080` in
+`--props`), laid by `render.py` over a two-range cut of a synthetic 8 s clip.
+A frame mid-hold shows the block over the test pattern with the pattern
+visible around it. A frame after the window shows the pattern alone, with no
+black frame and no ghost of the block.
+
+Two rules come from how the stage works:
+
+- **Render the overlay at the size of the base video.** The filter neither
+  scales nor centres it. `render.py` scales a landscape base to 1920 wide
+  (1280 wide with `--draft`) and a portrait base to 1920 tall (1280 tall with
+  `--draft`), so a UHD lower third fits none of them. Pass `width` and
+  `height` in `--props` to match, for example 1920 by 1080 or 1080 by 1920.
+- **Set `duration` to the overlay's own length**, 76 frames at 23.976 or
+  about 3.17 s, so the window does not cut the exit short.
+
+What this does not cover: the base came out at 24 fps (see Next steps), and
+nothing here was checked on real footage or at UHD.
 
 **Friction notes, for anyone treating this as a repeatable pipeline later:**
 

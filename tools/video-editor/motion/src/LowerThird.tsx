@@ -16,7 +16,29 @@ export type LowerThirdProps = {
   width?: number;
   height?: number;
   fps?: number;
+  // Token values by token name, from the private brand context
+  // (production/design-tokens.md). Any token left out uses the placeholder in
+  // FALLBACK below, which is not a brand value.
+  tokens?: Partial<Record<TokenName, string>>;
 };
+
+export type TokenName =
+  | "color.marrow"
+  | "color.amber"
+  | "color.text-on-dark"
+  | "type.display"
+  | "type.body";
+
+const FALLBACK: Record<TokenName, string> = {
+  "color.marrow": "#0f0f0f",
+  "color.amber": "#e8491d",
+  "color.text-on-dark": "#ffffff",
+  "type.display": "Helvetica, Arial, sans-serif",
+  "type.body": "Helvetica, Arial, sans-serif",
+};
+
+// The panel is color.marrow at 88% opacity, the same number as the caption bar.
+const PANEL_OPACITY = 0.88;
 
 // UHD at 23.976. Remotion accepts any positive finite number for fps, so the
 // exact rational 24000/1001 is used and no rounding to 24 is needed.
@@ -111,8 +133,13 @@ export const layoutFor = (width: number, height: number): Layout => {
   };
 };
 
-export const LowerThird: React.FC<LowerThirdProps> = ({ name, role }) => {
+export const LowerThird: React.FC<LowerThirdProps> = ({ name, role, tokens }) => {
   const frame = useCurrentFrame();
+  // A token that is missing, null or empty in the props JSON keeps its fallback.
+  const t = { ...FALLBACK };
+  for (const [k, v] of Object.entries(tokens ?? {})) {
+    if (k in FALLBACK && typeof v === "string" && v !== "") t[k as TokenName] = v;
+  }
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const g = layoutFor(width, height);
 
@@ -156,7 +183,7 @@ export const LowerThird: React.FC<LowerThirdProps> = ({ name, role }) => {
           style={{
             width: g.barWidth,
             height: g.barHeight,
-            backgroundColor: "#e8491d",
+            backgroundColor: t["color.amber"],
             transform: `scaleY(${barScale})`,
             transformOrigin: "bottom",
             marginRight: g.gap,
@@ -164,17 +191,17 @@ export const LowerThird: React.FC<LowerThirdProps> = ({ name, role }) => {
         />
         <div
           style={{
-            backgroundColor: "rgba(15, 15, 15, 0.88)",
+            backgroundColor: `color-mix(in srgb, ${t["color.marrow"]} ${PANEL_OPACITY * 100}%, transparent)`,
             padding: `${g.padY}px ${g.padX}px`,
             borderRadius: g.radius,
           }}
         >
           <div
             style={{
-              fontFamily: "Helvetica, Arial, sans-serif",
+              fontFamily: t["type.display"],
               fontSize: g.title,
               fontWeight: 700,
-              color: "#ffffff",
+              color: t["color.text-on-dark"],
               lineHeight: 1.1,
             }}
           >
@@ -182,10 +209,10 @@ export const LowerThird: React.FC<LowerThirdProps> = ({ name, role }) => {
           </div>
           <div
             style={{
-              fontFamily: "Helvetica, Arial, sans-serif",
+              fontFamily: t["type.body"],
               fontSize: g.subtitle,
               fontWeight: 400,
-              color: "#c9c9c9",
+              color: t["color.text-on-dark"],
               marginTop: g.subtitle / 6,
             }}
           >

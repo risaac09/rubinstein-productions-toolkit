@@ -52,7 +52,7 @@ Tick each line on the bench test, again on the client's arrival check, and again
 - [ ] Support: a stand, a clamp or a small tripod, whichever the kit uses
 - [ ] Cleaning cloth
 - [ ] Padded case or the wrapping cloth and padding the [example shoot plan](examples/2026-03-31-shoot-plan.md) shows
-- [ ] Release forms: appearance releases and a location release, in your counsel's wording, with enough copies for everyone who may appear
+- [ ] Release forms: appearance releases and a location release, in counsel's wording, with enough copies for everyone who may appear
 - [ ] Outbound box, return label, tape, the one-page setup sheet, and a printed copy of this checklist
 
 **Backup gear.** Backup is decided per category, not per item.
@@ -86,7 +86,7 @@ The number of spares per category is open (see [Open parameters](#open-parameter
 5. The kit is reset, which waits for the client's confirmation: batteries charged, cards formatted in the camera, settings returned, firmware noted, and the inventory marked available.
 6. The return rate is recorded.
 
-Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. They travel with the kit, in their case, and the offload in step 13 happens on arrival.
+Cards in transit hold the client's unreleased footage, so they are the most sensitive thing in the box. They travel with the kit, in their case, and the offload in step 13 follows check-in.
 
 The cards are RP's kit. The client's footage is the files on them, and it reaches the client in the return package. A card that is waiting for the client's confirmation stays out of the next shipment until it is wiped.
 

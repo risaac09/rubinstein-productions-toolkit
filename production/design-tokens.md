@@ -16,7 +16,7 @@ A deliverable carries the brand through a small set of named tokens. A graphic, 
 | `type.body` | Secondary lines: the lower-third role line and any running text on a frame. |
 | `type.caption` | Subtitles, burnt in or imported. |
 
-No build step resolves the names yet. Until one does, a person reads each value from the private brand context when making a graphic, and nothing in this repo carries a literal in place of a name.
+No build step resolves the names yet. Until one does, a person reads each value from the private brand context when making a graphic. The lower third takes the values by token name at render time (see [Motion](#motion)). Its placeholders stand in only when a token is left out, and they are not brand values.
 
 `color.amber` is the only token that marks emphasis. A second accent colour is a change to the token set, not a one-off.
 
@@ -70,7 +70,7 @@ The portrait and square fractions were chosen for this table, not derived from a
 
 The block slides in from the left over 2/3 of a second, holds for 2 seconds and slides back out over 1/2 second, while fading and while the bar scales on its vertical axis from the bottom. That is 76 frames at 23.976. The timing is in seconds so the motion lasts the same at another frame rate. These numbers are the file's defaults, not a standard of their own.
 
-**The file does not use the tokens yet.** `LowerThird.tsx` carries literal colours and a system sans-serif for both lines. Wiring it to the token names is an open follow-up: the geometry above is already the standard, the colour and type are not.
+**Tokens.** `LowerThird.tsx` reads five tokens from a `tokens` prop keyed by the names above: `color.amber` for the bar, `color.marrow` for the panel (drawn at 88% opacity), `color.text-on-dark` for both lines, `type.display` for the title line and `type.body` for the subtitle line. Put the values in a props file outside the repo, or in a `*.local.json` file in `tools/video-editor/motion/`, which git ignores, and pass it with `--props`. A token left out falls back to a placeholder in the file, which is not a brand value: a system sans-serif, a dark grey panel, white text and an orange bar. A `type.*` value names a font family, and the render machine must have that font installed or Chrome substitutes another without warning.
 
 ## Intro layout (`say-why-intro`)
 
@@ -124,13 +124,13 @@ Size stays `--font-size` (66 px); the type token's size is not yet published.
 
 One row per lutlab look in `production/lutlab-looks/`. The description column reads each look's JSON parameters. The reference frame column is empty until frames are made.
 
-**Rule for reference frames.** A reference frame is either a synthetic colour chart or one frame that Isaac owns and chooses. Never client footage, so a look can be shown without a client's permission or a client's face. No images are in this PR.
+**Rule for reference frames.** A reference frame is either a synthetic colour chart or one frame that Isaac owns and chooses. Never client footage, so a look can be shown without a client's permission or a client's face. No reference frame is in the repo yet.
 
 | Look | What it does, from its parameters | Reference frame |
 |---|---|---|
 | RP Neutral (`neutral.json`) | Sets no parameters: the base transform as it is. | to add |
 | RP Bleach (`bleach.json`) | Raises contrast to 1.2, pulls saturation to 0.58 overall (0.85 in the highlights), and adds a cool blue tone to the shadows. | to add |
-| RP Ice Blue (`ice-blue.json`) | Cools the white balance by 24, tints shadows and highlights blue and cyan, drops saturation to 0.9 on most hues while lifting red and orange so skin holds, with a small contrast rise to 1.04. | to add |
-| RP Print Teal (`print-teal.json`) | Raises contrast to 1.08 with a slightly lifted black, pushes greens toward teal, boosts teal, cyan and orange, and tones the shadows teal and the highlights yellow. | to add |
+| RP Ice Blue (`ice-blue.json`) | Cools the white balance by 24, tints shadows and highlights blue and cyan, drops saturation to 0.9 on most hues while lifting red and orange and nudging their hue by 4 so skin holds, with a small contrast rise to 1.04. | to add |
+| RP Print Teal (`print-teal.json`) | Raises contrast to 1.08 with a slightly lifted black, pushes greens toward teal and pulls their saturation to 0.85, boosts teal, cyan and orange, and tones the shadows teal and the highlights yellow. | to add |
 | RP Soft Print (`soft-print.json`) | Lowers contrast to 0.8 and saturation to 0.82, lifts the black, lowers the white and softens the highlight shoulder, shifts greens toward cyan, and tones the shadows cyan. | to add |
 | RP Tungsten (`tungsten.json`) | Warms the white balance by 28, tones the deep shadows teal and the highlights golden, and raises saturation slightly to 1.03. | to add |
