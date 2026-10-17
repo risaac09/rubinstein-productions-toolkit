@@ -5,7 +5,7 @@ description: Comprehensive library of proven prompting patterns, frameworks, and
 
 # Prompting Pattern Library
 
-**Version 1.0** | October 2025 | Tested with Claude 3.5/4, GPT-4/4o, Gemini 1.5 Pro
+**Version 1.0** | Written October 2025 against Claude 3.5/4, GPT-4/4o and Gemini 1.5 Pro. The model-specific notes have not been re-verified for current models; treat them as historical and test before relying on them.
 
 ---
 
