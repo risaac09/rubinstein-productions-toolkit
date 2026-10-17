@@ -28,7 +28,7 @@ Read the [RP Measurement Framework](../../methodology/measurement-framework.md) 
 - **[Source Tracking Protocol](../../methodology/source-tracking-protocol.md)**. Provenance categories and claim-level tracing for anything externally cited. Grant reports that survive scrutiny are built this way.
 - **Reporting cadence.** The frameworks specify who hears what and when: funders quarterly in their register, participants after engagement in theirs, the field annually.
 
-## The grant pipeline
+## Grant tracking (not shipped here)
 
 Funders are tracked as contacts with a status that runs research, loi-prep, submitted, reviewed, awarded or declined, and a deadline per application. This repo ships no tracker for it: the command-line tool that did was retired on 2026-10-16, and it is in git history. Keep the funder record in the one contact store you already use, and see [`TRUTH-OWNERSHIP.md`](../TRUTH-OWNERSHIP.md) for how this practice splits the record from the methodology.
 

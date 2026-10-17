@@ -1,4 +1,6 @@
 # Say Why: The Sixty-Four Registers
+> **Status:** draft.
+
 *Working Document | Created: 2026-06-17*
 *Purpose: Hold the thesis beneath the consolidated profile. What Say Why opens
 into when someone clicks it. The thesis statement is a poem, in the form of

@@ -64,7 +64,7 @@ while IFS= read -r dir; do
   base=$(basename "$dir")
 
   # Exception: _archive and anything below it is allowed.
-  rel="${dir#$TOOLKIT_ROOT/}"
+  rel="${dir#"$TOOLKIT_ROOT"/}"
   top_segment="${rel%%/*}"
   if is_exception "$top_segment"; then
     continue

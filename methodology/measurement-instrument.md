@@ -74,7 +74,7 @@ The framework collects satisfaction scores at five points. These are the values 
 
 Asking clarity and consistency before and after gives the dashboard a delta for each. The response file still allows any item to be blank at any point, so `score.sh` needed no change for the clarity item; it reports `narrative_clarity` at `pre-engagement` like any other cell. The example file holds two of the five points, `delivery` and `followup-3mo`, and follows this schedule for both.
 
-**When each point falls (decided 2026-10-16).** Each point is tied to an event in the engagement. The phases are Discovery, Development, Production and Delivery, as in the [case study template](../templates/case-study-template.md).
+**When each point falls (decided 2026-10-16).** Each point is tied to an event in the engagement. The phases are Discovery, Development, Production and Delivery, as in the [case study template](../templates/case-study-template.md). Discovery maps to Container, Development to Excavation, Production to Performance and Delivery to Translation.
 
 | Assessment point | Falls at | Sent by | Respondent-code key |
 |---|---|---|---|

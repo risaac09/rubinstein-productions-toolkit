@@ -1,0 +1,1 @@
+Correct the Resolve automation specification for current MCP write tools, sync stream selection, and configured source bins, and mark vault-side seed-bed routes that are not shipped in this repository.

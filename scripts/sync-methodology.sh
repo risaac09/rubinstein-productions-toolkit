@@ -49,6 +49,7 @@ PAIRS=(
 )
 
 CHANGED=0
+SKIPPED=0
 for pair in "${PAIRS[@]}"; do
   VPATH="${pair%%|*}"
   TFILE_NAME="${pair##*|}"
@@ -57,6 +58,7 @@ for pair in "${PAIRS[@]}"; do
 
   if [[ ! -f "$VFILE" ]]; then
     echo "  SKIP (vault file missing): $VPATH" >&2
+    SKIPPED=$((SKIPPED + 1))
     continue
   fi
 
@@ -135,7 +137,11 @@ done
 
 if [[ "$CHECK" -eq 1 ]]; then
   if [[ "$CHANGED" -gt 0 ]]; then
-    echo "sync-methodology --check: $CHANGED file(s) drifted from the vault."
+    echo "sync-methodology --check: $CHANGED file(s) drifted from the vault (skipped: $SKIPPED)."
+    exit 1
+  fi
+  if [[ "$SKIPPED" -gt 0 ]]; then
+    echo "sync-methodology --check: $SKIPPED pair(s) skipped (vault file missing); drift unknown." >&2
     exit 1
   fi
   echo "sync-methodology --check: no drift."

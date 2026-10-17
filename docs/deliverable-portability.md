@@ -1,5 +1,7 @@
 # Carrying deliverable quality across models
 
+> **Status:** draft.
+
 Why document and deck quality drops when the same skills and agents are pointed at a different model, and what actually transfers.
 
 Written 2026-08-13, from a review of six months of client deck and document production (roughly 40 PowerPoint and Word artifacts across eight version chains).

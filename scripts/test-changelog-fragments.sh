@@ -85,5 +85,121 @@ grep -q 'Entry from branch one' "$TMP/unrel" && grep -q 'Entry from branch two' 
 [ "$(grep -c '^- ' "$R/CHANGELOG.md")" -eq 4 ] && ok "no entry lost or duplicated" || bad "entry count: $(grep -c '^- ' "$R/CHANGELOG.md")"
 grep -q 'Dated entry' "$R/CHANGELOG.md" && ok "dated section untouched" || bad "dated section lost"
 
+# Byte-for-byte round trip: split the Unreleased entries into fragments, empty
+# the section, compile, and the file must come back identical.
+git -C "$R" checkout -q main
+cp "$R/CHANGELOG.md" "$TMP/orig"
+cat > "$R/CHANGELOG.md" <<'EOT'
+# Changelog
+
+Preamble.
+
+## Unreleased
+
+- Newest entry (#9).
+- Middle entry with `code` and a [link](x.md).
+- Oldest entry.
+
+### 2026-10-01
+
+- Dated entry.
+EOT
+cp "$R/CHANGELOG.md" "$TMP/want"
+awk '/^## Unreleased/{u=1;print;next} /^### /{u=0} u&&/^- /{next} {print}' "$TMP/want" | cat -s > "$TMP/emptied"
+awk '/^## Unreleased/{print;print "";next} {print}' "$TMP/emptied" | cat -s > "$R/CHANGELOG.md"
+i=0; total=$(grep -c '^- ' "$TMP/want" | tr -d ' ')
+# the dated section's bullet is not an Unreleased entry
+total=$(awk '/^## Unreleased/{u=1;next} /^### /{u=0} u&&/^- /{c++} END{print c}' "$TMP/want")
+awk '/^## Unreleased/{u=1;next} /^### /{u=0} u&&/^- /{sub(/^- /,"");print}' "$TMP/want" | while IFS= read -r line; do
+  i=$((i + 1))
+  printf '%s\n' "$line" > "$R/changelog.d/9-$(printf '%04d' $((total - i + 1)))-rt.md"
+done
+inrepo "$CF" compile >/dev/null
+cmp -s "$R/CHANGELOG.md" "$TMP/want" && ok "compile reproduces the changelog byte for byte" || { bad "round trip differs"; diff "$TMP/want" "$R/CHANGELOG.md" | head; }
+git -C "$R" checkout -q -- CHANGELOG.md 2>/dev/null; cp "$TMP/orig" "$R/CHANGELOG.md"
+
+# Roadmap status fragments.
+mkdir -p "$R/docs"
+cat > "$R/docs/ROADMAP.md" <<'EOT'
+# Roadmap
+
+## Amendment 2
+
+1. **Two item.**
+
+   **Status: executed.** Old.
+2. **Second item.**
+
+## Amendment 3
+
+### Engineering
+
+1. **Three one.**
+
+   **Status: executed 2026-10-16.** Kept.
+2. **Three two.** Body.
+
+### Added
+
+30. **Last item.**
+
+   **Status: executed.** Kept too.
+EOT
+git -C "$R" add -A; git -C "$R" commit -qm roadmap
+cp "$R/docs/ROADMAP.md" "$TMP/road0"
+inrepo "$CF" status A3.2 two '**Status: executed 2026-10-17.** Done.' >/dev/null && ok "status writes a roadmap fragment" || bad "status failed"
+inrepo "$CF" status A3.30 last '**Update 2026-10-17:** More, with `a\\b` and `&`.' >/dev/null
+inrepo "$CF" status A2.1 two1 '**Status: executed.** Again.' >/dev/null
+inrepo "$CF" lint >/dev/null && ok "lint accepts roadmap fragments" || bad "lint rejects roadmap fragments"
+printf 'item: nope\ntext\n' > "$R/changelog.d/roadmap/bad.md"
+inrepo "$CF" lint >/dev/null 2>&1 && bad "lint accepted a bad item key" || ok "lint rejects a bad item key"
+rm -f "$R/changelog.d/roadmap/bad.md"
+inrepo "$CF" compile --dry-run 2>&1 | grep -q 'Done\.' && ok "dry run shows the roadmap diff" || bad "dry run missed roadmap"
+inrepo "$CF" compile >/dev/null && ok "compile applies roadmap statuses" || bad "roadmap compile failed"
+cat > "$TMP/road1" <<'EOT'
+# Roadmap
+
+## Amendment 2
+
+1. **Two item.**
+
+   **Status: executed.** Old.
+
+   **Status: executed.** Again.
+2. **Second item.**
+
+## Amendment 3
+
+### Engineering
+
+1. **Three one.**
+
+   **Status: executed 2026-10-16.** Kept.
+2. **Three two.** Body.
+
+   **Status: executed 2026-10-17.** Done.
+
+### Added
+
+30. **Last item.**
+
+   **Status: executed.** Kept too.
+
+   **Update 2026-10-17:** More, with `a\\b` and `&`.
+EOT
+cmp -s "$R/docs/ROADMAP.md" "$TMP/road1" && ok "statuses land under the right items" || { bad "roadmap wrong"; diff "$TMP/road1" "$R/docs/ROADMAP.md"; }
+[ -z "$(find "$R/changelog.d/roadmap" -type f 2>/dev/null)" ] && ok "compile removes roadmap fragments" || bad "roadmap fragments left"
+inrepo "$CF" status A3.99 ghost 'Nothing.' >/dev/null
+inrepo "$CF" compile >/dev/null 2>&1 && bad "compile accepted a missing item" || ok "compile fails on a missing item"
+rm -f "$R"/changelog.d/roadmap/*.md
+git -C "$R" add -A; git -C "$R" commit -qm after
+
+# pr: a direct status line fails, a fragment passes.
+git -C "$R" checkout -q -b rdirect main
+awk '{print} /Kept too/{print ""; print "   **Status: executed 2026-10-17.** Direct."}' "$R/docs/ROADMAP.md" > "$TMP/rm" && cp "$TMP/rm" "$R/docs/ROADMAP.md"
+inrepo "$CF" new rdirect "Roadmap edit." >/dev/null; git -C "$R" add -A; git -C "$R" commit -qm rdirect
+out="$(inrepo "$CF" pr main 2>&1)" && bad "pr passed a direct roadmap status" || { case "$out" in *"Add a fragment"*ROADMAP*|*ROADMAP*"Add a fragment"*) ok "pr fails a direct roadmap status" ;; *) bad "wrong message: $out" ;; esac; }
+git -C "$R" checkout -q main
+
 echo
 [ "$fail" -eq 0 ] && echo "all changelog fragment tests passed" || { echo "changelog fragment tests FAILED"; exit 1; }

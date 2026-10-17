@@ -3,8 +3,8 @@
 The deployment kit that wires a **DeepSeek Harness (DSH)** agent on the
 **OpenRouter** lane into the Rubinstein Productions stack: the session brief
 that carries Isaac's work style into every session, the model routing table
-for the OpenRouter/DeepSeek/Qwen lane, and the installer that keeps the shared
-skill home in sync with `prompts/skills/`.
+for the OpenRouter/DeepSeek/Qwen lane, and the installer that keeps the public
+skills in the shared skill home in sync with `prompts/skills/`.
 
 This is the DSH counterpart to `phase-zero/` (which targets Claude Code).
 Same content philosophy, different mechanism: phase zero injects through
@@ -27,9 +27,10 @@ DSH loads instructions differently from Claude Code:
   orientation for free. No per-repo hook or settings merge is needed.
 - **Skills**: DSH discovers skills from `<projectRoot>/.dsh/skills`,
   `<projectRoot>/.agents/skills`, custom roots, `$DSH_HOME/skills`, and the
-  shared agent home `~/.agents/skills` (default `$DSH_AGENTS_HOME`). The
-  installer keeps `~/.agents/skills` in sync with this repo's
-  `prompts/skills/` so the toolkit stays the single source of truth.
+  shared agent home `~/.agents/skills` (default `$DSH_AGENTS_HOME`). Four of
+  the five default mapped skills have sources in this repo's
+  `prompts/skills/`; `rubinstein-productions-coo` comes from the private skill
+  home.
 
 ## Files
 
@@ -40,15 +41,15 @@ DSH loads instructions differently from Claude Code:
 - `model-routing.md` — the DSH/OpenRouter routing table: cheapest default
   (`deepseek/deepseek-v4-flash-0731`), coding lane (`qwen/qwen3-coder`), hard
   reasoning (`qwen/qwen3-max-thinking`, `deepseek/deepseek-v4-pro`),
-  multimodal (`qwen/qwen3.5-397b-a17b`), local free lane. Ask-first policy
-  inherited from `phase-zero/model-routing.md`.
+  multimodal (`qwen/qwen3.5-397b-a17b`). The local lane is retired. Ask-first
+  policy inherited from `phase-zero/model-routing.md`.
 - `install.sh` — the distribution path. See Usage below.
 - `README.md` — this file.
 
 ## Install (per machine)
 
 ```bash
-# brief + the 5 toolkit-mapped skills (matches the Claude Code side)
+# brief + five mapped skills: four public sources and one private source
 bash dsh/install.sh
 
 # also add every other prompts/skills/*.md (agentic-development, etc.)

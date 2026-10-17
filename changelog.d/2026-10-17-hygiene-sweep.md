@@ -1,0 +1,1 @@
+Code-hygiene sweep: build-site.py refuses an output directory that is or contains the repository, or a non-empty one that is not a previous build; sync-methodology.sh --check fails when a vault file is missing; unused imports and dead helpers removed from production/; vertcut flags with no value now say so; lutlab/braw/build.sh runs under set -eu.

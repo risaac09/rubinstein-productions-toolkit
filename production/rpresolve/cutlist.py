@@ -61,7 +61,6 @@ SILENCE_DB = -45.0
 MIN_SILENCE_S = 0.030
 EDGE_S = 0.010
 SEARCH_S = 1.5
-END_PAD_S = 0.030
 # The approved-text gate has three verdicts, calibrated on Ep 002 (approved
 # spans score 0.63-0.89 on content words, the lines the essay check dropped
 # 0.00-0.33): fail below FAIL_COVERAGE or at a missing run of FAIL_RUN words;
