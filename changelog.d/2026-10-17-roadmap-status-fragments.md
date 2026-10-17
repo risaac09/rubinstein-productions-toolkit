@@ -1,0 +1,1 @@
+ROADMAP status lines are now fragments too: `scripts/changelog-fragments status A3.30 SLUG TEXT` writes `changelog.d/roadmap/<date>-<slug>.md`, `compile` inserts each under its item and deletes it, and CI fails a pull request that adds a status line to `docs/ROADMAP.md` directly. `compile` also keeps the blank line above the next heading when Unreleased starts empty.
