@@ -167,8 +167,10 @@ verification notes below describe that version.
 A lower third that goes over footage in Resolve needs a transparent background.
 The recipe below was run on `LowerThirdPortrait` and, with `--props`, on
 `LowerThird`, then probed with `ffprobe` and `ffmpeg`: ProRes 4444, 24000/1001
-fps, 76 frames, a transparent first frame and an opaque frame mid-hold. The
-Resolve import was not tested.
+fps, 76 frames, a transparent first frame and an opaque frame mid-hold. On
+2026-10-16 the UHD render was imported into Resolve on a track above UHD
+23.976 footage, and the transparency held: the footage showed around the
+block, with no black frame.
 
 ```bash
 cd tools/video-editor/motion
