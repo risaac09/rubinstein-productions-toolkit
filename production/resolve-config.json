@@ -1,6 +1,6 @@
 {
   "bins": {
-    "Source": ["iPhone", "GH7", "GH5", "Audio"],
+    "Source": ["iPhone", "GH7", "GH5", "S5II", "Pyxis", "Audio"],
     "Selects": [],
     "Timeline": [],
     "Graphics": [],

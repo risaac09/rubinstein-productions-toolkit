@@ -68,7 +68,7 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 ### Dated open points
 
 - **The Low Contrast PowerGrade (open, 2026-10-16).** It was built for the old chain, where it saw Rec.709 after the node-1 LUT. In the managed pipeline its node sees DaVinci Intermediate, so it is not part of the pipeline of record until someone rebuilds it in the timeline space or checks it there. Until then the `[RCM]` looks are the shared look.
-- **The bins list in `resolve-config.json` (open, 2026-10-16).** Its Source bin lists iPhone, GH7, GH5 and Audio, mirrored in `rpresolve/config.py`; S5II and Pyxis are not in that list. Until the list is updated or removed, this table is the camera list.
+- **The bins list in `resolve-config.json` (closed, 2026-10-17).** Its Source bin lists iPhone, GH7, GH5, S5II, Pyxis and Audio, mirrored in `rpresolve/config.py`. Ingest names each camera bin from the camera column `detect` reports, so the list is a default and not a limit.
 - **GH5 against GH7 (open, 2026-10-16).** No base correction for the GH5 until a side-by-side of both cameras on one scene, through this pipeline, shows a need. That test closes it either way.
 
 ---
