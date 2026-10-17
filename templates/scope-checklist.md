@@ -1,6 +1,8 @@
 > **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
 
 # Scope Checklist
+> **Status:** operational.
+
 ## Every field other documents assign to the signed scope
 
 *One page. Fill it in from the [Client Onboarding template](client-onboarding.md) before the proposal goes out. Each line names the field and the document that assigns it. The checklist holds no prices and no contract wording.*
@@ -9,7 +11,7 @@
 
 ## Consent
 
-- [ ] **Consent clause.** The clause that proves tier 1. With no clause, tier 1 has no evidence. Assigned by [Consent Evidence](../production/consent-evidence.md#the-one-artifact-per-tier).
+- [ ] **Consent clause.** The clause that proves consent tier 1. With no clause, consent tier 1 has no evidence. Assigned by [Consent Evidence](../production/consent-evidence.md#the-one-artifact-per-tier).
 - [ ] **Consent tier offered, per participant.** Recorded in the onboarding template's consent tier step. Assigned by [Consent Evidence](../production/consent-evidence.md).
 
 ## Capture
