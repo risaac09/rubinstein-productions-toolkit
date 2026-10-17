@@ -1,4 +1,5 @@
 # The orchestration model, explained: one system, six layers
+> **Status:** operational.
 
 > **Canonical spec:** [`methodology/orchestration-model.md`](../methodology/orchestration-model.md). This is the plain-language explainer of that model, cut as six layers. The spec is the source of truth for the brand decision, what the model retires, and the open build work; this is the teaching layer.
 

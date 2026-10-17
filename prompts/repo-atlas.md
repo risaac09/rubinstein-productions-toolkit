@@ -1,4 +1,5 @@
 # Repo atlas: interconnection map and thin-down verdict
+> **Status:** operational.
 
 A ready-to-run prompt for a strong orchestration model (Opus 4.8 at high
 effort, or better) with local clones of every candidate repo one level down

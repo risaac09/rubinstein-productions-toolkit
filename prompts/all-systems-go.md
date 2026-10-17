@@ -1,4 +1,5 @@
 # All Systems Go — RP Operations Sweep
+> **Status:** operational.
 
 Drop-in prompt for a full operational triage across Rubinstein Productions.
 Activates the full stack, surfaces the field, proposes actions — does not act.
