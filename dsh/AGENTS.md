@@ -103,9 +103,7 @@ between a one-line config bump and a branch nobody but Isaac can check. Ask:
 
 Anchor: `deepseek/deepseek-v4-flash-0731`. Up through `deepseek/deepseek-v4-pro`
 to `qwen/qwen3-max-thinking`. Coding agents: `qwen/qwen3-coder`. Multimodal:
-`qwen/qwen3.5-397b-a17b`. Local lane, free and private:
-`http://mini.local:8080/v1` for preprocessing, with a quality floor of no
-audit-class, corpus-sweep, or voice-gated work.
+`qwen/qwen3.5-397b-a17b`. The local lane is retired.
 
 Escalations are rationed by the capacity budget, not by rarity. Importance is
 not difficulty.
@@ -114,9 +112,11 @@ Full table with prices: `dsh/model-routing.md` in this repo.
 
 ## Skills
 
-The RP skill set is installed under `~/.agents/skills` and sourced from this
-repo's `prompts/skills/`. Load one when the task matches: `isaac-twin` (act as
-Isaac, run the operating model), `isaac-voice` (draft in his voice),
+The index below covers the full RP skill set across lanes. Only
+`branded-deck-build`, `branded-doc-build`, `outreach-email-manager`, and
+`project-management-coordinator` ship from this repo's `prompts/skills/`.
+Load one when the task matches: `isaac-twin` (act as Isaac, run the operating
+model), `isaac-voice` (draft in his voice),
 `stop-slop` (strip AI writing patterns), `rubinstein-productions-coo` (should
 I take this, pricing, capacity), `creative-strategy-engine` (ad concepts,
 review audits), `project-management-coordinator` (project workflow),
