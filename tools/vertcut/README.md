@@ -51,7 +51,7 @@ tools/vertcut/vertcut transcribe "/Volumes/DRIVE/Episode Folder/master.mov"
 ```
 
 Extracts 16k mono audio, runs `whisper-large-v3-turbo` locally with word
-timestamps, writes `<name>.json` beside the source. Roughly real-time / 3 on an
+timestamps, writes `<name>.json` beside the source (`-o`/`--out DIR` writes it to another folder; `--model` picks another mlx-whisper model, default `mlx-community/whisper-large-v3-turbo`). Roughly real-time / 3 on an
 M2 Pro (measured then; newer Apple silicon is faster). Nothing leaves the machine.
 
 The DaVinci ASR export is fine for *finding* moments, but its timings are too
@@ -107,6 +107,8 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 | `--bar-opacity` | `0.88` | Opacity of the bar behind each cue. |
 | `--lufs` / `--tp` / `--lra` | `-16` / `-1.5` / `11` | Loudness target, true-peak ceiling and range. `-14` suits YouTube and short-form feeds. |
 | `--crf` / `--preset` | `20` / `veryfast` | x264 quality and speed. `--preset slow` is smaller at the same quality. |
+| `--font FILE` | Arial Bold | Caption font file, over the style file. |
+| `--gap` | `0.6` | Seconds of silence between words that breaks a cue. |
 | `--font-size` / `--caption-y` | `66` / `1680` | Caption size, and the y of the bar's bottom edge (lower third). |
 | `--only 1,2` | all | Render a subset while dialling in the framing. |
 | `--dry-run` | off | Print what would be rendered. |
