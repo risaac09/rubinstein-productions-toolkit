@@ -40,6 +40,7 @@ Horizontal measures are a fraction of frame width and vertical ones a fraction o
 | Panel | Corner radius | 0.37% of height | 4 px | none |
 | Title line | Size | 3.89% of height | 42 px, bold, line height 1.1 | `type.display`, `color.text-on-dark` |
 | Subtitle line | Size | 2.22% of height | 24 px, regular, 1/6 of its size above | `type.body`, `color.text-on-dark` |
+| Slide-in distance | Travel | 1/24 of width (4.17%) | 80 px | none |
 
 The bar and the panel sit on one row, centred on each other. The panel grows around its text.
 
