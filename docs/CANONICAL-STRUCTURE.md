@@ -7,8 +7,10 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | Path | What lives here |
 |---|---|
 | `research/` | Research artifacts. Note: `research/arena/` was consolidated into the vault on 2026-06-11 (commit 5ca1834) and must not be recreated here; the canonical Arena copies live in the vault at `02 Research/15 Synthesis/07 Arena`, and the Canonical Paths registry lists `research/arena` as a deprecated path. |
-| `Rubinstein Productions/` | Toolkit-side RP material |
-| `scripts/` | Bash automation and hook sources |
+| `Rubinstein Productions/` | Reserved for toolkit-side RP material; absent from a clean checkout |
+| `scripts/` | Bash and Python automation and hook sources |
+| `tools/` | Command-line production tools and prototypes |
+| `dsh/` | DeepSeek Harness deployment kit and model-routing guidance |
 | `docs/` | Internal documentation (this file lives here) |
 | `methodology/` | Methodology-as-code |
 | `templates/` | Document and skill templates |
@@ -17,9 +19,14 @@ This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain va
 | `architecture/` | System-map artifact |
 | `phase-zero/` | AI-agent session infrastructure kit, exported from stack-data `kit/phase-zero/`; deployed via `phase-zero/install.sh` |
 | `public-kit/` | Public-repo hygiene kit, exported from stack-data `kit/public-kit/`; deployed via `phase-zero/install.sh --public` |
-| `dist/` | Build output |
+| `dist/` | Reserved for gitignored build output; absent from a clean checkout |
 | `seed-bed/` | Seed-bed working area |
 | `_archive/` | Quarantine for misrouted writes and obsolete material |
+| `changelog.d/` | Per-pull-request changelog fragments |
+| `CHANGELOG.md` | Compiled repository change history |
+| `CONTRIBUTING.md` | Contribution and change-process guidance |
+| `SECURITY.md` | Private vulnerability-reporting policy |
+| `requirements.txt` | Python interpreter, dependency, and environment-override record |
 | Repo root files | `README.md`, `LICENSE`, `LICENSE-CONTENT`, working notes |
 
 The former `context-provenance/` directory moved to the standalone [risaac09/context-provenance](https://github.com/risaac09/context-provenance) repository. It is no longer a legitimate toolkit top-level path.
@@ -62,7 +69,7 @@ The guards below exist so this class of bug fails loud and on a fixed schedule.
 
 `scripts/check-vault-mirror-drift.sh`
 
-Pure bash. Scans the toolkit (root + 2 levels deep), flags any directory matching the forbidden pattern, honors `_archive/` as an exception. Prints findings. Exits 0 clean, exit 1 on drift.
+Pure bash. Scans the toolkit three levels below the root, flags any directory matching the forbidden pattern, honors `_archive/` as an exception. Prints findings. Exits 0 clean, exit 1 on drift.
 
 Run manually:
 
