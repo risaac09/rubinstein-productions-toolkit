@@ -40,7 +40,7 @@ Rubinstein Productions is a facilitation and film practice. The methodology crea
 
 **Deliverable:** Logic model and project roadmap (one-screen outlines in [Deliverable Outlines](deliverable-outlines.md))
 
-**Duration:** 1-2 sessions (Tier 1 stays here; Tiers 2-3 proceed)
+**Duration:** 1-2 sessions. Founder Story skips Excavation and proceeds to Performance and Translation; Program Engagement runs all four phases.
 
 **Mirrored DL equivalent:** Setting up the vault — creating the architecture that will hold the metabolic process.
 

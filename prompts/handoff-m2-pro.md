@@ -1,5 +1,7 @@
 # Handoff — M2 Pro continues the agentic-orchestrator
 
+> **Status:** superseded. The question it asks is answered in methodology/orchestration-model.md; kept as a record.
+
 Drop-in for a fresh Claude Code session on the M2 Pro. The architecture was
 built in an ephemeral web session with no access to live state, the vault, or
 MCP. This machine has all three. Pick up where that session went blind.
