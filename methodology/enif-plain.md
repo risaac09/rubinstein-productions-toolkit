@@ -23,7 +23,7 @@ What emerged that nobody predicted. The primary metric is consistency mapping: w
 
 ## How it runs
 
-Session transcripts get coded by hand against a six-domain guide, generously on the first pass. The quantitative side lives in Airtable across five tables, with a weekly five-minute update, a monthly half hour, and deeper quarterly and annual reviews. On the last Friday of each month the practitioner runs a two to three hour synthesis ritual: immerse in the data, look for patterns across clients, analyze consistency scores, and write a memo.
+Session transcripts get coded by hand against a six-domain guide, generously on the first pass. The quantitative side lives in plain files in a version-controlled folder, with a weekly five-minute update, a monthly half hour, and deeper quarterly and annual reviews. On the last Friday of each month the practitioner runs a two to three hour synthesis ritual: immerse in the data, look for patterns across clients, analyze consistency scores, and write a memo.
 
 ## What the client sees
 
