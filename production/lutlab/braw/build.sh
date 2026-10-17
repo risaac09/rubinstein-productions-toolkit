@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the BRAW frame helper against the installed Blackmagic RAW SDK. Output: ./braw2ppm
-set -e
+set -eu
 SDK="${BRAW_SDK:-/Applications/Blackmagic RAW/Blackmagic RAW SDK/Mac}"
 cd "$(dirname "$0")"
 clang++ -std=c++14 -O2 -I"$SDK/Include" braw2ppm.cpp "$SDK/Include/BlackmagicRawAPIDispatch.cpp" \

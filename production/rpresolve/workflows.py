@@ -901,7 +901,6 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     return out
 
 
-TRANSFORM_KEYS = ("ZoomX", "ZoomY", "Pan", "Tilt")
 FRAMING_FINGERPRINT = ("ZoomX", "ZoomY", "Pan", "Tilt", "RotationAngle", "CropLeft",
                        "CropRight", "CropTop", "CropBottom", "FlipX", "FlipY")
 

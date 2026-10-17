@@ -189,7 +189,6 @@ def face_sharpness(proxy_path, faces):
     """Variance of the Laplacian inside each face box, on the proxy."""
     try:
         import cv2
-        import numpy as np
     except ImportError:
         return [None] * len(faces)
     img = cv2.imread(proxy_path, cv2.IMREAD_GRAYSCALE)

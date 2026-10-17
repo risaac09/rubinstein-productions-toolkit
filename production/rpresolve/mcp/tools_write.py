@@ -560,7 +560,7 @@ def sync(args, ctx):
 
 
 def trim_review_markers(args, ctx):
-    from .. import cutlist, trimreview as tr
+    from .. import cutlist
     from .tools_offline import review_opts
     _require_sha(args)
     if bool(args.get("manifest")) == bool(args.get("source")):
