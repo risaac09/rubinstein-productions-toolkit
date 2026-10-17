@@ -33,6 +33,7 @@ The table above says who owns a fact. This one says which tool does a job, so th
 | Kit source, deploy and export | `sd-kit-export` and the kit source | `stack-data`; `phase-zero/` and `public-kit/` here are mirrors |
 | Methodology sync from the corpus | `scripts/sync-methodology.sh` | This repo |
 | Link check, methodology Status check, vault-mirror drift, site build | `scripts/check-doc-links.sh`, `check-methodology-status.sh`, `check-vault-mirror-drift.sh`, `build-site.py` | This repo |
+| Gate worker branches and maintain changelog fragments | `scripts/burst-gate`, `scripts/changelog-fragments`, and `changelog.d/` | This repo |
 | Write to DaVinci Resolve | The Resolve MCP server, the only write path | This repo, `production/` |
 | Index, cluster and cull stills | `production/rpstills/` | This repo |
 | Build or port a look as a LUT | `production/lutlab/` | This repo |
@@ -52,7 +53,7 @@ The corpus owns six files, which `scripts/sync-methodology.sh` copies here with 
 - `evaluation-framework.md`
 - `three-type-architecture.md`
 
-This repo owns these, and a search of the corpus on 2026-10-15 found no live copy of any of them: `measurement-instrument.md` (added 2026-10-16, with its `instrument/` folder), `facilitation-protocol.md`, `glossary.md`, `methodology-blueprint.md`, `negative-archive-ritual.md`, `orchestration-model.md`, `source-tracking-protocol.md` and `second-brain-v2-opening-and-process.md`. The last one names a corpus path in its frontmatter that does not exist, so that line is a stale pointer and this file is the only copy.
+This repo owns these, and a search of the corpus on 2026-10-15 found no live copy of any of them: `measurement-instrument.md` (added 2026-10-16, with its `instrument/` folder), `facilitation-protocol.md`, `glossary.md`, `methodology-blueprint.md`, `negative-archive-ritual.md`, `orchestration-model.md`, `source-tracking-protocol.md`, `deliverable-outlines.md` and `second-brain-v2-opening-and-process.md`. The last one names a corpus path in its frontmatter that does not exist, so that line is a stale pointer and this file is the only copy.
 
 The three `*-plain.md` files are plain-language companions to their canonical document and follow it.
 
