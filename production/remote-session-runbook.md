@@ -82,7 +82,7 @@ The debrief is a call, not a survey. Any assessment point that falls near it fol
 |---|---|---|
 | [Capture standard](capture-standard.md) | Frame rate, shutter, profile, resolution, audio, sync, slate, card names | The setup call checks the locked settings, the slate and the clap, and never changes them. |
 | [Client shooting brief](client-shooting-brief.md) | What the client films, how to set up, the footage checklist, the return | The setup call walks the brief's setup list. The prompts and the setup-call date go in the box beside it. |
-| [Camera-shipping logistics](camera-shipping-logistics.md) | The lifecycle, the kit, the return | The setup call is step 7. Filming is step 8. Card handling and the return follow step 9 on. |
+| [Camera-shipping logistics](camera-shipping-logistics.md) | The lifecycle, the kit, the return | The setup call is step 7. Filming is step 9. The return pack is step 10, and card handling and the return follow from there. |
 | [Consent evidence](consent-evidence.md) | What proves each tier | An unrecorded call stays in tier 1. Any use beyond that needs its own artifact. |
 | [Return package](return-package.md) | What goes back to the client | The debrief confirms the return and what comes back to the client. |
 | [Facilitation protocol](../methodology/facilitation-protocol.md) and [session guide](../methodology/session-facilitation-guide.md) | Consent loops, decompression, question bank, Zero-Measurement Zone | Adapted here for a call. The mirrored files are not edited. |
