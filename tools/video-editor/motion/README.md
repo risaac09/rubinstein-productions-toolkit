@@ -21,8 +21,9 @@ All three run at 24000/1001 fps (23.976) and last 76 frames, about 3.2 seconds: 
 | `width` | The composition's own | Frame width in pixels |
 | `height` | The composition's own | Frame height in pixels |
 | `fps` | 24000/1001 | Frame rate. The frame count follows it. |
+| `tokens` | Placeholders | Token values by token name: `color.marrow`, `color.amber`, `color.text-on-dark`, `type.display`, `type.body`. Values come from the private brand context and never go into the repo. |
 
-Geometry is a set of fractions of the frame, so any width and height scale cleanly. The fractions are listed in `production/design-tokens.md`, under the lower-third geometry. Colours and type in the component are still literals, not tokens.
+Geometry is a set of fractions of the frame, so any width and height scale cleanly. The fractions are listed in `production/design-tokens.md`, under the lower-third geometry. Colours and type come from the `tokens` prop. The section on tokens in `production/design-tokens.md` says what each one paints and where the values live.
 
 ## Commands
 

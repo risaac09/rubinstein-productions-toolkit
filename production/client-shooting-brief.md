@@ -6,7 +6,7 @@ This page is written for you, the person filming. Print it and put it in the box
 
 The camera arrives set up. Your job is to point it at yourself and your place, answer some questions, and send it back.
 
-Two words you will see a lot. A **take** is one recording, from the moment you press record to the moment you stop. The **kit checklist** is the list of what is in the box. The **footage checklist** is the list further down this page, for what you film.
+Three terms you will see a lot. A **take** is one recording, from the moment you press record to the moment you stop. The **kit checklist** is the list of what is in the box. The **footage checklist** is the list further down this page, for what you film.
 
 ## When the box arrives
 
