@@ -1,6 +1,8 @@
 > **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
 
 # Case Study Template
+> **Status:** operational.
+
 ## Documenting Client Transformations for Portfolio & Learning
 
 *Structured format for capturing both Royal metrics and Nomadic emergence*
@@ -17,14 +19,14 @@ This case study is the researcher register of the foundational unit (`stack-data
 
 *Required. See [Consent Evidence](../production/consent-evidence.md) for the one artifact that proves each tier.*
 
-| Participant (code) | Tier (1, 2 or 3) | Evidence id |
+| Participant (code) | Consent tier (1, 2 or 3) | Evidence id |
 |--------------------|------------------|-------------|
 | P1 | | |
 | P2 | | |
 
 Add a row for every person the study draws on. Use a code (P1, P2), never a name, and keep the key from code to person in the private engagement record. The evidence id points to the artifact in that record. Never paste a release, a name from it, or its contents here.
 
-Any participant identified in the published study needs tier 3 evidence. A case study that identifies a participant whose row lacks a tier 3 evidence id is not published.
+Any participant identified in the published study needs consent tier 3 evidence. A case study that identifies a participant whose row lacks a consent tier 3 evidence id is not published.
 
 ---
 
@@ -101,6 +103,8 @@ Any participant identified in the published study needs tier 3 evidence. A case 
 ---
 
 ## Part 2: The Engagement
+
+Discovery maps to Container, Development to Excavation, Production to Performance and Delivery to Translation.
 
 ### What We Did
 
@@ -316,7 +320,7 @@ Week 3: [Activity]
 
 ## Part 7: Publication Package
 
-*Only complete if the Consent evidence table shows tier 3 evidence for every participant identified here*
+*Only complete if the Consent evidence table shows consent tier 3 evidence for every participant identified here*
 
 ### Short Version (Website/Portfolio)
 

@@ -1,6 +1,8 @@
 > **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
 
 # Client Onboarding Template
+> **Status:** operational.
+
 ## Phase 0: Pre-Engagement Discovery (The Assemblage Scan)
 
 *Operationalized from the [Measurement Framework](../methodology/measurement-framework.md) and the brand context (private, `rp-intranet/docs/strategy/brand-context.md`)*
