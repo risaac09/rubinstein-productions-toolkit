@@ -1,5 +1,7 @@
 # Canonical structure — Rubinstein Productions toolkit
 
+> **Status:** operational.
+
 This repo (`~/rubinstein-productions-toolkit/`) and the Obsidian Second Brain vault are **separate stacks** with separate canonical paths. They must not bleed into each other. This document defines the directory boundary and the guards that enforce it.
 
 ## Legitimate top-level structure
