@@ -2,8 +2,7 @@
 
 Index, cluster and cull a shoot's camera JPEGs and build a review sheet.
 Nothing here decodes a RAW file or talks to DaVinci Resolve; the grade and
-the render stay in Resolve through the `rpresolve` tools. Plan of record:
-corpus note "2026-10-06 Stills production pipeline plan".
+the render stay in Resolve through the `rpresolve` tools.
 
 Runs on the venv at `~/.venvs/rp-tools` (Homebrew Python 3.14 with Pillow,
 imagehash, numpy and OpenCV from `requirements.txt`; see the lutlab README for
@@ -102,8 +101,8 @@ term (0.5), then face sharpness ranked within the run (0.2), eyes open
 instead (above). The thresholds live at the top of `cull.py`, `cluster.py`
 and `frames.py` and are reported in each output file's `params`.
 
-The sheet never names a person. The name field is Isaac's, from the
-roster, and it travels into `selects.json` for the delivery file names.
+The sheet never names a person. The name field comes from the
+roster you supply, and it travels into `selects.json` for the delivery file names.
 
 Tests: `~/.venvs/rp-tools/bin/python production/tests/test_rpstills_pure.py` and
 `production/tests/test_rpstills_nonface.py` (synthetic images and a fake

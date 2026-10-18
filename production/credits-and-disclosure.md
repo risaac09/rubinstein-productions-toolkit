@@ -49,7 +49,7 @@ Generative content is a separate class and is named separately: a synthesized vo
 
 1. **To the client, before work starts and again at handover.** The scope names which machine-assisted steps will be used. The [manifest](delivery-manifest.md) lists the ones that were. A client can ask for a step to be left out, and the answer is yes unless it makes the work impossible, in which case the scope is renegotiated.
 2. **On the work, never for assistive steps.** A caption file produced by speech recognition and corrected by a person is a captioned video. It does not carry a label. A caption file not checked by a person does not ship.
-3. **Platform labels.** Some platforms ask for a label on synthetic or altered media and change their rules often. The kit owner looks up the current rule for each destination at queue time and applies it.
+3. **Platform labels.** Some platforms ask for a label on synthetic or altered media and change their rules often. The producer looks up the current rule for each destination at queue time and applies it.
 
 ### Rules that do not bend
 

@@ -27,11 +27,10 @@ from rpresolve.config import ConfigError, load_config  # noqa: E402
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-# Neutral stand-ins. The house values (color.marrow, color.text-on-dark, type.caption in
-# production/design-tokens.md) live in the private brand context and reach the tool through
-# --caption-style or the untracked captions.local.json beside this tool's README.
+# Neutral stand-ins. Brand values (text colour, bar colour, caption face) reach the tool
+# through --caption-style or the untracked captions.local.json beside this tool's README.
 DEFAULT_TEXT_COLOR, DEFAULT_BAR_COLOR = "#FFFFFF", "#000000"
-DEFAULT_BAR_OPACITY = 0.88          # the lower-third panel's number in production/design-tokens.md
+DEFAULT_BAR_OPACITY = 0.88          # the bar's opacity
 LOCAL_STYLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "captions.local.json")
 STYLE_KEYS = ("text_color", "bar_color", "font")
 LINE_CHARS, MAX_LINES = 16, 2       # the portrait standard

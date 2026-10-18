@@ -1,5 +1,3 @@
-> **Note:** Cross-references use standard relative links and work on GitHub and in most markdown editors. Inside an Obsidian vault you may prefer to convert them to wiki links.
-
 # Case Study Template
 > **Status:** operational.
 
@@ -11,7 +9,7 @@
 
 ## The unit this documents
 
-This case study is the researcher register of the foundational unit (`stack-data/context/foundational-unit.md`) made into an artifact. The engagement was a series of recorded relational encounters. Each was witnessed (the recordings in the Appendix), digested (the Nomadic coding in Part 5 and the metrics in Part 4), and here it sediments into the part that persists and teaches the next encounter. Keep it traceable: every claim below should trace to a witnessed encounter, not to a summary of one.
+This case study is the researcher register of the foundational unit made into an artifact. The engagement was a series of recorded relational encounters. Each was witnessed (the recordings in the Appendix), digested (the Nomadic coding in Part 5 and the metrics in Part 4), and here it sediments into the part that persists and teaches the next encounter. Keep it traceable: every claim below should trace to a witnessed encounter, not to a summary of one.
 
 ---
 
@@ -80,7 +78,7 @@ Any participant identified in the published study needs consent tier 3 evidence.
 
 ### Initial Assessment Scores
 
-*From the `pre-engagement` point of the [Measurement Instrument](../methodology/measurement-instrument.md). The baseline steps are in the [Client Onboarding template](client-onboarding.md).*
+*From the `pre-engagement` point of the [Measurement Instrument](../methodology/measurement-instrument.md).*
 
 | Item | Scale | Before |
 |------|-------|--------|
@@ -402,6 +400,6 @@ Week 3: [Activity]
 ---
 
 *Template Version: 1.0*
-*Related: [Client Onboarding template](client-onboarding.md), [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Measurement Framework](../methodology/measurement-framework.md)*
+*Related: [Session Facilitation Guide](../methodology/session-facilitation-guide.md), [Measurement Framework](../methodology/measurement-framework.md)*
 
 **Tags:** #template #case-study #portfolio #client-work

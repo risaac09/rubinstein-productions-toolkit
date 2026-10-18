@@ -1,7 +1,6 @@
 name: Deploy site to Pages
 
-# Builds the toolkit site: the field guide as the front door, the agentic
-# system map at /map/. One-time setup: Pages must be enabled in the repo
+# Builds the toolkit site from the field guide. One-time setup: Pages must be enabled in the repo
 # settings (Settings -> Pages -> Source: GitHub Actions); the workflow token
 # cannot create the Pages site itself.
 
@@ -10,7 +9,6 @@ on:
     branches:
       - main
     paths:
-      - architecture/**
       - docs/**
       - scripts/build-site.py
       - requirements.txt

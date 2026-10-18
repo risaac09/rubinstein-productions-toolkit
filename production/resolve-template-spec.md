@@ -73,19 +73,9 @@ A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: 
 
 ---
 
-## Branded Intro
-
-- **Asset:** `say-why-intro-4k.png` (3840 × 2160)
-- `color.marrow` background, "Say Why" in `color.bone`, `color.amber` accent line
-- Optional — use only when the project calls for it
-- This is a personal creative brand, not RP client delivery
-
----
-
 ## Subtitles
 
-- **Font:** ~~Inter 500~~ Superseded by `type.caption`; this spec publishes no value (see [design tokens](design-tokens.md#caption-standard))
-- **Color:** `color.text-on-dark` on a semi-transparent `color.marrow` bar (see [design tokens](design-tokens.md#caption-standard))
+- **Font and color:** this spec publishes no values. Use your own caption standard: light text on a dark, semi-transparent bar, set by hand
 - **Position:** Lower third, consistent
 - **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand
@@ -379,8 +369,8 @@ Pan and Tilt are confirmed, sign and units, on Resolve 21.1.1.10
 (2026-10-15). Six fixtures (`tilt-fixture --variant` 9x16, master, 1x1,
 9x16-6k, master-fit, 16x9-crop: two input scalings, four timeline shapes,
 UHD and 3:2 6K sources) were built in a sandbox project and exported as
-stills with `ExportCurrentFrameAsStill`. That run was Claude's, at Isaac's
-request, not a person pressing Render. Typed as timeline pixels, Tilt moved
+stills with `ExportCurrentFrameAsStill`. That run was Claude's, at the
+editor's request, not a person pressing Render. Typed as timeline pixels, Tilt moved
 the picture by 0.315 to 1.496 of its value, each within 0.8% of
 `(sh * fit) / H`, and Pan by 0.664 where `(sw * fit) / W` is 0.667. Typed
 with the formulas above, `tilt-check` confirmed Pan and Tilt on all six,
@@ -525,11 +515,11 @@ source does. Its per-span numbers stay out of this public document.
 
 So for such a source a filled 9:16 needs splits or manual reframes, and
 the decision between that and the letterboxed look (`--allow-bars`) is
-Isaac's.
+the editor's.
 
 ### What is known and what is not
 
-Owed live, in the sandbox ("RP Automation Sandbox"), Resolve being closed
+Owed live, in a sandbox project, Resolve being closed
 on 2026-09-30:
 
 1. Read back the transforms of the MCP-built 9:16 and
@@ -602,8 +592,8 @@ target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
 colour tags Rec.709 primaries and matrix, with the transfer tagged per
 destination: web files use `GammaTag` "Rec.709-A", which writes the
 transfer as bt709 (asserted by the check), and the client master keeps
-the house "Gamma 2.4", which writes it unspecified (reported only). Isaac
-compared both renders and chose Rec.709-A for the web on 2026-09-29. Limited
+the house "Gamma 2.4", which writes it unspecified (reported only). A
+comparison of both renders chose Rec.709-A for the web on 2026-09-29. Limited
 range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
 stream counts as limited, as decoders read it), and auto-caption line
 length by frame shape (`deliver.captions`: 42 characters on one line for
@@ -695,8 +685,8 @@ Two kinds of request never count as a round. A participant removing or correctin
 ### The loop
 
 Queue, render, captions to .srt (sidecar destinations), fix loudness,
-check. Isaac chose on 2026-09-29 to run the loudness fix on every render
-as the standard last step, so the check that follows judges the file that
+check. The standard, since 2026-09-29, is to run the loudness fix on every render
+as the last step, so the check that follows judges the file that
 ships.
 
 0. **Captions first**, for a destination that wants them (sidecar or burnt
@@ -728,7 +718,7 @@ ships.
    there (`.srt`, `.vtt`, `.scc`, `.ttml` or `.xml`, in any case); when
    captions are wanted and the timeline has no subtitle track, or only
    empty ones. It never starts the render.
-2. **Render.** Isaac starts it on the Deliver page.
+2. **Render.** The editor starts it on the Deliver page.
 3. **Captions to .srt**, for a sidecar destination:
    `resolve_workflow.py deliver-captions <file> --dest <key>` (or the MCP
    `deliver_captions`). Resolve writes the sidecar as TTML timed from the
@@ -847,7 +837,7 @@ are still open.
 
 - **Settled 2026-09-29 by a real render:** `GammaTag` "Gamma 2.4" writes
   the transfer as unspecified (1-2-1), so each player guesses the gamma;
-  "Rec.709-A" writes bt709 (1-1-1). Isaac compared the two renders and
+  "Rec.709-A" writes bt709 (1-1-1). A comparison of the two renders
   chose Rec.709-A for web destinations, whose check now asserts transfer
   bt709. The client master keeps Gamma 2.4.
 - The tag strings `Rec.709` and `Gamma 2.4`, the `AudioCodec` strings
@@ -881,7 +871,7 @@ are still open.
 
 ### Live steps owed (sandbox project only)
 
-Run each in the "RP Automation Sandbox" project, pinned by its unique id,
+Run each in a sandbox project, pinned by its unique id,
 and write down what Resolve did. Steps 2 and 5 ran on 2026-09-29 (the
 transfer tag and the sidecar above), including step 2's Rec.709-A
 comparison, which settled the web tag; no result for steps 1, 3 and 4 is
@@ -1033,7 +1023,7 @@ the real run with its `plan_sha`.
   they are files instead, imported into a new bin of that name at the
   pool's root, which the run then owns; a bin of that name that exists
   already, or a file already in the pool, is refused. The new timelines
-  are made in that bin, and the folder Isaac had open is put back.
+  are made in that bin, and the folder the editor had open is put back.
 - **Measured first.** The files are measured as above, at the timeline's
   frame rate. A result that is not a match is refused with its reasons
   (and the offset groups), and nothing is built.

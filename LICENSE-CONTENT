@@ -4,7 +4,7 @@ Copyright (c) 2026 Isaac Rubinstein / Rubinstein Productions
 
 Scope:
 
-Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
+Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates and prompts, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
 
 Why CC BY-SA and not MIT for this material: this is a practice built on
 reciprocity, not just permission. MIT lets someone take a framework, adapt

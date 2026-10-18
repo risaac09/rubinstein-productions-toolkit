@@ -1,4 +1,4 @@
-> **Status:** draft. The item wording is quoted from the [Measurement Framework](measurement-framework.md) and the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) and is not changed here. The open points were decided 2026-10-16, and the instrument is a first working version until it has run on an engagement. This file is owned by this repo; the two documents it quotes are owned by the private corpus (see [TRUTH-OWNERSHIP](../docs/TRUTH-OWNERSHIP.md)), so if the wording below and theirs differ, theirs is right.
+> **Status:** draft. The item wording is quoted from the [Measurement Framework](measurement-framework.md) and the [Nomadic Indicators Codebook](nomadic-indicators-codebook.md) and is not changed here. The open points were decided 2026-10-16, and the instrument is a first working version until it has run on an engagement. If the wording below and the two documents it quotes differ, those documents are right.
 
 # Measurement Instrument
 
@@ -36,7 +36,7 @@ Items are quoted exactly. The label in parentheses is the framework's own name f
 6. "This was collaborative, not extractive" (Co-Creation Quality)
 7. "We're proud to share this publicly" (Representative Pride)
 
-**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The same line is in [Measurement Framework](measurement-framework.md) section 1, synced from the corpus canonical.
+**Anchors (decided 2026-10-16).** 1 is "strongly disagree" and 5 is "strongly agree". The middle points carry no label. The same line is in [Measurement Framework](measurement-framework.md) section 1.
 
 ### 2.2 Net Promoter question, rated 0 to 10
 
@@ -88,7 +88,7 @@ A Founder Story has no mid-point. The filming session is the Zero-Measurement Zo
 
 **Funded cohorts.** A funded cohort runs both schedules side by side. The [evaluation framework](evaluation-framework.md) waves (intake, 30 days, 60 days, 6 months) are interview-coded narrative coherence; the survey runs at the five points above, and `score.sh` stays at five.
 
-Framework section 6 lists five more Likert dimensions for the 2-week conversation: Narrative Accuracy, Functional Utility, Representative Pride, Future Willingness and Stakeholder Clarity. It gives names and no statements, so they stay out of the response file until the corpus canonical gives the statements (decided 2026-10-16); the corpus owns that wording. Representative Pride appears in both lists; the statement in 2.1 is the only text the canon provides for it.
+Framework section 5 lists five more Likert dimensions for the 2-week conversation: Narrative Accuracy, Functional Utility, Representative Pride, Future Willingness and Stakeholder Clarity. It gives names and no statements, so they stay out of the response file until the framework gives the statements (decided 2026-10-16). Representative Pride appears in both lists; the statement in 2.1 is the only text the canon provides for it.
 
 ### 2.5 A plain-text form
 
@@ -117,7 +117,7 @@ One CSV file, one row per respondent per assessment point. The header row is fix
 
 | Column | Type | Rule |
 |---|---|---|
-| `engagement_id` | text | Letters, digits, `-` and `_`. Matches the engagement record in [measurement-framework.md](measurement-framework.md) section 4. |
+| `engagement_id` | text | Letters, digits, `-` and `_`. Matches the engagement identifier in your own project records. |
 | `respondent_id` | text | A code, never a name. Same character rule. The key from code to person is kept apart from this file. |
 | `stakeholder_group` | text | Lowercase letters, digits and `-`. The codebook's five are `leadership`, `staff`, `board`, `beneficiaries`, `funders`. A founder counts as `leadership`. Other values are accepted and sorted after those. `all` is reserved. |
 | `assessment_point` | enum | One of the five values in 2.4. |
@@ -142,17 +142,17 @@ Run these steps in order on the rows that remain after the file passes validatio
 
 **Likert, per item.** For each assessment point and each of the seven item columns, take the non-blank values. The score is their sum divided by their count, shown with the count `n`. An item with no values at that point is not reported. There is no composite across items.
 
-**NPS, mean.** For each assessment point, take the non-blank `nps` values. The mean is their sum divided by their count. The framework's targets in its section 9 ("Average NPS", 8.0 and 9.0+) are only meaningful on this reading, because the conventional net score cannot be 8.0.
+**NPS, mean.** For each assessment point, take the non-blank `nps` values. The mean is their sum divided by their count. A mean reads on the 0 to 10 scale, where a conventional net score cannot be 8.0.
 
 **NPS, net.** On the same values, count promoters (9 or 10), passives (7 or 8) and detractors (0 to 6). The net score is 100 times (promoters minus detractors) divided by the number of values, shown to one decimal; it runs from -100 to 100.
 
-**Headline (decided 2026-10-16).** The mean is the headline NPS, with the net score shown beside it. The framework states the 0 to 10 scale and not the method; the mean is what its benchmark uses, and the net score is the standard definition of an NPS, whose cut points are the ones above. The script prints both.
+**Headline (decided 2026-10-16).** The mean is the headline NPS, with the net score shown beside it. The framework states the 0 to 10 scale and not the method; the mean is easy to read against that scale, and the net score is the standard definition of an NPS, whose cut points are the ones above. The script prints both.
 
 **Consistency, per respondent.** For each row with all three consistency values, the respondent's consistency average is `(q1 + q2 + q3) / 3`.
 
 **Consistency, per group.** For each assessment point and each `stakeholder_group`, over the respondents in that group: the group's `q1`, `q2` and `q3` are the means of each question, and the group's `avg` is the mean of its respondents' consistency averages. The row `all` does the same over every respondent at that point, so each respondent counts once whatever the size of their group.
 
-**Consistency, band.** Read each `avg` against the codebook's bands without rounding it first: 9 or more is exceptional, 7 up to 9 is strong, 5 up to 7 is moderate, 3 up to 5 is low, below 3 is incoherent. The canonical bands are the integer ranges 9-10, 7-8, 5-6, 3-4 and 1-2 and do not say where an average of 8.4 falls; reading each band as starting at its lower number is the choice made here.
+**Consistency, band.** Read each `avg` against the codebook's bands without rounding it first: 9 or more is exceptional, 7 up to 9 is strong, 5 up to 7 is moderate, 3 up to 5 is low, below 3 is incoherent. The published bands are the integer ranges 9-10, 7-8, 5-6, 3-4 and 1-2 and do not say where an average of 8.4 falls; reading each band as starting at its lower number is the choice made here.
 
 **Consistency, spread.** For each assessment point, spread is the highest group `avg` minus the lowest. The framework says high variance between groups "indicates consistency failure at intersections" and sets no threshold, and none is set here, so the script reports the spread and does not call it high or low.
 

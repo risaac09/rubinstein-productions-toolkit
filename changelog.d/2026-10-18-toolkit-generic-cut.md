@@ -1,0 +1,1 @@
+The toolkit is cut to the generic kit (decision of 2026-10-17): RP operations, client lifecycle, brand, agent setup and internal records moved to the private ops repo; README, CLAUDE.md, licenses, CI and the site build follow.

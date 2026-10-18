@@ -16,7 +16,7 @@ An adaptation of the CC BY-SA material has to carry the same license. Read those
 
 ## Changes to this repo
 
-The maintainer's own changes go in a pull request with a fragment in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time. A pull request that moves a [`docs/ROADMAP.md`](docs/ROADMAP.md) item adds a status fragment in `changelog.d/roadmap/` rather than editing that file. Neither shared file is edited by hand; CI fails a pull request that does.
+The maintainer's own changes go in a pull request with a fragment in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time. `CHANGELOG.md` is not edited by hand; CI fails a pull request that does.
 
 ## Code of conduct
 

@@ -46,6 +46,6 @@ For each statement, circle a number from 1 to 10.
 
 ---
 
-*Related: [Measurement Instrument](../methodology/measurement-instrument.md), [Client Onboarding template](client-onboarding.md)*
+*Related: [Measurement Instrument](../methodology/measurement-instrument.md)*
 
 **Tags:** #template #client-work #measurement

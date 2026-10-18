@@ -8,16 +8,12 @@ node_modules/
 *.dpx
 *.drx
 *.cube
-prospects/
-grants/funders/
 *.baksite/
-intranet/site/
-02 Practice/
 
 # Personal Claude usage reports — do not commit
 *-claude-usage-report.md
 
-# Plugin distribution artifacts (sync via second-brain-mirror/_sync instead)
+# Plugin distribution artifacts
 dist/
 
 # Python bytecode caches
@@ -27,8 +23,6 @@ _site/
 
 # Third-party video-use, fetched by tools/video-editor/fetch-video-use.sh, never tracked
 tools/video-editor/video-use/
-# Remotion render output (motion/.gitignore also covers this)
-tools/video-editor/motion/out/
 
 # camera media staged here by mistake; never commit
 DCIM/
