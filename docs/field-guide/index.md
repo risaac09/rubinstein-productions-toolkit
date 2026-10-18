@@ -5,7 +5,7 @@ The toolkit is organized by artifact type: methodology, prompts, templates, prod
 ## Pick your path
 
 - **[Writers](writers.md)**: narrative, copy, story development, publishing. You want the voice system, the question bank, and the editorial disciplines.
-- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the production standards. Camera-shipping logistics is accepted with open parameters; delivery manifest, platform specs, and credits and disclosure are accepted; return package, capture standard, client shooting brief, and design tokens are draft.
+- **[Producers](producers.md)**: film, video, facilitation, client delivery. You want the session methodology, the shoot and post workflow, and the production standards. Delivery manifest, platform specs, and credits and disclosure are accepted; return package, capture standard and consent evidence are draft.
 - **[Evaluators](evaluators.md)**: measurement, impact, grants. You want the Bilingual Dashboard, the coding manual, and grant-reporting practice.
 
 The paths overlap on purpose. A facilitated documentary session produces footage for the producer, language for the writer, and coded evidence for the evaluator. Read your own path first, then skim the other two to see what your collaborators will be working from.
@@ -14,7 +14,7 @@ The paths overlap on purpose. A facilitated documentary session produces footage
 
 Three documents underlie every path. Read them before or alongside your first session.
 
-1. **[Methodology Blueprint](../../methodology/methodology-blueprint.md)**. The single best orientation to the whole practice: the four phases (Container, Excavation, Performance, Translation), the service tiers, and how the pieces earn their keep.
+1. **[Methodology Blueprint](../../methodology/methodology-blueprint.md)**. The single best orientation to the whole practice: the four phases (Container, Excavation, Performance, Translation), and how the pieces earn their keep.
 2. **[Deliverable Outlines](../../methodology/deliverable-outlines.md)**. One-screen outlines (draft) for the logic model, project roadmap, Founder Story document, written synthesis, Impact Evaluation Report and Bilingual Dashboard (Lite).
 3. **[Glossary](../../methodology/glossary.md)**. The term bank, with citations. When a guide says co-regulation, consent loop, or ventral vagal state, this is where the definition lives.
 
@@ -22,14 +22,11 @@ Three documents underlie every path. Read them before or alongside your first se
 
 A few things to know before you open the source documents.
 
-- **Canonical tier names.** The current service tiers are Founder Story, Program Engagement, and Organizational Embedding. Some older files still say Mirror, Map, and Territory, or Gateway and Mid-Tier. Those names are legacy. Where a document contradicts the [Methodology Blueprint](../../methodology/methodology-blueprint.md) on naming, the blueprint wins. Prices are not kept in this repo at all; the [ownership index](../TRUTH-OWNERSHIP.md) says where they live.
-- **Vault notes.** Cross-references in this repository are standard relative links, checked in CI. A few sources live only in the author's Obsidian vault or home directory; those are marked in place as vault notes or home-dir artifacts, and they read as titles rather than links.
-- **Who owns what.** This repo is a public projection, not the source for most domains. [Who owns what](../TRUTH-OWNERSHIP.md) is a one-page index of which repo or note owns pricing, pipeline, decisions, the kits and the methodology canonicals.
-- **Sibling repos.** A few documents cite `stack-data` paths. That repo is the author's operational source of truth and is cloned as a sibling directory in his setup. If you don't have it, the citation still tells you what the claim rests on.
-- **Aspirational content.** Revenue projections and expansion plans in some documents are marked speculative. Adopt the methods and skip the forecasts.
+- **Links.** Cross-references in this repository are standard relative links, checked in CI.
+- **Status words.** Each methodology document says in its header whether it is operational, draft, aspirational or superseded. Trust it accordingly.
 
 ## How the pieces connect
 
-The practice runs as a loop. Methodology defines how a session works. Prompts encode that methodology so an AI collaborator holds it during real work. Templates capture what a session produces. A contact record outside this repo moves prospects and funders through a pipeline so sessions keep happening. Production turns sessions into deliverable film. Evaluation reads the whole loop and reports what changed, in two registers at once.
+The practice runs as a loop. Methodology defines how a session works. Prompts encode that methodology so an AI collaborator holds it during real work. Templates capture what a session produces. Production turns sessions into deliverable film. Evaluation reads the whole loop and reports what changed, in two registers at once.
 
 Take any single piece on its own if that is all you need. The posture is take what's useful: code and tooling are [MIT](../../LICENSE), methodology and docs are [CC BY-SA 4.0](../../LICENSE-CONTENT).

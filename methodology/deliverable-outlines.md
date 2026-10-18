@@ -2,7 +2,7 @@
 
 **Status:** draft. Each outline assembles what other documents in this repo already say about the deliverable. None of them adds a method, and none has been used on a client engagement. Where a source says nothing, the outline says so and leaves the choice to the facilitator.
 
-Six deliverables are named in the [Methodology Blueprint](methodology-blueprint.md), the [session facilitation guide](session-facilitation-guide.md) or [`services.yaml`](services.yaml) without a shape. Each section below is one screen: what it is for, what goes in it, where the content comes from, and what is left open.
+Six deliverables are named in the [Methodology Blueprint](methodology-blueprint.md), the [session facilitation guide](session-facilitation-guide.md) without a shape. Each section below is one screen: what it is for, what goes in it, where the content comes from, and what is left open.
 
 ## 1. Logic model
 
@@ -25,7 +25,7 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 **Phase and tier.** Phase 1, Container, delivered with the logic model.
 
-**What it is.** The sequence of the engagement for this client. The repo gives its parts in [`services.yaml`](services.yaml): the methodology phases the tier traverses, the typical duration and maximum weeks, and the typical deliverables. Founder Story passes through Container, Performance and Translation. Program Engagement passes through all four phases and is scoped to the program's length.
+**What it is.** The sequence of the engagement for this client. The [Methodology Blueprint](methodology-blueprint.md) gives its parts: the phases the engagement traverses, the duration of each, and the deliverables. Founder Story passes through Container, Performance and Translation. Program Engagement passes through all four phases and is scoped to the program's length.
 
 **Layout.**
 
@@ -53,7 +53,7 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 ## 4. Written synthesis
 
-**Phase and tier.** The written alternative to the short film in Founder Story ([`services.yaml`](services.yaml): "Short film OR written narrative synthesis"). The guide's post-session list also has the facilitator write a synthesis document within 24 to 48 hours.
+**Phase and tier.** The written alternative to the short film in Founder Story (short film or written narrative synthesis). The guide's post-session list also has the facilitator write a synthesis document within 24 to 48 hours.
 
 **What it is.** A short narrative of the session, sent after it. The guide's closing sequence says the facilitator will send it and that the client can then decide whether to develop the work further.
 
@@ -68,7 +68,7 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 ## 5. Impact Evaluation Report
 
-**Phase and tier.** Program Engagement ([`services.yaml`](services.yaml): "Impact evaluation report", one).
+**Phase and tier.** Program Engagement, one report per engagement.
 
 **What it is.** The funder-facing record of the engagement. The [evaluation framework](evaluation-framework.md) gives its reporting structure: for funders, a Royal metrics summary plus two or three Nomadic indicator narratives, "numbers for accountability, stories for truth."
 
@@ -76,18 +76,18 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 1. Royal summary: the output and reach indicators the evaluation framework lists for the cohort (sessions completed, participants completing the arc, video artifacts, narrative synthesis documents, footage returned, equipment returned), against the targets the evaluation framework gives
 2. Nomadic narratives: two or three, each drawn from coded transcripts ([codebook](nomadic-indicators-codebook.md)) and from the pre and post narrative coherence assessment
-3. Post-engagement findings, when the points have passed: the 2-week and 3-month impact conversations ([measurement framework](measurement-framework.md), section 6)
+3. Post-engagement findings, when the points have passed: the 2-week and 3-month impact conversations ([measurement framework](measurement-framework.md), section 5)
 4. The consent tier each participant chose, which limits what the report can quote ([consent evidence](../production/consent-evidence.md))
 
 **Left open.** The repo claims no results and sets targets only as design values. A report states what was measured and when, and leaves out any claim the data cannot carry. The length and the funder's own template are not set here.
 
 ## 6. Bilingual Dashboard (Lite)
 
-**Phase and tier.** Translation, Program Engagement ([`services.yaml`](services.yaml): "Bilingual Dashboard (Lite)"). The full dashboard is described in the [measurement framework](measurement-framework.md), section 5.
+**Phase and tier.** Translation, Program Engagement. The full dashboard is described in the [measurement framework](measurement-framework.md), section 4.
 
 **What Lite means (decided 2026-10-16).** The dashboard on one page, with no cross-stakeholder variance. The consistency spread between stakeholder groups that [`instrument/score.sh`](instrument/score.sh) reports is left out of Lite.
 
-**Layout.** The section 5 table, one row per category, each row pairing an institutional metric with a relational indicator and naming the method:
+**Layout.** The section 4 table, one row per category, each row pairing an institutional metric with a relational indicator and naming the method:
 
 1. Financial / Flow
 2. Audience / Resonance
@@ -96,6 +96,6 @@ The [theory of change](theory-of-change.md) lays out the practice's own model th
 
 The framework's two audience framings (funders and board, mission-driven leaders) say how to introduce the page. The framework also says the internal register names are not client-facing language.
 
-The dashboard has these four sections and no fifth; Isaac confirmed the framework's four rows on 2026-10-16.
+The dashboard has these four sections and no fifth, following the framework's four rows.
 
 **Left open.** The repo does not say who picks the metrics that fill each row.

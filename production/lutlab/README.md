@@ -291,7 +291,7 @@ luminance, against the same gap before the look.
 
 RAW + JPEG: darktable-cli develops the RAW with `workflow=none` (no filmic or
 sigmoid), legacy chromatic adaptation, camera white balance, out as 16-bit
-linear Rec.709, in a throwaway config and an in-memory library (Isaac's
+linear Rec.709, in a throwaway config and an in-memory library (your
 darktable library is never touched). The JPEG is rotated by its EXIF
 orientation. Then both are scaled to 1200 px, aligned by an ECC homography,
 blurred slightly, and masked: the outer 10% (lens correction and vignetting

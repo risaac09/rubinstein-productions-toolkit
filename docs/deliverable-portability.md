@@ -12,7 +12,7 @@ Written 2026-08-13, from a review of six months of client deck and document prod
 
 Quality in this work is not carried by taste. It is carried by six mechanical disciplines, and every one of them is a procedure a model either runs or skips.
 
-The evidence for this is uncomfortable and it comes from our own output, not from a competitor's. In one deck chain, a kicker text box was placed over an inherited body placeholder, which renders as garbled overlapping text. It shipped through **seven consecutive generations** of Claude-assisted edits. Every pass edited XML correctly. None of them re-rendered the slide and looked at it.
+The evidence for this is uncomfortable and it comes from real production output. In one deck chain, a kicker text box was placed over an inherited body placeholder, which renders as garbled overlapping text. It shipped through **seven consecutive generations** of Claude-assisted edits. Every pass edited XML correctly. None of them re-rendered the slide and looked at it.
 
 So the defect was not caused by a model lacking judgment about typography. It was caused by a loop step being skipped. That is the whole thesis: **when the loop runs, quality is high; when the loop is skipped, quality collapses, and it collapses on any model.**
 
@@ -23,13 +23,13 @@ So the defect was not caused by a model lacking judgment about typography. It wa
 Each of these is checkable, teachable, and portable. None requires the model to have good taste.
 
 **1. Extract brand truth from the file. Never type a hex from memory.**
-The drift in our own from-scratch builds is always a near miss: `#B4501E` where the template says `#B4501D`, `#1F6E87` where the template says `#1F6E86`. One digit off, every time. Across five documents in one program, five different teals were used, because everyone approximated by eye. The fix is a grep, not a judgment.
+The drift in from-scratch builds is always a near miss: `#B4501E` where the template says `#B4501D`, `#1F6E87` where the template says `#1F6E86`. One digit off, every time. Across five documents in one program, five different teals were used, because everyone approximated by eye. The fix is a grep, not a judgment.
 
 **2. Build inside the client's own file.**
 Brand fidelity comes from file lineage, not from reconstruction. Duplicating their template inherits masters, footer geometry, logo images, and the tagline (which is an image, not text) for free. Rebuilding from scratch means approximating all of it. This single choice removes most of the surface where a weaker model degrades.
 
 **3. Freeze the content before forking the form.**
-The cleanest work in the corpus locked its claims in one pass, then produced two different visual treatments of that locked content twenty-six minutes apart. Fact-checking and design were separate passes. When they are one pass, the model trades accuracy for polish without telling you.
+The cleanest work in the review locked its claims in one pass, then produced two different visual treatments of that locked content twenty-six minutes apart. Fact-checking and design were separate passes. When they are one pass, the model trades accuracy for polish without telling you.
 
 **4. Render, look, fix, re-render.**
 The step that gets skipped. A model editing OOXML is composing blind unless it converts to an image and inspects it. This is also the step that most often is not *available* on another platform, which matters more than the model's ability.

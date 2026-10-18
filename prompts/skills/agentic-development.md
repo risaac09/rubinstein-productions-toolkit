@@ -5,6 +5,8 @@ description: Conversational guidance for building software with AI agents, cover
 
 # Agentic Development
 
+> **As of October 2025.** Source: Peter Steinberger, "Just Talk To It". The workflow guidance holds up; the harness picks, model names and model-behaviour notes are a snapshot of that month and are kept as history, not as current routing.
+
 This skill provides guidance for building software with AI agents based on real-world experience from high-volume agentic development, specifically Peter Steinberger's "Just Talk To It" methodology developed while building a ~300k LOC TypeScript React application entirely with AI agents.
 
 **Core Philosophy**: Most elaborate frameworks, planning systems, and tooling are premature optimization. Treat AI agents like capable engineers—talk naturally, develop shared context, interrupt when needed, and iterate based on results rather than elaborate plans.
@@ -289,7 +291,7 @@ Direct interaction with agents builds intuition faster than elaborate frameworks
 
 **Local/Open Models**:
 - Keep monitoring but not recommended as daily driver yet
-- China's models (GLM 4.6, Kimi K2.1) approaching Sonnet 3.7 quality
+- At the time, open models (GLM 4.6, Kimi K2.1) were approaching Sonnet 3.7 quality
 
 ### Slash Commands (Use Sparingly)
 
