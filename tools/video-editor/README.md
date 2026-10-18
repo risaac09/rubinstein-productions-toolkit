@@ -52,7 +52,9 @@ system default is 3.9.6; video-use's `pyproject.toml` requires `>=3.10`, so a
 project-local venv pinned to 3.10 was necessary).
 
 ```bash
-# from the repo root: fetch video-use at the pinned commit
+# from the repo root: fetch video-use at the pinned commit and apply
+# keep-source-frame-rate.patch (see "Frame rate" below; the script fails and
+# removes the folder if the pin or the patch does not check out)
 # (refuses to run if video-use/ already has files in it; if you have an older
 # checkout with the vendored copy, move that folder aside first, then copy
 # back any .venv, edit/ or .env you kept in it once the fetch has run)
@@ -70,6 +72,39 @@ No console scripts. Every helper is invoked directly as
 ElevenLabs Scribe needs `ELEVENLABS_API_KEY` in `.env` at this directory's
 root (see `.env.example`) or in the environment. Not configured in this
 environment. See below for what that does and doesn't block.
+
+## Frame rate
+
+Upstream's `render.py` extracts every segment with `-r 24`, which turns a
+23.976 source (the house capture standard) into 24 fps. The fetch script
+applies `keep-source-frame-rate.patch`, a hunks-only diff of `helpers/render.py`
+beside it (upstream's MIT licence; the header names the pin). It probes the
+first range's source with `ffprobe` and extracts every segment at that exact
+rational, such as 24000/1001. Rule for mixed-rate EDLs: the first range's
+source sets the rate for the whole render, because the concat is lossless, and
+a source at another rate is converted to it. If the probe fails it falls back
+to 24. Concat, overlay and loudnorm assume no rate, so nothing else changed.
+
+Verified 2026-10-17 on synthetic 8 s clips (ffmpeg `testsrc2` + `sine`,
+1920 by 1080), each cut into two ranges (4.5 s), with and without a 2 s
+ProRes 4444 alpha overlay made by ffmpeg (the Remotion recipe was not rerun for
+this):
+
+| Source | Output rate | Frames | Video / audio duration |
+|---|---|---|---|
+| 24000/1001 | 24000/1001 | 108 | 4.5045 s / 4.5233 s |
+| 30000/1001 | 30000/1001 | 135 | 4.5045 s / 4.5233 s |
+| 25 | 25 | 113 | 4.520 s / 4.521 s |
+
+The overlay and plain renders matched. Sampled frames show the overlay inside
+its window and the bare pattern after it. Audio runs under one frame longer
+than video (AAC frame padding), inside the 30 ms edge fades' reach; no drift
+was seen. Not checked: real footage, a mixed-rate EDL, a variable-frame-rate
+source, UHD.
+
+If upstream moves the pin, regenerate the patch against the new commit. Worth
+offering upstream as a pull request (hard-coded 24 fps is a bug for any
+23.976 or 25 fps user); not opened.
 
 ## What was verified vs. what needs a real API key
 
@@ -144,10 +179,8 @@ result. The gap above is real, not papered over.
   cuts.
 - Register as a Claude Code skill (`ln -sfn` into `~/.claude/skills/`) once
   there's real footage to edit against, per `video-use/install.md`.
-- Decide what to do about the frame rate. `render.py` extracts every
-  segment with `-r 24`, so a 23.976 source comes out at 24 fps, off the
-  capture standard. The fix belongs upstream or in a local patch; neither
-  exists yet.
+- Run the frame-rate patch against real 23.976 footage and a mixed-rate EDL,
+  then decide whether to offer it upstream.
 
 ## Phase 2: Remotion motion graphics (`motion/`)
 
@@ -256,8 +289,8 @@ Two rules come from how the stage works:
 - **Set `duration` to the overlay's own length**, 76 frames at 23.976 or
   about 3.17 s, so the window does not cut the exit short.
 
-What this does not cover: the base came out at 24 fps (see Next steps), and
-nothing here was checked on real footage or at UHD.
+What this does not cover: the base now keeps the source rate (see Frame rate),
+but nothing here was checked on real footage or at UHD.
 
 **Friction notes, for anyone treating this as a repeatable pipeline later:**
 
