@@ -3,7 +3,7 @@
 Index, cluster and cull a shoot's camera JPEGs and build a review sheet.
 Nothing here decodes a RAW file or talks to DaVinci Resolve; the grade and
 the render stay in Resolve through the `rpresolve` tools. Plan of record:
-corpus note "2026-10-06 Stills production pipeline plan".
+the internal stills pipeline plan.
 
 Runs on the venv at `~/.venvs/rp-tools` (Homebrew Python 3.14 with Pillow,
 imagehash, numpy and OpenCV from `requirements.txt`; see the lutlab README for

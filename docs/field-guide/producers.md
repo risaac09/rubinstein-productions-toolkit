@@ -18,7 +18,7 @@ The engagement has a defined shape from first contact to published case study.
 
 ## Shoot and post
 
-- **[Capture standard](../../production/capture-standard.md)**. How every camera shoots: frame rate and shutter, profile and codec, resolution, audio, sync, slate, and card naming. Draft. A worked one-day shoot plan at iPhone level sits beside it as an [example](../../production/examples/2026-03-31-shoot-plan.md); its camera-packing sequence is the signature visual of the camera-shipping model.
+- **[Capture standard](../../production/capture-standard.md)**. How every camera shoots: frame rate and shutter, profile and codec, resolution, audio, sync, slate, and card naming. Draft. A worked one-day shoot plan at iPhone level sits beside it as an [example](../../production/examples/2026-03-31-shoot-plan.md).
 - **[Camera-shipping logistics](../../production/camera-shipping-logistics.md)**. Accepted with open parameters: the standard for sending the camera to a client and getting it back: lifecycle in relative steps, kit and backup-gear checklist, return, insurance as a list of questions, and damage and loss handling.
 - **[Client shooting brief](../../production/client-shooting-brief.md)**. A draft three-page brief written to the client: what to film, how to set up, a footage checklist and how the cards come back. Print it and put it in the box.
 - **[Remote session runbook](../../production/remote-session-runbook.md)**. The filming phase over a call: a 30-minute setup-call script, prompts the facilitator writes from the question bank, a spoken consent loop at the start and end of each call, a debrief within 48 hours, and no recording of calls.

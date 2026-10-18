@@ -256,7 +256,7 @@ On 2026-10-16 five readers went through the repository at `main` fc23435, after 
 
    **Status: executed 2026-10-16, [#152](https://github.com/risaac09/rubinstein-productions-toolkit/pull/152).** The README now says "in each project" where it named the project. Open: the privacy scan over `production/` for other project names has not been run, and the name remains in git history.
 
-   **Status: scanned 2026-10-16, [#160](https://github.com/risaac09/rubinstein-productions-toolkit/pull/160).** A case-insensitive search of `production/` for festival, client, episode, studio and similar words found no other client, event or project name. What it found is generic: "a 2026-10 festival shoot" and "a 2.25:1 festival timeline" describe an event without naming it, "Ep 002" is a numbered episode of the practice's own series, and "Yapper" in `production/examples/2026-03-31-shoot-plan.md` is the practice's own video, not a client's. Nothing was edited. The name remains in git history.
+   **Status: scanned 2026-10-16, [#160](https://github.com/risaac09/rubinstein-productions-toolkit/pull/160).** A case-insensitive search of `production/` for festival, client, episode, studio and similar words found no other client, event or project name. What it found is generic: "a 2026-10 festival shoot" and "a 2.25:1 festival timeline" describe an event without naming it, "Ep 002" is a numbered episode of the practice's own series. The scan itself edited nothing; the March 31 example shoot plan was cut to a neutral example afterward.
 
 ### Producer and distributor
 
