@@ -1,5 +1,3 @@
-> **Canonical source:** this file (toolkit is authoritative — no live vault counterpart as of 2026-04-27).
-
 > **Status:** operational.
 
 # Glossary of Key Terms — Ethical, Nervous-System Aware Videography
@@ -86,7 +84,7 @@ A stress-induced immobility state where the body halts expressive movement to mi
 
 ### **Founder Story**
 
-A publicly offered service that traverses Container, Performance, and Translation while skipping Excavation. See [`services.yaml`](services.yaml) for the service definition.
+A short engagement that traverses Container, Performance, and Translation while skipping Excavation. See [Session Facilitation Guide](session-facilitation-guide.md) for its session type.
 
 ### **Grounding**
 
@@ -122,7 +120,7 @@ The conscious tracking of physiological states—heart rate, breath, muscle tens
 
 ### **Nomadic Science**
 
-A practice of following matter in flow rather than imposing form from outside. See [Second Brain V2: Opening and Process](second-brain-v2-opening-and-process.md) for the frame and its operational translation.
+A practice of following matter in flow rather than imposing form from outside.
 
 ---
 
@@ -150,7 +148,7 @@ A feedback loop of nervous-system activation caused by perceived judgment on cam
 
 ### **Program Engagement**
 
-A publicly offered service that runs all four engagement phases. See [`services.yaml`](services.yaml) for the service definition.
+An engagement scoped to a program's length that runs all four engagement phases. See [Methodology Blueprint](methodology-blueprint.md).
 
 ### **Polyvagal Theory**
 
@@ -162,7 +160,7 @@ A shared belief that one can express oneself without risk of punishment or humil
 
 ### **Register**
 
-Used in three senses: the Institutional and Relational measurement registers, the three registers of the single act, and the sixty-four modes of speech and presence. See the [Measurement Framework](measurement-framework.md), [Nomadic Indicators Codebook](nomadic-indicators-codebook.md), and [Sixty-Four Registers thesis](../research/say-why-64-registers-thesis.md), respectively.
+Used in two senses: the Institutional and Relational measurement registers, and the three registers of the single act. See the [Measurement Framework](measurement-framework.md) and [Nomadic Indicators Codebook](nomadic-indicators-codebook.md), respectively.
 
 ---
 
@@ -178,7 +176,7 @@ A developmental concept where individuals define their own identity and values, 
 
 ### **Service Tier**
 
-A level of the public service offering. See [`services.yaml`](services.yaml) for the current public tiers and their definitions.
+A level of a service offering, defined by which engagement phases it runs and what it delivers. See [Methodology Blueprint](methodology-blueprint.md) for the phases.
 
 ### **Surveillance Capitalism**
 

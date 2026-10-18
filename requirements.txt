@@ -52,8 +52,6 @@
 #                                                                  RAW SDK/Mac
 #   LUTLAB_SKIP_RENDER_VERIFY    production/tests/test_lutlab.py   unset                                     tests: any value skips the render-verify test. Needed with
 #                                                                                                            an ffmpeg build whose colour differs from Homebrew's (CI's apt build).
-#   TOOLKIT_ROOT, VAULT_ROOT     scripts/check-vault-mirror-drift.sh  ~/rubinstein-productions-toolkit,     the checkout or the vault is somewhere else.
-#                                                                  ~/vault/Second Brain
 #
 # The tools do not find ffmpeg the same way. rpresolve reads RPRESOLVE_FFMPEG and RPRESOLVE_FFPROBE and
 # otherwise uses the Homebrew paths. lutlab and tools/vertcut call bare ffmpeg and ffprobe from PATH, so

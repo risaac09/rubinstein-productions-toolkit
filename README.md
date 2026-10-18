@@ -1,163 +1,73 @@
 # Rubinstein Productions Toolkit
 
-**Public methodology, evaluation frameworks, prompt-stack tooling, and deployment kits for AI-assisted solo practices.**
+**A facilitation and measurement methodology, and the production tools that go with it, for solo practitioners who listen and film.**
 
-Built and used by [Isaac Rubinstein](https://rubinsteinproductions.com) to run his own facilitation-and-film practice, and published because the kit mechanism — not the business behind it — is the useful, reusable part.
+Built by [Isaac Rubinstein](https://rubinsteinproductions.com) and published so other practitioners can take what is useful. The business that runs on it is not here; this is the reusable part.
 
-Forks welcome, pull requests not reviewed or merged: this is a solo practitioner's toolkit, so fork it and make it yours rather than waiting on me. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
-
----
-
-## What This Is
-
-A kit, not a company. This repo carries the methodology, the evaluation frameworks, the AI prompt/skill stack, and the deployment mechanism (`phase-zero/`, `public-kit/`) that make a solo AI-assisted practice legible and replicable. It does not carry the practice itself: strategy, pricing internals, brand voice, grant-reporting practice, and client-facing production tooling live in a private operations repo, `rp-intranet`, and stay there.
-
-The methodology draws on polyvagal co-regulation theory, relational ontology, and critical information ecology. At the practice level it's careful listening and honest expression; here, it's the frameworks and tools that operationalize that.
+Forks welcome. Pull requests are not reviewed or merged, so fork it and make it yours. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
 
 ---
 
-## What's Inside
+## What's inside
 
 ### `methodology/`
-The intellectual core: how the practice works, why it works, and how to measure what it does.
+How the practice works and how to measure what it does. The method draws on polyvagal co-regulation theory, relational ontology and critical information ecology.
 
-- **Facilitation Protocol**: Nervous-system aware, co-regulatory interview methodology
-- **Measurement Framework**: The "Bilingual Dashboard": Royal Metrics (institutional ROI) alongside Nomadic Indicators (relational health and emergence). Formerly ENIF; consolidated April 2026.
-- **Measurement Instrument** (draft): The framework's survey items as a runnable instrument: response CSV, scoring procedure, worked example and a small scoring script in `methodology/instrument/`
-- **Nomadic Indicators Codebook**: Qualitative coding guide for tracking transformation
-- **Session Facilitation Guide**: Phase-by-phase guide for facilitated documentary sessions
-- **Theory of Change**: Logic model for grant-funded community applications (grant-facing, maps methodology to funder evaluation frameworks)
-- **Evaluation Framework**: Assessment design using the Bilingual Dashboard
-- **Methodology Blueprint**: Orientation to the four phases, service tiers, and how the methodology pieces connect
-- **Glossary**: Definitions and citations for the practice's key terms
-- **Source Tracking Protocol**: Provenance categories and claim-level source tracing
-- **Negative-Archive Ritual**: A practice for preserving what a project refused, cut, or withheld
-- **Orchestration Model**: The canonical model for how work moves through the system
-- **Deliverable Outlines**: Draft one-screen shapes for six methodology deliverables
-- **Service tiers** (`services.yaml`): The public tier names, segments, and methodology phases, without prices
+- **[Methodology Blueprint](methodology/methodology-blueprint.md)**: the four phases and how the other documents connect. Start here.
+- **[Facilitation Protocol](methodology/facilitation-protocol.md)** and **[Session Facilitation Guide](methodology/session-facilitation-guide.md)**: nervous-system-aware, co-regulatory interviewing, phase by phase.
+- **[Measurement Framework](methodology/measurement-framework.md)**: the Bilingual Dashboard, with Royal Metrics (institutional return) beside Nomadic Indicators (relational health and emergence).
+- **[Measurement Instrument](methodology/measurement-instrument.md)** (draft): the framework's survey as a runnable instrument, with a response CSV, a scoring script and a worked example in `methodology/instrument/`.
+- **[Nomadic Indicators Codebook](methodology/nomadic-indicators-codebook.md)**: a qualitative coding guide.
+- **[Theory of Change](methodology/theory-of-change.md)** and **[Evaluation Framework](methodology/evaluation-framework.md)**: the logic model and assessment design for funded community work.
+- **[Glossary](methodology/glossary.md)**, **[Source Tracking Protocol](methodology/source-tracking-protocol.md)**, **[Negative-Archive Ritual](methodology/negative-archive-ritual.md)**, **[Three-Type Architecture](methodology/three-type-architecture.md)** and **[Deliverable Outlines](methodology/deliverable-outlines.md)** (draft).
 
-Three core docs carry a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md`, and `enif-plain.md`. The canonical doc stays the source of truth; each companion is the teaching layer and ends with what the framework does not claim.
-
-Licensed CC BY-SA 4.0 (practice-writing, not code — see License below).
+Three documents have a plain-language companion for readers with no evaluation background: `evaluation-framework-plain.md`, `theory-of-change-plain.md` and `enif-plain.md`. Every methodology document carries a status line that says how far to trust it.
 
 ### `templates/`
-Reusable templates for the client lifecycle.
-
-- Client onboarding template
-- [Scope checklist](templates/scope-checklist.md)
-- Case study template
-
-### `docs/`, `architecture/`
-Internal documentation and a system-map artifact. `docs/field-guide/` routes readers by role. [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md) is the one-page index of which repo or note owns each domain, and what this repo only exports. [`docs/deliverable-portability.md`](docs/deliverable-portability.md) documents the draft procedure for carrying document and deck quality across models.
-
-The skill-eval harnesses moved to the private `rp-intranet` repo on 2026-08-23: their prompts and fixtures are real RP business scenarios carrying balances, revenue targets, pricing bands, and a client engagement, which is the same material this README says stays private.
-
-### `scripts/`
-Generic automation. `build-site.py` assembles the field guide and system map into the GitHub Pages site. `burst-gate` runs five mechanical gates against a worker branch. `changelog-fragments` creates, validates, and compiles the per-pull-request fragments documented in [`changelog.d/README.md`](changelog.d/README.md). `check-methodology-status.sh` verifies that every methodology document declares how far to trust it. `test-burst-gate.sh` exercises each burst gate in throwaway branches. `test-changelog-fragments.sh` exercises the fragment workflow in throwaway repositories. `test-instrument-score.sh` checks the measurement scoring script against its worked example and refusal cases. The directory also carries the doc-link checker, vault/toolkit boundary drift detector, pre-commit hook chain, and methodology sync script. Nothing RP-specific.
-
-### `phase-zero/`
-The deployment kit for AI-agent session infrastructure (hooks, operating brief, model routing, retrospective, settings), deployed byte-identical into consuming repos' `.claude/` directories via `phase-zero/install.sh`. See that file's `CONSUMERS` allowlist for who's on it. This directory is an exported mirror: the source lives in a private repo beside the decisions and tests that warrant it, and every change here arrives as an `Export kit from stack-data` commit. Fork it freely; fixes sent here are not merged back by hand.
-
-### `public-kit/`
-A second, smaller deployment kit for public-repo hygiene: license templates, a README-shape standard, `CONTRIBUTING.md`/`SECURITY.md` templates, and the canonical public-facing voice rules. Deployed independently of `phase-zero/` by the `--public` mode of the shared installer, `phase-zero/install.sh`, to repos that are actually public. Exported from the same private source as `phase-zero/`. A repo can take either kit, both, or neither.
-
-### `prompts/`
-What remains of the prompt stack after the brand/identity/voice prompts moved to `rp-intranet` (they were positioning and business voice, not reusable methodology): agent orchestration notes, a repo atlas, session handoff notes, and `prompts/skills/` — the Cowork/Claude Code skill files covering outreach, project management, agentic development, and idea-to-pilot work.
+- [Case study template](templates/case-study-template.md), in the two registers of the Bilingual Dashboard.
+- [Respondent sheet](templates/respondent-sheet.md), the measurement instrument's form.
 
 ### `production/`
-Generic film/video production tooling. *(Kept as a default — see below.)*
+Tools that work on anyone's footage, each with tests.
 
-- DaVinci Resolve command-line script: read-only and offline commands only
-- [Resolve MCP server](production/resolve-mcp.md): the only write path to Resolve, as MCP tools for Claude Code, reads plus additive, plan-first writes
-- PowerGrade template spec
-- [Capture standard](production/capture-standard.md): frame rate, profile, audio, sync, slate and card naming per camera, with an [example shoot plan](production/examples/2026-03-31-shoot-plan.md) (draft)
-- [Camera-shipping logistics](production/camera-shipping-logistics.md): the shipment lifecycle, kit and backup-gear checklist, return, and the insurance questions still open (accepted 2026-10-16, with open parameters)
-- [Client shooting brief](production/client-shooting-brief.md): a three-page brief for the person filming, to print and put in the box (draft)
-- [Remote session runbook](production/remote-session-runbook.md): the setup-call script, prompts, the spoken consent loop, and the debrief for the remote filming phase; calls are not recorded
-- [Design tokens](production/design-tokens.md): token names, lower-third geometry, the caption standard and a look-book stub; values stay private (draft)
-- [Delivery manifest](production/delivery-manifest.md), [platform specs](production/platform-specs.md) and [credits and AI disclosure](production/credits-and-disclosure.md): what ships, to where, and what is said about how it was made (accepted 2026-10-16); the [return package](production/return-package.md) sets what comes back to the client and how it is checked. The client final-approval gate they depend on is in the [Resolve spec](production/resolve-template-spec.md#the-final-approval-gate)
-
-### `production/lutlab/`
-Turns a look into a few numbers you can shift on purpose, and back into a LUT. A look comes from a `.cube` or from image pairs (a RAW and the camera's own JPEG, or a log frame and its graded frame), and rebuilds as a `.cube` for Resolve and a Hald CLUT PNG for stills tools. Ships six reference looks in `production/lutlab-looks/`, a port between camera spaces, and a verify-render check. Python 3.14 with numpy, scipy, Pillow and OpenCV; see [its README](production/lutlab/README.md).
-
-### `production/rpstills/`
-The offline front end of the stills lane: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. It decodes no RAW and talks to no Resolve; grading stays in Resolve. Faces come from macOS Vision when `swiftc` is present, and the ranking falls back to the frame alone when it is not. Look presets are in `production/stills-looks/`. See [its README](production/rpstills/README.md).
+- **[Resolve MCP server](production/resolve-mcp.md)**: DaVinci Resolve as MCP tools for Claude Code. Reads, plus writes that are additive and show a plan first. A command-line script covers the read-only and offline commands.
+- **[Resolve template spec](production/resolve-template-spec.md)**: the colour pipeline, PowerGrade template and deliver rules, including the [final-approval gate](production/resolve-template-spec.md#the-final-approval-gate).
+- **[Capture standard](production/capture-standard.md)** (draft): frame rate, profile, audio, sync, slate and card naming per camera.
+- **[Delivery manifest](production/delivery-manifest.md)**, **[platform specs](production/platform-specs.md)**, **[credits and AI disclosure](production/credits-and-disclosure.md)**, **[consent evidence](production/consent-evidence.md)** and the **[return package](production/return-package.md)**: what ships, where to, what is said about how it was made, and what goes back to the people in it.
+- **[`lutlab/`](production/lutlab/README.md)**: turns a look into a few numbers you can shift on purpose, and back into a LUT (`.cube` for Resolve, Hald CLUT PNG for stills). Six reference looks ship in `production/lutlab-looks/`.
+- **[`rpstills/`](production/rpstills/README.md)**: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. Faces come from macOS Vision when `swiftc` is present.
 
 ### `tools/`
-- **`tools/vertcut/`**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`. Bash plus one small Python file; ffmpeg, Pillow and `mlx-whisper` do the work. See [its README](tools/vertcut/README.md).
-- **`tools/video-editor/`**: a bounded prototype that drives video editing through Claude Code. The Remotion lower-third in `motion/` and the notes in its [README](tools/video-editor/README.md) are Rubinstein Productions work. `video-use`, the editing skill the notes wrap, is third-party (Browser Use, MIT). It is not stored in this repo; `tools/video-editor/fetch-video-use.sh` fetches it at a pinned commit. Not a finished tool.
+- **[`vertcut/`](tools/vertcut/README.md)**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`.
+- **[`video-editor/`](tools/video-editor/README.md)**: a bounded prototype that drives video editing through Claude Code, wrapping the third-party `video-use` skill (Browser Use, MIT), which `fetch-video-use.sh` fetches at a pinned commit. Not a finished tool.
 
-### `dsh/`
-The deployment kit for a DeepSeek Harness agent on the OpenRouter lane: the session brief, the model routing table for that lane, and an installer that keeps the shared skill home in step with `prompts/skills/`. It is the counterpart to `phase-zero/`, which targets Claude Code. See [its README](dsh/README.md).
+### `prompts/`
+- **[`skills/`](prompts/skills/)**: Claude Code skill files. Branded deck and document builds that match a template, a prompting pattern library, and agentic-development notes. The last two are October 2025 snapshots and say so at the top.
+- **[Repo atlas](prompts/repo-atlas.md)**: a ready-to-run prompt that maps how a set of repositories connect and which ones to thin down.
 
-### `seed-bed/`
-One skill, `seed-bed/SKILL.md`: an incubation space for ideas that are not yet a service, tool or practice. It holds an idea without forcing a category and brings it back on a weekly cadence.
+### `docs/`
+- **[Field Guide](docs/field-guide/index.md)**: a reading order and a first working session for writers, producers and evaluators. Also published as the repository's GitHub Pages site.
+- **[Deliverable portability](docs/deliverable-portability.md)** (draft): how to keep document and deck quality when the model changes.
+
+### `scripts/`
+The doc-link checker, the methodology status check, the site builder, `burst-gate` (mechanical gates for a worker branch) and `changelog-fragments` (one release-note fragment per pull request in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time), each with a test script.
+
+### `phase-zero/` and `public-kit/`
+Two deployment kits, exported here from a private source. `phase-zero/` is session infrastructure for AI agents (hooks, an operating brief, model routing, a retrospective) that installs into a repository's `.claude/`. `public-kit/` is public-repository hygiene: license templates, a README shape, `CONTRIBUTING` and `SECURITY` templates, and public voice rules. Fork them freely; fixes sent here are not merged back by hand.
 
 ### `requirements.txt`
-Each tool's interpreter, the pinned Python packages, and a table of every environment override the tools read, in one file. CI installs from it. The commands that run the tests are under [Testing](#testing).
-
-### `research/`
-What's left after the position papers and grant-concept research moved to `stack-data`: the 64-registers thesis. (The Digital Liver offering doc is business strategy with revenue models, so it lives in the private `rp-intranet` repo.)
-
-### Apps (external repos)
-Web-based tools, each developed in its own repository. There is no `apps/` directory in this tree.
-
-- **[Alchemy](https://github.com/risaac09/alchemy)**: Digital Liver app. Capture → Reflect → Release. The lineage that became **The Metabolizer**, the vault product.
-- **Royal Metrics**: ENIF business performance dashboard (lives at `three-type-evaluation/instrument/` since 2026-07-20, standalone repo archived; the measurement framework it implements is in `methodology/`)
-- **RP Lifecycle**: Videography project lifecycle manager (repo archived 2026-07; the 10-phase template it encoded lives on in stack-data's project schema)
+Each tool's interpreter, the pinned Python packages, and a table of every environment variable the tools read. CI installs from it.
 
 ---
 
-## What's Not Here (and why)
+## Quick start
 
-This repo's own `CLAUDE.md` used to claim "nothing private lands here." An audit in August 2026 found that wasn't true, and this reorganization is the fix:
-
-- **Grant strategy, brand/creative-strategy prompts, the identity-instantiation prompt, the content strategy, and RP-specific production tooling** (`badwords-rp/`) moved to `rp-intranet`, a private operations repo. They were business strategy and voice/positioning material, not reusable methodology.
-- **Position papers and grant-concept research** moved to `stack-data`, alongside near-identical or adjacent material already living there.
-- **Duplicate Total Cost of Ownership methodology files** were deleted outright; `stack-data/context/tco-framework.md` is the canonical version now.
-- **Context Provenance** — the self-contained AI-attribution and provenance tool that happened to live in this tree now has its own repository: **[`risaac09/context-provenance`](https://github.com/risaac09/context-provenance)**. Its original subtree history moved with it.
-
-A second pass on 2026-08-23 caught what the first one missed. The August reorg scoped itself to `prompts/`, `research/`, `grants/`, and `production/`, so these were never in range:
-
-- **The skill-eval harnesses** (`evals/`) moved to `rp-intranet`. Their prompts read as synthetic but are real business scenarios: account balances, rent, monthly burn, a quarterly revenue target, a named client engagement, and the price-anchoring script with the floor and ceiling stated outright.
-- **Service-tier pricing, revenue projections, unit economics, and the go-to-market plan** moved to `rp-intranet`. The projection table sat directly beneath an assumptions block naming the employer.
-- **The Digital Liver offering doc and the RP COO skill** moved to `rp-intranet`. Both are business strategy carrying rates and financial models.
-- **A verbatim snapshot of one machine's Claude permission allow list** was removed. Publishing it published the exact set of commands that run with no approval prompt on that machine. The audit script reads a machine-local baseline now.
-- **The autoMode environment block** shipped generic. It had named every private repo and then described the privacy scanner's known blind spot, which is a target list sitting next to the gap that reaches it. Machine specifics come from a local overlay the installer merges last.
-
-History still holds all of it. Scrubbing that is a separate decision.
-
-One removal came later, on 2026-10-16: the `rp-*` prospect and grant command-line tools (`cli/`, its four templates and its smoke test). They tracked the same prospects and funders as the private stack-data repo, and a fact should have one home, so the record is stack-data and the tools went. The last commit that carries them is `2ffe87a`; take them from git history if you want a Markdown-file tracker to start from.
-
-### A judgment call
-
-Most of `production/` (everything except `badwords-rp/`, which moved) is kept here by default, not because that's a settled decision. The toolkit's own content strategy argues for keeping tooling visible as proof a solo practitioner can build real infrastructure, and the directory carries no names, numbers, or strategy — but this default hasn't been reviewed against the same bar as the rest of the reorg. Flagging it explicitly so it can be overridden.
-
-The same flag once sat on `cli/`, the prospect and grant command-line tools. It was settled on 2026-10-16: the pipeline record is the private stack-data repo, a second tracker for the same facts was the problem, and the tools were retired. See the paragraph above and [`docs/TRUTH-OWNERSHIP.md`](docs/TRUTH-OWNERSHIP.md).
-
----
-
-## License
-
-Three lanes, matching the rest of this practice's repos:
-
-Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
-
-- **Data** — none of consequence lives in this repo; where it would, it's CC0.
-
-See [`LICENSE`](LICENSE) for the code license and scope note, [`LICENSE-CONTENT`](LICENSE-CONTENT) for the methodology license, and `public-kit/` for the templates this policy is built from. Contribution terms are in [`CONTRIBUTING.md`](CONTRIBUTING.md), and the reporting channel for security issues is in [`SECURITY.md`](SECURITY.md).
-
----
-
-## Quick Start
-
-New here? The **[Field Guide](docs/field-guide/index.md)** routes writers, producers, and evaluators to a reading order and a first working session.
-
-### Prompt Stack
-The `prompts/skills/` directory contains skill files, one Markdown file per skill and the only copy of each, designed for [Claude Code](https://claude.ai/claude-code) / Cowork. Drop them into your `.claude/skills/` directory or adapt the methodology for your own AI workflow.
+- **Read the method:** start at the [Methodology Blueprint](methodology/methodology-blueprint.md), or let the [Field Guide](docs/field-guide/index.md) pick a reading order for your role.
+- **Use a skill:** copy a file from `prompts/skills/` into your `.claude/skills/<name>/SKILL.md`.
+- **Cut clips:** `tools/vertcut/vertcut transcribe <recording>`, pick spans, then `tools/vertcut/vertcut cut <recording> clips.tsv`, as its README shows.
 
 ### Testing
-The production tests run on Homebrew Python 3.14, in a venv outside the repository (the Resolve MCP server stays on Xcode's 3.9 and is covered by its own CI job). Make the venv, install the pinned packages, then run every module in `production/tests` from the repository root, as CI does:
+The production tests run on Homebrew Python 3.14 in a venv outside the repository. The Resolve MCP server stays on Xcode's Python 3.9 and has its own CI job. From the repository root:
 
 ```
 /opt/homebrew/bin/python3.14 -m venv ~/.venvs/rp-tools
@@ -165,47 +75,27 @@ The production tests run on Homebrew Python 3.14, in a venv outside the reposito
 ~/.venvs/rp-tools/bin/python -m unittest $(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')
 ```
 
-On a Homebrew Mac that is all. Anywhere else, point the tools at your ffmpeg and ffprobe, and skip the one test that compares colour against Homebrew's ffmpeg build:
+Off a Homebrew Mac, point the tools at your ffmpeg and skip the one test that compares colour against Homebrew's build:
 
 ```
 export RPRESOLVE_FFMPEG="$(command -v ffmpeg)" RPRESOLVE_FFPROBE="$(command -v ffprobe)" LUTLAB_SKIP_RENDER_VERIFY=1
 ```
 
-The table at the top of [`requirements.txt`](requirements.txt) lists the other variables. The survey tests need Python 3.14 and skip on 3.9, so the 3.14 venv runs all of them.
+---
 
-### Methodology
-Start with `methodology/facilitation-protocol.md` for the session-level practice, then `methodology/measurement-framework.md` for the measurement system.
+## Who this is for
+
+- Facilitators and solo consultants who want to see how someone else built their practice's infrastructure.
+- Evaluators and nonprofit staff looking for a framework that measures relational quality next to deliverables.
+- Documentary filmmakers working with participant-led production, and anyone automating DaVinci Resolve.
+- People building an AI-assisted practice who want to see how skills and methodology connect.
 
 ---
 
-## Who This Is For
+## License
 
-The **[Field Guide](docs/field-guide/index.md)** gives each audience a reading order and a first working session:
-
-- **[Writers](docs/field-guide/writers.md)**: the voice system, the question bank that generates client language, the editorial disciplines
-- **[Producers](docs/field-guide/producers.md)**: the session methodology, the client lifecycle from prospect to case study, shoot and post workflow
-- **[Evaluators](docs/field-guide/evaluators.md)**: the Bilingual Dashboard, the coding manual, and grant-reporting practice
-
-If none of those labels fit, you may still be at home here:
-
-- Solo consultants and facilitators who want to see how someone else built their practice infrastructure
-- Nonprofit professionals looking for evaluation frameworks that measure relational quality alongside deliverables
-- Documentary filmmakers curious about participant-led production models
-- Anyone building an AI-assisted practice stack who wants to see how prompt engineering connects to methodology, or who wants a public-repo hygiene kit (`public-kit/`) they can deploy to their own projects
-
----
-
-## Canonical structure
-
-This repo and the Obsidian vault are separate stacks. Directory names like `02 Practice/`, `03 Projects/`, `00 System/` are reserved for the vault and must never appear inside the toolkit root or anywhere below it (except under `_archive/`). The full forbidden list, the regex, and the rationale are in `docs/CANONICAL-STRUCTURE.md`.
-
-Three guards enforce this:
-
-- **Drift detector** — `scripts/check-vault-mirror-drift.sh`. Pure bash. Run anytime.
-- **Pre-commit hook** — `scripts/hooks/pre-commit-vault-mirror-check.sh`. Chains the secret scanner and the drift detector. Install on a clean checkout with `cp scripts/hooks/pre-commit-vault-mirror-check.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
-- **Daily detector** — `~/Library/LaunchAgents/com.rubinsteinproductions.toolkit-mirror-check.plist`. Runs at 04:30 daily, writes a dated note to the vault on drift. The pre-commit hook only fires on git commits; the daily run catches misroutes from other automation.
+Code (`scripts/`, `production/`, `tools/`, `phase-zero/`, `public-kit/`) is MIT, in [`LICENSE`](LICENSE). Everything else, including the methodology, docs, templates and prompts, is CC BY-SA 4.0, in [`LICENSE-CONTENT`](LICENSE-CONTENT): adapt it, and keep your adaptation as open as the original. No data of consequence lives here; if some ever does, it is CC0.
 
 ---
 
 *Isaac Rubinstein, [Rubinstein Productions](https://rubinsteinproductions.com)*
-*Seattle, WA*

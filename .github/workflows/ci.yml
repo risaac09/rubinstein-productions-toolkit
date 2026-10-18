@@ -12,8 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Vault-mirror drift check
-        run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
       - name: Markdown link check
         run: scripts/check-doc-links.sh
       - name: Methodology status headers

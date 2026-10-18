@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """build-site.py — assemble the GitHub Pages site into _site/.
 
-The field guide is the site's front door; the agentic system map keeps its
-page at /map/. Markdown stays the single source: pages are rendered at build
+The field guide is the site's front door. Markdown stays the single source: pages are rendered at build
 time, links between guide pages become .html links, and links into the rest
 of the repository become GitHub blob URLs.
 
@@ -29,7 +28,6 @@ PAGES = {
     "docs/field-guide/writers.md": ("writers.html", "For Writers"),
     "docs/field-guide/producers.md": ("producers.html", "For Producers"),
     "docs/field-guide/evaluators.md": ("evaluators.html", "For Evaluators"),
-    "docs/ROADMAP.md": ("roadmap.html", "Roadmap"),
 }
 
 NAV = [
@@ -37,8 +35,6 @@ NAV = [
     ("writers.html", "Writers"),
     ("producers.html", "Producers"),
     ("evaluators.html", "Evaluators"),
-    ("roadmap.html", "Roadmap"),
-    ("map/", "System Map"),
     (REPO_URL, "GitHub"),
 ]
 
@@ -101,7 +97,7 @@ TEMPLATE = """\
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} · Rubinstein Productions Toolkit</title>
+<title>{title} · Practice Toolkit</title>
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
@@ -151,10 +147,9 @@ def main() -> None:
     guard_out()
     if OUT.exists():
         shutil.rmtree(OUT)
-    (OUT / "map").mkdir(parents=True)
+    OUT.mkdir(parents=True)
 
     (OUT / "site.css").write_text(CSS)
-    shutil.copy(ROOT / "architecture" / "index.html", OUT / "map" / "index.html")
 
     md = markdown.Markdown(extensions=["tables", "fenced_code"])
     for src, (name, title) in PAGES.items():
@@ -169,7 +164,7 @@ def main() -> None:
         )
         (OUT / name).write_text(page)
         print(f"  {src} -> {name}")
-    print(f"build-site: {len(PAGES)} pages + map -> {OUT}")
+    print(f"build-site: {len(PAGES)} pages -> {OUT}")
 
 
 if __name__ == "__main__":

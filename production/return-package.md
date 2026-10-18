@@ -2,9 +2,9 @@
 
 > **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. No tool builds the package yet; a person or an agent assembles it by hand with the commands here.
 
-The anti-extractive safeguards in section 8 of the [measurement framework](../methodology/measurement-framework.md) give clients their raw data on request. The camera-shipping model goes further and returns everything, cut and raw material both. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
+The anti-extractive safeguards in section 6 of the [measurement framework](../methodology/measurement-framework.md) give clients their raw data on request. The camera-shipping model goes further and returns everything, cut and raw material both. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
 
-It covers the return of footage, finals and project files to the client. The [delivery manifest](delivery-manifest.md) covers what shipped to destinations. The physical kit returns to RP under [camera shipping logistics](camera-shipping-logistics.md).
+It covers the return of footage, finals and project files to the client. The [delivery manifest](delivery-manifest.md) covers what shipped to destinations.
 
 ## What is in it
 
@@ -12,10 +12,10 @@ It covers the return of footage, finals and project files to the client. The [de
 2. **The finals.** Every deliverable that passed `deliver_check`, as shipped.
 3. **Captions.** The sidecar `.srt` for each final that has one.
 4. **The Resolve project as a `.drp`, with media not consolidated.** The project file holds the timelines, grades and links, and points at the originals by path. It does not carry a copy of the media. A person exports it in Resolve with Export Project, not Export Project Archive, which would copy media into the file. When the client opens it on their machine, the clips show offline until the folder is relinked to `01_originals/`.
-5. **The session recordings and transcripts.** Every recording and transcript of the client's sessions, in `05_session/`. Coded passages and aggregate response rows are not in the package. They stay under the consent tier the client chose, as section 8 of the [measurement framework](../methodology/measurement-framework.md) sets out.
+5. **The session recordings and transcripts.** Every recording and transcript of the client's sessions, in `05_session/`. Coded passages and aggregate response rows are not in the package. They stay under the consent tier the client chose, as section 6 of the [measurement framework](../methodology/measurement-framework.md) sets out.
 6. **The manifest.** `manifest.md` at the package root.
 
-The cards are not in the package and are not the client's. The footage on them is, and it reaches the client as the files in `01_originals/`. The cards travel in the kit, as [camera shipping logistics](camera-shipping-logistics.md) sets out. Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package.
+The cards are not in the package and are not the client's. The footage on them is, and it reaches the client as the files in `01_originals/`. The cards travel in the kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package.
 
 ## Medium
 
@@ -131,7 +131,7 @@ RP records the date of that reply. It starts the retention clock below.
 
 - **Originals:** RP deletes its copy 90 days after the client confirms the checksums. The date of confirmation and the date of deletion go in the engagement record.
 - **Session recordings and transcripts:** RP deletes its copy on the same 90-day clock as the originals.
-- **Finals:** RP keeps them only where the client has granted consent tier 3, defined in section 8 of the [measurement framework](../methodology/measurement-framework.md). The evidence that a client granted it is set out in [consent evidence](consent-evidence.md). Without tier 3 evidence, RP deletes its copy of the finals on the same 90-day clock.
+- **Finals:** RP keeps them only where the client has granted consent tier 3, defined in section 6 of the [measurement framework](../methodology/measurement-framework.md). The evidence that a client granted it is set out in [consent evidence](consent-evidence.md). Without tier 3 evidence, RP deletes its copy of the finals on the same 90-day clock.
 - **The client master:** RP deletes it with the finals on the 90-day clock, unless the client asks in writing for RP to keep it. Tier 3 keeps the finals and does not keep the master. The client holds the master, and re-making a version ends with retention. [Platform specs](platform-specs.md) says the same.
 - **Coded passages and aggregate rows:** kept under the consent tier the client chose.
 - **Manifest:** kept. It names no client and holds hashes, not footage.

@@ -1,6 +1,6 @@
 # Capture Standard
 
-> **Status:** draft, 2026-10-16. The settings below are decisions of record for how RP shoots and how a client camera ships. They match the Resolve tooling's defaults in [`resolve-config.json`](resolve-config.json). Colour handling after capture is defined in the [Colour Pipeline of Record](resolve-template-spec.md#colour-pipeline-of-record) of the Resolve template spec; this document stops at the card.
+> **Status:** draft, 2026-10-16. The settings below are a standard for how to shoot so footage from several cameras cuts together. They match the Resolve tooling's defaults in [`resolve-config.json`](resolve-config.json). Colour handling after capture is defined in the [Colour Pipeline of Record](resolve-template-spec.md#colour-pipeline-of-record) of the Resolve template spec; this document stops at the card.
 
 Capture decides what the edit can do. A frame rate that differs from the timeline, a profile the tools cannot recognise, or a take with no shared sound all cost hours later. Every camera below shoots the same way unless its row says otherwise, so footage from several cameras on one project cuts together without conversion.
 
@@ -26,13 +26,13 @@ The lutlab looks were measured on S5II V-Log and Pyxis BRAW clips (see [lutlab's
 
 **White balance** is set by hand and fixed for each scene: 5600 K for daylight, 3200 K for tungsten. Never auto, on any camera.
 
-**Exposure** is set by eye on the log image, on site. RP does not expose to false colour as a habit. The middle-grey levels in the table below are each log curve's own reference, for checking a doubtful shot with the camera's waveform, false colour or a grey card.
+**Exposure** is set by eye on the log image, on site. Do not expose to false colour as a habit. The middle-grey levels in the table below are each log curve's own reference, for checking a doubtful shot with the camera's waveform, false colour or a grey card.
 
 **ND** holds the 180-degree shutter from the section above. The shutter does not move to change exposure.
 
 **Auto ISO** on the GH7 is capped at 3200. The camera allows more, but 3200 is the house ceiling for noise.
 
-Native ISO figures are the makers' published specs, not measurements on RP's bodies; a row says when the figure was also confirmed in the camera's menu. Middle grey is where 18% grey falls on each log curve, from the maker's curve definition, given as a percentage of the full-range signal so the rows compare on one scale. The one cell still marked "to be measured" is the iPhone's native ISO, because Apple publishes none for Apple Log. Do not copy one camera's figure to another.
+Native ISO figures are the makers' published specs, not measurements on any particular camera body; a row says when the figure was also confirmed in the camera's menu. Middle grey is where 18% grey falls on each log curve, from the maker's curve definition, given as a percentage of the full-range signal so the rows compare on one scale. The one cell still marked "to be measured" is the iPhone's native ISO, because Apple publishes none for Apple Log. Do not copy one camera's figure to another.
 
 | Camera | Native ISO in log | Middle grey on the log curve | Open Gate size | Open Gate top frame rate |
 |---|---|---|---|---|
@@ -80,8 +80,4 @@ A spoken ident at the head of every take: date, camera, take. Then the clap. If 
 
 One folder per card, named `YYYYMMDD_<CAM>_<card>`, for example `20261016_GH7_A01`. The camera writes its own file names inside, and they are never renamed. `detect` uses the native names as one of its clues (the Blackmagic and Lumix file patterns, for example), and a renamed file loses that clue. `relink` never matches on a name, so it is unaffected either way.
 
-Cards are RP's kit. RP offloads them on arrival and wipes one only at kit reset, after the client confirms the checksums of the return package. See [camera-shipping logistics](camera-shipping-logistics.md).
-
-## Example
-
-A past one-day shoot plan, at iPhone level, is in [examples/2026-03-31-shoot-plan.md](examples/2026-03-31-shoot-plan.md). It predates this standard and shoots 30 fps; follow the table above.
+Offload a card on arrival and wipe it only after the footage is checksummed and a second copy exists.

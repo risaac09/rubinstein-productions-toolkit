@@ -1,6 +1,6 @@
 # The theory of change, in plain language
 
-> **Canonical doc:** [`methodology/theory-of-change.md`](theory-of-change.md). That file is the source of truth, a snapshot of the vault canonical. This is the teaching layer for readers with no evaluation background.
+> **Canonical doc:** [`methodology/theory-of-change.md`](theory-of-change.md). That file is the source of truth. This is the teaching layer for readers with no evaluation background.
 
 > **Status:** operational.
 

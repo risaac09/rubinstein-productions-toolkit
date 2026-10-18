@@ -3,7 +3,7 @@
 Bare-minimum AI-assisted workflow for turning a long-form Say Why recording into
 9:16 captioned pull-clips. Two commands, no build step, no service.
 
-The judgment stays with Isaac and Claude: which moments become clips is decided
+The judgment stays with you and Claude: which moments become clips is decided
 in the cuts worksheet, the same artifact the pipeline already produces. vertcut
 only does the two mechanical parts — hearing the words, and cutting the frame.
 
@@ -115,19 +115,17 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 
 ### Caption style
 
-Captions follow the caption standard in
-[`production/design-tokens.md`](../../production/design-tokens.md): text on a
+Captions follow a plain standard: text on a
 partial-opacity bar, no outline, 16 characters a line, two lines at most, bottom
-edge fixed so every cue sits in the same place. The house colours and face are
-brand values and stay out of this public repo. Put them in
+edge fixed so every cue sits in the same place. Brand colours and typeface are
+yours to supply. Put them in
 `tools/vertcut/captions.local.json` (git-ignored) or pass `--caption-style`:
 
 ```json
 {"text_color": "#RRGGBB", "bar_color": "#RRGGBB", "font": "/path/to/face.ttf"}
 ```
 
-Read the values for `color.text-on-dark`, `color.marrow` and `type.caption` from
-the private brand context. With no file the tool uses plain white on black and
+Use your own brand's text colour, bar colour and caption face. With no file the tool uses plain white on black and
 Arial Bold.
 
 ### Dialling in the framing
