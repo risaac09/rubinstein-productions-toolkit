@@ -1,0 +1,1 @@
+Added a SayWhyIntro still to the motion project, built from the intro-layout fractions in production/design-tokens.md and measured against them, with color.bone added to the shared token set (tools/video-editor/motion/src/tokens.ts). Removed the unused Tailwind packages and config from the motion project.

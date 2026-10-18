@@ -6,6 +6,7 @@ import {
   useVideoConfig,
   Easing,
 } from "remotion";
+import { resolveTokens, Tokens } from "./tokens";
 
 export type LowerThirdProps = {
   name: string;
@@ -18,23 +19,8 @@ export type LowerThirdProps = {
   fps?: number;
   // Token values by token name, from the private brand context
   // (production/design-tokens.md). Any token left out uses the placeholder in
-  // FALLBACK below, which is not a brand value.
-  tokens?: Partial<Record<TokenName, string>>;
-};
-
-export type TokenName =
-  | "color.marrow"
-  | "color.amber"
-  | "color.text-on-dark"
-  | "type.display"
-  | "type.body";
-
-const FALLBACK: Record<TokenName, string> = {
-  "color.marrow": "#0f0f0f",
-  "color.amber": "#e8491d",
-  "color.text-on-dark": "#ffffff",
-  "type.display": "Helvetica, Arial, sans-serif",
-  "type.body": "Helvetica, Arial, sans-serif",
+  // tokens.ts, which is not a brand value.
+  tokens?: Tokens;
 };
 
 // The panel is color.marrow at 88% opacity, the same number as the caption bar.
@@ -135,11 +121,7 @@ export const layoutFor = (width: number, height: number): Layout => {
 
 export const LowerThird: React.FC<LowerThirdProps> = ({ name, role, tokens }) => {
   const frame = useCurrentFrame();
-  // A token that is missing, null or empty in the props JSON keeps its fallback.
-  const t = { ...FALLBACK };
-  for (const [k, v] of Object.entries(tokens ?? {})) {
-    if (k in FALLBACK && typeof v === "string" && v !== "") t[k as TokenName] = v;
-  }
+  const t = resolveTokens(tokens);
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const g = layoutFor(width, height);
 
