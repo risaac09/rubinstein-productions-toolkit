@@ -1,5 +1,4 @@
-import "./index.css";
-import { Composition, CalculateMetadataFunction } from "remotion";
+import { Composition, CalculateMetadataFunction, Still } from "remotion";
 import {
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
@@ -8,6 +7,7 @@ import {
   LowerThirdProps,
   lowerThirdDurationInFrames,
 } from "./LowerThird";
+import { INTRO_HEIGHT, INTRO_WIDTH, SayWhyIntro, SayWhyIntroProps } from "./SayWhyIntro";
 
 const defaultProps: LowerThirdProps = {
   name: "Isaac Rubinstein",
@@ -27,6 +27,12 @@ const metadata =
       durationInFrames: lowerThirdDurationInFrames(fps),
     };
   };
+
+// A still: one frame, any 16:9 (or other) size through width and height props.
+const introMetadata: CalculateMetadataFunction<SayWhyIntroProps> = ({ props }) => ({
+  width: props.width ?? INTRO_WIDTH,
+  height: props.height ?? INTRO_HEIGHT,
+});
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -60,6 +66,14 @@ export const RemotionRoot: React.FC = () => {
         height={2160}
         defaultProps={defaultProps}
         calculateMetadata={metadata(2160, 2160)}
+      />
+      <Still
+        id="SayWhyIntro"
+        component={SayWhyIntro}
+        width={INTRO_WIDTH}
+        height={INTRO_HEIGHT}
+        defaultProps={{} as SayWhyIntroProps}
+        calculateMetadata={introMetadata}
       />
     </>
   );

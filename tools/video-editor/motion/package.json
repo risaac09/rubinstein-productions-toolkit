@@ -7,11 +7,9 @@
   "private": true,
   "dependencies": {
     "@remotion/cli": "4.0.536",
-    "@remotion/tailwind-v4": "4.0.536",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "remotion": "4.0.536",
-    "tailwindcss": "4.0.0"
+    "remotion": "4.0.536"
   },
   "devDependencies": {
     "@remotion/eslint-config-flat": "4.0.536",
@@ -26,8 +24,5 @@
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
     "lint": "eslint src && tsc"
-  },
-  "sideEffects": [
-    "*.css"
-  ]
+  }
 }
