@@ -120,17 +120,17 @@ The bar is `color.marrow` at 88% opacity, the number the lower-third panel alrea
 
 Size stays `--font-size` (66 px); the type token's size is not yet published.
 
-## Look book (stub)
+## Look book
 
-One row per lutlab look in `production/lutlab-looks/`. The description column reads each look's JSON parameters. The reference frame column is empty until frames are made.
+One row per lutlab look in `production/lutlab-looks/`. The description column reads each look's JSON parameters. The reference frame column links one frame per look: the same synthetic chart run through that look, so the six can be compared side by side.
 
-**Rule for reference frames.** A reference frame is either a synthetic colour chart or one frame that Isaac owns and chooses. Never client footage, so a look can be shown without a client's permission or a client's face. No reference frame is in the repo yet.
+**Rule for reference frames.** A reference frame is either a synthetic colour chart or one frame that Isaac owns and chooses. Never client footage, so a look can be shown without a client's permission or a client's face. The six frames in [`lutlab-looks/frames/`](lutlab-looks/frames/README.md) are the synthetic-chart option; a frame Isaac owns and chooses can replace one later.
 
 | Look | What it does, from its parameters | Reference frame |
 |---|---|---|
-| RP Neutral (`neutral.json`) | Sets no parameters: the base transform as it is. | to add |
-| RP Bleach (`bleach.json`) | Raises contrast to 1.2, pulls saturation to 0.58 overall (0.85 in the highlights), and adds a cool blue tone to the shadows. | to add |
-| RP Ice Blue (`ice-blue.json`) | Cools the white balance by 24, tints shadows and highlights blue and cyan, drops saturation to 0.9 on most hues while lifting red and orange and nudging their hue by 4 so skin holds, with a small contrast rise to 1.04. | to add |
-| RP Print Teal (`print-teal.json`) | Raises contrast to 1.08 with a slightly lifted black, pushes greens toward teal and pulls their saturation to 0.85, boosts teal, cyan and orange, and tones the shadows teal and the highlights yellow. | to add |
-| RP Soft Print (`soft-print.json`) | Lowers contrast to 0.8 and saturation to 0.82, lifts the black, lowers the white and softens the highlight shoulder, shifts greens toward cyan, and tones the shadows cyan. | to add |
-| RP Tungsten (`tungsten.json`) | Warms the white balance by 28, tones the deep shadows teal and the highlights golden, and raises saturation slightly to 1.03. | to add |
+| RP Neutral (`neutral.json`) | Sets no parameters: the base transform as it is. | [chart](lutlab-looks/frames/neutral.jpg) |
+| RP Bleach (`bleach.json`) | Raises contrast to 1.2, pulls saturation to 0.58 overall (0.85 in the highlights), and adds a cool blue tone to the shadows. | [chart](lutlab-looks/frames/bleach.jpg) |
+| RP Ice Blue (`ice-blue.json`) | Cools the white balance by 24, tints shadows and highlights blue and cyan, drops saturation to 0.9 on most hues while lifting red and orange and nudging their hue by 4 so skin holds, with a small contrast rise to 1.04. | [chart](lutlab-looks/frames/ice-blue.jpg) |
+| RP Print Teal (`print-teal.json`) | Raises contrast to 1.08 with a slightly lifted black, pushes greens toward teal and pulls their saturation to 0.85, boosts teal, cyan and orange, and tones the shadows teal and the highlights yellow. | [chart](lutlab-looks/frames/print-teal.jpg) |
+| RP Soft Print (`soft-print.json`) | Lowers contrast to 0.8 and saturation to 0.82, lifts the black, lowers the white and softens the highlight shoulder, shifts greens toward cyan, and tones the shadows cyan. | [chart](lutlab-looks/frames/soft-print.jpg) |
+| RP Tungsten (`tungsten.json`) | Warms the white balance by 28, tones the deep shadows teal and the highlights golden, and raises saturation slightly to 1.03. | [chart](lutlab-looks/frames/tungsten.jpg) |
