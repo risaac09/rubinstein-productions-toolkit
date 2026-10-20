@@ -273,34 +273,22 @@ The menu paths this table gives for creating and exporting a project
 File > Export Project Archive) are written from memory and have not been
 checked against a live Resolve; the labels may differ by version.
 
-Still in the script, with `python3 resolve_workflow.py <command> --help`:
+Still in the script: `python3 resolve_workflow.py --help` lists the commands,
+one line each, and `<command> --help` gives a command's flags. Each command is
+one module, `rpresolve/cmd_<name>.py` (the name with its hyphens as
+underscores), whose docstring says what it does; from `production/` it also
+runs alone as `python3 -m rpresolve.cmd_<name>`. The script finds the modules
+at import, so a new command adds its module and its tests and edits no shared
+file, this one included (`rpresolve/cli.py` says how).
 
 - Read Resolve and change nothing (Resolve Studio must be running):
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
-- Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `perceive`, `pipeline-proof`, `manifest`,
-  `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `qc`, `overlay-check`, `deliver-captions`, `deliver-fix-loudness`, `deliver-manifest`,
-  `sync-measure`, `trim-review` (the TSV), `story-packet` and `audio-report`. `tilt-fixture` and
-  `tilt-check` are script commands only; they have no MCP tool.
+- Every other command never connects to Resolve.
 
-Fourteen of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `perceive` (one frame as a folder of scopes, a
-Lab palette and `packet.json`, for a session to read beside the frame; see
-`rpresolve/perceive.py`), `pipeline-proof` (a test render against a reference render, PASS or FAIL per row, for the G1 proof), `qc` (one FAIL-first QC table from ffprobe and ffmpeg filters), `manifest` (it builds the cut manifest that
-`endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
-(the loudness step of the deliver loop), `audio-report` (see below), `deliver-manifest` (writes the delivery
-manifest and checksums after the last check), `list-projects` and
-`list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
-person renders the still, so no tool is planned), `overlay-check` (a
-graphic master's alpha, colour tags, clear and opaque frames, edge fringe
-and brand colour, with the colour values passed in from a file kept outside
-the repo; not yet registered as a tool), and `story-packet` (one
-Markdown file per shoot for the selects board: per clip in capture order, the
-shoot-table row, an audio energy sparkline with the loud spans, the
-words as timed phrases, any picture labels and, with `--strips`, a contact
-strip of eight frames; it scores and chooses nothing). `info` is covered by `resolve_status`,
-`list_timelines` and `render_queue_status` together. Each other command has a
-tool of the same name (with underscores), with a few flags left behind: the
-script's `sync-measure` takes `--ref-stream` and
+A command has an MCP tool when one of the same name with underscores is in
+[Tools](#tools); `info` is covered by `resolve_status`, `list_timelines` and
+`render_queue_status` together. A command with a tool keeps a few flags the
+tool lacks: the script's `sync-measure` takes `--ref-stream` and
 `--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
 and `--no-metadata-cache`, none of which the tools do.
 
