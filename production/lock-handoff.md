@@ -31,7 +31,7 @@ When a cut is locked, picture stops moving and three lanes start reading it: col
 |---|---|---|
 | `lock.json` | The manifest: version, timeline facts, the items hash, each file's hash. Schema below | every reader, first |
 | `timeline.otio` | The locked timeline as OpenTimelineIO JSON, with clip names and source clip ids in the clip metadata | colour, sound |
-| `timeline.edl` | The same cut as a CMX 3600 EDL, one video track, frame-accurate timecode at the timeline's rate | colour, titles |
+| `timeline.edl` | The same cut as a CMX 3600 EDL, video track 1 (V1 only; other tracks are in the OTIO), frame-accurate timecode at the timeline's rate | colour, titles |
 | `paper-edit.tsv` | The final paper edit: one row per kept span, in order. Columns `order`, `clip_id`, `source_in`, `source_out`, `beat`, `note`. Times are source timecode | titles, colour |
 | `markers.tsv` | Every timeline marker, in the schema of [the cue, marker and sync contract](cue-marker-sync.md#the-marker-tsv) | colour, sound, titles |
 | `cue-sheet.tsv` | Music and sound cues as placed: `cue_id`, `kind`, `title`, `timeline_frame`, `duration_frames`, `source`, `licence_row`. `licence_row` names the row in the [licence register](licence-register.md) | sound |

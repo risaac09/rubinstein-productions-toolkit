@@ -50,7 +50,7 @@ Before a render or a delivery, a tool reads the register and the asset list the 
 - an asset the work cites that has no row;
 - a row with `commercial_ok` of `no` or `unknown`;
 - a row with `yes` but no `proof` or `checked`;
-- a row of `plugin` or `model` kind with no `version`.
+- a row of `plugin` or `model` kind, or one taken from a repository, with no `version`.
 
 A row for an asset the work does not cite is not an error.
 
