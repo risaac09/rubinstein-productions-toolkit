@@ -181,7 +181,7 @@ class TestSurveyCommand(unittest.TestCase):
 
 KEPT = ["list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect", "shoot-table",
         "measure", "manifest", "endcheck", "selects", "reframe-plan", "tilt-fixture", "tilt-check",
-        "deliver-check", "deliver-captions", "deliver-fix-loudness", "sync-measure", "trim-review",
+        "deliver-check", "qc", "deliver-captions", "deliver-fix-loudness", "sync-measure", "trim-review",
         "story-packet"]
 RETIRED_COMMANDS = ["new-project", "import-media", "build-timeline", "add-subtitles",
                     "auto-subtitle", "render", "render-all", "clear-queue", "apply-lut",
