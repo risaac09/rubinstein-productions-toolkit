@@ -16,7 +16,7 @@ Capture decides what the edit can do. A frame rate that differs from the timelin
 
 The iPhone floor is the 15 Pro, the first model with Apple Log. `detect` verifies one Apple Log tag, the one the first Apple Log writes, and pins that clip as Apple Log. A clip that carries any other Apple Log variant tag goes to review with no input colour space until a person checks it (rules 5 and 6 in `production/rpresolve/detect.py`). Apple Log 2 tagging is unverified.
 
-The lutlab looks were measured on S5II V-Log and Pyxis BRAW clips (see [lutlab's README](lutlab/README.md)), so those two rows are the tested ones. Constant bitrate makes card capacity predictable, which matters when cards ship.
+The lutlab looks were measured on S5II V-Log and Pyxis BRAW clips (see [lutlab's README](lutlab/README.md)), so those two rows are the tested ones. Constant bitrate makes card capacity predictable, which matters when cards ship. How `measure` linearises each body's curve, and the per-clip settings to record, are in [camera-transforms.json](camera-transforms.json).
 
 ## Frame rate and shutter
 

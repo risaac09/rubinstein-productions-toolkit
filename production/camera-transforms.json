@@ -1,0 +1,42 @@
+{
+  "note": "One row per body. Colour path: managed RCM, DaVinci Wide Gamut / DaVinci Intermediate timeline (decision 3). Camera and label names match capture-standard.md and resolve-template-spec.md. Curves: rpresolve/color.py (V-Log: Panasonic V-Log/V-Gamut Reference Manual Rev 1.0, 2014-11-28; HLG: ITU-R BT.2100).",
+  "cameras": [
+    {
+      "camera": "Blackmagic Pyxis",
+      "profile": "Blackmagic RAW, decoded as Film Gen 5",
+      "input_curve": "Blackmagic Film Gen 5 (log)",
+      "input_primaries": "Blackmagic Wide Gamut Gen 5",
+      "measure_linearise": "measure from a Resolve-rendered ramp (no offline BRAW decode)",
+      "resolve_input_colour_space": "auto (camera RAW): Resolve's RAW decode into DaVinci Wide Gamut, no per-clip tag",
+      "record_per_clip": ["ISO (native 400 or 3200)", "BRAW Gen (5; Gen 6 only after the chart-day measurement, decision 22)"]
+    },
+    {
+      "camera": "Panasonic S5II",
+      "profile": "V-Log",
+      "input_curve": "Panasonic V-Log",
+      "input_primaries": "Panasonic V-Gamut",
+      "measure_linearise": "rpresolve.color.vlog_decode",
+      "resolve_input_colour_space": "Panasonic V-Gamut/V-Log",
+      "record_per_clip": ["ISO (dual native 640 or 4000)"]
+    },
+    {
+      "camera": "Panasonic GH7",
+      "profile": "V-Log",
+      "input_curve": "Panasonic V-Log",
+      "input_primaries": "Panasonic V-Gamut",
+      "measure_linearise": "rpresolve.color.vlog_decode",
+      "resolve_input_colour_space": "Panasonic V-Gamut/V-Log",
+      "record_per_clip": ["ISO (base 500; Auto ISO capped at 3200)"]
+    },
+    {
+      "camera": "iPhone 15 Pro or later",
+      "body": "iPhone 16 Pro Max",
+      "profile": "HLG (the capture standard's Apple Log row is a separate profile)",
+      "input_curve": "HLG (ITU-R BT.2100)",
+      "input_primaries": "Rec.2020",
+      "measure_linearise": "rpresolve.color.hlg_decode",
+      "resolve_input_colour_space": "Rec.2100 HLG (Resolve's own name; unverified through the API, confirm on screen)",
+      "record_per_clip": ["Profile tag (HLG or Apple Log)", "ISO (as shown in the camera app, if shown)"]
+    }
+  ]
+}
