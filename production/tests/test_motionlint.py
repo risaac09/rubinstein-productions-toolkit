@@ -76,6 +76,10 @@ class MotionLint(unittest.TestCase):
         self.assertIn("schema", codes(mutated(lambda s: s.pop("fps"))))
         self.assertIn("schema", codes(mutated(lambda s: s["segments"][0].update(kind="pause"))))
         self.assertIn("schema", codes(mutated(lambda s: s["segments"][0].update(tweens=[{}]))))
+        # hostile shapes report, they do not raise
+        self.assertIn("schema", codes(mutated(lambda s: s["segments"][1]["tweens"][0].update(ease=["out"]))))
+        self.assertIn("schema", codes(mutated(lambda s: s.update(cues=[78]))))
+        self.assertIn("schema", codes(mutated(lambda s: s.update(fps=True))))
 
     def test_cli(self):
         with tempfile.TemporaryDirectory() as d:

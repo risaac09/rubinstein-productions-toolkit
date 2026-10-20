@@ -62,7 +62,9 @@ def lint(spec):
     if not _int(length) or length <= 0:
         fail("schema", "length", "length must be a positive integer of frames")
     try:
-        if _num(spec.get("fps")):
+        if isinstance(spec.get("fps"), bool):
+            ok = False
+        elif _num(spec.get("fps")):
             ok = spec["fps"] > 0
         else:
             ok = Fraction(spec.get("fps")) > 0
@@ -127,6 +129,9 @@ def lint(spec):
             if end > s["frames"]:
                 fail("tween-fit", tp, f"ends at frame {end} of a {s['frames']}-frame segment")
             ease = t.get("ease")
+            if ease is not None and not isinstance(ease, str):
+                fail("schema", tp, "ease must be a curve name")
+                continue
             if ease is None or (curves.get(ease) is not None and tuple(curves[ease]) == LINEAR) or ease == "linear":
                 if t["prop"] not in FREE_PROPS:
                     fail("uneased", tp, f"{t['prop']} moves without an ease")
@@ -138,7 +143,11 @@ def lint(spec):
 
     if _int(length) and total != length:
         fail("sum", "segments", f"segments add up to {total} frames, length is {length}")
-    for name, f in (spec.get("cues") or {}).items():
+    cues = spec.get("cues", {})
+    if not isinstance(cues, dict):
+        fail("schema", "cues", "cues must map a name to a frame")
+        cues = {}
+    for name, f in cues.items():
         if not _int(f) or not (_int(length) and 0 <= f < length):
             fail("cue", f"cues.{name}", f"cue {name!r} must be an integer frame inside the piece")
     return out
