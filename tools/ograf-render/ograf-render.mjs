@@ -166,7 +166,11 @@ async function launchChrome(bin) {
   const proc = spawn(bin, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu",
     "--force-color-profile=srgb", ...(process.getuid?.() === 0 || process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
-  const cleanup = () => { try { proc.kill("SIGKILL"); } catch {} rmSync(dir, { recursive: true, force: true }); };
+  // Chrome may still be writing to its profile as it dies, so retry; a leftover temp dir must not fail a render.
+  const cleanup = () => {
+    try { proc.kill("SIGKILL"); } catch {}
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch {}
+  };
   try {
     const portFile = join(dir, "DevToolsActivePort");
     for (let i = 0; i < 100 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
