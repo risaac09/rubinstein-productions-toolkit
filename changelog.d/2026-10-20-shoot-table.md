@@ -1,0 +1,1 @@
+Add the shoot-table command to resolve_workflow.py: one CSV row per clip from detect, ffprobe and exiftool (camera, local start, duration, fps, size, profile, squeeze, lens, audio source), with flags for long takes, VFR, missing or weak audio and rows detect did not class as expected, and a per-camera --offset for clock drift. BRAW is read from metadata only. (VP-04)
