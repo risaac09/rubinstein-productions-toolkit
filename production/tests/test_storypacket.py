@@ -110,6 +110,16 @@ class Matching(unittest.TestCase):
         self.assertEqual(got, {"/a/CARD2/P1.MOV": "w2"})
         self.assertEqual(amb, {"/a/CARD1/P1.MOV"})
 
+    def test_clip_id_climbs_to_the_card_folder(self):
+        self.assertEqual(sp.card_key("/A/S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV"), "S5II-a1b2c3/P1039630")
+        self.assertEqual(sp.card_key("/A/For-review/C016.mov"), "For-review/C016")
+
+    def test_a_shared_clip_id_matches_nothing_by_id(self):
+        rows = [{"file": f, "path": f} for f in ("/x/DCIM/100_PANA/P1.MOV", "/y/DCIM/100_PANA/P1.MOV")]
+        got, amb = sp.attach(rows, {"100_PANA/P1": "w"})
+        self.assertEqual(got, {})
+        self.assertEqual(amb, {"/x/DCIM/100_PANA/P1.MOV", "/y/DCIM/100_PANA/P1.MOV"})
+
     def test_shared_stem_attaches_nothing_but_a_path_still_does(self):
         got, amb = sp.attach(self.ROWS, {"P1.json": "w"})
         self.assertEqual(got, {})
@@ -214,6 +224,15 @@ class Packet(unittest.TestCase):
         self.assertIn("audio: unknown · flags: weak-audio · note: mean volume -55 dB", text)
         self.assertEqual(text.count("words: another clip has the stem P100"), 2)
         self.assertNotIn("energy", text.split("## Clips")[1])
+
+    def test_shared_clip_id_is_said_once_per_card(self):
+        write_table(self.table, [{"file": "/x/DCIM/100_PANA/P1.MOV"}, {"file": "/y/DCIM/100_PANA/P1.MOV"},
+                                 {"file": "/z/GH7-0a1b2c/DCIM/100_PANA/P1.MOV"}])
+        write_words(os.path.join(self.d, "words", "P1.json"), [("hi", 0.0, 0.2)])
+        text, _ = sp.build(self.table, os.path.join(self.d, "words"), audio=False)
+        self.assertEqual(text.count("clip id 100_PANA/P1 is shared with another clip"), 2)
+        self.assertIn("### 03 · GH7-0a1b2c/P1 ·", text)
+        self.assertEqual(text.count("words: another clip has the stem P1"), 1)
 
     def test_missing_media_says_so(self):
         text, _ = sp.build(self.table, audio=True)

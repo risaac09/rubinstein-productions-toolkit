@@ -21,10 +21,10 @@ moment-scoring functions" are an anti-pattern; the reader picks better)
 holds here. The packet gives the raw material compactly and leaves the
 judgment to whoever reads it. Its only numbers are measurements.
 
-A clip is matched to its words and labels by path, then by <folder>/<stem>
-(words kept in a subfolder named after the clip's folder), else by file
-stem. A clip's id in the packet is <folder>/<stem>, the name a paper edit
-cites. Panasonic stems repeat across cards, so a stem two rows share is
+A clip is matched to its words and labels by path, then by clip id (words
+kept in a subfolder named after the card folder), else by file
+stem. A clip's id is <card folder>/<stem> (card_key), the name a paper
+edit and every lane's sidecar cite. Panasonic stems repeat across cards, so a stem two rows share is
 ambiguous and gets nothing attached by stem; the clip says so. A relative
 path in the table is read against the table's folder.
 
@@ -36,6 +36,7 @@ import csv
 import json
 import math
 import os
+import re
 
 from . import cutlist, trimreview
 
@@ -56,9 +57,18 @@ def stem(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
+# The card folder rule (decision of 2026-10-20): <CAM>-<first 6 hex of the card id>.
+CARD_DIR = re.compile(r"^[A-Za-z0-9]+-[0-9a-f]{6}$")
+
+
 def card_key(path):
-    """<parent folder>/<stem>: what tells two P1039630.MOV apart."""
-    return f"{os.path.basename(os.path.dirname(path))}/{stem(path)}"
+    """The clip id: <card folder>/<stem>, the card folder being the nearest
+    folder above named <CAM>-<id6>, else the file's own folder. A card keeps
+    its DCIM tree, so the own folder alone (100_PANA) would repeat across
+    cards."""
+    parts = os.path.normpath(path).split(os.sep)[:-1]
+    card = next((d for d in reversed(parts) if CARD_DIR.match(d)), parts[-1] if parts else "")
+    return f"{card}/{stem(path)}"
 
 
 def one_line(text):
@@ -127,17 +137,23 @@ def attach(rows, by_key):
     or stem): by path, then by clip id, then by stem when no other row or
     key shares it. Returns the map and the set of row files whose stem was
     ambiguous and had a match."""
-    stems = {}
+    stems, cids = {}, {}
     for r in rows:
         stems.setdefault(stem(r["file"]), []).append(r["file"])
+        cids.setdefault(card_key(r["path"]), []).append(r["file"])
     by_stem = {}
     for k, v in by_key.items():
         by_stem.setdefault(stem(k), []).append(v)
     got, ambiguous = {}, set()
     for r in rows:
         f, cid = r["file"], card_key(r["path"])
-        if f in by_key or cid in by_key:
-            got[f] = by_key.get(f, by_key.get(cid))
+        if f in by_key:
+            got[f] = by_key[f]
+        elif cid in by_key:
+            if len(cids[cid]) > 1:
+                ambiguous.add(f)
+            else:
+                got[f] = by_key[cid]
         elif stem(f) in by_stem:
             if len(stems[stem(f)]) > 1 or len(by_stem[stem(f)]) > 1:
                 ambiguous.add(f)
@@ -260,12 +276,18 @@ def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, titl
     words, w_amb = attach(rows, words_files(words_dir)) if words_dir else ({}, set())
     labels, l_amb = attach(rows, load_labels(labels_path)) if labels_path else ({}, set())
 
+    seen = {}
+    for r in rows:
+        seen[card_key(r["path"])] = seen.get(card_key(r["path"]), 0) + 1
+
     cards, index = [], []
     n_words = n_labels = 0
     for i, r in enumerate(rows, 1):
-        f, dur = r["file"], r["duration"]
-        notes = []
-        head = [f"### {i:02d} · {card_key(r['path'])} · {r.get('local_start') or 'no start'} · "
+        f, dur, cid = r["file"], r["duration"], card_key(r["path"])
+        shared = seen[cid] > 1
+        notes = [f"clip id {cid} is shared with another clip (no <CAM>-<id6> card folder "
+                 "above them), so nothing is matched to it by id"] if shared else []
+        head = [f"### {i:02d} · {cid} · {r.get('local_start') or 'no start'} · "
                 f"{r.get('camera') or 'unknown'} · {clock(dur)}",
                 "", f"`{f}`  ",
                 f"audio: {r.get('audio_source') or 'unknown'}"
@@ -293,17 +315,17 @@ def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, titl
                 body += ["", "words:", "```text", *phrase_lines(ws), "```"]
             except (cutlist.CutlistError, OSError, ValueError) as e:
                 notes.append(f"words: {e}")
-        if f in w_amb:
+        if f in w_amb and not shared:
             notes.append(f"words: another clip has the stem {stem(f)}; put its words at "
-                         f"{card_key(r['path'])}.json in the words folder")
+                         f"{cid}.json in the words folder")
         n_words += bool(nw)
         if f in labels:
             n_labels += 1
             body += ["", "labels:", "```text", *(label_line(x) for x in labels[f]), "```"]
-        if f in l_amb:
+        if f in l_amb and not shared:
             notes.append(f"labels: another clip has the stem {stem(f)}; key the labels by path")
         cards += head + body + ([""] + [f"- {n}" for n in notes] if notes else []) + [""]
-        index.append(f"| {i} | {cell(r.get('local_start') or '')} | {cell(card_key(r['path']))} | "
+        index.append(f"| {i} | {cell(r.get('local_start') or '')} | {cell(cid)} | "
                      f"{cell(r.get('camera') or '')} | {clock(dur)} | {nw or ''} | "
                      f"{'yes' if f in labels else ''} | {cell(r.get('flags') or '')} |")
 
