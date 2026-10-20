@@ -342,7 +342,8 @@ def face_entry(rgb, box):
 
 def read(path, at=None):
     """(display RGB float array, source dict) for the frame at `at` seconds,
-    default the middle; a still has no duration and reads at 0."""
+    default the middle; a still has no duration and reads at 0. The source's
+    file is recorded as an absolute path, the key other sidecars join on."""
     info = measure.probe(path)
     if at is None:
         at = measure.sample_times(info["duration"], 1)[0]
@@ -351,7 +352,7 @@ def read(path, at=None):
     vf, note = measure.decode_filter(info["tags"])
     rgb = measure.read_frame(path, at, info["width"], info["height"], vf)
     tag = info["tags"].get("color_transfer") or "untagged"
-    source = {"file": path, "t": round(at, 3), "width": info["width"], "height": info["height"],
+    source = {"file": os.path.abspath(path), "t": round(at, 3), "width": info["width"], "height": info["height"],
               "tags": info["tags"], "decode_note": note, "transfer": {"tag": tag, "read_as": READ_AS}}
     if tag in NOT_REC709:
         source["transfer_note"] = (f"tagged {NOT_REC709[tag]}: every number here assumes display Rec.709 "

@@ -210,7 +210,7 @@ class TestOnGeneratedFrames(unittest.TestCase):
                             "-pix_fmt", "yuv422p10le", "-c:v", "prores_ks", "-y", clip], check=True)
             subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "smptehdbars=size=320x180",
                             "-frames:v", "1", "-y", still], check=True)
-            packet = perceive.perceive(clip, out, at=1.0, ref=still, faces=False)
+            packet = perceive.perceive(os.path.relpath(clip), out, at=1.0, ref=still, faces=False)
             on_disk = json.loads(Path(out, "packet.json").read_text())
             names = sorted(os.listdir(out))
             ref_names = sorted(os.listdir(os.path.join(out, "ref")))
@@ -228,6 +228,7 @@ class TestOnGeneratedFrames(unittest.TestCase):
         self.assertEqual(names, sorted(pngs + ["packet.json", "ref"]))
         self.assertEqual(ref_names, pngs)
         self.assertEqual(packet["source"]["t"], 1.0)
+        self.assertEqual(packet["source"]["file"], os.path.abspath(clip))
         self.assertAlmostEqual(packet["luma"]["ire"]["p50"], 40.0, delta=1.0)  # 0x66 = 40%
         self.assertEqual({b["band"]: b["pct"] for b in packet["false_colour"]}["green"], 100.0)
         self.assertEqual(packet["faces"], "not measured (--no-faces)")
