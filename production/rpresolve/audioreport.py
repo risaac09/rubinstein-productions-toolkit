@@ -32,6 +32,8 @@ The numbers:
                   neither starts nor ends the range: a gap in the signal
     stereo        channels 1 and 2: correlation (1 the same signal, 0
                   unrelated, below 0 out of phase) and balance_db (1 minus 2)
+    hop_s, rms_db the loudest channel's RMS per 100 ms window, dBFS (floor
+                  -120), the window starting at range start + i * hop_s
     noise_floor_dbfs, loud_dbfs, spread_db
                   10th and 95th percentile of the 100 ms RMS (digital
                   silence left out), and the gap between them: a rough
@@ -586,6 +588,7 @@ def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_st
          r["clicks"], r["clips"], target_lufs, title)
     spectrogram(path, os.path.join(out_dir, "spectrogram.png"), r["sample_rate"], stream, start, end)
     out = _public(r)
+    out["hop_s"], out["rms_db"] = WINDOW_S, [round(v, 1) for v in r["window_db"]]
     out["images"] = {"loudness": os.path.join(out_dir, "loudness.png"),
                      "spectrogram": os.path.join(out_dir, "spectrogram.png")}
     with open(os.path.join(out_dir, "audio-report.json"), "w", encoding="utf-8") as f:

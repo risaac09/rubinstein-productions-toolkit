@@ -281,6 +281,10 @@ class TestReports(unittest.TestCase):
         self.assertGreater(r["octave_bands_db"]["1000"], -1.0)
         self.assertIsNotNone(r["max_short_term_lufs"])
         self.assertNotIn("frames", r)
+        self.assertEqual((r["hop_s"], len(r["rms_db"])), (0.1, 100))
+        self.assertEqual(r["rms_db"][60], -120.0)  # inside the digital silence
+        self.assertNotIn("rms_db", ar.report(self.fx, self.out("ref"), reference=self.quiet)
+                         ["reference"]["numbers"])
         with open(self.out("whole/audio-report.json"), encoding="utf-8") as f:
             self.assertEqual(json.load(f), r)
         self.assertEqual(png_size(r["images"]["loudness"]), (ar.PLOT_W, ar.PLOT_H))
