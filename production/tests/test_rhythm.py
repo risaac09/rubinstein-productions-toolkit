@@ -106,6 +106,12 @@ class Readers(unittest.TestCase):
             {"track": 1, "start": 86448, "end": 86496}, {"track": 2, "start": 86400, "end": 86500},
             {"track": 1, "start": 86400, "end": 86448}]}
         self.assertEqual(rhythm.from_items(self.write("t.json", json.dumps(doc))), ([2.0, 2.0], 24.0))
+        gap = {"timeline": {"fps": 24}, "rows": [{"track": 1, "start": 0, "end": 48},
+                                                  {"track": 1, "start": 72, "end": 96}]}
+        self.assertEqual(rhythm.from_items(self.write("g.json", json.dumps(gap)))[0], [3.0, 1.0])
+        page = dict(gap, total=300, next_offset=2)
+        with self.assertRaisesRegex(rhythm.RhythmError, "holds 2 of 300 items"):
+            rhythm.from_items(self.write("p.json", json.dumps(page)))
         bare = [{"track": 1, "start": 0, "end": 50}]
         with self.assertRaisesRegex(rhythm.RhythmError, "pass --fps"):
             rhythm.from_items(self.write("b.json", json.dumps(bare)))
@@ -117,6 +123,9 @@ class Readers(unittest.TestCase):
         bad = self.write("q.tsv", "clip_id\tin\tout\nx\t5\t3\n")
         with self.assertRaisesRegex(rhythm.RhythmError, "not after its in"):
             rhythm.from_tsv(bad)
+        blank = self.write("r.tsv", "clip_id\tin\tout\nx\t5\n")
+        with self.assertRaisesRegex(rhythm.RhythmError, "no number in in or out"):
+            rhythm.from_tsv(blank)
 
 
 class Questions(unittest.TestCase):

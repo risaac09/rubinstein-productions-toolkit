@@ -9,8 +9,9 @@ Run from production/:
 
 CUT is one of:
     .edl    CMX 3600: the record in and out of every video event (needs --fps)
-    .json   timeline_items output: the items on video track 1, start and end
-            in timeline frames (fps from its timeline block, else --fps)
+    .json   timeline_items output, every page: the items on video track 1,
+            start and end in timeline frames (fps from its timeline block,
+            else --fps); a gap counts as part of the shot before it
     .tsv    a paper edit (clip_id, in, out in seconds), laid end to end
     other   a render: cuts from ffmpeg scdet at qc's threshold, and the
             loudness line from its audio
@@ -27,13 +28,16 @@ What it reports, and why:
       same shots (random orders show trends too, so a trend counts only when
       fewer than one shuffle in twenty matches it), with the rolling median
       to say where
-    - with a beat map (the sound lane's JSON, `beats_s`): the share of cuts
-      within 1 and 2 frames of a beat, against the share chance would give
+    - with a beat map (the sound lane's JSON, `beats_s`) on the cut's own
+      clock, made from this cut's audio and not from a source: the share of
+      cuts within 1 and 2 frames of a beat, against the share chance would
+      give
     - for a render, the loudness line the story packet prints
 Then questions under the profile, `document` or `short-form`.
 """
 
 import argparse
+import bisect
 import csv
 import json
 import math
@@ -96,10 +100,15 @@ def from_edl(path, fps):
 
 def from_items(path, fps=None):
     """Durations of the items on video track 1 of a timeline_items result
-    (the tool's JSON, or its rows alone), in timeline order."""
+    (the tool's JSON, or its rows alone), in timeline order. A shot runs to
+    the next item's start, so a gap stays in the timeline's clock."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     rows = data.get("rows", []) if isinstance(data, dict) else data
+    if isinstance(data, dict) and (data.get("next_offset") is not None
+                                   or data.get("total", len(rows)) > len(rows)):
+        raise RhythmError(f"{path} holds {len(rows)} of {data.get('total')} items; save every "
+                          "page of timeline_items into one rows list")
     tl = data.get("timeline", {}) if isinstance(data, dict) else {}
     try:
         fps = float(tl.get("fps") or fps or 0)
@@ -111,7 +120,8 @@ def from_items(path, fps=None):
                    key=lambda r: r["start"])
     if not items:
         raise RhythmError(f"{path} has no items on video track 1")
-    return [(r["end"] - r["start"]) / fps for r in items], fps
+    edges = [r["start"] for r in items] + [items[-1]["end"]]
+    return [(b - a) / fps for a, b in zip(edges, edges[1:])], fps
 
 
 def from_tsv(path):
@@ -122,8 +132,8 @@ def from_tsv(path):
         raise RhythmError(f"{path} is not a paper edit: it needs in and out columns")
     try:
         durs = [float(r["out"]) - float(r["in"]) for r in rows]
-    except ValueError as e:
-        raise RhythmError(f"{path}: {e}")
+    except (TypeError, ValueError) as e:
+        raise RhythmError(f"{path}: a row has no number in in or out ({e})")
     if any(d <= 0 for d in durs):
         raise RhythmError(f"{path} has a row whose out is not after its in")
     return durs, None
@@ -261,6 +271,12 @@ def load_beats(path):
     return sorted(float(b) for b in beats)
 
 
+def _nearest(beats, t):
+    """Distance from t to the nearest of the sorted beats."""
+    i = bisect.bisect_left(beats, t)
+    return min(abs(t - beats[j]) for j in (i - 1, i) if 0 <= j < len(beats))
+
+
 def on_beat(durs, beats, fps, tolerances=(1, 2)):
     """For each tolerance in frames: the share of cuts within it of a beat,
     and the share chance would give (the part of the cut's length that lies
@@ -269,7 +285,7 @@ def on_beat(durs, beats, fps, tolerances=(1, 2)):
     out = {}
     for tol in tolerances:
         w = tol / fps
-        hit = sum(1 for c in cuts if any(abs(c - b) <= w for b in beats))
+        hit = sum(1 for c in cuts if _nearest(beats, c) <= w)
         covered, end = 0.0, 0.0
         for b in beats:
             a, z = max(0.0, b - w, end), min(total, b + w)
@@ -363,7 +379,8 @@ def main(argv=None):
                                              "questions. Offline; judges nothing.")
     ap.add_argument("cut", help="An EDL, a timeline_items JSON, a paper-edit TSV, or a render")
     ap.add_argument("--fps", type=float, help="Frame rate (needed for an EDL)")
-    ap.add_argument("--beats", help="A beat map JSON with beats_s (the sound lane's music map)")
+    ap.add_argument("--beats", help="A beat map JSON with beats_s, made from this cut's own audio "
+                                    "so its times are on the cut's clock")
     ap.add_argument("--profile", choices=("document", "short-form"), default="document")
     ap.add_argument("--hook", type=float, default=HOOK_S, help="Hook window, seconds")
     ap.add_argument("--window", type=float, default=WINDOW_S, help="Seconds per cutting-rate bin")
