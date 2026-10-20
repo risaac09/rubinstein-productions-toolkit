@@ -52,7 +52,7 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(ar.parse_time("75"), 75.0)
         self.assertEqual(ar.parse_time("1:15"), 75.0)
         self.assertEqual(ar.parse_time("0:01:15.5"), 75.5)
-        for bad in ("", "1::2", "a", "1:2:3:4", "-5"):
+        for bad in ("", "1::2", "a", "1:2:3:4", "-5", "nan", "inf"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 ar.parse_time(bad)
 
@@ -93,6 +93,13 @@ class TestSampleCounts(unittest.TestCase):
 
     def test_noise_is_not_clicks(self):
         x = np.random.default_rng(5).normal(0, 0.1, RATE * 3).astype(np.float32)
+        self.assertEqual(stats(x)["clicks"], [])
+
+    def test_sound_starting_late_in_a_silent_window_is_not_clicks(self):
+        # Noise begins 30 ms before a window edge after digital silence: that
+        # window's own sigma is 0, its busy neighbour sets the bar.
+        n = np.random.default_rng(9).normal(0, 0.1, RATE).astype(np.float32)
+        x = np.concatenate([np.zeros(int(0.97 * RATE), np.float32), n])
         self.assertEqual(stats(x)["clicks"], [])
 
     def test_digital_silence_is_not_clicks(self):
@@ -324,6 +331,12 @@ class TestReports(unittest.TestCase):
             ar.report(self.video, self.out("v"))
         with self.assertRaisesRegex(ar.ReportError, "after --start"):
             ar.report(self.fx, self.out("e"), start=5.0, end=4.0)
+        with self.assertRaisesRegex(ar.ReportError, "in that range"):
+            ar.report(self.fx, self.out("past"), start=60.0)
+
+    def test_an_end_past_the_file_is_reported_as_read(self):
+        self.assertEqual(ar.report(self.fx, self.out("long"), start=8.0, end=600.0)["range_s"],
+                         [8.0, 10.0])
 
     def cli(self, *argv):
         return subprocess.run([sys.executable, SCRIPT, "audio-report", *argv],

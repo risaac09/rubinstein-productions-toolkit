@@ -58,6 +58,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 
 import numpy as np
 
@@ -102,6 +103,8 @@ def parse_time(text):
             s = s * 60 + float(p)
         except ValueError:
             raise ValueError(f"not a time: {text!r} (seconds, m:ss or h:mm:ss)")
+    if not math.isfinite(s):
+        raise ValueError(f"not a time: {text!r} (seconds, m:ss or h:mm:ss)")
     if s < 0:
         raise ValueError(f"a time cannot be negative: {text!r}")
     return s
@@ -143,7 +146,10 @@ def loudness(path, stream=0, start=None, end=None):
     if proc.returncode != 0:
         raise ReportError(f"ffmpeg could not measure loudness in {path}: "
                           f"{proc.stderr.strip()[-300:]}")
-    summary = dc.parse_ebur128(proc.stderr)
+    try:
+        summary = dc.parse_ebur128(proc.stderr)
+    except dc.CheckError as e:  # no summary: the range holds no audio
+        raise ReportError(f"no loudness read from {path} in that range ({e})")
     frames = [(t + (start or 0.0), m, s) for t, m, s in parse_framelog(proc.stderr)]
     return summary, frames
 
@@ -169,6 +175,9 @@ def audio_stream(path, stream=0):
     if stream >= len(audio):
         raise ReportError(f"{path} has {len(audio)} audio stream(s); there is no stream {stream}.")
     a = audio[stream]
+    if not a.get("sample_rate") or not a.get("channels"):
+        raise ReportError(f"ffprobe gives no sample rate or channel count for audio stream "
+                          f"{stream} of {path}.")
     dur = a.get("duration") or (info.get("format") or {}).get("duration")
     return {"sample_rate": int(a["sample_rate"]), "channels": int(a["channels"]),
             "codec": a.get("codec_name"), "duration_s": float(dur) if dur else None}
@@ -244,6 +253,10 @@ class _Stats:
         w = e.reshape(-1, self.win, self.ch)
         dev = np.abs(w - np.median(w, axis=1, keepdims=True))
         sigma = 1.4826 * np.median(dev, axis=1, keepdims=True)
+        # A window that is mostly silence has a sigma near 0, so the onset of sound
+        # at its end would read as clicks; the busier neighbour sets the bar instead.
+        sigma[1:] = np.maximum(sigma[1:], sigma[:-1].copy())
+        sigma[:-1] = np.maximum(sigma[:-1], sigma[1:].copy())
         # The corners of a flat top are discontinuities too; clipping is counted
         # as clip runs, so a sample on or beside a held value is not a click.
         same = np.zeros(x.shape, bool)
@@ -287,7 +300,8 @@ class _Stats:
                 "noise_floor_dbfs": None if floor is None else round(floor, 1),
                 "loud_dbfs": None if loud is None else round(loud, 1),
                 "spread_db": None if floor is None else round(loud - floor, 1),
-                "octave_bands_db": self.octaves(), "window_db": self.window_db}
+                "octave_bands_db": self.octaves(), "window_db": self.window_db,
+                "decoded_s": self.n / self.rate}
 
     def stereo(self):
         if self.ch < 2 or not self.n:
@@ -319,8 +333,9 @@ def samples(path, info, stream=0, start=None, end=None, silence_db=-50.0, silenc
            "-map", f"0:a:{stream}", "-f", "f32le", "-acodec", "pcm_f32le", "-"]
     frame = 4 * st.ch
     step = st.win * CHUNK_WINDOWS * frame
-    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
+    # stderr goes to a file: a pipe nobody reads fills on a damaged file and stalls ffmpeg.
+    errf = tempfile.TemporaryFile()
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf)
     try:
         pending = b""
         while True:
@@ -334,11 +349,12 @@ def samples(path, info, stream=0, start=None, end=None, silence_db=-50.0, silenc
                 pending = pending[take:]
             if not raw:
                 break
-        err = proc.stderr.read().decode(errors="replace")
     finally:
         proc.stdout.close()
-        proc.stderr.close()
         proc.wait()
+        errf.seek(0)
+        err = errf.read().decode(errors="replace")
+        errf.close()
     if proc.returncode != 0:
         raise ReportError(f"ffmpeg could not decode {path}: {err.strip()[-300:]}")
     if not st.n:
@@ -461,7 +477,7 @@ def measure(path, stream=0, start=None, end=None, th=None):
     s = samples(path, info, stream, start, end, th["silence_db"], th["silence_min_s"])
     finite = lambda i: [f[i] for f in frames if f[i] > NO_READING_LUFS]  # noqa: E731
     r = {"file": os.path.abspath(path), "stream": stream, **info,
-         "range_s": [start or 0.0, end if end is not None else info["duration_s"]],
+         "range_s": [start or 0.0, round((start or 0.0) + s["decoded_s"], 3)],
          "integrated_lufs": summary["integrated_lufs"], "lra_lu": summary["lra_lu"],
          "true_peak_dbtp": summary["true_peak_dbtp"],
          "max_momentary_lufs": max(finite(1), default=None),
@@ -542,7 +558,7 @@ def compare(r, ref):
 
 
 def _public(r):
-    return {k: v for k, v in r.items() if k not in ("frames", "window_db")}
+    return {k: v for k, v in r.items() if k not in ("frames", "window_db", "decoded_s")}
 
 
 def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_stream=0,
@@ -552,6 +568,8 @@ def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_st
     if in_any_git_tree(out_dir):
         raise OutputRefused(f"{out_dir} is inside a git working tree. The report names "
                             "media; write it outside any repository.")
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)  # one level only, and before the long reads: the parent must exist
     th = dict(DEFAULTS, **(th or {}), target_lufs=target_lufs)
     r = measure(path, stream, start, end, th)
     r["flags"] = flags(r, th)
@@ -561,9 +579,7 @@ def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_st
     if reference:
         ref = measure(reference, ref_stream, th=th)
         r["reference"] = {"numbers": _public(ref), "difference": compare(r, ref)}
-    if not os.path.isdir(out_dir):
-        os.mkdir(out_dir)  # one level only: the parent must already exist
-    t0, t1 = r["range_s"][0], r["range_s"][1] or (start or 0.0) + len(r["window_db"]) * WINDOW_S
+    t0, t1 = r["range_s"]
     title = (f"I {r['integrated_lufs']} LUFS  LRA {r['lra_lu']} LU  "
              f"TP {r['true_peak_dbtp']} DBTP")
     plot(r["frames"], t0, t1, os.path.join(out_dir, "loudness.png"), r["silences"],
@@ -579,7 +595,7 @@ def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_st
 
 def format_summary(r):
     lines = [f"{os.path.basename(r['file'])}  stream {r['stream']}  "
-             f"{r['range_s'][0]:.1f}-{r['range_s'][1] or 0:.1f} s  "
+             f"{r['range_s'][0]:.1f}-{r['range_s'][1]:.1f} s  "
              f"{r['channels'] and len(r['channels'])} ch @ {r['sample_rate']} Hz",
              f"Loudness   I {r['integrated_lufs']} LUFS, LRA {r['lra_lu']} LU, true peak "
              f"{r['true_peak_dbtp']} dBTP, max S {r['max_short_term_lufs']}, "
