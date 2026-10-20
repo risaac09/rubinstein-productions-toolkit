@@ -1,7 +1,7 @@
-file,camera,local_start,duration_s,fps,vfr,size,profile,squeeze,lens,audio_source,flags,note
-CARD/a_normal.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,,upstream camera not recorded
-CARD/b_silent.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 48000Hz,weak-audio,upstream camera not recorded; mean volume -91.0 dB
-CARD/c_vfr.mov,OBS (capture card),2026-10-16T10:00:00,2.000,16.837,yes,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,vfr,upstream camera not recorded; VFR: conform to CFR before editing
-CARD/d_long.mov,OBS (capture card),2026-10-16T10:00:00,701.000,1,no,16x16,Rec.709,,Test 24mm,none,long-take;no-audio,upstream camera not recorded
-CARD/e_noaudio.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,none,no-audio,upstream camera not recorded
-CARD/f_derived.mov,ffmpeg (Lavf) output,2026-10-16T10:00:00,2.000,25,no,64x48,derived,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,unexpected,derived file: skip camera assignment; encoder Lavf
+file,camera,local_start,duration_s,fps,vfr,size,profile,squeeze,lens,audio_source,flags,note,audio_streams,audio_channels,noise_floor_dbfs,clip_runs,dead_channel,dual_mono,clean_tone_s
+CARD/a_normal.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,,upstream camera not recorded,1,1,-21.1,0,,no,2.0
+CARD/b_silent.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 48000Hz,weak-audio;silent-audio;no-room-tone,upstream camera not recorded; mean volume -91.0 dB,1,1,,0,,no,0.0
+CARD/c_vfr.mov,OBS (capture card),2026-10-16T10:00:00,2.000,16.837,yes,64x48,Rec.709,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,vfr,upstream camera not recorded; VFR: conform to CFR before editing,1,1,-21.1,0,,no,2.0
+CARD/d_long.mov,OBS (capture card),2026-10-16T10:00:00,701.000,1,no,16x16,Rec.709,,Test 24mm,none,long-take;no-audio;no-audio-stream,upstream camera not recorded,0,,,,,,
+CARD/e_noaudio.mov,OBS (capture card),2026-10-16T10:00:00,2.000,25,no,64x48,Rec.709,,Test 24mm,none,no-audio;no-audio-stream,upstream camera not recorded,0,,,,,,
+CARD/f_derived.mov,ffmpeg (Lavf) output,2026-10-16T10:00:00,2.000,25,no,64x48,derived,,Test 24mm,embedded pcm_s16le 1ch 44100Hz,unexpected,derived file: skip camera assignment; encoder Lavf,1,1,-21.1,0,,no,2.0

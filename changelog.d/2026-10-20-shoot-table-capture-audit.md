@@ -1,0 +1,1 @@
+`shoot-table` audits capture audio: new trailing columns `audio_streams`, `audio_channels`, `noise_floor_dbfs`, `clip_runs`, `dead_channel`, `dual_mono`, `clean_tone_s`, and flags `no-audio-stream`, `silent-audio`, `clipping`, `dead-channel`, `dual-mono`, `no-room-tone` (all thresholds are working defaults), over the first `--audio-seconds` (60) of each clip.
