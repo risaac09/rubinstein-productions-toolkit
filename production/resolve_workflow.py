@@ -32,6 +32,9 @@ Commands that never connect to Resolve:
                           size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
+    perceive              One frame as a folder of scopes (waveform, parade,
+                          vectorscope, histogram, false colour), a Lab palette
+                          and numbers, optionally against a reference still
     pipeline-proof        Compare a test render with a reference render: per-frame
                           luma and chroma shift, legal or full range, PSNR, SSIM,
                           VMAF where ffmpeg has libvmaf; PASS or FAIL per row
@@ -67,6 +70,9 @@ Commands that never connect to Resolve:
                           confidence; refuses to call a weak match a match
     trim-review           Silence, filler and repeat review of an edit as a
                           TSV; deletes nothing
+    story-packet          A shoot as story material in one Markdown file: per
+                          clip in capture order, the shoot-table row, an
+                          audio energy line, the words as phrases, labels
 
 Retired: the commands that wrote to Resolve. Running one exits 2 and says what
 to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
@@ -866,6 +872,24 @@ def _fps_arg(text):
     return float(dc.parse_fps(text))
 
 
+def cmd_perceive(args):
+    """Write a perception packet for one frame (see rpresolve/perceive.py).
+    Exit 1 when the frame cannot be read or the folder is refused."""
+    try:
+        from rpresolve import measure as rpmeasure, perceive as rpperceive
+    except ImportError as e:
+        print(f"ERROR: perceive needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        packet = rpperceive.perceive(args.file, args.out, at=args.at, ref=args.ref,
+                                     faces=not args.no_faces)
+    except (rpmeasure.MeasureError, rpperceive.PerceiveError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpperceive.format_summary(packet, args.out))
+    return 0
+
+
 def cmd_sync_measure(args):
     """Measure where <other> sits against <reference> from the sound both
     recorded (offline; rpresolve/sync.py). Exit 0 a match, 2 a match whose
@@ -950,6 +974,41 @@ def cmd_trim_review(args):
     return 0
 
 
+def cmd_story_packet(args):
+    """One Markdown packet from a shoot table, words and labels, for the
+    selects board. Scores and chooses nothing. Exit 0 written, 1 failed."""
+    from rpresolve import cutlist, storypacket as sp
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    if args.words and not os.path.isdir(args.words):
+        print(f"ERROR: --words {args.words} is not a folder.", file=sys.stderr)
+        return 1
+    if args.strips:
+        # Strips show people: refused in any git tree, not only this one.
+        problem = rppaths.out_problem(os.path.join(args.strips, "strip.jpg"), any_git_tree=True)
+        if problem:
+            print(f"ERROR: --strips: {problem}", file=sys.stderr)
+            return 1
+        os.makedirs(args.strips, exist_ok=True)
+    try:
+        text, summary = sp.build(args.table, args.words, args.labels, audio=not args.no_audio,
+                                 title=args.title, strips_dir=args.strips,
+                                 link_base=os.path.dirname(os.path.abspath(args.out))
+                                 if args.out else None)
+    except (sp.PacketError, cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.out:
+        _write_private(args.out, text)
+        print(f"Wrote {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(summary, file=sys.stderr)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
@@ -1007,6 +1066,9 @@ Examples:
 
   # Measure a render; camera-match numbers for two cameras by time range
   python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
+
+  # One frame as scopes and numbers, against a reference still
+  python3 resolve_workflow.py perceive render.mov --at 12.5 --ref still.png --out /path/outside/repo/pkt
 
   # Reframes: plan and check a crop per span (the MCP cut tool builds the versions)
   python3 resolve_workflow.py reframe-plan manifest.json --out /path/outside/repo/manifest.reframed.json
@@ -1088,6 +1150,17 @@ Examples:
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
+
+    sp = subparsers.add_parser(
+        "perceive", help="Offline: one frame as scopes, a Lab palette and numbers, for reading "
+                         "light and colour")
+    sp.add_argument("file", help="Video or still")
+    sp.add_argument("--out", required=True,
+                    help="A new folder for the packet (refused inside any git working tree)")
+    sp.add_argument("--at", type=float, help="Frame time in seconds (default the middle)")
+    sp.add_argument("--ref", help="A reference still (or the middle of a clip) to compare against")
+    sp.add_argument("--no-faces", action="store_true", help="Skip face, skin and lighting-ratio numbers")
+    sp.set_defaults(func=cmd_perceive)
 
     sp = subparsers.add_parser(
         "pipeline-proof", formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1348,6 +1421,18 @@ Examples:
                     help="Also list 'like', 'you know' and 'I mean' (low confidence, keep)")
     sp.add_argument("--no-audio", action="store_true", help="Words only: no silences")
     sp.set_defaults(func=cmd_trim_review)
+
+    sp = subparsers.add_parser(
+        "story-packet", help="Offline: a shoot as story material in one Markdown file")
+    sp.add_argument("table", help="The shoot-table CSV (one row per clip)")
+    sp.add_argument("--words", help="Folder of mlx_whisper word JSON, one <stem>.json per clip")
+    sp.add_argument("--labels", help="JSONL of picture labels: file, start_s, end_s, text")
+    sp.add_argument("--title", help="The packet's title (default: the table's name)")
+    sp.add_argument("--out", help="Write the packet here instead of stdout (refused in this repo)")
+    sp.add_argument("--no-audio", action="store_true", help="Skip the energy line (no decode)")
+    sp.add_argument("--strips", help="Write a contact strip per clip (8 frames, 2 rows) into this folder "
+                                     "and link it from each card (refused in any git tree)")
+    sp.set_defaults(func=cmd_story_packet)
 
     args = parser.parse_args()
     if not args.command:
