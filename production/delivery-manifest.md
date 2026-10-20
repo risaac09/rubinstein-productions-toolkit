@@ -1,6 +1,6 @@
 # Delivery Manifest
 
-> **Status:** accepted 2026-10-16. A template and the rules for filling it, written to match the deliver tooling's naming rule and checks. No tool writes a manifest; a person or an agent fills it from `deliver_check` output after the last render. A tool is worth revisiting after three real deliveries, once a hand-filled manifest shows which columns matter.
+> **Status:** accepted 2026-10-16. A template and the rules for filling it, written to match the deliver tooling's naming rule and checks. `resolve_workflow.py deliver-manifest <delivery>` writes `manifest.md` and `checksums.txt` from ffprobe and the files' bytes, takes the header facts as flags, refuses to overwrite without `--overwrite`, and re-checks the sums with `--verify`. It does not run `deliver_check`: run that first, since only PASS files are delivered.
 
 A manifest is the list of what was delivered for one piece of work: every file, what it is, where it went and which approval it carries. It is written once, after the [final-approval gate](resolve-template-spec.md#the-final-approval-gate) and after the last `deliver_check` passes, and it travels with the delivery. A client who opens it should be able to confirm that each file is the one that was approved, and an auditor six months on should be able to tell the same.
 
