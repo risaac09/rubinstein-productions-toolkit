@@ -1,0 +1,1 @@
+Add `resolve_workflow.py deliver-manifest`: writes a delivery folder's `manifest.md` (shape of `production/delivery-manifest.md`, facts from ffprobe) and `checksums.txt` (`shasum -a 256 -c` ready), refuses to overwrite without `--overwrite`, and `--verify` re-checks the sums.

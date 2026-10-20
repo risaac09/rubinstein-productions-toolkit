@@ -199,6 +199,8 @@ jobs:
         run: python -m unittest production.tests.test_qc
       - name: Shoot table
         run: python -m unittest -v production.tests.test_shoot_table
+      - name: Delivery manifest writer
+        run: python -m unittest -v production.tests.test_manifest
 
   # rpresolve runs under the Resolve MCP server on the Mac's Python 3.9 and imports numpy for
   # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
