@@ -32,6 +32,12 @@ Commands that never connect to Resolve:
                           size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
+    perceive              One frame as a folder of scopes (waveform, parade,
+                          vectorscope, histogram, false colour), a Lab palette
+                          and numbers, optionally against a reference still
+    pipeline-proof        Compare a test render with a reference render: per-frame
+                          luma and chroma shift, legal or full range, PSNR, SSIM,
+                          VMAF where ffmpeg has libvmaf; PASS or FAIL per row
     manifest              Build a cut manifest from a CUTS script, a vertcut
                           TSV or a video-use edl.json
     endcheck              Check every cut's end word, that it sits in a pause
@@ -56,11 +62,17 @@ Commands that never connect to Resolve:
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
                           copied untouched, into <stem>.loudfix<ext>
+    deliver-manifest      Write manifest.md and checksums.txt for a delivery folder
+                          from ffprobe and the files' bytes; --verify re-checks
+                          checksums.txt; refuses to overwrite without --overwrite
     sync-measure          Where one recording sits against another from their
                           audio: offset in seconds and frames, clock drift,
                           confidence; refuses to call a weak match a match
     trim-review           Silence, filler and repeat review of an edit as a
                           TSV; deletes nothing
+    story-packet          A shoot as story material in one Markdown file: per
+                          clip in capture order, the shoot-table row, an
+                          audio energy line, the words as phrases, labels
 
 Retired: the commands that wrote to Resolve. Running one exits 2 and says what
 to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
@@ -336,6 +348,37 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(r["summary"], file=sys.stderr)
     return r["exit_status"]
+
+
+_PROOF_TRAP = ("Resolve decodes log H.264 about 25 code values darker than ffmpeg. Never compare a "
+               "Resolve render against an ffmpeg decode of a log source; the level-shift row would "
+               "blame the pipeline for the decode. Compare render against render, or against "
+               "Resolve's own decode exported as a file.")
+
+
+def cmd_pipeline_proof(args):
+    """Compare a test render with a reference (see rpresolve/proof.py). Exit
+    0 on PASS, 1 on FAIL or an unreadable file."""
+    try:
+        from rpresolve import proof as rpproof
+    except ImportError as e:
+        print(f"ERROR: pipeline-proof needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    problem = _out_problem(args.json) if args.json else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        report = rpproof.compare(args.test, args.reference, frames=args.frames, thresholds={
+            "psnr": args.psnr, "ssim": args.ssim, "vmaf": args.vmaf,
+            "luma_shift": args.luma_shift, "chroma_shift": args.chroma_shift})
+    except rpproof.MeasureError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpproof.format_report(report))
+    if args.json:
+        rpproof.write_json(report, args.json)
+    return 0 if report["passed"] else 1
 
 
 def cmd_shoot_table(args):
@@ -752,6 +795,41 @@ def cmd_deliver_fix_loudness(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_deliver_manifest(args):
+    """Write manifest.md and checksums.txt at a delivery root, or with
+    --verify re-check checksums.txt. Exit 0 written or all OK, 1 refused or
+    a mismatch, 2 ffprobe or ffmpeg missing."""
+    import time
+    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf
+    try:
+        if args.verify:
+            results = mf.verify(args.folder)
+            for status, rel in results:
+                print(f"{rel}: {status}")
+            return 0 if all(s == "OK" for s, _ in results) else 1
+        missing = [f for f in ("project", "approval", "prepared_by", "review_copy",
+                               "review_sha256") if not getattr(args, f)]
+        if missing:
+            raise mf.ManifestError("required to write a manifest: --" +
+                                   ", --".join(m.replace("_", "-") for m in missing))
+        dc.check_tools(ffmpeg=not args.no_loudness)
+        text, sums = mf.build(
+            args.folder, _deliver_config(args), args.project, args.approval, args.prepared_by,
+            args.review_copy, args.review_sha256, args.delivered or time.strftime("%Y-%m-%d"),
+            machine_steps=args.machine_steps, credits=args.credits,
+            platform_notes=args.platform_notes, licences=args.licence,
+            loudness=not args.no_loudness)
+        paths = mf.write(args.folder, text, sums, overwrite=args.overwrite)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (mf.ManifestError, dc.CheckError, rpdeliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print("Wrote " + ", ".join(paths))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Sync measure and trim review
 # ---------------------------------------------------------------------------
@@ -760,6 +838,24 @@ def _fps_arg(text):
     """--fps as a float (23.976, 25, 24000/1001); raises ValueError."""
     from rpresolve import delivercheck as dc
     return float(dc.parse_fps(text))
+
+
+def cmd_perceive(args):
+    """Write a perception packet for one frame (see rpresolve/perceive.py).
+    Exit 1 when the frame cannot be read or the folder is refused."""
+    try:
+        from rpresolve import measure as rpmeasure, perceive as rpperceive
+    except ImportError as e:
+        print(f"ERROR: perceive needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        packet = rpperceive.perceive(args.file, args.out, at=args.at, ref=args.ref,
+                                     faces=not args.no_faces)
+    except (rpmeasure.MeasureError, rpperceive.PerceiveError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpperceive.format_summary(packet, args.out))
+    return 0
 
 
 def cmd_sync_measure(args):
@@ -876,6 +972,41 @@ def cmd_trim_review(args):
     return 0
 
 
+def cmd_story_packet(args):
+    """One Markdown packet from a shoot table, words and labels, for the
+    selects board. Scores and chooses nothing. Exit 0 written, 1 failed."""
+    from rpresolve import cutlist, storypacket as sp
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    if args.words and not os.path.isdir(args.words):
+        print(f"ERROR: --words {args.words} is not a folder.", file=sys.stderr)
+        return 1
+    if args.strips:
+        # Strips show people: refused in any git tree, not only this one.
+        problem = rppaths.out_problem(os.path.join(args.strips, "strip.jpg"), any_git_tree=True)
+        if problem:
+            print(f"ERROR: --strips: {problem}", file=sys.stderr)
+            return 1
+        os.makedirs(args.strips, exist_ok=True)
+    try:
+        text, summary = sp.build(args.table, args.words, args.labels, audio=not args.no_audio,
+                                 title=args.title, strips_dir=args.strips,
+                                 link_base=os.path.dirname(os.path.abspath(args.out))
+                                 if args.out else None)
+    except (sp.PacketError, cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.out:
+        _write_private(args.out, text)
+        print(f"Wrote {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(summary, file=sys.stderr)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
@@ -933,6 +1064,9 @@ Examples:
 
   # Measure a render; camera-match numbers for two cameras by time range
   python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
+
+  # One frame as scopes and numbers, against a reference still
+  python3 resolve_workflow.py perceive render.mov --at 12.5 --ref still.png --out /path/outside/repo/pkt
 
   # Reframes: plan and check a crop per span (the MCP cut tool builds the versions)
   python3 resolve_workflow.py reframe-plan manifest.json --out /path/outside/repo/manifest.reframed.json
@@ -1018,6 +1152,36 @@ Examples:
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
+
+    sp = subparsers.add_parser(
+        "perceive", help="Offline: one frame as scopes, a Lab palette and numbers, for reading "
+                         "light and colour")
+    sp.add_argument("file", help="Video or still")
+    sp.add_argument("--out", required=True,
+                    help="A new folder for the packet (refused inside any git working tree)")
+    sp.add_argument("--at", type=float, help="Frame time in seconds (default the middle)")
+    sp.add_argument("--ref", help="A reference still (or the middle of a clip) to compare against")
+    sp.add_argument("--no-faces", action="store_true", help="Skip face, skin and lighting-ratio numbers")
+    sp.set_defaults(func=cmd_perceive)
+
+    sp = subparsers.add_parser(
+        "pipeline-proof", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Offline: compare a test render with a reference; PASS or FAIL per row",
+        description="Compare a test render with a reference (another render, or Resolve's own "
+                    "decode exported as a file). Rows: frames, range, gamma or level shift, luma "
+                    "and chroma shift, PSNR, SSIM, VMAF (\"not available\" when ffmpeg has no "
+                    "libvmaf). Exit 0 on PASS, 1 on FAIL.",
+        epilog="KNOWN TRAP: " + _PROOF_TRAP)
+    sp.add_argument("test", help="The render under test")
+    sp.add_argument("reference", help="The reference render, or Resolve's decode exported as a file")
+    sp.add_argument("--frames", type=int, default=300, help="Frames to compare from the start (default 300)")
+    sp.add_argument("--psnr", type=float, help="Minimum PSNR in dB (default 45, for a flat clip)")
+    sp.add_argument("--ssim", type=float, help="Minimum SSIM (default 0.99)")
+    sp.add_argument("--vmaf", type=float, help="Minimum VMAF (default 95)")
+    sp.add_argument("--luma-shift", type=float, help="Largest mean luma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--chroma-shift", type=float, help="Largest mean chroma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--json", help="Also write the full report, per-frame shifts included, here")
+    sp.set_defaults(func=cmd_pipeline_proof)
 
     sp = subparsers.add_parser("manifest", help="Offline: build a cut manifest")
     src = sp.add_mutually_exclusive_group(required=True)
@@ -1168,6 +1332,32 @@ Examples:
     sp.set_defaults(func=cmd_deliver_fix_loudness)
 
     sp = subparsers.add_parser(
+        "deliver-manifest",
+        help="Offline: write manifest.md and checksums.txt for a delivery folder, or --verify")
+    sp.add_argument("folder", help="Delivery root: <folder>/<destination key>/<files>")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before "
+                         "the command)")
+    sp.add_argument("--verify", action="store_true",
+                    help="Re-check checksums.txt against the files; writes nothing")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="Replace an existing manifest.md and checksums.txt")
+    sp.add_argument("--project", help="Project slug, as used in the file names")
+    sp.add_argument("--approval", help="Approval reference id")
+    sp.add_argument("--prepared-by", help="Name and role")
+    sp.add_argument("--review-copy", help="File name of the approved review copy")
+    sp.add_argument("--review-sha256", help="SHA-256 of the review copy, lowercase hex")
+    sp.add_argument("--delivered", help="Delivery date (default: today)")
+    sp.add_argument("--machine-steps", default="none stated")
+    sp.add_argument("--credits", default="none requested")
+    sp.add_argument("--platform-notes", default="none looked up")
+    sp.add_argument("--licence", action="append", default=[], metavar="ASSET|LICENCE|ATTRIBUTION",
+                    help="A licence row; repeat for more (default: none)")
+    sp.add_argument("--no-loudness", action="store_true",
+                    help="Record loudness as n/a (skips reading each file's audio)")
+    sp.set_defaults(func=cmd_deliver_manifest)
+
+    sp = subparsers.add_parser(
         "sync-measure", help="Offline: where one recording sits against another, from their "
         "audio (offset, drift, confidence)")
     sp.add_argument("reference", help="The reference: the camera clip")
@@ -1223,6 +1413,18 @@ Examples:
                     help="Also list 'like', 'you know' and 'I mean' (low confidence, keep)")
     sp.add_argument("--no-audio", action="store_true", help="Words only: no silences")
     sp.set_defaults(func=cmd_trim_review)
+
+    sp = subparsers.add_parser(
+        "story-packet", help="Offline: a shoot as story material in one Markdown file")
+    sp.add_argument("table", help="The shoot-table CSV (one row per clip)")
+    sp.add_argument("--words", help="Folder of mlx_whisper word JSON, one <stem>.json per clip")
+    sp.add_argument("--labels", help="JSONL of picture labels: file, start_s, end_s, text")
+    sp.add_argument("--title", help="The packet's title (default: the table's name)")
+    sp.add_argument("--out", help="Write the packet here instead of stdout (refused in this repo)")
+    sp.add_argument("--no-audio", action="store_true", help="Skip the energy line (no decode)")
+    sp.add_argument("--strips", help="Write a contact strip per clip (8 frames, 2 rows) into this folder "
+                                     "and link it from each card (refused in any git tree)")
+    sp.set_defaults(func=cmd_story_packet)
 
     args = parser.parse_args()
     if not args.command:
