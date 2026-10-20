@@ -41,7 +41,7 @@ _WORDS = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])")
 
 def banned(name):
     """elastic, bounce, overshoot anywhere; back as a word, so fallback is fine."""
-    return bool(_banned(name)) or "back" in (w.lower() for w in _WORDS.findall(name))
+    return bool(_BANNED.search(name)) or "back" in (w.lower() for w in _WORDS.findall(name))
 
 
 # Opacity and colour may stay linear; position, scale and rotation may not.
