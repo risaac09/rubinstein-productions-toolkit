@@ -617,6 +617,8 @@ def cmd_qc(args):
     from rpresolve import deliver, delivercheck as dc, qc
     try:
         th = qc.parse_overrides(args.set)
+        if (args.fps or args.size) and not args.dest:
+            raise ValueError("--fps and --size assert against a destination: add --dest.")
         dest = folders = None
         if args.dest:
             config = _deliver_config(args)

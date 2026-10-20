@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -173,6 +174,12 @@ class QcTable(unittest.TestCase):
         self.assertEqual(by["silencedetect"]["status"], qc.FAIL)
         self.assertIn("1.00s for 1.00s", by["silencedetect"]["found"])
 
+    def test_a_file_with_no_av_streams_fails(self):
+        with mock.patch.object(dc, "probe", return_value={"streams": [], "format": {}}):
+            r = qc.run(self.f["clean"])
+        self.assertEqual(r["checks"][0]["check"], "streams")
+        self.assertEqual(r["status"], "fail")
+
     def test_no_audio_skips_the_audio_rows(self):
         r, by = self.rows("mute")
         for name in ("loudness", "true_peak", "astats_peak", "astats_dc", "silencedetect"):
@@ -218,6 +225,7 @@ class QcTable(unittest.TestCase):
         self.assertEqual(self.cli(os.path.join(self._tmp.name, "missing.mov")).returncode, 1)
         self.assertEqual(self.cli(self.f["clean"], "--set", "bogus=1").returncode, 1)
         self.assertEqual(self.cli(self.f["clean"], "--dest", "nowhere").returncode, 1)
+        self.assertEqual(self.cli(self.f["clean"], "--fps", "25").returncode, 1)
         gone = self.cli(self.f["clean"], env={"RPRESOLVE_FFMPEG": "/nonexistent/ffmpeg"})
         self.assertEqual(gone.returncode, 2, gone.stderr)
 

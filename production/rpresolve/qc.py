@@ -197,6 +197,8 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
                     and not (s.get("disposition") or {}).get("attached_pic") for s in streams)
     has_audio = any(s.get("codec_type") == "audio" for s in streams)
     rows = []
+    if not (has_video or has_audio):
+        rows.append(_row("streams", False, "no video or audio stream", "at least one"))
 
     if dest is not None:
         # Loudness is read once, below, from the same target.
