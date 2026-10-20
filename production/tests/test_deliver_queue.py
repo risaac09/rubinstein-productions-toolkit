@@ -156,7 +156,8 @@ class TestQueueDestination(Base):
         for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "substack_16x9"):
             parts = {**CLIP, "slug": key.replace("_", "-")}
             names.append(self.twice(dest=key, parts=parts)[1]["job"]["OutputFilename"])
-        for key, tl in (("linkedin_9x16", "Clip 9x16 [auto]"), ("linkedin_1x1", "Clip 1x1 [auto]")):
+        for key, tl in (("linkedin_9x16", "Clip 9x16 [auto]"), ("linkedin_1x1", "Clip 1x1 [auto]"),
+                       ("social_9x16", "Clip 9x16 [auto]")):
             r = self.twice(dest=key, timeline=tl)[1]
             self.assertEqual(r["exit_status"], 0, r)
             names.append(r["job"]["OutputFilename"])
@@ -236,7 +237,8 @@ class TestRefusals(Base):
                  ("linkedin_1x1", "Clip [auto]", "square"),
                  ("youtube_16x9", "Clip 9x16 [auto]", "landscape"),
                  ("linkedin_16x9", "Clip 1x1 [auto]", "landscape"),
-                 ("linkedin_9x16", "Clip 1x1 [auto]", "portrait"))
+                 ("linkedin_9x16", "Clip 1x1 [auto]", "portrait"),
+                 ("social_9x16", "Clip [auto]", "portrait"))
         for key, tl, shape in cases:
             with self.subTest(dest=key, timeline=tl):
                 with self.assertRaisesRegex(workflows.Refused, f"{shape}.*with bars"):

@@ -22,6 +22,8 @@ jobs:
         run: |
           scripts/test-changelog-fragments.sh
           scripts/test-burst-gate.sh
+      - name: Card offload tests
+        run: production/tests/test-offload.sh
       - name: Changelog fragments are well formed
         run: scripts/changelog-fragments lint
       - name: Unresolved merge marker check
@@ -193,8 +195,13 @@ jobs:
         run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib production.tests.test_resolve_workflow_pure
       - name: Cut, sync and settings drift guard
         run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
+<<<<<<< HEAD
       - name: QC table (parsers; the ffmpeg cases run in the full suite)
         run: python -m unittest production.tests.test_qc
+=======
+      - name: Shoot table
+        run: python -m unittest -v production.tests.test_shoot_table
+>>>>>>> 019962cd4334e19a2e21bbc07ec4dd5d34ae04f6
 
   # rpresolve runs under the Resolve MCP server on the Mac's Python 3.9 and imports numpy for
   # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
