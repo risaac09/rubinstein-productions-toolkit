@@ -28,6 +28,8 @@ Commands that never connect to Resolve:
                           resolve_survey.py, no Resolve connection)
     detect                Classify camera and picture profile from file headers
                           (ffprobe, exiftool)
+    shoot-table           One CSV row per clip: camera, start, duration, fps,
+                          size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
     manifest              Build a cut manifest from a CUTS script, a vertcut
@@ -82,6 +84,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
     from rpresolve import api as rpapi  # noqa: E402
     from rpresolve import detect as rpdetect  # noqa: E402
+    from rpresolve import shoot_table as rpshoot  # noqa: E402
     from rpresolve import config as rpconfig  # noqa: E402
     from rpresolve import paths as rppaths  # noqa: E402
     from rpresolve import workflows as rpwork  # noqa: E402
@@ -329,6 +332,51 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(r["summary"], file=sys.stderr)
     return r["exit_status"]
+
+
+def cmd_shoot_table(args):
+    """Write the shoot table CSV (see rpresolve/shoot_table.py). Never
+    connects to Resolve. Exit status: 0 clean, 2 when any row carries a
+    flag, 1 on a usage error, missing tools or no file found."""
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    offsets = {}
+    for item in args.offset or []:
+        cam, sep, secs = item.rpartition("=")
+        try:
+            offsets[cam] = float(secs)
+        except ValueError:
+            cam = ""
+        if not sep or not cam:
+            print(f"ERROR: --offset wants CAM=SECONDS (got '{item}')", file=sys.stderr)
+            return 1
+    try:
+        rows, missing = rpshoot.build(args.paths, long_min=args.long_min, weak_db=args.weak_db,
+                                      offsets=offsets)
+    except rpdetect.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for m in missing:
+        print(f"  [skip] Not found: {m}", file=sys.stderr)
+    if not rows:
+        print("ERROR: no video files found", file=sys.stderr)
+        return 1
+    bad = rpshoot.unknown_offsets(rows, offsets)
+    if bad:
+        print("ERROR: --offset names no camera in the table: " + ", ".join(bad)
+              + " (cameras: " + ", ".join(sorted({r['camera'] for r in rows})) + ")", file=sys.stderr)
+        return 1
+    text = rpshoot.format_csv(rows)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(rpshoot.summarize(rows), file=sys.stderr)
+    return 2 if any(r["flags"] for r in rows) else 0
 
 
 def cmd_measure(args):
@@ -911,6 +959,18 @@ Examples:
     sp.add_argument("--out", "-o", help="Write the table here instead of stdout")
     sp.add_argument("--json", action="store_true", help="Emit JSON instead of TSV")
     sp.set_defaults(func=cmd_detect)
+
+    sp = subparsers.add_parser(
+        "shoot-table", help="Offline: one CSV row per clip with flags for long, VFR and weak-audio takes")
+    sp.add_argument("paths", nargs="+", help="Absolute paths of media files or folders (searched recursively)")
+    sp.add_argument("--out", "-o", help="Write the CSV here instead of stdout")
+    sp.add_argument("--offset", action="append", metavar="CAM=SECONDS",
+                    help="Clock offset added to local_start for one camera name as detect names it (repeatable)")
+    sp.add_argument("--long-min", type=float, default=rpshoot.LONG_TAKE_MIN,
+                    help="Flag takes longer than this many minutes (default %(default)s)")
+    sp.add_argument("--weak-db", type=float, default=rpshoot.WEAK_AUDIO_DB,
+                    help="Flag audio whose mean volume is below this dB (default %(default)s)")
+    sp.set_defaults(func=cmd_shoot_table)
 
     sp = subparsers.add_parser(
         "measure", help="Offline: luma, clipping, legal range and skin numbers from a render")
