@@ -277,6 +277,8 @@ class _Stats:
                 & ~near.reshape(w.shape)).reshape(-1, self.ch)
         # Speech onsets (plosives, fricatives) pass the sigma test but build over
         # milliseconds, so a louder sample sits close by; a click does not.
+        # shortcut: two clicks within CLICK_NEIGHBOUR_S hide each other, and the look-around
+        # stops at a read's edges; lower CLICK_ISOLATION or read whole if that matters.
         reach = max(2, int(round(CLICK_NEIGHBOUR_S * self.rate)))
         hit = np.zeros(len(x), bool)
         calm = np.where(near, 0.0, np.abs(e))  # clip corners are counted as clips already
