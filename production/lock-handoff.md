@@ -29,15 +29,15 @@ When a cut is locked, picture stops moving and three lanes start reading it: col
 
 | File | What it is | Read by |
 |---|---|---|
-| `lock.json` | The manifest: version, timeline facts, the items hash, each file's hash. Schema below | every reader, first |
-| `timeline.otio` | The locked timeline as OpenTimelineIO JSON, with clip names and source clip ids in the clip metadata | colour, sound |
-| `timeline.edl` | The same cut as a CMX 3600 EDL, video track 1 (V1 only; other tracks are in the OTIO), frame-accurate timecode at the timeline's rate | colour, titles |
-| `paper-edit.tsv` | The final paper edit: one row per kept span, in order. Columns `order`, `clip_id`, `source_in`, `source_out`, `beat`, `note`. Times are source timecode | titles, colour |
-| `markers.tsv` | Every timeline marker, in the schema of [the cue, marker and sync contract](cue-marker-sync.md#the-marker-tsv) | colour, sound, titles |
-| `cue-sheet.tsv` | Music and sound cues as placed: `cue_id`, `kind`, `title`, `timeline_frame`, `duration_frames`, `source`, `licence_row`. `licence_row` names the row in the [licence register](licence-register.md) | sound |
-| `consent-list.tsv` | The list the approver ticks before lock: `subject`, `kind` (child, close face, on-screen name, cover song, unreleased performer), `timeline_frame`, `release_ref`, `approved` (`yes` or `no`), `approved_by`, `approved_on` | every reader; a row with `approved` not `yes` is a blocker |
-| `sound-handoff.json` | Sound's fields: track layout, stems plan, frame rate, start timecode. Schema below | sound |
-| `guide.mov` | A low-resolution guide render of the locked picture, burned-in timecode, for sound to work against. Optional, but if present it is hashed like the rest | sound |
+| `lock.json` | The manifest: version, timeline facts, the items hash, each file's hash. Schema below | every reader, first (carries file 6, the items hash) |
+| `timeline.otio` | The locked timeline as OpenTimelineIO JSON, with clip names and source clip ids in the clip metadata | grade, sound (file 1) |
+| `timeline.edl` | The same cut as a CMX 3600 EDL, video track 1 (V1 only; other tracks are in the OTIO), frame-accurate timecode at the timeline's rate | grade (file 1) |
+| `paper-edit.tsv` | The final paper edit: one row per kept span, in order. Columns `order`, `clip_id`, `source_in`, `source_out`, `beat`, `note`. Times are source timecode | grade, titles (file 2) |
+| `markers.tsv` | Every timeline marker, in the schema of [the cue, marker and sync contract](cue-marker-sync.md#the-marker-tsv) | sound (file 3) |
+| `cue-sheet.tsv` | Music and sound cues as placed: `cue_id`, `kind`, `title`, `timeline_frame`, `duration_frames`, `source`, `licence_row`. `licence_row` names the row in the [licence register](licence-register.md) | file 4; sound's own addition |
+| `consent-list.tsv` | The list the approver ticks before lock: `subject`, `kind` (child, close face, on-screen name, cover song, unreleased performer), `timeline_frame`, `release_ref`, `approved` (`yes` or `no`), `approved_by`, `approved_on` | grade (file 5); a row with `approved` not `yes` blocks lock |
+| `sound-handoff.json` | Sound's fields: track layout, stems plan, frame rate, start timecode. Schema below | sound, its own addition |
+| `guide.mov` | A low-resolution guide render of the locked picture, burned-in timecode, for sound to work against. Optional, but if present it is hashed like the rest | sound, with files 1 and 3 |
 
 Times in the TSVs are timeline frames counted from zero, or source timecode where the column says so. Nothing is typed twice: a value that exists in `timeline.otio` (duration, frame rate, start timecode) appears in `lock.json` as a copy the checker compares, never as a second source.
 
@@ -109,5 +109,5 @@ A later item writes the checker. It passes a complete folder and fails, with the
 
 ## Open
 
-- Which file each lane reads is the working assumption in the table above; the lanes confirm it when the checker is written.
-- The marker colour per lane is not fixed here; see the marker contract.
+- The readers column follows the craft lanes index: grade reads the timeline files (OTIO plus EDL), the paper edit and the consent list; sound reads the timeline files and the markers plus a guide render; titles read the paper edit. `sound-handoff.json` and the cue sheet are sound's own additions to the folder.
+- The marker colour per lane is not fixed here; a lane proposes one and Isaac signs it.

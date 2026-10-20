@@ -28,7 +28,7 @@ Three lanes put marks on one timeline and two of them judge audio against pictur
 | `snd:` | sound |
 | `fx:` | Fusion and motion |
 
-A lane writes, edits and deletes only the markers carrying its own prefix. It reads the others and never changes them. A marker with no prefix belongs to a person: no tool touches it. A tool that writes markers to a timeline adds only its own prefix; one that removes its markers matches on the prefix, never on colour. A lane keeps its own colour so a person can tell them apart on the timeline; which colour each lane takes is left for the first tool that writes one.
+A lane writes, edits and deletes only the markers carrying its own prefix. It reads the others and never changes them. A marker with no prefix belongs to a person: no tool touches it. A tool that writes markers to a timeline adds only its own prefix; one that removes its markers matches on the prefix, never on colour. A lane keeps its own colour so a person can tell them apart on the timeline; which colour each lane takes is unset: a lane proposes one and Isaac signs it.
 
 ## The sync sign
 
