@@ -136,7 +136,7 @@ Platforms publish no universal threshold for a good opening; compare a post agai
 
 ## Timeline names
 
-An option built for viewing gets its own timeline, named `<project> Option A v01 [auto]`. The assembly is `<project> Assembly v01 [auto]`, a fine cut `<project> Fine v03 [auto]`, the locked cut `<project> Lock v01 [auto]`. The ` [auto]` suffix stays last, because the MCP write tools work only on timelines whose name ends with it. Nobody renames an old version; a new version is a duplicate with the next number.
+An option built for viewing gets its own timeline, named `<project> Option A v01 [auto]`. The assembly is `<project> Assembly v01 [auto]`, a fine cut `<project> Fine v03 [auto]`, the locked cut `<project> Lock v01 [auto]`. The ` [auto]` suffix stays last, because the MCP tools write only to timelines whose name ends with it. Nobody renames an old version; a new version is a duplicate with the next number.
 
 ## Privacy
 
