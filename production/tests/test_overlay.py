@@ -104,8 +104,8 @@ class TestPure(unittest.TestCase):
             overlay.sample_box(rgba, 20, 10, 2)
 
 
-TAGS = ["-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709",
-        "-color_trc", "bt709"]
+# Frame properties, not output flags: ffmpeg 6 and 8 carry these into the MOV alike.
+TAGS = "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709"
 RAMP = "clip((min(min(X-80,239-X),min(Y-45,134-Y))+1.5)/3,0,1)*if(lt(N,1),0,1)"
 
 
@@ -123,27 +123,24 @@ class TestFiles(unittest.TestCase):
         premult = f"geq=r='{r}*{RAMP}':g='{g}*{RAMP}':b='{b}*{RAMP}':a='255*{RAMP}'"
         # The format sits inside the chain so this scale does the matrix (ffmpeg 6 would
         # otherwise insert its own BT.601 conversion after it).
-        to709 = "scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le"
+        to709 = f"scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le,{TAGS}"
         alpha = ["-c:v", "prores_ks", "-profile:v", "4444"]
         clips = {
-            "straight": (src, f"{straight},{to709}", alpha, TAGS),
-            "premult": (src, f"{premult},{to709}", alpha, TAGS),
-            "s601": (src, f"{straight},scale=out_color_matrix=bt601:out_range=tv,format=yuva444p10le",
-                     alpha, [*TAGS[:2], "-colorspace", "smpte170m", *TAGS[4:]]),
+            "straight": (src, f"{straight},{to709}", alpha),
+            "premult": (src, f"{premult},{to709}", alpha),
+            # BT.601 values relabelled BT.709 by setparams: tags pass, colour does not.
+            "matrix601": (src, f"{straight},scale=out_color_matrix=bt601:out_range=tv,"
+                               f"format=yuva444p10le,{TAGS}", alpha),
             "opaque": ("testsrc2=s=320x180:r=24000/1001:d=0.125",
-                       "scale=out_color_matrix=bt709:out_range=tv,format=yuv422p10le",
-                       ["-c:v", "prores_ks", "-profile:v", "3"], TAGS),
+                       f"scale=out_color_matrix=bt709:out_range=tv,format=yuv422p10le,{TAGS}",
+                       ["-c:v", "prores_ks", "-profile:v", "3"]),
         }
         cls.files = {}
-        for name, (lavfi, vf, codec, tags) in clips.items():
+        for name, (lavfi, vf, codec) in clips.items():
             out = str(d / f"{name}.mov")
             subprocess.run([measure.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", lavfi,
-                            "-vf", vf, *codec, *tags, out], check=True)
+                            "-vf", vf, *codec, out], check=True)
             cls.files[name] = out
-        # BT.601 values retagged BT.709 in the ProRes frame headers: tags pass, colour does not.
-        cls.files["matrix601"] = str(d / "matrix601.mov")
-        subprocess.run([measure.FFMPEG, "-v", "error", "-y", "-i", cls.files["s601"], "-c", "copy",
-                        "-bsf:v", "prores_metadata=colorspace=bt709", cls.files["matrix601"]], check=True)
         cls.values = str(d / "values.json")
         Path(cls.values).write_text(json.dumps({"accent": ACCENT, "light": "#e8e8e8"}))
 
@@ -161,7 +158,7 @@ class TestFiles(unittest.TestCase):
         return [r["status"] for r in report["rows"] if r["row"] == row]
 
     def test_a_clean_master_passes(self):
-        r = self.run_check("straight", expect=[("color_space", "bt709"), ("color_range", "tv")],
+        r = self.run_check("straight", expect=[("color_space", "bt709"), ("color_primaries", "bt709")],
                            fps="23.976")
         self.assertEqual(r["status"], "pass", overlay.format_report(r))
         for row in ("alpha", "codec", "clear", "fringe", "brand"):
