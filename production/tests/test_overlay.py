@@ -120,7 +120,8 @@ class TestFiles(unittest.TestCase):
             "premult": (src, f"{premult},{to709}", alpha, TAGS),
             "s601": (src, f"{straight},scale=out_color_matrix=bt601:out_range=tv,format=yuva444p10le",
                      alpha, [*TAGS[:2], "-colorspace", "smpte170m", *TAGS[4:]]),
-            "opaque": ("testsrc2=s=320x180:r=24000/1001:d=0.125", to709.replace("yuva444p10le", "yuv422p10le"),
+            "opaque": ("testsrc2=s=320x180:r=24000/1001:d=0.125",
+                       "scale=out_color_matrix=bt709:out_range=tv,format=yuv422p10le",
                        ["-c:v", "prores_ks", "-profile:v", "3"], TAGS),
         }
         cls.files = {}
@@ -151,7 +152,7 @@ class TestFiles(unittest.TestCase):
 
     def test_a_clean_master_passes(self):
         r = self.run_check("straight", expect=[("color_space", "bt709"), ("color_range", "tv")],
-                           fps="24000/1001")
+                           fps="23.976")
         self.assertEqual(r["status"], "pass", overlay.format_report(r))
         for row in ("alpha", "codec", "clear", "fringe", "brand"):
             self.assertEqual(self.status(r, row), ["PASS"], row)

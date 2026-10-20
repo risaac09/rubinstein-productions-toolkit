@@ -1033,7 +1033,7 @@ Examples:
     sp.add_argument("--expect", action="append", metavar="KEY=VALUE",
                     help="A tag the file must carry: color_range, color_space, color_primaries, "
                          "color_transfer or pix_fmt; repeat per tag")
-    sp.add_argument("--fps", help="The frame rate to assert, as ffprobe gives it (24000/1001)")
+    sp.add_argument("--fps", help="The frame rate to assert (23.976, 25, 24000/1001)")
     sp.add_argument("--clear-at", action="append", type=float, metavar="SECONDS",
                     help="A time with nothing visible; repeat (default the first frame)")
     sp.add_argument("--no-clear", action="store_true",
@@ -1046,9 +1046,11 @@ Examples:
     sp.add_argument("--sample", action="append", metavar="NAME=X,Y[@SECONDS]",
                     help="A pixel that must match the value NAME; repeat")
     sp.add_argument("--fringe-max", type=float,
-                    help="Edge error allowed, 10-bit codes at the median edge pixel (default 4)")
+                    help="Edge error allowed, 10-bit codes at the median edge pixel "
+                         "(default: FRINGE_MAX in rpresolve/overlay.py)")
     sp.add_argument("--de-max", type=float,
-                    help="CIEDE2000 allowed at a brand sample (default 1.0)")
+                    help="CIEDE2000 allowed at a brand sample (default: DE_MAX in "
+                         "rpresolve/overlay.py)")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_overlay_check)
 

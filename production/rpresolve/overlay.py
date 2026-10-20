@@ -30,7 +30,8 @@ import re
 import numpy as np
 
 from . import color
-from .measure import FFMPEG, FFPROBE, MeasureError, _run, bit_depth, decode_filter
+from .delivercheck import parse_fps
+from .measure import FFMPEG, MeasureError, _run, bit_depth, decode_filter, probe as _probe
 
 CODE_MAX = 1023          # fringe numbers are in 10-bit code values
 FULL = 1 - 0.5 / 1023    # alpha at full scale
@@ -52,6 +53,13 @@ class ToolMissing(RuntimeError):
     pass
 
 
+def probe(path):
+    try:
+        return _probe(path)
+    except FileNotFoundError:
+        raise ToolMissing("ffprobe not found; set RPRESOLVE_FFPROBE")
+
+
 def _call(cmd, **kw):
     try:
         return _run(cmd, **kw)
@@ -62,32 +70,6 @@ def _call(cmd, **kw):
 # ---------------------------------------------------------------------------
 # Reading the file
 # ---------------------------------------------------------------------------
-
-def probe(path):
-    """Codec, profile, size, rate, duration and colour tags of the first
-    video stream."""
-    cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-           "stream=codec_name,profile,width,height,avg_frame_rate,pix_fmt,color_range,"
-           "color_space,color_transfer,color_primaries:format=duration",
-           "-of", "json", "file:" + path]
-    proc = _call(cmd, encoding="utf-8", errors="replace")
-    if proc.returncode != 0:
-        raise MeasureError(f"ffprobe failed on {path}: {proc.stderr.strip()[-200:]}")
-    data = json.loads(proc.stdout or "{}")
-    streams = data.get("streams") or []
-    if not streams:
-        raise MeasureError(f"no video stream in {path}")
-    s = streams[0]
-    try:
-        duration = float((data.get("format") or {}).get("duration") or 0)
-    except ValueError:
-        duration = 0.0
-    return {"codec": s.get("codec_name", ""), "profile": s.get("profile", ""),
-            "width": int(s["width"]), "height": int(s["height"]),
-            "fps": s.get("avg_frame_rate", ""), "duration": duration,
-            "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
-                                               "color_transfer", "color_primaries")}}
-
 
 _ALPHA_FMT = re.compile(r"^(yuva|gbrap|ya\d|rgba|bgra|argb|abgr)")
 
@@ -116,21 +98,12 @@ def read_rgba(path, t, width, height, vf=None):
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
     arr = np.frombuffer(proc.stdout[:want], dtype="<u2").reshape(height, width, 4)
-    return arr.astype(np.float64) / 65535.0
+    return arr.astype(np.float32) / np.float32(65535)  # float32 halves a 4K frame to 130 MB
 
 
 # ---------------------------------------------------------------------------
 # Pure measurements (tested on synthetic arrays)
 # ---------------------------------------------------------------------------
-
-def _shifts(radius):
-    """(dy, dx) offsets in rings of growing Chebyshev distance."""
-    for r in range(1, radius + 1):
-        for dy in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                if max(abs(dy), abs(dx)) == r:
-                    yield dy, dx
-
 
 def _views(h, w, dy, dx):
     """Slices (target, source) so that source = target shifted by (dy, dx)."""
@@ -151,28 +124,26 @@ def _toward(mask, dy, dx, radius):
     return out
 
 
-def between(opaque, clear, radius):
-    """True where opaque lies on one side and clear on the other, along a
-    row or a column, each within radius: an antialiased edge. A translucent
+def edge_fill(rgb, opaque, clear, radius):
+    """(edge mask, fill colour) for antialiased edges: pixels with an opaque
+    pixel on one side and a clear pixel on the other, along a row or a
+    column, each within radius. The fill is the nearest opaque pixel on
+    that side, so it belongs to the shape the edge belongs to. A translucent
     line that runs into an opaque shape has no clear side opposite it."""
-    out = np.zeros_like(opaque)
-    for dy, dx in ((0, 1), (1, 0)):
-        out |= _toward(opaque, dy, dx, radius) & _toward(clear, -dy, -dx, radius)
-        out |= _toward(opaque, -dy, -dx, radius) & _toward(clear, dy, dx, radius)
-    return out
-
-
-def nearest_fill(rgb, opaque, radius):
-    """(colour of the nearest opaque pixel within radius, found mask)."""
     h, w = opaque.shape
+    edge = np.zeros_like(opaque)
     fill = np.zeros_like(rgb)
-    found = np.zeros_like(opaque)
-    for dy, dx in _shifts(radius):
-        t, s = _views(h, w, dy, dx)
-        take = opaque[s] & ~found[t]
-        fill[t][take] = rgb[s][take]
-        found[t] |= take
-    return fill, found
+    for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        side, colour = np.zeros_like(opaque), np.zeros_like(rgb)
+        for k in range(1, radius + 1):
+            t, s = _views(h, w, k * dy, k * dx)
+            take = opaque[s] & ~side[t]
+            colour[t][take] = rgb[s][take]
+            side[t] |= take
+        new = side & _toward(clear, -dy, -dx, radius) & ~edge
+        fill[new] = colour[new]
+        edge |= new
+    return edge, fill
 
 
 def fringe(rgba, radius=EDGE_RADIUS, band=EDGE_ALPHA):
@@ -183,8 +154,8 @@ def fringe(rgba, radius=EDGE_RADIUS, band=EDGE_ALPHA):
     full opacity have no such neighbours and are left out."""
     rgb, a = rgba[..., :3], rgba[..., 3]
     opaque, clear = a >= OPAQUE, a <= CLEAR
-    fill, found = nearest_fill(rgb, opaque, radius)
-    edge = (a > band[0]) & (a < band[1]) & found & between(opaque, clear, radius)
+    edge, fill = edge_fill(rgb, opaque, clear, radius)
+    edge &= (a > band[0]) & (a < band[1])
     n = int(edge.sum())
     if n == 0:
         return {"edge_pixels": 0}
@@ -253,6 +224,10 @@ def _row(rows, status, name, detail):
 def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="straight",
           values=None, samples=(), fringe_max=FRINGE_MAX, de_max=DE_MAX):
     """Run every row on one file. Returns {file, status, rows, probe}."""
+    for name, *_ in samples:
+        if values is None or name not in values:
+            raise ValueError(f"--sample {name}: no value named {name} in --values")
+    want_fps = parse_fps(fps) if fps else None
     p = probe(path)
     tags, rows = p["tags"], []
     pix = tags["pix_fmt"]
@@ -273,8 +248,9 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
     if not expect:
         _row(rows, "INFO", "tags", ", ".join(f"{k} {tags[k] or 'untagged'}" for k in sorted(tags)))
 
-    if fps:
-        _row(rows, "PASS" if p["fps"] == fps else "FAIL", "fps", f"{p['fps']} (want {fps})")
+    if want_fps:
+        got_fps = parse_fps(p["fps"]) if re.fullmatch(r"\d+(/\d+)?", p["fps"] or "") else None
+        _row(rows, "PASS" if got_fps == want_fps else "FAIL", "fps", f"{p['fps']} (want {fps})")
     else:
         _row(rows, "INFO", "fps", p["fps"])
 
@@ -282,29 +258,22 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
     if note:
         _row(rows, "WARN", "tags", note)
     w, h, dur = p["width"], p["height"], p["duration"]
-    frames = {}
-
-    def frame(t):
-        if t not in frames:
-            frames[t] = read_rgba(path, t, w, h, vf)
-        return frames[t]
-
     for t in clear_at:
-        a = frame(t)[..., 3]
+        a = read_rgba(path, t, w, h, vf)[..., 3]
         visible = float((a > CLEAR).mean())
         _row(rows, "PASS" if visible == 0 else "FAIL", "clear",
              f"at {t:.3f}s " + ("nothing visible" if visible == 0 else f"{visible:.2%} of pixels visible"))
 
     t_hold = hold if hold is not None else dur / 2
-    hold_rgba = frame(t_hold)
+    hold_rgba = read_rgba(path, t_hold, w, h, vf)
     covered = float((hold_rgba[..., 3] >= OPAQUE).mean())
     peak = float(hold_rgba[..., 3].max())
     detail = f"at {t_hold:.3f}s {covered:.2%} of pixels opaque, peak alpha {peak:.4f}"
     if covered == 0:
         _row(rows, "FAIL", "opaque", detail)
     elif peak < FULL:
-        _row(rows, "WARN", "opaque", detail + f"; {1 - peak:.1%} of what is under it shows through "
-             "(8-bit alpha widened by a shift, not scaled)")
+        _row(rows, "WARN", "opaque", detail + f"; {1 - peak:.1%} of what is under it shows through. "
+             "If the graphic is meant to be solid, an 8-bit alpha was likely widened by a shift")
     else:
         _row(rows, "PASS", "opaque", detail)
 
@@ -322,9 +291,8 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
         _row(rows, "PASS" if got <= fringe_max else "FAIL", "fringe", detail)
 
     for name, x, y, t in samples:
-        if values is None or name not in values:
-            raise ValueError(f"--sample {name}: no value named {name} in --values")
-        rgb, amin = sample_box(frame(t if t is not None else t_hold), x, y)
+        src = hold_rgba if t is None or t == t_hold else read_rgba(path, t, w, h, vf)
+        rgb, amin = sample_box(src, x, y)
         at = f"{name} at {x},{y}"
         if amin < OPAQUE:
             _row(rows, "FAIL", "brand", f"{at} is not fully opaque (alpha {amin:.3f})")
