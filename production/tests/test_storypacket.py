@@ -15,6 +15,7 @@ import json
 import math
 import os
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -25,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import resolve_workflow  # noqa: E402
-from rpresolve import cutlist, storypacket as sp  # noqa: E402
+from rpresolve import cutlist, detect, storypacket as sp  # noqa: E402
 
 has_ffmpeg = unittest.skipUnless(os.access(cutlist.FFMPEG, os.X_OK), "ffmpeg missing")
 COLUMNS = ["file", "camera", "local_start", "duration_s", "audio_source", "flags", "note"]
@@ -43,6 +44,21 @@ def write_words(path, words):
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"segments": [{"words": [{"word": " " + w, "start": a, "end": b}
                                            for w, a, b in words]}]}, f)
+
+
+def test_clip(path, size="160x90", sar="2/1", seconds=4):
+    """A synthetic anamorphic clip: testsrc2 stored at `size` with a pixel
+    aspect of `sar`, so its display width is twice its stored width."""
+    subprocess.run([cutlist.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                    f"testsrc2=size={size}:rate=25:duration={seconds}", "-vf", f"setsar={sar}",
+                    "-c:v", "mpeg4", "-q:v", "5", path], check=True)
+
+
+def image_size(path):
+    out = subprocess.run([detect.FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=width,height", "-of", "csv=p=0", path],
+                         capture_output=True, text=True, check=True).stdout
+    return tuple(int(x) for x in out.strip().split(","))
 
 
 def tone_wav(path, pieces, rate=16000):
@@ -91,6 +107,19 @@ class Energy(unittest.TestCase):
         levels = [(i, -20.0 - i % 2) for i in range(10)]
         self.assertEqual(sp.energy(levels, 1.0)["loud"], [])
         self.assertIn("no span stands out", sp.energy_line(levels, 1.0))
+
+    def test_strip_times_are_part_centres(self):
+        self.assertEqual(sp.strip_times(8.0, 4), [1.0, 3.0, 5.0, 7.0])
+
+    @has_ffmpeg
+    def test_one_frame_strip(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip, jpg = os.path.join(d, "c.mov"), os.path.join(d, "c.jpg")
+            test_clip(clip, sar="1/1")
+            self.assertEqual(sp.make_strip(clip, 4.0, jpg, n=1, width=80), [2.0])
+            self.assertEqual(image_size(jpg), (80, 46))
+            sp.make_strip(clip, 4.0, jpg, n=3, width=80)  # 3 does not fill rows of 4: one row
+            self.assertEqual(image_size(jpg), (240, 46))
 
     def test_clock(self):
         self.assertEqual([sp.clock(t) for t in (0, 59.6, 61, 3725)], ["0:00", "1:00", "1:01", "1:02:05"])
@@ -236,7 +265,36 @@ class Packet(unittest.TestCase):
 
     def test_missing_media_says_so(self):
         text, _ = sp.build(self.table, audio=True)
-        self.assertEqual(text.count("- energy: the file is not on this machine"), 3)
+        self.assertEqual(text.count("- the file is not on this machine: no energy, no strip"), 3)
+        text, _ = sp.build(self.table, audio=False)
+        self.assertNotIn("not on this machine", text)
+
+    @has_ffmpeg
+    def test_strip_linked_from_the_card(self):
+        clip = os.path.join(self.d, "S5II-a1b2c3", "P200.mov")
+        os.mkdir(os.path.dirname(clip))
+        test_clip(clip)
+        write_table(self.table, [{"file": clip, "duration_s": "4"}, {"file": "/m/gone.mov", "duration_s": "2"}])
+        strips = os.path.join(self.d, "strips")
+        os.mkdir(strips)
+        text, summary = sp.build(self.table, audio=False, strips_dir=strips, link_base=self.d)
+        self.assertIn("strips on 1", summary)
+        # Clips with no start sort by file, so /m/gone.mov is 01.
+        self.assertIn("strip, frames at 0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75 s: "
+                      "![strip S5II-a1b2c3/P200](<strips/02_S5II-a1b2c3_P200.jpg>)", text)
+        # Two rows of four frames 384 px wide; the 2:1 squeeze is undone,
+        # so a 320x90 display frame scales to 384x108.
+        self.assertEqual(image_size(os.path.join(strips, "02_S5II-a1b2c3_P200.jpg")), (1536, 216))
+        self.assertIn("- the file is not on this machine: no energy, no strip", text)
+
+    @has_ffmpeg
+    def test_strip_failure_is_a_note(self):
+        wav = os.path.join(self.d, "C020.wav")
+        tone_wav(wav, [(1.0, 0.5)])
+        write_table(self.table, [{"file": wav, "duration_s": "1"}, {"file": wav, "duration_s": ""}])
+        text, _ = sp.build(self.table, audio=False, strips_dir=self.d)
+        self.assertIn("- strip: ffmpeg could not make the strip", text)
+        self.assertIn("- strip: the shoot table gives no duration", text)
 
     @has_ffmpeg
     def test_energy_from_audio(self):
@@ -263,7 +321,7 @@ class Command(unittest.TestCase):
     def run_cmd(self, *argv):
         out, err = io.StringIO(), io.StringIO()
         args = resolve_workflow.argparse.Namespace(table=self.table, words=None, labels=None,
-                                                   title=None, out=None, no_audio=True)
+                                                   title=None, out=None, no_audio=True, strips=None)
         for k, v in zip(argv[::2], argv[1::2]):
             setattr(args, k, v)
         with redirect_stdout(out), redirect_stderr(err):
@@ -285,6 +343,13 @@ class Command(unittest.TestCase):
         status, _, err = self.run_cmd("out", inside)
         self.assertEqual(status, 1)
         self.assertIn("inside this repository", err)
+        self.assertFalse(os.path.exists(inside))
+
+    def test_strips_refused_in_a_git_tree(self):
+        inside = str(Path(__file__).resolve().parent / "strips-here")
+        status, _, err = self.run_cmd("strips", inside)
+        self.assertEqual(status, 1)
+        self.assertIn("--strips:", err)
         self.assertFalse(os.path.exists(inside))
 
     def test_words_must_be_a_folder(self):

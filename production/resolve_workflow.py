@@ -776,9 +776,18 @@ def cmd_story_packet(args):
     if args.words and not os.path.isdir(args.words):
         print(f"ERROR: --words {args.words} is not a folder.", file=sys.stderr)
         return 1
+    if args.strips:
+        # Strips show people: refused in any git tree, not only this one.
+        problem = rppaths.out_problem(os.path.join(args.strips, "strip.jpg"), any_git_tree=True)
+        if problem:
+            print(f"ERROR: --strips: {problem}", file=sys.stderr)
+            return 1
+        os.makedirs(args.strips, exist_ok=True)
     try:
         text, summary = sp.build(args.table, args.words, args.labels, audio=not args.no_audio,
-                                 title=args.title)
+                                 title=args.title, strips_dir=args.strips,
+                                 link_base=os.path.dirname(os.path.abspath(args.out))
+                                 if args.out else None)
     except (sp.PacketError, cutlist.CutlistError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -1090,6 +1099,8 @@ Examples:
     sp.add_argument("--title", help="The packet's title (default: the table's name)")
     sp.add_argument("--out", help="Write the packet here instead of stdout (refused in this repo)")
     sp.add_argument("--no-audio", action="store_true", help="Skip the energy line (no decode)")
+    sp.add_argument("--strips", help="Write a contact strip per clip (8 frames, 2 rows) into this folder "
+                                     "and link it from each card (refused in any git tree)")
     sp.set_defaults(func=cmd_story_packet)
 
     args = parser.parse_args()

@@ -290,8 +290,8 @@ Seven of these have no tool: `manifest` (it builds the cut manifest that
 person renders the still, so no tool is planned), and `story-packet` (one
 Markdown file per shoot for the selects board: per clip in capture order, the
 shoot-table row, an audio energy sparkline with the loud spans, the
-words as timed phrases and any picture labels; it scores and chooses
-nothing). `info` is covered by `resolve_status`,
+words as timed phrases, any picture labels and, with `--strips`, a contact
+strip of eight frames; it scores and chooses nothing). `info` is covered by `resolve_status`,
 `list_timelines` and `render_queue_status` together. Each other command has a
 tool of the same name (with underscores), with a few flags left behind: the
 script's `sync-measure` takes `--ref-stream` and

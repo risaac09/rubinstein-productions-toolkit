@@ -12,6 +12,10 @@ clip, in capture order:
     - words: phrases with [start-end] in clip seconds, from the mlx_whisper
       JSON named <stem>.json (vertcut transcribe's name) or
       <stem>.words.json in the words folder; a phrase inside a Whisper repetition loop is marked
+    - strip (strips_dir): frames at the centres of eight equal parts of
+      the clip, in two rows of four in one JPEG at display aspect, linked
+      from the card, so a reader sees the picture and not only the words.
+      ffmpeg cannot decode BRAW, so a BRAW clip gets a note, not a strip
     - labels: spans of text about the picture (vision captions, a hand
       log), from JSONL lines {"file", "start_s", "end_s", "text", ...};
       any other keys print beside the text
@@ -28,8 +32,9 @@ edit and every lane's sidecar cite. Panasonic stems repeat across cards, so a st
 ambiguous and gets nothing attached by stem; the clip says so. A relative
 path in the table is read against the table's folder.
 
-The packet names clients, people and what they said. Write it outside any
-git tree (paths.write_private) and keep it local.
+The packet names clients, people and what they said, and a strip shows
+them. Write both outside any git tree (paths.write_private, and the
+command refuses a strips folder inside one) and keep them local.
 """
 
 import csv
@@ -37,6 +42,7 @@ import json
 import math
 import os
 import re
+import subprocess
 
 from . import cutlist, trimreview
 
@@ -47,6 +53,10 @@ MIN_BIN_S = 1.0
 PEAKS = 3           # loud spans listed, the ones with the highest peaks
 PEAK_OVER_DB = 6.0  # a loud span stands this far above the clip's median
 PHRASE_GAP_S = 0.6   # cutlist.sentences' default break
+STRIP_FRAMES = 8
+STRIP_COLS = 4       # two rows of four: 1536 px wide, legible when a reader scales it down
+STRIP_WIDTH = 384    # pixels per frame in a strip
+STRIP_TIMEOUT_S = 120
 
 
 class PacketError(ValueError):
@@ -237,9 +247,49 @@ def energy_line(levels, width):
             f"median {e['median']:.0f} dBFS, spread {e['spread']:.0f} dB; "
             + ("loud " + ", ".join(f"{clock(a)}-{clock(b)} (peak {p:.0f})" for a, b, p in e["loud"])
                if e["loud"] else "no span stands out"))
-    if e["rise"] and e["rise"][1] > 0:
+    if e["rise"] and e["rise"][1] >= PEAK_OVER_DB:
         line += f"; biggest rise +{e['rise'][1]:.0f} dB at {clock(e['rise'][0])}"
     return line
+
+
+# ---------------------------------------------------------------------------
+# Picture
+# ---------------------------------------------------------------------------
+
+def strip_times(duration, n=STRIP_FRAMES):
+    """The centre of each of n equal parts of the clip, in seconds."""
+    return [round((i + 0.5) * duration / n, 3) for i in range(n)]
+
+
+def make_strip(path, duration, out, n=STRIP_FRAMES, width=STRIP_WIDTH, ffmpeg=None):
+    """n frames of path in one JPEG at out, in rows of STRIP_COLS (one row
+    when n does not fill them evenly), each `width` px wide at display
+    aspect (an anamorphic squeeze is undone). One input seek per frame, so
+    a long clip is not decoded end to end. Returns the times."""
+    times = strip_times(duration, n)
+    cmd = [ffmpeg or cutlist.FFMPEG, "-v", "error", "-y"]
+    for t in times:
+        cmd += ["-ss", f"{t:.3f}", "-i", "file:" + path]
+    scale = f"scale='trunc(iw*sar/2)*2':ih,setsar=1,scale={width}:-2"
+    if n == 1:
+        graph = f"[0:v:0]{scale}[out]"
+    else:
+        graph = ";".join(f"[{i}:v:0]{scale}[f{i}]" for i in range(n))
+        cols = STRIP_COLS if n % STRIP_COLS == 0 else n
+        graph += (";" + "".join(f"[f{i}]" for i in range(n))
+                  + f"xstack=inputs={n}:grid={cols}x{n // cols}[out]")
+    cmd += ["-filter_complex", graph, "-map", "[out]", "-frames:v", "1", "-q:v", "3", out]
+    if os.path.exists(out):
+        os.remove(out)  # so a strip from an earlier run never passes for this one
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.PIPE, timeout=STRIP_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise PacketError(f"ffmpeg timed out making the strip for {path}")
+    if proc.returncode != 0 or not os.path.isfile(out):
+        raise PacketError("ffmpeg could not make the strip: "
+                          + proc.stderr.decode(errors="replace").strip()[-160:])
+    return times
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +320,11 @@ def label_line(rec):
 # The packet
 # ---------------------------------------------------------------------------
 
-def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, title=None):
-    """The packet as Markdown, and a one-line summary."""
+def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, title=None,
+          strips_dir=None, link_base=None):
+    """The packet as Markdown, and a one-line summary. With strips_dir, a
+    strip per clip is written there as NN_<clip id>.jpg and linked relative
+    to link_base (the packet's folder), or by absolute path without it."""
     rows = load_shoot_table(table)
     words, w_amb = attach(rows, words_files(words_dir)) if words_dir else ({}, set())
     labels, l_amb = attach(rows, load_labels(labels_path)) if labels_path else ({}, set())
@@ -281,7 +334,7 @@ def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, titl
         seen[card_key(r["path"])] = seen.get(card_key(r["path"]), 0) + 1
 
     cards, index = [], []
-    n_words = n_labels = 0
+    n_words = n_labels = n_strips = 0
     for i, r in enumerate(rows, 1):
         f, dur, cid = r["file"], r["duration"], card_key(r["path"])
         shared = seen[cid] > 1
@@ -294,15 +347,27 @@ def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, titl
                 + (f" · flags: {r['flags']}" if r.get("flags") else "")
                 + (f" · note: {r['note']}" if r.get("note") else "")]
         body = []
-        if audio:
+        here = os.path.isfile(r["path"])
+        if not here and (audio or strips_dir):
+            notes.append("the file is not on this machine: no energy, no strip")
+        if here and strips_dir and dur <= 0:
+            notes.append("strip: the shoot table gives no duration")
+        elif here and strips_dir:
+            jpg = os.path.join(strips_dir, f"{i:02d}_{re.sub(r'[^A-Za-z0-9._-]+', '_', cid)}.jpg")
             try:
-                env = (trimreview.envelope(r["path"], 0.0, None, ffmpeg)
-                       if os.path.isfile(r["path"]) else None)
+                times = make_strip(r["path"], dur, jpg, ffmpeg=ffmpeg)
+                link = os.path.relpath(jpg, link_base) if link_base else jpg
+                body += ["", f"strip, frames at {', '.join(f'{t:.2f}' for t in times)} s: "
+                             f"![strip {cid}](<{link}>)"]
+                n_strips += 1
+            except PacketError as e:
+                notes.append(f"strip: {e}")
+        if here and audio:
+            try:
+                env = trimreview.envelope(r["path"], 0.0, None, ffmpeg)
             except cutlist.CutlistError as e:
                 env, notes = None, notes + [f"energy: {e}"]
-            if env is None and not notes:
-                notes.append("energy: the file is not on this machine")
-            elif env == []:
+            if env == []:
                 notes.append("energy: no audio decoded")
             elif env:
                 width, levels = bins(env, dur)
@@ -335,11 +400,13 @@ def build(table, words_dir=None, labels_path=None, audio=True, ffmpeg=None, titl
         c = cams.setdefault(r.get("camera") or "unknown", [0, 0.0])
         c[0], c[1] = c[0] + 1, c[1] + r["duration"]
     summary = (f"story-packet: {len(rows)} clip(s), {clock(total)} of footage, "
-               f"words on {n_words}, labels on {n_labels}")
+               f"words on {n_words}, labels on {n_labels}"
+               + (f", strips on {n_strips}" if strips_dir else ""))
     out = [f"# Story packet: {title or stem(table)}", "",
            f"From `{os.path.basename(table)}`: {len(rows)} clips, {clock(total)}; "
            + "; ".join(f"{k} {n} clips {clock(s)}" for k, (n, s) in sorted(cams.items())) + ".",
-           f"Words on {n_words} clips, labels on {n_labels}. "
+           f"Words on {n_words} clips, labels on {n_labels}"
+           + (f", strips on {n_strips}" if strips_dir else "") + ". "
            + ("Energy from each clip's audio." if audio else "No audio read."),
            "",
            "Times inside a clip are seconds from its first frame. Local start is the camera "
