@@ -3,6 +3,7 @@
 # dir. Hermetic: diskutil, df and rclone are fakes; dd, shasum and touch run
 # for real. Every case also checks the fixture card was not changed.
 # Exit 1 on any failure.
+# shellcheck disable=SC2034  # variables are read inside the eval'd check strings
 set -u
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 O="$SRC/production/offload.sh"

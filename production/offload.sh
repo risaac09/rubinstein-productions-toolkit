@@ -92,7 +92,7 @@ cmd_copy() {
   [ -w "$parent" ] || die "destination parent not writable: $parent"
 
   card_id "$card"
-  local name="$cam-$(printf '%s' "$ID" | cut -c1-6)"
+  local name; name="$cam-$(printf '%s' "$ID" | cut -c1-6)"
   local final="$parent/$name" partial="$parent/_partial-$name"
   local sums="$parent/$name.SHA256SUMS" json="$parent/$name.card.json"
 
