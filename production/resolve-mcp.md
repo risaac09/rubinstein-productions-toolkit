@@ -279,7 +279,7 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
 - Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`
+  `deliver-check`, `qc`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`
   and `trim-review` (the TSV). `tilt-fixture` and `tilt-check` are script
   commands only; they have no MCP tool.
 
