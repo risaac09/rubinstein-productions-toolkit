@@ -32,6 +32,9 @@ Commands that never connect to Resolve:
                           size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
+    pipeline-proof        Compare a test render with a reference render: per-frame
+                          luma and chroma shift, legal or full range, PSNR, SSIM,
+                          VMAF where ffmpeg has libvmaf; PASS or FAIL per row
     manifest              Build a cut manifest from a CUTS script, a vertcut
                           TSV or a video-use edl.json
     endcheck              Check every cut's end word, that it sits in a pause
@@ -56,6 +59,9 @@ Commands that never connect to Resolve:
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
                           copied untouched, into <stem>.loudfix<ext>
+    deliver-manifest      Write manifest.md and checksums.txt for a delivery folder
+                          from ffprobe and the files' bytes; --verify re-checks
+                          checksums.txt; refuses to overwrite without --overwrite
     sync-measure          Where one recording sits against another from their
                           audio: offset in seconds and frames, clock drift,
                           confidence; refuses to call a weak match a match
@@ -339,6 +345,37 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(r["summary"], file=sys.stderr)
     return r["exit_status"]
+
+
+_PROOF_TRAP = ("Resolve decodes log H.264 about 25 code values darker than ffmpeg. Never compare a "
+               "Resolve render against an ffmpeg decode of a log source; the level-shift row would "
+               "blame the pipeline for the decode. Compare render against render, or against "
+               "Resolve's own decode exported as a file.")
+
+
+def cmd_pipeline_proof(args):
+    """Compare a test render with a reference (see rpresolve/proof.py). Exit
+    0 on PASS, 1 on FAIL or an unreadable file."""
+    try:
+        from rpresolve import proof as rpproof
+    except ImportError as e:
+        print(f"ERROR: pipeline-proof needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    problem = _out_problem(args.json) if args.json else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        report = rpproof.compare(args.test, args.reference, frames=args.frames, thresholds={
+            "psnr": args.psnr, "ssim": args.ssim, "vmaf": args.vmaf,
+            "luma_shift": args.luma_shift, "chroma_shift": args.chroma_shift})
+    except rpproof.MeasureError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpproof.format_report(report))
+    if args.json:
+        rpproof.write_json(report, args.json)
+    return 0 if report["passed"] else 1
 
 
 def cmd_shoot_table(args):
@@ -755,6 +792,41 @@ def cmd_deliver_fix_loudness(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_deliver_manifest(args):
+    """Write manifest.md and checksums.txt at a delivery root, or with
+    --verify re-check checksums.txt. Exit 0 written or all OK, 1 refused or
+    a mismatch, 2 ffprobe or ffmpeg missing."""
+    import time
+    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf
+    try:
+        if args.verify:
+            results = mf.verify(args.folder)
+            for status, rel in results:
+                print(f"{rel}: {status}")
+            return 0 if all(s == "OK" for s, _ in results) else 1
+        missing = [f for f in ("project", "approval", "prepared_by", "review_copy",
+                               "review_sha256") if not getattr(args, f)]
+        if missing:
+            raise mf.ManifestError("required to write a manifest: --" +
+                                   ", --".join(m.replace("_", "-") for m in missing))
+        dc.check_tools(ffmpeg=not args.no_loudness)
+        text, sums = mf.build(
+            args.folder, _deliver_config(args), args.project, args.approval, args.prepared_by,
+            args.review_copy, args.review_sha256, args.delivered or time.strftime("%Y-%m-%d"),
+            machine_steps=args.machine_steps, credits=args.credits,
+            platform_notes=args.platform_notes, licences=args.licence,
+            loudness=not args.no_loudness)
+        paths = mf.write(args.folder, text, sums, overwrite=args.overwrite)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (mf.ManifestError, dc.CheckError, rpdeliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print("Wrote " + ", ".join(paths))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Sync measure and trim review
 # ---------------------------------------------------------------------------
@@ -1023,6 +1095,25 @@ Examples:
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
 
+    sp = subparsers.add_parser(
+        "pipeline-proof", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Offline: compare a test render with a reference; PASS or FAIL per row",
+        description="Compare a test render with a reference (another render, or Resolve's own "
+                    "decode exported as a file). Rows: frames, range, gamma or level shift, luma "
+                    "and chroma shift, PSNR, SSIM, VMAF (\"not available\" when ffmpeg has no "
+                    "libvmaf). Exit 0 on PASS, 1 on FAIL.",
+        epilog="KNOWN TRAP: " + _PROOF_TRAP)
+    sp.add_argument("test", help="The render under test")
+    sp.add_argument("reference", help="The reference render, or Resolve's decode exported as a file")
+    sp.add_argument("--frames", type=int, default=300, help="Frames to compare from the start (default 300)")
+    sp.add_argument("--psnr", type=float, help="Minimum PSNR in dB (default 45, for a flat clip)")
+    sp.add_argument("--ssim", type=float, help="Minimum SSIM (default 0.99)")
+    sp.add_argument("--vmaf", type=float, help="Minimum VMAF (default 95)")
+    sp.add_argument("--luma-shift", type=float, help="Largest mean luma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--chroma-shift", type=float, help="Largest mean chroma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--json", help="Also write the full report, per-frame shifts included, here")
+    sp.set_defaults(func=cmd_pipeline_proof)
+
     sp = subparsers.add_parser("manifest", help="Offline: build a cut manifest")
     src = sp.add_mutually_exclusive_group(required=True)
     src.add_argument("--from-cuts", metavar="PY", help="A Python file with a literal CUTS dict")
@@ -1170,6 +1261,32 @@ Examples:
     sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_fix_loudness)
+
+    sp = subparsers.add_parser(
+        "deliver-manifest",
+        help="Offline: write manifest.md and checksums.txt for a delivery folder, or --verify")
+    sp.add_argument("folder", help="Delivery root: <folder>/<destination key>/<files>")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before "
+                         "the command)")
+    sp.add_argument("--verify", action="store_true",
+                    help="Re-check checksums.txt against the files; writes nothing")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="Replace an existing manifest.md and checksums.txt")
+    sp.add_argument("--project", help="Project slug, as used in the file names")
+    sp.add_argument("--approval", help="Approval reference id")
+    sp.add_argument("--prepared-by", help="Name and role")
+    sp.add_argument("--review-copy", help="File name of the approved review copy")
+    sp.add_argument("--review-sha256", help="SHA-256 of the review copy, lowercase hex")
+    sp.add_argument("--delivered", help="Delivery date (default: today)")
+    sp.add_argument("--machine-steps", default="none stated")
+    sp.add_argument("--credits", default="none requested")
+    sp.add_argument("--platform-notes", default="none looked up")
+    sp.add_argument("--licence", action="append", default=[], metavar="ASSET|LICENCE|ATTRIBUTION",
+                    help="A licence row; repeat for more (default: none)")
+    sp.add_argument("--no-loudness", action="store_true",
+                    help="Record loudness as n/a (skips reading each file's audio)")
+    sp.set_defaults(func=cmd_deliver_manifest)
 
     sp = subparsers.add_parser(
         "sync-measure", help="Offline: where one recording sits against another, from their "

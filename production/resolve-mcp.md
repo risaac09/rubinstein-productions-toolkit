@@ -279,13 +279,14 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
 - Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `qc`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`,
-  `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and `tilt-check`
-  are script commands only; they have no MCP tool.
+  `deliver-check`, `qc`, `deliver-captions`, `deliver-fix-loudness`, `deliver-manifest`,
+  `sync-measure`, `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and
+  `tilt-check` are script commands only; they have no MCP tool.
 
-Eight of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `manifest` (it builds the cut manifest that
+Nine of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
-(the loudness step of the deliver loop), `list-projects` and
+(the loudness step of the deliver loop), `deliver-manifest` (writes the delivery
+manifest and checksums after the last check), `list-projects` and
 `list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
 person renders the still, so no tool is planned), and `story-packet` (one
 Markdown file per shoot for the selects board: per clip in capture order, the
