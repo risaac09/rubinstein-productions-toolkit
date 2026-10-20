@@ -73,7 +73,7 @@ def onset_ms(x, rate, around_ms):
     """Onset in ms within SEARCH_MS of around_ms, or None when the window is silent."""
     d = np.abs(np.diff(x, prepend=0.0))
     a = max(0, int((around_ms - SEARCH_MS) * rate / 1000))
-    w = d[a:int((around_ms + SEARCH_MS) * rate / 1000)]
+    w = d[a:max(a, int((around_ms + SEARCH_MS) * rate / 1000))]
     if not len(w) or w.max() <= 0:
         return None
     return (a + int(np.argmax(w >= ONSET_FRACTION * w.max()))) * 1000.0 / rate
@@ -100,7 +100,13 @@ def pick_cut(lockup, cut):
     kfs = block.get("keyframes")
     if not isinstance(kfs, list) or not kfs:
         raise StingError("lockup has no keyframes")
+    if not all(isinstance(k, dict) and _num(k.get("frame")) and _num(k.get("ms")) for k in kfs):
+        raise StingError("every lockup keyframe needs a numeric frame and ms")
     return kfs
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 def check(lockup, cues, master=None, stem=None, cut=None, lead_ms=LEAD_FAIL_MS, lag_ms=LAG_FAIL_MS,
@@ -120,7 +126,10 @@ def check(lockup, cues, master=None, stem=None, cut=None, lead_ms=LEAD_FAIL_MS, 
         cid = c.get("cue_id", "?")
         if not c.get("measured_from"):
             raise StingError(f"cue {cid}: no measured_from; cues are measured, never typed")
-        near = [k for k in kfs if abs(k["frame"] - c.get("frame", -10**9)) <= MATCH_FRAMES]
+        if not _num(c.get("frame")) or not all(_num(c.get(k)) or c.get(k) is None
+                                                for k in ("onset_ms", "intended_offset_ms")):
+            raise StingError(f"cue {cid}: frame, onset_ms and intended_offset_ms must be numbers")
+        near = [k for k in kfs if abs(k["frame"] - c["frame"]) <= MATCH_FRAMES]
         kf = min(near, key=lambda k: abs(k["frame"] - c["frame"])) if near else None
         row = {"cue_id": cid, "kind": "hit", "frame": c.get("frame"), "keyframe": None,
                "keyframe_frame": None, "picture_ms": None, "audio_ms": None,
