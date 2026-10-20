@@ -850,7 +850,7 @@ def cmd_perceive(args):
         return 1
     try:
         packet = rpperceive.perceive(args.file, args.out, at=args.at, ref=args.ref,
-                                     faces=not args.no_faces)
+                                     faces=not args.no_faces, with_targets=args.targets)
     except (rpmeasure.MeasureError, rpperceive.PerceiveError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -1128,6 +1128,8 @@ Examples:
     sp.add_argument("--at", type=float, help="Frame time in seconds (default the middle)")
     sp.add_argument("--ref", help="A reference still (or the middle of a clip) to compare against")
     sp.add_argument("--no-faces", action="store_true", help="Skip face, skin and lighting-ratio numbers")
+    sp.add_argument("--targets", action="store_true",
+                    help="Also write targets.json (numbers only) beside packet.json, for a reference library")
     sp.set_defaults(func=cmd_perceive)
 
     sp = subparsers.add_parser(

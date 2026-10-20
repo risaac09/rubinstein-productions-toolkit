@@ -283,6 +283,8 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
   `sync-measure`, `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and
   `tilt-check` are script commands only; they have no MCP tool.
 
+`perceive --targets` also writes `targets.json` for a private reference library; see `reference-library.md`.
+
 Twelve of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `perceive` (one frame as a folder of scopes, a
 Lab palette and `packet.json`, for a session to read beside the frame; see
 `rpresolve/perceive.py`), `pipeline-proof` (a test render against a reference render, PASS or FAIL per row, for the G1 proof), `qc` (one FAIL-first QC table from ffprobe and ffmpeg filters), `manifest` (it builds the cut manifest that
