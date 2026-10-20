@@ -1,0 +1,1 @@
+production/offload.sh copies a camera card to archive storage, verifies every file by read-back hash, writes SHA256SUMS and card.json sidecars, and prints safe to format only after an rclone check of the offsite copy passes; production/tests/test-offload.sh runs it hermetically in CI.

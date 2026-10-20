@@ -161,7 +161,7 @@ tools:
   clip: add it in the Color page first. The scripting API cannot create
   color-page nodes.
 - **Vertical needs a timeline of its own.** Queueing never reframes. A
-  destination of fixed shape (`linkedin_9x16`, `linkedin_1x1`) refuses a
+  destination of fixed shape (`linkedin_9x16`, `social_9x16`, `linkedin_1x1`) refuses a
   timeline of another shape, since Resolve would scale the picture into the
   frame with bars. `reframe_plan` plans a crop per span and `cut` with
   `aspects` builds the 9:16 and 1:1 timelines with it applied (see Reframe
@@ -581,6 +581,7 @@ rules under `deliver`. `queue_render` takes a destination and nothing else.
 | `youtube_16x9_hd` | mp4, H.265 | 1920x1080 | AAC 48 kHz stereo | -14 LUFS | sidecar .srt |
 | `linkedin_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `linkedin_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -16 LUFS | burnt in |
+| `social_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -14 LUFS | burnt in |
 | `linkedin_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `client_master` | mov, ProRes 422 HQ | the timeline's | LPCM 24-bit 48 kHz | none (unnormalized) | none |
