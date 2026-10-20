@@ -22,8 +22,7 @@ try:
 except ImportError:
     HAVE_NUMPY = False
 
-HAVE_FFMPEG = shutil.which("ffmpeg") is not None or (
-    HAVE_NUMPY and os.path.exists(dc.FFMPEG))
+HAVE_FFMPEG = HAVE_NUMPY and (os.path.exists(dc.FFMPEG) or shutil.which(dc.FFMPEG) is not None)
 
 needs_numpy = unittest.skipUnless(HAVE_NUMPY, "needs numpy")
 needs_ffmpeg = unittest.skipUnless(HAVE_FFMPEG, "ffmpeg missing")

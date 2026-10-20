@@ -56,7 +56,8 @@ def _row(check, ok, detail):
 # params: pix_fmt (what is rendered), expect_pix_fmt (the spec)
 
 def render_graphic(p, out):
-    prores = ["-c:v", "prores_ks", "-profile:v", "4444" if "a" in p["pix_fmt"][:4] else "3"]
+    from . import overlay
+    prores = ["-c:v", "prores_ks", "-profile:v", "4444" if overlay.has_alpha(p["pix_fmt"]) else "3"]
     _ffmpeg("-f", "lavfi", "-i", "color=c=0x3ad06e:s=128x72:r=25:d=1", "-vf",
             f"format={p['pix_fmt']}", *prores, "-pix_fmt", p["pix_fmt"], out)
 
