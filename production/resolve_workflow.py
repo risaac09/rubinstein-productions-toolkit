@@ -404,7 +404,8 @@ def cmd_measure(args):
             print(f"ERROR: --hero {args.hero} is not one of the segment labels.", file=sys.stderr)
             return 1
         report = rpmeasure.measure(args.file, samples=args.samples, segments=segments,
-                                   hero=args.hero, faces=not args.no_faces)
+                                   hero=args.hero, faces=not args.no_faces,
+                                   delivery=args.delivery)
     except rpmeasure.MeasureError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -1006,6 +1007,7 @@ Examples:
                     help="A camera's time range in seconds; repeat per camera")
     sp.add_argument("--hero", help="Segment label whose skin chroma the others are compared to")
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
+    sp.add_argument("--delivery", help="A delivery encode of the file: compare its readable shadow to the master's")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
 
