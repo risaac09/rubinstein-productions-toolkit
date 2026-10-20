@@ -35,7 +35,15 @@ import sys
 from fractions import Fraction
 
 KINDS = ("build", "hold", "resolve")
-BANNED = re.compile(r"elastic|bounce|back|overshoot", re.I)
+_BANNED = re.compile(r"elastic|bounce|overshoot|ease(?:in|out|inout)back", re.I)
+_WORDS = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])")
+
+
+def banned(name):
+    """elastic, bounce, overshoot anywhere; back as a word, so fallback is fine."""
+    return bool(_banned(name)) or "back" in (w.lower() for w in _WORDS.findall(name))
+
+
 # Opacity and colour may stay linear; position, scale and rotation may not.
 FREE_PROPS = ("opacity", "color", "fill", "stroke")
 LINEAR = (0, 0, 1, 1)
@@ -83,7 +91,7 @@ def lint(spec):
         curves = {}
     for name, q in curves.items():
         path = f"curves.{name}"
-        if BANNED.search(name):
+        if banned(name):
             fail("ban-name", path, f"{name!r} names a banned ease (elastic, bounce, back, overshoot)")
         if not (isinstance(q, list) and len(q) == 4 and all(_num(v) for v in q)):
             fail("bad-curve", path, "a curve is [x1, y1, x2, y2], four finite numbers")
@@ -136,7 +144,7 @@ def lint(spec):
                 if t["prop"] not in FREE_PROPS:
                     fail("uneased", tp, f"{t['prop']} moves without an ease")
                 continue
-            if BANNED.search(str(ease)):
+            if banned(str(ease)):
                 fail("ban-name", tp, f"ease {ease!r} is banned")
             if ease not in curves:
                 fail("unknown-ease", tp, f"ease {ease!r} is not in the curve table")

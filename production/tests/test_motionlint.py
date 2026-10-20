@@ -42,6 +42,12 @@ class MotionLint(unittest.TestCase):
         self.assertIn("overshoot", codes(mutated(lambda s: s["curves"].update(dip=[0.3, -0.2, 0.7, 1]))))
         self.assertIn("ban-name", codes(mutated(lambda s: s["segments"][1]["tweens"][0].update(ease="easeOutBack"))))
 
+    def test_ban_name_is_word_based(self):
+        for ok in ("fallback", "feedback", "background"):
+            self.assertEqual(codes(mutated(lambda s: s["curves"].update({ok: [0.3, 0, 0.7, 1]}))), set())
+        for bad in ("back", "backOut", "back.out", "easeOutBack", "easeoutback", "Elastic"):
+            self.assertIn("ban-name", codes(mutated(lambda s: s["curves"].update({bad: [0.3, 0, 0.7, 1]}))))
+
     def test_curve_edges_inside_are_fine(self):
         self.assertEqual(codes(mutated(lambda s: s["curves"].update(flat=[0, 0, 1, 1.0]))), set())
 
