@@ -59,6 +59,9 @@ Commands that never connect to Resolve:
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
                           copied untouched, into <stem>.loudfix<ext>
+    deliver-manifest      Write manifest.md and checksums.txt for a delivery folder
+                          from ffprobe and the files' bytes; --verify re-checks
+                          checksums.txt; refuses to overwrite without --overwrite
     sync-measure          Where one recording sits against another from their
                           audio: offset in seconds and frames, clock drift,
                           confidence; refuses to call a weak match a match
@@ -755,6 +758,41 @@ def cmd_deliver_fix_loudness(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_deliver_manifest(args):
+    """Write manifest.md and checksums.txt at a delivery root, or with
+    --verify re-check checksums.txt. Exit 0 written or all OK, 1 refused or
+    a mismatch, 2 ffprobe or ffmpeg missing."""
+    import time
+    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf
+    try:
+        if args.verify:
+            results = mf.verify(args.folder)
+            for status, rel in results:
+                print(f"{rel}: {status}")
+            return 0 if all(s == "OK" for s, _ in results) else 1
+        missing = [f for f in ("project", "approval", "prepared_by", "review_copy",
+                               "review_sha256") if not getattr(args, f)]
+        if missing:
+            raise mf.ManifestError("required to write a manifest: --" +
+                                   ", --".join(m.replace("_", "-") for m in missing))
+        dc.check_tools(ffmpeg=not args.no_loudness)
+        text, sums = mf.build(
+            args.folder, _deliver_config(args), args.project, args.approval, args.prepared_by,
+            args.review_copy, args.review_sha256, args.delivered or time.strftime("%Y-%m-%d"),
+            machine_steps=args.machine_steps, credits=args.credits,
+            platform_notes=args.platform_notes, licences=args.licence,
+            loudness=not args.no_loudness)
+        paths = mf.write(args.folder, text, sums, overwrite=args.overwrite)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (mf.ManifestError, dc.CheckError, rpdeliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print("Wrote " + ", ".join(paths))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Sync measure and trim review
 # ---------------------------------------------------------------------------
@@ -1167,6 +1205,32 @@ Examples:
     sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_fix_loudness)
+
+    sp = subparsers.add_parser(
+        "deliver-manifest",
+        help="Offline: write manifest.md and checksums.txt for a delivery folder, or --verify")
+    sp.add_argument("folder", help="Delivery root: <folder>/<destination key>/<files>")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before "
+                         "the command)")
+    sp.add_argument("--verify", action="store_true",
+                    help="Re-check checksums.txt against the files; writes nothing")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="Replace an existing manifest.md and checksums.txt")
+    sp.add_argument("--project", help="Project slug, as used in the file names")
+    sp.add_argument("--approval", help="Approval reference id")
+    sp.add_argument("--prepared-by", help="Name and role")
+    sp.add_argument("--review-copy", help="File name of the approved review copy")
+    sp.add_argument("--review-sha256", help="SHA-256 of the review copy, lowercase hex")
+    sp.add_argument("--delivered", help="Delivery date (default: today)")
+    sp.add_argument("--machine-steps", default="none stated")
+    sp.add_argument("--credits", default="none requested")
+    sp.add_argument("--platform-notes", default="none looked up")
+    sp.add_argument("--licence", action="append", default=[], metavar="ASSET|LICENCE|ATTRIBUTION",
+                    help="A licence row; repeat for more (default: none)")
+    sp.add_argument("--no-loudness", action="store_true",
+                    help="Record loudness as n/a (skips reading each file's audio)")
+    sp.set_defaults(func=cmd_deliver_manifest)
 
     sp = subparsers.add_parser(
         "sync-measure", help="Offline: where one recording sits against another, from their "
