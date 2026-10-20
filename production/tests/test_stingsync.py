@@ -120,6 +120,14 @@ class StingSync(unittest.TestCase):
         with self.assertRaisesRegex(ss.StingError, "numeric frame"):
             ss.check({"keyframes": [{"id": "x"}]}, {"cues": [cue("b", 78, 1)]}, master=self.p("m.wav"))
 
+    def test_a_window_not_under_half_the_keyframe_gap_is_refused(self):
+        close = {"keyframes": [{"id": "a", "frame": 20, "ms": 834.2}, {"id": "b", "frame": 26, "ms": 1084.4}]}
+        wav(self.p("m.wav"), [834.2])
+        with self.assertRaisesRegex(ss.StingError, "half the smallest keyframe gap"):
+            ss.check(close, {"cues": [cue("a", 20, 834.2)]}, master=self.p("m.wav"))
+        close["keyframes"][1].update(frame=27, ms=1126.1)   # a 7-frame gap clears it
+        self.assertEqual(ss.check(close, {"cues": [cue("a", 20, 834.2)]}, master=self.p("m.wav"))[0]["status"], "PASS")
+
     def test_both_lockup_shapes_and_fail_first(self):
         wav(self.p("m.wav"), [834.167, 3253.25 + 100])
         cues = {"cut": "bumper", "cues": [cue("a", 78, 3253.25 + 100), cue("b", 20, 834.167)]}
