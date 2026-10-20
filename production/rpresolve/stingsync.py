@@ -102,6 +102,11 @@ def pick_cut(lockup, cut):
         raise StingError("lockup has no keyframes")
     if not all(isinstance(k, dict) and _num(k.get("frame")) and _num(k.get("ms")) for k in kfs):
         raise StingError("every lockup keyframe needs a numeric frame and ms")
+    fr = sorted(k["frame"] for k in kfs)
+    gap = min((b - a for a, b in zip(fr, fr[1:])), default=None)
+    if gap is not None and MATCH_FRAMES * 2 >= gap:   # a cue could bind to either neighbour
+        raise StingError(f"the {MATCH_FRAMES}-frame match window must be under half the smallest "
+                         f"keyframe gap; this lockup's is {gap} frames")
     return kfs
 
 
