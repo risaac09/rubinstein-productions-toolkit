@@ -30,6 +30,9 @@ Commands that never connect to Resolve:
                           (ffprobe, exiftool)
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
+    perceive              One frame as a folder of scopes (waveform, parade,
+                          vectorscope, histogram, false colour), a Lab palette
+                          and numbers, optionally against a reference still
     manifest              Build a cut manifest from a CUTS script, a vertcut
                           TSV or a video-use edl.json
     endcheck              Check every cut's end word, that it sits in a pause
@@ -678,6 +681,24 @@ def _fps_arg(text):
     return float(dc.parse_fps(text))
 
 
+def cmd_perceive(args):
+    """Write a perception packet for one frame (see rpresolve/perceive.py).
+    Exit 1 when the frame cannot be read or the folder is refused."""
+    try:
+        from rpresolve import measure as rpmeasure, perceive as rpperceive
+    except ImportError as e:
+        print(f"ERROR: perceive needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        packet = rpperceive.perceive(args.file, args.out, at=args.at, ref=args.ref,
+                                     faces=not args.no_faces)
+    except (rpmeasure.MeasureError, rpperceive.PerceiveError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpperceive.format_summary(packet, args.out))
+    return 0
+
+
 def cmd_sync_measure(args):
     """Measure where <other> sits against <reference> from the sound both
     recorded (offline; rpresolve/sync.py). Exit 0 a match, 2 a match whose
@@ -820,6 +841,9 @@ Examples:
   # Measure a render; camera-match numbers for two cameras by time range
   python3 resolve_workflow.py measure render.mov --segment A=0-30 --segment B=30-60 --hero A
 
+  # One frame as scopes and numbers, against a reference still
+  python3 resolve_workflow.py perceive render.mov --at 12.5 --ref still.png --out /path/outside/repo/pkt
+
   # Reframes: plan and check a crop per span (the MCP cut tool builds the versions)
   python3 resolve_workflow.py reframe-plan manifest.json --out /path/outside/repo/manifest.reframed.json
 
@@ -888,6 +912,17 @@ Examples:
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
+
+    sp = subparsers.add_parser(
+        "perceive", help="Offline: one frame as scopes, a Lab palette and numbers, for reading "
+                         "light and colour")
+    sp.add_argument("file", help="Video or still")
+    sp.add_argument("--out", required=True,
+                    help="A new folder for the packet (refused inside any git working tree)")
+    sp.add_argument("--at", type=float, help="Frame time in seconds (default the middle)")
+    sp.add_argument("--ref", help="A reference still (or the middle of a clip) to compare against")
+    sp.add_argument("--no-faces", action="store_true", help="Skip face, skin and lighting-ratio numbers")
+    sp.set_defaults(func=cmd_perceive)
 
     sp = subparsers.add_parser("manifest", help="Offline: build a cut manifest")
     src = sp.add_mutually_exclusive_group(required=True)
