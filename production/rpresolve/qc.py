@@ -209,8 +209,7 @@ def _hook_rows(path, th, dur, black, frozen, gaps, has_video, has_audio):
     rows = []
     if has_video:
         still = float(th["hook_still_s"])
-        opens = [f"black from {_at(a)} for {_at(d)}" for a, _, d in black
-                 if a <= eps and d >= th["black_min_s"] - 1e-9]
+        opens = [f"black from {_at(a)} for {_at(d)}" for a, _, d in black if a <= eps]
         opens += [f"still from {_gap(a, d)}" for a, d in frozen
                   if a <= eps and (d is None or d >= still - 1e-9)]
         rows.append(_hook_row("hook_open", not opens, "; ".join(opens) or "moving picture from 0",
