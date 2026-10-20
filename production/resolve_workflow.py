@@ -623,7 +623,8 @@ def cmd_overlay_check(args):
                           hold=args.hold, alpha_mode=args.alpha_mode, values=values,
                           samples=samples,
                           fringe_max=overlay.FRINGE_MAX if args.fringe_max is None else args.fringe_max,
-                          de_max=overlay.DE_MAX if args.de_max is None else args.de_max)
+                          de_max=overlay.DE_MAX if args.de_max is None else args.de_max,
+                          sample_size=overlay.SAMPLE_BOX if args.sample_box is None else args.sample_box)
     except overlay.ToolMissing as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
@@ -1045,6 +1046,9 @@ Examples:
     sp.add_argument("--values", help="JSON of name -> '#rrggbb', kept outside this repo")
     sp.add_argument("--sample", action="append", metavar="NAME=X,Y[@SECONDS]",
                     help="A pixel that must match the value NAME; repeat")
+    sp.add_argument("--sample-box", type=int,
+                    help="Side of the square each sample averages, odd; 1 for a hairline "
+                         "(default: SAMPLE_BOX in rpresolve/overlay.py)")
     sp.add_argument("--fringe-max", type=float,
                     help="Edge error allowed, 10-bit codes at the median edge pixel "
                          "(default: FRINGE_MAX in rpresolve/overlay.py)")

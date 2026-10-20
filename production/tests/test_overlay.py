@@ -93,6 +93,16 @@ class TestPure(unittest.TestCase):
         with self.assertRaises(ValueError):
             overlay.sample_box(edge_frame(), 1, 20)
 
+    def test_a_hairline_reads_with_a_one_pixel_box(self):
+        rgba = np.zeros((20, 40, 4))
+        rgba[10:12, :, :3], rgba[10:12, :, 3] = overlay.parse_hex(ACCENT), 1.0  # a 2 px hairline
+        rgb, amin = overlay.sample_box(rgba, 20, 10, 1)
+        self.assertEqual(amin, 1.0)
+        np.testing.assert_allclose(rgb, overlay.parse_hex(ACCENT))
+        self.assertLess(overlay.sample_box(rgba, 20, 10)[1], 1.0)  # the default 5 x 5 box spills off it
+        with self.assertRaises(ValueError):
+            overlay.sample_box(rgba, 20, 10, 2)
+
 
 TAGS = ["-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709",
         "-color_trc", "bt709"]

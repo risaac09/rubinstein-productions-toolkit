@@ -45,7 +45,7 @@ EDGE_ALPHA = (0.1, 0.9)  # edge pixels outside this alpha band are left out as n
 # type wrapped from 8-bit PNG to ProRes 4444; a premultiplied file read as straight gave 135.
 FRINGE_MAX = 4.0
 DE_MAX = 1.0             # working default for brand samples, CIEDE2000
-SAMPLE_BOX = 5           # brand samples average a 5 x 5 px box
+SAMPLE_BOX = 5           # brand samples average a 5 x 5 px box; 1 reads a single pixel of a hairline
 HOUSE_PROFILES = ("4444", "4444 XQ")
 
 
@@ -205,6 +205,8 @@ def parse_expect(text):
 
 def sample_box(rgba, x, y, size=SAMPLE_BOX):
     """Mean RGB and minimum alpha of a size x size box centred on (x, y)."""
+    if size < 1 or size % 2 == 0:
+        raise ValueError(f"the sample box must be an odd number of pixels, got {size}")
     h, w = rgba.shape[:2]
     r = size // 2
     if not (r <= x < w - r and r <= y < h - r):
@@ -222,7 +224,7 @@ def _row(rows, status, name, detail):
 
 
 def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="straight",
-          values=None, samples=(), fringe_max=FRINGE_MAX, de_max=DE_MAX):
+          values=None, samples=(), fringe_max=FRINGE_MAX, de_max=DE_MAX, sample_size=SAMPLE_BOX):
     """Run every row on one file. Returns {file, status, rows, probe}."""
     for name, *_ in samples:
         if values is None or name not in values:
@@ -292,7 +294,7 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
 
     for name, x, y, t in samples:
         src = hold_rgba if t is None or t == t_hold else read_rgba(path, t, w, h, vf)
-        rgb, amin = sample_box(src, x, y)
+        rgb, amin = sample_box(src, x, y, sample_size)
         at = f"{name} at {x},{y}"
         if amin < OPAQUE:
             _row(rows, "FAIL", "brand", f"{at} is not fully opaque (alpha {amin:.3f})")
