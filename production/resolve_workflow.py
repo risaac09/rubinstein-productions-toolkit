@@ -32,6 +32,9 @@ Commands that never connect to Resolve:
                           size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
+    pipeline-proof        Compare a test render with a reference render: per-frame
+                          luma and chroma shift, legal or full range, PSNR, SSIM,
+                          VMAF where ffmpeg has libvmaf; PASS or FAIL per row
     manifest              Build a cut manifest from a CUTS script, a vertcut
                           TSV or a video-use edl.json
     endcheck              Check every cut's end word, that it sits in a pause
@@ -339,6 +342,37 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(r["summary"], file=sys.stderr)
     return r["exit_status"]
+
+
+_PROOF_TRAP = ("Resolve decodes log H.264 about 25 code values darker than ffmpeg. Never compare a "
+               "Resolve render against an ffmpeg decode of a log source; the level-shift row would "
+               "blame the pipeline for the decode. Compare render against render, or against "
+               "Resolve's own decode exported as a file.")
+
+
+def cmd_pipeline_proof(args):
+    """Compare a test render with a reference (see rpresolve/proof.py). Exit
+    0 on PASS, 1 on FAIL or an unreadable file."""
+    try:
+        from rpresolve import proof as rpproof
+    except ImportError as e:
+        print(f"ERROR: pipeline-proof needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    problem = _out_problem(args.json) if args.json else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    try:
+        report = rpproof.compare(args.test, args.reference, frames=args.frames, thresholds={
+            "psnr": args.psnr, "ssim": args.ssim, "vmaf": args.vmaf,
+            "luma_shift": args.luma_shift, "chroma_shift": args.chroma_shift})
+    except rpproof.MeasureError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    sys.stdout.write(rpproof.format_report(report))
+    if args.json:
+        rpproof.write_json(report, args.json)
+    return 0 if report["passed"] else 1
 
 
 def cmd_shoot_table(args):
@@ -1054,6 +1088,25 @@ Examples:
     sp.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
     sp.add_argument("--json", help="Also write the full report as JSON here")
     sp.set_defaults(func=cmd_measure)
+
+    sp = subparsers.add_parser(
+        "pipeline-proof", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Offline: compare a test render with a reference; PASS or FAIL per row",
+        description="Compare a test render with a reference (another render, or Resolve's own "
+                    "decode exported as a file). Rows: frames, range, gamma or level shift, luma "
+                    "and chroma shift, PSNR, SSIM, VMAF (\"not available\" when ffmpeg has no "
+                    "libvmaf). Exit 0 on PASS, 1 on FAIL.",
+        epilog="KNOWN TRAP: " + _PROOF_TRAP)
+    sp.add_argument("test", help="The render under test")
+    sp.add_argument("reference", help="The reference render, or Resolve's decode exported as a file")
+    sp.add_argument("--frames", type=int, default=300, help="Frames to compare from the start (default 300)")
+    sp.add_argument("--psnr", type=float, help="Minimum PSNR in dB (default 45, for a flat clip)")
+    sp.add_argument("--ssim", type=float, help="Minimum SSIM (default 0.99)")
+    sp.add_argument("--vmaf", type=float, help="Minimum VMAF (default 95)")
+    sp.add_argument("--luma-shift", type=float, help="Largest mean luma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--chroma-shift", type=float, help="Largest mean chroma shift in 8-bit codes (default 1.5)")
+    sp.add_argument("--json", help="Also write the full report, per-frame shifts included, here")
+    sp.set_defaults(func=cmd_pipeline_proof)
 
     sp = subparsers.add_parser("manifest", help="Offline: build a cut manifest")
     src = sp.add_mutually_exclusive_group(required=True)

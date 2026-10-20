@@ -148,19 +148,29 @@ def read_frame(path, t, width, height, vf=None):
     return arr.astype(np.float64) / 65535.0
 
 
-_STAT = re.compile(r"lavfi\.signalstats\.(YMIN|YMAX)=(\d+)")
+_STAT = re.compile(r"lavfi\.signalstats\.(YMIN|YMAX|YAVG|UAVG|VAVG)=([\d.]+)")
+
+
+def signal_frames(path, bit_depth, t=0.0, count=1):
+    """Per frame from ffmpeg signalstats, from time t: a list of dicts with
+    ymin, ymax, yavg, uavg and vavg in 8-bit code values. Empty when
+    signalstats printed nothing."""
+    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", str(count),
+           "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"]
+    proc = _run(cmd, encoding="utf-8", errors="replace")
+    scale = 2 ** (bit_depth - 8)
+    frames = []
+    for block in proc.stdout.split("frame:")[1:]:
+        found = {k: float(v) / scale for k, v in _STAT.findall(block)}
+        if len(found) == 5:
+            frames.append({k.lower(): v for k, v in found.items()})
+    return frames
 
 
 def legal_range(path, t, bit_depth):
     """(YMIN, YMAX) from ffmpeg signalstats at time t, in 8-bit code values."""
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", "1",
-           "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"]
-    proc = _run(cmd, encoding="utf-8", errors="replace")
-    found = dict(_STAT.findall(proc.stdout))
-    if "YMIN" not in found or "YMAX" not in found:
-        return None
-    scale = 2 ** (bit_depth - 8)
-    return int(found["YMIN"]) / scale, int(found["YMAX"]) / scale
+    frames = signal_frames(path, bit_depth, t)
+    return (frames[0]["ymin"], frames[0]["ymax"]) if frames else None
 
 
 RGB_PIX_FMTS = ("rgb", "bgr", "gbr", "argb", "rgba", "abgr", "bgra", "gray", "pal8")

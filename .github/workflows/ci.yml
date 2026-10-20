@@ -298,6 +298,12 @@ jobs:
           fi
           echo "skips for packages and ffmpeg: none. Other skips:"
           grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
+      - name: Pipeline proof, lavfi fixtures
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          python -m unittest -v production.tests.test_proof
 
   # The Pages site builds from scripts/build-site.py, and the deploy workflow
   # runs only on pushes to main. Build into a temp directory here so a docs
