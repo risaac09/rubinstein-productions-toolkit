@@ -22,8 +22,18 @@ Rows:
     astats_dc       overall DC offset under astats_dc_max
     silencedetect   no gap below silence_noise_db of silence_min_s or longer
 
+Portrait renders (height over width) add four hook rows, WARN rather than
+FAIL because the common hook rules are folklore; they read the same detect
+pass, no extra decode:
+    hook_open       frame 0 is not black, a fade or a still of hook_still_s+
+    hook_sound      sound starts within hook_sound_s (no silence from 0)
+    dead_tail       the last tail_s are not frozen or silent
+    hook_caption    a sidecar <stem>.srt's first cue starts by hook_caption_s;
+                    SKIP with no sidecar (burnt-in captions need OCR)
+
 A row is {check, status, found, expected, source[, note]}; status is PASS,
-FAIL or SKIP, as in delivercheck.
+FAIL, WARN or SKIP. WARN sorts after FAIL, counts on its own and never
+changes the result status (or the exit code).
 """
 
 import csv
@@ -33,6 +43,7 @@ import re
 from . import deliver, delivercheck as dc
 
 PASS, FAIL, SKIP = dc.PASS, dc.FAIL, dc.SKIP
+WARN = "WARN"
 
 # Every threshold the table uses; override one with --set KEY=VALUE.
 THRESHOLDS = {
@@ -48,6 +59,10 @@ THRESHOLDS = {
     "astats_dc_max": 0.01,          # |DC offset|, full scale = 1.0
     "silence_min_s": 0.5,           # silencedetect d=
     "silence_noise_db": -50.0,      # silencedetect n=
+    "hook_still_s": 1.0,            # portrait: a still or freeze from 0 this long is a WARN
+    "hook_sound_s": 0.5,            # portrait: silence from 0 past this is a WARN
+    "tail_s": 0.7,                  # portrait: the last this-many seconds frozen or silent
+    "hook_caption_s": 1.5,          # portrait: the first sidecar cue should start by here
 }
 
 
@@ -152,22 +167,84 @@ def _at(seconds):
 # The table
 # ---------------------------------------------------------------------------
 
-def _detect_pass(path, th, has_video, has_audio):
-    """The ffmpeg log of one decode with every detector filter attached."""
+def _detect_pass(path, th, has_video, has_audio, portrait=False):
+    """The ffmpeg log of one decode with every detector filter attached. A
+    portrait render detects freezes and silences down to the hook thresholds;
+    the plain rows filter back up to their own."""
+    fd, sd = th["freeze_min_s"], th["silence_min_s"]
+    if portrait:
+        fd = min(fd, th["hook_still_s"], th["tail_s"])
+        sd = min(sd, th["hook_sound_s"], th["tail_s"])
     cmd = [dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", dc._src(path)]
     if has_video:
         cmd += ["-map", "0:v:0", "-vf",
                 f"blackdetect=d={th['black_min_s']}:pix_th={th['black_pix_th']},"
-                f"freezedetect=n={th['freeze_noise_db']}dB:d={th['freeze_min_s']},"
+                f"freezedetect=n={th['freeze_noise_db']}dB:d={fd},"
                 f"scdet=t={th['scdet_threshold']}"]
     if has_audio:
         cmd += ["-map", "0:a:0", "-af",
-                f"silencedetect=n={th['silence_noise_db']}dB:d={th['silence_min_s']},"
+                f"silencedetect=n={th['silence_noise_db']}dB:d={sd},"
                 "astats=measure_perchannel=none"]
     proc = dc._run(cmd + ["-f", "null", "-"], dc.READ_TIMEOUT_S)
     if proc.returncode != 0:
         raise dc.CheckError(f"ffmpeg could not scan {path}: {proc.stderr.strip()[-300:]}")
     return proc.stderr
+
+
+def _hook_row(name, ok, found, expected, note=None):
+    r = _row(name, ok, found, expected, note)
+    if r["status"] == FAIL:
+        r["status"] = WARN
+    return r
+
+
+def _long(segs, min_s):
+    """Segments (start, duration) of min_s or longer; None duration runs to the end."""
+    return [(a, d) for a, d in segs if d is None or d >= min_s - 1e-9]
+
+
+def _hook_rows(path, th, dur, black, frozen, gaps, has_video, has_audio):
+    """The portrait hook rows from the detect pass's raw segments."""
+    eps = 0.1  # a frame or two at reel frame rates
+    rows = []
+    if has_video:
+        still = float(th["hook_still_s"])
+        opens = [f"black from {_at(a)} for {_at(d)}" for a, _, d in black
+                 if a <= eps and d >= th["black_min_s"] - 1e-9]
+        opens += [f"still from {_gap(a, d)}" for a, d in frozen
+                  if a <= eps and (d is None or d >= still - 1e-9)]
+        rows.append(_hook_row("hook_open", not opens, "; ".join(opens) or "moving picture from 0",
+                              f"no black or still of {still:g}s or more at 0"))
+    if has_audio:
+        snd = float(th["hook_sound_s"])
+        late = [_gap(a, d) for a, d in gaps if a <= eps and (d is None or d > snd)]
+        rows.append(_hook_row("hook_sound", not late, "; ".join(late) or "sound from 0",
+                              f"sound within {snd:g}s of 0"))
+    if dur:
+        tail = float(th["tail_s"])
+        dead = []
+        for kind, segs in (("freeze", frozen), ("silence", gaps)):
+            for a, d in segs:
+                if a <= dur - tail + eps and (d is None or a + d >= dur - eps):
+                    dead.append(f"{kind} from {_at(a)} to the end")
+        rows.append(_hook_row("dead_tail", not dead, "; ".join(dead) or "live to the end",
+                              f"last {tail:g}s not frozen or silent"))
+    srt = os.path.splitext(path)[0] + ".srt"
+    cap = float(th["hook_caption_s"])
+    if not os.path.isfile(srt):
+        rows.append(_hook_row("hook_caption", None, "no sidecar .srt", f"first cue by {cap:g}s",
+                              "burnt-in captions cannot be read without OCR"))
+    else:
+        try:
+            with open(srt, encoding="utf-8-sig") as f:
+                cues, _ = dc.parse_srt(f.read())
+        except (OSError, UnicodeDecodeError):
+            cues = []
+        first = cues[0][0] if cues else None
+        rows.append(_hook_row("hook_caption", first is not None and first <= cap + 1e-9,
+                              "no readable cue" if first is None else f"first cue at {_at(first)}",
+                              f"first cue by {cap:g}s"))
+    return rows
 
 
 def _gap(start, duration):
@@ -196,6 +273,9 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
     has_video = any(s.get("codec_type") == "video"
                     and not (s.get("disposition") or {}).get("attached_pic") for s in streams)
     has_audio = any(s.get("codec_type") == "audio" for s in streams)
+    vid = next((s for s in streams if s.get("codec_type") == "video"
+                and not (s.get("disposition") or {}).get("attached_pic")), {})
+    portrait = has_video and (vid.get("height") or 0) > (vid.get("width") or 0)
     rows = []
     if not (has_video or has_audio):
         rows.append(_row("streams", False, "no video or audio stream", "at least one"))
@@ -217,14 +297,15 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
                          "unreadable" if dur is None else f"{dur:.3f}s",
                          f"{expected_duration:g}s +/- {tol:g}s"))
 
-    log = _detect_pass(path, th, has_video, has_audio) if (has_video or has_audio) else ""
+    log = _detect_pass(path, th, has_video, has_audio, portrait) if (has_video or has_audio) else ""
 
+    black, frozen, gaps = [], [], []
     if has_video:
         black = parse_black(log)
         rows.append(_segments("blackdetect", [f"{_at(a)} for {_at(d)}" for a, _, d in black],
                               th["black_min_s"], "black"))
         frozen = parse_freeze(log)
-        rows.append(_segments("freezedetect", [_gap(a, d) for a, d in frozen],
+        rows.append(_segments("freezedetect", [_gap(a, d) for a, d in _long(frozen, th["freeze_min_s"])],
                               th["freeze_min_s"], "freeze"))
         cuts = parse_scdet(log, th["scdet_threshold"])
         if shots is None:
@@ -264,15 +345,18 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
         gaps = parse_silence(log)
         rows.append(_segments(
             "silencedetect",
-            [_gap(s, d) for s, d in gaps],
+            [_gap(s, d) for s, d in _long(gaps, th["silence_min_s"])],
             th["silence_min_s"], "silence"))
     else:
         for n in ("loudness", "true_peak", "astats_peak", "astats_dc", "silencedetect"):
             rows.append(_row(n, None, "no audio stream", "-"))
 
-    order = {FAIL: 0, PASS: 1, SKIP: 2}
+    if portrait:
+        rows += _hook_rows(path, th, dur, black, frozen, gaps, has_video, has_audio)
+
+    order = {FAIL: 0, WARN: 1, PASS: 2, SKIP: 3}
     rows.sort(key=lambda r: order[r["status"]])  # stable: each source keeps its own order
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP)}
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, WARN, SKIP)}
     return {"file": os.path.abspath(path), "destination": dest["key"] if dest else None,
             "checks": rows, "counts": counts, "status": "fail" if counts[FAIL] else "pass",
             "thresholds": th}
@@ -285,5 +369,5 @@ def format_report(result):
         lines.append(f"  {r['status']:<4}  {r['check']:<14} found {r['found']}  "
                      f"(expected {r['expected']})" + (f"  [{r['note']}]" if r.get("note") else ""))
     c = result["counts"]
-    lines.append(f"qc: {c[PASS]} pass, {c[FAIL]} fail, {c[SKIP]} skipped: {result['status'].upper()}")
+    lines.append(f"qc: {c[PASS]} pass, {c[FAIL]} fail, {c[WARN]} warn, {c[SKIP]} skipped: {result['status'].upper()}")
     return "\n".join(lines) + "\n"
