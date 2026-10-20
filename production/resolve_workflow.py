@@ -56,8 +56,9 @@ Commands that never connect to Resolve:
                           name); exit 0 pass, 1 fail, 2 tool missing
     qc                    One FAIL-first table for a rendered file: deliver-check's
                           rows plus ffmpeg blackdetect, freezedetect, scdet,
-                          ebur128, astats and silencedetect; exit 0 pass, 1 fail,
-                          2 tool missing
+                          ebur128, astats and silencedetect (portrait renders
+                          add hook WARN rows that never change the exit);
+                          exit 0 pass, 1 fail, 2 tool missing
     deliver-captions      Turn Resolve's <stem>_<track>.ttml sidecar into a
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
