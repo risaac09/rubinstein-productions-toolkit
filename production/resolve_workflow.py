@@ -28,6 +28,8 @@ Commands that never connect to Resolve:
                           resolve_survey.py, no Resolve connection)
     detect                Classify camera and picture profile from file headers
                           (ffprobe, exiftool)
+    shoot-table           One CSV row per clip: camera, start, duration, fps,
+                          size, profile, lens, audio, with flags
     measure               Luma, clipping, legal range and skin numbers from a
                           render; camera-match numbers per segment
     manifest              Build a cut manifest from a CUTS script, a vertcut
@@ -46,10 +48,17 @@ Commands that never connect to Resolve:
     deliver-check         Check a rendered file against its destination (codec,
                           size, fps, colour tags, audio, captions, loudness,
                           name); exit 0 pass, 1 fail, 2 tool missing
+    qc                    One FAIL-first table for a rendered file: deliver-check's
+                          rows plus ffmpeg blackdetect, freezedetect, scdet,
+                          ebur128, astats and silencedetect; exit 0 pass, 1 fail,
+                          2 tool missing
     deliver-captions      Turn Resolve's <stem>_<track>.ttml sidecar into a
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
                           copied untouched, into <stem>.loudfix<ext>
+    deliver-manifest      Write manifest.md and checksums.txt for a delivery folder
+                          from ffprobe and the files' bytes; --verify re-checks
+                          checksums.txt; refuses to overwrite without --overwrite
     sync-measure          Where one recording sits against another from their
                           audio: offset in seconds and frames, clock drift,
                           confidence; refuses to call a weak match a match
@@ -61,7 +70,7 @@ to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
 it (RETIRED below; the same table is in production/resolve-mcp.md).
 
 Config:
-    deliver-check, deliver-captions and deliver-fix-loudness read delivery
+    deliver-check, qc, deliver-captions and deliver-fix-loudness read delivery
     destinations from resolve-config.json (next to this script). An overlay
     kept outside any repository goes in with --config <path>.
 
@@ -82,6 +91,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
     from rpresolve import api as rpapi  # noqa: E402
     from rpresolve import detect as rpdetect  # noqa: E402
+    from rpresolve import shoot_table as rpshoot  # noqa: E402
     from rpresolve import config as rpconfig  # noqa: E402
     from rpresolve import paths as rppaths  # noqa: E402
     from rpresolve import workflows as rpwork  # noqa: E402
@@ -329,6 +339,51 @@ def cmd_detect(args):
         sys.stdout.write(text)
     print(r["summary"], file=sys.stderr)
     return r["exit_status"]
+
+
+def cmd_shoot_table(args):
+    """Write the shoot table CSV (see rpresolve/shoot_table.py). Never
+    connects to Resolve. Exit status: 0 clean, 2 when any row carries a
+    flag, 1 on a usage error, missing tools or no file found."""
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    offsets = {}
+    for item in args.offset or []:
+        cam, sep, secs = item.rpartition("=")
+        try:
+            offsets[cam] = float(secs)
+        except ValueError:
+            cam = ""
+        if not sep or not cam:
+            print(f"ERROR: --offset wants CAM=SECONDS (got '{item}')", file=sys.stderr)
+            return 1
+    try:
+        rows, missing = rpshoot.build(args.paths, long_min=args.long_min, weak_db=args.weak_db,
+                                      offsets=offsets)
+    except rpdetect.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    for m in missing:
+        print(f"  [skip] Not found: {m}", file=sys.stderr)
+    if not rows:
+        print("ERROR: no video files found", file=sys.stderr)
+        return 1
+    bad = rpshoot.unknown_offsets(rows, offsets)
+    if bad:
+        print("ERROR: --offset names no camera in the table: " + ", ".join(bad)
+              + " (cameras: " + ", ".join(sorted({r['camera'] for r in rows})) + ")", file=sys.stderr)
+        return 1
+    text = rpshoot.format_csv(rows)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(rpshoot.summarize(rows), file=sys.stderr)
+    return 2 if any(r["flags"] for r in rows) else 0
 
 
 def cmd_measure(args):
@@ -638,6 +693,38 @@ def cmd_overlay_check(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_qc(args):
+    """The QC table: deliver-check's rows (with --dest) plus the ffmpeg
+    rows. Exit 0 all pass, 1 any fail (or an unreadable file), 2 ffprobe or
+    ffmpeg missing."""
+    from rpresolve import deliver, delivercheck as dc, qc
+    try:
+        th = qc.parse_overrides(args.set)
+        if (args.fps or args.size) and not args.dest:
+            raise ValueError("--fps and --size assert against a destination: add --dest.")
+        dest = folders = None
+        if args.dest:
+            config = _deliver_config(args)
+            dest, folders = deliver.destination(config, args.dest), deliver.subfolders(config)
+        size = _size(args.size) if args.size else None
+        if args.fps:
+            dc.parse_fps(args.fps)
+        r = qc.run(args.file, dest, config_folders=folders, fps=args.fps, size=size,
+                   expected_duration=args.duration,
+                   shots=qc.shot_count(args.shots) if args.shots else None, thresholds=th)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (dc.CheckError, deliver.DeliverError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        sys.stdout.write(qc.format_report(r))
+    return 0 if r["status"] == "pass" else 1
+
+
 def cmd_deliver_captions(args):
     """Turn Resolve's TTML sidecar beside a render into a zero-based
     <stem>.srt, read it back, and (unless --keep-ttml) move the TTML to
@@ -698,6 +785,41 @@ def cmd_deliver_fix_loudness(args):
     for w in r["warnings"]:
         print(f"  WARNING: {w}", file=sys.stderr)
     return 0 if r["status"] == "pass" else 1
+
+
+def cmd_deliver_manifest(args):
+    """Write manifest.md and checksums.txt at a delivery root, or with
+    --verify re-check checksums.txt. Exit 0 written or all OK, 1 refused or
+    a mismatch, 2 ffprobe or ffmpeg missing."""
+    import time
+    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf
+    try:
+        if args.verify:
+            results = mf.verify(args.folder)
+            for status, rel in results:
+                print(f"{rel}: {status}")
+            return 0 if all(s == "OK" for s, _ in results) else 1
+        missing = [f for f in ("project", "approval", "prepared_by", "review_copy",
+                               "review_sha256") if not getattr(args, f)]
+        if missing:
+            raise mf.ManifestError("required to write a manifest: --" +
+                                   ", --".join(m.replace("_", "-") for m in missing))
+        dc.check_tools(ffmpeg=not args.no_loudness)
+        text, sums = mf.build(
+            args.folder, _deliver_config(args), args.project, args.approval, args.prepared_by,
+            args.review_copy, args.review_sha256, args.delivered or time.strftime("%Y-%m-%d"),
+            machine_steps=args.machine_steps, credits=args.credits,
+            platform_notes=args.platform_notes, licences=args.licence,
+            loudness=not args.no_loudness)
+        paths = mf.write(args.folder, text, sums, overwrite=args.overwrite)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (mf.ManifestError, dc.CheckError, rpdeliver.DeliverError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print("Wrote " + ", ".join(paths))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -911,6 +1033,18 @@ Examples:
     sp.set_defaults(func=cmd_detect)
 
     sp = subparsers.add_parser(
+        "shoot-table", help="Offline: one CSV row per clip with flags for long, VFR and weak-audio takes")
+    sp.add_argument("paths", nargs="+", help="Absolute paths of media files or folders (searched recursively)")
+    sp.add_argument("--out", "-o", help="Write the CSV here instead of stdout")
+    sp.add_argument("--offset", action="append", metavar="CAM=SECONDS",
+                    help="Clock offset added to local_start for one camera name as detect names it (repeatable)")
+    sp.add_argument("--long-min", type=float, default=rpshoot.LONG_TAKE_MIN,
+                    help="Flag takes longer than this many minutes (default %(default)s)")
+    sp.add_argument("--weak-db", type=float, default=rpshoot.WEAK_AUDIO_DB,
+                    help="Flag audio whose mean volume is below this dB (default %(default)s)")
+    sp.set_defaults(func=cmd_shoot_table)
+
+    sp = subparsers.add_parser(
         "measure", help="Offline: luma, clipping, legal range and skin numbers from a render")
     sp.add_argument("file", help="Rendered video or still")
     sp.add_argument("--samples", type=int, default=10, help="Frames to sample (default 10)")
@@ -1027,6 +1161,25 @@ Examples:
     sp.set_defaults(func=cmd_deliver_check)
 
     sp = subparsers.add_parser(
+        "qc", help="Offline: one FAIL-first QC table for a rendered file")
+    sp.add_argument("file")
+    sp.add_argument("--dest", help="Destination key from resolve-config.json; adds "
+                    "deliver-check's rows and the loudness target")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before the command)")
+    sp.add_argument("--fps", help="The timeline's frame rate to assert (with --dest)")
+    sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
+    sp.add_argument("--duration", type=float, metavar="SECONDS",
+                    help="Expected duration (the lock); adds a duration row")
+    sp.add_argument("--shots", metavar="CSV",
+                    help="Shot list: a header row, then one row per shot; the cut count is checked "
+                    "against rows minus one")
+    sp.add_argument("--set", action="append", metavar="KEY=VALUE",
+                    help="Override a threshold (repeatable); keys are in rpresolve/qc.py THRESHOLDS")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_qc)
+
+    sp = subparsers.add_parser(
         "overlay-check",
         help="Offline: alpha, tags, clear and opaque frames, edge fringe and brand colour "
              "of a graphic master")
@@ -1081,6 +1234,32 @@ Examples:
     sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_fix_loudness)
+
+    sp = subparsers.add_parser(
+        "deliver-manifest",
+        help="Offline: write manifest.md and checksums.txt for a delivery folder, or --verify")
+    sp.add_argument("folder", help="Delivery root: <folder>/<destination key>/<files>")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before "
+                         "the command)")
+    sp.add_argument("--verify", action="store_true",
+                    help="Re-check checksums.txt against the files; writes nothing")
+    sp.add_argument("--overwrite", action="store_true",
+                    help="Replace an existing manifest.md and checksums.txt")
+    sp.add_argument("--project", help="Project slug, as used in the file names")
+    sp.add_argument("--approval", help="Approval reference id")
+    sp.add_argument("--prepared-by", help="Name and role")
+    sp.add_argument("--review-copy", help="File name of the approved review copy")
+    sp.add_argument("--review-sha256", help="SHA-256 of the review copy, lowercase hex")
+    sp.add_argument("--delivered", help="Delivery date (default: today)")
+    sp.add_argument("--machine-steps", default="none stated")
+    sp.add_argument("--credits", default="none requested")
+    sp.add_argument("--platform-notes", default="none looked up")
+    sp.add_argument("--licence", action="append", default=[], metavar="ASSET|LICENCE|ATTRIBUTION",
+                    help="A licence row; repeat for more (default: none)")
+    sp.add_argument("--no-loudness", action="store_true",
+                    help="Record loudness as n/a (skips reading each file's audio)")
+    sp.set_defaults(func=cmd_deliver_manifest)
 
     sp = subparsers.add_parser(
         "sync-measure", help="Offline: where one recording sits against another, from their "
