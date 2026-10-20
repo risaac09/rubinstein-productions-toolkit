@@ -55,6 +55,9 @@ Commands that never connect to Resolve:
                           confidence; refuses to call a weak match a match
     trim-review           Silence, filler and repeat review of an edit as a
                           TSV; deletes nothing
+    story-packet          A shoot as story material in one Markdown file: per
+                          clip in capture order, the shoot-table row, an
+                          audio energy line, the words as phrases, labels
 
 Retired: the commands that wrote to Resolve. Running one exits 2 and says what
 to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
@@ -762,6 +765,32 @@ def cmd_trim_review(args):
     return 0
 
 
+def cmd_story_packet(args):
+    """One Markdown packet from a shoot table, words and labels, for the
+    selects board. Scores and chooses nothing. Exit 0 written, 1 failed."""
+    from rpresolve import cutlist, storypacket as sp
+    problem = _out_problem(args.out) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
+    if args.words and not os.path.isdir(args.words):
+        print(f"ERROR: --words {args.words} is not a folder.", file=sys.stderr)
+        return 1
+    try:
+        text, summary = sp.build(args.table, args.words, args.labels, audio=not args.no_audio,
+                                 title=args.title)
+    except (sp.PacketError, cutlist.CutlistError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.out:
+        _write_private(args.out, text)
+        print(f"Wrote {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    print(summary, file=sys.stderr)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI Parser
 # ---------------------------------------------------------------------------
@@ -1052,6 +1081,16 @@ Examples:
                     help="Also list 'like', 'you know' and 'I mean' (low confidence, keep)")
     sp.add_argument("--no-audio", action="store_true", help="Words only: no silences")
     sp.set_defaults(func=cmd_trim_review)
+
+    sp = subparsers.add_parser(
+        "story-packet", help="Offline: a shoot as story material in one Markdown file")
+    sp.add_argument("table", help="The shoot-table CSV (one row per clip)")
+    sp.add_argument("--words", help="Folder of mlx_whisper word JSON, one <stem>.json per clip")
+    sp.add_argument("--labels", help="JSONL of picture labels: file, start_s, end_s, text")
+    sp.add_argument("--title", help="The packet's title (default: the table's name)")
+    sp.add_argument("--out", help="Write the packet here instead of stdout (refused in this repo)")
+    sp.add_argument("--no-audio", action="store_true", help="Skip the energy line (no decode)")
+    sp.set_defaults(func=cmd_story_packet)
 
     args = parser.parse_args()
     if not args.command:

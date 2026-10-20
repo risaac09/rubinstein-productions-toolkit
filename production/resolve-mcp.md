@@ -279,15 +279,19 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
 - Never connect to Resolve: `survey`, `detect`, `measure`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`
-  and `trim-review` (the TSV). `tilt-fixture` and `tilt-check` are script
-  commands only; they have no MCP tool.
+  `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`,
+  `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and `tilt-check`
+  are script commands only; they have no MCP tool.
 
-Six of these have no tool: `manifest` (it builds the cut manifest that
+Seven of these have no tool: `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
 (the loudness step of the deliver loop), `list-projects` and
-`list-render-formats`, and `tilt-fixture` and `tilt-check` (a hand step: a
-person renders the still, so no tool is planned). `info` is covered by `resolve_status`,
+`list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
+person renders the still, so no tool is planned), and `story-packet` (one
+Markdown file per shoot for the selects board: per clip in capture order, the
+shoot-table row, an audio energy sparkline with the loud spans, the
+words as timed phrases and any picture labels; it scores and chooses
+nothing). `info` is covered by `resolve_status`,
 `list_timelines` and `render_queue_status` together. Each other command has a
 tool of the same name (with underscores), with a few flags left behind: the
 script's `sync-measure` takes `--ref-stream` and
