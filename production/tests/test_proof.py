@@ -26,7 +26,7 @@ except ImportError:
 
 needs = unittest.skipIf(proof is None or not shutil.which(measure.FFMPEG), "needs numpy and ffmpeg")
 
-SRC = "gradients=size=160x96:rate=10:duration=1.5:speed=0:c0=black:c1=white:seed=1"
+SRC = "gradients=size=160x96:rate=10:duration=1.5:speed=0.0001:c0=black:c1=white:seed=1"
 
 
 def make(path, vf="null", full=False):
