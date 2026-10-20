@@ -35,6 +35,32 @@ def sine(seconds, freq=440.0, amp=0.25, rate=RATE):
     return (amp * np.sin(2 * np.pi * freq * t)).astype(np.float32)
 
 
+def speech_like(seconds, seed=1):
+    """Syllables 4 to 6 a second: a harmonic voiced part and a broadband burst
+    that starts within 0.02 to 3 ms, over a -50 dBFS floor. The old detector
+    reads roughly one in three of the onsets as a click."""
+    rng = np.random.default_rng(seed)
+    n = int(seconds * RATE)
+
+    def lowpass(v, fc):
+        f = np.fft.rfft(v) / (1 + (np.fft.rfftfreq(len(v), 1 / RATE) / fc) ** 4)
+        return np.fft.irfft(f, len(v))
+
+    x = lowpass(rng.normal(0, 0.007, n), 6000)
+    pos = 0.1
+    while pos < seconds - 0.3:
+        m = int(rng.uniform(0.06, 0.16) * RATE)
+        t = np.arange(m) / RATE
+        env = np.minimum(t / rng.choice([2e-5, 1e-4, 5e-4, 3e-3]), 1) * np.exp(-t / (m / RATE / 2.5))
+        noise = lowpass(rng.normal(0, 1, m), 6000)
+        voiced = 0.1 * sum(np.sin(2 * np.pi * rng.uniform(100, 220) * k * t) / k for k in range(1, 12))
+        seg = rng.uniform(0.04, 0.2) * env * (0.3 * rng.uniform(0.3, 1) * noise / noise.std() + voiced)
+        i = int(pos * RATE)
+        x[i:i + m] += seg[:n - i]
+        pos += 1 / rng.uniform(4, 6)
+    return x.astype(np.float32)
+
+
 def stats(x, rate=RATE, t0=0.0, blocks=1):
     """_Stats over x (mono or (n, ch)), fed in `blocks` reads that start on
     window edges, as samples() reads them."""
@@ -101,6 +127,25 @@ class TestSampleCounts(unittest.TestCase):
         n = np.random.default_rng(9).normal(0, 0.1, RATE).astype(np.float32)
         x = np.concatenate([np.zeros(int(0.97 * RATE), np.float32), n])
         self.assertEqual(stats(x)["clicks"], [])
+
+    def test_speech_is_not_clicks_but_planted_clicks_are_found(self):
+        x = speech_like(12)
+        old, ar.CLICK_ISOLATION = ar.CLICK_ISOLATION, 0.0  # the detector before VP-120b
+        try:
+            self.assertGreater(len(stats(x)["clicks"]), 20)  # the fixture does fool it
+        finally:
+            ar.CLICK_ISOLATION = old
+        self.assertEqual(stats(x)["clicks"], [])
+        impulses, steps = (2.0, 5.1, 8.3, 10.9), (3.4, 6.7, 9.6)
+        y = x.copy()
+        for t in impulses:
+            y[int(t * RATE)] += 0.1  # -20 dBFS
+        for t in steps:
+            y[int(t * RATE):] += 0.1
+        got = stats(y)["clicks"]
+        for t in impulses + steps:
+            self.assertTrue(any(abs(g - t) <= 0.002 for g in got), (t, got))
+        self.assertEqual(len(got), len(impulses) + len(steps))
 
     def test_digital_silence_is_not_clicks(self):
         self.assertEqual(stats(np.zeros(RATE * 2, np.float32))["clicks"], [])

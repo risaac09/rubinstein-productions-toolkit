@@ -25,7 +25,10 @@ The numbers:
                   encode smears flat tops, so there true peak speaks instead
     clicks        times of isolated discontinuities: a sample whose second
                   difference is CLICK_SIGMA times its 100 ms block's robust
-                  sigma and at least CLICK_FLOOR, grouped within CLICK_GAP_S
+                  sigma and at least CLICK_FLOOR, and at least CLICK_ISOLATION
+                  times the loudest second difference within CLICK_NEIGHBOUR_S
+                  (so a speech onset, which builds over milliseconds, is not
+                  one), grouped within CLICK_GAP_S
     silences      runs of 100 ms windows whose loudest channel is under
                   silence_db for at least silence_min_s
     dropouts      the same for digital silence (under -120 dBFS) that
@@ -76,6 +79,8 @@ CLICK_SIGMA = 12.0
 CLICK_FLOOR = 0.02           # about -34 dBFS: a quieter step, or a tone cut at a zero
                              # crossing, is not reported
 CLICK_GAP_S = 0.002
+CLICK_ISOLATION = 4.0        # a click stands this many times above its loudest neighbour
+CLICK_NEIGHBOUR_S = 0.003    # neighbours are 2 samples to this far either side
 DIGITAL_SILENCE_DB = -120.0
 OCTAVES_HZ = (31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 DEFAULTS = {"silence_db": -50.0, "silence_min_s": 0.5, "dc_max": 0.01, "clip_runs_min": 3,
@@ -268,8 +273,18 @@ class _Stats:
         near = flat.copy()
         near[1:] |= flat[:-1]
         near[:-1] |= flat[1:]
-        hit = ((dev > np.maximum(CLICK_SIGMA * sigma, CLICK_FLOOR))
-               & ~near.reshape(w.shape)).any(axis=2).ravel()
+        cand = ((dev > np.maximum(CLICK_SIGMA * sigma, CLICK_FLOOR))
+                & ~near.reshape(w.shape)).reshape(-1, self.ch)
+        # Speech onsets (plosives, fricatives) pass the sigma test but build over
+        # milliseconds, so a louder sample sits close by; a click does not.
+        reach = max(2, int(round(CLICK_NEIGHBOUR_S * self.rate)))
+        hit = np.zeros(len(x), bool)
+        calm = np.where(near, 0.0, np.abs(e))  # clip corners are counted as clips already
+        for i, c in np.argwhere(cand):
+            a = calm[:, c]
+            around = max(a[max(0, i - reach):max(0, i - 1)].max(initial=0.0),
+                         a[i + 2:i + reach + 1].max(initial=0.0))
+            hit[i] |= a[i] >= CLICK_ISOLATION * around
         for i in np.flatnonzero(hit):
             t = t_block + i / self.rate
             if not self.click_at or t - self.click_at[-1] > CLICK_GAP_S:
