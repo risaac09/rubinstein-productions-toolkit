@@ -65,7 +65,13 @@ class TestShootTable(unittest.TestCase):
         ff(*vid, *tone, "-shortest", *cls.enc, cls.p["a_normal.mov"])
         ff(*vid, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-shortest", *cls.enc, cls.p["b_silent.mov"])
         # VFR: drop every third frame, keep the timestamps (-fps_mode vfr)
-        ff(*vid, *tone, "-vf", "select='mod(n,3)'", "-fps_mode", "vfr", *cls.enc, cls.p["c_vfr.mov"])
+        for flag in ("-fps_mode", "-vsync"):  # the first needs ffmpeg 5.1; CI's apt ffmpeg may be older
+            try:
+                ff(*vid, *tone, "-vf", "select='mod(n,3)'", flag, "vfr", *cls.enc, cls.p["c_vfr.mov"])
+                break
+            except subprocess.CalledProcessError:
+                if flag == "-vsync":
+                    raise
         # 701 s of 1 fps 16x16 video: long by duration alone, a second to encode
         ff("-f", "lavfi", "-i", "color=c=black:size=16x16:rate=1:duration=701", "-an",
            *cls.enc[:4], cls.p["d_long.mov"])

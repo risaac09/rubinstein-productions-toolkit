@@ -179,7 +179,7 @@ class TestSurveyCommand(unittest.TestCase):
         self.assertFalse(target.exists())
 
 
-KEPT = ["list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect",
+KEPT = ["list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect", "shoot-table",
         "measure", "manifest", "endcheck", "selects", "reframe-plan", "tilt-fixture", "tilt-check",
         "deliver-check", "deliver-captions", "deliver-fix-loudness", "sync-measure", "trim-review"]
 RETIRED_COMMANDS = ["new-project", "import-media", "build-timeline", "add-subtitles",
