@@ -45,7 +45,7 @@ import re
 import subprocess
 
 from . import cutlist, trimreview
-from .sidecar import card_key, stem  # noqa: F401  (card_key is re-exported)
+from .sidecar import card_key, stem
 
 LEVELS = "▁▂▃▄▅▆▇█"
 FLOOR_DB = -60.0     # a bin at or below this prints as "·" (near silence)

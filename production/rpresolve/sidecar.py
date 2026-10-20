@@ -13,6 +13,7 @@ Stdlib only; the Resolve MCP server runs it on Python 3.9.
 import datetime
 import os
 import re
+import functools
 import subprocess
 
 LANES = ("cine", "sound", "story", "fusion")
@@ -63,7 +64,7 @@ def source_sha256(path):
     i, parts = _card_dir(path)
     if i is None:
         return None
-    sums = os.sep.join(parts[:i] + [parts[i] + ".SHA256SUMS"]) or os.sep
+    sums = os.sep.join(parts[:i] + [parts[i] + ".SHA256SUMS"])
     rel = "/".join(parts[i + 1:])
     try:
         with open(sums, encoding="utf-8") as f:
@@ -76,6 +77,7 @@ def source_sha256(path):
     return None
 
 
+@functools.lru_cache(maxsize=1)
 def _toolkit_commit():
     try:
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
@@ -133,6 +135,8 @@ def validate(doc):
                    + (", ".join(present) or "none"))
     elif lane and present[0] != lane:
         bad.append(f"lane key {present[0]} does not match schema lane {lane}")
+    elif not isinstance(doc[present[0]], dict):
+        bad.append(f"{present[0]} payload must be an object")
     allowed = {"schema", "clip_id", "source", "transfer", "primaries",
                "generated_by", "generated_at"} | set(LANES)
     extra = sorted(set(doc) - allowed)

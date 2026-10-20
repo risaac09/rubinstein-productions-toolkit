@@ -102,6 +102,8 @@ class Validate(unittest.TestCase):
             self.assertTrue(sc.validate(d), key)
         d = copy.deepcopy(good); d["schema"]["version"] = "2"
         self.assertTrue(sc.validate(d))
+        d = copy.deepcopy(good); d["sound"] = None
+        self.assertTrue(any("payload" in p for p in sc.validate(d)))
         self.assertEqual(sc.validate([]), ["sidecar is not an object"])
 
 
