@@ -29,21 +29,25 @@ The frame is decoded as measure decodes it: display-encoded Rec.709 with a
 A log frame reads flat and low in chroma, so perceive a render with the
 colour path applied. A file tagged PQ, HLG, linear or log gets a
 transfer_note and no ratios (display contrast, lighting), since those need
-the right curve. packet.json opens with a small header (schema, transfer,
-generated_by, generated_at) that other sidecars can share. numpy only;
-PNGs via zlib.
+the right curve. packet.json is a sidecar envelope, schema cine.perceive
+version 2 (production/sidecar-envelope.md): the shared header (schema,
+clip_id, source {path, sha256}, transfer, primaries, generated_by,
+generated_at), then everything perceive measured under one "cine" key
+(source, legend, files, luma, clipping, chroma, neutral_cast, palette,
+faces, false_colour, and
+reference and compare with a ref still); paths inside it are relative to
+the packet folder. numpy only; PNGs via zlib.
 """
 
 import json
 import os
 import shutil
 import struct
-import time
 import zlib
 
 import numpy as np
 
-from . import color, measure
+from . import color, measure, sidecar
 from .paths import in_any_git_tree
 
 FRAME_MAX_W = 1920
@@ -468,19 +472,20 @@ def perceive(path, out, at=None, ref=None, faces=True):
 
 
 def _write(out, rgb, source, ref, ref_rgb, ref_source, faces):
-    packet = {"schema": {"name": "cine.perceive", "version": 1}, "transfer": source["transfer"],
-              "generated_by": "rpresolve.perceive",
-              "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-              "source": source, "legend": LEGEND, **analyse(rgb, out, faces)}
+    cine = {"source": source, "legend": LEGEND, **analyse(rgb, out, faces)}
     if "transfer_note" in source:
-        withhold_ratios(packet)
+        withhold_ratios(cine)
     if ref:
         os.mkdir(os.path.join(out, "ref"))
-        packet["reference"] = {"source": ref_source, **analyse(ref_rgb, os.path.join(out, "ref"), faces)}
-        packet["reference"]["files"] = {k: "ref/" + v for k, v in packet["reference"]["files"].items()}
+        cine["reference"] = {"source": ref_source, **analyse(ref_rgb, os.path.join(out, "ref"), faces)}
+        cine["reference"]["files"] = {k: "ref/" + v for k, v in cine["reference"]["files"].items()}
         if "transfer_note" in ref_source:
-            withhold_ratios(packet["reference"])
-        packet["compare"] = compare(packet, packet["reference"])
+            withhold_ratios(cine["reference"])
+        cine["compare"] = compare(cine, cine["reference"])
+    primaries = {"tag": source["tags"].get("color_primaries") or "untagged", "read_as": "Rec.709"}
+    packet = sidecar.header("cine.perceive", 2, source["file"], transfer=source["transfer"],
+                            primaries=primaries, tool="rpresolve.perceive")
+    packet["cine"] = cine
     with open(os.path.join(out, "packet.json"), "w", encoding="utf-8") as f:
         json.dump(packet, f, indent=2)
         f.write("\n")
@@ -488,6 +493,7 @@ def _write(out, rgb, source, ref, ref_rgb, ref_source, faces):
 
 
 def format_summary(packet, out):
+    packet = packet["cine"]
     ire = packet["luma"]["ire"]
     lines = [f"perceive: {packet['source']['file']} at {packet['source']['t']}s -> {out}"]
     lines += [f"  WARNING: {r['source']['transfer_note']}" for r in (packet, packet.get("reference") or {})
