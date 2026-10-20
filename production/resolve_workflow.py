@@ -73,6 +73,9 @@ Commands that never connect to Resolve:
     story-packet          A shoot as story material in one Markdown file: per
                           clip in capture order, the shoot-table row, an
                           audio energy line, the words as phrases, labels
+    sting-sync            Does the intro's sound sting land on its picture
+                          keyframes? Re-measures each hit from the audio;
+                          signed offsets in frames and ms, FAIL first
 
 Retired: the commands that wrote to Resolve. Running one exits 2 and says what
 to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
@@ -942,6 +945,20 @@ def cmd_trim_review(args):
     return 0
 
 
+def cmd_sting_sync(args):
+    """Sting timing against the lockup keyframes (VP-146). Exit 0 pass,
+    1 any FAIL, 2 an input missing, unreadable or breaking the contract."""
+    from rpresolve import stingsync as ss
+    try:
+        rows = ss.run(args.lockup, args.cues, master=args.wav, stem=args.transient, cut=args.cut,
+                      lead_ms=args.lead_ms, lag_ms=args.lag_ms, tol_ms=args.tol_ms)
+    except ss.StingError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    sys.stdout.write(json.dumps(rows, indent=1) + "\n" if args.json else ss.format_table(rows))
+    return int(any(r["status"] == ss.FAIL for r in rows))
+
+
 def cmd_story_packet(args):
     """One Markdown packet from a shoot table, words and labels, for the
     selects board. Scores and chooses nothing. Exit 0 written, 1 failed."""
@@ -1369,6 +1386,19 @@ Examples:
     sp.add_argument("--strips", help="Write a contact strip per clip (8 frames, 2 rows) into this folder "
                                      "and link it from each card (refused in any git tree)")
     sp.set_defaults(func=cmd_story_packet)
+
+    sp = subparsers.add_parser(
+        "sting-sync", help="Offline: does the sting's sound land on the lockup's picture keyframes")
+    sp.add_argument("--lockup", required=True, help="lockup.json (one cut, or {cuts: {long, bumper}})")
+    sp.add_argument("--cues", required=True, help="cues.json with measured hit onsets")
+    sp.add_argument("--cut", choices=["long", "bumper"], help="Which cut (default: the cues' cut, else long)")
+    sp.add_argument("--wav", help="The sting master; each hit is re-measured within 150 ms of its picture event")
+    sp.add_argument("--transient", help="The transient stem; measured instead of the master when given")
+    sp.add_argument("--lead-ms", type=float, default=40.0, help="Fail a lead over this (default 40)")
+    sp.add_argument("--lag-ms", type=float, default=60.0, help="Fail a lag over this (default 60)")
+    sp.add_argument("--tol-ms", type=float, default=1.0, help="Fail a declared onset this far off (default 1)")
+    sp.add_argument("--json", action="store_true", help="Rows as JSON instead of the table")
+    sp.set_defaults(func=cmd_sting_sync)
 
     args = parser.parse_args()
     if not args.command:

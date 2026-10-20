@@ -280,10 +280,10 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
 - Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `perceive`, `pipeline-proof`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
   `deliver-check`, `qc`, `deliver-captions`, `deliver-fix-loudness`, `deliver-manifest`,
-  `sync-measure`, `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and
+  `sync-measure`, `trim-review` (the TSV), `story-packet` and `sting-sync`. `tilt-fixture` and
   `tilt-check` are script commands only; they have no MCP tool.
 
-Twelve of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `perceive` (one frame as a folder of scopes, a
+Thirteen of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `perceive` (one frame as a folder of scopes, a
 Lab palette and `packet.json`, for a session to read beside the frame; see
 `rpresolve/perceive.py`), `pipeline-proof` (a test render against a reference render, PASS or FAIL per row, for the G1 proof), `qc` (one FAIL-first QC table from ffprobe and ffmpeg filters), `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
@@ -294,7 +294,7 @@ person renders the still, so no tool is planned), and `story-packet` (one
 Markdown file per shoot for the selects board: per clip in capture order, the
 shoot-table row, an audio energy sparkline with the loud spans, the
 words as timed phrases, any picture labels and, with `--strips`, a contact
-strip of eight frames; it scores and chooses nothing). `info` is covered by `resolve_status`,
+strip of eight frames; it scores and chooses nothing), and `sting-sync` (the sting's hits re-measured from the audio against the lockup keyframes, signed offsets, FAIL first). `info` is covered by `resolve_status`,
 `list_timelines` and `render_queue_status` together. Each other command has a
 tool of the same name (with underscores), with a few flags left behind: the
 script's `sync-measure` takes `--ref-stream` and
