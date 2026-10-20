@@ -304,6 +304,15 @@ jobs:
           RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
           export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
           python -m unittest -v production.tests.test_proof
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: OGraf offline render (skips without Chrome or ffmpeg)
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          node --test tools/ograf-render/test.mjs
 
   # The Pages site builds from scripts/build-site.py, and the deploy workflow
   # runs only on pushes to main. Build into a temp directory here so a docs
