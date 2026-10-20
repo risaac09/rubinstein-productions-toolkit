@@ -2,7 +2,7 @@
 
 > **Status:** accepted 2026-10-16. The rows restate what the deliver tooling already enforces.
 
-One row per destination key in `production/resolve-config.json`, and the config has seven. A destination class is a kind of place a deliverable goes, and each row names the class its key belongs to. Where two keys share a class, each still gets its own row, because `queue_render` and `deliver_check` apply that key's numbers. A test in `production/tests/test_platform_specs.py` fails when a key in the config has no row here. The source of every value is the [Deliver section of the Resolve spec](resolve-template-spec.md#deliver) and the config file; this document does not replace either. If they disagree, the config wins.
+One row per destination key in `production/resolve-config.json`, and the config has eight. A destination class is a kind of place a deliverable goes, and each row names the class its key belongs to. Where two keys share a class, each still gets its own row, because `queue_render` and `deliver_check` apply that key's numbers. A test in `production/tests/test_platform_specs.py` fails when a key in the config has no row here. The source of every value is the [Deliver section of the Resolve spec](resolve-template-spec.md#deliver) and the config file; this document does not replace either. If they disagree, the config wins.
 
 ## The table
 
@@ -13,6 +13,7 @@ One row per destination key in `production/resolve-config.json`, and the config 
 | Social landscape 16:9 | `linkedin_16x9` | mp4, H.264, 8-bit 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | sidecar `.srt` |
 | Web embed | `substack_16x9` | mp4, H.264, 8-bit 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | sidecar `.srt` |
 | Social vertical 9:16 | `linkedin_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
+| Social vertical 9:16, TikTok and Instagram | `social_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | burnt in |
 | Social square 1:1 | `linkedin_1x1` | mp4, H.264, 8-bit 4:2:0 | 1080x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Archive master | `client_master` | mov, ProRes 422 HQ, 10-bit 4:2:2 | the timeline's | the timeline's | LPCM 24-bit 48 kHz | none, unnormalized | none |
 
@@ -38,6 +39,14 @@ These come from the house rules under `deliver` in the config and are checked on
 **Web embed.** The row is the Substack destination, used here for a page that plays an mp4 inline. A client's own site may take a different player and a different container; check the host's current spec before a first delivery. H.264 at 8-bit 4:2:0 is the repo's choice for every web destination; whether a given host plays it is for the host's current spec to say. `NetworkOptimization` is on, so the file starts playing before it finishes loading.
 
 **Social vertical 9:16.** Built from the timeline's 9:16 copy. `queue_render` refuses a 16:9 timeline for a 9:16 destination, because Resolve would scale it into the frame with bars and every check would still pass. The 9:16 copy comes from `reframe_plan` and `cut`, or `reframe_apply` for a planned timeline, which keep the subject's whole head with room above it. Captions are burnt in at 16 characters per line on up to two lines, because 42 characters overflows a 1080-wide frame. The 4:5 shape is planned by `reframe_plan` but has no destination, and none is added until a client asks.
+
+**Social vertical 9:16, TikTok and Instagram.** The `social_9x16` destination: the same file shape as `linkedin_9x16` at -14 LUFS, true peak at or under -1.0 dBTP, so `deliver-fix-loudness --dest social_9x16` normalises to -14. Same timeline rule: it needs a 9:16 timeline, and captions burn in at 16 characters per line. What the platforms' own help pages state, read on 2026-10-20 (specs change; read them again before a first delivery):
+
+- Instagram, [Reel size & aspect ratios](https://help.instagram.com/1038071743007909): an aspect ratio between 1.91:1 and 9:16, a minimum frame rate of 30 FPS and a minimum resolution of 720 pixels. 1080x1920 is the full 9:16 frame and meets the minimum.
+- TikTok, [Making a post](https://www.tiktok.com/support/faq_detail?id=7581826684085606968) and [Unable to post videos](https://www.tiktok.com/support/faq_detail?id=7078299667292756485): neither states a resolution, codec, frame rate or loudness target. 1080x1920 H.264 is the repo's choice for a vertical web file, not a figure TikTok publishes there.
+- Neither platform's help pages state a loudness target. -14 LUFS is the repo's choice, the same level as the YouTube destinations.
+
+The frame rate stays the timeline's, as on every destination, so a 23.976, 24 or 25 fps timeline renders below Instagram's 30 FPS minimum, and `deliver_check` does not flag it. Set the timeline to 30 fps or higher before cutting a vertical meant for Instagram; the help page does not say what happens to a lower rate.
 
 **Social square 1:1.** Same rules as vertical. Burnt-in captions run 24 characters per line on up to two lines.
 

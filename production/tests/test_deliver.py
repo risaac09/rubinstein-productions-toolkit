@@ -105,6 +105,8 @@ class TestNames(unittest.TestCase):
     def test_name_for_a_destination(self):
         self.assertEqual(deliver.name_for(dest("linkedin_9x16"), CLIP),
                          "SW001_Guest_01_example-clip_9x16.mp4")
+        self.assertEqual(deliver.name_for(dest("social_9x16"), CLIP),
+                         "SW001_Guest_01_example-clip_9x16.mp4")
         self.assertEqual(deliver.name_for(dest("client_master"),
                                           {"client": "Client", "slug": "example-slug"}),
                          "Client_example-slug_master.mov")
@@ -129,7 +131,7 @@ class TestConfig(unittest.TestCase):
         cfg = rpconfig.load_config("/nonexistent/config.json")
         self.assertEqual(deliver.destination_keys(cfg), sorted([
             "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16",
-            "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
+            "social_9x16", "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
         yt = deliver.destination(cfg, "youtube_16x9")
         self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
                          ("mp4", "H265", {"width": 3840, "height": 2160}))
@@ -150,7 +152,7 @@ class TestConfig(unittest.TestCase):
                                                  "color_range": "tv"})
         # every web destination carries the tag; the client master keeps the house Gamma 2.4
         for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "linkedin_9x16",
-                    "linkedin_1x1", "substack_16x9"):
+                    "linkedin_1x1", "social_9x16", "substack_16x9"):
             d = dest(key)
             self.assertEqual((d["color"]["resolve"]["GammaTag"],
                               d["color"]["expect"]["color_transfer"]), ("Rec.709-A", "bt709"), key)
@@ -165,6 +167,12 @@ class TestConfig(unittest.TestCase):
             self.assertEqual((d["codec"], d["format"], d["loudness"]["integrated_lufs"],
                               (d["resolution"]["width"], d["resolution"]["height"]),
                               d["captions"]), ("H264", "mp4", -16.0, size, captions))
+        s = deliver.destination(cfg, "social_9x16")
+        self.assertEqual((s["codec"], s["format"], s["loudness"]["integrated_lufs"],
+                          s["loudness"]["tolerance_lu"], s["loudness"]["true_peak_max_dbtp"],
+                          (s["resolution"]["width"], s["resolution"]["height"]), s["captions"],
+                          s["audio"]["sample_rate"]),
+                         ("H264", "mp4", -14.0, 0.5, -1.0, (1080, 1920), "burnin", 48000))
         m = deliver.destination(cfg, "client_master")
         self.assertEqual((m["format"], m["codec"], m["resolution"], m["captions"]),
                          ("mov", "ProRes422HQ", "timeline", "none"))

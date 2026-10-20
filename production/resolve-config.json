@@ -117,6 +117,29 @@
       "resolve": { "NetworkOptimization": true },
       "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
     },
+    "social_9x16": {
+      "name": "Social 9:16 (TikTok, Instagram)",
+      "naming": "clip",
+      "aspect": "9x16",
+      "target_dir": null,
+      "format": "mp4",
+      "codec": "H264",
+      "codec_fallbacks": ["H.264", "AVC"],
+      "resolution": { "width": 1080, "height": 1920 },
+      "audio": {
+        "codec": "aac",
+        "resolve_codec": "aac",
+        "sample_rate": 48000,
+        "bit_depth": null,
+        "channels": 2,
+        "bitrate_kbps": 320
+      },
+      "loudness": { "integrated_lufs": -14.0 },
+      "captions": "burnin",
+      "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
+      "resolve": { "NetworkOptimization": true },
+      "expect": { "codec_name": "h264", "profile": null, "pix_fmt_family": "420", "bit_depth": 8 }
+    },
     "linkedin_1x1": {
       "name": "LinkedIn 1:1",
       "naming": "clip",
