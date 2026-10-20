@@ -94,6 +94,7 @@ DEFAULT_CONFIG = {
         "youtube_16x9_hd": _web("YouTube 16:9 HD", "16x9", 1920, 1080, "H265", -14.0, "sidecar"),
         "linkedin_16x9": _web("LinkedIn 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "linkedin_9x16": _web("LinkedIn 9:16", "9x16", 1080, 1920, "H264", -16.0, "burnin"),
+        "social_9x16": _web("Social 9:16 (TikTok, Instagram)", "9x16", 1080, 1920, "H264", -14.0, "burnin"),
         "linkedin_1x1": _web("LinkedIn 1:1", "1x1", 1080, 1080, "H264", -16.0, "burnin"),
         "substack_16x9": _web("Substack 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "client_master": {

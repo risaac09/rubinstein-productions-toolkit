@@ -277,13 +277,13 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
 
 - Read Resolve and change nothing (Resolve Studio must be running):
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
-- Never connect to Resolve: `survey`, `detect`, `measure`, `manifest`,
+- Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
   `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`,
   `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and `tilt-check`
   are script commands only; they have no MCP tool.
 
-Seven of these have no tool: `manifest` (it builds the cut manifest that
+Eight of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
 (the loudness step of the deliver loop), `list-projects` and
 `list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
