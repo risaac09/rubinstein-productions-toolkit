@@ -257,13 +257,18 @@ class TestLightOnClips(unittest.TestCase):
             master = self.clip(tmp, "m.mov", "noise=alls=40:allf=t")                 # grainy shadow
             crushed = self.clip(tmp, "d.mov", "eq=brightness=-0.2,format=yuv422p10le")  # shadow at the floor
             report = measure.measure(master, samples=2, faces=False, delivery=crushed)
-            hlg = self.clip(tmp, "hlg.mov", "setparams=color_trc=arib-std-b67")
-            withheld = measure.measure(hlg, samples=1, faces=False)
         self.assertEqual(report["transfer"]["read_as"], measure.READ_AS)
         self.assertGreater(report["shadows"]["readable_pct"], 50)
         cmp = report["shadow_vs_delivery"]
         self.assertGreater(cmp["readable_drop_pts"], measure.DELIVERY_LIMIT_PTS)
         self.assertFalse(cmp["within_limit"])
+
+    def test_hlg_tag_withholds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hlg = self.clip(tmp, "hlg.mov", "setparams=color_trc=arib-std-b67")
+            if measure.probe(hlg)["tags"]["color_transfer"] != "arib-std-b67":
+                self.skipTest("this ffmpeg did not record the HLG tag")
+            withheld = measure.measure(hlg, samples=1, faces=False)
         self.assertEqual(withheld["transfer"]["withheld"], "HLG")
         self.assertTrue(withheld["shadows"].startswith("withheld"))
         self.assertTrue(withheld["lighting"].startswith("withheld"))
