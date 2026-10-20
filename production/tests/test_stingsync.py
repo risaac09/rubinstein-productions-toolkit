@@ -113,6 +113,13 @@ class StingSync(unittest.TestCase):
         self.assertEqual(r[0]["status"], "FAIL")
         self.assertIn("no lockup keyframe", r[0]["reasons"][0])
 
+    def test_malformed_fields_are_refused_not_crashed(self):
+        for bad in ({"frame": None}, {"onset_ms": "3253"}):
+            with self.assertRaisesRegex(ss.StingError, "must be numbers"):
+                self.rows([3253.25], [{**cue("b", 78, 3253.25), **bad}])
+        with self.assertRaisesRegex(ss.StingError, "numeric frame"):
+            ss.check({"keyframes": [{"id": "x"}]}, {"cues": [cue("b", 78, 1)]}, master=self.p("m.wav"))
+
     def test_both_lockup_shapes_and_fail_first(self):
         wav(self.p("m.wav"), [834.167, 3253.25 + 100])
         cues = {"cut": "bumper", "cues": [cue("a", 78, 3253.25 + 100), cue("b", 20, 834.167)]}
