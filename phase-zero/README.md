@@ -53,7 +53,10 @@ The bookend is the retrospective. When a prompt contains "log learnings",
 reflect-and-log prompt instead. The agent runs a four-direction retrospective on
 the session and logs the one learning worth keeping with `scripts/sd-retro` in
 stack-data. Phase zero opens a session, the retrospective closes it. The log is
-private and never feeds phase zero back.
+private and never feeds phase zero back. A session that crossed repos, merged,
+changed a floor or started other sessions picks the prompt's deep form on its
+own: ranked keeps, structured threads, a counterfactual, failure-mode and
+decision candidates, evidence and a review count (2026-10-20).
 
 ## The session brief (v2)
 
