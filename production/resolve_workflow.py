@@ -48,6 +48,10 @@ Commands that never connect to Resolve:
     deliver-check         Check a rendered file against its destination (codec,
                           size, fps, colour tags, audio, captions, loudness,
                           name); exit 0 pass, 1 fail, 2 tool missing
+    qc                    One FAIL-first table for a rendered file: deliver-check's
+                          rows plus ffmpeg blackdetect, freezedetect, scdet,
+                          ebur128, astats and silencedetect; exit 0 pass, 1 fail,
+                          2 tool missing
     deliver-captions      Turn Resolve's <stem>_<track>.ttml sidecar into a
                           zero-based <stem>.srt beside the render
     deliver-fix-loudness  Two-pass loudnorm to the destination's target, video
@@ -63,7 +67,7 @@ to use instead: the MCP tool, or what to do by hand in Resolve when no tool does
 it (RETIRED below; the same table is in production/resolve-mcp.md).
 
 Config:
-    deliver-check, deliver-captions and deliver-fix-loudness read delivery
+    deliver-check, qc, deliver-captions and deliver-fix-loudness read delivery
     destinations from resolve-config.json (next to this script). An overlay
     kept outside any repository goes in with --config <path>.
 
@@ -654,6 +658,38 @@ def cmd_deliver_check(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_qc(args):
+    """The QC table: deliver-check's rows (with --dest) plus the ffmpeg
+    rows. Exit 0 all pass, 1 any fail (or an unreadable file), 2 ffprobe or
+    ffmpeg missing."""
+    from rpresolve import deliver, delivercheck as dc, qc
+    try:
+        th = qc.parse_overrides(args.set)
+        if (args.fps or args.size) and not args.dest:
+            raise ValueError("--fps and --size assert against a destination: add --dest.")
+        dest = folders = None
+        if args.dest:
+            config = _deliver_config(args)
+            dest, folders = deliver.destination(config, args.dest), deliver.subfolders(config)
+        size = _size(args.size) if args.size else None
+        if args.fps:
+            dc.parse_fps(args.fps)
+        r = qc.run(args.file, dest, config_folders=folders, fps=args.fps, size=size,
+                   expected_duration=args.duration,
+                   shots=qc.shot_count(args.shots) if args.shots else None, thresholds=th)
+    except dc.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (dc.CheckError, deliver.DeliverError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    else:
+        sys.stdout.write(qc.format_report(r))
+    return 0 if r["status"] == "pass" else 1
+
+
 def cmd_deliver_captions(args):
     """Turn Resolve's TTML sidecar beside a render into a zero-based
     <stem>.srt, read it back, and (unless --keep-ttml) move the TTML to
@@ -1053,6 +1089,25 @@ Examples:
                     help="Skip the loudness read (it reads the whole file)")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_check)
+
+    sp = subparsers.add_parser(
+        "qc", help="Offline: one FAIL-first QC table for a rendered file")
+    sp.add_argument("file")
+    sp.add_argument("--dest", help="Destination key from resolve-config.json; adds "
+                    "deliver-check's rows and the loudness target")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before the command)")
+    sp.add_argument("--fps", help="The timeline's frame rate to assert (with --dest)")
+    sp.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
+    sp.add_argument("--duration", type=float, metavar="SECONDS",
+                    help="Expected duration (the lock); adds a duration row")
+    sp.add_argument("--shots", metavar="CSV",
+                    help="Shot list: a header row, then one row per shot; the cut count is checked "
+                    "against rows minus one")
+    sp.add_argument("--set", action="append", metavar="KEY=VALUE",
+                    help="Override a threshold (repeatable); keys are in rpresolve/qc.py THRESHOLDS")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_qc)
 
     sp = subparsers.add_parser(
         "deliver-captions",
