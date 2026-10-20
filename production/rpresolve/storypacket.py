@@ -45,6 +45,7 @@ import re
 import subprocess
 
 from . import cutlist, trimreview
+from .sidecar import card_key, stem  # noqa: F401  (card_key is re-exported)
 
 LEVELS = "▁▂▃▄▅▆▇█"
 FLOOR_DB = -60.0     # a bin at or below this prints as "·" (near silence)
@@ -61,24 +62,6 @@ STRIP_TIMEOUT_S = 120
 
 class PacketError(ValueError):
     pass
-
-
-def stem(path):
-    return os.path.splitext(os.path.basename(path))[0]
-
-
-# The card folder rule (decision of 2026-10-20): <CAM>-<first 6 hex of the card id>.
-CARD_DIR = re.compile(r"^[A-Za-z0-9]+-[0-9a-f]{6}$")
-
-
-def card_key(path):
-    """The clip id: <card folder>/<stem>, the card folder being the nearest
-    folder above named <CAM>-<id6>, else the file's own folder. A card keeps
-    its DCIM tree, so the own folder alone (100_PANA) would repeat across
-    cards."""
-    parts = os.path.normpath(path).split(os.sep)[:-1]
-    card = next((d for d in reversed(parts) if CARD_DIR.match(d)), parts[-1] if parts else "")
-    return f"{card}/{stem(path)}"
 
 
 def one_line(text):
