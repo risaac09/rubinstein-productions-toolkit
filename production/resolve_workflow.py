@@ -705,6 +705,36 @@ def cmd_sync_measure(args):
     return 2 if (r.get("drift") or {}).get("exceeds") else 0
 
 
+def cmd_audio_report(args):
+    """Loudness over time, spectrogram, peaks, clipping, clicks, silences and
+    octave balance of one audio stream, as JSON and two PNGs in --out
+    (offline; rpresolve/audioreport.py). Exit 0 the report is written,
+    flags or not; 1 it could not be."""
+    try:
+        from rpresolve import audioreport as ar, deliver, delivercheck as dc
+    except ImportError as e:
+        print(f"ERROR: audio-report needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        th, target = {}, args.target
+        if args.dest:
+            loud = deliver.destination(_deliver_config(args), args.dest)["loudness"]
+            th = {k: loud[k] for k in ("true_peak_max_dbtp", "tolerance_lu")}
+            target = loud.get("integrated_lufs") if target is None else target
+        start = ar.parse_time(args.start) if args.start else None
+        end = ar.parse_time(args.end) if args.end else None
+        r = ar.report(args.file, args.out, stream=args.stream, start=start, end=end,
+                      reference=args.ref, ref_stream=args.ref_stream, target_lufs=target, th=th)
+    except (ar.ReportError, dc.ToolMissing, deliver.DeliverError, ValueError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1))
+    else:
+        sys.stdout.write(ar.format_summary(r))
+    return 0
+
+
 def _review_opts(args):
     db = args.silence_db
     if db != "auto":
@@ -833,6 +863,10 @@ Examples:
 
   # Dual-system sound: where one recording sits against another (the MCP sync tool stacks them)
   python3 resolve_workflow.py sync-measure /path/to/A001.MOV /path/to/ZOOM0001.WAV
+
+  # What a mix sounds like as numbers and pictures: loudness over time, spectrogram, flags
+  python3 resolve_workflow.py audio-report /path/to/mix.wav -o /path/outside/repo/mix-report \\
+      --dest youtube_16x9 --start 1:00 --end 2:30
 
   # Trim review: a TSV of proposals (nothing is cut)
   python3 resolve_workflow.py trim-review manifest.json --out /path/outside/repo/review.tsv
@@ -1032,6 +1066,28 @@ Examples:
     sp.add_argument("--other-stream", type=int, default=0, help="Audio stream of the other")
     sp.add_argument("--json", action="store_true", help="Print the whole report as JSON")
     sp.set_defaults(func=cmd_sync_measure)
+
+    sp = subparsers.add_parser(
+        "audio-report", help="Offline: loudness over time, spectrogram, peaks, clipping, clicks, "
+        "silences and octave balance of one audio stream, as JSON and PNGs")
+    sp.add_argument("file")
+    sp.add_argument("-o", "--out", required=True,
+                    help="Folder for audio-report.json, loudness.png and spectrogram.png, "
+                         "outside any git tree (made if its parent exists)")
+    sp.add_argument("--start", help="Where to start: seconds, m:ss or h:mm:ss (default 0)")
+    sp.add_argument("--end", help="Where to stop (default: the end)")
+    sp.add_argument("--stream", type=int, default=0, help="Audio stream (0 is the first)")
+    sp.add_argument("--dest", help="Take the loudness target and true-peak ceiling from this "
+                                   "destination in resolve-config.json")
+    sp.add_argument("--config", dest="deliver_config",
+                    help="A config overlay kept outside this repo (may also go before the "
+                         "command)")
+    sp.add_argument("--target", type=float, help="Integrated loudness target in LUFS "
+                                                 "(over --dest's)")
+    sp.add_argument("--ref", help="A reference file to compare with, read whole")
+    sp.add_argument("--ref-stream", type=int, default=0, help="Audio stream of the reference")
+    sp.add_argument("--json", action="store_true", help="Print the whole report as JSON")
+    sp.set_defaults(func=cmd_audio_report)
 
     sp = subparsers.add_parser(
         "trim-review", help="Silence and filler review as a TSV; deletes nothing")
