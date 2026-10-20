@@ -606,6 +606,37 @@ def cmd_deliver_check(args):
     return 0 if r["status"] == "pass" else 1
 
 
+def cmd_overlay_check(args):
+    """Check a graphic rendered with alpha (see rpresolve/overlay.py). Exit 0
+    no FAIL row, 1 any FAIL (or an unreadable file), 2 ffprobe or ffmpeg missing."""
+    try:
+        from rpresolve import measure as rpmeasure, overlay
+    except ImportError as e:
+        print(f"ERROR: overlay-check needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+        return 1
+    try:
+        expect = [overlay.parse_expect(s) for s in args.expect or []]
+        samples = [overlay.parse_sample(s) for s in args.sample or []]
+        values = overlay.load_values(args.values) if args.values else None
+        clear_at = [] if args.no_clear else (args.clear_at or [0.0])
+        r = overlay.check(args.file, expect=expect, fps=args.fps, clear_at=clear_at,
+                          hold=args.hold, alpha_mode=args.alpha_mode, values=values,
+                          samples=samples,
+                          fringe_max=overlay.FRINGE_MAX if args.fringe_max is None else args.fringe_max,
+                          de_max=overlay.DE_MAX if args.de_max is None else args.de_max)
+    except overlay.ToolMissing as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    except (rpmeasure.MeasureError, OSError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(r, indent=1))
+    else:
+        sys.stdout.write(overlay.format_report(r))
+    return 0 if r["status"] == "pass" else 1
+
+
 def cmd_deliver_captions(args):
     """Turn Resolve's TTML sidecar beside a render into a zero-based
     <stem>.srt, read it back, and (unless --keep-ttml) move the TTML to
@@ -993,6 +1024,33 @@ Examples:
                     help="Skip the loudness read (it reads the whole file)")
     sp.add_argument("--json", action="store_true", help="Print the result as JSON")
     sp.set_defaults(func=cmd_deliver_check)
+
+    sp = subparsers.add_parser(
+        "overlay-check",
+        help="Offline: alpha, tags, clear and opaque frames, edge fringe and brand colour "
+             "of a graphic master")
+    sp.add_argument("file")
+    sp.add_argument("--expect", action="append", metavar="KEY=VALUE",
+                    help="A tag the file must carry: color_range, color_space, color_primaries, "
+                         "color_transfer or pix_fmt; repeat per tag")
+    sp.add_argument("--fps", help="The frame rate to assert, as ffprobe gives it (24000/1001)")
+    sp.add_argument("--clear-at", action="append", type=float, metavar="SECONDS",
+                    help="A time with nothing visible; repeat (default the first frame)")
+    sp.add_argument("--no-clear", action="store_true",
+                    help="Skip the clear row, for a graphic that starts visible")
+    sp.add_argument("--hold", type=float, metavar="SECONDS",
+                    help="The time of the opaque, fringe and brand rows (default mid-file)")
+    sp.add_argument("--alpha-mode", choices=("straight", "premultiplied"), default="straight",
+                    help="How the timeline will read the alpha (default straight)")
+    sp.add_argument("--values", help="JSON of name -> '#rrggbb', kept outside this repo")
+    sp.add_argument("--sample", action="append", metavar="NAME=X,Y[@SECONDS]",
+                    help="A pixel that must match the value NAME; repeat")
+    sp.add_argument("--fringe-max", type=float,
+                    help="Edge error allowed, 10-bit codes at the median edge pixel (default 4)")
+    sp.add_argument("--de-max", type=float,
+                    help="CIEDE2000 allowed at a brand sample (default 1.0)")
+    sp.add_argument("--json", action="store_true", help="Print the result as JSON")
+    sp.set_defaults(func=cmd_overlay_check)
 
     sp = subparsers.add_parser(
         "deliver-captions",

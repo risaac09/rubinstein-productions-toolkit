@@ -279,15 +279,18 @@ Still in the script, with `python3 resolve_workflow.py <command> --help`:
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
 - Never connect to Resolve: `survey`, `detect`, `measure`, `manifest`,
   `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `deliver-captions`, `deliver-fix-loudness`, `sync-measure`
-  and `trim-review` (the TSV). `tilt-fixture` and `tilt-check` are script
-  commands only; they have no MCP tool.
+  `deliver-check`, `overlay-check`, `deliver-captions`, `deliver-fix-loudness`,
+  `sync-measure` and `trim-review` (the TSV). `tilt-fixture` and `tilt-check`
+  are script commands only; they have no MCP tool.
 
-Six of these have no tool: `manifest` (it builds the cut manifest that
+Seven of these have no tool: `manifest` (it builds the cut manifest that
 `endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
 (the loudness step of the deliver loop), `list-projects` and
-`list-render-formats`, and `tilt-fixture` and `tilt-check` (a hand step: a
-person renders the still, so no tool is planned). `info` is covered by `resolve_status`,
+`list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
+person renders the still, so no tool is planned), and `overlay-check` (a
+graphic master's alpha, colour tags, clear and opaque frames, edge fringe
+and brand colour, with the colour values passed in from a file kept outside
+the repo; not yet registered as a tool). `info` is covered by `resolve_status`,
 `list_timelines` and `render_queue_status` together. Each other command has a
 tool of the same name (with underscores), with a few flags left behind: the
 script's `sync-measure` takes `--ref-stream` and
