@@ -89,7 +89,7 @@ Codec and resolution for HLG are not set in the capture standard. Record what th
 
 ## Sound checklist (every kit)
 
-The same list for all four kits. Source: the capture standard's Audio, Sync and Slate sections, plus the sound lane's capture checklist.
+The same list for all four kits. Source: the capture standard's Audio, Sync and Slate sections, plus the sound capture checklist.
 
 1. **Gear:** a separate recorder, 48 kHz, 24-bit WAV, 32-bit float if the recorder has it. Lavalier plus shotgun on every speaking setup.
 2. **Float and gain test before the first take:** record a short speech sample at each mic, check the level on the meters, and confirm the recorder is writing 32-bit float. The test is part of the sound checklist; the steps here are a house working default and will be corrected from the first shoot.
