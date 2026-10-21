@@ -22,7 +22,7 @@
 | Quick back-and-forth between two speakers | 6 frames |
 | Reflective or slow material | up to 12, or longer if the line asks for it |
 
-Scale by frame rate: 12 frames at 24 fps is half a second, so at 50 or 60 fps double the frame counts to keep the same time. Under 6 frames the offset reads as a mistake, not a choice (house default). A split that is deliberate and a hard cut that is deliberate are both fine; a hard cut on dialogue that was not a decision is what the audit below flags.
+Scale by frame rate: 12 frames at 24 fps is half a second, so at 50 or 60 fps double the frame counts to keep the same time. Under 6 frames at 24 fps the offset reads as a mistake, not a choice (house default). A split that is deliberate and a hard cut that is deliberate are both fine; a hard cut on dialogue that was not a decision is what the audit below flags.
 
 **Room tone (house default).** When an audio edit moves earlier or later than its picture, the join needs matching room tone on both sides. If the two clips differ in tone, cross-fade over a few frames, or lay room tone from the same location under the join. Check by ear on headphones.
 
@@ -58,9 +58,9 @@ In this toolkit multicam clips are made and cut by hand. The Resolve tools say s
 
 ## `jl-audit` (specification only)
 
-A planned read-only check that lists how each dialogue cut on a timeline is split between audio and picture, and flags hard cuts. It waits for live Resolve and the story-feature probe (master plan P4); this section only fixes what it will do.
+A planned read-only check that lists how each dialogue cut on a timeline is split between audio and picture, and flags hard cuts. It waits for a live Resolve session to probe the story-related scripting methods; this section only fixes what it will do.
 
-**Input.** One timeline, named exactly, with dialogue on its own audio track or tracks. It reads `timeline_items` only, so it never changes the project and never makes the timeline current.
+**Input.** One timeline, named exactly, with dialogue on its own audio track or tracks. It reads `timeline_items` only, once with `track_type` video and once with `track_type` audio (start and end are timeline frames), so it never changes the project and never makes the timeline current. The timeline's frame rate comes from the same result.
 
 **For each cut between two dialogue items** on the video track, find the audio items on the dialogue track nearest the cut and report:
 
@@ -71,13 +71,15 @@ A planned read-only check that lists how each dialogue cut on a timeline is spli
 | `audio_out`, `audio_in` | The audio items whose edit sits nearest the cut |
 | `audio_offset_out` | Frames the outgoing audio ends after (positive, an L) or before (negative) the video cut |
 | `audio_offset_in` | Frames the incoming audio starts before (positive, a J) or after (negative) the video cut |
-| `kind` | `hard` (both offsets 0), `J`, `L`, `JL`, or `early`/`late` for a split under the minimum |
+| `kind` | `hard` (both offsets 0), `J`, `L` or `JL` |
 
 **Flags (all start as house defaults, tuned on footage):**
 
 - `hard`: a dialogue cut with both offsets at 0.
-- `short`: a split of 1 to 5 frames, which reads as an error.
-- `long`: a split over 24 frames, which is worth a second look.
+- `short`: a split of 1 to 5 frames at 24 fps, which reads as an error.
+- `long`: a split over 24 frames at 24 fps, which is worth a second look.
+
+The frame thresholds are for 24 fps. At other frame rates the audit scales them by the timeline's frame rate, as in the offsets section.
 - `unpaired`: a video cut with no dialogue audio edit near it.
 
 Flags are questions for the editor, not defects. A hard cut can be right, and a flag never changes the timeline. Output is a table the editor reads, written outside any git repository; it names the project's clips and so is never pasted into a commit or pull request.
