@@ -93,9 +93,11 @@ CONSUMERS=""
 
 # Ask rules the kit used to ship and has retired. The merge removes them from
 # every consumer. Retired 2026-10-12 with the move to bypass mode: osascript and
-# Desktop Commander process control no longer prompt; sending an iMessage still
-# does (vault _INBOX/2026-10-12-agent-autonomy-investigation.md, tier 1).
-RETIRED_ASK="mcp__Control_your_Mac__osascript mcp__Desktop_Commander__start_process mcp__Desktop_Commander__interact_with_process mcp__Desktop_Commander__kill_process"
+# Desktop Commander process control no longer prompt (vault
+# _INBOX/2026-10-12-agent-autonomy-investigation.md, tier 1). send_imessage
+# retired 2026-10-20: a message to an outsider needs the agent's explicit ask in
+# chat, not a settings dialog (docs/decisions/2026-10-20-outsider-comms-ask-in-chat.md).
+RETIRED_ASK="mcp__Control_your_Mac__osascript mcp__Desktop_Commander__start_process mcp__Desktop_Commander__interact_with_process mcp__Desktop_Commander__kill_process mcp__Read_and_Send_iMessages__send_imessage"
 
 # `case` rather than a loop with `&& return`: a failing test as the last command
 # of a loop body would abort under `set -e` if this were ever called outside a
