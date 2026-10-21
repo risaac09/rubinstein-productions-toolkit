@@ -1,0 +1,1 @@
+Add production/capture-brief.md (draft, pending the first shoot): one page per camera kit with profile, base ISO, exposure target, Resolve input and per-clip settings from the camera table, a four-line light plan, and the shared sound checklist. (VP-149)
