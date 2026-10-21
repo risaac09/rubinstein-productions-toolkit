@@ -558,7 +558,7 @@ def _safe_zone(np, path, dest, th, dur, streams):
     return _srow("safe_zone", WARN if over else PASS,
                  ", ".join(f"{k} {v:.4f}" for k, v in frac.items()), expected,
                  f"{len(frames)} frames; margins top {th['safe_top']:g}, bottom {th['safe_bottom']:g}, "
-                 f"sides {th['safe_side']:g}" + (f"; over in {', '.join(over)}" if over else ""))
+                 f"sides {th['safe_side']:g}; working defaults wider than the pages' 150/400 or 90/330 px, VP-114 measures on a device" + (f"; over in {', '.join(over)}" if over else ""))
 
 
 # ---------------------------------------------------------------------------
