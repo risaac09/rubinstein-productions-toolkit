@@ -15,7 +15,10 @@ The folder:
     words.json      the words of the story packet's Whisper JSON that fall in
                     the window, verbatim (word, start, end), and the phrase
                     lines storypacket prints for them
-    filmstrip.<ext> a timeline_view image, copied as it is
+    filmstrip.<ext> a timeline_view image, copied as it is. The producer is
+                    tools/video-editor/video-use/helpers/timeline_view.py,
+                    vendored by fetch-video-use.sh and often missing, so the
+                    assembler takes a path and never runs it
 
 Reading order, in index.json's `story.parts`: one image sheet first, then
 the numbers, then the words, then the sound slice and the filmstrip. A part
