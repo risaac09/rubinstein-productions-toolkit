@@ -54,7 +54,7 @@ Exposure is set by eye on the log image, then doubtful shots are checked against
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2 | house working default |
 | Base ISO | 640 or 4000, dual native | maker spec |
-| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (the cine plan calls this about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve (Panasonic V-Log reference manual, Rev 1.0) |
+| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (also quoted as about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve (Panasonic V-Log reference manual, Rev 1.0) |
 | Zebra and waveform | not set; the S5II manual's zebra and false colour sections are not yet read for this page | to be measured |
 | Resolve input | Panasonic V-Gamut/V-Log | camera table |
 | Record per clip | ISO (640 or 4000) | camera table |
@@ -67,7 +67,7 @@ Monitoring LUT: the S5II loads house looks from the card (`lutlab looks --monito
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2; Open Gate (5760x4320) only for a planned vertical or square cut | house working default |
 | Base ISO | 500, confirmed in the camera menu 2026-10-16; Auto ISO capped at 3200 | maker spec for 500; house working default for the 3200 cap |
-| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (the cine plan calls this about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve |
+| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (also quoted as about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve |
 | Zebra and waveform | not set; the GH7 manual's zebra and false colour sections are not yet read for this page | to be measured |
 | Resolve input | Panasonic V-Gamut/V-Log | camera table |
 | Record per clip | ISO (base 500) | camera table |
@@ -92,7 +92,7 @@ Codec and resolution for HLG are not set in the capture standard. Record what th
 The same list for all four kits. Source: the capture standard's Audio, Sync and Slate sections, plus the sound lane's capture checklist.
 
 1. **Gear:** a separate recorder, 48 kHz, 24-bit WAV, 32-bit float if the recorder has it. Lavalier plus shotgun on every speaking setup.
-2. **Float and gain test before the first take:** record a short speech sample at each mic, check the level on the meters, and confirm the recorder is writing 32-bit float. The sound lane names this test; the steps here are a house working default and will be corrected from the first shoot.
+2. **Float and gain test before the first take:** record a short speech sample at each mic, check the level on the meters, and confirm the recorder is writing 32-bit float. The test is part of the sound checklist; the steps here are a house working default and will be corrected from the first shoot.
 3. **Camera scratch audio on, every take, every camera.** `sync_measure` cannot line up a take with the camera microphone off.
 4. **Room tone: 30 seconds per setup**, everyone silent, recorded on the same mics and gain as the take. House working default.
 5. **Slate:** spoken ident (date, camera, take), then one clap in view of the camera and in range of the recorder. If the head was missed, slate at the tail.
