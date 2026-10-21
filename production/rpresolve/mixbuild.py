@@ -38,8 +38,8 @@ needed; JSON is accepted too). Paths are relative to the spec's folder.
 
 Steps: gain, fade, highpass, lowpass, eq, deess, denoise, compress, loudnorm,
 limiter. denoise methods: afftdn and arnndn (ffmpeg built in; arnndn needs a
-`model` file or it is skipped), deepfilternet (the `deep-filter` program,
-skipped when it is not installed), and `candidates`, the place a candidate
+`model` file or it is skipped), deepfilternet (recorded as skipped in v1, installed or
+not: run `deep-filter` on the input yourself and name its output as the stem input), and `candidates`, the place a candidate
 goes. Each candidate renders its own stem file; the main stem skips the
 placeholder. iZotope RX is not offered (decision 26: out until a licence is
 confirmed on record). A skipped step is recorded in render.json, never fatal.
@@ -408,8 +408,8 @@ def validate_spec(spec, base):
     if not isinstance(stems, dict) or not stems:
         raise SpecError("stems: give at least one stem")
     for name, st in stems.items():
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", str(name)):
-            raise SpecError(f"stem name {name!r}: letters, digits, _ and - only")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", str(name)) or "__" in str(name):
+            raise SpecError(f"stem name {name!r}: letters, digits, _ and - only, no double underscore")
         if not isinstance(st, dict) or not st.get("input"):
             raise SpecError(f"stem {name}: needs an input file")
         bad = sorted(set(st) - {"input", "chain", "candidates"})
@@ -425,8 +425,8 @@ def validate_spec(spec, base):
         if not isinstance(cands, dict):
             raise SpecError(f"stem {name}: candidates must be a map of name to denoise settings")
         for c in cands:
-            if not re.fullmatch(r"[A-Za-z0-9_-]+", str(c)):
-                raise SpecError(f"candidate name {c!r}: letters, digits, _ and - only")
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", str(c)) or "__" in str(c):
+                raise SpecError(f"candidate name {c!r}: letters, digits, _ and - only, no double underscore")
         if cands and not any(_step(i)[0] == "denoise" and isinstance(_step(i)[1], dict)
                              and _step(i)[1].get("method") == "candidates" for i in st["chain"]):
             raise SpecError(f"stem {name}: candidates need a `denoise: {{method: candidates}}` step")
@@ -766,7 +766,7 @@ def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000):
                 _excerpt(files[src_i], out, start, seconds, rate, chans, gains[src_i], BIT_DEPTH)
                 outs.append(_lufs(out))
             measured = outs
-            if max(measured) - min(measured) <= 0.05:
+            if max(measured) - min(measured) <= 0.05 or _ == 2:
                 break
             mean = min(measured)
             for i in range(len(labels)):
