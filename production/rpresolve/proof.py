@@ -5,8 +5,12 @@ FAIL, row by row. Offline: ffmpeg reads both files; nothing touches Resolve.
 
 Rows:
     - frames: both files give the same number of frames and the same size
+    - fps: both files carry the same frame rate (equal frame counts do not
+      imply it)
     - range: legal or full range per file (the colour_range tag, and values
-      outside 16..235 in signalstats); a mismatch is its own FAIL row
+      outside 16..235 in signalstats); a mismatch is its own FAIL row. An
+      explicit tv or pc tag that disagrees with the measured extremes is
+      flagged in a WARN row naming both, never trusted silently
     - level shift: a systematic offset in mean luma with the range agreeing,
       the mark of a gamma or transfer mismatch; the row names the measured
       offset in 8-bit codes and the gamma that would explain it
@@ -28,6 +32,7 @@ exported as a file.
 import json
 import math
 import re
+from fractions import Fraction
 
 from . import measure
 from .measure import MeasureError
@@ -50,17 +55,41 @@ def has_libvmaf():
     return bool(re.search(r"\blibvmaf\b", proc.stdout))
 
 
-def detect_range(tags, frames):
-    """'full' or 'legal' for one file: the colour_range tag when it says so
-    (legal footage carries sub-black and super-white overshoot, so values
-    outside 16..235 do not overrule a tv tag), else the signalstats extremes
-    against 16..235."""
-    if tags.get("color_range") in ("pc", "tv"):
-        return "full" if tags["color_range"] == "pc" else "legal"
+def measured_range(frames):
+    """'full' or 'legal' from the signalstats extremes against 16..235."""
     if frames and (min(f["ymin"] for f in frames) < LEGAL[0] - RANGE_MARGIN
                    or max(f["ymax"] for f in frames) > LEGAL[1] + RANGE_MARGIN):
         return "full"
     return "legal"
+
+
+def detect_range(tags, frames):
+    """'full' or 'legal' for one file: the colour_range tag when it says so
+    (legal footage carries sub-black and super-white overshoot, so values
+    outside 16..235 do not overrule a tv tag), else the measured extremes.
+    range_conflict reports where the two disagree."""
+    if tags.get("color_range") in ("pc", "tv"):
+        return "full" if tags["color_range"] == "pc" else "legal"
+    return measured_range(frames)
+
+
+def range_conflict(tags, frames):
+    """(tag, measured) when an explicit tv or pc tag disagrees with the
+    measured extremes, else None. Overshoot on a tv file and dark content on a
+    pc file both look like a disagreement, so it is a flag, not a verdict."""
+    tag = tags.get("color_range")
+    if tag not in ("pc", "tv"):
+        return None
+    measured = measured_range(frames)
+    return None if (tag == "pc") == (measured == "full") else (tag, measured)
+
+
+def fps_value(rate):
+    """ffprobe's avg_frame_rate ('30000/1001') as a float; None when unreadable."""
+    try:
+        return float(Fraction(rate))
+    except (ValueError, ZeroDivisionError, TypeError):
+        return None
 
 
 def _pair_filter(graph):
@@ -143,11 +172,19 @@ def compare(test, ref, thresholds=None, frames=MAX_FRAMES):
     same = size[0] == size[1] and counts[0] == counts[1]
     rows.append(_row("frames", same, f"test {size[0][0]}x{size[0][1]} x{counts[0]}, "
                      f"ref {size[1][0]}x{size[1][1]} x{counts[1]}", "same size and frame count"))
+    fps = [fps_value(i["fps"]) for i in infos]
+    fps_ok = None not in fps and abs(fps[0] - fps[1]) < 0.005
+    rows.append(_row("fps", fps_ok, f"test {infos[0]['fps']}, ref {infos[1]['fps']}", "same frame rate"))
     ranges = [detect_range(i["tags"], s) for i, s in zip(infos, sig)]
     extremes = [f"{min(f['ymin'] for f in s):.0f}..{max(f['ymax'] for f in s):.0f}" for s in sig]
     rows.append(_row("range", ranges[0] == ranges[1],
                      f"test {ranges[0]} (Y {extremes[0]}), ref {ranges[1]} (Y {extremes[1]})",
                      "same range"))
+    conflicts = [range_conflict(i["tags"], s) for i, s in zip(infos, sig)]
+    if any(conflicts):
+        said = [f"{who} tagged {c[0]} but measures {c[1]}" for who, c in zip(("test", "ref"), conflicts) if c]
+        rows.append({"check": "range tag", "status": "WARN", "value": "; ".join(said)
+                     + " (the tag was used; check the tag or the grade)", "limit": ""})
     sh = shifts(*sig)
     ys, us, vs = ([s[k] for s in sh] for k in "yuv")
     mean_y = _mean(ys)
