@@ -9,7 +9,8 @@ Input: measure reports grouped by scene. Per scene it names
       clipping (little at either end), with the reasons in numbers
     - flagged pairs: two clips whose white point differs (the near-neutral
       cast when a report carries `neutral_cast`, else skin Lab, and the
-      basis is named) or whose key light comes from opposite sides. Flags
+      basis is named; measure does not write a cast yet, so skin is the usual
+  basis and also moves with the person) or whose key light comes from opposite sides. Flags
       are hints for the paper edit and the grade; nothing here blocks.
 
 Second run (`--before` the first report, new measure files of the same
@@ -91,8 +92,6 @@ def flag_pairs(reps):
                 d = float(np.hypot(wa[0] - wb[0], wa[1] - wb[1]))
                 if d > CAST_FLAG:
                     reasons.append(f"white point: neutral cast apart by {d:.2f} Lab (over {CAST_FLAG:g})")
-        elif wa is not None and wb is not None:
-            reasons.append(f"white point not compared: basis differs ({basis_a} vs {basis_b})")
         la, lb = _lit_side(reps[a]), _lit_side(reps[b])
         if la and lb and la != lb:
             reasons.append(f"light side: {a} lit {la}, {b} lit {lb}")
@@ -182,7 +181,9 @@ def compare(before, after):
 def format_summary(report):
     lines = []
     for scene, s in report["scenes"].items():
-        lines.append(f"scene {scene}: reference {s['reference']} (score {s['score']})")
+        lines.append(f"scene {scene}: reference {s['reference']} (score {s['score']})"
+                     + (" [this run's own pick; Shot Match below compares against the first run's]"
+                        if report.get("shot_match") else ""))
         lines += [f"  {r}" for r in s["reasons"]]
         for f in s["flagged_pairs"]:
             lines.append(f"  flag {f['a']} / {f['b']}: " + "; ".join(f["reasons"]))
@@ -217,13 +218,18 @@ def main(argv=None):
         for name, *files in args.scene:
             if not files:
                 p.error(f"scene {name} has no files")
+            if name in scenes:
+                p.error(f"scene {name} given twice; list its files under one --scene")
             scenes[name] = [_load(f) for f in files]
         report = build(scenes)
         if args.before:
             report["shot_match"] = compare(_load(args.before), report)
         if args.out:
             write_private(args.out, json.dumps(report, indent=2) + "\n", any_git_tree=True)
-    except (OSError, ValueError, KeyError, OutputRefused) as e:
+    except KeyError as e:
+        print(f"continuity: input is not a measure report (missing {e})", file=sys.stderr)
+        return 2
+    except (OSError, ValueError, OutputRefused) as e:
         print(f"continuity: {e}", file=sys.stderr)
         return 2
     sys.stdout.write(format_summary(report))

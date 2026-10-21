@@ -64,7 +64,7 @@ class TestContinuity(unittest.TestCase):
                 "z": rep("z")}
         f = {(p["a"], p["b"]): p["reasons"] for p in continuity.flag_pairs(reps)}
         self.assertIn("neutral cast", f[("x", "y")][0])
-        self.assertIn("basis differs", f[("x", "z")][0])
+        self.assertNotIn(("x", "z"), f)
 
     def test_single_clip_scene(self):
         s = continuity.build({"S": [rep("only")]})["scenes"]["S"]
@@ -104,6 +104,17 @@ class TestContinuity(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 self.assertEqual(continuity.main(["--scene", "S01", *files, "--before", out]), 0)
             self.assertIn("shot match, scene S01", buf.getvalue())
+
+    def test_duplicate_scene_and_malformed_report_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = os.path.join(tmp, "bad.json")
+            Path(bad).write_text("{}")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(continuity.main(["--scene", "S", bad]), 2)
+                with self.assertRaises(SystemExit):
+                    continuity.main(["--scene", "S", bad, "--scene", "S", bad])
+            self.assertIn("not a measure report", err.getvalue())
 
     def test_bad_input_exits_2(self):
         err = io.StringIO()
