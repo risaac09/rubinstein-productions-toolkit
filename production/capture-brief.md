@@ -54,7 +54,7 @@ Exposure is set by eye on the log image, then doubtful shots are checked against
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2 | house working default |
 | Base ISO | 640 or 4000, dual native | maker spec |
-| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (also quoted as about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve (Panasonic V-Log reference manual, Rev 1.0) |
+| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (percent of full range, the scale the capture standard uses for every row) | computed from the V-Log curve (Panasonic V-Log reference manual, Rev 1.0) |
 | Zebra and waveform | not set; the S5II manual's zebra and false colour sections are not yet read for this page | to be measured |
 | Resolve input | Panasonic V-Gamut/V-Log | camera table |
 | Record per clip | ISO (640 or 4000) | camera table |
@@ -67,7 +67,7 @@ Monitoring LUT: the S5II loads house looks from the card (`lutlab looks --monito
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2; Open Gate (5760x4320) only for a planned vertical or square cut | house working default |
 | Base ISO | 500, confirmed in the camera menu 2026-10-16; Auto ISO capped at 3200 | maker spec for 500; house working default for the 3200 cap |
-| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (also quoted as about 42 IRE; check which scale your waveform reads) | computed from the V-Log curve |
+| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (percent of full range, the scale the capture standard uses for every row) | computed from the V-Log curve |
 | Zebra and waveform | not set; the GH7 manual's zebra and false colour sections are not yet read for this page | to be measured |
 | Resolve input | Panasonic V-Gamut/V-Log | camera table |
 | Record per clip | ISO (base 500) | camera table |
@@ -79,7 +79,7 @@ No monitoring LUT route is known for the GH7. Monitor in log or with the camera'
 | Item | Value | Label |
 |---|---|---|
 | Profile | HLG (ITU-R BT.2100), Rec.2020 primaries. The capture standard's Apple Log row is a separate profile with its own kit. | camera table |
-| Base ISO | to be measured (no figure is set in the capture standard) | to be measured |
+| Base ISO | to be measured (VP-31; the capture standard has none) | to be measured |
 | Exposure target | to be measured. The curve code encodes scene light, not a grey-card reading, so no grey level is quoted here. | to be measured |
 | Zebra and waveform | not set; the camera app has no waveform, so judge exposure on the image and check on the first clip in the scopes | to be measured |
 | Resolve input | Rec.2100 HLG (Resolve's own name, unverified through the API; confirm on screen) | camera table |
