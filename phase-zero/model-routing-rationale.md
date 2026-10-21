@@ -93,7 +93,9 @@ to start.
 
 Log two fields per substantive task: the tier routed to, and whether the work
 needed a second review round. The destination already exists, and extra keys
-pass validation untouched, so this needs no new machinery:
+pass validation untouched, so this needs no new machinery (since 2026-10-17 the
+optional keys `pool`, `cards`, `g1FirstPass` and `reviewEditLines` are
+validated, so Codex, local and OpenRouter rows can be compared with Claude's):
 
     sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
 
