@@ -87,6 +87,8 @@ def _check_clip(doc, clip_id, what):
         bad = sidecar.validate(doc)
         if bad:
             raise PacketError(f"{what} is not a sound sidecar: " + "; ".join(bad))
+        if not doc["schema"]["name"].startswith("sound."):
+            raise PacketError(f"{what} is {doc['schema']['name']}, not a sound sidecar")
         if doc["clip_id"] != clip_id:
             raise PacketError(f"{what} is for clip {doc['clip_id']}, not {clip_id}")
 
@@ -98,12 +100,28 @@ def _copy(src, out, rel):
     return {"path": rel, "sha256": _sha(dst)}
 
 
-def _cine(folder, out, parts):
+def _cine_doc(folder, m):
+    """The perceive folder's packet.json, checked: a cine.perceive version 2
+    envelope whose frame is the moment (a frame within a millisecond of t_s,
+    or inside the span), and whose files stay inside the folder."""
     doc = _load(os.path.join(folder, "packet.json"))
     bad = sidecar.validate(doc)
     if bad or doc["schema"] != {"name": "cine.perceive", "version": 2}:
         raise PacketError("perceive folder needs a cine.perceive version 2 packet.json"
                           + (": " + "; ".join(bad) if bad else ""))
+    t = (doc["cine"].get("source") or {}).get("t")
+    if not isinstance(t, (int, float)):
+        raise PacketError("the perceive packet records no frame time (cine.source.t)")
+    lo, hi = (m["start_s"], m["end_s"]) if m["kind"] == "span" else (m["t_s"] - 0.001, m["t_s"] + 0.001)
+    if not lo <= t <= hi:
+        raise PacketError(f"the perceive frame is at {t}s, outside the moment")
+    for rel in (doc["cine"].get("files") or {}).values():
+        if os.path.isabs(rel) or os.path.normpath(rel).startswith(".."):
+            raise PacketError(f"the perceive packet lists {rel}, outside its folder")
+    return doc
+
+
+def _cine(folder, doc, out, parts):
     files = doc["cine"].get("files") or {}
     sheet = files.get("sheet")
     if sheet:
@@ -150,10 +168,9 @@ def assemble(out, m, perceive_dir=None, audio_dir=None, words_json=None, filmstr
         raise PacketError(f"{out} exists and is not an empty folder; name a new one.")
     if not os.path.isdir(os.path.dirname(os.path.abspath(out))):
         raise PacketError(f"the folder above {out} does not exist.")
-    cine_doc = None
-    if perceive_dir:
-        cine_doc = _load(os.path.join(perceive_dir, "packet.json"))
-        src_path = (cine_doc.get("source") or {}).get("path")
+    cine_doc = _cine_doc(perceive_dir, m) if perceive_dir else None
+    if cine_doc:
+        src_path = cine_doc["source"]["path"]
     else:
         src_path = source
     if not src_path:
@@ -168,7 +185,7 @@ def assemble(out, m, perceive_dir=None, audio_dir=None, words_json=None, filmstr
     parts = []
     try:
         if perceive_dir:
-            _cine(perceive_dir, out, parts)
+            _cine(perceive_dir, cine_doc, out, parts)
         if words_json:
             _words(words_json, m, out, head["clip_id"], parts)
         if audio_dir:

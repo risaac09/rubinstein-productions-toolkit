@@ -110,9 +110,9 @@ class TestAssemble(unittest.TestCase):
         self.assertIn("hello there.", w["phrases"][0])
 
     def test_span_takes_overlapping_words_only(self):
-        out, idx = self.build("d", packet.moment(start_s=0, end_s=0.3))
+        out, idx = self.build("d", packet.moment(start_s=0, end_s=4.3), perceive_dir=None)
         w = json.load(open(os.path.join(out, "words.json")))
-        self.assertEqual([x["word"] for x in w["words"]], ["early"])
+        self.assertEqual([x["word"] for x in w["words"]], ["early", "hello"])
         self.assertEqual(idx["story"]["moment"]["kind"], "span")
 
     def test_only_given_parts_are_listed(self):
@@ -136,6 +136,29 @@ class TestAssemble(unittest.TestCase):
         out = os.path.join(self.tmp.name, "g")
         with self.assertRaises(packet.PacketError):
             packet.assemble(out, packet.moment(t_s=4), perceive_dir=str(self.cine), audio_dir=str(other))
+        self.assertFalse(os.path.exists(out))
+
+    def test_perceive_frame_must_be_the_moment(self):
+        out = os.path.join(self.tmp.name, "m")
+        with self.assertRaises(packet.PacketError):
+            packet.assemble(out, packet.moment(t_s=1.0), perceive_dir=str(self.cine))
+        packet.assemble(out, packet.moment(start_s=4.0, end_s=5.0), perceive_dir=str(self.cine))
+
+    def test_malformed_perceive_packet_is_a_packet_error(self):
+        bad = Path(self.tmp.name) / "bad"
+        bad.mkdir()
+        (bad / "packet.json").write_text("{}")
+        with self.assertRaises(packet.PacketError):
+            packet.assemble(os.path.join(self.tmp.name, "n"), packet.moment(t_s=4.2), perceive_dir=str(bad))
+
+    def test_audio_must_be_a_sound_sidecar(self):
+        out = os.path.join(self.tmp.name, "o")
+        doc = json.load(open(self.cine / "packet.json"))
+        wrong = Path(self.tmp.name) / "wrong"
+        wrong.mkdir()
+        (wrong / "report.json").write_text(json.dumps(doc))
+        with self.assertRaises(packet.PacketError):
+            packet.assemble(out, packet.moment(t_s=4.2), perceive_dir=str(self.cine), audio_dir=str(wrong))
         self.assertFalse(os.path.exists(out))
 
     def test_refuses_git_tree_nonempty_and_no_input(self):
