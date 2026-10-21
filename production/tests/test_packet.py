@@ -110,7 +110,7 @@ class TestAssemble(unittest.TestCase):
         self.assertIn("hello there.", w["phrases"][0])
 
     def test_span_takes_overlapping_words_only(self):
-        out, idx = self.build("d", packet.moment(start_s=0, end_s=4.3), perceive_dir=None)
+        out, idx = self.build("d", packet.moment(start_s=0, end_s=4.3))
         w = json.load(open(os.path.join(out, "words.json")))
         self.assertEqual([x["word"] for x in w["words"]], ["early", "hello"])
         self.assertEqual(idx["story"]["moment"]["kind"], "span")
