@@ -17,7 +17,9 @@ needed; JSON is accepted too). Paths are relative to the spec's folder.
         input: dialogue.wav
         chain:                    # steps run in order
           - highpass: 80
-          - denoise: {method: afftdn, nr: 12}
+          - dehum: {freq: 60}     # opt-in, like every step
+          - declick: {}
+          - denoise: {method: candidates}
           - eq: {freq: 3000, gain: 2, q: 1}
           - deess: {}
           - compress: {threshold: -18, ratio: 3}
@@ -31,25 +33,39 @@ needed; JSON is accepted too). Paths are relative to the spec's folder.
         chain: [{gain: -3}]
     mix:
       gains: {dialogue: 0, music: -12}      # dB per stem
-      duck: {key: dialogue, under: [music], threshold: -30, ratio: 8}
+      duck: {key: dialogue, under: [music], depth: 12}
       chain:
         - loudnorm: {i: -16, tp: -1.5}
         - limiter: {ceiling: -1.5}
 
-Steps: gain, fade, highpass, lowpass, eq, deess, denoise, compress, loudnorm,
-limiter. denoise methods: afftdn and arnndn (ffmpeg built in; arnndn needs a
-`model` file or it is skipped), deepfilternet (recorded as skipped in v1, installed or
-not: run `deep-filter` on the input yourself and name its output as the stem input), and `candidates`, the place a candidate
-goes. Each candidate renders its own stem file; the main stem skips the
-placeholder. iZotope RX is not offered (decision 26: out until a licence is
-confirmed on record). A skipped step is recorded in render.json, never fatal.
+Steps: gain, fade, highpass, lowpass, eq, dehum, declick, deess, denoise,
+compress, loudnorm, limiter. dehum notches freq (50 or 60) and its
+harmonics; declick is ffmpeg's adeclick. denoise methods: afftdn, anlmdn and
+arnndn (ffmpeg built in; arnndn needs a `model` file or it is skipped),
+deepfilternet (recorded as skipped in v1, installed or not: run `deep-filter`
+on the input yourself and name its output as the stem input), and
+`candidates`, the place a candidate goes. Each candidate renders its own stem
+file; the main stem skips the placeholder. A denoiser's delay (afftdn about
+25 ms, anlmdn 8 ms at 48 kHz, and it moves with the rate and ffmpeg's version)
+is measured once per render and trimmed off, so the stem stays on picture.
+iZotope RX is not offered (decision 26: out until a licence is confirmed on
+record). A skipped step is recorded in render.json, never fatal; so is a
+loudnorm that fell back to dynamic mode (it compressed, so listen).
 
-render writes into DIR: stems/NAME.wav, candidates/NAME__CAND.wav, mix.wav and
-render.json (spec hash, ffmpeg version, every filter graph, each output's
-hash and skips). The same spec and inputs give byte-identical WAVs: bitexact
-flags, one thread, no metadata, two-pass loudnorm. It refuses to write over
-a source and refuses any DIR inside a git working tree. With --report each
-output is measured by audio-report into DIR/reports/NAME/.
+The duck is keyed on speech activity (rpresolve.duckplan, run on the rendered
+key stem), not on its level, so music goes down by `depth` dB under every
+talker alike; `gate_db` sets the gate where the floor guess is wrong.
+
+render writes into DIR: stems/NAME.wav (each stem after its chain),
+candidates/NAME__CAND.wav, mixed/NAME.wav (each stem as it sits in the mix:
+its gain, its ducking and the mix chain's linear steps; they sum to mix.wav,
+up to the first step of the mix chain that is not linear, which is recorded),
+duck/ (the duck plan and key), mix.wav and render.json (spec hash, ffmpeg
+version, every filter graph, each output's hash and skips). The same spec and
+inputs give byte-identical WAVs: bitexact flags, one thread, no metadata,
+two-pass loudnorm. It refuses to write over a source and refuses any DIR
+inside a git working tree. With --report each output is measured by
+audio-report into DIR/reports/NAME/.
 
 ab cuts the same span from each file, matches the excerpts' integrated
 loudness (turning the louder ones down, so nothing clips), shuffles them to
@@ -61,6 +77,7 @@ wrong. The A/B packet is the control for that.
 """
 
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -68,15 +85,25 @@ import random
 import re
 import secrets
 import shutil
+import subprocess
 import sys
+
+import numpy as np
 
 from . import audioreport as ar
 from . import delivercheck as dc
+from . import duckplan as dp
 from .paths import OutputRefused, in_any_git_tree
 
 BIT_DEPTH = "pcm_s24le"
 AB_TOLERANCE_LU = 0.5
 RUN_TIMEOUT_S = 3600
+MAX_DELAY_S = 0.25               # a denoiser delaying more than this is refused
+DUCK_KEY = "duck/duck-key.wav"   # a mix input that is the duck key; stem names hold no /
+# steps that distribute over a sum, so a mixed stem may carry them (loudnorm too, when linear)
+LINEAR = {"gain", "fade", "highpass", "lowpass", "eq", "dehum"}
+# biquads in double precision: in float a low high-pass leaves the mixed stems -80 dB off the mix
+F64 = ":precision=f64"
 
 
 class SpecError(ValueError):
@@ -261,10 +288,12 @@ def _params(raw, main, allowed, step):
 
 class Ctx:
     """What a step may need: the rate, how long the signal is here, and a
-    place to say what was skipped."""
+    place to say what was skipped. probe is False when only the settings
+    are being checked, so no delay is measured."""
 
-    def __init__(self, rate, duration, skips, where):
+    def __init__(self, rate, duration, skips, where, probe=True):
         self.rate, self.duration, self.skips, self.where = rate, duration, skips, where
+        self.probe = probe
 
     def skip(self, step, why):
         self.skips.append({"where": self.where, "step": step, "why": why})
@@ -284,9 +313,10 @@ def s_fade(raw, ctx):
         out.append(f"afade=t=in:st=0:d={_f(_num(p['in'], 'fade in', 0.001, 600))}:curve={curve}")
     if "out" in p:
         d = _num(p["out"], "fade out", 0.001, 600)
-        if ctx.duration is None or d > ctx.duration:
+        dur = d if ctx.duration is None else ctx.duration  # None: checking settings only
+        if d > dur:
             raise SpecError(f"{ctx.where}: fade out of {d} s is longer than the signal")
-        out.append(f"afade=t=out:st={_f(ctx.duration - d)}:d={_f(d)}:curve={curve}")
+        out.append(f"afade=t=out:st={_f(dur - d)}:d={_f(d)}:curve={curve}")
     if not out:
         raise SpecError("fade needs in or out")
     return out
@@ -295,13 +325,13 @@ def s_fade(raw, ctx):
 def s_highpass(raw, ctx):
     p = _params(raw, "freq", ("freq", "poles"), "highpass")
     return [f"highpass=f={_f(_num(p.get('freq', 80), 'highpass freq', 10, 2000))}"
-            f":p={int(_num(p.get('poles', 2), 'poles', 1, 2))}"]
+            f":p={int(_num(p.get('poles', 2), 'poles', 1, 2))}{F64}"]
 
 
 def s_lowpass(raw, ctx):
     p = _params(raw, "freq", ("freq", "poles"), "lowpass")
     return [f"lowpass=f={_f(_num(p.get('freq', 16000), 'lowpass freq', 100, 24000))}"
-            f":p={int(_num(p.get('poles', 2), 'poles', 1, 2))}"]
+            f":p={int(_num(p.get('poles', 2), 'poles', 1, 2))}{F64}"]
 
 
 def s_eq(raw, ctx):
@@ -311,10 +341,24 @@ def s_eq(raw, ctx):
     kind = p.get("type", "peak")
     q = _f(_num(p.get("q", 1.0), "eq q", 0.05, 20))
     if kind == "peak":
-        return [f"equalizer=f={f}:t=q:w={q}:g={g}"]
+        return [f"equalizer=f={f}:t=q:w={q}:g={g}{F64}"]
     if kind in ("lowshelf", "highshelf"):
-        return [f"{kind}=f={f}:g={g}"]
+        return [f"{kind}=f={f}:g={g}{F64}"]
     raise SpecError(f"eq type {kind!r}: use peak, lowshelf or highshelf")
+
+
+def s_dehum(raw, ctx):
+    p = _params(raw, "freq", ("freq", "harmonics", "q"), "dehum")
+    f = _num(p.get("freq", 60), "dehum freq", 40, 70)
+    h = int(_num(p.get("harmonics", 4), "dehum harmonics", 1, 20))
+    q = _f(_num(p.get("q", 10), "dehum q", 1, 100))
+    return [f"bandreject=f={_f(f * k)}:width_type=q:w={q}{F64}" for k in range(1, h + 1)]
+
+
+def s_declick(raw, ctx):
+    p = _params(raw, "threshold", ("threshold", "window"), "declick")
+    return _aligned(f"adeclick=w={_f(_num(p.get('window', 55), 'declick window', 10, 100))}"
+                    f":t={_f(_num(p.get('threshold', 2), 'declick threshold', 1, 100))}", ctx)
 
 
 def s_deess(raw, ctx):
@@ -338,28 +382,76 @@ def _deepfilter():
     return shutil.which("deep-filter") or shutil.which("deepFilter")
 
 
+@functools.lru_cache(maxsize=None)
+def delay_samples(filt, rate):
+    """How many samples `filt` delays a signal at `rate`, measured by cross-
+    correlating a pulsed noise against what comes out. afftdn's and anlmdn's
+    windows follow the rate (not exactly in proportion) and ffmpeg's version."""
+    n = 2 * rate
+    t = np.arange(n) / rate
+    x = (np.random.default_rng(3).uniform(-0.5, 0.5, n)
+         * (1 - 0.9 * (0.5 + 0.5 * np.sin(2 * np.pi * 4 * t)))).astype("<f4")
+    cmd = [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-f", "f32le", "-ar", str(rate),
+           "-ac", "1", "-i", "-", "-af",
+           f"{filt},aformat=sample_fmts=flt:sample_rates={rate}:channel_layouts=mono",
+           "-f", "f32le", "-"]
+    try:
+        proc = subprocess.run(cmd, input=x.tobytes(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=RUN_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise MixError(f"ffmpeg timed out measuring the delay of {filt}")
+    y = np.frombuffer(proc.stdout, "<f4").astype(np.float64)
+    if proc.returncode != 0 or len(y) < n // 2:
+        raise MixError(f"could not measure the delay of {filt}: "
+                       + proc.stderr.decode(errors="replace").strip()[-300:])
+    y = y[:n]
+    m = 1 << (2 * n - 1).bit_length()
+    c = np.fft.irfft(np.fft.rfft(y, m) * np.conj(np.fft.rfft(x, m)), m)[:int(MAX_DELAY_S * rate)]
+    lag = int(np.argmax(c))
+    if c[lag] < 0.3 * np.linalg.norm(x) * np.linalg.norm(y):
+        raise MixError(f"{filt} at {rate} Hz: no clear delay to take out (it changed the "
+                       f"signal too much, or delays it more than {MAX_DELAY_S} s)")
+    return lag
+
+
+def _aligned(filt, ctx):
+    """filt with its delay taken out: the end padded by the delay first, the
+    start trimmed by it after, so the output lines up with the input at the
+    same length. The aformat brings arnndn (always 48 kHz out) back to the rate."""
+    fmt = f"aformat=sample_rates={ctx.rate}"
+    if not ctx.probe:
+        return [filt, fmt]
+    n = delay_samples(filt, ctx.rate)
+    if not n:
+        return [filt, fmt]
+    return [f"apad=pad_len={n}", filt, fmt, f"atrim=start_sample={n}", "asetpts=PTS-STARTPTS"]
+
+
 def s_denoise(raw, ctx):
-    p = _params(raw, "method", ("method", "nr", "nf", "tn", "model", "mix"), "denoise")
+    p = _params(raw, "method", ("method", "nr", "nf", "tn", "s", "model", "mix"), "denoise")
     method = p.get("method", "afftdn")
     if method == "candidates":
         return []  # only meaningful in a candidate render; the main render drops it
     if method == "afftdn":
-        return [f"afftdn=nr={_f(_num(p.get('nr', 12), 'nr', 0.01, 97))}"
-                f":nf={_f(_num(p.get('nf', -50), 'nf', -80, -20))}"
-                f":tn={1 if p.get('tn') else 0}"]
+        return _aligned(f"afftdn=nr={_f(_num(p.get('nr', 12), 'nr', 0.01, 97))}"
+                        f":nf={_f(_num(p.get('nf', -50), 'nf', -80, -20))}"
+                        f":tn={1 if p.get('tn') else 0}", ctx)
+    if method == "anlmdn":
+        return _aligned(f"anlmdn=s={_f(_num(p.get('s', 0.00001), 's', 0.00001, 10000))}", ctx)
     if method == "arnndn":
         model = p.get("model")
         if not model or not os.path.isfile(model):
             return ctx.skip("denoise arnndn", "needs a `model` file (an .rnnn); none given or found")
-        return [f"arnndn=m={model.replace(chr(92), '/').replace(':', chr(92) + ':')}"
-                f":mix={_f(_num(p.get('mix', 1), 'mix', -1, 1))}"]
+        return _aligned(f"arnndn=m={model.replace(chr(92), '/').replace(':', chr(92) + ':')}"
+                        f":mix={_f(_num(p.get('mix', 1), 'mix', -1, 1))}", ctx)
     if method == "deepfilternet":
         if not _deepfilter():
             return ctx.skip("denoise deepfilternet", "deep-filter is not installed")
         ctx.skip("denoise deepfilternet", "installed, but run it on the input first and name "
                  "the result as the stem input; mixbuild does not shell out to it")
         return []
-    raise SpecError(f"denoise method {method!r}: use afftdn, arnndn, deepfilternet or candidates")
+    raise SpecError(f"denoise method {method!r}: use afftdn, anlmdn, arnndn, deepfilternet "
+                    "or candidates")
 
 
 def s_loudnorm(raw, ctx):
@@ -381,8 +473,9 @@ def s_limiter(raw, ctx):
 
 
 STEPS = {"gain": s_gain, "fade": s_fade, "highpass": s_highpass, "lowpass": s_lowpass,
-         "eq": s_eq, "deess": s_deess, "denoise": s_denoise, "compress": s_compress,
-         "loudnorm": s_loudnorm, "limiter": s_limiter}
+         "eq": s_eq, "dehum": s_dehum, "declick": s_declick, "deess": s_deess,
+         "denoise": s_denoise, "compress": s_compress, "loudnorm": s_loudnorm,
+         "limiter": s_limiter}
 
 
 def _step(item):
@@ -394,6 +487,14 @@ def _step(item):
     if name not in STEPS:
         raise SpecError(f"unknown step {name!r} (known: {', '.join(sorted(STEPS))})")
     return name, raw
+
+
+def _check_chain(steps, rate, where):
+    """Every step's settings, checked now rather than halfway through a render."""
+    ctx = Ctx(rate, None, [], where, probe=False)
+    for item in steps:
+        name, raw = _step(item)
+        STEPS[name](raw, ctx)
 
 
 def validate_spec(spec, base):
@@ -419,14 +520,14 @@ def validate_spec(spec, base):
         st["chain"] = st.get("chain") or []
         if not isinstance(st["chain"], list):
             raise SpecError(f"stem {name}: chain must be a list")
-        for item in st["chain"]:
-            _step(item)
+        _check_chain(st["chain"], spec["sample_rate"], f"stem {name}")
         cands = st.get("candidates") or {}
         if not isinstance(cands, dict):
             raise SpecError(f"stem {name}: candidates must be a map of name to denoise settings")
         for c in cands:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", str(c)) or "__" in str(c):
                 raise SpecError(f"candidate name {c!r}: letters, digits, _ and - only, no double underscore")
+            _check_chain([{"denoise": cands[c]}], spec["sample_rate"], f"stem {name} candidate {c}")
         if cands and not any(_step(i)[0] == "denoise" and isinstance(_step(i)[1], dict)
                              and _step(i)[1].get("method") == "candidates" for i in st["chain"]):
             raise SpecError(f"stem {name}: candidates need a `denoise: {{method: candidates}}` step")
@@ -440,18 +541,21 @@ def validate_spec(spec, base):
             raise SpecError(f"mix gains names a stem that does not exist: {name}")
     duck = mix.get("duck")
     if duck:
-        bad = sorted(set(duck) - {"key", "under", "threshold", "ratio", "attack", "release"})
+        bad = sorted(set(duck) - {"key", "under", "depth", "gate_db"})
         if bad:
-            raise SpecError(f"duck: unknown key {', '.join(bad)}")
+            raise SpecError(f"duck: unknown key {', '.join(bad)} (the duck is keyed on speech "
+                            "activity: give depth in dB, and gate_db if the gate needs setting)")
         under = duck.get("under")
         under = [under] if isinstance(under, str) else under
         if duck.get("key") not in stems or not under or any(u not in stems for u in under) \
                 or duck["key"] in under:
             raise SpecError("duck: key and under must be different stems of this spec")
         duck["under"] = under
+        duck["depth"] = _num(duck.get("depth", dp.DEPTH_DB), "duck depth", 0.1, dp.MAX_DEPTH_DB)
+        if duck.get("gate_db") is not None:
+            duck["gate_db"] = _num(duck["gate_db"], "duck gate_db", -120, 0)
     mix["chain"] = mix.get("chain") or []
-    for item in mix["chain"]:
-        _step(item)
+    _check_chain(mix["chain"], spec["sample_rate"], "mix")
     spec["mix"] = mix
     return spec
 
@@ -496,8 +600,8 @@ def probe_duration(path):
         raise MixError(f"ffprobe could not read the length of {path}: {proc.stderr.strip()[-200:]}")
 
 
-def _ffmpeg(inputs, graph, out, extra=()):
-    cmd = [dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
+def _ffmpeg(inputs, graph, out, extra=(), level="error"):
+    cmd = [dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", level, "-y",
            "-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1"]
     for p in inputs:
         cmd += ["-i", dc._src(p)]
@@ -525,68 +629,94 @@ def _loudnorm_pass1(inputs, graph_before, ln):
     return got
 
 
-def render_graph(inputs, head, parts, out_path):
+def render_graph(inputs, head, parts, out_path, fmt, where, skips, measured=None):
     """Render `head` (a filter_complex that ends in an unlabelled filter)
-    plus the chain `parts` to out_path atomically. A loudnorm runs two-pass:
-    measure the chain up to it, then apply it linearly. Returns the graph."""
+    plus the chain `parts` to out_path atomically, ending in `fmt` (loudnorm
+    puts out 192 kHz). A loudnorm runs two-pass: measure the chain up to it
+    (or take `measured`, so a mixed stem gets the mix's gain), then apply it
+    linearly; when loudnorm falls back to dynamic that goes into skips.
+    Returns (graph, None or {measured, linear})."""
     before, ln, after = parts
     body = ",".join([head, *before])
+    got = None
     if ln:
-        got = _loudnorm_pass1(inputs, body, ln)
+        got = measured or _loudnorm_pass1(inputs, body, ln)
         ln = (f"{ln}:measured_I={got['input_i']}:measured_TP={got['input_tp']}"
               f":measured_LRA={got['input_lra']}:measured_thresh={got['input_thresh']}"
-              f":offset={got['target_offset']}:linear=true")
+              f":offset={got['target_offset']}:linear=true:print_format=json")
         body += "," + ln
-    graph = ",".join([body, *after, "anull"]) + "[out]"
+    graph = ",".join([body, *after, fmt]) + "[out]"
     part = out_path + ".part"
     try:
-        proc = _ffmpeg(inputs, graph, part)
+        proc = _ffmpeg(inputs, graph, part, level="info" if ln else "error")
         if proc.returncode != 0:
             raise MixError("ffmpeg failed: " + proc.stderr.strip()[-400:])
         os.replace(part, out_path)
     finally:
         if os.path.exists(part):
             os.remove(part)
-    return graph
+    if not ln:
+        return graph, None
+    kind = dc._loudnorm_json(proc.stderr).get("normalization_type")
+    if kind != "linear":
+        skips.append({"where": where, "step": "loudnorm",
+                      "why": f"fell back to {kind}: a linear gain would have pushed the true "
+                             "peak over tp or the range over lra, so it compressed. Listen "
+                             "before using it"})
+    return graph, {"measured": got, "linear": kind == "linear"}
 
 
-def mix_graph(spec, duration, skips, names):
-    """(head, parts, inputs): the mix filter_complex up to the chain, the
-    chain parts, and the stem each input reads. The key of a duck is read
-    once more per ducked stem, as its own input, not split: a split feeding
-    two consumers made the render vary from run to run."""
+def mix_graph(spec, duration, names, solo=None):
+    """(head, inputs): the mix filter_complex up to the chain, and what each
+    input reads, a stem name or DUCK_KEY (the speech-activity key from
+    duckplan). The key is read once per ducked stem, as its own input, not
+    split: a split feeding two consumers made the render vary from run to
+    run. With solo, only that stem plays, with the gain and ducking it has in
+    the mix: a mixed stem."""
     mix = spec["mix"]
     gains = mix.get("gains") or {}
     duck = mix.get("duck")
     head = _head(spec)
-    inputs = list(names)
-    under = duck["under"] if duck else []
-    inputs += [duck["key"]] * len(under) if duck else []
+    play = [solo] if solo else list(names)
+    under = [n for n in play if duck and n in duck["under"]]
+    inputs = play + [DUCK_KEY] * len(under)
     # every input runs a second past the end and is cut back after the mix: a stream
     # that ends inside a block makes the last block of a two-input filter vary
     dur = _f(round(duration, 3))
     pad = _f(round(duration + 1, 3))
+    # the mono key copied to each channel at unity: an upmix would put it 3 dB down,
+    # and the duck 3 dB short
+    key_head = f"aformat=sample_fmts=fltp:sample_rates={spec['sample_rate']}:channel_layouts=mono" + (
+        ",pan=stereo|c0=c0|c1=c0" if spec["channels"] == 2 else "")
     lines = []
     for i, n in enumerate(inputs):
-        g = _f(_num(gains.get(n, 0), "mix gain", -60, 40)) if i < len(names) else "0"
+        g = _f(_num(gains.get(n, 0), "mix gain", -60, 40)) if i < len(play) else "0"
+        h = head if i < len(play) else key_head
         # fixed frame sizes: the limiter and loudnorm behind are block dependent
-        lines.append(f"[{i}:a]{head},volume={g}dB,apad=whole_dur={pad},asetnsamples=n=1024:p=1[g{i}]")
+        lines.append(f"[{i}:a]{h},volume={g}dB,apad=whole_dur={pad},asetnsamples=n=1024:p=1[g{i}]")
     final = []
-    for i, n in enumerate(names):
+    for i, n in enumerate(play):
         if n in under:
-            sc = (f"threshold={_lin(_num(duck.get('threshold', -30), 'duck threshold', -60, 0))}"
-                  f":ratio={_f(_num(duck.get('ratio', 8), 'duck ratio', 1, 20))}"
-                  f":attack={_f(_num(duck.get('attack', 20), 'duck attack', 0.01, 2000))}"
-                  f":release={_f(_num(duck.get('release', 400), 'duck release', 0.01, 9000))}")
-            k = len(names) + under.index(n)
-            lines.append(f"[g{i}][g{k}]sidechaincompress={sc},asetnsamples=n=1024:p=1[d{i}]")
+            k = len(play) + under.index(n)
+            lines.append(f"[g{i}][g{k}]{dp.sidechain_filter(duck['depth'])},"
+                         f"asetnsamples=n=1024:p=1[d{i}]")
             final.append(f"d{i}")
         else:
             final.append(f"g{i}")
     lines.append("".join(f"[{x}]" for x in final)
                  + f"amix=inputs={len(final)}:normalize=0:duration=longest:dropout_transition=0,"
                  f"atrim=end={dur},asetnsamples=n=4096:p=0")
-    return ";".join(lines), chain_filters(mix["chain"], spec, duration, "mix", skips), inputs
+    return ";".join(lines), inputs
+
+
+def linear_prefix(steps, loudnorm_linear):
+    """The mix chain's steps up to the first that does not distribute over a
+    sum, and that step's name (None when all do)."""
+    for i, item in enumerate(steps):
+        name = _step(item)[0]
+        if name not in LINEAR and not (name == "loudnorm" and loudnorm_linear):
+            return steps[:i], name
+    return steps, None
 
 
 # ---------------------------------------------------------------------------
@@ -616,9 +746,9 @@ def _check_targets(out_dir, targets, sources):
             raise OutputRefused(f"{t} is a source file. Mixes are rendered on copies, never over an input.")
 
 
-def _flat(head, parts):
+def _flat(head, parts, fmt):
     before, ln, after = parts
-    return ",".join([head, *before, *([ln] if ln else []), *after]) + "[out]"
+    return ",".join([head, *before, *([ln] if ln else []), *after, fmt]) + "[out]"
 
 
 def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
@@ -635,41 +765,72 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
             plan.append(("candidate", f"{n}__{c}", st["input"],
                          os.path.join(out_dir, "candidates", f"{n}__{c}.wav"), settings))
     mix_out = os.path.join(out_dir, "mix.wav")
+    mixed = {n: os.path.join(out_dir, "mixed", f"{n}.wav") for n in names}
+    duck = spec["mix"].get("duck")
+    duck_dir = os.path.join(out_dir, "duck")
+    duck_files = [os.path.join(duck_dir, x) for x in ("duck.sendcmd", "duck-key.wav", "duckplan.json")]
     sources = [stems[n]["input"] for n in names] + ([spec_path] if spec_path else [])
     for s in sources[:len(names)]:
         if not os.path.isfile(s):
             raise SpecError(f"input not found: {s}")
-    _check_targets(out_dir, [p[3] for p in plan] + [mix_out, os.path.join(out_dir, "render.json")],
-                   sources)
+    _check_targets(out_dir, [p[3] for p in plan] + list(mixed.values()) + duck_files
+                   + [mix_out, os.path.join(out_dir, "render.json")], sources)
     skips, graphs, outputs = [], {}, {}
     head = "[0:a]" + _head(spec)
-    stem_paths = {}
+    fmt = _head(spec)
+    files = {DUCK_KEY: os.path.join(out_dir, DUCK_KEY)}  # mix input -> file
     if not dry_run:
-        os.makedirs(os.path.join(out_dir, "stems"), exist_ok=True)
-        if any(p[0] == "candidate" for p in plan):
-            os.makedirs(os.path.join(out_dir, "candidates"), exist_ok=True)
+        for sub in ("stems", "mixed") + (("candidates",) if len(plan) > len(names) else ()):
+            os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
     for kind, key, src, out, cand in plan:
         n = key.split("__")[0]
         parts = chain_filters(stems[n]["chain"], spec, probe_duration(src), f"stem {key}", skips,
                               candidate=cand)
         if dry_run:
-            graphs[key] = _flat(head, parts)
+            graphs[key] = _flat(head, parts, fmt)
             continue
-        graphs[key] = render_graph([src], head, parts, out)
+        graphs[key], _ = render_graph([src], head, parts, out, fmt, f"stem {key}", skips)
         outputs[key] = out
         if kind == "stem":
-            stem_paths[n] = out
+            files[n] = out
+    duck_info = None
+    if duck and not dry_run:
+        # keyed on the key stem as rendered, which is what plays in the mix
+        os.makedirs(duck_dir, exist_ok=True)
+        p = dp.write_plan(dp.plan(files[duck["key"]], 0, duck["depth"], duck.get("gate_db")), duck_dir)
+        duck_info = {k: p[k] for k in ("depth_db", "floor_dbfs", "gate_dbfs", "gate_from",
+                                       "speech_s", "first_speech_s", "sidechain")}
+        duck_info["key_sha256"] = sha256(files[DUCK_KEY])
     # the mix is as long as its longest stem; a dry run reads the inputs for that
-    mix_dur = max(probe_duration(stem_paths.get(n) or stems[n]["input"]) for n in names)
-    mix_head, parts, mix_inputs = mix_graph(spec, mix_dur, skips, names)
+    mix_dur = max(probe_duration(files.get(n) or stems[n]["input"]) for n in names)
+    mix_head, mix_inputs = mix_graph(spec, mix_dur, names)
+    parts = chain_filters(spec["mix"]["chain"], spec, mix_dur, "mix", skips)
+    ln = None
     if dry_run:
-        graphs["mix"] = _flat(mix_head, parts)
+        graphs["mix"] = _flat(mix_head, parts, fmt)
     else:
-        graphs["mix"] = render_graph([stem_paths[n] for n in mix_inputs], mix_head, parts, mix_out)
+        graphs["mix"], ln = render_graph([files[x] for x in mix_inputs], mix_head, parts, mix_out,
+                                         fmt, "mix", skips)
         outputs["mix"] = mix_out
+    # mixed stems: each as it plays in the mix, through the mix chain as far as it is
+    # linear, with the mix's own loudnorm gain, so together they sum to the mix there
+    steps, stop = linear_prefix(spec["mix"]["chain"], ln is None or ln["linear"])
+    if stop:
+        skips.append({"where": "mixed stems", "step": stop,
+                      "why": f"not linear, so the mixed stems stop before it: they sum to the "
+                             f"mix as it was before {stop}"})
+    for n in names:
+        h, ins = mix_graph(spec, mix_dur, names, solo=n)
+        parts = chain_filters(steps, spec, mix_dur, f"mixed {n}", [])
+        if dry_run:
+            graphs[f"mixed/{n}"] = _flat(h, parts, fmt)
+            continue
+        graphs[f"mixed/{n}"], _ = render_graph([files[x] for x in ins], h, parts, mixed[n], fmt,
+                                               f"mixed {n}", skips, measured=ln and ln["measured"])
+        outputs[f"mixed/{n}"] = mixed[n]
     manifest = {"spec": os.path.basename(spec_path) if spec_path else None,
                 "spec_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
-                "ffmpeg": _ffmpeg_version(), "graphs": graphs, "skipped": skips,
+                "ffmpeg": _ffmpeg_version(), "graphs": graphs, "skipped": skips, "duck": duck_info,
                 "outputs": {k: {"file": os.path.relpath(v, out_dir), "sha256": sha256(v)}
                             for k, v in outputs.items()}}
     if dry_run:
