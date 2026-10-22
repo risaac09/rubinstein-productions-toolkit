@@ -534,6 +534,26 @@ class RoomTone(Base):
         self.assertEqual(c["roomtone"], {})
         self.assertEqual([s["step"] for s in c["skipped"]], ["roomtone"])
 
+    def test_explicit_gaps_and_a_chosen_window_and_the_cap(self):
+        tone_fixture(self.out("tone.wav"))
+        m = self.render({"gaps": [[8.2, 8.6]], "window": [3, 6], "source": "tone.wav"})
+        r = m["roomtone"]["d"]
+        self.assertEqual((r["gaps"], r["window_s"]), ([[8.2, 8.6]], [3.0, 6.0]))
+        out = pcm(self.out("o/stems/d.wav"))
+        self.assertGreater(float(np.abs(out[int(8.3 * 48000):int(8.5 * 48000)]).max()), 0.0)
+        self.assertEqual(float(np.abs(out[int(8.7 * 48000):int(8.9 * 48000)]).max()), 0.0)
+        with self.assertRaises(mb.MixError) as cm:
+            self.render({"points": [i * 0.1 + 1 for i in range(mb.MAX_FILLS + 1)]}, "o2")
+        self.assertIn("at most", str(cm.exception))
+
+    def test_a_scalar_speechnorm_and_a_lowpass_past_nyquist(self):
+        spec = mb.validate_spec({"stems": {"d": {"input": "x.wav"}},
+                                 "mix": {"chain": [{"speechnorm": "d"}]}}, self.d)
+        self.assertEqual(spec["mix"]["chain"], [{"speechnorm": {"key": "d"}}])
+        with self.assertRaises(mb.SpecError):
+            mb.validate_spec({"sample_rate": 32000, "stems": {"d": {"input": "x.wav", "preset": "music_bed"}}},
+                             self.d)
+
     def test_bad_settings_are_refused(self):
         for cfg, frag in (({"gaps": [[3, 2]]}, "end after start"), ({"nope": 1}, "unknown setting"),
                           ({"window": [0, 1]}, "a loop needs")):

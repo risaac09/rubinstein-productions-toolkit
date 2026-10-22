@@ -401,6 +401,9 @@ def s_highpass(raw, ctx):
 
 def s_lowpass(raw, ctx):
     p = _params(raw, "freq", ("freq", "poles"), "lowpass")
+    if _num(p.get("freq", 16000), "lowpass freq", 100, 24000) >= ctx.rate / 2:
+        raise SpecError(f"lowpass freq {p.get('freq', 16000)} is at or above half the "
+                        f"{ctx.rate} Hz sample rate")
     return [f"lowpass=f={_f(_num(p.get('freq', 16000), 'lowpass freq', 100, 24000))}"
             f":p={int(_num(p.get('poles', 2), 'poles', 1, 2))}{F64}"]
 
@@ -704,11 +707,14 @@ def validate_spec(spec, base):
             duck["gate_db"] = _num(duck["gate_db"], "duck gate_db", -120, 0)
     mix["chain"] = mix.get("chain") or []
     _check_chain(mix["chain"], spec["sample_rate"], "mix")
-    sn = [_step(i) for i in mix["chain"] if _step(i)[0] == "speechnorm"]
+    sn = [(i, _step(x)[1]) for i, x in enumerate(mix["chain"]) if _step(x)[0] == "speechnorm"]
     if sn:
         if len(sn) > 1 or any(_step(i)[0] == "loudnorm" for i in mix["chain"]):
             raise SpecError("mix: one speechnorm, and not with loudnorm (it replaces it)")
-        if sn[0][1].get("key") not in stems:
+        # a bare `speechnorm: dialogue` is the key; make it the map the rest reads
+        mix["chain"][sn[0][0]] = {"speechnorm": _params(sn[0][1], "key", ("key", "i", "tp", "gate_db"),
+                                                         "speechnorm")}
+        if mix["chain"][sn[0][0]]["speechnorm"].get("key") not in stems:
             raise SpecError("speechnorm: key must be a stem of this spec")
     spec["mix"] = mix
     return spec
@@ -987,13 +993,13 @@ def fill_roomtone(name, src, cfg, out_dir, spec, skips):
                          dc._src(os.path.join(sub, f"{name}-bed.wav")), "-f", "f32le", "-"])
     if raw.returncode != 0:
         raise MixError(f"stem {name}: could not read the bed: {raw.stderr.decode(errors='replace')[-200:]}")
-    x = np.frombuffer(raw.stdout, "<f4").reshape(-1, chans).astype(np.float64)
-    env = fill_envelope(len(x), brate, gaps, points, cfg)
+    x = np.frombuffer(raw.stdout, "<f4").reshape(-1, chans)
+    env = fill_envelope(len(x), brate, gaps, points, cfg).astype(np.float32)
     fill = os.path.join(sub, f"{name}-fill.wav")
     dp._ffmpeg_write([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "f32le",
                       "-ar", str(brate), "-ac", str(chans), "-i", "-", "-map_metadata", "-1",
                       "-fflags", "+bitexact", "-flags:a", "+bitexact", "-c:a", "pcm_f32le",
-                      "-f", "wav"], fill, (x * env[:, None]).astype("<f4").tobytes())
+                      "-f", "wav"], fill, (x * env[:, None]).tobytes())
     # laid under the input with the mix recipe: padded, fixed frames, cut back after
     h = _head(spec)
     pad, d = _f(round(dur + 1, 3)), _f(round(dur, 3))
