@@ -1,6 +1,7 @@
 """rpstills.background: find the subject and burn the background down.
 
     mask, info = background.subject_mask(rgb, face_px)   # float32 HxW 0..1, or None and info["reason"]
+    mask, info = background.subject_mask(rgb, face_px, region)  # only the window (x0, y0, x1, y1): finish's crops
     rgb, report = background.burn(rgb, mask)             # BURN_EV and BURN_DESAT outside the subject
 
 rgb is float32 sRGB 0..1, HxWx3; face_px is the subject's face in pixels
@@ -25,7 +26,10 @@ face core, or less than MIN_SHARE or more than MAX_SHARE of the frame.
 
 burn() works in linear light: background pixels go down by ev stops and
 toward their channel mean by desat; pixels the mask holds at 1 are left
-bit-identical.
+bit-identical. It is per pixel, so it can run on a crop of the frame:
+subject_mask(..., region) builds the mask only there (the GrabCut seed and
+result are the frame's), and the part of the region more than feather_margin()
+from its edge equals the full-frame mask exactly.
 
 Tuned on head-and-shoulders portraits against an open background; a busy
 background close to the subject's tones, or hands and props, are where
@@ -119,11 +123,42 @@ def check(binary, core):
     return None
 
 
-def subject_mask(rgb, face_px):
-    """(float32 HxW mask, info) or (None, info with "reason")."""
+def _taps(n_dst, n_src, lo, hi):
+    """Linear-interpolation taps (low index, high index, weight of the high) of cv2.resize's mapping from an
+    n_src row to n_dst, for destination pixels lo..hi."""
+    f = (np.arange(lo, hi) + 0.5) * (n_src / n_dst) - 0.5
+    i = np.floor(f).astype(np.int64)
+    w = (f - i).astype(np.float32)
+    return np.clip(i, 0, n_src - 1), np.clip(i + 1, 0, n_src - 1), w
+
+
+def _resize_window(small, W, H, region):
+    """cv2.resize(small, (W, H), INTER_LINEAR) evaluated only on region (x0, y0, x1, y1), separably, so the
+    full-frame float mask is never built."""
+    x0, y0, x1, y1 = region
+    iy0, iy1, wy = _taps(H, small.shape[0], y0, y1)
+    ix0, ix1, wx = _taps(W, small.shape[1], x0, x1)
+    rows = small[iy0] * (1 - wy)[:, None] + small[iy1] * wy[:, None]
+    return rows[:, ix0] * (1 - wx) + rows[:, ix1] * wx
+
+
+def feather_margin(face_px):
+    """Pixels of context a region needs round it for its mask to equal the full-frame mask: the Gaussian's
+    radius (4 sigma for float32 in OpenCV) plus a pixel of resize support."""
+    return int(np.ceil(4 * face_px["w"] / FEATHER_DIV)) + 2
+
+
+def subject_mask(rgb, face_px, region=None):
+    """(float32 mask, info) or (None, info with "reason"). The mask is HxW, or
+    with region (x0, y0, x1, y1) in full-frame pixels only that window, equal
+    to the full mask there when the window has feather_margin() of room round
+    the part that matters (GrabCut still runs on the whole scaled frame)."""
     H, W = rgb.shape[:2]
-    small = cv2.resize((np.clip(rgb[..., :3], 0, 1) * 255 + 0.5).astype(np.uint8), None, fx=SCALE, fy=SCALE,
-                       interpolation=cv2.INTER_AREA)
+    u8 = np.empty((H, W, 3), np.uint8)
+    for i in range(0, H, 256):  # in stripes: a float copy of the whole frame is what cost the memory
+        u8[i:i + 256] = np.clip(rgb[i:i + 256, :, :3], 0, 1) * 255 + 0.5
+    small = cv2.resize(u8, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+    del u8
     sh, sw = small.shape[:2]
     core = _core(face_px, SCALE)
     cx0, cy0 = max(0, core[0]), max(0, core[1])
@@ -150,7 +185,11 @@ def subject_mask(rgb, face_px):
     if reason:
         info["reason"] = reason
         return None, info
-    full = cv2.resize(sub.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    x0, y0, x1, y1 = region or (0, 0, W, H)
+    if (x0, y0, x1, y1) == (0, 0, W, H):
+        full = cv2.resize(sub.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    else:
+        full = _resize_window(sub.astype(np.float32), W, H, region)
     return np.clip(cv2.GaussianBlur(full, (0, 0), face_px["w"] / FEATHER_DIV), 0, 1), info
 
 
