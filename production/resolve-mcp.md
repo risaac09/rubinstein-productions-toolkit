@@ -62,7 +62,7 @@ writes.
 | `render_queue_status` | read | Every render job with its status, whether a render is running, and the Deliver page's format and codec. |
 | `detect` | offline | Camera and picture profile per media file, with the proposed Input Color Space and Data Level. |
 | `survey` | offline | The read-only survey of every project from Resolve's databases on disk (needs Python 3.14). |
-| `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
+| `measure` | offline | Luma (p1, p5, p50, p95, p99), clipping, legal range, highlight tail slope, shadow classes (readable, sculpted, lost), skin tone and per-face lighting ratio in stops in faces found by macOS Vision, and camera match for a video file, with the transfer named. The CLI's `--delivery` adds the master-against-encode readable-shadow row. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
 | `reframe_plan` | offline | A static crop per span for the 9:16, 1:1, 4:5 or 16:9 versions or the master shape (`aspects`; `master` needs `master_size`), or, with `items`, a framing plan for a timeline's clips that `reframe_apply` writes (see Framing below). Each crop is centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. The crop keeps the whole head and room above it (Framing). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
@@ -291,6 +291,9 @@ A command has an MCP tool when one of the same name with underscores is in
 tool lacks: the script's `sync-measure` takes `--ref-stream` and
 `--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
 and `--no-metadata-cache`, none of which the tools do.
+
+`perceive --targets` also writes `targets.json` for a private reference library;
+see `reference-library.md`.
 
 `audio-report` measures one audio stream, whole or between `--start` and
 `--end`, and writes `audio-report.json`, `loudness.png` (short-term and

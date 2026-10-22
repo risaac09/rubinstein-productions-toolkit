@@ -20,6 +20,8 @@ def add_arguments(p):
     p.add_argument("--at", type=float, help="Frame time in seconds (default the middle)")
     p.add_argument("--ref", help="A reference still (or the middle of a clip) to compare against")
     p.add_argument("--no-faces", action="store_true", help="Skip face, skin and lighting-ratio numbers")
+    p.add_argument("--targets", action="store_true",
+                   help="Also write targets.json (numbers only) beside packet.json, for a reference library")
 
 
 def run(args):
@@ -32,7 +34,7 @@ def run(args):
         return 1
     try:
         packet = rpperceive.perceive(args.file, args.out, at=args.at, ref=args.ref,
-                                     faces=not args.no_faces)
+                                     faces=not args.no_faces, with_targets=args.targets)
     except (rpmeasure.MeasureError, rpperceive.PerceiveError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
