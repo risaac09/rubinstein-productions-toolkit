@@ -241,7 +241,9 @@ def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
     """Mono 16 kHz signed 16-bit samples (bytes) of source[t0:t1]; t1 None
     reads to the end."""
     t0 = max(0.0, t0)
-    cmd = [ffmpeg or FFMPEG, "-v", "error", "-ss", f"{t0:.3f}"]
+    # An input seek, even to 0, skips an AAC file's edit-list priming and decodes
+    # its audio up to ~23 ms early, so a read from the start does not seek at all.
+    cmd = [ffmpeg or FFMPEG, "-v", "error"] + (["-ss", f"{t0:.3f}"] if t0 > 0 else [])
     cmd += ["-t", f"{t1 - t0:.3f}"] if t1 is not None else []
     cmd += ["-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
     try:

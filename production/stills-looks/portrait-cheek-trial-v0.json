@@ -1,0 +1,25 @@
+{
+  "name": "rpstills portrait cheek trial v0",
+  "version": "0.0.1",
+  "status": "TRIAL. Not a house standard: the house skin reference is undecided. This file exists to exercise rpstills develop; do not deliver against it.",
+  "space": "Developed RAW to sRGB (16-bit TIFF). The solve measures CIELAB (D65) on the sRGB render.",
+  "develop": {
+    "backend": "apple",
+    "profile": null,
+    "values": {}
+  },
+  "solve": {
+    "target_lab": [64.0, 15.0, 14.0],
+    "sample": "cheek",
+    "free": ["ev", "mired", "tint"],
+    "tint_max": 6,
+    "ev_bounds": [-3, 3],
+    "temp_bounds_k": [2500, 12000]
+  },
+  "notes": [
+    "Target: mean CIELAB over the cheek apples (rpstills.skin.cheek_mask) of L* 64, a* 15, b* 14; hue 43 degrees, Rec.709 vectorscope 117.7 degrees. It was picked by eye on one overcast portrait session and is a trial value.",
+    "The published skin-tone line on a Rec.709 vectorscope sits near 123 degrees; this target reads about 5.5 degrees redder. Which reference rules is undecided, and rpstills audit reports the distance to both.",
+    "tint_max 6 keeps white fabric from picking up a visible green or magenta cast. It was set in LightCraft tint units; Apple's tint scale differs, so on the apple backend it is a bound, not a calibrated limit.",
+    "develop.values is empty: the apple backend takes only exposure, temperature and tint. A LightCraft look puts LightCraft control ids there and a LightCraft profile id in develop.profile."
+  ]
+}

@@ -11,13 +11,30 @@
   look    <params.json> <out.cube> [--size N]   write a look as a DWG/DI 3D LUT (refuses to overwrite)
   crops   <out dir> [--config PATH]          crop plan per profile -> crops.json, crops-preview.jpg
   run     <shoot folder> <out dir> --session NAME   all four in order (takes the index options)
+
+  develop <out dir> --look FILE [--ids ...] [--backend apple|lightcraft] [--raw PATH ...]
+                                             RAW -> out/develop/<id>.tif (16-bit) + calibration.json, exposure
+                                             and white balance solved per frame onto the look's skin target
+  finish  <out dir> [--ids ...] [--src DIR] [--retouch none|all|ID ...] [--background off|on] [--crop PROFILE ...]
+                                             opt-in background burn and retouch, crops on the landmark eye line
+                                             -> out/finish/<profile>/<id>.jpg (sRGB) + finish.json
+  audit   <dir> [--out DIR] [--profile NAME] numbers of finished stills (skin Lab and scope angle, clip, ICC,
+                                             eye line, headroom, eye sharpness, background) -> audit.json;
+                                             report only, no pass/fail
+  absheet IMG IMG [...] --out DIR [--seed N] [--title T]
+                                             lettered A/B/C decision sheet (2-9 images, phone legible) + key.json
+  serve   <folder> [--bind 127.0.0.1] [--port 8780]
+                                             read-only file server with byte ranges, for review on a phone or iPad
 """
 
 import argparse
 import os
 import sys
 
-from . import cluster, crops, cull, index, look, review
+from . import absheet, audit, cluster, crops, cull, develop, finish, index, look, review, serve
+
+# Subcommands that parse their own arguments and never read the shoot index.
+SELF_CONTAINED = {"develop": develop, "finish": finish, "audit": audit, "absheet": absheet, "serve": serve}
 
 
 def main(argv=None):
@@ -37,7 +54,11 @@ def main(argv=None):
     p = sub.add_parser("crops"); p.add_argument("out"); p.add_argument("--config")
     p = sub.add_parser("run"); p.add_argument("shoot"); p.add_argument("out"); p.add_argument("--session", required=True)
     p.add_argument("--title"); index_options(p)
+    for name, mod in SELF_CONTAINED.items():
+        mod.add_arguments(sub.add_parser(name))
     a = ap.parse_args(argv)
+    if a.cmd in SELF_CONTAINED:
+        return SELF_CONTAINED[a.cmd].run(a)
     if a.cmd == "look":
         doc = look.load_params(a.params)
         try:

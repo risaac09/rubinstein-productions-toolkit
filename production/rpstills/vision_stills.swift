@@ -1,7 +1,7 @@
 // vision_stills: faces with capture quality and eye state from macOS Vision,
 // for ranking frames of a stills shoot. Built and cached by rpstills.vision.
 //
-// Usage: vision_stills IMAGE...
+// Usage: vision_stills [--landmarks] IMAGE...
 // Output: one JSON object per image, one per line:
 //   {"path": "...", "width": W, "height": H, "faces": [
 //      {"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87,
@@ -16,6 +16,12 @@
 // person). eye_* is the eye aspect ratio (height over width of the eye
 // landmark polygon); roughly 0.25 and up is open, under 0.15 is closed.
 // The image is taken as stored; pass upright files.
+// --landmarks (opt-in, first argument) adds to each face
+//   "landmarks": {"leftEye": [[x, y], ...], "rightEye", "leftEyebrow",
+//                 "rightEyebrow", "outerLips", "innerLips", "faceContour", "nose"}
+// as points in the same normalized, top-left, whole-image convention as the
+// box. Vision's left and right are its own naming; callers pair by image x.
+// Without the flag the output is unchanged.
 import AppKit
 import Foundation
 import Vision
@@ -37,7 +43,21 @@ func aspect(_ region: VNFaceLandmarkRegion2D?) -> Double? {
     return w > 0 ? (maxY - minY) / w : nil
 }
 
-for path in CommandLine.arguments.dropFirst() {
+// Landmark points are normalized inside the face box with a bottom-left origin.
+func points(_ region: VNFaceLandmarkRegion2D?, _ b: CGRect) -> [[Double]]? {
+    guard let r = region, r.pointCount > 0 else { return nil }
+    return r.normalizedPoints.map { p in
+        let x = Double(b.minX) + Double(p.x) * Double(b.width)
+        let y = 1 - (Double(b.minY) + Double(p.y) * Double(b.height))
+        return [(x * 1e6).rounded() / 1e6, (y * 1e6).rounded() / 1e6]
+    }
+}
+
+var paths = Array(CommandLine.arguments.dropFirst())
+let wantLandmarks = paths.first == "--landmarks"
+if wantLandmarks { paths.removeFirst() }
+
+for path in paths {
     guard let image = NSImage(contentsOfFile: path),
           let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
         print(jsonString(["path": path, "error": "unreadable image"]))
@@ -80,6 +100,17 @@ for path in CommandLine.arguments.dropFirst() {
         if let r = aspect(face.landmarks?.rightEye) { d["eye_right"] = r }
         if let roll = face.roll { d["roll"] = roll.doubleValue }
         if let yaw = face.yaw { d["yaw"] = yaw.doubleValue }
+        if wantLandmarks, let l = face.landmarks {
+            var marks: [String: Any] = [:]
+            let regions: [(String, VNFaceLandmarkRegion2D?)] = [
+                ("leftEye", l.leftEye), ("rightEye", l.rightEye), ("leftEyebrow", l.leftEyebrow),
+                ("rightEyebrow", l.rightEyebrow), ("outerLips", l.outerLips), ("innerLips", l.innerLips),
+                ("faceContour", l.faceContour), ("nose", l.nose)]
+            for (name, region) in regions {
+                if let pts = points(region, b) { marks[name] = pts }
+            }
+            d["landmarks"] = marks
+        }
         faces.append(d)
     }
     print(jsonString(["path": path, "width": cg.width, "height": cg.height, "faces": faces,

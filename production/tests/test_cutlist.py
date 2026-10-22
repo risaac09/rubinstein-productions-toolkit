@@ -10,6 +10,7 @@ import json
 import math
 import os
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -144,6 +145,19 @@ class TestSilences(unittest.TestCase):
             self.assertAlmostEqual(r["suggest"], 4.95, delta=0.02)
             good = cutlist.end_check(words, 4.95, "very quiet", env)
             self.assertTrue(good["ok"], good["reason"])
+
+    @unittest.skipUnless(os.access(cutlist.FFMPEG, os.X_OK), "ffmpeg missing")
+    def test_decode_from_start_keeps_aac_priming(self):
+        # An input seek to 0 skipped the AAC edit list and read the audio ~23 ms early.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav, m4a = os.path.join(tmp, "t.wav"), os.path.join(tmp, "t.m4a")
+            tone_wav(wav, [(1.0, 0.0), (1.0, 0.5)])
+            subprocess.run([cutlist.FFMPEG, "-v", "error", "-i", wav, "-c:a", "aac", "-b:a", "192k", m4a],
+                           check=True)
+            pcm = cutlist.decode_pcm(m4a, 0.0)
+            samples = struct.unpack(f"<{len(pcm) // 2}h", pcm)
+            onset = next(i for i, s in enumerate(samples) if abs(s) > 3000) / cutlist.AUDIO_RATE
+            self.assertAlmostEqual(onset, 1.0, delta=0.005)
 
     def _words(self, tmp):
         p = os.path.join(tmp, "w.json")
