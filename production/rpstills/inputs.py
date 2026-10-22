@@ -68,8 +68,9 @@ def _decode(path):
 
 
 def to_srgb8(rgb, icc):
-    """(uint8 RGB in sRGB, colour line, profile description, is sRGB) from uint8 RGB tagged with icc bytes.
-    ValueError when the profile cannot be used."""
+    """(RGB, colour line, profile description, is sRGB) from RGB tagged with icc bytes: the same array when no
+    conversion is needed, else uint8 in sRGB (a uint16 source is taken to 8 bits first). ValueError when the
+    profile cannot be used."""
     from PIL import Image, ImageCms
     try:
         src = ImageCms.ImageCmsProfile(io.BytesIO(icc))
@@ -78,6 +79,8 @@ def to_srgb8(rgb, icc):
             return rgb, "sRGB profile", name, True
         if src.profile.xcolor_space.strip() != "RGB":
             return rgb, f"profile {name} is not RGB, taken as sRGB", name, False
+        if rgb.dtype == np.uint16:  # saturating scale in OpenCV: no float64 copy of the frame
+            rgb = cv2.convertScaleAbs(rgb, alpha=255 / 65535)
         out = ImageCms.profileToProfile(Image.fromarray(rgb), src, ImageCms.createProfile("sRGB"), outputMode="RGB",
                                         renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC)
         return np.asarray(out), f"converted from {name} to sRGB", name, False
@@ -92,8 +95,7 @@ def read_upright(path):
             "colour": "no profile, taken as sRGB"}
     if icc:
         deep = rgb.dtype == np.uint16
-        out8, colour, info["icc"], info["srgb_icc"] = to_srgb8(np.round(rgb / 257).astype(np.uint8) if deep else rgb,
-                                                              icc)
+        out8, colour, info["icc"], info["srgb_icc"] = to_srgb8(rgb, icc)
         info["colour"] = colour
         if colour.startswith("converted"):
             rgb = out8

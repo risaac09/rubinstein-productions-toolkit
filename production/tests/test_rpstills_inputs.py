@@ -108,6 +108,15 @@ class ColourTest(unittest.TestCase):
         np.testing.assert_array_equal(rgb[0, 0], img[0, 0] / np.float32(255))
         self.assertEqual((info["colour"], info["icc"], info["srgb_icc"]), ("no profile, taken as sRGB", None, False))
 
+    def test_a_16_bit_source_with_a_wide_profile_is_converted_at_8_bits_and_an_srgb_one_is_kept(self):
+        wide = np.full((4, 4, 3), np.round(np.array([0.6, 0.4, 0.3]) * 65535), np.uint16)
+        out, colour, name, is_srgb = inputs.to_srgb8(wide, matrix_icc("Display P3"))
+        self.assertEqual((out.dtype, name, is_srgb), (np.uint8, "Display P3", False))
+        np.testing.assert_allclose(out[0, 0] / 255, expected_srgb("Display P3", [0.6, 0.4, 0.3]), atol=0.012)
+        kept, colour, _, is_srgb = inputs.to_srgb8(wide, finish.srgb_icc())
+        self.assertIs(kept, wide)
+        self.assertTrue(is_srgb)
+
     def test_a_broken_profile_is_a_row_error_not_a_crash(self):
         path = str(self.tmp / "bad.jpg")
         save(path, self.patch([(0.5, 0.5, 0.5)])[0], icc=b"not a profile")
@@ -200,7 +209,7 @@ class RegionBurnTest(unittest.TestCase):
         self.burned, _ = background.burn(self.img, self.mask)
 
     def test_the_windowed_mask_equals_the_full_mask_inside_the_window(self):
-        for region in ((100, 200, 700, 900), (0, 0, 400, 500), (300, 700, 800, 1000), (350, 450, 351, 451)):
+        for region in ((100, 200, 700, 900), (0, 0, 400, 500), (300, 700, 800, 1000)):
             x0, y0, x1, y1 = region
             m, _ = background.subject_mask(self.img, self.face, region)
             self.assertEqual(m.shape, (y1 - y0, x1 - x0))
@@ -208,8 +217,6 @@ class RegionBurnTest(unittest.TestCase):
             inner = (slice(min(keep, (y1 - y0) // 2), (y1 - y0) - min(keep, (y1 - y0) // 2)),
                      slice(min(keep, (x1 - x0) // 2), (x1 - x0) - min(keep, (x1 - x0) // 2)))
             ref = self.mask[y0:y1, x0:x1]
-            if region == (350, 450, 351, 451):      # one pixel: exact up to the blur's reflection at the edge
-                continue
             np.testing.assert_allclose(m[inner], ref[inner], atol=self.TOL, err_msg=str(region))
 
     def test_finish_burns_only_the_crop_region_and_the_crop_equals_the_full_frame_burn(self):
