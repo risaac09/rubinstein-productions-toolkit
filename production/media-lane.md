@@ -51,5 +51,5 @@ repository. The iPad route, with no Mac, is in [../docs/ipad-lane.md](../docs/ip
   dissolves.
 - The mix builder (an open pull request) is the planned home for the dialogue
   chain; `duckplan` and `dxmetrics` are written so it can adopt them.
-- A third-party RAW engine (LightCraft) is a trial backend behind an
-  environment variable; nothing depends on it.
+- A third-party RAW engine (LightCraft) is an opt-in backend behind an
+  environment variable; Apple's engine stays the default.
