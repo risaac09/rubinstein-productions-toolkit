@@ -46,6 +46,9 @@
 #   RPRESOLVE_SETTINGS_GUARD     rpresolve settingsguard           off                                       you want new-timeline settings reported: on, 1, yes or true.
 #   VERTCUT_PYTHON               tools/vertcut/vertcut             ~/.venvs/rp-tools/bin/python              the Python with Pillow is another one.
 #   VERTCUT_MLX_WHISPER          tools/vertcut/vertcut transcribe  ~/.venvs/rp-tools/bin/mlx_whisper         mlx_whisper is installed elsewhere.
+#   RPSTILLS_LIGHTCRAFT          rpstills develop (trial backend)  unset (apple backend only)                you trial the LightCraft RAW backend: the lightcraft-cli path.
+#   FFMPEG, FFPROBE, PYTHON      tools/ipad-probe (and CP for      ffmpeg, ffprobe, python3 from PATH        a-Shell or another shell names them differently.
+#                                verify-copy)
 #   LUTLAB_OUT                   production/lutlab                 none                                      always, unless every command gets --out.
 #   LUTLAB_BRAW2PPM              lutlab/verify.py (BRAW)            lutlab/braw/braw2ppm, beside the source   the BRAW helper was built elsewhere.
 #   BRAW_SDK                     lutlab/braw/build.sh, braw2ppm    /Applications/Blackmagic RAW/Blackmagic   the Blackmagic RAW SDK is installed elsewhere.

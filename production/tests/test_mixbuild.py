@@ -10,13 +10,15 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
-    import numpy  # noqa: F401
+    import numpy as np
+    from rpresolve import duckplan as dp
     from rpresolve import mixbuild as mb
     from rpresolve import audioreport as ar
     from rpresolve.paths import OutputRefused
@@ -53,7 +55,7 @@ stems:
     chain: [{gain: -3}, {lowpass: 12000}]
 mix:
   gains: {dialogue: 0, music: -12}
-  duck: {key: dialogue, under: [music], threshold: -30, ratio: 8}
+  duck: {key: dialogue, under: [music], depth: 12}
   chain:
     - loudnorm: {i: -16, tp: -1.5}
     - limiter: {ceiling: -1.5}
@@ -66,10 +68,12 @@ def lavfi(path, expr, seconds, channels=2):
 
 
 def fixtures(d, seconds=24):
-    # speech-shaped: noise band-limited to the voice range, pulsed like syllables, over a pink floor
+    # speech-shaped: noise band-limited to the voice range, pulsed like syllables, in 2.5 s
+    # phrases with 1.5 s pauses (the duck key needs them), over a pink floor
     lavfi(os.path.join(d, "dialogue.wav"),
           f"anoisesrc=d={seconds}:c=white:r=48000:seed=3:a=0.5,bandpass=f=1200:width_type=h:w=2500,"
-          "tremolo=f=4:d=0.9,volume=3[a];anoisesrc=d=%d:c=pink:r=48000:seed=5:a=0.02[b];"
+          "tremolo=f=4:d=0.9,volume=3,volume='lt(mod(t\\,4)\\,2.5)':eval=frame[a];"
+          "anoisesrc=d=%d:c=pink:r=48000:seed=5:a=0.02[b];"
           "[a][b]amix=inputs=2:normalize=0" % seconds, seconds)
     lavfi(os.path.join(d, "music.wav"), f"sine=f=220:d={seconds}:r=48000,volume=0.3", seconds)
 
@@ -111,7 +115,7 @@ class SpecParser(Base):
         spec = {"sample_rate": 48000, "channels": 2}
         f = mb.chain_filters([{"eq": {"freq": 3000, "gain": 2}}, {"limiter": {"ceiling": -1.5}}],
                              spec, 5.0, "t", [])
-        self.assertEqual(f[0], ["equalizer=f=3000:t=q:w=1:g=2", "aresample=192000",
+        self.assertEqual(f[0], ["equalizer=f=3000:t=q:w=1:g=2:precision=f64", "aresample=192000",
                                 "alimiter=limit=0.841395:level=disabled:attack=5:release=50",
                                 "aresample=48000"])
 
@@ -135,7 +139,8 @@ class Render(Base):
         self.assertEqual({k: v["sha256"] for k, v in a["outputs"].items()},
                          {k: v["sha256"] for k, v in b["outputs"].items()})
         self.assertEqual(set(a["outputs"]), {"dialogue", "music", "dialogue__afftdn_6",
-                                             "dialogue__arnndn_none", "mix"})
+                                             "dialogue__arnndn_none", "mix", "mixed/dialogue",
+                                             "mixed/music"})
         self.assertEqual(a["graphs"], b["graphs"])
         self.assertTrue(any(s["step"] == "denoise arnndn" for s in a["skipped"]))
         mix = a["reports"]["mix"]
@@ -175,6 +180,139 @@ class Render(Base):
         self.assertIn("highpass=f=80", m["graphs"]["dialogue"])
         self.assertIn("amix=inputs=2:normalize=0", m["graphs"]["mix"])
         self.assertFalse(os.path.exists(self.out("dry/mix.wav")))
+
+
+def pcm(path):
+    ch = ar.audio_stream(path)["channels"]
+    raw = subprocess.run([FFMPEG, "-v", "error", "-i", path, "-f", "f32le", "-"],
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(raw, "<f4").astype(np.float64).reshape(-1, ch)
+
+
+def lag(x, y, most=4000):
+    """The lag of y behind x (negative: ahead), by cross-correlation."""
+    m = 1 << (len(x) + len(y)).bit_length()
+    c = np.fft.irfft(np.fft.rfft(y, m) * np.conj(np.fft.rfft(x, m)), m)
+    c = np.concatenate((c[-most:], c[:most + 1]))
+    return int(np.argmax(c)) - most
+
+
+def write_spec(d, spec):
+    p = os.path.join(d, "spec.json")
+    Path(p).write_text(json.dumps(spec))
+    return mb.load_spec(p), p
+
+
+@needs_numpy
+class FollowUps(Base):
+    def test_docstring_example_passes_validate_spec(self):
+        block = mb.__doc__.split("the spec's folder.\n\n", 1)[1].split("\n\nSteps:", 1)[0]
+        spec = mb.validate_spec(mb.parse_yaml(textwrap.dedent(block)), self.d)
+        self.assertIn("afftdn_18", spec["stems"]["dialogue"]["candidates"])
+        self.assertEqual(spec["mix"]["duck"]["depth"], 12)
+
+    def test_step_settings_are_checked_when_the_spec_is_read(self):
+        for chain, frag in (([{"dehum": {"freq": 90}}], "dehum freq"),
+                            ([{"declick": {"window": 1}}], "declick window"),
+                            ([{"denoise": {"method": "anlmdn", "s": 0}}], "s 0")):
+            with self.assertRaises(mb.SpecError) as cm:
+                mb.validate_spec({"stems": {"a": {"input": "a.wav", "chain": chain}}}, self.d)
+            self.assertIn(frag, str(cm.exception))
+        with self.assertRaises(mb.SpecError) as cm:
+            mb.validate_spec({"stems": {"a": {"input": "a.wav"}, "b": {"input": "b.wav"}},
+                              "mix": {"duck": {"key": "a", "under": "b", "threshold": -30}}}, self.d)
+        self.assertIn("speech activity", str(cm.exception))
+        self.assertEqual(mb.s_dehum({"freq": 50, "harmonics": 2}, mb.Ctx(48000, 1, [], "t")),
+                         ["bandreject=f=50:width_type=q:w=10:precision=f64",
+                          "bandreject=f=100:width_type=q:w=10:precision=f64"])
+
+    def test_denoise_and_declick_leave_no_lag(self):
+        model = os.path.expanduser("~/.local/share/rp-models/rnnoise/std.rnnn")
+        chains = {"afftdn": [{"denoise": {"method": "afftdn", "nr": 12}}],
+                  "anlmdn": [{"denoise": {"method": "anlmdn"}}],
+                  "declick": [{"declick": {}}], "dehum": [{"dehum": 60}]}
+        if os.path.isfile(model):  # not in CI; arnndn works at 48 kHz whatever it is given
+            chains["arnndn"] = [{"denoise": {"method": "arnndn", "model": model}}]
+        for rate in (48000, 44100):
+            d = os.path.join(self.d, str(rate))
+            os.makedirs(d)
+            src = os.path.join(d, "dialogue.wav")
+            lavfi(src, f"anoisesrc=d=4:c=white:r={rate}:seed=3:a=0.5,bandpass=f=1200:width_type=h:"
+                       f"w=2500,tremolo=f=4:d=0.9[a];sine=f=60:r={rate}:d=4,volume=0.1[b];"
+                       "[a][b]amix=inputs=2:normalize=0", 4, channels=1)
+            spec, p = write_spec(d, {"sample_rate": rate, "channels": 1, "stems": {
+                n: {"input": "dialogue.wav", "chain": c} for n, c in chains.items()}})
+            m = mb.render(spec, os.path.join(d, "out"), p)
+            x = pcm(src)[:, 0]
+            for n in chains:
+                with self.subTest(rate=rate, chain=n):
+                    y = pcm(os.path.join(d, "out", m["outputs"][n]["file"]))[:, 0]
+                    self.assertEqual(len(y), len(x))
+                    self.assertEqual(lag(x, y), 0)
+            y = pcm(os.path.join(d, "out", "stems", "dehum.wav"))[:, 0]
+            self.assertLess(abs(np.fft.rfft(y)[240]), abs(np.fft.rfft(x)[240]) / 10)  # the 60 Hz bin
+
+    def test_loudnorm_falling_back_to_dynamic_is_recorded(self):
+        fixtures(self.d, 8)
+        spec, p = write_spec(self.d, {"channels": 2, "stems": {
+            "loud": {"input": "dialogue.wav", "chain": [{"loudnorm": {"i": -5, "tp": -9}}]},
+            "fine": {"input": "dialogue.wav", "chain": [{"loudnorm": {"i": -23, "tp": -1, "lra": 30}}]}}})
+        m = mb.render(spec, self.out("o"), p)
+        ln = [s for s in m["skipped"] if s["step"] == "loudnorm"]
+        self.assertEqual([s["where"] for s in ln], ["stem loud"])
+        self.assertTrue(ln[0]["why"].startswith("fell back to dynamic"))
+        self.assertEqual(json.loads(Path(self.out("o/render.json")).read_text())["skipped"], m["skipped"])
+        self.assertEqual(ar.audio_stream(self.out("o/stems/loud.wav"))["sample_rate"], 48000)
+
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def mix_spec(self, chain):
+        fixtures(self.d, 8)
+        return write_spec(self.d, {"stems": {"dialogue": {"input": "dialogue.wav"},
+                                             "music": {"input": "music.wav"}},
+                                   "mix": {"gains": {"dialogue": -2, "music": -6},
+                                           "duck": {"key": "dialogue", "under": ["music"], "depth": 12},
+                                           "chain": chain}})
+
+    def test_mixed_stems_sum_to_the_mix(self):
+        spec, p = self.mix_spec([{"eq": {"freq": 2000, "gain": 3}}, {"highpass": 60},
+                                 {"loudnorm": {"i": -23, "tp": -1, "lra": 30}}])
+        m = mb.render(spec, self.out("o"), p)
+        self.assertEqual(m["skipped"], [])
+        mix = pcm(self.out("o/mix.wav"))
+        both = pcm(self.out("o/mixed/dialogue.wav")) + pcm(self.out("o/mixed/music.wav"))
+        self.assertEqual(both.shape, mix.shape)
+        resid = 20 * np.log10(np.abs(both - mix).max() / np.abs(mix).max())
+        self.assertLess(resid, -110)
+        self.assertIn(dp.sidechain_filter(12), m["graphs"]["mix"])
+        self.assertEqual(m["duck"]["depth_db"], 12)
+        self.assertTrue(os.path.isfile(self.out("o/duck/duck-key.wav")))
+
+    def test_a_key_with_no_speech_fails_before_the_mix(self):
+        spec, p = self.mix_spec([])
+        lavfi(self.out("dialogue.wav"), "anullsrc=r=48000:cl=stereo", 8)
+        with self.assertRaises(mb.MixError) as cm:
+            mb.render(spec, self.out("o"), p)
+        self.assertIn("mix.duck.gate_db", str(cm.exception))
+        self.assertFalse(os.path.exists(self.out("o/mix.wav")))
+
+    def test_mixed_stems_stop_before_a_limiter(self):
+        spec, p = self.mix_spec([{"limiter": {"ceiling": -1.5}}])
+        m = mb.render(spec, self.out("o"), p)
+        self.assertEqual([(s["where"], s["step"]) for s in m["skipped"]], [("mixed stems", "limiter")])
+        self.assertNotIn("alimiter", m["graphs"]["mixed/music"])
+        # with no linear step at all, the mixed stems are the stems at their mix gain and duck
+        spec["mix"]["chain"] = []
+        n = mb.render(spec, self.out("n"), p)
+        ducked = pcm(self.out("n/mixed/music.wav"))
+        music = pcm(self.out("n/stems/music.wav")) * 10 ** (-6 / 20)
+        for a, b in ((0.5, 2.2), (4.5, 6.2)):  # inside the phrases
+            span = slice(int(a * 48000), int(b * 48000))
+            depth = 10 * np.log10((music[span] ** 2).mean() / (ducked[span] ** 2).mean())
+            self.assertAlmostEqual(depth, 12, delta=1.0)
+        quiet = slice(int(3.2 * 48000), int(3.8 * 48000))  # a pause: no duck
+        self.assertLess(10 * np.log10((music[quiet] ** 2).mean() / (ducked[quiet] ** 2).mean()), 1)
 
 
 @needs_numpy
