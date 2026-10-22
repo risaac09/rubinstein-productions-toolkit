@@ -52,13 +52,13 @@ THRESHOLDS = {
 
 
 def parse_overrides(pairs, base=None):
-    """['black_min_s=1', ...] -> a copy of THRESHOLDS with those set.
+    """['black_min_s=1', ...] -> a copy of base (default THRESHOLDS) with those set.
     Raises ValueError on an unknown key or a non-number."""
     out = dict(base or THRESHOLDS)
     for p in pairs or []:
         key, eq, val = str(p).partition("=")
-        if not eq or key not in THRESHOLDS:
-            raise ValueError(f"--set wants KEY=VALUE with KEY one of: {', '.join(sorted(THRESHOLDS))} "
+        if not eq or key not in out:  # base's keys, so captionlint shares this
+            raise ValueError(f"--set wants KEY=VALUE with KEY one of: {', '.join(sorted(out))} "
                              f"(got {p!r})")
         try:
             out[key] = float(val)
