@@ -16,7 +16,11 @@ landmarks; pixels outside the skin tone box, such as a spectacle rim
 crossing the patch, are left out) or the box sample above, with hue,
 chroma and the Rec.709 vectorscope angle. vectorscope_deg() reads the angle a scope draws: BT.709
 Y'CbCr from the encoded values, angle of (Cb, Cr) counter-clockwise from +Cb,
-so the skin-tone line sits near 123 degrees."""
+so the skin-tone line sits near 123 degrees.
+
+neutral_lab() is the median Lab over a mask (a white or grey garment or card,
+rpstills.skin.neutral_mask), clipped pixels left out. delta_e2000() is
+CIEDE2000, vectorised; lutlab.lutstats uses this copy."""
 
 import numpy as np
 
@@ -94,6 +98,7 @@ def fit_look(skin_srgb, target_lab, ev_range=(-1.0, 2.5), gain_range=(0.6, 1.6),
 BT709 = (0.2126, 0.7152, 0.0722)
 CB_DIV, CR_DIV = 1.8556, 1.5748  # BT.709 Cb = (B' - Y') / 1.8556, Cr = (R' - Y') / 1.5748
 CHEEK_TONE_MIN = 0.5  # the cheek tone gate applies only when at least this share of the patch passes it
+CLIP_AT = 252 / 255   # a channel at or above this is clipped: neutral_lab leaves the pixel out
 
 
 def lab_image(rgb):
@@ -174,3 +179,47 @@ def skin_lab(rgb, face_px, region="cheek"):
     return {"L": round(L, 2), "a": round(a, 2), "b": round(b, 2), "hue_deg": round(float(hue_deg(a, b)), 2),
             "chroma": round(float(chroma(a, b)), 2), "vectorscope_deg": round(vectorscope_deg(px.mean(0)), 2),
             "n_px": n}
+
+
+def neutral_lab(rgb, mask):
+    """Median CIELAB of a float sRGB 0..1 image over a bool mask, leaving out
+    clipped pixels (any channel at or above CLIP_AT): {"L", "a", "b",
+    "chroma", "n_px"}, rounded; None when no unclipped pixel is left."""
+    px = np.asarray(rgb, np.float32)[..., :3][np.asarray(mask, bool)]
+    px = px[px.max(-1) < CLIP_AT - 1e-6]
+    if not len(px):
+        return None
+    L, a, b = (float(v) for v in np.median(lab_image(px), 0))
+    return {"L": round(L, 2), "a": round(a, 2), "b": round(b, 2), "chroma": round(float(chroma(a, b)), 2),
+            "n_px": int(len(px))}
+
+
+def delta_e2000(lab1, lab2):
+    """CIEDE2000 between CIELAB arrays (..., 3), broadcast; Sharma, Wu and
+    Dalal (2005)."""
+    L1, a1, b1 = np.moveaxis(np.asarray(lab1, dtype=np.float64), -1, 0)
+    L2, a2, b2 = np.moveaxis(np.asarray(lab2, dtype=np.float64), -1, 0)
+    cb = (np.hypot(a1, b1) + np.hypot(a2, b2)) / 2
+    g = 0.5 * (1 - np.sqrt(cb ** 7 / (cb ** 7 + 25.0 ** 7)))
+    a1p, a2p = (1 + g) * a1, (1 + g) * a2
+    c1p, c2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
+    zero = (c1p * c2p) == 0
+    dhp = h2p - h1p
+    dhp = np.where(dhp > 180, dhp - 360, np.where(dhp < -180, dhp + 360, dhp))
+    dhp = np.where(zero, 0, dhp)
+    dHp = 2 * np.sqrt(c1p * c2p) * np.sin(np.radians(dhp / 2))
+    lbp, cbp = (L1 + L2) / 2, (c1p + c2p) / 2
+    hs = h1p + h2p
+    hbp = np.where(zero, hs, np.where(np.abs(h1p - h2p) <= 180, hs / 2,
+                                      np.where(hs < 360, (hs + 360) / 2, (hs - 360) / 2)))
+    t = (1 - 0.17 * np.cos(np.radians(hbp - 30)) + 0.24 * np.cos(np.radians(2 * hbp))
+         + 0.32 * np.cos(np.radians(3 * hbp + 6)) - 0.20 * np.cos(np.radians(4 * hbp - 63)))
+    dth = 30 * np.exp(-(((hbp - 275) / 25) ** 2))
+    rc = 2 * np.sqrt(cbp ** 7 / (cbp ** 7 + 25.0 ** 7))
+    sl = 1 + 0.015 * (lbp - 50) ** 2 / np.sqrt(20 + (lbp - 50) ** 2)
+    sc, sh = 1 + 0.045 * cbp, 1 + 0.015 * cbp * t
+    rt = -np.sin(np.radians(2 * dth)) * rc
+    dl, dc, dh = (L2 - L1) / sl, (c2p - c1p) / sc, dHp / sh
+    return np.sqrt(dl * dl + dc * dc + dh * dh + rt * dc * dh)

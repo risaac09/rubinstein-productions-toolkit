@@ -19,6 +19,8 @@ import json
 
 import numpy as np
 
+from rpstills.measure import delta_e2000  # CIEDE2000 lives in rpstills.measure
+
 from . import cst, cube, spaces
 
 INTERP = ("tetrahedral", "trilinear")
@@ -90,7 +92,7 @@ def check(lut, src, dst, interp="tetrahedral"):
     axis, both as code values in src."""
     r = {"mode": "check", "from": src, "to": dst, "size": int(lut["table"].shape[0]), "interp": interp}
     for key, x in (("natural", natural(src)), ("neutral", neutral(src))):
-        r[key] = stats(spaces.delta_e2000(lab(cst.transform(x, src, dst), dst), lab(sample(lut, x, interp), dst)))
+        r[key] = stats(delta_e2000(lab(cst.transform(x, src, dst), dst), lab(sample(lut, x, interp), dst)))
     return r
 
 
@@ -101,7 +103,7 @@ def roundtrip(src, dst, size=33, interp="tetrahedral"):
     r = {"mode": "roundtrip", "from": src, "to": dst, "size": size, "interp": interp, "code_error_10bit": {}}
     for key, x in (("natural", natural(src)), ("neutral", neutral(src))):
         y = sample(back, sample(there, x, interp), interp)
-        r[key] = stats(spaces.delta_e2000(lab(x, src), lab(y, src)))
+        r[key] = stats(delta_e2000(lab(x, src), lab(y, src)))
         r["code_error_10bit"][key] = stats(np.abs(y - x).max(-1) * CODES)
     return r
 

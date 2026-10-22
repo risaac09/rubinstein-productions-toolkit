@@ -13,14 +13,17 @@
   run     <shoot folder> <out dir> --session NAME   all four in order (takes the index options)
 
   develop <out dir> --look FILE [--ids ...] [--backend apple|lightcraft] [--raw PATH ...]
-                                             RAW -> out/develop/<id>.tif (16-bit) + calibration.json, exposure
-                                             and white balance solved per frame onto the look's skin target
+          [--neutral-box X0 Y0 X1 Y1] [--wb-from ID]
+                                             RAW -> out/develop/<id>.tif (16-bit) + calibration.json: white balance
+                                             from a neutral reference and exposure from cheek L* (solve.mode
+                                             neutral), or onto one skin target (target mode)
   finish  <out dir> [--ids ...] [--src DIR] [--retouch none|all|ID ...] [--background off|on] [--crop PROFILE ...]
                                              opt-in background burn and retouch, crops on the landmark eye line
                                              -> out/finish/<profile>/<id>.jpg (sRGB) + finish.json
-  audit   <dir> [--out DIR] [--profile NAME] numbers of finished stills (skin Lab and scope angle, clip, ICC,
-                                             eye line, headroom, eye sharpness, background) -> audit.json;
-                                             report only, no pass/fail
+  audit   <dir> [--out DIR] [--profile NAME] [--hero FILE]
+                                             numbers of finished stills (skin Lab and scope angle, set consistency
+                                             against the median or a hero, neutral garment, clip, ICC, eye line,
+                                             headroom, eye sharpness, background) -> audit.json; checks, no pass/fail
   absheet IMG IMG [...] --out DIR [--seed N] [--title T]
                                              lettered A/B/C decision sheet (2-9 images, phone legible) + key.json
   serve   <folder> [--bind 127.0.0.1] [--port 8780]

@@ -151,9 +151,9 @@ git tree and echoes its parameters into its output JSON.
 
 | Command | Writes | What |
 |---|---|---|
-| `develop <out> --look FILE [--backend apple\|lightcraft]` | `develop/<id>.tif`, `develop/calibration.json` | 16-bit sRGB TIFF per selected frame. Exposure, temperature and tint are solved per frame (Broyden-updated Newton) so the cheek-apple Lab meets the look's `solve.target_lab`. A pinned axis or a missed target is reported, never counted as converged. The `apple` backend (CIRAWFilter, `develop_raw.swift`, compiled into `~/Library/Caches/rpstills` like the Vision helper) is the default; `lightcraft` is a trial, enabled only by `RPSTILLS_LIGHTCRAFT`. See [rpstills-develop.md](../rpstills-develop.md). |
+| `develop <out> --look FILE [--backend apple\|lightcraft] [--neutral-box X0 Y0 X1 Y1] [--wb-from ID]` | `develop/<id>.tif`, `develop/calibration.json` | 16-bit sRGB TIFF per selected frame, solved per frame (Broyden-updated Newton). Neutral mode (`portrait-neutral-v1.json`, the delivery look): white balance makes a white or grey garment or card below the face neutral, exposure puts the cheek at L* 64, and skin hue is left where the person's complexion puts it; a frame with no neutral takes `--wb-from` a frame in the same light, or `--neutral-box`. Target mode moves the cheek-apple Lab onto `solve.target_lab`, for matching a set to one hero frame. A pinned axis or a missed target is reported, never counted as converged. The `apple` backend (CIRAWFilter, `develop_raw.swift`, compiled into `~/Library/Caches/rpstills` like the Vision helper) is the default; `lightcraft` is a trial, enabled only by `RPSTILLS_LIGHTCRAFT`. See [rpstills-develop.md](../rpstills-develop.md). |
 | `finish <out> [--retouch none\|all\|ID ...] [--background off\|on] [--crop PROFILE ...]` | `finish/<profile>/<id>.jpg`, `finish/finish.json` | Crops on the Vision landmark eye line, sRGB 4:4:4 JPEG. Background burn and retouch are opt-in and logged per frame. See [rpstills-finish.md](../rpstills-finish.md). |
-| `audit <dir> [--profile NAME]` | `audit.json` | Skin L*, a*, b*, hue, chroma and Rec.709 vectorscope angle at the cheek apples, clip share, sRGB ICC, eye line, headroom, eye sharpness, background peak, and the set's spread. Report only: no pass or fail until ranges are set. See [rpstills-audit.md](../rpstills-audit.md). |
+| `audit <dir> [--profile NAME] [--hero FILE]` | `audit.json` | Skin L*, a*, b*, hue, chroma and Rec.709 vectorscope angle at the cheek apples. Each file against the set's median skin Lab (or a hero frame): dE2000, dL*, dC*, dhue. How neutral the white or grey garment below the face reads. Clip share, sRGB ICC, eye line, headroom, eye sharpness, background peak, and the set's spread. Metrics past a working default are listed as checks, not verdicts. See [rpstills-audit.md](../rpstills-audit.md). |
 | `absheet IMG IMG [...] --out DIR [--seed N]` | `sheet.jpg`, `key.json` | Two to nine candidates as one lettered sheet (at most 2000 px, under 1 MiB, legible at phone width), order shuffled by the seed, the key kept apart. |
 | `serve <folder> [--bind ADDR] [--port N]` | nothing | GET and HEAD only, with HTTP byte ranges, so Safari on a phone or iPad can play and seek video. Refuses paths outside the folder. |
 
@@ -162,9 +162,7 @@ landmark points in the same normalised top-left coordinates as the face box;
 the index never asks for them. `rpstills.skin` pairs eyes and lip corners by
 image x, so a patch cannot flip sides whatever Vision calls them.
 
-The trial skin target in `stills-looks/portrait-cheek-trial-v0.json` is a trial,
-not a house standard, and it sits about 5 degrees red of the Rec.709 skin line;
-`audit` reports both distances. The review loop around these commands is in
+Delivered portraits are neutralised on a neutral reference (`stills-looks/portrait-neutral-v1.json`): a white or grey garment or a grey card below the face, with exposure on the cheek and the skin's hue left to the person. In a blind comparison it was picked over two fixed skin targets, which needed large tint moves and turned white fabric green-yellow. The cheek trial look (`portrait-cheek-trial-v0.json`) is kept for matching a set to one hero frame. `audit` judges a set's consistency and its neutrals, not distance to a fixed hue. The review loop around these commands is in
 [media-review-loop.md](../media-review-loop.md).
 
 Tests: `production/tests/test_rpstills_{skin,audit,develop,finish,absheet,serve}.py`.

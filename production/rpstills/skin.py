@@ -33,6 +33,23 @@ never from a fixed image width.
                moves the skin sample); bool HxW, not dilated.
   nblur        a Gaussian blur normalized by a mask, so only masked pixels
                contribute (no halo from glasses or hair at the edge).
+  neutral_mask a white or grey garment, or a grey card held low, below the
+               face: from NEUTRAL_BELOW face heights under the face box to
+               the image bottom, within NEUTRAL_REACH face widths of the face
+               centre, pixels with L* >= min_L and chroma <= max_chroma that
+               are not skin (a neck, a chest: at least NEUTRAL_SKIN[0] of the
+               cheek's chroma and within NEUTRAL_SKIN[1] degrees of its hue,
+               measured on the same render, so a white in warm light stays),
+               opened, and only the connected parts that reach NEUTRAL_SEED
+               face widths either side of the face centre, a band narrower
+               than a neck (a wall or path seen beside the neck or the body
+               is dropped). None when under min_share of the frame survives,
+               when the colours inside it spread past NEUTRAL_SPREAD (a pale
+               print, or a tinted wall joined to the garment), or when no skin
+               sample can be read. rpstills develop takes
+               it once, on its first render, and carries it to the full-size
+               file by nearest-neighbour resizing; it is never taken again at
+               another white balance.
 
 Tuned on one subject with glasses under overcast light; the tone box and
 the proportions are not validated on other skin tones or light.
@@ -40,6 +57,8 @@ the proportions are not validated on other skin tones or light.
 
 import cv2
 import numpy as np
+
+from . import measure
 
 CHEEK_AT = 0.40               # share of the way from the eye centre to the same-side mouth corner
 CHEEK_RADII = (0.06, 0.05)    # ellipse radii as shares of the face box (width, height)
@@ -54,6 +73,14 @@ LENS_UP = -0.05               # lens centre above the eye centre, eye widths (ne
 LENS_RADII = (1.05, 0.95)     # lens ellipse radii, eye widths
 UNDER_EYE_DOWN = 0.09         # under-eye centre below the eye's lower edge, face heights
 UNDER_EYE_RADII = (0.55, 0.06)  # eye widths across, face heights down
+NEUTRAL_BELOW = 0.15          # the neutral search starts this many face heights below the face box
+NEUTRAL_REACH = 3.0           # and runs this many face widths either side of the face centre
+NEUTRAL_MIN_L = 40.0          # neutral_mask defaults, which rpstills develop uses too; an 18% grey card reads L* 49.5
+NEUTRAL_MAX_CHROMA = 25.0
+NEUTRAL_MIN_SHARE = 0.002     # of the frame's pixels
+NEUTRAL_SEED = 0.15           # kept parts reach this many face widths either side of the face centre: inside a neck
+NEUTRAL_SKIN = (0.5, 25.0)    # skin: at least this share of the cheek's chroma, within this many degrees of its hue
+NEUTRAL_SPREAD = 9.0          # p90 a*b* distance from the mask median; on one set: prints 12+, white shirts under 7
 
 
 def to_pixels(face, width, height):
@@ -185,3 +212,44 @@ def nblur(img, mask, sigma):
     if img.ndim == 3:
         return cv2.GaussianBlur(img * mask[..., None], (0, 0), sigma) / m[..., None]
     return cv2.GaussianBlur(img * mask, (0, 0), sigma) / m
+
+
+def neutral_mask(rgb, face_px, min_L=NEUTRAL_MIN_L, max_chroma=NEUTRAL_MAX_CHROMA, min_share=NEUTRAL_MIN_SHARE):
+    """bool HxW: the neutral reference below the face of a float sRGB 0..1
+    image (see the module docstring), or None when fewer than min_share of
+    the frame's pixels are found, its colours spread past NEUTRAL_SPREAD (a
+    print), or the face has no skin sample to tell a neck from a garment."""
+    rgb = np.clip(np.asarray(rgb, np.float32)[..., :3], 0, 1)
+    H, W = rgb.shape[:2]
+    cheek = None
+    for region in ("cheek", "box"):   # the box sample when there are no landmarks
+        try:
+            cheek = measure.skin_lab(rgb, face_px, region)
+            break
+        except ValueError:
+            pass
+    if cheek is None:
+        return None
+    cx = face_px["x"] + face_px["w"] / 2
+    y0 = max(0, int(np.ceil(face_px["y"] + (1 + NEUTRAL_BELOW) * face_px["h"])))
+    x0 = max(0, int(cx - NEUTRAL_REACH * face_px["w"]))
+    x1 = min(W, int(np.ceil(cx + NEUTRAL_REACH * face_px["w"])))
+    m = np.zeros((H, W), np.uint8)
+    if y0 < H and x0 < x1:
+        lab = measure.lab_image(rgb[y0:, x0:x1])
+        ch = measure.chroma(lab[..., 1], lab[..., 2])
+        # skin is what sits near this frame's cheek; the tone box would also take a white in warm light
+        dh = (measure.hue_deg(lab[..., 1], lab[..., 2]) - cheek["hue_deg"] + 180) % 360 - 180
+        near = (ch >= NEUTRAL_SKIN[0] * cheek["chroma"]) & (np.abs(dh) <= NEUTRAL_SKIN[1])
+        m[y0:, x0:x1] = (lab[..., 0] >= min_L) & (ch <= max_chroma) & ~near
+    k = max(3, int(face_px["w"] / OPEN_DIV) | 1)
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
+    # only what reaches the middle of the neck's column: a wall seen beside the neck or body is not the garment
+    _, parts = cv2.connectedComponents(m, connectivity=8)
+    s0, s1 = (max(0, int(round(cx + d * NEUTRAL_SEED * face_px["w"]))) for d in (-1, 1))
+    keep = np.unique(parts[:, s0:s1])
+    m = np.isin(parts, keep[keep > 0])
+    if m.sum() < max(1, min_share * H * W):
+        return None
+    ab = lab[m[y0:, x0:x1]][:, 1:]
+    return m if np.percentile(np.hypot(*(ab - np.median(ab, 0)).T), 90) <= NEUTRAL_SPREAD else None

@@ -1,7 +1,27 @@
-"""rpstills.develop: RAW files to 16-bit TIFFs, each solved onto one skin target.
+"""rpstills.develop: RAW files to 16-bit TIFFs, neutralised on a neutral reference
+with exposure set on the cheek, or solved onto one skin target.
 
     python3 -m rpstills develop <out dir> --look FILE [--ids ID ...]
                                 [--backend apple|lightcraft] [--raw PATH ...]
+                                [--neutral-box X0 Y0 X1 Y1] [--wb-from ID]
+
+The look's solve.mode picks what the three settings are solved onto:
+  neutral  the house rule for delivery: the cheek's L* onto target_L, and the
+           median a*, b* of a neutral reference onto neutral_ab (0, 0). The
+           reference is a white or grey garment or a grey card below the face
+           (skin.neutral_mask, taken once on the first render and carried to
+           the full-size file), or --neutral-box in every frame solved on its
+           own neutral (with --wb-from, the reference frame only). Skin hue is
+           left where the complexion puts it. A frame with no neutral fails
+           (NO_NEUTRAL) unless --wb-from names a frame in the same light: that
+           frame is solved first, and every other frame takes its mired and
+           tint and solves EV alone onto the cheek L* (status on L* only); a
+           reference that fails fails them too. The reference may also be a
+           converged neutral row of calibration.json in the same develop/
+           folder, from the same backend; a stored row that is not one stops
+           the run before anything is developed.
+  target   (the default) the cheek's whole Lab onto target_lab, as below:
+           for matching a set to one hero frame.
 
 Frames are the selection (selects.json beside the index, else the cull
 proposal, as rpstills.crops reads it) or --ids, with RAWs from the index
@@ -28,9 +48,12 @@ components (tint pinned at the look's tint_max leaves ev and mired solving
 L* and b*, and a* falls where it does). A start clipped onto a bound is
 held on the first step, not pinned, so the pin is decided on the updated
 Jacobian. An axis with no room (tint_max 0) is pinned from the start, and
-the finite-difference probe stays inside the bounds. The solve stops when
-the residual over the free axes' components is within AIM (CIELAB units;
-half of TOL, a margin for the full-size file) or after MAX_ITER steps.
+the finite-difference probe stays inside the bounds. A render that cannot
+be measured (Unmeasurable: the neutral clipped at every pixel) turns the
+probe the other way, or counts as a step that made things worse. The
+solve stops when the residual over the free axes' components is within
+AIM (CIELAB units; half of TOL, a margin for the full-size file) or after
+MAX_ITER steps.
 Status per frame, judged on TOL:
     converged      every requested axis met the target (within TOL)
     pinned         the free axes met it, but an axis sits on a bound and
@@ -63,14 +86,21 @@ that relative value. temp_bounds_k is Kelvin only on the apple backend.
 
 Look files gain two blocks (rpstills look ignores both):
   "develop": {"backend": "apple"|"lightcraft", "profile": ..., "values": {...}}
-  "solve":   {"target_lab": [L, a, b], "sample": "cheek"|"box",
+  "solve":   {"mode": "target"|"neutral", "target_lab": [L, a, b],
+              "target_L": 64, "neutral_ab": [0, 0],
+              "neutral": {"min_L": 40, "max_chroma": 25, "min_share": 0.002},
+              "sample": "cheek"|"box",
               "free": ["ev", "mired", "tint"], "tint_max": 6,
               "ev_bounds": [-3, 3], "temp_bounds_k": [2500, 12000]}
+target_lab is needed in target mode; in neutral mode target_L defaults to
+target_lab[0], else TARGET_L.
 
 Writes <out>/develop/<id>.tif (16-bit sRGB) and <out>/develop/calibration.json:
-per frame x, x0, lab, lab_out, residual, delta_e, pinned, iterations,
-converged, status, backend and its version, look name and version, target,
-sample, temp_unit, the params it was solved under, seconds. A frame
+per frame x, x0, lab, lab_out (the cheek), residual, delta_e, pinned,
+iterations, converged, status, mode, target (a* and b* null on a --wb-from
+frame), neutral (source auto|box|wb_from, n_px, lab_out, box, from; null in
+target mode), backend and its version, look name and version, sample,
+temp_unit, the params it was solved under, seconds. A frame
 developed before keeps its row (and its params) unless developed
 again. TIFFs and calibration.json name client frames: refused inside any
 git working tree.
@@ -85,6 +115,7 @@ import sys
 import tempfile
 import time
 
+import cv2
 import numpy as np
 
 from . import crops, index, measure, skin, vision
@@ -105,8 +136,19 @@ AIM = 0.5                              # where a develop solve stops: margin for
 MIN_DAMP = 0.125
 SOLVE_EDGE = 1500                      # long edge of the solve renders, px
 START_TEMP_K = 5500.0                  # first white balance when the backend reports no as-shot value
-SOLVE_DEFAULTS = {"sample": "cheek", "free": list(AXES), "tint_max": 6.0, "ev_bounds": [-3.0, 3.0],
+MODES = ("target", "neutral")
+SOLVE_DEFAULTS = {"mode": "target", "sample": "cheek", "free": list(AXES), "tint_max": 6.0, "ev_bounds": [-3.0, 3.0],
                   "temp_bounds_k": [2500.0, 12000.0]}
+TARGET_L = 64.0                        # neutral mode's cheek L* when the look names neither target_L nor target_lab
+NEUTRAL_DEFAULTS = {"min_L": skin.NEUTRAL_MIN_L, "max_chroma": skin.NEUTRAL_MAX_CHROMA,
+                    "min_share": skin.NEUTRAL_MIN_SHARE}
+NO_NEUTRAL = ("no neutral reference in frame: shoot a grey card, pass --neutral-box, or --wb-from ID "
+              "(a frame in the same light)")
+
+
+class Unmeasurable(ValueError):
+    """measure_fn cannot read this point (the neutral clipped at every pixel): solve() probes the other
+    way, or takes it as a step that made things worse."""
 
 
 # ---------------------------------------------------------------- the solve
@@ -176,8 +218,17 @@ def solve(measure_fn, x0, bounds, target, free, max_iter=MAX_ITER, tol=TOL):
         h = min(FD_STEP[i], up) if up >= min(FD_STEP[i], down) else -min(FD_STEP[i], down)
         xi = x.copy()
         xi[i] += h
-        J[:, i] = (np.asarray(measure_fn(xi), float) - y) / h
         evals += 1
+        try:
+            yi = measure_fn(xi)
+        except Unmeasurable:  # a white shirt clipped by +0.25 EV: probe down instead, when there is room
+            if h < 0 or down <= 0:
+                raise
+            h = -min(FD_STEP[i], down)
+            xi[i] = x[i] + h
+            evals += 1
+            yi = measure_fn(xi)
+        J[:, i] = (np.asarray(yi, float) - y) / h
     damp, it = 1.0, 0
     while active and _residual(y, target, active) > tol and it < max_iter:
         it += 1
@@ -187,8 +238,12 @@ def solve(measure_fn, x0, bounds, target, free, max_iter=MAX_ITER, tol=TOL):
         x_new = x + dx
         x_new = np.where(np.abs(x_new - lo) < 1e-9, lo, np.where(np.abs(x_new - hi) < 1e-9, hi, x_new))  # land exactly
         dx = x_new - x
-        y_new = np.asarray(measure_fn(x_new), float)
         evals += 1
+        try:
+            y_new = np.asarray(measure_fn(x_new), float)
+        except Unmeasurable:
+            damp = max(MIN_DAMP, damp / 2)  # as a step that made things worse
+            continue
         w = dx / FD_STEP ** 2  # Broyden's update in step-scaled units, so mired does not swamp ev
         if dx @ w > 0:
             J += np.outer(y_new - y - J @ dx, w) / (dx @ w)
@@ -372,9 +427,24 @@ def load_look(path):
     if not isinstance(doc.get("solve"), dict):
         raise ValueError("the look has no solve block (target_lab, sample, free, bounds)")
     s = dict(SOLVE_DEFAULTS, **doc["solve"])
+    if s["mode"] not in MODES:
+        raise ValueError(f"solve.mode is target or neutral, not {s['mode']!r}")
+
+    def numbers(v, n):
+        return isinstance(v, list) and len(v) == n and all(isinstance(x, (int, float)) for x in v)
     t = s.get("target_lab")
-    if not (isinstance(t, list) and len(t) == 3 and all(isinstance(v, (int, float)) for v in t)):
+    if (s["mode"] == "target" or t is not None) and not numbers(t, 3):
         raise ValueError("solve.target_lab must be [L*, a*, b*]")
+    if s["mode"] == "neutral":
+        s.setdefault("target_L", t[0] if t else TARGET_L)
+        s.setdefault("neutral_ab", [0.0, 0.0])
+        n = s.get("neutral") or {}
+        if not isinstance(n, dict) or set(n) - set(NEUTRAL_DEFAULTS):
+            raise ValueError(f"solve.neutral takes {', '.join(NEUTRAL_DEFAULTS)}")
+        s["neutral"] = dict(NEUTRAL_DEFAULTS, **n)
+        if not (numbers([s["target_L"]], 1) and numbers(s["neutral_ab"], 2)
+                and numbers(list(s["neutral"].values()), 3)):
+            raise ValueError("solve.target_L must be a number, neutral_ab [a*, b*], neutral's values numbers")
     if s["sample"] not in ("cheek", "box"):
         raise ValueError(f"solve.sample is cheek or box, not {s['sample']!r}")
     if not s["free"] or set(s["free"]) - set(AXES):
@@ -383,6 +453,12 @@ def load_look(path):
     if not (e0 < e1 and 0 < k0 < k1 and s["tint_max"] >= 0):
         raise ValueError("solve bounds need ev_bounds lo < hi, 0 < temp_bounds_k lo < hi, tint_max >= 0")
     return dict(doc, develop=dev, solve=s)
+
+
+def target_of(s):
+    """The Lab a solve block aims at: target_lab, or in neutral mode
+    [cheek L*, neutral a*, neutral b*]."""
+    return [float(v) for v in (s["target_lab"] if s["mode"] == "target" else [s["target_L"], *s["neutral_ab"]])]
 
 
 def select_frames(out_dir, ids=None, raws=None):
@@ -454,26 +530,70 @@ def _lab(rgb, face, sample):
     return np.array([s["L"], s["a"], s["b"]]), s["n_px"]
 
 
+def _neutral_mask(rgb, face, box, params):
+    """bool HxW: the --neutral-box (normalised x0, y0, x1, y1), else the
+    garment or card below the face. ValueError NO_NEUTRAL when none is found."""
+    H, W = rgb.shape[:2]
+    if box:
+        m = np.zeros((H, W), bool)
+        m[int(round(box[1] * H)):int(round(box[3] * H)), int(round(box[0] * W)):int(round(box[2] * W))] = True
+        if not m.any():
+            raise ValueError(f"the --neutral-box covers no pixel at {W}x{H}")
+        return m
+    # no retry on a provisional balance: grey-world takes a blue or red shirt for a neutral (tested); fail loud instead
+    m = skin.neutral_mask(rgb, skin.to_pixels(face, W, H), **params)
+    if m is None:
+        raise ValueError(NO_NEUTRAL)
+    return m
+
+
+def _neutral(rgb, mask):
+    """measure.neutral_lab over mask; None when there is no mask (--wb-from)."""
+    if mask is None:
+        return None
+    n = measure.neutral_lab(rgb, mask)
+    if n is None:
+        raise Unmeasurable("the neutral reference is clipped at every pixel")
+    return n
+
+
+def _vector(mode, cheek, neutral, target):
+    """What the solve compares with target: the cheek Lab (target mode), or
+    the cheek L* with the neutral's a*, b*. Without a neutral (--wb-from)
+    only L* is asked for, and a*, b* stand at the target so delta_e is L*'s."""
+    if mode == "target":
+        return cheek
+    return np.array([cheek[0], *((neutral["a"], neutral["b"]) if neutral else target[1:])])
+
+
 def _x_out(x, temp_key="temp_k"):
     ev, mired, tint = (float(v) for v in x)
     return {"ev": round(ev, 3), temp_key: round(1e6 / mired), "mired": round(mired, 2), "tint": round(tint, 2)}
 
 
-def develop_frame(fid, raw, backend, look, dest, work, detect):
+def develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box=None, wb=None):
     """Solve and develop one frame into dest/<id>.tif. Returns its row;
-    ValueError or RuntimeError when it cannot be developed."""
+    ValueError or RuntimeError when it cannot be developed. In neutral mode
+    neutral_box (normalised x0, y0, x1, y1) replaces the garment below the
+    face, and wb ({"mired", "tint", "from"}, a --wb-from frame's) holds the
+    white balance and solves EV alone onto the cheek L*."""
     s, dev = look["solve"], look["develop"]
+    mode, target = s["mode"], target_of(s)
+    free = ["ev"] if wb else s["free"]
     bounds = [tuple(s["ev_bounds"]), (1e6 / s["temp_bounds_k"][1], 1e6 / s["temp_bounds_k"][0]),
               (-float(s["tint_max"]), float(s["tint_max"]))]
     shot = backend.as_shot(raw)
     x0 = [0.0, 1e6 / (shot[backend.temp_key] if shot else START_TEMP_K), shot["tint"] if shot else 0.0]
+    if wb:  # held exactly, never clipped to this look's bounds
+        x0[1:] = wb["mired"], wb["tint"]
+        bounds[1:] = [(wb["mired"],) * 2, (wb["tint"],) * 2]
     base = dict(dev["values"]) if backend.look_values else {}
 
     def values(x):
         ev, mired, tint = (float(v) for v in x)
         return dict(base, **dict(zip(backend.axes, (round(ev, 4), round(1e6 / mired, 1), round(tint, 3)))))
 
-    state = {"face": None, "n": 0, "n_px": None}
+    state = {"face": None, "mask": None, "n": 0, "n_px": None, "seen": {}}
 
     def measure_fn(x):
         state["n"] += 1
@@ -482,54 +602,104 @@ def develop_frame(fid, raw, backend, look, dest, work, detect):
         rgb = read_rgb(path)
         if state["face"] is None:
             state["face"] = _face(path, rgb, detect, s["sample"])
+            if mode == "neutral" and not wb:  # taken once, at the start's white balance
+                state["mask"] = _neutral_mask(rgb, state["face"], neutral_box, s["neutral"])
         os.remove(path)
         lab, state["n_px"] = _lab(rgb, state["face"], s["sample"])
-        return lab
+        neutral = _neutral(rgb, state["mask"])
+        state["seen"][tuple(float(v) for v in x)] = lab
+        return _vector(mode, lab, neutral, target)
 
-    result = solve(measure_fn, x0, bounds, s["target_lab"], s["free"], tol=AIM)
+    result = solve(measure_fn, x0, bounds, target, free, tol=AIM)
+    seen = state["seen"]  # the solve returns a point it measured; the nearest guards a float that drifted by an ulp
+    lab = seen[min(seen, key=lambda k: float(np.abs(np.subtract(k, result["x"])).sum()))]
     final = os.path.join(dest, f".{fid}.part.tif")
     try:
         backend.render(raw, values(result["x"]), final, bit16=True)
         rgb = read_rgb(final)
         lab_out, n_out = _lab(rgb, state["face"], s["sample"])
+        mask = state["mask"]
+        if mask is not None:  # carried to the full size, never taken again at the solved white balance
+            mask = cv2.resize(mask.astype(np.uint8), (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+        neutral_out = _neutral(rgb, mask)
         tif = os.path.join(dest, f"{fid}.tif")
         os.replace(final, tif)
     finally:
         if os.path.exists(final):
             os.remove(final)
     # the delivered file decides: a solve that met the target small but misses it full size is not converged
-    st_solve, st_out = (status(lab, s["target_lab"], s["free"], result["free"], result["pinned"])
-                        for lab in (result["lab"], lab_out))
+    vec_out = _vector(mode, lab_out, neutral_out, target)
+    st_solve, st_out = (status(v, target, free, result["free"], result["pinned"]) for v in (result["lab"], vec_out))
     st = max(st_solve, st_out, key=("converged", "pinned", "not_converged").index)
     face = state["face"]
+    neutral = None if mode == "target" else {
+        "source": "wb_from" if wb else "box" if neutral_box else "auto",
+        "n_px": neutral_out and neutral_out["n_px"],
+        "lab_out": neutral_out and [neutral_out[k] for k in ("L", "a", "b")],
+        "box": None if wb or not neutral_box else [float(v) for v in neutral_box],
+        "from": wb["from"] if wb else None}
     return {"id": fid, "raw": raw, "tif": tif, "size": [rgb.shape[1], rgb.shape[0]],
             "x": _x_out(result["x"], backend.temp_key), "x0": _x_out(np.clip(x0, *zip(*bounds)), backend.temp_key),
-            "as_shot": shot, "lab": [round(v, 2) for v in result["lab"]],
+            "as_shot": shot, "lab": [round(float(v), 2) for v in lab],
             "lab_out": [round(float(v), 2) for v in lab_out], "residual": round(result["residual"], 3),
             "delta_e": round(result["delta_e"], 3),
-            "delta_e_out": round(float(np.linalg.norm(lab_out - s["target_lab"])), 3),
+            "delta_e_out": round(float(np.linalg.norm(vec_out - np.asarray(target))), 3),
             "pinned": result["pinned"], "free": result["free"], "iterations": result["iterations"],
             "evaluations": result["evaluations"], "converged": st == "converged", "status": st,
             "status_solve": st_solve, "sample_px": {"solve": state["n_px"], "out": n_out},
-            "face": {k: round(float(face[k]), 4) for k in ("x", "y", "w", "h")}}
+            "face": {k: round(float(face[k]), 4) for k in ("x", "y", "w", "h")},
+            "mode": mode, "target": [target[0], None, None] if wb else target, "neutral": neutral}
 
 
 # ---------------------------------------------------------------- the run
 
-def build(frames, backend, look, dest, detect=None, log=print):
+def wb_reference(row, fid, backend):
+    """{"mired", "tint", "from"}: the white balance a --wb-from frame's row
+    hands on. ValueError unless the row is a converged neutral-mode solve
+    on this backend (tint and temperature are in each backend's own units)."""
+    if not row:
+        raise ValueError(f"--wb-from {fid}: not among this run's frames and no row in calibration.json")
+    if (row.get("mode"), row.get("status"), row.get("backend")) != ("neutral", "converged", backend):
+        raise ValueError(f"--wb-from {fid}: not a solved neutral to take a white balance from (mode "
+                         f"{row.get('mode')}, status {row.get('status')}, backend {row.get('backend')}; "
+                         f"wanted neutral, converged, {backend})")
+    return {"mired": float(row["x"]["mired"]), "tint": float(row["x"]["tint"]), "from": fid}
+
+
+def _rows_on_disk(dest):
+    """The frames of dest/calibration.json; {} when there is none or it cannot be read."""
+    try:
+        with open(os.path.join(dest, "calibration.json")) as f:
+            return json.load(f).get("frames") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def build(frames, backend, look, dest, detect=None, log=print, neutral_box=None, wb_from=None):
     """Develop every (id, raw) into dest. Returns the calibration document;
-    a frame that fails is a row with its error, the others still run."""
+    a frame that fails is a row with its error, the others still run.
+    wb_from (neutral mode) is developed first when it is among the frames
+    (when it fails, the frames that need it fail with that reason), else
+    read from dest/calibration.json; ValueError, before anything is
+    developed, when it is in neither or its stored row is not a converged
+    neutral solve on this backend."""
     detect = detect or vision.faces
     s, dev = look["solve"], look["develop"]
+    neutral_keys = ("target_L", "neutral_ab", "neutral") if s["mode"] == "neutral" else ()
     # every row carries the params it was solved under: a later run that merges into the file replaces the top block
     common = {"backend": backend.name, "backend_version": backend.version(),
-              "look": {"name": look.get("name"), "version": look.get("version")},
-              "target": [float(v) for v in s["target_lab"]], "sample": s["sample"], "temp_unit": backend.temp_unit,
-              "params": {"solve": {k: s[k] for k in SOLVE_DEFAULTS}, "fd_step": FD_STEP.tolist(),
+              "look": {"name": look.get("name"), "version": look.get("version")}, "mode": s["mode"],
+              "target": target_of(s), "sample": s["sample"], "temp_unit": backend.temp_unit,
+              "params": {"solve": {k: s[k] for k in (*SOLVE_DEFAULTS, *neutral_keys)}, "fd_step": FD_STEP.tolist(),
                          "max_step": MAX_STEP.tolist(), "max_iter": MAX_ITER, "tol": TOL, "aim": AIM,
                          "min_damp": MIN_DAMP, "solve_edge": SOLVE_EDGE, "start_temp_k": START_TEMP_K,
                          "profile": dev.get("profile")}}
     ignored = sorted(dev["values"]) if dev["values"] and not backend.look_values else []
+    wb = None
+    if wb_from and wb_from not in dict(frames):
+        wb = wb_reference(_rows_on_disk(dest).get(wb_from), wb_from, backend.name)
+    if wb_from:
+        frames = sorted(frames, key=lambda f: f[0] != wb_from)  # the reference first, the rest in order
     os.makedirs(dest, exist_ok=True)
     rows = {}
     with tempfile.TemporaryDirectory(prefix="rpstills-develop-") as work:
@@ -538,13 +708,15 @@ def build(frames, backend, look, dest, detect=None, log=print):
             try:
                 if not raw:
                     raise ValueError("the index has no RAW twin for this frame")
-                row = develop_frame(fid, raw, backend, look, dest, work, detect)
+                ref = None
+                if wb_from and fid != wb_from:
+                    ref = wb or wb_reference(rows.get(wb_from), wb_from, backend.name)
+                row = develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box, ref)
             except (ValueError, RuntimeError, OSError) as e:
                 row = {"id": fid, "raw": raw, "error": str(e), "converged": False, "status": "failed"}
                 if os.path.exists(os.path.join(dest, f"{fid}.tif")):
                     row["stale_tif"] = "the TIFF on disk is from an earlier run"
-            row.update(common, seconds=round(time.monotonic() - t0, 2))
-            rows[fid] = row
+            rows[fid] = row = {**common, **row, "seconds": round(time.monotonic() - t0, 2)}
             log(_line(row))
     return {"tool": "rpstills develop", "frames": rows, **common, "look_values_ignored": ignored}
 
@@ -552,11 +724,15 @@ def build(frames, backend, look, dest, detect=None, log=print):
 def _line(row):
     if row.get("error"):
         return f"{row['id']}: failed: {row['error']}"
-    x = row["x"]
+    x, n = row["x"], row.get("neutral")
     pin = f", pinned {','.join(row['pinned'])}" if row["pinned"] else ""
     temp = f"{x['temp_k']} K" if "temp_k" in x else f"temp {x['temp']}"
+    neu = ""
+    if n:
+        neu = (f"  neutral a* {n['lab_out'][1]:.1f} b* {n['lab_out'][2]:.1f} ({n['n_px']} px)" if n["lab_out"]
+               else f"  white balance from {n['from']}")
     return (f"{row['id']}: {row['status']}{pin}  ev {x['ev']:+.2f}  {temp}  tint {x['tint']:+.1f}  "
-            f"Lab {row['lab_out'][0]:.1f} {row['lab_out'][1]:.1f} {row['lab_out'][2]:.1f}  "
+            f"Lab {row['lab_out'][0]:.1f} {row['lab_out'][1]:.1f} {row['lab_out'][2]:.1f}{neu}  "
             f"dE {row['delta_e_out']:.2f}  {row['iterations']} steps  {row['seconds']:.1f} s")
 
 
@@ -564,13 +740,7 @@ def write(dest, doc):
     """calibration.json in dest, atomically, keeping rows of frames this run
     did not develop."""
     path = os.path.join(dest, "calibration.json")
-    frames = {}
-    if os.path.exists(path):
-        try:
-            with open(path) as f:
-                frames = json.load(f).get("frames") or {}
-        except (OSError, ValueError):
-            frames = {}
+    frames = _rows_on_disk(dest)
     frames.update(doc["frames"])
     out = dict(doc, frames=frames)
     fd, tmp = tempfile.mkstemp(dir=dest, prefix=".calibration-", suffix=".tmp")
@@ -588,10 +758,12 @@ def summary(doc):
     rows = list(doc["frames"].values())
     count = {k: sum(1 for r in rows if r["status"] == k) for k in ("converged", "pinned", "not_converged", "failed")}
     pins = sorted({a for r in rows for a in r.get("pinned") or []})
+    t = doc["target"]
+    aim = (f"cheek L* {t[0]:g} ({doc['sample']}), neutral a* {t[1]:g} b* {t[2]:g}" if doc.get("mode") == "neutral"
+           else f"target Lab {' '.join(f'{v:g}' for v in t)} ({doc['sample']})")
     text = (f"{len(rows)} frames: {count['converged']} converged, {count['pinned']} pinned"
             + (f" ({', '.join(pins)})" if pins else "")
-            + f", {count['not_converged']} not converged, {count['failed']} failed; backend {doc['backend']}, "
-            f"target Lab {' '.join(f'{v:g}' for v in doc['target'])} ({doc['sample']})")
+            + f", {count['not_converged']} not converged, {count['failed']} failed; backend {doc['backend']}, {aim}")
     if doc.get("look_values_ignored"):
         text += f"; look values ignored by this backend: {', '.join(doc['look_values_ignored'])}"
     return text
@@ -606,6 +778,15 @@ def add_arguments(p):
                                                        f"lightcraft is a trial and needs {ENV_LIGHTCRAFT}")
     p.add_argument("--raw", nargs="+", metavar="PATH", help="develop these RAW files (id = file stem) instead of "
                                                             "the index selection")
+    p.add_argument("--neutral-box", nargs=4, type=float, metavar=("X0", "Y0", "X1", "Y1"),
+                   help="neutral mode: this box (0..1, top-left origin) is the neutral reference in every frame "
+                        "solved on its own neutral, in place of the garment below the face (a grey card); with "
+                        "--wb-from, only the reference frame, and nothing when the reference comes from "
+                        "calibration.json")
+    p.add_argument("--wb-from", metavar="ID", help="neutral mode: solve frame ID on its neutral first (a frame of "
+                                                    "this run, or a row of OUT/develop/calibration.json), then give "
+                                                    "its white balance to every other frame and solve exposure alone "
+                                                    "(frames in the same light)")
 
 
 def run(args):
@@ -613,6 +794,13 @@ def run(args):
         look = load_look(args.look)
     except (OSError, ValueError, TypeError) as e:
         print(f"rpstills develop: look {args.look}: {e}", file=sys.stderr)
+        return 1
+    box = args.neutral_box
+    if (box or args.wb_from) and look["solve"]["mode"] != "neutral":
+        print("rpstills develop: --neutral-box and --wb-from need a look with solve.mode neutral", file=sys.stderr)
+        return 1
+    if box and not (0 <= box[0] < box[2] <= 1 and 0 <= box[1] < box[3] <= 1):
+        print("rpstills develop: --neutral-box is X0 Y0 X1 Y1 within 0..1, X0 < X1 and Y0 < Y1", file=sys.stderr)
         return 1
     out = os.path.abspath(args.out)
     dest = os.path.join(out, "develop")
@@ -632,7 +820,11 @@ def run(args):
         print(f"rpstills develop: {why}", file=sys.stderr)
         return 1
     print(f"developing {len(frames)} frames from {source} with {backend.name}")
-    doc = build(frames, backend, look, dest)
+    try:
+        doc = build(frames, backend, look, dest, neutral_box=box, wb_from=args.wb_from)
+    except ValueError as e:  # a --wb-from reference that cannot be used: nothing was developed
+        print(f"rpstills develop: {e}", file=sys.stderr)
+        return 1
     print(write(dest, doc))
     print(summary(doc))
     bad = [r["id"] for r in doc["frames"].values() if r["status"] != "converged"]

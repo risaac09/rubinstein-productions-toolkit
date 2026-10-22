@@ -1,6 +1,6 @@
-"""rpstills.audit: the numbers of a folder of finished stills, report only.
+"""rpstills.audit: the numbers of a folder of finished stills, and how far each file sits from the set.
 
-    python3 -m rpstills audit <dir> [--out DIR] [--profile NAME]
+    python3 -m rpstills audit <dir> [--out DIR] [--profile NAME] [--hero FILE]
 
 Reads every JPEG and TIFF directly in <dir>, finds faces with landmarks
 (Vision, through vision.faces(..., landmarks=True)) and measures each file
@@ -8,9 +8,17 @@ on its largest face (by box area, not Vision's first face):
 
   skin        mean CIELAB over the cheek apples (rpstills.skin; the box
               sample when Vision gave no landmarks): L*, a*, b*, hue, chroma,
-              and the Rec.709 vectorscope angle, with its signed distance to
-              two reference angles (REFERENCES): the stills trial target
-              (117.7, cheek Lab 64/15/14) and the scope's skin-tone line (123)
+              and the Rec.709 vectorscope angle
+  consistency against the set's reference: the median of skin L*, a* and b*
+              over the measured files, or with --hero FILE that file's own
+              skin Lab: d_E00 (CIEDE2000), d_L, d_chroma, and d_hue_deg
+              (signed, wrapped)
+  neutral     a white or grey garment or card below the face
+              (skin.neutral_mask with develop's defaults): its median a*, b*,
+              pixel count, and neutral_err, the chroma of that median; None
+              when no neutral is found, or when more than NEUTRAL_BLOWN of it
+              is clipped in every channel. neutral_clip_pct is the share of
+              the mask left out as clipped
   clip_pct    share of pixels with any channel at or above CLIP_AT
   icc         the embedded profile's description, and whether it is sRGB
   aspect      width / height, and with --profile its relative error against
@@ -32,9 +40,11 @@ on its largest face (by box area, not Vision's first face):
               are subject); bg_share is that region's share of the frame (a
               tight headshot leaves only its top corners, a few percent)
 
-It writes audit.json (rows, set spread, parameters) and prints a table with
-the spread of each metric (sd, min..max). There is no PASS or FAIL: nobody
-has set the ranges yet, and made-up thresholds would read as a standard.
+It writes audit.json (rows, reference, set spread, parameters) and prints a
+table with the spread of each metric (sd, min..max). Each row's checks name
+the skin metrics past CHECK, working defaults Isaac may change: a check asks a
+person to look, it is not a verdict. neutral_err past its CHECK value is
+counted on its own summary line, not as a check.
 Output names client files, so it is refused inside any git working tree.
 Images are measured as stored; pass upright files. Vision sees a file with
 its EXIF orientation applied, so a file whose orientation tag is not 1 is
@@ -62,13 +72,20 @@ EYE_PAD = 0.10       # eye box padding, share of the eye box width, every side
 EYE_BOX_W = 400      # eye box width for the sharpness measure, px
 BG_AXES = (1.6, 1.4)  # background starts outside this ellipse: semi-axes in face box widths, heights
 BG_PCT = 98
-REFERENCES = {"trial": 117.7, "skin_line": 123.0}  # vectorscope degrees; distances, not verdicts
+# working defaults, not standards: a row's checks name each skin metric whose size is past its value here.
+# neutral_err past its value is counted on its own summary line, never as a check: the mask cannot tell a cast on a
+# white shirt from a pale coloured shirt or a print's pale motifs, which read their own colour
+CHECK = {"d_E00": 3.0, "d_L": 3.0, "d_hue_deg": 5.0, "neutral_err": 2.0}
+HUE_MIN_CHROMA = 5.0  # d_hue_deg needs this skin chroma on both sides; nearer grey the hue angle is noise
+NEUTRAL_BLOWN = 0.5   # a neutral with more of its mask than this clipped in every channel is not read (the rest is edge)
 CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "stills-config.json")
 
 # (row key, table header, format); every numeric row key the spread covers
 COLUMNS = [("skin_L", "L*", "{:.1f}"), ("skin_a", "a*", "{:.1f}"), ("skin_b", "b*", "{:.1f}"),
            ("hue_deg", "hue", "{:.1f}"), ("chroma", "C*", "{:.1f}"), ("vectorscope_deg", "scope", "{:.1f}"),
-           ("d_trial_deg", "d117.7", "{:+.1f}"), ("d_skin_line_deg", "d123", "{:+.1f}"),
+           ("d_E00", "dE00", "{:.1f}"), ("d_L", "dL", "{:+.1f}"), ("d_chroma", "dC*", "{:+.1f}"),
+           ("d_hue_deg", "dhue", "{:+.1f}"), ("neutral_a", "neu.a", "{:+.1f}"), ("neutral_b", "neu.b", "{:+.1f}"),
+           ("neutral_err", "neu.err", "{:.1f}"), ("neutral_clip_pct", "neu.clip", "{:.1f}"),
            ("clip_pct", "clip%", "{:.2f}"), ("aspect", "aspect", "{:.3f}"), ("aspect_err", "asp.err", "{:+.3f}"),
            ("eye_y", "eyeY", "{:.3f}"), ("eye_y_err", "eye.err", "{:+.3f}"), ("headroom", "head", "{:.3f}"),
            ("face_w", "faceW", "{:.3f}"), ("eye_sharp", "eyeSharp", "{:.0f}"), ("eye_box_px", "eyeBoxPx", "{:.0f}"),
@@ -194,9 +211,18 @@ def measure_file(path, rgb, det, profile=None):
     if s:
         row.update({"skin_region": region, "skin_L": s["L"], "skin_a": s["a"], "skin_b": s["b"],
                     "hue_deg": s["hue_deg"], "chroma": s["chroma"], "vectorscope_deg": s["vectorscope_deg"],
-                    "skin_n_px": s["n_px"],
-                    "d_trial_deg": wrap_deg(s["vectorscope_deg"] - REFERENCES["trial"]),
-                    "d_skin_line_deg": wrap_deg(s["vectorscope_deg"] - REFERENCES["skin_line"])})
+                    "skin_n_px": s["n_px"]})
+    mask = skin.neutral_mask(rgb, fp)
+    n = None
+    if mask is not None:
+        clipped = rgb[mask] >= CLIP_AT - 1e-6
+        row["neutral_clip_pct"] = float(clipped.any(1).mean() * 100)
+        if clipped.all(1).mean() > NEUTRAL_BLOWN:
+            row["neutral_note"] = "blown: the unclipped rest is the garment's edge, not a read of it"
+        else:
+            n = measure.neutral_lab(rgb, mask)
+    row.update({"neutral_a": n and n["a"], "neutral_b": n and n["b"], "neutral_n_px": n and n["n_px"],
+                "neutral_err": n and n["chroma"]})
     row["face_w"] = fp["w"] / W
     row["headroom"] = (fp["y"] - HEAD_ABOVE * fp["h"]) / H
     if has_marks:
@@ -222,8 +248,37 @@ def spread(rows):
     return out
 
 
-def build(paths, detections, profile_name=None, profile=None):
-    """The audit document for image paths and vision.faces(..., landmarks=True) output."""
+def reference(rows, hero=None):
+    """{"source", "file", "L", "a", "b", "n"}: the median skin Lab of the
+    measured rows, or the hero row's own; None when nothing was measured.
+    ValueError when the hero has no skin measure."""
+    if hero is not None:
+        r = next((r for r in rows if r["file"] == hero), None)
+        if r is None or r.get("skin_L") is None:
+            why = "not among the files" if r is None else r.get("error") or r.get("skin_error")
+            raise ValueError(f"--hero {hero}: no skin measure ({why})")
+        return {"source": "hero", "file": hero, "L": r["skin_L"], "a": r["skin_a"], "b": r["skin_b"], "n": 1}
+    lab = np.array([[r["skin_L"], r["skin_a"], r["skin_b"]] for r in rows if r.get("skin_L") is not None])
+    if not len(lab):
+        return None
+    L, a, b = (round(float(v), 4) for v in np.median(lab, 0))
+    return {"source": "median", "file": None, "L": L, "a": a, "b": b, "n": len(lab)}
+
+
+def deviations(row, ref):
+    """The row's skin against the reference: d_E00, d_L, d_chroma, d_hue_deg
+    (None when either chroma is under HUE_MIN_CHROMA)."""
+    lab = (row["skin_L"], row["skin_a"], row["skin_b"])
+    c, c_ref = float(measure.chroma(*lab[1:])), float(measure.chroma(ref["a"], ref["b"]))
+    hue = wrap_deg(measure.hue_deg(*lab[1:]) - measure.hue_deg(ref["a"], ref["b"]))
+    return {"d_E00": round(float(measure.delta_e2000((ref["L"], ref["a"], ref["b"]), lab)), 4),
+            "d_L": round(lab[0] - ref["L"], 4), "d_chroma": round(c - c_ref, 4),
+            "d_hue_deg": round(float(hue), 4) if min(c, c_ref) >= HUE_MIN_CHROMA else None}
+
+
+def build(paths, detections, profile_name=None, profile=None, hero=None):
+    """The audit document for image paths and vision.faces(..., landmarks=True)
+    output; hero, one of paths, replaces the set median as the reference."""
     rows = []
     for p in paths:
         try:
@@ -232,15 +287,25 @@ def build(paths, detections, profile_name=None, profile=None):
             rows.append({"file": os.path.basename(p), "error": str(e)})
             continue
         rows.append(measure_file(p, rgb, detections.get(p), profile))
-    return {"tool": "rpstills audit", "files": rows, "spread": spread(rows),
+    ref = reference(rows, hero and os.path.basename(hero))
+    for r in rows:
+        if ref and r.get("skin_L") is not None:
+            r.update(deviations(r, ref))
+        if "error" not in r:
+            r["checks"] = [k for k, v in CHECK.items()
+                           if k != "neutral_err" and r.get(k) is not None and abs(r[k]) > v]
+    return {"tool": "rpstills audit", "files": rows, "reference": ref, "spread": spread(rows),
             "profile": profile_name,
             "profile_spec": ({"aspect": profile.get("aspect"), "eye_line": profile.get("eye_line")}
                              if profile is not None else None),
-            "references_deg": REFERENCES,
             "params": {"clip_at": CLIP_AT, "head_above": HEAD_ABOVE, "eye_pad": EYE_PAD, "eye_box_w": EYE_BOX_W,
                        "bg_axes": list(BG_AXES), "bg_pct": BG_PCT, "cheek_at": skin.CHEEK_AT,
-                       "cheek_radii": list(skin.CHEEK_RADII), "face": "largest box area"},
-            "note": "Report only: no ranges are set, so nothing passes or fails."}
+                       "cheek_radii": list(skin.CHEEK_RADII), "face": "largest box area", "check": CHECK,
+                       "hue_min_chroma": HUE_MIN_CHROMA,
+                       "neutral": {"min_L": skin.NEUTRAL_MIN_L, "max_chroma": skin.NEUTRAL_MAX_CHROMA,
+                                   "min_share": skin.NEUTRAL_MIN_SHARE, "blown": NEUTRAL_BLOWN}},
+            "note": "A check names a skin metric past its working default (params.check); it asks a person to look "
+                    "and is not a verdict. neutral_err past params.check is counted in the summary, not as a check."}
 
 
 def write(out_dir, doc):
@@ -273,12 +338,17 @@ def table(doc):
     for r in doc["files"]:
         cells = " ".join(f"{_cell(r.get(k), fmt):>8}" for k, _, fmt in cols)
         tail = "yes" if r.get("srgb_icc") else (r.get("icc") or "none")
-        lines.append(f"{r['file']:<{width}} {cells}  {tail}" + (f"  [{r['error']}]" if r.get("error") else ""))
+        lines.append(f"{r['file']:<{width}} {cells}  {tail}" + (f"  [{r['error']}]" if r.get("error") else "")
+                     + (f"  check: {', '.join(r['checks'])}" if r.get("checks") else ""))
     for k, h, fmt in cols:
         s = doc["spread"].get(k)
         if s:
             lines.append(f"spread {h:<8} sd {s['sd']:.3f}  range {_cell(s['min'], fmt)}..{_cell(s['max'], fmt)}"
                          f"  (n {s['n']})")
+    ref = doc.get("reference")
+    if ref:
+        lines.append(("reference hero " + ref["file"] if ref["source"] == "hero" else f"reference median of {ref['n']}")
+                     + f": L* {ref['L']:.1f} a* {ref['a']:.1f} b* {ref['b']:.1f}")
     return "\n".join(lines)
 
 
@@ -291,13 +361,24 @@ def summary(doc):
         text += f", vectorscope {s['min']:.1f}..{s['max']:.1f} deg (sd {s['sd']:.2f})"
     no_icc = sum(1 for r in rows if "srgb_icc" in r and not r["srgb_icc"])
     errors = sum(1 for r in rows if r.get("error"))
-    return text + f", {no_icc} without an sRGB profile, {errors} not measured; report only, no ranges set"
+    checked = [k for r in rows for k in r.get("checks", [])]
+    flagged = sum(1 for r in rows if r.get("checks"))
+    on = ", ".join(f"{k} {checked.count(k)}" for k in CHECK if k in checked)
+    neutral = [r.get("neutral_err") for r in rows if "error" not in r]
+    read = [v for v in neutral if v is not None]
+    cast = sum(1 for v in read if v > CHECK["neutral_err"])
+    return (text + f", {no_icc} without an sRGB profile, {errors} not measured; {flagged} flagged"
+            + (f" ({on})" if on else "") + "; checks are working defaults, not verdicts"
+            + f"; neutral read on {len(read)}, {cast} over neu.err {CHECK['neutral_err']:g} (a coloured or printed "
+              f"garment reads its own colour), {len(neutral) - len(read)} without a neutral")
 
 
 def add_arguments(p):
     p.add_argument("dir", help="folder of finished JPEG or TIFF files")
     p.add_argument("--out", help="folder for audit.json (default: the audited folder); never inside a git tree")
     p.add_argument("--profile", help="a stills-config.json profile to compare aspect and eye line against")
+    p.add_argument("--hero", metavar="FILE", help="a file in the folder whose skin Lab is the reference "
+                                                  "(default: the set median)")
 
 
 def run(args):
@@ -317,6 +398,14 @@ def run(args):
             print(f"rpstills audit: no profile {args.profile!r}; known: {', '.join(sorted(profiles))}", file=sys.stderr)
             return 1
         profile = profiles[args.profile]
+    hero = None
+    if args.hero:
+        # by file identity: a symlinked folder (/tmp on macOS, a mounted drive) or another letter case names it too
+        given = [c for c in (args.hero, os.path.join(src, args.hero)) if os.path.isfile(c)]
+        hero = next((p for p in paths if any(os.path.samefile(c, p) for c in given)), None)
+        if hero is None:
+            print(f"rpstills audit: --hero {args.hero} is not a JPEG or TIFF in {args.dir}", file=sys.stderr)
+            return 1
     out = os.path.abspath(args.out or src)
     from rpresolve.paths import out_problem
     problem = out_problem(os.path.join(out, "audit.json"), any_git_tree=True)
@@ -327,7 +416,11 @@ def run(args):
     if det is None:
         print("rpstills audit: the Vision helper cannot run (it needs macOS and swiftc)", file=sys.stderr)
         return 1
-    doc = build(paths, det, args.profile, profile)
+    try:
+        doc = build(paths, det, args.profile, profile, hero)
+    except ValueError as e:
+        print(f"rpstills audit: {e}", file=sys.stderr)
+        return 1
     print(table(doc))
     print(write(out, doc))
     print(summary(doc))
