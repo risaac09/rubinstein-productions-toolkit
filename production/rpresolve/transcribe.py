@@ -7,10 +7,10 @@ A segment is {"start", "end", "text"} in seconds and, when the backend has
 word times, "words": [{"word", "start", "end"}]. Backends:
 
     mlx-whisper  Apple silicon, local. Needs `mlx_whisper` importable and a
-                 model already on disk (--model DIR, a Hugging Face repo id
-                 already in the local cache, or RPRESOLVE_WHISPER_MODEL).
-                 It never downloads one: which model is an open decision
-                 (roadmap D9), and the backend says so when none is found.
+                 model already on disk: mlx-community/whisper-large-v3-turbo
+                 from the Hugging Face cache by default, or --model DIR / a
+                 cached repo id / RPRESOLVE_WHISPER_MODEL. It never downloads
+                 one; a missing module or uncached model exits 2 and says which.
     whisper.cpp  Other hosts. Shells out to `whisper-cli` on PATH with
                  --model FILE (or RPRESOLVE_WHISPER_CPP_MODEL).
     resolve      A later backend (Resolve's own transcription). Exits 2.
@@ -40,8 +40,7 @@ import tempfile
 
 from . import captions
 
-D9 = ("roadmap D9 (Isaac's decision): which mlx-whisper model, its size and "
-      "licence, and where it lives on disk")
+DEFAULT_MLX_MODEL = "mlx-community/whisper-large-v3-turbo"  # roadmap D9; vertcut transcribe's default too
 
 
 class TranscribeError(Exception):
@@ -113,18 +112,15 @@ def _hf_cached(repo):
 
 
 def find_mlx_model(model):
-    model = model or os.environ.get("RPRESOLVE_WHISPER_MODEL")
-    if not model:
-        raise TranscribeError("mlx-whisper has no model: pass --model DIR (or a cached Hugging "
-                              "Face repo id) or set RPRESOLVE_WHISPER_MODEL. Nothing is "
-                              "downloaded. Waiting on " + D9)
+    model = model or os.environ.get("RPRESOLVE_WHISPER_MODEL") or DEFAULT_MLX_MODEL
     if os.path.isdir(model):
         return model
     snap = _hf_cached(model) if "/" in model and not os.path.exists(model) else None
     if snap:
         return snap
-    raise TranscribeError(f"mlx-whisper model not on disk: {model}. Nothing is downloaded. "
-                          f"Waiting on {D9}")
+    raise TranscribeError(f"mlx-whisper model not on disk: {model}. Nothing is downloaded: "
+                          f"fetch the default ({DEFAULT_MLX_MODEL}) yourself, or pass --model "
+                          f"DIR or set RPRESOLVE_WHISPER_MODEL")
 
 
 def mlx_whisper(path, language, model=None, **_):
@@ -132,7 +128,7 @@ def mlx_whisper(path, language, model=None, **_):
         import mlx_whisper as mw
     except ImportError:
         raise TranscribeError("mlx-whisper is not installed: `mlx_whisper` is not importable "
-                              "(Apple silicon only; see requirements.txt). Waiting on " + D9)
+                              "(Apple silicon only; see requirements.txt)")
     local = find_mlx_model(model)
     try:
         res = mw.transcribe(path, path_or_hf_repo=local, word_timestamps=True,

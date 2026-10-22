@@ -130,19 +130,27 @@ class MissingBackends(unittest.TestCase):
             code, _, err = cli(self.media, "--backend", "mlx-whisper")
         self.assertEqual(code, 2)
         self.assertIn("not importable", err)
-        self.assertIn("D9", err)
 
-    def test_mlx_no_model_downloads_nothing(self):
+    def test_mlx_uncached_default_downloads_nothing(self):
         fake = mock.Mock()
-        with mock.patch.dict(sys.modules, {"mlx_whisper": fake}):
+        with mock.patch.dict(sys.modules, {"mlx_whisper": fake}), \
+                mock.patch.object(tr, "_hf_cached", return_value=None):
             code, _, err = cli(self.media, "--backend", "mlx-whisper")
             code2, _, err2 = cli(self.media, "--backend", "mlx-whisper", "--model",
                                  "mlx-community/not-cached-here")
         self.assertEqual((code, code2), (2, 2))
-        self.assertIn("no model", err)
+        self.assertIn(tr.DEFAULT_MLX_MODEL, err)
         self.assertIn("not on disk", err2)
-        self.assertIn("D9", err2)
         fake.transcribe.assert_not_called()
+
+    def test_mlx_default_resolves_from_cache(self):
+        fake = mock.Mock()
+        fake.transcribe.return_value = {"segments": []}
+        with mock.patch.dict(sys.modules, {"mlx_whisper": fake}), \
+                mock.patch.object(tr, "_hf_cached", return_value="/cache/snap") as hf:
+            cli(self.media, "--backend", "mlx-whisper")
+        hf.assert_called_with(tr.DEFAULT_MLX_MODEL)
+        self.assertEqual(fake.transcribe.call_args[1]["path_or_hf_repo"], "/cache/snap")
 
     def test_mlx_with_local_model_runs(self):
         fake = mock.Mock()

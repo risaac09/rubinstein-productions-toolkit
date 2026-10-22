@@ -6,17 +6,20 @@ Whisper-shaped JSON the rest of `rpresolve` already reads. Run it from
 
 | Backend | Where | Needs | State |
 |---|---|---|---|
-| `mlx-whisper` | Apple silicon | `mlx_whisper` importable, a model already on disk | Wired. Downloads nothing. |
+| `mlx-whisper` | Apple silicon | `mlx_whisper` importable, the model in the HF cache | Wired. Downloads nothing. |
 | `whisper.cpp` | any host | `whisper-cli` on PATH, `--model` a ggml file | Wired. |
 | `resolve` | Resolve | | A later backend. Exits 2 and says so. |
 | `fake` | any host | `--source` a JSON file of segments | For tests and for transcripts made elsewhere. |
 
-A backend that cannot run exits 2 and names what is missing. For `mlx-whisper`
-that is the module, or the model, and which decision it waits on: the model
-is [roadmap](media-lane.md) decision D9 (name, size, licence, where it lives
-on disk, off iCloud). Give it a model with `--model DIR`, a Hugging Face repo
-id already in the local cache, or `RPRESOLVE_WHISPER_MODEL`. `whisper.cpp`
-takes `--model FILE` or `RPRESOLVE_WHISPER_CPP_MODEL`.
+A backend that cannot run exits 2 and names what is missing. `mlx-whisper`
+uses `mlx-community/whisper-large-v3-turbo` (the model `vertcut transcribe`
+uses) from the Hugging Face cache and never downloads: a missing
+`mlx_whisper` module or an uncached model exits 2 and says so. `--model DIR`
+(or a cached repo id) or `RPRESOLVE_WHISPER_MODEL` picks another. Measured on
+an M-series Mac: a 53 s synthetic speech clip took 8.8 s including model load,
+about 10 s per minute of audio. `whisper.cpp` takes `--model FILE` or
+`RPRESOLVE_WHISPER_CPP_MODEL`, and wants audio it can read (a 16 kHz wav is
+safest).
 
 ## Output
 
