@@ -42,7 +42,7 @@ class CstTest(unittest.TestCase):
         self.assertAlmostEqual(float(cst.transform(np.full(3, 0.4233), "vlog", "di")[0]), 0.3361, delta=2e-4)
         g = lutstats.tetra(unit(cst.table("vlog", "di", 33)), np.full(3, 0.4233))
         self.assertAlmostEqual(float(g[0]), 0.3361, delta=1e-3)
-        self.assertEqual(g[0], g[2])
+        self.assertAlmostEqual(float(g[0]), float(g[2]), places=12)  # neutral stays neutral (Linux BLAS differs by an ulp)
 
     def test_equals_port_of_an_identity_at_the_nodes(self):
         from lutlab import port  # port pulls in scipy; only the test needs it
@@ -270,10 +270,18 @@ class GuardAndNamesTest(unittest.TestCase):
         from lutlab import guard
         synced = self.tmp / "Synced"
         synced.mkdir()
-        with mock.patch.object(guard, "ICLOUD", [synced]):
+        # the case rule is macOS's (APFS is case-insensitive by default); exercise it on any CI host
+        with mock.patch.object(guard, "ICLOUD", [synced]), mock.patch.object(guard.sys, "platform", "darwin"):
             with self.assertRaises(PermissionError):
                 guard.check_out_dir(self.tmp / "synced" / "x")
         self.assertFalse((self.tmp / "synced" / "x").exists())
+
+    def test_a_differently_cased_folder_is_allowed_off_macos(self):
+        from lutlab import guard
+        synced = self.tmp / "Synced"
+        synced.mkdir()
+        with mock.patch.object(guard, "ICLOUD", [synced]), mock.patch.object(guard.sys, "platform", "linux"):
+            self.assertTrue(guard.check_out_dir(self.tmp / "synced" / "x").is_dir())
 
     def test_a_look_name_with_a_path_is_refused(self):
         from lutlab import pipeline
