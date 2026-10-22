@@ -116,10 +116,10 @@ def _pair(value, frame):
     return tuple(out)
 
 
-def _ttml_boxes(text, size):
+def _ttml_boxes(raw, size):
     """[(region label, box)] for the regions the body names; None when it
     names none. Unreadable regions come back in the note."""
-    root = ET.fromstring(text)
+    root = ET.fromstring(raw)
     px = re.fullmatch(r"(\d+(?:\.\d+)?)px\s+(\d+(?:\.\d+)?)px",
                       (captions._attr(root, "extent") or "").strip())
     frame = (float(px[1]), float(px[2])) if px else size
@@ -148,7 +148,7 @@ def _ttml_boxes(text, size):
 def load(path, size=None):
     """{format, cues: [(start, end, text)], problems, boxes, box_note}.
     boxes is None when the file carries no position data. Raises ValueError
-    (captions.CaptionError included) when the file cannot be read at all."""
+    or captions.CaptionError when the file cannot be read at all."""
     ext = os.path.splitext(path)[1].lower()
     with open(path, "rb") as f:
         raw = f.read()
