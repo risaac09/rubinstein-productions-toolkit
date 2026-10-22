@@ -64,6 +64,10 @@ def cut_words(words, spans):
                 out.append({"start": rec - lead + max(w["start"], a) - a,
                             "end": rec - lead + min(w["end"], b) - a, "word": w["word"]})
         rec += float(s["out"]) - float(s["in"])
+    # Sound before the first frame or past the last (a lead on the first span,
+    # a tail on the last) is not in the cut: clip to it.
+    out = [dict(w, start=max(w["start"], 0.0), end=min(w["end"], rec)) for w in out
+           if w["end"] > 0 and w["start"] < rec]
     return out, rec
 
 

@@ -48,6 +48,8 @@ class PacingTest(unittest.TestCase):
         self.assertEqual(length, 3.0)
         self.assertEqual([k["word"] for k in kept], ["w1"])  # span 1's sound stops at 1.5
         self.assertAlmostEqual(kept[0]["start"], 1.6)         # 2.0 - 0.5 + (4.6 - 4.5)
+        kept, _ = pacing.cut_words(words((5.9, 6.2)), [{"in": 5.0, "out": 6.0, "audio_tail": 0.5}])
+        self.assertAlmostEqual(kept[0]["end"], 1.0)           # clipped to the cut's end
 
     def test_caption_speeds(self):
         c = pacing.caption_speeds([(0, 1, "a" * 10), (1, 2, "b" * 30), (2, 4, "c" * 20)])
