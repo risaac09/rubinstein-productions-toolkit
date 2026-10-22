@@ -556,6 +556,12 @@ class NeutralModeTest(unittest.TestCase):
         with self.assertRaisesRegex(develop.Unmeasurable, "clipped at every pixel"):
             develop._neutral(rgb + 1.0, develop._neutral_mask(rgb, None, (0.5, 0.5, 0.6, 0.6), None))
 
+    def test_a_coloured_shirt_or_a_strong_cast_is_no_neutral(self):
+        # a blue or red shirt, and a white one under a cast past chroma 25, fail loud: no provisional rebalance
+        for lab in ((70, -5, -30), (75, 30, 10), (85, 8, 30)):
+            with self.subTest(lab=lab), self.assertRaisesRegex(ValueError, "no neutral reference"):
+                develop._neutral_mask(paint((64, 15, 14), 400, 300, shirt_lab=lab), face(), None, {})
+
     def test_no_neutral_fails_the_frame_with_the_message(self):
         self.assertEqual(develop.NO_NEUTRAL, "no neutral reference in frame: shoot a grey card, pass --neutral-box, "
                                              "or --wb-from ID (a frame in the same light)")

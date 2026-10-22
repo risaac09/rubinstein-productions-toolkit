@@ -540,6 +540,7 @@ def _neutral_mask(rgb, face, box, params):
         if not m.any():
             raise ValueError(f"the --neutral-box covers no pixel at {W}x{H}")
         return m
+    # no retry on a provisional balance: grey-world takes a blue or red shirt for a neutral (tested); fail loud instead
     m = skin.neutral_mask(rgb, skin.to_pixels(face, W, H), **params)
     if m is None:
         raise ValueError(NO_NEUTRAL)
@@ -610,7 +611,8 @@ def develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box=None,
         return _vector(mode, lab, neutral, target)
 
     result = solve(measure_fn, x0, bounds, target, free, tol=AIM)
-    lab = state["seen"][tuple(result["x"])]
+    seen = state["seen"]  # the solve returns a point it measured; the nearest guards a float that drifted by an ulp
+    lab = seen[min(seen, key=lambda k: float(np.abs(np.subtract(k, result["x"])).sum()))]
     final = os.path.join(dest, f".{fid}.part.tif")
     try:
         backend.render(raw, values(result["x"]), final, bit16=True)

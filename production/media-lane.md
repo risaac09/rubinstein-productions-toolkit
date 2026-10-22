@@ -34,10 +34,7 @@ repository. The iPad route, with no Mac, is in [../docs/ipad-lane.md](../docs/ip
   MCP server's additive writes and its final-approval gate.
 - Listening. Every sound tool reports numbers; none of them is an ear check.
   The person decides on loudness-matched excerpts.
-- Taste targets. The stills skin target in
-  `stills-looks/portrait-cheek-trial-v0.json` is a trial, about 5 degrees red
-  of the Rec.709 skin line. `rpstills audit` reports distances to both and
-  passes or fails nothing until ranges are set.
+- Taste targets. Stills skin is per person: `rpstills develop` neutralises on a white or grey reference below the face and sets exposure on the cheek, and leaves hue to the complexion (`stills-looks/portrait-neutral-v1.json`). `rpstills audit` checks a set's consistency and its neutrals against working defaults, not a fixed hue.
 - Retouch scope. `finish` retouches only the frames it is told to, and logs
   what it changed.
 - Imports on another device. EDL, FCPXML and OTIO files and the iPad LUT pack
