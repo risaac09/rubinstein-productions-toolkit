@@ -41,6 +41,7 @@ from . import cube, fit, pairs, spaces
 GRID = 17
 LUMA = np.array([0.2126, 0.7152, 0.0722])
 MIN_CORR = 0.80
+MIN_GAIN = 0.25  # mean dE2000 a residual must earn on held-out pixels to be kept
 STRENGTHS = (0.3, 3.0, 30.0)  # residual regularisation, times the data weight per node
 CDL_LO = np.array([0.2] * 3 + [-0.4] * 3 + [0.3] * 3 + [0.0])
 CDL_HI = np.array([4.0] * 3 + [0.4] * 3 + [3.0] * 3 + [3.0])
@@ -160,15 +161,18 @@ def match(src_path, ref_path, space="srgb", min_corr=MIN_CORR):
     cdl = fit_cdl(s, r, space)
     mid = np.clip(cdl_apply(s, cdl), 0, 1)
     train, test = ~held, held
+    rng = np.random.default_rng(0)
+    cap = lambda idx: rng.choice(idx, min(len(idx), 60000), replace=False)  # raster order is top of the frame first
+    fit_idx, all_idx = cap(np.flatnonzero(train)), cap(np.arange(len(s)))
     de = lambda pred, tgt: delta_e2000(_lab(pred, space), _lab(tgt, space))
     base = de(mid[test], r[test]).mean()
     scored = []
     for k in STRENGTHS:
-        d = fit_residual(mid[train][:60000], r[train][:60000], k)
+        d = fit_residual(mid[fit_idx], r[fit_idx], k)
         scored.append((de(apply_match(s[test], cdl, d), r[test]).mean(), k))
     best, k = min(scored)
-    keep = best < base * 0.98 and base - best > 0.05  # a residual must earn 0.05 dE on held-out pixels
-    delta = fit_residual(mid[:60000], r[:60000], k) if keep else None
+    keep = best < base * 0.98 and base - best > MIN_GAIN
+    delta = fit_residual(mid[all_idx], r[all_idx], k) if keep else None
     final = lambda x: apply_match(x, cdl, delta)
     errors = {"before": {"held-out": fit.stats(de(s[test], r[test])), "all": fit.stats(de(s, r))},
               "cdl": {"held-out": fit.stats(de(mid[test], r[test])), "all": fit.stats(de(mid, r))},
@@ -178,8 +182,9 @@ def match(src_path, ref_path, space="srgb", min_corr=MIN_CORR):
 
 
 def cdl_xml(cdl, name):
+    from xml.sax.saxutils import quoteattr
     f = lambda v: " ".join(f"{x:.6f}" for x in v)
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n<ColorCorrection xmlns="urn:ASC:CDL:v1.01" id="' + name + '">\n'
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<ColorCorrection xmlns="urn:ASC:CDL:v1.01" id=' + quoteattr(name) + '>\n'
             f'  <SOPNode>\n    <Slope>{f(cdl["slope"])}</Slope>\n    <Offset>{f(cdl["offset"])}</Offset>\n'
             f'    <Power>{f(cdl["power"])}</Power>\n  </SOPNode>\n  <SATNode>\n    <Saturation>{cdl["sat"]:.6f}</Saturation>\n'
             '  </SATNode>\n</ColorCorrection>\n')
@@ -220,6 +225,10 @@ def report_md(m, name, src, ref):
 def write(m, outdir, name, src, ref, size=33, overwrite=False):
     """Write NAME.cc, NAME.cube, NAME-residual.cube (when the residual is kept) and NAME.report.md."""
     out = Path(outdir)
+    if not overwrite:  # refuse before writing any of them
+        clash = [f for f in (f"{name}.cc", f"{name}.cube", f"{name}-residual.cube", f"{name}.report.md") if (out / f).exists()]
+        if clash:
+            raise FileExistsError(", ".join(str(out / f) for f in clash))
     files = [cube.write_text(str(out / f"{name}.cc"), cdl_xml(m["cdl"], name), overwrite)]
     grid = cube.lattice(size)
     table = apply_match(grid.reshape(-1, 3), m["cdl"], m["delta"]).reshape(grid.shape)

@@ -105,6 +105,11 @@ class TestShotMatch(unittest.TestCase):
         px = np.array([[0.3, 0.4, 0.5], [0.7, 0.2, 0.3]])
         np.testing.assert_allclose(cube.sample(lut, px), shotmatch.apply_match(px, self.m["cdl"]), atol=2e-3)
         self.assertIn("CIEDE2000", (out / "t.report.md").read_text())
+        with self.assertRaises(FileExistsError):
+            shotmatch.write(self.m, out, "t", self.src, self.ref)
+        self.assertEqual(len(list(out.iterdir())), 3)  # nothing new written: .cc, .cube, .report.md
+        shotmatch.write(self.m, out, 'q"<x>', self.src, self.ref)
+        self.assertAlmostEqual(shotmatch.read_cdl(out / 'q"<x>.cc')["sat"], self.m["cdl"]["sat"], places=5)
         with redirect_stderr(StringIO()) as se:
             self.assertEqual(main(["shot-match", "--ref", str(self.other), "--src", str(self.src),
                                    "--out", str(self.d / "out2")]), 2)
