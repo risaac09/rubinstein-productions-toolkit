@@ -46,11 +46,30 @@ Cut times come from a start column of the --shots CSV (start_s, start, in_s,
 in, time_s, time or cut_s; the first shot's start is not a cut), else from
 the scdet cuts of the file itself. WARN does not fail the table.
 
+Offline rows (VP-23a, VP-20). Thresholds are working defaults, printed in the row:
+    blackdetect        black that starts within black_lead_start_s of the head
+                       and lasts under black_lead_max_s is a fade-in: WARN
+                       (decision 30). Longer leading black, or black anywhere
+                       else, stays FAIL
+    social_fps         on a social destination (aspect 9x16 or a key starting
+                       "social"), the video frame rate against Instagram's
+                       30 fps minimum (decision 14): WARN under
+                       social_min_fps - social_fps_tol
+    sha256             sha256 of the file, always reported; with --sha256 HEX
+                       the hash must match (FAIL)
+    safe_zone          on a social destination, frames sampled safe_frames
+                       times; an edge that stays on the same pixel in every
+                       usable frame is burned-in text or a logo, and WARN when
+                       those edges fill more than safe_persist_frac of the top
+                       safe_top, bottom safe_bottom or side safe_side margin.
+                       A locked-off shot with a hard edge can trip it
+
 A row is {check, status, found, expected, source[, note]}; status is PASS,
 FAIL or SKIP, as in delivercheck, or WARN for the sound rows that need an ear.
 """
 
 import csv
+import hashlib
 import json
 import os
 import re
@@ -85,6 +104,17 @@ THRESHOLDS = {
     "phone_drop_lu": 8.0,           # warn when the proxy's short-term max drops more than this
     "stems_lu_tol": 0.1,            # stems sum vs mix, integrated
     "stems_residual_db": -50.0,     # residual (mix minus stems) RMS ceiling
+    # Offline rows (VP-23a, VP-20); every one a working default.
+    "black_lead_start_s": 0.1,      # black starting this close to the head is leading black
+    "black_lead_max_s": 2.0,        # leading black shorter than this is a fade-in: WARN
+    "social_min_fps": 30.0,         # Instagram's stated minimum (decision 14)
+    "social_fps_tol": 0.05,         # so 29.97 passes
+    "safe_frames": 8.0,             # frames sampled for the safe-zone row
+    "safe_top": 0.14,               # unsafe margin, fraction of height, from the top
+    "safe_bottom": 0.35,            # ... from the bottom
+    "safe_side": 0.06,              # ... fraction of width, each side
+    "safe_edge_grad": 60.0,         # gradient (0-255) that counts as an edge
+    "safe_persist_frac": 0.004,     # persistent-edge share of a margin that warns
 }
 
 
@@ -454,6 +484,83 @@ def _at(seconds):
     return f"{seconds:.2f}s"
 
 
+def _is_social(dest):
+    return bool(dest) and (dest.get("aspect") == "9x16" or str(dest.get("key", "")).startswith("social"))
+
+
+def _social_fps(streams, dest, th):
+    expected = f">= {th['social_min_fps']:g} fps{WD}"
+    if not _is_social(dest):
+        return _srow("social_fps", SKIP, "not a social destination", expected, "give --dest social_9x16")
+    r = next((dc.rate(s.get("avg_frame_rate")) for s in streams if s.get("codec_type") == "video"
+              and dc.rate(s.get("avg_frame_rate"))), None)
+    if r is None:
+        return _srow("social_fps", SKIP, "no video frame rate", expected)
+    fps = float(r)
+    bad = fps < th["social_min_fps"] - th["social_fps_tol"]
+    return _srow("social_fps", WARN if bad else PASS, f"{dc.fmt_rate(r)} fps", expected,
+                 "Instagram states a 30 fps minimum; capture stays 23.976, conform only if a post is rejected")
+
+
+def _sha256_row(path, want):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    got = h.hexdigest()
+    if want is None:
+        return _srow("sha256", SKIP, got, "reported (--sha256 HEX to assert)")
+    ok = got == want.strip().lower()
+    return _srow("sha256", PASS if ok else FAIL, got, want.strip().lower())
+
+
+SAFE_W, SAFE_H = 270, 480
+
+
+def _safe_zone(np, path, dest, th, dur, streams):
+    expected = f"persistent edges <= {th['safe_persist_frac']:g} of each margin{WD}"
+    if not _is_social(dest):
+        return _srow("safe_zone", SKIP, "not a social destination", expected, "give --dest social_9x16")
+    v = next((x for x in streams if x.get("codec_type") == "video"), None)
+    if v is None or not dur:
+        return _srow("safe_zone", SKIP, "no video", expected)
+    if not (v.get("height") or 0) > (v.get("width") or 0):  # the margins are portrait numbers
+        return _srow("safe_zone", SKIP, f"{v.get('width')}x{v.get('height')} is not portrait", expected)
+    if np is None:
+        return _srow("safe_zone", SKIP, "needs numpy", expected)
+    # shortcut: fps= decodes the whole file to sample frames; seek per sample for long renders.
+    n = int(th["safe_frames"])
+    proc = subprocess.run(
+        [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(path), "-map", "0:v:0",
+         "-vf", f"fps={n}/{dur},scale={SAFE_W}:{SAFE_H}:flags=area,format=gray", "-frames:v", str(n),
+         "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, timeout=dc.READ_TIMEOUT_S)
+    if proc.returncode != 0:
+        raise dc.CheckError("ffmpeg could not sample frames: "
+                            + proc.stderr.decode(errors="replace").strip()[-300:])
+    raw = np.frombuffer(proc.stdout, dtype=np.uint8)
+    frames = raw[:len(raw) // (SAFE_W * SAFE_H) * SAFE_W * SAFE_H].reshape(-1, SAFE_H, SAFE_W)
+    frames = [f.astype(np.int16) for f in frames if int(f.max()) - int(f.min()) >= 20]  # drop flat frames
+    if len(frames) < 3:
+        return _srow("safe_zone", SKIP, f"{len(frames)} usable frames", expected, "needs 3 non-flat frames")
+    persist = None
+    for f in frames:
+        g = np.abs(np.diff(f, axis=1))[:-1, :] + np.abs(np.diff(f, axis=0))[:, :-1]
+        e = g > th["safe_edge_grad"]
+        persist = e if persist is None else persist & e
+    top, bot = int(SAFE_H * th["safe_top"]), int(SAFE_H * (1 - th["safe_bottom"]))
+    side = int(SAFE_W * th["safe_side"])
+    w = persist.shape[1]
+    bands = {"top": persist[:top], "bottom": persist[bot:], "left": persist[:, :side],
+             "right": persist[:, w - side:]}
+    frac = {k: (float(v.mean()) if v.size else 0.0) for k, v in bands.items()}
+    over = [k for k, v in frac.items() if v > th["safe_persist_frac"]]
+    return _srow("safe_zone", WARN if over else PASS,
+                 ", ".join(f"{k} {v:.4f}" for k, v in frac.items()), expected,
+                 f"{len(frames)} frames; margins top {th['safe_top']:g}, bottom {th['safe_bottom']:g}, "
+                 f"sides {th['safe_side']:g}; working defaults wider than the pages' 150/400 or 90/330 px, VP-114 measures on a device" + (f"; over in {', '.join(over)}" if over else ""))
+
+
 # ---------------------------------------------------------------------------
 # The table
 # ---------------------------------------------------------------------------
@@ -488,11 +595,13 @@ def _segments(name, found, th_s, what):
 
 
 def run(path, dest=None, config_folders=None, fps=None, size=None, expected_duration=None,
-        shots=None, thresholds=None, shot_cut_times=None, words=None, stems=None):
+        shots=None, thresholds=None, shot_cut_times=None, words=None, stems=None,
+        sha256=None):
     """The QC table for path. dest: a merged destination (deliver.destination)
     or None to skip the deliver_check rows. shots: the expected shot count.
     shot_cut_times: cut times from the shot list (else the sound rows use
-    the scdet cuts); words: load_words()'s list; stems: paths of stem files.
+    the scdet cuts); words: load_words()'s list; stems: paths of stem files;
+    sha256: the hash the file must have.
     Returns {file, destination, checks, counts, status, thresholds}, FAIL
     rows first; raises dc.ToolMissing or dc.CheckError."""
     th = thresholds or THRESHOLDS
@@ -530,8 +639,14 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
 
     if has_video:
         black = parse_black(log)
-        rows.append(_segments("blackdetect", [f"{_at(a)} for {_at(d)}" for a, _, d in black],
-                              th["black_min_s"], "black"))
+        lead = [b for b in black if b[0] <= th["black_lead_start_s"] and b[2] < th["black_lead_max_s"]]
+        rest = [b for b in black if b not in lead]
+        r = _segments("blackdetect", [f"{_at(a)} for {_at(d)}" for a, _, d in rest],
+                      th["black_min_s"], "black")
+        if lead and not rest:  # decision 30: a fade-in from black is a WARN, not a fault
+            r.update(status=WARN, expected=f"no black of {th['black_min_s']:g}s or longer after the head", found=f"{_at(lead[0][0])} for {_at(lead[0][2])} at the head",
+                     note=f"leading black under {th['black_lead_max_s']:g}s (fade-in){WD}")
+        rows.append(r)
         frozen = parse_freeze(log)
         rows.append(_segments("freezedetect", [_gap(a, d) for a, d in frozen],
                               th["freeze_min_s"], "freeze"))
@@ -588,6 +703,10 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
                   "true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "phone_proxy",
                   "stems_sum"):
             rows.append(_row(n, None, "no audio stream", "-"))
+
+    rows.append(_social_fps(streams, dest, th))
+    rows.append(_sha256_row(path, sha256))
+    rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
 
     order = {FAIL: 0, WARN: 1, PASS: 2, SKIP: 3}
     rows.sort(key=lambda r: order[r["status"]])  # stable: each source keeps its own order
