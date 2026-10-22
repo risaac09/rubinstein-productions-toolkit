@@ -234,6 +234,110 @@ class MeasureAdditionsTest(unittest.TestCase):
             measure.skin_lab(portrait(), off, "box")
 
 
+class NeutralTest(unittest.TestCase):
+    """The face box is (240, 300, 320, 320): the search starts at y 668 and spans the frame's width."""
+    SHIRT = (0.93, 0.92, 0.88)
+
+    def scene(self):
+        img = portrait()
+        img[20:200, 20:120] = 1.0               # a white wall beside the head: above the search
+        img[620:760, 340:460] = measure.lab_to_srgb(TARGET)   # the neck, skin-coloured
+        img[760:, 150:650] = self.SHIRT         # a white shirt
+        img[680:760, 150:300] = (0.85, 0.2, 0.2)   # a red scarf
+        img[700:740, :120] = 0.85                # a pale path beside the body, clear of the column under the face
+        return img, skin.to_pixels(face(), W, H)
+
+    def test_the_shirt_is_kept_and_neck_scarf_path_and_what_is_above_are_not(self):
+        img, fp = self.scene()
+        m = skin.neutral_mask(img, fp)
+        self.assertTrue(m[762:998, 152:648].all())
+        self.assertFalse(m[:668].any())
+        self.assertFalse(m[668:760, 340:460].any())
+        self.assertFalse(m[680:760, 150:300].any())
+        self.assertFalse(m[700:740, :120].any())
+        self.assertEqual(int(m.sum()), 240 * 500)
+        # skin passes min_L and max_chroma: only the tone gate keeps the neck out
+        neck = measure.lab_image(measure.lab_to_srgb(TARGET))
+        self.assertTrue(neck[0] >= skin.NEUTRAL_MIN_L and measure.chroma(neck[1], neck[2]) <= skin.NEUTRAL_MAX_CHROMA)
+
+    def test_too_small_a_neutral_is_none(self):
+        img, fp = self.scene()
+        img[760:] = (0.2, 0.3, 0.6)              # a blue shirt: the path alone (4800 px) is not a neutral
+        self.assertIsNone(skin.neutral_mask(img, fp))
+        img[900:930, 380:420] = self.SHIRT       # 1200 px, under 0.002 of 800 000
+        self.assertIsNone(skin.neutral_mask(img, fp))
+        self.assertEqual(int(skin.neutral_mask(img, fp, min_share=0.001).sum()), 1200)
+
+    def test_a_white_in_warm_light_is_kept_and_the_neck_still_is_not(self):
+        img, fp = self.scene()
+        warm = measure.lab_to_srgb((85.0, 2.0, 10.0))   # inside the YCrCb skin box, but far from the cheek's colour
+        self.assertTrue(skin.tone_mask((warm * 255 + 0.5).astype(np.uint8)))
+        img[760:, 150:650] = warm
+        m = skin.neutral_mask(img, fp)
+        self.assertEqual(int(m.sum()), 240 * 500)
+        self.assertFalse(m[668:760, 340:460].any())
+
+    def test_a_light_wall_beside_the_neck_is_not_a_neutral(self):
+        # the neck is narrower than the face box, so the wall beside it lies in the column under the face
+        for wall in ((70.0, 0.0, 0.0), (70.0, 6.0, -12.0), (90.0, 0.0, 0.0)):
+            img, fp = portrait(), skin.to_pixels(face(), W, H)
+            img[600:] = measure.lab_to_srgb(wall)
+            img[620:800, 340:460] = measure.lab_to_srgb(TARGET)       # the neck
+            img[800:, 150:650] = measure.lab_to_srgb((25.0, 2.0, -3.0))  # a dark top: no neutral in frame
+            self.assertIsNone(skin.neutral_mask(img, fp), wall)
+        img[600:] = measure.lab_to_srgb((70.0, 6.0, -12.0))
+        img[620:800, 340:460] = measure.lab_to_srgb(TARGET)
+        img[800:, 150:650] = measure.lab_to_srgb((92.0, 0.0, 0.0))   # a white shirt joined to a tinted wall
+        self.assertIsNone(skin.neutral_mask(img, fp))                # the wall would move the median: no neutral
+
+    def test_an_18_percent_grey_card_below_the_face_is_found(self):
+        img, fp = self.scene()
+        img[760:] = (0.2, 0.3, 0.6)                                   # a blue shirt
+        img[800:950, 330:470] = measure.lab_to_srgb((49.5, 0.0, 0.0))   # 116 * 0.18 ** (1 / 3) - 16
+        m = skin.neutral_mask(img, fp)
+        self.assertEqual(int(m.sum()), 150 * 140)
+        self.assertTrue(m[800:950, 330:470].all())
+
+    def test_a_pale_print_is_not_a_neutral(self):
+        img, fp = self.scene()
+        img[760:] = (0.2, 0.3, 0.6)
+        tints = [(85.0, 10.0, 2.0), (82.0, 6.0, -10.0), (90.0, 0.0, 10.0)]   # pink, lilac, cream petals
+        for i, y in enumerate(range(764, 1000, 24)):
+            for j, x in enumerate(range(154, 640, 24)):
+                img[y:y + 14, x:x + 14] = measure.lab_to_srgb(tints[(i + j) % 3])
+        self.assertIsNone(skin.neutral_mask(img, fp))
+        self.assertIsNotNone(skin.neutral_mask(*self.scene()))
+
+    def test_neutral_lab_is_the_median_and_leaves_clipped_pixels_out(self):
+        img, fp = self.scene()
+        m = skin.neutral_mask(img, fp)
+        img[880:, 150:650] = 1.0                 # the lower half of the shirt blown out
+        n = measure.neutral_lab(img, m)
+        self.assertEqual(n["n_px"], 120 * 500)
+        np.testing.assert_allclose([n["L"], n["a"], n["b"]], measure.lab_image(np.array(self.SHIRT)), atol=0.01)
+        self.assertAlmostEqual(n["chroma"], float(measure.chroma(n["a"], n["b"])), places=1)
+        img[760:] = 1.0
+        self.assertIsNone(measure.neutral_lab(img, m))
+
+
+class DeltaE2000Test(unittest.TestCase):
+    def test_sharma_pairs(self):
+        # Sharma, Wu and Dalal (2005), table 1
+        pairs = [((50, 2.6772, -79.7751), (50, 0, -82.7485), 2.0425), ((50, 2.49, -0.001), (50, -2.49, 0.0009), 7.1792),
+                 ((50, 2.5, 0), (73, 25, -18), 27.1492), ((50, 0, 0), (50, -1, 2), 2.3669),
+                 ((50, 2.5, 0), (56, -27, -3), 31.9030), ((50, 2.5, 0), (61, -5, 29), 22.8977),
+                 ((60.2574, -34.0099, 36.2677), (60.4626, -34.1751, 39.4387), 1.2644),
+                 ((2.0776, 0.0795, -1.1350), (0.9033, -0.0636, -0.5514), 0.9082)]
+        a, b, want = (np.array([p[i] for p in pairs], dtype=np.float64) for i in range(3))
+        np.testing.assert_allclose(measure.delta_e2000(a, b), want, atol=1e-4)
+        self.assertAlmostEqual(float(measure.delta_e2000(a[0], b[0])), 2.0425, places=4)   # one pair, a scalar
+        self.assertEqual(measure.delta_e2000(a.reshape(2, 4, 3), b[0]).shape, (2, 4))       # broadcast
+
+    def test_lutstats_uses_this_copy(self):
+        from lutlab import lutstats
+        self.assertIs(lutstats.delta_e2000, measure.delta_e2000)
+
+
 class VisionLandmarksTest(unittest.TestCase):
     def run_wrapper(self, **kw):
         line = json.dumps({"path": "/x/a.jpg", "width": W, "height": H, "faces": [face()], "people": []})

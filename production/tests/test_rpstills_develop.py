@@ -27,9 +27,10 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from rpstills import develop, look, measure  # noqa: E402
+from rpstills import develop, look, measure, skin  # noqa: E402
 
 TRIAL = HERE.parent / "stills-looks" / "portrait-cheek-trial-v0.json"
+NEUTRAL = HERE.parent / "stills-looks" / "portrait-neutral-v1.json"
 TARGET = (64.0, 15.0, 14.0)
 BOUNDS = [(-3.0, 3.0), (1e6 / 12000, 1e6 / 2500), (-6.0, 6.0)]
 X0 = (0.0, 1e6 / 5500, 0.0)
@@ -45,6 +46,16 @@ def response(x, curved=False):
     a = 12.0 + 0.6 * tint - 0.03 * m
     b = 6.0 + 0.002 * (200.0 - mired) ** 2 if curved else 6.0 + 25.0 * np.tanh(-m / 60.0)
     return np.array([L, a, b])
+
+
+def shirt(x):
+    """Lab of a white shirt for (ev, mired, tint): L* with exposure, a* with
+    tint, b* with mired, on the skin's slopes but offset, so it reads neutral
+    near mired 140.3 and tint +2.85, where the skin reads a* 14 and b* 10."""
+    ev, mired, tint = (float(v) for v in x)
+    m = mired - 150.0
+    return np.array([116 * np.cbrt(0.35 * 2.0 ** ev) - 16, -2.0 + 0.6 * tint - 0.03 * m,
+                     -4.0 + 25.0 * np.tanh(-m / 60.0)])
 
 
 def coupled(x):
@@ -177,6 +188,34 @@ class SolveTest(unittest.TestCase):
             self.assertTrue(np.all(x >= lo - 1e-9) and np.all(x <= hi + 1e-9), x)
         self.assertEqual(r["status"], "converged")
 
+    def test_an_unmeasurable_probe_is_taken_the_other_way(self):
+        # above ev 0 the neutral clips: the +0.25 EV probe cannot be read, so it probes -0.25 instead
+        def fn(x):
+            calls.append(np.array(x, float))
+            if x[0] > 0.01:
+                raise develop.Unmeasurable("clipped")
+            return response(x)
+        calls = []
+        r = develop.solve(fn, X0, BOUNDS, response((-0.5, 140.0, 2.0)), list(develop.AXES))
+        self.assertEqual(r["status"], "converged")
+        self.assertEqual([round(float(c[0]), 2) for c in calls[1:3]], [0.25, -0.25])
+        self.assertEqual(r["evaluations"], len(calls))
+        self.assertEqual(r["evaluations"], 1 + 4 + r["iterations"])
+        with self.assertRaises(develop.Unmeasurable):  # no room below: nothing else to probe
+            develop.solve(fn, X0, [(0.0, 3.0)] + BOUNDS[1:], TARGET, list(develop.AXES))
+
+    def test_an_unmeasurable_step_is_taken_as_worse(self):
+        def fn(x):
+            calls.append(x)
+            if len(calls) == 5:          # the first step: 1 start and 3 probes before it
+                raise develop.Unmeasurable("clipped")
+            return response(x)
+        calls = []
+        r = develop.solve(fn, X0, BOUNDS, TARGET, list(develop.AXES))
+        self.assertEqual(r["status"], "converged")
+        self.assertEqual(r["evaluations"], len(calls))
+        self.assertLess(np.abs(np.subtract(calls[5], X0)).max(), np.abs(np.subtract(calls[4], X0)).max())  # halved
+
     def test_bad_free_axes_are_refused(self):
         with self.assertRaises(ValueError):
             develop.solve(response, X0, BOUNDS, TARGET, ["exposure"])
@@ -211,10 +250,16 @@ def face(landmarks=True):
 SMALL_FACE = {"x": 0.02, "y": 0.02, "w": 0.03, "h": 0.03, "confidence": 0.9}
 
 
-def paint(lab, w, h):
-    """float sRGB portrait: grey ground, a skin ellipse of the given Lab, dark eyes, red lips."""
-    img = np.full((h, w, 3), 0.45, np.float32)
+def paint(lab, w, h, shirt_lab=None, card=None):
+    """float sRGB portrait: grey ground, a skin ellipse of the given Lab, dark eyes, red lips; a shirt of
+    shirt_lab below the face, and card = (normalized x0, y0, x1, y1, Lab) painted in its box."""
+    img = np.full((h, w, 3), 0.30, np.float32)   # L* 32.5: under neutral_mask's min_L, not a neutral
     S = np.array([w, h], float)
+    if shirt_lab is not None:
+        img[round(0.6 * h):, round(0.3 * w):round(0.7 * w)] = np.clip(measure.lab_to_srgb(shirt_lab), 0, 1)
+    if card is not None:
+        img[round(card[1] * h):round(card[3] * h), round(card[0] * w):round(card[2] * w)] = \
+            np.clip(measure.lab_to_srgb(card[4]), 0, 1)
 
     def ell(c, r, colour):
         cv2.ellipse(img, tuple(int(round(v)) for v in np.multiply(c, S)), tuple(max(1, int(round(v))) for v in
@@ -230,8 +275,11 @@ class FakeBackend(develop.Backend):
     name = "fake"
     axes = ("exposure", "temp", "tint")
 
-    def __init__(self, shot=None, fail_on=None, full_offset=(0.0, 0.0, 0.0)):
+    def __init__(self, shot=None, fail_on=None, full_offset=(0.0, 0.0, 0.0), shirt=True, bare_on=None, card=None,
+                 ev_offset=0.0):
         self.calls, self.shot, self.fail_on, self.full_offset = [], shot, fail_on, np.array(full_offset)
+        self.shirt, self.bare_on, self.card = shirt, bare_on, card   # bare_on: RAWs whose name holds it wear blue
+        self.ev_offset = ev_offset                                   # the camera's exposure, in stops over the fake's
 
     def unavailable(self):
         return None
@@ -250,8 +298,10 @@ class FakeBackend(develop.Backend):
         if long_edge and long_edge < max(w, h):
             s = long_edge / max(w, h)
             w, h = round(w * s), round(h * s)
-        x = (values["exposure"], 1e6 / values["temp"], values["tint"])
-        rgb = paint(response(x) + (self.full_offset if bit16 else 0.0), w, h)
+        x = (values["exposure"] + self.ev_offset, 1e6 / values["temp"], values["tint"])
+        worn = self.shirt and not (self.bare_on and self.bare_on in raw)
+        rgb = paint(response(x) + (self.full_offset if bit16 else 0.0), w, h, shirt(x) if worn else None,
+                    (*self.card, shirt(x)) if self.card else None)
         scale, dtype = (65535, np.uint16) if bit16 else (255, np.uint8)
         cv2.imwrite(out_path, cv2.cvtColor((rgb * scale + 0.5).astype(dtype), cv2.COLOR_RGB2BGR))
 
@@ -429,10 +479,186 @@ class DevelopFrameTest(unittest.TestCase):
         self.assertEqual(self.build([("F2", "/raw/F2.RW2")])["frames"]["F2"]["temp_unit"], "K")
 
 
+class NeutralModeTest(unittest.TestCase):
+    """The shipped neutral look on the fake portrait: the shirt is the neutral reference."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="rpstills-develop-"))
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.dest = self.tmp / "develop"
+        self.look = develop.load_look(NEUTRAL)
+        patcher = mock.patch.object(develop, "SOLVE_EDGE", 400)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def build(self, frames, backend=None, **kw):
+        return develop.build(frames, backend or FakeBackend(), self.look, str(self.dest), detect=fake_faces(),
+                             log=lambda *_: None, **kw)
+
+    def test_the_shirt_is_made_neutral_and_the_cheek_set_to_l64(self):
+        doc = self.build([("F1", "/raw/F1.RW2")])
+        r = doc["frames"]["F1"]
+        self.assertEqual((r["status"], r["mode"], r["target"], r["free"]), ("converged", "neutral", [64.0, 0.0, 0.0],
+                                                                           list(develop.AXES)))
+        n = r["neutral"]
+        self.assertEqual((n["source"], n["box"], n["from"]), ("auto", None, None))
+        self.assertLess(np.hypot(n["lab_out"][1], n["lab_out"][2]), develop.TOL)
+        self.assertAlmostEqual(r["lab_out"][0], 64.0, delta=develop.TOL)
+        # skin hue is left where the light puts it (a* 14, b* 10 on the fake), not pushed to a number
+        self.assertAlmostEqual(r["lab_out"][1], 14.0, delta=1.0)
+        self.assertAlmostEqual(r["lab_out"][2], 10.0, delta=1.0)
+        self.assertAlmostEqual(r["x"]["mired"], 140.3, delta=1.5)
+        self.assertAlmostEqual(r["x"]["tint"], 2.85, delta=0.6)
+        self.assertLessEqual(r["delta_e_out"], develop.TOL)
+        # the mask is taken on the first render and carried to the full size: the whole shirt, 9x the pixels
+        self.assertAlmostEqual(n["n_px"], 0.4 * 0.4 * FULL[0] * FULL[1], delta=0.03 * 0.16 * FULL[0] * FULL[1])
+        self.assertEqual(doc["params"]["solve"]["neutral"], develop.NEUTRAL_DEFAULTS)
+        self.assertEqual((doc["params"]["solve"]["mode"], doc["params"]["solve"]["target_L"]), ("neutral", 64.0))
+        self.assertIn("cheek L* 64 (cheek), neutral a* 0 b* 0", develop.summary(doc))
+        self.assertIn("neutral a*", develop._line(r))
+
+    def test_the_mask_is_taken_once_on_the_first_render_and_carried(self):
+        masks, real = [], skin.neutral_mask
+
+        def spy(rgb, face_px, **kw):
+            masks.append(real(rgb, face_px, **kw))
+            return masks[-1]
+        with mock.patch.object(develop.skin, "neutral_mask", spy):
+            r = self.build([("F1", "/raw/F1.RW2")])["frames"]["F1"]
+        self.assertEqual(r["status"], "converged")
+        self.assertEqual([m.shape for m in masks], [(300, 400)])   # once, on the solve render; never at full size
+        carried = cv2.resize(masks[0].astype(np.uint8), FULL, interpolation=cv2.INTER_NEAREST)
+        self.assertEqual(r["neutral"]["n_px"], int(carried.sum()))
+
+    def test_a_warm_as_shot_still_finds_the_shirt(self):
+        # warm light: the shirt starts at b* +10, inside the YCrCb skin box, but far from this cheek's own colour
+        shot = {"temp_k": 9000.0, "tint": 5.0}
+        start = shirt((0.0, 1e6 / 9000.0, 5.0))
+        self.assertGreater(start[2], 9.0)
+        self.assertTrue(skin.tone_mask((np.clip(measure.lab_to_srgb(start), 0, 1) * 255 + 0.5).astype(np.uint8)))
+        r = self.build([("F1", "/raw/F1.RW2")], FakeBackend(shot=shot))["frames"]["F1"]
+        self.assertEqual((r["status"], r["neutral"]["source"]), ("converged", "auto"), r.get("error"))
+        self.assertAlmostEqual(r["x"]["mired"], 140.3, delta=1.5)
+
+    def test_a_white_shirt_clipped_by_the_ev_probe_is_probed_down(self):
+        # 1.33 EV over: the shirt reads L* 95 unclipped at the start, and +0.25 EV clips every pixel of it
+        backend = FakeBackend(shot={"temp_k": 7128.0, "tint": 2.85}, ev_offset=1.33)
+        r = self.build([("F1", "/raw/F1.RW2")], backend)["frames"]["F1"]
+        self.assertEqual(r["status"], "converged", r.get("error"))
+        self.assertAlmostEqual(r["x"]["ev"], -0.47, delta=0.1)
+        self.assertIn(0.25, [c["values"]["exposure"] for c in backend.calls])
+        self.assertEqual(len(backend.calls) - 1, r["evaluations"])   # the clipped render counts
+
+    def test_a_neutral_box_under_one_pixel_and_a_clipped_neutral_say_which(self):
+        rgb = np.zeros((1000, 1500, 3), np.float32)
+        with self.assertRaisesRegex(ValueError, "covers no pixel at 1500x1000"):
+            develop._neutral_mask(rgb, None, (0.5, 0.5, 0.5003, 0.6), None)
+        with self.assertRaisesRegex(develop.Unmeasurable, "clipped at every pixel"):
+            develop._neutral(rgb + 1.0, develop._neutral_mask(rgb, None, (0.5, 0.5, 0.6, 0.6), None))
+
+    def test_a_coloured_shirt_or_a_strong_cast_is_no_neutral(self):
+        # a blue or red shirt, and a white one under a cast past chroma 25, fail loud: no provisional rebalance
+        for lab in ((70, -5, -30), (75, 30, 10), (85, 8, 30)):
+            with self.subTest(lab=lab), self.assertRaisesRegex(ValueError, "no neutral reference"):
+                develop._neutral_mask(paint((64, 15, 14), 400, 300, shirt_lab=lab), face(), None, {})
+
+    def test_no_neutral_fails_the_frame_with_the_message(self):
+        self.assertEqual(develop.NO_NEUTRAL, "no neutral reference in frame: shoot a grey card, pass --neutral-box, "
+                                             "or --wb-from ID (a frame in the same light)")
+        r = self.build([("F1", "/raw/F1.RW2")], FakeBackend(shirt=False))["frames"]["F1"]
+        self.assertEqual((r["status"], r["error"], r["mode"]), ("failed", develop.NO_NEUTRAL, "neutral"))
+        self.assertFalse((self.dest / "F1.tif").exists())
+
+    def test_a_neutral_box_replaces_the_shirt(self):
+        box = (0.05, 0.05, 0.25, 0.25)   # a grey card beside the head, above where the shirt is looked for
+        r = self.build([("F1", "/raw/F1.RW2")], FakeBackend(shirt=False, card=box))["frames"]["F1"]
+        self.assertEqual(r["error"], develop.NO_NEUTRAL)
+        r = self.build([("F1", "/raw/F1.RW2")], FakeBackend(shirt=False, card=box), neutral_box=box)["frames"]["F1"]
+        self.assertEqual(r["status"], "converged", r)
+        n = r["neutral"]
+        self.assertEqual((n["source"], n["box"], n["from"]), ("box", list(box), None))
+        self.assertLess(np.hypot(n["lab_out"][1], n["lab_out"][2]), develop.TOL)
+        self.assertAlmostEqual(n["n_px"], 0.2 * 0.2 * FULL[0] * FULL[1], delta=500)
+
+    def test_wb_from_solves_the_reference_first_and_the_rest_take_its_white_balance(self):
+        backend = FakeBackend(bare_on="blue")
+        frames = [("blue1", "/raw/blue1.RW2"), ("ref", "/raw/ref.RW2"), ("blue2", "/raw/blue2.RW2")]
+        rows = self.build(frames, backend, wb_from="ref")["frames"]
+        self.assertEqual(list(rows), ["ref", "blue1", "blue2"])
+        self.assertEqual(backend.calls[0]["raw"], "/raw/ref.RW2")
+        ref = rows["ref"]
+        self.assertEqual((ref["status"], ref["neutral"]["source"]), ("converged", "auto"))
+        for fid in ("blue1", "blue2"):
+            r = rows[fid]
+            self.assertEqual((r["status"], r["free"], r["target"]), ("converged", ["ev"], [64.0, None, None]), r)
+            self.assertEqual((r["x"]["mired"], r["x"]["tint"]), (ref["x"]["mired"], ref["x"]["tint"]))
+            self.assertEqual(r["neutral"], {"source": "wb_from", "n_px": None, "lab_out": None, "box": None,
+                                            "from": "ref"})
+            self.assertAlmostEqual(r["lab_out"][0], 64.0, delta=develop.TOL)
+            self.assertAlmostEqual(r["delta_e_out"], abs(r["lab_out"][0] - 64.0), places=2)  # L* alone
+            self.assertEqual(r["evaluations"], 1 + 1 + r["iterations"])                      # EV probed alone
+            self.assertIn("white balance from ref", develop._line(r))
+            calls = [c for c in backend.calls if fid in c["raw"]]
+            self.assertEqual({(c["values"]["temp"], c["values"]["tint"]) for c in calls},
+                             {(round(1e6 / ref["x"]["mired"], 1), round(ref["x"]["tint"], 3))})
+
+    def test_wb_from_a_row_of_an_earlier_run(self):
+        develop.write(str(self.dest), self.build([("ref", "/raw/ref.RW2")]))
+        with open(self.dest / "calibration.json") as f:
+            ref = json.load(f)["frames"]["ref"]
+        r = self.build([("blue1", "/raw/blue1.RW2")], FakeBackend(bare_on="blue"), wb_from="ref")["frames"]["blue1"]
+        self.assertEqual((r["status"], r["neutral"]["from"]), ("converged", "ref"))
+        self.assertEqual((r["x"]["mired"], r["x"]["tint"]), (ref["x"]["mired"], ref["x"]["tint"]))
+        with self.assertRaisesRegex(ValueError, "not among this run's frames"):
+            self.build([("blue1", "/raw/blue1.RW2")], wb_from="nope")
+        other = FakeBackend()
+        other.name = "other"    # tint and temperature are in each backend's own units
+        with self.assertRaisesRegex(ValueError, "backend fake; wanted neutral, converged, other"):
+            self.build([("blue1", "/raw/blue1.RW2")], other, wb_from="ref")
+
+    def test_a_reference_that_did_not_converge_hands_on_nothing(self):
+        rows = self.build([("ref", "/raw/ref.RW2"), ("blue1", "/raw/blue1.RW2")], FakeBackend(shirt=False),
+                          wb_from="ref")["frames"]
+        self.assertEqual(rows["ref"]["error"], develop.NO_NEUTRAL)
+        self.assertEqual(rows["blue1"]["status"], "failed")
+        self.assertIn("--wb-from ref: not a solved neutral", rows["blue1"]["error"])
+
+
 class LookAndFramesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="rpstills-develop-"))
         self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_the_neutral_look_and_the_superseded_trial(self):
+        doc = json.loads(NEUTRAL.read_text())
+        lk = develop.load_look(NEUTRAL)
+        s = lk["solve"]
+        self.assertEqual((s["mode"], s["target_L"], s["neutral_ab"], s["tint_max"], s["temp_bounds_k"]),
+                         ("neutral", 64.0, [0.0, 0.0], 50, [2500, 20000]))
+        self.assertEqual((s["neutral"], lk["develop"]["backend"]), (develop.NEUTRAL_DEFAULTS, "apple"))
+        self.assertEqual(develop.target_of(s), [64.0, 0.0, 0.0])
+        self.assertIn("blind", " ".join(doc["notes"]))
+        self.assertEqual(look.cube_text(doc.get("params", doc), size=5), look.cube_text({}, size=5))
+        self.assertIn("Superseded for delivery", json.loads(TRIAL.read_text())["status"])
+        self.assertEqual(develop.load_look(TRIAL)["solve"]["mode"], "target")
+
+    def look_file(self, solve):
+        path = self.tmp / "look.json"
+        path.write_text(json.dumps({"name": "t", "solve": solve}))
+        return path
+
+    def test_neutral_mode_defaults_and_refusals(self):
+        s = develop.load_look(self.look_file({"mode": "neutral"}))["solve"]
+        self.assertEqual((s["target_L"], develop.target_of(s)), (develop.TARGET_L, [64.0, 0.0, 0.0]))
+        s = develop.load_look(self.look_file({"mode": "neutral", "target_lab": [60, 15, 14],
+                                              "neutral": {"max_chroma": 12}}))["solve"]
+        self.assertEqual(develop.target_of(s), [60.0, 0.0, 0.0])
+        self.assertEqual(s["neutral"], dict(develop.NEUTRAL_DEFAULTS, max_chroma=12))
+        for bad in ({"mode": "skin"}, {"mode": "neutral", "neutral": {"min_l": 40}},
+                    {"mode": "neutral", "neutral_ab": [0]},
+                    {"mode": "neutral", "target_L": "64"}, {"mode": "neutral", "target_lab": [64, 0]}, {}):
+            with self.assertRaises(ValueError, msg=bad):
+                develop.load_look(self.look_file(bad))
 
     def test_the_trial_look_is_labelled_and_the_look_command_ignores_its_blocks(self):
         doc = json.loads(TRIAL.read_text())
@@ -663,6 +889,34 @@ class CliTest(unittest.TestCase):
         self.assertIn("1 pinned (tint)", text)
         self.assertIn("pinned", err)
         self.assertIn("F3", err)
+
+    def test_neutral_mode_with_wb_from(self):
+        raws = [self.tmp / "REF.RW2", self.tmp / "BLUE.RW2"]
+        for r in raws:
+            r.write_bytes(b"raw")
+        code, text, err = self.cli(self.tmp / "out", "--look", NEUTRAL, "--raw", *raws, "--wb-from", "REF")
+        self.assertEqual(code, 0, err)
+        self.assertIn("2 frames: 2 converged", text)
+        with open(self.tmp / "out" / "develop" / "calibration.json") as f:
+            rows = json.load(f)["frames"]
+        self.assertEqual((rows["REF"]["neutral"]["source"], rows["BLUE"]["neutral"]["source"]), ("auto", "wb_from"))
+        code, _, err = self.cli(self.tmp / "out", "--look", NEUTRAL, "--raw", raws[1], "--wb-from", "REF",
+                                "--neutral-box", 0.3, 0.6, 0.7, 1.0)
+        self.assertEqual(code, 0, err)
+
+    def test_neutral_refusals(self):
+        raw = self.tmp / "F1.RW2"
+        raw.write_bytes(b"raw")
+        code, _, err = self.cli(self.tmp / "out", "--look", TRIAL, "--raw", raw, "--wb-from", "F1")
+        self.assertEqual(code, 1)
+        self.assertIn("solve.mode neutral", err)
+        code, _, err = self.cli(self.tmp / "out", "--look", NEUTRAL, "--raw", raw, "--neutral-box", 0.5, 0, 0.2, 1)
+        self.assertEqual(code, 1)
+        self.assertIn("X0 < X1", err)
+        code, _, err = self.cli(self.tmp / "out", "--look", NEUTRAL, "--raw", raw, "--wb-from", "NOPE")
+        self.assertEqual(code, 1)
+        self.assertIn("NOPE", err)
+        self.assertFalse((self.tmp / "out" / "develop" / "calibration.json").exists())
 
     def test_refusals(self):
         code, _, err = self.cli(HERE / "never-written", "--look", TRIAL, "--raw", TRIAL)

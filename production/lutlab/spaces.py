@@ -14,6 +14,7 @@ V-Log, the Pyxis BRAW (decoded as Gen 5)."""
 import numpy as np
 
 from rpstills.look import di_decode, di_encode  # the published DaVinci Intermediate curve, one copy
+from rpstills.measure import delta_e2000  # noqa: F401  CIEDE2000 has one copy, in rpstills.measure
 
 D65 = (0.3127, 0.3290)
 PRIMARIES = {
@@ -208,31 +209,3 @@ def cielab(lin709):
     d = 6 / 29
     f = np.where(t > d ** 3, np.cbrt(np.maximum(t, 0)), t / (3 * d * d) + 4 / 29)
     return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
-
-
-def delta_e2000(lab1, lab2):
-    L1, a1, b1 = np.moveaxis(np.asarray(lab1, dtype=np.float64), -1, 0)
-    L2, a2, b2 = np.moveaxis(np.asarray(lab2, dtype=np.float64), -1, 0)
-    cb = (np.hypot(a1, b1) + np.hypot(a2, b2)) / 2
-    g = 0.5 * (1 - np.sqrt(cb ** 7 / (cb ** 7 + 25.0 ** 7)))
-    a1p, a2p = (1 + g) * a1, (1 + g) * a2
-    c1p, c2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
-    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
-    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
-    zero = (c1p * c2p) == 0
-    dhp = h2p - h1p
-    dhp = np.where(dhp > 180, dhp - 360, np.where(dhp < -180, dhp + 360, dhp))
-    dhp = np.where(zero, 0, dhp)
-    dHp = 2 * np.sqrt(c1p * c2p) * np.sin(np.radians(dhp / 2))
-    lbp, cbp = (L1 + L2) / 2, (c1p + c2p) / 2
-    hs = h1p + h2p
-    hbp = np.where(zero, hs, np.where(np.abs(h1p - h2p) <= 180, hs / 2, np.where(hs < 360, (hs + 360) / 2, (hs - 360) / 2)))
-    t = (1 - 0.17 * np.cos(np.radians(hbp - 30)) + 0.24 * np.cos(np.radians(2 * hbp))
-         + 0.32 * np.cos(np.radians(3 * hbp + 6)) - 0.20 * np.cos(np.radians(4 * hbp - 63)))
-    dth = 30 * np.exp(-(((hbp - 275) / 25) ** 2))
-    rc = 2 * np.sqrt(cbp ** 7 / (cbp ** 7 + 25.0 ** 7))
-    sl = 1 + 0.015 * (lbp - 50) ** 2 / np.sqrt(20 + (lbp - 50) ** 2)
-    sc, sh = 1 + 0.045 * cbp, 1 + 0.015 * cbp * t
-    rt = -np.sin(np.radians(2 * dth)) * rc
-    dl, dc, dh = (L2 - L1) / sl, (c2p - c1p) / sc, dHp / sh
-    return np.sqrt(dl * dl + dc * dc + dh * dh + rt * dc * dh)
