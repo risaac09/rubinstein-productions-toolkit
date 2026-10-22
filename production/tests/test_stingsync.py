@@ -15,11 +15,15 @@ import unittest
 import wave
 from pathlib import Path
 
-import numpy as np
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import stingsync as ss  # noqa: E402
+try:
+    import numpy as np
+    from rpresolve import stingsync as ss
+except ImportError:  # numpy missing on this interpreter
+    np = None
+
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 
 WORKFLOW = Path(__file__).resolve().parent.parent / "resolve_workflow.py"
 RATE = 48000
@@ -50,6 +54,7 @@ def cue(cid, frame, onset, **extra):
             "measured_from": "m.wav", **extra}
 
 
+@needs_numpy
 class StingSync(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
