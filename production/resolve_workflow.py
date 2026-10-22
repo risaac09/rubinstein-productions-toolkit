@@ -969,17 +969,18 @@ def cmd_trim_review(args):
         opts = _review_opts(args)
         if manifest:
             m = cutlist.load_manifest(args.input)
-            source = m["source_path"]
-            words = cutlist.load_words(args.words or m["words"])
+            paths_ = [s["path"] for s in cutlist.sources(m)]
         else:
-            source = args.input
-            words = cutlist.load_words(args.words) if args.words else None
+            paths_ = [args.input]
+        words = cutlist.load_words(args.words) if args.words else None
     except (cutlist.CutlistError, OSError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    if not os.path.isfile(source):
-        print(f"ERROR: the source {source} is not a file.", file=sys.stderr)
-        return 1
+    source = paths_[0]
+    for path_ in paths_:
+        if not os.path.isfile(path_):
+            print(f"ERROR: the source {path_} is not a file.", file=sys.stderr)
+            return 1
     problem = _out_problem(args.out) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
@@ -989,7 +990,7 @@ def cmd_trim_review(args):
             r = tr.review_manifest(m, words, audio=not args.no_audio, **opts)
         else:
             r = tr.review_source(source, words, audio=not args.no_audio, **opts)
-    except cutlist.CutlistError as e:
+    except (cutlist.CutlistError, OSError, ValueError) as e:  # words are read per source now
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     text = tr.tsv(r["rows"])
