@@ -1,0 +1,1 @@
+production/rpresolve: transcribe turns speech into the Whisper JSON, SubRip and plain text that cutlist, wordsnap, pacing and captionlint read, behind one backend interface: mlx-whisper (wired, never downloads a model; waits on roadmap D9), whisper.cpp via whisper-cli, a resolve stub, and a fake backend for tests and transcripts made elsewhere.
