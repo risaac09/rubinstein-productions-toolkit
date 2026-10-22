@@ -1,7 +1,7 @@
 """
 qc: one FAIL-first QC table for a rendered file: deliver-check's rows (with
 --dest) plus ffmpeg blackdetect, freezedetect, scdet, ebur128, astats and
-silencedetect.
+silencedetect (portrait renders add hook WARN rows that never change the exit).
 """
 
 import json
