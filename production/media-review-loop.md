@@ -7,7 +7,7 @@ Claude can measure a picture or a mix but cannot see taste in it, and it cannot 
 ## One decision per message
 
 - **One stimulus, one question.** A message carries one sheet, one clip or one audio packet, and asks one thing. Two decisions are two messages.
-- **The answer is short.** A letter (`B`), a rating from 1 to 5, `none`, `hold`, or one line ("skin too magenta", "hum under the second answer"). A reason is welcome and never required.
+- **The answer is short.** A letter (`B`), a rating from 1 to 5, `approve` or `go` for a single proposal, `none`, `hold`, or one line ("skin too magenta", "hum under the second answer"). A reason is welcome and never required.
 - **Nothing anchors the choice.** Options carry labels, not scores, ranks or a "recommended" tag. Order is shuffled (absheet shuffles by seed; the audio packet seals its key). Measurements such as audit numbers, scopes and loudness come after the answer, unless the question is about the measurement itself.
 - **Hold is always an answer.** `hold` stops the step with nothing changed. Claude does not re-ask in the same message thread until something new is on the table.
 
@@ -25,7 +25,7 @@ Claude can measure a picture or a mix but cannot see taste in it, and it cannot 
 | Sound | Two or more 20 to 30 s excerpts of the same span, loudness matched, labelled A, B, C with a sealed key | `rpresolve.mixbuild ab` once it lands; the numbers after the answer from [sound assist](sound-assist.md) | desktop: Browser pane through `serve`; phone or iPad: SendUserFile | a letter and, ideally, a line |
 | Gate | Before a render or batch longer than about 30 minutes, or any replacement of a file a client can see: one full-frame sheet per clip and the listening excerpts | the commands above | as above | `go` or `hold` |
 
-The commands in full (`python` is the tool venv's interpreter from the [rpstills README](rpstills/README.md); `python3` is any Python 3.9 or later with ffmpeg on the path):
+The commands in full (`python` is the tool venv's interpreter from the [rpstills README](rpstills/README.md); `python3` is any Python 3.9 or later; rpresolve finds ffmpeg and ffprobe at the Homebrew paths and ignores `PATH`, so elsewhere set `RPRESOLVE_FFMPEG` and `RPRESOLVE_FFPROBE`, as in [requirements.txt](../requirements.txt)):
 
 ```bash
 cd production
@@ -55,7 +55,7 @@ ffmpeg -ss <start> -t 20 -i <source> -vf scale=-2:720,format=yuv420p \
 
 A 20 s proxy made this way from a 1080p 10-bit 4:2:2 ProRes test signal came to 14.6 MiB. The size is about seconds x 6.2 Mbit/s / 8, so 30 s is the most this recipe fits under 25 MiB.
 
-One scopes image for a frame (picture, luma waveform in IRE, vectorscope; 1280 x 1440, about 0.5 MB):
+One scopes image for a frame (picture, luma waveform in IRE, vectorscope; 1280 wide, about 0.5 MB on a test pattern and 1 to 1.5 MB on real footage, taller for 4:3 and 3:2 frames):
 
 ```bash
 ffmpeg -ss 5 -i proxy.mp4 -frames:v 1 -vf "format=yuv444p,split=3[f][a][b];\
@@ -138,7 +138,7 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 | `project` | the project id, never a client's or a person's name |
 | `step` | `triage`, `look`, `grade`, `edit`, `sound` or `gate` |
 | `options` | each label and what it stood for (look file and version, parameter change, source file), taken from `key.json` or the sealed audio key after the answer, so the line decodes without the sheet |
-| `choice` | the label, a rating 1 to 5, `none` or `hold` |
+| `choice` | the label, a rating 1 to 5, `approve` (edit), `go` (gate), `none` or `hold`; null when the answer is only a line, which goes in `reason` |
 | `reason` | the reviewer's line, verbatim, or null |
 | `device` | `desktop`, `phone` or `ipad`; screens differ, and none of them is calibrated against the others |
 

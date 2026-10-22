@@ -11,6 +11,7 @@ import io
 import json
 import os
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
@@ -19,7 +20,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image, ImageCms
+from PIL import Image, ImageCms, ImageDraw
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -29,6 +30,24 @@ from rpstills import absheet  # noqa: E402
 COLOURS = [(220, 40, 40), (40, 200, 60), (40, 70, 220), (230, 200, 40), (200, 50, 200),
            (40, 200, 210), (240, 140, 30), (120, 120, 120), (250, 250, 250)]
 PHONE_W = 390  # CSS px a phone gives an image shown at the chat's full width
+
+
+def wide_icc(desc=b"Test Wide RGB"):
+    """A minimal ICC v2 matrix/TRC RGB profile: Adobe RGB (1998) primaries, D50-adapted, gamma 563/256."""
+    s15 = lambda *v: b"".join(struct.pack(">i", round(x * 65536)) for x in v)  # noqa: E731
+    xyz = lambda *v: b"XYZ \0\0\0\0" + s15(*v)  # noqa: E731
+    curv = b"curv\0\0\0\0" + struct.pack(">IH", 1, 563)
+    tags = [(b"desc", b"desc\0\0\0\0" + struct.pack(">I", len(desc) + 1) + desc + b"\0" * 79),
+            (b"wtpt", xyz(0.9642, 1.0, 0.8249)), (b"rXYZ", xyz(0.60974, 0.31111, 0.01947)),
+            (b"gXYZ", xyz(0.20528, 0.62567, 0.06087)), (b"bXYZ", xyz(0.14919, 0.06322, 0.74457)),
+            (b"rTRC", curv), (b"gTRC", curv), (b"bTRC", curv)]
+    table, data, start = b"", b"", 132 + 12 * len(tags)
+    for sig, body in tags:
+        body += b"\0" * (-len(body) % 4)
+        table, data = table + sig + struct.pack(">II", start + len(data), len(body)), data + body
+    header = (struct.pack(">I", start + len(data)) + b"\0" * 4 + struct.pack(">I", 0x02100000) + b"mntrRGB XYZ "
+              + b"\0" * 12 + b"acsp" + b"\0" * 28 + s15(0.9642, 1.0, 0.8249) + b"\0" * 48)
+    return header + struct.pack(">I", len(tags)) + table + data
 
 
 class AbsheetTest(unittest.TestCase):
@@ -114,6 +133,47 @@ class AbsheetTest(unittest.TestCase):
                 on_phone = label_px * min(1.0, PHONE_W / geo["sheet"][0])
                 self.assertGreaterEqual(on_phone, 14, (aspect, n, geo))
                 self.assertLessEqual(max(geo["sheet"]), absheet.MAX_EDGE)
+
+    def test_drawn_capitals_stay_about_11_px_tall_at_phone_width(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+        for aspect in (0.5, 0.5625, 2 / 3, 0.8, 1.0, 1.5, 16 / 9, 2.0):
+            for n in range(2, 10):
+                geo = absheet.layout([(int(1000 * aspect), 1000)] * n)
+                label_px = max(absheet.LABEL_MIN_PX, int(absheet.LABEL_SHARE * min(geo["cell"])))
+                f = absheet.font(label_px)
+                ink = min(draw.textbbox((0, 0), c, font=f, stroke_width=max(1, label_px // 24))[3]
+                          - draw.textbbox((0, 0), c, font=f, stroke_width=max(1, label_px // 24))[1]
+                          for c in absheet.LETTERS[:n])
+                self.assertGreaterEqual(ink * min(1.0, PHONE_W / geo["sheet"][0]), 10.5, (aspect, n, geo))
+
+    def test_a_picture_tagged_with_another_profile_is_shown_in_srgb(self):
+        skin = Image.new("RGB", (400, 500), (196, 140, 115))
+        srgb = ImageCms.createProfile("sRGB")
+        tagged = self.tmp / "srgb.png"
+        skin.save(tagged, icc_profile=ImageCms.ImageCmsProfile(srgb).tobytes())
+        icc = wide_icc()
+        wide = ImageCms.profileToProfile(skin, srgb, ImageCms.ImageCmsProfile(io.BytesIO(icc)), outputMode="RGB")
+        self.assertGreater(abs(wide.getpixel((0, 0))[0] - 196), 8)      # other numbers, the same colour
+        other = self.tmp / "wide.png"
+        wide.save(other, icc_profile=icc)
+        doc = absheet.build([str(tagged), str(other)], self.tmp / "out", seed=4)
+        with Image.open(self.tmp / "out" / "sheet.jpg") as im:
+            sheet = np.asarray(im.convert("RGB"), int)
+        cw, ch = doc["sheet"]["cell"]
+        for k in range(2):
+            r, c = divmod(k, doc["sheet"]["grid"][0])
+            x0, y0 = absheet.GAP + c * (cw + absheet.GAP), absheet.GAP + r * (ch + absheet.GAP)
+            np.testing.assert_allclose(sheet[y0 + ch // 2, x0 + cw // 2], (196, 140, 115), atol=4)
+
+    def test_an_input_that_is_the_sheet_it_would_write_is_refused(self):
+        out = self.tmp / "round1"
+        absheet.build(self.solids(2), out, seed=1)
+        before = (out / "sheet.jpg").read_bytes()
+        key = (out / "key.json").read_text()
+        with self.assertRaisesRegex(ValueError, "would be overwritten"):
+            absheet.build([str(out / "sheet.jpg"), *self.solids(3)[2:]], out, seed=2)
+        self.assertEqual((out / "sheet.jpg").read_bytes(), before)
+        self.assertEqual((out / "key.json").read_text(), key)
 
     def test_tiff16_and_exif_rotation_load(self):
         tif = self.tmp / "deep.tif"

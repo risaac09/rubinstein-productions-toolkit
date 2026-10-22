@@ -82,6 +82,7 @@ class TestMeasures(unittest.TestCase):
     def test_wada_table_rises_with_snr(self):
         g, snrs = dxm._wada_table()
         self.assertTrue(np.all(np.diff(g) > 0))
+        self.assertTrue(np.all(np.diff(snrs) > 0))  # sorting by G kept the SNRs in order
         self.assertEqual((snrs.min(), snrs.max()), dxm.WADA_RANGE_DB)
 
     def test_wada_snr_tracks_a_known_mixture(self):
@@ -95,6 +96,18 @@ class TestMeasures(unittest.TestCase):
             self.assertAlmostEqual(est[-1], snr, delta=2.0)
         self.assertEqual(est, sorted(est))
         self.assertIsNone(dxm.wada_snr_db(np.zeros(100)))
+
+    def test_wada_snr_leaves_out_digital_silence(self):
+        # an edited stem: gaps of exact zeros between clips, and a mean that is not
+        # exactly zero, must not read as a cleaner signal
+        rng = np.random.default_rng(6)
+        n = 300000
+        s = rng.gamma(0.4, 1.0, n) * rng.choice([-1.0, 1.0], n)
+        mix = s * 10 ** (10 / 20) / np.sqrt(np.mean(s ** 2)) + rng.standard_normal(n) + 1e-3
+        clean = dxm.wada_snr_db(mix)
+        gaps = dxm.wada_snr_db(np.r_[mix[:n // 2], np.zeros(n // 4), mix[n // 2:]])
+        self.assertAlmostEqual(clean, 10.0, delta=2.0)
+        self.assertAlmostEqual(gaps, clean, delta=0.5)
 
     def test_quiet_frames_leave_out_digital_silence(self):
         x = np.r_[np.zeros(RATE), noise(1, 0.5), noise(1, 0.01)]
@@ -143,6 +156,19 @@ class TestFiles(unittest.TestCase):
         self.assertEqual(dxm.lag(a, flip)["polarity"], "inverted")
         self.assertEqual(dxm.lag(a, flip)["lag_samples"], 0)
 
+    def test_a_window_with_no_signal_gives_no_lag(self):
+        a = write_wav(self.path("a.wav"), np.r_[np.zeros(RATE), noise(3, 0.1)])
+        b = self.delayed(a, 1200, self.path("b.wav"))
+        g = dxm.lag(a, b, seconds=1.0)          # the first second is digital silence
+        self.assertIsNone(g["lag_samples"])
+        self.assertIsNone(g["lag_ms"])
+        line = dxm.lag_line(g)
+        self.assertNotIn("aligned", line)
+        self.assertIn("--start", line)
+        self.assertEqual(dxm.lag(a, b, start=1.0, seconds=2.0)["lag_samples"], 1200)
+        r = dxm.compare(a, b, end=1.0)
+        self.assertIsNone(r["lag"]["lag_samples"])
+
     def test_compare_gives_b_minus_a(self):
         a = write_wav(self.path("a.wav"), noise(4, 0.02) + sum(tone(60 * k, 4, 0.02 / k)
                                                                for k in range(1, 6)))
@@ -168,6 +194,19 @@ class TestFiles(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as so, redirect_stderr(io.StringIO()):
             self.assertEqual(dxm.main(["lag", a, a]), 0)
         self.assertIn("lag 0 samples", so.getvalue())
+
+    def test_the_json_never_replaces_an_input(self):
+        a = write_wav(self.path("a.wav"), noise(2, 0.05))
+        alias = self.path("alias.wav")
+        os.link(a, alias)          # another name for the same file, as a case change is on APFS
+        for argv in (["measure", a, "--out", a], ["measure", a, "--out", alias],
+                     ["compare", a, a, "--out", alias]):
+            with self.subTest(argv=argv):
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as se:
+                    self.assertEqual(dxm.main(argv), 1)
+                self.assertIn("is the source", se.getvalue())
+                with open(a, "rb") as f:
+                    self.assertEqual(f.read(4), b"RIFF")
 
 
 if __name__ == "__main__":

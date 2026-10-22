@@ -57,6 +57,13 @@ class TestQuietest(unittest.TestCase):
         self.assertIsNone(rt.quietest(np.zeros(20), 4))
         self.assertIsNone(rt.quietest(np.r_[1.0, 0.0, 1.0, 0.0], 2))
 
+    def test_a_hop_flagged_dead_is_never_chosen(self):
+        p = np.r_[np.full(4, 1.0), np.full(4, 0.5), np.full(4, 1.0)]
+        dead = np.zeros(len(p), bool)
+        dead[5] = True                         # a dropout shorter than a hop
+        self.assertEqual(rt.quietest(p, 4), (4, 4))
+        self.assertEqual(rt.quietest(p, 4, dead), (6, 4))
+
     def test_a_short_stream_gives_the_whole_stream(self):
         self.assertEqual(rt.quietest(np.full(3, 0.2), 30), (0, 3))
 
@@ -96,6 +103,20 @@ class TestFiles(unittest.TestCase):
         self.assertEqual(dead["status"], "digital_silence")
         self.assertNotIn("start_s", dead)
         self.assertEqual(r["params"]["window_s"], rt.WINDOW_S)
+
+    def test_a_dropout_inside_a_hop_is_never_chosen(self):
+        # 40 ms of zeros, off the 100 ms grid, inside the quietest stretch: a window
+        # holding it has the least power, and must still not be chosen
+        x = noise(10, 0.01)
+        x[4 * RATE:7 * RATE] *= 0.5
+        x[int(5.53 * RATE):int(5.57 * RATE)] = 0
+        f = write_wav(self.path("drop.wav"), x)
+        fp = dxm.frame_power(f, 0, rt.HOP_S)
+        self.assertEqual(int((fp["power"] <= 0).sum()), 0)   # no hop is all zeros
+        self.assertEqual(list(np.flatnonzero(fp["dead"])), [55])
+        s = rt.find([f])["streams"][0]
+        self.assertEqual(s["status"], "ok")
+        self.assertTrue(s["end_s"] <= 5.53 or s["start_s"] >= 5.57, s)
 
     def test_find_command_writes_json_and_refuses_the_repo(self):
         f = self.two_stream_file()
@@ -162,6 +183,35 @@ class TestFiles(unittest.TestCase):
         with self.assertRaises(rt.ar.ReportError):
             rt.bed(silent, self.path("b.wav"), 10)
         self.assertEqual(sorted(os.listdir(self.tmp)), ["room.wav", "silent.wav"])
+
+    def test_a_source_by_another_name_is_never_written_over(self):
+        src = write_wav(self.path("room.wav"), noise(6, 0.003))
+        with open(src, "rb") as f:
+            before = f.read()
+        alias = self.path("alias.wav")
+        os.link(src, alias)        # another name for the same file, as a case change is on APFS
+        with self.assertRaises(OutputRefused):
+            rt.bed(src, alias, 10, start=1.0, end=4.0)
+        os.remove(alias)
+        os.link(src, self.path("bed.json"))      # the record beside the bed is checked too
+        with self.assertRaises(OutputRefused):
+            rt.bed(src, self.path("bed.wav"), 10, start=1.0, end=4.0)
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as se:
+            self.assertEqual(rt.main(["find", src, "--out", src]), 1)
+        self.assertIn("is the source", se.getvalue())
+        with open(src, "rb") as f:
+            self.assertEqual(f.read(), before)
+
+    def test_a_relative_name_with_a_colon_is_a_file(self):
+        write_wav(self.path("room.wav"), noise(6, 0.003))
+        here = os.getcwd()
+        os.chdir(self.tmp)
+        try:
+            r = rt.bed("room.wav", "take:2.wav", 10, start=1.0, end=4.0, curve="qsin")
+        finally:
+            os.chdir(here)
+        self.assertTrue(r["seam_ok"])
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["room.wav", "take:2.json", "take:2.wav"])
 
 
 if __name__ == "__main__":

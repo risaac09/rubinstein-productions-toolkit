@@ -14,21 +14,26 @@ more than one. A "speech": false manifest is read too: nothing here checks
 words.
 
 Time:
-    - a span covers source frames [frame(in), frame(out)) at the rate
-      (cutlist.frame, rounding half up). Everything after that is whole
-      frames, so a timeline of any length ends exactly where its spans add
-      up, and an FCPXML time is always a whole number of frame durations
+    - a span covers source frames [frame(in), frame(out)) (cutlist.frame,
+      rounding half up), counted at the manifest's own fps number (29.97)
+      when it matches the rate, exactly as cut counts them, else at the
+      rate. Everything after that is whole frames, so a timeline of any
+      length ends exactly where its spans add up, and an FCPXML time is
+      always a whole number of frame durations. A span that starts before
+      the source's first frame or runs past its last is refused
     - the rate is --fps, else the manifest's fps, else the source's. 23.976,
-      29.97 and 59.94 are read as 24000/1001, 30000/1001 and 60000/1001. A
-      source probed at a different rate is refused, since these files carry
-      one rate for source and record
+      29.97 and 59.94 are read as 24000/1001, 30000/1001 and 60000/1001, and
+      so is a probed rate such as 2997/100. A source probed at a different
+      rate is refused, since these files carry one rate for source and record
     - the source's start timecode (ffprobe's timecode tag) offsets every
       source time, so EDL source timecodes, the FCPXML asset start and the
-      OTIO available range match the camera's own timecode. A source with no
-      tag starts at 00:00:00:00
+      OTIO available range match the camera's own timecode, hours wrapping
+      at 24 as a time-of-day clock does. A source with no tag starts at
+      00:00:00:00
     - the record side starts at RECORD_START
     - drop-frame at 30000/1001 and 60000/1001 unless the source's timecode
-      is non-drop (':' before the frames); non-drop at every other rate
+      is non-drop (':' before the frames); non-drop at every other rate. A
+      drop-frame (';') timecode at any other rate (119.88) is refused
 
 Split edits: a span may carry "audio_lead" (seconds its sound starts before
 its picture: a J cut) or "audio_tail" (seconds its sound runs past its
@@ -56,13 +61,15 @@ probed at its manifest path; when it is not on this machine its timecode,
 size and sound are assumed (DEFAULT_SIZE, DEFAULT_AUDIO, 00:00:00:00) and
 the summary says so.
 
-The output names client media, so it is refused inside any git working tree.
-Not handled: transitions, speed changes, reframes, captions, markers, more
+The output names client media, so it is refused inside any git working tree,
+and refused when --out is the manifest or the source. It is written to a
+temporary file that then replaces --out. Not handled: transitions, speed changes, reframes, captions, markers, more
 than one source. See production/interchange.md.
 """
 
 import argparse
 import json
+import math
 import os
 import posixpath
 import sys
@@ -109,8 +116,11 @@ def fmt_rate(rate):
 
 
 def timecode(frames, rate, drop):
-    """The label of a frame count: HH:MM:SS:FF, or HH:MM:SS;FF drop-frame."""
-    return _frames_to_timecode(frames, rate, drop)
+    """The label of a frame count: HH:MM:SS:FF, or HH:MM:SS;FF drop-frame.
+    Hours wrap at 24, as a time-of-day camera clock does past midnight (a
+    drop-frame day is 144 whole ten-minute blocks, so the rest is unchanged)."""
+    hh, rest = _frames_to_timecode(frames, rate, drop).split(":", 1)
+    return f"{int(hh) % 24:02d}:{rest}"
 
 
 def tc_frames(tc, rate):
@@ -149,7 +159,8 @@ def probe(path):
     if facts["kind"] != "video":
         raise InterchangeError(f"{path} has no picture")
     audio = [s for s in info.get("streams") or [] if s.get("codec_type") == "audio"]
-    return {"rate": captions.file_rate(info), "tc": tc, "frames": facts["frames"],
+    r = captions.file_rate(info)  # `-r 29.97` files probe as 2997/100: snap like --fps
+    return {"rate": parse_rate(r) if r else None, "tc": tc, "frames": facts["frames"],
             "size": facts["resolution"],
             "audio": {"streams": len(audio), "channels": int(audio[0].get("channels") or 2),
                       "rate": int(audio[0].get("sample_rate") or 48000)} if audio else None}
@@ -171,8 +182,8 @@ def _one_line(text):
 
 def _split_frames(span, key, rate, where):
     v = span.get(key, 0)
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
-        raise InterchangeError(f"{where}: {key} must be seconds at or above 0, not {v!r}")
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+        raise InterchangeError(f"{where}: {key} must be finite seconds at or above 0, not {v!r}")
     return cutlist.frame(v, rate)
 
 
@@ -208,6 +219,9 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
                                    f"timeline would run at {fmt_rate(rate)}; these files carry "
                                    "one rate (pass --fps to match the source)")
         rate = media["rate"]
+    # cut counts span frames at the manifest's own number (29.97, not 30000/1001); match it
+    fr = manifest.get("fps")
+    fr = fr if type(fr) in (int, float) and abs(fr - rate) < NTSC_TOLERANCE else rate
 
     path = manifest["source_path"]
     name = os.path.basename(path)
@@ -220,6 +234,10 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
                         "and its sound as one stereo stream. Check source times against the "
                         "camera's timecode before trusting a conform")
     tc = media["tc"]
+    if tc and ";" in tc and rate not in captions.DROP_FRAME:
+        raise InterchangeError(f"{name}: its timecode {tc} is drop-frame at {fmt_rate(rate)} fps; "
+                               "drop-frame is counted only at 29.97 and 59.94, so this source "
+                               "is not supported (119.88 fps camera files write such timecode)")
     drop = rate in captions.DROP_FRAME and (tc is None or ";" in tc)
     start = tc_frames(tc, rate) if tc else 0
     record_start = tc_frames(RECORD_START[:-3] + (";" if drop else ":") + RECORD_START[-2:], rate)
@@ -234,13 +252,16 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
     events = []
     for i, s in enumerate(c["spans"], 1):
         where = f"{c['name']} span {i}"
-        v_in, v_out = cutlist.frame(s["in"], rate), cutlist.frame(s["out"], rate)
+        if not (math.isfinite(s["in"]) and math.isfinite(s["out"])):
+            raise InterchangeError(f"{where}: in and out must be finite seconds, not "
+                                   f"{s['in']!r}-{s['out']!r}")
+        v_in, v_out = cutlist.frame(s["in"], fr), cutlist.frame(s["out"], fr)
         if v_out <= v_in:
             raise InterchangeError(f"{where}: {s['in']}-{s['out']} s holds no whole frame at "
                                    f"{fmt_rate(rate)} fps")
         events.append({"v_in": v_in, "v_out": v_out,
-                       "lead": _split_frames(s, "audio_lead", rate, where),
-                       "tail": _split_frames(s, "audio_tail", rate, where)})
+                       "lead": _split_frames(s, "audio_lead", fr, where),
+                       "tail": _split_frames(s, "audio_tail", fr, where)})
     n = len(events)
     if (any(e["lead"] or e["tail"] for e in events)) and not media["audio"]:
         raise InterchangeError(f"{c['name']}: a split edit needs sound and {name} has none")
@@ -264,6 +285,8 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
         rec = e["rec_out"]
         if e["a_out"] <= e["a_in"]:
             raise InterchangeError(f"{where}: the split edits around it leave it no sound")
+        if min(e["v_in"], e["a_in"]) < 0:
+            raise InterchangeError(f"{where} starts before the first frame of {name}")
         if media["frames"] and max(e["v_out"], e["a_out"]) > media["frames"]:
             raise InterchangeError(f"{where} runs past the end of {name} "
                                    f"({media['frames']} frames)")
@@ -428,9 +451,15 @@ def run(args):
         if problem:
             raise paths.OutputRefused(problem)
         manifest = cutlist.load_manifest(args.manifest, allow_no_speech=True)
+        for label, p in (("manifest", args.manifest), ("source", manifest["source_path"])):
+            if os.path.realpath(args.out) == os.path.realpath(p) or (
+                    os.path.exists(args.out) and os.path.exists(p) and os.path.samefile(args.out, p)):
+                raise paths.OutputRefused(f"--out {args.out} is the {label}; write the "
+                                          f"{args.format} elsewhere")
         text, rep = build(manifest, args.format, clip=args.clip, fps=args.fps,
                           media_root=args.media_root, title=args.title)
-        paths.write_private(args.out, text, any_git_tree=True)
+        from resolve_survey import write_report  # atomic: temp file, then replace
+        write_report(args.out, text)  # a hard link into a git tree keeps its old content
     except (OSError, ValueError) as e:  # InterchangeError, CutlistError, OutputRefused, bad JSON
         print(f"interchange: {e}", file=sys.stderr)
         return 2

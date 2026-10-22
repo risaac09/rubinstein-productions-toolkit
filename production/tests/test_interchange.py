@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import captions, cutlist
+from rpresolve import captions, cutlist, detect
 from rpresolve import delivercheck as dc
 from rpresolve import interchange as ic
 
@@ -157,7 +157,8 @@ class TestNoDrift(unittest.TestCase):
                 spans = self.spans(int(rate))
                 m = manifest(spans, fps=fps)
                 tl = ic.timeline(m, media=media(rate))
-                want = [cutlist.frames(s, rate) for s in spans]
+                fr = fps if isinstance(fps, (int, float)) else rate  # cut's count: the manifest's number
+                want = [cutlist.frames(s, fr) for s in spans]
                 total = sum(want)
                 self.assertGreater(total / rate, 3600)
                 self.assertEqual(tl["drop"], drop)
@@ -171,8 +172,8 @@ class TestNoDrift(unittest.TestCase):
                 for (ch, si, so, ri, ro), s, n in zip(ev, spans, want):
                     self.assertEqual(tc_to_frames(ri, rate), rec)
                     self.assertEqual(tc_to_frames(ro, rate) - tc_to_frames(ri, rate), n)
-                    self.assertEqual(tc_to_frames(si, rate), cutlist.frame(s["in"], rate))
-                    self.assertEqual(tc_to_frames(so, rate), cutlist.frame(s["out"], rate))
+                    self.assertEqual(tc_to_frames(si, rate), cutlist.frame(s["in"], fr))
+                    self.assertEqual(tc_to_frames(so, rate), cutlist.frame(s["out"], fr))
                     rec += n
                 self.assertEqual(tc_to_frames(ev[-1][4], rate), base + total)
 
@@ -199,8 +200,19 @@ class TestNoDrift(unittest.TestCase):
                 video = doc["tracks"]["children"][0]["children"]
                 self.assertEqual(sum(c["source_range"]["duration"]["value"] for c in video), total)
                 self.assertEqual([c["source_range"]["start_time"]["value"] for c in video],
-                                 [cutlist.frame(s["in"], rate) for s in spans])
+                                 [cutlist.frame(s["in"], fr) for s in spans])
                 self.assertEqual(doc["global_start_time"]["value"], base)
+
+    def test_spans_count_frames_as_cut_does(self):
+        # cut runs cutlist.frame on the manifest's 29.97; 30000/1001 would put
+        # 17.334 s on frame 520, cut puts it on 519
+        self.assertEqual(cutlist.frame(17.334, NTSC30), 520)
+        for fps in (None, "30000/1001"):
+            tl = ic.timeline(manifest([{"in": 17.334, "out": 20.0}], fps=29.97), fps=fps,
+                             media=media(NTSC30))
+            self.assertEqual(tl["events"][0]["v_in"], cutlist.frame(17.334, 29.97))
+            self.assertEqual(tl["events"][0]["v_in"], 519)
+            self.assertEqual(tl["rate"], NTSC30)
 
     def test_one_hour_span_lands_on_the_hour(self):
         # 23.976 non-drop labels run 3.6 s an hour behind the clock: the
@@ -263,6 +275,15 @@ class TestEDL(unittest.TestCase):
                          media=media(NTSC30, tc="10:00:00:00"))
         self.assertFalse(tl["drop"])
         self.assertEqual(events(ic.edl(tl))[0][1:3], ("10:00:00:00", "10:00:01:00"))
+
+    def test_source_timecode_wraps_at_midnight(self):
+        for rate, fps, tc, want in ((Fraction(25), 25, "23:59:58:00", ("23:59:59:00", "00:00:04:00")),
+                                    (NTSC30, 29.97, "23:59:58;00", ("23:59:59;00", "00:00:04;00"))):
+            with self.subTest(fps=fps):
+                tl = ic.timeline(manifest([{"in": 1.0, "out": 6.0}], fps=fps),
+                                 media=media(rate, tc=tc))
+                self.assertEqual([e[1:3] for e in events(ic.edl(tl))], [want, want])
+        self.assertEqual(ic.timecode(24 * 107892 + 5, NTSC30, True), "00:00:00;05")
 
 
 class TestFCPXML(unittest.TestCase):
@@ -381,6 +402,9 @@ class TestRefusals(unittest.TestCase):
             ([two[0], {"in": 3.0, "out": 4.0, "audio_lead": "1"}], "at or above 0"),
             ([{"in": 1.0, "out": 1.2}, {"in": 3.0, "out": 4.0, "audio_lead": 0.4}], "no sound"),
             ([{"in": 1.0, "out": 1.01}], "no whole frame"),
+            ([{"in": -0.5, "out": 1.0}], "before the first frame"),
+            ([two[0], {"in": 3.0, "out": 4.0, "audio_lead": float("inf")}], "finite"),
+            ([{"in": 0.0, "out": float("inf")}], "finite"),
         ]
         for spans, why in bad:
             with self.subTest(why=why), self.assertRaisesRegex(ic.InterchangeError, why):
@@ -398,6 +422,13 @@ class TestRefusals(unittest.TestCase):
             ic.timeline(manifest([{"in": 1.0, "out": 2.0}]), media=None)
         with self.assertRaisesRegex(ic.InterchangeError, "not absolute"):
             self.tl([{"in": 1.0, "out": 2.0}], media_root="relative/dir")
+
+    def test_drop_frame_timecode_above_60_fps(self):
+        with self.assertRaises(ic.InterchangeError) as cm:
+            ic.timeline(manifest([{"in": 1.0, "out": 2.0}], fps=119.88),
+                        media=media(Fraction(120000, 1001), tc="22:11:23;000"))
+        self.assertIn("not supported", str(cm.exception))
+        self.assertNotIn("caption", str(cm.exception))
 
     def test_clip_choice(self):
         m = manifest([{"in": 1.0, "out": 2.0}], fps=25,
@@ -425,6 +456,8 @@ class TestProbedSource(unittest.TestCase):
         cls.df = make_clip(os.path.join(cls.dir, "take one.mov"))
         cls.mute = make_clip(os.path.join(cls.dir, "mute.mov"), rate="25", timecode="10:00:00:00",
                              audio=False)
+        cls.decimal = make_clip(os.path.join(cls.dir, "decimal.mov"), seconds=2.0, rate="29.97",
+                                timecode="01:00:00;00")
 
     @classmethod
     def tearDownClass(cls):
@@ -476,6 +509,21 @@ class TestProbedSource(unittest.TestCase):
         self.assertEqual(asset.get("hasAudio"), "0")
         self.assertIsNone(asset.get("audioRate"))
 
+    def test_decimal_rate_source_reads_as_ntsc(self):
+        # lavfi rate=29.97 (like `ffmpeg -r 29.97`) probes as 2997/100
+        info, _ = detect.run_ffprobe(self.decimal)
+        self.assertEqual(captions.file_rate(info), Fraction(2997, 100))
+        self.assertEqual(ic.probe(self.decimal)["rate"], NTSC30)
+        for fps in (29.97, None):
+            with self.subTest(fps=fps):
+                m = manifest([{"in": 0.5, "out": 1.5}], fps=fps, source=self.decimal)
+                text, rep = ic.build(m, "edl")
+                self.assertEqual((rep["fps"], rep["drop_frame"]), ("30000/1001", True))
+                self.assertIn("FCM: DROP FRAME", text)
+                self.assertEqual(events(text)[0][1], "01:00:00;15")
+                fmt = ET.fromstring(ic.build(m, "fcpxml")[0].split("\n", 2)[2]).find("resources/format")
+                self.assertEqual(fmt.get("frameDuration"), "1001/30000s")
+
     def test_wrong_rate_refused(self):
         with self.assertRaisesRegex(ic.InterchangeError, "one rate"):
             ic.build(manifest([{"in": 1.0, "out": 2.0}], fps=25, source=self.df), "edl")
@@ -525,6 +573,42 @@ class TestCommandLine(unittest.TestCase):
         code, _, err = self.main(os.path.join(self.dir, "missing.json"), "--format", "otio",
                                  "--out", out)
         self.assertEqual(code, 2)
+
+    def test_out_never_replaces_the_manifest_or_the_source(self):
+        src = os.path.join(self.dir, "take.mov")
+        with open(src, "wb") as f:
+            f.write(b"camera original")
+        os.link(src, os.path.join(self.dir, "linked.mov"))
+        mpath = os.path.join(self.dir, "m2.json")
+        with open(mpath, "w", encoding="utf-8") as f:
+            json.dump(manifest([{"in": 1.0, "out": 2.0}], fps=25, source=src), f)
+        with open(mpath, "rb") as f:
+            mbytes = f.read()
+        for out, label in ((src, "source"), (os.path.join(self.dir, "linked.mov"), "source"),
+                           (mpath, "manifest")):
+            with self.subTest(out=os.path.basename(out)):
+                code, _, err = self.main(mpath, "--format", "edl", "--out", out)
+                self.assertEqual(code, 2)
+                self.assertIn(f"is the {label}", err)
+        with open(src, "rb") as f:
+            self.assertEqual(f.read(), b"camera original")
+        with open(mpath, "rb") as f:
+            self.assertEqual(f.read(), mbytes)
+
+    def test_hard_link_into_a_git_tree_keeps_its_content(self):
+        repo = os.path.join(self.dir, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        tracked = os.path.join(repo, "cut.edl")
+        with open(tracked, "w", encoding="utf-8") as f:
+            f.write("tracked\n")
+        outside = os.path.join(self.dir, "cut.edl")
+        os.link(tracked, outside)
+        code, _, err = self.main(self.manifest, "--format", "edl", "--out", outside, "--clip", "other")
+        self.assertEqual(code, 0, err)
+        with open(tracked, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "tracked\n")
+        with open(outside, encoding="utf-8") as f:
+            self.assertTrue(f.read().startswith("TITLE: other"))
 
 
 if __name__ == "__main__":

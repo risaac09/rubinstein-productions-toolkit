@@ -272,7 +272,8 @@ class TestProbeReal(unittest.TestCase):
             self.assertEqual(rows[("clip", "stream")][0], "read")
             self.assertIn("codec_name=mpeg4", rows[("clip", "stream")][1])
             self.assertEqual(rows[("clip", "audio streams")][0], "1")
-            self.assertRegex(rows[("clip", "decode 5 s, software")][0], r"^[\d.]+x$")
+            # ffmpeg prints speed with %4.3g, so a decode past 1000x reads 1.03e+03x
+            self.assertRegex(rows[("clip", "decode 5 s, software")][0], r"^[\d.]+(e\+\d+)?x$")
             self.assertIn(("clip", "decode 5 s, videotoolbox"), rows)
 
 
@@ -362,6 +363,62 @@ class TestVerifyCopy(unittest.TestCase):
         self.assertEqual(self.snapshot(self.card), self.before)
         p = run(RECIPE_SHELL, RECIPES / "verify-copy.sh", self.d / "no-card", self.d / "c", env=self.env)
         self.assertEqual(p.returncode, 2)
+
+    def vc_at(self, cwd, *args, env=None):
+        e = dict(self.env)
+        e.update(env or {})
+        return run(RECIPE_SHELL, RECIPES / "verify-copy.sh", *args, env=e, cwd=cwd)
+
+    def test_other_spellings_are_refused(self):
+        """Folders are compared by physical path: no spelling puts a DEST
+        inside the card or counts one folder twice."""
+        os.symlink("card/DCIM", self.d / "dcimlink")
+        d, card = str(self.d), str(self.card)
+        cases = [(d, ["card", "./card/inside"]), (d, ["./card", "card/inside"]),
+                 (d, [card, "card/inside"]), (d, ["card", card + "/inside"]),
+                 (card, [".", "backup"]), (card, [card, "backup"]), (d, ["card", "dcimlink/x"]),
+                 (d, ["card", "copy1", "./copy1"]), (d, ["card", "copy1", d + "/copy1"])]
+        for cwd, args in cases:
+            p = self.vc_at(cwd, *args)
+            self.assertEqual(p.returncode, 2, f"{cwd} {args}: {p.stdout} {p.stderr}")
+        self.assertEqual(self.snapshot(self.card), self.before, "something was written into the card")
+        self.assertFalse((self.d / "copy1").exists())
+
+    def test_alias_found_at_copy_time_is_not_counted(self):
+        """A DEST that only becomes the same folder once an earlier DEST exists
+        (here a dangling link to it) is skipped, not counted as a second copy."""
+        (self.d / "ssd").mkdir()
+        os.symlink("day1", self.d / "ssd" / "link")
+        p = self.vc(self.d / "ssd" / "day1", self.d / "ssd" / "link")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("is the same folder as an earlier DEST; not counted", p.stdout)
+        self.assertIn("result: 1 verified copy.", p.stdout)
+        self.check_copy(self.d / "ssd" / "day1")
+
+    def test_failed_file_counted_once(self):
+        cp = stub(self.d, "cp-fail-xml", 'case "$2" in *CLIP.XML) exit 1 ;; esac\nexec cp "$@"\n')
+        p = self.vc(self.d / "one", env={"CP": str(cp)})
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("copy failed: PRIVATE/M4ROOT/CLIP.XML", p.stderr)
+        self.assertIn(f"(1 of {len(self.files)} files missing or different)", p.stdout)
+
+    def test_symlinked_source_and_leading_dashes(self):
+        os.symlink("card", self.d / "cardlink")
+        p = self.vc_at(self.d, "cardlink/", "viaLink")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.check_copy(self.d / "viaLink")
+        shutil.copytree(self.card, self.d / "-card")
+        p = self.vc_at(self.d, "-card", "-out")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.check_copy(self.d / "-out")
+
+    def test_git_tree_refused(self):
+        (self.d / "repo" / ".git").mkdir(parents=True)
+        (self.d / "repo" / "sub").mkdir()
+        p = self.vc(self.d / "repo" / "sub" / "day1")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("git work tree", p.stderr)
+        self.assertEqual(os.listdir(self.d / "repo" / "sub"), [])
 
 
 @needs_ff
@@ -503,6 +560,51 @@ class TestLoudness(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertEqual((self.d / "taken.wav").read_bytes(), b"keep")
 
+    def test_steady_tone_why_names_lra_zero(self):
+        """loudnorm refuses one gain when the measured LRA is 0, before any
+        TP or LRA test: the why line must say so, not quote numbers that pass."""
+        src = self.make("tone.wav", "sine=f=1000:r=48000:d=8,volume=-20dB", "-c:a", "pcm_s16le")
+        _, p = self.loud(src, "tone-16.wav")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("normalization_type: dynamic", p.stdout)
+        self.assertIn("why: loudnorm uses one gain only when the measured LRA is above 0 LU", p.stdout)
+
+    def test_wide_range_stays_linear_unless_lra_given(self):
+        """Like delivercheck, the target LRA is lifted to the measured LRA + 1,
+        so 5 s loud / 5 s at -22 dB keeps one gain; an LRA given is kept."""
+        src = self.make("wide.wav", "aevalsrc=0.1*sin(2*PI*440*t)*if(lt(mod(t\\,10)\\,5)\\,1\\,0.0794):s=48000:d=40",
+                        "-c:a", "pcm_s16le")
+        out, p = self.loud(src, "wide-16.wav")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertRegex(p.stdout, r"target LRA [\d.]+ LU: the measured LRA \+ 1")
+        self.assertIn("normalization_type: linear", p.stdout)
+        self.assertAlmostEqual(integrated_lufs(out), -16.0, delta=1.0)
+        _, p = self.loud(src, "wide-lra11.wav", "-16", "-1.5", "11")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("normalization_type: dynamic", p.stdout)
+        self.assertNotIn("target LRA", p.stdout)
+
+    def test_failed_write_leaves_no_partial_output(self):
+        """AAC cannot go in an .mp3: pass 2 fails after ffmpeg opened OUT, and
+        the partial file must not block the next run."""
+        src = self.make("swell3.wav", self.SWELL, "-c:a", "pcm_s16le")
+        for _ in range(2):
+            out, p = self.loud(src, "fail.mp3")
+            self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+            self.assertFalse(out.exists())
+
+    def test_note_when_lossy_result_is_over_tp(self):
+        """A square wave through AAC gains about 1.5 dB of true peak; PCM does not."""
+        src = self.make("square.wav", "aevalsrc=0.25*(gt(sin(2*PI*997*t)\\,0)*2-1)*if(lt(mod(t\\,4)\\,2)\\,1\\,0.5)"
+                        ":s=48000:d=8", "-c:a", "pcm_s16le")
+        _, p = self.loud(src, "square.m4a", "-8", "-3")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("normalization_type: linear", p.stdout)
+        self.assertRegex(p.stdout, r"note: true peak -?[\d.]+ dBTP is over TP -3")
+        _, p = self.loud(src, "square-out.wav", "-8", "-3")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("note:", p.stdout)
+
 
 @needs_ff
 class TestSheet(unittest.TestCase):
@@ -515,6 +617,8 @@ class TestSheet(unittest.TestCase):
         ff("-f", "lavfi", "-i", "testsrc2=s=360x640:r=10:d=6", "-c:v", "mpeg4", cls.port)
         cls.long = cls.d / "long.mp4"
         ff("-f", "lavfi", "-i", "testsrc2=s=160x90:r=5:d=60", "-c:v", "mpeg4", "-g", "5", cls.long)
+        cls.sparse = cls.d / "sparse.mp4"   # a keyframe every 4 s: wider than a 2.5 s slot
+        ff("-f", "lavfi", "-i", "testsrc2=s=160x90:r=10:d=60", "-c:v", "mpeg4", "-g", "40", cls.sparse)
 
     @classmethod
     def tearDownClass(cls):
@@ -567,6 +671,36 @@ exec "{FFMPEG}" "$@"
         self.assertEqual(size, (1920, 720))
         self.assertIn("keyframes only", out)
 
+    def test_skipped_slots_print_the_picked_times(self):
+        """A slot with no keyframe moves later frames up a cell: the printed
+        times are the picked frames' own, and the cells left over say empty."""
+        keys = subprocess.run([FFPROBE, "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
+                               "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(self.sparse)],
+                              stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout.split()
+        self.assertEqual([round(float(k)) for k in keys], list(range(0, 60, 4)), "fixture keyframes")
+        _, out = self.sheet(self.sparse, "sparse.jpg")
+        cells = [ln for ln in out.splitlines() if ln.startswith("cell ")]
+        self.assertEqual(len(cells), 24)
+        self.assertEqual(cells[1], "cell 2 (row 1, col 2) about 0:00:04.0")
+        self.assertEqual(cells[14], "cell 15 (row 3, col 3) about 0:00:56.0")
+        self.assertTrue(all("empty (black)" in c for c in cells[15:]), cells[15:])
+
+    def test_minute_carries(self):
+        """Times round once to tenths, so a cell at a minute reads 0:01:00.0, never 0:00:60.0."""
+        src = self.d / "two-min.mp4"
+        ff("-f", "lavfi", "-i", "testsrc2=s=160x90:r=2:d=120", "-c:v", "mpeg4", "-g", "2", src)
+        _, out = self.sheet(src, "two-min.jpg")
+        self.assertIn("cell 13 (row 3, col 1) about 0:01:00.0", out)
+        for sec in re.findall(r"about \d+:\d\d:(\d\d)\.\d$", out, re.M):
+            self.assertLess(int(sec), 60)
+
+    def test_percent_in_out_is_a_name(self):
+        """ffmpeg's image2 muxer would read %d as a frame pattern and write over "day 1.jpg"."""
+        keep = self.d / "day 1.jpg"
+        keep.write_bytes(b"keep")
+        self.sheet(self.port, "day %d.jpg", "2", "1")
+        self.assertEqual(keep.read_bytes(), b"keep")
+
     def test_refusals(self):
         taken = self.d / "taken.jpg"
         taken.write_bytes(b"keep")
@@ -575,6 +709,31 @@ exec "{FFMPEG}" "$@"
             p = run(RECIPE_SHELL, RECIPES / "sheet.sh", *args)
             self.assertEqual(p.returncode, 2, args)
         self.assertEqual(taken.read_bytes(), b"keep")
+
+
+@needs_ff
+class TestGitTree(unittest.TestCase):
+    """Outputs never go inside a git work tree, however OUT is spelled."""
+
+    def test_recipes_refuse_a_git_tree(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "repo" / ".git").mkdir(parents=True)
+            (d / "repo" / "sub").mkdir()
+            clip = d / "clip.mov"
+            ff("-f", "lavfi", "-i", "testsrc2=s=160x90:r=10:d=2", "-f", "lavfi", "-i", "sine=r=48000:d=2",
+               "-c:v", "mpeg4", "-c:a", "aac", "-shortest", clip)
+            for script, name in (("proxy.sh", "p.mp4"), ("loudness.sh", "l.wav"), ("sheet.sh", "s.jpg")):
+                for out, cwd in ((d / "repo" / "sub" / name, None), (Path("sub") / name, d / "repo"),
+                                 (Path("..") / "sub" / name, d / "repo" / "sub")):
+                    p = run(RECIPE_SHELL, RECIPES / script, clip, out, cwd=cwd)
+                    self.assertEqual(p.returncode, 2, f"{script} {out}: {p.stdout} {p.stderr}")
+                    self.assertIn("git work tree", p.stderr)
+            self.assertEqual(os.listdir(d / "repo" / "sub"), [])
+            # A path that only passes through the tree by its spelling is fine.
+            p = run(RECIPE_SHELL, RECIPES / "sheet.sh", clip, Path("..") / "out.jpg", cwd=d / "repo")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertTrue((d / "out.jpg").exists())
 
 
 if __name__ == "__main__":

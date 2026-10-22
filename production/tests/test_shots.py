@@ -132,6 +132,13 @@ class TestShots(unittest.TestCase):
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
             self.assertEqual(shots.main([self.wav, "--out", out]), 1)
         self.assertIn("no video stream", err.getvalue())
+        with open(self.cut, "rb") as f:
+            before = f.read()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(shots.main([self.cut, "--out", self.cut]), 1)
+        self.assertIn("is the source", err.getvalue())
+        with open(self.cut, "rb") as f:
+            self.assertEqual(f.read(), before)
 
 
 if __name__ == "__main__":

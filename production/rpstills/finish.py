@@ -29,12 +29,16 @@ needed) and <out>/finish/finish.json: per frame the face, what each stage
 did (mask share or refusal, every retouch step's report), each crop's
 pixels, achieved eye line and flags (tight, face_cut, upscale, as in
 crops.json), and every constant used. Output shows and names client
-frames, so <out> inside any git working tree is refused before any work.
+frames, so <out>, or any profile folder under <out>/finish, inside any git
+working tree is refused before any work, as is a --src file that one of
+its own crops would overwrite.
 
-The source is taken as developed and graded: apart from the burn and the
-retouch, finish does not change exposure or colour. Vision needs macOS and
-swiftc. A frame that cannot be finished (unreadable, no face, Vision saw
-another size) is recorded with its reason and the run exits 1.
+The source is taken as developed and graded, in sRGB (an untagged file is
+taken as sRGB): apart from the burn and the retouch, finish does not change
+exposure or colour. Vision needs macOS and swiftc. A frame that cannot be
+finished (unreadable, an EXIF orientation other than 1, an ICC profile
+other than sRGB, no face, Vision saw another size) is recorded with its
+reason and the run exits 1.
 """
 
 import json
@@ -88,10 +92,10 @@ def retouch_ids(values, ids):
     words = [w for v in values or [] for w in v.split(",") if w]
     if not words or words == ["none"]:
         return set()
+    if "none" in words:  # before "all": a contradiction is refused, never read as the more invasive choice
+        raise ValueError("--retouch none cannot be mixed with all or ids")
     if "all" in words:
         return set(ids)
-    if "none" in words:
-        raise ValueError("--retouch none cannot be mixed with ids")
     unknown = [w for w in words if w not in ids]
     if unknown:
         raise ValueError(f"--retouch names id(s) not being finished: {', '.join(unknown)}")
@@ -103,6 +107,8 @@ def solo_profiles(cfg, names):
     name or a profile that is not a solo crop (union, no aspect)."""
     out = {}
     for n in names:
+        if not n or n in (".", "..") or os.path.basename(n) != n:
+            raise ValueError(f"profile name {n!r} is not a plain name (it becomes a folder under finish/)")
         p = cfg["profiles"].get(n)
         if p is None:
             raise ValueError(f"no profile {n!r}; known: {', '.join(sorted(cfg['profiles']))}")
@@ -120,7 +126,10 @@ def crop_frame(rgb, face, face_px, det_faces, name, profile):
     aspect = profile["aspect"][0] / profile["aspect"][1]
     eye_y = None
     if face_px.get("landmarks"):
-        eye_y = float(np.mean([c[1] for c in skin.eye_centres(face_px)])) / H
+        try:
+            eye_y = float(np.mean([c[1] for c in skin.eye_centres(face_px)])) / H
+        except ValueError:  # Vision leaves out a region it did not find: an eye missing, use the box estimate
+            eye_y = None
     c = crops.solo_crop(face, aspect, W, H, profile["crop_height_in_face_heights"], profile["eye_line"], eye_y=eye_y)
     x0, y0, w, h, tight = c
     ch = min(H, int(round(h)))
@@ -155,6 +164,30 @@ def save_jpeg(path, tile, icc):
     return path
 
 
+def source_problem(path):
+    """Why a source cannot be finished as its pixels are stored, or None:
+    an EXIF orientation other than 1 (Vision sees the turned picture, the
+    pixels are read unturned) or an ICC profile other than sRGB (its values
+    would be re-tagged sRGB and shift colour)."""
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            orientation = im.getexif().get(0x0112, 1)
+    except OSError:
+        return None  # read_rgb reports what it cannot read
+    if orientation not in (None, 1):
+        return f"EXIF orientation {orientation} (turned or mirrored); pass upright files with orientation 1"
+    name = audit.icc_name(path)
+    if name and "srgb" not in name.lower():
+        return f"the source is tagged {name}, not sRGB; export it in sRGB"
+    return None
+
+
+def jpeg_paths(out_dir, profiles, ids):
+    """Every JPEG a run writes: out_dir/finish/<profile>/<id>.jpg."""
+    return [os.path.join(out_dir, "finish", n, f"{fid}.jpg") for n in profiles for fid in ids]
+
+
 def finish_frame(fid, path, det, profiles, out_dir, do_retouch, do_background, icc):
     """Finish one frame, write its crops, return its finish.json row."""
     row = {"id": fid, "source": path}
@@ -162,6 +195,10 @@ def finish_frame(fid, path, det, profiles, out_dir, do_retouch, do_background, i
         rgb = audit.read_rgb(path)
     except ValueError as e:
         row["error"] = str(e)
+        return row
+    problem = source_problem(path)
+    if problem:
+        row["error"] = problem
         return row
     H, W = rgb.shape[:2]
     row.update(width=W, height=H)
@@ -200,23 +237,37 @@ def finish_frame(fid, path, det, profiles, out_dir, do_retouch, do_background, i
     row["crops"] = {}
     for name, profile in profiles.items():
         tile, rec = crop_frame(rgb, face, fp, faces, name, profile)
-        rec["file"] = save_jpeg(os.path.join(out_dir, "finish", name, f"{fid}.jpg"), tile, icc)
+        rec["file"] = save_jpeg(jpeg_paths(out_dir, [name], [fid])[0], tile, icc)
         row["crops"][name] = rec
     return row
 
 
-def refuse_git(out_dir):
-    """ValueError when out_dir/finish may not take client output."""
+def refuse_git(out_dir, files=()):
+    """ValueError when out_dir/finish, or any of files (the JPEGs, whose
+    profile folder may be a link elsewhere), may not take client output."""
     from rpresolve.paths import out_problem  # lazy: rpresolve is stdlib-only, imported only to write
-    problem = out_problem(os.path.join(out_dir, "finish", "finish.json"), any_git_tree=True)
-    if problem:
-        raise ValueError(problem)
+    for path in (os.path.join(out_dir, "finish", "finish.json"), *files):
+        problem = out_problem(path, any_git_tree=True)
+        if problem:
+            raise ValueError(problem)
+
+
+def refuse_overwrite(out_dir, paths, profiles):
+    """ValueError when a source is a file one of the run's crops would replace
+    (--src naming a folder under out/finish)."""
+    sources_ = {os.path.realpath(p): fid for fid, p in paths.items()}
+    hit = sorted({sources_[os.path.realpath(j)] for j in jpeg_paths(out_dir, profiles, paths)
+                  if os.path.realpath(j) in sources_})
+    if hit:
+        raise ValueError(f"the source of {', '.join(hit)} would be overwritten by its own crop; "
+                         "pass a --src folder outside out/finish, or another --crop")
 
 
 def build(out_dir, paths, detections, profiles, retouch_set, do_background, cfg_version=None):
     """Finish every frame ({id: path}) and write its crops; returns the
     finish.json document (not yet written)."""
-    refuse_git(out_dir)
+    refuse_git(out_dir, jpeg_paths(out_dir, profiles, paths))
+    refuse_overwrite(out_dir, paths, profiles)
     icc = srgb_icc()
     rows = [finish_frame(fid, p, detections.get(p), profiles, out_dir, fid in retouch_set, do_background, icc)
             for fid, p in paths.items()]
@@ -287,6 +338,8 @@ def run(args):
         profiles = solo_profiles(cfg, args.crop or DEFAULT_CROPS)
         paths = sources(out, os.path.abspath(args.src) if args.src else None, args.ids)
         retouch_set = retouch_ids(args.retouch, list(paths))
+        refuse_git(out, jpeg_paths(out, profiles, paths))
+        refuse_overwrite(out, paths, profiles)
     except (ValueError, OSError) as e:
         print(f"rpstills finish: {e}", file=sys.stderr)
         return 1

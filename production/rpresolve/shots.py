@@ -111,6 +111,8 @@ def run(args):
         problem = paths.out_problem(args.out, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
+        if os.path.realpath(args.out) == os.path.realpath(args.source):
+            raise paths.OutputRefused(f"{args.out} is the source; the shot list never replaces it")
         report = build(args.source, args.threshold)
         write(report, args.out)
     except (dc.ToolMissing, dc.CheckError, OSError, ValueError) as e:

@@ -12,6 +12,13 @@ Method (Ellis 2007, the tracker librosa follows):
                     and MAX_BPM, weighted by a log-normal prior centred on
                     PRIOR_BPM (PRIOR_OCTAVES wide), the peak refined to a
                     fraction of a frame
+    3:2 check       with kick and off-beat hat equally strong in the onset
+                    strength, it repeats every half beat, and the peak at
+                    1.5 beats can outscore the beat (a 150 BPM loop read as
+                    100). So when the LOW_HZ flux's autocorrelation is not
+                    positive at the tempo's period but reaches RATIO_AC of
+                    its lag 0 at 3/2 or 2/3 of the tempo, that tempo is
+                    taken, refined under a RATIO_OCTAVES-wide prior
     beats           dynamic programming: each beat is the best onset about
                     one period after the last, a log-period penalty scaled
                     by TIGHTNESS; leading and trailing beats weaker than
@@ -28,8 +35,10 @@ Method (Ellis 2007, the tracker librosa follows):
 Output beats.json: {"file", "duration_s", "tempo", "beats_s", "method",
 "phase", "proposal": true, "params"}. `beats_s` are seconds on the file's
 own clock; rhythm reads them (made from a cut's own audio, they sit on its
-clock). On synthetic kick, snare and hat loops beats land within about
-12 ms of the hits, a frame or so early.
+clock). On synthetic kick, snare and hat loops from 88 to 168 BPM beats
+land within about 12 ms of the hits, a frame or so early. Outside that the
+tempo can read an octave off (a 75 BPM loop as 150, 176 as 88): pass a
+prior near the tempo you hear.
 
 Run from production/:
     python3 -m rpresolve.beats MUSIC --out beats.json [--prior-bpm 120]
@@ -56,6 +65,8 @@ GAMMA = 100.0              # log compression: log(1 + GAMMA * |X|)
 BANDS_HZ = (30, 100, 250, 600, 1500, 3000, 5000, 8000)  # seven bands
 LOW_HZ = (30, 250)         # kick and bass: the phase check reads linear magnitude here
 PHASE_MARGIN = 1.1         # retrack on LOW_HZ when it is this much stronger off the beats
+RATIO_AC = 0.5             # 3:2 check: LOW_HZ autocorrelation (of lag 0) the other tempo needs
+RATIO_OCTAVES = 0.1        # 3:2 check: the prior that refines the other tempo
 MIN_BPM, MAX_BPM = 60.0, 180.0
 PRIOR_BPM = 120.0
 PRIOR_OCTAVES = 1.0
@@ -64,7 +75,7 @@ TRIM = 0.5
 MIN_SECONDS = 4.0          # a shorter file holds too few beats for a tempo
 BLOCK = 4096               # STFT frames per block: memory stays flat on long files
 METHOD = ("7-band std-normalised spectral flux; autocorrelation tempo with a log-normal "
-          "prior; dynamic-programming beat tracker; low-band phase check")
+          "prior; low-band 3:2 tempo check; dynamic-programming beat tracker; low-band phase check")
 
 
 class BeatsError(ValueError):
@@ -106,11 +117,18 @@ def onset_strength(y, sr=SR, nfft=NFFT, hop=HOP, edges=BANDS_HZ):
     return env / top, low
 
 
+def autocorr(x):
+    """The autocorrelation of x less its mean, lag 0 first."""
+    x = x - x.mean()
+    size = 1 << int(np.ceil(np.log2(2 * len(x))))
+    return np.fft.irfft(np.abs(np.fft.rfft(x, size)) ** 2, size)[:len(x)]
+
+
 def tempo(env, fps, prior_bpm=PRIOR_BPM, octaves=PRIOR_OCTAVES, lo=MIN_BPM, hi=MAX_BPM):
     """BPM from the onset strength's autocorrelation under the prior."""
-    x = env - env.mean()
-    size = 1 << int(np.ceil(np.log2(2 * len(x))))
-    ac = np.fft.irfft(np.abs(np.fft.rfft(x, size)) ** 2, size)[:len(x)]
+    if not (np.isfinite(prior_bpm) and prior_bpm > 0):
+        raise BeatsError(f"the prior tempo must be a positive BPM, not {prior_bpm:g} (--prior-bpm)")
+    ac = autocorr(env)
     # onsets are a frame or two wide, so a period between two lags splits its
     # peak; summing three lags keeps it whole
     ac = np.convolve(ac, np.ones(3), mode="same")
@@ -126,6 +144,24 @@ def tempo(env, fps, prior_bpm=PRIOR_BPM, octaves=PRIOR_OCTAVES, lo=MIN_BPM, hi=M
         den = a - 2 * b + c
         k = k + (float(np.clip(0.5 * (a - c) / den, -0.5, 0.5)) if den < 0 else 0.0)
     return 60.0 * fps / k
+
+
+def ratio_check(env, low, fps, bpm):
+    """bpm, or the tempo 3/2 or 2/3 of it when the low band (the kick) does
+    not repeat at bpm's period but does at that one. With kick and off-beat
+    hat equal in the onset strength, its autocorrelation peaks every half
+    beat, and the 1.5-beat peak can outscore the beat."""
+    ac = autocorr(low)
+    if ac[0] <= 0:
+        return bpm
+
+    def at(b):
+        k = int(round(60.0 * fps / b))
+        return float(ac[k - 1:k + 2].max() / ac[0]) if 1 < k < len(ac) - 1 else -1.0
+    if at(bpm) > 0:
+        return bpm
+    alts = [b for b in (bpm * 1.5, bpm / 1.5) if MIN_BPM <= b <= MAX_BPM and at(b) >= RATIO_AC]
+    return tempo(env, fps, max(alts, key=at), RATIO_OCTAVES) if alts else bpm
 
 
 def track(env, fps, bpm, tightness=TIGHTNESS, trim=TRIM):
@@ -169,7 +205,7 @@ def beat_map(y, prior_bpm=PRIOR_BPM):
     (the off-beat lock) and the beats were tracked again on LOW_HZ."""
     env, low = onset_strength(y)
     fps = SR / HOP
-    bpm = tempo(env, fps, prior_bpm)
+    bpm = ratio_check(env, low, fps, tempo(env, fps, prior_bpm))
     beats, phase = track(env, fps, bpm), "kept"
     if len(beats) > 2 and low.max() > 0:
         on, off = phase_strength(low, beats)
@@ -195,7 +231,8 @@ def build(source, prior_bpm=PRIOR_BPM, ffmpeg=None):
                        "bands_hz": list(BANDS_HZ), "bpm_range": [MIN_BPM, MAX_BPM],
                        "prior_bpm": prior_bpm, "prior_octaves": PRIOR_OCTAVES,
                        "tightness": TIGHTNESS, "trim": TRIM, "low_hz": list(LOW_HZ),
-                       "phase_margin": PHASE_MARGIN}}
+                       "phase_margin": PHASE_MARGIN, "ratio_ac": RATIO_AC,
+                       "ratio_octaves": RATIO_OCTAVES}}
 
 
 def write(report, path):
@@ -228,6 +265,8 @@ def run(args):
         problem = paths.out_problem(args.out, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
+        if os.path.realpath(args.out) == os.path.realpath(args.music):
+            raise paths.OutputRefused(f"{args.out} is the music; beats.json never replaces it")
         report = build(args.music, args.prior_bpm)
         write(report, args.out)
     except (BeatsError, cutlist.CutlistError, OSError, ValueError) as e:

@@ -102,7 +102,7 @@ Do these in order. The first six are the hour; the rest are worth doing when tim
 
 - **[`tools/ipad-probe`](../tools/ipad-probe/README.md):** the probe and four recipes (verified copy, proxy, two-pass loudness, contact sheet), POSIX `sh` that runs under a-Shell's `dash`.
 - **A LUT pack** from `lutlab pack` ([lutlab cst, lutstats and pack](../production/lutlab-cst.md)): camera-to-Rec.709 transforms for footage tagged Rec.709, a cast cube that proves the import route, a README with the Files path, and checksums. Made on a computer; copied to the iPad by a person.
-- **Timeline interchange files** from `python3 -m rpresolve.interchange` ([interchange](../production/interchange.md)): EDL, FCPXML 1.10 and OTIO from a cut manifest, made on a Mac or in a cloud session. Its acceptance table records what the iPad imports.
+- **Timeline interchange files** from `python3 -m rpresolve.interchange` ([interchange](../production/interchange.md)): EDL, FCPXML 1.10 and OTIO from a cut manifest, made on a Mac or in a cloud session (there, point `RPRESOLVE_FFPROBE` at the installed ffprobe; rpresolve looks only at the Homebrew path). Its acceptance table records what the iPad imports.
 - **Decision sheets and the review loop** ([media review loop](../production/media-review-loop.md)): one choice per message, answered with a letter from the phone or iPad.
 
 What it does not provide: an iPad app, any way to drive Resolve for iPad, or the toolkit's Python checks inside a-Shell. Those checks look for ffmpeg as a file (`delivercheck` tests `os.path.isfile`), face boxes need macOS Vision through `swiftc`, and transcription uses mlx-whisper, which is macOS-only. Probe 2's `python` rows say how far that gap is.

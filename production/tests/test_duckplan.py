@@ -110,6 +110,17 @@ class TestKey(unittest.TestCase):
         with self.assertRaises(dp.ar.ReportError):
             dp.key(np.zeros(300), HOP)
 
+    def test_a_floor_of_digital_silence_gates_at_a_fixed_level(self):
+        # voice-over between exact zeros: every live frame is speech, so a floor taken
+        # from live frames alone would put the gate above the speech
+        p = np.r_[np.zeros(200), np.full(100, 0.01), np.zeros(200), np.full(100, 0.01)]
+        k, floor, gate, phrases = dp.key(p, HOP)
+        self.assertIsNone(floor)
+        self.assertEqual(gate, dp.SILENCE_GATE_DBFS)
+        self.assertEqual(phrases, [[200, 300], [500, 600]])
+        _, floor, _, _ = dp.key(np.r_[np.zeros(5), steps((2, -60), (1, -20))], HOP)
+        self.assertAlmostEqual(floor, -60.0, places=3)   # a few zeros keep the room's floor
+
     def test_sidechain_threshold_gives_the_depth(self):
         f = dp.sidechain_filter(12)
         thr = float(f.split("threshold=")[1].split(":")[0])
@@ -182,6 +193,50 @@ class TestRender(unittest.TestCase):
         y, _ = dxm.decode(out)
         k = np.interp(np.arange(len(x)) / RATE, np.arange(len(p["_key"])) * p["_hop"], p["_key"])
         self.check(dict(p, measured=dp.measure(x, y[:len(x)], k, RATE, 12.0)), 12.0)
+
+    def test_voice_over_between_digital_zeros_is_ducked(self):
+        x = np.zeros(12 * RATE)
+        x[2 * RATE:5 * RATE] = talk(3, -20, 1)
+        x[7 * RATE:10 * RATE] = talk(3, -32, 2)
+        dx = write_wav(self.out("vo.wav"), x)
+        p = dp.render(self.mx, dx, self.out("vo"))
+        self.assertEqual((p["floor_dbfs"], p["gate_from"]), (None, "digital silence"))
+        self.check(p, 12.0)
+
+    def test_no_speech_is_refused_and_nothing_written(self):
+        room = write_wav(self.out("room.wav"), 0.001 * np.random.default_rng(3).standard_normal(
+            5 * RATE))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as se:
+            self.assertEqual(dp.main(["render", self.mx, room, "--out", self.out("none")]), 1)
+        self.assertIn("no speech", se.getvalue())
+        self.assertEqual(os.listdir(self.out("none")), [])
+
+    def test_a_source_by_another_name_is_never_written_over(self):
+        with open(self.mx, "rb") as f:
+            before = f.read()
+        for d, name, src in (("alias-r", "music-ducked.wav", self.mx),
+                             ("alias-p", "duck-key.wav", self.dx)):
+            with self.subTest(name=name):
+                os.mkdir(self.out(d))
+                os.link(src, os.path.join(self.out(d), name))  # as a case change is on APFS
+                with self.assertRaises(dp.paths.OutputRefused):
+                    if name == "duck-key.wav":
+                        dp.make_plan(self.dx, self.out(d))
+                    else:
+                        dp.render(self.mx, self.dx, self.out(d))
+        with open(self.mx, "rb") as f:
+            self.assertEqual(f.read(), before)
+
+    def test_a_relative_folder_with_a_colon_is_a_folder(self):
+        here = os.getcwd()
+        os.chdir(self.tmp)
+        try:
+            p = dp.make_plan("dx.wav", "take:2")
+        finally:
+            os.chdir(here)
+        self.assertEqual(sorted(os.listdir(self.out("take:2"))),
+                         ["duck-key.wav", "duck.sendcmd", "duckplan.json"])
+        self.assertEqual(len(p["speech_spans"]), 2)
 
     def test_the_command_refuses_the_repo(self):
         inside = str(Path(__file__).resolve().parent / "duckplan-test")

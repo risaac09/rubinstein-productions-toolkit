@@ -1,7 +1,8 @@
 """
 Tests for rpstills.serve, the read-only review file server: byte ranges (206,
 Content-Range, 416), HEAD, MIME types, If-Range, keep-alive framing, and
-refusal of anything outside the served folder. The server runs on an
+refusal of anything outside the served folder; and that `rpstills serve`
+starts without OpenCV. The server runs on an
 ephemeral loopback port in a thread over a temporary folder; stdlib only,
 no real media, no network beyond 127.0.0.1.
 
@@ -10,8 +11,10 @@ Run: ~/.venvs/rp-tools/bin/python -m unittest production.tests.test_rpstills_ser
 
 import argparse
 import http.client
+import io
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -60,7 +63,12 @@ class ServerTest(unittest.TestCase):
             f.write("SECRET-OUTSIDE-ROOT")
         os.symlink(os.path.join(self.tmp, "secret.txt"), os.path.join(self.root, "escape.txt"))
         os.symlink(self.tmp, os.path.join(self.root, "escape-dir"))
-        quiet = mock.patch.object(serve.Handler, "log_message", lambda *a, **k: None)
+        os.makedirs(os.path.join(self.root, "idx"))
+        os.symlink(os.path.join(self.tmp, "secret.txt"), os.path.join(self.root, "idx", "index.html"))
+        os.makedirs(os.path.join(self.root, "page"))
+        with open(os.path.join(self.root, "page", "index.html"), "wb") as f:
+            f.write(DATA)
+        quiet =mock.patch.object(serve.Handler, "log_message", lambda *a, **k: None)
         quiet.start()
         self.addCleanup(quiet.stop)
         self.server = serve.make_server(self.root, "127.0.0.1", 0)
@@ -161,7 +169,8 @@ class ServerTest(unittest.TestCase):
 
     def test_path_traversal_is_refused(self):
         for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/sub/../../secret.txt", "/sub/%2E%2E/%2e%2e/secret.txt",
-                     "/..%2fsecret.txt", "/escape.txt", "/escape-dir/secret.txt", "/sub/..\\..\\secret.txt"):
+                     "/..%2fsecret.txt", "/escape.txt", "/escape-dir/secret.txt", "/sub/..\\..\\secret.txt",
+                     "/idx/", "/idx/index.html", "/escape-dir/"):
             for method in ("GET", "HEAD"):
                 r, body = self.get(path, method=method)
                 self.assertEqual(r.status, 403, (method, path))
@@ -178,6 +187,22 @@ class ServerTest(unittest.TestCase):
         r, _ = self.get("/missing.mp4")
         self.assertEqual(r.status, 404)
 
+    def test_folder_index_is_served_like_a_file(self):
+        r, body = self.get("/page/", headers={"Range": "bytes=0-3"})
+        self.assertEqual((r.status, body, r.getheader("Content-Range")), (206, DATA[:4], "bytes 0-3/1000"))
+        self.assertEqual(r.getheader("Cache-Control"), "no-cache")
+        self.assertEqual(r.getheader("Content-Type"), "text/html; charset=utf-8")
+        r, _ = self.get("/page")
+        self.assertEqual((r.status, r.getheader("Location")), (301, "/page/"))
+
+    def test_unencodable_paths_get_403_and_the_server_stays_up(self):
+        for path in ("/clip.mp4%00", "/%00", "/a%00/", "/%ED%A0%80", "/%ED%A0%80/"):
+            for method in ("GET", "HEAD"):
+                r, _ = self.get(path, method=method)
+                self.assertEqual(r.status, 403, (method, path))
+        r, body = self.get("/clip.mp4")
+        self.assertEqual((r.status, body), (200, DATA))
+
     def test_no_post_or_put(self):
         for method in ("POST", "PUT", "DELETE"):
             r, _ = self.get("/clip.mp4", method=method)
@@ -192,6 +217,32 @@ class ServerTest(unittest.TestCase):
         serve.add_arguments(ap)
         with mock.patch("sys.stderr"):
             self.assertEqual(serve.run(ap.parse_args([os.path.join(self.tmp, "nope"), "--port", "0"])), 1)
+
+    def test_port_out_of_range_is_a_one_line_error(self):
+        ap = argparse.ArgumentParser()
+        serve.add_arguments(ap)
+        for port in ("70000", "-1"):
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                self.assertEqual(serve.run(ap.parse_args([self.root, "--port", port])), 1)
+            self.assertTrue(err.getvalue().startswith("serve: "), err.getvalue())
+
+
+class CliWithoutOpenCVTest(unittest.TestCase):
+    """The shoot commands and serve load no module that needs OpenCV; only develop, finish and audit do."""
+
+    def test_commands_parse_with_cv2_blocked(self):
+        code = ("import sys; sys.modules['cv2'] = None\n"
+                "from rpstills.__main__ import main\n"
+                "for cmd in (['serve', '--help'], ['cull', '--help'], ['--help']):\n"
+                "    try:\n"
+                "        main(cmd)\n"
+                "    except SystemExit as e:\n"
+                "        assert e.code == 0, (cmd, e.code)\n")
+        r = subprocess.run([sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parent.parent),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("--bind", r.stdout)
+        self.assertIn("serve", r.stdout.rsplit("usage: rpstills", 1)[-1])
 
 
 if __name__ == "__main__":

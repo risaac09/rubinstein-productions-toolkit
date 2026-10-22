@@ -20,13 +20,17 @@ never from a fixed image width.
                eye centre to the mouth corner on the same side, radii
                CHEEK_RADII of the face box. The sample skin Lab is read on.
   skin_mask    the hull of the face contour and the brows lifted
-               FOREHEAD_LIFT face heights (the forehead), kept where the
-               YCrCb tone is skin (SKIN_CR, SKIN_CB), less the eyes, brows
-               and lips dilated, opened, and feathered by a Gaussian of
-               face width / FEATHER_DIV.
-  region_masks eyes, brows, lips_outer, lips_inner, lens (an ellipse per
-               eye where a spectacle lens sits) and under_eye; bool HxW,
-               not dilated.
+               FOREHEAD_LIFT face heights (the forehead), cut above the eye
+               line to the brows' span less TEMPLE_INSET face widths (the
+               hull alone reaches past the hairline at the temples), kept
+               where the YCrCb tone is skin (tone_mask: SKIN_CR, SKIN_CB),
+               less the eyes, brows and lips dilated, opened, and feathered
+               by a Gaussian of face width / FEATHER_DIV.
+  region_masks eyes, brows, lips_outer, lips_inner (the inner lips and both
+               mouth corners: Vision's 6 inner points span only the middle
+               teeth), lens (an ellipse per eye where a spectacle lens sits)
+               and under_eye (less the cheek patches, so a lift there never
+               moves the skin sample); bool HxW, not dilated.
   nblur        a Gaussian blur normalized by a mask, so only masked pixels
                contribute (no halo from glasses or hair at the edge).
 
@@ -40,12 +44,13 @@ import numpy as np
 CHEEK_AT = 0.40               # share of the way from the eye centre to the same-side mouth corner
 CHEEK_RADII = (0.06, 0.05)    # ellipse radii as shares of the face box (width, height)
 FOREHEAD_LIFT = 0.32          # face heights the brows are lifted to close the forehead
+TEMPLE_INSET = 0.02           # above the eye line, skin_mask keeps x inside the brows' span less this, face widths
 SKIN_CR = (133, 180)          # YCrCb (OpenCV, 8-bit) skin box, inclusive
 SKIN_CB = (77, 135)
 EYE_HOLE = 0.035              # eye hole dilation, face widths; brows and lips take half
 OPEN_DIV = 300                # opening kernel = face width / OPEN_DIV, at least 3 px
 FEATHER_DIV = 90              # feather sigma = face width / FEATHER_DIV
-LENS_UP = 0.25                # lens centre above the eye centre, eye widths
+LENS_UP = -0.05               # lens centre above the eye centre, eye widths (negative: below; checked on the rims)
 LENS_RADII = (1.05, 0.95)     # lens ellipse radii, eye widths
 UNDER_EYE_DOWN = 0.09         # under-eye centre below the eye's lower edge, face heights
 UNDER_EYE_RADII = (0.55, 0.06)  # eye widths across, face heights down
@@ -136,8 +141,17 @@ def region_masks(face_px, shape):
     return {"eyes": poly(shape, points(face_px, "leftEye")) | poly(shape, points(face_px, "rightEye")),
             "brows": poly(shape, points(face_px, "leftEyebrow")) | poly(shape, points(face_px, "rightEyebrow")),
             "lips_outer": poly(shape, points(face_px, "outerLips")),
-            "lips_inner": poly(shape, points(face_px, "innerLips")),
-            "lens": lens > 0, "under_eye": under > 0}
+            "lips_inner": poly(shape, np.vstack([points(face_px, "innerLips"), *mouth_corners(face_px)])),
+            "lens": lens > 0, "under_eye": (under > 0) & ~cheek_mask(face_px, shape)}
+
+
+def tone_mask(rgb_u8):
+    """bool (...): which pixels of a uint8 RGB array (..., 3), an image or
+    a list of pixels, fall inside the YCrCb skin box (SKIN_CR, SKIN_CB)."""
+    a = np.ascontiguousarray(rgb_u8[..., :3], np.uint8)
+    ycc = cv2.cvtColor(a.reshape(-1, 1, 3), cv2.COLOR_RGB2YCrCb).reshape(a.shape)
+    cr, cb = ycc[..., 1], ycc[..., 2]
+    return (cr >= SKIN_CR[0]) & (cr <= SKIN_CR[1]) & (cb >= SKIN_CB[0]) & (cb <= SKIN_CB[1])
 
 
 def skin_mask(face_px, rgb_u8):
@@ -146,9 +160,11 @@ def skin_mask(face_px, rgb_u8):
     w, h = face_px["w"], face_px["h"]
     brows = np.vstack([points(face_px, "leftEyebrow"), points(face_px, "rightEyebrow")])
     face = poly(shape, np.vstack([points(face_px, "faceContour"), brows - [0.0, FOREHEAD_LIFT * h]]))
-    ycc = cv2.cvtColor(np.ascontiguousarray(rgb_u8[..., :3], np.uint8), cv2.COLOR_RGB2YCrCb)
-    cr, cb = ycc[..., 1], ycc[..., 2]
-    tone = (cr >= SKIN_CR[0]) & (cr <= SKIN_CR[1]) & (cb >= SKIN_CB[0]) & (cb <= SKIN_CB[1])
+    # brown and blond hair passes the tone box, and the hull reaches it at the temples
+    top = max(0, int(np.mean([c[1] for c in eye_centres(face_px)])))
+    face[:top, :max(0, int(brows[:, 0].min() + TEMPLE_INSET * w))] = False
+    face[:top, max(0, int(np.ceil(brows[:, 0].max() - TEMPLE_INSET * w))):] = False
+    tone = tone_mask(rgb_u8)
     d = int(EYE_HOLE * w)
     holes = (poly(shape, points(face_px, "leftEye"), d) | poly(shape, points(face_px, "rightEye"), d)
              | poly(shape, points(face_px, "leftEyebrow"), d // 2)

@@ -19,20 +19,26 @@ on its largest face (by box area, not Vision's first face):
               of the height; with --profile, its distance to the profile's
               eye_line
   headroom    the crown estimate (HEAD_ABOVE face heights above the box top)
-              from the top, as a share of the height; negative is a cut crown
+              from the top, as a share of the height; negative is a cut crown.
+              It reads low: see HEAD_ABOVE
   face_w      face box width as a share of the image width
   eye_sharp   variance of the Laplacian on the eye box (both eyes, padded by
-              EYE_PAD of its width) resized to EYE_BOX_W wide
-  bg_peak_L   the BG_PCT percentile of L* outside the face ellipse scaled by
-              BG_AXES and above the chin (the shoulders below are subject);
-              bg_share is that region's share of the frame (a tight
-              headshot leaves only its top corners, a few percent)
+              EYE_PAD of its width) resized to EYE_BOX_W wide; eye_box_px is
+              that box's width in the file. Compare only boxes of similar
+              size: one narrower than EYE_BOX_W is upsampled and reads softer
+  bg_peak_L   the BG_PCT percentile of L* outside an ellipse round the face
+              centre with semi-axes BG_AXES face widths and heights (3.2 x
+              2.8 face boxes across) and above the chin (the shoulders below
+              are subject); bg_share is that region's share of the frame (a
+              tight headshot leaves only its top corners, a few percent)
 
 It writes audit.json (rows, set spread, parameters) and prints a table with
 the spread of each metric (sd, min..max). There is no PASS or FAIL: nobody
 has set the ranges yet, and made-up thresholds would read as a standard.
 Output names client files, so it is refused inside any git working tree.
-Images are measured as stored; pass upright files.
+Images are measured as stored; pass upright files. Vision sees a file with
+its EXIF orientation applied, so a file whose orientation tag is not 1 is
+reported, not measured.
 """
 
 import io
@@ -48,7 +54,10 @@ from . import measure, skin, vision
 
 EXTS = (".jpg", ".jpeg", ".tif", ".tiff")
 CLIP_AT = 252 / 255
-HEAD_ABOVE = 0.6     # face heights from the box top (the brows) to the crown; copied from rpresolve.reframe, not imported (that module is the 3.9 video side)
+# face heights from the box top to the crown estimate; copied from rpresolve.reframe, not imported (that module
+# is the 3.9 video side). The landmarks request's box top sits about 0.2 face heights above the brows, so on
+# the stills checked the estimate fell 0.03-0.05 of the frame height above the visible hair: headroom reads low
+HEAD_ABOVE = 0.6
 EYE_PAD = 0.10       # eye box padding, share of the eye box width, every side
 EYE_BOX_W = 400      # eye box width for the sharpness measure, px
 BG_AXES = (1.6, 1.4)  # background starts outside this ellipse: semi-axes in face box widths, heights
@@ -62,7 +71,8 @@ COLUMNS = [("skin_L", "L*", "{:.1f}"), ("skin_a", "a*", "{:.1f}"), ("skin_b", "b
            ("d_trial_deg", "d117.7", "{:+.1f}"), ("d_skin_line_deg", "d123", "{:+.1f}"),
            ("clip_pct", "clip%", "{:.2f}"), ("aspect", "aspect", "{:.3f}"), ("aspect_err", "asp.err", "{:+.3f}"),
            ("eye_y", "eyeY", "{:.3f}"), ("eye_y_err", "eye.err", "{:+.3f}"), ("headroom", "head", "{:.3f}"),
-           ("face_w", "faceW", "{:.3f}"), ("eye_sharp", "eyeSharp", "{:.0f}"), ("bg_peak_L", "bgL", "{:.1f}")]
+           ("face_w", "faceW", "{:.3f}"), ("eye_sharp", "eyeSharp", "{:.0f}"), ("eye_box_px", "eyeBoxPx", "{:.0f}"),
+           ("bg_peak_L", "bgL", "{:.1f}")]
 
 
 def list_images(folder):
@@ -82,6 +92,17 @@ def read_rgb(path):
     return rgb.astype(np.float32) / np.iinfo(a.dtype).max
 
 
+def orientation(path):
+    """The file's EXIF or TIFF orientation tag (1 is upright); 1 when it has
+    none or Pillow cannot read it."""
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            return int(im.getexif().get(0x0112) or 1)
+    except (OSError, ValueError, TypeError):
+        return 1
+
+
 def icc_name(path):
     """The embedded ICC profile's description, or None."""
     from PIL import Image, ImageCms
@@ -99,15 +120,23 @@ def wrap_deg(d):
     return (d + 180.0) % 360.0 - 180.0
 
 
-def eye_sharpness(rgb, face_px):
+def eye_box(face_px, shape):
+    """(x0, y0, x1, y1) px: both eyes, padded by EYE_PAD of their width,
+    clipped to the image; None when under 2 px either way."""
     eyes = np.vstack([skin.points(face_px, "leftEye"), skin.points(face_px, "rightEye")])
     (x0, y0), (x1, y1) = eyes.min(0), eyes.max(0)
     pad = EYE_PAD * (x1 - x0)
-    H, W = rgb.shape[:2]
+    H, W = shape[:2]
     x0, y0 = int(max(0, x0 - pad)), int(max(0, y0 - pad))
     x1, y1 = int(min(W, np.ceil(x1 + pad))), int(min(H, np.ceil(y1 + pad)))
-    if x1 - x0 < 2 or y1 - y0 < 2:
+    return (x0, y0, x1, y1) if x1 - x0 >= 2 and y1 - y0 >= 2 else None
+
+
+def eye_sharpness(rgb, face_px):
+    box = eye_box(face_px, rgb.shape)
+    if box is None:
         return None
+    x0, y0, x1, y1 = box
     luma = rgb[y0:y1, x0:x1] @ np.float32(measure.BT709) * 255
     h = max(1, round(EYE_BOX_W * (y1 - y0) / (x1 - x0)))
     interp = cv2.INTER_AREA if x1 - x0 > EYE_BOX_W else cv2.INTER_CUBIC
@@ -139,6 +168,10 @@ def measure_file(path, rgb, det, profile=None):
         want = profile.get("aspect")
         row["aspect_want"] = want[0] / want[1] if want else None
         row["aspect_err"] = W / H / row["aspect_want"] - 1 if want else None
+    o = orientation(path)
+    if o != 1:
+        row["error"] = f"EXIF orientation {o}: Vision applies it, the measure reads pixels as stored; pass upright files"
+        return row
     if not det or det.get("error"):
         row["error"] = (det or {}).get("error") or "Vision returned nothing for this file"
         return row
@@ -169,6 +202,8 @@ def measure_file(path, rgb, det, profile=None):
     if has_marks:
         row["eye_y"] = float(np.mean([c[1] for c in skin.eye_centres(fp)])) / H
         row["eye_sharp"] = eye_sharpness(rgb, fp)
+        box = eye_box(fp, rgb.shape)
+        row["eye_box_px"] = box[2] - box[0] if box else None
         if profile is not None and profile.get("eye_line") is not None:
             row["eye_y_err"] = row["eye_y"] - profile["eye_line"]
     row["bg_peak_L"], row["bg_share"] = background_peak(rgb, fp)

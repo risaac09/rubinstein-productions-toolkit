@@ -74,7 +74,7 @@ Measured, natural colours, tetrahedral:
 The display targets carry the large maximums. Their error collects at the clip to display white and at
 the Rec.709 gamut edge, which is a hard corner the lattice cannot follow; 65 points cuts it two to three times. On the
 neutral axis, tetrahedral keeps R = G = B exactly and trilinear does not. The vlog round trip's neutral
-maximum (1.5 at 33 points) sits at V-Log 1.0, eight stops over white.
+maximum (1.5 at 33 points) sits at V-Log 1.0, eight stops over 18% grey (5.5 over white).
 
 On a real V-Log ColorChecker frame from each camera, ffmpeg `lut3d=interp=tetrahedral` and lutstats'
 tetrahedral sampler agree within Delta E 0.005. The 33-point vlog-to-r709 cube sits a median 0.16 (p99 1.9 to 2.9)
@@ -86,7 +86,8 @@ from the exact transform, and the 65-point cube a median 0.04 (p99 0.7 to 1.3).
 `rp-luts-<date>.zip`. Everything sits under one folder, `rp-luts-<date>/`:
 
 - `cst/`: for each camera's log, `<log>-to-di-N.cube` and `<log>-to-r709-N.cube` (the S5II and GH7 share
-  the V-Log pair). For `rcm`, `di-to-r709-N.cube`.
+  the V-Log pair). For `rcm`, `di-to-r709-N.cube`, only for the last node of a project that is not colour
+  managed (see below): in a Resolve Color Managed project with Rec.709 output it would be converted twice.
 - `looks/`: `<look> [<Camera>].cube` for every look delta on the base, for every camera. This is what the
   `looks` command makes, and it needs scipy. It only happens with `--base`; `--looks` defaults to the
   shipped deltas in `production/lutlab-looks/`. Without `--base` the folder is left out and the README says
@@ -133,9 +134,11 @@ format=rgb48le,lut3d=file=vlog-to-r709-65.cube:interp=tetrahedral" -pix_fmt rgb4
 
 - A cube's output is clipped to 0..1, as `port` clips it. DaVinci Intermediate can carry negative values
   (sub-black noise, a few colours outside DaVinci Wide Gamut), but a `<log>-to-di` cube writes them as 0.
-  On the real frames that moved 0.002% (GH7) and 0.08% (S5II) of pixels by more than Delta E 1 in a
-  V-Log, DI and V-Log round trip. It is also where the round trip's large 10-bit code maximums come from
-  (24 to 52 codes, in shadow pixels with a channel below V-Log black). The p99 was 0.4 to 3.5 codes.
+  On the real frames a V-Log, DI and V-Log round trip through ffmpeg moved 0.09% (GH7) and 0.12% (S5II)
+  of pixels by more than Delta E 1 at 33 points, and 0.002% and 0.08% at 65; the clip alone, exact and
+  without a lattice, moves 0.02% and 0.09%. The clip is also where the round trip's large 10-bit code
+  maximums come from (24 to 52 codes, in shadow pixels with a channel below V-Log black). The p99 was
+  3.5 (GH7) and 1.7 (S5II) codes at 33 points, 3.3 and 0.4 at 65.
 - `lutstats` samples synthetic natural colours, not footage. Its numbers describe the LUT, not a shot.
 - The two cameras on the same chart at the same ISO did not match out of the box. The GH7's chart was
   0.75 stop darker. With exposure matched, L* agreed within 0.4 on every grey patch, but the GH7 sat

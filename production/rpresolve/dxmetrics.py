@@ -38,12 +38,15 @@ The numbers, for one audio stream mixed to mono:
     lag (lag, compare)
                       where B's content sits against A's, by cross-correlation
                       at A's rate: positive means B is late. afftdn delays its
-                      output 1200 samples at 48 kHz (25 ms), anlmdn 384 and
-                      asubcut (order 8) 151; ffmpeg does not compensate, and the
-                      file keeps its length, so a denoised stem lands late
-                      against picture. polarity says whether the best match
-                      was inverted. A highpass or EQ shifts phase, which can
-                      move the peak a sample or two.
+                      output 1200 samples at 48 kHz (25 ms) and anlmdn 384;
+                      ffmpeg does not compensate, and the file keeps its
+                      length, so a denoised stem lands late against picture.
+                      polarity says whether the best match was inverted. A
+                      highpass (asubcut included) or EQ adds no fixed delay but
+                      shifts phase, which can move the peak a few samples and,
+                      on bass-heavy audio, flip it. A window where either file
+                      holds no signal, or the best match is under LAG_MIN_CORR,
+                      gives no lag (None): give --start where both carry sound
 
 compare prints both files' numbers, B minus A, and the lag.
 
@@ -54,6 +57,7 @@ smear consonants or leave musical noise; that needs ears and a blind A/B.
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -78,6 +82,8 @@ WADA_SAMPLES = 200000
 WADA_SEED = 0
 LAG_SECONDS = 30.0
 MAX_LAG_MS = 250.0
+LAG_MIN_CORR = 0.05                # below this the best match is chance, not a lag
+ZERO_RUN_S = 0.001                 # a run of exact zeros this long is a dropout
 BATCH = 64                         # FFT frames per numpy batch
 DELTAS = ("integrated_lufs", "lra_lu", "true_peak_dbtp", "sibilance_ratio_db", "flatness",
           "hum_excess_db_50", "hum_excess_db_60", "wada_snr_db")
@@ -102,8 +108,9 @@ def _finite(v, nd=2):
 def decode(path, stream=0, start=None, end=None, rate=None):
     """(samples, rate): one audio stream mixed to mono as float64, at its own
     rate or `rate`. Raises ar.ReportError."""
-    # shortcut: the whole range is held in memory (about 0.7 GB per hour at 48 kHz);
-    # give a range for a long file, or move this to block reads if that becomes common.
+    # shortcut: the whole range is held in memory, and measure() peaks at several copies of it
+    # (about 1.1 GB per 10 min at 48 kHz); give a range for a long file, or move this to
+    # block reads if that becomes common.
     info = ar.audio_stream(path, stream)
     rate = int(rate or info["sample_rate"])
     proc = subprocess.run([dc.FFMPEG, "-v", "error", "-nostdin", *ar._range_args(start, end),
@@ -123,16 +130,19 @@ def decode(path, stream=0, start=None, end=None, rate=None):
 def frame_power(path, stream=0, hop_s=FRAME_S, af=None):
     """Per hop_s window of one stream, read in blocks so an hour costs little
     memory: {sample_rate, channels, samples, power (mean square over the
-    channels), peak (largest absolute sample)}. A last part-window is left
-    out. `af` is an ffmpeg filter run first (it must keep the channel count)."""
+    channels), peak (largest absolute sample), dead (the window holds or
+    touches a run of ZERO_RUN_S or more that is zero on every channel: a
+    dropout)}. A last part-window is left out. `af` is an ffmpeg filter run
+    first (it must keep the channel count)."""
     info = ar.audio_stream(path, stream)
     rate, ch = info["sample_rate"], info["channels"]
     hop = max(1, int(round(rate * hop_s)))
+    run = max(1, min(hop, int(round(rate * ZERO_RUN_S))))
     cmd = [dc.FFMPEG, "-v", "error", "-nostdin", "-i", dc._src(path), "-map", f"0:a:{stream}",
            *(["-af", af] if af else []), "-f", "f32le", "-acodec", "pcm_f32le", "-"]
     frame = 4 * ch
     step = hop * frame * 600
-    power, peak, n = [], [], 0
+    power, peak, dead, n = [], [], [], 0
     # stderr goes to a file: a pipe nobody reads fills on a damaged file and stalls ffmpeg.
     errf = tempfile.TemporaryFile()
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf)
@@ -146,6 +156,11 @@ def frame_power(path, stream=0, hop_s=FRAME_S, af=None):
                 x = np.frombuffer(pending[:whole], "<f4").astype(np.float64).reshape(-1, hop, ch)
                 power.append((x ** 2).mean(axis=(1, 2)))
                 peak.append(np.abs(x).max(axis=(1, 2)))
+                z = np.concatenate(([0], np.cumsum((x == 0).all(axis=2).ravel())))
+                starts = np.flatnonzero(z[run:] - z[:-run] == run)   # all-zero runs of `run`
+                d = np.zeros(len(x), bool)
+                d[starts // hop] = d[(starts + run - 1) // hop] = True
+                dead.append(d)
                 n += whole // frame
                 pending = pending[whole:]
             if not raw:
@@ -161,7 +176,8 @@ def frame_power(path, stream=0, hop_s=FRAME_S, af=None):
         raise ar.ReportError(f"ffmpeg could not decode {path}: {err.strip()[-300:]}")
     return {"sample_rate": rate, "channels": ch, "samples": n, "hop_s": hop / rate,
             "power": np.concatenate(power) if power else np.zeros(0),
-            "peak": np.concatenate(peak) if peak else np.zeros(0)}
+            "peak": np.concatenate(peak) if peak else np.zeros(0),
+            "dead": np.concatenate(dead) if dead else np.zeros(0, bool)}
 
 
 # ---------------------------------------------------------------------------
@@ -269,11 +285,14 @@ def _wada_table():
 
 
 def wada_snr_db(x):
-    a = np.abs(x - x.mean())
-    a = a[a > 1e-9]
-    if len(a) < 1000:
+    x = x[x != 0]   # digital silence is not noise; drop it before the mean moves it off zero
+    if len(x) < 1000:
         return None
-    g = math.log(a.mean()) - np.log(a).mean()
+    a = x - x.mean()
+    np.abs(a, out=a)
+    np.maximum(a, 1e-12, out=a)   # a floor only to keep the log finite
+    m = a.mean()
+    g = math.log(m) - np.log(a, out=a).mean()   # in place: the range can be an hour
     table, snrs = _wada_table()
     return _finite(np.interp(g, table, snrs), 1)
 
@@ -314,12 +333,14 @@ def lag(a_path, b_path, stream=0, stream_b=0, start=None, seconds=LAG_SECONDS,
     vals = np.r_[c[:m + 1], c[nfft - m:]]
     i = int(np.argmax(np.abs(vals)))
     norm = math.sqrt(float((a ** 2).sum() * (b ** 2).sum()))
-    k = int(lags[i])
+    corr = abs(float(vals[i])) / norm if norm > 0 else None
+    k = int(lags[i]) if corr is not None and corr >= LAG_MIN_CORR else None
     return {"a": a_path, "b": b_path, "sample_rate": rate, "lag_samples": k,
-            "lag_ms": round(1000.0 * k / rate, 2),
-            "peak_corr": round(abs(float(vals[i])) / norm, 3) if norm > 0 else None,
-            "polarity": "inverted" if vals[i] < 0 else "same",
-            "window_s": [start or 0.0, end], "max_lag_ms": max_lag_ms}
+            "lag_ms": round(1000.0 * k / rate, 2) if k is not None else None,
+            "peak_corr": round(corr, 3) if corr is not None else None,
+            "polarity": None if k is None else "inverted" if vals[i] < 0 else "same",
+            "window_s": [start or 0.0, end], "max_lag_ms": max_lag_ms,
+            "min_corr": LAG_MIN_CORR}
 
 
 def compare(a_path, b_path, stream=0, stream_b=0, start=None, end=None):
@@ -342,6 +363,10 @@ def summary(r):
 
 
 def lag_line(g):
+    if g["lag_samples"] is None:
+        return (f"no lag: no match in {g['window_s'][0]:g}-{g['window_s'][1]:g} s (correlation "
+                f"{g['peak_corr']}, under {g['min_corr']}): one file holds no signal there, or "
+                "the two differ; give --start where both carry sound")
     return (f"lag {g['lag_samples']} samples ({g['lag_ms']} ms) at {g['sample_rate']} Hz, "
             f"B {'late' if g['lag_samples'] > 0 else 'early' if g['lag_samples'] < 0 else 'aligned'}"
             f", correlation {g['peak_corr']}, polarity {g['polarity']}")
@@ -371,10 +396,23 @@ def add_arguments(p):
     g.add_argument("--max-lag-ms", type=float, default=MAX_LAG_MS)
 
 
+def source_problem(outs, sources):
+    """Why one of `outs` must not be written, or None: it is one of `sources`
+    (os.path.samefile, so another name for the same file, such as one that
+    differs only in case on a case-insensitive disk, counts too)."""
+    for o in outs:
+        for s in sources:
+            if os.path.exists(o) and os.path.exists(s) and os.path.samefile(o, s):
+                return f"{o} is the source {s}; a source is never written over"
+    return None
+
+
 def run(args):
     """Exit 0 the numbers are printed (and written); 1 they could not be."""
     out = getattr(args, "out", None)
-    problem = paths.out_problem(out, any_git_tree=True) if out else None
+    sources = [args.file] if args.action == "measure" else [args.a, args.b]
+    problem = (paths.out_problem(out, any_git_tree=True) or source_problem([out], sources)
+               if out else None)
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1

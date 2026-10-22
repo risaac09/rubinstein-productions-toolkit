@@ -53,7 +53,8 @@ ebur_i() { sed -n 's/^ *I: *\([-0-9.inf]*\) LUFS.*/\1/p' | tail -n 1; }
 # The time of every cut scdet logged.
 scdet_times() { sed -n 's/.*lavfi\.scd\.score: *[0-9.]*, lavfi\.scd\.time: *\([0-9.]*\).*/\1/p'; }
 # The last speed= ffmpeg's progress line printed (progress lines end in CR).
-speed_of() { tr '\r' '\n' | sed -n 's/.*speed= *\([0-9.]*x\).*/\1/p' | tail -n 1; }
+# ffmpeg prints it with %4.3g, so 1000x and over reads 1.03e+03x.
+speed_of() { tr '\r' '\n' | sed -n 's/.*speed= *\([0-9.e+]*x\).*/\1/p' | tail -n 1; }
 # A path made safe inside a quoted filter option: backslash and colon escaped.
 # shortcut: a path holding a single quote still breaks it; TMPDIR never has one.
 fesc() { printf '%s' "$1" | sed 's/[\\:]/\\&/g'; }
@@ -112,6 +113,7 @@ self_test() {
 
   printf 'frame=   10 speed=1.5x \rframe=   20 speed=2.25x \r\n' > "$work/p"
   check "last progress speed" "$(speed_of < "$work/p")" "2.25x"
+  check "progress speed in exponent form" "$(printf 'frame=   50 speed=1.03e+03x \r\n' | speed_of)" "1.03e+03x"
   check "filter path escaping" "$(fesc 'a b:c\d')" 'a b\:c\\d'
   check "between, inside" "$(between 1.0 0.9 1.1 && echo y)" y
   check "between, outside" "$(between 1.2 0.9 1.1 || echo n)" n

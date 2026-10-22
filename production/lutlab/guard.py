@@ -22,8 +22,8 @@ def check_out_dir(path):
     """Create path if needed and return it, or raise if it is inside a git work tree or iCloud."""
     p = Path(path).expanduser().resolve()
     for bad in ICLOUD:
-        b = bad.resolve()
-        if p == b or b in p.parents:
+        pc, bc = str(p).casefold(), str(bad.resolve()).casefold()  # APFS is case-insensitive, so match any spelling
+        if pc == bc or pc.startswith(bc + os.sep):
             raise PermissionError(f"{p}: refusing to write under {bad} (iCloud-synced)")
     root = git_root(p)
     if root:

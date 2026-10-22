@@ -119,12 +119,16 @@ class GeometryTest(unittest.TestCase):
         self.assertTrue(r["brows"][385, 320] and r["brows"][385, 480])
         self.assertTrue(r["lips_outer"][560, 400] and r["lips_inner"][560, 400])
         self.assertFalse((r["lips_inner"] & ~r["lips_outer"]).any())
-        # a lens ellipse per eye, a little above it and much larger than the eye
-        self.assertTrue(r["lens"][420, 320] and r["lens"][380, 480])
+        # the inner lips reach the mouth corners (336, 464), past the inner points' own 350..450
+        self.assertTrue(r["lips_inner"][560, 342] and r["lips_inner"][560, 458])
+        # a lens ellipse per eye, centred at the eye (rims measured on real frames), much larger than it
+        self.assertTrue(r["lens"][420, 320] and r["lens"][380, 480] and r["lens"][470, 480])
+        self.assertFalse(r["lens"][360, 320])
         self.assertGreater(r["lens"].sum(), 5 * r["eyes"].sum())
-        # under-eye: below the eye's lower edge (430) by 0.09 face heights, not on the eye
+        # under-eye: below the eye's lower edge (430) by 0.09 face heights, not on the eye nor the cheek sample
         self.assertTrue(r["under_eye"][459, 320] and r["under_eye"][459, 480])
         self.assertFalse((r["under_eye"] & r["eyes"]).any())
+        self.assertFalse((r["under_eye"] & skin.cheek_mask(skin.to_pixels(face(), W, H), (H, W))).any())
 
     def test_skin_mask_keeps_skin_and_drops_eyes_lips_background_and_above_the_brows(self):
         rgb8 = (portrait() * 255 + 0.5).astype(np.uint8)
@@ -137,6 +141,15 @@ class GeometryTest(unittest.TestCase):
         self.assertLess(m[420, 320], 0.05)       # eye
         self.assertLess(m[560, 400], 0.05)       # lips
         self.assertLess(m[258, 400], 0.05)       # skin tone, but above the lifted brows
+        self.assertLess(m[400, 530], 0.05)       # skin tone beside the brows above the eye line (hair, on a real face)
+        self.assertGreater(m[450, 535], 0.95)    # beside the eye below the eye line: kept
+
+    def test_tone_mask_takes_an_image_or_a_list_of_pixels(self):
+        rgb8 = (portrait() * 255 + 0.5).astype(np.uint8)
+        img = skin.tone_mask(rgb8)
+        self.assertEqual(img.shape, (H, W))
+        self.assertTrue(img[476, 326]); self.assertFalse(img[50, 50])
+        np.testing.assert_array_equal(skin.tone_mask(rgb8.reshape(-1, 3)), img.reshape(-1))
 
     def test_nblur_does_not_bleed_outside_the_mask(self):
         img = np.zeros((100, 100), np.float32); img[:, :50] = 1.0
@@ -182,6 +195,29 @@ class MeasureAdditionsTest(unittest.TestCase):
         self.assertAlmostEqual(s["chroma"], float(measure.chroma(15, 14)), delta=0.1)
         self.assertAlmostEqual(s["vectorscope_deg"], 117.7, delta=0.3)
         self.assertGreater(s["n_px"], 1500)
+
+    def test_skin_lab_leaves_a_spectacle_rim_crossing_the_cheeks_out(self):
+        fp = skin.to_pixels(face(), W, H)
+        clean = measure.skin_lab(portrait(), fp, "cheek")
+        img = portrait()
+        img[468:474] = (0.12, 0.11, 0.11)      # a dark frame rim through both patches
+        s = measure.skin_lab(img, fp, "cheek")
+        for got, want in zip((s["L"], s["a"], s["b"]), TARGET):
+            self.assertAlmostEqual(got, want, delta=0.05)
+        self.assertLess(s["n_px"], clean["n_px"] * 0.95)
+        whole = img[skin.cheek_mask(fp, img.shape)]
+        self.assertLess(float(measure.lab_image(whole)[:, 0].mean()), 62.0)   # what the ungated mean was
+
+    def test_skin_lab_measures_an_off_balance_render_whole(self):
+        # a cool render takes the whole patch out of the tone box; the develop solve still needs a number
+        cool = (64.0, 10.0, -12.0)
+        img = portrait(features=False)
+        cv2.ellipse(img, (400, 460), (165, 210), 0, 0, 360, tuple(float(c) for c in measure.lab_to_srgb(cool)), -1)
+        fp = skin.to_pixels(face(), W, H)
+        self.assertFalse(skin.tone_mask((img[476, 326] * 255 + 0.5).astype(np.uint8)))
+        s = measure.skin_lab(img, fp, "cheek")
+        self.assertAlmostEqual(s["b"], -12.0, delta=0.05)
+        self.assertEqual(s["n_px"], int(skin.cheek_mask(fp, img.shape).sum()))
 
     def test_skin_lab_box_needs_no_landmarks(self):
         f = face(); del f["landmarks"]

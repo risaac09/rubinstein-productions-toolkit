@@ -12,7 +12,8 @@ find reads every audio stream of every file and gives, per stream, the
 quietest --window seconds (start, end, RMS and peak in dBFS, from 100 ms
 steps). A stream that is all digital zeros, such as the two unused tracks
 of a four-track camera file, is left out and reported as digital_silence;
-a window that crosses any digital silence inside a live stream (a dropout)
+a window that crosses any digital silence inside a live stream (a dropout:
+a run of 1 ms or more that is zero on every channel, dxmetrics.ZERO_RUN_S)
 is not room tone and is never chosen. A stream shorter than the window
 gives the whole stream.
 
@@ -65,14 +66,16 @@ def _db(power):
     return round(10 * math.log10(power), 1) if power > 0 else None
 
 
-def quietest(power, n):
+def quietest(power, n, dead=None):
     """(first hop, hops) of the n-hop run with the least mean power that
-    holds no digital silence, or None. n is cut to the stream's length."""
+    holds no digital silence (a hop of zero power, or one flagged in `dead`),
+    or None. n is cut to the stream's length."""
     n = min(n, len(power))
     if n < 1:
         return None
     c = np.concatenate(([0.0], np.cumsum(power)))
-    dead = np.concatenate(([0], np.cumsum(power <= 0)))
+    bad = power <= 0 if dead is None else (power <= 0) | dead
+    dead = np.concatenate(([0], np.cumsum(bad)))
     sums = c[n:] - c[:-n]
     sums[(dead[n:] - dead[:-n]) > 0] = np.inf
     i = int(np.argmin(sums))
@@ -88,7 +91,7 @@ def find_stream(path, stream, window_s=WINDOW_S):
            "duration_s": round(fp["samples"] / fp["sample_rate"], 3)}
     if not len(fp["peak"]) or fp["peak"].max() == 0:
         return dict(row, status="digital_silence", note="every sample is zero: left out")
-    q = quietest(fp["power"], max(1, int(round(window_s / hop))))
+    q = quietest(fp["power"], max(1, int(round(window_s / hop))), fp["dead"])
     if q is None:
         return dict(row, status="no_window",
                     note="no stretch of the window's length without digital silence")
@@ -135,11 +138,14 @@ def find_summary(r):
 
 def bed_graph(stream, src_samples, xfade_samples, total_samples, curve):
     """The filter_complex: one loop unit (the window's tail crossfaded into
-    its head, src - xfade samples long), looped and cut to total."""
+    its head, src - xfade samples long), looped and cut to total. The tail
+    and head come from two opens of the source (inputs 0 and 1), not one
+    asplit: acrossfade in ffmpeg 6.1 to 7.1 ends its output as soon as its
+    second input is done, and an asplit head ends before the tail starts."""
     unit = src_samples - xfade_samples
-    return (f"[0:a:{stream}]atrim=end_sample={src_samples},asetpts=PTS-STARTPTS,asplit=2[a][b];"
-            f"[a]atrim=start_sample={unit},asetpts=PTS-STARTPTS[tail];"
-            f"[b]atrim=end_sample={unit},asetpts=PTS-STARTPTS[head];"
+    return (f"[0:a:{stream}]atrim=start_sample={unit}:end_sample={src_samples},"
+            f"asetpts=PTS-STARTPTS[tail];"
+            f"[1:a:{stream}]atrim=end_sample={unit},asetpts=PTS-STARTPTS[head];"
             f"[tail][head]acrossfade=ns={xfade_samples}:c1={curve}:c2={curve},"
             f"aloop=loop=-1:size={unit},atrim=end_sample={total_samples},"
             f"asetpts=N/SR/TB[out]")
@@ -166,9 +172,9 @@ def seams(x, src, unit, xfade):
 
 def _render(src, start, graph, tmp):
     proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
-                    "-ss", f"{start:.6f}", "-i", dc._src(src), "-filter_complex", graph,
-                    "-map", "[out]", "-map_metadata", "-1", "-c:a", "pcm_s24le", "-f", "wav", tmp],
-                   RUN_TIMEOUT_S)
+                    *(["-ss", f"{start:.6f}", "-i", dc._src(src)] * 2), "-filter_complex", graph,
+                    "-map", "[out]", "-map_metadata", "-1", "-c:a", "pcm_s24le", "-f", "wav",
+                    dc._src(tmp)], RUN_TIMEOUT_S)
     if proc.returncode != 0:
         if os.path.exists(tmp):
             os.remove(tmp)
@@ -179,12 +185,14 @@ def _render(src, start, graph, tmp):
 def bed(src, out, length_s, stream=0, start=None, end=None, xfade_s=XFADE_S, curve="auto"):
     """Write the bed WAV and its JSON record; return the record."""
     dc.check_tools(ffmpeg=True)
-    for p in (out, os.path.splitext(out)[0] + ".json"):
+    outs = (out, os.path.splitext(out)[0] + ".json")
+    for p in outs:
         problem = paths.out_problem(p, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
-    if os.path.realpath(out) == os.path.realpath(src):
-        raise paths.OutputRefused(f"{out} is the source; a bed never replaces its source")
+    problem = dxm.source_problem(outs, [src])
+    if problem:
+        raise paths.OutputRefused(problem)
     if curve not in CURVES + ("auto",):
         raise ValueError(f"--curve is one of auto, {', '.join(CURVES)}")
     if length_s <= 0:
@@ -273,7 +281,8 @@ def run(args):
     """Exit 0 written; 1 not written, or (bed) a seam over SEAM_MAX_DB."""
     try:
         if args.action == "find":
-            problem = paths.out_problem(args.out, any_git_tree=True) if args.out else None
+            problem = (paths.out_problem(args.out, any_git_tree=True)
+                       or dxm.source_problem([args.out], args.files) if args.out else None)
             if problem:
                 raise paths.OutputRefused(problem)
             r = find(args.files, args.window)

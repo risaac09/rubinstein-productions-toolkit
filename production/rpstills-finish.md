@@ -12,11 +12,11 @@ cd production
     [--retouch none|all|ID ...] [--background off|on] [--crop PROFILE ...] [--config PATH]
 ```
 
-- `<out>`: the shoot's output folder. The sources are `<out>/develop/<id>.tif` (what `rpstills develop` writes) unless `--src DIR` names a folder of TIFF (8- or 16-bit) or JPEG files. An id is the file name without its extension.
+- `<out>`: the shoot's output folder. The sources are `<out>/develop/<id>.tif` (what `rpstills develop` writes) unless `--src DIR` names a folder of TIFF (8- or 16-bit) or JPEG files. Sources are sRGB, upright as stored: an untagged file is taken as sRGB, and a file tagged with another ICC profile (Display P3, Adobe RGB, ProPhoto) or carrying an EXIF orientation other than 1 is recorded with its reason and not finished. An id is the file name without its extension.
 - `--ids`: finish only these frames.
-- `--retouch`: `none` (the default), `all`, or a list of ids (space or comma separated). Retouch never runs unless asked.
+- `--retouch`: `none` (the default), `all`, or a list of ids (space or comma separated). Retouch never runs unless asked; `none` together with `all` or ids is refused.
 - `--background`: `off` (the default) or `on`.
-- `--crop`: solo crop profiles from `stills-config.json`; the default is `headshot_4x5_eye36`. Union profiles (`group_16x9`) and profiles without an aspect are refused.
+- `--crop`: solo crop profiles from `stills-config.json`; the default is `headshot_4x5_eye36`. Union profiles (`group_16x9`) and profiles without an aspect are refused, as is a profile name that is not a plain name (it becomes a folder under `finish/`).
 
 For each frame, finish asks Vision for the faces again, with landmarks, and works on the largest face (by box area, not Vision's first face). Then, in order:
 
@@ -30,14 +30,14 @@ For each frame, finish asks Vision for the faces again, with landmarks, and work
    | `eyes` | inside the eye polygons: x1.08 and an unsharp mask of 0.4 |
    | `under_eye` | the under-eye ellipses, where darker than the cheek's 60th percentile, lifted toward it by at most 12%, mixed at 0.6 |
    | `teeth` | inside the inner lips only, bright low-saturation pixels: saturation -35%, value +4% |
-   | `deglare` | spectacle lenses: inside an ellipse per lens (not the eye), where the image is brighter than the cheek by 4 L* and has lost 6 of the cheek's chroma (a veil of sky or window washes skin toward neutral or blue; bare forehead keeps its redness), the low-frequency veil is subtracted and a*, b* pulled back to the cheek. It reports the area touched. It dims a veil; it cannot bring back what an opaque reflection hides |
+   | `deglare` | spectacle lenses: inside an ellipse per lens (not the eye), where the image is brighter than the cheek by 4 L* and has lost 6 of the cheek's chroma (a veil of sky or window washes skin toward neutral or blue; bare forehead keeps its redness), the low-frequency veil is subtracted and a*, b* pulled back to the cheek, all the way wherever the weight reaches 0.3 (a pull scaled by the weight would stop between blue and skin, on pink). It reports the area touched. It dims a veil; it cannot bring back what an opaque reflection hides |
 
    A face without landmarks is not retouched; the frame is still cropped and the reason recorded.
 3. **Crop**. `crops.solo_crop` with the eye line measured from the landmarks (the mean of the two eye centres), so a profile's `eye_line` lands on the eyes rather than on the box estimate. When the frame cannot hold the crop it is shifted, or shrunk and flagged `tight`, exactly as `rpstills crops` does; `finish.json` records where the eye line actually landed (`eye_line_at`). A profile with an `out` size is resized to it; one without is written at the crop's own size.
 
 It writes `<out>/finish/<profile>/<id>.jpg` (quality 93, 4:4:4 chroma, an sRGB ICC profile built by Pillow's ImageCms, so no platform profile file is needed) and `<out>/finish/finish.json`: per frame the face, the mask share or the refusal, every retouch step's report, each crop's pixels, size, flags (`tight`, `face_cut`, `upscale`) and achieved eye line, and every constant used. Files are written atomically.
 
-The output shows and names client frames, so an `<out>` inside any git working tree is refused before any work. A frame that cannot be finished (unreadable, no face, Vision saw another size) is recorded with its reason, the others are still written, and the run exits 1.
+The output shows and names client frames, so an `<out>` inside any git working tree is refused before any work, and so is a profile folder under `<out>/finish` that resolves into one (a link, say). A `--src` file that one of the run's own crops would replace (`--src <out>/finish/<profile>` with that same profile) is refused too. A frame that cannot be finished (unreadable, an EXIF orientation other than 1, an ICC profile other than sRGB, no face, Vision saw another size) is recorded with its reason, the others are still written, and the run exits 1.
 
 ## Crop profiles
 
@@ -64,7 +64,7 @@ Takes 2 to 9 images and writes:
 
 The order is shuffled by the seed and is never the order given, so a letter says nothing about which candidate came first or which is new. Without `--seed` a random seed is drawn and recorded in `key.json`.
 
-It is made to be read on a phone. The grid is the one that brings the sheet nearest a 3:4 portrait screen, so each picture is as large as a phone can show it; each letter is 16% of its cell's short side (at least 40 px), so it stays about 14 px or more tall when the whole sheet is shown 390 px wide. Images keep their aspect inside equal cells; EXIF rotation is applied; 16-bit TIFFs are read. Pillow draws everything, so no ffmpeg `drawtext` is needed. The answer is one letter; `key.json` turns it back into a file. A `DIR` inside any git working tree is refused.
+It is made to be read on a phone. The grid is the one that brings the sheet nearest a 3:4 portrait screen, so each picture is as large as a phone can show it; each letter's font size is 16% of its cell's short side (at least 40 px), and a capital is drawn about three quarters of that tall, so the letters stay about 11 px or more tall (a font size of about 14.5 px) when the whole sheet is shown 390 px wide, for cell shapes from 1:2 to 2:1. Images keep their aspect inside equal cells; EXIF rotation is applied; 16-bit TIFFs are read. A picture tagged with another ICC profile (Display P3, Adobe RGB) is converted to sRGB first, so two candidates of the same colour look the same on the sheet; an untagged picture is taken as sRGB. Pillow draws everything, so no ffmpeg `drawtext` is needed. The answer is one letter; `key.json` turns it back into a file. A `DIR` inside any git working tree is refused, and so is an input that is `DIR/sheet.jpg` itself (an earlier sheet compared against a new candidate needs another `--out`, or it and its key would be replaced).
 
 ## What it does not do
 
@@ -75,8 +75,9 @@ It is made to be read on a phone. The grid is the one that brings the sheet near
 ## Known limits
 
 - The retouch strengths, the skin tone box and the proportions were tuned on one subject, wearing glasses, in overcast light, on 6000 x 4000 frames. They are not validated on other skin tones, light, lenses or resolutions. Look at every retouched frame before it is delivered.
-- `deglare` gates on brightness and loss of skin colour. A warm reflection (a lamp, a sunset) does not wash skin toward neutral and is left alone; a cool, bright patch of skin inside the lens ellipse can still be dimmed a little.
+- `deglare` gates on brightness and loss of skin colour. A warm reflection (a lamp, a sunset) does not wash skin toward neutral and is left alone; a cool, bright patch of skin inside the lens ellipse can still be dimmed a little. Where only part of a reflection passes the gate (its dimmer parts, or parts outside the lens ellipse), the gated part turns skin-coloured and the rest stays blue beside it, and the feathered edge between them passes through pink.
 - GrabCut can take a background close to the subject's tones, or miss hands and props; the dilation that keeps hair out of the burn leaves a thin, slightly brighter halo along the subject's outline. The guard only catches gross failures (no face core, under 5% or over 90% of the frame).
 - The background burn works on the full frame in float: on a 24 MP frame expect around 12 s and up to about 3.5 GB of memory per frame.
 - When the frame cannot hold the crop where the eye line wants it (little room above the head, say), the crop is shifted and the eyes land away from the profile's line (higher, in that case); only shrinking is flagged (`tight`). Read `eye_line_at` in `finish.json`.
-- EXIF orientation is not applied in finish. Pass upright files; a mismatch with Vision's size is reported rather than finished.
+- EXIF orientation is not applied in finish: a source with an orientation tag other than 1 (turned or mirrored) is reported rather than finished. Pass upright files.
+- 16-bit TIFFs that Pillow cannot open are read by OpenCV, whose reader sees neither the ICC profile nor the orientation tag, so for those the sRGB and upright checks cannot run.

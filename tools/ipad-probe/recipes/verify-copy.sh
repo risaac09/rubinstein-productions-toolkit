@@ -6,7 +6,10 @@
 #
 # Each DEST must not exist yet, or be an empty folder, and its parent must
 # exist: a missing parent is how an unplugged drive looks, so it refuses
-# rather than creating one. SRC is only read. Junk the OS writes (.DS_Store,
+# rather than creating one. Folders are compared by physical path, so no
+# spelling (./x, an absolute path, a symlink) gets a DEST inside SRC or one
+# folder counted twice; a DEST inside a git work tree is refused too (card
+# media never goes in a repository). SRC is only read. Junk the OS writes (.DS_Store,
 # ._*, .Spotlight-V100, .fseventsd, .Trashes, .TemporaryItems) is left out of
 # the copy and the manifest. File times are kept (cp -p).
 #
@@ -36,29 +39,46 @@ print(h.hexdigest())
 
 die() { echo "verify-copy: $*" >&2; exit 2; }
 usage() { echo "usage: sh verify-copy.sh SRC DEST [DEST ...]" >&2; exit 2; }
-strip() { # a path without trailing slashes ("/" stays "/")
+strip() { # a path without trailing slashes ("/" stays "/"), with ./ before a leading -
   s=$1
   while [ "${#s}" -gt 1 ] && [ "${s%/}" != "$s" ]; do s=${s%/}; done
+  case "$s" in -*) s="./$s" ;; esac
   printf '%s' "$s"
+}
+here=$(pwd -P) || die "cannot read the current folder"
+phys() { # DIR: its physical path (symlinks and .. resolved) in rp. cd here and back,
+  # never in a subshell: on a-Shell a subshell's cd moves the shell too. ./ keeps CDPATH out.
+  case "$1" in /*) rp=$1 ;; *) rp=./$1 ;; esac
+  cd -P "$rp" || die "cannot open $1"
+  rp=$(pwd -P)
+  cd "$here" || die "cannot return to $here"
+}
+git_tree() { # PHYSICAL_PATH: true when it or a folder above it holds .git
+  g=$1
+  while [ -n "$g" ]; do [ -e "$g/.git" ] && return 0; g=${g%/*}; done
+  [ -e /.git ]
 }
 
 [ $# -ge 2 ] || usage
 src=$(strip "$1"); shift
 [ -d "$src" ] || die "$src is not a folder"
+phys "$src"; src_p=$rp
 
 seen="
 "
 for d in "$@"; do
   d=$(strip "$d")
-  [ "$d" != "$src" ] || die "$d is the source"
-  case "$seen" in *"
-$d
-"*) die "$d is named twice; one folder is one copy" ;; esac
-  seen="$seen$d
-"
-  case "$d" in "$src"/*) die "$d is inside the source" ;; esac
   case "$d" in */*) parent=${d%/*}; [ -n "$parent" ] || parent=/ ;; *) parent=. ;; esac
   [ -d "$parent" ] || die "$parent does not exist (unplugged drive?); nothing was created"
+  if [ -d "$d" ]; then phys "$d"; dp=$rp; else phys "$parent"; dp=${rp%/}/${d##*/}; fi
+  [ "$dp" != "$src_p" ] || die "$d is the source"
+  case "$dp" in "${src_p%/}"/*) die "$d is inside the source" ;; esac
+  case "$seen" in *"
+$dp
+"*) die "$d is named twice; one folder is one copy" ;; esac
+  seen="$seen$dp
+"
+  ! git_tree "$dp" || die "$d is inside a git work tree; card media never goes in one"
   if [ -e "$d" ]; then
     [ -d "$d" ] || die "$d exists and is not a folder"
     [ -z "$(ls -A "$d" 2>/dev/null)" ] || die "$d is not empty; nothing is merged or overwritten"
@@ -87,10 +107,11 @@ trap 'exit 1' INT TERM HUP
 
 # Files under SRC, relative, sorted, junk pruned. find prints SRC/<path>; awk
 # keeps <path> (no cd, so no subshell changes the shell's folder on a-Shell).
+# The physical path, so a symlinked SRC is listed and not taken as empty.
 # shortcut: a file name holding a newline breaks the listing; cameras never write one.
-find "$src" \( -name .Spotlight-V100 -o -name .fseventsd -o -name .Trashes -o -name .TemporaryItems \) -prune \
+find "$src_p" \( -name .Spotlight-V100 -o -name .fseventsd -o -name .Trashes -o -name .TemporaryItems \) -prune \
     -o -type f ! -name .DS_Store ! -name '._*' -print |
-  awk -v p="$src/" 'index($0, p) == 1 { print substr($0, length(p) + 1) }' | LC_ALL=C sort > "$tmp/list"
+  awk -v p="${src_p%/}/" 'index($0, p) == 1 { print substr($0, length(p) + 1) }' | LC_ALL=C sort > "$tmp/list"
 nfiles=$(wc -l < "$tmp/list" | tr -d ' ')
 [ "$nfiles" -gt 0 ] || die "$src has no files to copy"
 
@@ -107,13 +128,20 @@ verified=0
 total=0
 for d in "$@"; do
   d=$(strip "$d")
+  # Every DEST was empty, with no manifest, when checked above: one holding either
+  # now is an earlier DEST under another name (a case-only difference, a dangling link).
+  if [ -e "$d.SHA256SUMS" ] || [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
+    echo "skipped: $d is the same folder as an earlier DEST; not counted"
+    continue
+  fi
   total=$((total + 1))
-  cp "$tmp/sums" "$d.SHA256SUMS" || die "cannot write $d.SHA256SUMS"
   mkdir -p "$d" || die "cannot make $d"
+  cp "$tmp/sums" "$d.SHA256SUMS" || die "cannot write $d.SHA256SUMS"
   bad=0
   while IFS= read -r rel; do
     case "$rel" in */*) mkdir -p "$d/${rel%/*}" ;; esac
-    "$CP" -p "$src/$rel" "$d/$rel" || { echo "verify-copy: copy failed: $rel" >&2; bad=$((bad + 1)); }
+    # Counted once, by the check below, which finds it missing or different.
+    "$CP" -p "$src/$rel" "$d/$rel" || echo "verify-copy: copy failed: $rel" >&2
   done < "$tmp/list"
   while IFS= read -r line; do
     want=${line%%  *}

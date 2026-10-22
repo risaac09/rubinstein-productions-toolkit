@@ -100,9 +100,24 @@ class TestTracker(unittest.TestCase):
         with self.assertRaises(beats.BeatsError):
             beats.beat_map(np.zeros(beats.SR * 6))
 
+    def test_a_backbeat_at_140_to_164_bpm_is_not_read_at_two_thirds(self):
+        # kick and off-beat hat weigh the same, so the onset strength repeats every
+        # half beat and its 1.5-beat peak won (150 read as 100); the low band decides
+        for bpm, kw in ((140, {"snare": 0.7}), (150, {"snare": 0.7}), (164, {"snare": 0.7}),
+                        (160, {"hat": 0.3, "seed": 4})):
+            with self.subTest(bpm=bpm, **kw):
+                self.check(bpm, **kw)
+
     def test_a_prior_moves_an_ambiguous_tempo(self):
-        y, _ = loop(75, hat=0.0, pad=False)          # kicks alone at 75: 150 is the octave above
+        y, _ = loop(75)                              # off-beat hats at 75 read as 150
+        self.assertAlmostEqual(beats.beat_map(y)[0], 150, delta=1.0)
         self.assertAlmostEqual(beats.beat_map(y, prior_bpm=75)[0], 75, delta=1.0)
+
+    def test_a_prior_that_is_not_a_positive_tempo_is_an_error(self):
+        y, _ = loop(97, seconds=6.0)
+        for bad in (0.0, -120.0, float("nan"), float("inf")):
+            with self.subTest(prior=bad), self.assertRaises(beats.BeatsError):
+                beats.beat_map(y, prior_bpm=bad)
 
 
 def write_wav(path, y, sr=44100):
@@ -169,6 +184,16 @@ class TestFile(unittest.TestCase):
         self.assertIn("git working tree", err.getvalue())
         with self.assertRaises(paths.OutputRefused):
             beats.write({}, os.path.join(repo, "b.json"))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(beats.main([self.wav, "--out", out, "--prior-bpm", "0"]), 1)
+        self.assertIn("positive BPM", err.getvalue())
+        with open(self.wav, "rb") as f:
+            before = f.read()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(beats.main([self.wav, "--out", self.wav]), 1)
+        self.assertIn("is the music", err.getvalue())
+        with open(self.wav, "rb") as f:
+            self.assertEqual(f.read(), before)
 
 
 if __name__ == "__main__":

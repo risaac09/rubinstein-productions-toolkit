@@ -16,6 +16,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -148,16 +149,36 @@ class TestSilences(unittest.TestCase):
 
     @unittest.skipUnless(os.access(cutlist.FFMPEG, os.X_OK), "ffmpeg missing")
     def test_decode_from_start_keeps_aac_priming(self):
-        # An input seek to 0 skipped the AAC edit list and read the audio ~23 ms early.
+        # On ffmpeg 7+ an input seek, even to 0, read AAC audio up to a packet early
+        # (64 ms at 16 kHz). ffmpeg 6 (CI) reads it right either way, so the command
+        # itself is pinned in test_decode_seeks_exactly_on_the_output_side.
         with tempfile.TemporaryDirectory() as tmp:
             wav, m4a = os.path.join(tmp, "t.wav"), os.path.join(tmp, "t.m4a")
-            tone_wav(wav, [(1.0, 0.0), (1.0, 0.5)])
+            tone_wav(wav, [(1.0, 0.0), (1.0, 0.5), (1.0, 0.0), (1.0, 0.5)])
             subprocess.run([cutlist.FFMPEG, "-v", "error", "-i", wav, "-c:a", "aac", "-b:a", "192k", m4a],
                            check=True)
-            pcm = cutlist.decode_pcm(m4a, 0.0)
-            samples = struct.unpack(f"<{len(pcm) // 2}h", pcm)
-            onset = next(i for i, s in enumerate(samples) if abs(s) > 3000) / cutlist.AUDIO_RATE
-            self.assertAlmostEqual(onset, 1.0, delta=0.005)
+            for t0, t1, want in ((0.0, None, 1.0), (0.5, 1.5, 1.0), (2.5, 3.5, 3.0)):
+                pcm = cutlist.decode_pcm(m4a, t0, t1)
+                samples = struct.unpack(f"<{len(pcm) // 2}h", pcm)
+                onset = t0 + next(i for i, s in enumerate(samples) if abs(s) > 3000) / cutlist.AUDIO_RATE
+                self.assertAlmostEqual(onset, want, delta=0.005, msg=f"read from {t0}")
+
+    def test_decode_seeks_exactly_on_the_output_side(self):
+        def cmd_for(t0, t1=None):
+            with mock.patch.object(cutlist.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, b"", b"")) as run:
+                cutlist.decode_pcm("x.m4a", t0, t1)
+            cmd = run.call_args[0][0]
+            i = cmd.index("-i")
+            return cmd[:i], cmd[i + 2:]
+        for t0 in (0.0, 2.2e-16, 0.0004):            # float noise above 0 is still the start
+            self.assertNotIn("-ss", sum(cmd_for(t0), []))
+        before, after = cmd_for(0.5, 1.5)
+        self.assertNotIn("-ss", before)
+        self.assertEqual(after[:4], ["-ss", "0.500", "-t", "1.000"])
+        before, after = cmd_for(12.34, 13.34)
+        self.assertEqual(before[-2:], ["-ss", "11.340"])
+        self.assertEqual(after[:4], ["-ss", "1.000", "-t", "1.000"])
 
     def _words(self, tmp):
         p = os.path.join(tmp, "w.json")

@@ -70,6 +70,14 @@ class TestSnap(unittest.TestCase):
         for key in ("hop_s", "margin_db", "reach_s", "min_run_s", "floor_percentile"):
             self.assertIn(key, meta)
 
+    def test_digital_silence_is_not_the_floor(self):
+        # a muted or gated head of exact zeros reads -180 dB; as the floor it
+        # would make all room tone speech and leave every edge where it was
+        zeros = [(1.0, -180.0)] + PIECES[1:]
+        out = self.snap([("Hello", 0.8, 1.3), ("there.", 1.3, 1.9), ("Next", 2.3, 3.8)], pieces=zeros)
+        self.assertEqual(times(out), [(1.0, 1.3), (1.3, 2.0), (2.6, 3.5)])
+        self.assertEqual(out["wordsnap"]["floor_db"], ROOM)
+
     def test_a_late_start_moves_back_to_the_onset_but_not_into_the_word_before(self):
         out = self.snap([("Hello", 1.15, 1.9)])
         self.assertEqual(times(out), [(1.0, 2.0)])
@@ -193,6 +201,14 @@ class TestOnAudio(unittest.TestCase):
         self.assertFalse(os.path.exists(bad))
         with self.assertRaises(paths.OutputRefused):
             ws.write({}, bad)
+        for src in (self.wav, self.words):                   # never over an input
+            with open(src, "rb") as f:
+                before = f.read()
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(ws.main([self.words, self.wav, "--out", src]), 1)
+            self.assertIn("is an input", err.getvalue())
+            with open(src, "rb") as f:
+                self.assertEqual(f.read(), before)
 
 
 if __name__ == "__main__":

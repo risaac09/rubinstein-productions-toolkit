@@ -34,7 +34,7 @@ Spaces: `vlog` (V-Log/V-Gamut), `bmdfilm5` (Blackmagic Film Gen 5/Wide Gamut
 Gen 5), `logc3` (LogC3 EI 800/AWG3), `logc4` (LogC4/AWG4), `di` (DaVinci
 Intermediate/DWG), `r709` (gamma 2.4), `srgb`, `lin709`. Output spaces for the
 model: `r709`, `srgb`. Cameras (`--camera`): `s5ii` and `gh7` are V-Log, `pyxis` is BRAW
-decoded as Gen 5; `rcm` (for `looks` only) is DaVinci Intermediate in and out. LUT inputs can be `.cube` or Resolve's own `.dat`.
+decoded as Gen 5; `rcm` (for `looks`, `build` and `pack`) is DaVinci Intermediate in and out. LUT inputs can be `.cube` or Resolve's own `.dat`.
 
 ## Cameras, ports and looks
 
@@ -86,7 +86,7 @@ Which cameras can load the files:
 - **Pyxis:** yes, 33-point `.cube`, as the first section above says.
 - **GH7:** `--camera gh7` writes the S5II's V-Log files labelled `[GH7]` (port, looks, pack). Whether the GH7 loads a `--monitor` copy in camera is untested. **GH5 and iPhone:** this repo knows no route.
 
-Colour space transform LUTs, LUT error statistics and the LUT pack for Resolve on an iPad: see [lutlab-cst.md](../lutlab-cst.md). `cst`, `lutstats` and `pack` need numpy only.
+Colour space transform LUTs, LUT error statistics and the LUT pack for Resolve on an iPad: see [lutlab-cst.md](../lutlab-cst.md). `cst`, `lutstats` and `pack` need numpy only; `pack --base` bakes looks and so needs scipy and Pillow too.
 
 Delta arithmetic (`model.apply_delta`):
 - **Added:** tone `black`/`white`/`mid`/`toe_start`/`shoulder_start`; `hue_lum`; `hue_shift`; `split_tone` (as OKLab vectors); `white_balance`.

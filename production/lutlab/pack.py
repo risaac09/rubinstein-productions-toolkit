@@ -51,11 +51,15 @@ Update Lists.
 What each file expects
 {files}
 Which files need a DaVinci Intermediate timeline (or a DI node before them)
-- cst/di-to-r709-*.cube and every looks/*[RCM].cube read DaVinci Intermediate / DaVinci Wide Gamut.
-  In a Resolve Color Managed project set Timeline to DaVinci WG/Intermediate, Output to Rec.709 Gamma 2.4,
-  tone and gamut mapping None. In a project that is not colour managed (DaVinci YRGB), build it with
-  nodes: <log>-to-di first, then the [RCM] look, then di-to-r709 last.
-- Do not put a cst/<log>-to-* file in a Resolve Color Managed project: Resolve already converts the camera.
+- Every looks/*[RCM].cube reads and writes DaVinci Intermediate / DaVinci Wide Gamut. In a Resolve Color
+  Managed project set Timeline to DaVinci WG/Intermediate, Output to Rec.709 Gamma 2.4, tone and gamut
+  mapping None.
+- cst/di-to-r709-*.cube reads DaVinci Intermediate and writes Rec.709 Gamma 2.4. It is only the last node
+  in a project that is not colour managed (DaVinci YRGB): <log>-to-di first, then the [RCM] look, then
+  di-to-r709 last. Never use it in a Resolve Color Managed project with a Rec.709 output: Resolve converts
+  its Rec.709 result a second time and mid grey shows near white.
+- Do not put any cst/ file in a Resolve Color Managed project: Resolve already converts the camera and
+  the output.
 - Camera looks ([S5II], [GH7], [Pyxis]) read the camera's own log and give Rec.709 Gamma 2.4: a project
   that is not colour managed, one node per clip.
 
@@ -105,7 +109,10 @@ def sha256(path):
 def build(cameras, out, size=33, date=None, base=None, deltas=None, overwrite=False):
     """Write <out>/rp-luts-<date>.zip and return its path."""
     date = date or datetime.date.today().strftime("%Y%m%d")
-    datetime.datetime.strptime(date, "%Y%m%d")  # ValueError on a bad date
+    day = datetime.datetime.strptime(date, "%Y%m%d")  # ValueError on a bad date
+    # strptime takes 1-digit months and days; zip time stamps run 1980 to 2107
+    if day.strftime("%Y%m%d") != date or not 1980 <= day.year <= 2107:
+        raise ValueError(f"date {date!r}: give YYYYMMDD, 1980 to 2107")
     cameras = list(dict.fromkeys(c.strip().lower() for c in cameras if c.strip()))  # "s5ii,S5II" is one camera
     if not cameras:
         raise ValueError("give at least one camera")
@@ -147,15 +154,18 @@ def build(cameras, out, size=33, date=None, base=None, deltas=None, overwrite=Fa
             date=date, cameras=", ".join(cameras), size=size, files="\n".join(lines) + "\n", extra=extra))
         members = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
         (root / "SHA256SUMS").write_text("".join(f"{sha256(root / m)}  {m}\n" for m in members))
-        stamp = tuple(int(x) for x in (date[:4], date[4:6], date[6:])) + (0, 0, 0)
-        part = str(zpath) + ".part"
-        with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as z:
-            for m in sorted(members + ["SHA256SUMS"]):
-                info = zipfile.ZipInfo(f"{name}/{m}", date_time=stamp)
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = 0o644 << 16
-                z.writestr(info, (root / m).read_bytes())
-        os.replace(part, zpath)
+        stamp = (day.year, day.month, day.day, 0, 0, 0)
+        part = Path(str(zpath) + ".part")
+        try:
+            with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as z:
+                for m in sorted(members + ["SHA256SUMS"]):
+                    info = zipfile.ZipInfo(f"{name}/{m}", date_time=stamp)
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.external_attr = 0o644 << 16
+                    z.writestr(info, (root / m).read_bytes())
+            os.replace(part, zpath)
+        finally:
+            part.unlink(missing_ok=True)  # a failed write leaves nothing behind
     return zpath
 
 

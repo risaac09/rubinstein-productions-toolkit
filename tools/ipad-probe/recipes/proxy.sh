@@ -11,7 +11,8 @@
 # and first audio stream (AAC 160k), with faststart for streaming. Colour tags
 # pass through as the source has them, so a V-Log clip makes a V-Log proxy.
 # FFMPEG names the command (default ffmpeg).
-# Exit: 0 written, 1 every encoder failed, 2 refused (usage, OUT exists).
+# Exit: 0 written, 1 every encoder failed, 2 refused (usage, OUT exists, OUT
+# inside a git work tree).
 set -u
 
 FFMPEG="${FFMPEG:-ffmpeg}"
@@ -27,6 +28,14 @@ case "$rate" in ''|*[!0-9.kKmM]*) die "BITRATE looks like 6M or 2500k" ;; esac
 # A leading - would be read as an option.
 case "$in" in -*) in="./$in" ;; esac
 case "$out" in -*) out="./$out" ;; esac
+# Outputs never go inside a git work tree: OUT's folder resolved physically,
+# with cd here and back, never in a subshell (on a-Shell that moves the shell too).
+here=$(pwd -P); case "$out" in */*) g=${out%/*} ;; *) g=. ;; esac
+case "$g" in /*) ;; '') g=/ ;; *) g=./$g ;; esac
+cd -P "$g" 2>/dev/null || die "the folder for $out does not exist"
+g=$(pwd -P); cd "$here" || exit 2
+while [ -n "$g" ] && [ ! -e "$g/.git" ]; do g=${g%/*}; done
+[ -z "$g" ] && [ ! -e /.git ] || die "$out would land in the git work tree ${g:-/}; write it outside any repository"
 
 encoders=$("$FFMPEG" -hide_banner -encoders 2>/dev/null | awk 'NF >= 2 { print $2 }')
 # Hardware decode where the build has it: about 3x faster on 5.7K HEVC 10-bit

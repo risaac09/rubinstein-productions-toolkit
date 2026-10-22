@@ -7,8 +7,8 @@ word after a breath starts early, the word before it ends late. A cut made
 on those times keeps dead air or clips a consonant. wordsnap reads the
 source as a 10 ms RMS envelope (trimreview.envelope), calls a window speech
 when it sits MARGIN_DB over the file's own floor (its FLOOR_PCT percentile
-window), and moves each word edge that touches a pause onto the speech
-edge, never further than REACH_S:
+window, digital silence left out), and moves each word edge that touches a
+pause onto the speech edge, never further than REACH_S:
 
     start in a pause     later, to where the speech begins (before the end)
     start in speech      earlier, to where that run of speech begins, when
@@ -50,6 +50,7 @@ from . import cutlist, paths, trimreview
 
 HOP_S = cutlist.HOP_S      # 10 ms windows, the envelope cutlist and trimreview use
 FLOOR_PCT = 10             # the file's floor: this percentile of its windows
+DIGITAL_SILENCE_DB = -120.0  # windows at or under this are left out of the floor
 MARGIN_DB = 12.0           # speech: a window this far over the floor
 REACH_S = 0.4              # the furthest an edge may move
 MIN_RUN_S = cutlist.MIN_SILENCE_S  # shorter pauses inside speech, and blips, are ignored
@@ -78,7 +79,10 @@ def speech_mask(db, margin_db=MARGIN_DB, min_run=MIN_RUN_S, hop=HOP_S):
     """(active, floor_db, threshold_db) for an array of window levels. A
     pause shorter than min_run inside speech (a stop consonant) counts as
     speech, then a speech run shorter than min_run (a click) as pause."""
-    floor = float(np.percentile(db, FLOOR_PCT))
+    # digital silence (exact zeros: a muted track, a gated head) is no floor;
+    # at -180 dB it would put every window of room tone over the threshold
+    live = db[db > DIGITAL_SILENCE_DB]
+    floor = float(np.percentile(live if len(live) else db, FLOOR_PCT))
     thr = floor + margin_db
     active = db > thr
     k = int(round(min_run / hop))
@@ -181,8 +185,8 @@ def snap(data, env, reach=REACH_S, margin_db=MARGIN_DB):
         starts.append(ms["start"])
         ends.append(ms["end"])
     out["wordsnap"] = {
-        "hop_s": HOP_S, "floor_percentile": FLOOR_PCT, "margin_db": margin_db,
-        "min_run_s": MIN_RUN_S, "reach_s": reach, "floor_db": round(floor, 1),
+        "hop_s": HOP_S, "floor_percentile": FLOOR_PCT, "digital_silence_db": DIGITAL_SILENCE_DB,
+        "margin_db": margin_db, "min_run_s": MIN_RUN_S, "reach_s": reach, "floor_db": round(floor, 1),
         "threshold_db": round(thr, 1), "speech_share": round(float(active.mean()), 3),
         "words": len(refs), "starts": _stats(starts), "ends": _stats(ends)}
     return out
@@ -242,6 +246,8 @@ def run(args):
         problem = paths.out_problem(args.out, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
+        if os.path.realpath(args.out) in map(os.path.realpath, (args.words, args.source)):
+            raise paths.OutputRefused(f"{args.out} is an input; the snapped words never replace it")
         report = build(args.words, args.source, args.reach, args.margin_db)
         write(report, args.out)
     except (WordsnapError, cutlist.CutlistError, OSError, ValueError) as e:

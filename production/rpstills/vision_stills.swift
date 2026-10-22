@@ -15,7 +15,8 @@
 // face capture quality (0 to 1, comparable only between faces of the same
 // person). eye_* is the eye aspect ratio (height over width of the eye
 // landmark polygon); roughly 0.25 and up is open, under 0.15 is closed.
-// The image is taken as stored; pass upright files.
+// NSImage applies the file's EXIF orientation: sizes and points are of the
+// upright image, which differs from the stored pixels when the tag is not 1.
 // --landmarks (opt-in, first argument) adds to each face
 //   "landmarks": {"leftEye": [[x, y], ...], "rightEye", "leftEyebrow",
 //                 "rightEyebrow", "outerLips", "innerLips", "faceContour", "nose"}

@@ -47,6 +47,14 @@ def response(x, curved=False):
     return np.array([L, a, b])
 
 
+def coupled(x):
+    """a* falls steeply with mired at 5500 K and flattens by 9000 K."""
+    ev, mired, tint = (float(v) for v in x)
+    m = mired - 150.0
+    return np.array([116 * np.cbrt(0.18 * 2.0 ** ev) - 16 - 0.02 * m,
+                     12.0 + 0.6 * tint - 10.0 * np.tanh((m - 25.0) / 12.0), 6.0 - 0.2 * m])
+
+
 class SolveTest(unittest.TestCase):
     def run_solve(self, target=TARGET, bounds=BOUNDS, free=develop.AXES, x0=X0, curved=False, **kw):
         calls = []
@@ -77,7 +85,7 @@ class SolveTest(unittest.TestCase):
         r, _ = self.run_solve(curved=True, tol=0.3)
         self.assertEqual(r["status"], "converged")
         self.assertAlmostEqual(r["lab"][2], 14.0, delta=0.3)
-        self.assertLessEqual(r["iterations"], develop.MAX_ITER)
+        self.assertLessEqual(r["iterations"], 4)  # 4 with Broyden's updates; 6 with the start's Jacobian kept
 
     def test_tint_pins_and_ev_mired_solve_l_and_b(self):
         r, calls = self.run_solve(target=(64.0, 20.0, 14.0))
@@ -96,15 +104,48 @@ class SolveTest(unittest.TestCase):
     def test_a_long_white_balance_move_does_not_pin_tint_on_the_wrong_side(self):
         # a* falls steeply with mired at 5500 K and flattens by 9000 K: the first linear step
         # asks for tint -40. Pinning on that first hit (with the mired move clipped) left tint
-        # at -6 and a* 18; the answer is tint pinned at +6.
-        def coupled(x):
+        # at -6 and a* 18; the answer is tint pinned at +6. The same from an as-shot tint
+        # clipped onto -6: that start is held one step, not pinned on the first Jacobian.
+        for x0 in (X0, (0.0, 1e6 / 5500, -14.4), (0.0, 1e6 / 5500, -6.0)):
+            r = develop.solve(coupled, x0, BOUNDS, (64.0, 27.0, 14.0), list(develop.AXES))
+            self.assertEqual((r["status"], r["pinned"], r["x"][2]), ("pinned", ["tint"], 6.0), x0)
+            self.assertAlmostEqual(r["lab"][1], 25.6, delta=0.3)
+
+    def test_a_clipped_start_reaches_a_target_inside_the_bounds(self):
+        target = response((0.56, 168.9, 0.48))
+        r, _ = self.run_solve(target=target, x0=(0.0, 240.56, -7.05), tol=develop.AIM)
+        self.assertEqual((r["status"], r["pinned"]), ("converged", []))
+        self.assertAlmostEqual(r["x"][2], 0.48, delta=0.3)
+
+    def test_a_pin_is_kept_when_the_pinning_step_cannot_improve_the_rest(self):
+        # step 1 puts L* and b* on target with tint landing on +6; step 2 only pins tint, and its
+        # render (Lab rounded to 0.01, as measure.skin_lab rounds) equals the last one
+        def linear(x):
             ev, mired, tint = (float(v) for v in x)
-            m = mired - 150.0
-            return np.array([116 * np.cbrt(0.18 * 2.0 ** ev) - 16 - 0.02 * m,
-                             12.0 + 0.6 * tint - 10.0 * np.tanh((m - 25.0) / 12.0), 6.0 - 0.2 * m])
-        r = develop.solve(coupled, X0, BOUNDS, (64.0, 27.0, 14.0), list(develop.AXES))
+            return np.round([50 + 12 * ev, 12 + 0.6 * tint, 6 - 0.2 * (mired - 150)], 2)
+        for target in ((56.0, 24.0, 4.0), (62.0, 18.0, 8.0)):
+            r = develop.solve(linear, X0, BOUNDS, target, list(develop.AXES))
+            self.assertEqual((r["status"], r["pinned"], r["iterations"]), ("pinned", ["tint"], 2), target)
+
+    def test_an_axis_that_lands_one_float_step_off_its_bound_still_pins(self):
+        # x + (6 - x) is 5.999999999999999 for this start: the landing is snapped onto the bound
+        r, calls = self.run_solve(target=(62.6098, 27.8294, 10.9124), x0=(0.74594, 164.106, -3.72314),
+                                  tol=develop.AIM)
         self.assertEqual((r["status"], r["pinned"], r["x"][2]), ("pinned", ["tint"], 6.0))
-        self.assertAlmostEqual(r["lab"][1], 25.6, delta=0.3)
+        self.assertLessEqual(r["residual"], develop.AIM)
+        self.assertTrue(all(abs(x[2]) <= 6.0 for x in calls))
+
+    def test_narrow_bounds_keep_the_probe_inside_and_no_room_pins(self):
+        for tint_max in (2.0, 0.5):
+            bounds = BOUNDS[:2] + [(-tint_max, tint_max)]
+            r, calls = self.run_solve(bounds=bounds)
+            self.assertTrue(all(abs(x[2]) <= tint_max for x in calls), (tint_max, [x[2] for x in calls]))
+        r, calls = self.run_solve(bounds=[(-0.1, 0.1)] + BOUNDS[1:])
+        self.assertTrue(all(abs(x[0]) <= 0.1 for x in calls))
+        r, calls = self.run_solve(bounds=BOUNDS[:2] + [(0.0, 0.0)], x0=(0.0, 1e6 / 5500, -3.0))
+        self.assertEqual({x[2] for x in calls}, {0.0})
+        self.assertEqual((r["pinned"], r["free"], r["status"]), (["tint"], ["ev", "mired"], "pinned"))
+        self.assertEqual(r["evaluations"], 1 + 2 + r["iterations"])
 
     def test_an_ev_bound_pins_too(self):
         bounds = [(-1.0, 0.5)] + BOUNDS[1:]
@@ -362,6 +403,31 @@ class DevelopFrameTest(unittest.TestCase):
         self.assertEqual(doc["target"], list(TARGET))
         self.assertEqual(doc["params"]["solve"]["tint_max"], 6)
 
+    def test_each_row_keeps_the_params_it_was_solved_under(self):
+        dest = str(self.dest)
+        develop.write(dest, self.build([("A", "/raw/A.RW2")]))
+        lk = json.loads(TRIAL.read_text())
+        lk["solve"].update(tint_max=40, free=["ev", "mired"])   # same look name and version
+        path = self.tmp / "look.json"
+        path.write_text(json.dumps(lk))
+        with open(develop.write(dest, self.build([("B", "/raw/B.RW2")], look=develop.load_look(path)))) as f:
+            doc = json.load(f)
+        self.assertEqual(doc["params"]["solve"]["tint_max"], 40)
+        self.assertEqual(doc["frames"]["A"]["params"]["solve"]["tint_max"], 6)
+        self.assertEqual(doc["frames"]["A"]["params"]["solve"]["free"], list(develop.AXES))
+        self.assertEqual(doc["frames"]["B"]["params"]["solve"]["tint_max"], 40)
+
+    def test_a_backend_without_kelvin_records_its_own_temperature_unit(self):
+        backend = FakeBackend(shot={"temp": 6500.0, "tint": 0.0})
+        backend.temp_key, backend.temp_unit = "temp", "relative, 6500 = as shot"
+        doc = self.build([("F1", "/raw/F1.RW2")], backend)
+        r = doc["frames"]["F1"]
+        self.assertEqual(set(r["x"]), {"ev", "temp", "mired", "tint"})
+        self.assertEqual((r["x0"]["temp"], r["temp_unit"], doc["temp_unit"]), (6500, "relative, 6500 = as shot",
+                                                                               "relative, 6500 = as shot"))
+        self.assertIn("temp ", develop._line(r))
+        self.assertEqual(self.build([("F2", "/raw/F2.RW2")])["frames"]["F2"]["temp_unit"], "K")
+
 
 class LookAndFramesTest(unittest.TestCase):
     def setUp(self):
@@ -464,6 +530,10 @@ if argv == ["--version"]:
     print("lightcraft-cli 0.0-test"); sys.exit(0)
 if argv and argv[0] == "--info":
     print(json.dumps({info!r})); sys.exit(0)
+if "develop.wb" in argv:
+    print(json.dumps({{"command": "library.selectAll", "ok": True, "result": {{"selected": 1}}}}))
+    print(json.dumps({{"command": "develop.wb", "ok": True, "result": {{"temp": 6500.0, "tint": 0.0}}}}))
+    sys.exit(0)
 out = [a[5:] for a in argv if a.startswith("path=")] or [argv[1]]
 open(out[0], "wb").write(b"tif")
 print(json.dumps({{"ok": True}}))
@@ -501,30 +571,40 @@ class BackendCommandTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop(develop.ENV_LIGHTCRAFT, None)
             self.assertIn(develop.ENV_LIGHTCRAFT, develop.LightCraftBackend().unavailable())
-        with mock.patch.dict(os.environ, {develop.ENV_LIGHTCRAFT: str(self.tmp / "nope")}):
-            self.assertIn("not an executable", develop.LightCraftBackend().unavailable())
+        for nope in (self.tmp / "nope", self.tmp):    # missing, and a directory (executable bit, not a binary)
+            with mock.patch.dict(os.environ, {develop.ENV_LIGHTCRAFT: str(nope)}):
+                self.assertIn("not an executable", develop.LightCraftBackend().unavailable())
         exe, log = stand_in(self.tmp / "lightcraft-cli")
         with mock.patch.dict(os.environ, {develop.ENV_LIGHTCRAFT: exe}):
             b = develop.make_backend("lightcraft", profile="lc.color")
         self.assertIsNone(b.unavailable())
         self.assertEqual(b.version(), {"engine": "lightcraft", "version": "lightcraft-cli 0.0-test", "path": exe,
                                        "trial": True})
-        self.assertIsNone(b.as_shot("/r/A.RW2"))
+        self.assertEqual(b.as_shot("/r/A.RW2"), {"temp": 6500.0, "tint": 0.0})   # relative: not Kelvin
+        self.assertEqual((b.temp_key, "Kelvin" in b.temp_unit), ("temp", True))
         out = str(self.tmp / "a.tif")
         values = {"light.contrast": 32, "light.exposure": 0.5, "wb.temp": 6000.0, "wb.tint": 1.5}
         b.render("/r/A.RW2", values, out, long_edge=1500)
         b.render("/r/A.RW2", values, out, bit16=True)
         head = ["run", "--import", "/r/A.RW2", "library.selectAll", "develop.profile", "id=lc.color",
                 "develop.set", json.dumps({"values": values}), "app.export", f"path={out}"]
-        self.assertEqual(logged(log)[1:], [head + ["longEdge=1500"], head + ["longEdge=0", "bitDepth=16"]])
+        self.assertEqual(logged(log)[1:], [
+            ["run", "--import", "/r/A.RW2", "library.selectAll", "develop.wb", "mode=asShot"],
+            head + ["longEdge=1500"], head + ["longEdge=0", "bitDepth=16"]])
 
     def test_a_failing_backend_raises_with_its_output(self):
         exe, _ = stand_in(self.tmp / "lightcraft-cli", fail=True)
         with self.assertRaisesRegex(RuntimeError, "boom"):
             develop.LightCraftBackend(exe=exe).render("/r/A.RW2", {}, str(self.tmp / "a.tif"))
         self.assertIsNone(develop.AppleBackend(exe=exe).as_shot("/r/A.RW2"))
+        self.assertIsNone(develop.LightCraftBackend(exe=exe).as_shot("/r/A.RW2"))
         exe, _ = stand_in(self.tmp / "zero", info={"width": 0, "height": 0, "temp": 0, "tint": 0})
         self.assertIsNone(develop.AppleBackend(exe=exe).as_shot("/r/A.RW2"))  # no kelvin of 0 to divide by
+        b = develop.LightCraftBackend(exe=str(self.tmp))                   # a directory: a clean error
+        with self.assertRaisesRegex(RuntimeError, "cannot run"):
+            b.render("/r/A.RW2", {}, str(self.tmp / "a.tif"))
+        self.assertIsNone(b.version()["version"])
+        self.assertIsNone(b.as_shot("/r/A.RW2"))
 
     def test_unknown_backend(self):
         with self.assertRaises(ValueError):
@@ -571,6 +651,18 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("1 failed", text)
         self.assertIn("F2", err)
+
+    def test_a_pinned_frame_exits_1(self):
+        raw = self.tmp / "F3.RW2"
+        raw.write_bytes(b"raw")
+        lk = json.loads(TRIAL.read_text())
+        lk["solve"]["target_lab"] = [64.0, 20.0, 14.0]
+        (self.tmp / "pin.json").write_text(json.dumps(lk))
+        code, text, err = self.cli(self.tmp / "out", "--look", self.tmp / "pin.json", "--raw", raw)
+        self.assertEqual(code, 1)
+        self.assertIn("1 pinned (tint)", text)
+        self.assertIn("pinned", err)
+        self.assertIn("F3", err)
 
     def test_refusals(self):
         code, _, err = self.cli(HERE / "never-written", "--look", TRIAL, "--raw", TRIAL)

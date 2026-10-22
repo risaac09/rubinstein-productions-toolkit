@@ -10,12 +10,14 @@ Run: ~/.venvs/rp-tools/bin/python -m unittest production.tests.test_lutlab_cst  
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -33,6 +35,7 @@ def unit(table):
 class CstTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def test_vlog_grey_lands_on_di_grey(self):
         # V-Log 18% grey (0.4233, Panasonic) is DaVinci Intermediate 0.3360 (Blackmagic): exact and through the cube
@@ -125,7 +128,7 @@ class LutstatsTest(unittest.TestCase):
 
     def test_round_trip(self):
         r33, r65 = lutstats.roundtrip("vlog", "di", 33), lutstats.roundtrip("vlog", "di", 65)
-        # measured 33: natural p99 0.55 max 0.85, neutral max 1.54 (at V-Log 1.0, eight stops over white);
+        # measured 33: natural p99 0.55 max 0.85, neutral max 1.54 (at V-Log 1.0, eight stops over 18% grey);
         # 65: natural p99 0.17 max 0.30
         self.assertLess(r33["natural"]["p99"], 0.7)
         self.assertLess(r33["natural"]["max"], 1.2)
@@ -154,6 +157,7 @@ class LutstatsTest(unittest.TestCase):
 class PackTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def unpack(self, path):
         d = Path(tempfile.mkdtemp(dir=self.tmp))
@@ -181,6 +185,26 @@ class PackTest(unittest.TestCase):
                   "No looks in this pack", "vlog-to-di-33.cube: Panasonic V-Log / V-Gamut (S5II, GH7) in"):
             self.assertIn(s, text)
         self.assertNotIn(str(Path.home()), text)
+        # di-to-r709 writes Rec.709: it must not sit with the colour-managed setup, where Resolve maps it twice
+        bullets = text.split("\n- ")
+        self.assertNotIn("di-to-r709", next(b for b in bullets if "Timeline to DaVinci WG/Intermediate" in b))
+        self.assertIn("Never use it in a Resolve Color Managed project",
+                      next(b for b in bullets if b.startswith("cst/di-to-r709-*.cube")))
+
+    def test_bad_dates_refused_and_no_part_left(self):
+        out = self.tmp / "d"
+        for d in ("2026131", "202611", "19790101", "00010101", "21080101"):
+            with self.assertRaises(ValueError, msg=d):
+                pack.build(["s5ii"], out, 33, d)
+        with self.assertRaises(SystemExit):
+            main(["pack", "--camera", "s5ii", "--date", "2026131", "--out", str(out)])
+        self.assertEqual(list(out.glob("*")) if out.exists() else [], [])
+        with mock.patch.object(zipfile.ZipFile, "writestr", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                pack.build(["s5ii"], out, 33, "20261022")
+        self.assertEqual(list(out.glob("*")), [])
+        with zipfile.ZipFile(pack.build(["s5ii"], out, 33, "20260131")) as z:
+            self.assertEqual({i.date_time for i in z.infolist()}, {(2026, 1, 31, 0, 0, 0)})
 
     def test_cast_turns_grey_magenta(self):
         root, _ = self.unpack(pack.build(["s5ii"], self.tmp, 33, "20261022"))
@@ -235,6 +259,30 @@ class PackTest(unittest.TestCase):
                                    cube.read_cube(str(root / "looks/warm [S5II].cube"))["table"])
         self.assertNotIn("No looks", (root / "README.txt").read_text())
         self.assertIn("looks/warm [RCM].cube", (root / "SHA256SUMS").read_text())
+
+
+class GuardAndNamesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_a_synced_folder_is_refused_whatever_its_case(self):
+        from lutlab import guard
+        synced = self.tmp / "Synced"
+        synced.mkdir()
+        with mock.patch.object(guard, "ICLOUD", [synced]):
+            with self.assertRaises(PermissionError):
+                guard.check_out_dir(self.tmp / "synced" / "x")
+        self.assertFalse((self.tmp / "synced" / "x").exists())
+
+    def test_a_look_name_with_a_path_is_refused(self):
+        from lutlab import pipeline
+        for name in (str(self.tmp / "escaped"), "Day/Night", ".."):
+            delta = self.tmp / "d.json"
+            delta.write_text(json.dumps({"name": name}))
+            with self.assertRaises(ValueError):
+                pipeline.looks(self.tmp / "missing-params.json", [delta], ["s5ii"], self.tmp / "out")
+        self.assertFalse((self.tmp / "escaped").exists())
 
 
 class NumpyOnlyTest(unittest.TestCase):

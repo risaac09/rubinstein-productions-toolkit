@@ -20,6 +20,7 @@
     "Target: mean CIELAB over the cheek apples (rpstills.skin.cheek_mask) of L* 64, a* 15, b* 14; hue 43 degrees, Rec.709 vectorscope 117.7 degrees. It was picked by eye on one overcast portrait session and is a trial value.",
     "The published skin-tone line on a Rec.709 vectorscope sits near 123 degrees; this target reads about 5.5 degrees redder. Which reference rules is undecided, and rpstills audit reports the distance to both.",
     "tint_max 6 keeps white fabric from picking up a visible green or magenta cast. It was set in LightCraft tint units; Apple's tint scale differs, so on the apple backend it is a bound, not a calibrated limit.",
+    "temp_bounds_k is Kelvin only on the apple backend. On lightcraft it bounds wb.temp in LightCraft's own units, which on a RAW without a Kelvin scale (the RW2 test files) are relative: 6500 is as shot.",
     "develop.values is empty: the apple backend takes only exposure, temperature and tint. A LightCraft look puts LightCraft control ids there and a LightCraft profile id in develop.profile."
   ]
 }

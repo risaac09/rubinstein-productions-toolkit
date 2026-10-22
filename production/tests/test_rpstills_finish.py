@@ -9,9 +9,12 @@ Run: ~/.venvs/rp-tools/bin/python -m unittest production.tests.test_rpstills_fin
 """
 
 import argparse
+import hashlib
 import io
 import json
+import os
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
@@ -83,6 +86,24 @@ def portrait(textured=True):
 
 def luma(rgb):
     return rgb @ np.float32(retouch.LUMA)
+
+
+def wide_icc(desc=b"Test Wide RGB"):
+    """A minimal ICC v2 matrix/TRC RGB profile: Adobe RGB (1998) primaries, D50-adapted, gamma 563/256."""
+    s15 = lambda *v: b"".join(struct.pack(">i", round(x * 65536)) for x in v)  # noqa: E731
+    xyz = lambda *v: b"XYZ \0\0\0\0" + s15(*v)  # noqa: E731
+    curv = b"curv\0\0\0\0" + struct.pack(">IH", 1, 563)
+    tags = [(b"desc", b"desc\0\0\0\0" + struct.pack(">I", len(desc) + 1) + desc + b"\0" * 79),
+            (b"wtpt", xyz(0.9642, 1.0, 0.8249)), (b"rXYZ", xyz(0.60974, 0.31111, 0.01947)),
+            (b"gXYZ", xyz(0.20528, 0.62567, 0.06087)), (b"bXYZ", xyz(0.14919, 0.06322, 0.74457)),
+            (b"rTRC", curv), (b"gTRC", curv), (b"bTRC", curv)]
+    table, data, start = b"", b"", 132 + 12 * len(tags)
+    for sig, body in tags:
+        body += b"\0" * (-len(body) % 4)
+        table, data = table + sig + struct.pack(">II", start + len(data), len(body)), data + body
+    header = (struct.pack(">I", start + len(data)) + b"\0" * 4 + struct.pack(">I", 0x02100000) + b"mntrRGB XYZ "
+              + b"\0" * 12 + b"acsp" + b"\0" * 28 + s15(0.9642, 1.0, 0.8249) + b"\0" * 48)
+    return header + struct.pack(">I", len(tags)) + table + data
 
 
 class HealTest(unittest.TestCase):
@@ -174,7 +195,7 @@ class EyesUnderEyeTeethTest(unittest.TestCase):
         hsv1 = cv2.cvtColor(out, cv2.COLOR_RGB2HSV)[560, 400]
         self.assertAlmostEqual(hsv1[1] / hsv0[1], 1 + retouch.TEETH_SAT, delta=0.03)
         self.assertAlmostEqual(hsv1[2] / hsv0[2], 1 + retouch.TEETH_VALUE, delta=0.01)
-        inner = skin.poly(img.shape, landmarks_px()["innerLips"])
+        inner = skin.region_masks(fp(), img.shape)["lips_inner"]
         np.testing.assert_array_equal(out[~inner], img[~inner])
         self.assertGreater(rep["px"], 500)
 
@@ -212,6 +233,22 @@ class DeglareTest(unittest.TestCase):
         right = veil.copy(); right[:, :400] = False
         lab0, lab1 = (cv2.cvtColor(a, cv2.COLOR_RGB2LAB) for a in (img, out))
         self.assertLess(lab1[right][:, 0].mean(), lab0[right][:, 0].mean() - 3)
+
+    def test_a_thinning_blue_veil_ends_near_the_cheek_hue_not_on_pink(self):
+        img = portrait()
+        lens = skin.region_masks(fp(), img.shape)["lens"] & ~retouch._features(fp(), img.shape)
+        veil = lens.copy()
+        veil[:360] = veil[400:] = False
+        mix = (0.2 + 0.4 * (np.arange(W, dtype=np.float32) % 160) / 160)[None, :, None]  # partial weights
+        img = np.where(veil[..., None], (1 - mix) * img + mix * np.float32([0.62, 0.80, 1.0]), img).astype(np.float32)
+        out, rep = retouch.deglare(img, fp())
+        self.assertTrue(rep["applied"])
+        changed = np.abs(out - img).max(2) > 0.02
+        ab = cv2.cvtColor(out, cv2.COLOR_RGB2LAB)[changed][:, 1:].mean(0)
+        cheek = rep["cheek_lab"]
+        dh = np.degrees(np.arctan2(ab[1], ab[0]) - np.arctan2(cheek[2], cheek[1]))
+        self.assertLess(abs(dh), 15)                   # a weight-scaled pull stops 38 degrees short, on pink
+        self.assertEqual(retouch.params()["deglare"]["ab_full_weight"], retouch.GLARE_AB_FULL)
 
     def test_no_glare_no_change(self):
         img = portrait()
@@ -465,6 +502,71 @@ class FinishRunTest(unittest.TestCase):
             finish.retouch_ids(["F9"], ["F1"])
         with self.assertRaises(ValueError):
             finish.retouch_ids(["none", "F1"], ["F1"])
+        for words in (["none", "all"], ["all", "none"], ["none,all"]):   # a contradiction never retouches all
+            with self.assertRaisesRegex(ValueError, "cannot be mixed", msg=words):
+                finish.retouch_ids(words, ["F1", "F2"])
+
+    def test_a_face_missing_an_eye_region_is_cropped_from_the_box_and_the_run_completes(self):
+        partial = face()
+        del partial["landmarks"]["rightEye"]          # Vision leaves out a region it did not find
+        self.faces["F2"] = [partial]
+        code, out, err = self.run_cli("--retouch", "all")
+        self.assertEqual(code, 0, err)
+        rows = {row["id"]: row for row in self.doc()["frames"]}
+        self.assertEqual(rows["F2"]["crops"]["headshot_4x5_eye36"]["eye_from"], "box estimate")
+        self.assertIn("not retouched", rows["F2"]["retouch"]["error"])
+        self.assertEqual(rows["F1"]["crops"]["headshot_4x5_eye36"]["eye_from"], "landmarks")
+        self.assertTrue((self.out / "finish" / "headshot_4x5_eye36" / "F2.jpg").exists())
+
+    def test_sources_turned_by_exif_or_tagged_other_than_srgb_are_recorded_not_finished(self):
+        src = self.tmp / "graded"
+        src.mkdir()
+        im = Image.fromarray((self.img * 255 + 0.5).astype(np.uint8))
+        im.save(src / "G1.jpg", quality=95, icc_profile=finish.srgb_icc())
+        im.save(src / "G2.jpg", quality=95, icc_profile=wide_icc())
+        exif = Image.Exif()
+        exif[0x0112] = 3                              # 180 degrees: same size, so Vision's size check passes
+        im.save(src / "G3.jpg", quality=95, exif=exif)
+        code, _, err = self.run_cli("--src", str(src))
+        self.assertEqual(code, 1)
+        rows = {row["id"]: row for row in self.doc()["frames"]}
+        self.assertNotIn("error", rows["G1"])
+        self.assertIn("Test Wide RGB, not sRGB", rows["G2"]["error"])
+        self.assertIn("EXIF orientation 3", rows["G3"]["error"])
+        self.assertEqual(sorted(os.listdir(self.out / "finish" / "headshot_4x5_eye36")), ["G1.jpg"])
+
+    def test_profile_names_that_are_paths_are_refused(self):
+        cfg = json.loads((HERE.parent / "stills-config.json").read_text())
+        for name in ("../../escape", str(self.tmp / "abs"), ".."):
+            cfg["profiles"][name] = dict(cfg["profiles"]["headshot_4x5_eye36"])
+        path = self.tmp / "config.json"
+        path.write_text(json.dumps(cfg))
+        for name in ("../../escape", str(self.tmp / "abs"), ".."):
+            code, _, err = self.run_cli("--config", str(path), "--crop", name)
+            self.assertEqual(code, 1, name)
+            self.assertIn("not a plain name", err)
+        self.assertFalse((self.tmp / "abs").exists() or (self.tmp / "escape").exists())
+        self.assertFalse((self.out / "finish").exists())
+
+    def test_a_profile_folder_linked_into_a_git_tree_is_refused(self):
+        public = self.tmp / "repo" / "public"
+        public.mkdir(parents=True)
+        (self.tmp / "repo" / ".git").mkdir()
+        (self.out / "finish").mkdir()
+        (self.out / "finish" / "headshot_4x5_eye36").symlink_to(public, target_is_directory=True)
+        code, _, err = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertIn("git working tree", err)
+        self.assertEqual(os.listdir(public), [])
+
+    def test_a_src_its_own_crops_would_overwrite_is_refused(self):
+        self.assertEqual(self.run_cli("--ids", "F1")[0], 0)
+        done = self.out / "finish" / "headshot_4x5_eye36"
+        before = hashlib.sha256((done / "F1.jpg").read_bytes()).hexdigest()
+        code, _, err = self.run_cli("--src", str(done), "--retouch", "all")
+        self.assertEqual(code, 1)
+        self.assertIn("overwritten by its own crop", err)
+        self.assertEqual(hashlib.sha256((done / "F1.jpg").read_bytes()).hexdigest(), before)
 
     def test_bad_frames_are_recorded_and_the_run_fails(self):
         save_tif16(self.out / "develop" / "NOFACE.tif", self.img)

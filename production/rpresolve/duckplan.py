@@ -23,7 +23,12 @@ The key, from the dialogue's own stream:
        one number for the file: when a stem cuts between rooms whose tone
        differs by GATE_ABOVE_FLOOR_DB or more, the louder room's tone opens
        the key. Give --gate-db above the louder room's tone, or plan each
-       setup's stretch on its own
+       setup's stretch on its own. When FLOOR_PERCENTILE % or more of the
+       100 ms frames are digital silence (a gated, strip-silenced or
+       synthetic voice stem), the floor is digital silence and the gate sits
+       at SILENCE_GATE_DBFS: every live stretch opens the key, so an edited
+       stem whose clips carry room tone between digital gaps needs --gate-db
+       above that room tone
     3. an opening shorter than MIN_OPEN_S is dropped (a click is not a
        word), and each opening is held HOLD_S, so the pauses inside a phrase
        do not pump the music
@@ -35,7 +40,9 @@ The gain is -depth x key dB: 0 with no speech, -depth under speech.
 plan writes into DIR (made if its parent exists, outside any git tree):
     duck.sendcmd   asendcmd lines for a volume filter named duck, one at
                    each change of SENDCMD_STEP_DB or more, for an ffmpeg
-                   graph run from DIR (duckplan.json prints the line)
+                   graph run from DIR (duckplan.json prints the line);
+                   ffmpeg 6.0 names that filter duck, not volume@duck, so
+                   it needs 6.0.1 or later
     duck-key.wav   the key itself as a DC signal, 0 for silence and 1 for
                    speech, mono 8 kHz 16-bit, for a compressor's sidechain.
                    duckplan.json gives the sidechaincompress setting that
@@ -55,7 +62,8 @@ channels) and measures it against the music it came from:
                          the reduction in each run of full key and their
                          spread: two talkers at different levels duck alike
 MUSIC and DIALOGUE start together; put them on one clock first. Music
-past the dialogue's end is not ducked.
+past the dialogue's end is not ducked. A plan with no speech above the gate
+is refused (exit 1) rather than written as a duck that never moves.
 
 What it does not do: decide the depth (12 to 18 dB is a common start for
 music under talk), mix, or set loudness. None of this is listening; the
@@ -81,6 +89,7 @@ KEY_HIGHPASS_HZ = 100
 FLOOR_FRAME_S = 0.1
 FLOOR_PERCENTILE = 10
 GATE_ABOVE_FLOOR_DB = 10.0
+SILENCE_GATE_DBFS = -70.0        # the gate when the floor is digital silence
 MIN_OPEN_S = 0.05
 HOLD_S = 0.3
 SMOOTH_HZ = 8.0
@@ -100,6 +109,7 @@ RUN_TIMEOUT_S = 3600
 def params():
     return {"hop_s": HOP_S, "key_highpass_hz": KEY_HIGHPASS_HZ,
             "floor_percentile": FLOOR_PERCENTILE, "gate_above_floor_db": GATE_ABOVE_FLOOR_DB,
+            "silence_gate_dbfs": SILENCE_GATE_DBFS,
             "min_open_s": MIN_OPEN_S, "hold_s": HOLD_S, "smooth_hz": SMOOTH_HZ,
             "lookahead_s": LOOKAHEAD_S, "key_rate": KEY_RATE, "sc_ratio": SC_RATIO,
             "sc_attack_ms": SC_ATTACK_MS, "sc_release_ms": SC_RELEASE_MS,
@@ -122,16 +132,20 @@ def _lowpass2(x, fc, fs):
 
 
 def key(power, hop_s, gate_db=None):
-    """(key 0..1 per hop, floor dBFS, gate dBFS, phrases as hop index pairs)
-    from the dialogue's mean power per hop."""
+    """(key 0..1 per hop, floor dBFS or None for digital silence, gate dBFS,
+    phrases as hop index pairs) from the dialogue's mean power per hop."""
     g = max(1, int(round(FLOOR_FRAME_S / hop_s)))
     m = len(power) // g * g
     p100 = power[:m].reshape(-1, g).mean(axis=1) if m else power
     live = p100[p100 > 0]
     if not len(live):
         raise ar.ReportError("the dialogue is digital silence: nothing to key on")
-    floor = 10 * math.log10(float(np.percentile(live, FLOOR_PERCENTILE)))
-    gate = floor + GATE_ABOVE_FLOOR_DB if gate_db is None else float(gate_db)
+    if len(p100) - len(live) >= len(p100) * FLOOR_PERCENTILE / 100:
+        floor, auto = None, SILENCE_GATE_DBFS   # the percentile lands on digital silence
+    else:
+        floor = 10 * math.log10(float(np.percentile(live, FLOOR_PERCENTILE)))
+        auto = floor + GATE_ABOVE_FLOOR_DB
+    gate = auto if gate_db is None else float(gate_db)
     on = power > 10 ** (gate / 10)
     for a, b in zip(*ar._runs(on)):
         if (b - a) * hop_s < MIN_OPEN_S:
@@ -170,15 +184,22 @@ def plan(dialogue, stream=0, depth_db=DEPTH_DB, gate_db=None):
         raise ar.ReportError(f"no audio decoded from {dialogue}")
     hop = fp["hop_s"]
     k, floor, gate, phrases = key(fp["power"], hop, gate_db)
+    gate_from = "--gate-db" if gate_db is not None else "floor" if floor is not None \
+        else "digital silence"
+    if not phrases:
+        raise ar.ReportError(f"no speech in {dialogue} rises above the gate ({gate:.1f} dBFS, "
+                             f"from the {gate_from}): nothing to duck under. Give --gate-db "
+                             "below the speech")
     spans = [[round(a * hop, 2), round(b * hop, 2)] for a, b in phrases]
     return {"dialogue": dialogue, "stream": stream,
             "duration_s": round(fp["samples"] / fp["sample_rate"], 3), "depth_db": depth_db,
-            "floor_dbfs": round(floor, 1), "gate_dbfs": round(gate, 1),
-            "gate_from": "floor" if gate_db is None else "--gate-db",
+            "floor_dbfs": round(floor, 1) if floor is not None else None,
+            "gate_dbfs": round(gate, 1), "gate_from": gate_from,
             "speech_spans": spans, "speech_s": round(sum(b - a for a, b in spans), 2),
             "first_speech_s": spans[0][0] if spans else None,
             "sidechain": sidechain_filter(depth_db),
-            "sidechain_usage": ("[1:a]aresample=<music rate>,apad[k];[0:a][k]"
+            "sidechain_usage": ("[1:a]aresample=<music rate>,apad[k];[0:a]aformat=sample_fmts=dbl:"
+                                "channel_layouts=<music channels>c[m];[m][k]"
                                 + sidechain_filter(depth_db) + "[out]  (input 1: duck-key.wav)"),
             "sendcmd_usage": (f"asetnsamples=n=<{HOP_S * 1000:g} ms of samples>:p=0,"
                               "asendcmd=f=duck.sendcmd,volume@duck=volume=1"),
@@ -198,14 +219,18 @@ def sendcmd_lines(k, hop_s, depth_db):
     return lines
 
 
-def _guard(out_dir, names):
+def _guard(out_dir, names, sources):
     if paths.in_any_git_tree(out_dir):
         raise paths.OutputRefused(f"{out_dir} is inside a git working tree. The output names "
                                   "media; write it outside any repository.")
-    for n in names:
-        problem = paths.out_problem(os.path.join(out_dir, n), any_git_tree=True)
+    outs = [os.path.join(out_dir, n) for n in names]
+    for o in outs:
+        problem = paths.out_problem(o, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
+    problem = dxm.source_problem(outs, sources)
+    if problem:
+        raise paths.OutputRefused(problem)
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)  # one level only: the parent must exist
 
@@ -214,7 +239,7 @@ def _ffmpeg_write(cmd, out, data=None):
     """Run an ffmpeg command that writes `out` through a .part file."""
     tmp = out + ".part.wav"
     try:
-        proc = subprocess.run(cmd + [tmp], input=data, stdout=subprocess.PIPE,
+        proc = subprocess.run(cmd + [dc._src(tmp)], input=data, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=RUN_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         raise ar.ReportError(f"ffmpeg timed out writing {out}")
@@ -246,7 +271,7 @@ def write_plan(p, out_dir):
 
 
 def make_plan(dialogue, out_dir, stream=0, depth_db=DEPTH_DB, gate_db=None):
-    _guard(out_dir, ("duck.sendcmd", "duck-key.wav", "duckplan.json"))
+    _guard(out_dir, ("duck.sendcmd", "duck-key.wav", "duckplan.json"), (dialogue,))
     return write_plan(plan(dialogue, stream, depth_db, gate_db), out_dir)
 
 
@@ -272,14 +297,16 @@ def measure(x, y, k, rate, depth_db):
 def render(music, dialogue, out_dir, music_stream=0, stream=0, depth_db=DEPTH_DB, gate_db=None):
     """The plan, music-ducked.wav, and the measured reduction."""
     out = os.path.join(out_dir, "music-ducked.wav")
-    _guard(out_dir, ("duck.sendcmd", "duck-key.wav", "duckplan.json", "music-ducked.wav"))
-    if os.path.realpath(out) in (os.path.realpath(music), os.path.realpath(dialogue)):
-        raise paths.OutputRefused(f"{out} is a source; render never writes over one")
+    _guard(out_dir, ("duck.sendcmd", "duck-key.wav", "duckplan.json", "music-ducked.wav"),
+           (music, dialogue))
     p = plan(dialogue, stream, depth_db, gate_db)
-    rate = ar.audio_stream(music, music_stream)["sample_rate"]
+    info = ar.audio_stream(music, music_stream)
+    rate = info["sample_rate"]
     key_wav = os.path.join(out_dir, "duck-key.wav")
     write_plan(p, out_dir)
-    graph = f"[1:a]aresample={rate},apad[k];[0:a:{music_stream}][k]{p['sidechain']}[out]"
+    # aformat pins the music's channels: ffmpeg 6.0 otherwise folds them to the mono key's
+    graph = (f"[1:a]aresample={rate},apad[k];[0:a:{music_stream}]aformat=sample_fmts=dbl:"
+             f"channel_layouts={info['channels']}c[m];[m][k]{p['sidechain']}[out]")
     _ffmpeg_write([dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
                    "-i", dc._src(music), "-i", dc._src(key_wav), "-filter_complex", graph,
                    "-map", "[out]", "-map_metadata", "-1", "-c:a", "pcm_s24le", "-f", "wav"], out)
@@ -294,7 +321,8 @@ def render(music, dialogue, out_dir, music_stream=0, stream=0, depth_db=DEPTH_DB
 
 
 def summary(p):
-    lines = [f"{os.path.basename(p['dialogue'])} s{p['stream']}: floor {p['floor_dbfs']} dBFS, "
+    floor = "digital silence" if p["floor_dbfs"] is None else f"{p['floor_dbfs']} dBFS"
+    lines = [f"{os.path.basename(p['dialogue'])} s{p['stream']}: floor {floor}, "
              f"gate {p['gate_dbfs']} dBFS ({p['gate_from']}), {len(p['speech_spans'])} phrase(s), "
              f"{p['speech_s']} s of speech, first at {p['first_speech_s']} s; depth "
              f"{p['depth_db']:g} dB",
@@ -329,7 +357,7 @@ def add_arguments(p):
 
 
 def run(args):
-    """Exit 0 written; 1 not."""
+    """Exit 0 written; 1 not (no speech above the gate included)."""
     try:
         if args.action == "plan":
             p = make_plan(args.dialogue, args.out, args.stream, args.depth, args.gate_db)

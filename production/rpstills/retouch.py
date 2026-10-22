@@ -33,8 +33,10 @@ finish.json.
               direction: a veil of sky or window washes skin toward neutral
               or blue, while bare forehead keeps its redness), the
               low-frequency veil is subtracted and a*, b* pulled back to the
-              cheek. It dims a veil of sky or
-              window; it cannot bring back what an opaque reflection hides.
+              cheek, all the way wherever the weight reaches GLARE_AB_FULL
+              (a partial pull from blue toward skin would stop on pink). It
+              dims a veil of sky or window; it cannot bring back what an
+              opaque reflection hides.
 
 apply() runs the steps on the face's region only (the box padded by ROI_PAD
 of its larger side), so a 24 MP frame does not take a dozen full-frame
@@ -93,6 +95,7 @@ GLARE_FEATHER_DIV = 250     # deglare: weight feathered by w / GLARE_FEATHER_DIV
 GLARE_LOW_DIV = 200         # deglare: the veil is the Lab blurred by w / GLARE_LOW_DIV
 GLARE_MIN = 0.2             # deglare: no pixel weighs this much -> no glare, nothing done
 GLARE_TOUCHED = 0.3         # deglare: weight above this counts toward the area reported
+GLARE_AB_FULL = 0.3         # deglare: a*, b* go all the way to the cheek's where the weight reaches this
 
 
 def params():
@@ -111,7 +114,7 @@ def params():
                       "region": "inner lips"},
             "deglare": {"dl": GLARE_DL, "dl_range": GLARE_DL_RANGE, "dc": GLARE_DC, "dc_range": GLARE_DC_RANGE,
                         "gain": GLARE_GAIN, "floor": GLARE_FLOOR, "low": f"w/{GLARE_LOW_DIV}",
-                        "min_weight": GLARE_MIN, "touched_weight": GLARE_TOUCHED}}
+                        "min_weight": GLARE_MIN, "touched_weight": GLARE_TOUCHED, "ab_full_weight": GLARE_AB_FULL}}
 
 
 def luma(rgb):
@@ -217,7 +220,7 @@ def under_eye(rgb, face_px, max_lift=UNDER_EYE_MAX_LIFT, mix=UNDER_EYE_MIX, mask
 def teeth(rgb, face_px, sat=TEETH_SAT, value=TEETH_VALUE):
     """Inside the inner lips, take some yellow out of bright, pale pixels."""
     w = face_px["w"]
-    inner = skin.poly(rgb.shape, skin.points(face_px, "innerLips"))
+    inner = skin.region_masks(face_px, rgb.shape)["lips_inner"]  # inner lips out to the mouth corners
     hsv = cv2.cvtColor(np.ascontiguousarray(np.clip(rgb, 0, 1), np.float32), cv2.COLOR_RGB2HSV)
     pick = inner & (hsv[..., 2] > TEETH_MIN_V) & (hsv[..., 1] < TEETH_MAX_S)
     weight = cv2.GaussianBlur(pick.astype(np.float32), (0, 0), max(0.5, w / TEETH_FEATHER_DIV)) * inner
@@ -259,7 +262,8 @@ def deglare(rgb, face_px):
     lo = cv2.GaussianBlur(lab, (0, 0), w / GLARE_LOW_DIV)
     dl = g * np.clip(lo[..., 0] - ref[0] + GLARE_FLOOR, 0, None)
     lab[..., 0] -= dl
-    lab[..., 1:] += g[..., None] * (ref[1:] - lo[..., 1:])
+    # a*, b* at full strength past GLARE_AB_FULL: a partial straight-line pull from blue to skin stops on pink
+    lab[..., 1:] += np.clip(g / GLARE_AB_FULL, 0, 1)[..., None] * (ref[1:] - lo[..., 1:])
     done = np.clip(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB), 0, 1)
     touched = g > GLARE_TOUCHED
     report.update(applied=True, touched_px=int(touched.sum()),

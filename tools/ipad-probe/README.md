@@ -2,8 +2,10 @@
 
 A probe and four recipes for an iPad with no Mac nearby. They are POSIX `sh`
 scripts written for [a-Shell](https://github.com/holzschu/a-Shell), whose
-shell is `dash` and whose ffmpeg is built without GPL parts. They run the same
-on macOS and Linux, which is where they are tested.
+shell is `dash` and whose ffmpeg may be a native build without GPL parts or a
+WebAssembly one with libx264 (UNVERIFIED; the probe's `build gpl` and
+`encoder` rows answer it). They run the same on macOS and Linux, which is
+where they are tested.
 
 Why they exist, and what an iPad can and cannot do for each stage of a
 shoot, is in the [iPad lane](../../docs/ipad-lane.md). Nothing here has been
@@ -44,12 +46,13 @@ findings, not errors: the probe exits 0 once the table is printed.
 
 | recipe | does | needs |
 |---|---|---|
-| `recipes/verify-copy.sh SRC DEST [DEST ...]` | copies a card to each DEST, writes `DEST.SHA256SUMS` beside it, re-hashes every copy, and counts verified copies. Refuses a non-empty DEST, a DEST whose parent is missing, a DEST inside SRC, the same DEST twice. | a SHA-256 route (`tool` rows) |
+| `recipes/verify-copy.sh SRC DEST [DEST ...]` | copies a card to each DEST, writes `DEST.SHA256SUMS` beside it, re-hashes every copy, and counts verified copies. Refuses a non-empty DEST, a DEST whose parent is missing, a DEST inside SRC, the same DEST twice, compared by physical path so no spelling or symlink gets past; a DEST that turns out to be an earlier one at copy time is skipped and not counted. | a SHA-256 route (`tool` rows) |
 | `recipes/proxy.sh IN OUT.mp4 [BITRATE [LONG_EDGE]]` | H.264 proxy, long edge 1280, never upscaled, 6M by default: h264_videotoolbox, else libx264, else mpeg4; decodes with VideoToolbox when listed | an H.264 or mpeg4 encoder (`encoder` rows) |
-| `recipes/loudness.sh IN OUT [I [TP [LRA]]]` | two-pass loudnorm to -16 LUFS / -1.5 dBTP / LRA 11 by default, asking for linear mode, 48 kHz out; prints normalization_type and why when it is dynamic, then measures the result | loudnorm (`filter` and `smoke` rows) |
-| `recipes/sheet.sh IN OUT.jpg [COLS [ROWS]]` | a 6 x 4 contact sheet from select, scale and tile (no drawtext), with the cell times printed to paste beside it | ffprobe for the duration |
+| `recipes/loudness.sh IN OUT [I [TP [LRA]]]` | two-pass loudnorm to -16 LUFS / -1.5 dBTP / LRA 11 by default, asking for linear mode, 48 kHz out; with LRA left out the target is lifted to the measured LRA + 1, as delivercheck does; prints normalization_type and why when it is dynamic, then measures the result and notes a true peak over TP | loudnorm (`filter` and `smoke` rows) |
+| `recipes/sheet.sh IN OUT.jpg [COLS [ROWS]]` | a 6 x 4 contact sheet from select, scale and tile (no drawtext), with the time of each picked frame printed to paste beside it | ffprobe for the duration |
 
-None of them overwrites a file or writes to its input. `FFMPEG`, `FFPROBE`,
+None of them overwrites a file, writes to its input, or writes inside a git
+work tree (an OUT or DEST in one is refused, however it is spelled). `FFMPEG`, `FFPROBE`,
 `PYTHON` and (verify-copy only) `CP` name the commands each one calls.
 `probe.sh` and `verify-copy.sh` keep scratch files in a new folder under
 `TMPDIR` and remove it at exit.
@@ -75,6 +78,10 @@ the python3 fallback. CI's shellcheck step checks the scripts at warning level.
   run the recipes in the app.
 - A path holding a newline breaks verify-copy's listing; cameras never write
   one. "Different devices" is the person's call: the script can only count.
-- The sheet's cell times are the start of each cell's time slot. When slots
-  are 2 s or longer only keyframes are read, so a cell shows the first
-  keyframe in its slot and a slot with no keyframe is skipped.
+- The sheet takes the first frame of each cell's time slot. When slots are
+  2 s or longer only keyframes are read, so a slot with no keyframe is
+  skipped, later frames move up a cell and the cells left at the end are
+  black; the printed times are those of the frames shown, and the black
+  cells are listed as empty.
+- loudness.sh's true peak is measured after encoding: an AAC OUT can land
+  over TP, and the script says so rather than hiding it.

@@ -12,8 +12,9 @@ and DaVinci Wide Gamut primaries.
 Landmark-based skin (for developed and finished files, not the index):
 lab_image() is the same CIELAB maths per pixel on float sRGB 0..1;
 skin_lab() is the mean Lab over the cheek apples (rpstills.skin, needs
-landmarks) or the box sample above, with hue, chroma and the Rec.709
-vectorscope angle. vectorscope_deg() reads the angle a scope draws: BT.709
+landmarks; pixels outside the skin tone box, such as a spectacle rim
+crossing the patch, are left out) or the box sample above, with hue,
+chroma and the Rec.709 vectorscope angle. vectorscope_deg() reads the angle a scope draws: BT.709
 Y'CbCr from the encoded values, angle of (Cb, Cr) counter-clockwise from +Cb,
 so the skin-tone line sits near 123 degrees."""
 
@@ -92,6 +93,7 @@ def fit_look(skin_srgb, target_lab, ev_range=(-1.0, 2.5), gain_range=(0.6, 1.6),
 
 BT709 = (0.2126, 0.7152, 0.0722)
 CB_DIV, CR_DIV = 1.8556, 1.5748  # BT.709 Cb = (B' - Y') / 1.8556, Cr = (R' - Y') / 1.5748
+CHEEK_TONE_MIN = 0.5  # the cheek tone gate applies only when at least this share of the patch passes it
 
 
 def lab_image(rgb):
@@ -148,18 +150,26 @@ def skin_lab(rgb, face_px, region="cheek"):
     """Mean skin colour of a float sRGB 0..1 image over the cheek apples
     (region "cheek", needs landmarks) or the box sample (region "box"):
     {"L", "a", "b", "hue_deg", "chroma", "vectorscope_deg", "n_px"}, rounded.
+    The cheek sample keeps only pixels inside skin.tone_mask (a spectacle
+    rim crossing the patch is not skin), unless under CHEEK_TONE_MIN of the
+    patch passes: a render far off white balance takes the whole patch out
+    of the box, and is then measured whole. n_px counts the pixels used.
     ValueError when the sample holds no pixel."""
     if region == "cheek":
-        from .skin import cheek_mask  # lazy: keeps this module numpy-only for the LUT tools
-        m = cheek_mask(face_px, rgb.shape)
+        from . import skin  # lazy: keeps this module numpy-only for the LUT tools
+        m = skin.cheek_mask(face_px, rgb.shape)
     elif region == "box":
         m = box_mask(face_px, rgb.shape)
     else:
         raise ValueError(f"unknown skin region {region!r}")
-    n = int(m.sum())
-    if not n:
+    if not m.any():
         raise ValueError("the skin sample holds no pixel")
     px = np.asarray(rgb, np.float32)[..., :3][m]
+    if region == "cheek":
+        tone = skin.tone_mask((np.clip(px, 0, 1) * 255 + 0.5).astype(np.uint8))
+        if tone.mean() >= CHEEK_TONE_MIN:
+            px = px[tone]
+    n = len(px)
     L, a, b = (float(x) for x in lab_image(px).mean(0))
     return {"L": round(L, 2), "a": round(a, 2), "b": round(b, 2), "hue_deg": round(float(hue_deg(a, b)), 2),
             "chroma": round(float(chroma(a, b)), 2), "vectorscope_deg": round(vectorscope_deg(px.mean(0)), 2),

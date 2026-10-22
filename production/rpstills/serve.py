@@ -1,7 +1,7 @@
 """rpstills.serve: a read-only file server for review pages, proxies and audio excerpts.
 
   python -m rpstills serve <folder> [--bind 127.0.0.1] [--port 8780]
-  python -m rpstills.serve <folder> ...            (the same, before it is wired)
+  python -m rpstills.serve <folder> ...            (the same, on any Python with no packages installed)
 
 Python's own `http.server` answers a Range request with 200 and the whole
 file. Safari on an iPad (and any WebKit player) needs 206 Partial Content to
@@ -93,6 +93,12 @@ class Handler(SimpleHTTPRequestHandler):
     _remaining = None                  # bytes left to send for the current file response
 
     def _inside_root(self, path):
+        try:
+            bad = b"\x00" in os.fsencode(path)
+        except ValueError:
+            bad = True                 # a lone surrogate (%ED%A0%80) cannot be encoded
+        if bad:                        # it, or an encoded NUL, names no file, and os calls raise on it
+            return False
         raw = urllib.parse.unquote(self.path.split("?", 1)[0].split("#", 1)[0])
         if ".." in raw.replace("\\", "/").split("/"):
             return False
@@ -103,6 +109,9 @@ class Handler(SimpleHTTPRequestHandler):
     def send_head(self):
         self._remaining = None
         path = self.translate_path(self.path)
+        if path.endswith("/") and os.path.isdir(path):
+            # a folder URL's index page goes through the same root check, ranges and no-cache as any file
+            path = next((p for p in (path + "index.html", path + "index.htm") if os.path.exists(p)), path)
         if not self._inside_root(path):
             self.send_error(HTTPStatus.FORBIDDEN, "Outside the served folder")
             return None
@@ -192,7 +201,7 @@ def add_arguments(p):
 def run(args):
     try:
         server = make_server(args.root, args.bind, args.port)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, OverflowError) as e:   # bind() raises OverflowError for a port past 65535
         print("serve: %s" % e, file=sys.stderr)
         return 1
     with server:

@@ -1,6 +1,6 @@
 # Edit assist: wordsnap, shots, beats
 
-Three offline helpers for the edit. Each reads media with ffmpeg, does its arithmetic in numpy, writes one file outside any git working tree, and never touches Resolve. Each proposes; the editor decides. They run on Python 3.9 with numpy, like the rest of `rpresolve`.
+Three offline helpers for the edit. Each reads media with ffmpeg, does its arithmetic in numpy, writes one file outside any git working tree (and never over its own input), and never touches Resolve. Each proposes; the editor decides. They run on Python 3.9 with numpy, like the rest of `rpresolve`.
 
 | Tool | Reads | Writes | Feeds |
 |---|---|---|---|
@@ -34,9 +34,8 @@ What it does not do, and limits:
 - It does not cut. endcheck still checks every out-point against the waveform.
 - An edge more than 0.4 s off stays put. Whisper's first word after a long silence can start a second or more early; raise `--reach` for that file, and check the result.
 - When Whisper's last word swallows a pause and the start of something it did not transcribe, the end stays put (the pause inside the word blocks the move). Re-transcribe or trim by hand.
-- The threshold is relative to the file's own quietest tenth. A file that is speech wall to wall has no real floor; quiet syllables then read as pause. Loud room tone (HVAC, traffic) lifts the floor and the threshold with it.
+- The threshold is relative to the file's own quietest tenth, with windows of digital silence (exact zeros: a muted call track, a gated head) left out. A file that is speech wall to wall has no real floor; quiet syllables then read as pause. Loud room tone (HVAC, traffic) lifts the floor and the threshold with it.
 - Breaths and lip noise over the threshold count as speech.
-- The envelope is read with `cutlist.decode_pcm`, which seeks with `-ss` before the input. On AAC audio that seek drops up to one AAC packet (about 23 ms at 44.1 kHz), so edges on an AAC source can sit up to that much early. PCM audio (camera originals, WAV) is exact.
 
 ## shots
 
@@ -65,18 +64,19 @@ A beat tracker in numpy (Ellis 2007, the method librosa follows, without librosa
 
 1. Onset strength: positive log-spectral flux in seven bands (30 Hz to 8 kHz at 16 kHz mono, 32 ms window, 8 ms hop), each band divided by its own standard deviation, so the many treble bins cannot outvote the few bass bins.
 2. Tempo: autocorrelation of the onset strength between 60 and 180 BPM, weighted by a log-normal prior centred on 120 BPM (one octave wide), refined to a fraction of a frame.
-3. Beats: dynamic programming, each beat the best onset about one period after the last (tightness 100). Leading and trailing beats weaker than half the beats' RMS strength are dropped, so a silent intro or tail gets no grid.
-4. Phase check: an off-beat hi-hat can still pull the tracker half a beat off, because log flux hears a quiet hat over silence as loudly as a kick. So the linear-magnitude flux under 250 Hz (kick and bass) is compared at the beats and halfway between them. When it is stronger halfway (by 1.1 times), the beats are tracked again on it, and the output says `"phase": "low band"`, else `"kept"`.
+3. 3:2 check: with the kick and an off-beat hat about equal in the onset strength, it repeats every half beat, and the peak at 1.5 beats can outscore the beat (a 150 BPM loop read as 100). So when the linear-magnitude flux under 250 Hz (the kick) does not repeat at the tempo's period but does at 3/2 or 2/3 of the tempo (autocorrelation at least half its lag-0 value), that tempo is taken.
+4. Beats: dynamic programming, each beat the best onset about one period after the last (tightness 100). Leading and trailing beats weaker than half the beats' RMS strength are dropped, so a silent intro or tail gets no grid.
+5. Phase check: an off-beat hi-hat can still pull the tracker half a beat off, because log flux hears a quiet hat over silence as loudly as a kick. So the linear-magnitude flux under 250 Hz (kick and bass) is compared at the beats and halfway between them. When it is stronger halfway (by 1.1 times), the beats are tracked again on it, and the output says `"phase": "low band"`, else `"kept"`.
 
 `beats.json` holds `file`, `duration_s`, `tempo`, `beats_s` (seconds on the file's own clock), `method`, `phase`, `proposal: true` and `params` (every constant above). rhythm reads `beats_s`; make the map from the cut's own audio so the beats sit on the cut's clock.
 
-On synthetic drum loops (kick on the beat, a bright hat on the off-beat, snare on the backbeat, a pad or a bass), beats land within 12 ms of the hits, a frame or so early, at 97, 104 and 120 BPM, with tempo within 0.05 BPM. The same loops encoded to AAC read about 23 ms earlier still (see the seek note under wordsnap).
+On synthetic drum loops (kick on the beat, a hat on the off-beat, with and without a backbeat snare and a pad; five variants at every 2 BPM from 88 to 168), beats land within 12 ms of the hits, a frame or so early, with tempo within 0.1 BPM. A WAV and the same loop encoded to AAC give the same beats.
 
 What it does not do, and limits:
 
 - Downbeats or bars: every beat is the same.
-- Octave errors: a loop at 75 BPM with off-beat hats reads as 150 BPM (the prior prefers it). Pass `--prior-bpm` near the tempo you hear.
+- Octave errors: a loop at 75 BPM with off-beat hats reads as 150 BPM (the prior prefers it), and loops above about 170 BPM can read at half tempo. Pass `--prior-bpm` near the tempo you hear.
+- 3:2 errors: the 3:2 check needs a kick on every beat. With a sparser or syncopated kick (half-time, a tresillo), a loop at 150 to 160 BPM can still read at two thirds of its tempo (160 as 107), with beats up to half a beat off. `--prior-bpm` near the tempo fixes it.
 - Tempo changes beyond what the tracker's tightness follows, swing, rubato, and music without a pulse.
 - A bass line that sits on the off-beats can flip the phase check the wrong way.
 - It was checked on synthetic loops only, not on recorded music with vocals. Check the grid by ear before cutting to it; a beat the editor marks by hand outranks it.
-- The same AAC seek note as wordsnap applies.

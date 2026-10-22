@@ -14,21 +14,21 @@ python3 -m rpresolve.interchange MANIFEST --format edl|fcpxml|otio --out FILE
 ```
 
 - `--clip` names the manifest clip to write. One clip becomes one timeline, its spans laid end to end, as `cut` lays them. A manifest with one clip needs no `--clip`.
-- `--fps` sets the rate. Without it the manifest's `fps` is used, and failing that the source's. 23.976, 29.97 and 59.94 are read as 24000/1001, 30000/1001 and 60000/1001.
+- `--fps` sets the rate. Without it the manifest's `fps` is used, and failing that the source's. 23.976, 29.97 and 59.94 are read as 24000/1001, 30000/1001 and 60000/1001, and so is a probed rate such as 2997/100 (what a file encoded with `-r 29.97` reports).
 - `--media-root` writes the media URL as `DIR/<file name>`, for media that sits elsewhere on the machine that imports the file (an iPad's Files folder, a drive mounted under another name). The source is still read at its manifest path.
 - `--title` names the timeline. The default is the clip's name.
 
-`--out` is refused inside any git working tree, because the file names client media. The command prints one summary line, with any warning on stderr, and exits 2 on a refusal.
+`--out` is refused inside any git working tree, because the file names client media. It is also refused when it names the manifest or the source (a hard link to either included), so a slip of the path cannot overwrite a camera original. The file is written to a temporary file beside `--out` that then replaces it, so a hard link to `--out` keeps its old content. The command prints one summary line, with any warning on stderr, and exits 2 on a refusal.
 
 From Python, `interchange.build(manifest, fmt, ...)` returns the text and a report dict (rate, drop-frame, source timecode, spans, frames, split edits, warnings). `add_arguments(parser)` and `run(args)` are there for a parent CLI.
 
 ## How time is counted
 
-- A span covers source frames `[frame(in), frame(out))` at the rate, rounding half up (`cutlist.frame`, the rule `cut` uses). Everything after that is whole frames. Record times are sums of frame counts, so an hour-long cut ends exactly where its spans add up. The tests check this at 23.976, 25 and 29.97.
-- When the source is on this machine, ffprobe reads its rate, length, size, sound streams and start timecode. Every source time is offset by that timecode, so EDL source timecodes, the FCPXML asset start and the OTIO available range match the camera's own timecode. A source probed at a different rate from the timeline is refused, because each of these files carries one rate for source and record.
+- A span covers source frames `[frame(in), frame(out))`, rounding half up (`cutlist.frame`). When the manifest's `fps` is a number that matches the rate, frames are counted at that number (29.97), exactly as `cut` counts them, so the file and the `[auto]` timeline `cut` builds hold the same frames. Counting at the exact 30000/1001 instead would move about one cut in twelve by a frame late in an hour-long source. A string `fps`, `--fps` alone or a probed rate counts at the exact rate. Everything after that is whole frames. Record times are sums of frame counts, so an hour-long cut ends exactly where its spans add up. The tests check this at 23.976, 25 and 29.97.
+- When the source is on this machine, ffprobe reads its rate, length, size, sound streams and start timecode. Every source time is offset by that timecode, so EDL source timecodes, the FCPXML asset start and the OTIO available range match the camera's own timecode. EDL hours wrap at 24, as a time-of-day camera clock does past midnight. A span that starts before the source's first frame or runs past its last is refused. A source probed at a different rate from the timeline is refused, because each of these files carries one rate for source and record.
 - When the source is not on this machine, the writer assumes a start of 00:00:00:00, 1920x1080 and one stereo sound stream, and it says so. An EDL made that way will not conform against camera files that carry timecode.
 - The record side starts at 01:00:00:00.
-- 29.97 and 59.94 timelines are drop-frame, unless the source's own timecode is non-drop. Every other rate is non-drop. A 23.976 non-drop label runs 3.6 seconds an hour behind the clock. That is how the label works; the frame count does not drift.
+- 29.97 and 59.94 timelines are drop-frame, unless the source's own timecode is non-drop. Every other rate is non-drop. A source whose timecode is drop-frame (`;`) at any other rate is refused. A 23.976 non-drop label runs 3.6 seconds an hour behind the clock. That is how the label works; the frame count does not drift.
 
 ## Split edits
 
@@ -60,6 +60,7 @@ Every FCPXML time is a whole number of frame durations, written over the frame d
 - No reading. It writes these files and reads none of them back.
 - Sound is written as one AA pair or one audio track. A file with four mono streams is described as four sources in FCPXML, but the EDL and OTIO do not map channels.
 - No validation against Apple's DTD inside the tool. See the checks below.
+- No high-frame-rate drop-frame sources. Some cameras write drop-frame timecode at 119.88 fps (three frame digits, `22:11:23;000`); drop-frame is counted only at 29.97 and 59.94, so such a source is refused with a message that says so. A 119.88 source with non-drop timecode is read.
 
 ## Checks before trusting a file
 

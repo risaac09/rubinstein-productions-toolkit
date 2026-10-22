@@ -55,6 +55,8 @@ def write_private(path, text, any_git_tree=False):
     problem = out_problem(path, any_git_tree)
     if problem:
         raise OutputRefused(problem)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+    # Temp file and rename: a hard link to the target elsewhere keeps its old
+    # content, so a link into a repository cannot carry the output there.
+    from resolve_survey import write_report  # lazy, as out_problem
+    write_report(path, text)
     return path

@@ -78,9 +78,13 @@ def save_tif(path, rgb, bits=8):
     cv2.imwrite(str(path), cv2.cvtColor((np.clip(rgb, 0, 1) * scale + 0.5).astype(dtype), cv2.COLOR_RGB2BGR))
 
 
-def save_srgb_jpeg(path, rgb):
+def save_srgb_jpeg(path, rgb, orientation=None):
     icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
-    Image.fromarray((rgb * 255 + 0.5).astype(np.uint8)).save(path, quality=97, subsampling=0, icc_profile=icc)
+    exif = Image.Exif()
+    if orientation:
+        exif[0x0112] = orientation
+    Image.fromarray((rgb * 255 + 0.5).astype(np.uint8)).save(path, quality=97, subsampling=0, icc_profile=icc,
+                                                              exif=exif)
 
 
 def det(faces, w=W, h=H):
@@ -172,14 +176,42 @@ class AuditMeasureTest(unittest.TestCase):
         r = audit.build([path], {})["files"][0]
         self.assertIn("Vision returned nothing", r["error"])
 
+    def test_an_exif_orientation_other_than_1_is_reported_not_measured(self):
+        # Vision applies the tag and reports the upright size, so a 180-degree tag, or a 90-degree one on a
+        # square file, passes the size check while the masks land on the wrong pixels
+        upright = str(self.tmp / "o1.jpg")
+        save_srgb_jpeg(upright, portrait(), orientation=1)
+        flipped = str(self.tmp / "o3.jpg")
+        save_srgb_jpeg(flipped, portrait()[::-1, ::-1].copy(), orientation=3)
+        square = str(self.tmp / "o6.jpg")
+        save_srgb_jpeg(square, np.rot90(portrait()[100:900], -1).copy(), orientation=6)
+        tif = str(self.tmp / "o3.tif")
+        Image.fromarray((portrait() * 255 + 0.5).astype(np.uint8)).save(tif, tiffinfo={274: 3})
+        sq_face = dict(big_face(), y=0.2 * 1000 / 800, h=0.4)  # the same face on the 800x800 crop
+        doc = audit.build([upright, flipped, square, tif],
+                          {upright: det([big_face()]), flipped: det([big_face()]),
+                           square: det([sq_face], w=800, h=800), tif: det([big_face()])})
+        rows = {r["file"]: r for r in doc["files"]}
+        self.assertNotIn("error", rows["o1.jpg"]); self.assertIn("skin_L", rows["o1.jpg"])
+        for name, o in (("o3.jpg", 3), ("o6.jpg", 6), ("o3.tif", 3)):
+            self.assertIn(f"EXIF orientation {o}", rows[name]["error"])
+            self.assertNotIn("skin_L", rows[name]); self.assertNotIn("bg_peak_L", rows[name])
+
     def test_an_unreadable_file_is_a_row_with_an_error(self):
         path = self.tmp / "bad.jpg"
         path.write_bytes(b"not an image")
         r = audit.build([str(path)], {})["files"][0]
         self.assertIn("unreadable", r["error"])
 
-    def test_eye_sharpness_ranks_and_ignores_resolution(self):
-        # band-limited detail (lashes, iris), not pixel noise, which no resampling keeps
+    def test_eye_box_width_is_reported_with_the_sharpness(self):
+        # eyes span x 290..510, padded by 10% of 220 each side
+        r = self.row(portrait())
+        self.assertEqual(r["eye_box_px"], 264)
+        self.assertIsNotNone(r["eye_sharp"])
+
+    def test_eye_sharpness_ranks_and_survives_an_upscale(self):
+        # band-limited detail (lashes, iris), not pixel noise, which no resampling keeps; a downscaled file
+        # loses detail and reads softer, which is why eye_box_px goes with every row
         rng = np.random.default_rng(0)
         tex = cv2.GaussianBlur(rng.uniform(0.2, 0.8, (50, 240)).astype(np.float32), (0, 0), 1.5)
         tex = ((tex - tex.mean()) / tex.std() * 0.15 + 0.5)[..., None].repeat(3, 2)

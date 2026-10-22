@@ -17,12 +17,15 @@ The answer is a letter; key.json turns it back into a file.
 
 Legible at phone size: the grid is the one that brings the sheet nearest
 TARGET_ASPECT (a portrait screen), so the pictures are as large as a phone
-can show them, and each letter is LABEL_SHARE of its cell's short side,
-white on a near-black badge, readable on light and dark pictures alike.
-Each image keeps its aspect inside equal cells, letterboxed on a dark
-ground; EXIF rotation is applied. Pillow draws everything (no drawtext
-needed). Output shows client pictures, so DIR inside any git working tree
-is refused.
+can show them, and each letter's font size is LABEL_SHARE of its cell's
+short side (a capital is drawn about 0.75 of that tall), white on a
+near-black badge, readable on light and dark pictures alike. Each image
+keeps its aspect inside equal cells, letterboxed on a dark ground; EXIF
+rotation is applied, and a picture tagged with another ICC profile
+(Display P3, Adobe RGB) is converted to sRGB, so equal colours look equal
+on the sheet. Pillow draws everything (no drawtext needed). Output shows
+client pictures, so DIR inside any git working tree is refused, as is an
+input that is DIR/sheet.jpg itself.
 """
 
 import io
@@ -41,7 +44,7 @@ QUALITIES = (90, 84, 78, 70, 62, 54, 46, 38)
 TARGET_ASPECT = 0.75         # width / height the grid aims for: a portrait phone or iPad
 GAP = 16                     # px between cells and around the edge
 GROUND = (18, 18, 18)
-LABEL_SHARE = 0.16           # letter height, share of the cell's short side
+LABEL_SHARE = 0.16           # font size (em), share of the cell's short side; capitals are ~0.75 of it
 LABEL_MIN_PX = 40
 BADGE = (12, 12, 12)
 INK = (255, 255, 255)
@@ -69,14 +72,32 @@ def grid(n, cell_aspect):
     return best[1], best[2]
 
 
+def to_srgb(im, path):
+    """im as 8-bit RGB in sRGB: converted from its embedded ICC profile when
+    that is not sRGB (an untagged picture is taken as sRGB)."""
+    from PIL import ImageCms
+    icc = im.info.get("icc_profile")
+    if not icc:
+        return im.convert("RGB")
+    try:
+        src = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+        if "srgb" in ImageCms.getProfileDescription(src).lower():
+            return im.convert("RGB")
+        base = im if im.mode in ("RGB", "CMYK", "L") else im.convert("L" if im.mode == "LA" else "RGB")
+        return ImageCms.profileToProfile(base, src, ImageCms.createProfile("sRGB"), outputMode="RGB")
+    except ImageCms.PyCMSError as e:
+        raise ValueError(f"{path}: cannot convert its ICC profile to sRGB ({e})") from None
+
+
 def load(path):
-    """An upright 8-bit RGB PIL image. 16-bit TIFFs go through OpenCV."""
+    """An upright 8-bit sRGB PIL image. 16-bit TIFFs Pillow cannot open go
+    through OpenCV (as stored, taken as sRGB)."""
     from PIL import Image, ImageOps
     try:
         with Image.open(path) as im:
             im = ImageOps.exif_transpose(im)
             if im.mode in ("RGB", "L", "RGBA", "P", "CMYK", "LA"):
-                return im.convert("RGB")
+                return to_srgb(im, path)
     except OSError:
         pass
     import numpy as np
@@ -179,6 +200,9 @@ def build(paths, out_dir, seed=None, title=None):
     refuse_git(out_dir)
     seed = secrets.randbelow(2 ** 31) if seed is None else int(seed)
     paths = [os.path.abspath(p) for p in paths]
+    sheet_path = os.path.realpath(os.path.join(out_dir, "sheet.jpg"))
+    if sheet_path in {os.path.realpath(p) for p in paths}:
+        raise ValueError(f"{sheet_path} is one of the images and would be overwritten; give another --out")
     images = [load(p) for p in paths]
     perm = order(len(paths), seed)
     sheet, geo = render([images[i] for i in perm], title)

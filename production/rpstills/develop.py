@@ -21,10 +21,14 @@ axis) and updated by Broyden's rule after every step, so it follows the
 response as the point moves; one Jacobian measured at 5000 K is wrong at
 9000 K. A step is scaled as a whole to stay within MAX_STEP; a step that
 makes the residual worse is undone and the next one halved. An axis whose
-step would leave its bounds lands on the bound; when the next step still
-pushes it out, it is pinned: it leaves the free set and the others solve
-on their own components (tint pinned at the look's tint_max leaves ev and
-mired solving L* and b*, and a* falls where it does). The solve stops when
+step would leave its bounds lands exactly on the bound; when a later step
+still pushes it out, it is pinned, whether or not that step helped the
+others: it leaves the free set and the others solve on their own
+components (tint pinned at the look's tint_max leaves ev and mired solving
+L* and b*, and a* falls where it does). A start clipped onto a bound is
+held on the first step, not pinned, so the pin is decided on the updated
+Jacobian. An axis with no room (tint_max 0) is pinned from the start, and
+the finite-difference probe stays inside the bounds. The solve stops when
 the residual over the free axes' components is within AIM (CIELAB units;
 half of TOL, a margin for the full-size file) or after MAX_ITER steps.
 Status per frame, judged on TOL:
@@ -36,8 +40,9 @@ The frame is then developed at full size, 16-bit, at the solved point, and
 the sample is measured again on that file (lab_out). A frame's status is
 the worse of the solve render's (status_solve) and the delivered file's,
 so a file that misses the target is never reported as converged. Only
-"converged" sets converged: true. The exit status is 1 when any frame
-failed or did not converge. Geometry scales from each render's own size
+"converged" sets converged: true. The exit status is 1 when any frame is
+not converged (failed, pinned or not_converged), and stderr names them.
+Geometry scales from each render's own size
 (the face is normalized), never from a fixed width.
 
 Backends, behind Backend.render(raw, values, out, long_edge=None, bit16=False):
@@ -47,10 +52,14 @@ Backends, behind Backend.render(raw, values, out, long_edge=None, bit16=False):
               do not apply to it and are listed as ignored.
   lightcraft  TRIAL, opt-in: lightcraft-cli from $RPSTILLS_LIGHTCRAFT. The
               look's develop values are LightCraft control ids, the profile a
-              LightCraft profile id. Nothing should rely on it before its
+              LightCraft profile id. The start is its as-shot white balance
+              (develop.wb mode=asShot). Nothing should rely on it before its
               trial says adopt.
 Tint is in the backend's own units, so a tint_max set on one backend is
-not the same cast on the other.
+not the same cast on the other. So is temperature: on a RAW LightCraft has
+no Kelvin scale for, wb.temp is relative (6500 = as shot), so its rows
+carry "temp" and temp_unit instead of "temp_k", and temp_bounds_k bounds
+that relative value. temp_bounds_k is Kelvin only on the apple backend.
 
 Look files gain two blocks (rpstills look ignores both):
   "develop": {"backend": "apple"|"lightcraft", "profile": ..., "values": {...}}
@@ -61,7 +70,8 @@ Look files gain two blocks (rpstills look ignores both):
 Writes <out>/develop/<id>.tif (16-bit sRGB) and <out>/develop/calibration.json:
 per frame x, x0, lab, lab_out, residual, delta_e, pinned, iterations,
 converged, status, backend and its version, look name and version, target,
-sample, seconds. A frame developed before keeps its row unless developed
+sample, temp_unit, the params it was solved under, seconds. A frame
+developed before keeps its row (and its params) unless developed
 again. TIFFs and calibration.json name client frames: refused inside any
 git working tree.
 """
@@ -155,33 +165,40 @@ def solve(measure_fn, x0, bounds, target, free, max_iter=MAX_ITER, tol=TOL):
     lo, hi = (np.array([b[k] for b in bounds], float) for k in (0, 1))
     target = np.asarray(target, float)
     requested = [i for i, a in enumerate(AXES) if a in free]
-    active = list(requested)
+    pinned = [AXES[i] for i in requested if lo[i] >= hi[i]]  # no room to move (tint_max 0): pinned from the start
+    active = [i for i in requested if lo[i] < hi[i]]
     x = np.clip(np.asarray(x0, float), lo, hi)
     y = np.asarray(measure_fn(x), float)
     evals = 1
     J = np.zeros((3, 3))
     for i in active:
-        h = FD_STEP[i] if x[i] + FD_STEP[i] <= hi[i] else -FD_STEP[i]
+        up, down = hi[i] - x[i], x[i] - lo[i]  # the probe stays inside the bounds, however narrow they are
+        h = min(FD_STEP[i], up) if up >= min(FD_STEP[i], down) else -min(FD_STEP[i], down)
         xi = x.copy()
         xi[i] += h
         J[:, i] = (np.asarray(measure_fn(xi), float) - y) / h
         evals += 1
-    pinned, damp, it = [], 1.0, 0
+    damp, it = 1.0, 0
     while active and _residual(y, target, active) > tol and it < max_iter:
         it += 1
         dx, pins = _step(J, target - y, x, active, lo, hi, damp)
-        y_new = np.asarray(measure_fn(x + dx), float)
+        if it == 1:
+            pins = []  # a start on a bound (a clipped x0) is held, not pinned: the first Jacobian is the stale one
+        x_new = x + dx
+        x_new = np.where(np.abs(x_new - lo) < 1e-9, lo, np.where(np.abs(x_new - hi) < 1e-9, hi, x_new))  # land exactly
+        dx = x_new - x
+        y_new = np.asarray(measure_fn(x_new), float)
         evals += 1
         w = dx / FD_STEP ** 2  # Broyden's update in step-scaled units, so mired does not swamp ev
         if dx @ w > 0:
             J += np.outer(y_new - y - J @ dx, w) / (dx @ w)
-        keep = [i for i in active if i not in pins]
-        if keep and _residual(y_new, target, keep) >= _residual(y, target, keep):
+        # a pin is x on the bound and the step pushing out, whether or not the step helped the others
+        pinned += [AXES[i] for i in pins]
+        active = [i for i in active if i not in pins]
+        if active and _residual(y_new, target, active) > _residual(y, target, active):
             damp = max(MIN_DAMP, damp / 2)  # worse: stay, and try a shorter step on the updated Jacobian
             continue
-        x, y, damp = x + dx, y_new, 1.0
-        pinned += [AXES[i] for i in pins]
-        active = keep
+        x, y, damp = x_new, y_new, 1.0
     names = [AXES[i] for i in active]
     st = status(y, target, [AXES[i] for i in requested], names, pinned, tol)
     return {"x": x.tolist(), "lab": y.tolist(), "residual": _residual(y, target, active),
@@ -217,17 +234,22 @@ def _run(cmd):
                               encoding="utf-8", errors="replace", timeout=RENDER_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"{os.path.basename(cmd[0])} took over {RENDER_TIMEOUT_S} s")
+    except OSError as e:  # a directory, or a binary gone since the check
+        raise RuntimeError(f"{cmd[0]} cannot run: {e}")
     if proc.returncode != 0:
         raise RuntimeError(f"{os.path.basename(cmd[0])} failed: {(proc.stdout + proc.stderr).strip()[-400:]}")
     return proc.stdout
 
 
 class Backend:
-    """A RAW developer. axes are its control ids for (exposure EV, temperature
-    K, tint); look_values says whether a look's develop values reach it."""
+    """A RAW developer. axes are its control ids for (exposure EV, temperature,
+    tint); look_values says whether a look's develop values reach it.
+    temp_key names the temperature in rows ("temp_k" only where it is
+    Kelvin) and temp_unit says what it is."""
     name = None
     axes = (None, None, None)
     look_values = False
+    temp_key, temp_unit = "temp_k", "K"
 
     def unavailable(self):
         """Why it cannot run, or None."""
@@ -237,7 +259,7 @@ class Backend:
         raise NotImplementedError
 
     def as_shot(self, raw):
-        """{"temp_k", "tint"} the RAW was shot at, or None when unknown."""
+        """{temp_key, "tint"} the RAW was shot at, or None when unknown."""
         return None
 
     def render(self, raw, values, out_path, long_edge=None, bit16=False):
@@ -281,6 +303,9 @@ class LightCraftBackend(Backend):
     name = "lightcraft"
     axes = ("light.exposure", "wb.temp", "wb.tint")
     look_values = True
+    # on a RAW LightCraft has no Kelvin scale for (the test RW2 files), wb.temp is relative: 6500 is as shot
+    temp_key, temp_unit = "temp", "lightcraft wb.temp: Kelvin only where LightCraft has a Kelvin scale " \
+                                  "for the camera, else relative (6500 = as shot)"
 
     def __init__(self, profile=None, exe=None):
         self.exe = exe or os.environ.get(ENV_LIGHTCRAFT)
@@ -289,8 +314,20 @@ class LightCraftBackend(Backend):
     def unavailable(self):
         if not self.exe:
             return f"the lightcraft backend is a trial: set {ENV_LIGHTCRAFT} to a lightcraft-cli binary"
-        if not os.access(self.exe, os.X_OK):
+        if not (os.path.isfile(self.exe) and os.access(self.exe, os.X_OK)):
             return f"{ENV_LIGHTCRAFT}={self.exe} is not an executable"
+        return None
+
+    def as_shot(self, raw):
+        try:
+            for line in _run([self.exe, "run", "--import", raw, "library.selectAll", "develop.wb",
+                              "mode=asShot"]).splitlines():
+                doc = json.loads(line)
+                if doc.get("command") == "develop.wb":
+                    shot = {"temp": float(doc["result"]["temp"]), "tint": float(doc["result"]["tint"])}
+                    return shot if shot["temp"] > 0 else None
+        except (RuntimeError, ValueError, KeyError, TypeError, AttributeError):
+            return None
         return None
 
     def version(self):
@@ -417,9 +454,9 @@ def _lab(rgb, face, sample):
     return np.array([s["L"], s["a"], s["b"]]), s["n_px"]
 
 
-def _x_out(x):
+def _x_out(x, temp_key="temp_k"):
     ev, mired, tint = (float(v) for v in x)
-    return {"ev": round(ev, 3), "temp_k": round(1e6 / mired), "mired": round(mired, 2), "tint": round(tint, 2)}
+    return {"ev": round(ev, 3), temp_key: round(1e6 / mired), "mired": round(mired, 2), "tint": round(tint, 2)}
 
 
 def develop_frame(fid, raw, backend, look, dest, work, detect):
@@ -429,7 +466,7 @@ def develop_frame(fid, raw, backend, look, dest, work, detect):
     bounds = [tuple(s["ev_bounds"]), (1e6 / s["temp_bounds_k"][1], 1e6 / s["temp_bounds_k"][0]),
               (-float(s["tint_max"]), float(s["tint_max"]))]
     shot = backend.as_shot(raw)
-    x0 = [0.0, 1e6 / (shot["temp_k"] if shot else START_TEMP_K), shot["tint"] if shot else 0.0]
+    x0 = [0.0, 1e6 / (shot[backend.temp_key] if shot else START_TEMP_K), shot["tint"] if shot else 0.0]
     base = dict(dev["values"]) if backend.look_values else {}
 
     def values(x):
@@ -466,7 +503,7 @@ def develop_frame(fid, raw, backend, look, dest, work, detect):
     st = max(st_solve, st_out, key=("converged", "pinned", "not_converged").index)
     face = state["face"]
     return {"id": fid, "raw": raw, "tif": tif, "size": [rgb.shape[1], rgb.shape[0]],
-            "x": _x_out(result["x"]), "x0": _x_out(np.clip(x0, *zip(*bounds))),
+            "x": _x_out(result["x"], backend.temp_key), "x0": _x_out(np.clip(x0, *zip(*bounds)), backend.temp_key),
             "as_shot": shot, "lab": [round(v, 2) for v in result["lab"]],
             "lab_out": [round(float(v), 2) for v in lab_out], "residual": round(result["residual"], 3),
             "delta_e": round(result["delta_e"], 3),
@@ -484,9 +521,14 @@ def build(frames, backend, look, dest, detect=None, log=print):
     a frame that fails is a row with its error, the others still run."""
     detect = detect or vision.faces
     s, dev = look["solve"], look["develop"]
+    # every row carries the params it was solved under: a later run that merges into the file replaces the top block
     common = {"backend": backend.name, "backend_version": backend.version(),
               "look": {"name": look.get("name"), "version": look.get("version")},
-              "target": [float(v) for v in s["target_lab"]], "sample": s["sample"]}
+              "target": [float(v) for v in s["target_lab"]], "sample": s["sample"], "temp_unit": backend.temp_unit,
+              "params": {"solve": {k: s[k] for k in SOLVE_DEFAULTS}, "fd_step": FD_STEP.tolist(),
+                         "max_step": MAX_STEP.tolist(), "max_iter": MAX_ITER, "tol": TOL, "aim": AIM,
+                         "min_damp": MIN_DAMP, "solve_edge": SOLVE_EDGE, "start_temp_k": START_TEMP_K,
+                         "profile": dev.get("profile")}}
     ignored = sorted(dev["values"]) if dev["values"] and not backend.look_values else []
     os.makedirs(dest, exist_ok=True)
     rows = {}
@@ -504,11 +546,7 @@ def build(frames, backend, look, dest, detect=None, log=print):
             row.update(common, seconds=round(time.monotonic() - t0, 2))
             rows[fid] = row
             log(_line(row))
-    return {"tool": "rpstills develop", "frames": rows, **common, "look_values_ignored": ignored,
-            "params": {"solve": {k: s[k] for k in SOLVE_DEFAULTS}, "fd_step": FD_STEP.tolist(),
-                       "max_step": MAX_STEP.tolist(), "max_iter": MAX_ITER, "tol": TOL, "aim": AIM,
-                       "min_damp": MIN_DAMP, "solve_edge": SOLVE_EDGE, "start_temp_k": START_TEMP_K,
-                       "profile": dev.get("profile")}}
+    return {"tool": "rpstills develop", "frames": rows, **common, "look_values_ignored": ignored}
 
 
 def _line(row):
@@ -516,7 +554,8 @@ def _line(row):
         return f"{row['id']}: failed: {row['error']}"
     x = row["x"]
     pin = f", pinned {','.join(row['pinned'])}" if row["pinned"] else ""
-    return (f"{row['id']}: {row['status']}{pin}  ev {x['ev']:+.2f}  {x['temp_k']} K  tint {x['tint']:+.1f}  "
+    temp = f"{x['temp_k']} K" if "temp_k" in x else f"temp {x['temp']}"
+    return (f"{row['id']}: {row['status']}{pin}  ev {x['ev']:+.2f}  {temp}  tint {x['tint']:+.1f}  "
             f"Lab {row['lab_out'][0]:.1f} {row['lab_out'][1]:.1f} {row['lab_out'][2]:.1f}  "
             f"dE {row['delta_e_out']:.2f}  {row['iterations']} steps  {row['seconds']:.1f} s")
 
@@ -596,7 +635,8 @@ def run(args):
     doc = build(frames, backend, look, dest)
     print(write(dest, doc))
     print(summary(doc))
-    bad = [r["id"] for r in doc["frames"].values() if r["status"] in ("failed", "not_converged")]
+    bad = [r["id"] for r in doc["frames"].values() if r["status"] != "converged"]
     if bad:
-        print(f"rpstills develop: {len(bad)} frames failed or did not converge: {', '.join(bad)}", file=sys.stderr)
+        print(f"rpstills develop: {len(bad)} frames did not converge (failed, pinned or not_converged): "
+              f"{', '.join(bad)}", file=sys.stderr)
     return 1 if bad else 0
