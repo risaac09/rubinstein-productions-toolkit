@@ -779,6 +779,7 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
     head = "[0:a]" + _head(spec)
     fmt = _head(spec)
     files = {DUCK_KEY: os.path.join(out_dir, DUCK_KEY)}  # mix input -> file
+    duck_info = None
     if not dry_run:
         for sub in ("stems", "mixed") + (("candidates",) if len(plan) > len(names) else ()):
             os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
@@ -793,14 +794,17 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
         outputs[key] = out
         if kind == "stem":
             files[n] = out
-    duck_info = None
-    if duck and not dry_run:
-        # keyed on the key stem as rendered, which is what plays in the mix
-        os.makedirs(duck_dir, exist_ok=True)
-        p = dp.write_plan(dp.plan(files[duck["key"]], 0, duck["depth"], duck.get("gate_db")), duck_dir)
-        duck_info = {k: p[k] for k in ("depth_db", "floor_dbfs", "gate_dbfs", "gate_from",
-                                       "speech_s", "first_speech_s", "sidechain")}
-        duck_info["key_sha256"] = sha256(files[DUCK_KEY])
+        if kind == "stem" and duck and n == duck["key"]:
+            # keyed on the key stem as rendered, which is what plays in the mix; planned
+            # now so a key with no speech fails before the other stems render
+            os.makedirs(duck_dir, exist_ok=True)
+            try:
+                p = dp.write_plan(dp.plan(out, 0, duck["depth"], duck.get("gate_db")), duck_dir)
+            except ar.ReportError as e:
+                raise MixError(f"duck: {e} (in the spec: mix.duck.gate_db)")
+            duck_info = {k: p[k] for k in ("depth_db", "floor_dbfs", "gate_dbfs", "gate_from",
+                                           "speech_s", "first_speech_s", "sidechain")}
+            duck_info["key_sha256"] = sha256(files[DUCK_KEY])
     # the mix is as long as its longest stem; a dry run reads the inputs for that
     mix_dur = max(probe_duration(files.get(n) or stems[n]["input"]) for n in names)
     mix_head, mix_inputs = mix_graph(spec, mix_dur, names)

@@ -289,6 +289,14 @@ class FollowUps(Base):
         self.assertEqual(m["duck"]["depth_db"], 12)
         self.assertTrue(os.path.isfile(self.out("o/duck/duck-key.wav")))
 
+    def test_a_key_with_no_speech_fails_before_the_mix(self):
+        spec, p = self.mix_spec([])
+        lavfi(self.out("dialogue.wav"), "anullsrc=r=48000:cl=stereo", 8)
+        with self.assertRaises(mb.MixError) as cm:
+            mb.render(spec, self.out("o"), p)
+        self.assertIn("mix.duck.gate_db", str(cm.exception))
+        self.assertFalse(os.path.exists(self.out("o/mix.wav")))
+
     def test_mixed_stems_stop_before_a_limiter(self):
         spec, p = self.mix_spec([{"limiter": {"ceiling": -1.5}}])
         m = mb.render(spec, self.out("o"), p)
