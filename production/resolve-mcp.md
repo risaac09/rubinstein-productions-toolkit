@@ -306,6 +306,11 @@ working default, not a standard. It measures and does not listen: a clean
 report does not mean a voice is clear, so a person still hears the hardest
 passage as an A/B before a mix is called done.
 
+`sting-sync` re-measures each hit of an intro's sound sting from the audio and
+checks it against the lockup's picture keyframes: signed offsets in frames and
+ms, FAIL first. It has no tool; exit 0 pass, 1 any FAIL, 2 an input missing or
+breaking the contract.
+
 To run a read-only command from a terminal, export the two variables the
 registration above sets (`RESOLVE_SCRIPT_API` and `RESOLVE_SCRIPT_LIB`).
 `rpresolve.api.connect` adds Resolve's `Scripting/Modules` folder to the
