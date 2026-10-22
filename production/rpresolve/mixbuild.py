@@ -801,7 +801,7 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
             try:
                 p = dp.write_plan(dp.plan(out, 0, duck["depth"], duck.get("gate_db")), duck_dir)
             except ar.ReportError as e:
-                raise MixError(f"duck: {e} (in the spec: mix.duck.gate_db)")
+                raise MixError(f"duck: {e} (in a mixbuild spec the gate is mix.duck.gate_db)")
             duck_info = {k: p[k] for k in ("depth_db", "floor_dbfs", "gate_dbfs", "gate_from",
                                            "speech_s", "first_speech_s", "sidechain")}
             duck_info["key_sha256"] = sha256(files[DUCK_KEY])
