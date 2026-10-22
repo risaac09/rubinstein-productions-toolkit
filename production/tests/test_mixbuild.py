@@ -4,7 +4,9 @@ renders, loudness-matched blind A/B excerpts. Fixtures are lavfi
 (speech-shaped and pink noise, a sine bed); no client audio.
 """
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -19,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     import numpy as np
     from rpresolve import duckplan as dp
+    from rpresolve import dxmetrics as dxm
     from rpresolve import mixbuild as mb
     from rpresolve import audioreport as ar
     from rpresolve.paths import OutputRefused
@@ -352,3 +355,188 @@ class BlindAB(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def tone_fixture(path, seconds=16):
+    """Pink floor all through, speech bursts at 0.5-2.5 s and 11-13 s, and a
+    digital-silence gap from 8 to 9 s."""
+    lavfi(path,
+          f"anoisesrc=d={seconds}:c=white:r=48000:seed=3:a=0.5,bandpass=f=1200:width_type=h:w=2500,"
+          "tremolo=f=4:d=0.9,volume=3,volume='lt(mod(t\\,10.5)\\,2.0)+gt(t\\,10.5)*lt(t\\,13)':"
+          f"eval=frame[a];anoisesrc=d={seconds}:c=pink:r=48000:seed=5:a=0.02[b];"
+          "[a][b]amix=inputs=2:normalize=0,volume=0:enable='between(t,8,9)'", seconds)
+
+
+def rms_db(x):
+    return 10 * np.log10((x ** 2).mean())
+
+
+@needs_numpy
+class Presets(Base):
+    def test_every_preset_validates_renders_and_keeps_length(self):
+        fixtures(self.d, 8)
+        stems = {k: {"input": "dialogue.wav", "preset": k} for k in mb.PRESETS}
+        spec, p = write_spec(self.d, {"stems": stems})
+        m = mb.render(spec, self.out("o"), p)
+        n = len(pcm(os.path.join(self.d, "dialogue.wav")))
+        for k in mb.PRESETS:
+            self.assertEqual(len(pcm(self.out(f"o/stems/{k}.wav"))), n)
+            self.assertEqual(m["presets"][k]["preset"], k)
+            self.assertTrue(m["presets"][k]["why"])
+        self.assertIn("afftdn", m["graphs"]["lav"])
+        self.assertNotIn("afftdn", m["graphs"]["vo"])       # a booth gets no denoise
+        self.assertNotIn("acompressor", m["graphs"]["music_bed"])
+
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def test_no_preset_sets_loudness_or_claims_a_result(self):
+        for k, v in mb.PRESETS.items():
+            self.assertNotIn("loudnorm", [list(i)[0] for i in v["chain"]])
+            self.assertNotIn("better", v["why"].lower())
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(mb.main(["presets"]), 0)
+        self.assertIn("music_bed", buf.getvalue())
+
+    def test_preset_and_chain_together_or_unknown_are_refused(self):
+        for st, frag in (({"preset": "lav", "chain": [{"gain": 1}]}, "not both"),
+                         ({"preset": "nope"}, "unknown preset")):
+            with self.assertRaises(mb.SpecError) as cm:
+                mb.validate_spec({"stems": {"d": dict(st, input="x.wav")}}, self.d)
+            self.assertIn(frag, str(cm.exception))
+
+    def test_preset_ab_packet_is_blind_and_loudness_matched(self):
+        fixtures(self.d, 12)
+        pk = mb.preset_ab(os.path.join(self.d, "dialogue.wav"), self.out("ab"), ("lav", "vo"),
+                          start=0.0, seconds=6.0, seed=7)
+        self.assertEqual(pk["labels"], ["A", "B", "C"])     # the input and two presets
+        self.assertLessEqual(pk["spread_lu"], mb.AB_TOLERANCE_LU)
+        key = json.loads(Path(self.out("ab/packet/sealed/key.json")).read_text())
+        srcs = sorted(os.path.relpath(v["source"], self.d) for v in key["labels"].values())
+        self.assertEqual(srcs, ["ab/renders/lav/stems/dialogue.wav", "ab/renders/vo/stems/dialogue.wav",
+                                "dialogue.wav"])
+        self.assertTrue(os.path.isfile(self.out("ab/packet/A.wav")))
+
+
+@needs_numpy
+class SpeechNorm(Base):
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def spec(self, extra=None, chain=None):
+        fixtures(self.d, 16)
+        # music at a steady level: it fills the pauses, so the whole mix reads louder than the speech
+        return write_spec(self.d, {"stems": {"dialogue": {"input": "dialogue.wav"},
+                                             "music": {"input": "music.wav"}},
+                                   "mix": {"gains": {"music": -9},
+                                           "chain": chain or [{"speechnorm": dict({"key": "dialogue",
+                                                                                   "i": -20}, **(extra or {}))}]}})
+
+    def speech_lufs(self, mix_path, spans):
+        x = pcm(mix_path)
+        joined = np.concatenate([x[int(a * 48000):int(b * 48000)] for a, b in spans]).astype("<f4")
+        wav = self.out("joined.wav")
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "-",
+                        "-c:a", "pcm_f32le", wav], input=joined.tobytes(), check=True)
+        return ar.loudness(wav)[0]["integrated_lufs"]
+
+    def test_speech_spans_land_on_target_and_whole_mix_does_not(self):
+        spec, p = self.spec()
+        m = mb.render(spec, self.out("o"), p)
+        sn = m["speechnorm"]
+        self.assertGreater(sn["spans"], 1)
+        self.assertGreater(abs(sn["whole_lufs"] - sn["speech_lufs"]), 0.3)
+        spans = dp.plan(self.out("o/stems/dialogue.wav"), 0)["speech_spans"]
+        self.assertAlmostEqual(self.speech_lufs(self.out("o/mix.wav"), spans), -20, delta=0.5)
+        whole = ar.loudness(self.out("o/mix.wav"))[0]["integrated_lufs"]
+        self.assertGreater(abs(whole - (-20)), 0.3)   # a plain loudnorm to -20 would have hit this
+        self.assertEqual(m["skipped"], [])
+
+    def test_mixed_stems_still_sum_to_the_mix(self):
+        spec, p = self.spec(chain=[{"eq": {"freq": 2000, "gain": 3}},
+                                   {"speechnorm": {"key": "dialogue", "i": -20}}])
+        mb.render(spec, self.out("o"), p)
+        both = pcm(self.out("o/mixed/dialogue.wav")) + pcm(self.out("o/mixed/music.wav"))
+        mix = pcm(self.out("o/mix.wav"))
+        self.assertLess(20 * np.log10(np.abs(both - mix).max() / np.abs(mix).max()), -110)
+
+    def test_a_peak_past_tp_is_recorded_and_dry_run_says_unmeasured(self):
+        spec, p = self.spec({"i": -5, "tp": -6})
+        m = mb.render(spec, self.out("o"), p)
+        self.assertEqual([(s["where"], s["step"]) for s in m["skipped"]], [("mix", "speechnorm")])
+        d = mb.render(spec, self.out("d"), p, dry_run=True)
+        self.assertIn("dry run", d["skipped"][0]["why"])
+
+    def test_refusals(self):
+        for stems, mix, frag in (
+                ({"d": {"input": "x.wav", "chain": [{"speechnorm": {"key": "d"}}]}}, {}, "mix chain"),
+                ({"d": {"input": "x.wav"}}, {"chain": [{"speechnorm": {"key": "z"}}]}, "key must be"),
+                ({"d": {"input": "x.wav"}},
+                 {"chain": [{"speechnorm": {"key": "d"}}, {"loudnorm": {}}]}, "not with loudnorm"),
+                ({"d": {"input": "x.wav"}}, {"chain": [{"speechnorm": {}}]}, "needs key")):
+            with self.assertRaises(mb.SpecError) as cm:
+                mb.validate_spec({"stems": stems, "mix": mix}, self.d)
+            self.assertIn(frag, str(cm.exception))
+
+
+@needs_numpy
+class RoomTone(Base):
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def render(self, rt_cfg, name="o"):
+        tone_fixture(self.out("tone.wav"))
+        spec, p = write_spec(self.d, {"stems": {"d": {"input": "tone.wav", "roomtone": rt_cfg}}})
+        return mb.render(spec, self.out(name), p)
+
+    def test_the_gap_is_filled_at_the_rooms_level_and_nothing_else_moves(self):
+        tone_fixture(self.out("tone.wav"))
+        src = pcm(self.out("tone.wav"))
+        self.assertEqual(float(np.abs(src[int(8.1 * 48000):int(8.9 * 48000)]).max()), 0.0)
+        m = self.render({})
+        r = m["roomtone"]["d"]
+        self.assertEqual(len(r["gaps"]), 1)
+        self.assertAlmostEqual(r["gaps"][0][0], 8.0, delta=0.02)
+        out = pcm(self.out("o/stems/d.wav"))
+        floor = rms_db(src[int(3 * 48000):int(7 * 48000)])
+        gap = rms_db(out[int(8.1 * 48000):int(8.9 * 48000)])
+        self.assertAlmostEqual(gap, floor, delta=1.5)
+        self.assertGreater(float(np.abs(out[int(8.1 * 48000):int(8.9 * 48000)]).max()), 0.0)
+        for a, b in ((0, 7.9), (9.1, 16)):     # outside the gap and its fades: the input as it was
+            span = slice(int(a * 48000), int(b * 48000))
+            self.assertLess(float(np.abs(out[span] - src[span]).max()), 1e-5)
+        self.assertEqual(self.dead_hops(self.out("o/stems/d.wav")), 0)
+
+    def dead_hops(self, path):
+        fp = dxm.frame_power(path, 0, 0.1)
+        return int((fp["power"] <= 0).sum())
+
+    def test_an_edit_point_gets_tone_under_it_and_is_otherwise_untouched(self):
+        m = self.render({"gaps": [], "points": [5.0], "edit_level_db": -6})
+        src, out = pcm(self.out("tone.wav")), pcm(self.out("o/stems/d.wav"))
+        centre = slice(int(4.95 * 48000), int(5.05 * 48000))
+        rise = rms_db(out[centre]) - rms_db(src[centre])
+        self.assertGreater(rise, 0.4)               # -6 dB of noise on noise: about +1 dB
+        self.assertLess(rise, 1.6)
+        far = slice(int(6.0 * 48000), int(7.5 * 48000))
+        self.assertLess(float(np.abs(out[far] - src[far]).max()), 1e-5)
+        self.assertEqual(m["roomtone"]["d"]["points"], [5.0])
+
+    def test_the_render_is_byte_identical_and_a_clean_stem_is_left_alone(self):
+        a = self.render({})
+        b = self.render({}, "o2")
+        self.assertEqual({k: v["sha256"] for k, v in a["outputs"].items()},
+                         {k: v["sha256"] for k, v in b["outputs"].items()})
+        fixtures(self.d, 6)
+        spec, p = write_spec(self.d, {"stems": {"d": {"input": "dialogue.wav", "roomtone": {}}}})
+        c = mb.render(spec, self.out("o3"), p)
+        self.assertEqual(c["roomtone"], {})
+        self.assertEqual([s["step"] for s in c["skipped"]], ["roomtone"])
+
+    def test_bad_settings_are_refused(self):
+        for cfg, frag in (({"gaps": [[3, 2]]}, "end after start"), ({"nope": 1}, "unknown setting"),
+                          ({"window": [0, 1]}, "a loop needs")):
+            with self.assertRaises(mb.SpecError) as cm:
+                mb.validate_spec({"stems": {"d": {"input": "x.wav", "roomtone": cfg}}}, self.d)
+            self.assertIn(frag, str(cm.exception))

@@ -6,6 +6,9 @@ Fairlight, and nothing is sent anywhere.
     python3 -m rpresolve.mixbuild render SPEC --out DIR [--report] [--dry-run]
     python3 -m rpresolve.mixbuild ab --out DIR FILE FILE [FILE ...]
                                     [--start S] [--seconds 20] [--seed N]
+    python3 -m rpresolve.mixbuild presets
+    python3 -m rpresolve.mixbuild preset-ab DIALOGUE.wav --out DIR
+                                    [--presets lav,boom,vo] [--start S] [--seconds 20] [--seed N]
 
 The spec is YAML (a small subset read by the parser below, so PyYAML is not
 needed; JSON is accepted too). Paths are relative to the spec's folder.
@@ -39,7 +42,7 @@ needed; JSON is accepted too). Paths are relative to the spec's folder.
         - limiter: {ceiling: -1.5}
 
 Steps: gain, fade, highpass, lowpass, eq, dehum, declick, deess, denoise,
-compress, loudnorm, limiter. dehum notches freq (50 or 60) and its
+compress, loudnorm, speechnorm (mix chain only), limiter. dehum notches freq (50 or 60) and its
 harmonics; declick is ffmpeg's adeclick. denoise methods: afftdn, anlmdn and
 arnndn (ffmpeg built in; arnndn needs a `model` file or it is skipped),
 deepfilternet (recorded as skipped in v1, installed or not: run `deep-filter`
@@ -74,9 +77,41 @@ hash in packet.json). Listen first, open the key after.
 
 Numbers are not listening: a render that measures well can still sound
 wrong. The A/B packet is the control for that.
+
+Dialogue presets. A stem may say `preset: lav` (or boom, vo, music_bed)
+instead of a chain; `presets` prints each one's steps and why they are
+there. A preset is a starting chain, written down so a choice has a reason;
+it is not a claim that it sounds better, and no preset sets loudness (that is
+the mix's). Give a preset or a chain, not both; candidates need a chain.
+render.json records the preset each stem used. preset-ab renders the same
+dialogue through each preset (and leaves it untouched, as a reference),
+then builds the blind A/B packet from the results, so the ear picks.
+
+Dialogue-gated loudness. `speechnorm: {key: dialogue, i: -16}` in the mix
+chain measures the mix's integrated loudness over the key stem's speech
+spans only (duckplan's speech key, on the rendered key stem; `gate_db` as in
+duck) and sets one linear gain to bring that to `i`. Music in the pauses
+and under a laugh does not count. It replaces loudnorm (give one, not
+both), so put a limiter after it; a true peak past `tp` (default -1.5) after
+the gain is recorded in the skips. render.json holds the speech and whole-
+mix loudness. The spans are joined end to end for the measurement, so a
+seam is read as continuous.
+
+Room-tone fill. A stem may say `roomtone: {}` to fill its gaps and edit
+points before its chain runs, with the room tone rpresolve.roomtone finds in
+the stem's own input (`source`, `stream`, `window: [start, end]` name another
+or a fixed window). A gap is a run of digital silence of `min_gap` seconds
+(default 0.25; `gaps: [[a, b], ...]` gives them by hand). The bed plays at
+its own level through each gap, `gap_level_db` off (default 0), and fades
+over `xfade` seconds (default 0.05) either side so it sits under the edges.
+`points: [t, ...]` lays the bed under an edit point over +/- `edit_pad_s`
+(default 0.5), `edit_level_db` down (default -6, since the clip already has
+its own tone). Nothing else changes. The seam check roomtone makes on its
+loop is recorded; a bed over its limit goes in the skips.
 """
 
 import argparse
+import copy
 import functools
 import hashlib
 import json
@@ -93,6 +128,8 @@ import numpy as np
 from . import audioreport as ar
 from . import delivercheck as dc
 from . import duckplan as dp
+from . import dxmetrics as dxm
+from . import roomtone as rt
 from .paths import OutputRefused, in_any_git_tree
 
 BIT_DEPTH = "pcm_s24le"
@@ -101,7 +138,40 @@ RUN_TIMEOUT_S = 3600
 MAX_DELAY_S = 0.25               # a denoiser delaying more than this is refused
 DUCK_KEY = "duck/duck-key.wav"   # a mix input that is the duck key; stem names hold no /
 # steps that distribute over a sum, so a mixed stem may carry them (loudnorm too, when linear)
-LINEAR = {"gain", "fade", "highpass", "lowpass", "eq", "dehum"}
+LINEAR = {"gain", "fade", "highpass", "lowpass", "eq", "dehum", "speechnorm"}
+# Starting chains for dialogue. Each says why, and none says it sounds better: Isaac's ear decides
+# (preset-ab). No loudnorm: loudness is the mix's (speechnorm there).
+PRESETS = {
+    "lav": {
+        "why": "A lavalier sits on the chest, so it carries proximity low end and clothing rustle "
+               "and loses top. High-pass above the rustle, dip the chest boom around 250 Hz, lift "
+               "the presence band a little, light afftdn for the floor, a gentle de-ess and 3:1.",
+        "chain": [{"highpass": 100}, {"eq": {"freq": 250, "gain": -2, "q": 1}},
+                  {"eq": {"freq": 4500, "gain": 1.5, "q": 1}},
+                  {"denoise": {"method": "afftdn", "nr": 8}}, {"deess": {"intensity": 0.5}},
+                  {"compress": {"threshold": -20, "ratio": 3}}]},
+    "boom": {
+        "why": "A boom is off-axis and further away, so it carries the room and has no proximity "
+               "boost to cut. Lower high-pass, a touch of presence, afftdn a little deeper for "
+               "the room, a light de-ess (the capsule is not at the mouth) and a gentler 2.5:1.",
+        "chain": [{"highpass": 70}, {"denoise": {"method": "afftdn", "nr": 12}},
+                  {"eq": {"freq": 3000, "gain": 1, "q": 1}}, {"deess": {"intensity": 0.3}},
+                  {"compress": {"threshold": -18, "ratio": 2.5}}]},
+    "vo": {
+        "why": "Voice-over is a close mic in a quiet booth: no denoise (it would cost tone for "
+               "little floor), a small dip at 200 Hz for the proximity, a firmer de-ess for the "
+               "close capsule and 3.5:1 with a faster attack for the wider dynamic range.",
+        "chain": [{"highpass": 80}, {"eq": {"freq": 200, "gain": -1, "q": 1}},
+                  {"deess": {"intensity": 0.6}},
+                  {"compress": {"threshold": -20, "ratio": 3.5, "attack": 10, "release": 200}}]},
+    "music_bed": {
+        "why": "A bed under dialogue only needs to stay out of its way: high-pass below the "
+               "music's weight, low-pass the top, and two wide dips at 300 Hz and 2.5 kHz where "
+               "speech lives. No denoise, de-ess or compression: the music is already mastered.",
+        "chain": [{"highpass": 40}, {"lowpass": 16000},
+                  {"eq": {"freq": 300, "gain": -2, "q": 0.7}},
+                  {"eq": {"freq": 2500, "gain": -3, "q": 0.7}}]},
+}
 # biquads in double precision: in float a low high-pass leaves the mixed stems -80 dB off the mix
 F64 = ":precision=f64"
 
@@ -294,6 +364,7 @@ class Ctx:
     def __init__(self, rate, duration, skips, where, probe=True):
         self.rate, self.duration, self.skips, self.where = rate, duration, skips, where
         self.probe = probe
+        self.speech_gain = None  # speechnorm's measured gain, set once the mix is measured
 
     def skip(self, step, why):
         self.skips.append({"where": self.where, "step": step, "why": why})
@@ -461,6 +532,21 @@ def s_loudnorm(raw, ctx):
             f":LRA={_f(_num(p.get('lra', 11), 'loudnorm lra', 1, 50))}"]
 
 
+def s_speechnorm(raw, ctx):
+    p = _params(raw, "key", ("key", "i", "tp", "gate_db"), "speechnorm")
+    if not isinstance(p.get("key"), str):
+        raise SpecError("speechnorm needs key: the stem whose speech sets the loudness")
+    _num(p.get("i", -16), "speechnorm i", -70, -5)
+    _num(p.get("tp", -1.5), "speechnorm tp", -9, 0)
+    if p.get("gate_db") is not None:
+        _num(p["gate_db"], "speechnorm gate_db", -120, 0)
+    if not ctx.probe:
+        return []
+    if ctx.speech_gain is None:  # a dry run: nothing has been measured
+        ctx.skip("speechnorm", "dry run: the gain is measured at render; 0 dB is shown")
+    return [f"volume={_f(ctx.speech_gain or 0.0)}dB"]
+
+
 def s_limiter(raw, ctx):
     p = _params(raw, "ceiling", ("ceiling", "attack", "release"), "limiter")
     ceil = _num(p.get("ceiling", -1.5), "limiter ceiling", -24, 0)
@@ -475,7 +561,7 @@ def s_limiter(raw, ctx):
 STEPS = {"gain": s_gain, "fade": s_fade, "highpass": s_highpass, "lowpass": s_lowpass,
          "eq": s_eq, "dehum": s_dehum, "declick": s_declick, "deess": s_deess,
          "denoise": s_denoise, "compress": s_compress, "loudnorm": s_loudnorm,
-         "limiter": s_limiter}
+         "speechnorm": s_speechnorm, "limiter": s_limiter}
 
 
 def _step(item):
@@ -497,6 +583,57 @@ def _check_chain(steps, rate, where):
         STEPS[name](raw, ctx)
 
 
+ROOMTONE_KEYS = ("source", "stream", "window", "gaps", "min_gap", "xfade", "gap_level_db",
+                 "points", "edit_pad_s", "edit_level_db")
+MAX_FILLS = 100  # gaps and points together: the envelope is built per span
+
+
+def _roomtone_cfg(raw, base, name):
+    cfg = {} if raw is None else raw
+    if not isinstance(cfg, dict):
+        raise SpecError(f"stem {name}: roomtone is a map of settings ({{}} for the defaults)")
+    bad = sorted(set(cfg) - set(ROOMTONE_KEYS))
+    if bad:
+        raise SpecError(f"stem {name}: roomtone: unknown setting {', '.join(map(str, bad))} "
+                        f"(allowed: {', '.join(ROOMTONE_KEYS)})")
+    out = dict(cfg)
+    if out.get("source"):
+        out["source"] = os.path.normpath(os.path.join(base, os.path.expanduser(str(out["source"]))))
+    out["stream"] = int(_num(out.get("stream", 0), "roomtone stream", 0, 31))
+    w = out.get("window")
+    if w is not None:
+        if not isinstance(w, list) or len(w) != 2:
+            raise SpecError(f"stem {name}: roomtone window is [start, end] in seconds")
+        a, b = _num(w[0], "roomtone window start", 0), _num(w[1], "roomtone window end", 0)
+        if b - a < rt.MIN_SOURCE_S:
+            raise SpecError(f"stem {name}: roomtone window is {b - a:g} s; a loop needs at "
+                            f"least {rt.MIN_SOURCE_S:g} s")
+        out["window"] = [a, b]
+    g = out["gaps"] = out.get("gaps", "auto")
+    if g != "auto":
+        if not isinstance(g, list):
+            raise SpecError(f"stem {name}: roomtone gaps is auto or a list of [start, end]")
+        out["gaps"] = []
+        for x in g:
+            if not (isinstance(x, list) and len(x) == 2):
+                _bad_gap(name, x)
+            a, b = _num(x[0], "gap start", 0), _num(x[1], "gap end", 0)
+            if b <= a:
+                _bad_gap(name, x)
+            out["gaps"].append([a, b])
+    out["points"] = [_num(t, "edit point", 0) for t in (out.get("points") or [])]
+    out["min_gap"] = _num(out.get("min_gap", 0.25), "roomtone min_gap", 0.02, 60)
+    out["xfade"] = _num(out.get("xfade", 0.05), "roomtone xfade", 0.001, 5)
+    out["edit_pad_s"] = _num(out.get("edit_pad_s", 0.5), "roomtone edit_pad_s", 0.01, 10)
+    out["gap_level_db"] = _num(out.get("gap_level_db", 0), "roomtone gap_level_db", -40, 12)
+    out["edit_level_db"] = _num(out.get("edit_level_db", -6), "roomtone edit_level_db", -40, 12)
+    return out
+
+
+def _bad_gap(name, x):
+    raise SpecError(f"stem {name}: a roomtone gap is [start, end] with end after start, got {x!r}")
+
+
 def validate_spec(spec, base):
     if not isinstance(spec, dict):
         raise SpecError("the spec must be a map")
@@ -513,13 +650,24 @@ def validate_spec(spec, base):
             raise SpecError(f"stem name {name!r}: letters, digits, _ and - only, no double underscore")
         if not isinstance(st, dict) or not st.get("input"):
             raise SpecError(f"stem {name}: needs an input file")
-        bad = sorted(set(st) - {"input", "chain", "candidates"})
+        bad = sorted(set(st) - {"input", "chain", "candidates", "preset", "roomtone"})
         if bad:
             raise SpecError(f"stem {name}: unknown key {', '.join(bad)}")
         st["input"] = os.path.normpath(os.path.join(base, os.path.expanduser(str(st["input"]))))
+        if st.get("preset") is not None:
+            if st["preset"] not in PRESETS:
+                raise SpecError(f"stem {name}: unknown preset {st['preset']!r} "
+                                f"(known: {', '.join(PRESETS)})")
+            if st.get("chain"):
+                raise SpecError(f"stem {name}: give a preset or a chain, not both")
+            st["chain"] = copy.deepcopy(PRESETS[st["preset"]]["chain"])
+        if "roomtone" in st:
+            st["roomtone"] = _roomtone_cfg(st["roomtone"], base, name)
         st["chain"] = st.get("chain") or []
         if not isinstance(st["chain"], list):
             raise SpecError(f"stem {name}: chain must be a list")
+        if any(_step(i)[0] == "speechnorm" for i in st["chain"]):
+            raise SpecError(f"stem {name}: speechnorm belongs in the mix chain")
         _check_chain(st["chain"], spec["sample_rate"], f"stem {name}")
         cands = st.get("candidates") or {}
         if not isinstance(cands, dict):
@@ -556,6 +704,12 @@ def validate_spec(spec, base):
             duck["gate_db"] = _num(duck["gate_db"], "duck gate_db", -120, 0)
     mix["chain"] = mix.get("chain") or []
     _check_chain(mix["chain"], spec["sample_rate"], "mix")
+    sn = [_step(i) for i in mix["chain"] if _step(i)[0] == "speechnorm"]
+    if sn:
+        if len(sn) > 1 or any(_step(i)[0] == "loudnorm" for i in mix["chain"]):
+            raise SpecError("mix: one speechnorm, and not with loudnorm (it replaces it)")
+        if sn[0][1].get("key") not in stems:
+            raise SpecError("speechnorm: key must be a stem of this spec")
     spec["mix"] = mix
     return spec
 
@@ -569,10 +723,11 @@ def _head(spec):
     return f"aformat=sample_fmts=fltp:sample_rates={spec['sample_rate']}:channel_layouts={layout}"
 
 
-def chain_filters(steps, spec, duration, where, skips, candidate=None):
+def chain_filters(steps, spec, duration, where, skips, candidate=None, speech_gain=None):
     """The filters for a chain, split at the loudnorm step (at most one):
-    (before, loudnorm_or_None, after)."""
+    (before, loudnorm_or_None, after). speech_gain is speechnorm's measured dB."""
     ctx = Ctx(spec["sample_rate"], duration, skips, where)
+    ctx.speech_gain = speech_gain
     parts = [[], None, []]
     seen_ln = False
     for item in steps:
@@ -720,6 +875,141 @@ def linear_prefix(steps, loudnorm_linear):
 
 
 # ---------------------------------------------------------------------------
+# Dialogue-gated loudness
+# ---------------------------------------------------------------------------
+
+def _ffmpeg_bytes(cmd, data=None):
+    try:
+        return subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=RUN_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise MixError("ffmpeg timed out")
+
+
+def _read_graph(inputs, graph, channels):
+    """The graph's output as float samples, (n, channels), unclipped."""
+    cmd = [dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-threads", "1",
+           "-filter_threads", "1", "-filter_complex_threads", "1"]
+    for p in inputs:
+        cmd += ["-i", dc._src(p)]
+    proc = _ffmpeg_bytes(cmd + ["-filter_complex", graph, "-map", "[out]", "-f", "f32le", "-"])
+    if proc.returncode != 0:
+        raise MixError("ffmpeg could not read the mix: " + proc.stderr.decode(errors="replace")[-300:])
+    return np.frombuffer(proc.stdout, "<f4").reshape(-1, channels)
+
+
+def _ebur(x, rate):
+    """{integrated_lufs, true_peak_dbtp} of float samples (n, channels)."""
+    proc = _ffmpeg_bytes([dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-f", "f32le",
+                          "-ar", str(rate), "-ac", str(x.shape[1]), "-i", "-", "-af",
+                          "ebur128=peak=true", "-f", "null", "-"], x.astype("<f4").tobytes())
+    try:
+        got = dc.parse_ebur128(proc.stderr.decode(errors="replace"))
+    except dc.CheckError as e:
+        raise MixError(f"could not measure loudness: {e}")
+    if got["integrated_lufs"] is None or got["integrated_lufs"] < -69.9:
+        raise MixError("the speech spans hold no measurable loudness (under 400 ms, or silent)")
+    return got
+
+
+def speech_loudness(x, rate, spans):
+    """({speech, whole} loudness dicts, speech seconds): the mix x measured
+    over the speech spans only, joined end to end, and over all of it."""
+    cut = [x[int(round(a * rate)):int(round(b * rate))] for a, b in spans]
+    cut = [c for c in cut if len(c)]
+    if not cut:
+        raise MixError("no speech spans fall inside the mix")
+    joined = np.concatenate(cut)
+    return {"speech": _ebur(joined, rate), "whole": _ebur(x, rate)}, len(joined) / rate
+
+
+# ---------------------------------------------------------------------------
+# Room-tone fill
+# ---------------------------------------------------------------------------
+
+def find_gaps(path, stream, min_gap):
+    """[[start, end]] of the runs of digital silence of min_gap seconds or more."""
+    fp = dxm.frame_power(path, stream, 0.01)
+    hop = fp["hop_s"]
+    a, b = ar._runs(fp["power"] <= 0)
+    return [[round(i * hop, 3), round(j * hop, 3)] for i, j in zip(a, b) if (j - i) * hop >= min_gap]
+
+
+def fill_envelope(n, rate, gaps, points, cfg):
+    """The bed's gain over time, mono: 1 (less gap_level_db) through each gap
+    with a linear ramp of xfade either side, edit_level_db at an edit point
+    falling away linearly over edit_pad_s. Overlaps take the larger."""
+    env = np.zeros(n)
+    x, pad = cfg["xfade"], cfg["edit_pad_s"]
+    gl, el = 10 ** (cfg["gap_level_db"] / 20), 10 ** (cfg["edit_level_db"] / 20)
+    for a, b in gaps:
+        i, j = max(0, int((a - x) * rate)), min(n, int((b + x) * rate) + 1)
+        t = np.arange(i, j) / rate
+        env[i:j] = np.maximum(env[i:j], gl * np.clip((t - (a - x)) / x, 0, 1)
+                              * np.clip(((b + x) - t) / x, 0, 1))
+    for q in points:
+        i, j = max(0, int((q - pad) * rate)), min(n, int((q + pad) * rate) + 1)
+        t = np.arange(i, j) / rate
+        env[i:j] = np.maximum(env[i:j], el * np.clip(1 - np.abs(t - q) / pad, 0, 1))
+    return env
+
+
+def fill_roomtone(name, src, cfg, out_dir, spec, skips):
+    """Lay matched room tone into the gaps and edit points of one stem's
+    input. Returns (path to use as the stem's input, record). Nothing to
+    fill: the input itself, and a note in skips."""
+    stream = cfg["stream"]
+    dur = probe_duration(src)
+    gaps = cfg["gaps"] if cfg["gaps"] != "auto" else find_gaps(src, stream, cfg["min_gap"])
+    points = cfg["points"]
+    if not gaps and not points:
+        skips.append({"where": f"stem {name}", "step": "roomtone",
+                      "why": "no digital-silence gaps and no edit points: the input is unchanged"})
+        return src, None
+    if len(gaps) + len(points) > MAX_FILLS:
+        raise MixError(f"stem {name}: {len(gaps)} gaps and {len(points)} points; at most "
+                       f"{MAX_FILLS}. Raise roomtone min_gap or give the gaps")
+    bed_src = cfg.get("source") or src
+    sub = os.path.join(out_dir, "roomtone")
+    os.makedirs(sub, exist_ok=True)
+    win = cfg.get("window") or [None, None]
+    try:
+        bed = rt.bed(bed_src, os.path.join(sub, f"{name}-bed.wav"), dur + 1, stream, win[0], win[1])
+    except (ar.ReportError, ValueError, OutputRefused) as e:
+        raise MixError(f"stem {name}: room tone: {e}")
+    if not bed["seam_ok"]:
+        skips.append({"where": f"stem {name}", "step": "roomtone",
+                      "why": f"the bed's loop seam is {bed['seam_dev_db']:+} dB (limit "
+                             f"{rt.SEAM_MAX_DB} dB): listen to the fill"})
+    brate = bed["sample_rate"]
+    chans = ar.audio_stream(os.path.join(sub, f"{name}-bed.wav"))["channels"]
+    raw = _ffmpeg_bytes([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i",
+                         dc._src(os.path.join(sub, f"{name}-bed.wav")), "-f", "f32le", "-"])
+    if raw.returncode != 0:
+        raise MixError(f"stem {name}: could not read the bed: {raw.stderr.decode(errors='replace')[-200:]}")
+    x = np.frombuffer(raw.stdout, "<f4").reshape(-1, chans).astype(np.float64)
+    env = fill_envelope(len(x), brate, gaps, points, cfg)
+    fill = os.path.join(sub, f"{name}-fill.wav")
+    dp._ffmpeg_write([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "f32le",
+                      "-ar", str(brate), "-ac", str(chans), "-i", "-", "-map_metadata", "-1",
+                      "-fflags", "+bitexact", "-flags:a", "+bitexact", "-c:a", "pcm_f32le",
+                      "-f", "wav"], fill, (x * env[:, None]).astype("<f4").tobytes())
+    # laid under the input with the mix recipe: padded, fixed frames, cut back after
+    h = _head(spec)
+    pad, d = _f(round(dur + 1, 3)), _f(round(dur, 3))
+    ends = f"apad=whole_dur={pad},asetnsamples=n=1024:p=1"
+    graph = (f"[0:a]{h},{ends}[g0];[1:a]{h},{ends}[g1];[g0][g1]amix=inputs=2:normalize=0:"
+             f"duration=longest:dropout_transition=0,atrim=end={d},asetnsamples=n=4096:p=0")
+    out = os.path.join(sub, f"{name}-filled.wav")
+    render_graph([src, fill], graph, ([], None, []), out, h, f"stem {name} roomtone", skips)
+    rec = {"source": bed_src, "stream": stream, "window_s": bed["window_s"], "bed_curve": bed["curve"],
+           "seam_dev_db": bed["seam_dev_db"], "gaps": gaps, "points": points,
+           "gap_level_db": cfg["gap_level_db"], "edit_level_db": cfg["edit_level_db"],
+           "xfade_s": cfg["xfade"], "edit_pad_s": cfg["edit_pad_s"]}
+    return out, rec
+
+
+# ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 
@@ -773,9 +1063,15 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
     for s in sources[:len(names)]:
         if not os.path.isfile(s):
             raise SpecError(f"input not found: {s}")
-    _check_targets(out_dir, [p[3] for p in plan] + list(mixed.values()) + duck_files
+    tones = [n for n in names if "roomtone" in stems[n]]
+    tone_files = [os.path.join(out_dir, "roomtone", f"{n}-{x}.wav") for n in tones
+                  for x in ("bed", "fill", "filled")]
+    _check_targets(out_dir, [p[3] for p in plan] + list(mixed.values()) + duck_files + tone_files
+                   + [os.path.join(out_dir, "roomtone", f"{n}-bed.json") for n in tones]
                    + [mix_out, os.path.join(out_dir, "render.json")], sources)
     skips, graphs, outputs = [], {}, {}
+    srcs = {n: stems[n]["input"] for n in names}   # what each chain reads: the fill's result, if any
+    tone_info, spans_by, sn_info = {}, {}, None
     head = "[0:a]" + _head(spec)
     fmt = _head(spec)
     files = {DUCK_KEY: os.path.join(out_dir, DUCK_KEY)}  # mix input -> file
@@ -783,8 +1079,18 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
     if not dry_run:
         for sub in ("stems", "mixed") + (("candidates",) if len(plan) > len(names) else ()):
             os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
+    for n in tones:
+        if dry_run:
+            skips.append({"where": f"stem {n}", "step": "roomtone",
+                          "why": "dry run: gaps are found at render, so the fill is not shown"})
+            continue
+        srcs[n], rec = fill_roomtone(n, srcs[n], stems[n]["roomtone"], out_dir, spec, skips)
+        if rec:
+            tone_info[n] = rec
+            outputs[f"roomtone/{n}"] = srcs[n]
     for kind, key, src, out, cand in plan:
         n = key.split("__")[0]
+        src = srcs[n]
         parts = chain_filters(stems[n]["chain"], spec, probe_duration(src), f"stem {key}", skips,
                               candidate=cand)
         if dry_run:
@@ -805,10 +1111,15 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
             duck_info = {k: p[k] for k in ("depth_db", "floor_dbfs", "gate_dbfs", "gate_from",
                                            "speech_s", "first_speech_s", "sidechain")}
             duck_info["key_sha256"] = sha256(files[DUCK_KEY])
+            spans_by[n] = p["speech_spans"]
     # the mix is as long as its longest stem; a dry run reads the inputs for that
     mix_dur = max(probe_duration(files.get(n) or stems[n]["input"]) for n in names)
     mix_head, mix_inputs = mix_graph(spec, mix_dur, names)
-    parts = chain_filters(spec["mix"]["chain"], spec, mix_dur, "mix", skips)
+    gain = None
+    if not dry_run:
+        sn_info, gain = speechnorm_gain(spec, spec["mix"]["chain"], mix_head, mix_inputs, files,
+                                        mix_dur, spans_by, fmt, skips)
+    parts = chain_filters(spec["mix"]["chain"], spec, mix_dur, "mix", skips, speech_gain=gain)
     ln = None
     if dry_run:
         graphs["mix"] = _flat(mix_head, parts, fmt)
@@ -825,7 +1136,7 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
                              f"mix as it was before {stop}"})
     for n in names:
         h, ins = mix_graph(spec, mix_dur, names, solo=n)
-        parts = chain_filters(steps, spec, mix_dur, f"mixed {n}", [])
+        parts = chain_filters(steps, spec, mix_dur, f"mixed {n}", [], speech_gain=gain)
         if dry_run:
             graphs[f"mixed/{n}"] = _flat(h, parts, fmt)
             continue
@@ -835,6 +1146,9 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
     manifest = {"spec": os.path.basename(spec_path) if spec_path else None,
                 "spec_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
                 "ffmpeg": _ffmpeg_version(), "graphs": graphs, "skipped": skips, "duck": duck_info,
+                "presets": {n: {"preset": stems[n]["preset"], "why": PRESETS[stems[n]["preset"]]["why"]}
+                            for n in names if stems[n].get("preset")},
+                "roomtone": tone_info, "speechnorm": sn_info,
                 "outputs": {k: {"file": os.path.relpath(v, out_dir), "sha256": sha256(v)}
                             for k, v in outputs.items()}}
     if dry_run:
@@ -856,6 +1170,39 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
     with open(os.path.join(out_dir, "render.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1, sort_keys=True)
     return manifest
+
+
+def speechnorm_gain(spec, chain, mix_head, mix_inputs, files, mix_dur, spans_by, fmt, skips):
+    """(record, gain dB) for the mix chain's speechnorm step, or (None, None):
+    the mix as it is just before the step, measured over the key stem's speech."""
+    steps = [_step(i) for i in chain]
+    at = [i for i, (name, _) in enumerate(steps) if name == "speechnorm"]
+    if not at:
+        return None, None
+    raw = steps[at[0]][1]
+    key, target = raw["key"], _num(raw.get("i", -16), "speechnorm i")
+    if key not in spans_by or raw.get("gate_db") is not None:
+        try:
+            pp = dp.plan(files[key], 0, dp.DEPTH_DB, raw.get("gate_db"))
+        except ar.ReportError as e:
+            raise MixError(f"speechnorm: {e} (set gate_db in the speechnorm step)")
+        spans_by[key] = pp["speech_spans"]
+    pre = chain_filters(chain[:at[0]], spec, mix_dur, "mix", [])
+    x = _read_graph([files[n] for n in mix_inputs], _flat(mix_head, pre, fmt), spec["channels"])
+    got, speech_s = speech_loudness(x, spec["sample_rate"], spans_by[key])
+    gain = round(target - got["speech"]["integrated_lufs"], 3)
+    if abs(gain) > 40:
+        raise MixError(f"speechnorm would move the mix {gain:+} dB; check the key stem and gate_db")
+    peak = got["whole"]["true_peak_dbtp"]
+    tp = _num(raw.get("tp", -1.5), "speechnorm tp")
+    if peak is not None and peak + gain > tp:
+        skips.append({"where": "mix", "step": "speechnorm",
+                      "why": f"the true peak would be {peak + gain:+.1f} dBTP after the gain (past "
+                             f"{tp:g}): put a limiter after it"})
+    return {"key": key, "target_lufs": target, "speech_lufs": got["speech"]["integrated_lufs"],
+            "whole_lufs": got["whole"]["integrated_lufs"], "gain_db": gain,
+            "speech_s": round(speech_s, 2), "spans": len(spans_by[key]),
+            "true_peak_after_dbtp": None if peak is None else round(peak + gain, 1)}, gain
 
 
 def _mkdir(p):
@@ -961,6 +1308,35 @@ def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000):
     return packet
 
 
+def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, seconds=20.0, seed=None):
+    """Render `dialogue` through each preset and build one blind A/B packet
+    of the results and the untouched dialogue. It says nothing about which is
+    better: the ear does, and the sealed key says which file was which."""
+    bad = [x for x in presets if x not in PRESETS]
+    if bad:
+        raise SpecError(f"unknown preset {', '.join(bad)} (known: {', '.join(PRESETS)})")
+    if len(set(presets)) != len(presets):
+        raise SpecError("a preset is named twice")
+    if not os.path.isfile(dialogue):
+        raise SpecError(f"not found: {dialogue}")
+    files = [dialogue]
+    for name in presets:
+        spec = validate_spec({"stems": {"dialogue": {"input": os.path.abspath(dialogue),
+                                                     "preset": name}}}, "/")
+        d = os.path.join(out_dir, "renders", name)
+        render(spec, d)
+        files.append(os.path.join(d, "stems", "dialogue.wav"))
+    return ab_packet(files, os.path.join(out_dir, "packet"), start, seconds, seed)
+
+
+def presets_text():
+    out = []
+    for name, p in PRESETS.items():
+        steps = ", ".join(f"{k} {json.dumps(v)}" for item in p["chain"] for k, v in item.items())
+        out.append(f"{name}: {steps}\n  {p['why']}")
+    return "\n".join(out)
+
+
 # ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
@@ -979,9 +1355,25 @@ def main(argv=None):
     a.add_argument("--start", type=float, default=0.0)
     a.add_argument("--seconds", type=float, default=20.0)
     a.add_argument("--seed", type=int, default=None)
+    sub.add_parser("presets", help="list the dialogue presets and why each step is there")
+    q = sub.add_parser("preset-ab", help="render one dialogue file through presets, blind A/B packet")
+    q.add_argument("dialogue")
+    q.add_argument("--out", required=True)
+    q.add_argument("--presets", default="lav,boom,vo",
+                   help="comma list of: " + ", ".join(PRESETS))
+    q.add_argument("--start", type=float, default=0.0)
+    q.add_argument("--seconds", type=float, default=20.0)
+    q.add_argument("--seed", type=int, default=None)
     args = ap.parse_args(argv)
     try:
-        if args.cmd == "render":
+        if args.cmd == "presets":
+            print(presets_text())
+        elif args.cmd == "preset-ab":
+            p = preset_ab(args.dialogue, os.path.abspath(args.out), args.presets.split(","),
+                          args.start, args.seconds, args.seed)
+            print(f"{', '.join(p['labels'])} written; matched within {p['spread_lu']} LU; "
+                  "the key is sealed in packet/sealed/key.json")
+        elif args.cmd == "render":
             spec = load_spec(args.spec)
             m = render(spec, os.path.abspath(args.out), os.path.abspath(args.spec),
                        report=args.report, dry_run=args.dry_run)
