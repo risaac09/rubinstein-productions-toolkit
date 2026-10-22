@@ -1,8 +1,12 @@
 # rpstills: the offline front end of the stills lane
 
 Index, cluster and cull a shoot's camera JPEGs and build a review sheet.
-Nothing here decodes a RAW file or talks to DaVinci Resolve; the grade and
-the render stay in Resolve through the `rpresolve` tools.
+The back half is optional and runs without Resolve: `develop` decodes RAW
+files with a per-frame skin solve, `finish` crops and (only when asked)
+retouches, `audit` measures the finished files, `absheet` makes an A/B/C
+decision sheet and `serve` shares a review folder with a phone or iPad. The
+Resolve route below stays the route of record for paid grades; nothing here
+talks to Resolve.
 
 Runs on the venv at `~/.venvs/rp-tools` (Homebrew Python 3.14 with Pillow,
 imagehash, numpy and OpenCV from `requirements.txt`; see the lutlab README for
@@ -139,3 +143,29 @@ Hand tweaks go in nodes 2 and up in the Color page, on top of it.
 
 `stills-looks/portrait-natural-v1.json` holds the first look with its fit and
 validation numbers. Refit for a new session; do not reuse the numbers.
+
+## Without Resolve: develop, finish, audit, compare, share
+
+These five stages are self-contained subcommands; each refuses to write inside a
+git tree and echoes its parameters into its output JSON.
+
+| Command | Writes | What |
+|---|---|---|
+| `develop <out> --look FILE [--backend apple\|lightcraft]` | `develop/<id>.tif`, `develop/calibration.json` | 16-bit sRGB TIFF per selected frame. Exposure, temperature and tint are solved per frame (Broyden-updated Newton) so the cheek-apple Lab meets the look's `solve.target_lab`. A pinned axis or a missed target is reported, never counted as converged. The `apple` backend (CIRAWFilter, `develop_raw.swift`, compiled into `~/Library/Caches/rpstills` like the Vision helper) is the default; `lightcraft` is a trial, enabled only by `RPSTILLS_LIGHTCRAFT`. See [rpstills-develop.md](../rpstills-develop.md). |
+| `finish <out> [--retouch none\|all\|ID ...] [--background off\|on] [--crop PROFILE ...]` | `finish/<profile>/<id>.jpg`, `finish/finish.json` | Crops on the Vision landmark eye line, sRGB 4:4:4 JPEG. Background burn and retouch are opt-in and logged per frame. See [rpstills-finish.md](../rpstills-finish.md). |
+| `audit <dir> [--profile NAME]` | `audit.json` | Skin L*, a*, b*, hue, chroma and Rec.709 vectorscope angle at the cheek apples, clip share, sRGB ICC, eye line, headroom, eye sharpness, background peak, and the set's spread. Report only: no pass or fail until ranges are set. See [rpstills-audit.md](../rpstills-audit.md). |
+| `absheet IMG IMG [...] --out DIR [--seed N]` | `sheet.jpg`, `key.json` | Two to nine candidates as one lettered sheet (at most 2000 px, under 1 MiB, legible at phone width), order shuffled by the seed, the key kept apart. |
+| `serve <folder> [--bind ADDR] [--port N]` | nothing | GET and HEAD only, with HTTP byte ranges, so Safari on a phone or iPad can play and seek video. Refuses paths outside the folder. |
+
+`vision.faces(images, landmarks=True)` (helper flag `--landmarks`) adds Vision's
+landmark points in the same normalised top-left coordinates as the face box;
+the index never asks for them. `rpstills.skin` pairs eyes and lip corners by
+image x, so a patch cannot flip sides whatever Vision calls them.
+
+The trial skin target in `stills-looks/portrait-cheek-trial-v0.json` is a trial,
+not a house standard, and it sits about 5 degrees red of the Rec.709 skin line;
+`audit` reports both distances. The review loop around these commands is in
+[media-review-loop.md](../media-review-loop.md).
+
+Tests: `production/tests/test_rpstills_{skin,audit,develop,finish,absheet,serve}.py`.
+

@@ -11,16 +11,36 @@
   look    <params.json> <out.cube> [--size N]   write a look as a DWG/DI 3D LUT (refuses to overwrite)
   crops   <out dir> [--config PATH]          crop plan per profile -> crops.json, crops-preview.jpg
   run     <shoot folder> <out dir> --session NAME   all four in order (takes the index options)
+
+  develop <out dir> --look FILE [--ids ...] [--backend apple|lightcraft] [--raw PATH ...]
+                                             RAW -> out/develop/<id>.tif (16-bit) + calibration.json, exposure
+                                             and white balance solved per frame onto the look's skin target
+  finish  <out dir> [--ids ...] [--src DIR] [--retouch none|all|ID ...] [--background off|on] [--crop PROFILE ...]
+                                             opt-in background burn and retouch, crops on the landmark eye line
+                                             -> out/finish/<profile>/<id>.jpg (sRGB) + finish.json
+  audit   <dir> [--out DIR] [--profile NAME] numbers of finished stills (skin Lab and scope angle, clip, ICC,
+                                             eye line, headroom, eye sharpness, background) -> audit.json;
+                                             report only, no pass/fail
+  absheet IMG IMG [...] --out DIR [--seed N] [--title T]
+                                             lettered A/B/C decision sheet (2-9 images, phone legible) + key.json
+  serve   <folder> [--bind 127.0.0.1] [--port 8780]
+                                             read-only file server with byte ranges, for review on a phone or iPad
 """
 
 import argparse
+import importlib
 import os
 import sys
 
 from . import cluster, crops, cull, index, look, review
 
+# Subcommands that parse their own arguments and never read the shoot index. Each is imported only
+# when it is the command, so the shoot commands and serve run without the OpenCV that audit and finish load.
+SELF_CONTAINED = ("develop", "finish", "audit", "absheet", "serve")
+
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
     ap = argparse.ArgumentParser(prog="rpstills")
     sub = ap.add_subparsers(dest="cmd", required=True)
     def index_options(p):
@@ -37,7 +57,13 @@ def main(argv=None):
     p = sub.add_parser("crops"); p.add_argument("out"); p.add_argument("--config")
     p = sub.add_parser("run"); p.add_argument("shoot"); p.add_argument("out"); p.add_argument("--session", required=True)
     p.add_argument("--title"); index_options(p)
+    for name in SELF_CONTAINED:
+        p = sub.add_parser(name)
+        if argv[:1] == [name]:         # argparse takes the command as the first word; the rest stay bare
+            importlib.import_module("." + name, __package__).add_arguments(p)
     a = ap.parse_args(argv)
+    if a.cmd in SELF_CONTAINED:
+        return importlib.import_module("." + a.cmd, __package__).run(a)
     if a.cmd == "look":
         doc = look.load_params(a.params)
         try:

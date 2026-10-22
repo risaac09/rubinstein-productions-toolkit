@@ -8,8 +8,8 @@ Display encodings (r709, srgb) decode to display light; lutlab treats that as
 the linear quantity for a creative Rec.709-in LUT, the usual convention.
 Constants: Panasonic V-Log, ARRI LogC3 (EI 800) and LogC4, Blackmagic Film
 Gen 5, Blackmagic DaVinci Intermediate, BT.1886 (2.4) and IEC 61966-2-1 sRGB,
-all as published. The house cameras are in CAMERAS: the S5II shoots V-Log,
-the Pyxis BRAW (decoded as Gen 5)."""
+all as published. The house cameras are in CAMERAS: the S5II and GH7 shoot
+V-Log, the Pyxis BRAW (decoded as Gen 5)."""
 
 import numpy as np
 
@@ -124,6 +124,7 @@ SPACES = {
 CAMERAS = {
     "s5ii": ("vlog", "S5II"),
     "pyxis": ("bmdfilm5", "Pyxis"),
+    "gh7": ("vlog", "GH7"),
 }
 
 

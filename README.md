@@ -35,11 +35,13 @@ Tools that work on anyone's footage, each with tests.
 - **[Capture standard](production/capture-standard.md)** (draft): frame rate, profile, audio, sync, slate and card naming per camera.
 - **[Delivery manifest](production/delivery-manifest.md)**, **[platform specs](production/platform-specs.md)**, **[credits and AI disclosure](production/credits-and-disclosure.md)**, **[consent evidence](production/consent-evidence.md)** and the **[return package](production/return-package.md)**: what ships, where to, what is said about how it was made, and what goes back to the people in it.
 - **[`lutlab/`](production/lutlab/README.md)**: turns a look into a few numbers you can shift on purpose, and back into a LUT (`.cube` for Resolve, Hald CLUT PNG for stills). Six reference looks ship in `production/lutlab-looks/`.
-- **[`rpstills/`](production/rpstills/README.md)**: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. Faces come from macOS Vision when `swiftc` is present.
+- **[`rpstills/`](production/rpstills/README.md)**: index, cluster and cull a shoot's camera JPEGs, then build a review sheet. Faces come from macOS Vision when `swiftc` is present. Optional back half without Resolve: RAW develop with a per-frame skin solve, crops and opt-in retouch, a report-only audit, an A/B/C decision sheet and a byte-range file server for review on a phone or iPad.
+- **[Media lane](production/media-lane.md)**: one page over colour, edit and sound: what each tool does, how a review with Claude Code runs, and what is still a hand step.
 
 ### `tools/`
 - **[`vertcut/`](tools/vertcut/README.md)**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`.
 - **[`video-editor/`](tools/video-editor/README.md)**: a bounded prototype that drives video editing through Claude Code, wrapping the third-party `video-use` skill (Browser Use, MIT), which `fetch-video-use.sh` fetches at a pinned commit. Not a finished tool.
+- **[`ipad-probe/`](tools/ipad-probe/README.md)**: a POSIX `sh` probe of what an iPad's a-Shell ffmpeg, ffprobe and python3 can do, printed as one Markdown table, plus four recipes: verified card copy, proxy, two-pass loudness and contact sheet. Runs under dash.
 
 ### `prompts/`
 - **[`skills/`](prompts/skills/)**: Claude Code skill files. Branded deck and document builds that match a template, a prompting pattern library, and agentic-development notes. The last two are October 2025 snapshots and say so at the top.
@@ -48,6 +50,7 @@ Tools that work on anyone's footage, each with tests.
 ### `docs/`
 - **[Field Guide](docs/field-guide/index.md)**: a reading order and a first working session for writers, producers and evaluators. Also published as the repository's GitHub Pages site.
 - **[Deliverable portability](docs/deliverable-portability.md)** (draft): how to keep document and deck quality when the model changes.
+- **[iPad lane](docs/ipad-lane.md)** (draft): what an iPad can do with no Mac at each stage from ingest to QC, what is verified, and the one-hour on-device probe that settles the rest.
 
 ### `scripts/`
 The doc-link checker, the methodology status check, the site builder, `burst-gate` (mechanical gates for a worker branch) and `changelog-fragments` (one release-note fragment per pull request in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time), each with a test script.
