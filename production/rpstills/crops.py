@@ -48,10 +48,12 @@ def _fit(box, aspect, W, H):
     return x0, y0, w, h, tight
 
 
-def solo_crop(face, aspect, W, H, height_in_faces, eye_line):
+def solo_crop(face, aspect, W, H, height_in_faces, eye_line, eye_y=None):
+    """eye_y: the measured eye line (landmarks) as a share of H from the top;
+    without it, the box estimate 0.40 of the face height below the box top."""
     fh = face["h"] * H
     fcx = (face["x"] + face["w"] / 2) * W
-    eye_y = face["y"] * H + 0.40 * fh
+    eye_y = face["y"] * H + 0.40 * fh if eye_y is None else eye_y * H
     h = height_in_faces * fh
     w = h * aspect
     cy = eye_y - eye_line * h + h / 2

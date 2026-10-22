@@ -18,6 +18,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rpresolve import api, config, grade, paths, render
 
 
+
+class WritePrivateLinkTest(unittest.TestCase):
+    def test_a_hard_link_into_another_folder_keeps_its_old_content(self):
+        from rpresolve import paths
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            inside = os.path.join(a, "inside.txt")
+            with open(inside, "w") as f:
+                f.write("old")
+            out = os.path.join(b, "out.json")
+            os.link(inside, out)
+            paths.write_private(out, "new")
+            with open(inside) as f:
+                self.assertEqual(f.read(), "old")
+            with open(out) as f:
+                self.assertEqual(f.read(), "new")
+
+
 class TestConfig(unittest.TestCase):
     def test_defaults_and_warning_hook(self):
         with tempfile.TemporaryDirectory() as d:
