@@ -217,6 +217,33 @@ class TestTakes(unittest.TestCase):
                 bt.find_takes(p)
 
 
+def audio_decodes_of(path, fn):
+    """How many ffmpeg runs read `path` for audio while fn() runs."""
+    src, seen = dc._src(path), []
+    real_popen = subprocess.Popen   # subprocess.run goes through Popen, so this sees both
+
+    def popen(cmd, *a, **k):
+        if (isinstance(cmd, list) and cmd and os.path.basename(cmd[0]).startswith("ffmpeg")
+                and src in cmd and "0:v:0" not in cmd):
+            seen.append(cmd)
+        return real_popen(cmd, *a, **k)
+    with mock.patch.object(subprocess, "Popen", popen):
+        fn()
+    return len(seen)
+
+
+class TestDecodeOnce(unittest.TestCase):
+    def test_one_audio_decode_per_take(self):
+        with tempfile.TemporaryDirectory() as d:
+            wav = os.path.join(d, "t.wav")
+            write_wav(wav, take_signal(3.0, 0.5))
+            mkv = os.path.join(d, "t.mkv")
+            make_video(mkv, wav, cut=True)
+            for take in (wav, mkv):
+                self.assertEqual(audio_decodes_of(
+                    take, lambda: bt.measure_take(take, faces=False)), 1, take)
+
+
 class TestVideo(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

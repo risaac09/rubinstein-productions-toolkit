@@ -218,6 +218,18 @@ def face_share(path, duration):
         return round(sum(1 for f in frames if found.get(f)) / len(frames), 3)
 
 
+def extract_audio(path, out):
+    """Decode the take's first audio stream once, to float WAV at its own rate and
+    channels; every audio measure then reads this file, not the camera codec."""
+    proc = subprocess.run([dc.FFMPEG, "-v", "error", "-nostdin", "-y", "-i", dc._src(path),
+                           "-map", "0:a:0", "-vn", "-c:a", "pcm_f32le", "-rf64", "auto", out],
+                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                          stderr=subprocess.PIPE, timeout=dc.READ_TIMEOUT_S)
+    if proc.returncode != 0:
+        raise ar.ReportError(f"ffmpeg could not decode {path}: "
+                             f"{proc.stderr.decode(errors='replace').strip()[-300:]}")
+
+
 def measure_take(path, words_path=None, faces=True):
     """One take's row: {file, metrics, notes}. Raises ar.ReportError,
     dc.CheckError, OSError or ValueError for a file that cannot be read."""
@@ -226,7 +238,16 @@ def measure_take(path, words_path=None, faces=True):
              if not (s.get("disposition") or {}).get("attached_pic")]
     if "audio" not in kinds:
         raise ar.ReportError(f"{path} has no audio stream")
-    fp = dxm.frame_power(path, 0, dxm.FRAME_S)
+    with tempfile.TemporaryDirectory(prefix="besttake-") as tmp:
+        wav = os.path.join(tmp, "audio.wav")
+        extract_audio(path, wav)
+        m, notes = audio_measures(wav)
+    return video_measures(path, kinds, m, notes, words_path, faces)
+
+
+def audio_measures(wav):
+    """(metrics, notes) from the one decoded copy of a take's audio."""
+    fp = dxm.frame_power(wav, 0, dxm.FRAME_S)
     m = audio_numbers(fp)
     notes = []
     if "speech_ratio" not in m:
@@ -235,8 +256,12 @@ def measure_take(path, words_path=None, faces=True):
         if m["level_spread_db"] < MIN_SPREAD_DB:
             notes.append(f"level spread {m['level_spread_db']:g} dB: no room-tone stretch, so "
                          f"speech share and noise floor are unreliable")
-        dx = dxm.measure(path)
+        dx = dxm.measure(wav)
         m["integrated_lufs"], m["wada_snr_db"] = dx["integrated_lufs"], dx["wada_snr_db"]
+    return m, notes
+
+
+def video_measures(path, kinds, m, notes, words_path, faces):
     if words_path:
         try:
             words = cutlist.load_words(words_path)
