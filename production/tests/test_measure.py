@@ -177,11 +177,110 @@ class TestOnAGeneratedClip(unittest.TestCase):
 
 
 @needs_numpy
+class TestLightReadouts(unittest.TestCase):
+    SKIN = np.array((0.80, 0.60, 0.50))
+    BOX = {"x": 0.30, "y": 0.20, "w": 0.40, "h": 0.60}
+
+    def face(self, stops):
+        """A 200x200 frame whose face has a lit left half and a right half
+        `stops` darker in linear light (display = linear ** (1/2.4))."""
+        img = np.full((200, 200, 3), (0.1, 0.2, 0.8))
+        img[40:160, 60:100] = self.SKIN
+        img[40:160, 100:140] = self.SKIN * 2 ** (-stops / 2.4)
+        return img
+
+    def test_known_ratios_within_a_quarter_stop(self):
+        for stops in (0.5, 1.0, 1.5, 2.0):
+            got = measure.face_lighting(self.face(stops), [self.BOX])
+            self.assertEqual(len(got), 1, stops)
+            self.assertAlmostEqual(got[0]["stops"], stops, delta=0.25)
+            self.assertEqual(got[0]["lit_side"], "left")
+        # 2:1 is one stop in the (key + fill) : fill convention
+        self.assertAlmostEqual(measure.face_lighting(self.face(1.0), [self.BOX])[0]["ratio"], 2.0, delta=0.1)
+
+    def test_names_label_and_pool(self):
+        self.assertEqual([measure.ratio_name(s) for s in (0.4, 1.0, 1.5, 2.5, 4)],
+                         ["flat", "flat", "classic", "dramatic", "extreme"])
+        frames = [{"lighting": [{"stops": 1.0, "lit_side": "left"}]},
+                  {"lighting": [{"stops": 2.0, "lit_side": "left"}, {"stops": 3.0, "lit_side": "right"}]},
+                  {"lighting": None}]
+        pooled = measure.pooled_lighting(frames)
+        self.assertEqual((pooled["faces_measured"], pooled["stops"], pooled["lit_side"], pooled["name"]),
+                         (3, 2.0, "left", "classic"))
+        self.assertIsNone(measure.pooled_lighting([{"lighting": None}]))
+
+    def test_transfer_withholds(self):
+        for tag in ("smpte2084", "arib-std-b67", "linear", "log100"):
+            self.assertTrue(measure.transfer_of({"color_transfer": tag})["withheld"], tag)
+        for tag in ("bt709", "iec61966-2-1", ""):
+            self.assertIsNone(measure.transfer_of({"color_transfer": tag})["withheld"], tag)
+
+    def test_shadow_classes(self):
+        rng = np.random.default_rng(1)
+        h, w = 96, 128
+        grad = np.tile(np.linspace(0.06, 0.18, w), (h, 1))        # about 6..18 IRE, smooth
+        smooth = measure.shadow_classes(np.dstack([grad] * 3))
+        self.assertEqual((smooth["sculpted_pct"], smooth["lost_pct"]), (100.0, 0.0))
+        noisy = measure.shadow_classes(np.dstack([np.clip(grad + rng.normal(0, 0.03, grad.shape), 0, 1)] * 3))
+        self.assertGreater(noisy["readable_pct"], 95)
+        self.assertEqual(measure.shadow_classes(np.zeros((h, w, 3)))["lost_pct"], 100.0)
+        bright = measure.shadow_classes(np.full((h, w, 3), 0.8))
+        self.assertEqual(bright["shadow_pct"], 0.0)
+
+    def test_highlights_and_percentiles(self):
+        ramp = np.tile(np.linspace(0, 1, 1000), (20, 1))
+        ramp = np.dstack([ramp] * 3)
+        hl = measure.highlights(ramp, stride=1)
+        self.assertAlmostEqual(hl["tail_ire_per_pct"], 1.0, delta=0.05)
+        clipped = ramp.copy()
+        clipped[:, 850:] = 1.0
+        hl = measure.highlights(clipped, stride=1)
+        self.assertEqual(hl["tail_ire_per_pct"], 0.0)
+        self.assertAlmostEqual(hl["clip_pct"], 15.0, delta=0.2)
+        stats = measure.luma_stats(ramp, stride=1)
+        self.assertAlmostEqual(stats["p5"], 5.0, delta=0.2)
+        self.assertAlmostEqual(stats["p95"], 95.0, delta=0.2)
+
+
+@needs_numpy
+@unittest.skipUnless(os.access(measure.FFMPEG if np is not None else "", os.X_OK), "ffmpeg missing")
+class TestLightOnClips(unittest.TestCase):
+    def clip(self, tmp, name, vf):
+        path = os.path.join(tmp, name)
+        subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=0x181818:size=320x180:rate=24:duration=2", "-vf", vf, "-pix_fmt", "yuv422p10le",
+                        "-c:v", "prores_ks", "-y", path], check=True)
+        return path
+
+    def test_report_names_transfer_and_compares_delivery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            master = self.clip(tmp, "m.mov", "noise=alls=40:allf=t")                 # grainy shadow
+            crushed = self.clip(tmp, "d.mov", "eq=brightness=-0.2,format=yuv422p10le")  # shadow at the floor
+            report = measure.measure(master, samples=2, faces=False, delivery=crushed)
+        self.assertEqual(report["transfer"]["read_as"], measure.READ_AS)
+        self.assertGreater(report["shadows"]["readable_pct"], 50)
+        cmp = report["shadow_vs_delivery"]
+        self.assertGreater(cmp["readable_drop_pts"], measure.DELIVERY_LIMIT_PTS)
+        self.assertFalse(cmp["within_limit"])
+
+    def test_hlg_tag_withholds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hlg = self.clip(tmp, "hlg.mov", "setparams=color_trc=arib-std-b67")
+            if measure.probe(hlg)["tags"]["color_transfer"] != "arib-std-b67":
+                self.skipTest("this ffmpeg did not record the HLG tag")
+            withheld = measure.measure(hlg, samples=1, faces=False)
+        self.assertEqual(withheld["transfer"]["withheld"], "HLG")
+        self.assertTrue(withheld["shadows"].startswith("withheld"))
+        self.assertTrue(withheld["lighting"].startswith("withheld"))
+        self.assertIn("lighting ratio: withheld", measure.format_summary(withheld))
+
+
+@needs_numpy
 class TestCmdMeasure(unittest.TestCase):
     def test_hero_must_be_a_segment(self):
         import resolve_workflow as rw
         args = argparse.Namespace(file="x.mov", samples=1, segment=["A=0-1"], hero="B",
-                                  no_faces=True, json=None)
+                                  no_faces=True, delivery=None, json=None)
         err = io.StringIO()
         with redirect_stderr(err), redirect_stdout(io.StringIO()):
             self.assertEqual(rw.cmd_measure(args), 1)

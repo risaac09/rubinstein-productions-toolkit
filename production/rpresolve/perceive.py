@@ -54,10 +54,8 @@ PALETTE_K = 8
 PALETTE_PIXELS = 20000
 DISPLAY_BLACK = 0.001  # linear floor for the contrast figure: a 1000:1 display
 NEUTRAL_CHROMA = 8.0   # Lab C* under which a midtone counts as near neutral
-SIDE_MIN_PIXELS = 50   # skin pixels each half of a face needs for a lighting ratio
 SHEET_W = 1280
-READ_AS = "BT.1886 display: Rec.709 primaries, 2.4 gamma, D65"
-NOT_REC709 = {"smpte2084": "PQ", "arib-std-b67": "HLG", "linear": "linear", "log100": "log", "log316": "log"}
+READ_AS, NOT_REC709 = measure.READ_AS, measure.NOT_REC709
 
 # ARRI's camera false-colour layout, in percent of the video signal.
 FALSE_COLOUR = (
@@ -244,16 +242,12 @@ def sheet(images, w=SHEET_W):
 # Numbers
 # ---------------------------------------------------------------------------
 
-def _linear_luma(rgb):
-    return color._dot3(np.clip(rgb, 0, 1) ** 2.4, color.REC709_LUMA)
-
-
 def luma_numbers(rgb, stride=measure.PIXEL_STRIDE):
     """Luma percentiles in IRE over the pixels measure.luma_stats samples, so
     p1, p50 and p99 equal measure's for the same frame; display contrast in stops."""
     rgb = rgb[::stride, ::stride]
     ire = np.percentile(color.luma_ire(rgb), [1, 10, 50, 90, 99])
-    lin = np.maximum(np.percentile(_linear_luma(rgb), [1, 99]), DISPLAY_BLACK)
+    lin = np.maximum(np.percentile(measure.linear_luma(rgb), [1, 99]), DISPLAY_BLACK)
     return {"ire": {k: round(float(v), 2) for k, v in zip(("p1", "p10", "p50", "p90", "p99"), ire)},
             "display_contrast_stops": round(float(np.log2(lin[1] / lin[0])), 2)}
 
@@ -325,14 +319,7 @@ def face_entry(rgb, box):
     mask = measure.skin_mask(region)
     if mask.any():
         entry["skin_ire_p50"] = round(float(np.median(color.luma_ire(region[mask]))), 2)
-    half = region.shape[1] // 2
-    sides = []
-    for part, m in ((region[:, :half], mask[:, :half]), (region[:, half:], mask[:, half:])):
-        sides.append(float(np.median(_linear_luma(part[m]))) if m.sum() >= SIDE_MIN_PIXELS else None)
-    if None not in sides and min(sides) > 0:
-        lit = "left" if sides[0] >= sides[1] else "right"
-        ratio = max(sides) / min(sides)
-        entry["lighting"] = {"lit_side": lit, "ratio": round(ratio, 2), "stops": round(float(np.log2(ratio)), 2)}
+    entry["lighting"] = measure.lighting_ratio(region, mask)
     return entry
 
 
