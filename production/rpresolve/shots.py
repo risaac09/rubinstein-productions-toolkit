@@ -64,15 +64,20 @@ def scdet_filter(threshold=THRESHOLD):
 
 
 def grey_frames(source, total):
-    """(n, GREY_H * GREY_W) float grey frames of a video file's first video stream."""
-    proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source),
-                           "-map", "0:v:0", "-vf", f"scale={GREY_W}:{GREY_H}:flags=area,format=gray",
-                           "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, capture_output=True,
-                          timeout=dc.READ_TIMEOUT_S)
+    """(n, GREY_H * GREY_W) float32 grey frames of a video file's first video stream. All of them
+    are held in memory: 2.3 KB a frame, so an hour at 25 fps is about 200 MB, with a few more such
+    copies while find_dissolves runs; split a longer file first."""
+    try:
+        proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source),
+                               "-map", "0:v:0", "-vf", f"scale={GREY_W}:{GREY_H}:flags=area,format=gray",
+                               "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, capture_output=True,
+                              timeout=dc.READ_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise dc.CheckError(f"ffmpeg timed out reading {source}")
     if proc.returncode != 0:
         raise dc.CheckError(f"ffmpeg could not read {source}: {proc.stderr.decode(errors='replace').strip()[-300:]}")
     size = GREY_W * GREY_H
-    return np.frombuffer(proc.stdout, np.uint8)[:len(proc.stdout) // size * size].reshape(-1, size).astype(np.float64)
+    return np.frombuffer(proc.stdout, np.uint8)[:len(proc.stdout) // size * size].reshape(-1, size).astype(np.float32)
 
 
 def _off_the_line(win):
