@@ -18,17 +18,22 @@ import wave
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-import numpy as np
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import beats, paths  # noqa: E402
+try:
+    import numpy as np
+    from rpresolve import beats, paths  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    np = None
+
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
+SR = beats.SR if np is not None else None
 
 PHASE_MS = 20.0
 
 
 def loop(bpm, seconds=20.0, hat=1.5, white=False, snare=0.0, pad=True, lead=0.0, seed=0,
-         sr=beats.SR):
+         sr=SR):
     """(samples, true beat times): kick on the beat, hat on the off-beat."""
     rng = np.random.default_rng(seed)
     n = int(sr * (lead + seconds))
@@ -65,6 +70,7 @@ def errors_ms(found, truth):
     return np.array([(t - truth[np.argmin(np.abs(truth - t))]) * 1000 for t in found])
 
 
+@needs_numpy
 class TestTracker(unittest.TestCase):
     def check(self, bpm, **kw):
         y, truth = loop(bpm, **kw)
@@ -131,6 +137,7 @@ def write_wav(path, y, sr=44100):
         w.writeframes(pcm.tobytes())
 
 
+@needs_numpy
 class TestFile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
