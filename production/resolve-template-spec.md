@@ -409,7 +409,7 @@ A performance or a landscape has no words and no approved text. Mark the
 manifest `"speech": false` and `reframe_plan` (the CLI and the MCP tool)
 needs only `source_path` and `clips`; `words`, `approved_text`,
 `source_sha256` and `fps` are optional and are not read. The manifest copy
-keeps `"speech": false`. Every other tool that loads a manifest (`cut`,
+keeps `"speech": false`. (Both manifest versions are described in [manifest.md](manifest.md).) Every other tool that loads a manifest (`cut`,
 `endcheck`, `selects`, `trim_review`) refuses it with a message saying why,
 because they check words: building the 9:16 timeline for such footage with
 `cut` is not supported yet, and the report's crops are then applied by hand.

@@ -55,7 +55,7 @@ Every FCPXML time is a whole number of frame durations, written over the frame d
 
 ## What it does not do
 
-- One source per manifest, as the manifest itself allows. Several cameras, B-roll or music beds are not written.
+- One source per manifest. A [version 2 manifest](manifest.md) with several sources is refused; several cameras, B-roll or music beds are not written.
 - No transitions, speed changes, reframes, crops, titles, captions or markers. A reframed 9:16 or 1:1 version is still built by `cut` in Resolve.
 - No reading. It writes these files and reads none of them back.
 - Sound is written as one AA pair or one audio track. A file with four mono streams is described as four sources in FCPXML, but the EDL and OTIO do not map channels.
