@@ -22,6 +22,18 @@ output path outside any repository.
 | Review | `rpstills absheet`, `rpstills serve` | proxies through `rpstills serve` | loudness-matched excerpts |
 | Deliver | sRGB JPEGs with an embedded profile | deliver_check, qc | loudness fix in deliver_check |
 
+Two edit checks read a cut and write nothing. `python3 -m rpresolve.captionlint
+CAPTIONS` lints an .srt or TTML against 42 characters a line, two lines a cue,
+20 characters a second, gaps under two frames, overlaps and, where the file
+carries positions, 90% title safe; it prints qc's table with FAIL and WARN
+rows and exits 1 on a FAIL (`--set max_chars=16` for portrait). `python3 -m
+rpresolve.pacing --words W.json` (or `--manifest M`, the cut's spans laid in
+record time) reports words per minute, words per minute while speaking, the
+pause ratio and, with `--captions`, caption reading speed. Shot lengths are
+not repeated there: the rhythm report (VP-132) gives the average shot length
+with its median and spread, and `interchange --format edl` turns a manifest
+into the EDL it reads.
+
 The review step is a loop between Claude Code and the person whose taste
 decides. It is written up in [media-review-loop.md](media-review-loop.md):
 one decision per message, a lettered sheet or a short excerpt per decision,
