@@ -126,14 +126,14 @@ run afftdn with its noise profile learned from a room-tone window, not
 tracked while it runs: the stem's quietest window (rpresolve.roomtone find;
 `window: [start, end]` and `stream` override), played ahead of the stem so
 the profile is built before any speech. It runs on the stem's input before
-its chain (after any roomtone fill), only on a stem whose role is dx, and the
+its chain (after any roomtone fill), never on a stem whose role is mx or fx, and the
 filter's delay is measured and trimmed as the other denoisers' is. It
 lowers the floor by up to nr dB; a profile from a window with speech or a
 tone in it takes those out too. afftdn's nf is where it takes the floor to
 be: with a learned profile, a value at the window's own level cuts little
 and one a few dB above reaches nr, so unless `nf` is given it is the
-window's level plus NF_ABOVE_DB (15 dB); the figure used is in render.json. Whether it sounds better is for the ear:
-use `candidates` or preset-ab.
+window's level plus NF_ABOVE_DB (15 dB); the figure used is in render.json.
+Whether it sounds better is for the ear: use `candidates` or preset-ab.
 """
 
 import argparse
@@ -1103,6 +1103,8 @@ def denoise_roomtone(name, src, cfg, out_dir, spec, skips):
                            "give window: [start, end]")
         win = [row["start_s"], row["end_s"]]
     rate = spec["sample_rate"]
+    if win[1] > probe_duration(src) + 0.01:
+        raise MixError(f"stem {name}: denoise_roomtone window {win} runs past the end of the input")
     k = int((win[1] - win[0]) * rate) // PROFILE_BLOCK * PROFILE_BLOCK
     if k < MIN_PROFILE_S * rate:
         raise MixError(f"stem {name}: denoise_roomtone window {win} is under {MIN_PROFILE_S:g} s")
@@ -1111,12 +1113,16 @@ def denoise_roomtone(name, src, cfg, out_dir, spec, skips):
     if nf is None:
         fp = dxm.frame_power(src, cfg["stream"], rt.HOP_S)
         i, j = int(win[0] / fp["hop_s"]), max(int(win[1] / fp["hop_s"]), int(win[0] / fp["hop_s"]) + 1)
-        nf = min(-10.0, round(rt._db(float(fp["power"][i:j].mean())) + NF_ABOVE_DB, 1))
+        level = rt._db(float(fp["power"][i:j].mean()))
+        if level is None:
+            raise MixError(f"stem {name}: denoise_roomtone window {win} is digital silence: "
+                           "there is no noise to learn")
+        nf = min(-10.0, round(level + NF_ABOVE_DB, 1))
     filt = f"afftdn=nr={_f(cfg['nr'])}:nf={_f(nf)}:tn=0"
     n = delay_samples(filt, rate)
     h = _head(spec)
     stop = _f((k - PROFILE_BLOCK / 2) / rate)  # half a block early: no rounding in the string can move it a block
-    graph = (f"[1:a]{h},atrim=start_sample={a}:end_sample={a + k},asetpts=PTS-STARTPTS,"
+    graph = (f"[1:a:{cfg['stream']}]{h},atrim=start_sample={a}:end_sample={a + k},asetpts=PTS-STARTPTS,"
              f"asetnsamples=n={PROFILE_BLOCK}:p=0[w];[0:a]{h},asetnsamples=n={PROFILE_BLOCK}:p=0[s];"
              f"[w][s]concat=n=2:v=0:a=1,asendcmd=c='0 afftdn sn start;{stop} afftdn sn stop',"
              f"apad=pad_len={n},{filt},atrim=start_sample={k + n},asetpts=PTS-STARTPTS")

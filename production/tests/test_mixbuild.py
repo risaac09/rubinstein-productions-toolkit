@@ -669,6 +669,11 @@ class RoomToneDenoise(Base):
         quiet = slice(int(5.5 * 48000), int(7.5 * 48000))
         self.assertGreater(rms_db(src[quiet]) - rms_db(out[quiet]), 9.0)
 
+    def test_a_window_past_the_end_or_in_digital_silence_is_refused(self):
+        for w in ([14, 18], [8.1, 8.8]):
+            with self.assertRaises(mb.MixError, msg=str(w)):
+                self.render({"window": w})
+
     def test_refusals(self):
         tone_fixture(self.out("tone.wav"))
         for st in ({"role": "mx", "denoise_roomtone": {}}, {"denoise_roomtone": {"window": [1, 1.1]}},
