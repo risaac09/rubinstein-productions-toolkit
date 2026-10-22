@@ -292,6 +292,9 @@ tool lacks: the script's `sync-measure` takes `--ref-stream` and
 `--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
 and `--no-metadata-cache`, none of which the tools do.
 
+`perceive --targets` also writes `targets.json` for a private reference library;
+see `reference-library.md`.
+
 `audio-report` measures one audio stream, whole or between `--start` and
 `--end`, and writes `audio-report.json`, `loudness.png` (short-term and
 momentary loudness over time, silences shaded, clips and clicks marked) and
