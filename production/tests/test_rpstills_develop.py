@@ -36,6 +36,13 @@ BOUNDS = [(-3.0, 3.0), (1e6 / 12000, 1e6 / 2500), (-6.0, 6.0)]
 X0 = (0.0, 1e6 / 5500, 0.0)
 
 
+def setUpModule():
+    # the fake backend's tint units are LightCraft-like (0 near neutral): it takes lightcraft's bound
+    patcher = mock.patch.dict(develop.TINT_MAX, fake=develop.TINT_MAX["lightcraft"])
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 def response(x, curved=False):
     """Analytic skin Lab for (ev, mired, tint): L* from a mid-grey exposure,
     b* warming as mired falls, a* with tint, and some coupling. curved makes
@@ -276,10 +283,11 @@ class FakeBackend(develop.Backend):
     axes = ("exposure", "temp", "tint")
 
     def __init__(self, shot=None, fail_on=None, full_offset=(0.0, 0.0, 0.0), shirt=True, bare_on=None, card=None,
-                 ev_offset=0.0):
+                 ev_offset=0.0, tint_offset=0.0):
         self.calls, self.shot, self.fail_on, self.full_offset = [], shot, fail_on, np.array(full_offset)
         self.shirt, self.bare_on, self.card = shirt, bare_on, card   # bare_on: RAWs whose name holds it wear blue
         self.ev_offset = ev_offset                                   # the camera's exposure, in stops over the fake's
+        self.tint_offset = tint_offset                               # the fake's tint at this backend's tint 0
 
     def unavailable(self):
         return None
@@ -298,7 +306,7 @@ class FakeBackend(develop.Backend):
         if long_edge and long_edge < max(w, h):
             s = long_edge / max(w, h)
             w, h = round(w * s), round(h * s)
-        x = (values["exposure"] + self.ev_offset, 1e6 / values["temp"], values["tint"])
+        x = (values["exposure"] + self.ev_offset, 1e6 / values["temp"], values["tint"] + self.tint_offset)
         worn = self.shirt and not (self.bare_on and self.bare_on in raw)
         rgb = paint(response(x) + (self.full_offset if bit16 else 0.0), w, h, shirt(x) if worn else None,
                     (*self.card, shirt(x)) if self.card else None)
@@ -466,6 +474,18 @@ class DevelopFrameTest(unittest.TestCase):
         self.assertEqual(doc["frames"]["A"]["params"]["solve"]["tint_max"], 6)
         self.assertEqual(doc["frames"]["A"]["params"]["solve"]["free"], list(develop.AXES))
         self.assertEqual(doc["frames"]["B"]["params"]["solve"]["tint_max"], 40)
+
+    def test_the_solve_reads_the_active_backends_tint_bound(self):
+        # a scale like Apple's on the test frames: as shot -14.4, the target near tint -30. A shared 6 pinned
+        # tint there; apple's own 50 leaves room to converge, while lightcraft's 6 still pins it
+        for name, x0_tint, status in (("apple", -14.4, "converged"), ("lightcraft", -6.0, "pinned")):
+            backend = FakeBackend(shot={"temp_k": 4834.0, "tint": -14.4}, tint_offset=34.0)
+            backend.name = name
+            doc = self.build([("F1", "/raw/F1.RW2")], backend)
+            r, bound = doc["frames"]["F1"], develop.TINT_MAX[name]
+            self.assertEqual((r["x0"]["tint"], r["status"]), (x0_tint, status), (name, r))
+            self.assertEqual(r["params"]["solve"]["tint_max"], bound)
+            self.assertTrue(all(abs(c["values"]["tint"]) <= bound for c in backend.calls), name)
 
     def test_a_backend_without_kelvin_records_its_own_temperature_unit(self):
         backend = FakeBackend(shot={"temp": 6500.0, "tint": 0.0})
@@ -684,6 +704,34 @@ class LookAndFramesTest(unittest.TestCase):
         path.write_text(json.dumps(doc))
         with self.assertRaises(ValueError):
             develop.load_look(path)
+
+    def test_tint_max_is_per_backend_and_the_old_number_still_bounds_every_backend(self):
+        s = develop.load_look(TRIAL)["solve"]
+        self.assertEqual([develop.tint_max(s, b) for b in develop.BACKENDS], [50.0, 6.0])
+        self.assertEqual(json.loads(TRIAL.read_text())["solve"]["tint_max"], {"apple": 50, "lightcraft": 6})
+        for given, want in ((7, [7.0, 7.0]), ({"apple": 30}, [30.0, 6.0]), ({"lightcraft": 0}, [50.0, 0.0])):
+            lk = json.loads(TRIAL.read_text())
+            lk["solve"]["tint_max"] = given
+            path = self.tmp / "tint.json"
+            path.write_text(json.dumps(lk))
+            s = develop.load_look(path)["solve"]
+            self.assertEqual([develop.tint_max(s, b) for b in develop.BACKENDS], want, given)
+        lk.pop("solve")
+        path.write_text(json.dumps(dict(lk, solve={"target_lab": list(TARGET)})))   # no tint_max: the defaults
+        s = develop.load_look(path)["solve"]
+        self.assertEqual([develop.tint_max(s, b) for b in develop.BACKENDS], [50.0, 6.0])
+        with self.assertRaisesRegex(ValueError, "no bound for backend 'darktable'"):
+            develop.tint_max(s, "darktable")
+
+    def test_a_tint_bound_for_an_unknown_backend_fails_loud(self):
+        lk = json.loads(TRIAL.read_text())
+        lk["solve"]["tint_max"] = {"apple": 50, "lightcrafts": 6}   # a typo must not fall back to the default
+        path = self.tmp / "tint.json"
+        path.write_text(json.dumps(lk))
+        with self.assertRaisesRegex(ValueError, r"unknown backends \['lightcrafts'\]; known: apple, lightcraft"):
+            develop.load_look(path)
+        for bad in ({"apple": -1}, {"apple": "50"}, {"apple": True}, {"apple": None}, -6, True, [6, 50]):
+            self.bad(solve__tint_max=bad)
 
     def test_a_look_that_cannot_solve_is_refused(self):
         self.bad(solve__target_lab=[64, 15])

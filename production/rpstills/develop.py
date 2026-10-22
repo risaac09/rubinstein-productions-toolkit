@@ -44,7 +44,7 @@ makes the residual worse is undone and the next one halved. An axis whose
 step would leave its bounds lands exactly on the bound; when a later step
 still pushes it out, it is pinned, whether or not that step helped the
 others: it leaves the free set and the others solve on their own
-components (tint pinned at the look's tint_max leaves ev and mired solving
+components (tint pinned at the backend's tint_max leaves ev and mired solving
 L* and b*, and a* falls where it does). A start clipped onto a bound is
 held on the first step, not pinned, so the pin is decided on the updated
 Jacobian. An axis with no room (tint_max 0) is pinned from the start, and
@@ -73,16 +73,18 @@ Backends, behind Backend.render(raw, values, out, long_edge=None, bit16=False):
               neutral temperature, tint), compiled once into
               ~/Library/Caches/rpstills as rpstills.vision does. Look values
               do not apply to it and are listed as ignored.
-  lightcraft  TRIAL, opt-in: lightcraft-cli from $RPSTILLS_LIGHTCRAFT. The
-              look's develop values are LightCraft control ids, the profile a
+  lightcraft  opt-in: lightcraft-cli from $RPSTILLS_LIGHTCRAFT. The look's
+              develop values are LightCraft control ids, the profile a
               LightCraft profile id. The start is its as-shot white balance
-              (develop.wb mode=asShot). Nothing should rely on it before its
-              trial says adopt.
-Tint is in the backend's own units, so a tint_max set on one backend is
+              (develop.wb mode=asShot).
+Tint is in the backend's own units, so a tint bound set on one backend is
 not the same cast on the other. So is temperature: on a RAW LightCraft has
 no Kelvin scale for, wb.temp is relative (6500 = as shot), so its rows
 carry "temp" and temp_unit instead of "temp_k", and temp_bounds_k bounds
 that relative value. temp_bounds_k is Kelvin only on the apple backend.
+So solve.tint_max is per backend, {"apple": 50, "lightcraft": 6}, and the
+solve reads the active backend's (a backend the look leaves out takes
+TINT_MAX's). A plain number, the old form, bounds every backend alike.
 
 Look files gain two blocks (rpstills look ignores both):
   "develop": {"backend": "apple"|"lightcraft", "profile": ..., "values": {...}}
@@ -90,7 +92,8 @@ Look files gain two blocks (rpstills look ignores both):
               "target_L": 64, "neutral_ab": [0, 0],
               "neutral": {"min_L": 40, "max_chroma": 25, "min_share": 0.002},
               "sample": "cheek"|"box",
-              "free": ["ev", "mired", "tint"], "tint_max": 6,
+              "free": ["ev", "mired", "tint"],
+              "tint_max": {"apple": 50, "lightcraft": 6},
               "ev_bounds": [-3, 3], "temp_bounds_k": [2500, 12000]}
 target_lab is needed in target mode; in neutral mode target_L defaults to
 target_lab[0], else TARGET_L.
@@ -100,7 +103,8 @@ per frame x, x0, lab, lab_out (the cheek), residual, delta_e, pinned,
 iterations, converged, status, mode, target (a* and b* null on a --wb-from
 frame), neutral (source auto|box|wb_from, n_px, lab_out, box, from; null in
 target mode), backend and its version, look name and version, sample,
-temp_unit, the params it was solved under, seconds. A frame
+temp_unit, the params it was solved under (tint_max as the active backend's
+bound), seconds. A frame
 developed before keeps its row (and its params) unless developed
 again. TIFFs and calibration.json name client frames: refused inside any
 git working tree.
@@ -137,8 +141,12 @@ MIN_DAMP = 0.125
 SOLVE_EDGE = 1500                      # long edge of the solve renders, px
 START_TEMP_K = 5500.0                  # first white balance when the backend reports no as-shot value
 MODES = ("target", "neutral")
-SOLVE_DEFAULTS = {"mode": "target", "sample": "cheek", "free": list(AXES), "tint_max": 6.0, "ev_bounds": [-3.0, 3.0],
-                  "temp_bounds_k": [2500.0, 12000.0]}
+# Tint bound per backend, in its own units. lightcraft 6: set on LightCraft, where tint 0 sits near neutral.
+# apple 50: CIRAWFilter documents no tint range, so it comes from the RW2 test frames on apple: as-shot tint
+# -14.4, white shirts neutral near -31, the trial skin target -29 to beyond -40 (rpstills-develop.md, Known limits).
+TINT_MAX = {"apple": 50.0, "lightcraft": 6.0}
+SOLVE_DEFAULTS = {"mode": "target", "sample": "cheek", "free": list(AXES), "tint_max": TINT_MAX,
+                  "ev_bounds": [-3.0, 3.0], "temp_bounds_k": [2500.0, 12000.0]}
 TARGET_L = 64.0                        # neutral mode's cheek L* when the look names neither target_L nor target_lab
 NEUTRAL_DEFAULTS = {"min_L": skin.NEUTRAL_MIN_L, "max_chroma": skin.NEUTRAL_MAX_CHROMA,
                     "min_share": skin.NEUTRAL_MIN_SHARE}
@@ -368,7 +376,7 @@ class LightCraftBackend(Backend):
 
     def unavailable(self):
         if not self.exe:
-            return f"the lightcraft backend is a trial: set {ENV_LIGHTCRAFT} to a lightcraft-cli binary"
+            return f"the lightcraft backend is opt-in: set {ENV_LIGHTCRAFT} to a lightcraft-cli binary"
         if not (os.path.isfile(self.exe) and os.access(self.exe, os.X_OK)):
             return f"{ENV_LIGHTCRAFT}={self.exe} is not an executable"
         return None
@@ -449,10 +457,31 @@ def load_look(path):
         raise ValueError(f"solve.sample is cheek or box, not {s['sample']!r}")
     if not s["free"] or set(s["free"]) - set(AXES):
         raise ValueError(f"solve.free is a non-empty subset of {list(AXES)}")
+    t = doc["solve"].get("tint_max", {})
+    if isinstance(t, dict):
+        if set(t) - set(BACKENDS):
+            raise ValueError(f"solve.tint_max names unknown backends {sorted(set(t) - set(BACKENDS))}; "
+                             f"known: {', '.join(BACKENDS)}")
+        t = dict(TINT_MAX, **t)
+    s["tint_max"] = t
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+               for v in (t.values() if isinstance(t, dict) else [t])):
+        raise ValueError("solve.tint_max is a number >= 0, or {backend: number >= 0}")
     (e0, e1), (k0, k1) = s["ev_bounds"], s["temp_bounds_k"]
-    if not (e0 < e1 and 0 < k0 < k1 and s["tint_max"] >= 0):
-        raise ValueError("solve bounds need ev_bounds lo < hi, 0 < temp_bounds_k lo < hi, tint_max >= 0")
+    if not (e0 < e1 and 0 < k0 < k1):
+        raise ValueError("solve bounds need ev_bounds lo < hi, 0 < temp_bounds_k lo < hi")
     return dict(doc, develop=dev, solve=s)
+
+
+def tint_max(s, backend):
+    """The tint bound a checked solve block sets on this backend: its entry
+    of the per-backend tint_max, or the plain number (the old form)."""
+    t = s["tint_max"]
+    if not isinstance(t, dict):
+        return float(t)
+    if backend not in t:
+        raise ValueError(f"solve.tint_max has no bound for backend {backend!r}")
+    return float(t[backend])
 
 
 def target_of(s):
@@ -580,8 +609,8 @@ def develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box=None,
     s, dev = look["solve"], look["develop"]
     mode, target = s["mode"], target_of(s)
     free = ["ev"] if wb else s["free"]
-    bounds = [tuple(s["ev_bounds"]), (1e6 / s["temp_bounds_k"][1], 1e6 / s["temp_bounds_k"][0]),
-              (-float(s["tint_max"]), float(s["tint_max"]))]
+    t = tint_max(s, backend.name)
+    bounds = [tuple(s["ev_bounds"]), (1e6 / s["temp_bounds_k"][1], 1e6 / s["temp_bounds_k"][0]), (-t, t)]
     shot = backend.as_shot(raw)
     x0 = [0.0, 1e6 / (shot[backend.temp_key] if shot else START_TEMP_K), shot["tint"] if shot else 0.0]
     if wb:  # held exactly, never clipped to this look's bounds
@@ -690,7 +719,8 @@ def build(frames, backend, look, dest, detect=None, log=print, neutral_box=None,
     common = {"backend": backend.name, "backend_version": backend.version(),
               "look": {"name": look.get("name"), "version": look.get("version")}, "mode": s["mode"],
               "target": target_of(s), "sample": s["sample"], "temp_unit": backend.temp_unit,
-              "params": {"solve": {k: s[k] for k in (*SOLVE_DEFAULTS, *neutral_keys)}, "fd_step": FD_STEP.tolist(),
+              "params": {"solve": dict({k: s[k] for k in (*SOLVE_DEFAULTS, *neutral_keys)},
+                                   tint_max=tint_max(s, backend.name)), "fd_step": FD_STEP.tolist(),
                          "max_step": MAX_STEP.tolist(), "max_iter": MAX_ITER, "tol": TOL, "aim": AIM,
                          "min_damp": MIN_DAMP, "solve_edge": SOLVE_EDGE, "start_temp_k": START_TEMP_K,
                          "profile": dev.get("profile")}}
@@ -775,7 +805,7 @@ def add_arguments(p):
     p.add_argument("--look", required=True, help="look JSON with a solve block (and optionally a develop block)")
     p.add_argument("--ids", nargs="+", help="frame ids (default: selects.json, else the cull proposal)")
     p.add_argument("--backend", choices=BACKENDS, help="default: the look's develop.backend, else apple; "
-                                                       f"lightcraft is a trial and needs {ENV_LIGHTCRAFT}")
+                                                       f"lightcraft is opt-in and needs {ENV_LIGHTCRAFT}")
     p.add_argument("--raw", nargs="+", metavar="PATH", help="develop these RAW files (id = file stem) instead of "
                                                             "the index selection")
     p.add_argument("--neutral-box", nargs=4, type=float, metavar=("X0", "Y0", "X1", "Y1"),
