@@ -61,6 +61,7 @@ SILENCE_DB = -45.0
 MIN_SILENCE_S = 0.030
 EDGE_S = 0.010
 SEARCH_S = 1.5
+SEEK_PREROLL_S = 1.0  # decode_pcm decodes this much before t0 rather than seek to it
 # The approved-text gate has three verdicts, calibrated on Ep 002 (approved
 # spans score 0.63-0.89 on content words, the lines the essay check dropped
 # 0.00-0.33): fail below FAIL_COVERAGE or at a missing run of FAIL_RUN words;
@@ -241,9 +242,16 @@ def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
     """Mono 16 kHz signed 16-bit samples (bytes) of source[t0:t1]; t1 None
     reads to the end."""
     t0 = max(0.0, t0)
-    cmd = [ffmpeg or FFMPEG, "-v", "error", "-ss", f"{t0:.3f}"]
+    # On ffmpeg 7+ an input seek on AAC, even to 0, decodes the audio up to one
+    # 1024-sample packet early (23 ms at 44.1 kHz, 64 ms at 16 kHz). So the input
+    # seek stops SEEK_PREROLL_S short (none for a read near the start) and the
+    # rest is decoded and dropped by an output seek, which is exact.
+    head = round(max(0.0, t0 - SEEK_PREROLL_S), 3)
+    pre = round(t0 - head, 3)
+    cmd = [ffmpeg or FFMPEG, "-v", "error"] + (["-ss", f"{head:.3f}"] if head > 0 else [])
+    cmd += ["-i", "file:" + source] + (["-ss", f"{pre:.3f}"] if pre > 0 else [])
     cmd += ["-t", f"{t1 - t0:.3f}"] if t1 is not None else []
-    cmd += ["-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
+    cmd += ["-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=timeout)

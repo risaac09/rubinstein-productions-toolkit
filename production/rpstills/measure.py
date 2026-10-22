@@ -7,7 +7,16 @@ highlight or a lash does not move it. Everything is CIELAB (D65) from sRGB
 values. fit_look() finds the exposure and white balance gains that move a
 measured skin colour onto a target, in sRGB-linear light as a first guess;
 the closed loop in Resolve corrects the remaining difference between sRGB
-and DaVinci Wide Gamut primaries."""
+and DaVinci Wide Gamut primaries.
+
+Landmark-based skin (for developed and finished files, not the index):
+lab_image() is the same CIELAB maths per pixel on float sRGB 0..1;
+skin_lab() is the mean Lab over the cheek apples (rpstills.skin, needs
+landmarks; pixels outside the skin tone box, such as a spectacle rim
+crossing the patch, are left out) or the box sample above, with hue,
+chroma and the Rec.709 vectorscope angle. vectorscope_deg() reads the angle a scope draws: BT.709
+Y'CbCr from the encoded values, angle of (Cb, Cr) counter-clockwise from +Cb,
+so the skin-tone line sits near 123 degrees."""
 
 import numpy as np
 
@@ -80,3 +89,88 @@ def fit_look(skin_srgb, target_lab, ev_range=(-1.0, 2.5), gain_range=(0.6, 1.6),
                         best = (e, ev, gr, gb)
     e, ev, gr, gb = best
     return round(float(ev), 3), [round(float(gr), 4), 1.0, round(float(gb), 4)], round(e, 2)
+
+
+BT709 = (0.2126, 0.7152, 0.0722)
+CB_DIV, CR_DIV = 1.8556, 1.5748  # BT.709 Cb = (B' - Y') / 1.8556, Cr = (R' - Y') / 1.5748
+CHEEK_TONE_MIN = 0.5  # the cheek tone gate applies only when at least this share of the patch passes it
+
+
+def lab_image(rgb):
+    """float sRGB 0..1 (..., 3) to CIELAB (..., 3) float32: lab() per pixel."""
+    c = np.asarray(rgb, np.float32)[..., :3]
+    lin = np.where(c <= 0.04045, c / 12.92, ((np.maximum(c, 0) + 0.055) / 1.055) ** 2.4)
+    xyz = (lin @ M.T.astype(np.float32)) / D65.astype(np.float32)
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])],
+                    -1).astype(np.float32)
+
+
+def lab_to_srgb(lab_values):
+    """CIELAB (..., 3) to float sRGB (..., 3), the inverse of lab_image. Not
+    clipped: out-of-gamut colours come back below 0 or above 1."""
+    v = np.asarray(lab_values, float)
+    fy = (v[..., 0] + 16) / 116
+    f = np.stack([fy + v[..., 1] / 500, fy, fy - v[..., 2] / 200], -1)
+    xyz = np.where(f ** 3 > 0.008856, f ** 3, (f - 16 / 116) / 7.787) * D65
+    lin = xyz @ np.linalg.inv(M).T
+    return np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.maximum(lin, 0) ** (1 / 2.4) - 0.055)
+
+
+def hue_deg(a, b):
+    """CIELAB hue angle in degrees, 0..360."""
+    return np.degrees(np.arctan2(b, a)) % 360
+
+
+def chroma(a, b):
+    return np.hypot(a, b)
+
+
+def vectorscope_deg(rgb_srgb_mean):
+    """Angle in degrees (0..360) of an encoded sRGB colour on a Rec.709
+    vectorscope. Any scale (0..1 or 0..255): the angle does not change."""
+    r, g, b = (float(x) for x in np.asarray(rgb_srgb_mean, float)[:3])
+    y = BT709[0] * r + BT709[1] * g + BT709[2] * b
+    return float(np.degrees(np.arctan2((r - y) / CR_DIV, (b - y) / CB_DIV)) % 360)
+
+
+def box_mask(face_px, shape):
+    """bool HxW: the box sample (inner SHRINK of the face box, centred at
+    SKIN_CENTRE_Y of its height), clipped to the image."""
+    H, W = shape[:2]
+    cx, cy = face_px["x"] + face_px["w"] / 2, face_px["y"] + face_px["h"] * SKIN_CENTRE_Y
+    rw, rh = face_px["w"] * SHRINK / 2, face_px["h"] * SHRINK / 2
+    m = np.zeros((H, W), bool)
+    y0, y1, x0, x1 = (max(0, int(round(float(v)))) for v in (cy - rh, cy + rh, cx - rw, cx + rw))
+    m[y0:y1, x0:x1] = True
+    return m
+
+
+def skin_lab(rgb, face_px, region="cheek"):
+    """Mean skin colour of a float sRGB 0..1 image over the cheek apples
+    (region "cheek", needs landmarks) or the box sample (region "box"):
+    {"L", "a", "b", "hue_deg", "chroma", "vectorscope_deg", "n_px"}, rounded.
+    The cheek sample keeps only pixels inside skin.tone_mask (a spectacle
+    rim crossing the patch is not skin), unless under CHEEK_TONE_MIN of the
+    patch passes: a render far off white balance takes the whole patch out
+    of the box, and is then measured whole. n_px counts the pixels used.
+    ValueError when the sample holds no pixel."""
+    if region == "cheek":
+        from . import skin  # lazy: keeps this module numpy-only for the LUT tools
+        m = skin.cheek_mask(face_px, rgb.shape)
+    elif region == "box":
+        m = box_mask(face_px, rgb.shape)
+    else:
+        raise ValueError(f"unknown skin region {region!r}")
+    if not m.any():
+        raise ValueError("the skin sample holds no pixel")
+    px = np.asarray(rgb, np.float32)[..., :3][m]
+    if region == "cheek":
+        tone = skin.tone_mask((np.clip(px, 0, 1) * 255 + 0.5).astype(np.uint8))
+        if tone.mean() >= CHEEK_TONE_MIN:
+            px = px[tone]
+    n = len(px)
+    L, a, b = (float(x) for x in lab_image(px).mean(0))
+    return {"L": round(L, 2), "a": round(a, 2), "b": round(b, 2), "hue_deg": round(float(hue_deg(a, b)), 2),
+            "chroma": round(float(chroma(a, b)), 2), "vectorscope_deg": round(vectorscope_deg(px.mean(0)), 2),
+            "n_px": n}

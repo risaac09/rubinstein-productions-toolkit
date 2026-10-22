@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "note": "Standard output profiles for the stills lane. A client overlay may only narrow these. crop_height_in_face_heights is the crop's height as a multiple of the main face's box height (Vision's box runs forehead to chin); eye_line is where the face box's eye line lands from the top of the crop. union profiles fit every counted face and ignore both.",
   "color": {
     "tag": "sRGB",
@@ -106,6 +106,51 @@
         "pair",
         "group"
       ]
+    },
+    "headshot_square_tight": {
+      "aspect": [
+        1,
+        1
+      ],
+      "out": null,
+      "format": "jpeg",
+      "quality": 93,
+      "classes": [
+        "solo"
+      ],
+      "crop_height_in_face_heights": 2.3,
+      "eye_line": 0.4,
+      "note": "Written at the crop's own size (out null). rpstills finish places eye_line on the landmark eye line."
+    },
+    "headshot_4x5_eye36": {
+      "aspect": [
+        4,
+        5
+      ],
+      "out": null,
+      "format": "jpeg",
+      "quality": 93,
+      "classes": [
+        "solo"
+      ],
+      "crop_height_in_face_heights": 3.2,
+      "eye_line": 0.36,
+      "note": "Written at the crop's own size (out null). rpstills finish places eye_line on the landmark eye line."
+    },
+    "halfbody_2x3": {
+      "aspect": [
+        2,
+        3
+      ],
+      "out": null,
+      "format": "jpeg",
+      "quality": 93,
+      "classes": [
+        "solo"
+      ],
+      "crop_height_in_face_heights": 5.2,
+      "eye_line": 0.25,
+      "note": "Written at the crop's own size (out null). rpstills finish places eye_line on the landmark eye line."
     }
   },
   "source_policy": {

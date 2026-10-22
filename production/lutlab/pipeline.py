@@ -195,6 +195,9 @@ def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False, monito
     from . import port
     written = []
     names = [json.loads(Path(d).read_text()).get("name") or Path(d).stem for d in deltas]
+    for n in names:
+        if Path(n).name != n or n in (".", ".."):
+            raise ValueError(f"look name {n!r} is not a file name")  # a name with a path would write outside --out
     labels = [spaces.target(c)[1] for c in cameras if c.lower() != "rcm"]
     short = monitor_names(names, labels) if monitor else {}
     for d, name in zip(deltas, names):

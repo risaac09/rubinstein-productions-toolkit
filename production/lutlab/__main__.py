@@ -23,12 +23,20 @@
         (.braw clips decode as Film Gen 5 through lutlab/braw/braw2ppm)
   library [--scan] [--list] [--space S] [--dupes] [--out DIR]
         registry of the LUTs in Resolve's LUT folders: input-space guess, copies
+  cst --from vlog|bmdfilm5|logc3|logc4|di|lin709 --to di|r709|srgb [--size 33|65] [--out DIR] [--overwrite]
+        a colour space transform as <from>-to-<to>-<N>.cube: no tone or gamut mapping, numpy only
+  lutstats check LUT --from SPACE --to SPACE [--interp tetrahedral|trilinear]
+  lutstats roundtrip --from SPACE --to SPACE [--size 33|65] [--interp tetrahedral|trilinear]
+        Delta E 2000 (mean, p99, max) of a LUT against the exact transform, or there and back through two
+  pack --camera s5ii,gh7,rcm [--base PARAMS.json [--looks DIR|FILE ...]] [--size 33|65] [--date YYYYMMDD] [--out DIR]
+        rp-luts-<date>.zip for Resolve (iPad too): cst/, looks/ (with --base), check/cast-magenta.cube,
+        README.txt, SHA256SUMS; numpy only without --base
   fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG ...] [--out DIR] [--name NAME]
   fit-pairs --src log.tif --dst graded.tif --in SPACE --out-space r709 [--out DIR] [--name NAME]
         fit the same model from image pairs (RAW + camera JPEG, or source + graded frame)
 
 Spaces: vlog, bmdfilm5, logc3, logc4, di, r709, srgb, lin709. Cameras: s5ii (vlog),
-pyxis (bmdfilm5). LUT inputs read .cube and Resolve .dat. Output goes to --out or
+gh7 (vlog), pyxis (bmdfilm5). LUT inputs read .cube and Resolve .dat. Output goes to --out or
 $LUTLAB_OUT/<name>; never inside a git work tree or an iCloud folder.
 """
 
@@ -38,7 +46,8 @@ import re
 import sys
 from pathlib import Path
 
-from . import guard, pipeline, spaces
+# pipeline pulls in scipy and Pillow: imported where used, so cst, lutstats and pack run on numpy alone
+from . import cst, guard, lutstats, pack, spaces
 
 LOOKS_DIR = Path(__file__).resolve().parent.parent / "lutlab-looks"
 
@@ -136,8 +145,15 @@ def main(argv=None):
     p.add_argument("--space")
     p.add_argument("--dupes", action="store_true")
     p.add_argument("--out")
+    cst.add_arguments(sub.add_parser("cst", help="colour space transform LUT"))
+    lutstats.add_arguments(sub.add_parser("lutstats", help="Delta E 2000 of a LUT or a round trip"))
+    pack.add_arguments(sub.add_parser("pack", help="zip of LUTs for Resolve, iPad too"))
     a = ap.parse_args(argv)
 
+    if a.cmd in ("cst", "lutstats", "pack"):
+        return {"cst": cst, "lutstats": lutstats, "pack": pack}[a.cmd].run(a)
+    if a.cmd in ("decompose", "build", "looks"):
+        from . import pipeline
     if a.cmd == "decompose":
         name = a.name or Path(a.lut).stem
         out = guard.out_dir(a.out, name)

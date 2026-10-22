@@ -9,6 +9,7 @@ just the same).
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -55,6 +56,23 @@ def write_private(path, text, any_git_tree=False):
     problem = out_problem(path, any_git_tree)
     if problem:
         raise OutputRefused(problem)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+    # Temp file and rename: a hard link to the target elsewhere keeps its old
+    # content, so a link into a repository cannot carry the output there. The
+    # file keeps the mode open() gave it (0666 less the umask), and a missing
+    # folder still fails as it did.
+    target = os.path.realpath(path)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".rp-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(tmp, 0o666 & ~umask)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except FileNotFoundError:
+            pass
+        raise
     return path
