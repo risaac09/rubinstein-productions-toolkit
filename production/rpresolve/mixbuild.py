@@ -108,6 +108,32 @@ over `xfade` seconds (default 0.05) either side so it sits under the edges.
 (default 0.5), `edit_level_db` down (default -6, since the clip already has
 its own tone). Nothing else changes. The seam check roomtone makes on its
 loop is recorded; a bed over its limit goes in the skips.
+
+Stems for delivery. Give every stem a `role: dx`, `mx` or `fx` and render also
+writes export/DX.wav, MX.wav, FX.wav and ME.wav (music and effects, no
+dialogue): each is the sum of its stems' mixed/ files, so each sits at the
+mix's gain, ducking and linear chain, at the mix's length and rate. Then the
+sum-null check: DX + MX + FX against mix.wav, as the peak of the difference in
+dBFS, must be at or below NULL_FLOOR_DBFS (-60). The residual and the floor
+go in render.json ("stems"). A limiter, a dynamic loudnorm or any other step
+in the mix chain that is not linear cannot be undone stem by stem, so the
+mixed stems stop before it, the sum cannot null, and render exits 1 saying
+so (the files are still written, for listening). Put the limiter on each
+delivered stem, or accept that the stems sum to the mix before it.
+
+Room-tone denoise. A dialogue stem may say `denoise_roomtone: {nr: 12}` to
+run afftdn with its noise profile learned from a room-tone window, not
+tracked while it runs: the stem's quietest window (rpresolve.roomtone find;
+`window: [start, end]` and `stream` override), played ahead of the stem so
+the profile is built before any speech. It runs on the stem's input before
+its chain (after any roomtone fill), never on a stem whose role is mx or fx, and the
+filter's delay is measured and trimmed as the other denoisers' is. It
+lowers the floor by up to nr dB; a profile from a window with speech or a
+tone in it takes those out too. afftdn's nf is where it takes the floor to
+be: with a learned profile, a value at the window's own level cuts little
+and one a few dB above reaches nr, so unless `nf` is given it is the
+window's level plus NF_ABOVE_DB (15 dB); the figure used is in render.json.
+Whether it sounds better is for the ear: use `candidates` or preset-ab.
 """
 
 import argparse
@@ -180,8 +206,21 @@ class SpecError(ValueError):
     """The spec cannot be read or does not make sense."""
 
 
+NULL_FLOOR_DBFS = -60.0          # DX + MX + FX against the mix must null below this
+ROLES = ("dx", "mx", "fx")
+DENOISE_RT_KEYS = ("nr", "nf", "window", "stream")
+NF_ABOVE_DB = 15.0               # afftdn nf, when not given: the window's level plus this
+MIN_PROFILE_S = 0.25
+PROFILE_BLOCK = 1024
+
+
 class MixError(RuntimeError):
     """ffmpeg failed, or a measurement could not be made."""
+
+
+class NullError(MixError):
+    """The stems do not sum to the mix. The files and render.json are written
+    first; the manifest is on .manifest."""
 
 
 # ---------------------------------------------------------------------------
@@ -633,6 +672,25 @@ def _roomtone_cfg(raw, base, name):
     return out
 
 
+def _dn_cfg(raw, name):
+    cfg = {} if raw is None else raw
+    if not isinstance(cfg, dict) or set(cfg) - set(DENOISE_RT_KEYS):
+        raise SpecError(f"stem {name}: denoise_roomtone takes {', '.join(DENOISE_RT_KEYS)}")
+    out = {"nr": _num(cfg.get("nr", 12), "denoise_roomtone nr", 0.01, 97),
+           "nf": None if cfg.get("nf") is None else _num(cfg["nf"], "denoise_roomtone nf", -80, -10),
+           "stream": int(_num(cfg.get("stream", 0), "denoise_roomtone stream", 0, 31))}
+    w = cfg.get("window")
+    if w is not None:
+        if not isinstance(w, list) or len(w) != 2:
+            raise SpecError(f"stem {name}: denoise_roomtone window is [start, end] in seconds")
+        a, b = _num(w[0], "window start", 0), _num(w[1], "window end", 0)
+        if b - a < MIN_PROFILE_S:
+            raise SpecError(f"stem {name}: denoise_roomtone window is {b - a:g} s; a profile "
+                            f"needs at least {MIN_PROFILE_S:g} s")
+        out["window"] = [a, b]
+    return out
+
+
 def _bad_gap(name, x):
     raise SpecError(f"stem {name}: a roomtone gap is [start, end] with end after start, got {x!r}")
 
@@ -653,7 +711,8 @@ def validate_spec(spec, base):
             raise SpecError(f"stem name {name!r}: letters, digits, _ and - only, no double underscore")
         if not isinstance(st, dict) or not st.get("input"):
             raise SpecError(f"stem {name}: needs an input file")
-        bad = sorted(set(st) - {"input", "chain", "candidates", "preset", "roomtone"})
+        bad = sorted(set(st) - {"input", "chain", "candidates", "preset", "roomtone", "role",
+                                "denoise_roomtone"})
         if bad:
             raise SpecError(f"stem {name}: unknown key {', '.join(bad)}")
         st["input"] = os.path.normpath(os.path.join(base, os.path.expanduser(str(st["input"]))))
@@ -666,6 +725,14 @@ def validate_spec(spec, base):
             st["chain"] = copy.deepcopy(PRESETS[st["preset"]]["chain"])
         if "roomtone" in st:
             st["roomtone"] = _roomtone_cfg(st["roomtone"], base, name)
+        if "role" in st:
+            st["role"] = str(st["role"]).lower()
+            if st["role"] not in ROLES:
+                raise SpecError(f"stem {name}: role {st['role']!r}: use dx, mx or fx")
+        if "denoise_roomtone" in st:
+            if st.get("role", "dx") != "dx":
+                raise SpecError(f"stem {name}: denoise_roomtone is for dialogue (role dx) only")
+            st["denoise_roomtone"] = _dn_cfg(st["denoise_roomtone"], name)
         st["chain"] = st.get("chain") or []
         if not isinstance(st["chain"], list):
             raise SpecError(f"stem {name}: chain must be a list")
@@ -683,6 +750,10 @@ def validate_spec(spec, base):
                              and _step(i)[1].get("method") == "candidates" for i in st["chain"]):
             raise SpecError(f"stem {name}: candidates need a `denoise: {{method: candidates}}` step")
         st["candidates"] = cands
+    unroled = [n for n, st in stems.items() if "role" not in st]
+    if len(unroled) < len(stems) and unroled:
+        raise SpecError(f"stems without a role: {', '.join(unroled)} (roles are all or none: the "
+                        "stems must cover the mix for the sum to null)")
     mix = spec.get("mix") or {}
     bad = sorted(set(mix) - {"gains", "duck", "chain"})
     if bad:
@@ -1015,6 +1086,97 @@ def fill_roomtone(name, src, cfg, out_dir, spec, skips):
     return out, rec
 
 
+def denoise_roomtone(name, src, cfg, out_dir, spec, skips):
+    """afftdn on one stem's input with the noise profile learned from a room-
+    tone window. The window is played ahead of the stem (cut to whole blocks,
+    so asendcmd's stop lands on a frame edge before any stem sample), sample_noise
+    runs over it, and the window and the filter's delay are trimmed off after.
+    Returns (path, record)."""
+    win = cfg.get("window")
+    if win is None:
+        try:
+            row = rt.find_stream(src, cfg["stream"])
+        except (ar.ReportError, ValueError) as e:
+            raise MixError(f"stem {name}: denoise_roomtone: {e}")
+        if row["status"] != "ok":
+            raise MixError(f"stem {name}: denoise_roomtone: no room-tone window ({row['note']}); "
+                           "give window: [start, end]")
+        win = [row["start_s"], row["end_s"]]
+    rate = spec["sample_rate"]
+    if win[1] > probe_duration(src) + 0.01:
+        raise MixError(f"stem {name}: denoise_roomtone window {win} runs past the end of the input")
+    k = int((win[1] - win[0]) * rate) // PROFILE_BLOCK * PROFILE_BLOCK
+    if k < MIN_PROFILE_S * rate:
+        raise MixError(f"stem {name}: denoise_roomtone window {win} is under {MIN_PROFILE_S:g} s")
+    a = int(round(win[0] * rate))
+    nf = cfg["nf"]
+    if nf is None:
+        fp = dxm.frame_power(src, cfg["stream"], rt.HOP_S)
+        i, j = int(win[0] / fp["hop_s"]), max(int(win[1] / fp["hop_s"]), int(win[0] / fp["hop_s"]) + 1)
+        level = rt._db(float(fp["power"][i:j].mean()))
+        if level is None:
+            raise MixError(f"stem {name}: denoise_roomtone window {win} is digital silence: "
+                           "there is no noise to learn")
+        nf = min(-10.0, round(level + NF_ABOVE_DB, 1))
+    filt = f"afftdn=nr={_f(cfg['nr'])}:nf={_f(nf)}:tn=0"
+    n = delay_samples(filt, rate)
+    h = _head(spec)
+    stop = _f((k - PROFILE_BLOCK / 2) / rate)  # half a block early: no rounding in the string can move it a block
+    graph = (f"[1:a:{cfg['stream']}]{h},atrim=start_sample={a}:end_sample={a + k},asetpts=PTS-STARTPTS,"
+             f"asetnsamples=n={PROFILE_BLOCK}:p=0[w];[0:a]{h},asetnsamples=n={PROFILE_BLOCK}:p=0[s];"
+             f"[w][s]concat=n=2:v=0:a=1,asendcmd=c='0 afftdn sn start;{stop} afftdn sn stop',"
+             f"apad=pad_len={n},{filt},atrim=start_sample={k + n},asetpts=PTS-STARTPTS")
+    out = os.path.join(_mkdir(os.path.join(out_dir, "roomtone")), f"{name}-denoised.wav")
+    gr, _ = render_graph([src, src], graph, ([], None, []), out, h, f"stem {name} denoise_roomtone", skips)
+    return out, {"window_s": [round(a / rate, 3), round((a + k) / rate, 3)], "nr": cfg["nr"],
+                 "nf": nf, "delay_samples": n, "graph": gr}
+
+
+def _read_file(path, channels):
+    proc = _ffmpeg_bytes([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(path),
+                          "-f", "f32le", "-"])
+    if proc.returncode != 0:
+        raise MixError(f"could not read {path}: {proc.stderr.decode(errors='replace')[-200:]}")
+    return np.frombuffer(proc.stdout, "<f4").astype(np.float64).reshape(-1, channels)
+
+
+def export_stems(spec, out_dir, mixed, mix_out, mix_dur, stop, skips):
+    """(record, {label: path}): DX, MX, FX and ME written from the mixed stems,
+    and the sum-null of DX + MX + FX against the mix."""
+    stems = spec["stems"]
+    by = {r: [n for n in stems if stems[n]["role"] == r] for r in ROLES}
+    groups = {r.upper(): by[r] for r in ROLES if by[r]}
+    if by["mx"] or by["fx"]:
+        groups["ME"] = by["mx"] + by["fx"]
+    h = _head(spec)
+    ends = f"apad=whole_dur={_f(round(mix_dur + 1, 3))},asetnsamples=n=1024:p=1"
+    files = {}
+    for label, ns in groups.items():
+        files[label] = os.path.join(_mkdir(os.path.join(out_dir, "export")), f"{label}.wav")
+        graph = ";".join(f"[{i}:a]{h},{ends}[g{i}]" for i in range(len(ns))) + ";" + \
+            "".join(f"[g{i}]" for i in range(len(ns))) + \
+            f"amix=inputs={len(ns)}:normalize=0:duration=longest:dropout_transition=0," \
+            f"atrim=end={_f(round(mix_dur, 3))},asetnsamples=n=4096:p=0"
+        render_graph([mixed[n] for n in ns], graph, ([], None, []), files[label], h,
+                     f"export {label}", skips)
+    ch = spec["channels"]
+    parts = [_read_file(files[r.upper()], ch) for r in ROLES if by[r]]
+    mix = _read_file(mix_out, ch)
+    rec = {"floor_dbfs": NULL_FLOOR_DBFS, "roles": {r: by[r] for r in ROLES},
+           "files": sorted(files)}
+    if any(len(x) != len(mix) for x in parts):
+        rec.update(residual_dbfs=None, ok=False, reason="the stems and the mix differ in length")
+        return rec, files
+    peak = float(np.abs(sum(parts) - mix).max())
+    resid = round(20 * np.log10(peak), 1) if peak > 0 else -200.0
+    rec.update(residual_dbfs=resid, ok=bool(resid <= NULL_FLOOR_DBFS))
+    if not rec["ok"]:
+        rec["reason"] = (f"{stop} on the mix chain is not linear, so the stems, which stop before "
+                         "it, cannot sum to the mix" if stop else
+                         "the stems do not sum to the mix; something on the mix bus is not linear")
+    return rec, files
+
+
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
@@ -1070,14 +1232,18 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
         if not os.path.isfile(s):
             raise SpecError(f"input not found: {s}")
     tones = [n for n in names if "roomtone" in stems[n]]
+    dns = [n for n in names if "denoise_roomtone" in stems[n]]
+    labels = ["DX", "MX", "FX", "ME"] if any("role" in stems[n] for n in names) else []
     tone_files = [os.path.join(out_dir, "roomtone", f"{n}-{x}.wav") for n in tones
                   for x in ("bed", "fill", "filled")]
     _check_targets(out_dir, [p[3] for p in plan] + list(mixed.values()) + duck_files + tone_files
                    + [os.path.join(out_dir, "roomtone", f"{n}-bed.json") for n in tones]
+                   + [os.path.join(out_dir, "roomtone", f"{n}-denoised.wav") for n in dns]
+                   + [os.path.join(out_dir, "export", f"{x}.wav") for x in labels]
                    + [mix_out, os.path.join(out_dir, "render.json")], sources)
     skips, graphs, outputs = [], {}, {}
     srcs = {n: stems[n]["input"] for n in names}   # what each chain reads: the fill's result, if any
-    tone_info, spans_by, sn_info = {}, {}, None
+    tone_info, spans_by, sn_info, dn_info, stems_info = {}, {}, None, {}, None
     head = "[0:a]" + _head(spec)
     fmt = _head(spec)
     files = {DUCK_KEY: os.path.join(out_dir, DUCK_KEY)}  # mix input -> file
@@ -1094,6 +1260,14 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
         if rec:
             tone_info[n] = rec
             outputs[f"roomtone/{n}"] = srcs[n]
+    for n in dns:
+        if dry_run:
+            skips.append({"where": f"stem {n}", "step": "denoise_roomtone",
+                          "why": "dry run: the window is found at render, so the denoise is not shown"})
+            continue
+        srcs[n], dn_info[n] = denoise_roomtone(n, srcs[n], stems[n]["denoise_roomtone"], out_dir,
+                                               spec, skips)
+        outputs[f"roomtone/{n}-denoised"] = srcs[n]
     for kind, key, src, out, cand in plan:
         n = key.split("__")[0]
         src = srcs[n]
@@ -1149,12 +1323,18 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
         graphs[f"mixed/{n}"], _ = render_graph([files[x] for x in ins], h, parts, mixed[n], fmt,
                                                f"mixed {n}", skips, measured=ln and ln["measured"])
         outputs[f"mixed/{n}"] = mixed[n]
+    if labels and not dry_run:
+        stems_info, ex = export_stems(spec, out_dir, mixed, mix_out, mix_dur, stop, skips)
+        outputs.update({f"export/{k}": v for k, v in ex.items()})
+        if not stems_info["ok"]:
+            skips.append({"where": "stems", "step": "sum-null", "why": stems_info["reason"]})
     manifest = {"spec": os.path.basename(spec_path) if spec_path else None,
                 "spec_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
                 "ffmpeg": _ffmpeg_version(), "graphs": graphs, "skipped": skips, "duck": duck_info,
                 "presets": {n: {"preset": stems[n]["preset"], "why": PRESETS[stems[n]["preset"]]["why"]}
                             for n in names if stems[n].get("preset")},
-                "roomtone": tone_info, "speechnorm": sn_info,
+                "roomtone": tone_info, "speechnorm": sn_info, "denoise_roomtone": dn_info,
+                "stems": stems_info,
                 "outputs": {k: {"file": os.path.relpath(v, out_dir), "sha256": sha256(v)}
                             for k, v in outputs.items()}}
     if dry_run:
@@ -1175,6 +1355,12 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
                     b["loudness_change_lu"] = round(b["integrated_lufs"] - a["integrated_lufs"], 1)
     with open(os.path.join(out_dir, "render.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1, sort_keys=True)
+    if stems_info and not stems_info["ok"]:
+        err = NullError(f"STEMS DO NOT NULL: DX + MX + FX against the mix leaves "
+                        f"{stems_info['residual_dbfs']} dBFS (floor {NULL_FLOOR_DBFS:g}): "
+                        f"{stems_info['reason']}")
+        err.manifest = manifest
+        raise err
     return manifest
 
 
@@ -1395,6 +1581,9 @@ def main(argv=None):
             p = ab_packet(args.files, os.path.abspath(args.out), args.start, args.seconds, args.seed)
             print(f"{', '.join(p['labels'])} written; matched within {p['spread_lu']} LU; "
                   "the key is sealed in sealed/key.json")
+    except NullError as e:
+        print(f"mixbuild: {e}", file=sys.stderr)
+        return 1
     except (SpecError, MixError, OutputRefused, ar.ReportError, dc.CheckError, dc.ToolMissing) as e:
         print(f"mixbuild: {e}", file=sys.stderr)
         return 2

@@ -560,3 +560,123 @@ class RoomTone(Base):
             with self.assertRaises(mb.SpecError) as cm:
                 mb.validate_spec({"stems": {"d": {"input": "x.wav", "roomtone": cfg}}}, self.d)
             self.assertIn(frag, str(cm.exception))
+
+
+@needs_numpy
+class Stems(Base):
+    """DX/MX/FX/ME and the sum-null check. Fixtures: the speech-shaped dialogue, a
+    sine bed for music, a 880 Hz sine for effects."""
+
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def render_json(self):
+        return json.loads(Path(self.out("o/render.json")).read_text())
+
+    def spec(self, chain, roles=("dx", "mx", "fx")):
+        fixtures(self.d, 8)
+        lavfi(self.out("fx.wav"), "sine=f=880:d=8:r=48000,volume=0.1", 8)
+        st = {"dialogue": {"input": "dialogue.wav"}, "music": {"input": "music.wav"},
+              "fx": {"input": "fx.wav"}}
+        for (n, v), r in zip(st.items(), roles):
+            if r:
+                v["role"] = r
+        return write_spec(self.d, {"stems": st, "mix": {
+            "gains": {"dialogue": -2, "music": -6, "fx": -4},
+            "duck": {"key": "dialogue", "under": ["music"], "depth": 12}, "chain": chain}})
+
+    def test_stems_export_and_null_on_a_linear_bus(self):
+        spec, p = self.spec([{"eq": {"freq": 2000, "gain": 3}}, {"highpass": 60}])
+        m = mb.render(spec, self.out("o"), p)
+        self.assertTrue(m["stems"]["ok"])
+        self.assertLess(m["stems"]["residual_dbfs"], mb.NULL_FLOOR_DBFS)
+        self.assertEqual(m["skipped"], [])
+        mix = pcm(self.out("o/mix.wav"))
+        dx, mx, fx, me = (pcm(self.out(f"o/export/{x}.wav")) for x in ("DX", "MX", "FX", "ME"))
+        self.assertEqual({x.shape for x in (dx, mx, fx, me)}, {mix.shape})
+        self.assertLess(float(np.abs(dx + mx + fx - mix).max()), 1e-5)
+        self.assertLess(float(np.abs(me - (mx + fx)).max()), 1e-5)
+        # the M&E has no dialogue: quiet where the music is ducked out of nothing but the fx
+        self.assertLess(rms_db(me[int(1 * 48000):int(2 * 48000)]), rms_db(mix[int(1 * 48000):int(2 * 48000)]))
+        for k in ("DX", "MX", "FX", "ME"):
+            self.assertIn(f"export/{k}", m["outputs"])
+        self.assertEqual(self.render_json()["stems"]["files"], ["DX", "FX", "ME", "MX"])
+
+    def test_a_limiter_on_the_mix_bus_fails_the_null_loudly(self):
+        spec, p = self.spec([{"gain": 12}, {"limiter": {"ceiling": -12}}])
+        with self.assertRaises(mb.NullError) as cm:
+            mb.render(spec, self.out("o"), p)
+        msg = str(cm.exception)
+        self.assertIn("DO NOT NULL", msg)
+        self.assertIn("limiter", msg)
+        st = cm.exception.manifest["stems"]
+        self.assertFalse(st["ok"])
+        self.assertGreater(st["residual_dbfs"], mb.NULL_FLOOR_DBFS)
+        # written for listening, and the record says the same
+        self.assertTrue(os.path.isfile(self.out("o/export/DX.wav")))
+        self.assertFalse(self.render_json()["stems"]["ok"])
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            spec_path = self.out("spec.json")
+            rc = mb.main(["render", spec_path, "--out", self.out("o2")])
+        self.assertEqual(rc, 1)
+        self.assertIn("DO NOT NULL", err.getvalue())
+
+    def test_no_roles_means_no_export_and_partial_roles_are_refused(self):
+        spec, p = self.spec([], roles=(None, None, None))
+        m = mb.render(spec, self.out("o"), p)
+        self.assertIsNone(m["stems"])
+        self.assertFalse(os.path.exists(self.out("o/export")))
+        with self.assertRaises(mb.SpecError):
+            self.spec([], roles=("dx", "mx", None))
+            mb.load_spec(self.out("spec.json"))
+        with self.assertRaises(mb.SpecError):
+            self.spec([], roles=("dx", "music", "fx"))
+            mb.load_spec(self.out("spec.json"))
+
+
+@needs_numpy
+class RoomToneDenoise(Base):
+    def out(self, name):
+        return os.path.join(self.d, name)
+
+    def render(self, cfg, name="o", chain=None):
+        tone_fixture(self.out("tone.wav"))
+        st = {"input": "tone.wav", "role": "dx", "denoise_roomtone": cfg}
+        if chain:
+            st["chain"] = chain
+        spec, p = write_spec(self.d, {"stems": {"d": st}})
+        return mb.render(spec, self.out(name), p)
+
+    def test_the_floor_drops_and_the_speech_does_not(self):
+        m = self.render({"nr": 12, "window": [3, 5]})
+        src, out = pcm(self.out("tone.wav")), pcm(self.out("o/stems/d.wav"))
+        self.assertEqual(src.shape, out.shape)
+        self.assertEqual(m["denoise_roomtone"]["d"]["window_s"][0], 3.0)
+        quiet = slice(int(5.5 * 48000), int(7.5 * 48000))     # outside the window it learned from
+        drop = rms_db(src[quiet]) - rms_db(out[quiet])
+        self.assertGreater(drop, 9.0)    # nr 12 asked for 12 dB; 3 dB of slack
+        burst = slice(int(0.6 * 48000), int(2.4 * 48000))
+        self.assertAlmostEqual(rms_db(out[burst]), rms_db(src[burst]), delta=1.0)
+        self.assertEqual(lag(src[:96000, 0], out[:96000, 0]), 0)    # the delay is trimmed
+
+    def test_the_quietest_window_is_found_when_none_is_given(self):
+        m = self.render({"nr": 12})
+        w = m["denoise_roomtone"]["d"]["window_s"]
+        self.assertGreaterEqual(w[0], 2.5)
+        self.assertLessEqual(w[1], 8.0)
+        src, out = pcm(self.out("tone.wav")), pcm(self.out("o/stems/d.wav"))
+        quiet = slice(int(5.5 * 48000), int(7.5 * 48000))
+        self.assertGreater(rms_db(src[quiet]) - rms_db(out[quiet]), 9.0)
+
+    def test_a_window_past_the_end_or_in_digital_silence_is_refused(self):
+        for w in ([14, 18], [8.1, 8.8]):
+            with self.assertRaises(mb.MixError, msg=str(w)):
+                self.render({"window": w})
+
+    def test_refusals(self):
+        tone_fixture(self.out("tone.wav"))
+        for st in ({"role": "mx", "denoise_roomtone": {}}, {"denoise_roomtone": {"window": [1, 1.1]}},
+                   {"denoise_roomtone": {"nr": 0}}, {"denoise_roomtone": {"bogus": 1}}):
+            with self.assertRaises(mb.SpecError, msg=str(st)):
+                mb.validate_spec({"stems": {"d": dict(st, input="tone.wav")}}, self.d)
