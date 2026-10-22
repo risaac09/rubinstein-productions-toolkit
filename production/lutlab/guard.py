@@ -5,6 +5,7 @@ for any git repository, and nothing goes to iCloud. Every directory lutlab
 writes to passes check_out_dir first."""
 
 import os
+import sys
 from pathlib import Path
 
 ICLOUD = [Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Library" / "Mobile Documents"]
@@ -22,7 +23,9 @@ def check_out_dir(path):
     """Create path if needed and return it, or raise if it is inside a git work tree or iCloud."""
     p = Path(path).expanduser().resolve()
     for bad in ICLOUD:
-        pc, bc = str(p).casefold(), str(bad.resolve()).casefold()  # APFS is case-insensitive, so match any spelling
+        pc, bc = str(p), str(bad.resolve())
+        if sys.platform == "darwin":  # APFS is case-insensitive by default, so match any spelling
+            pc, bc = pc.casefold(), bc.casefold()
         if pc == bc or pc.startswith(bc + os.sep):
             raise PermissionError(f"{p}: refusing to write under {bad} (iCloud-synced)")
     root = git_root(p)

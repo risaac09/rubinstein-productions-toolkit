@@ -65,6 +65,7 @@ import tempfile
 import numpy as np
 
 from . import audioreport as ar
+from . import cutlist
 from . import delivercheck as dc
 from . import paths
 
@@ -113,8 +114,14 @@ def decode(path, stream=0, start=None, end=None, rate=None):
     # block reads if that becomes common.
     info = ar.audio_stream(path, stream)
     rate = int(rate or info["sample_rate"])
-    proc = subprocess.run([dc.FFMPEG, "-v", "error", "-nostdin", *ar._range_args(start, end),
-                           "-i", dc._src(path), "-map", f"0:a:{stream}", "-ac", "1",
+    # Input seek stops cutlist.SEEK_PREROLL_S short and an output seek drops the rest: an input
+    # seek alone decodes AAC up to one packet early (see cutlist.decode_pcm).
+    t0 = max(0.0, start or 0.0)
+    head = round(max(0.0, t0 - cutlist.SEEK_PREROLL_S), 3)
+    pre = round(t0 - head, 3)
+    rng = (["-ss", f"{pre:.3f}"] if pre > 0 else []) + (["-t", f"{end - t0:.3f}"] if end is not None else [])
+    proc = subprocess.run([dc.FFMPEG, "-v", "error", "-nostdin", *(["-ss", f"{head:.3f}"] if head > 0 else []),
+                           "-i", dc._src(path), *rng, "-map", f"0:a:{stream}", "-ac", "1",
                            "-ar", str(rate), "-f", "f32le", "-acodec", "pcm_f32le", "-"],
                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, timeout=dc.READ_TIMEOUT_S)
