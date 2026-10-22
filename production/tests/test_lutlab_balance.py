@@ -168,6 +168,22 @@ class Balance(unittest.TestCase):
         self.assertEqual([round(c.args[1], 2) for c in dec.call_args_list], [1.0, 3.0, 5.0, 7.0, 9.0])
         self.assertEqual(len(frames), 5)
 
+    def test_bad_hero_and_existing_outputs_stop_before_writing(self):
+        shot = write_shot(self.tmp, "h", "vlog")
+        args = [shot, "--space", "vlog", *FACE_ARGS, *NEUTRAL_BOX, "--out", self.out()]
+        with self.assertRaises(SystemExit):
+            run(*args, "--hero", "nope")
+        self.assertEqual(run(*args)[0], 0)
+        with self.assertRaises(SystemExit):
+            run(*args)                                   # balance.json is there: nothing is rewritten
+        self.assertEqual(run(*args, "--overwrite")[0], 0)
+
+    def test_no_vision_and_no_face_flag_is_no_face(self):
+        shot = write_shot(self.tmp, "v", "vlog")
+        with mock.patch("rpstills.vision.faces", return_value=None):
+            code, _ = run(shot, "--space", "vlog", "--out", self.out())
+        self.assertEqual((code, self.rows()["shots"][0]["status"]), (1, "no_face"))
+
     def test_refuses_output_inside_a_git_tree(self):
         shot = write_shot(self.tmp, "g", "vlog")
         with self.assertRaises(PermissionError):

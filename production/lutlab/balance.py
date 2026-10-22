@@ -58,7 +58,6 @@ BOUNDS = {"ev": (-3.0, 3.0), "mired": (-100.0, 100.0), "tint": (-40.0, 40.0)}
 IMAGE_EXTS = (".png", ".tif", ".tiff", ".jpg", ".jpeg")
 VIDEO_MARGIN = 0.10
 TARGET_L = 64.0
-STATUS_OK = ("converged", "pinned", "not_converged")
 NO_NEUTRAL = ("no neutral reference in the shot: shoot a grey card, pass --neutral-box, or --wb-from SHOT "
               "(a shot in the same light)")
 
@@ -172,8 +171,9 @@ def read_frames(shot, n):
     return out
 
 
-def detect_faces(frames):
-    """Vision's largest face per frame ([face or None]); RuntimeError when Vision cannot run."""
+def detect_faces(frames, space):
+    """Vision's largest face per frame ([face or None]), on each frame as plain sRGB (a flat log frame hides
+    faces); Refused when Vision cannot run."""
     import tempfile
     import cv2
     from rpstills import vision
@@ -181,10 +181,11 @@ def detect_faces(frames):
         paths = []
         for i, (_, im) in enumerate(frames):
             paths.append(os.path.join(tmp, f"{i}.png"))
-            cv2.imwrite(paths[-1], np.round(np.clip(im, 0, 1)[..., ::-1] * 255).astype(np.uint8))
+            disp = spaces.srgb_encode(np.clip(_to709(_dec(space)(np.clip(im, 0, 1)), space), 0, 1))
+            cv2.imwrite(paths[-1], np.round(disp[..., ::-1] * 255).astype(np.uint8))
         det = vision.faces(paths, landmarks=True)
         if det is None:
-            raise RuntimeError("the Vision helper cannot run (it needs macOS and swiftc): pass --face X Y W H")
+            raise Refused("the Vision helper cannot run (it needs macOS and swiftc): pass --face X Y W H", "no_face")
         found = [max((det.get(p) or {}).get("faces") or [], key=lambda f: f["w"] * f["h"], default=None) for p in paths]
     return found
 
@@ -199,7 +200,7 @@ def prepare(frames, space, face, neutral_box, faces=detect_faces, need_neutral=T
     """Per usable frame {"label", "lin" (camera linear), "face_px", "sample", "mask"} and the labels left out.
     Refused (no_face / no_neutral) when no frame is usable; mask is None when need_neutral is False."""
     from rpstills import measure, skin
-    dets = [face] * len(frames) if face else faces(frames)
+    dets = [face] * len(frames) if face else faces(frames, space)
     dec, used, left = _dec(space), [], []
     for (label, code), f in zip(frames, dets):
         if f is None:
@@ -344,20 +345,29 @@ def table_md(rows, st):
 
 # ---------------------------------------------------------------- the run
 
+def stem(shot):
+    return "".join(ch if ch.isalnum() or ch in "-_ ." else "_" for ch in shot)
+
+
 def write_outputs(rows, st, out, name, space, overwrite=False):
-    """balance.json, balance.md, and NAME.cc / NAME.cube for each balanced shot."""
+    """balance.json, balance.md, and NAME.cc / NAME.cube for each balanced shot. FileExistsError, before
+    anything is written, when one of them exists."""
     out = Path(out)
     doc = {"tool": "lutlab balance", "space": space, "shots": rows, "set": st}
+    names = ["balance.json", "balance.md"] + [f"{stem(r['shot'])}.{e}" for r in rows if r.get("cdl") for e in ("cc", "cube")]
+    clash = [str(out / f) for f in names if (out / f).exists()]
+    if clash and not overwrite:
+        raise FileExistsError(", ".join(clash))
     files = [cube.write_text(str(out / "balance.json"), json.dumps(doc, indent=1) + "\n", overwrite),
              cube.write_text(str(out / "balance.md"), f"# {name}: balance\n\n" + table_md(rows, st), overwrite)]
     grid = cube.lattice(33)
     for r in rows:
         if r.get("cdl"):
             c = {k: np.asarray(v) if k != "sat" else v for k, v in r["cdl"].items()}
-            stem = "".join(ch if ch.isalnum() or ch in "-_ ." else "_" for ch in r["shot"])
-            files.append(cube.write_text(str(out / f"{stem}.cc"), cdlmod.cdl_xml(c, stem), overwrite))
+            sm = stem(r["shot"])
+            files.append(cube.write_text(str(out / f"{sm}.cc"), cdlmod.cdl_xml(c, sm), overwrite))
             table = np.clip(cdlmod.cdl_apply(grid.reshape(-1, 3), c), 0, 1).reshape(grid.shape)
-            files.append(cube.write_cube(str(out / f"{stem}.cube"), table, f"{stem} balance", overwrite=overwrite))
+            files.append(cube.write_cube(str(out / f"{sm}.cube"), table, f"{sm} balance", overwrite=overwrite))
     return files
 
 
@@ -386,7 +396,7 @@ def run(a, ap):
         ap.error("give --target-lab or --targets, not both")
     targets = load_targets(a.targets) if a.targets else {}
     names = [Path(s).stem if Path(s).is_file() else Path(s).name for s in a.shots]
-    if len(set(names)) != len(names):
+    if len({stem(n) for n in names}) != len(names):
         ap.error("two shots share a name; rename one")
     face = ({"x": a.face[0], "y": a.face[1], "w": a.face[2], "h": a.face[3]} if a.face else None)
     out = guard.out_dir(a.out, a.name)
@@ -422,8 +432,12 @@ def run(a, ap):
             except Refused as e:
                 wb_err = Refused(f"--wb-from {name}: {rows[name].get('error') or rows[name]['status']}", "no_neutral")
     ordered = [rows[n] for n in names]
-    st = set_table(ordered, a.hero)
-    for f in write_outputs(ordered, st, out, a.name, space, a.overwrite):
+    try:
+        st = set_table(ordered, a.hero)
+        done = write_outputs(ordered, st, out, a.name, space, a.overwrite)
+    except (ValueError, FileExistsError) as e:
+        ap.error(str(e))
+    for f in done:
         print(f)
     print(table_md(ordered, st))
     return 0 if all(r["converged"] for r in ordered) else 1
