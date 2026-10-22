@@ -88,6 +88,8 @@ Which cameras can load the files:
 
 Colour space transform LUTs, LUT error statistics and the LUT pack for Resolve on an iPad: see [lutlab-cst.md](../lutlab-cst.md). `cst`, `lutstats` and `pack` need numpy only; `pack --base` bakes looks and so needs scipy and Pillow too.
 
+Per-shot exposure and white balance for video, onto a neutral reference or a skin target, with a CDL out and a set-consistency table: see [lutlab-balance.md](../lutlab-balance.md).
+
 Delta arithmetic (`model.apply_delta`):
 - **Added:** tone `black`/`white`/`mid`/`toe_start`/`shoulder_start`; `hue_lum`; `hue_shift`; `split_tone` (as OKLab vectors); `white_balance`.
 - **Multiplied:** tone `contrast` and strengths; `sat_gain`; `sat_rolloff`.

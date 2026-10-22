@@ -34,6 +34,11 @@
   fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG ...] [--out DIR] [--name NAME]
   fit-pairs --src log.tif --dst graded.tif --in SPACE --out-space r709 [--out DIR] [--name NAME]
         fit the same model from image pairs (RAW + camera JPEG, or source + graded frame)
+  balance SHOT [SHOT ...] (--camera C | --space S) [--frames 8] [--neutral-box X0 Y0 X1 Y1] [--face X Y W H]
+        [--wb-from SHOT|FILE.json:SHOT] [--target-lab L a b | --targets FILE.json] [--hero SHOT] [--out DIR] [--name NAME]
+        per-shot exposure and white balance for video (a clip or a folder of frames): the cheek's L* and a neutral's
+        a*, b* onto the target, skin hue left alone; balance.json (rows and a set table), balance.md, and per shot
+        NAME.cc (ASC CDL in the camera's code values) and NAME.cube
 
 Spaces: vlog, bmdfilm5, logc3, logc4, di, r709, srgb, lin709. Cameras: s5ii (vlog),
 gh7 (vlog), pyxis (bmdfilm5). LUT inputs read .cube and Resolve .dat. Output goes to --out or
@@ -47,7 +52,7 @@ import sys
 from pathlib import Path
 
 # pipeline pulls in scipy and Pillow: imported where used, so cst, lutstats and pack run on numpy alone
-from . import cst, guard, lutstats, pack, spaces
+from . import balance, cst, guard, lutstats, pack, spaces
 
 LOOKS_DIR = Path(__file__).resolve().parent.parent / "lutlab-looks"
 
@@ -148,8 +153,11 @@ def main(argv=None):
     cst.add_arguments(sub.add_parser("cst", help="colour space transform LUT"))
     lutstats.add_arguments(sub.add_parser("lutstats", help="Delta E 2000 of a LUT or a round trip"))
     pack.add_arguments(sub.add_parser("pack", help="zip of LUTs for Resolve, iPad too"))
+    balance.add_arguments(sub.add_parser("balance", help="per-shot exposure and white balance, a CDL out"))
     a = ap.parse_args(argv)
 
+    if a.cmd == "balance":
+        return balance.run(a, ap)
     if a.cmd in ("cst", "lutstats", "pack"):
         return {"cst": cst, "lutstats": lutstats, "pack": pack}[a.cmd].run(a)
     if a.cmd in ("decompose", "build", "looks"):
