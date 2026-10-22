@@ -50,6 +50,8 @@ TORSO_BOTTOM_X = (-1.2, 2.2)     # its bottom edge (at the frame bottom), likewi
 BORDER = 0.03                    # certain background strip, share of the scaled width (at least 4 px)
 CLOSE_DIV = 30                   # closing kernel = scaled face width / CLOSE_DIV (at least 3 px)
 DILATE_DIV = 42                  # then a dilation of scaled face width / DILATE_DIV (at least 3 px)
+GUIDE_DIV = 12                   # guided-filter radius = scaled face width / GUIDE_DIV (odd window)
+GUIDE_EPS = 1e-3                 # guided-filter regularisation, luminance 0..1
 FEATHER_DIV = 60                 # feather sigma at full size = face width / FEATHER_DIV
 CORE_MIN_PX = 16                 # a face core smaller than this at SCALE cannot seed GrabCut
 CORE_MIN_COVER = 0.95            # refuse when the mask covers less of the face core
@@ -62,7 +64,7 @@ def params():
     return {"scale": SCALE, "iterations": ITERATIONS, "seed": SEED, "face_core": list(FACE_CORE),
             "head_axes": list(HEAD_AXES), "torso_top": TORSO_TOP, "torso_top_x": list(TORSO_TOP_X),
             "torso_bottom_x": list(TORSO_BOTTOM_X), "border": BORDER, "close": f"w/{CLOSE_DIV}",
-            "dilate": f"w/{DILATE_DIV}", "feather": f"w/{FEATHER_DIV}", "core_min_px": CORE_MIN_PX,
+            "dilate": f"w/{DILATE_DIV}", "guide": f"w/{GUIDE_DIV}, eps {GUIDE_EPS:g}", "feather": f"w/{FEATHER_DIV}", "core_min_px": CORE_MIN_PX,
             "core_min_cover": CORE_MIN_COVER, "share": [MIN_SHARE, MAX_SHARE],
             "burn_ev": BURN_EV, "burn_desat": BURN_DESAT}
 
@@ -74,6 +76,15 @@ def to_linear(v):
 def to_srgb(v):
     v = np.maximum(v, 0)
     return np.where(v <= 0.0031308, v * 12.92, 1.055 * v ** (1 / 2.4) - 0.055)
+
+
+def guided_filter(guide, p, radius, eps=GUIDE_EPS):
+    """He et al.'s guided filter of p (float32 HxW) by guide (float32 HxW 0..1), box windows of 2*radius+1."""
+    k = (2 * radius + 1, 2 * radius + 1)
+    mean = lambda x: cv2.boxFilter(x, -1, k, borderType=cv2.BORDER_REFLECT)  # noqa: E731
+    mi, mp = mean(guide), mean(p)
+    a = (mean(guide * p) - mi * mp) / (mean(guide * guide) - mi * mi + eps)
+    return mean(a) * guide + mean(mp - a * mi)
 
 
 def _core(face_px, scale):
@@ -148,7 +159,7 @@ def feather_margin(face_px):
     return int(np.ceil(4 * face_px["w"] / FEATHER_DIV)) + 2
 
 
-def subject_mask(rgb, face_px, region=None):
+def subject_mask(rgb, face_px, region=None, refine=True):
     """(float32 mask, info) or (None, info with "reason"). The mask is HxW, or
     with region (x0, y0, x1, y1) in full-frame pixels only that window, equal
     to the full mask there when the window has feather_margin() of room round
@@ -179,17 +190,23 @@ def subject_mask(rgb, face_px, region=None):
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
     k = max(3, int(fw / DILATE_DIV) | 1)
     sub = cv2.dilate(sub, np.ones((k, k), np.uint8))
-    reason = check(sub, (cx0, cy0, cx1, cy1))
+    reason = check(sub, (cx0, cy0, cx1, cy1))  # on the hard mask, before it is refined
     info = {"share": round(float(sub.mean()), 4),
             "core_cover": round(float(sub[cy0:cy1, cx0:cx1].mean()), 4), "scaled": [sw, sh]}
     if reason:
         info["reason"] = reason
         return None, info
+    if refine:  # the hard edge follows the frame's own edges: thin dark hair outside it is let back in
+        guide = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
+        soft = np.clip(guided_filter(guide, sub.astype(np.float32), max(1, int(round(fw / GUIDE_DIV)))), 0, 1)
+        info["refined"] = True
+    else:
+        soft = sub.astype(np.float32)
     x0, y0, x1, y1 = region or (0, 0, W, H)
     if (x0, y0, x1, y1) == (0, 0, W, H):
-        full = cv2.resize(sub.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+        full = cv2.resize(soft, (W, H), interpolation=cv2.INTER_LINEAR)
     else:
-        full = _resize_window(sub.astype(np.float32), W, H, region)
+        full = _resize_window(soft, W, H, region)
     return np.clip(cv2.GaussianBlur(full, (0, 0), face_px["w"] / FEATHER_DIV), 0, 1), info
 
 

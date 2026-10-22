@@ -291,5 +291,45 @@ class RegionBurnTest(unittest.TestCase):
         self.assertLess(part, 0.5 * full, (part, full))    # the window is 13 % of the frame; 50 % is a loose bound
 
 
+class RefineTest(unittest.TestCase):
+    def strands(self):
+        """(hard mask, luminance guide, strand pixels, bright ground near them): a dark disc subject on a bright
+        ground, and thin dark strands (2 px) running out of it that the hard mask stops short of."""
+        n = 240
+        guide = np.full((n, n), 0.9, np.float32)
+        yy, xx = np.mgrid[0:n, 0:n]
+        disc = (yy - 120) ** 2 + (xx - 120) ** 2 < 60 ** 2
+        guide[disc] = 0.15
+        strand = np.zeros((n, n), bool)
+        for x in range(30, 240, 14):
+            strand[185:215, x:x + 2] = True                  # hanging down below the disc's bottom at y 180
+        strand &= ~disc
+        guide[strand] = 0.15
+        hard = disc.astype(np.float32)
+        near = cv2.dilate(strand.astype(np.uint8), np.ones((9, 9), np.uint8)).astype(bool) & ~strand & ~disc
+        return hard, guide, strand, near
+
+    def test_the_refined_mask_follows_thin_strands_the_blurred_hard_mask_misses(self):
+        hard, guide, strand, near = self.strands()
+        blurred = cv2.GaussianBlur(hard, (0, 0), 2.0)
+        refined = np.clip(background.guided_filter(guide, hard, 20), 0, 1)
+        # metric: mean mask on the strand pixels minus mean mask on the bright ground within 4 px of them
+        sep = lambda m: float(m[strand].mean() - m[near].mean())  # noqa: E731
+        self.assertGreater(sep(refined), 0.10)
+        self.assertGreater(sep(refined), sep(blurred) + 0.10)
+        # and it leaves the subject and the far ground where they were
+        self.assertGreater(refined[120, 120], 0.97)
+        self.assertLess(refined[10, 10], 0.03)
+
+    def test_subject_mask_is_refined_by_default_and_can_be_left_hard(self):
+        img, f = portrait(), fp()
+        soft, info = background.subject_mask(img, f)
+        hard, hinfo = background.subject_mask(img, f, refine=False)
+        self.assertTrue(info["refined"]); self.assertNotIn("refined", hinfo)
+        self.assertEqual(info["share"], hinfo["share"])        # the guard still looks at the hard mask
+        self.assertGreater(float(np.abs(soft - hard).max()), 0.0)
+        self.assertEqual(background.params()["guide"], "w/12, eps 0.001")
+
+
 if __name__ == "__main__":
     unittest.main()
