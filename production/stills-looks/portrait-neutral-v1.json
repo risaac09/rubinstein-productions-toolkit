@@ -1,0 +1,30 @@
+{
+  "name": "rpstills portrait neutral v1",
+  "version": "1.0.0",
+  "status": "House rule for delivered portraits: neutralise on a neutral reference, set exposure on the cheek, never push skin hue to a number.",
+  "space": "Developed RAW to sRGB (16-bit TIFF). The solve measures CIELAB (D65) on the sRGB render.",
+  "develop": {
+    "backend": "apple",
+    "profile": null,
+    "values": {}
+  },
+  "solve": {
+    "mode": "neutral",
+    "target_L": 64.0,
+    "neutral_ab": [0.0, 0.0],
+    "neutral": {"min_L": 40, "max_chroma": 25, "min_share": 0.002},
+    "sample": "cheek",
+    "free": ["ev", "mired", "tint"],
+    "tint_max": 50,
+    "ev_bounds": [-3, 3],
+    "temp_bounds_k": [2500, 20000]
+  },
+  "notes": [
+    "Per person: the white balance makes a neutral reference read neutral (median a* 0, b* 0), and exposure sets the cheek apples to L* 64. The skin's hue and chroma are left where the complexion and the light put them.",
+    "The neutral reference is a white or grey garment, or a grey card held below the face (rpstills.skin.neutral_mask; min_L 40 keeps an 18% card, L* 49.5 at this exposure, with room for an as-shot render up to about 0.7 EV darker), or a grey card anywhere in the frame named with --neutral-box. A frame without one fails; --wb-from takes the white balance of a frame in the same light and solves exposure alone.",
+    "Picked blind against two fixed skin targets on one portrait: the trial target (cheek L* 64, a* 15, b* 14, 117.7 degrees on a Rec.709 vectorscope) and the published skin-tone line (123 degrees). Both fixed targets needed tints that turned a white shirt green-yellow; the per-person neutral read 113 degrees on that face and was preferred.",
+    "target_L 64 is a working default for exposure, not a taste target. Change it per shoot when the light or the skin calls for it.",
+    "In the comparison LightCraft (opt-in trial backend) reached every target. The Apple engine's tint scale differs from LightCraft's, so a tint value does not transfer between them: on the test frames white shirts made neutral needed tint near -31 on apple and near -2 on LightCraft. tint_max 50 and temp_bounds_k up to 20000 leave the solve room on either backend.",
+    "Fixed skin targets stay for one job: matching a set to one hero frame (portrait-cheek-trial-v0.json, solve.mode target)."
+  ]
+}

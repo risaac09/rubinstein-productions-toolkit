@@ -5,8 +5,14 @@ run over batches of upright images; a face is
     {"x", "y", "w", "h", "confidence", "quality", "eye_left", "eye_right",
      "roll", "yaw"}
 and a person {"x", "y", "w", "h", "confidence"}, boxes normalized from the
-top left. faces() returns None when the helper cannot run, and callers say
-so."""
+top left. faces(images, landmarks=True) runs the helper with --landmarks and
+each face also carries
+    "landmarks": {"leftEye", "rightEye", "leftEyebrow", "rightEyebrow",
+                  "outerLips", "innerLips", "faceContour", "nose"}
+as lists of [x, y] in the same normalized, top-left, whole-image convention
+(Vision's left/right naming; rpstills.skin pairs by image x). The index never
+asks for them. faces() returns None when the helper cannot run, and callers
+say so."""
 
 import hashlib
 import json
@@ -38,17 +44,18 @@ def binary():
     return path if proc.returncode == 0 and os.access(path, os.X_OK) else None
 
 
-def faces(images):
+def faces(images, landmarks=False):
     """{image path: {"width", "height", "faces": [...], "people": [...]}} or
-    None."""
+    None. landmarks=True adds each face's landmark points."""
     exe = binary()
     if not exe:
         return None
+    flag = ["--landmarks"] if landmarks else []
     out = {}
     for start in range(0, len(images), BATCH):
         chunk = list(images[start:start + BATCH])
         try:
-            proc = subprocess.run([exe, *chunk], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            proc = subprocess.run([exe, *flag, *chunk], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, encoding="utf-8", errors="replace",
                                   timeout=TIMEOUT_S)
         except subprocess.TimeoutExpired:
