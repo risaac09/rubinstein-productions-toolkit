@@ -146,6 +146,16 @@ class TestTakes(unittest.TestCase):
         self.assertEqual(self.by["a_steady.wav"]["metrics"]["wpm"], 120.0)
         self.assertNotIn("wpm", self.by["b_gappy.wav"]["metrics"])
 
+    def test_transcript_overrun_and_flat_take(self):
+        with tempfile.TemporaryDirectory() as d:
+            # Continuous tone: no room-tone stretch. The last word ends 20 ms past the file.
+            write_wav(os.path.join(d, "t.wav"), take_signal(1000.0, 0.0))
+            w = [{"start": 0.0, "end": SECONDS + 0.02, "word": "x"}]
+            Path(d, "t.json").write_text(json.dumps({"segments": [{"words": w}]}))
+            r = bt.measure_take(os.path.join(d, "t.wav"), os.path.join(d, "t.json"))
+        self.assertIn("wpm", r["metrics"])
+        self.assertTrue(any("no room-tone stretch" in n for n in r["notes"]))
+
     def test_order_and_skips(self):
         names = [os.path.basename(r["file"]) for r in self.rep["takes"]]
         self.assertEqual(names[0], "a_steady.wav")

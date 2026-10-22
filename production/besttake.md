@@ -64,7 +64,7 @@ take, so set them to the piece.
 
 ## Reading the table
 
-One row per take: rank, score, the numbers, and a reason that only quotes them
+One row per take: rank, score, `n` (how many metrics the score is a mean of; a take with a transcript or video has more, so compare scores with that in mind), the numbers, and a reason that only quotes them
 (the two metrics that scored highest and the two that scored lowest, with
-values). It does not say what a number means for the shot. Listen to the top
+values). It does not say what a number means for the shot. A take with under 20 dB between its loud and quiet windows has no room-tone stretch; its speech share and noise floor carry a note. Each take is decoded a few times, and `dxmetrics` holds a take's audio in memory, so run very long takes one at a time. Listen to the top
 few and to any take whose lowest metric is one you would forgive.

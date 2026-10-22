@@ -73,6 +73,7 @@ from . import pacing, paths, shots, vision
 SPEECH_ABOVE_FLOOR_DB = 12.0   # a window this far over the noise floor is speech
 NOISE_PCT = 10                 # the quietest tenth of windows is the room
 CLIP_PEAK = 0.999              # a window whose largest sample reaches this is clipped
+MIN_SPREAD_DB = 20.0           # 95th percentile over the floor; less means no room tone to read
 FACE_EVERY_S = 2.0
 FACE_MAX = 30
 MEDIA_EXT = (".mov", ".mp4", ".mkv", ".m4v", ".mxf", ".avi", ".wav", ".aif", ".aiff",
@@ -187,6 +188,7 @@ def audio_numbers(fp):
     floor = _db(float(quiet.mean()))
     db = 10 * np.log10(np.maximum(power, 1e-20))
     speech = live & (db > floor + SPEECH_ABOVE_FLOOR_DB)
+    spread = float(np.percentile(db[live], 95)) - floor
     runs = pacing.speech_runs([{"start": i * hop, "end": (i + 1) * hop}
                                for i in np.flatnonzero(speech)])
     gaps = [b[0] - a[1] for a, b in zip(runs, runs[1:])]
@@ -194,7 +196,7 @@ def audio_numbers(fp):
             "speech_ratio": round(float(speech.sum()) * hop / dur, 3),
             "pauses": len(gaps), "pauses_per_min": round(len(gaps) / dur * 60, 1),
             "longest_pause_s": round(max(gaps), 2) if gaps else None,
-            "noise_floor_dbfs": round(floor, 1),
+            "noise_floor_dbfs": round(floor, 1), "level_spread_db": round(spread, 1),
             "clipped_share": round(float(((peak >= CLIP_PEAK) & ~fp["dead"]).sum()) / n, 4)}
 
 
@@ -230,11 +232,16 @@ def measure_take(path, words_path=None, faces=True):
     if "speech_ratio" not in m:
         notes.append("every window is digital silence")
     else:
+        if m["level_spread_db"] < MIN_SPREAD_DB:
+            notes.append(f"level spread {m['level_spread_db']:g} dB: no room-tone stretch, so "
+                         f"speech share and noise floor are unreliable")
         dx = dxm.measure(path)
         m["integrated_lufs"], m["wada_snr_db"] = dx["integrated_lufs"], dx["wada_snr_db"]
     if words_path:
         try:
-            rep = pacing.report(cutlist.load_words(words_path), m["duration_s"])
+            words = cutlist.load_words(words_path)
+            # a last word a few ms past the probed length is rounding, not a wrong file
+            rep = pacing.report(words, max(m["duration_s"], words[-1]["end"]))
             m.update(words=rep["words"], wpm=rep["wpm"], speaking_wpm=rep["speaking_wpm"])
         except (OSError, ValueError) as e:
             notes.append(f"transcript not read: {e}")
@@ -244,7 +251,10 @@ def measure_take(path, words_path=None, faces=True):
         m["cuts_per_min"] = round(len(sh["cuts"]) / m["duration_s"] * 60, 1)
         m["longest_shot_share"] = round(max(s["duration"] for s in sh["shots"]) / sh["duration_s"], 3)
         if faces:
-            m["face_share"] = face_share(path, m["duration_s"])
+            try:
+                m["face_share"] = face_share(path, m["duration_s"])
+            except (OSError, subprocess.SubprocessError):
+                m["face_share"] = None   # the faces are optional: keep the take
             if m["face_share"] is None:
                 notes.append("faces not measured (Vision unavailable)")
     return {"file": os.path.abspath(path), "metrics": m, "notes": notes}
@@ -273,7 +283,8 @@ def find_takes(source, words_dir=None):
         takes = json.load(f).get("takes")
     if not takes or not all(isinstance(t, dict) and t.get("file") for t in takes):
         raise BestTakeError(f'{source} needs {{"takes": [{{"file": ...}}]}}')
-    join = lambda p: p if os.path.isabs(p) else os.path.join(base, p)  # noqa: E731
+    def join(p):
+        return os.path.join(base, p)   # an absolute p wins in os.path.join
     return [(join(t["file"]), join(t["words"]) if t.get("words") else None) for t in takes]
 
 
@@ -289,6 +300,7 @@ def build(source, words_dir=None, faces=True, formula=None):
             skipped.append({"file": os.path.abspath(path), "error": str(e)})
             continue
         row["scores"], row["score"] = score_take(row["metrics"], table)
+        row["scored_on"] = len(row["scores"])
         row["reason"] = reason(row["metrics"], row["scores"])
         rows.append(row)
     rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0), r["file"]))
@@ -306,16 +318,17 @@ COLUMNS = (("speech_ratio", "speech"), ("pauses", "pauses"), ("wpm", "wpm"),
            ("integrated_lufs", "LUFS"), ("noise_floor_dbfs", "floor dBFS"),
            ("wada_snr_db", "SNR dB"), ("clipped_share", "clipped"), ("cuts", "cuts"),
            ("face_share", "faces"))
+# "n" is how many metrics the score is a mean of: takes with a transcript or video have more.
 
 
 def markdown(rep):
     """The ranked list as a Markdown table, with the skipped takes below."""
-    head = ["#", "take", "score"] + [c for _, c in COLUMNS] + ["numbers"]
+    head = ["#", "take", "score", "n"] + [c for _, c in COLUMNS] + ["numbers"]
     lines = ["Proposal order from the numbers; not a pick. The editor chooses the take.", "",
              "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in rep["takes"]:
         cells = [r["rank"], os.path.basename(r["file"]),
-                 "-" if r["score"] is None else f"{r['score']:.2f}"]
+                 "-" if r["score"] is None else f"{r['score']:.2f}", r["scored_on"]]
         cells += ["-" if r["metrics"].get(k) is None else f"{r['metrics'][k]:g}" for k, _ in COLUMNS]
         cells.append(r["reason"])
         lines.append("| " + " | ".join(str(c).replace("|", "/") for c in cells) + " |")
