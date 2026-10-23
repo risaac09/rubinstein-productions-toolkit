@@ -20,7 +20,10 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np
+except ImportError:  # the stdlib-only 3.9 CI job
+    raise unittest.SkipTest("numpy not installed")
 
 from rpresolve import besttake as bt, delivercheck as dc, vision  # noqa: E402
 

@@ -18,7 +18,10 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # the stdlib-only 3.9 CI job
+    raise unittest.SkipTest("numpy not installed")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
