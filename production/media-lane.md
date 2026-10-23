@@ -15,7 +15,7 @@ output path outside any repository.
 | Stage | Stills | Video | Sound |
 |---|---|---|---|
 | Ingest and check | `rpstills index`, `cluster`, `cull`, `review` | detect, shoot-table, [`tools/ipad-probe`](../tools/ipad-probe/README.md) on an iPad | audio-report |
-| Develop and balance | `rpstills develop`: RAW with a per-frame skin solve ([rpstills-develop.md](rpstills-develop.md)) | [`lutlab cst`](lutlab-cst.md): camera log to DaVinci Intermediate or Rec.709; Resolve's Color page for the balance | [`rpresolve.roomtone`](sound-assist.md): find room tone, loop a bed |
+| Develop and balance | `rpstills develop`: RAW with a per-frame skin solve ([rpstills-develop.md](rpstills-develop.md)) | [`lutlab cst`](lutlab-cst.md): camera log to DaVinci Intermediate or Rec.709; [`lutlab balance`](lutlab-balance.md): per-shot exposure and white balance as a CDL; [`lutlab shot-match`](lutlab/README.md#shot-match) for a paired second camera | [`rpresolve.roomtone`](sound-assist.md): find room tone, loop a bed |
 | Look | `rpstills look` (a LUT for Resolve) | [`lutlab`](lutlab/README.md) looks, `lutlab pack` for an iPad | a mix spec, when the mix builder lands |
 | Cut | `rpstills crops`, `rpstills finish` ([rpstills-finish.md](rpstills-finish.md)) | cut manifest ([versions 1 and 2](manifest.md)), [`rpresolve.interchange`](interchange.md) to EDL, FCPXML or OTIO, [`wordsnap`, `shots`, `beats`](edit-assist.md) | [`rpresolve.duckplan`](sound-assist.md): music ducked under speech |
 | Measure | [`rpstills audit`](rpstills-audit.md), report only | measure, perceive, `lutlab lutstats` | [`rpresolve.dxmetrics`](sound-assist.md): before and after, with lag |
@@ -66,9 +66,9 @@ repository. The iPad route, with no Mac, is in [../docs/ipad-lane.md](../docs/ip
 
 ## Known gaps
 
-- No offline per-shot balance for video: the skin solve exists for stills only.
-- No shot match from a reference clip: unpaired colour transfer was worse than
-  no correction when the content differs, so a paired mode comes first.
+- `lutlab balance` needs a face (Vision, macOS) or a `--face` box, and a neutral; a clip with
+  neither is refused. `lutlab shot-match` takes two stills of the same content at the same framing,
+  not two clips, and refuses an unpaired pair.
 - Beats are validated on synthetic loops only; shots finds hard cuts, not
   dissolves.
 - The mix builder (an open pull request) is the planned home for the dialogue
