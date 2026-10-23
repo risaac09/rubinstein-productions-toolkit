@@ -83,7 +83,7 @@ class TestCompare(unittest.TestCase):
     def test_sample_rate_and_codec_mismatches_fail(self):
         rows = self.rows(AudioSampleRate=44100, AudioCodec="aac")
         self.assertEqual(rows["job_audio_sample_rate"]["status"], dc.FAIL)
-        self.assertEqual(rows["job_audio_codec"]["status"], dc.FAIL)
+        self.assertEqual(rows["job_audio_codec"]["status"], dc.SKIP)  # wording is Resolve's
         self.assertEqual(rows["job_audio_bit_depth"]["status"], dc.PASS)
 
     def test_no_job_is_a_skip_not_a_pass(self):

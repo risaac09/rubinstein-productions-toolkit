@@ -27,9 +27,9 @@ to reset by hand. Never starts a render. Never raises out of exit.
 """
 
 # Keys known to leave the Deliver page changed with no way to read them back
-# (atlas, 2026-10-23, Resolve Studio 21.1.1.10): what the page showed before.
+# (atlas, 2026-10-23, Resolve Studio 21.1.1.10): what to check by hand.
 HAND_RESET = {
-    "AudioSampleRate": "the Audio tab's Sample Rate (it read 'Same as project' before)",
+    "AudioSampleRate": "the Audio tab's Sample Rate (it may have read 'Same as project' before)",
     "SelectAllFrames": "the render range (In/Out Range or Entire Timeline)",
 }
 

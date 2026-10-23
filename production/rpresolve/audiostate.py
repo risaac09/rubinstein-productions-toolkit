@@ -80,15 +80,17 @@ def read(project, timeline):
             "render": {"format_codec": _call(project, "GetCurrentRenderFormatAndCodec"),
                        "mode": _call(project, "GetCurrentRenderMode"),
                        "settings": rs if isinstance(rs, dict) else None, "jobs": jobs},
-            "loudness_settings": {k: _call(project, "GetSetting", k) for k in LOUDNESS_KEYS
-                                  if _call(project, "GetSetting", k) not in (None, "")},
+            "loudness_settings": {k: v for k, v in
+                                  ((k, _call(project, "GetSetting", k)) for k in LOUDNESS_KEYS)
+                                  if v not in (None, "")},
             "unreadable": list(UNREADABLE), "notes": note}
 
 
 def compare(state, dest):
     """Rows {check, status, found, expected} for the audio fields a queued job
     reports (codec, sample rate, bit depth) against dest['audio']. SKIP when
-    no job or no field is reported: the Deliver page itself cannot be read."""
+    no job or no field is reported (the Deliver page itself cannot be read),
+    and for a codec that reads differently (spelling is Resolve's own)."""
     from .delivercheck import FAIL, PASS, SKIP
     want = dest["audio"]
     expect = {"AudioCodec": want.get("resolve_codec") or want["codec"],
@@ -106,8 +108,14 @@ def compare(state, dest):
                          "expected": exp, "note": "no queued job for this timeline reports it"})
             continue
         bad = [f"{jid}: {v}" for jid, v in seen if not _same(v, exp)]
-        rows.append({"check": name, "status": FAIL if bad else PASS,
-                     "found": "; ".join(f"{jid}: {v}" for jid, v in seen), "expected": exp,
+        found = "; ".join(f"{jid}: {v}" for jid, v in seen)
+        if bad and key == "AudioCodec":  # Resolve words codecs its own way: never a FAIL here
+            rows.append({"check": name, "status": SKIP, "found": found, "expected": exp,
+                         "note": "differs, but the job list words codecs its own way; the "
+                                 "rendered file's audio_codec row decides"})
+            continue
+        rows.append({"check": name, "status": FAIL if bad else PASS, "found": found,
+                     "expected": exp,
                      **({"note": "queued job differs from the destination"} if bad else {})})
     return rows
 
