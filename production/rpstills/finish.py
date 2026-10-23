@@ -10,10 +10,16 @@ For each frame it finds the faces again with landmarks
 (vision.faces(..., landmarks=True)) and works on the largest one (by box
 area, not Vision's first face):
 
+  0. input       inputs.read_upright: an embedded ICC profile other than
+                 sRGB is converted to sRGB (none: taken as sRGB), the EXIF
+                 orientation is applied; both are recorded in the row.
   1. background  --background on: background.subject_mask, then
                  background.burn (-0.6 EV, 15 % desaturation outside the
-                 subject). A refused mask leaves the frame unburned and the
-                 reason is recorded. Off by default.
+                 subject), over the crop region only (burn_region: the crop
+                 boxes and the face, plus the feather's reach); the result
+                 inside the crops equals a full-frame burn. A refused mask
+                 leaves the frame unburned and the reason is recorded. Off
+                 by default.
   2. retouch     --retouch all or a list of ids: retouch.apply, every step,
                  on the face's region only. Never by default (none).
   3. crop        one crop per --crop profile (default DEFAULT_CROPS) from
@@ -36,8 +42,8 @@ its own crops would overwrite.
 The source is taken as developed and graded, in sRGB (an untagged file is
 taken as sRGB): apart from the burn and the retouch, finish does not change
 exposure or colour. Vision needs macOS and swiftc. A frame that cannot be
-finished (unreadable, an EXIF orientation other than 1, an ICC profile
-other than sRGB, no face, Vision saw another size) is recorded with its
+finished (unreadable, an ICC profile that cannot be converted, no face,
+Vision saw another size than the upright file) is recorded with its
 reason and the run exits 1.
 """
 
@@ -48,7 +54,7 @@ import tempfile
 
 import numpy as np
 
-from . import audit, background, crops, retouch, skin, vision
+from . import background, crops, inputs, retouch, skin, vision
 
 EXTS = (".tif", ".tiff", ".jpg", ".jpeg")
 JPEG_QUALITY = 93
@@ -120,9 +126,8 @@ def solo_profiles(cfg, names):
     return out
 
 
-def crop_frame(rgb, face, face_px, det_faces, name, profile):
-    """(uint8 crop, crop record) of one profile on an upright float frame."""
-    H, W = rgb.shape[:2]
+def crop_geometry(W, H, face, face_px, profile):
+    """(crop tuple from crops.solo_crop, integer box (cx, cy, cw, ch), eye_y share or None) of one profile."""
     aspect = profile["aspect"][0] / profile["aspect"][1]
     eye_y = None
     if face_px.get("landmarks"):
@@ -135,6 +140,23 @@ def crop_frame(rgb, face, face_px, det_faces, name, profile):
     ch = min(H, int(round(h)))
     cw = min(W, int(round(ch * aspect)))
     cx, cy = min(max(0, int(round(x0))), W - cw), min(max(0, int(round(y0))), H - ch)
+    return c, (cx, cy, cw, ch), eye_y
+
+
+def burn_region(boxes, face_px, W, H):
+    """(x0, y0, x1, y1): the union of the crop boxes and the face box, grown by the feather margin, clipped
+    to the frame. Burning only here equals burning the frame wherever a crop reads it."""
+    m = background.feather_margin(face_px)
+    xs = [b[0] for b in boxes] + [b[0] + b[2] for b in boxes] + [face_px["x"], face_px["x"] + face_px["w"]]
+    ys = [b[1] for b in boxes] + [b[1] + b[3] for b in boxes] + [face_px["y"], face_px["y"] + face_px["h"]]
+    return (max(0, int(min(xs)) - m), max(0, int(min(ys)) - m),
+            min(W, int(np.ceil(max(xs))) + m), min(H, int(np.ceil(max(ys))) + m))
+
+
+def crop_frame(rgb, face, face_px, det_faces, name, profile):
+    """(uint8 crop, crop record) of one profile on an upright float frame."""
+    H, W = rgb.shape[:2]
+    c, (cx, cy, cw, ch), eye_y = crop_geometry(W, H, face, face_px, profile)
     tile = (np.clip(rgb[cy:cy + ch, cx:cx + cw], 0, 1) * 255 + 0.5).astype(np.uint8)
     size = [cw, ch]
     if profile.get("out"):
@@ -164,25 +186,6 @@ def save_jpeg(path, tile, icc):
     return path
 
 
-def source_problem(path):
-    """Why a source cannot be finished as its pixels are stored, or None:
-    an EXIF orientation other than 1 (Vision sees the turned picture, the
-    pixels are read unturned) or an ICC profile other than sRGB (its values
-    would be re-tagged sRGB and shift colour)."""
-    from PIL import Image
-    try:
-        with Image.open(path) as im:
-            orientation = im.getexif().get(0x0112, 1)
-    except OSError:
-        return None  # read_rgb reports what it cannot read
-    if orientation not in (None, 1):
-        return f"EXIF orientation {orientation} (turned or mirrored); pass upright files with orientation 1"
-    name = audit.icc_name(path)
-    if name and "srgb" not in name.lower():
-        return f"the source is tagged {name}, not sRGB; export it in sRGB"
-    return None
-
-
 def jpeg_paths(out_dir, profiles, ids):
     """Every JPEG a run writes: out_dir/finish/<profile>/<id>.jpg."""
     return [os.path.join(out_dir, "finish", n, f"{fid}.jpg") for n in profiles for fid in ids]
@@ -192,21 +195,18 @@ def finish_frame(fid, path, det, profiles, out_dir, do_retouch, do_background, i
     """Finish one frame, write its crops, return its finish.json row."""
     row = {"id": fid, "source": path}
     try:
-        rgb = audit.read_rgb(path)
+        rgb, info = inputs.read_upright(path)
     except ValueError as e:
         row["error"] = str(e)
         return row
-    problem = source_problem(path)
-    if problem:
-        row["error"] = problem
-        return row
     H, W = rgb.shape[:2]
-    row.update(width=W, height=H)
+    row.update(width=W, height=H, orientation=info["orientation"], orientation_applied=info["orientation_applied"],
+               icc=info["icc"], colour=info["colour"])
     if not det or det.get("error"):
         row["error"] = (det or {}).get("error") or "Vision returned nothing for this file"
         return row
     if (det.get("width"), det.get("height")) != (W, H):
-        row["error"] = f"Vision saw {det.get('width')}x{det.get('height')}, the file is {W}x{H}; pass upright files"
+        row["error"] = f"Vision saw {det.get('width')}x{det.get('height')}, the upright file is {W}x{H}"
         return row
     faces = det.get("faces") or []
     if not faces:
@@ -218,12 +218,14 @@ def finish_frame(fid, path, det, profiles, out_dir, do_retouch, do_background, i
     row["face"] = {k: round(face[k], 5) for k in ("x", "y", "w", "h")}
     row["landmarks"] = bool(face.get("landmarks"))
     if do_background:
-        mask, info = background.subject_mask(rgb, fp)
+        boxes = [crop_geometry(W, H, face, fp, p)[1] for p in profiles.values()]
+        x0, y0, x1, y1 = region = burn_region(boxes, fp, W, H)
+        mask, binfo = background.subject_mask(rgb, fp, region)
         if mask is None:
-            row["background"] = dict(info, applied=False)
+            row["background"] = dict(binfo, applied=False)
         else:
-            rgb, rep = background.burn(rgb, mask)
-            row["background"] = dict(info, applied=True, **rep)
+            rgb[y0:y1, x0:x1], rep = background.burn(rgb[y0:y1, x0:x1], mask)
+            row["background"] = dict(binfo, applied=True, region=[x0, y0, x1, y1], **rep)
             del mask
     else:
         row["background"] = "off"

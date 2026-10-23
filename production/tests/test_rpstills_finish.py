@@ -518,7 +518,7 @@ class FinishRunTest(unittest.TestCase):
         self.assertEqual(rows["F1"]["crops"]["headshot_4x5_eye36"]["eye_from"], "landmarks")
         self.assertTrue((self.out / "finish" / "headshot_4x5_eye36" / "F2.jpg").exists())
 
-    def test_sources_turned_by_exif_or_tagged_other_than_srgb_are_recorded_not_finished(self):
+    def test_sources_tagged_wide_or_turned_by_exif_are_converted_and_finished(self):
         src = self.tmp / "graded"
         src.mkdir()
         im = Image.fromarray((self.img * 255 + 0.5).astype(np.uint8))
@@ -526,14 +526,18 @@ class FinishRunTest(unittest.TestCase):
         im.save(src / "G2.jpg", quality=95, icc_profile=wide_icc())
         exif = Image.Exif()
         exif[0x0112] = 3                              # 180 degrees: same size, so Vision's size check passes
-        im.save(src / "G3.jpg", quality=95, exif=exif)
+        Image.fromarray(np.ascontiguousarray((self.img * 255 + 0.5).astype(np.uint8)[::-1, ::-1])).save(
+            src / "G3.jpg", quality=95, exif=exif)
+        im.save(src / "G4.jpg", quality=95)
         code, _, err = self.run_cli("--src", str(src))
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0, err)
         rows = {row["id"]: row for row in self.doc()["frames"]}
-        self.assertNotIn("error", rows["G1"])
-        self.assertIn("Test Wide RGB, not sRGB", rows["G2"]["error"])
-        self.assertIn("EXIF orientation 3", rows["G3"]["error"])
-        self.assertEqual(sorted(os.listdir(self.out / "finish" / "headshot_4x5_eye36")), ["G1.jpg"])
+        self.assertEqual(rows["G1"]["colour"], "sRGB profile")
+        self.assertEqual(rows["G2"]["colour"], "converted from Test Wide RGB to sRGB")
+        self.assertEqual((rows["G3"]["orientation"], rows["G3"]["orientation_applied"]), (3, True))
+        self.assertEqual(rows["G4"]["colour"], "no profile, taken as sRGB")
+        self.assertEqual(sorted(os.listdir(self.out / "finish" / "headshot_4x5_eye36")),
+                         ["G1.jpg", "G2.jpg", "G3.jpg", "G4.jpg"])
 
     def test_profile_names_that_are_paths_are_refused(self):
         cfg = json.loads((HERE.parent / "stills-config.json").read_text())
@@ -576,7 +580,7 @@ class FinishRunTest(unittest.TestCase):
         self.assertEqual(code, 1)
         rows = {row["id"]: row for row in self.doc()["frames"]}
         self.assertEqual(rows["NOFACE"]["error"], "no face")
-        self.assertIn("pass upright files", rows["ROT"]["error"])
+        self.assertIn("upright file is", rows["ROT"]["error"])
         self.assertTrue((self.out / "finish" / "headshot_4x5_eye36" / "F1.jpg").exists())
         self.assertIn("NOFACE: no face", err)
 

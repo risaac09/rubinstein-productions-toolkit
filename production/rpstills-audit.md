@@ -13,7 +13,7 @@ cd production
 ~/.venvs/rp-tools/bin/python -m rpstills audit <finals folder> [--out DIR] [--profile NAME] [--hero FILE]
 ```
 
-- `<finals folder>`: every JPEG and TIFF (8- or 16-bit) directly inside it. Files are measured as stored, so pass upright files. Vision applies a file's EXIF orientation and the measure does not, so a file whose orientation tag is not 1 is reported and not measured, as is a file whose size differs from what Vision saw.
+- `<finals folder>`: every JPEG and TIFF (8- or 16-bit) directly inside it. Every source is read through `rpstills/inputs.py` first. An embedded RGB ICC profile that is not sRGB (Display P3, Adobe RGB, ProPhoto) is converted to sRGB before anything is measured or processed (Pillow's ImageCms, relative colorimetric). A file with no profile is taken as sRGB, and its row says so. The EXIF orientation (all eight values) is applied, turning or flipping the pixels upright, and the row records the orientation that was applied. Vision sees the upright picture, so a file whose upright size differs from what Vision saw is reported and not measured.
 - `--out DIR`: where `audit.json` goes. The default is the audited folder. The output names client files, so a folder inside any git working tree is refused before Vision runs.
 - `--profile NAME`: a profile from `stills-config.json`. Each row then gains its distance from the profile's aspect and eye line.
 - `--hero FILE`: a file in the folder (a name, or a path to it) whose skin Lab is the reference instead of the set median. Use it to match a set to one frame. A file outside the folder is refused before Vision runs; a hero with no skin measure is refused after.
@@ -38,7 +38,7 @@ Measured on the largest face in the frame (by box area). Vision's first face is 
 | `faceW` | face box width as a share of the image width |
 | `eyeSharp`, `eyeBoxPx` | variance of the Laplacian on the box around both eyes, resized to 400 px wide, and that box's width in the file. Compare `eyeSharp` only between files whose `eyeBoxPx` is similar |
 | `bgL` | the 98th percentile of L* outside an ellipse round the face centre with semi-axes of 1.6 face widths and 1.4 face heights (3.2 x 2.8 face boxes across), and above the chin; `bg_share` in the JSON is how much of the frame that region covers |
-| `sRGB` | whether the embedded ICC profile is sRGB, or the profile's name, or `none` |
+| `sRGB` | `yes` when the embedded ICC profile is sRGB, `converted` when it was another RGB profile and the file was converted to sRGB before measuring, `none` when untagged (taken as sRGB). The JSON rows carry `colour` with the full line, `icc` with the profile name, and `orientation` with `orientation_applied` |
 | `check:` | the skin metrics past their working default, from `CHECK` in `rpstills/audit.py`: `d_E00` over 3.0, `d_L` over 3.0 either way, `d_hue_deg` over 5.0 either way. The JSON has them as `checks`; a file with an error has none. `neutral_err` over 2.0 (also in `CHECK`) is counted in the summary instead, never as a check |
 
 ## Landmarks and skin geometry
@@ -68,4 +68,4 @@ Left and right are image sides. On the frames checked, Vision's `leftEye` was th
 - On a tight headshot the background region is only the top corners, a few percent of the frame (see `bg_share`), so `bgL` rests on a small sample.
 - The crown is an estimate from the face box, not a measured hairline. Vision's box top sits about 0.2 face heights above the brows, and on the one set checked the estimate fell 0.03 to 0.05 of the frame height above the visible top of the hair. `head` therefore reads low, and a small negative value need not mean a cut crown.
 - Eye sharpness depends on resolution. An eye box narrower than 400 px is upsampled and reads softer: on one set of finals, the same frames exported at half size read 0.46 to 0.78 of the full-size value, and at a third 0.22 to 0.35. Compare it only between files with a similar `eyeBoxPx`; it is not an absolute focus test.
-- EXIF orientation is not applied. Pass upright files; a file with an orientation tag other than 1, or a size that differs from Vision's, is reported rather than measured.
+- Orientation and profile are handled as in finish (see its limits): a 16-bit file with a wide-gamut profile is converted at 8 bits, a profile that is not RGB is not converted, and the summary line counts files converted and turned.
