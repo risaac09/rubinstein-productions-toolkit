@@ -25,9 +25,9 @@ from rpresolve import delivercheck as dc, paths, qc  # noqa: E402
 
 try:
     import numpy as np
-    from rpresolve import shots
+    from rpresolve import shots  # noqa: E402
 except ImportError:  # numpy missing on this interpreter
-    np = shots = None
+    np = None
 
 needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 
@@ -51,8 +51,8 @@ def make(out, parts, audio=False):
         raise RuntimeError(proc.stderr)
 
 
-@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 @needs_numpy
+@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestShots(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
