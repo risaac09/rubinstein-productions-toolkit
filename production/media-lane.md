@@ -34,6 +34,12 @@ not repeated there: the rhythm report (VP-132) gives the average shot length
 with its median and spread, and `interchange --format edl` turns a manifest
 into the EDL it reads.
 
+`python3 -m rpresolve.besttake FOLDER` ranks the takes of one answer as a
+proposal: speech share, pauses, noise floor, clipping, loudness, and for
+video the in-camera cuts and the face share, with a one-line reason that only
+quotes the numbers. The formula is one table the user edits; it never picks.
+See [besttake.md](besttake.md).
+
 `python3 -m rpresolve.transcribe MEDIA --backend NAME` writes the Whisper JSON, SubRip and
 text these read, from mlx-whisper, whisper.cpp or a transcript made elsewhere; see
 [transcribe.md](transcribe.md).
