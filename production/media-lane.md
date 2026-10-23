@@ -34,6 +34,10 @@ not repeated there: the rhythm report (VP-132) gives the average shot length
 with its median and spread, and `interchange --format edl` turns a manifest
 into the EDL it reads.
 
+`python3 -m rpresolve.transcribe MEDIA --backend NAME` writes the Whisper JSON, SubRip and
+text these read, from mlx-whisper, whisper.cpp or a transcript made elsewhere; see
+[transcribe.md](transcribe.md).
+
 The review step is a loop between Claude Code and the person whose taste
 decides. It is written up in [media-review-loop.md](media-review-loop.md):
 one decision per message, a lettered sheet or a short excerpt per decision,
