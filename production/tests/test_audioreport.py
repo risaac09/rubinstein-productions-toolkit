@@ -35,6 +35,59 @@ def sine(seconds, freq=440.0, amp=0.25, rate=RATE):
     return (amp * np.sin(2 * np.pi * freq * t)).astype(np.float32)
 
 
+def speech_like(seconds, seed=1):
+    """Syllables 4 to 6 a second: a harmonic voiced part and a broadband burst
+    that starts within 0.02 to 3 ms, over a -50 dBFS floor. The old detector
+    reads roughly one in three of the onsets as a click."""
+    rng = np.random.default_rng(seed)
+    n = int(seconds * RATE)
+
+    def lowpass(v, fc):
+        f = np.fft.rfft(v) / (1 + (np.fft.rfftfreq(len(v), 1 / RATE) / fc) ** 4)
+        return np.fft.irfft(f, len(v))
+
+    x = lowpass(rng.normal(0, 0.007, n), 6000)
+    pos = 0.1
+    while pos < seconds - 0.3:
+        m = int(rng.uniform(0.06, 0.16) * RATE)
+        t = np.arange(m) / RATE
+        env = np.minimum(t / rng.choice([2e-5, 1e-4, 5e-4, 3e-3]), 1) * np.exp(-t / (m / RATE / 2.5))
+        noise = lowpass(rng.normal(0, 1, m), 6000)
+        voiced = 0.1 * sum(np.sin(2 * np.pi * rng.uniform(100, 220) * k * t) / k for k in range(1, 12))
+        seg = rng.uniform(0.04, 0.2) * env * (0.3 * rng.uniform(0.3, 1) * noise / noise.std() + voiced)
+        i = int(pos * RATE)
+        x[i:i + m] += seg[:n - i]
+        pos += 1 / rng.uniform(4, 6)
+    return x.astype(np.float32)
+
+
+def band_noise(seconds, lo, hi, seed=3):
+    """White noise kept to lo..hi Hz, peak scaled to 1."""
+    rng = np.random.default_rng(seed)
+    n = int(seconds * RATE)
+    f = np.fft.rfft(rng.normal(0, 1, n))
+    fr = np.fft.rfftfreq(n, 1 / RATE)
+    f[(fr < lo) | (fr > hi)] = 0
+    v = np.fft.irfft(f, n)
+    return (v / np.abs(v).max()).astype(np.float32)
+
+
+def planted(seconds, start, length, sig):
+    """A silent array of `seconds` with `sig` (len `length`) laid in at `start` s."""
+    x = np.zeros(int(seconds * RATE), np.float32)
+    a = int(start * RATE)
+    x[a:a + length] = sig[:length]
+    return x
+
+
+def rms(x):
+    return float(np.sqrt(np.mean(x.astype(np.float64) ** 2)))
+
+
+def span_at(spans, t, within=1.0):
+    return any(abs(a - t) <= within for a, _ in spans)
+
+
 def stats(x, rate=RATE, t0=0.0, blocks=1):
     """_Stats over x (mono or (n, ch)), fed in `blocks` reads that start on
     window edges, as samples() reads them."""
@@ -102,6 +155,25 @@ class TestSampleCounts(unittest.TestCase):
         x = np.concatenate([np.zeros(int(0.97 * RATE), np.float32), n])
         self.assertEqual(stats(x)["clicks"], [])
 
+    def test_speech_is_not_clicks_but_planted_clicks_are_found(self):
+        x = speech_like(12)
+        old, ar.CLICK_ISOLATION = ar.CLICK_ISOLATION, 0.0  # the detector before VP-120b
+        try:
+            self.assertGreater(len(stats(x)["clicks"]), 20)  # the fixture does fool it
+        finally:
+            ar.CLICK_ISOLATION = old
+        self.assertEqual(stats(x)["clicks"], [])
+        impulses, steps = (2.0, 5.1, 8.3, 10.9), (3.4, 6.7, 9.6)
+        y = x.copy()
+        for t in impulses:
+            y[int(t * RATE)] += 0.1  # -20 dBFS
+        for t in steps:
+            y[int(t * RATE):] += 0.1
+        got = stats(y)["clicks"]
+        for t in impulses + steps:
+            self.assertTrue(any(abs(g - t) <= 0.002 for g in got), (t, got))
+        self.assertEqual(len(got), len(impulses) + len(steps))
+
     def test_digital_silence_is_not_clicks(self):
         self.assertEqual(stats(np.zeros(RATE * 2, np.float32))["clicks"], [])
 
@@ -163,6 +235,103 @@ class TestSampleCounts(unittest.TestCase):
         self.assertEqual(one["clicks"], many["clicks"])
         self.assertEqual(one["silences"], many["silences"])
         self.assertEqual(one["channels"][0]["peak_dbfs"], many["channels"][0]["peak_dbfs"])
+
+
+@needs_numpy
+class TestMissingFlags(unittest.TestCase):
+    """VP-120c: wind, hum, music onset and stereo in time, each on speech-like
+    material, each beside a clean control that raises none of them."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.speech = speech_like(45, seed=1)
+        cls.th = dict(ar.DEFAULTS, target_lufs=None)
+
+    def flags_of(self, r):
+        r = dict(r, true_peak_dbtp=-3.0, integrated_lufs=-20.0)
+        return {f["flag"]: f for f in ar.flags(r, self.th)}
+
+    def test_a_clean_control_raises_none(self):
+        pair = np.stack([self.speech, speech_like(45, seed=2)], axis=1)
+        r = stats(pair)
+        self.assertEqual([f for f in self.flags_of(r) if f in
+                          ("wind", "hum", "music", "dual_mono", "phase", "dead_channel")], [])
+        self.assertEqual((r["wind"]["spans"], r["hum"]["spans"], r["music"]["spans"]), ([], [], []))
+
+    def test_wind_is_a_low_frequency_burst(self):
+        gust = band_noise(5, 20, 400) * 0.18 * np.hanning(int(5 * RATE)) ** 0.5
+        x = self.speech + planted(45, 15, len(gust), gust)
+        r = stats(x)
+        self.assertTrue(span_at(r["wind"]["spans"], 15.0, 1.5), r["wind"])
+        f = self.flags_of(r)["wind"]
+        self.assertEqual(f["threshold"], ar.DEFAULTS["wind_rise_db"])
+        self.assertGreaterEqual(f["value"], f["threshold"])
+        self.assertNotIn("hum", self.flags_of(r))
+
+    def test_hum_is_a_comb_and_says_which_mains(self):
+        for hz in (50.0, 60.0):
+            with self.subTest(hz=hz):
+                t = np.arange(7 * RATE) / RATE
+                tone = 0.004 * sum(np.sin(2 * np.pi * hz * k * t) for k in (1, 2, 3))
+                r = stats(self.speech + planted(45, 3, len(t), tone.astype(np.float32)))
+                self.assertEqual(r["hum"]["mains_hz"], int(hz))
+                self.assertTrue(span_at(r["hum"]["spans"], 3.0, 1.0), r["hum"])
+                f = self.flags_of(r)
+                self.assertIn("hum", f)
+                self.assertEqual(f["hum"]["threshold"], ar.DEFAULTS["hum_line_db"])
+                self.assertNotIn("wind", f)  # three lines are a hum, not broadband
+
+    def test_a_steady_voice_at_120_hz_is_not_hum(self):
+        t = np.arange(8 * RATE) / RATE
+        voice = 0.05 * (np.sin(2 * np.pi * 120 * t) + 0.5 * np.sin(2 * np.pi * 240 * t))
+        r = stats(self.speech + planted(45, 3, len(t), voice.astype(np.float32)))
+        self.assertEqual(r["hum"]["spans"], [])
+
+    def test_music_under_speech_is_found_within_a_second(self):
+        t = np.arange(int(37 * RATE)) / RATE
+        pad = sum(np.sin(2 * np.pi * f0 * k * t) / k for f0 in (220.0, 277.18, 329.63, 440.0)
+                  for k in (1, 2, 3))
+        pad = (pad * (rms(self.speech) * 10 ** (-9 / 20) / rms(pad))).astype(np.float32)
+        r = stats(self.speech + planted(45, 8, len(pad), pad))
+        self.assertTrue(span_at(r["music"]["spans"], 8.0, 1.0), r["music"])
+        f = self.flags_of(r)["music"]
+        self.assertEqual(f["threshold"], ar.DEFAULTS["music_partials"])
+        self.assertTrue(span_at([[a, 0] for a in f["at_s"]], 8.0, 1.0))
+
+    def test_stereo_folded_to_mono_part_way(self):
+        other = speech_like(45, seed=2)
+        cut = int(15 * RATE)
+        right = np.concatenate([other[:cut], self.speech[cut:]])
+        r = stats(np.stack([self.speech, right], axis=1))
+        self.assertLess(r["stereo"]["correlation"], ar.DEFAULTS["dual_mono_corr"])  # whole file hides it
+        self.assertTrue(span_at(r["stereo_spans"]["dual_mono"], 15.0, 0.5), r["stereo_spans"])
+        f = self.flags_of(r)["dual_mono"]
+        self.assertEqual(f["threshold"], ar.DEFAULTS["stereo_min_s"])
+        self.assertTrue(span_at([[a, 0] for a in f["at_s"]], 15.0, 0.5))
+
+    def test_a_dead_channel_from_ten_seconds(self):
+        right = speech_like(45, seed=2).copy()
+        right[int(10 * RATE):] = 0
+        r = stats(np.stack([self.speech, right], axis=1))
+        f = self.flags_of(r)
+        self.assertTrue(span_at([[a, 0] for a in f["dead_channel"]["at_s"]], 10.0, 0.5), f)
+        self.assertIn("channel 2", f["dead_channel"]["note"])
+
+    def test_an_inverted_channel_part_way(self):
+        right = self.speech.copy()
+        right[int(20 * RATE):] *= -1
+        r = stats(np.stack([self.speech, right], axis=1))
+        f = self.flags_of(r)
+        self.assertIn("phase", f)
+        self.assertTrue(span_at([[a, 0] for a in f["phase"]["at_s"]], 20.0, 0.5))
+
+    def test_reads_in_blocks_agree_with_one_read(self):
+        other = speech_like(45, seed=2)
+        right = np.concatenate([other[:15 * RATE], self.speech[15 * RATE:]])
+        x = np.stack([self.speech, right], axis=1)
+        one, many = stats(x), stats(x, blocks=3)
+        self.assertEqual(one["stereo_spans"], many["stereo_spans"])
+        self.assertEqual(one["music"], many["music"])
 
 
 @needs_numpy
