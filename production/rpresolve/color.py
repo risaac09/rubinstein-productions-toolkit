@@ -91,3 +91,44 @@ def vectorscope_angle(rgb):
     cb = (rgb[..., 2] - y) / 1.8556
     cr = (rgb[..., 0] - y) / 1.5748
     return np.degrees(np.arctan2(cr, cb)) % 360
+
+
+# Camera transfer curves. Signal values are normalised 0..1 (10-bit code / 1023).
+# V-Log: Panasonic, "V-Log/V-Gamut Reference Manual" Rev 1.0 (2014-11-28). The
+# constants are cross-checked against the open-source `colour` library; the
+# manual's PDF was not readable offline, so the tests pin its 10-bit table
+# (0% = 128, 18% grey = 433, 90% reflection = 602) instead.
+VLOG_CUT1, VLOG_CUT2 = 0.01, 0.181
+VLOG_B, VLOG_C, VLOG_D = 0.00873, 0.241514, 0.598206
+
+
+def vlog_encode(lin):
+    """Scene-linear reflectance (18% grey = 0.18) to V-Log signal."""
+    lin = np.asarray(lin, dtype=float)
+    return np.where(lin < VLOG_CUT1, 5.6 * lin + 0.125,
+                    VLOG_C * np.log10(np.maximum(lin, VLOG_CUT1) + VLOG_B) + VLOG_D)
+
+
+def vlog_decode(sig):
+    """V-Log signal to scene-linear reflectance."""
+    sig = np.asarray(sig, dtype=float)
+    return np.where(sig < VLOG_CUT2, (sig - 0.125) / 5.6,
+                    10.0 ** ((np.maximum(sig, VLOG_CUT2) - VLOG_D) / VLOG_C) - VLOG_B)
+
+
+# HLG: ITU-R BT.2100 OETF (scene light E in 0..1, signal E' in 0..1).
+HLG_A = 0.17883277
+HLG_B = 1 - 4 * HLG_A
+HLG_C = 0.5 - HLG_A * np.log(4 * HLG_A)
+
+
+def hlg_encode(lin):
+    lin = np.clip(np.asarray(lin, dtype=float), 0.0, 1.0)
+    return np.where(lin <= 1 / 12, np.sqrt(3 * lin),
+                    HLG_A * np.log(np.maximum(12 * lin - HLG_B, 1e-12)) + HLG_C)
+
+
+def hlg_decode(sig):
+    sig = np.clip(np.asarray(sig, dtype=float), 0.0, 1.0)
+    return np.where(sig <= 0.5, sig ** 2 / 3,
+                    (np.exp((np.maximum(sig, 0.5) - HLG_C) / HLG_A) + HLG_B) / 12)
