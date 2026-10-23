@@ -271,7 +271,7 @@ def review_manifest(manifest, words=None, **opts):
 
 def is_manifest(path):
     """True when path reads as a cut manifest (JSON with clips and a
-    source_path)."""
+    source_path, or sources for version 2)."""
     if not path.lower().endswith(".json"):
         return False
     import json
@@ -280,7 +280,7 @@ def is_manifest(path):
             doc = json.load(f)
     except (OSError, ValueError):
         return False
-    return isinstance(doc, dict) and "clips" in doc and "source_path" in doc
+    return isinstance(doc, dict) and "clips" in doc and ("source_path" in doc or "sources" in doc)
 
 
 def counts(rows):
