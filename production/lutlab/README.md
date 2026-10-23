@@ -17,7 +17,7 @@ install.
 ```bash
 cd production
 ~/.venvs/rp-tools/bin/python -m lutlab decompose LOOK.cube --in vlog --out-space r709 --out DIR
-~/.venvs/rp-tools/bin/python -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
+~/.venvs/rp-tools/bin/python -m lutlab build DIR/params.json --cube NEW.cube --hald NEW.png
 ~/.venvs/rp-tools/bin/python -m lutlab shot-match --ref REF.png --src SRC.png [--space vlog] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
@@ -26,8 +26,8 @@ cd production
 ~/.venvs/rp-tools/bin/python -m lutlab diff A.cube B.cube --in vlog
 ~/.venvs/rp-tools/bin/python -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
-~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di --size 65 --out DIR
-~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di --size 33
+~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di
 ~/.venvs/rp-tools/bin/python -m lutlab pack --camera s5ii,gh7,rcm [--base BASE/params.json] --out DIR
 ```
 
@@ -44,7 +44,7 @@ the camera. `port` builds a lattice in the target camera's log, sends every
 node through scene linear into the log the LUT was made for, and samples the
 LUT there. There's no model and no fit, so inside the source's domain it is
 the same LUT, re-addressed. It prints the share of natural scene colours the
-source LUT never saw, which are clamped at its edge. Use `--size 65`: putting
+source LUT never saw, which are clamped at its edge. 65 points is the default (`--size 33` for a small file): putting
 a LUT onto a new lattice softens hard clips slightly, and 65 points keeps
 that under the noise (V-Log to Gen 5 and back: median Delta E 0.12 on a
 real 65-point LUT). `--monitor` adds a 33-point copy clipped to 0..1 for the
