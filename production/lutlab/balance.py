@@ -229,6 +229,16 @@ def prepare(frames, space, face, neutral_box, faces=detect_faces, need_neutral=T
     return used, left
 
 
+def _headroom(u, x, space):
+    """The EV at which the neutral's brightest 1% just stays under the clip: a white shirt far brighter than the
+    cheek clips at the cheek's exposure, and the pixels left (the stripes, the shade) are not the neutral. White
+    balance is a ratio, so the neutral is read at this EV, never above x's own."""
+    from rpstills import measure
+    m = _to709(u["lin"][u["mask"]] * gains(0.0, x[1], x[2]), space)
+    peak = float(np.percentile(m.max(-1), 99))
+    return np.log2(0.98 * float(spaces.srgb_decode(measure.CLIP_AT)) / peak) if peak > 0 else np.inf
+
+
 def measurer(used, space):
     """x -> the (cheek Lab, neutral Lab or None) medians over the frames at x = (ev, mired, tint)."""
     from rpstills import measure
@@ -242,7 +252,8 @@ def measurer(used, space):
             s = measure.skin_lab(rgb, u["face_px"], u["sample"])
             skin_labs.append([s["L"], s["a"], s["b"]])
             if u["mask"] is not None:
-                n = measure.neutral_lab(rgb, u["mask"])
+                cap = _headroom(u, x, space)
+                n = measure.neutral_lab(rgb if cap >= x[0] else _srgb(u["lin"], gains(cap, x[1], x[2]), space), u["mask"])
                 if n is None:
                     raise Unmeasurable("the neutral reference is clipped at every pixel")
                 neu.append([n["L"], n["a"], n["b"]])

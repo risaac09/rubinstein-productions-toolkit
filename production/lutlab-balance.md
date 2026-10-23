@@ -58,6 +58,7 @@ The table is `rpstills audit`'s: each shot's skin after the correction against t
 
 ## Known limits
 
+- A neutral far brighter than the cheek (a white shirt in sun, a face in shade) clips at the cheek's exposure. The neutral is then read at the highest exposure where its brightest 1% stays unclipped, so the white balance comes from the garment and not from the few dark pixels the clip leaves. A neutral that clips at every pixel even there is still `not_converged`.
 - Vision (the face) needs macOS; elsewhere pass `--face`.
 - The neutral finder has `neutral_mask`'s limits: a coloured shirt, a print or no garment gives no neutral. A strong cast can push a white garment past its chroma limit; pass `--neutral-box`.
 - The gains are per channel in the camera's gamut, but the mired axis is defined on Rec.709 white points. Treat `mired` and `temp_k` as a consistent scale for comparing shots, not as scene Kelvin.
