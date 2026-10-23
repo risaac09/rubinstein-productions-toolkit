@@ -32,7 +32,7 @@ class SayWhyLowerThird extends HTMLElement {
       :host{position:absolute;inset:0;display:block;overflow:hidden}
       .plate{position:absolute;background:#1a1412}
       .rule{position:absolute;background:#c8923a}
-      .tx{position:absolute;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .tx{position:absolute;white-space:nowrap;overflow:hidden}
       .name{color:#faf8f5;font-family:'EB Garamond','Source Serif 4',Georgia,serif;font-weight:600}
       .role{color:#a89e93;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.14em}
       .title{color:#c8923a;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.14em}

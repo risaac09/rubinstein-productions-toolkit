@@ -4,7 +4,7 @@
 
 ## What it is
 
-One template, two shapes. A landscape frame (1920x1080) puts the plate bottom-left, its bottom edge 12% up. A portrait frame (1080x1920) puts it across the width with the bottom edge 26% up, above the band that vertical platforms cover. The layout reads the frame size, so the same package serves both. Colours: ink plate `#1a1412`, name `#faf8f5`, role `#a89e93`, accent `#c8923a` (rule and title line). Type: EB Garamond for the name, IBM Plex Mono capitals for role and title, with Georgia and Menlo behind them. A missing face falls back; the geometry does not move, because each line has a fixed box and clips with an ellipsis.
+One template, two shapes. A landscape frame (1920x1080) puts the plate bottom-left, its bottom edge 12% up. A portrait frame (1080x1920) puts it across the width with the bottom edge 26% up, above the band that vertical platforms cover. The layout reads the frame size, so the same package serves both. Colours: ink plate `#1a1412`, name `#faf8f5`, role `#a89e93`, accent `#c8923a` (rule and title line). Type: EB Garamond for the name, IBM Plex Mono capitals for role and title, with Georgia and Menlo behind them. A missing face falls back; the geometry does not move, because each line has a fixed box and clips at the plate edge.
 
 ## Fields
 
