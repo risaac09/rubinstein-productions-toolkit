@@ -254,6 +254,7 @@ class VerticalHooks(unittest.TestCase):
         tone = lambda d: TONE.format(d=d)
         make("clean", [V.format(d=3)], [tone(3)], "00,500 --> 00:00:02,000")
         make("black0", ["color=c=black:s=108x192:r=10:d=1", V.format(d=2)], [tone(3)])
+        make("black3", ["color=c=black:s=108x192:r=10:d=3", V.format(d=2)], [tone(5)])
         make("still0", [FLAT.format(d=1.2), V.format(d=2)], [tone(3.2)])
         make("silent0", [V.format(d=3)], ["anullsrc=r=48000:cl=mono,atrim=duration=0.8", tone(2.2)])
         make("deadtail", [V.format(d=2), FLAT.format(d=1)], [tone(3)])
@@ -297,7 +298,7 @@ class VerticalHooks(unittest.TestCase):
         r = self.assertOnly("still0", "hook_open")  # a 1.2 s freeze is under freeze_min_s
         self.assertEqual(r["status"], "pass")
         self.assertEqual((r["counts"][qc.WARN], r["counts"][qc.FAIL]), (1, 0))
-        r = qc.run(self.f["black0"])  # blackdetect FAILs too: FAIL rows come before WARN
+        r = qc.run(self.f["black3"])  # leading black of 2 s or more FAILs too (1 s is a fade-in WARN): FAIL rows come before WARN
         st = [x["status"] for x in r["checks"]]
         self.assertEqual(st, sorted(st, key=[qc.FAIL, qc.WARN, qc.PASS, qc.SKIP].index))
         self.assertLess(st.index(qc.FAIL), st.index(qc.WARN))
