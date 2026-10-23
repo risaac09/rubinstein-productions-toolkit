@@ -33,11 +33,16 @@ SKIN_SRGB = np.array([0.80, 0.60, 0.50])     # a Lab near (66, 17, 20)
 W, H = 640, 360
 
 
-def frame(space, cast=(1.0, 1.0, 1.0), ev=0.0, neutral=True, wall=(0.25, 0.30, 0.45), skin=SKIN_SRGB):
+BEIGE = np.array([0.75, 0.73, 0.68])         # a warm wall: pale, low chroma (about 16), a hue away from skin
+
+
+def frame(space, cast=(1.0, 1.0, 1.0), ev=0.0, neutral=True, wall=(0.25, 0.30, 0.45), skin=SKIN_SRGB, beige=False):
     """Code values (H, W, 3): a wall, a skin patch under FACE, a neutral grey patch below it (or a blue one)."""
     img = np.tile(spaces.srgb_decode(np.array(wall)), (H, W, 1))
     img[int(.08 * H):int(.48 * H), int(.35 * W):int(.65 * W)] = spaces.srgb_decode(skin)
     img[int(.62 * H):, int(.25 * W):int(.75 * W)] = spaces.srgb_decode(np.array([0.5] * 3 if neutral else [0.2, 0.3, 0.9]))
+    if beige:  # most of the row under the face, beside a short grey patch
+        img[int(.62 * H):, int(.52 * W):] = spaces.srgb_decode(BEIGE)
     cam = spaces.SPACES[space][0](np.clip(spaces.from_lin709(img, space), 0, 1))
     return np.clip(spaces.SPACES[space][1](cam * np.asarray(cast) * 2.0 ** ev), 0, 1)
 
@@ -205,6 +210,114 @@ class Balance(unittest.TestCase):
         shot = write_shot(self.tmp, "g", "vlog")
         with self.assertRaises(PermissionError):
             run(shot, "--space", "vlog", *FACE_ARGS, *NEUTRAL_BOX, "--out", str(PROD / "x-balance-out"))
+
+
+def person_matte_image():
+    """The person of frame(): the face patch and the neutral patch under it, the wall outside (uint8 grey)."""
+    m = np.zeros((H, W), np.uint8)
+    m[int(.08 * H):int(.48 * H), int(.35 * W):int(.65 * W)] = 255
+    m[int(.62 * H):, int(.25 * W):int(.52 * W)] = 255
+    return m
+
+
+class Matte(unittest.TestCase):
+    CAST = (1.12, 1.0, 0.88)
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        d = Path(self.tmp) / "walled"
+        d.mkdir()
+        cv2.imwrite(str(d / "f0.png"), np.round(frame("vlog", cast=self.CAST, beige=True)[..., ::-1] * 65535).astype(np.uint16))
+        self.shot = str(d)
+        self.matte_file = str(Path(self.tmp) / "matte.png")
+        cv2.imwrite(self.matte_file, person_matte_image())
+
+    def run_balance(self, *extra):
+        out = str(Path(self.tmp) / "o")
+        code, _ = run(self.shot, "--space", "vlog", "--frames", "1", *FACE_ARGS, "--out", out, "--overwrite", *extra)
+        return code, json.loads((Path(out) / "balance.json").read_text())["shots"][0]
+
+    def cast_left(self, r):
+        g = np.array(r["gains"]) * np.asarray(self.CAST)       # what the correction leaves of the cast
+        return float(np.ptp(g) / g.mean())
+
+    def test_wall_beside_the_garment_sets_the_white_balance_without_a_matte_and_not_with_one(self):
+        code, r = self.run_balance()
+        self.assertGreater(self.cast_left(r), 0.08)            # the wall is most of the "neutral": warm shot, wrong grade
+        for spec in (self.matte_file, str(Path(self.tmp) / "mattes")):
+            with self.subTest(spec=spec):
+                if spec.endswith("mattes"):
+                    Path(spec).mkdir()
+                    cv2.imwrite(str(Path(spec) / "f0.png"), person_matte_image())
+                code, r = self.run_balance("--matte", spec)
+                self.assertEqual((code, r["status"]), (0, "converged"))
+                self.assertLess(self.cast_left(r), 0.04)       # the grey patch, not the wall, is the neutral
+                self.assertAlmostEqual(r["matte"]["person_share"], person_matte_image().mean() / 255, places=2)
+
+    def test_skin_sector_is_centred_on_the_cheek_and_reports_what_it_catches(self):
+        _, r = self.run_balance("--matte", self.matte_file, "--skin-width", "30")
+        sec = r["matte"]["skin_sector"]
+        self.assertEqual(sec["width_deg"], 30.0)
+        self.assertLess(abs(sec["hue_deg"] - 50), 25)                  # a warm skin hue, not the wall's
+        self.assertEqual(sec["person_share"] > 0.3, True)              # the face patch is in the slice
+        self.assertLess(sec["background_share"], 0.05)                 # the blue wall is not
+        _, plain = self.run_balance()
+        self.assertIsNone(plain.get("matte"))
+
+    def test_matte_folder_without_the_frame_is_a_row_error(self):
+        empty = Path(self.tmp) / "empty"
+        empty.mkdir()
+        cv2.imwrite(str(empty / "other.png"), person_matte_image())
+        code, r = self.run_balance("--matte", str(empty))
+        self.assertEqual((code, r["status"]), (1, "no_matte"))
+        self.assertIn("f0", r["error"])
+
+    def test_read_matte_takes_16_bit_rgb_and_alpha(self):
+        from lutlab import matte
+        m = person_matte_image()
+        for name, img in (("g16.png", m.astype(np.uint16) * 257), ("rgb.png", np.dstack([m] * 3)),
+                          ("rgba.png", np.dstack([np.zeros_like(m)] * 3 + [m]))):
+            p = Path(self.tmp) / name
+            cv2.imwrite(str(p), img)
+            got = matte.read_matte(p, (H // 2, W // 2))
+            self.assertEqual(got.shape, (H // 2, W // 2))
+            self.assertAlmostEqual(float(got.mean()), m.mean() / 255, places=2, msg=name)
+        with self.assertRaises(matte.MatteError):
+            matte.read_matte(Path(self.tmp) / "none.png", (4, 4))
+
+    def test_vision_matte_through_the_helper_and_without_it(self):
+        from lutlab import matte
+        fake = []
+
+        def helper(jobs):
+            fake.extend(jobs)
+            for _, out, _, _ in jobs:
+                cv2.imwrite(out, person_matte_image())
+            return [True] * len(jobs)
+        with mock.patch("rpstills.vision.person_mattes", helper):
+            code, r = self.run_balance("--matte", "vision")
+        self.assertEqual((code, r["status"]), (0, "converged"))
+        x, y = fake[0][2:]
+        self.assertEqual((round(x, 2), round(y, 2)), (0.5, 0.28))      # the helper is asked for the face centre
+        with mock.patch("rpstills.vision.person_mattes", lambda jobs: None):
+            with self.assertRaises(matte.MatteError):
+                matte.matter("vision")([("f", frame("vlog"))], "vlog", [FACE])
+        with self.assertRaises(SystemExit):                            # an unknown source is a usage error
+            run(self.shot, "--space", "vlog", *FACE_ARGS, "--matte", "nowhere", "--out", str(Path(self.tmp) / "x"))
+
+    def test_a_matte_that_fails_on_every_frame_is_no_matte_not_no_neutral(self):
+        with mock.patch("rpstills.vision.person_mattes", lambda jobs: [False] * len(jobs)):
+            code, r = self.run_balance("--matte", "vision")
+        self.assertEqual((code, r["status"]), (1, "no_matte"))
+
+    def test_grabcut_matte_holds_the_person_and_repeats(self):
+        from lutlab import matte
+        fr = [("f", frame("vlog"))]
+        a = matte.matter("grabcut")(fr, "vlog", [FACE])[0]
+        b = matte.matter("grabcut")(fr, "vlog", [FACE])[0]
+        self.assertTrue(np.array_equal(a, b))
+        self.assertGreater(float(a[int(.2 * H):int(.4 * H), int(.45 * W):int(.55 * W)].mean()), 0.95)  # the face
 
 
 if __name__ == "__main__":

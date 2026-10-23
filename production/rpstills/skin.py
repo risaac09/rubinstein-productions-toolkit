@@ -214,7 +214,8 @@ def nblur(img, mask, sigma):
     return cv2.GaussianBlur(img * mask, (0, 0), sigma) / m
 
 
-def neutral_mask(rgb, face_px, min_L=NEUTRAL_MIN_L, max_chroma=NEUTRAL_MAX_CHROMA, min_share=NEUTRAL_MIN_SHARE):
+def neutral_mask(rgb, face_px, min_L=NEUTRAL_MIN_L, max_chroma=NEUTRAL_MAX_CHROMA, min_share=NEUTRAL_MIN_SHARE,
+                 within=None):
     """bool HxW: the neutral reference below the face of a float sRGB 0..1
     image (see the module docstring), or None when fewer than min_share of
     the frame's pixels are found, its colours spread past NEUTRAL_SPREAD (a
@@ -242,6 +243,8 @@ def neutral_mask(rgb, face_px, min_L=NEUTRAL_MIN_L, max_chroma=NEUTRAL_MAX_CHROM
         dh = (measure.hue_deg(lab[..., 1], lab[..., 2]) - cheek["hue_deg"] + 180) % 360 - 180
         near = (ch >= NEUTRAL_SKIN[0] * cheek["chroma"]) & (np.abs(dh) <= NEUTRAL_SKIN[1])
         m[y0:, x0:x1] = (lab[..., 0] >= min_L) & (ch <= max_chroma) & ~near
+        if within is not None:  # a person matte: a wall or another person's shirt is not the reference
+            m[y0:, x0:x1] &= np.asarray(within, bool)[y0:, x0:x1]
     k = max(3, int(face_px["w"] / OPEN_DIV) | 1)
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
     # only what reaches the middle of the neck's column: a wall seen beside the neck or body is not the garment

@@ -129,7 +129,7 @@ $PY -m lutlab lutstats check "$C/cst/vlog-to-r709-65.cube" --from vlog --to r709
 $PY -m lutlab balance "$SHOT" --camera gh7 --frames 6 --out "$C/balance"
 ```
 
-`--camera` takes `gh7`, `s5ii` or another house camera; `--space vlog` works for any V-Log camera. `balance` finds the face on each sampled frame and the neutral (a white or grey garment or card below it). A chart or a frame with no face needs both boxes by hand: `--face X Y W H` and `--neutral-box X0 Y0 X1 Y1`, normalised 0..1 from the top left. Note the two differ: the face is origin and size, the neutral is two corners.
+`--camera` takes `gh7`, `s5ii` or another house camera; `--space vlog` works for any V-Log camera. `balance` finds the face on each sampled frame and the neutral (a white or grey garment or card below it). A chart or a frame with no face needs both boxes by hand: `--face X Y W H` and `--neutral-box X0 Y0 X1 Y1`, normalised 0..1 from the top left. Note the two differ: the face is origin and size, the neutral is two corners. `--matte vision` (macOS) restricts the neutral to the person, for a shot where a pale wall or someone else's shirt sits in the garment's row, and adds the skin sector to take into Colour Slice; see [lutlab-balance.md](lutlab-balance.md#person-matte).
 
 Look at a cube on a frame (every cube gets a PNG and one contact sheet):
 
