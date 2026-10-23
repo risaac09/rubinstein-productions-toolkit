@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import reframe, workflows  # noqa: E402
+from rpresolve import detect, reframe, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 from test_framing import MASTER, PYXIS, Reader, TestMasterShape, detector  # noqa: E402
@@ -227,6 +227,8 @@ class TestReframeApply(Base):
             call("reframe_apply", self.args(plan=path), self.resolve)
 
 
+# The stills are probed for their size; the stdlib-only CI job has no ffmpeg.
+@unittest.skipUnless(os.access(detect.FFPROBE, os.X_OK), "ffmpeg missing (ffprobe)")
 class TestReframePlanItems(unittest.TestCase):
     def test_the_offline_tool_writes_a_framing_plan(self):
         tool = REG.get("reframe_plan")
