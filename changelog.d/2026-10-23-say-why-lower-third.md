@@ -1,0 +1,1 @@
+Add a native OGraf Say Why lower third (name, role, optional title line; 1920x1080 and 1080x1920) under tools/ograf-render/templates/, with its motion spec, a render test (alpha, length, easing against the spec, clear cut frames, safe areas, contrast) and production/say-why-lower-third.md.

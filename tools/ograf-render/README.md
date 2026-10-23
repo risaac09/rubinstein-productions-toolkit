@@ -55,3 +55,5 @@ node --test tools/ograf-render/test.mjs
 ```
 
 The fixture template is written by the test. The tests skip with a message where Chrome or ffmpeg is missing; the `overlay-check` case also skips until that command and numpy are present.
+
+A shipped template lives in `templates/`: `say-why-lower-third/` (see `production/say-why-lower-third.md`), tested by `node --test tools/ograf-render/test-say-why-lower-third.mjs`.
