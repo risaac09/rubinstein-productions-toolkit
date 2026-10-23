@@ -1,0 +1,1 @@
+New docs for the shared pipeline contracts: the lock handoff folder (VP-145, production/lock-handoff.md), the cue, marker and sync contract with the BT.1359 sign, the 3-frame amendment and intended_offset_ms (VP-146, production/cue-marker-sync.md), and the licence register format with a commercial_ok column (VP-147, production/licence-register.md). Spec only, no code.
