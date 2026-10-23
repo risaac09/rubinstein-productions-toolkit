@@ -1,7 +1,7 @@
 """lutlab.lutstats: how far a 3D LUT sits from the transform it claims, in Delta E 2000. numpy only.
 
   ~/.venvs/rp-tools/bin/python -m lutlab lutstats check LUT.cube --from vlog --to di [--interp tetrahedral|trilinear]
-  ~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di [--size 33|65] [--interp ...]
+  ~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di [--size 65|33] [--interp ...]
 
 check samples a LUT where footage lands (natural colours, spread as pipeline.natural_samples spreads them)
 and along the neutral axis, and compares it with the exact `cst` transform for --from/--to. A LUT exported
@@ -96,7 +96,7 @@ def check(lut, src, dst, interp="tetrahedral"):
     return r
 
 
-def roundtrip(src, dst, size=33, interp="tetrahedral"):
+def roundtrip(src, dst, size=cube.DEFAULT_SIZE, interp="tetrahedral"):
     """src -> dst -> src through two baked tables of `size`: Delta E 2000 and 10-bit code error against the
     start, on natural colours and the neutral axis."""
     there, back = unit_lut(cst.table(src, dst, size)), unit_lut(cst.table(dst, src, size))
@@ -119,7 +119,7 @@ def add_arguments(p):
     c = sub.add_parser("check", help="a LUT against the exact transform it claims")
     c.add_argument("lut")
     rt = sub.add_parser("roundtrip", help="FROM -> TO -> FROM through two baked tables")
-    rt.add_argument("--size", type=int, default=33, choices=cst.SIZES)
+    rt.add_argument("--size", type=int, default=cube.DEFAULT_SIZE, choices=cst.SIZES)
     for q in (c, rt):
         q.add_argument("--from", dest="src", required=True, choices=list(spaces.SPACES))
         q.add_argument("--to", dest="dst", required=True, choices=list(spaces.SPACES))

@@ -147,7 +147,7 @@ def make_fn(p, in_space=None, residual=True, out_encoding=None):
     return fn
 
 
-def build(params_path, out_cube=None, size=33, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False,
+def build(params_path, out_cube=None, size=cube.DEFAULT_SIZE, in_space=None, residual=True, hald=None, hald_level=8, overwrite=False,
           delta=None, out_encoding=None):
     p = load(params_path, delta)
     if out_encoding:
@@ -186,7 +186,7 @@ def monitor_names(looks, labels):
     return names
 
 
-def looks(base_params, deltas, cameras, outdir, size=33, overwrite=False, monitor=False):
+def looks(base_params, deltas, cameras, outdir, size=cube.DEFAULT_SIZE, overwrite=False, monitor=False):
     """Bake every delta on the base for every target: <outdir>/<look> [<Label>].cube.
     A target is a camera (its log in, Rec.709 out) or "rcm" (DaVinci Intermediate in and out, for a node
     in a Resolve Color Managed project; see spaces.RCM).

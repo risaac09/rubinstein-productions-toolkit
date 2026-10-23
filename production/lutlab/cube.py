@@ -49,6 +49,10 @@ def read_cube(path):
             "title": title}
 
 
+# Decision D10, 2026-10-23: V-Log to DI mean Delta E 0.026 at 65 against 0.074 at 33.
+DEFAULT_SIZE = 65
+
+
 def lattice(size, dmin=(0, 0, 0), dmax=(1, 1, 1)):
     """Input coordinates of every node, shape (N, N, N, 3), indexed [r, g, b]."""
     axes = [np.linspace(lo, hi, size) for lo, hi in zip(dmin, dmax)]

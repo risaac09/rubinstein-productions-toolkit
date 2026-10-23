@@ -13,7 +13,7 @@ import numpy as np
 from . import cube, fit, model, pipeline, spaces
 
 
-def port_table(lut, src_space, dst_space, size=33, ev=0.0):
+def port_table(lut, src_space, dst_space, size=cube.DEFAULT_SIZE, ev=0.0):
     """Table (size^3 x 3) for dst_space input, and the share of natural scene
     colours (pipeline.natural_samples, in dst_space) that land outside the
     source LUT's domain and are clamped there: a range or gamut the source LUT

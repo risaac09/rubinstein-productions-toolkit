@@ -1,7 +1,7 @@
 """lutlab.cst: colour space transform LUTs, camera log to DaVinci Intermediate or a display. numpy only.
 
-  ~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di [--size 33|65] [--out DIR]
-        -> DIR/vlog-to-di-33.cube
+  ~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di [--size 65|33] [--out DIR]
+        -> DIR/vlog-to-di-65.cube
 
 A technical transform, not a look: decode the source's code values to scene linear, change primaries
 (through linear Rec.709, as everything in lutlab does), encode to the target, clip to 0..1. No tone
@@ -22,6 +22,7 @@ from . import cube, guard, spaces
 FROM = ("vlog", "bmdfilm5", "logc3", "logc4", "di", "lin709")
 TO = ("di", "r709", "srgb")
 SIZES = (33, 65)
+DEFAULT_SIZE = cube.DEFAULT_SIZE
 
 
 def transform(codes, src, dst):
@@ -29,7 +30,7 @@ def transform(codes, src, dst):
     return np.clip(spaces.from_lin709(spaces.to_lin709(codes, src), dst), 0.0, 1.0)
 
 
-def table(src, dst, size=33):
+def table(src, dst, size=cube.DEFAULT_SIZE):
     return transform(cube.lattice(size), src, dst)
 
 
@@ -52,7 +53,7 @@ def summary(src, dst, size, path):
 def add_arguments(p):
     p.add_argument("--from", dest="src", required=True, choices=FROM)
     p.add_argument("--to", dest="dst", required=True, choices=TO)
-    p.add_argument("--size", type=int, default=33, choices=SIZES)
+    p.add_argument("--size", type=int, default=cube.DEFAULT_SIZE, choices=SIZES)
     p.add_argument("--out")
     p.add_argument("--overwrite", action="store_true")
 

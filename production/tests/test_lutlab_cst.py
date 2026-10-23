@@ -61,13 +61,18 @@ class CstTest(unittest.TestCase):
 
     def test_cli_writes_once(self):
         self.assertEqual(main(["cst", "--from", "vlog", "--to", "r709", "--out", str(self.tmp)]), 0)
-        f = self.tmp / "vlog-to-r709-33.cube"
+        f = self.tmp / "vlog-to-r709-65.cube"
         lut = cube.read_cube(str(f))
-        np.testing.assert_allclose(lut["table"], cst.table("vlog", "r709", 33), atol=1e-6)
+        self.assertEqual(lut["table"].shape, (65, 65, 65, 3))
+        np.testing.assert_allclose(lut["table"], cst.table("vlog", "r709", 65), atol=1e-6)
         self.assertIn("vlog to r709", lut["title"])
         with self.assertRaises(FileExistsError):
             main(["cst", "--from", "vlog", "--to", "r709", "--out", str(self.tmp)])
         main(["cst", "--from", "vlog", "--to", "r709", "--out", str(self.tmp), "--overwrite"])
+
+    def test_size_33_still_works(self):
+        self.assertEqual(main(["cst", "--from", "vlog", "--to", "di", "--size", "33", "--out", str(self.tmp)]), 0)
+        self.assertEqual(cube.read_cube(str(self.tmp / "vlog-to-di-33.cube"))["table"].shape, (33, 33, 33, 3))
 
     def test_refusals(self):
         with self.assertRaises(SystemExit):
@@ -144,14 +149,14 @@ class LutstatsTest(unittest.TestCase):
         out = subprocess.run([sys.executable, "-m", "lutlab", "lutstats", "roundtrip", "--from", "vlog", "--to", "di"],
                              cwd=PROD, capture_output=True, text=True, check=True).stdout
         r = json.loads(out[:out.rindex("}") + 1])
-        self.assertEqual((r["mode"], r["size"]), ("roundtrip", 33))
-        self.assertIn("roundtrip vlog <-> di 33^3 tetrahedral", out)
+        self.assertEqual((r["mode"], r["size"]), ("roundtrip", 65))
+        self.assertIn("roundtrip vlog <-> di 65^3 tetrahedral", out)
         with tempfile.TemporaryDirectory() as tmp:
             main(["cst", "--from", "vlog", "--to", "di", "--out", tmp])
-            out = subprocess.run([sys.executable, "-m", "lutlab", "lutstats", "check", f"{tmp}/vlog-to-di-33.cube",
+            out = subprocess.run([sys.executable, "-m", "lutlab", "lutstats", "check", f"{tmp}/vlog-to-di-65.cube",
                                   "--from", "vlog", "--to", "di", "--interp", "trilinear"],
                                  cwd=PROD, capture_output=True, text=True, check=True).stdout
-        self.assertIn("check vlog -> di 33^3 trilinear", out)
+        self.assertIn("check vlog -> di 65^3 trilinear", out)
 
 
 class PackTest(unittest.TestCase):
@@ -304,7 +309,7 @@ from lutlab.__main__ import main
 out = sys.argv[1]
 assert main(["cst", "--from", "vlog", "--to", "di", "--out", out]) == 0
 assert main(["lutstats", "roundtrip", "--from", "vlog", "--to", "di"]) == 0
-assert main(["lutstats", "check", out + "/vlog-to-di-33.cube", "--from", "vlog", "--to", "di"]) == 0
+assert main(["lutstats", "check", out + "/vlog-to-di-65.cube", "--from", "vlog", "--to", "di"]) == 0
 assert main(["pack", "--camera", "s5ii,gh7,rcm", "--date", "20261022", "--out", out]) == 0
 assert "lutlab.pipeline" not in sys.modules
 """
@@ -313,7 +318,7 @@ assert "lutlab.pipeline" not in sys.modules
                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertTrue((Path(tmp) / "rp-luts-20261022.zip").exists())
-            self.assertTrue((Path(tmp) / "vlog-to-di-33.cube").exists())
+            self.assertTrue((Path(tmp) / "vlog-to-di-65.cube").exists())
 
 
 if __name__ == "__main__":
