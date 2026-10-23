@@ -1,0 +1,1 @@
+Add `python3 -m rpresolve.continuity`: per scene it names the best reference clip from `measure` JSON by exposure, skin and clipping with reasons, flags intercut pairs whose white point or key-light side differ (a hint, never a block), and on a second run after a hand Shot Match reports skin Delta E 2000 before and after (VP-107).
