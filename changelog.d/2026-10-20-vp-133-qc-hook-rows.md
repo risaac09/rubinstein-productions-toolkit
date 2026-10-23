@@ -1,0 +1,1 @@
+qc now adds four WARN-only hook rows (hook_open, hook_sound, dead_tail, hook_caption) on portrait renders, with thresholds hook_still_s, hook_sound_s, tail_s and hook_caption_s; WARN counts on its own and never changes the exit code.

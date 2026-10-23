@@ -9,6 +9,7 @@ ffmpeg.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
+import argparse
 import csv
 import io
 import json
@@ -320,7 +321,7 @@ class Command(unittest.TestCase):
 
     def run_cmd(self, *argv):
         out, err = io.StringIO(), io.StringIO()
-        args = resolve_workflow.argparse.Namespace(table=self.table, words=None, labels=None,
+        args = argparse.Namespace(table=self.table, words=None, labels=None,
                                                    title=None, out=None, no_audio=True, strips=None)
         for k, v in zip(argv[::2], argv[1::2]):
             setattr(args, k, v)

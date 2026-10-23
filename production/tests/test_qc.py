@@ -230,6 +230,105 @@ class QcTable(unittest.TestCase):
         self.assertEqual(gone.returncode, 2, gone.stderr)
 
 
+V = "testsrc2=s=108x192:r=10:d={d}"
+FLAT = "color=c=blue:s=108x192:r=10:d={d}"
+HOOKS = ("hook_open", "hook_sound", "hook_caption", "dead_tail")
+SRT = "1\n00:00:{t}\nhello\n"
+
+
+@unittest.skipUnless(_have_tools(), "needs ffmpeg and ffprobe with libx264")
+class VerticalHooks(unittest.TestCase):
+    """Portrait hook rows: a clean 108x192 reel passes all, one fault each."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        t = cls._tmp.name
+        cls.f = {}
+
+        def make(key, vparts, aparts, cue="00,500 --> 00:00:02,000"):
+            out = cls.f[key] = os.path.join(t, key + ".mov")
+            _make(out, _cat(vparts, "v") + ";" + _cat(aparts, "a"))
+            if cue:
+                Path(out[:-4] + ".srt").write_text(SRT.format(t=cue))
+        tone = lambda d: TONE.format(d=d)
+        make("clean", [V.format(d=3)], [tone(3)], "00,500 --> 00:00:02,000")
+        make("black0", ["color=c=black:s=108x192:r=10:d=1", V.format(d=2)], [tone(3)])
+        make("black3", ["color=c=black:s=108x192:r=10:d=3", V.format(d=2)], [tone(5)])
+        make("still0", [FLAT.format(d=1.2), V.format(d=2)], [tone(3.2)])
+        make("silent0", [V.format(d=3)], ["anullsrc=r=48000:cl=mono,atrim=duration=0.8", tone(2.2)])
+        make("deadtail", [V.format(d=2), FLAT.format(d=1)], [tone(3)])
+        make("latecap", [V.format(d=3)], [tone(3)], "02,000 --> 00:00:02,800")
+        cls.land = os.path.join(t, "land.mov")
+        _make(cls.land, f"{VID.format(d=3)}[v];{TONE.format(d=3)}[a]")
+        Path(cls.land[:-4] + ".srt").write_text(SRT.format(t="05,000 --> 00:00:06,000"))
+        cls.nocap = os.path.join(t, "nocap.mov")
+        _make(cls.nocap, f"{V.format(d=3)}[v];{TONE.format(d=3)}[a]")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def by(self, path):
+        r = qc.run(path)
+        return r, {x["check"]: x for x in r["checks"]}
+
+    def assertOnly(self, key, hook):
+        r, by = self.by(self.f[key])
+        self.assertEqual(by[hook]["status"], qc.WARN, by[hook])
+        for h in HOOKS:
+            if h != hook:
+                self.assertEqual(by[h]["status"], qc.PASS, (key, h, by[h]))
+        return r
+
+    def test_clean_vertical_passes_every_hook_row(self):
+        r, by = self.by(self.f["clean"])
+        for h in HOOKS:
+            self.assertEqual(by[h]["status"], qc.PASS, (h, by[h]))
+        self.assertEqual(r["counts"][qc.WARN], 0)
+
+    def test_each_planted_fault_is_caught(self):
+        self.assertOnly("black0", "hook_open")
+        self.assertOnly("still0", "hook_open")
+        self.assertOnly("silent0", "hook_sound")
+        self.assertOnly("deadtail", "dead_tail")
+        self.assertOnly("latecap", "hook_caption")
+
+    def test_warn_counts_alone_sorts_after_fail_and_keeps_status(self):
+        r = self.assertOnly("still0", "hook_open")  # a 1.2 s freeze is under freeze_min_s
+        self.assertEqual(r["status"], "pass")
+        self.assertEqual((r["counts"][qc.WARN], r["counts"][qc.FAIL]), (1, 0))
+        r = qc.run(self.f["black3"])  # leading black of 2 s or more FAILs too (1 s is a fade-in WARN): FAIL rows come before WARN
+        st = [x["status"] for x in r["checks"]]
+        self.assertEqual(st, sorted(st, key=[qc.FAIL, qc.WARN, qc.PASS, qc.SKIP].index))
+        self.assertLess(st.index(qc.FAIL), st.index(qc.WARN))
+        self.assertIn("1 warn", qc.format_report(r))
+
+    def test_cli_exit_stays_zero_on_a_warn(self):
+        p = subprocess.run([sys.executable, str(WORKFLOW), "qc", self.f["latecap"], "--json"],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(json.loads(p.stdout)["counts"]["WARN"], 1)
+
+    def test_thresholds_override(self):
+        th = qc.parse_overrides(["hook_caption_s=3", "hook_still_s=2", "hook_sound_s=1"])
+        _, by = self.by(self.f["latecap"])
+        self.assertEqual(by["hook_caption"]["status"], qc.WARN)
+        r = qc.run(self.f["latecap"], thresholds=th)
+        self.assertEqual(r["counts"][qc.WARN], 0)
+        r = qc.run(self.f["still0"], thresholds=th)
+        self.assertEqual(r["counts"][qc.WARN], 0)
+
+    def test_no_sidecar_skips_the_caption_row(self):
+        _, by = self.by(self.nocap)
+        self.assertEqual(by["hook_caption"]["status"], qc.SKIP)
+
+    def test_landscape_gets_no_hook_rows(self):
+        r, by = self.by(self.land)
+        self.assertFalse(set(HOOKS) & set(by))
+        self.assertEqual(r["counts"][qc.WARN], 0)
+
+
 class Parsers(unittest.TestCase):
     def test_parse_black_freeze_scdet_silence_astats(self):
         log = "\n".join([

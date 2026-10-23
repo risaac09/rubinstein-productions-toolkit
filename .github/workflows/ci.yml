@@ -174,8 +174,11 @@ jobs:
 
   # The Resolve MCP server core and the library under it are stdlib-only
   # and run on the system Python 3.9 on the Mac; this job runs their tests
-  # on 3.9 so a newer-Python construct or a protocol regression fails the PR.
-  # Tests that need Resolve, numpy, ffmpeg or macOS skip themselves.
+  # on 3.9 with nothing installed, so a newer-Python construct, a stdlib
+  # regression or a protocol regression fails the PR. The module list comes
+  # from the directory, as in the job below, so a new command's test file
+  # runs here with no edit. Tests that need Resolve, numpy, ffmpeg or macOS
+  # skip themselves.
   resolve-mcp-tests:
     runs-on: ubuntu-latest
     steps:
@@ -183,24 +186,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - name: MCP protocol, schema, stdio isolation, end to end
-        run: python -m unittest -v production.tests.test_mcp
-      - name: MCP offline tools
-        run: python -m unittest -v production.tests.test_mcp_offline
-      - name: MCP read tools
-        run: python -m unittest -v production.tests.test_mcp_reads
-      - name: MCP write tools, journal, forbidden calls
-        run: python -m unittest -v production.tests.test_mcp_writes production.tests.test_mcp_writes2 production.tests.test_mcp_project_timeline
-      - name: Library, workflows and the script's command set
-        run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib production.tests.test_resolve_workflow_pure
-      - name: Cut, sync and settings drift guard
-        run: python -m unittest production.tests.test_cut_reframe production.tests.test_sync_resolve production.tests.test_cutlist production.tests.test_settingsguard
-      - name: QC table (parsers; the ffmpeg cases run in the full suite)
-        run: python -m unittest production.tests.test_qc
-      - name: Shoot table
-        run: python -m unittest -v production.tests.test_shoot_table
-      - name: Delivery manifest writer
-        run: python -m unittest -v production.tests.test_manifest
+      - name: Every module but lutlab, rpstills and vertcut, stdlib only
+        run: |
+          set -euo pipefail
+          mods="$(ls production/tests/test_*.py | grep -vE 'lutlab|rpstills|vertcut' | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods
 
   # rpresolve runs under the Resolve MCP server on the Mac's Python 3.9 and imports numpy for
   # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
@@ -298,12 +288,21 @@ jobs:
           fi
           echo "skips for packages and ffmpeg: none. Other skips:"
           grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
-      - name: Pipeline proof, lavfi fixtures
+      # Node 22, once, for every Node test: each tracked test*.mjs runs under
+      # node --test with no edit here.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Node tests
         run: |
           set -euo pipefail
           RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
           export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
-          python -m unittest -v production.tests.test_proof
+          node --version
+          tests="$(git ls-files '*.mjs' | grep -E '(^|/)test[^/]*\.mjs$' | grep -vE '^(phase-zero|public-kit|\.claude)/|/video-use/' || true)"
+          if [ -z "$tests" ]; then echo "no Node tests"; exit 0; fi
+          echo "$tests"
+          node --test $tests
 
   # The Pages site builds from scripts/build-site.py, and the deploy workflow
   # runs only on pushes to main. Build into a temp directory here so a docs
