@@ -86,10 +86,10 @@ there. A preset is a starting chain, written down so a choice has a reason;
 it is not a claim that it sounds better, and no preset sets loudness (that is
 the mix's). Give a preset or a chain, not both; candidates need a chain.
 render.json records the preset each stem used. lav and boom denoise with
-arnndn (RNNoise is trained on speech, and can pump on music or ambience, so
-no other preset and no bare `denoise` defaults to it), so they need the model. preset-ab renders the same
-dialogue through each preset (and leaves it untouched, as a reference),
-then builds the blind A/B packet from the results, so the ear picks.
+arnndn, so they need the model (RNNoise is trained on speech and can pump on
+music or ambience, so no other preset and no bare `denoise` defaults to it).
+preset-ab renders the same dialogue through each preset (and leaves it
+untouched, as a reference), then builds the blind A/B packet from the results, so the ear picks.
 
 Dialogue-gated loudness. `speechnorm: {key: dialogue, i: -16}` in the mix
 chain measures the mix's integrated loudness over the key stem's speech
@@ -580,8 +580,10 @@ def _rnnoise_models(spec):
     out = {}
     for st in spec["stems"].values():
         for raw in [r for n, r in map(_step, st["chain"]) if n == "denoise"] + list(st["candidates"].values()):
-            if isinstance(raw, dict) and raw.get("method") == "arnndn" and raw["model"] not in out:
-                out[raw["model"]] = sha256(raw["model"])
+            if isinstance(raw, dict) and raw.get("method") == "arnndn":
+                m = rnnoise_model(raw)
+                if m not in out:
+                    out[m] = sha256(m)
     return out
 
 
