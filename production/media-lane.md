@@ -10,13 +10,16 @@ anywhere. These refuse to write inside a git tree: `rpstills develop`,
 the iPad recipes write where they are told without checking, so give them an
 output path outside any repository.
 
+To run a lane from a fresh shell, with the commands and what a pass looks like,
+use [media-lane-quickstart.md](media-lane-quickstart.md).
+
 ## The order of a job
 
 | Stage | Stills | Video | Sound |
 |---|---|---|---|
 | Ingest and check | `rpstills index`, `cluster`, `cull`, `review` | detect, shoot-table, [`tools/ipad-probe`](../tools/ipad-probe/README.md) on an iPad | audio-report |
 | Develop and balance | `rpstills develop`: RAW with a per-frame skin solve ([rpstills-develop.md](rpstills-develop.md)) | [`lutlab cst`](lutlab-cst.md): camera log to DaVinci Intermediate or Rec.709; [`lutlab balance`](lutlab-balance.md): per-shot exposure and white balance as a CDL; [`lutlab shot-match`](lutlab/README.md#shot-match) for a paired second camera | [`rpresolve.roomtone`](sound-assist.md): find room tone, loop a bed |
-| Look | `rpstills look` (a LUT for Resolve) | [`lutlab`](lutlab/README.md) looks, `lutlab pack` for an iPad | a mix spec, when the mix builder lands |
+| Look | `rpstills look` (a LUT for Resolve) | [`lutlab`](lutlab/README.md) looks, `lutlab pack` for an iPad | [`mixbuild`](media-lane-quickstart.md#2-sound-a-dialogue-clip-mixed-and-checked): a mix spec, stems and a mix |
 | Cut | `rpstills crops`, `rpstills finish` ([rpstills-finish.md](rpstills-finish.md)) | cut manifest ([versions 1 and 2](manifest.md)), [`rpresolve.interchange`](interchange.md) to EDL, FCPXML or OTIO, [`wordsnap`, `shots`, `beats`](edit-assist.md) | [`rpresolve.duckplan`](sound-assist.md): music ducked under speech |
 | Measure | [`rpstills audit`](rpstills-audit.md), report only | measure, perceive, `lutlab lutstats` | [`rpresolve.dxmetrics`](sound-assist.md): before and after, with lag |
 | Review | `rpstills absheet`, `rpstills serve` | proxies through `rpstills serve` | loudness-matched excerpts |
@@ -71,7 +74,6 @@ repository. The iPad route, with no Mac, is in [../docs/ipad-lane.md](../docs/ip
   not two clips, and refuses an unpaired pair.
 - Beats are validated on synthetic loops only; shots finds hard cuts, not
   dissolves.
-- The mix builder (an open pull request) is the planned home for the dialogue
-  chain; `duckplan` and `dxmetrics` are written so it can adopt them.
+- `mixbuild` is the home for the dialogue chain; `duckplan` and `dxmetrics` feed it.
 - A third-party RAW engine (LightCraft) is an opt-in backend behind an
   environment variable; Apple's engine stays the default.
