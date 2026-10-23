@@ -18,6 +18,7 @@ install.
 cd production
 ~/.venvs/rp-tools/bin/python -m lutlab decompose LOOK.cube --in vlog --out-space r709 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
+~/.venvs/rp-tools/bin/python -m lutlab shot-match --ref REF.png --src SRC.png [--space vlog] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
@@ -336,3 +337,9 @@ strength; grain as size, amplitude by luma, and chroma amount.
   first.
 
 Tests: `~/.venvs/rp-tools/bin/python production/tests/test_lutlab.py` (synthetic LUTs only).
+
+## Shot match
+
+`shot-match` matches one shot to a reference shot of the same content, two frames at the same framing (two cameras on one scene). It fits an ASC CDL (slope, offset, power, saturation) by least squares on CIELAB error, then a 17-point 3D residual LUT regularised toward zero and toward smooth. The residual is fitted on half the pixels and kept only if it beats the CDL alone on the other half. A pair that is not the same content is refused (luminance rank correlation under 0.8 after alignment) and nothing is written: unpaired transfer measured worse than no correction.
+
+It writes `NAME.cc` (CDL for a Resolve CDL import), `NAME.cube` (CDL and residual in one LUT), `NAME-residual.cube` (the residual alone, for a node after the CDL) and `NAME.report.md` with CIEDE2000 before and after, on held-out pixels and on all. Synthetic recovery: a known CDL comes back to within 0.01 code value on a colour grid. Real pairs from two cameras have parallax and different lenses, so expect the residual error to stay above the synthetic figure; a pair with a different lighting direction is not a colour difference and no LUT fixes it.

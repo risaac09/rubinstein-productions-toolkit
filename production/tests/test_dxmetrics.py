@@ -20,9 +20,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np  # noqa: E402
+    from rpresolve import dxmetrics as dxm  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    np = None
 
-from rpresolve import dxmetrics as dxm  # noqa: E402
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 
 RATE = 48000
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
@@ -49,6 +53,7 @@ def write_wav(path, x, rate=RATE):
     return path
 
 
+@needs_numpy
 class TestMeasures(unittest.TestCase):
     def test_sibilance_ratio_reads_band_power(self):
         x = tone(1000, 2, 1.0) + tone(7000, 2, 0.1)
@@ -117,6 +122,7 @@ class TestMeasures(unittest.TestCase):
 
 
 @needs_ffmpeg
+@needs_numpy
 class TestFiles(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

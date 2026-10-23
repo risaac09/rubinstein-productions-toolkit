@@ -110,7 +110,7 @@ import statistics
 import subprocess
 import tempfile
 
-from . import vision
+from . import cutlist, vision
 from .detect import DetectError, run_ffprobe
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
@@ -1022,7 +1022,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
         if missing:
             raise ReframeError("no such clip(s): " + ", ".join(sorted(missing)))
         clips = [c for c in clips if c["name"] in set(only)]
-    reader = reader or SourceReader(manifest["source_path"])
+    one = cutlist.single_source(manifest, "reframe")
+    reader = reader or SourceReader(one["path"])
     detect = detect or vision.face_boxes
     stored = tuple(reader.size)
     luma_size = tuple(getattr(reader, "luma_size", None) or stored)
@@ -1045,7 +1046,7 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
         rule = f"nearest speaker_x {speaker_x:g}" + ("" if speaker_y is None else f", speaker_y {speaker_y:g}")
     else:
         rule = RULE if prefer == PREFER_PRESENT else RULE_LARGEST
-    report = {"source": manifest["source_path"], "size": list(src), "stored_size": list(stored),
+    report = {"source": one["path"], "size": list(src), "stored_size": list(stored),
               "squeeze": sq, "squeeze_from": source, "master_size":
               list(size_of(MASTER, master_size)) if master_size else None, "scaling": scaling,
               "aspects": list(aspects),

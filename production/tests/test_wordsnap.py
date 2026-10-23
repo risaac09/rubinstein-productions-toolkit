@@ -22,12 +22,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import cutlist, paths, wordsnap as ws  # noqa: E402
+from rpresolve import cutlist, paths  # noqa: E402
+
+try:
+    from rpresolve import wordsnap as ws  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    ws = None
+
+needs_numpy = unittest.skipIf(ws is None, "numpy not installed")  # the stdlib-only 3.9 CI job
+HOP_S = ws.HOP_S if ws is not None else None
 
 SPEECH, ROOM = -30.0, -80.0
 
 
-def env_of(pieces, hop=ws.HOP_S):
+def env_of(pieces, hop=HOP_S):
     """An envelope like trimreview.envelope's from (seconds, dBFS) pieces."""
     env, i = [], 0
     for secs, db in pieces:
@@ -53,6 +61,7 @@ def times(data):
 PIECES = [(1.0, ROOM), (1.0, SPEECH), (0.6, ROOM), (0.9, SPEECH), (1.5, ROOM)]
 
 
+@needs_numpy
 class TestSnap(unittest.TestCase):
     def snap(self, words, pieces=PIECES, **kw):
         return ws.snap(whisper(*words), env_of(pieces), **kw)
@@ -161,6 +170,7 @@ def burst_wav(path, pieces, rate=48000, seed=5):
         w.writeframes(bytes(frames))
 
 
+@needs_numpy
 class TestOnAudio(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
