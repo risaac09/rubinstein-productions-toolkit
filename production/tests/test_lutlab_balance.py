@@ -81,6 +81,23 @@ class Balance(unittest.TestCase):
                 g = np.array(r["gains"]) * np.array([1.15, 1.0, 0.85]) * 2 ** -0.7  # the cast, undone
                 self.assertLess(np.ptp(g) / g.mean(), 0.03)
 
+    def test_bright_neutral_with_dark_stripes_still_balances(self):
+        """A white garment that clips at the cheek's exposure, striped dark blue: only the stripes survive the
+        clip filter, and they used to be taken as the neutral."""
+        cast = (1.15, 1.0, 0.85)
+        img = frame("vlog", cast=cast, skin=np.array([0.35, 0.27, 0.22]))
+        lin = np.tile(spaces.srgb_decode(np.array([0.85] * 3)), (H, W, 1))
+        lin[:, np.arange(W) % 10 > 6] = spaces.srgb_decode(np.array([0.30, 0.30, 0.45]))
+        cam = spaces.SPACES["vlog"][0](np.clip(spaces.from_lin709(lin, "vlog"), 0, 1)) * np.asarray(cast)
+        rows, cols = slice(int(.62 * H), None), slice(int(.25 * W), int(.75 * W))
+        img[rows, cols] = np.clip(spaces.SPACES["vlog"][1](cam), 0, 1)[rows, cols]
+        d = Path(self.tmp) / "stripes"
+        d.mkdir()
+        cv2.imwrite(str(d / "f0.png"), np.round(img[..., ::-1] * 65535).astype(np.uint16))
+        run(str(d), "--space", "vlog", "--frames", "1", *FACE_ARGS, *NEUTRAL_BOX, "--out", self.out())
+        g = np.array(self.rows()["shots"][0]["gains"]) * np.asarray(cast)
+        self.assertLess(np.ptp(g) / g.mean(), 0.04)      # the white, not the stripes, set the white balance
+
     def test_auto_neutral_below_the_face(self):
         shot = write_shot(self.tmp, "a", "vlog", cast=(1.1, 1.0, 0.9))
         code, _ = run(shot, "--space", "vlog", *FACE_ARGS, "--out", self.out())
