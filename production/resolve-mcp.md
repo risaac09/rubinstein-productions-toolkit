@@ -282,7 +282,7 @@ at import, so a new command adds its module and its tests and edits no shared
 file, this one included (`rpresolve/cli.py` says how).
 
 - Read Resolve and change nothing (Resolve Studio must be running):
-  `list-projects`, `list-timelines`, `list-render-formats` and `info`.
+  `list-projects`, `list-timelines`, `list-render-formats`, `info` and `audio-state`.
 - Every other command never connects to Resolve.
 
 A command has an MCP tool when one of the same name with underscores is in
@@ -291,6 +291,30 @@ A command has an MCP tool when one of the same name with underscores is in
 tool lacks: the script's `sync-measure` takes `--ref-stream` and
 `--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
 and `--no-metadata-cache`, none of which the tools do.
+
+`audio-state` reads one timeline's audio from Resolve and changes nothing: the
+audio tracks (type, name, on or off, item count), each audio item's `Audio*`
+properties (volume, Voice Isolation, Dialogue Leveler, as the item reports
+them) and its source's audio mapping, the Deliver page's format, codec and
+render mode, the audio codec, sample rate and bit depth of the render jobs
+queued for that timeline, and the project's loudness-meter settings. `-o`
+writes the JSON (refused inside any git tree). The report ends with what the
+API cannot read: the mixer, clip and track EQ, Dynamics and effects, the AI
+Music Remixer, the Deliver page's Audio tab and render range (written by
+`SetRenderSettings`, never read back), and loudness itself. `deliver-check
+--audio-state FILE`, and the `deliver_check` tool's `audio_state`, add rows
+`job_audio_codec`, `job_audio_sample_rate` and `job_audio_bit_depth` that
+compare the queued jobs with the destination (SKIP when no job reports a
+field).
+
+`queue_render` puts the Deliver page back through `rpresolve.renderguard`: the
+format and codec, the render mode and the timeline's mark In and Out are read
+before, set back (also when the queue raises) and read again, and a value that
+did not come back is a warning. Resolve has no `GetRenderSettings`, so
+`AudioSampleRate` and the `SelectAllFrames` render range cannot be read or put
+back; the result's `render_guard.hand_reset` and the summary name them. The
+guard also restores any touched key when a Resolve does answer
+`GetRenderSettings` with a dict. It never starts a render.
 
 `perceive --targets` also writes `targets.json` for a private reference library;
 see `reference-library.md`.

@@ -467,6 +467,16 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
 
 
+def add_rows(result, rows):
+    """Append extra rows (the queued jobs' audio from audiostate.compare) to a
+    check result and recount it."""
+    result["checks"] += rows
+    c = result["counts"] = {s: sum(1 for r in result["checks"] if r["status"] == s)
+                            for s in (PASS, FAIL, SKIP)}
+    result["status"] = "fail" if c[FAIL] else "pass"
+    return result
+
+
 def _captions(path, name, dest, streams, duration_s=None):
     folder = os.path.dirname(os.path.abspath(path))
     sidecar = deliver.sidecar_path(os.path.join(folder, name))
