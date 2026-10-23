@@ -1,0 +1,1 @@
+lutlab shot-match: match a shot to a reference shot of the same content with an ASC CDL and a held-out-validated 17-point residual LUT, as .cc, .cube and a CIEDE2000 report; pairs that are not the same content are refused.
