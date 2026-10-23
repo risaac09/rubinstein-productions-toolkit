@@ -427,7 +427,9 @@ def queue_render(args, ctx):
                             f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "
                             "job list does not report " +
                             (", ".join(r["unverified"]) or "nothing else") +
-                            "; check the rendered file with deliver_check" + _ui(r))
+                            "; check the rendered file with deliver_check" + _ui(r) +
+                            (f"; {hand}" if (hand := (r.get("render_guard") or {})
+                                             .get("hand_reset")) else ""))
         else:
             r["summary"] = _not_clean(r)
         return r

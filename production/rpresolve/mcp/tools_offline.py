@@ -379,6 +379,10 @@ def deliver_check(args, ctx):
     ctx.check_cancel()
     r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"],
                  folders=deliver.subfolders(config))
+    if args.get("audio_state"):
+        from .. import audiostate
+        dc.add_rows(r, audiostate.compare(
+            audiostate.load(_existing(args["audio_state"], "audio_state")), dest))
     c = r["counts"]
     bad = [x["check"] for x in r["checks"] if x["status"] == dc.FAIL]
     r["summary"] = (f"deliver_check {os.path.basename(path)} as {dest['key']}: "
@@ -710,6 +714,11 @@ def register(registry):
                        "description": "WIDTHxHEIGHT to assert for a destination that renders "
                        "at the timeline's size."},
               "loudness": {"type": "boolean", "default": True,
-                           "description": "Measure loudness (reads the whole file)."}},
+                           "description": "Measure loudness (reads the whole file)."},
+              "audio_state": {"type": "string",
+                              "description": "Absolute path of an audio-state JSON (the "
+                              "audio-state command's -o): also compares the audio codec, "
+                              "sample rate and bit depth the queued Resolve jobs report with "
+                              "the destination. Never connects to Resolve."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
