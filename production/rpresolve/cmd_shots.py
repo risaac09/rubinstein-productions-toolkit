@@ -1,6 +1,6 @@
 """
-shots: the shot list of a source file from ffmpeg scdet, at qc's threshold, as CSV
-or TSV. Offline; the work is rpresolve/shots.py.
+shots: the shot list of a source file from ffmpeg scdet, at qc's threshold, with a second
+pass for dissolves, as CSV or TSV. Offline; the work is rpresolve/shots.py.
 """
 
 import argparse
@@ -8,7 +8,7 @@ import argparse
 from rpresolve import cli
 
 NAME = "shots"
-HELP = "Offline: the shot list of a source file, from ffmpeg scdet"
+HELP = "Offline: the shot list of a source file, from ffmpeg scdet, with dissolves"
 
 
 def add_arguments(p):

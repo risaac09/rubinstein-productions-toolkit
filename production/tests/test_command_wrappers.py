@@ -1,6 +1,7 @@
 """
 The resolve_workflow commands that wrap an rpresolve module with its own CLI
-(interchange, shots, wordsnap, beats, roomtone, dxmetrics, duckplan): each
+(interchange, shots, wordsnap, beats, roomtone, dxmetrics, duckplan, captionlint,
+pacing, transcribe, besttake): each
 shows that module's flags under --help and hands the parsed arguments to its
 run(). The modules' own tests cover the work.
 
@@ -25,12 +26,16 @@ from rpresolve import cli
 WRAPPERS = {
     "interchange": (["m.json", "--format", "edl", "--out", "o.edl"], "--media-root",
                     ("format", "edl")),
-    "shots": (["src.mov", "--out", "o.csv"], "--threshold", ("source", "src.mov")),
+    "shots": (["src.mov", "--out", "o.csv"], "--no-dissolves", ("source", "src.mov")),
     "wordsnap": (["w.json", "src.wav", "--out", "o.json"], "--margin-db", ("source", "src.wav")),
     "beats": (["m.wav", "--out", "b.json"], "--prior-bpm", ("music", "m.wav")),
     "roomtone": (["find", "a.wav"], "{find,bed}", ("action", "find")),
     "dxmetrics": (["lag", "a.wav", "b.wav"], "{measure,compare,lag}", ("action", "lag")),
     "duckplan": (["plan", "d.wav", "--out", "dir"], "{plan,render}", ("action", "plan")),
+    "captionlint": (["c.srt"], "--size", ("captions", "c.srt")),
+    "pacing": (["--words", "w.json"], "--captions", ("words", "w.json")),
+    "transcribe": (["m.mov", "--backend", "fake"], "--backend", ("backend", "fake")),
+    "besttake": (["folder"], "--no-faces", ("source", "folder")),
 }
 
 
