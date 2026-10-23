@@ -44,12 +44,6 @@ See [besttake.md](besttake.md).
 text these read, from mlx-whisper, whisper.cpp or a transcript made elsewhere; see
 [transcribe.md](transcribe.md).
 
-`python3 -m rpresolve.besttake FOLDER` ranks the takes of one answer as a
-proposal: speech share, pauses, noise floor, clipping, loudness, and for
-video the in-camera cuts and the face share, with a one-line reason that only
-quotes the numbers. The formula is one table the user edits; it never picks.
-See [besttake.md](besttake.md).
-
 The review step is a loop between Claude Code and the person whose taste
 decides. It is written up in [media-review-loop.md](media-review-loop.md):
 one decision per message, a lettered sheet or a short excerpt per decision,
