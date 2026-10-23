@@ -1,0 +1,1 @@
+Add production/interview-craft.md: J and L cut offsets, cutaway and cut-back rules, multicam as a hand step, and a specification for a later jl-audit. Each rule is marked as sourced or a house default. (VP-138)
