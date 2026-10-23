@@ -41,7 +41,12 @@ Tools never read `source_path` directly. `cutlist.sources(m)` returns `[{id, pat
 |---|---|
 | `endcheck` | several; rows gain `source` |
 | `trim_review` (TSV and MCP) | several; a version 2 TSV gains a last column, `source` (a version 1 TSV is unchanged) |
-| `trim_review_markers`, `cut`, `pacing`, `reframe_plan`, `interchange` | one; a manifest with more is refused naming the tool |
+| `cut` | several; one 16:9 `[auto]` timeline per clip, each item placed from its own source's media-pool clip. The 9:16 and 1:1 versions are not built for a clip over several sources (named `unreframed`; pass `make_9x16` false for 16:9 only) |
+| `interchange` (EDL, FCPXML, OTIO) | several; one asset per source, events in span order |
+| `pacing` | several; each span reads its own source's words file (`--words` is refused) |
+| `trim_review_markers`, `reframe_plan` | one; a manifest with more is refused naming the tool |
+
+A split edit (`audio_lead`, `audio_tail`) at a change of source is refused by `interchange` and `pacing`: the sound would come from two files. Cut on the picture there.
 
 ## Converting
 
@@ -53,4 +58,4 @@ Writes the same cut as version 2: one source `main`, every span, clip and refram
 
 ## Not yet
 
-Building, reframing, pacing or writing an interchange file from several sources; a different `squeeze` or frame rate per source.
+Reframing from several sources; a different `squeeze` or frame rate per source.
