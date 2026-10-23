@@ -1,0 +1,1 @@
+Add rpresolve.sidecar and production/sidecar-envelope.md: the one JSON sidecar envelope (header builder, validator, card_key moved out of storypacket, source_sha256 read from offload.sh's sums file). (VP-140)

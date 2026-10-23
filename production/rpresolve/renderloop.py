@@ -117,7 +117,7 @@ def check_grade(path, p):
     from . import perceive
     out = os.path.join(os.path.dirname(path), os.path.basename(path) + ".perceive")
     shutil.rmtree(out, ignore_errors=True)
-    d = perceive.perceive(path, out, ref=p["ref"], faces=False)["compare"]["luma_ire_delta"]["p50"]
+    d = perceive.perceive(path, out, ref=p["ref"], faces=False)["cine"]["compare"]["luma_ire_delta"]["p50"]
     return [_row("luma_vs_ref", abs(d) <= p["tol_ire"],
                  f"luma p50 {d:+} IRE against the reference (tolerance {p['tol_ire']})")], \
         {"luma_p50_delta_ire": d}

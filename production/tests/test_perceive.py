@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     import numpy as np
-    from rpresolve import color, measure, perceive
+    from rpresolve import color, measure, perceive, sidecar
 except ImportError:  # numpy missing on this interpreter
     np = None
 
@@ -227,16 +227,21 @@ class TestOnGeneratedFrames(unittest.TestCase):
         pngs = sorted(f + ".png" for f in perceive.LEGEND)
         self.assertEqual(names, sorted(pngs + ["packet.json", "ref"]))
         self.assertEqual(ref_names, pngs)
-        self.assertEqual(packet["source"]["t"], 1.0)
-        self.assertEqual(packet["source"]["file"], os.path.abspath(clip))
-        self.assertAlmostEqual(packet["luma"]["ire"]["p50"], 40.0, delta=1.0)  # 0x66 = 40%
-        self.assertEqual({b["band"]: b["pct"] for b in packet["false_colour"]}["green"], 100.0)
-        self.assertEqual(packet["faces"], "not measured (--no-faces)")
-        self.assertEqual(packet["reference"]["files"]["frame"], "ref/frame.png")
-        self.assertLess(packet["compare"]["display_contrast_stops_delta"], 0)
-        self.assertEqual(packet["generated_by"], "rpresolve.perceive")
-        self.assertEqual(set(packet["legend"]), set(packet["files"]))
-        self.assertNotIn("transfer_note", packet["source"])
+        self.assertEqual(packet["cine"]["source"]["t"], 1.0)
+        self.assertEqual(packet["cine"]["source"]["file"], os.path.abspath(clip))
+        self.assertAlmostEqual(packet["cine"]["luma"]["ire"]["p50"], 40.0, delta=1.0)  # 0x66 = 40%
+        self.assertEqual({b["band"]: b["pct"] for b in packet["cine"]["false_colour"]}["green"], 100.0)
+        self.assertEqual(packet["cine"]["faces"], "not measured (--no-faces)")
+        self.assertEqual(packet["cine"]["reference"]["files"]["frame"], "ref/frame.png")
+        self.assertLess(packet["cine"]["compare"]["display_contrast_stops_delta"], 0)
+        self.assertEqual(packet["generated_by"]["tool"], "rpresolve.perceive")
+        self.assertEqual(sidecar.validate(on_disk), [])
+        self.assertEqual(on_disk["schema"], {"name": "cine.perceive", "version": 2})
+        self.assertEqual(set(on_disk), {"schema", "clip_id", "source", "transfer", "primaries",
+                                        "generated_by", "generated_at", "cine"})
+        self.assertEqual(on_disk["source"]["path"], os.path.abspath(clip))
+        self.assertEqual(set(packet["cine"]["legend"]), set(packet["cine"]["files"]))
+        self.assertNotIn("transfer_note", packet["cine"]["source"])
 
     def test_numbers_agree_with_measure_and_hlg_is_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,17 +255,18 @@ class TestOnGeneratedFrames(unittest.TestCase):
             packet = perceive.perceive(clip, os.path.join(tmp, "a"), faces=False)
             report = measure.measure(clip, samples=1, faces=False)
             flagged = perceive.perceive(hlg, os.path.join(tmp, "b"), faces=False)
-        self.assertEqual(packet["source"]["t"], report["frames"][0]["t"])
+        self.assertEqual(packet["cine"]["source"]["t"], report["frames"][0]["t"])
         for k in ("p1", "p50", "p99"):
-            self.assertEqual(packet["luma"]["ire"][k], report["frames"][0]["luma"][k])
-        self.assertEqual(packet["clipping"], report["frames"][0]["clipping"])
-        self.assertEqual(packet["schema"], {"name": "cine.perceive", "version": 1})
+            self.assertEqual(packet["cine"]["luma"]["ire"][k], report["frames"][0]["luma"][k])
+        self.assertEqual(packet["cine"]["clipping"], report["frames"][0]["clipping"])
+        self.assertEqual(packet["schema"], {"name": "cine.perceive", "version": 2})
+        self.assertEqual(packet["primaries"], {"tag": "untagged", "read_as": "Rec.709"})
         self.assertEqual(packet["transfer"]["tag"], "untagged")
-        self.assertIsNotNone(packet["luma"]["display_contrast_stops"])
-        if flagged["source"]["tags"]["color_transfer"] != "arib-std-b67":
+        self.assertIsNotNone(packet["cine"]["luma"]["display_contrast_stops"])
+        if flagged["cine"]["source"]["tags"]["color_transfer"] != "arib-std-b67":
             self.skipTest("this ffmpeg did not write the transfer tag")
-        self.assertIn("HLG", flagged["source"]["transfer_note"])
-        self.assertIsNone(flagged["luma"]["display_contrast_stops"])
+        self.assertIn("HLG", flagged["cine"]["source"]["transfer_note"])
+        self.assertIsNone(flagged["cine"]["luma"]["display_contrast_stops"])
 
     def test_cli(self):
         import resolve_workflow as rw

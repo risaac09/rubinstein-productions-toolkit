@@ -1,0 +1,1 @@
+packet: one folder per moment bundles a perceive folder, an audio-report folder, the clip's words in the window and a timeline_view filmstrip, with an index.json on the sidecar envelope (schema story.packet version 1). Assembly only; the `packet` subcommand follows once the cmd_ module shape lands.
