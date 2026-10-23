@@ -1220,6 +1220,9 @@ def export_stems(spec, out_dir, mixed, mix_out, mix_dur, stop, skips):
     if not rec["ok"]:
         rec["reason"] = (f"{stop} on the mix chain is not linear, so the stems, which stop before "
                          "it, cannot sum to the mix" if stop else
+                         "the mix clipped at full scale (a gain step, speechnorm's, pushed it past 0 dBFS), "
+                         "so the stems cannot sum to it: lower the gain or target" if
+                         float(np.abs(mix).max()) >= 1.0 - 1e-6 else
                          "the stems do not sum to the mix; something on the mix bus is not linear")
     return rec, files
 
