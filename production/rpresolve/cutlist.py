@@ -430,6 +430,18 @@ def single_source(m, what="this tool"):
     return srcs[0]
 
 
+def check_split_sources(spans, where=""):
+    """CutlistError when a split edit (audio_lead, audio_tail) sits at a change
+    of source: its sound would come from a file the neighbour does not play."""
+    for i, s in enumerate(spans):
+        for key, j in (("audio_lead", i - 1), ("audio_tail", i + 1)):
+            if s.get(key) and 0 <= j < len(spans) and \
+                    spans[j].get("source") != s.get("source"):
+                raise CutlistError(f"{where}span {i + 1}: {key} at a change of source is not "
+                                   "supported; the sound would come from two files. Cut on the "
+                                   "picture there")
+
+
 def load_manifest(path, allow_no_speech=False):
     with open(path, encoding="utf-8") as f:
         m = json.load(f)

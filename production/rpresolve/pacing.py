@@ -21,7 +21,8 @@ This report adds what rhythm does not read: the words.
 Words: Whisper JSON with word timestamps (segments[].words[]), the shape
 wordsnap reads and writes, through cutlist.load_words. With --manifest the
 words are the source's (the manifest's own "words" file unless --words is
-given): a word counts when its middle falls inside a span, and its times
+given; a clip over several sources reads each source's own file, each span
+from its span's source): a word counts when its middle falls inside a span, and its times
 move into record time with the span, spans laid end to end as cut lays
 them, a split edit's sound moved with it. Without a manifest the words are
 the cut's own, from 0 to --duration (default: the last word's end).
@@ -52,14 +53,16 @@ def cut_words(words, spans):
     """(words in record time, cut length in seconds) for a manifest clip's
     spans. A word counts when its middle falls in the span's sound, which a
     split edit moves as interchange does (audio_lead and audio_tail, the
-    neighbour giving way); its edges are clipped to that sound."""
+    neighbour giving way); its edges are clipped to that sound. words is one
+    list, or {source id: list} when the spans name their sources."""
+    cutlist.check_split_sources(spans)
     out, rec = [], 0.0
     for i, s in enumerate(spans):
         lead = s.get("audio_lead", 0) - (spans[i - 1].get("audio_tail", 0) if i else 0)
         tail = s.get("audio_tail", 0) - (spans[i + 1].get("audio_lead", 0)
                                          if i + 1 < len(spans) else 0)
         a, b = float(s["in"]) - lead, float(s["out"]) + tail
-        for w in words:
+        for w in (words[s.get("source")] if isinstance(words, dict) else words):
             if a <= (w["start"] + w["end"]) / 2 < b:
                 out.append({"start": rec - lead + max(w["start"], a) - a,
                             "end": rec - lead + min(w["end"], b) - a, "word": w["word"]})
@@ -147,11 +150,18 @@ def build(words_path=None, manifest_path=None, clip=None, duration=None, caption
         if duration is not None:
             raise PacingError("--duration is the manifest's spans; leave it out")
         m = cutlist.load_manifest(manifest_path, allow_no_speech=True)
-        src = cutlist.single_source(m, "pacing")
-        if not (words_path or src.get("words")):
-            raise PacingError("the manifest names no words file; give --words")
-        words, length = cut_words(cutlist.load_words(words_path or src["words"]),
-                                  _clip(m, clip)["spans"])
+        c = _clip(m, clip)
+        used = {cutlist.source_for(m, s)["id"]: cutlist.source_for(m, s) for s in c["spans"]}
+        if words_path and len(used) > 1:
+            raise PacingError(f"--words is one file and the clip plays from {len(used)} sources; "
+                              "leave it out to read each source's own words")
+        for s in used.values():
+            if not (words_path or s.get("words")):
+                raise PacingError(f"the manifest names no words file for source {s['id']}; "
+                                  "give --words")
+        by_span = {s["id"]: cutlist.load_words(words_path or s["words"]) for s in used.values()}
+        words, length = cut_words({s.get("source"): by_span[cutlist.source_for(m, s)["id"]]
+                                   for s in c["spans"]}, c["spans"])
     elif words_path:
         words = cutlist.load_words(words_path)
         length = duration if duration is not None else max(w["end"] for w in words)

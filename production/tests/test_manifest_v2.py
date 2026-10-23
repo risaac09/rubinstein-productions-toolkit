@@ -236,29 +236,22 @@ class TestTrimReviewV2(unittest.TestCase):
 
 
 class TestInterchangeV2(unittest.TestCase):
-    def test_single_source_v2_matches_v1_and_several_are_refused(self):
+    def test_single_source_v2_matches_v1(self):
         with tempfile.TemporaryDirectory() as d:
             old = v1(d)
             old["source_path"] = "/nonexistent-v2-test/clip.mov"  # not probed
             a, _ = interchange.build(old, "edl")
             b, _ = interchange.build(cutlist.to_v2(old), "edl")
             self.assertEqual(a, b)
-            with self.assertRaisesRegex(cutlist.CutlistError, "interchange reads one source"):
-                interchange.build(two_sources(d), "edl", fps="25")
 
 
 class TestSingleSourceTools(unittest.TestCase):
-    def test_cut_pacing_and_reframe_refuse_several_sources(self):
-        from rpresolve import pacing, reframe, workflows
+    def test_reframe_refuses_several_sources(self):
+        from rpresolve import reframe
         with tempfile.TemporaryDirectory() as d:
             m = two_sources(d)
-            path = os.path.join(d, "m.json")
-            write(path, json.dumps(m))
-            for call, word in ((lambda: workflows.cut_gate(path), "cut"),
-                               (lambda: pacing.build(manifest_path=path), "pacing"),
-                               (lambda: reframe.plan(m, reader=object()), "reframe")):
-                with self.assertRaisesRegex(cutlist.CutlistError, f"{word} reads one source"):
-                    call()
+            with self.assertRaisesRegex(cutlist.CutlistError, "reframe reads one source"):
+                reframe.plan(m, reader=object())
 
     def test_cut_gate_reads_a_single_source_v2(self):
         from rpresolve import workflows

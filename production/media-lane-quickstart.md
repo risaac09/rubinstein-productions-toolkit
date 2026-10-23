@@ -177,6 +177,8 @@ $PY resolve_workflow.py trim-review "$SRC" --words "$E/snapped.json" --out "$E/t
 - `captionlint`: exits 1 on the raw transcript SRT. That is the tool working: Whisper's segments are not caption-shaped, so expect lines over 42 characters.
 - `trim-review`: a TSV of proposals (`silence`, `filler`, `repeat`); nothing is cut. Apply chosen rows to a cut manifest with `trim-apply MANIFEST TSV --out NEW.json --accept 1,3` ([edit-assist.md](edit-assist.md)).
 
+A [version 2 manifest](manifest.md) with several sources goes through `cut` (one 16:9 `[auto]` timeline, each item from its own source's media-pool clip; pass `make_9x16` false), `interchange` (EDL, FCPXML, OTIO: one asset per source) and `pacing` (each span's own source words). Import every source into the project first; `cut` refuses when one is missing.
+
 ## 5. Review loop
 
 Two candidates in, one lettered sheet out. One decision per message: see [media-review-loop.md](media-review-loop.md) for the rules and the answer log.
@@ -203,6 +205,7 @@ $PY -m rpstills absheet "$R"/cand/frame*.png --out "$R/look-01" --seed 7 --title
 | `develop` or `finish` refuses the folder | The output is inside a git tree | Pick `OUT` under `~/media-out/` |
 | `mixbuild`: stems sum-null check fails | A non-linear step is on the mix bus (limiter, dynamic loudnorm), or the mix clipped | Drop the limiter; lower `speechnorm i`; read the reason, which names a clipped mix when that is the cause |
 | `mixbuild`: arnndn model refused | `RPRESOLVE_RNNOISE_MODEL` unset or not an absolute path | Export it to an existing `.rnnn` file |
-| `interchange` or `pacing`: "the manifest has N sources" | These read one source per manifest | Build one manifest per source |
+| `interchange`, `pacing` or `cut`: "audio_lead at a change of source is not supported" | A split edit would take sound from two files | Remove the `audio_lead` or `audio_tail` there |
+| `cut`: "UNREFRAMED ... several sources" | A 9:16 or 1:1 is planned for one source | Pass `make_9x16` false; the 16:9 is built from all sources |
 | `lutlab balance`: `no_neutral` or `no_face` | No white or grey reference below a found face, or no face at all (a chart) | Add `--face` and `--neutral-box`, or `--wb-from SHOT` for a shot in the same light |
 | `lutlab shot-match`: "frames do not show the same content" (exit 2, nothing written) | The two stills are not the same scene, framed alike (rank correlation under 0.8) | Crop both to the same chart or subject |

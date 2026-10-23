@@ -63,8 +63,8 @@ the summary says so.
 
 The output names client media, so it is refused inside any git working tree,
 and refused when --out is the manifest or the source. It is written to a
-temporary file that then replaces --out. Not handled: transitions, speed changes, reframes, captions, markers, more
-than one source. See production/interchange.md.
+temporary file that then replaces --out. Not handled: transitions, speed changes, reframes, captions, markers, split
+edits across a change of source. See production/interchange.md.
 """
 
 import argparse
@@ -205,49 +205,83 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
         if c is None:
             raise InterchangeError(f"no clip named {clip!r} in the manifest "
                                    f"({', '.join(x['name'] for x in clips)})")
+    srcs = cutlist.sources(manifest)
+    ids = {cutlist.source_for(manifest, s)["id"] for s in c["spans"]}
+    used = [s for s in srcs if s["id"] in ids]
+    if media is None:
+        media = {}
+    elif "rate" in media:  # one probe stands for the one source
+        if len(used) != 1:
+            raise InterchangeError(f"media is one probe and the clip plays from {len(used)} sources")
+        media = {used[0]["id"]: media}
+    probes = {s["id"]: media.get(s["id"]) for s in used}
+    rates = [m["rate"] for m in probes.values() if m and m["rate"]]
     if fps is not None:
         rate = parse_rate(fps)
     elif manifest.get("fps"):
         rate = parse_rate(manifest["fps"])
-    elif media and media["rate"]:
-        rate = media["rate"]
+    elif rates:
+        rate = rates[0]
     else:
         raise InterchangeError("the manifest names no fps and the source was not probed; pass --fps")
-    if media and media["rate"]:
-        if abs(media["rate"] - rate) > RATE_TOLERANCE:
-            raise InterchangeError(f"the source runs at {fmt_rate(media['rate'])} fps but the "
+    for s in used:
+        m = probes[s["id"]]
+        if m and m["rate"] and abs(m["rate"] - rate) > RATE_TOLERANCE:
+            raise InterchangeError(f"the source {os.path.basename(s['path'])} runs at "
+                                   f"{fmt_rate(m['rate'])} fps but the "
                                    f"timeline would run at {fmt_rate(rate)}; these files carry "
                                    "one rate (pass --fps to match the source)")
-        rate = media["rate"]
+    if rates:
+        rate = rates[0]
     # cut counts span frames at the manifest's own number (29.97, not 30000/1001); match it
     fr = manifest.get("fps")
     fr = fr if type(fr) in (int, float) and abs(fr - rate) < NTSC_TOLERANCE else rate
 
-    path = cutlist.single_source(manifest, "interchange")["path"]
-    name = os.path.basename(path)
-    warnings, probed = [], media is not None
-    if not probed:
-        media = {"rate": None, "tc": None, "frames": None, "size": DEFAULT_SIZE,
+    warnings, by_id, reels = [], {}, set()
+    for s in used:
+        path, m = s["path"], probes[s["id"]]
+        name = os.path.basename(path)
+        probed = m is not None
+        if not probed:
+            m = {"rate": None, "tc": None, "frames": None, "size": DEFAULT_SIZE,
                  "audio": dict(DEFAULT_AUDIO)}
-        warnings.append(f"{name} is not on this machine, so it was not probed: its timecode is "
-                        f"taken as 00:00:00:00, its size as {DEFAULT_SIZE[0]}x{DEFAULT_SIZE[1]} "
-                        "and its sound as one stereo stream. Check source times against the "
-                        "camera's timecode before trusting a conform")
-    tc = media["tc"]
-    if tc and ";" in tc and rate not in captions.DROP_FRAME:
-        raise InterchangeError(f"{name}: its timecode {tc} is drop-frame at {fmt_rate(rate)} fps; "
-                               "drop-frame is counted only at 29.97 and 59.94, so this source "
-                               "is not supported (119.88 fps camera files write such timecode)")
-    drop = rate in captions.DROP_FRAME and (tc is None or ";" in tc)
-    start = tc_frames(tc, rate) if tc else 0
+            warnings.append(f"{name} is not on this machine, so it was not probed: its timecode is "
+                            f"taken as 00:00:00:00, its size as {DEFAULT_SIZE[0]}x{DEFAULT_SIZE[1]} "
+                            "and its sound as one stereo stream. Check source times against the "
+                            "camera's timecode before trusting a conform")
+        tc = m["tc"]
+        if tc and ";" in tc and rate not in captions.DROP_FRAME:
+            raise InterchangeError(f"{name}: its timecode {tc} is drop-frame at {fmt_rate(rate)} fps; "
+                                   "drop-frame is counted only at 29.97 and 59.94, so this source "
+                                   "is not supported (119.88 fps camera files write such timecode)")
+        if media_root:
+            if not media_root.startswith("/"):
+                raise InterchangeError(f"--media-root {media_root} is not absolute; a file URL needs "
+                                       "a path from /")
+            url_path = posixpath.join(media_root, name)
+        else:
+            url_path = os.path.abspath(path)
+        rl = base = reel(name)
+        n = 0
+        while rl in reels:  # two files may share their first eight characters
+            n += 1
+            rl = base[:8 - len(str(n))] + str(n)
+        reels.add(rl)
+        by_id[s["id"]] = {"id": s["id"], "path": path, "name": name, "reel": rl,
+                          "url": "file://" + quote(url_path), "tc": tc,
+                          "drop": rate in captions.DROP_FRAME and (tc is None or ";" in tc),
+                          "start": tc_frames(tc, rate) if tc else 0, "frames": m["frames"],
+                          "size": m["size"] or DEFAULT_SIZE, "audio": m["audio"],
+                          "probed": probed}
+    first = next(iter(by_id.values()))
+    drop = first["drop"]
+    if any(s["drop"] != drop for s in by_id.values()):
+        raise InterchangeError("the sources mix drop-frame and non-drop-frame timecode; one "
+                               "timeline counts one way")
+    if len({tuple(s["size"]) for s in by_id.values()}) > 1:
+        warnings.append("the sources differ in picture size; the timeline takes "
+                        f"{first['size'][0]}x{first['size'][1]} from {first['name']}")
     record_start = tc_frames(RECORD_START[:-3] + (";" if drop else ":") + RECORD_START[-2:], rate)
-    if media_root:
-        if not media_root.startswith("/"):
-            raise InterchangeError(f"--media-root {media_root} is not absolute; a file URL needs "
-                                   "a path from /")
-        url_path = posixpath.join(media_root, name)
-    else:
-        url_path = os.path.abspath(path)
 
     events = []
     for i, s in enumerate(c["spans"], 1):
@@ -259,15 +293,17 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
         if v_out <= v_in:
             raise InterchangeError(f"{where}: {s['in']}-{s['out']} s holds no whole frame at "
                                    f"{fmt_rate(rate)} fps")
-        events.append({"v_in": v_in, "v_out": v_out,
+        events.append({"src": cutlist.source_for(manifest, s)["id"], "v_in": v_in, "v_out": v_out,
                        "lead": _split_frames(s, "audio_lead", fr, where),
                        "tail": _split_frames(s, "audio_tail", fr, where)})
     n = len(events)
-    if (any(e["lead"] or e["tail"] for e in events)) and not media["audio"]:
-        raise InterchangeError(f"{c['name']}: a split edit needs sound and {name} has none")
+    cutlist.check_split_sources(c["spans"], f"{c['name']} ")
     rec = 0
     for k, e in enumerate(events):
         where = f"{c['name']} span {k + 1}"
+        src = by_id[e["src"]]
+        if (e["lead"] or e["tail"]) and not src["audio"]:
+            raise InterchangeError(f"{c['name']}: a split edit needs sound and {src['name']} has none")
         if e["lead"] and k == 0:
             raise InterchangeError(f"{where}: audio_lead (a J cut) needs a span before it")
         if e["tail"] and k == n - 1:
@@ -286,18 +322,16 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
         if e["a_out"] <= e["a_in"]:
             raise InterchangeError(f"{where}: the split edits around it leave it no sound")
         if min(e["v_in"], e["a_in"]) < 0:
-            raise InterchangeError(f"{where} starts before the first frame of {name}")
-        if media["frames"] and max(e["v_out"], e["a_out"]) > media["frames"]:
-            raise InterchangeError(f"{where} runs past the end of {name} "
-                                   f"({media['frames']} frames)")
-
-    frames = media["frames"] or max(max(e["v_out"], e["a_out"]) for e in events)
-    source = {"path": path, "name": name, "reel": reel(name), "url": "file://" + quote(url_path),
-              "tc": tc, "start": start, "frames": frames, "size": media["size"] or DEFAULT_SIZE,
-              "audio": media["audio"], "probed": probed}
+            raise InterchangeError(f"{where} starts before the first frame of {src['name']}")
+        if src["frames"] and max(e["v_out"], e["a_out"]) > src["frames"]:
+            raise InterchangeError(f"{where} runs past the end of {src['name']} "
+                                   f"({src['frames']} frames)")
+    for sid, src in by_id.items():
+        src["frames"] = src["frames"] or max(max(e["v_out"], e["a_out"])
+                                            for e in events if e["src"] == sid)
     return {"title": _one_line(title or c["name"]), "clip": c["name"], "rate": rate, "drop": drop,
-            "record_start": record_start, "source": source, "events": events, "frames": rec,
-            "warnings": warnings}
+            "record_start": record_start, "source": first, "sources": by_id, "events": events,
+            "frames": rec, "warnings": warnings}
 
 
 # ---------------------------------------------------------------------------
@@ -306,19 +340,23 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
 
 def edl(tl):
     """CMX 3600 text."""
-    rate, drop, src = tl["rate"], tl["drop"], tl["source"]
-    s0, r0 = src["start"], tl["record_start"]
+    rate, drop = tl["rate"], tl["drop"]
+    r0 = tl["record_start"]
     rows = []
     for e in tl["events"]:
-        rows.append((e["rec_in"], 0, "V", e["v_in"], e["v_out"], e["rec_in"], e["rec_out"]))
-        if src["audio"]:
-            rows.append((e["a_rec_in"], 1, "AA", e["a_in"], e["a_out"], e["a_rec_in"], e["a_rec_out"]))
+        sid = e["src"]
+        rows.append((e["rec_in"], 0, "V", e["v_in"], e["v_out"], e["rec_in"], e["rec_out"], sid))
+        if tl["sources"][sid]["audio"]:
+            rows.append((e["a_rec_in"], 1, "AA", e["a_in"], e["a_out"], e["a_rec_in"],
+                         e["a_rec_out"], sid))
     if len(rows) > EDL_MAX_EVENTS:
         raise InterchangeError(f"this cut needs {len(rows)} EDL events and CMX 3600 holds "
                                f"{EDL_MAX_EVENTS}; write fcpxml or otio")
     rows.sort()
     out = [f"TITLE: {tl['title']}", "FCM: " + ("DROP FRAME" if drop else "NON-DROP FRAME"), ""]
-    for n, (_, _, ch, a, b, ra, rb) in enumerate(rows, 1):
+    for n, (_, _, ch, a, b, ra, rb, sid) in enumerate(rows, 1):
+        src = tl["sources"][sid]
+        s0 = src["start"]
         tcs = " ".join(timecode(f, rate, drop) for f in (s0 + a, s0 + b, r0 + ra, r0 + rb))
         out.append(f"{n:03d}  {src['reel']:<8} {ch:<5} C        {tcs}")
         out.append(f"* FROM CLIP NAME: {_one_line(src['name'])}")
@@ -328,7 +366,7 @@ def edl(tl):
 def fcpxml(tl):
     """FCPXML 1.10 text."""
     rate, src = tl["rate"], tl["source"]
-    s0, r0 = src["start"], tl["record_start"]
+    r0 = tl["record_start"]
     t = lambda f: fcp_time(f, rate)
     tc_format = "DF" if tl["drop"] else "NDF"
     root = ET.Element("fcpxml", version=FCPXML_VERSION)
@@ -336,20 +374,27 @@ def fcpxml(tl):
     w, h = src["size"]
     ET.SubElement(res, "format", id="r1", frameDuration=t(1), width=str(w), height=str(h),
                   colorSpace=COLOR_SPACE)
-    asset = {"id": "r2", "name": src["name"], "start": t(s0), "duration": t(src["frames"]),
-             "hasVideo": "1", "format": "r1", "hasAudio": "1" if src["audio"] else "0"}
-    if src["audio"]:
-        asset.update(audioSources=str(src["audio"]["streams"]),
-                     audioChannels=str(src["audio"]["channels"]), audioRate=str(src["audio"]["rate"]))
-    ET.SubElement(ET.SubElement(res, "asset", asset), "media-rep", kind="original-media",
-                  src=src["url"])
+    ref = {}
+    for n, (sid, s) in enumerate(tl["sources"].items(), 2):
+        ref[sid] = f"r{n}"
+        asset = {"id": ref[sid], "name": s["name"], "start": t(s["start"]),
+                 "duration": t(s["frames"]), "hasVideo": "1", "format": "r1",
+                 "hasAudio": "1" if s["audio"] else "0"}
+        if s["audio"]:
+            asset.update(audioSources=str(s["audio"]["streams"]),
+                         audioChannels=str(s["audio"]["channels"]),
+                         audioRate=str(s["audio"]["rate"]))
+        ET.SubElement(ET.SubElement(res, "asset", asset), "media-rep", kind="original-media",
+                      src=s["url"])
     event = ET.SubElement(ET.SubElement(root, "library"), "event", name=tl["title"])
     seq = ET.SubElement(ET.SubElement(event, "project", name=tl["title"]), "sequence", format="r1",
                         duration=t(tl["frames"]), tcStart=t(r0), tcFormat=tc_format,
                         audioLayout="stereo", audioRate="48k")
     spine = ET.SubElement(seq, "spine")
     for e in tl["events"]:
-        clip = {"ref": "r2", "name": src["name"], "offset": t(r0 + e["rec_in"]),
+        s = tl["sources"][e["src"]]
+        s0 = s["start"]
+        clip = {"ref": ref[e["src"]], "name": s["name"], "offset": t(r0 + e["rec_in"]),
                 "start": t(s0 + e["v_in"]), "duration": t(e["v_out"] - e["v_in"]),
                 "tcFormat": tc_format}
         if (e["a_in"], e["a_out"]) != (e["v_in"], e["v_out"]):
@@ -362,8 +407,11 @@ def fcpxml(tl):
 
 def otio(tl):
     """OpenTimelineIO JSON text."""
-    rate, src = float(tl["rate"]), tl["source"]
-    s0 = src["start"]
+    rate = float(tl["rate"])
+    have = [bool(s["audio"]) for s in tl["sources"].values()]
+    if any(have) and not all(have):
+        raise InterchangeError("some sources have sound and some have none; OTIO's audio track "
+                               "would not line up. Write fcpxml or edl")
 
     def rt(f):
         return {"OTIO_SCHEMA": "RationalTime.1", "rate": rate, "value": float(f)}
@@ -371,7 +419,9 @@ def otio(tl):
     def tr(a, d):
         return {"OTIO_SCHEMA": "TimeRange.1", "duration": rt(d), "start_time": rt(a)}
 
-    def clip(a, b):
+    def clip(e, a, b):
+        src = tl["sources"][e["src"]]
+        s0 = src["start"]
         ref = {"OTIO_SCHEMA": "ExternalReference.1", "metadata": {}, "name": src["name"],
                "available_range": tr(s0, src["frames"]), "available_image_bounds": None,
                "target_url": src["url"]}
@@ -384,9 +434,9 @@ def otio(tl):
         return {"OTIO_SCHEMA": "Track.1", "metadata": {}, "name": name, "source_range": None,
                 "effects": [], "markers": [], "enabled": True, "children": children, "kind": kind}
 
-    tracks = [track("V1", "Video", [clip(e["v_in"], e["v_out"]) for e in tl["events"]])]
-    if src["audio"]:
-        tracks.append(track("A1", "Audio", [clip(e["a_in"], e["a_out"]) for e in tl["events"]]))
+    tracks = [track("V1", "Video", [clip(e, e["v_in"], e["v_out"]) for e in tl["events"]])]
+    if all(have):
+        tracks.append(track("A1", "Audio", [clip(e, e["a_in"], e["a_out"]) for e in tl["events"]]))
     doc = {"OTIO_SCHEMA": "Timeline.1", "metadata": {}, "name": tl["title"],
            "global_start_time": rt(tl["record_start"]),
            "tracks": {"OTIO_SCHEMA": "Stack.1", "metadata": {}, "name": "tracks",
@@ -407,8 +457,8 @@ def build(manifest, fmt, clip=None, fps=None, media_root=None, title=None):
     probed when it is on this machine."""
     if fmt not in WRITERS:
         raise InterchangeError(f"format {fmt!r} is not one of {', '.join(FORMATS)}")
-    path = cutlist.single_source(manifest, "interchange")["path"]
-    media = probe(path) if os.path.isfile(path) else None
+    media = {s["id"]: probe(s["path"]) if os.path.isfile(s["path"]) else None
+             for s in cutlist.sources(manifest)}
     tl = timeline(manifest, clip=clip, fps=fps, media=media, media_root=media_root, title=title)
     return WRITERS[fmt](tl), report(tl, fmt)
 
@@ -419,6 +469,7 @@ def report(tl, fmt):
     return {"format": fmt, "clip": tl["clip"], "title": tl["title"], "fps": fmt_rate(rate),
             "drop_frame": tl["drop"], "record_start": timecode(tl["record_start"], rate, tl["drop"]),
             "source": src["name"], "url": src["url"], "probed": src["probed"],
+            "sources": [s["name"] for s in tl["sources"].values()],
             "source_tc": timecode(src["start"], rate, tl["drop"]), "size": list(src["size"]),
             "audio": src["audio"], "spans": len(tl["events"]), "frames": tl["frames"],
             "seconds": round(float(tl["frames"] / rate), 3),
@@ -451,8 +502,8 @@ def run(args):
         if problem:
             raise paths.OutputRefused(problem)
         manifest = cutlist.load_manifest(args.manifest, allow_no_speech=True)
-        one = cutlist.single_source(manifest, "interchange")
-        for label, p in (("manifest", args.manifest), ("source", one["path"])):
+        for label, p in [("manifest", args.manifest)] + [
+                ("source", s["path"]) for s in cutlist.sources(manifest)]:
             if os.path.realpath(args.out) == os.path.realpath(p) or (
                     os.path.exists(args.out) and os.path.exists(p) and os.path.samefile(args.out, p)):
                 raise paths.OutputRefused(f"--out {args.out} is the {label}; write the "
