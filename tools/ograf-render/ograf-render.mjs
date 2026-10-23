@@ -164,7 +164,7 @@ function findChrome(arg) {
 async function launchChrome(bin) {
   const dir = mkdtempSync(join(tmpdir(), "ograf-chrome-"));
   const proc = spawn(bin, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
-    "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu",
+    "--no-first-run", "--disable-dev-shm-usage", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu",
     "--force-color-profile=srgb", ...(process.getuid?.() === 0 || process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
   // Chrome may still be writing to its profile as it dies, so retry; a leftover temp dir must not fail a render.
   const cleanup = () => {
@@ -173,7 +173,7 @@ async function launchChrome(bin) {
   };
   try {
     const portFile = join(dir, "DevToolsActivePort");
-    for (let i = 0; i < 100 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 300 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
     if (!existsSync(portFile)) throw new Fail("Chrome did not open a DevTools port", 3);
     const port = readFileSync(portFile, "utf8").split("\n")[0];
     let page;
