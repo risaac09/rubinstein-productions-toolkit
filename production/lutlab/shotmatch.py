@@ -37,6 +37,7 @@ from scipy.sparse.linalg import splu
 from rpstills.measure import delta_e2000
 
 from . import cube, fit, pairs, spaces
+from .cdl import cdl_apply, cdl_xml, read_cdl  # noqa: F401  one copy of the CDL helpers, in lutlab.cdl
 
 GRID = 17
 LUMA = np.array([0.2126, 0.7152, 0.0722])
@@ -49,13 +50,6 @@ CDL_HI = np.array([4.0] * 3 + [0.4] * 3 + [3.0] * 3 + [3.0])
 
 class Refused(ValueError):
     """The two frames do not show the same content."""
-
-
-def cdl_apply(rgb, c):
-    """ASC CDL: slope, offset, power per channel, then saturation about Rec.709 luma."""
-    x = np.maximum(np.asarray(rgb, float) * c["slope"] + c["offset"], 0) ** c["power"]
-    y = (x @ LUMA)[..., None]
-    return y + c["sat"] * (x - y)
 
 
 def _vec(c):
@@ -179,25 +173,6 @@ def match(src_path, ref_path, space="srgb", min_corr=MIN_CORR):
               "match": {"held-out": fit.stats(de(final(s[test]), r[test])), "all": fit.stats(de(final(s), r))}}
     return {"cdl": cdl, "delta": delta, "residual_strength": k if keep else None, "content_corr": round(corr, 3),
             "aligned": info["aligned"], "pixels": int(len(s)), "errors": errors, "space": space}
-
-
-def cdl_xml(cdl, name):
-    from xml.sax.saxutils import quoteattr
-    f = lambda v: " ".join(f"{x:.6f}" for x in v)
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n<ColorCorrection xmlns="urn:ASC:CDL:v1.01" id=' + quoteattr(name) + '>\n'
-            f'  <SOPNode>\n    <Slope>{f(cdl["slope"])}</Slope>\n    <Offset>{f(cdl["offset"])}</Offset>\n'
-            f'    <Power>{f(cdl["power"])}</Power>\n  </SOPNode>\n  <SATNode>\n    <Saturation>{cdl["sat"]:.6f}</Saturation>\n'
-            '  </SATNode>\n</ColorCorrection>\n')
-
-
-def read_cdl(path):
-    """The CDL dict of a .cc file this module wrote (or any ASC CDL 1.01 ColorCorrection)."""
-    import xml.etree.ElementTree as ET
-    ns = {"c": "urn:ASC:CDL:v1.01"}
-    root = ET.parse(path).getroot()
-    get = lambda tag: root.find(f".//c:{tag}", ns).text.split()
-    return {"slope": np.array(get("Slope"), float), "offset": np.array(get("Offset"), float),
-            "power": np.array(get("Power"), float), "sat": float(get("Saturation")[0])}
 
 
 def report_md(m, name, src, ref):
