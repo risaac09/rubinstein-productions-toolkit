@@ -182,26 +182,27 @@ class AuditMeasureTest(unittest.TestCase):
         r = audit.build([path], {})["files"][0]
         self.assertIn("Vision returned nothing", r["error"])
 
-    def test_an_exif_orientation_other_than_1_is_reported_not_measured(self):
-        # Vision applies the tag and reports the upright size, so a 180-degree tag, or a 90-degree one on a
-        # square file, passes the size check while the masks land on the wrong pixels
-        upright = str(self.tmp / "o1.jpg")
-        save_srgb_jpeg(upright, portrait(), orientation=1)
-        flipped = str(self.tmp / "o3.jpg")
-        save_srgb_jpeg(flipped, portrait()[::-1, ::-1].copy(), orientation=3)
-        square = str(self.tmp / "o6.jpg")
-        save_srgb_jpeg(square, np.rot90(portrait()[100:900], -1).copy(), orientation=6)
+    def test_an_exif_orientation_other_than_1_is_applied_and_the_row_says_so(self):
+        # stored turned the way a camera holds, tagged so a viewer turns it back; Vision reports the upright size
+        up = portrait()
+        stored = {"o1.jpg": (up, 1), "o3.jpg": (up[::-1, ::-1], 3), "o6.jpg": (np.rot90(up, 1), 6),
+                  "o8.jpg": (np.rot90(up, -1), 8), "o2.jpg": (up[:, ::-1], 2)}
+        paths = {}
+        for name, (img, o) in stored.items():
+            paths[name] = str(self.tmp / name)
+            save_srgb_jpeg(paths[name], np.ascontiguousarray(img), orientation=o)
         tif = str(self.tmp / "o3.tif")
-        Image.fromarray((portrait() * 255 + 0.5).astype(np.uint8)).save(tif, tiffinfo={274: 3})
-        sq_face = dict(big_face(), y=0.2 * 1000 / 800, h=0.4)  # the same face on the 800x800 crop
-        doc = audit.build([upright, flipped, square, tif],
-                          {upright: det([big_face()]), flipped: det([big_face()]),
-                           square: det([sq_face], w=800, h=800), tif: det([big_face()])})
+        Image.fromarray((up[::-1, ::-1] * 255 + 0.5).astype(np.uint8)).save(tif, tiffinfo={274: 3})
+        doc = audit.build([*paths.values(), tif], {p: det([big_face()]) for p in [*paths.values(), tif]})
         rows = {r["file"]: r for r in doc["files"]}
-        self.assertNotIn("error", rows["o1.jpg"]); self.assertIn("skin_L", rows["o1.jpg"])
-        for name, o in (("o3.jpg", 3), ("o6.jpg", 6), ("o3.tif", 3)):
-            self.assertIn(f"EXIF orientation {o}", rows[name]["error"])
-            self.assertNotIn("skin_L", rows[name]); self.assertNotIn("bg_peak_L", rows[name])
+        base = rows["o1.jpg"]
+        self.assertNotIn("error", base); self.assertFalse(base["orientation_applied"])
+        for name, o in (("o3.jpg", 3), ("o6.jpg", 6), ("o8.jpg", 8), ("o2.jpg", 2), ("o3.tif", 3)):
+            r = rows[name]
+            self.assertNotIn("error", r, name)
+            self.assertEqual((r["orientation"], r["orientation_applied"], r["width"], r["height"]), (o, True, W, H))
+            for k in ("skin_L", "eye_y", "bg_peak_L", "headroom"):          # the same picture once turned upright
+                self.assertAlmostEqual(r[k], base[k], delta={"skin_L": 0.6, "bg_peak_L": 0.5}.get(k, 0.01), msg=f"{name} {k}")
 
     def test_an_unreadable_file_is_a_row_with_an_error(self):
         path = self.tmp / "bad.jpg"

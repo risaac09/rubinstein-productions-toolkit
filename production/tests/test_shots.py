@@ -18,6 +18,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rpresolve import delivercheck as dc, paths, qc, shots  # noqa: E402
@@ -42,6 +44,7 @@ def make(out, parts, audio=False):
         raise RuntimeError(proc.stderr)
 
 
+@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestShots(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -139,6 +142,103 @@ class TestShots(unittest.TestCase):
         self.assertIn("is the source", err.getvalue())
         with open(self.cut, "rb") as f:
             self.assertEqual(f.read(), before)
+
+
+def stack(plan, seed=0, noise=0.4):
+    """Grey frames (n, 576) from a plan: ("hold", name, n), ("blend", from, to, n) or ("pan", name, n)."""
+    rng = np.random.default_rng(seed)
+    pics = {k: rng.integers(30, 220, shots.GREY_W * shots.GREY_H).astype(float) for k in "ABCD"}
+    out = []
+    for part in plan:
+        if part[0] == "hold":
+            out += [pics[part[1]]] * part[2]
+        elif part[0] == "pan":
+            out += [np.roll(pics[part[1]], 7 * i) for i in range(part[2])]
+        else:  # the blend's first and last frames are the pictures themselves
+            a, b, n = pics[part[1]], pics[part[2]], part[3]
+            out += [(1 - t) * a + t * b for t in np.linspace(0, 1, n)]
+    f = np.array(out)
+    return f + rng.normal(0, noise, f.shape)
+
+
+class TestFindDissolves(unittest.TestCase):
+    def test_lengths_found_with_their_frames(self):
+        for n in (5, 8, 15, 30, 60):
+            f = stack([("hold", "A", 20), ("blend", "A", "B", n), ("hold", "B", 20)])
+            got = shots.find_dissolves(f, 25)
+            self.assertEqual(len(got), 1, n)
+            self.assertAlmostEqual(got[0]["start_frame"], 19, delta=1, msg=n)
+            self.assertAlmostEqual(got[0]["end_frame"], 19 + n - 1, delta=1, msg=n)
+
+    def test_hard_cuts_are_not_dissolves(self):
+        f = stack([("hold", "A", 20), ("hold", "B", 20), ("hold", "C", 20)])
+        self.assertEqual(shots.find_dissolves(f, 25), [])
+
+    def test_a_cut_beside_a_dissolve_is_not_swallowed(self):
+        f = stack([("hold", "A", 20), ("hold", "B", 15), ("blend", "B", "C", 12), ("hold", "C", 20),
+                   ("hold", "D", 20)])
+        got = shots.find_dissolves(f, 25)
+        self.assertEqual(len(got), 1)
+        self.assertAlmostEqual(got[0]["start_frame"], 34, delta=1)
+        self.assertAlmostEqual(got[0]["end_frame"], 45, delta=1)
+
+    def test_motion_is_not_a_dissolve(self):
+        self.assertEqual(shots.find_dissolves(stack([("pan", "A", 60), ("hold", "B", 20)]), 25), [])
+
+    def test_two_dissolves_in_a_row(self):
+        f = stack([("hold", "A", 15), ("blend", "A", "B", 10), ("hold", "B", 15), ("blend", "B", "C", 20),
+                   ("hold", "C", 15)])
+        self.assertEqual(len(shots.find_dissolves(f, 25)), 2)
+
+
+class TestDissolveFootage(unittest.TestCase):
+    """The same through ffmpeg: xfade between two still charts (160x90 at 10 fps)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.files = {}
+        for dur in (0.5, 1.0, 2.0):
+            out = os.path.join(cls._tmp.name, f"x{dur}.mkv")
+            graph = (f"smptebars=s={SIZE}:r={RATE}:d=4,format=yuv420p[a];"
+                     f"pal100bars=s={SIZE}:r={RATE}:d=4,format=yuv420p[b];"
+                     f"[a][b]xfade=transition=fade:duration={dur}:offset=1.5[v]")
+            proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-filter_complex",
+                                   graph, "-map", "[v]", "-c:v", "ffv1", out], stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr)
+            cls.files[dur] = out
+        cls.cut = os.path.join(cls._tmp.name, "cut.mkv")
+        make(cls.cut, PARTS)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_dissolves_of_three_lengths(self):
+        for dur, path in self.files.items():
+            r = shots.build(path)
+            self.assertEqual(len(r["dissolves"]), 1, dur)
+            d = r["dissolves"][0]
+            self.assertAlmostEqual(d["start"], 1.5, delta=0.25, msg=dur)
+            self.assertAlmostEqual(d["end"], 1.5 + dur, delta=0.25, msg=dur)
+            self.assertEqual(r["cuts"], [], dur)  # a cut scdet caught inside it is the dissolve
+            self.assertEqual([s["into"] for s in r["shots"]], ["start", "dissolve"])
+            self.assertIn("1 dissolve(s)", shots.summary(r))
+
+    def test_hard_cuts_stay_cuts(self):
+        r = shots.build(self.cut)
+        self.assertEqual((len(r["cuts"]), r["dissolves"]), (2, []))
+        self.assertEqual([s["into"] for s in r["shots"]], ["start", "cut", "cut"])
+        self.assertEqual(len(shots.build(self.cut, dissolves=False)["cuts"]), 2)
+
+    def test_the_table_names_the_blend(self):
+        r = shots.build(self.files[1.0])
+        rows = shots.table(r).splitlines()
+        self.assertEqual(rows[0], ",".join(shots.COLUMNS))
+        self.assertEqual(rows[2].split(",")[4], "dissolve")
+        self.assertEqual(float(rows[2].split(",")[5]), r["dissolves"][0]["start"])
 
 
 if __name__ == "__main__":

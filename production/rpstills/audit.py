@@ -20,7 +20,8 @@ on its largest face (by box area, not Vision's first face):
               is clipped in every channel. neutral_clip_pct is the share of
               the mask left out as clipped
   clip_pct    share of pixels with any channel at or above CLIP_AT
-  icc         the embedded profile's description, and whether it is sRGB
+  icc         the embedded profile's description, whether it is sRGB, and colour:
+              what was done (sRGB profile, no profile taken as sRGB, or converted)
   aspect      width / height, and with --profile its relative error against
               the profile's aspect in stills-config.json
   eye_y       the eye line (mean of both eye centres) from the top, as a share
@@ -46,12 +47,13 @@ the skin metrics past CHECK, working defaults Isaac may change: a check asks a
 person to look, it is not a verdict. neutral_err past its CHECK value is
 counted on its own summary line, not as a check.
 Output names client files, so it is refused inside any git working tree.
-Images are measured as stored; pass upright files. Vision sees a file with
-its EXIF orientation applied, so a file whose orientation tag is not 1 is
-reported, not measured.
+Every file is read through inputs.read_upright first: an embedded ICC profile
+that is not sRGB (Display P3, Adobe RGB, ProPhoto) is converted to sRGB, a file
+with no profile is taken as sRGB, and the EXIF orientation is applied, so the
+pixels match what Vision sees. Each row says which (colour, orientation,
+orientation_applied).
 """
 
-import io
 import json
 import os
 import sys
@@ -60,7 +62,7 @@ import tempfile
 import cv2
 import numpy as np
 
-from . import measure, skin, vision
+from . import inputs, measure, skin, vision
 
 EXTS = (".jpg", ".jpeg", ".tif", ".tiff")
 CLIP_AT = 252 / 255
@@ -109,30 +111,6 @@ def read_rgb(path):
     return rgb.astype(np.float32) / np.iinfo(a.dtype).max
 
 
-def orientation(path):
-    """The file's EXIF or TIFF orientation tag (1 is upright); 1 when it has
-    none or Pillow cannot read it."""
-    from PIL import Image
-    try:
-        with Image.open(path) as im:
-            return int(im.getexif().get(0x0112) or 1)
-    except (OSError, ValueError, TypeError):
-        return 1
-
-
-def icc_name(path):
-    """The embedded ICC profile's description, or None."""
-    from PIL import Image, ImageCms
-    try:
-        with Image.open(path) as im:
-            icc = im.info.get("icc_profile")
-        if not icc:
-            return None
-        return ImageCms.getProfileDescription(ImageCms.ImageCmsProfile(io.BytesIO(icc))).strip() or "unnamed"
-    except (OSError, ImageCms.PyCMSError):
-        return None
-
-
 def wrap_deg(d):
     return (d + 180.0) % 360.0 - 180.0
 
@@ -174,26 +152,24 @@ def background_peak(rgb, face_px):
     return peak, float(m.mean())
 
 
-def measure_file(path, rgb, det, profile=None):
-    """One row of numbers for an image (float sRGB) and its Vision result."""
+def measure_file(path, rgb, det, profile=None, info=None):
+    """One row of numbers for an upright sRGB image (inputs.read_upright) with
+    its info, and its Vision result."""
     H, W = rgb.shape[:2]
-    name = icc_name(path)
+    info = info or {}
     row = {"file": os.path.basename(path), "width": W, "height": H, "aspect": W / H,
-           "icc": name, "srgb_icc": bool(name and "srgb" in name.lower()),
+           "icc": info.get("icc"), "srgb_icc": bool(info.get("srgb_icc")), "colour": info.get("colour"),
+           "orientation": info.get("orientation", 1), "orientation_applied": bool(info.get("orientation_applied")),
            "clip_pct": float((rgb.max(2) >= CLIP_AT - 1e-6).mean() * 100)}
     if profile is not None:
         want = profile.get("aspect")
         row["aspect_want"] = want[0] / want[1] if want else None
         row["aspect_err"] = W / H / row["aspect_want"] - 1 if want else None
-    o = orientation(path)
-    if o != 1:
-        row["error"] = f"EXIF orientation {o}: Vision applies it, the measure reads pixels as stored; pass upright files"
-        return row
     if not det or det.get("error"):
         row["error"] = (det or {}).get("error") or "Vision returned nothing for this file"
         return row
     if (det.get("width"), det.get("height")) != (W, H):
-        row["error"] = f"Vision saw {det.get('width')}x{det.get('height')}, the file is {W}x{H}; pass upright files"
+        row["error"] = f"Vision saw {det.get('width')}x{det.get('height')}, the upright file is {W}x{H}"
         return row
     row["faces"] = len(det.get("faces") or [])
     if not row["faces"]:
@@ -282,11 +258,11 @@ def build(paths, detections, profile_name=None, profile=None, hero=None):
     rows = []
     for p in paths:
         try:
-            rgb = read_rgb(p)
+            rgb, info = inputs.read_upright(p)
         except ValueError as e:
             rows.append({"file": os.path.basename(p), "error": str(e)})
             continue
-        rows.append(measure_file(p, rgb, detections.get(p), profile))
+        rows.append(measure_file(p, rgb, detections.get(p), profile, info))
     ref = reference(rows, hero and os.path.basename(hero))
     for r in rows:
         if ref and r.get("skin_L") is not None:
@@ -337,7 +313,7 @@ def table(doc):
     lines = [f"{'file':<{width}} " + " ".join(f"{h:>8}" for _, h, _ in cols) + "  sRGB"]
     for r in doc["files"]:
         cells = " ".join(f"{_cell(r.get(k), fmt):>8}" for k, _, fmt in cols)
-        tail = "yes" if r.get("srgb_icc") else (r.get("icc") or "none")
+        tail = "yes" if r.get("srgb_icc") else ("converted" if r.get("icc") else "none")
         lines.append(f"{r['file']:<{width}} {cells}  {tail}" + (f"  [{r['error']}]" if r.get("error") else "")
                      + (f"  check: {', '.join(r['checks'])}" if r.get("checks") else ""))
     for k, h, fmt in cols:
@@ -367,7 +343,10 @@ def summary(doc):
     neutral = [r.get("neutral_err") for r in rows if "error" not in r]
     read = [v for v in neutral if v is not None]
     cast = sum(1 for v in read if v > CHECK["neutral_err"])
-    return (text + f", {no_icc} without an sRGB profile, {errors} not measured; {flagged} flagged"
+    turned = sum(1 for r in rows if r.get("orientation_applied"))
+    converted = sum(1 for r in rows if r.get("icc") and not r.get("srgb_icc"))
+    return (text + f", {no_icc} without an sRGB profile ({converted} converted to sRGB, the rest taken as sRGB), "
+            f"{turned} turned upright by EXIF, {errors} not measured; {flagged} flagged"
             + (f" ({on})" if on else "") + "; checks are working defaults, not verdicts"
             + f"; neutral read on {len(read)}, {cast} over neu.err {CHECK['neutral_err']:g} (a coloured or printed "
               f"garment reads its own colour), {len(neutral) - len(read)} without a neutral")
