@@ -1,0 +1,36 @@
+[
+  {
+    "id": "c-marisol-tran",
+    "name": "Marisol Tran",
+    "email": "marisol@example.com",
+    "org": "Tran Ceramics",
+    "stage": "active",
+    "touches": [
+      {"date": "2026-10-01", "kind": "meeting", "nextAction": "Send kickoff notes", "due": "2026-10-05"},
+      {"date": "2026-10-14", "kind": "email", "nextAction": "Confirm the second delivery date", "due": "2026-10-28"}
+    ],
+    "created": "2026-09-20T14:00:00Z"
+  },
+  {
+    "id": "c-owen-baptiste",
+    "name": "Owen Baptiste",
+    "email": "owen@example.org",
+    "org": null,
+    "stage": "lead",
+    "touches": [
+      {"date": "2026-10-19", "kind": "call", "nextAction": "Send a one-page proposal outline", "due": "2026-10-24"}
+    ],
+    "created": "2026-10-19T16:30:00Z"
+  },
+  {
+    "id": "c-edith-park",
+    "name": "Edith Park",
+    "email": null,
+    "org": "Park Mill Press",
+    "stage": "past",
+    "touches": [
+      {"date": "2026-08-30", "kind": "other", "nextAction": null, "due": null}
+    ],
+    "created": "2026-06-02T10:15:00Z"
+  }
+]

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# validate: check a practice's three ledgers with jq alone.
+# Generalized from stack-data scripts/validate.sh, sections 1 to 5, 2026-10-22.
+#
+# Usage: validate [PRACTICE_ROOT]
+# PRACTICE_ROOT defaults to $CLERKWORK_ROOT, else the directory above bin/. It
+# holds data/{contacts,projects,financials}.json. Enums and required fields
+# come from schemas/ in the root, else from this skeleton's own schemas/.
+# Checks: each ledger parses as an array of objects; required fields; ids
+# match their prefix and are unique; no two contacts share a normalized email;
+# every contactId and projectId resolves; enums hold; dates are ISO; a paid
+# date exists exactly when the status is paid.
+# Exit 0 when clean; exit 1 with one FAIL line per failure.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${1:-${CLERKWORK_ROOT:-$HERE/..}}"
+D="$ROOT/data"
+S="$ROOT/schemas"; [ -d "$S" ] || S="$HERE/../schemas"
+
+bad=0
+for l in contacts projects financials; do
+  if ! jq -e 'type == "array" and all(.[]; type == "object")' "$D/$l.json" >/dev/null 2>&1; then
+    echo "FAIL $l.json: not a JSON array of objects"; bad=1
+  fi
+  if ! jq -e 'type == "object"' "$S/$l.schema.json" >/dev/null 2>&1; then
+    echo "FAIL $l.schema.json: missing or not JSON"; bad=1
+  fi
+done
+[ "$bad" -eq 0 ] || exit 1
+
+out="$(jq -nr \
+  --slurpfile C "$D/contacts.json" --slurpfile P "$D/projects.json" --slurpfile F "$D/financials.json" \
+  --slurpfile CS "$S/contacts.schema.json" --slurpfile PS "$S/projects.schema.json" --slurpfile FS "$S/financials.schema.json" '
+  def isodate: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    and ((try (strptime("%Y-%m-%d") | mktime | strftime("%Y-%m-%d")) catch null) == .);
+  def isots: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+  def isin($list): . as $v | any($list[]; . == $v);
+  def dup: group_by(.) | map(select(length > 1) | .[0]);
+  def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "");
+  def required($file; $sch): .[] | . as $r | ($sch.items.required[] as $k | select($r | has($k) | not) | "\($file) \($r.id // "?"): missing \($k)");
+  def idrule($file; $re): .[] | select((.id // "") | test($re) | not) | "\($file) \(.id // "?"): id must match \($re)";
+  def ids($file): map(.id // empty) | dup[] | "\($file) \(.): duplicate id";
+  def enum($file; $key; $list): .[] | select(has($key)) | select(.[$key] | isin($list) | not) | "\($file) \(.id // "?"): \($key) \(.[$key]) is not one of \($list | join(", "))";
+  def stamp($file): .[] | select(has("created")) | select(.created | isots | not) | "\($file) \(.id // "?"): created is not an ISO UTC timestamp";
+
+  $C[0] as $c | $P[0] as $p | $F[0] as $f |
+  ($c | map(.id // empty)) as $cids | ($p | map(.id // empty)) as $pids |
+  $CS[0].items.properties as $cp | $PS[0].items.properties as $pp | $FS[0].items.properties as $fp |
+
+  ( ($c | required("contacts.json"; $CS[0])),
+    ($c | idrule("contacts.json"; "^c-[a-z0-9-]+$")),
+    ($c | ids("contacts.json")),
+    ($c | map(select((.email // null) != null) | .email | norm) | dup[] | "contacts.json: duplicate email \(.)"),
+    ($c | enum("contacts.json"; "stage"; $cp.stage.enum)),
+    ($c | stamp("contacts.json")),
+    ($c[] | .id as $id | (.touches // [])[] |
+      ( (select(.kind | isin($cp.touches.items.properties.kind.enum) | not) | "contacts.json \($id): touch kind \(.kind) is not one of \($cp.touches.items.properties.kind.enum | join(", "))"),
+        (select(.date | isodate | not) | "contacts.json \($id): touch date \(.date) is not an ISO date"),
+        (select(.due != null and (.due | isodate | not)) | "contacts.json \($id): touch due \(.due) is not an ISO date") )),
+
+    ($p | required("projects.json"; $PS[0])),
+    ($p | idrule("projects.json"; "^p-[a-z0-9-]+$")),
+    ($p | ids("projects.json")),
+    ($p | enum("projects.json"; "status"; $pp.status.enum)),
+    ($p | stamp("projects.json")),
+    ($p[] | select((.contactId // null) | isin($cids) | not) | "projects.json \(.id // "?"): contactId \(.contactId) does not resolve"),
+    ($p[] | select(.contractValue != null and (.contractValue | type) != "number") | "projects.json \(.id // "?"): contractValue is not a number"),
+    ($p[] | .id as $id | (.deliverables // [])[] |
+      ( (select(.status | isin($pp.deliverables.items.properties.status.enum) | not) | "projects.json \($id): deliverable status \(.status) is not one of \($pp.deliverables.items.properties.status.enum | join(", "))"),
+        (select(.due | isodate | not) | "projects.json \($id): deliverable due \(.due) is not an ISO date") )),
+
+    ($f | required("financials.json"; $FS[0])),
+    ($f | idrule("financials.json"; "^f-[a-z0-9-]+$")),
+    ($f | ids("financials.json")),
+    ($f | enum("financials.json"; "kind"; $fp.kind.enum)),
+    ($f | enum("financials.json"; "status"; $fp.status.enum)),
+    ($f | stamp("financials.json")),
+    ($f[] | select(.projectId != null and (.projectId | isin($pids) | not)) | "financials.json \(.id // "?"): projectId \(.projectId) does not resolve"),
+    ($f[] | select(has("amount") and (.amount | type) != "number") | "financials.json \(.id // "?"): amount is not a number"),
+    ($f[] | select(has("issued") and (.issued | isodate | not)) | "financials.json \(.id // "?"): issued \(.issued) is not an ISO date"),
+    ($f[] | select(.due != null and (.due | isodate | not)) | "financials.json \(.id // "?"): due \(.due) is not an ISO date"),
+    ($f[] | select(.paid != null and (.paid | isodate | not)) | "financials.json \(.id // "?"): paid \(.paid) is not an ISO date"),
+    ($f[] | select((.status == "paid") != (.paid != null)) | "financials.json \(.id // "?"): paid date and status paid must go together")
+  )')"
+
+if [ -n "$out" ]; then
+  sed 's/^/FAIL /' <<<"$out"
+  exit 1
+fi
+echo "validate: ok"

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# add-contact: append a contact with a first touch, a next action and its due date.
+# Generalized from stack-data scripts/sd-add-contact, 2026-10-22.
+#
+# Usage: add-contact NAME --next ACTION --due YYYY-MM-DD
+#                    [--email ADDR] [--org ORG] [--stage lead|active|past]
+#                    [--kind email|call|meeting|other] [--id c-SLUG]
+# The id comes from the name unless --id is given. Refuses a duplicate id and
+# a duplicate email (compared lowercase and trimmed). Exit 0 on success,
+# 1 on a refusal or a change the validator rejects.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+
+[ $# -ge 1 ] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+NAME="$1"; shift
+EMAIL=""; ORG=""; STAGE="lead"; KIND="other"; NEXT=""; DUE=""; ID="c-$(slug "$NAME")"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --email) EMAIL="${2:?--email needs a value}"; shift 2 ;;
+    --org) ORG="${2:?--org needs a value}"; shift 2 ;;
+    --stage) STAGE="${2:?--stage needs a value}"; shift 2 ;;
+    --kind) KIND="${2:?--kind needs a value}"; shift 2 ;;
+    --next) NEXT="${2:?--next needs a value}"; shift 2 ;;
+    --due) DUE="${2:?--due needs a value}"; shift 2 ;;
+    --id) ID="${2:?--id needs a value}"; shift 2 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+[ "$ID" != "c-" ] || die "the name gives no id; pass --id c-SLUG"
+[ -n "$NEXT" ] && [ -n "$DUE" ] || die "--next and --due are required: every contact leaves with a next touch"
+
+jq -e --arg id "$ID" 'any(.[]; .id == $id)' "$DATA/contacts.json" >/dev/null \
+  && die "contact $ID already exists (use --id for a second person with the same name)"
+if [ -n "$EMAIL" ]; then
+  jq -e --arg e "$EMAIL" '
+    def norm: ascii_downcase | gsub("^\\s+|\\s+$"; "");
+    any(.[]; .email != null and (.email | norm) == ($e | norm))' "$DATA/contacts.json" >/dev/null \
+    && die "a contact with the email $EMAIL already exists"
+fi
+
+jq --arg id "$ID" --arg name "$NAME" --arg email "$EMAIL" --arg org "$ORG" --arg stage "$STAGE" \
+   --arg kind "$KIND" --arg next "$NEXT" --arg due "$DUE" --arg today "$TODAY" --arg now "$NOW" '
+  . + [{
+    id: $id, name: $name,
+    email: (if $email == "" then null else $email end),
+    org: (if $org == "" then null else $org end),
+    stage: $stage,
+    touches: [{date: $today, kind: $kind, nextAction: $next, due: $due}],
+    created: $now
+  }]' "$DATA/contacts.json" | commit contacts
+echo "added $ID, next: $NEXT (due $DUE)"

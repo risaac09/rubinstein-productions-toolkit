@@ -1,0 +1,38 @@
+[
+  {
+    "id": "f-tran-studio-film-1",
+    "projectId": "p-tran-studio-film",
+    "kind": "invoice",
+    "status": "draft",
+    "amount": 4800,
+    "currency": "USD",
+    "issued": "2026-10-20",
+    "due": "2026-11-19",
+    "paid": null,
+    "created": "2026-10-20T08:00:00Z"
+  },
+  {
+    "id": "f-park-newsletter-redesign-1",
+    "projectId": "p-park-newsletter-redesign",
+    "kind": "invoice",
+    "status": "sent",
+    "amount": 1200,
+    "currency": "USD",
+    "issued": "2026-09-01",
+    "due": "2026-09-15",
+    "paid": null,
+    "created": "2026-09-01T08:00:00Z"
+  },
+  {
+    "id": "f-expense-memory-cards",
+    "projectId": "p-tran-studio-film",
+    "kind": "expense",
+    "status": "paid",
+    "amount": 64.5,
+    "currency": "USD",
+    "issued": "2026-10-05",
+    "due": null,
+    "paid": "2026-10-05",
+    "created": "2026-10-05T18:00:00Z"
+  }
+]
