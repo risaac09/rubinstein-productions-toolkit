@@ -1,0 +1,1 @@
+The media review loop doc now records the review log path (`<project>/review/events.jsonl`) and the private taste profile location as decided on 2026-10-22, instead of giving the path as an example. (#270)
