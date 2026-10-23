@@ -1,7 +1,7 @@
 """
 qc: one FAIL-first QC table for a rendered file: deliver-check's rows (with
 --dest) plus ffmpeg blackdetect, freezedetect, scdet, ebur128, astats and
-silencedetect.
+silencedetect (portrait renders add hook WARN rows that never change the exit).
 Sound rows (VP-121, all thresholds working defaults, see qc.py): lra, phone_proxy,
 and with cut times (a start column in --shots, else the file's own scdet cuts)
 true_peak_per_cut and silence_at_cut; speech_vs_rest with --words; stems_sum with

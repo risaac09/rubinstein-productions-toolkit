@@ -20,6 +20,7 @@ def add_arguments(p):
                    help="A camera's time range in seconds; repeat per camera")
     p.add_argument("--hero", help="Segment label whose skin chroma the others are compared to")
     p.add_argument("--no-faces", action="store_true", help="Skip face and skin measurement")
+    p.add_argument("--delivery", help="A delivery encode of the file: compare its readable shadow to the master's")
     p.add_argument("--json", help="Also write the full report as JSON here")
 
 
@@ -41,7 +42,8 @@ def run(args):
             print(f"ERROR: --hero {args.hero} is not one of the segment labels.", file=sys.stderr)
             return 1
         report = rpmeasure.measure(args.file, samples=args.samples, segments=segments,
-                                   hero=args.hero, faces=not args.no_faces)
+                                   hero=args.hero, faces=not args.no_faces,
+                                   delivery=args.delivery)
     except rpmeasure.MeasureError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
