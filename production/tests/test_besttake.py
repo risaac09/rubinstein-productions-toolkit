@@ -20,7 +20,10 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np  # noqa: E402
+except ImportError:   # the stdlib-only job: besttake needs numpy like dxmetrics
+    raise unittest.SkipTest("needs numpy")
 
 from rpresolve import besttake as bt, delivercheck as dc, vision  # noqa: E402
 
