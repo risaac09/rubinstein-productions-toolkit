@@ -446,6 +446,7 @@ class TestRefusals(unittest.TestCase):
         self.assertIn("(assumed)", ic.summary(ic.report(tl, "edl")))
 
 
+@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestProbedSource(unittest.TestCase):
     """Real files from lavfi: the camera's timecode reaches every format."""
 
