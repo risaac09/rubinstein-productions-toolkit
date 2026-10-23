@@ -174,6 +174,10 @@ class TestManifest(unittest.TestCase):
             with open(other, "w", encoding="utf-8") as f:
                 json.dump({"segments": []}, f)
             self.assertTrue(tr.is_manifest(m))
+            v2 = os.path.join(d, "m2.json")
+            with open(v2, "w", encoding="utf-8") as f:
+                json.dump({"version": 2, "clips": [], "sources": []}, f)
+            self.assertTrue(tr.is_manifest(v2))
             self.assertFalse(tr.is_manifest(other))
             self.assertFalse(tr.is_manifest(os.path.join(d, "a.wav")))
 

@@ -1,7 +1,7 @@
 """
 The resolve_workflow commands that wrap an rpresolve module with its own CLI
 (interchange, shots, wordsnap, beats, roomtone, dxmetrics, duckplan, captionlint,
-pacing, transcribe, besttake): each
+pacing, transcribe, besttake, trim-apply): each
 shows that module's flags under --help and hands the parsed arguments to its
 run(). The modules' own tests cover the work.
 
@@ -36,6 +36,8 @@ WRAPPERS = {
     "pacing": (["--words", "w.json"], "--captions", ("words", "w.json")),
     "transcribe": (["m.mov", "--backend", "fake"], "--backend", ("backend", "fake")),
     "besttake": (["folder"], "--no-faces", ("source", "folder")),
+    "trim-apply": (["m.json", "r.tsv", "--out", "o.json", "--accept", "1"], "--accepted-file",
+                   ("review", "r.tsv")),
 }
 
 
@@ -53,7 +55,7 @@ def run_main(*argv):
 def module(name, test):
     """rpresolve.<name>, or skip the test where numpy is missing."""
     try:
-        return importlib.import_module("rpresolve." + name)
+        return importlib.import_module("rpresolve." + name.replace("-", ""))
     except ModuleNotFoundError as e:
         if e.name != "numpy":
             raise
