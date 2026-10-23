@@ -1,0 +1,1 @@
+audio-report's click detector now also requires a click to stand four times above its loudest neighbour within 3 ms, so consonant and glottal onsets in ordinary speech stop reading as clicks while planted impulses and steps are still found within 2 ms (VP-120b).

@@ -25,7 +25,10 @@ The numbers:
                   encode smears flat tops, so there true peak speaks instead
     clicks        times of isolated discontinuities: a sample whose second
                   difference is CLICK_SIGMA times its 100 ms block's robust
-                  sigma and at least CLICK_FLOOR, grouped within CLICK_GAP_S
+                  sigma and at least CLICK_FLOOR, and at least CLICK_ISOLATION
+                  times the loudest second difference within CLICK_NEIGHBOUR_S
+                  (so a speech onset, which builds over milliseconds, is not
+                  one), grouped within CLICK_GAP_S
     silences      runs of 100 ms windows whose loudest channel is under
                   silence_db for at least silence_min_s
     dropouts      the same for digital silence (under -120 dBFS) that
@@ -41,10 +44,25 @@ The numbers:
     octave_bands_db
                   each octave's share of the energy, 31.5 Hz to 16 kHz, in
                   dB; independent of level, so two files compare directly
+    wind          spans where the 20-400 Hz band stands WIND_RISE_DB over the
+                  file's own 75th-percentile level for that band, broadband
+                  (not a hum line) and most of the window's energy
+    hum           spans of 1 s reads where a 50 or 60 Hz comb shows: at least
+                  HUM_LINES of its first 4 harmonics stand hum_line_db over
+                  the spectrum 4 to 12 Hz either side; mains_hz says which
+    music         spans where at least music_partials steady spectral peaks
+                  (250 Hz to 5 kHz, 12 dB over their neighbours, held through
+                  1 s) persist; the start is dated back to the first
+                  window of the peaks, so an onset reads within about 0.3 s
+    stereo_spans  per 100 ms window correlation and channel levels, as spans
+                  of dual mono, out of phase and a dead channel that last
+                  stereo_min_s; a fold to mono part-way through shows here
+                  although the whole-file correlation does not
     flags         what needs an ear, each with its metric, value, threshold
                   and the first times it happens: clipping, true peak over
-                  the ceiling, clicks, dropouts, DC offset, a dead channel,
-                  dual mono, channels out of phase, loudness off target.
+                  the ceiling, clicks, wind, hum, music, dropouts, DC offset,
+                  a dead channel, dual mono, channels out of phase, loudness
+                  off target.
                   Every threshold is a working default, not a standard; with
                   --dest the target and ceiling are the house's choices
     reference     with a reference file: its numbers, and this file minus
@@ -76,11 +94,26 @@ CLICK_SIGMA = 12.0
 CLICK_FLOOR = 0.02           # about -34 dBFS: a quieter step, or a tone cut at a zero
                              # crossing, is not reported
 CLICK_GAP_S = 0.002
+CLICK_ISOLATION = 4.0        # a click stands this many times above its loudest neighbour
+CLICK_NEIGHBOUR_S = 0.003    # neighbours are 2 samples to this far either side
 DIGITAL_SILENCE_DB = -120.0
 OCTAVES_HZ = (31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 DEFAULTS = {"silence_db": -50.0, "silence_min_s": 0.5, "dc_max": 0.01, "clip_runs_min": 3,
             "true_peak_max_dbtp": -1.0, "tolerance_lu": 0.5, "dead_gap_db": 30.0,
-            "dual_mono_corr": 0.999, "phase_corr": -0.3}
+            "dual_mono_corr": 0.999, "phase_corr": -0.3,
+            "wind_rise_db": 12.0, "wind_min_s": 0.5, "hum_line_db": 10.0, "hum_min_s": 3.0,
+            "music_partials": 4, "music_min_s": 2.0, "stereo_min_s": 2.0}
+WIND_BAND_HZ = (20.0, 400.0)
+WIND_SHARE = 0.6             # of the window's energy above 20 Hz, in the wind band
+WIND_TONAL = 0.6             # top 3 bins' share of the band: more than this is a hum, not wind
+HUM_SEG_S = 1.0              # one read per second gives 1 Hz bins
+HUM_HARMONICS = 4
+HUM_LINES = 3                # of the first 4 harmonics must show, so a steady voice at 120 Hz does not
+MAINS_HZ = (50.0, 60.0)
+MUSIC_BAND_HZ = (250.0, 5000.0)
+MUSIC_PEAK_DB = 12.0
+MUSIC_SPAN = 10              # windows a note must be held through
+STEREO_LIVE_DB = -60.0       # a window quieter than this on both channels says nothing about stereo
 FLAG_TIMES = 10              # times listed per flag, at least FLAG_GAP_S apart
 FLAG_GAP_S = 0.5
 PLOT_W, PLOT_H = 1600, 480
@@ -209,6 +242,13 @@ class _Stats:
         self.power = np.zeros(self.win // 2 + 1)
         self.frames = 0
         self.hann = np.hanning(self.win)
+        self.freqs = np.fft.rfftfreq(self.win, 1.0 / rate)
+        self.wind = []          # per full window: (band dB, share, tonal share)
+        self.pk_tail = np.zeros((MUSIC_SPAN - 1, 0))
+        self.partials = []      # per full window: steady peaks
+        self.hum = []           # per second read: (time, mains Hz or 0, strongest line dB)
+        self.pair = []          # per full window: (correlation, ch1 dB, ch2 dB)
+        self.hum_hann = np.hanning(int(round(rate * HUM_SEG_S)))
 
     def add(self, x):
         t_block = self.t0 + self.n / self.rate
@@ -229,6 +269,10 @@ class _Stats:
             self.power += (np.abs(spec) ** 2).sum(axis=0)
             self.frames += len(w)
             self._clicks(x[:full], t_block)
+            self._spectral(np.abs(spec) ** 2)
+            if self.ch >= 2:
+                self._pair(w)
+            self._hum(x[:full], t_block)
         if len(x) > full:  # the last part-window at the end of the stream
             self.window_db.append(_db(float(np.sqrt((x[full:].astype(np.float64) ** 2)
                                                     .mean(axis=0)).max())))
@@ -268,14 +312,155 @@ class _Stats:
         near = flat.copy()
         near[1:] |= flat[:-1]
         near[:-1] |= flat[1:]
-        hit = ((dev > np.maximum(CLICK_SIGMA * sigma, CLICK_FLOOR))
-               & ~near.reshape(w.shape)).any(axis=2).ravel()
+        cand = ((dev > np.maximum(CLICK_SIGMA * sigma, CLICK_FLOOR))
+                & ~near.reshape(w.shape)).reshape(-1, self.ch)
+        # Speech onsets (plosives, fricatives) pass the sigma test but build over
+        # milliseconds, so a louder sample sits close by; a click does not.
+        # shortcut: two clicks within CLICK_NEIGHBOUR_S hide each other, and the look-around
+        # stops at a read's edges; lower CLICK_ISOLATION or read whole if that matters.
+        reach = max(2, int(round(CLICK_NEIGHBOUR_S * self.rate)))
+        hit = np.zeros(len(x), bool)
+        calm = np.where(near, 0.0, np.abs(e))  # clip corners are counted as clips already
+        for i, c in np.argwhere(cand):
+            a = calm[:, c]
+            around = max(a[max(0, i - reach):max(0, i - 1)].max(initial=0.0),
+                         a[i + 2:i + reach + 1].max(initial=0.0))
+            hit[i] |= a[i] >= CLICK_ISOLATION * around
         for i in np.flatnonzero(hit):
             t = t_block + i / self.rate
             if not self.click_at or t - self.click_at[-1] > CLICK_GAP_S:
                 self.click_at.append(round(float(t), 4))
 
-    def result(self, silence_db, silence_min_s):
+    def _spectral(self, p):
+        """Wind band and music peaks, per window, from the windows' power spectra."""
+        f = self.freqs
+        band = p[:, (f >= WIND_BAND_HZ[0]) & (f <= WIND_BAND_HZ[1])]
+        low = band.sum(axis=1)
+        total = p[:, f >= WIND_BAND_HZ[0]].sum(axis=1)
+        top3 = np.partition(band, -3, axis=1)[:, -3:].sum(axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            share, tonal = low / total, top3 / low
+        db = 10 * np.log10(np.maximum(low, 1e-30))
+        self.wind += list(zip(db, np.nan_to_num(share), np.nan_to_num(tonal, nan=1.0)))
+        # shortcut: a drifting pitch (vibrato, a glide) breaks a bin's hold and is missed, and a
+        # strong mains comb above 250 Hz reads as peaks; flags() says so when both show.
+        # steady peaks: a bin's power held through MUSIC_SPAN windows is its minimum over them
+        # (speech and noise move, a note does not); peaks of that minimum, 12 dB over the
+        # median 4 to 10 bins either side, are counted.
+        lo, hi = (int(np.searchsorted(f, v)) for v in MUSIC_BAND_HZ)
+        lo, hi = max(lo, 10), min(hi, p.shape[1] - 10)
+        if hi <= lo:
+            self.partials += [0] * len(p)
+            return
+        ext = p[:, lo - 10:hi + 10]
+        if self.pk_tail.shape[1] != ext.shape[1]:
+            self.pk_tail = np.zeros((MUSIC_SPAN - 1, ext.shape[1]))
+        rows = np.concatenate([self.pk_tail, ext])
+        self.pk_tail = rows[-(MUSIC_SPAN - 1):]
+        m = np.min(np.stack([rows[k:k + len(ext)] for k in range(MUSIC_SPAN)]), axis=0)
+        n = hi - lo
+        c = m[:, 10:10 + n]
+        bg = np.median(np.stack([m[:, 10 + o:10 + n + o] for o in (*range(-10, -3), *range(4, 11))]), axis=0)
+        peak = ((c > bg * 10 ** (MUSIC_PEAK_DB / 10)) & (c > 0)
+                & (c > m[:, 8:8 + n]) & (c > m[:, 9:9 + n]) & (c >= m[:, 11:11 + n]) & (c >= m[:, 12:12 + n]))
+        # the window's own sidelobes sit under a strong line: nothing 20 dB under a peak 8 bins off
+        near = np.max(np.stack([m[:, 10 + o:10 + n + o] for o in (*range(-8, 0), *range(1, 9))]), axis=0)
+        peak &= (near < c * 100) & (c > m.max(axis=1, keepdims=True) * 1e-6)  # not float dust
+        self.partials += peak.sum(axis=1).tolist()
+
+    def _pair(self, w):
+        a, b = w[:, :, 0].astype(np.float64), w[:, :, 1].astype(np.float64)
+        ea, eb, cab = (a * a).sum(axis=1), (b * b).sum(axis=1), (a * b).sum(axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            corr = np.nan_to_num(cab / np.sqrt(ea * eb))
+        db = lambda e: 10 * np.log10(np.maximum(e / self.win, 1e-12))  # noqa: E731
+        self.pair += list(zip(corr, db(ea), db(eb)))
+
+    def _hum(self, x, t_block):
+        """Mains comb in each whole second of the block: lines at k * 50 or 60 Hz
+        against the spectrum 4 to 12 Hz either side. The last part-second is not read."""
+        seg = len(self.hum_hann)
+        n = len(x) // seg
+        if not n:
+            return
+        mono = x[:n * seg].mean(axis=1).reshape(n, seg)
+        p = np.abs(np.fft.rfft(mono * self.hum_hann, axis=1)) ** 2
+        for i in range(n):
+            t = round(t_block + i * seg / self.rate, 3)
+            best = (0.0, 0.0)  # mains Hz, and the dB that its HUM_LINES-th strongest line reaches
+            if np.sqrt((mono[i].astype(np.float64) ** 2).mean()) >= 10 ** (-90 / 20):
+                for hz in MAINS_HZ:
+                    ratios = []
+                    for k in range(1, HUM_HARMONICS + 1):
+                        c = int(round(hz * k))
+                        side = np.concatenate([p[i, c - 12:c - 3], p[i, c + 4:c + 13]])
+                        ratios.append(10 * math.log10(max(p[i, c - 1:c + 2].max(), 1e-30)
+                                                      / max(np.median(side), 1e-30)))
+                    score = sorted(ratios)[-HUM_LINES]
+                    if score > best[1]:
+                        best = (hz, score)
+            self.hum.append((t, *best))
+
+    def _events(self, th):
+        """Spans for wind, hum, music and stereo, with the thresholds in `th`."""
+        def spans(mask, min_s, t0=self.t0, step=WINDOW_S):
+            s, e = _runs(mask)
+            keep = (e - s) * step >= min_s - 1e-9
+            return [[round(t0 + a * step, 2), round(t0 + b * step, 2)]
+                    for a, b in zip(s[keep].tolist(), e[keep].tolist())]
+
+        out = {}
+        live = np.array(self.window_db[:len(self.wind)]) > -90
+        if self.wind:
+            db, share, tonal = np.array(self.wind).T
+            # shortcut: wind over a quarter of the live windows lifts its own baseline and hides;
+            # use a median of a quiet reference clip if that matters.
+            rise = db - np.percentile(db[live], 75) if live.any() else db * 0
+            hit = live & (rise >= th["wind_rise_db"]) & (share >= WIND_SHARE) & (tonal <= WIND_TONAL)
+            out["wind"] = {"spans": spans(hit, th["wind_min_s"]),
+                           "peak_rise_db": round(float(rise[hit].max()), 1) if hit.any() else None}
+        else:
+            out["wind"] = {"spans": [], "peak_rise_db": None}
+        h = np.array(self.hum).reshape(-1, 3)
+        by_hz = {}
+        for hz in MAINS_HZ:
+            hit = (h[:, 1] == hz) & (h[:, 2] >= th["hum_line_db"])
+            s_, e_ = _runs(hit)
+            keep = (e_ - s_) * HUM_SEG_S >= th["hum_min_s"] - 1e-9
+            sp = [[round(h[a, 0], 2), round(h[b - 1, 0] + HUM_SEG_S, 2)]
+                  for a, b in zip(s_[keep].tolist(), e_[keep].tolist())]
+            if sp:
+                by_hz[hz] = (len(sp), sp, float(h[hit, 2].max()))
+        if by_hz:
+            hz = max(by_hz, key=lambda k: sum(b - a for a, b in by_hz[k][1]))
+            out["hum"] = {"mains_hz": int(hz), "spans": by_hz[hz][1],
+                          "peak_line_db": round(by_hz[hz][2], 1)}
+        else:
+            out["hum"] = {"mains_hz": None, "spans": [], "peak_line_db": None}
+        n = np.array(self.partials)
+        hit = n >= th["music_partials"]
+        sp = spans(hit, th["music_min_s"])
+        # a note is only counted once held through MUSIC_SPAN windows, so the onset is earlier
+        sp = [[round(max(self.t0, a - (MUSIC_SPAN - 1) * WINDOW_S), 2), b] for a, b in sp]
+        out["music"] = {"spans": sp, "max_partials": int(n.max(initial=0))}
+        if self.pair:
+            corr, d1, d2 = np.array(self.pair).T
+            ok = np.maximum(d1, d2) > STEREO_LIVE_DB
+
+            def held(match):  # a quiet window neither starts nor ends a span
+                state = np.where(ok, match.astype(int), -1)
+                filled = state[np.maximum.accumulate(np.where(state >= 0, np.arange(len(state)), 0))]
+                return spans(filled == 1, th["stereo_min_s"])
+            out["stereo_spans"] = {
+                "dual_mono": held(corr >= th["dual_mono_corr"]),
+                "phase": held(corr <= th["phase_corr"]),
+                "dead_channel": {"1": held(d1 <= d2 - th["dead_gap_db"]),
+                                 "2": held(d2 <= d1 - th["dead_gap_db"])}}
+        else:
+            out["stereo_spans"] = None
+        return out
+
+    def result(self, silence_db, silence_min_s, th=None):
         n = max(self.n, 1)
         rms = np.sqrt(self.sumsq / n)
         chans = [{"peak_dbfs": _db(self.peak[c]), "rms_dbfs": _db(rms[c]),
@@ -303,7 +488,7 @@ class _Stats:
                 "loud_dbfs": None if loud is None else round(loud, 1),
                 "spread_db": None if floor is None else round(loud - floor, 1),
                 "octave_bands_db": self.octaves(), "window_db": self.window_db,
-                "decoded_s": self.n / self.rate}
+                "decoded_s": self.n / self.rate, **self._events(dict(DEFAULTS, **(th or {})))}
 
     def stereo(self):
         if self.ch < 2 or not self.n:
@@ -327,7 +512,8 @@ class _Stats:
         return out
 
 
-def samples(path, info, stream=0, start=None, end=None, silence_db=-50.0, silence_min_s=0.5):
+def samples(path, info, stream=0, start=None, end=None, silence_db=-50.0, silence_min_s=0.5,
+            th=None):
     """One decode of the stream at its own rate and channels (no resampling,
     which would invent overs), counted block by block."""
     st = _Stats(info["sample_rate"], info["channels"], start or 0.0)
@@ -361,7 +547,7 @@ def samples(path, info, stream=0, start=None, end=None, silence_db=-50.0, silenc
         raise ReportError(f"ffmpeg could not decode {path}: {err.strip()[-300:]}")
     if not st.n:
         raise ReportError(f"no audio decoded from {path} in that range")
-    return st.result(silence_db, silence_min_s)
+    return st.result(silence_db, silence_min_s, th)
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +662,7 @@ def measure(path, stream=0, start=None, end=None, th=None):
     if end is not None and end <= (start or 0.0):
         raise ReportError("--end must come after --start")
     summary, frames = loudness(path, stream, start, end)
-    s = samples(path, info, stream, start, end, th["silence_db"], th["silence_min_s"])
+    s = samples(path, info, stream, start, end, th["silence_db"], th["silence_min_s"], th)
     finite = lambda i: [f[i] for f in frames if f[i] > NO_READING_LUFS]  # noqa: E731
     r = {"file": os.path.abspath(path), "stream": stream, **info,
          "range_s": [start or 0.0, round((start or 0.0) + s["decoded_s"], 3)],
@@ -512,24 +698,55 @@ def flags(r, th):
     if r["clicks"]:
         out.append(_flag("clicks", len(r["clicks"]), CLICK_SIGMA,
                          f"{len(r['clicks'])} isolated discontinuities", r["clicks"]))
+    wind = r.get("wind") or {}
+    if wind.get("spans"):
+        out.append(_flag("wind", wind["peak_rise_db"], th["wind_rise_db"],
+                         f"low-frequency burst: 20-400 Hz up to {wind['peak_rise_db']} dB over "
+                         "the file's usual level, broadband", [a for a, _ in wind["spans"]]))
+    hum = r.get("hum") or {}
+    if hum.get("spans"):
+        out.append(_flag("hum", hum["peak_line_db"], th["hum_line_db"],
+                         f"{hum['mains_hz']} Hz mains hum: a comb of harmonics for "
+                         f"{sum(b - a for a, b in hum['spans']):.0f} s", [a for a, _ in hum["spans"]]))
+    music = r.get("music") or {}
+    if music.get("spans"):
+        out.append(_flag("music", music["max_partials"], th["music_partials"],
+                         "sustained tonal peaks (music or a pad) from "
+                         f"{music['spans'][0][0]:g} s"
+                         + (" (a strong hum's upper harmonics read the same; check the spectrogram)"
+                            if hum.get("spans") else ""), [a for a, _ in music["spans"]]))
     tp = r.get("true_peak_dbtp")
     if tp is not None and tp > th["true_peak_max_dbtp"]:
         out.append(_flag("true_peak", tp, th["true_peak_max_dbtp"],
                          f"true peak {tp} dBTP is over the {th['true_peak_max_dbtp']} dBTP ceiling"))
     levels = [c["rms_dbfs"] for c in r["channels"]]
+    sp = r.get("stereo_spans") or {}
     for i, lv in enumerate(levels, 1):
         if len(levels) > 1 and max(levels) - lv >= th["dead_gap_db"]:
             out.append(_flag("dead_channel", lv, th["dead_gap_db"],
                              f"channel {i} sits {max(levels) - lv:.0f} dB under the loudest"))
+        elif (sp.get("dead_channel") or {}).get(str(i)):
+            span = sp["dead_channel"][str(i)]
+            out.append(_flag("dead_channel", th["dead_gap_db"], th["stereo_min_s"],
+                             f"channel {i} sits {th['dead_gap_db']:.0f} dB or more under the other "
+                             "for part of the range", [a for a, _ in span]))
     st = r.get("stereo") or {}
     corr = st.get("correlation")
     if corr is not None and corr >= th["dual_mono_corr"]:
         out.append(_flag("dual_mono", corr, th["dual_mono_corr"],
                          "channels 1 and 2 carry the same signal (mono in stereo; it reads "
                          "about 3 LU louder than the mono source)"))
-    elif corr is not None and corr <= th["phase_corr"]:
+    elif sp.get("dual_mono"):
+        out.append(_flag("dual_mono", th["dual_mono_corr"], th["stereo_min_s"],
+                         "channels 1 and 2 carry the same signal for part of the range "
+                         "(correlation per 100 ms window)", [a for a, _ in sp["dual_mono"]]))
+    if corr is not None and corr <= th["phase_corr"]:
         out.append(_flag("phase", corr, th["phase_corr"],
                          "channels 1 and 2 are out of phase: a mono fold-down loses level"))
+    elif sp.get("phase"):
+        out.append(_flag("phase", th["phase_corr"], th["stereo_min_s"],
+                         "channels 1 and 2 are out of phase for part of the range "
+                         "(correlation per 100 ms window)", [a for a, _ in sp["phase"]]))
     worst = max((abs(c["dc_offset"]) for c in r["channels"]), default=0)
     if worst > th["dc_max"]:
         out.append(_flag("dc_offset", worst, th["dc_max"], f"DC offset {worst}"))
