@@ -50,7 +50,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cdl as cdlmod, cube, guard, spaces
+from . import cdl as cdlmod, cube, guard, matte, spaces
 
 SOLVE_W = 640                           # frames are solved at this width
 MIRED_REF = 1e6 / 6500
@@ -58,6 +58,7 @@ BOUNDS = {"ev": (-3.0, 3.0), "mired": (-100.0, 100.0), "tint": (-40.0, 40.0)}
 IMAGE_EXTS = (".png", ".tif", ".tiff", ".jpg", ".jpeg")
 VIDEO_MARGIN = 0.10
 TARGET_L = 64.0
+SKIN_WIDTH = 24.0                       # degrees: the narrow skin sector; the full-width slice also took a warm wall
 NO_NEUTRAL = ("no neutral reference in the shot: shoot a grey card, pass --neutral-box, or --wb-from SHOT "
               "(a shot in the same light)")
 
@@ -147,8 +148,8 @@ def read_frames(shot, n):
     from . import verify
     from .pairs import read_image
     p = Path(shot)
-    if p.is_dir():
-        files = sorted(f for f in p.iterdir() if f.suffix.lower() in IMAGE_EXTS)
+    if p.is_dir() or (p.is_file() and p.suffix.lower() in IMAGE_EXTS):
+        files = sorted(f for f in p.iterdir() if f.suffix.lower() in IMAGE_EXTS) if p.is_dir() else [p]
         if not files:
             raise Refused(f"{shot}: no PNG, TIFF or JPEG frames", "unreadable")
         pick = [files[i] for i in sorted({int(round(v)) for v in np.linspace(0, len(files) - 1, min(n, len(files)))})]
@@ -171,6 +172,11 @@ def read_frames(shot, n):
     return out
 
 
+def display(code, space):
+    """float sRGB 0..1 of a frame's camera code values (a flat log frame hides faces from Vision)."""
+    return spaces.srgb_encode(np.clip(_to709(_dec(space)(np.clip(code, 0, 1)), space), 0, 1))
+
+
 def detect_faces(frames, space):
     """Vision's largest face per frame ([face or None]), on each frame as plain sRGB (a flat log frame hides
     faces); Refused when Vision cannot run."""
@@ -181,8 +187,7 @@ def detect_faces(frames, space):
         paths = []
         for i, (_, im) in enumerate(frames):
             paths.append(os.path.join(tmp, f"{i}.png"))
-            disp = spaces.srgb_encode(np.clip(_to709(_dec(space)(np.clip(im, 0, 1)), space), 0, 1))
-            cv2.imwrite(paths[-1], np.round(disp[..., ::-1] * 255).astype(np.uint8))
+            cv2.imwrite(paths[-1], np.round(display(im, space)[..., ::-1] * 255).astype(np.uint8))
         det = vision.faces(paths, landmarks=True)
         if det is None:
             raise Refused("the Vision helper cannot run (it needs macOS and swiftc): pass --face X Y W H", "no_face")
@@ -196,14 +201,17 @@ def _srgb(cam_lin, g, space):
     return spaces.srgb_encode(np.clip(_to709(cam_lin * g, space), 0, 1))
 
 
-def prepare(frames, space, face, neutral_box, faces=detect_faces, need_neutral=True):
-    """Per usable frame {"label", "lin" (camera linear), "face_px", "sample", "mask"} and the labels left out.
-    Refused (no_face / no_neutral) when no frame is usable; mask is None when need_neutral is False."""
+def prepare(frames, space, face, neutral_box, faces=detect_faces, need_neutral=True, matter=None):
+    """Per usable frame {"label", "lin" (camera linear), "face_px", "sample", "mask", "matte"} and the labels left
+    out. Refused (no_face / no_neutral) when no frame is usable; mask is None when need_neutral is False. With a
+    matter (lutlab.matte), the neutral is searched only inside the person's matte (>= 0.5), so a wall or
+    another person's shirt cannot be the reference; a --neutral-box is the caller's word and is left as given."""
     from rpstills import measure, skin
     dets = [face] * len(frames) if face else faces(frames, space)
+    mattes = matter(frames, space, dets) if matter else [None] * len(frames)
     dec, used, left = _dec(space), [], []
-    for (label, code), f in zip(frames, dets):
-        if f is None:
+    for (label, code), f, matte in zip(frames, dets, mattes):
+        if f is None or (matter and matte is None):
             left.append(label)
             continue
         lin = dec(np.clip(code, 0, 1))
@@ -216,13 +224,16 @@ def prepare(frames, space, face, neutral_box, faces=detect_faces, need_neutral=T
                 mask[int(round(neutral_box[1] * H)):int(round(neutral_box[3] * H)),
                      int(round(neutral_box[0] * W)):int(round(neutral_box[2] * W))] = True
             else:  # taken once on the shot as it is; grey-world would take a coloured shirt for grey
-                mask = skin.neutral_mask(_srgb(lin, np.ones(3), space), px)
+                mask = skin.neutral_mask(_srgb(lin, np.ones(3), space), px,
+                                         within=None if matte is None else matte >= 0.5)
             if mask is None or not mask.any():
                 left.append(label)
                 continue
-        used.append({"label": label, "lin": lin, "face_px": px, "mask": mask,
+        used.append({"label": label, "lin": lin, "face_px": px, "mask": mask, "matte": matte,
                      "sample": "cheek" if all((f.get("landmarks") or {}).get(k) for k in ("leftEye", "rightEye", "outerLips")) else "box"})
     if not used:
+        if matter and any(d is not None for d in dets) and all(m is None for m in mattes):
+            raise Refused("the person matte could not be made on any frame: try --matte grabcut or a matte file", "no_matte")
         if need_neutral and any(d is not None for d in dets):
             raise Refused(NO_NEUTRAL, "no_neutral")
         raise Refused("no face in any sampled frame", "no_face")
@@ -268,13 +279,38 @@ def wb_row(row, name, space):
     return {"mired": float(row["mired"]), "tint": float(row["tint"]), "from": name}
 
 
+def skin_sector(used, x, space, width):
+    """{"hue_deg", "width_deg", "chroma_min", "background_share", "person_share"}: the hue slice a Colour Slice
+    or HSL skin sector should take for this shot, centred on the corrected cheek's hue and `width` degrees wide,
+    from chroma_min (half the cheek's) up, and how much of the matte's background and of its person that slice
+    catches (medians over the frames). None without a matte: the background is not known."""
+    from rpstills import measure
+    if any(u["matte"] is None for u in used):
+        return None
+    g, cheek, hues, bg, person = gains(*x), [], [], [], []
+    for u in used:
+        rgb = _srgb(u["lin"], g, space)
+        c = measure.skin_lab(rgb, u["face_px"], u["sample"])
+        cheek.append((c["hue_deg"], c["chroma"]))
+        lab = measure.lab_image(rgb)
+        hues.append((measure.chroma(lab[..., 1], lab[..., 2]), measure.hue_deg(lab[..., 1], lab[..., 2])))
+    hue0, ch0 = (float(v) for v in np.median(cheek, 0))
+    for u, (ch, hue) in zip(used, hues):
+        hit = (np.abs((hue - hue0 + 180) % 360 - 180) <= width / 2) & (ch >= ch0 / 2)
+        bg.append(float(hit[u["matte"] < 0.1].mean()) if (u["matte"] < 0.1).any() else 0.0)
+        person.append(float(hit[u["matte"] >= 0.5].mean()) if (u["matte"] >= 0.5).any() else 0.0)
+    return {"hue_deg": round(hue0, 1), "width_deg": width, "chroma_min": round(ch0 / 2, 1),
+            "background_share": round(float(np.median(bg)), 4), "person_share": round(float(np.median(person)), 4)}
+
+
 def balance_shot(name, frames, space, *, face=None, neutral_box=None, target_lab=None, target_L=TARGET_L,
-                 wb=None, faces=detect_faces):
+                 wb=None, faces=detect_faces, matter=None, matte_name=None, skin_width=SKIN_WIDTH):
     """The row for one shot (frames from read_frames). Raises Refused for a shot that cannot be balanced."""
     from rpstills import develop
     mode = "target" if target_lab is not None else "neutral"
     target = np.array(target_lab if mode == "target" else [target_L, 0.0, 0.0], float)
-    used, left = prepare(frames, space, face, neutral_box, faces, need_neutral=mode == "neutral" and not wb)
+    used, left = prepare(frames, space, face, neutral_box, faces, need_neutral=mode == "neutral" and not wb,
+                         matter=matter)
     at = measurer(used, space)
 
     def vec(skin_lab, neu):
@@ -310,6 +346,8 @@ def balance_shot(name, frames, space, *, face=None, neutral_box=None, target_lab
             "pinned": res["pinned"], "iterations": res["iterations"],
             "frames": {"used": [u["label"] for u in used], "left_out": left},
             "wb_from": wb["from"] if wb else None,
+            "matte": {"source": matte_name, "person_share": round(float(np.median([u["matte"].mean() for u in used])), 3),
+                      "skin_sector": skin_sector(used, x, space, skin_width)} if matter else None,
             "cdl": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in cdl.items()}, "cdl_error": err}
 
 
@@ -393,6 +431,9 @@ def add_arguments(p):
     p.add_argument("--target-lab", nargs=3, type=float, metavar=("L", "A", "B"))
     p.add_argument("--targets", metavar="FILE.json")
     p.add_argument("--target-L", type=float, default=TARGET_L)
+    p.add_argument("--matte", metavar="vision|grabcut|FILE|FOLDER",
+                   help="a person matte (lutlab.matte): the neutral is cut to the person, the row gets a skin sector")
+    p.add_argument("--skin-width", type=float, default=SKIN_WIDTH, help="hue degrees of the skin sector reported with a matte")
     p.add_argument("--hero", metavar="SHOT")
     p.add_argument("--out")
     p.add_argument("--name", default="balance")
@@ -411,6 +452,10 @@ def run(a, ap):
         ap.error("two shots share a name; rename one")
     face = ({"x": a.face[0], "y": a.face[1], "w": a.face[2], "h": a.face[3]} if a.face else None)
     out = guard.out_dir(a.out, a.name)
+    try:
+        matter = matte.matter(a.matte) if a.matte else None
+    except matte.MatteError as e:
+        ap.error(str(e))
     wb_name, wb_file, wb, wb_err = None, None, None, None
     if a.wb_from in names:
         wb_name = a.wb_from
@@ -432,9 +477,12 @@ def run(a, ap):
             if targets and tl is None:
                 raise Refused(f"{a.targets}: no entry for {name} and no default", "no_target")
             rows[name] = balance_shot(name, read_frames(shot, a.frames), space, face=face, neutral_box=a.neutral_box,
-                                      target_lab=tl, target_L=a.target_L, wb=None if wb_file is None and name == wb_name else wb)
+                                      target_lab=tl, target_L=a.target_L, wb=None if wb_file is None and name == wb_name else wb,
+                                      matter=matter, matte_name=a.matte, skin_width=a.skin_width)
         except Refused as e:
             rows[name] = refused_row(name, space, e)
+        except matte.MatteError as e:
+            rows[name] = refused_row(name, space, Refused(str(e), "no_matte"))
         except (RuntimeError, ValueError) as e:
             rows[name] = refused_row(name, space, Refused(str(e), "unreadable"))
         if name == wb_name and not wb_file:  # the reference's own result, or its failure, goes to the rest
