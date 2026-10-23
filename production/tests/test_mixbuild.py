@@ -377,7 +377,7 @@ class BlindAB(Base):
         out2 = os.path.join(self.d, "nt2")
         mb.ab_packet([a, c], out2, seconds=5.0, seed=3)
         self.assertNotIn("noise_type", json.loads(Path(out2, "sealed", "key.json").read_text()))
-        for bad in ("other", "traffic", "other:"):
+        for bad in ("other", "traffic", "other:", "other:fan ", "other:-x"):
             with self.assertRaises(mb.SpecError):
                 mb.ab_packet([a, c], os.path.join(self.d, "nt3"), noise_type=bad)
         self.assertFalse(os.path.exists(os.path.join(self.d, "nt3")))

@@ -8,7 +8,7 @@ Fairlight, and nothing is sent anywhere.
                                     [--start S] [--seconds 20] [--seed N] [--noise-type T]
     python3 -m rpresolve.mixbuild presets
     python3 -m rpresolve.mixbuild preset-ab DIALOGUE.wav --out DIR
-                                    [--presets lav,boom,vo] [--start S] [--seconds 20] [--seed N]
+                                    [--presets lav,boom,vo] [--start S] [--seconds 20] [--seed N] [--noise-type T]
 
 The spec is YAML (a small subset read by the parser below, so PyYAML is not
 needed; JSON is accepted too). Paths are relative to the spec's folder.
@@ -1488,7 +1488,7 @@ def check_noise_type(value):
     """rumble, wind, hiss, room, or 'other:WORD' (the word says what). None passes."""
     if value is None or value in NOISE_TYPES:
         return value
-    if re.fullmatch(r"other:[a-z][a-z0-9 -]*", value):
+    if re.fullmatch(r"other:[a-z][a-z0-9]*(?:[ -][a-z0-9]+)*", value):
         return value
     raise SpecError(f"noise type {value!r}: use {', '.join(NOISE_TYPES)} or other:WORD")
 
@@ -1568,7 +1568,8 @@ def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000, no
     return packet
 
 
-def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, seconds=20.0, seed=None):
+def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, seconds=20.0, seed=None,
+              noise_type=None):
     """Render `dialogue` through each preset and build one blind A/B packet
     of the results and the untouched dialogue. It says nothing about which is
     better: the ear does, and the sealed key says which file was which."""
@@ -1586,7 +1587,8 @@ def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, secon
         d = os.path.join(out_dir, "renders", name)
         render(spec, d)
         files.append(os.path.join(d, "stems", "dialogue.wav"))
-    return ab_packet(files, os.path.join(out_dir, "packet"), start, seconds, seed)
+    return ab_packet(files, os.path.join(out_dir, "packet"), start, seconds, seed,
+                     noise_type=noise_type)
 
 
 def presets_text():
@@ -1626,13 +1628,14 @@ def main(argv=None):
     q.add_argument("--start", type=float, default=0.0)
     q.add_argument("--seconds", type=float, default=20.0)
     q.add_argument("--seed", type=int, default=None)
+    q.add_argument("--noise-type", default=None, help="as for ab")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "presets":
             print(presets_text())
         elif args.cmd == "preset-ab":
             p = preset_ab(args.dialogue, os.path.abspath(args.out), args.presets.split(","),
-                          args.start, args.seconds, args.seed)
+                          args.start, args.seconds, args.seed, noise_type=args.noise_type)
             print(f"{', '.join(p['labels'])} written; matched within {p['spread_lu']} LU; "
                   "the key is sealed in packet/sealed/key.json")
         elif args.cmd == "render":
