@@ -1,0 +1,24 @@
+[
+  {
+    "id": "c-marisol-tran",
+    "name": "Marisol Tran",
+    "email": "marisol@example.com",
+    "org": "Tran Ceramics",
+    "stage": "active",
+    "touches": [
+      {
+        "date": "2026-10-01",
+        "kind": "meeting",
+        "nextAction": "Send kickoff notes",
+        "due": "2026-10-05"
+      },
+      {
+        "date": "2026-10-14",
+        "kind": "email",
+        "nextAction": "Confirm the second delivery date",
+        "due": "2026-10-28"
+      }
+    ],
+    "created": "2026-09-20T14:00:00Z"
+  }
+]

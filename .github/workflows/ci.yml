@@ -24,6 +24,10 @@ jobs:
           scripts/test-burst-gate.sh
       - name: Card offload tests
         run: production/tests/test-offload.sh
+      - name: clerkwork validator and walk tests
+        run: |
+          clerkwork/tests/test-validate.sh
+          clerkwork/tests/test-walk.sh
       - name: Changelog fragments are well formed
         run: scripts/changelog-fragments lint
       - name: Unresolved merge marker check
