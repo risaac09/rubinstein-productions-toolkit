@@ -567,8 +567,9 @@ def trim_review_markers(args, ctx):
         raise ValueError("give exactly one of manifest (a cut manifest) or source (a media file).")
     if args.get("manifest"):
         m = cutlist.load_manifest(_existing(args["manifest"], "manifest"))
-        source = m["source_path"]
-        words_path = _existing(args["words"], "words") if args.get("words") else m["words"]
+        one = cutlist.single_source(m, "trim_review_markers")
+        source = one["path"]
+        words_path = _existing(args["words"], "words") if args.get("words") else one["words"]
     else:
         source = _existing(args["source"], "source")
         words_path = _existing(args["words"], "words") if args.get("words") else None
