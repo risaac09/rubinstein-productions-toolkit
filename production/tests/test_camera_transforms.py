@@ -10,19 +10,22 @@ import sys
 import unittest
 from pathlib import Path
 
-try:
-    import numpy as np
-except ImportError:  # the stdlib-only CI job
-    raise unittest.SkipTest("needs numpy")
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import color  # noqa: E402
+try:
+    import numpy as np
+    from rpresolve import color
+    HAVE_NUMPY = True
+except ImportError:  # the stdlib-only CI job
+    HAVE_NUMPY = False
+
+needs_numpy = unittest.skipUnless(HAVE_NUMPY, "needs numpy")
 
 TABLE = Path(__file__).resolve().parent.parent / "camera-transforms.json"
-CODES = np.arange(0, 1024)
+CODES = np.arange(0, 1024) if HAVE_NUMPY else None
 
 
+@needs_numpy
 class CurveRoundTrip(unittest.TestCase):
     def check(self, enc, dec):
         sig = CODES / 1023.0
