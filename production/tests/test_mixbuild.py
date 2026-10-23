@@ -688,6 +688,12 @@ class Stems(Base):
             self.assertIn(f"export/{k}", m["outputs"])
         self.assertEqual(self.render_json()["stems"]["files"], ["DX", "FX", "ME", "MX"])
 
+    def test_a_clipped_mix_names_the_clip_not_the_bus(self):
+        spec, p = self.spec([{"gain": 30}])
+        with self.assertRaises(mb.NullError) as cm:
+            mb.render(spec, self.out("o"), p)
+        self.assertIn("clipped at full scale", str(cm.exception))
+
     def test_a_limiter_on_the_mix_bus_fails_the_null_loudly(self):
         spec, p = self.spec([{"gain": 12}, {"limiter": {"ceiling": -12}}])
         with self.assertRaises(mb.NullError) as cm:
