@@ -455,7 +455,8 @@ class Arnndn(Base):
                           "aformat=sample_rates=48000"])
         filt = f"arnndn=m={mb._filter_escape(self.model)}:mix=1"
         self.assertEqual(mb.delay_samples(filt, 48000), 480)            # one 10 ms frame
-        self.assertLessEqual(abs(mb.delay_samples(filt, 44100) - 441), 2)  # scaled by rate/48000
+        # scaled by rate/48000, give or take the resampler ffmpeg puts in front of it
+        self.assertLessEqual(abs(mb.delay_samples(filt, 44100) - 441), 8)
 
     def test_a_missing_or_unusable_model_refuses_the_spec(self):
         with mock.patch.dict(os.environ, {"RPRESOLVE_RNNOISE_MODEL": ""}):
@@ -467,6 +468,8 @@ class Arnndn(Base):
             self.assertIn("RPRESOLVE_RNNOISE_MODEL", str(cm.exception))
             self.check({"method": "afftdn"})              # nothing else needs the model
             mb.validate_spec({"stems": {"d": {"input": "x.wav", "preset": "vo"}}}, self.d)
+        spec = self.check("arnndn")                       # the env's model is pinned into the spec
+        self.assertEqual(spec["stems"]["d"]["chain"], [{"denoise": {"method": "arnndn", "model": self.model}}])
         for model, frag in (("std.rnnn", "absolute path"),
                             (os.path.join(self.d, "nope.rnnn"), "no readable file"),
                             (self.d, "no readable file")):

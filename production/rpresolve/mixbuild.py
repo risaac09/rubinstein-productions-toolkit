@@ -568,15 +568,20 @@ def _filter_escape(value):
     return value
 
 
+def _pinned(raw):
+    """A denoise step's settings with an arnndn model resolved into them, so
+    the spec (and its hash) says which file a render uses."""
+    p = raw if isinstance(raw, dict) else {"method": raw}
+    return dict(p, model=rnnoise_model(p)) if p.get("method") == "arnndn" else raw
+
+
 def _rnnoise_models(spec):
-    """{path: sha256} for every arnndn model the spec's chains use."""
+    """{path: sha256} for every arnndn model the (validated) spec uses."""
     out = {}
     for st in spec["stems"].values():
         for raw in [r for n, r in map(_step, st["chain"]) if n == "denoise"] + list(st["candidates"].values()):
-            p = raw if isinstance(raw, dict) else {"method": raw}
-            if p.get("method") == "arnndn":
-                m = rnnoise_model(p)
-                out[m] = out.get(m) or sha256(m)
+            if isinstance(raw, dict) and raw.get("method") == "arnndn" and raw["model"] not in out:
+                out[raw["model"]] = sha256(raw["model"])
     return out
 
 
@@ -773,12 +778,15 @@ def validate_spec(spec, base):
         st["chain"] = st.get("chain") or []
         if not isinstance(st["chain"], list):
             raise SpecError(f"stem {name}: chain must be a list")
+        st["chain"] = [{"denoise": _pinned(_step(i)[1])} if _step(i)[0] == "denoise" else i
+                       for i in st["chain"]]
         if any(_step(i)[0] == "speechnorm" for i in st["chain"]):
             raise SpecError(f"stem {name}: speechnorm belongs in the mix chain")
         _check_chain(st["chain"], spec["sample_rate"], f"stem {name}")
         cands = st.get("candidates") or {}
         if not isinstance(cands, dict):
             raise SpecError(f"stem {name}: candidates must be a map of name to denoise settings")
+        cands = {c: _pinned(v) for c, v in cands.items()}
         for c in cands:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", str(c)) or "__" in str(c):
                 raise SpecError(f"candidate name {c!r}: letters, digits, _ and - only, no double underscore")
