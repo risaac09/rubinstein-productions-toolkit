@@ -115,6 +115,17 @@ python3 -m rpresolve.mixbuild ab --out "$JOB/ab" "$JOB/spec/dx.wav" "$JOB/render
 
 It cuts the same 20 s from each file, matches their loudness, shuffles them to A and B, and seals the key in `$JOB/ab/sealed/key.json`. Listen to `A.wav` and `B.wav`, say which, then open the key. On a noisy outdoor clip the untreated file won once against RNNoise alone, so the preset is a starting chain, not a promise.
 
+### Before a render: what Resolve says about the audio
+
+With the timeline open in Resolve (Resolve Studio running), read its audio state and keep the JSON outside any git tree. After Isaac renders, hand it to `deliver-check` so the queued job's audio is compared with the destination:
+
+```bash
+python3 resolve_workflow.py audio-state -o "$JOB/audio-state.json"
+python3 resolve_workflow.py deliver-check "$JOB/final.mov" --dest client_master --audio-state "$JOB/audio-state.json"
+```
+
+`audio-state` lists the audio tracks, each item's `Audio*` properties (volume, Voice Isolation, Dialogue Leveler), each source's audio mapping, the Deliver page's format and render mode, and the audio fields of the queued jobs. It changes nothing and names what the API cannot read (below). The mixer, EQ and dynamics are not scriptable, and Resolve cannot read the Deliver page's sample rate or render range, so a mix that depends on them is checked on the rendered file, not here. The `queue_render` summary names those two settings when it sets them: reset them on the Deliver page if the page should show "Same as project" or In/Out Range again.
+
 ## 3. Colour
 
 Camera log to a working space, a look on top, a check frame. Details: [lutlab-cst.md](lutlab-cst.md), [lutlab-balance.md](lutlab-balance.md), [lutlab/README.md](lutlab/README.md).

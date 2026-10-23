@@ -338,13 +338,14 @@ class TestCommandModules(unittest.TestCase):
                 self.assertIn('if __name__ == "__main__":\n    cli.script(__name__)\n',
                               Path(m.__file__).read_text(encoding="utf-8"))
 
-    def test_only_the_four_read_commands_reach_resolve(self):
+    def test_only_the_read_commands_reach_resolve(self):
         # resolve-mcp.md: every other command never connects. shortcut: a text scan, blind to
         # a library helper that connects; patch rpapi.connect per command if one ever does.
         reach = {m.NAME for m in cli.commands()
                  if re.search(r"get_resolve|rpapi\.connect|\.connect\(",
                               Path(m.__file__).read_text(encoding="utf-8"))}
-        self.assertEqual(reach, {"list-projects", "list-timelines", "list-render-formats", "info"})
+        self.assertEqual(reach, {"list-projects", "list-timelines", "list-render-formats", "info",
+                                 "audio-state"})
 
     def test_a_module_runs_alone_with_python_m(self):
         # The __main__ block is the same in every module (checked above); one run proves it.

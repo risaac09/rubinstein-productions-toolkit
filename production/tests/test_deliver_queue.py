@@ -142,6 +142,14 @@ class TestQueueDestination(Base):
         self.assertEqual(self.project.render_mode, 0)  # put back
         self.assertEqual(r["warnings"], [])
 
+    def test_the_guard_names_the_settings_resolve_cannot_read_back(self):
+        dry, r = self.twice()
+        g = r["render_guard"]
+        self.assertEqual(g["mismatched"], [])
+        self.assertIn("AudioSampleRate", g["unrestorable"])
+        self.assertIn("SelectAllFrames", g["hand_reset"])
+        self.assertEqual(r["warnings"], [])  # true on every queue, so not a warning
+
     def test_a_render_mode_that_does_not_take_queues_nothing(self):
         self.project.render_mode = 0
         self.project.stuck_mode = True  # SetCurrentRenderMode says yes, the mode stays 0

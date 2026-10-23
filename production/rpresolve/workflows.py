@@ -29,6 +29,7 @@ from . import api, captions, grade
 from . import detect as rpdetect
 from . import ingest as rpingest
 from . import relink as rprelink
+from .renderguard import RenderGuard
 
 # RPRESOLVE_SURVEY_PYTHON names another Python 3.14+ (the survey needs compression.zstd).
 SURVEY_PYTHON = os.environ.get("RPRESOLVE_SURVEY_PYTHON") or "/opt/homebrew/bin/python3.14"
@@ -1304,28 +1305,6 @@ def queue_render(resolve, project_name, timeline, destination, output_dir=None,
                              check_cancel=check_cancel, volumes_root=volumes_root)
 
 
-def _restore_format(project, fmt0, warnings):
-    """Put the Deliver page's format and codec back to fmt0."""
-    if fmt0.get("format") and fmt0.get("format") != "unknown":
-        if not (project.SetCurrentRenderFormatAndCodec(fmt0["format"], fmt0.get("codec"))
-                and (project.GetCurrentRenderFormatAndCodec() or {}) == fmt0):
-            warnings.append(f"could not put the Deliver format/codec back to {fmt0}")
-    else:
-        warnings.append("the Deliver page had no format set before, so the queued job's "
-                        "format stays selected there")
-
-
-def _restore_mode(project, mode0, warnings):
-    """Put the Deliver page's render mode back to mode0 (0 Individual
-    clips, 1 Single clip), when it was read and has changed."""
-    if mode0 not in (0, 1):
-        warnings.append(f"the Deliver page's render mode read as {mode0!r} before queueing, "
-                        "so it stays on Single clip")
-    elif project.GetCurrentRenderMode() != mode0:
-        if not (project.SetCurrentRenderMode(mode0) and project.GetCurrentRenderMode() == mode0):
-            warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
-
-
 def _subtitle_tracks(project, tl):
     """(items per enabled subtitle track, items per disabled one, whether
     the on/off state could be read). Resolve 21.0.4.5 answers
@@ -1444,7 +1423,7 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                                + deliver.changed_fields(steps)),
            "carried_over": deliver.carried_over(steps),
            "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0,
-           "made_folder": None}
+           "made_folder": None, "render_guard": None}
     unnamed = render.unreported_jobs(project)
     if unnamed:
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
@@ -1466,8 +1445,6 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         if check_cancel:
             check_cancel()
         project = pin.check(pm)
-        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
-        mode0 = project.GetCurrentRenderMode()
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         # Now current, so the subtitle tracks' on/off state reads true (_subtitle_tracks).
@@ -1481,15 +1458,17 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
             except OSError as e:
                 raise api.WriteNotApplied(f"could not make the destination folder "
                                           f"{real_dir}: {e}")
+        guard = RenderGuard(project, tl)
         try:
-            q = render.queue_destination_job(project, dest, steps)
+            with guard:
+                guard.touch(deliver.changed_fields(steps))
+                q = render.queue_destination_job(project, dest, steps)
         except BaseException:
             if made:
                 _remove_if_empty(real_dir)
             raise
-        finally:
-            _restore_format(project, fmt0, restore_warnings)
-            _restore_mode(project, mode0, restore_warnings)
+        restore_warnings += guard.warnings()
+        out["render_guard"] = dict(guard.report(), hand_reset=guard.hand_reset())
     out["codec"] = q["codec"]
     out["warnings"] += q["warnings"] + restore_warnings
     out["ui_restore_problems"] = snap.problems
