@@ -37,7 +37,7 @@ python -m rpstills absheet look-a.jpg look-b.jpg look-c.jpg --out <review dir>/l
 python -m rpstills audit <finished dir> --out <review dir>/audit
 
 # Blind audio packet: A.wav, B.wav ... matched within 0.5 LU, key sealed in sealed/key.json
-python3 -m rpresolve.mixbuild ab --out <review dir>/mix-01 take1.wav take2.wav --start 42 --seconds 25
+python3 -m rpresolve.mixbuild ab --out <review dir>/mix-01 take1.wav take2.wav --start 42 --seconds 25 [--noise-type rumble]
 
 # The approved cut as a timeline file for Resolve
 python3 -m rpresolve.interchange <manifest> --format fcpxml --out <review dir>/cut-v3.fcpxml
@@ -141,6 +141,7 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 | `choice` | the label, a rating 1 to 5, `approve` (edit), `go` (gate), `none` or `hold`; null when the answer is only a line, which goes in `reason` |
 | `reason` | the reviewer's line, verbatim, or null |
 | `device` | `desktop`, `phone` or `ipad`; screens differ, and none of them is calibrated against the others |
+| `noise_type` | denoise and noise-treatment sheets only: `rumble`, `wind`, `hiss`, `room`, or `other:WORD` with a word that says what. `mixbuild ab --noise-type T` keeps it in the sealed key; otherwise Claude asks or states the type before the sheet goes out |
 
 ```json
 {"ts": "2026-10-22T14:03:11Z", "project": "P-0001", "step": "look", "options": {"A": "natural-v2", "B": "natural-v2, +200 K", "C": "warm-v1"}, "choice": "B", "reason": "skin reads less grey", "device": "ipad"}
@@ -149,6 +150,14 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
 The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
+
+### Denoise answers are counted per noise type
+
+Whether a denoiser helps depends on what it removes. A reviewer may prefer the treated clip against wind on a mic and the untreated one when the same car rumble is part of the scene. So any denoise or noise-treatment decision carries a `noise_type` in its log line, and the taste profile counts answers per type: "1 of 5 for rumble: not yet a rule". Five consistent answers are five for one type; answers for different types are never pooled, and a rule for one type says nothing about another. Until a type has a rule of its own, the dialogue default (arnndn with `std.rnnn` over afftdn, decided 2026-10-22) stays the starting point for dialogue; the profile orders options and never picks.
+
+```json
+{"ts": "2026-10-23T12:51:04Z", "project": "P-0002", "step": "sound", "options": {"A": "untreated", "B": "arnndn std.rnnn alone"}, "choice": "A", "reason": null, "device": "desktop", "noise_type": "rumble"}
+```
 
 ## Gates that stay human
 
