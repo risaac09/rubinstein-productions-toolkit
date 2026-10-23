@@ -4,13 +4,23 @@ match is judged on the render rather than by eye alone. Offline: ffmpeg
 reads the file; nothing touches Resolve.
 
 Per sampled frame, and pooled over the file:
-    - luma p1 / p50 / p99 in IRE (Rec.709 luma of the display RGB)
+    - luma p1 / p5 / p50 / p95 / p99 in IRE (Rec.709 luma of the display RGB)
     - clipping: share of pixels with any channel at the top code value, or
       every channel at zero
     - legal range: ffmpeg signalstats YMIN / YMAX, scaled to 8-bit code
       values (legal video range is 16..235)
     - skin, where macOS Vision finds a face: median Lab, chroma, and the
       vectorscope hue angle against the skin-tone line (123 degrees)
+    - light: per face, the lighting ratio by the (key + fill) : fill
+      convention in stops (the lit side's linear luma over the shadow
+      side's; one stop is 2:1); the share of the frame in each shadow class
+      (readable, sculpted, lost); highlight clip share and tail slope in
+      the top 10 percent
+With a delivery encode (--delivery), the readable-shadow share of the master
+against the encode: the QC row for low-key work that social compression
+crushes. Ratios and shadow classes are withheld when the file is tagged PQ,
+HLG, linear or log, and the report names the transfer it read the file as;
+the ratio names (flat, classic, dramatic, extreme) label and never gate.
 With segments (label=start-end, seconds), the skin medians per label and
 the pairwise CIEDE2000 between labels: the camera-match numbers.
 
@@ -44,6 +54,15 @@ UNAVAILABLE = "UNAVAILABLE"
 SKIN_CB, SKIN_CR = (77, 127), (133, 173)
 PIXEL_STRIDE = 2  # per-frame luma and clipping use every second row and column
 TIMEOUT_S = 300   # per ffmpeg/ffprobe call; a stalled SMB read must not hang the run
+READ_AS = "BT.1886 display: Rec.709 primaries, 2.4 gamma, D65"
+NOT_REC709 = {"smpte2084": "PQ", "arib-std-b67": "HLG", "linear": "linear", "log100": "log", "log316": "log"}
+SIDE_MIN_PIXELS = 50   # skin pixels each half of a face needs for a lighting ratio
+# House conventions, not standards: where shadow starts and ends and what counts as texture.
+SHADOW_MAX_IRE = 25.0  # a block whose mean luma is at or under this is shadow
+LOST_IRE = 2.0         # shadow at or under this is lost: at the floor
+TEXTURE_IRE = 0.75     # rms detail (pixel minus the mean of its four neighbours) that makes shadow readable
+BLOCK = 8              # shadow classes are read per BLOCK x BLOCK tile
+DELIVERY_LIMIT_PTS = 10.0  # trial C8: the encode keeps its readable-shadow share within this of the master
 # ffprobe color_space tag -> ffmpeg scale in_color_matrix. Anything else,
 # untagged included, is decoded as Rec.709 and the report says so.
 MATRICES = {"bt709": "bt709", "smpte170m": "bt601", "bt470bg": "bt601",
@@ -67,9 +86,10 @@ def _run(cmd, **kw):
 # ---------------------------------------------------------------------------
 
 def probe(path):
-    """{width, height, duration, fps, color tags} of the first video stream."""
+    """{width, height, duration, fps, codec, profile, color tags} of the
+    first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-           "stream=width,height,avg_frame_rate,color_range,color_space,color_transfer,"
+           "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
            "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
@@ -89,6 +109,8 @@ def probe(path):
     if rotation(s) % 180 == 90:
         width, height = height, width
     return {"width": width, "height": height, "duration": duration,
+            "fps": s.get("avg_frame_rate", ""), "codec": s.get("codec_name", ""),
+            "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
                                                "color_transfer", "color_primaries")}}
 
@@ -192,8 +214,8 @@ def bit_depth(pix_fmt):
 
 def luma_stats(rgb, stride=PIXEL_STRIDE):
     y = color.luma_ire(rgb[::stride, ::stride].reshape(-1, 3))
-    p1, p50, p99 = np.percentile(y, [1, 50, 99])
-    return {"p1": round(float(p1), 2), "p50": round(float(p50), 2), "p99": round(float(p99), 2)}
+    return {k: round(float(v), 2) for k, v in zip(("p1", "p5", "p50", "p95", "p99"),
+                                                  np.percentile(y, [1, 5, 50, 95, 99]))}
 
 
 def clipping(rgb, stride=PIXEL_STRIDE):
@@ -228,6 +250,73 @@ def face_region(rgb, box):
     return rgb[y0:y1, x0:x1]
 
 
+def linear_luma(rgb):
+    """Linear light luma of display-encoded RGB read as a 2.4 gamma."""
+    return color._dot3(np.clip(rgb, 0, 1) ** 2.4, color.REC709_LUMA)
+
+
+# Names for the ratio in stops (key + fill : fill is 2:1 at one stop). Convention
+# from memory; sources differ, so the name labels and nothing gates on it.
+RATIO_NAMES = ((1.0, "flat"), (2.0, "classic"), (3.0, "dramatic"), (float("inf"), "extreme"))
+
+
+def ratio_name(stops):
+    return next(name for top, name in RATIO_NAMES if stops <= top)
+
+
+def lighting_ratio(region, mask):
+    """The lighting ratio of a face region (RGB) and its skin mask: the
+    linear luma of the lit half over the shadow half, which is (key + fill) :
+    fill because the shadow side gets fill only. None when a half has fewer
+    than SIDE_MIN_PIXELS skin pixels."""
+    half = region.shape[1] // 2
+    sides = []
+    for part, m in ((region[:, :half], mask[:, :half]), (region[:, half:], mask[:, half:])):
+        sides.append(float(np.median(linear_luma(part[m]))) if m.sum() >= SIDE_MIN_PIXELS else None)
+    if None in sides or min(sides) <= 0:
+        return None
+    ratio = max(sides) / min(sides)
+    stops = float(np.log2(ratio))
+    return {"lit_side": "left" if sides[0] >= sides[1] else "right", "ratio": round(ratio, 2),
+            "stops": round(stops, 2), "name": ratio_name(stops)}
+
+
+def shadow_classes(rgb):
+    """Share of the frame (percent of tiles) that is readable, sculpted or
+    lost shadow. A tile is shadow when its mean luma is at most
+    SHADOW_MAX_IRE; lost when that mean is at most LOST_IRE; otherwise
+    readable when its detail (the pixel minus its four neighbours' mean, rms)
+    exceeds TEXTURE_IRE, else sculpted: a smooth gradient that still holds tone."""
+    ire = color.luma_ire(rgb)
+    res = ire[1:-1, 1:-1] - (ire[:-2, 1:-1] + ire[2:, 1:-1] + ire[1:-1, :-2] + ire[1:-1, 2:]) / 4
+    core = ire[1:-1, 1:-1]
+    h, w = (core.shape[0] // BLOCK) * BLOCK, (core.shape[1] // BLOCK) * BLOCK
+    if h == 0 or w == 0:
+        return {"readable_pct": 0.0, "sculpted_pct": 0.0, "lost_pct": 0.0, "shadow_pct": 0.0}
+
+    def tiles(a):
+        return a[:h, :w].reshape(h // BLOCK, BLOCK, w // BLOCK, BLOCK)
+
+    mean = tiles(core).mean(axis=(1, 3))
+    rms = np.sqrt((tiles(res) ** 2).mean(axis=(1, 3)))
+    shadow = mean <= SHADOW_MAX_IRE
+    lost = shadow & (mean <= LOST_IRE)
+    readable = shadow & ~lost & (rms > TEXTURE_IRE)
+    sculpted = shadow & ~lost & ~readable
+    pct = {k: round(float(v.mean()) * 100, 2) for k, v in
+           (("readable_pct", readable), ("sculpted_pct", sculpted), ("lost_pct", lost), ("shadow_pct", shadow))}
+    return pct
+
+
+def highlights(rgb, stride=PIXEL_STRIDE):
+    """Clip share (percent at the top code value) and the tail slope: IRE
+    gained per percentile point from p90 to p99. About 1 is an even roll-off;
+    near 0 means the top of the frame has piled up against the ceiling."""
+    y = color.luma_ire(rgb[::stride, ::stride].reshape(-1, 3))
+    p90, p99 = np.percentile(y, [90, 99])
+    return {"clip_pct": clipping(rgb, stride)["high_pct"], "tail_ire_per_pct": round(float(p99 - p90) / 9, 3)}
+
+
 def skin_stats(rgb, boxes, min_pixels=200):
     """Median skin Lab, chroma and vectorscope hue over every face box, or
     None when no box yields min_pixels skin pixels."""
@@ -260,6 +349,34 @@ def parse_segment(text):
     if end <= start:
         raise MeasureError(f"segment '{text}' ends before it starts")
     return m.group(1).strip(), start, end
+
+
+def face_lighting(rgb, boxes):
+    """The lighting ratio of each face box that yields one."""
+    out = []
+    for box in boxes:
+        region = face_region(rgb, box)
+        light = lighting_ratio(region, skin_mask(region))
+        if light:
+            out.append(light)
+    return out
+
+
+def mean_classes(per_frame):
+    """Per-frame shadow class shares averaged over the frames."""
+    return {k: round(float(np.mean([f[k] for f in per_frame])), 2) for k in per_frame[0]}
+
+
+def pooled_lighting(frames):
+    """One lighting reading from every face in every frame: the median ratio
+    in stops, the lit side most faces show, and the ratio's name."""
+    lights = [l for f in frames for l in f.get("lighting") or []]
+    if not lights:
+        return None
+    stops = float(np.median([l["stops"] for l in lights]))
+    sides = [l["lit_side"] for l in lights]
+    return {"faces_measured": len(lights), "stops": round(stops, 2), "ratio": round(2 ** stops, 2),
+            "lit_side": max(("left", "right"), key=sides.count), "name": ratio_name(stops)}
 
 
 def camera_match(frames, segments, hero=None):
@@ -308,9 +425,43 @@ def _write_png(rgb, path):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def transfer_of(tags):
+    """{tag, read_as, withheld} for a file's colour_transfer tag. withheld
+    names the curve when the tag says the display Rec.709 reading is wrong."""
+    tag = tags.get("color_transfer") or "untagged"
+    return {"tag": tag, "read_as": READ_AS, "withheld": NOT_REC709.get(tag)}
+
+
+def shadow_compare(master, delivery, samples=5, check_cancel=None):
+    """Master against delivery encode: the shadow-class shares of each, read at
+    the same fractions of their durations, and the drop in readable shadow in
+    percentage points. The QC row for low-key work that compression crushes
+    (trial C8): within_limit is True when the drop is at most DELIVERY_LIMIT_PTS."""
+    out, trs = {}, {}
+    for name, path in (("master", master), ("delivery", delivery)):
+        info = probe(path)
+        tr = transfer_of(info["tags"])
+        if tr["withheld"]:
+            return {"transfer": tr, "withheld": f"{name} is tagged {tr['withheld']}: shadow classes are withheld",
+                    "readable_drop_pts": None, "within_limit": None}
+        vf, _ = decode_filter(info["tags"])
+        fracs = [(i + 0.5) / samples for i in range(samples)] if info["duration"] > 0 else [0.0]
+        per = []
+        for fr in fracs:
+            if check_cancel:
+                check_cancel()
+            per.append(shadow_classes(read_frame(path, fr * info["duration"], info["width"], info["height"], vf)))
+        out[name] = mean_classes(per)
+        trs[name] = tr
+    drop = round(out["master"]["readable_pct"] - out["delivery"]["readable_pct"], 2)
+    return {**out, "transfer": trs["master"], "limit_pts": DELIVERY_LIMIT_PTS,
+            "readable_drop_pts": drop, "within_limit": drop <= DELIVERY_LIMIT_PTS}
+
+
 def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=None,
-            progress=None):
+            progress=None, delivery=None):
     info = probe(path)
+    transfer = transfer_of(info["tags"])
     depth = bit_depth(info["tags"]["pix_fmt"])
     rgb_source = is_rgb_source(info["tags"]["pix_fmt"])
     full_range = info["tags"].get("color_range") == "pc"
@@ -328,7 +479,9 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
             pooled.append(rgb[::PIXEL_STRIDE * 2, ::PIXEL_STRIDE * 2])
             frame = {"t": round(t, 3), "luma": luma_stats(rgb), "clipping": clipping(rgb),
                      "legal_8bit": None if rgb_source or full_range else legal_range(path, t, depth),
-                     "skin": None}
+                     "highlights": highlights(rgb),
+                     "shadows": None if transfer["withheld"] else shadow_classes(rgb),
+                     "skin": None, "lighting": None}
             if faces:
                 still = os.path.join(tmp, f"f{i:03d}.png")
                 _write_png(rgb, still)
@@ -341,13 +494,18 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
             else:
                 frame["faces"] = len(boxes.get(still, []))
                 frame["skin"] = skin_stats(rgb, boxes.get(still, []))
+                if not transfer["withheld"]:
+                    frame["lighting"] = face_lighting(rgb, boxes.get(still, []))
     all_px = np.concatenate([p.reshape(-1, 3) for p in pooled])
     legal = [f["legal_8bit"] for f in frames if f["legal_8bit"]]
     report = {
         "file": path, "tags": info["tags"], "decode_note": decode_note,
-        "frames_sampled": len(frames),
+        "frames_sampled": len(frames), "transfer": transfer,
         "luma": luma_stats(all_px.reshape(-1, 1, 3), stride=1),
         "clipping": clipping(all_px.reshape(-1, 1, 3), stride=1),
+        "highlights": highlights(all_px.reshape(-1, 1, 3), stride=1),
+        "shadows": (f"withheld: tagged {transfer['withheld']}" if transfer["withheld"]
+                    else mean_classes([f["shadows"] for f in frames])),
         "legal_8bit": ("not applicable (RGB source)" if rgb_source else
                        "not applicable (full-range source)" if full_range else
                        {"ymin": min(l[0] for l in legal), "ymax": max(l[1] for l in legal),
@@ -370,6 +528,14 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
                           "hue_off_skin_line_deg": round(hue - SKIN_LINE_DEG, 2)}
     else:
         report["skin"] = "no face with enough skin pixels in the sampled frames"
+    if transfer["withheld"]:
+        report["lighting"] = f"withheld: tagged {transfer['withheld']}, not display Rec.709"
+    elif not faces or report["skin"] == UNAVAILABLE or str(report["skin"]).startswith(UNAVAILABLE):
+        report["lighting"] = report["skin"]
+    else:
+        report["lighting"] = pooled_lighting(frames) or "no face with a lit and a shadow side in the sampled frames"
+    if delivery:
+        report["shadow_vs_delivery"] = dict(shadow_compare(path, delivery, check_cancel=check_cancel), file=delivery)
     if segments:
         report["camera_match"] = camera_match(frames, segments, hero)
     return report
@@ -381,8 +547,26 @@ def format_summary(report):
              f"  tags: " + ", ".join(f"{k}={v or '?'}" for k, v in report["tags"].items()),
              f"  frames sampled: {report['frames_sampled']}"
              + (f" ({report['decode_note']})" if report.get("decode_note") else ""),
-             "  luma IRE p1/p50/p99: {p1} / {p50} / {p99}".format(**report["luma"]),
-             "  clipping: {high_pct}% high, {low_pct}% low".format(**report["clipping"])]
+             f"  transfer: {report['transfer']['tag']}, read as {report['transfer']['read_as']}",
+             "  luma IRE p1/p5/p50/p95/p99: {p1} / {p5} / {p50} / {p95} / {p99}".format(**report["luma"]),
+             "  clipping: {high_pct}% high, {low_pct}% low".format(**report["clipping"]),
+             "  highlights: {clip_pct}% at the ceiling, tail slope {tail_ire_per_pct} IRE per percentile (p90 to p99)"
+             .format(**report["highlights"])]
+    sh = report["shadows"]
+    lines.append("  shadow (share of frame): " + (
+        "{readable_pct}% readable, {sculpted_pct}% sculpted, {lost_pct}% lost".format(**sh)
+        if isinstance(sh, dict) else sh))
+    li = report["lighting"]
+    lines.append("  lighting ratio: " + (
+        f"{li['ratio']}:1 ({li['stops']} stops, {li['name']}), {li['lit_side']} side lit, "
+        f"{li['faces_measured']} face reading(s); (key + fill) : fill" if isinstance(li, dict) else li))
+    cmp = report.get("shadow_vs_delivery")
+    if cmp:
+        lines.append("  readable shadow, master vs delivery: " + (
+            cmp["withheld"] if cmp.get("withheld") else
+            f"{cmp['master']['readable_pct']}% vs {cmp['delivery']['readable_pct']}% "
+            f"(drop {cmp['readable_drop_pts']} pts, limit {cmp['limit_pts']}: "
+            f"{'within' if cmp['within_limit'] else 'OVER'})"))
     legal = report.get("legal_8bit")
     if isinstance(legal, dict):
         legal_text = (f"{legal['ymin']:.1f}..{legal['ymax']:.1f}, "

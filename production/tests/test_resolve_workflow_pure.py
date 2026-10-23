@@ -1,9 +1,10 @@
 """
-Offline unit tests for resolve_workflow.py: its pure-logic functions (the
-pieces that don't touch DaVinciResolveScript, so they run without Resolve
-installed or running), the codec and config code it shares with the
-library, and what is left of the script's surface once its write commands
-are retired: the parser holds only the read-only and offline commands, and
+Offline unit tests for resolve_workflow.py and rpresolve/cli.py: their
+pure-logic functions (the pieces that don't touch DaVinciResolveScript, so they
+run without Resolve installed or running), the codec and config code they share
+with the library, and what is left of the script's surface once its write
+commands are retired: the parser holds only the command modules
+(rpresolve/cmd_*.py, found at import, so a new command edits nothing here), and
 each retired command, and trim-review --markers with its flags, exits 2 without
 connecting to Resolve, naming the MCP tool that replaced it or, for the
 commands that have no tool, saying so and what to do by hand.
@@ -28,13 +29,10 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import resolve_workflow
-from resolve_workflow import (
-    safe_fps,
-    build_survey_command,
-    SURVEY_PYTHON,
-    SURVEY_SCRIPT,
-)
+from rpresolve import cli
 from rpresolve import config as rpconfig
+from rpresolve.cli import safe_fps
+from rpresolve.cmd_survey import build_survey_command, SURVEY_PYTHON, SURVEY_SCRIPT
 from rpresolve.config import DEFAULT_CONFIG
 from rpresolve.mcp import server
 from rpresolve.render import pick_codec
@@ -179,31 +177,29 @@ class TestSurveyCommand(unittest.TestCase):
         self.assertFalse(target.exists())
 
 
-KEPT = ["list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect", "shoot-table",
-        "measure", "perceive", "pipeline-proof", "manifest", "endcheck", "selects", "reframe-plan", "tilt-fixture", "tilt-check",
-        "deliver-check", "qc", "deliver-captions", "deliver-fix-loudness", "deliver-manifest", "sync-measure",
-        "trim-review", "story-packet"]
+# The commands are the modules rpresolve/cmd_*.py; a new one is picked up with no edit here.
+KEPT = [m.NAME for m in cli.commands()]
+# The commands at VP-152. A lost module fails this floor; a new command does not touch it.
+FLOOR = {"list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect",
+         "shoot-table", "measure", "perceive", "pipeline-proof", "manifest", "endcheck", "selects",
+         "reframe-plan", "tilt-fixture", "tilt-check", "deliver-check", "qc", "overlay-check",
+         "deliver-captions", "deliver-fix-loudness", "deliver-manifest", "sync-measure",
+         "audio-report", "trim-review", "story-packet"}
 RETIRED_COMMANDS = ["new-project", "import-media", "build-timeline", "add-subtitles",
                     "auto-subtitle", "render", "render-all", "clear-queue", "apply-lut",
                     "apply-drx", "open-page", "export-project", "ingest", "cut", "deliver-queue",
                     "captions", "sync"]
 
 
-def run_main(*argv):
-    """main() with this argv; (exit status, stdout, stderr). Resolve is not
-    reachable: a call to get_resolve fails the test."""
+def run_main(*argv, module=None):
+    """main() with this argv, in process; (exit status, stdout, stderr). Resolve
+    is not reachable: a call to get_resolve fails the test."""
     out, err = io.StringIO(), io.StringIO()
     connect = mock.Mock(side_effect=AssertionError("connected to Resolve"))
-    # main() leaves through os._exit; here it raises SystemExit so the runner survives.
-    leave = mock.Mock(side_effect=lambda code=0: sys.exit(code))
-    status = None
-    with mock.patch.object(resolve_workflow, "get_resolve", connect), \
-            mock.patch.object(resolve_workflow.rpapi, "exit_clean", leave), \
-            mock.patch.object(sys, "argv", ["resolve_workflow.py", *argv]), \
-            redirect_stdout(out), redirect_stderr(err):
+    with mock.patch.object(cli, "get_resolve", connect), redirect_stdout(out), redirect_stderr(err):
         try:
-            resolve_workflow.main()
-        except SystemExit as e:
+            status = resolve_workflow.main(list(argv), module=module)
+        except SystemExit as e:  # argparse: --help and usage errors
             status = e.code
     return status, out.getvalue(), err.getvalue()
 
@@ -218,29 +214,31 @@ class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
         err = self.parser_commands()
         listed = err.split("(choose from ")[1].rstrip(")\n").replace("'", "").split(", ")
         self.assertEqual(listed, KEPT)
+        self.assertLessEqual(FLOOR, set(KEPT))
+        self.assertFalse(set(KEPT) & set(cli.RETIRED), "a retired command is back")
 
     def test_every_retired_command_exits_2_and_names_its_replacement(self):
-        self.assertEqual(sorted(resolve_workflow.RETIRED), sorted(RETIRED_COMMANDS))
+        self.assertEqual(sorted(cli.RETIRED), sorted(RETIRED_COMMANDS))
         for name in RETIRED_COMMANDS:
             with self.subTest(command=name):
                 status, out, err = run_main(name)
                 self.assertEqual(status, 2)
                 self.assertEqual(out, "")
                 self.assertIn(f"'{name}' is retired", err)
-                self.assertIn(resolve_workflow.RETIRED[name], err)
+                self.assertIn(cli.RETIRED[name], err)
                 self.assertNotIn("only way to write to Resolve", err)
                 self.assertNotIn("Traceback", err)
 
     def test_a_command_with_no_tool_says_so_and_the_others_name_their_tool(self):
-        self.assertEqual(sorted(resolve_workflow.BY_HAND),
+        self.assertEqual(sorted(cli.BY_HAND),
                          ["build-timeline", "clear-queue", "export-project", "new-project",
                           "open-page"])
         tools = {t.name for t in server.build_registry().list()}
         for name in RETIRED_COMMANDS:
             with self.subTest(command=name):
                 _, _, err = run_main(name)
-                text = resolve_workflow.RETIRED[name]
-                if name in resolve_workflow.BY_HAND:
+                text = cli.RETIRED[name]
+                if name in cli.BY_HAND:
                     self.assertIn(f"'{name}' is retired and has no MCP tool; do it by hand "
                                   f"in Resolve: {text}", err)
                     self.assertNotIn("use the MCP", text)
@@ -306,6 +304,18 @@ class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
                 self.assertEqual(status, 0)
                 self.assertIn(f"resolve_workflow {name}", out)
 
+    def test_main_returns_the_status_instead_of_leaving(self):
+        # Command tests call main() in process; only __main__ leaves through exit_clean.
+        with mock.patch("rpresolve.cmd_info.run", return_value=3), \
+                mock.patch.object(cli.rpapi, "exit_clean", side_effect=AssertionError("left")):
+            self.assertEqual(run_main("info")[0], 3)
+            self.assertEqual(run_main()[0], 1)
+
+    def test_the_old_function_names_still_run_each_command(self):
+        for m in cli.commands():
+            with self.subTest(command=m.NAME):
+                self.assertIs(getattr(resolve_workflow, "cmd_" + m.NAME.replace("-", "_")), m.run)
+
     def test_the_help_says_where_writes_go(self):
         status, out, _ = run_main("--help")
         self.assertEqual(status, 0)
@@ -313,6 +323,43 @@ class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
         self.assertIn("production/resolve_mcp.py", out)
         for name in RETIRED_COMMANDS:
             self.assertNotIn(f"resolve_workflow.py {name} ", out)
+
+
+class TestCommandModules(unittest.TestCase):
+    """Each rpresolve/cmd_<name>.py keeps the shape cli.py describes."""
+
+    def test_each_module_has_the_contract(self):
+        self.assertEqual(len(KEPT), len(set(KEPT)))
+        for m in cli.commands():
+            with self.subTest(command=m.NAME):
+                self.assertEqual(m.__name__, "rpresolve.cmd_" + m.NAME.replace("-", "_"))
+                self.assertTrue(m.HELP and m.__doc__ and m.__doc__.strip().startswith(m.NAME + ":"))
+                self.assertTrue(callable(m.add_arguments) and callable(m.run))
+                self.assertIn('if __name__ == "__main__":\n    cli.script(__name__)\n',
+                              Path(m.__file__).read_text(encoding="utf-8"))
+
+    def test_only_the_four_read_commands_reach_resolve(self):
+        # resolve-mcp.md: every other command never connects. shortcut: a text scan, blind to
+        # a library helper that connects; patch rpapi.connect per command if one ever does.
+        reach = {m.NAME for m in cli.commands()
+                 if re.search(r"get_resolve|rpapi\.connect|\.connect\(",
+                              Path(m.__file__).read_text(encoding="utf-8"))}
+        self.assertEqual(reach, {"list-projects", "list-timelines", "list-render-formats", "info"})
+
+    def test_a_module_runs_alone_with_python_m(self):
+        # The __main__ block is the same in every module (checked above); one run proves it.
+        production = Path(resolve_workflow.__file__).resolve().parent
+        proc = subprocess.run([sys.executable, "-m", "rpresolve.cmd_detect", "--help"],
+                              cwd=str(production), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn("usage: python3 -m rpresolve.cmd_detect", proc.stdout.decode())
+
+    def test_a_module_run_alone_keeps_the_trim_review_tombstone(self):
+        from rpresolve import cmd_trim_review
+        status, out, err = run_main("m.json", "--markers", module=cmd_trim_review)
+        self.assertEqual(status, 2)
+        self.assertEqual(out, "")
+        self.assertIn("trim_review_markers", err)
 
 
 if __name__ == "__main__":

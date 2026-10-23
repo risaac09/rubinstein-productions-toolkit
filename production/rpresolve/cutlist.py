@@ -12,6 +12,12 @@ A manifest is JSON:
                 "spans": [{"in": 2125.9, "out": 2176.9,
                            "end_words": "...", "source_text": "..."}],
                 "reframe": {"face_x": 270}}]}
+Version 2 ("version": 2; see manifest.md) names a list of "sources" instead
+of source_path/source_sha256/words/approved_text, lets a span name its
+"source" and play in any order, and lets a source have no approved text. A
+manifest with no "version", or 1, is read exactly as before. Tools reach the
+source through sources(m) and source_for(m, span), never m["source_path"].
+
 in and out are seconds in the source. A span keeps source time [in, out):
 the out-point is where the next frame would start, so a cut covers
 round(out * fps) - round(in * fps) frames.
@@ -45,6 +51,7 @@ Checks (endcheck):
 import array
 import ast
 import bisect
+import copy
 import csv
 import difflib
 import hashlib
@@ -61,6 +68,7 @@ SILENCE_DB = -45.0
 MIN_SILENCE_S = 0.030
 EDGE_S = 0.010
 SEARCH_S = 1.5
+SEEK_PREROLL_S = 1.0  # decode_pcm decodes this much before t0 rather than seek to it
 # The approved-text gate has three verdicts, calibrated on Ep 002 (approved
 # spans score 0.63-0.89 on content words, the lines the essay check dropped
 # 0.00-0.33): fail below FAIL_COVERAGE or at a missing run of FAIL_RUN words;
@@ -241,9 +249,16 @@ def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
     """Mono 16 kHz signed 16-bit samples (bytes) of source[t0:t1]; t1 None
     reads to the end."""
     t0 = max(0.0, t0)
-    cmd = [ffmpeg or FFMPEG, "-v", "error", "-ss", f"{t0:.3f}"]
+    # On ffmpeg 7+ an input seek on AAC, even to 0, decodes the audio up to one
+    # 1024-sample packet early (23 ms at 44.1 kHz, 64 ms at 16 kHz). So the input
+    # seek stops SEEK_PREROLL_S short (none for a read near the start) and the
+    # rest is decoded and dropped by an output seek, which is exact.
+    head = round(max(0.0, t0 - SEEK_PREROLL_S), 3)
+    pre = round(t0 - head, 3)
+    cmd = [ffmpeg or FFMPEG, "-v", "error"] + (["-ss", f"{head:.3f}"] if head > 0 else [])
+    cmd += ["-i", "file:" + source] + (["-ss", f"{pre:.3f}"] if pre > 0 else [])
     cmd += ["-t", f"{t1 - t0:.3f}"] if t1 is not None else []
-    cmd += ["-i", "file:" + source, "-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
+    cmd += ["-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=timeout)
@@ -372,6 +387,49 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+SOURCE_ID = re.compile(r"[a-z0-9_-]+")
+SOURCE_KEYS = ("id", "path", "sha256", "words", "approved_text")
+V1_SOURCE_KEYS = ("source_path", "source_sha256", "words", "approved_text")
+
+
+def version(m):
+    return m.get("version", 1)
+
+
+def sources(m):
+    """[{id, path, sha256, words, approved_text}] of a manifest of either
+    version. A v1 manifest is one source with the id "main"."""
+    if version(m) == 2:
+        return [{k: s.get(k) for k in SOURCE_KEYS} for s in m["sources"]]
+    return [{"id": "main", "path": m["source_path"], "sha256": m.get("source_sha256"),
+             "words": m.get("words"), "approved_text": m.get("approved_text")}]
+
+
+def source_for(m, span=None):
+    """The source a span plays from (the only source when it names none)."""
+    srcs = sources(m)
+    want = (span or {}).get("source")
+    if want is None:
+        if len(srcs) != 1:
+            raise CutlistError("a span of a manifest with several sources must name its source")
+        return srcs[0]
+    for s in srcs:
+        if s["id"] == want:
+            return s
+    raise CutlistError(f"span names source {want!r}; the manifest has "
+                       f"{', '.join(s['id'] for s in srcs)}")
+
+
+def single_source(m, what="this tool"):
+    """The one source of a manifest, or CutlistError saying that what reads
+    one source only."""
+    srcs = sources(m)
+    if len(srcs) != 1:
+        raise CutlistError(f"the manifest has {len(srcs)} sources; {what} reads one source "
+                           "per manifest")
+    return srcs[0]
+
+
 def load_manifest(path, allow_no_speech=False):
     with open(path, encoding="utf-8") as f:
         m = json.load(f)
@@ -379,17 +437,48 @@ def load_manifest(path, allow_no_speech=False):
     return m
 
 
+def _validate_v2(m, no_speech):
+    for key in V1_SOURCE_KEYS:
+        if key in m:
+            raise CutlistError(f"a version 2 manifest names 'sources', not '{key}'")
+    srcs = m.get("sources")
+    if not isinstance(srcs, list) or not srcs:
+        raise CutlistError("manifest has no 'sources'")
+    ids = set()
+    for s in srcs:
+        sid = s.get("id")
+        if not isinstance(sid, str) or not SOURCE_ID.fullmatch(sid) or sid in ids:
+            raise CutlistError(f"source id missing, repeated or not [a-z0-9_-]+: {sid!r}")
+        ids.add(sid)
+        need = ("path",) if no_speech else ("path", "sha256", "words")
+        for key in need:
+            if not s.get(key):
+                raise CutlistError(f"source {sid} has no '{key}'")
+    if not no_speech and "fps" not in m:
+        raise CutlistError("manifest has no 'fps'")
+    return ids
+
+
 def validate_manifest(m, allow_no_speech=False):
+    ver = version(m)
+    if ver not in (1, 2):
+        raise CutlistError(f"manifest version {ver!r} is not one this tool reads (1 or 2)")
     no_speech = m.get("speech") is False
     if no_speech and not allow_no_speech:
         raise CutlistError('manifest is marked "speech": false (footage with no spoken words); '
                            "only reframe_plan reads such a manifest. This tool checks words, so it "
                            "needs words, approved_text and source_sha256")
-    required = (("source_path", "clips") if no_speech else
-                ("source_path", "source_sha256", "fps", "words", "approved_text", "clips"))
-    for key in required:
-        if key not in m:
-            raise CutlistError(f"manifest has no '{key}'")
+    if "clips" not in m:
+        raise CutlistError("manifest has no 'clips'")
+    if ver == 2:
+        ids = _validate_v2(m, no_speech)
+    else:
+        required = (("source_path",) if no_speech else
+                    ("source_path", "source_sha256", "fps", "words", "approved_text"))
+        for key in required:
+            if key not in m:
+                raise CutlistError(f"manifest has no '{key}'")
+        ids = None
     names = set()
     for clip in m["clips"]:
         name = clip.get("name")
@@ -402,12 +491,54 @@ def validate_manifest(m, allow_no_speech=False):
                 raise CutlistError(f"{name}: span without numeric in/out: {s}")
             if s["out"] <= s["in"]:
                 raise CutlistError(f"{name}: span ends before it starts: {s['in']}-{s['out']}")
-            if prev_out is not None and s["in"] < prev_out:
-                raise CutlistError(f"{name}: spans overlap or run backwards at {s['in']}")
-            prev_out = s["out"]
+            if ver == 1:
+                if prev_out is not None and s["in"] < prev_out:
+                    raise CutlistError(f"{name}: spans overlap or run backwards at {s['in']}")
+                prev_out = s["out"]
+            else:
+                src = s.get("source")
+                if src is None and len(ids) != 1 or src is not None and src not in ids:
+                    raise CutlistError(f"{name}: span at {s['in']} names source {src!r}; "
+                                       f"sources are {', '.join(sorted(ids))}")
+        if ver == 2:
+            _check_reuse(name, clip.get("spans") or [], next(iter(ids)) if len(ids) == 1 else None)
         if not clip.get("spans"):
             raise CutlistError(f"{name}: no spans")
     return m
+
+
+def same_source(a, b, sole=None):
+    """Whether two spans play from one source (sole: the id a span without
+    one means, when the manifest has just the one)."""
+    return (a.get("source") or sole) == (b.get("source") or sole)
+
+
+def _check_reuse(name, spans, sole=None):
+    """v2 may play spans in any order, but the same footage twice in one
+    clip is nearly always a slip: refuse it unless the later span says
+    "reuse": true."""
+    for j, b in enumerate(spans):
+        if b.get("reuse"):
+            continue
+        for a in spans[:j]:
+            if same_source(a, b, sole) and a["in"] < b["out"] and b["in"] < a["out"]:
+                raise CutlistError(f"{name}: spans {a['in']}-{a['out']} and {b['in']}-{b['out']} "
+                                   'overlap in one source; set "reuse": true on the later one '
+                                   "if it is meant")
+
+
+def to_v2(m):
+    """A version 2 copy of a manifest (v2 comes back as a copy). The one
+    source keeps its id "main"; nothing else changes."""
+    out = copy.deepcopy(m)
+    if version(m) == 2:
+        return out
+    src = sources(m)[0]
+    for k in V1_SOURCE_KEYS:
+        out.pop(k, None)
+    out["version"] = 2
+    out["sources"] = [{k: v for k, v in src.items() if v is not None}]
+    return validate_manifest(out, allow_no_speech=m.get("speech") is False)
 
 
 def frame(t, fps):
@@ -483,9 +614,10 @@ def spans_from_edl(path):
 
 
 def build_manifest(spans_by_clip, source_path, fps, words_path, approved_path,
-                   source_sha256=None, reframe=None, words=None):
+                   source_sha256=None, reframe=None, words=None, version=1):
     """A manifest from {clip: [(in, out)]}, filling end_words and source_text
-    from the words JSON."""
+    from the words JSON. version=2 writes the same single source as a
+    version 2 manifest (to_v2)."""
     words = words if words is not None else load_words(words_path)
     clips = []
     for name, spans in spans_by_clip.items():
@@ -496,22 +628,36 @@ def build_manifest(spans_by_clip, source_path, fps, words_path, approved_path,
     m = {"version": 1, "source_path": source_path,
          "source_sha256": source_sha256 or sha256_file(source_path), "fps": fps,
          "words": words_path, "approved_text": approved_path, "clips": clips}
-    return validate_manifest(m)
+    validate_manifest(m)
+    return to_v2(m) if version == 2 else m
 
 
 # ---------------------------------------------------------------------------
 # endcheck and selects
 # ---------------------------------------------------------------------------
 
+NO_TEXT = {"coverage": None, "longest_unmatched_run": 0, "unmatched": "",
+           "verdict": "none", "ok": True}  # a source with no approved text: no claim gate
+
+
 def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
              check_cancel=None, progress=None):
     """Every span of every clip against the words, the source audio and the
-    approved text. Returns [{clip, span, in, out, frames, end, text, ok}].
-    check_cancel() is called before each span (it raises to stop);
-    progress(done, total) after each."""
-    words = words if words is not None else load_words(manifest["words"])
-    approved = approved if approved is not None else load_approved(manifest["approved_text"])
-    loops = repetition_loops(words)
+    approved text. Returns [{clip, span, source, in, out, frames, end, text,
+    ok}]. words and approved, when given, replace those of every source (a
+    single-source caller's override). A source with no approved text gets
+    the verdict "none" (ok, never "pass"). check_cancel() is called before
+    each span (it raises to stop); progress(done, total) after each."""
+    cache = {}
+
+    def of(src):
+        if src["id"] not in cache:
+            w = words if words is not None else load_words(src["words"])
+            ap = approved if approved is not None else (
+                load_approved(src["approved_text"]) if src.get("approved_text") else None)
+            cache[src["id"]] = (w, ap, repetition_loops(w))
+        return cache[src["id"]]
+
     rows = []
     total = sum(len(c["spans"]) for c in manifest["clips"])
     for clip in manifest["clips"]:
@@ -520,20 +666,23 @@ def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
                 check_cancel()
             if progress and rows:
                 progress(len(rows), total)
+            src = source_for(manifest, s)
+            w, ap, loops = of(src)
+            base = {"clip": clip["name"], "span": i, "source": src["id"], "in": s["in"],
+                    "out": s["out"], "frames": frames(s, manifest["fps"])}
             bad = [lp for lp in loops if lp[0] < s["out"] + SEARCH_S and lp[1] > s["in"]]
             if bad:
                 a0, b0, phrase = bad[0]
-                rows.append({"clip": clip["name"], "span": i, "in": s["in"], "out": s["out"],
-                             "frames": frames(s, manifest["fps"]), "end": None, "text": None,
+                rows.append({**base, "end": None, "text": None,
                              "ok": False, "reason": f"transcript loops \"{phrase} ...\" "
                              f"at {a0:.1f}-{b0:.1f}s; re-transcribe before trusting this span"})
                 continue
-            env = (envelope(manifest["source_path"], s["out"] - SEARCH_S, s["out"] + SEARCH_S, ffmpeg)
+            env = (envelope(src["path"], s["out"] - SEARCH_S, s["out"] + SEARCH_S, ffmpeg)
                    if audio else None)
-            end = end_check(words, s["out"], s.get("end_words", ""), env)
-            text = approved_check(content_tokens(span_text(words, s["in"], s["out"])), approved)
-            rows.append({"clip": clip["name"], "span": i, "in": s["in"], "out": s["out"],
-                         "frames": frames(s, manifest["fps"]), "end": end, "text": text,
+            end = end_check(w, s["out"], s.get("end_words", ""), env)
+            text = (approved_check(content_tokens(span_text(w, s["in"], s["out"])), ap)
+                    if ap is not None else dict(NO_TEXT))
+            rows.append({**base, "end": end, "text": text,
                          "ok": end["ok"] and text["ok"], "review": text["verdict"] == "review",
                          "reason": "; ".join(r for r in (end["reason"],
                                    "" if text["ok"] else "not inside the approved text") if r)})

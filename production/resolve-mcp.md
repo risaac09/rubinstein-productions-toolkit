@@ -62,7 +62,7 @@ writes.
 | `render_queue_status` | read | Every render job with its status, whether a render is running, and the Deliver page's format and codec. |
 | `detect` | offline | Camera and picture profile per media file, with the proposed Input Color Space and Data Level. |
 | `survey` | offline | The read-only survey of every project from Resolve's databases on disk (needs Python 3.14). |
-| `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
+| `measure` | offline | Luma (p1, p5, p50, p95, p99), clipping, legal range, highlight tail slope, shadow classes (readable, sculpted, lost), skin tone and per-face lighting ratio in stops in faces found by macOS Vision, and camera match for a video file, with the transfer named. The CLI's `--delivery` adds the master-against-encode readable-shadow row. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
 | `reframe_plan` | offline | A static crop per span for the 9:16, 1:1, 4:5 or 16:9 versions or the master shape (`aspects`; `master` needs `master_size`), or, with `items`, a framing plan for a timeline's clips that `reframe_apply` writes (see Framing below). Each crop is centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. The crop keeps the whole head and room above it (Framing). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
@@ -273,33 +273,46 @@ The menu paths this table gives for creating and exporting a project
 File > Export Project Archive) are written from memory and have not been
 checked against a live Resolve; the labels may differ by version.
 
-Still in the script, with `python3 resolve_workflow.py <command> --help`:
+Still in the script: `python3 resolve_workflow.py --help` lists the commands,
+one line each, and `<command> --help` gives a command's flags. Each command is
+one module, `rpresolve/cmd_<name>.py` (the name with its hyphens as
+underscores), whose docstring says what it does; from `production/` it also
+runs alone as `python3 -m rpresolve.cmd_<name>`. The script finds the modules
+at import, so a new command adds its module and its tests and edits no shared
+file, this one included (`rpresolve/cli.py` says how).
 
 - Read Resolve and change nothing (Resolve Studio must be running):
   `list-projects`, `list-timelines`, `list-render-formats` and `info`.
-- Never connect to Resolve: `survey`, `detect`, `shoot-table`, `measure`, `perceive`, `pipeline-proof`, `manifest`,
-  `endcheck`, `selects`, `reframe-plan`, `tilt-fixture`, `tilt-check`,
-  `deliver-check`, `qc`, `deliver-captions`, `deliver-fix-loudness`, `deliver-manifest`,
-  `sync-measure`, `trim-review` (the TSV) and `story-packet`. `tilt-fixture` and
-  `tilt-check` are script commands only; they have no MCP tool.
+- Every other command never connects to Resolve.
 
-Twelve of these have no tool: `shoot-table` (one CSV row per clip, with long-take, VFR, weak-audio and unexpected-camera flags and a per-camera `--offset`; it calls `detect` for camera and profile), `perceive` (one frame as a folder of scopes, a
-Lab palette and `packet.json`, for a session to read beside the frame; see
-`rpresolve/perceive.py`), `pipeline-proof` (a test render against a reference render, PASS or FAIL per row, for the G1 proof), `qc` (one FAIL-first QC table from ffprobe and ffmpeg filters), `manifest` (it builds the cut manifest that
-`endcheck`, `reframe_plan`, `cut` and `trim_review` read), `deliver-fix-loudness`
-(the loudness step of the deliver loop), `deliver-manifest` (writes the delivery
-manifest and checksums after the last check), `list-projects` and
-`list-render-formats`, `tilt-fixture` and `tilt-check` (a hand step: a
-person renders the still, so no tool is planned), and `story-packet` (one
-Markdown file per shoot for the selects board: per clip in capture order, the
-shoot-table row, an audio energy sparkline with the loud spans, the
-words as timed phrases, any picture labels and, with `--strips`, a contact
-strip of eight frames; it scores and chooses nothing). `info` is covered by `resolve_status`,
-`list_timelines` and `render_queue_status` together. Each other command has a
-tool of the same name (with underscores), with a few flags left behind: the
-script's `sync-measure` takes `--ref-stream` and
+A command has an MCP tool when one of the same name with underscores is in
+[Tools](#tools); `info` is covered by `resolve_status`, `list_timelines` and
+`render_queue_status` together. A command with a tool keeps a few flags the
+tool lacks: the script's `sync-measure` takes `--ref-stream` and
 `--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
 and `--no-metadata-cache`, none of which the tools do.
+
+`perceive --targets` also writes `targets.json` for a private reference library;
+see `reference-library.md`.
+
+`audio-report` measures one audio stream, whole or between `--start` and
+`--end`, and writes `audio-report.json`, `loudness.png` (short-term and
+momentary loudness over time, silences shaded, clips and clicks marked) and
+`spectrogram.png` into the `-o` folder, which is refused inside any git
+tree. The JSON holds integrated loudness, LRA and true peak (read as
+`deliver_check` reads them), per-channel peak, RMS, crest factor, DC and
+clip runs, clicks, silences, dropouts, stereo correlation and balance,
+octave balance, and flags, each flag with its value, threshold and first
+times; `--ref` adds a reference file's numbers and the difference.
+`--dest` or `--target` sets the loudness target. Every threshold is a
+working default, not a standard. It measures and does not listen: a clean
+report does not mean a voice is clear, so a person still hears the hardest
+passage as an A/B before a mix is called done.
+
+`sting-sync` re-measures each hit of an intro's sound sting from the audio and
+checks it against the lockup's picture keyframes: signed offsets in frames and
+ms, FAIL first. It has no tool; exit 0 pass, 1 any FAIL, 2 an input missing or
+breaking the contract.
 
 To run a read-only command from a terminal, export the two variables the
 registration above sets (`RESOLVE_SCRIPT_API` and `RESOLVE_SCRIPT_LIB`).
