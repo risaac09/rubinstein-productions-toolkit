@@ -5,10 +5,10 @@ Fairlight, and nothing is sent anywhere.
 
     python3 -m rpresolve.mixbuild render SPEC --out DIR [--report] [--dry-run]
     python3 -m rpresolve.mixbuild ab --out DIR FILE FILE [FILE ...]
-                                    [--start S] [--seconds 20] [--seed N]
+                                    [--start S] [--seconds 20] [--seed N] [--noise-type T]
     python3 -m rpresolve.mixbuild presets
     python3 -m rpresolve.mixbuild preset-ab DIALOGUE.wav --out DIR
-                                    [--presets lav,boom,vo] [--start S] [--seconds 20] [--seed N]
+                                    [--presets lav,boom,vo] [--start S] [--seconds 20] [--seed N] [--noise-type T]
 
 The spec is YAML (a small subset read by the parser below, so PyYAML is not
 needed; JSON is accepted too). Paths are relative to the spec's folder.
@@ -75,7 +75,9 @@ audio-report into DIR/reports/NAME/.
 ab cuts the same span from each file, matches the excerpts' integrated
 loudness (turning the louder ones down, so nothing clips), shuffles them to
 A, B, C ..., and writes the sealed key to DIR/sealed/key.json (read-only,
-hash in packet.json). Listen first, open the key after.
+hash in packet.json). Listen first, open the key after. For a denoise
+decision add --noise-type rumble|wind|hiss|room|other:WORD; it is kept in the
+key and goes into the review log line (production/media-review-loop.md).
 
 Numbers are not listening: a render that measures well can still sound
 wrong. The A/B packet is the control for that.
@@ -1479,10 +1481,24 @@ def _lufs(path):
     return v
 
 
-def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000):
+NOISE_TYPES = ("rumble", "wind", "hiss", "room")
+
+
+def check_noise_type(value):
+    """rumble, wind, hiss, room, or 'other:WORD' (the word says what). None passes."""
+    if value is None or value in NOISE_TYPES:
+        return value
+    if re.fullmatch(r"other:[a-z][a-z0-9]*(?:[ -][a-z0-9]+)*", value):
+        return value
+    raise SpecError(f"noise type {value!r}: use {', '.join(NOISE_TYPES)} or other:WORD")
+
+
+def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000, noise_type=None):
     """Cut the same span from each file, match integrated loudness (only
     turning down), shuffle to A, B, C ..., seal the key. Returns packet.json's
-    content plus the matched spread in LU."""
+    content plus the matched spread in LU. noise_type, for a denoise decision,
+    lands in the sealed key so the review log line can carry it."""
+    noise_type = check_noise_type(noise_type)
     dc.check_tools(ffmpeg=True)
     if len(files) < 2:
         raise SpecError("an A/B packet needs at least two files")
@@ -1529,6 +1545,7 @@ def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000):
     finally:
         shutil.rmtree(work, ignore_errors=True)
     key = {"seed": seed, "start_s": start, "seconds": seconds,
+           **({"noise_type": noise_type} if noise_type else {}),
            "labels": {lab: {"source": os.path.abspath(files[order[i]]),
                             "gain_db": round(gains[order[i]], 3)} for i, lab in enumerate(labels)}}
     with open(key_path, "w", encoding="utf-8") as f:
@@ -1551,7 +1568,8 @@ def ab_packet(files, out_dir, start=0.0, seconds=20.0, seed=None, rate=48000):
     return packet
 
 
-def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, seconds=20.0, seed=None):
+def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, seconds=20.0, seed=None,
+              noise_type=None):
     """Render `dialogue` through each preset and build one blind A/B packet
     of the results and the untouched dialogue. It says nothing about which is
     better: the ear does, and the sealed key says which file was which."""
@@ -1569,7 +1587,8 @@ def preset_ab(dialogue, out_dir, presets=("lav", "boom", "vo"), start=0.0, secon
         d = os.path.join(out_dir, "renders", name)
         render(spec, d)
         files.append(os.path.join(d, "stems", "dialogue.wav"))
-    return ab_packet(files, os.path.join(out_dir, "packet"), start, seconds, seed)
+    return ab_packet(files, os.path.join(out_dir, "packet"), start, seconds, seed,
+                     noise_type=noise_type)
 
 
 def presets_text():
@@ -1598,6 +1617,8 @@ def main(argv=None):
     a.add_argument("--start", type=float, default=0.0)
     a.add_argument("--seconds", type=float, default=20.0)
     a.add_argument("--seed", type=int, default=None)
+    a.add_argument("--noise-type", default=None,
+                   help="for a denoise decision: rumble, wind, hiss, room or other:WORD; kept in the sealed key")
     sub.add_parser("presets", help="list the dialogue presets and why each step is there")
     q = sub.add_parser("preset-ab", help="render one dialogue file through presets, blind A/B packet")
     q.add_argument("dialogue")
@@ -1607,13 +1628,14 @@ def main(argv=None):
     q.add_argument("--start", type=float, default=0.0)
     q.add_argument("--seconds", type=float, default=20.0)
     q.add_argument("--seed", type=int, default=None)
+    q.add_argument("--noise-type", default=None, help="as for ab")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "presets":
             print(presets_text())
         elif args.cmd == "preset-ab":
             p = preset_ab(args.dialogue, os.path.abspath(args.out), args.presets.split(","),
-                          args.start, args.seconds, args.seed)
+                          args.start, args.seconds, args.seed, noise_type=args.noise_type)
             print(f"{', '.join(p['labels'])} written; matched within {p['spread_lu']} LU; "
                   "the key is sealed in packet/sealed/key.json")
         elif args.cmd == "render":
@@ -1629,7 +1651,7 @@ def main(argv=None):
             for s in m["skipped"]:
                 print(f"skipped {s['step']} in {s['where']}: {s['why']}", file=sys.stderr)
         else:
-            p = ab_packet(args.files, os.path.abspath(args.out), args.start, args.seconds, args.seed)
+            p = ab_packet(args.files, os.path.abspath(args.out), args.start, args.seconds, args.seed, noise_type=args.noise_type)
             print(f"{', '.join(p['labels'])} written; matched within {p['spread_lu']} LU; "
                   "the key is sealed in sealed/key.json")
     except NullError as e:
