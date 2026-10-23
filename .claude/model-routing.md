@@ -39,6 +39,8 @@ pool follows Q4.
 Importance is not difficulty. Model and effort are separate levers; the same
 model at a lower effort is often right.
 
+Fan-out: at most five live writers per parent. Input tokens ran about 240x output on 2026-10-20, so parent context lifetime is the cost. End a long lane at a checkpoint with a written handover instead of keeping one context alive for hours.
+
 ## Capacity contract (2026-09-13)
 
 Claude runs on Max 20x; ChatGPT Plus is a separate pool. No usage credits or
@@ -55,6 +57,13 @@ Log the tier and whether the work needed a second review round:
 
 `items` names the planning ids the work moved (`scripts/sd-ref --list --state
 open`); the session id is filled from the environment.
+
+To compare pools, add `pool` (claude, codex, local, openrouter or script). Add
+review load when you have it: `cards` (integer), `g1FirstPass` (0 to 1, the
+share of cards that passed the first gate) and `reviewEditLines` (integer,
+lines Isaac or a reviewer edited). All are optional and validated; a typo
+refuses the entry. `sd-ai-engage --summary [--since DATE]` reads the log back
+by pool and tier.
 
 The reasoning behind each rule, the known failure mode, and worked examples:
 `stack-data/kit/phase-zero/model-routing-rationale.md`.

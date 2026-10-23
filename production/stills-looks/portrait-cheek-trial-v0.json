@@ -1,0 +1,26 @@
+{
+  "name": "rpstills portrait cheek trial v0",
+  "version": "0.0.1",
+  "status": "TRIAL. Not a house standard. Superseded for delivery by the per-person neutral solve (portrait-neutral-v1.json: neutralise on a neutral reference, exposure on the cheek); kept for matching a set to one hero frame (solve.mode target).",
+  "space": "Developed RAW to sRGB (16-bit TIFF). The solve measures CIELAB (D65) on the sRGB render.",
+  "develop": {
+    "backend": "apple",
+    "profile": null,
+    "values": {}
+  },
+  "solve": {
+    "target_lab": [64.0, 15.0, 14.0],
+    "sample": "cheek",
+    "free": ["ev", "mired", "tint"],
+    "tint_max": {"apple": 50, "lightcraft": 6},
+    "ev_bounds": [-3, 3],
+    "temp_bounds_k": [2500, 12000]
+  },
+  "notes": [
+    "Target: mean CIELAB over the cheek apples (rpstills.skin.cheek_mask) of L* 64, a* 15, b* 14; hue 43 degrees, Rec.709 vectorscope 117.7 degrees. It was picked by eye on one overcast portrait session and is a trial value.",
+    "The published skin-tone line on a Rec.709 vectorscope sits near 123 degrees; this target reads about 5.5 degrees redder. In a blind comparison on one portrait the per-person neutral solve was preferred to both for delivery.",
+    "tint_max is per backend, in each backend's own units. lightcraft 6 keeps white fabric from picking up a visible green or magenta cast in LightCraft units, where tint 0 sits near neutral. apple 50 is wider because Apple's scale differs: on the test frames its as-shot tint was -14.4 and the target needed -29 to beyond -40, so a shared 6 pinned tint on every apple frame. On apple it is a bound, not a calibrated limit.",
+    "temp_bounds_k is Kelvin only on the apple backend. On lightcraft it bounds wb.temp in LightCraft's own units, which on a RAW without a Kelvin scale (the RW2 test files) are relative: 6500 is as shot.",
+    "develop.values is empty: the apple backend takes only exposure, temperature and tint. A LightCraft look puts LightCraft control ids there and a LightCraft profile id in develop.profile."
+  ]
+}

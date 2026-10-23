@@ -274,7 +274,7 @@ class TestOnGeneratedFrames(unittest.TestCase):
             still, out = os.path.join(tmp, "s.png"), os.path.join(tmp, "pkt")
             subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90",
                             "-frames:v", "1", "-y", still], check=True)
-            args = argparse.Namespace(file=still, out=out, at=None, ref=None, no_faces=True)
+            args = argparse.Namespace(file=still, out=out, at=None, ref=None, no_faces=True, targets=True)
             stdout, err = io.StringIO(), io.StringIO()
             with redirect_stdout(stdout), redirect_stderr(err):
                 self.assertEqual(rw.cmd_perceive(args), 0)

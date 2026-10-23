@@ -18,6 +18,7 @@ install.
 cd production
 ~/.venvs/rp-tools/bin/python -m lutlab decompose LOOK.cube --in vlog --out-space r709 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab build DIR/params.json --cube NEW.cube --size 33 --hald NEW.png
+~/.venvs/rp-tools/bin/python -m lutlab shot-match --ref REF.png --src SRC.png [--space vlog] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
@@ -25,13 +26,16 @@ cd production
 ~/.venvs/rp-tools/bin/python -m lutlab diff A.cube B.cube --in vlog
 ~/.venvs/rp-tools/bin/python -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
+~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di --size 65 --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di --size 33
+~/.venvs/rp-tools/bin/python -m lutlab pack --camera s5ii,gh7,rcm [--base BASE/params.json] --out DIR
 ```
 
 Spaces: `vlog` (V-Log/V-Gamut), `bmdfilm5` (Blackmagic Film Gen 5/Wide Gamut
 Gen 5), `logc3` (LogC3 EI 800/AWG3), `logc4` (LogC4/AWG4), `di` (DaVinci
 Intermediate/DWG), `r709` (gamma 2.4), `srgb`, `lin709`. Output spaces for the
-model: `r709`, `srgb`. Cameras (`--camera`): `s5ii` is V-Log, `pyxis` is BRAW
-decoded as Gen 5; `rcm` (for `looks` only) is DaVinci Intermediate in and out. LUT inputs can be `.cube` or Resolve's own `.dat`.
+model: `r709`, `srgb`. Cameras (`--camera`): `s5ii` and `gh7` are V-Log, `pyxis` is BRAW
+decoded as Gen 5; `rcm` (for `looks`, `build` and `pack`) is DaVinci Intermediate in and out. LUT inputs can be `.cube` or Resolve's own `.dat`.
 
 ## Cameras, ports and looks
 
@@ -81,7 +85,9 @@ collide. Copy the file to the root of the card.
 Which cameras can load the files:
 - **S5II:** yes, from the card, as the first section above describes (`.cube`, 2 to 33 points, 8 characters on FAT32).
 - **Pyxis:** yes, 33-point `.cube`, as the first section above says.
-- **GH7, GH5 and iPhone:** this repo knows no route. Nothing here writes or loads a LUT for them.
+- **GH7:** `--camera gh7` writes the S5II's V-Log files labelled `[GH7]` (port, looks, pack). Whether the GH7 loads a `--monitor` copy in camera is untested. **GH5 and iPhone:** this repo knows no route.
+
+Colour space transform LUTs, LUT error statistics and the LUT pack for Resolve on an iPad: see [lutlab-cst.md](../lutlab-cst.md). `cst`, `lutstats` and `pack` need numpy only; `pack --base` bakes looks and so needs scipy and Pillow too.
 
 Delta arithmetic (`model.apply_delta`):
 - **Added:** tone `black`/`white`/`mid`/`toe_start`/`shoulder_start`; `hue_lum`; `hue_shift`; `split_tone` (as OKLab vectors); `white_balance`.
@@ -329,3 +335,9 @@ strength; grain as size, amplitude by luma, and chroma amount.
   first.
 
 Tests: `~/.venvs/rp-tools/bin/python production/tests/test_lutlab.py` (synthetic LUTs only).
+
+## Shot match
+
+`shot-match` matches one shot to a reference shot of the same content, two frames at the same framing (two cameras on one scene). It fits an ASC CDL (slope, offset, power, saturation) by least squares on CIELAB error, then a 17-point 3D residual LUT regularised toward zero and toward smooth. The residual is fitted on half the pixels and kept only if it beats the CDL alone on the other half. A pair that is not the same content is refused (luminance rank correlation under 0.8 after alignment) and nothing is written: unpaired transfer measured worse than no correction.
+
+It writes `NAME.cc` (CDL for a Resolve CDL import), `NAME.cube` (CDL and residual in one LUT), `NAME-residual.cube` (the residual alone, for a node after the CDL) and `NAME.report.md` with CIEDE2000 before and after, on held-out pixels and on all. Synthetic recovery: a known CDL comes back to within 0.01 code value on a colour grid. Real pairs from two cameras have parallax and different lenses, so expect the residual error to stay above the synthetic figure; a pair with a different lighting direction is not a colour difference and no LUT fixes it.
