@@ -1,0 +1,1 @@
+qc gains sound rows (VP-121): lra, true_peak_per_cut, silence_at_cut, speech_vs_rest (--words), phone_proxy and stems_sum (--stems). WARN is a new row status that does not fail the table. Every threshold is a working default.

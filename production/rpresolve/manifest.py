@@ -16,7 +16,7 @@ import os
 import re
 from fractions import Fraction
 
-from . import deliver, delivercheck as dc
+from . import deliver, delivercheck as dc, refs
 
 MANIFEST = "manifest.md"
 CHECKSUMS = "checksums.txt"
@@ -122,6 +122,8 @@ def build(root, config, project, approval, prepared_by, review_copy, review_sha,
     if not SHA_RE.fullmatch(review_sha):
         raise ManifestError("review copy SHA-256 must be 64 lowercase hex characters")
     root = os.path.abspath(root)
+    if refs.is_reference(root):
+        raise ManifestError(refs.reference_problem(root))
     rows, sums = [], []
     subs = deliver.subfolders(config)
     for sub, name in scan(root):
@@ -167,6 +169,8 @@ def write(root, text, sums, overwrite=False):
     """Write manifest.md, then checksums.txt (which also covers the manifest).
     Refuses to replace either unless overwrite. Returns the two paths."""
     root = os.path.abspath(root)
+    if refs.is_reference(root):
+        raise ManifestError(refs.reference_problem(root))
     mpath, cpath = os.path.join(root, MANIFEST), os.path.join(root, CHECKSUMS)
     existing = [p for p in (mpath, cpath) if os.path.exists(p)]
     if existing and not overwrite:

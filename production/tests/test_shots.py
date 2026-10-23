@@ -42,6 +42,7 @@ def make(out, parts, audio=False):
         raise RuntimeError(proc.stderr)
 
 
+@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestShots(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -492,7 +492,7 @@ class TestNoSpeechManifest(unittest.TestCase):
         text = subprocess.run([sys.executable, str(HERE.parent / "resolve_workflow.py"),
                                "reframe-plan", "--help"], capture_output=True, text=True).stdout
         self.assertIn(f"default {reframe.MIN_CHECKED_SHARE:g}", text)
-        src = (HERE.parent / "resolve_workflow.py").read_text()
+        src = (HERE.parent / "rpresolve" / "cmd_reframe_plan.py").read_text()
         self.assertIn(f'"--min-checked", type=float, default={reframe.MIN_CHECKED_SHARE:g}', src)
 
 
