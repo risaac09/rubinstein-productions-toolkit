@@ -34,6 +34,9 @@
   fit-pairs --raw A.RW2 --jpg A.JPG [--raw B.RW2 --jpg B.JPG ...] [--out DIR] [--name NAME]
   fit-pairs --src log.tif --dst graded.tif --in SPACE --out-space r709 [--out DIR] [--name NAME]
         fit the same model from image pairs (RAW + camera JPEG, or source + graded frame)
+  shot-match --ref REF --src SRC [--space srgb] [--min-corr 0.8] [--size 33] [--out DIR] [--name NAME] [--overwrite]
+        match SRC to REF, two frames of the same content: NAME.cc (ASC CDL), NAME.cube (CDL + 17-point residual),
+        NAME-residual.cube, NAME.report.md with Delta E 2000 before and after. A pair that is not the same content is refused
 
 Spaces: vlog, bmdfilm5, logc3, logc4, di, r709, srgb, lin709. Cameras: s5ii (vlog),
 gh7 (vlog), pyxis (bmdfilm5). LUT inputs read .cube and Resolve .dat. Output goes to --out or
@@ -91,6 +94,15 @@ def main(argv=None):
     p.add_argument("--out-space", default="srgb")
     p.add_argument("--out")
     p.add_argument("--name", default="pairs")
+    p = sub.add_parser("shot-match")
+    p.add_argument("--ref", required=True)
+    p.add_argument("--src", required=True)
+    p.add_argument("--space", default="srgb")
+    p.add_argument("--min-corr", type=float, default=0.8)
+    p.add_argument("--size", type=int, default=33)
+    p.add_argument("--out")
+    p.add_argument("--name", default="shot-match")
+    p.add_argument("--overwrite", action="store_true")
     p = sub.add_parser("looks")
     p.add_argument("base")
     p.add_argument("--deltas", nargs="+", default=[str(LOOKS_DIR)])
@@ -243,6 +255,19 @@ def main(argv=None):
             for e in sorted(rows, key=lambda e: (e["guess"], e["rel"].lower())):
                 cp = f"  (+{len(e['copies'])} copies)" if e["copies"] else ""
                 print(f"{e['space'] or e['guess']:<14} {e['lattice']:>3}  {e['rel']}{cp}")
+    elif a.cmd == "shot-match":
+        from . import shotmatch
+        out = guard.out_dir(a.out, a.name)
+        try:
+            m = shotmatch.match(a.src, a.ref, a.space, a.min_corr)
+        except shotmatch.Refused as e:
+            print(f"shot-match: refused: {e}", file=sys.stderr)
+            return 2
+        for f in shotmatch.write(m, out, a.name, a.src, a.ref, a.size, a.overwrite):
+            print(f)
+        e = m["errors"]
+        print(f"held-out dE2000 median {e['before']['held-out']['median']} -> {e['match']['held-out']['median']} "
+              f"(CDL alone {e['cdl']['held-out']['median']})")
     elif a.cmd == "fit-pairs":
         from . import pairs
         out = guard.out_dir(a.out, a.name)
