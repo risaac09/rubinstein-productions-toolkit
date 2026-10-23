@@ -13,10 +13,10 @@ Three lutlab commands that need numpy and nothing else (only `pack --base`, whic
 
 ```bash
 cd production
-~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di --size 65 --out DIR          # DIR/vlog-to-di-65.cube
-~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to r709 --out DIR                  # DIR/vlog-to-r709-33.cube
+~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to di --out DIR                     # DIR/vlog-to-di-65.cube
+~/.venvs/rp-tools/bin/python -m lutlab cst --from vlog --to r709 --size 33 --out DIR         # DIR/vlog-to-r709-33.cube
 ~/.venvs/rp-tools/bin/python -m lutlab lutstats check DIR/vlog-to-di-65.cube --from vlog --to di
-~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di --size 33 [--interp trilinear]
+~/.venvs/rp-tools/bin/python -m lutlab lutstats roundtrip --from vlog --to di [--size 33] [--interp trilinear]
 ~/.venvs/rp-tools/bin/python -m lutlab pack --camera s5ii,gh7,rcm --out DIR                 # DIR/rp-luts-YYYYMMDD.zip
 ~/.venvs/rp-tools/bin/python -m lutlab pack --camera s5ii,gh7,rcm --base BASE/params.json --size 65 --date 20261022 --out DIR
 ```
@@ -26,8 +26,9 @@ git work tree and the iCloud folders. An existing file is never replaced without
 
 ## cst
 
-`--from vlog|bmdfilm5|logc3|logc4|di|lin709 --to di|r709|srgb`, `--size 33` (default) or `65`. The file
-is `<from>-to-<to>-<size>.cube`.
+`--from vlog|bmdfilm5|logc3|logc4|di|lin709 --to di|r709|srgb`, `--size 65` (default) or `33`. The file
+is `<from>-to-<to>-<size>.cube`. A 65-point cube is 7.4 MB and builds in about 0.3 s; a 33-point one is 970 KB and builds in
+about 0.1 s. Use `--size 33` for a small file (a camera or an app that cannot take 65 points).
 
 It is a technical transform, not a look. It decodes the source's code values to scene linear and changes
 primaries through linear Rec.709, the hub every lutlab space goes through. Then it encodes to the target
@@ -82,7 +83,7 @@ from the exact transform, and the 65-point cube a median 0.04 (p99 0.7 to 1.3).
 
 ## pack
 
-`pack --camera LIST [--base PARAMS.json [--looks DIR|FILE ...]] [--size 33|65] [--date YYYYMMDD]` writes
+`pack --camera LIST [--base PARAMS.json [--looks DIR|FILE ...]] [--size 33|65] [--date YYYYMMDD]` (`pack` keeps 33 as its default: Resolve for iPad's 65-point support is untested) writes
 `rp-luts-<date>.zip`. Everything sits under one folder, `rp-luts-<date>/`:
 
 - `cst/`: for each camera's log, `<log>-to-di-N.cube` and `<log>-to-r709-N.cube` (the S5II and GH7 share

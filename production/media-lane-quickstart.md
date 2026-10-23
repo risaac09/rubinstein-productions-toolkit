@@ -124,8 +124,8 @@ export PY=~/.venvs/rp-tools/bin/python
 export C=~/media-out/colour-job1                      # outside any git tree
 export SHOT=~/footage/shot1.MOV                       # a clip, or a folder of frames, in the camera's log
 
-$PY -m lutlab cst --from vlog --to r709 --size 33 --out "$C/cst"
-$PY -m lutlab lutstats check "$C/cst/vlog-to-r709-33.cube" --from vlog --to r709
+$PY -m lutlab cst --from vlog --to r709 --out "$C/cst"
+$PY -m lutlab lutstats check "$C/cst/vlog-to-r709-65.cube" --from vlog --to r709
 $PY -m lutlab balance "$SHOT" --camera gh7 --frames 6 --out "$C/balance"
 ```
 
@@ -134,7 +134,7 @@ $PY -m lutlab balance "$SHOT" --camera gh7 --frames 6 --out "$C/balance"
 Look at a cube on a frame (every cube gets a PNG and one contact sheet):
 
 ```bash
-$PY -m lutlab apply "$C/cst/vlog-to-r709-33.cube" "$C/balance/shot1.cube" --frame ~/footage/frame.jpg --width 1000 --out "$C/apply"
+$PY -m lutlab apply "$C/cst/vlog-to-r709-65.cube" "$C/balance/shot1.cube" --frame ~/footage/frame.jpg --width 1000 --out "$C/apply"
 ```
 
 Match one camera to another from a shared, framed-alike still of each (it refuses unpaired content):
@@ -145,7 +145,7 @@ $PY -m lutlab shot-match --ref ~/footage/camB-chart.png --src ~/footage/camA-cha
 
 **A pass looks like:**
 
-- `cst` writes the cube in about 0.1 s; `lutstats check` for vlog to r709 at 33 points: natural dE2000 mean 0.515, p99 4.35, neutral max 0.92 (at 65 points: 0.15, 1.73, 0.71; `di` is 0.07 and 0.03).
+- `cst` writes a 65-point cube (7.4 MB) in about 0.3 s; `lutstats check` for vlog to r709 at 65 points: natural dE2000 mean 0.15, p99 1.73, neutral max 0.71 (at `--size 33`, 970 KB, about 0.1 s: 0.515, 4.35, 0.92; `di` is 0.026 and 0.18 at 65, 0.07 and 0.42 at 33).
 - `balance`: `converged`, mean `dE00 to set` near 0 (smoke chart clip: EV +2.3, 4321 K, skin L* 63.9, neutral a* b* within 0.2 of 0), 9 s, and `shot1.cc` plus `shot1.cube` beside `balance.md`.
 - `shot-match`: held-out dE2000 median falls (smoke: 2.78 to 1.20), about 2 s.
 - Resolve importing the `.cc` or `.cube` stays a hand step.

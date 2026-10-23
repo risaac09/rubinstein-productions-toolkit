@@ -2,14 +2,14 @@
 
   decompose <lut.cube> --in SPACE --out-space r709|srgb [--out DIR] [--name NAME] [--overwrite]
         fit the look model to a LUT: params.json, <name>.residual.cube, report.md, plots
-  build <params.json> [--delta LOOK.json] [--cube OUT.cube] [--size N] [--in SPACE|--camera C]
+  build <params.json> [--delta LOOK.json] [--cube OUT.cube] [--size 65|33|N] [--in SPACE|--camera C]
         [--no-residual] [--hald OUT.png] [--hald-level L] [--overwrite]
         rebuild a LUT and/or a Hald CLUT from parameters, optionally with a look delta on top
-  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii,rcm [--size N] [--monitor] [--out DIR]
+  looks <base params.json> [--deltas DIR|FILE ...] --camera pyxis,s5ii,rcm [--size 65|33|N] [--monitor] [--out DIR]
         bake every look delta on the base for every camera: "<look> [<Camera>].cube"; rcm is DaVinci
         Intermediate in and out, for a node in a Resolve Color Managed project; --monitor also writes
         a 33-point 0..1 copy per camera look as <CC><LLLL>.cube (8 characters at most), never for rcm
-  port <lut> --from SPACE (--to SPACE | --camera C) [--size 33] [--ev 0] [--monitor] [--out DIR]
+  port <lut> --from SPACE (--to SPACE | --camera C) [--size 65|33] [--ev 0] [--monitor] [--out DIR]
         re-address a LUT made for one log to another (exact; no model)
   diff <a> <b> --in SPACE [--out-space r709]
         Delta E 2000 between two LUTs on natural colours, overall and by hue
@@ -23,10 +23,10 @@
         (.braw clips decode as Film Gen 5 through lutlab/braw/braw2ppm)
   library [--scan] [--list] [--space S] [--dupes] [--out DIR]
         registry of the LUTs in Resolve's LUT folders: input-space guess, copies
-  cst --from vlog|bmdfilm5|logc3|logc4|di|lin709 --to di|r709|srgb [--size 33|65] [--out DIR] [--overwrite]
+  cst --from vlog|bmdfilm5|logc3|logc4|di|lin709 --to di|r709|srgb [--size 65|33] [--out DIR] [--overwrite]
         a colour space transform as <from>-to-<to>-<N>.cube: no tone or gamut mapping, numpy only
   lutstats check LUT --from SPACE --to SPACE [--interp tetrahedral|trilinear]
-  lutstats roundtrip --from SPACE --to SPACE [--size 33|65] [--interp tetrahedral|trilinear]
+  lutstats roundtrip --from SPACE --to SPACE [--size 65|33] [--interp tetrahedral|trilinear]
         Delta E 2000 (mean, p99, max) of a LUT against the exact transform, or there and back through two
   pack --camera s5ii,gh7,rcm [--base PARAMS.json [--looks DIR|FILE ...]] [--size 33|65] [--date YYYYMMDD] [--out DIR]
         rp-luts-<date>.zip for Resolve (iPad too): cst/, looks/ (with --base), check/cast-magenta.cube,
@@ -39,7 +39,7 @@
         per-shot exposure and white balance for video (a clip or a folder of frames): the cheek's L* and a neutral's
         a*, b* onto the target, skin hue left alone; balance.json (rows and a set table), balance.md, and per shot
         NAME.cc (ASC CDL in the camera's code values) and NAME.cube
-  shot-match --ref REF --src SRC [--space srgb] [--min-corr 0.8] [--size 33] [--out DIR] [--name NAME] [--overwrite]
+  shot-match --ref REF --src SRC [--space srgb] [--min-corr 0.8] [--size 65|33] [--out DIR] [--name NAME] [--overwrite]
         match SRC to REF, two frames of the same content: NAME.cc (ASC CDL), NAME.cube (CDL + 17-point residual),
         NAME-residual.cube, NAME.report.md with Delta E 2000 before and after. A pair that is not the same content is refused
 
@@ -82,7 +82,7 @@ def main(argv=None):
     p.add_argument("params")
     p.add_argument("--delta")
     p.add_argument("--cube")
-    p.add_argument("--size", type=int, default=33)
+    p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
     p.add_argument("--in", dest="in_space")
     p.add_argument("--camera")
     p.add_argument("--out-encoding", help="re-encode the finished picture into this space's code values (e.g. di)")
@@ -104,7 +104,7 @@ def main(argv=None):
     p.add_argument("--src", required=True)
     p.add_argument("--space", default="srgb")
     p.add_argument("--min-corr", type=float, default=0.8)
-    p.add_argument("--size", type=int, default=33)
+    p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
     p.add_argument("--out")
     p.add_argument("--name", default="shot-match")
     p.add_argument("--overwrite", action="store_true")
@@ -112,7 +112,7 @@ def main(argv=None):
     p.add_argument("base")
     p.add_argument("--deltas", nargs="+", default=[str(LOOKS_DIR)])
     p.add_argument("--camera", default="pyxis,s5ii")
-    p.add_argument("--size", type=int, default=33)
+    p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
     p.add_argument("--monitor", action="store_true",
                    help="also write a 33-point copy clipped to 0..1 per camera look, named for an 8-character card limit (not rcm)")
     p.add_argument("--out")
@@ -122,7 +122,7 @@ def main(argv=None):
     p.add_argument("--from", dest="src", required=True)
     p.add_argument("--to", dest="dst")
     p.add_argument("--camera")
-    p.add_argument("--size", type=int, default=33)
+    p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
     p.add_argument("--ev", type=float, default=0.0, help="exposure offset in stops applied before the LUT")
     p.add_argument("--monitor", action="store_true", help="also write a 33-point copy clipped to 0..1 for in-camera use")
     p.add_argument("--name")

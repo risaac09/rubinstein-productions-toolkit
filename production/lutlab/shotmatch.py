@@ -197,7 +197,7 @@ def report_md(m, name, src, ref):
         "The CDL has ten numbers and is fitted on all pixels.", ""])
 
 
-def write(m, outdir, name, src, ref, size=33, overwrite=False):
+def write(m, outdir, name, src, ref, size=cube.DEFAULT_SIZE, overwrite=False):
     """Write NAME.cc, NAME.cube, NAME-residual.cube (when the residual is kept) and NAME.report.md."""
     out = Path(outdir)
     if not overwrite:  # refuse before writing any of them
