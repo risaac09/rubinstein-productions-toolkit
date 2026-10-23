@@ -20,12 +20,16 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from rpresolve import delivercheck as dc, vision  # noqa: E402
+
 try:
     import numpy as np  # noqa: E402
+    from rpresolve import besttake as bt  # noqa: E402
+    HAVE_NUMPY = True
 except ImportError:   # the stdlib-only job: besttake needs numpy like dxmetrics
-    raise unittest.SkipTest("needs numpy")
+    HAVE_NUMPY = False
 
-from rpresolve import besttake as bt, delivercheck as dc, vision  # noqa: E402
+needs_numpy = unittest.skipUnless(HAVE_NUMPY, "needs numpy")
 
 RATE = 48000
 SECONDS = 12
@@ -61,6 +65,7 @@ def make_video(out, wav, cut):
         raise RuntimeError(proc.stderr)
 
 
+@needs_numpy
 class TestScoring(unittest.TestCase):
     def test_ramp_is_higher_or_lower_better(self):
         self.assertEqual(bt.metric_score(0.75, {"good": 0.75, "bad": 0.35}), 1.0)
@@ -111,6 +116,7 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(bt.reason({}, {}), "no metric could be measured")
 
 
+@needs_numpy
 class TestTakes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -235,6 +241,7 @@ def audio_decodes_of(path, fn):
     return len(seen)
 
 
+@needs_numpy
 class TestDecodeOnce(unittest.TestCase):
     def test_one_audio_decode_per_take(self):
         with tempfile.TemporaryDirectory() as d:
@@ -247,6 +254,7 @@ class TestDecodeOnce(unittest.TestCase):
                     take, lambda: bt.measure_take(take, faces=False)), 1, take)
 
 
+@needs_numpy
 class TestVideo(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
