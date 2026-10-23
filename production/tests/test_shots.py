@@ -18,11 +18,18 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import delivercheck as dc, paths, qc, shots  # noqa: E402
+from rpresolve import delivercheck as dc, paths, qc  # noqa: E402
+
+try:
+    import numpy as np
+    from rpresolve import shots  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    np = None
+
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 
 SIZE, RATE = "160x90", 10
 PARTS = [f"testsrc2=s={SIZE}:r={RATE}:d=1.5", f"smptebars=s={SIZE}:r={RATE}:d=1",
@@ -44,6 +51,7 @@ def make(out, parts, audio=False):
         raise RuntimeError(proc.stderr)
 
 
+@needs_numpy
 @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestShots(unittest.TestCase):
     @classmethod
@@ -161,6 +169,7 @@ def stack(plan, seed=0, noise=0.4):
     return f + rng.normal(0, noise, f.shape)
 
 
+@needs_numpy
 class TestFindDissolves(unittest.TestCase):
     def test_lengths_found_with_their_frames(self):
         for n in (5, 8, 15, 30, 60):
@@ -191,6 +200,7 @@ class TestFindDissolves(unittest.TestCase):
         self.assertEqual(len(shots.find_dissolves(f, 25)), 2)
 
 
+@needs_numpy
 class TestDissolveFootage(unittest.TestCase):
     """The same through ffmpeg: xfade between two still charts (160x90 at 10 fps)."""
 
