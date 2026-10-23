@@ -1,6 +1,6 @@
 # Say Why lower third (OGraf)
 
-> **Status:** draft, 2026-10-23. A native OGraf template for a name and role lower third, with an optional title line. Resolve 21.1 hosts it on the Edit page; `ograf-render` checks it offline. Files: `tools/ograf-render/templates/say-why-lower-third/`.
+> **Status:** draft, 2026-10-23; placed and viewed in Resolve 21.1.1.10. A native OGraf template for a name and role lower third, with an optional title line. Resolve 21.1 hosts it on the Edit page; `ograf-render` checks it offline. Files: `tools/ograf-render/templates/say-why-lower-third/`.
 
 ## What it is
 
@@ -41,7 +41,15 @@ The test renders three data sets (name and role; with a title; overlong text) at
 
 ## Placing it in Resolve
 
-Not yet exercised in Resolve: this section follows Resolve's own developer docs. Resolve finds an OGraf package in `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Templates/Edit/Titles/OGraf/` (per user) and lists it under Titles on the Edit page. Copy the template folder there and restart Resolve, then drag it onto a track or insert it with `InsertFusionTitleIntoTimeline`. Set the fields in the Inspector. Resolve builds at most 20 property controls per clip; this template uses four. For distribution, package a `.drfx` with Resolve's `Scripts/build-dotograf.sh` and `prepare-drfx.py`.
+Tested in Resolve Studio 21.1.1.10 on 2026-10-23.
+
+1. Copy `say-why-lower-third.ograf.json` and `say-why-lower-third.js` into `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Templates/Edit/Titles/OGraf/`.
+2. Restart Resolve. A running Resolve does not see a new template: before the restart `InsertFusionTitleIntoTimeline` returned nothing.
+3. It lists on the Edit page under Effects, Toolbox, Titles, OGraf as `say-why-lower-third`.
+4. By script, the title name is the manifest file name, `say-why-lower-third.ograf.json`: `timeline.InsertFusionTitleIntoTimeline("say-why-lower-third.ograf.json")` returns a 125-frame item on a 25 fps timeline (the 5 s default). The name `say-why-lower-third`, the template's display name and its id all fail.
+5. The clip holds one Fusion tool, an OGrafLoader. Its text fields are `DynParamText0` (name), `DynParamText1` (role), `DynParamText2` (title) and the colour is `DynParamColor3_R/G/B/A` (accent): the Nth manifest property is slot N of its kind. `tool.SetInput("DynParamText0", "Alex Example")` set the fields and the Inspector and viewer showed them, with the plate, rule and three lines drawn at the expected place.
+
+Resolve builds at most 20 property controls per clip; this template uses four. For distribution, package a `.drfx` with Resolve's `Scripts/prepare-drfx.py`.
 
 ## Against the hyperframes path
 
