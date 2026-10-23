@@ -469,14 +469,15 @@ PRODUCTION = Path(__file__).resolve().parent.parent
 
 class TestMainExitPaths(unittest.TestCase):
     def test_ctrl_c_exits_130_through_exit_clean(self):
+        # main() returns 130; the script's __main__ hands it to exit_clean.
         code = (
-            "import sys; sys.path.insert(0, %r)\n"
-            "import resolve_workflow as rw\n"
+            "import runpy, sys; sys.path.insert(0, %r)\n"
+            "import rpresolve.cmd_info\n"
             "def boom(args): print('working'); raise KeyboardInterrupt\n"
-            "rw.cmd_info = boom\n"
+            "rpresolve.cmd_info.run = boom\n"
             "sys.argv = ['resolve_workflow.py', 'info']\n"
-            "rw.main()\n"
-        ) % str(PRODUCTION)
+            "runpy.run_path(%r, run_name='__main__')\n"
+        ) % (str(PRODUCTION), str(PRODUCTION / "resolve_workflow.py"))
         proc = subprocess.run([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(proc.returncode, 130)
         self.assertEqual(proc.stdout.decode().strip(), "working")
