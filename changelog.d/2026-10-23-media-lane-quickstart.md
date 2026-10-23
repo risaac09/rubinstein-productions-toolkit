@@ -1,0 +1,1 @@
+Add production/media-lane-quickstart.md: copy-paste stills, sound, colour, edit and review-loop jobs with pass numbers and a failure table; drop stale "mixbuild not on main" lines from the media docs.
