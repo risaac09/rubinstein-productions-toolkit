@@ -14,7 +14,7 @@ cut-candidate and whose confidence is not low. Accepting anything else is
 refused, not skipped.
 
 An accepted row cuts [source_start, source_end) out of its span, leaving up
-to two spans. A silence keeps PAD seconds of its pause each side, so the join
+to two spans; a repeat row (both copies) cuts its first half only. A silence keeps PAD seconds of its pause each side, so the join
 keeps breath. The new edges are not checked: end_words and source_text are
 cleared where a cut changed them (not guessed), and audio_lead and audio_tail
 stay only on the first and last piece. Run endcheck on the copy.
@@ -133,6 +133,8 @@ def apply(manifest, rows, accepted):
             if b - a <= 1e-6:
                 raise TrimApplyError(f"row {n}: a silence of {b - a + 2 * PAD:.2f} s is too short "
                                      f"to cut with {PAD} s left each side")
+        if r["kind"] == tr.REPEAT:  # the row spans both copies; drop the first, keep the second
+            b = a + (b - a) / 2
         a, b = max(a, span["in"]), min(b, span["out"])
         byspan.setdefault((r["clip"], int(r["span"])), []).append((a, b, n, r))
         picked.append(n)

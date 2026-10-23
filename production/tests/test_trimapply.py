@@ -192,7 +192,7 @@ class TestApply(Base):
         self.files([row(kind="filler", s=2.0, e=2.4, sug="cut-candidate"),
                     row(kind="repeat", s=4.0, e=4.4, sug="tighten", conf="medium")])
         self.assertEqual(self.go("--accept", "1,2")[0], 0)
-        self.assertEqual(self.spans(), [(1.0, 2.0), (2.4, 4.0), (4.4, 6.0)])
+        self.assertEqual(self.spans(), [(1.0, 2.0), (2.4, 4.0), (4.2, 6.0)])  # repeat: first half
 
     def test_only_accepted_rows_are_applied(self):
         self.files([row(kind="filler", s=2.0, e=2.4, sug="cut-candidate"),
