@@ -82,7 +82,7 @@ Limits:
 
 ## How these feed mixbuild
 
-`mixbuild` (pull request #246, held) renders stems and a mix from a spec. These modules feed it without changes to it:
+`mixbuild` renders stems and a mix from a spec. These modules feed it without changes to it:
 
 - A room-tone bed is a stem: name `bed.wav` as a stem's `input` and give it a `gain` step.
 - A ducked music file is the music stem's `input`. Leave `mix.duck` out of that spec, or the music is ducked twice. Since the #246 follow-ups, `mix.duck` itself runs duckplan on the rendered key stem and takes `depth` (and `gate_db`), so the depth holds across talkers without a separate pass.

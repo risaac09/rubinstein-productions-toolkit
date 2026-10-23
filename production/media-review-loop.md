@@ -22,7 +22,7 @@ Claude can measure a picture or a mix but cannot see taste in it, and it cannot 
 | Look, numbers | Skin Lab, hue and vectorscope angle, clipping, eye line and headroom per finished file, after the pick | `rpstills audit` | chat (the table), audit.json stays local | nothing, or a line |
 | Grade on video | A 10 to 20 s proxy (recipe below) and one scopes image | ffmpeg | desktop: Browser pane through `serve`; phone or iPad: SendUserFile up to 25 MiB, or Safari through `serve` on a private network | a letter or 1 to 5 |
 | Edit | A proxy render of the proposed cut; after approval, an interchange file for the editor | `rpresolve.interchange` (see [interchange](interchange.md)) | as for video | `approve`, `hold` or a line |
-| Sound | Two or more 20 to 30 s excerpts of the same span, loudness matched, labelled A, B, C with a sealed key | `rpresolve.mixbuild ab` once it lands; the numbers after the answer from [sound assist](sound-assist.md) | desktop: Browser pane through `serve`; phone or iPad: SendUserFile | a letter and, ideally, a line |
+| Sound | Two or more 20 to 30 s excerpts of the same span, loudness matched, labelled A, B, C with a sealed key | `rpresolve.mixbuild ab`; the numbers after the answer from [sound assist](sound-assist.md) | desktop: Browser pane through `serve`; phone or iPad: SendUserFile | a letter and, ideally, a line |
 | Gate | Before a render or batch longer than about 30 minutes, or any replacement of a file a client can see: one full-frame sheet per clip and the listening excerpts | the commands above | as above | `go` or `hold` |
 
 The commands in full (`python` is the tool venv's interpreter from the [rpstills README](rpstills/README.md); `python3` is any Python 3.9 or later; rpresolve finds ffmpeg and ffprobe at the Homebrew paths and ignores `PATH`, so elsewhere set `RPRESOLVE_FFMPEG` and `RPRESOLVE_FFPROBE`, as in [requirements.txt](../requirements.txt)):
@@ -43,7 +43,7 @@ python3 -m rpresolve.mixbuild ab --out <review dir>/mix-01 take1.wav take2.wav -
 python3 -m rpresolve.interchange <manifest> --format fcpxml --out <review dir>/cut-v3.fcpxml
 ```
 
-`mixbuild` is not on main yet. Until it is, cut the same span from each file with `-ss` and `-t`, measure each excerpt's integrated loudness with ffmpeg's `ebur128` filter, and turn the louder ones down with `volume` to the quietest; never use single-pass `loudnorm` for a comparison, because it changes the dynamics being compared.
+Without `mixbuild`, cut the same span from each file with `-ss` and `-t`, measure each excerpt's integrated loudness with ffmpeg's `ebur128` filter, and turn the louder ones down with `volume` to the quietest; never use single-pass `loudnorm` for a comparison, because it changes the dynamics being compared.
 
 A proxy that plays everywhere (8-bit 4:2:0 H.264 High, AAC, index at the front for streaming). A 10-bit 4:2:2 log source needs the `format=yuv420p` step, or Safari will not play it:
 
@@ -165,4 +165,3 @@ The quick loop never replaces these:
 - There is no review page with an A/B wipe, region marking or tap-to-rate; answers go through chat and the question tool.
 - The stills review sheet exports `selects.json` as a browser download. That works on the desktop and goes nowhere useful on a phone, so phone triage uses absheet sheets and letters.
 - How the phone and iPad apps show SendUserFile video and audio, and the question tool's option previews, is unverified. Before relying on them, send one JPEG, one MP4 under 25 MiB and one WAV to the device and note which play inline.
-- The sound packet (`mixbuild ab`) is pending; the ffmpeg route above stands in until it lands.
