@@ -15,6 +15,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -31,6 +32,24 @@ except ImportError:
 
 needs_numpy = unittest.skipUnless(HAVE_NUMPY, "needs numpy")
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
+# A real RNNoise model, when the environment names one; otherwise each test gets a tiny generated one.
+REAL_RNNOISE = os.environ.get("RPRESOLVE_RNNOISE_MODEL")
+REAL_RNNOISE = REAL_RNNOISE if REAL_RNNOISE and os.path.isfile(REAL_RNNOISE) else None
+
+
+def tiny_rnnoise(path):
+    """A valid .rnnn with one neuron per hidden layer and every weight zero:
+    arnndn loads it and passes the signal at half gain, which is enough to
+    measure its delay. The layer shapes are the ones ffmpeg checks."""
+    lines = ["rnnoise-nu model file version 1"]
+    zeros = lambda n: " ".join(["0"] * n)
+    for kind, i, o, act in (("dense", 42, 1, 0), ("gru", 1, 1, 2), ("gru", 44, 1, 2),
+                            ("gru", 44, 1, 2), ("dense", 1, 22, 1), ("dense", 1, 1, 1)):
+        lines.append(f"{i} {o} {act}")
+        lines += [zeros(i * o), zeros(o)] if kind == "dense" else [zeros(3 * i * o), zeros(3 * o * o),
+                                                                   zeros(3 * o)]
+    Path(path).write_text("\n".join(lines) + "\n")
+    return path
 
 SPEC = """\
 # a comment
@@ -52,7 +71,7 @@ stems:
       - loudnorm: {i: -16, tp: -1.5}
     candidates:
       afftdn_6: {method: afftdn, nr: 6}
-      arnndn_none: {method: arnndn}
+      arnndn: {method: arnndn}
   music:
     input: music.wav
     chain: [{gain: -3}, {lowpass: 12000}]
@@ -86,6 +105,10 @@ class Base(unittest.TestCase):
         self._t = tempfile.TemporaryDirectory()
         self.d = self._t.name
         self.addCleanup(self._t.cleanup)
+        self.model = REAL_RNNOISE or tiny_rnnoise(os.path.join(self.d, "tiny.rnnn"))
+        env = mock.patch.dict(os.environ, {"RPRESOLVE_RNNOISE_MODEL": self.model})
+        env.start()
+        self.addCleanup(env.stop)
 
 
 @needs_numpy
@@ -142,10 +165,10 @@ class Render(Base):
         self.assertEqual({k: v["sha256"] for k, v in a["outputs"].items()},
                          {k: v["sha256"] for k, v in b["outputs"].items()})
         self.assertEqual(set(a["outputs"]), {"dialogue", "music", "dialogue__afftdn_6",
-                                             "dialogue__arnndn_none", "mix", "mixed/dialogue",
+                                             "dialogue__arnndn", "mix", "mixed/dialogue",
                                              "mixed/music"})
         self.assertEqual(a["graphs"], b["graphs"])
-        self.assertTrue(any(s["step"] == "denoise arnndn" for s in a["skipped"]))
+        self.assertEqual(a["rnnoise_models"], {self.model: mb.sha256(self.model)})
         mix = a["reports"]["mix"]
         self.assertAlmostEqual(mix["integrated_lufs"], -16.0, delta=1.0)
         self.assertLessEqual(mix["true_peak_dbtp"], -1.0)
@@ -230,12 +253,11 @@ class FollowUps(Base):
                           "bandreject=f=100:width_type=q:w=10:precision=f64"])
 
     def test_denoise_and_declick_leave_no_lag(self):
-        model = os.path.expanduser("~/.local/share/rp-models/rnnoise/std.rnnn")
+        # arnndn through RPRESOLVE_RNNOISE_MODEL: the real model when it is set, the tiny one in CI
         chains = {"afftdn": [{"denoise": {"method": "afftdn", "nr": 12}}],
                   "anlmdn": [{"denoise": {"method": "anlmdn"}}],
+                  "arnndn": [{"denoise": {"method": "arnndn"}}],
                   "declick": [{"declick": {}}], "dehum": [{"dehum": 60}]}
-        if os.path.isfile(model):  # not in CI; arnndn works at 48 kHz whatever it is given
-            chains["arnndn"] = [{"denoise": {"method": "arnndn", "model": model}}]
         for rate in (48000, 44100):
             d = os.path.join(self.d, str(rate))
             os.makedirs(d)
@@ -383,7 +405,8 @@ class Presets(Base):
             self.assertEqual(len(pcm(self.out(f"o/stems/{k}.wav"))), n)
             self.assertEqual(m["presets"][k]["preset"], k)
             self.assertTrue(m["presets"][k]["why"])
-        self.assertIn("afftdn", m["graphs"]["lav"])
+        self.assertIn("arnndn", m["graphs"]["lav"])
+        self.assertIn("arnndn", m["graphs"]["boom"])
         self.assertNotIn("afftdn", m["graphs"]["vo"])       # a booth gets no denoise
         self.assertNotIn("acompressor", m["graphs"]["music_bed"])
 
@@ -417,6 +440,66 @@ class Presets(Base):
         self.assertEqual(srcs, ["ab/renders/lav/stems/dialogue.wav", "ab/renders/vo/stems/dialogue.wav",
                                 "dialogue.wav"])
         self.assertTrue(os.path.isfile(self.out("ab/packet/A.wav")))
+
+
+@needs_numpy
+class Arnndn(Base):
+    def check(self, step):
+        return mb.validate_spec({"stems": {"d": {"input": "x.wav", "chain": [{"denoise": step}]}}},
+                                self.d)
+
+    def test_the_filter_and_its_delay(self):
+        ctx = mb.Ctx(48000, 1, [], "t", probe=False)
+        self.assertEqual(mb.s_denoise({"method": "arnndn", "mix": 0.5}, ctx),  # the model from the env
+                         [f"arnndn=m={mb._filter_escape(self.model)}:mix=0.5",
+                          "aformat=sample_rates=48000"])
+        filt = f"arnndn=m={mb._filter_escape(self.model)}:mix=1"
+        self.assertEqual(mb.delay_samples(filt, 48000), 480)            # one 10 ms frame
+        # scaled by rate/48000, give or take the resampler ffmpeg puts in front of it
+        self.assertLessEqual(abs(mb.delay_samples(filt, 44100) - 441), 8)
+
+    def test_a_missing_or_unusable_model_refuses_the_spec(self):
+        with mock.patch.dict(os.environ, {"RPRESOLVE_RNNOISE_MODEL": ""}):
+            with self.assertRaises(mb.SpecError) as cm:
+                self.check({"method": "arnndn"})
+            self.assertIn("RPRESOLVE_RNNOISE_MODEL", str(cm.exception))
+            with self.assertRaises(mb.SpecError) as cm:  # a preset that uses it fails the same way
+                mb.validate_spec({"stems": {"d": {"input": "x.wav", "preset": "lav"}}}, self.d)
+            self.assertIn("RPRESOLVE_RNNOISE_MODEL", str(cm.exception))
+            self.check({"method": "afftdn"})              # nothing else needs the model
+            mb.validate_spec({"stems": {"d": {"input": "x.wav", "preset": "vo"}}}, self.d)
+        spec = self.check("arnndn")                       # the env's model is pinned into the spec
+        self.assertEqual(spec["stems"]["d"]["chain"], [{"denoise": {"method": "arnndn", "model": self.model}}])
+        for model, frag in (("std.rnnn", "absolute path"),
+                            (os.path.join(self.d, "nope.rnnn"), "no readable file"),
+                            (self.d, "no readable file")):
+            with self.assertRaises(mb.SpecError) as cm:
+                self.check({"method": "arnndn", "model": model})
+            self.assertIn(frag, str(cm.exception))
+        locked = tiny_rnnoise(os.path.join(self.d, "locked.rnnn"))
+        os.chmod(locked, 0)
+        if not os.access(locked, os.R_OK):  # root reads it anyway
+            with self.assertRaises(mb.SpecError):
+                self.check({"method": "arnndn", "model": locked})
+
+    def test_a_path_with_filter_syntax_in_it_renders(self):
+        d = os.path.join(self.d, "we:ird, it's [a];b ")
+        os.makedirs(d)
+        model = tiny_rnnoise(os.path.join(d, "m:1,'[x];y .rnnn"))
+        lavfi(os.path.join(self.d, "dialogue.wav"), "sine=f=440:r=48000:d=2", 2, channels=1)
+        spec, p = write_spec(self.d, {"channels": 1, "stems": {"dialogue": {
+            "input": "dialogue.wav", "chain": [{"denoise": {"method": "arnndn", "model": model}}]}}})
+        m = mb.render(spec, os.path.join(self.d, "out"), p)
+        self.assertIn("arnndn", m["graphs"]["dialogue"])
+        self.assertEqual(list(m["rnnoise_models"]), [model])
+        self.assertEqual(len(pcm(os.path.join(self.d, "out", "stems", "dialogue.wav"))), 96000)
+
+    def test_only_the_speech_presets_default_to_it(self):
+        self.assertEqual(mb.s_denoise({}, mb.Ctx(48000, 1, [], "t", probe=False))[0][:7], "afftdn=")
+        uses = {k for k, v in mb.PRESETS.items()
+                if any(list(i)[0] == "denoise" and i["denoise"].get("method") == "arnndn"
+                       for i in v["chain"])}
+        self.assertEqual(uses, {"lav", "boom"})
 
 
 @needs_numpy

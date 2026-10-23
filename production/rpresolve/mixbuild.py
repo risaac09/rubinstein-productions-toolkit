@@ -44,12 +44,14 @@ needed; JSON is accepted too). Paths are relative to the spec's folder.
 Steps: gain, fade, highpass, lowpass, eq, dehum, declick, deess, denoise,
 compress, loudnorm, speechnorm (mix chain only), limiter. dehum notches freq (50 or 60) and its
 harmonics; declick is ffmpeg's adeclick. denoise methods: afftdn, anlmdn and
-arnndn (ffmpeg built in; arnndn needs a `model` file or it is skipped),
+arnndn (ffmpeg built in; arnndn is RNNoise and needs an .rnnn `model`, an
+absolute path given in the step or in RPRESOLVE_RNNOISE_MODEL, or the spec is
+refused; the toolkit ships none),
 deepfilternet (recorded as skipped in v1, installed or not: run `deep-filter`
 on the input yourself and name its output as the stem input), and
 `candidates`, the place a candidate goes. Each candidate renders its own stem
 file; the main stem skips the placeholder. A denoiser's delay (afftdn about
-25 ms, anlmdn 8 ms at 48 kHz, and it moves with the rate and ffmpeg's version)
+25 ms, anlmdn 8 ms, arnndn 10 ms at 48 kHz, and it moves with the rate and ffmpeg's version)
 is measured once per render and trimmed off, so the stem stays on picture.
 iZotope RX is not offered (decision 26: out until a licence is confirmed on
 record). A skipped step is recorded in render.json, never fatal; so is a
@@ -64,7 +66,7 @@ candidates/NAME__CAND.wav, mixed/NAME.wav (each stem as it sits in the mix:
 its gain, its ducking and the mix chain's linear steps; they sum to mix.wav,
 up to the first step of the mix chain that is not linear, which is recorded),
 duck/ (the duck plan and key), mix.wav and render.json (spec hash, ffmpeg
-version, every filter graph, each output's hash and skips). The same spec and
+version, every filter graph, each arnndn model's hash, each output's hash and skips). The same spec and
 inputs give byte-identical WAVs: bitexact flags, one thread, no metadata,
 two-pass loudnorm. It refuses to write over a source and refuses any DIR
 inside a git working tree. With --report each output is measured by
@@ -83,9 +85,11 @@ instead of a chain; `presets` prints each one's steps and why they are
 there. A preset is a starting chain, written down so a choice has a reason;
 it is not a claim that it sounds better, and no preset sets loudness (that is
 the mix's). Give a preset or a chain, not both; candidates need a chain.
-render.json records the preset each stem used. preset-ab renders the same
-dialogue through each preset (and leaves it untouched, as a reference),
-then builds the blind A/B packet from the results, so the ear picks.
+render.json records the preset each stem used. lav and boom denoise with
+arnndn, so they need the model (RNNoise is trained on speech and can pump on
+music or ambience, so no other preset and no bare `denoise` defaults to it).
+preset-ab renders the same dialogue through each preset (and leaves it
+untouched, as a reference), then builds the blind A/B packet from the results, so the ear picks.
 
 Dialogue-gated loudness. `speechnorm: {key: dialogue, i: -16}` in the mix
 chain measures the mix's integrated loudness over the key stem's speech
@@ -162,6 +166,7 @@ BIT_DEPTH = "pcm_s24le"
 AB_TOLERANCE_LU = 0.5
 RUN_TIMEOUT_S = 3600
 MAX_DELAY_S = 0.25               # a denoiser delaying more than this is refused
+RNNOISE_ENV = "RPRESOLVE_RNNOISE_MODEL"  # arnndn's .rnnn when the step names none
 DUCK_KEY = "duck/duck-key.wav"   # a mix input that is the duck key; stem names hold no /
 # steps that distribute over a sum, so a mixed stem may carry them (loudnorm too, when linear)
 LINEAR = {"gain", "fade", "highpass", "lowpass", "eq", "dehum", "speechnorm"}
@@ -171,16 +176,16 @@ PRESETS = {
     "lav": {
         "why": "A lavalier sits on the chest, so it carries proximity low end and clothing rustle "
                "and loses top. High-pass above the rustle, dip the chest boom around 250 Hz, lift "
-               "the presence band a little, light afftdn for the floor, a gentle de-ess and 3:1.",
+               "the presence band a little, arnndn for the floor, a gentle de-ess and 3:1.",
         "chain": [{"highpass": 100}, {"eq": {"freq": 250, "gain": -2, "q": 1}},
                   {"eq": {"freq": 4500, "gain": 1.5, "q": 1}},
-                  {"denoise": {"method": "afftdn", "nr": 8}}, {"deess": {"intensity": 0.5}},
+                  {"denoise": {"method": "arnndn"}}, {"deess": {"intensity": 0.5}},
                   {"compress": {"threshold": -20, "ratio": 3}}]},
     "boom": {
         "why": "A boom is off-axis and further away, so it carries the room and has no proximity "
-               "boost to cut. Lower high-pass, a touch of presence, afftdn a little deeper for "
-               "the room, a light de-ess (the capsule is not at the mouth) and a gentler 2.5:1.",
-        "chain": [{"highpass": 70}, {"denoise": {"method": "afftdn", "nr": 12}},
+               "boost to cut. Lower high-pass, a touch of presence, arnndn for the room, a "
+               "light de-ess (the capsule is not at the mouth) and a gentler 2.5:1.",
+        "chain": [{"highpass": 70}, {"denoise": {"method": "arnndn"}},
                   {"eq": {"freq": 3000, "gain": 1, "q": 1}}, {"deess": {"intensity": 0.3}},
                   {"compress": {"threshold": -18, "ratio": 2.5}}]},
     "vo": {
@@ -540,6 +545,48 @@ def _aligned(filt, ctx):
     return [f"apad=pad_len={n}", filt, fmt, f"atrim=start_sample={n}", "asetpts=PTS-STARTPTS"]
 
 
+def rnnoise_model(p):
+    """arnndn's model: the step's `model`, else $RPRESOLVE_RNNOISE_MODEL. A
+    missing or unreadable file refuses the spec rather than skip the denoise."""
+    model = p.get("model") or os.environ.get(RNNOISE_ENV)
+    if not model:
+        raise SpecError(f"denoise arnndn needs an .rnnn model: give `model:` or set {RNNOISE_ENV}")
+    model = os.path.expanduser(str(model))
+    if not os.path.isabs(model):
+        raise SpecError(f"denoise arnndn model {model!r}: give an absolute path")
+    if not os.path.isfile(model) or not os.access(model, os.R_OK):
+        raise SpecError(f"denoise arnndn model {model}: no readable file there")
+    return model
+
+
+def _filter_escape(value):
+    """value as one option inside a -filter_complex: escaped for the option
+    parser (\\ ' : and whitespace), then again for the graph parser (\\ ' [ ] , ;
+    and whitespace)."""
+    for specials in ("\\': \t\n\r", "\\'[],; \t\n\r"):
+        value = "".join("\\" + c if c in specials else c for c in value)
+    return value
+
+
+def _pinned(raw):
+    """A denoise step's settings with an arnndn model resolved into them, so
+    the spec (and its hash) says which file a render uses."""
+    p = raw if isinstance(raw, dict) else {"method": raw}
+    return dict(p, model=rnnoise_model(p)) if p.get("method") == "arnndn" else raw
+
+
+def _rnnoise_models(spec):
+    """{path: sha256} for every arnndn model the (validated) spec uses."""
+    out = {}
+    for st in spec["stems"].values():
+        for raw in [r for n, r in map(_step, st["chain"]) if n == "denoise"] + list(st["candidates"].values()):
+            if isinstance(raw, dict) and raw.get("method") == "arnndn":
+                m = rnnoise_model(raw)
+                if m not in out:
+                    out[m] = sha256(m)
+    return out
+
+
 def s_denoise(raw, ctx):
     p = _params(raw, "method", ("method", "nr", "nf", "tn", "s", "model", "mix"), "denoise")
     method = p.get("method", "afftdn")
@@ -552,10 +599,7 @@ def s_denoise(raw, ctx):
     if method == "anlmdn":
         return _aligned(f"anlmdn=s={_f(_num(p.get('s', 0.00001), 's', 0.00001, 10000))}", ctx)
     if method == "arnndn":
-        model = p.get("model")
-        if not model or not os.path.isfile(model):
-            return ctx.skip("denoise arnndn", "needs a `model` file (an .rnnn); none given or found")
-        return _aligned(f"arnndn=m={model.replace(chr(92), '/').replace(':', chr(92) + ':')}"
+        return _aligned(f"arnndn=m={_filter_escape(rnnoise_model(p))}"
                         f":mix={_f(_num(p.get('mix', 1), 'mix', -1, 1))}", ctx)
     if method == "deepfilternet":
         if not _deepfilter():
@@ -736,12 +780,15 @@ def validate_spec(spec, base):
         st["chain"] = st.get("chain") or []
         if not isinstance(st["chain"], list):
             raise SpecError(f"stem {name}: chain must be a list")
+        st["chain"] = [{"denoise": _pinned(_step(i)[1])} if _step(i)[0] == "denoise" else i
+                       for i in st["chain"]]
         if any(_step(i)[0] == "speechnorm" for i in st["chain"]):
             raise SpecError(f"stem {name}: speechnorm belongs in the mix chain")
         _check_chain(st["chain"], spec["sample_rate"], f"stem {name}")
         cands = st.get("candidates") or {}
         if not isinstance(cands, dict):
             raise SpecError(f"stem {name}: candidates must be a map of name to denoise settings")
+        cands = {c: _pinned(v) for c, v in cands.items()}
         for c in cands:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", str(c)) or "__" in str(c):
                 raise SpecError(f"candidate name {c!r}: letters, digits, _ and - only, no double underscore")
@@ -1330,7 +1377,8 @@ def render(spec, out_dir, spec_path=None, report=False, dry_run=False):
             skips.append({"where": "stems", "step": "sum-null", "why": stems_info["reason"]})
     manifest = {"spec": os.path.basename(spec_path) if spec_path else None,
                 "spec_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
-                "ffmpeg": _ffmpeg_version(), "graphs": graphs, "skipped": skips, "duck": duck_info,
+                "ffmpeg": _ffmpeg_version(), "graphs": graphs, "rnnoise_models": _rnnoise_models(spec),
+                "skipped": skips, "duck": duck_info,
                 "presets": {n: {"preset": stems[n]["preset"], "why": PRESETS[stems[n]["preset"]]["why"]}
                             for n in names if stems[n].get("preset")},
                 "roomtone": tone_info, "speechnorm": sn_info, "denoise_roomtone": dn_info,
