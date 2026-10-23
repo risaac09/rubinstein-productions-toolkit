@@ -20,16 +20,16 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-
 from rpresolve import delivercheck as dc, vision  # noqa: E402
 
 try:
-    import numpy as np
-    from rpresolve import besttake as bt
-except ImportError:  # numpy missing on this interpreter
-    np = bt = None
+    import numpy as np  # noqa: E402
+    from rpresolve import besttake as bt  # noqa: E402
+    HAVE_NUMPY = True
+except ImportError:   # the stdlib-only job: besttake needs numpy like dxmetrics
+    HAVE_NUMPY = False
 
-needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
+needs_numpy = unittest.skipUnless(HAVE_NUMPY, "needs numpy")
 
 RATE = 48000
 SECONDS = 12
