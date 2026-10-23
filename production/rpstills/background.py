@@ -1,6 +1,7 @@
 """rpstills.background: find the subject and burn the background down.
 
     mask, info = background.subject_mask(rgb, face_px)   # float32 HxW 0..1, or None and info["reason"]
+    mask, info = background.subject_mask(rgb, face_px, region)  # only the window (x0, y0, x1, y1): finish's crops
     rgb, report = background.burn(rgb, mask)             # BURN_EV and BURN_DESAT outside the subject
 
 rgb is float32 sRGB 0..1, HxWx3; face_px is the subject's face in pixels
@@ -25,7 +26,10 @@ face core, or less than MIN_SHARE or more than MAX_SHARE of the frame.
 
 burn() works in linear light: background pixels go down by ev stops and
 toward their channel mean by desat; pixels the mask holds at 1 are left
-bit-identical.
+bit-identical. It is per pixel, so it can run on a crop of the frame:
+subject_mask(..., region) builds the mask only there (the GrabCut seed and
+result are the frame's), and the part of the region more than feather_margin()
+from its edge equals the full-frame mask exactly.
 
 Tuned on head-and-shoulders portraits against an open background; a busy
 background close to the subject's tones, or hands and props, are where
@@ -46,6 +50,8 @@ TORSO_BOTTOM_X = (-1.2, 2.2)     # its bottom edge (at the frame bottom), likewi
 BORDER = 0.03                    # certain background strip, share of the scaled width (at least 4 px)
 CLOSE_DIV = 30                   # closing kernel = scaled face width / CLOSE_DIV (at least 3 px)
 DILATE_DIV = 42                  # then a dilation of scaled face width / DILATE_DIV (at least 3 px)
+GUIDE_DIV = 12                   # guided-filter radius = scaled face width / GUIDE_DIV (odd window)
+GUIDE_EPS = 1e-3                 # guided-filter regularisation, luminance 0..1
 FEATHER_DIV = 60                 # feather sigma at full size = face width / FEATHER_DIV
 CORE_MIN_PX = 16                 # a face core smaller than this at SCALE cannot seed GrabCut
 CORE_MIN_COVER = 0.95            # refuse when the mask covers less of the face core
@@ -58,7 +64,7 @@ def params():
     return {"scale": SCALE, "iterations": ITERATIONS, "seed": SEED, "face_core": list(FACE_CORE),
             "head_axes": list(HEAD_AXES), "torso_top": TORSO_TOP, "torso_top_x": list(TORSO_TOP_X),
             "torso_bottom_x": list(TORSO_BOTTOM_X), "border": BORDER, "close": f"w/{CLOSE_DIV}",
-            "dilate": f"w/{DILATE_DIV}", "feather": f"w/{FEATHER_DIV}", "core_min_px": CORE_MIN_PX,
+            "dilate": f"w/{DILATE_DIV}", "guide": f"w/{GUIDE_DIV}, eps {GUIDE_EPS:g}", "feather": f"w/{FEATHER_DIV}", "core_min_px": CORE_MIN_PX,
             "core_min_cover": CORE_MIN_COVER, "share": [MIN_SHARE, MAX_SHARE],
             "burn_ev": BURN_EV, "burn_desat": BURN_DESAT}
 
@@ -70,6 +76,15 @@ def to_linear(v):
 def to_srgb(v):
     v = np.maximum(v, 0)
     return np.where(v <= 0.0031308, v * 12.92, 1.055 * v ** (1 / 2.4) - 0.055)
+
+
+def guided_filter(guide, p, radius, eps=GUIDE_EPS):
+    """He et al.'s guided filter of p (float32 HxW) by guide (float32 HxW 0..1), box windows of 2*radius+1."""
+    k = (2 * radius + 1, 2 * radius + 1)
+    mean = lambda x: cv2.boxFilter(x, -1, k, borderType=cv2.BORDER_REFLECT)  # noqa: E731
+    mi, mp = mean(guide), mean(p)
+    a = (mean(guide * p) - mi * mp) / (mean(guide * guide) - mi * mi + eps)
+    return mean(a) * guide + mean(mp - a * mi)
 
 
 def _core(face_px, scale):
@@ -119,11 +134,42 @@ def check(binary, core):
     return None
 
 
-def subject_mask(rgb, face_px):
-    """(float32 HxW mask, info) or (None, info with "reason")."""
+def _taps(n_dst, n_src, lo, hi):
+    """Linear-interpolation taps (low index, high index, weight of the high) of cv2.resize's mapping from an
+    n_src row to n_dst, for destination pixels lo..hi."""
+    f = (np.arange(lo, hi) + 0.5) * (n_src / n_dst) - 0.5
+    i = np.floor(f).astype(np.int64)
+    w = (f - i).astype(np.float32)
+    return np.clip(i, 0, n_src - 1), np.clip(i + 1, 0, n_src - 1), w
+
+
+def _resize_window(small, W, H, region):
+    """cv2.resize(small, (W, H), INTER_LINEAR) evaluated only on region (x0, y0, x1, y1), separably, so the
+    full-frame float mask is never built."""
+    x0, y0, x1, y1 = region
+    iy0, iy1, wy = _taps(H, small.shape[0], y0, y1)
+    ix0, ix1, wx = _taps(W, small.shape[1], x0, x1)
+    rows = small[iy0] * (1 - wy)[:, None] + small[iy1] * wy[:, None]
+    return rows[:, ix0] * (1 - wx) + rows[:, ix1] * wx
+
+
+def feather_margin(face_px):
+    """Pixels of context a region needs round it for its mask to equal the full-frame mask: the Gaussian's
+    radius (4 sigma for float32 in OpenCV) plus a pixel of resize support."""
+    return int(np.ceil(4 * face_px["w"] / FEATHER_DIV)) + 2
+
+
+def subject_mask(rgb, face_px, region=None, refine=True):
+    """(float32 mask, info) or (None, info with "reason"). The mask is HxW, or
+    with region (x0, y0, x1, y1) in full-frame pixels only that window, equal
+    to the full mask there when the window has feather_margin() of room round
+    the part that matters (GrabCut still runs on the whole scaled frame)."""
     H, W = rgb.shape[:2]
-    small = cv2.resize((np.clip(rgb[..., :3], 0, 1) * 255 + 0.5).astype(np.uint8), None, fx=SCALE, fy=SCALE,
-                       interpolation=cv2.INTER_AREA)
+    u8 = np.empty((H, W, 3), np.uint8)
+    for i in range(0, H, 256):  # in stripes: a float copy of the whole frame is what cost the memory
+        u8[i:i + 256] = np.clip(rgb[i:i + 256, :, :3], 0, 1) * 255 + 0.5
+    small = cv2.resize(u8, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+    del u8
     sh, sw = small.shape[:2]
     core = _core(face_px, SCALE)
     cx0, cy0 = max(0, core[0]), max(0, core[1])
@@ -144,13 +190,23 @@ def subject_mask(rgb, face_px):
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
     k = max(3, int(fw / DILATE_DIV) | 1)
     sub = cv2.dilate(sub, np.ones((k, k), np.uint8))
-    reason = check(sub, (cx0, cy0, cx1, cy1))
+    reason = check(sub, (cx0, cy0, cx1, cy1))  # on the hard mask, before it is refined
     info = {"share": round(float(sub.mean()), 4),
             "core_cover": round(float(sub[cy0:cy1, cx0:cx1].mean()), 4), "scaled": [sw, sh]}
     if reason:
         info["reason"] = reason
         return None, info
-    full = cv2.resize(sub.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    if refine:  # the hard edge follows the frame's own edges: thin dark hair outside it is let back in
+        guide = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
+        soft = np.clip(guided_filter(guide, sub.astype(np.float32), max(1, int(round(fw / GUIDE_DIV)))), 0, 1)
+        info["refined"] = True
+    else:
+        soft = sub.astype(np.float32)
+    x0, y0, x1, y1 = region or (0, 0, W, H)
+    if (x0, y0, x1, y1) == (0, 0, W, H):
+        full = cv2.resize(soft, (W, H), interpolation=cv2.INTER_LINEAR)
+    else:
+        full = _resize_window(soft, W, H, region)
     return np.clip(cv2.GaussianBlur(full, (0, 0), face_px["w"] / FEATHER_DIV), 0, 1), info
 
 
