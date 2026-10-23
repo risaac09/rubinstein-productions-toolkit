@@ -147,9 +147,10 @@ def build(words_path=None, manifest_path=None, clip=None, duration=None, caption
         if duration is not None:
             raise PacingError("--duration is the manifest's spans; leave it out")
         m = cutlist.load_manifest(manifest_path, allow_no_speech=True)
-        if not (words_path or m.get("words")):
+        src = cutlist.single_source(m, "pacing")
+        if not (words_path or src.get("words")):
             raise PacingError("the manifest names no words file; give --words")
-        words, length = cut_words(cutlist.load_words(words_path or m["words"]),
+        words, length = cut_words(cutlist.load_words(words_path or src["words"]),
                                   _clip(m, clip)["spans"])
     elif words_path:
         words = cutlist.load_words(words_path)

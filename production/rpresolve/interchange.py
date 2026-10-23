@@ -223,7 +223,7 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
     fr = manifest.get("fps")
     fr = fr if type(fr) in (int, float) and abs(fr - rate) < NTSC_TOLERANCE else rate
 
-    path = manifest["source_path"]
+    path = cutlist.single_source(manifest, "interchange")["path"]
     name = os.path.basename(path)
     warnings, probed = [], media is not None
     if not probed:
@@ -407,7 +407,7 @@ def build(manifest, fmt, clip=None, fps=None, media_root=None, title=None):
     probed when it is on this machine."""
     if fmt not in WRITERS:
         raise InterchangeError(f"format {fmt!r} is not one of {', '.join(FORMATS)}")
-    path = manifest["source_path"]
+    path = cutlist.single_source(manifest, "interchange")["path"]
     media = probe(path) if os.path.isfile(path) else None
     tl = timeline(manifest, clip=clip, fps=fps, media=media, media_root=media_root, title=title)
     return WRITERS[fmt](tl), report(tl, fmt)
@@ -451,7 +451,8 @@ def run(args):
         if problem:
             raise paths.OutputRefused(problem)
         manifest = cutlist.load_manifest(args.manifest, allow_no_speech=True)
-        for label, p in (("manifest", args.manifest), ("source", manifest["source_path"])):
+        one = cutlist.single_source(manifest, "interchange")
+        for label, p in (("manifest", args.manifest), ("source", one["path"])):
             if os.path.realpath(args.out) == os.path.realpath(p) or (
                     os.path.exists(args.out) and os.path.exists(p) and os.path.samefile(args.out, p)):
                 raise paths.OutputRefused(f"--out {args.out} is the {label}; write the "

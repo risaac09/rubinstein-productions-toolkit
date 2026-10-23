@@ -382,8 +382,9 @@ def cut_gate(manifest_path, only=None, audio=True, force=False):
     from . import cut as rpcut, cutlist
     m = cutlist.load_manifest(manifest_path)
     clips = rpcut.plan_clips(m, only)
-    src = m["source_path"]
-    if not os.path.isfile(src) or cutlist.sha256_file(src) != m["source_sha256"]:
+    one = cutlist.single_source(m, "cut")
+    src = one["path"]
+    if not os.path.isfile(src) or cutlist.sha256_file(src) != one["sha256"]:
         raise Refused(f"{src} is missing or no longer matches the manifest's sha256; the "
                       "words were read from a different file.")
     fails = rpcut.gate_clips(m, clips, audio=audio)
@@ -437,14 +438,15 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     timeline's settings around the custom-settings writes), and
     settings_drift_rows lists the timelines that drifted or could not be
     checked; it never changes exit_status."""
-    from . import cut as rpcut
+    from . import cut as rpcut, cutlist
     from . import settingsguard as rpguard
     aspects = cut_aspects(make_9x16, aspects)
     gate = gate or cut_gate(manifest_path, only, audio, force)
     m, clips = gate["manifest"], gate["clips"]
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
-    item = rpcut.find_source_item(root, m["source_sha256"], os.path.getsize(m["source_path"]))
+    one = cutlist.single_source(m, "cut")
+    item = rpcut.find_source_item(root, one["sha256"], os.path.getsize(one["path"]))
     if item is None:
         raise Refused("no media-pool clip in this project matches the manifest source's "
                       "sha256. Import the source first.")
@@ -497,7 +499,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                           "bars": p["bars"]} for p in plans]
     # The transforms shown depend on the source's resolution and the input
     # scaling, so both are part of what the dry run showed.
-    sha = plan_sha("cut", pin.unique_id, prefix, m["source_sha256"], list(aspects), list(src),
+    sha = plan_sha("cut", pin.unique_id, prefix, one["sha256"], list(aspects), list(src),
                    scaling, [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
                               "reframe": e["clip"].get("reframe"), "build_wide": e["build_wide"],
                               "aspects": e["aspects"], "base": e["base"]} for e in todo])

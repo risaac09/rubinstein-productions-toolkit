@@ -17,7 +17,7 @@ output path outside any repository.
 | Ingest and check | `rpstills index`, `cluster`, `cull`, `review` | detect, shoot-table, [`tools/ipad-probe`](../tools/ipad-probe/README.md) on an iPad | audio-report |
 | Develop and balance | `rpstills develop`: RAW with a per-frame skin solve ([rpstills-develop.md](rpstills-develop.md)) | [`lutlab cst`](lutlab-cst.md): camera log to DaVinci Intermediate or Rec.709; Resolve's Color page for the balance | [`rpresolve.roomtone`](sound-assist.md): find room tone, loop a bed |
 | Look | `rpstills look` (a LUT for Resolve) | [`lutlab`](lutlab/README.md) looks, `lutlab pack` for an iPad | a mix spec, when the mix builder lands |
-| Cut | `rpstills crops`, `rpstills finish` ([rpstills-finish.md](rpstills-finish.md)) | cut manifest, [`rpresolve.interchange`](interchange.md) to EDL, FCPXML or OTIO, [`wordsnap`, `shots`, `beats`](edit-assist.md) | [`rpresolve.duckplan`](sound-assist.md): music ducked under speech |
+| Cut | `rpstills crops`, `rpstills finish` ([rpstills-finish.md](rpstills-finish.md)) | cut manifest ([versions 1 and 2](manifest.md)), [`rpresolve.interchange`](interchange.md) to EDL, FCPXML or OTIO, [`wordsnap`, `shots`, `beats`](edit-assist.md) | [`rpresolve.duckplan`](sound-assist.md): music ducked under speech |
 | Measure | [`rpstills audit`](rpstills-audit.md), report only | measure, perceive, `lutlab lutstats` | [`rpresolve.dxmetrics`](sound-assist.md): before and after, with lag |
 | Review | `rpstills absheet`, `rpstills serve` | proxies through `rpstills serve` | loudness-matched excerpts |
 | Deliver | sRGB JPEGs with an embedded profile | deliver_check, qc | loudness fix in deliver_check |
