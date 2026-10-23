@@ -12,4 +12,5 @@ Only what a stranger with their own practice could reuse as is. Rubinstein Produ
 ## Working here
 - One fragment per pull request in `changelog.d/` (`scripts/changelog-fragments new SLUG "TEXT"`).
 - CI runs the link check, the methodology status check, the instrument test, the fragment and burst-gate tests, shellcheck, and the production unit tests; run the relevant ones before pushing.
+- A new `resolve_workflow.py` command is one module, `production/rpresolve/cmd_<name>.py`, plus its own test file; it edits no shared file (`production/rpresolve/cli.py` says how).
 - Public voice rules: `public-kit/VOICE-RULES.md`.

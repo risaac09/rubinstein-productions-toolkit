@@ -23,14 +23,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np  # noqa: E402
+    from rpresolve import duckplan as dp, dxmetrics as dxm  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    np = None
 
-from rpresolve import duckplan as dp, dxmetrics as dxm  # noqa: E402
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 
 RATE = 48000
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 needs_ffmpeg = unittest.skipUnless(os.access(FFMPEG, os.X_OK), "ffmpeg missing")
-HOP = dp.HOP_S
+HOP = dp.HOP_S if np is not None else None
 
 
 def write_wav(path, x, rate=RATE):
@@ -71,6 +75,7 @@ def steps(*runs):
     return np.concatenate([np.full(int(round(s / HOP)), 10 ** (db / 10)) for s, db in runs])
 
 
+@needs_numpy
 class TestKey(unittest.TestCase):
     def test_speech_opens_the_key_ahead_of_the_first_word(self):
         k, floor, gate, phrases = dp.key(steps((2, -60), (1, -20), (2, -60)), HOP)
@@ -138,6 +143,7 @@ class TestKey(unittest.TestCase):
 
 
 @needs_ffmpeg
+@needs_numpy
 class TestRender(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

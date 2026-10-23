@@ -22,9 +22,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np  # noqa: E402
+    from rpresolve import dxmetrics as dxm, roomtone as rt  # noqa: E402
+except ImportError:  # numpy missing on this interpreter
+    np = None
 
-from rpresolve import dxmetrics as dxm, roomtone as rt  # noqa: E402
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")  # the stdlib-only 3.9 CI job
 from rpresolve.paths import OutputRefused  # noqa: E402
 
 RATE = 48000
@@ -46,6 +50,7 @@ def write_wav(path, x, rate=RATE):
     return path
 
 
+@needs_numpy
 class TestQuietest(unittest.TestCase):
     def test_the_least_power_run_wins(self):
         p = np.r_[np.full(10, 1.0), np.full(5, 0.01), np.full(10, 1.0)]
@@ -69,6 +74,7 @@ class TestQuietest(unittest.TestCase):
 
 
 @needs_ffmpeg
+@needs_numpy
 class TestFiles(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

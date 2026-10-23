@@ -42,7 +42,7 @@ text at Resolve's default size, a 16:9 frame the default 42.
 import os
 import re
 
-from . import paths
+from . import paths, refs
 
 ASPECTS = ("16x9", "9x16", "1x1")
 ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0}
@@ -459,6 +459,9 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
     if paths.in_any_git_tree(real):
         problems.append(f"{target_dir} is inside a git working tree; deliverables go outside "
                         "any repository.")
+    ref = refs.reference_problem(real)
+    if ref:
+        problems.append(ref)
     folder = real
     if subfolder:
         folder = os.path.join(real, subfolder)

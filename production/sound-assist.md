@@ -85,8 +85,8 @@ Limits:
 `mixbuild` (pull request #246, held) renders stems and a mix from a spec. These modules feed it without changes to it:
 
 - A room-tone bed is a stem: name `bed.wav` as a stem's `input` and give it a `gain` step.
-- A ducked music file is the music stem's `input`. Leave `mix.duck` out of that spec, or the music is ducked twice. `mix.duck` keys on the raw dialogue stem, which is the depth problem above; `duck-key.wav` and the `sidechain` line in `duckplan.json` are what a speech-activity key option in mixbuild would take.
-- `dxmetrics compare` on a stem's input and mixbuild's output stem gives the before-and-after numbers its `render.json` does not carry, and its lag line catches the `afftdn` delay, which mixbuild's denoise step does not compensate.
+- A ducked music file is the music stem's `input`. Leave `mix.duck` out of that spec, or the music is ducked twice. Since the #246 follow-ups, `mix.duck` itself runs duckplan on the rendered key stem and takes `depth` (and `gate_db`), so the depth holds across talkers without a separate pass.
+- `dxmetrics compare` on a stem's input and mixbuild's output stem gives the before-and-after numbers its `render.json` does not carry, and its lag line should read 0: mixbuild measures each denoiser's delay and trims it off.
 - `roomtone find` gives the `[start, end]` of a noise-only stretch, which a denoise step that learns its noise from a sample (`afftdn`'s `sample_noise` command) would take.
 
 None of these modules runs `loudnorm`. A chain that does should end with `aresample=48000`: `loudnorm` outputs 192 kHz.

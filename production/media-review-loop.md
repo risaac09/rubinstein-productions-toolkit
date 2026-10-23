@@ -130,7 +130,7 @@ Measured with a 10 s 720p H.264 test clip (3.6 MB): `curl -H 'Range: bytes=0-99'
 
 ## Recording the answers
 
-Every answer becomes one line of JSON in an append-only log beside the project's review folder, for example `<project>/review/events.jsonl`. The log never sits inside a git working tree and never goes into this repository. Claude writes the line right after the answer, with a JSON encoder rather than hand-built quoting; `serve` has no write path on purpose.
+Every answer becomes one line of JSON in an append-only log beside the project's media, at `<project>/review/events.jsonl` (decided 2026-10-22). The log never sits inside a git working tree and never goes into this repository. Claude writes the line right after the answer, with a JSON encoder rather than hand-built quoting; `serve` has no write path on purpose.
 
 | Key | What |
 |---|---|
@@ -148,7 +148,7 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
-The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository: per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
+The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
 
 ## Gates that stay human
 
