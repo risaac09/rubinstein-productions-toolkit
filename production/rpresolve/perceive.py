@@ -30,8 +30,9 @@ A log frame reads flat and low in chroma, so perceive a render with the
 colour path applied. A file tagged PQ, HLG, linear or log gets a
 transfer_note and no ratios (display contrast, lighting), since those need
 the right curve. packet.json opens with a small header (schema, transfer,
-generated_by, generated_at) that other sidecars can share. numpy only;
-PNGs via zlib.
+generated_by, generated_at) that other sidecars can share. With targets=True a
+targets.json (schema cine.targets; numbers only) joins it, for a reference
+library. numpy only; PNGs via zlib.
 """
 
 import json
@@ -43,7 +44,7 @@ import zlib
 
 import numpy as np
 
-from . import color, measure
+from . import color, measure, refs
 from .paths import in_any_git_tree
 
 FRAME_MAX_W = 1920
@@ -55,6 +56,7 @@ PALETTE_PIXELS = 20000
 DISPLAY_BLACK = 0.001  # linear floor for the contrast figure: a 1000:1 display
 NEUTRAL_CHROMA = 8.0   # Lab C* under which a midtone counts as near neutral
 SHEET_W = 1280
+BANDS = (("shadows", 0.0, 33.0), ("mids", 33.0, 66.0), ("highlights", 66.0, 100.001))  # luma IRE
 READ_AS, NOT_REC709 = measure.READ_AS, measure.NOT_REC709
 
 # ARRI's camera false-colour layout, in percent of the video signal.
@@ -395,6 +397,50 @@ def _largest_skin(numbers):
     return None
 
 
+def band_colour(rgb, stride=measure.PIXEL_STRIDE):
+    """Mean Lab chroma and hue of the pixels in each fixed luma band (shadows
+    under 33 IRE, mids 33 to 66, highlights 66 and over), over the pixels
+    luma_numbers samples, plus the hue shift: shadows minus highlights in
+    degrees, wrapped to (-180, 180]. An empty band is None."""
+    px = rgb[::stride, ::stride].reshape(-1, 3)
+    ire = color.luma_ire(px)
+    lab = color.rec709_to_lab(px)
+    out = {}
+    for name, lo, hi in BANDS:
+        m = (ire >= lo) & (ire < hi)
+        if not m.any():
+            out[name] = None
+            continue
+        a, b = float(lab[m, 1].mean()), float(lab[m, 2].mean())
+        out[name] = {"share_pct": round(float(m.mean()) * 100, 2), "chroma": round(float(np.hypot(a, b)), 2),
+                     "hue_deg": round(float(np.degrees(np.arctan2(b, a)) % 360), 1)}
+    shift = None
+    if out["shadows"] and out["highlights"]:
+        d = out["shadows"]["hue_deg"] - out["highlights"]["hue_deg"]
+        shift = round((d + 180) % 360 - 180, 1)
+    return {"bands": out, "hue_shift_shadows_vs_highlights_deg": shift}
+
+
+def targets(rgb, source, numbers):
+    """The numbers a grade is matched to, from one hero still: luma
+    percentiles, display contrast, Lab palette, per-band chroma and hue, the
+    shadow-against-highlight hue shift, the near-neutral cast and the largest
+    face's skin Lab. `numbers` is analyse()'s dict. Numbers only, no pixels.
+    Bands and contrast are None when the transfer tag is not Rec.709."""
+    bands = {"bands": None, "hue_shift_shadows_vs_highlights_deg": None} if "transfer_note" in source \
+        else band_colour(rgb)
+    out = {"schema": {"name": "cine.targets", "version": 1}, "transfer": source["transfer"],
+           "generated_by": "rpresolve.perceive",
+           "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "bands_split": "luma IRE: shadows < 33, mids 33 to 66, highlights >= 66",
+           "luma_ire": numbers["luma"]["ire"], "display_contrast_stops": numbers["luma"]["display_contrast_stops"],
+           "palette": [{k: p[k] for k in ("lab", "share_pct")} for p in numbers["palette"]],
+           **bands, "neutral_cast": numbers["neutral_cast"], "skin_lab": _largest_skin(numbers)}
+    if "transfer_note" in source:
+        out["transfer_note"] = source["transfer_note"]
+    return out
+
+
 def compare(frame, ref):
     """How the frame differs from the reference: frame minus reference."""
     out = {"luma_ire_delta": {k: round(frame["luma"]["ire"][k] - ref["luma"]["ire"][k], 2)
@@ -423,6 +469,8 @@ def compare(frame, ref):
 def out_dir_problem(out):
     """Why `out` cannot take a packet, or None. The packet holds frames of the
     source, so it never goes inside a git working tree."""
+    if refs.is_reference(out):
+        return refs.reference_problem(out)
     if in_any_git_tree(out):
         return f"{out} is inside a git working tree. The packet holds frames of the media; write it outside."
     if os.path.exists(out) and (not os.path.isdir(out) or os.listdir(out)):
@@ -432,7 +480,7 @@ def out_dir_problem(out):
     return None
 
 
-def perceive(path, out, at=None, ref=None, faces=True):
+def perceive(path, out, at=None, ref=None, faces=True, with_targets=False):
     """Write a packet for the frame of `path` at `at` (and `ref`, a still or
     the middle of a clip) into the new folder `out`; return packet.json's dict."""
     problem = out_dir_problem(out)
@@ -444,7 +492,7 @@ def perceive(path, out, at=None, ref=None, faces=True):
     if created:
         os.mkdir(out)
     try:
-        packet = _write(out, rgb, source, ref, ref_rgb, ref_source, faces)
+        packet = _write(out, rgb, source, ref, ref_rgb, ref_source, faces, with_targets)
     except BaseException:
         # The folder was new or empty at the start, so all of it is this run's.
         shutil.rmtree(out, ignore_errors=True)
@@ -454,7 +502,7 @@ def perceive(path, out, at=None, ref=None, faces=True):
     return packet
 
 
-def _write(out, rgb, source, ref, ref_rgb, ref_source, faces):
+def _write(out, rgb, source, ref, ref_rgb, ref_source, faces, with_targets=False):
     packet = {"schema": {"name": "cine.perceive", "version": 1}, "transfer": source["transfer"],
               "generated_by": "rpresolve.perceive",
               "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -471,6 +519,10 @@ def _write(out, rgb, source, ref, ref_rgb, ref_source, faces):
     with open(os.path.join(out, "packet.json"), "w", encoding="utf-8") as f:
         json.dump(packet, f, indent=2)
         f.write("\n")
+    if with_targets:
+        with open(os.path.join(out, "targets.json"), "w", encoding="utf-8") as f:
+            json.dump(targets(rgb, source, packet), f, indent=2)
+            f.write("\n")
     return packet
 
 

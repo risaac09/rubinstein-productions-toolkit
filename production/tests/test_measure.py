@@ -178,7 +178,7 @@ class TestOnAGeneratedClip(unittest.TestCase):
 
 @needs_numpy
 class TestLightReadouts(unittest.TestCase):
-    SKIN = np.array((0.80, 0.60, 0.50))
+    SKIN = (0.80, 0.60, 0.50)  # np.array in face(): numpy may be missing at class-body time
     BOX = {"x": 0.30, "y": 0.20, "w": 0.40, "h": 0.60}
 
     def face(self, stops):
@@ -186,7 +186,7 @@ class TestLightReadouts(unittest.TestCase):
         `stops` darker in linear light (display = linear ** (1/2.4))."""
         img = np.full((200, 200, 3), (0.1, 0.2, 0.8))
         img[40:160, 60:100] = self.SKIN
-        img[40:160, 100:140] = self.SKIN * 2 ** (-stops / 2.4)
+        img[40:160, 100:140] = np.array(self.SKIN) * 2 ** (-stops / 2.4)
         return img
 
     def test_known_ratios_within_a_quarter_stop(self):

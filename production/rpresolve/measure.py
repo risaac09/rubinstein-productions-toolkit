@@ -86,9 +86,10 @@ def _run(cmd, **kw):
 # ---------------------------------------------------------------------------
 
 def probe(path):
-    """{width, height, duration, fps, color tags} of the first video stream."""
+    """{width, height, duration, fps, codec, profile, color tags} of the
+    first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-           "stream=width,height,avg_frame_rate,color_range,color_space,color_transfer,"
+           "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
            "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
@@ -108,6 +109,8 @@ def probe(path):
     if rotation(s) % 180 == 90:
         width, height = height, width
     return {"width": width, "height": height, "duration": duration,
+            "fps": s.get("avg_frame_rate", ""), "codec": s.get("codec_name", ""),
+            "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
                                                "color_transfer", "color_primaries")}}
 

@@ -426,8 +426,7 @@ def trim_review(args, ctx):
     ctx.check_cancel()
     if args.get("manifest"):
         m = cutlist.load_manifest(_existing(args["manifest"], "manifest"))
-        words = cutlist.load_words(_existing(args["words"], "words") if args.get("words")
-                                   else m["words"])
+        words = cutlist.load_words(_existing(args["words"], "words")) if args.get("words") else None
         r = tr.review_manifest(m, words, audio=args["audio"], **review_opts(args))
     else:
         source = _existing(args["source"], "source")

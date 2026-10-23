@@ -66,6 +66,7 @@ KINDS = (SILENCE, FILLER, REPEAT, LOOP)
 COLORS = {SILENCE: "Blue", FILLER: "Yellow", REPEAT: "Purple", LOOP: "Red"}
 COLUMNS = ("start", "end", "kind", "text", "confidence", "suggestion",
            "clip", "span", "source_start", "source_end")
+V2_COLUMNS = COLUMNS + ("source",)  # a version 2 manifest's review says which source a row is in
 
 
 # ---------------------------------------------------------------------------
@@ -245,20 +246,25 @@ def review_manifest(manifest, words=None, **opts):
     """Rows per clip and span of a cut manifest (cutlist.load_manifest):
     start and end on the clip's timeline, source_start and source_end in
     the source. Returns {rows, thresholds}."""
-    words = words if words is not None else cutlist.load_words(manifest["words"])
     fps = manifest["fps"]
-    rows, thresholds = [], []
+    v2 = cutlist.version(manifest) == 2
+    rows, thresholds, loaded = [], [], {}
     for clip in manifest["clips"]:
         offset = 0.0
         for i, s in enumerate(clip["spans"], 1):
+            src = cutlist.source_for(manifest, s)
+            if src["id"] not in loaded:  # words given replace every source's own
+                loaded[src["id"]] = (words if words is not None
+                                     else cutlist.load_words(src["words"]))
             a = cutlist.frame(s["in"], fps) / float(fps)
             b = cutlist.frame(s["out"], fps) / float(fps)
-            got, thr = review_range(manifest["source_path"], words, a, b, **opts)
+            got, thr = review_range(src["path"], loaded[src["id"]], a, b, **opts)
             thresholds.append(thr)
             for r in got:
                 rows.append({**r, "start": round(offset + r["start"] - a, 3),
                              "end": round(offset + r["end"] - a, 3), "clip": clip["name"],
-                             "span": i, "source_start": r["start"], "source_end": r["end"]})
+                             "span": i, "source_start": r["start"], "source_end": r["end"],
+                             **({"source": src["id"]} if v2 else {})})
             offset += cutlist.frames(s, fps) / float(fps)
     return {"rows": rows, "thresholds": thresholds}
 
@@ -296,9 +302,11 @@ def summary(rows):
 
 
 def tsv(rows):
-    """Rows as the review TSV: COLUMNS, one row per line."""
+    """Rows as the review TSV: COLUMNS (V2_COLUMNS when the rows name a
+    source), one row per line."""
+    cols = V2_COLUMNS if any("source" in r for r in rows) else COLUMNS
     def cell(v):
         return re.sub(r"[\t\r\n]+", " ", "" if v is None else str(v))
-    lines = ["\t".join(COLUMNS)]
-    lines += ["\t".join(cell(r.get(k, "")) for k in COLUMNS) for r in rows]
+    lines = ["\t".join(cols)]
+    lines += ["\t".join(cell(r.get(k, "")) for k in cols) for r in rows]
     return "\n".join(lines) + "\n"
