@@ -1,0 +1,1 @@
+Add `tools/ograf-render`: a Node script on built-ins only that renders any OGraf template offline through headless Chrome to ProRes 4444 with alpha, writes per-frame `data-layer` boxes and a determinism and font report, and refuses a template without `supportsNonRealTime`. Master-plan item VP-119.
