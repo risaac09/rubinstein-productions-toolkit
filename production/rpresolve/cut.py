@@ -114,8 +114,15 @@ def _setup(timeline, fps, size):
     api.set_setting_checked(timeline, "timelineResolutionHeight", str(size[1]))
 
 
+def span_item(item, span):
+    """The media-pool clip a span plays from: item itself, or for a clip over
+    several sources item[span.get("source")]."""
+    return item[span.get("source")] if isinstance(item, dict) else item
+
+
 def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
-    """Build one clip's 16:9 timeline and read it back. Returns
+    """Build one clip's 16:9 timeline and read it back. item is the source's
+    media-pool clip, or {span "source": clip} when the spans name several. Returns
     {name, frames_expected, frames, items, ok, reason, left_behind, warnings,
     settings_drift}: a timeline created and then failing its read-back is
     named there. settings_drift is settingsguard's report on the timeline's
@@ -162,10 +169,10 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
     record = start
     for s in spans:
         a, b = cutlist.frame(s["in"], fps), cutlist.frame(s["out"], fps)
-        media_pool.AppendToTimeline([{"mediaPoolItem": item, "startFrame": a, "endFrame": b,
+        media_pool.AppendToTimeline([{"mediaPoolItem": span_item(item, s), "startFrame": a, "endFrame": b,
                                       "trackIndex": 1, "recordFrame": record}])
         record += b - a
-    out["items"], out["frames"], problems = read_back_wide(tl, clip, fps)
+    out["items"], out["frames"], problems = read_back_wide(tl, clip, fps, item if isinstance(item, dict) else None)
     out["reason"] = "; ".join(problems)
     out["ok"] = not problems
     if problems:
@@ -179,7 +186,8 @@ def read_back_wide(tl, clip, fps, source_item=None):
     """(items, frames, problems): a 16:9's V1 items against the clip's
     spans, in order: each one's duration and source start, the count, and
     the timeline's length. With source_item, each item must come from that
-    media-pool clip (when the item says which)."""
+    media-pool clip (when the item says which); a dict {span "source": clip}
+    is checked span by span."""
     spans = clip["spans"]
     items = tl.GetItemListInTrack("video", 1) or []
     rows, problems = [], []
@@ -197,11 +205,12 @@ def read_back_wide(tl, clip, fps, source_item=None):
         if got["source_start"] is not None and got["source_start"] != got["want_source"]:
             problems.append(f"span {i}: source starts at {got['source_start']}, expected {got['want_source']}")
         if source_item is not None:
+            want = span_item(source_item, spans[i - 1])
             clip_of = getattr(it, "GetMediaPoolItem", lambda: None)()
-            if clip_of is not None and clip_of.GetUniqueId() != source_item.GetUniqueId():
+            if clip_of is not None and clip_of.GetUniqueId() != want.GetUniqueId():
                 problems.append(f"span {i} comes from the media-pool clip "
                                 f"'{clip_of.GetName()}', and the manifest's source is "
-                                f"'{source_item.GetName()}'")
+                                f"'{want.GetName()}'")
     expected = cutlist.clip_frames(clip, fps)
     if frames != expected:
         problems.append(f"timeline {frames} frames, expected {expected}")

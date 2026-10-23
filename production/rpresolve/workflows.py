@@ -374,6 +374,13 @@ def survey(out, json_out=None, projects=None, projects_dir=None, metadata_cache=
 # cut
 # ---------------------------------------------------------------------------
 
+def _clip_sources(m, clips):
+    """The manifest sources the clips' spans play from, in manifest order."""
+    from . import cutlist
+    ids = {cutlist.source_for(m, s)["id"] for c in clips for s in c["spans"]}
+    return [s for s in cutlist.sources(m) if s["id"] in ids]
+
+
 def cut_gate(manifest_path, only=None, audio=True, force=False):
     """The offline half of cut: load, check the source sha256, run
     endcheck. Returns {manifest, clips (to build), blocked {clip: [reasons]},
@@ -382,11 +389,11 @@ def cut_gate(manifest_path, only=None, audio=True, force=False):
     from . import cut as rpcut, cutlist
     m = cutlist.load_manifest(manifest_path)
     clips = rpcut.plan_clips(m, only)
-    one = cutlist.single_source(m, "cut")
-    src = one["path"]
-    if not os.path.isfile(src) or cutlist.sha256_file(src) != one["sha256"]:
-        raise Refused(f"{src} is missing or no longer matches the manifest's sha256; the "
-                      "words were read from a different file.")
+    for one in _clip_sources(m, clips):
+        src = one["path"]
+        if not os.path.isfile(src) or cutlist.sha256_file(src) != one["sha256"]:
+            raise Refused(f"{src} is missing or no longer matches the manifest's sha256; the "
+                          "words were read from a different file.")
     fails = rpcut.gate_clips(m, clips, audio=audio)
     blocked = {k: v for k, v in fails.items() if v}
     if blocked and not force:
@@ -445,12 +452,28 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     m, clips = gate["manifest"], gate["clips"]
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
-    one = cutlist.single_source(m, "cut")
-    item = rpcut.find_source_item(root, one["sha256"], os.path.getsize(one["path"]))
-    if item is None:
-        raise Refused("no media-pool clip in this project matches the manifest source's "
-                      "sha256. Import the source first.")
+    found, found_sources = {}, _clip_sources(m, clips)
+    for one in found_sources:
+        found[one["id"]] = rpcut.find_source_item(root, one["sha256"],
+                                                  os.path.getsize(one["path"]))
+        if found[one["id"]] is None:
+            raise Refused(f"no media-pool clip in this project matches the manifest source "
+                          f"{one['id']}'s sha256. Import the source first.")
+    one = next(s for s in cutlist.sources(m) if s["id"] in found)
+    item = found[one["id"]]
+    # Spans name their source (or none, with one source): the clip each plays from.
+    items_of = {c["name"]: {s.get("source"): found[cutlist.source_for(m, s)["id"]]
+                            for s in c["spans"]} for c in clips}
+
+    def clip_item(c):
+        """The media-pool clip a one-source clip plays from, else the dict of them."""
+        d = items_of[c["name"]]
+        uniq = list({id(v): v for v in d.values()}.values())
+        return uniq[0] if len(uniq) == 1 else d
     src = rpcut.parse_resolution(item.GetClipProperty("Resolution"))
+    srcs_of = {c["name"]: (src if clip_item(c) is item else
+                           rpcut.parse_resolution(clip_item(c).GetClipProperty("Resolution"))
+                           if not isinstance(clip_item(c), dict) else None) for c in clips}
     existing = rpcut.timeline_names(project)
     scaling, scaling_note = rpcut.input_scaling(project)
     todo, skipped, would, unreframed, refused, reframes = [], [], [], [], [], []
@@ -466,7 +489,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
             would.append(wide)
         elif e["aspects"]:
             # Built from the 16:9 that exists: only when it is still the manifest's cut.
-            rows, _, problems = rpcut.read_back_wide(existing[wide], c, m["fps"], item)
+            rows, _, problems = rpcut.read_back_wide(existing[wide], c, m["fps"], clip_item(c))
             e["base"] = {"id": existing[wide].GetUniqueId(),
                          "items": [[r["start"], r["duration"], r["source_start"]] for r in rows]}
             own, _ = rpcut.item_scaling(existing[wide].GetItemListInTrack("video", 1) or [])
@@ -477,6 +500,12 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                 e["mismatch"] = (f"'{wide}' exists and {'; '.join(own)}; the transform is "
                                  "computed for 0 (use project settings), so set it back in the "
                                  "Inspector or build under a new prefix")
+        if srcs_of[c["name"]] is None and e["aspects"]:
+            # A reframe is planned from one source's picture; a clip over several is 16:9 only.
+            unreframed += [f"{names[a]}: the clip plays from several sources, and a reframe is "
+                           f"planned for one; the {a} version was not built (pass make_9x16 "
+                           "false for a 16:9 only)" for a in e["aspects"]]
+            e["aspects"] = []
         if not e["build_wide"] and not e["aspects"]:
             continue
         todo.append(e)
@@ -489,7 +518,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                 refused.append(f"{name}: {rpcut.scaling_problem(scaling)}")
                 continue
             try:
-                plans = rpcut.item_plans(c, a, src, scaling)
+                plans = rpcut.item_plans(c, a, srcs_of[c["name"]], scaling)
             except rpcut.Unreframed as err:
                 unreframed.append(f"{name}: {err}")
                 continue
@@ -499,12 +528,14 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                           "bars": p["bars"]} for p in plans]
     # The transforms shown depend on the source's resolution and the input
     # scaling, so both are part of what the dry run showed.
-    sha = plan_sha("cut", pin.unique_id, prefix, one["sha256"], list(aspects), list(src),
+    sha = plan_sha("cut", pin.unique_id, prefix, [s["sha256"] for s in found_sources], list(aspects),
+                   list(src), [srcs_of[c["name"]] for c in clips],
                    scaling, [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
                               "reframe": e["clip"].get("reframe"), "build_wide": e["build_wide"],
                               "aspects": e["aspects"], "base": e["base"]} for e in todo])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "gate": {"blocked": gate["blocked"], "forced": gate["forced"]},
+           "source_items": [{"id": k, "name": v.GetName()} for k, v in found.items()],
            "source_item": {"name": item.GetName(), "file_path": item.GetClipProperty("File Path"),
                            "resolution": list(src)},
            "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
@@ -528,7 +559,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
             clip = e["clip"]
             wide_drift = None  # the 16:9's report, when this run built it
             if e["build_wide"]:
-                r = rpcut.build_clip(project, media_pool, item, clip, m["fps"], prefix,
+                r = rpcut.build_clip(project, media_pool, clip_item(clip), clip, m["fps"], prefix,
                                      check=check)
                 r["kind"] = "16x9"
                 wide_drift = r.get("settings_drift")
@@ -548,7 +579,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                     failed = True
                     continue
                 wide = rpcut.timeline_names(project).get(e["wide"])
-                t = rpcut.build_aspect(project, wide, clip, src, prefix, a, check=check,
+                t = rpcut.build_aspect(project, wide, clip, srcs_of[clip["name"]], prefix, a, check=check,
                                        scaling=scaling)
                 if t.get("refused") and wide_drift:
                     # The 'plan was made for X' refusal can be the custom-settings write's doing;
