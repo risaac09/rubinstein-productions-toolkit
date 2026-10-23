@@ -80,3 +80,24 @@ What it does not do, and limits:
 - Tempo changes beyond what the tracker's tightness follows, swing, rubato, and music without a pulse.
 - A bass line that sits on the off-beats can flip the phase check the wrong way.
 - It was checked on synthetic loops only, not on recorded music with vocals. Check the grid by ear before cutting to it; a beat the editor marks by hand outranks it.
+
+## trim-apply
+
+```sh
+python3 -m rpresolve.trimapply MANIFEST REVIEW.tsv --out NEW.json (--accept 3,7,12-15 | --accepted-file ROWS.txt)
+```
+
+`trim_review` proposes; trim-apply applies only the rows an editor names. It is not one of the three helpers above and does not read media: it reads a [cut manifest](manifest.md) and the TSV `trim_review` wrote from it, and writes a copy of the manifest with the accepted rows cut out. There is no default list and no "accept all".
+
+Rows are counted from 1 down the TSV. `--accepted-file` takes numbers and ranges, one or more a line, with `#` comments. An accepted row must be a silence, filler or repeat suggested `tighten` or `cut-candidate`, with confidence above `low`. It cuts `[source_start, source_end)` out of its span, leaving up to two spans; a silence keeps 0.12 s of its pause each side. The command refuses (exit 2, nothing written) when:
+
+- neither or both of `--accept` and `--accepted-file` are given, or the list is empty, has a duplicate or a bad token, or names a row the TSV lacks
+- a row is an `asr-loop`, suggested `keep`, or low confidence
+- the TSV header is not `trim_review`'s, or it reviews a whole source (no clip or span), or a row names a clip, span or source the manifest lacks, or lies outside its span
+- two accepted rows overlap in one span, a cut leaves under one frame, a silence is too short for its pad, or a clip would be empty
+- the manifest is `"speech": false`
+- `--out` or its sidecar exists, is the manifest or the TSV, or lies inside a git working tree
+
+`NEW.json.applied.json` records the file hashes, the accepted rows, each cut and the spans it left, the frames removed per clip and every field cleared. `end_words` and `source_text` of a changed span are cleared, not guessed, and `audio_lead` and `audio_tail` stay only on the first and last piece, so run `endcheck` on the copy. A version 1 manifest comes back version 1.
+
+Not here: an MCP tool, `--overwrite`, applying Resolve marker selections, re-deriving end words, and checking that the TSV came from this exact manifest (it carries no hash; the check is that every row lies inside its span).
