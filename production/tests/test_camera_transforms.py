@@ -10,7 +10,10 @@ import sys
 import unittest
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # the stdlib-only CI job
+    raise unittest.SkipTest("needs numpy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
