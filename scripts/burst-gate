@@ -9,8 +9,9 @@
 #                 or public-kit/ (the exports, never edited here); clean tree
 #   G2 privacy    no home paths, private-repo paths, key shapes, or terms from
 #                 the optional denylist, in lines the branch adds
-#   G3 tests      the hygiene scripts and the production unit tests, as CI
-#                 runs them
+#   G3 tests      the hygiene scripts, the offload test and the production
+#                 unit tests, as CI runs them; shellcheck, the Node tests
+#                 and the binary checks run only in CI
 #   G4 style      no em-dash in added prose
 #   G5 changelog  a changelog.d/ fragment exists (--fix writes one)
 #
@@ -59,18 +60,23 @@ skipped() { case "$SKIP" in *",$1,"*) echo "SKIP $1"; return 0 ;; esac; return 1
 
 # Added lines of the branch, "path<TAB>text", skipping deleted and binary files.
 added_lines() {
-  git diff -U0 --no-color "$BASE...HEAD" | awk '
+  git -c core.quotePath=false diff -U0 --no-color "$BASE...HEAD" | awk '
     /^\+\+\+ b\// { path = substr($0, 7); next }
     /^\+\+\+ / { path = ""; next }
     /^\+/ && path != "" { print path "\t" substr($0, 2) }'
 }
 
-DIFF_FILES="$(git diff --name-only "$BASE...HEAD")"
+DIFF_FILES="$(git -c core.quotePath=false diff --name-only "$BASE...HEAD")"
 
 # ---------------------------------------------------------------- G1 scope
 g1() {
   skipped G1 && return
   bad=0
+  # quotePath=false still quotes names holding a tab, newline or quote; the scans cannot read those.
+  if printf '%s\n' "$DIFF_FILES" | grep -q '^"'; then
+    fail "G1 scope: file name git quotes, the scans cannot read it (rename it):"
+    printf '%s\n' "$DIFF_FILES" | grep '^"' | sed 's/^/       /'; bad=1
+  fi
   tree="$(git status --porcelain)"
   if [ -n "$tree" ]; then
     # A fragment --fix just wrote is the one allowed dirty path.
@@ -150,9 +156,11 @@ default_tests() {
   set -e
   scripts/check-doc-links.sh
   scripts/check-methodology-status.sh
+  scripts/check-voice.sh
+  scripts/check-licence-scope.sh
   scripts/test-instrument-score.sh
   scripts/changelog-fragments lint
-  for t in scripts/test-changelog-fragments.sh scripts/test-burst-gate.sh; do
+  for t in scripts/test-check-voice.sh scripts/test-check-licence-scope.sh scripts/test-changelog-fragments.sh scripts/test-burst-gate.sh production/tests/test-offload.sh; do
     [ ! -x "$t" ] || "$t"
   done
   if [ -d production/tests ]; then

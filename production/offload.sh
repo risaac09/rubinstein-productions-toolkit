@@ -90,6 +90,10 @@ cmd_copy() {
   [ -d "$card" ] || die "card not found: $card"
   [ -d "$parent" ] || die "destination parent missing: $parent (a dropped share looks like this; it is never created)"
   [ -w "$parent" ] || die "destination parent not writable: $parent"
+  # Footage and sidecars never go inside a git work tree (walk up from the physical path).
+  local g; g=$(cd -P "$parent" && pwd -P) || die "cannot resolve $parent"
+  while [ -n "$g" ] && [ ! -e "$g/.git" ]; do g=${g%/*}; done
+  [ -z "$g" ] && [ ! -e /.git ] || die "destination $parent is inside the git work tree ${g:-/}; write it outside any repository"
 
   card_id "$card"
   local name; name="$cam-$(printf '%s' "$ID" | cut -c1-6)"
@@ -175,6 +179,11 @@ cmd_safe() {
   [ $# -eq 2 ] || die "usage: offload.sh safe <copy-dir> <rclone-remote>"
   local dir="${1%/}" remote="$2"
   [ -d "$dir" ] || die "not a directory: $dir"
+  # Only an rclone remote ("name:path") is offsite; a bare path, even one on
+  # another disk, is a local folder and never earns the verdict.
+  # shortcut: a remote of type local still passes; rclone's config is not read here.
+  printf '%s' "$remote" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_. -]*:' \
+    || die "not an rclone remote: $remote (want name:path); a local folder is not an offsite copy"
   local json="$dir.card.json"
   [ -f "$json" ] && [ -f "$dir.SHA256SUMS" ] || die "no sidecars beside $dir: it was not offloaded by this tool"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$json")
