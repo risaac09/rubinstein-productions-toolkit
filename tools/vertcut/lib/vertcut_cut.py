@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -24,9 +25,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 # The file-name rule and the destination live in rpresolve (production/), not here.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "production"))
-from rpresolve import cutlist, deliver, hooklint, safezone, vision  # noqa: E402
+from rpresolve import cutlist, deliver, hooklint, reviewlog, safezone, vision  # noqa: E402
 from rpresolve.config import ConfigError, load_config  # noqa: E402
 from rpresolve.paths import in_any_git_tree  # noqa: E402
+from rpresolve.tastedistill import read_events  # noqa: E402
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
@@ -40,6 +42,10 @@ LINE_CHARS, MAX_LINES = 16, 2       # the portrait standard
 CAPTION_BOTTOM = 1680               # bottom edge of the bar: lower third (from 1280), clear of the feed UI
 DEFAULT_LUFS, DEFAULT_TP, DEFAULT_LRA = -16.0, -1.5, 11.0   # the LinkedIn targets; -14 for YouTube and short-form feeds
 DEFAULT_DEST = "linkedin_9x16"
+# Wall time per second of clip, for the gate's estimate: the README measures transcription at about a
+# third of real time on Apple silicon, and a veryfast x264 encode is assumed to cost no more.
+RATIO = 1 / 3
+GATE_MINUTES = 30                   # the review gate of production/media-review-loop.md
 X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 
 
@@ -455,6 +461,48 @@ def frame0_faces(src, start, chain, tmp):
 
 # ---------------------------------------------------------------- main
 
+def gate_problem(args, spans, outs, estimate):
+    """None when the batch may run; else why it may not. A batch over GATE_MINUTES, or one that replaces
+    an existing output, needs a gate-packet that Isaac answered go in the review log."""
+    replaced = [o for o in outs if os.path.exists(o)]
+    if estimate <= GATE_MINUTES * 60 and not replaced:
+        return None
+    why = ("estimated %.0f min is over the %d min gate" % (estimate / 60, GATE_MINUTES)
+           if estimate > GATE_MINUTES * 60 else "%s already exists" % os.path.basename(replaced[0]))
+    cmd = "python3 production/resolve_workflow.py gate-packet --out GATE_DIR --project P-0000 --source %s --cuts %s" % (
+        shlex.quote(args.src), shlex.quote(args.manifest))
+    if args.offset:
+        cmd += " --offset %s" % args.offset
+    hint = ("%s. Build a gate-packet, read it, log go with review-log --step gate --choice go --key GATE_DIR, "
+            "then pass --reviewed GATE_DIR/gate.json --review-log PROJECT_DIR/review/events.jsonl:\n  %s" % (why, cmd))
+    if not (args.reviewed and args.review_log):
+        return hint
+    for f in (args.reviewed, args.review_log):
+        if not os.path.isfile(f):
+            return "no such file: %s" % f
+        if in_any_git_tree(f):
+            return "%s is inside a git work tree; keep the gate and the review log outside any repository" % f
+    try:
+        with open(args.reviewed, encoding="utf-8") as fh:
+            gate = json.load(fh)
+        packet = os.path.join(os.path.dirname(os.path.abspath(args.reviewed)), "packet.json")
+        if reviewlog._sha256(packet) != gate["packet_sha256"]:
+            return "gate.json does not match its packet.json; build the packet again"
+        if reviewlog._sha256(args.manifest) not in {i.get("sha256") for i in gate["inputs"]}:
+            return "gate.json was not built from this cuts file; build it with --source and --cuts"
+        if gate["total_runtime_s"] + 1 < sum(spans):
+            return "the gate-packet covers %.0f s of clips, this batch is %.0f s" % (gate["total_runtime_s"], sum(spans))
+        events, _ = read_events(args.review_log)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return "cannot read the gate: %s: %s" % (type(e).__name__, e)
+    answers = [e for _, e in events if e.get("step") == "gate" and e.get("stimulus") == gate["packet_sha256"]
+               and e.get("project") == gate.get("project")]
+    if not answers or answers[-1].get("choice") != "go":
+        return "no go for this gate-packet in %s (latest answer: %s)\n  %s" % (
+            args.review_log, answers[-1].get("choice") if answers else "none", hint)
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(prog="vertcut cut", add_help=True)
     ap.add_argument("src")
@@ -500,6 +548,9 @@ def main():
     ap.add_argument("--lra", type=float, default=DEFAULT_LRA, help="loudness range target (default %g)" % DEFAULT_LRA)
     ap.add_argument("--only", help="comma-separated clip ids to render")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--reviewed", metavar="GATE_JSON",
+                    help="gate.json of a gate-packet answered go; a batch over %d min or a replacement needs it" % GATE_MINUTES)
+    ap.add_argument("--review-log", metavar="EVENTS_JSONL", help="the review log that holds the go line, with --reviewed")
     ap.add_argument("--destination", default=DEFAULT_DEST,
                     help="destination in resolve-config.json that sets the file name's aspect "
                          "and the audio format (default %s)" % DEFAULT_DEST)
@@ -584,6 +635,20 @@ def main():
     chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
     if in_any_git_tree(args.outdir):
         die("%s is inside a git work tree; clips and captions name client speech, write them outside any repository (-o DIR)" % args.outdir)
+
+    def out_path(clip):
+        if args.draft_names:
+            stem = "%s-%s" % (re.sub(r"[^A-Za-z0-9._-]+", "-", clip["id"]).strip("-") or "clip", slug(clip["title"], "clip"))
+        else:
+            stem = os.path.splitext(clip_name(dest, dict(name_parts, index=clip["index"]), clip["title"]))[0]
+        return os.path.join(args.outdir, stem + ".mp4")
+
+    spans = [c["end"] - c["start"] for c in clips]
+    estimate = sum(spans) * RATIO
+    print("vertcut: %d clips, %.1f min of clips, estimated %.1f min to cut" % (len(clips), sum(spans) / 60, estimate / 60))
+    problem = gate_problem(args, spans, [out_path(c) for c in clips], estimate)
+    if problem:
+        die(problem)
     os.makedirs(args.outdir, exist_ok=True)
     print("vertcut: source %dx%d @ %.3f fps, reframe=%s -> %dx%d"
           % (src_w, src_h, src_fps, mode, W, H))
@@ -594,12 +659,8 @@ def main():
         start = clip["start"] + args.offset
         end = clip["end"] + args.offset
         dur = end - start
-        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", clip["id"]).strip("-") or "clip"
-        if args.draft_names:
-            name = "%s-%s" % (safe_id, slug(clip["title"], "clip"))
-        else:
-            name = os.path.splitext(clip_name(dest, dict(name_parts, index=clip["index"]), clip["title"]))[0]
-        out = os.path.join(args.outdir, name + ".mp4")
+        out = out_path(clip)
+        name = os.path.splitext(os.path.basename(out))[0]
 
         cues = []
         if words is not None:

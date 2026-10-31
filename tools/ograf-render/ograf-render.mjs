@@ -347,9 +347,21 @@ async function main() {
     ok(await call("updateAction", { data }), "updateAction");
     ok(await call("setActionsSchedule", { schedule: defaultSchedule(manifest, data, fps, durationMs, total) }), "setActionsSchedule");
 
+    let painted = false;
     const visit = async (i) => {
       const timestamp = (i * 1000) / fps.value;
       ok(await call("goToTime", { timestamp }), `goToTime(${timestamp})`);
+      // Fonts must settle before a capture, or a frame can be grabbed in a fallback face. The
+      // first frame also waits two paints; later ones force a layout (which starts any font load)
+      // and wait on the fonts, which costs no frame wait. The timeout keeps a throttled page
+      // (rAF paused) from hanging the render.
+      const paints = painted ? 0 : 2;
+      painted = true;
+      await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(r, 2000)), (async () => {
+        for (let k = 0; k < ${paints}; k++) await new Promise((r) => requestAnimationFrame(r));
+        document.body.offsetHeight;
+        await document.fonts.ready;
+      })()])`);
       const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true });
       return { png: Buffer.from(shot.data, "base64"), boxes: await evaluate(cdp, BOXES_JS) };
     };
