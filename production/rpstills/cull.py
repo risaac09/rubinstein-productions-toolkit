@@ -131,6 +131,9 @@ def score_rows(rows, clusters):
             _score_frames(frames_, run, burst_of, scored)
         else:
             _score_faces(frames_, run, burst_of, scored)
+    for r in rows:  # the helper failed on this proxy: no face is not a finding
+        if r.get("faces_unread") and r["id"] in scored:
+            scored[r["id"]].update(faces_unread=True, reason="faces unread")
     return scored
 
 
@@ -144,6 +147,8 @@ def propose(rows, clusters, scored):
     proposal = []
     for run in clusters["runs"]:
         ranked = sorted(run["frames"], key=lambda f: -scored.get(f, {}).get("score", 0))
+        # held: Vision never read their faces, so the sheet shows them as unread, not as faceless
+        held = [f for f in ranked if scored.get(f, {}).get("faces_unread")]
         if run["class"] == "none":
             want = frame_pick_count(run)
             picks, used_bursts = [], set()
@@ -160,8 +165,11 @@ def propose(rows, clusters, scored):
                 used_bursts.add(s.get("burst"))
                 if len(picks) >= want:
                     break
-            proposal.append({"run": run["id"], "class": run["class"], "kind": "frame",
-                             "picks": picks, "ranked": ranked})
+            entry = {"run": run["id"], "class": run["class"], "kind": "frame",
+                     "picks": picks, "ranked": ranked}
+            if held:
+                entry.update(held=held, held_reason="faces unread")
+            proposal.append(entry)
             continue
         want = PICKS if run["class"] == "solo" else GROUP_PICKS
         picks, used_bursts = [], set()
@@ -180,8 +188,11 @@ def propose(rows, clusters, scored):
             used_bursts.add(s.get("burst"))
             if len(picks) >= want:
                 break
-        proposal.append({"run": run["id"], "class": run["class"], "kind": "face",
-                         "picks": picks, "ranked": ranked})
+        entry = {"run": run["id"], "class": run["class"], "kind": "face",
+                 "picks": picks, "ranked": ranked}
+        if held:
+            entry.update(held=held, held_reason="faces unread")
+        proposal.append(entry)
     return proposal
 
 

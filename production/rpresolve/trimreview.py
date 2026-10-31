@@ -39,7 +39,9 @@ with no TSV read or acted on, it retires to markers only, with a one-line
 note in resolve-template-spec.md.
 """
 
+import math
 import re
+from bisect import bisect_left
 
 from . import cutlist
 
@@ -118,10 +120,36 @@ def _row(start, end, kind, text, confidence, suggestion):
             "confidence": confidence, "suggestion": suggestion}
 
 
+class WordIndex:
+    """Words indexed once, so a row's range is a bisect, not a scan of every word.
+    Answers come back in the words' own order, as the list comprehensions did."""
+
+    def __init__(self, words):
+        self.words = words
+        # a word with a null or NaN time never fell in a range under the old scans: leave it out
+        ok = [i for i, w in enumerate(words) if all(
+            isinstance(w.get(k), (int, float)) and math.isfinite(w[k]) for k in ("start", "end"))]
+        self._mid = sorted((cutlist.midpoint(words[i]), i) for i in ok)
+        self._start = sorted((words[i]["start"], i) for i in ok)
+
+    def midpoint_in(self, a, b=None):
+        """Words whose midpoint falls in [a, b); b None is no upper bound."""
+        lo = bisect_left(self._mid, (a, -1))
+        hi = len(self._mid) if b is None else bisect_left(self._mid, (b, -1))
+        return [self.words[i] for i in sorted(i for _, i in self._mid[lo:hi])]
+
+    def contained(self, a, b):
+        """Words with start >= a and end <= b."""
+        lo = bisect_left(self._start, (a, -1))
+        hi = bisect_left(self._start, (b, len(self.words) + 1))  # a start of exactly b still fits
+        return [self.words[i] for i in sorted(i for _, i in self._start[lo:hi])
+                if self.words[i]["end"] <= b]
+
+
 def silence_rows(env, words, a, b, thr, min_s=MIN_SILENCE_S, tighten_s=TIGHTEN_S, cut_s=CUT_S):
     """Silence rows in [a, b) from an envelope already computed over it."""
     rows = []
-    mids = [cutlist.midpoint(w) for w in words] if words is not None else None
+    idx = None
     for s, e in cutlist.silences(env, thr, min_s):
         s, e = max(s, a), min(e, b)
         if e - s < min_s - 1e-9:
@@ -129,7 +157,9 @@ def silence_rows(env, words, a, b, thr, min_s=MIN_SILENCE_S, tighten_s=TIGHTEN_S
         length = e - s
         where = ("at the head of the range; " if s <= a + cutlist.HOP_S else
                  "at the tail of the range; " if e >= b - cutlist.HOP_S else "")
-        heard = [w for w, m in zip(words, mids) if s <= m < e] if words is not None else []
+        if words is not None and idx is None:
+            idx = WordIndex(words)
+        heard = idx.midpoint_in(s, e) if words is not None else []
         if words is None:
             conf, note = "medium", "no words to compare"
         elif heard:
@@ -178,6 +208,7 @@ def _overlaps(a, b, spans):
 
 def repeat_rows(words):
     """(repeat rows, asr-loop rows) from the words (source seconds)."""
+    idx = None
     loops = [_row(s, e, LOOP, f"Whisper repeats \"{phrase} ...\"; re-transcribe before trusting "
                   "this stretch", "high", KEEP)
              for s, e, phrase in cutlist.repetition_loops(words)]
@@ -188,7 +219,8 @@ def repeat_rows(words):
             first = phrase.split()[0] if phrase else ""
             if _overlaps(s, e, taken) or (n == 1 and first in FILLERS):
                 continue
-            said = " ".join(w["word"].strip() for w in words if s <= w["start"] and w["end"] <= e)
+            idx = idx or WordIndex(words)
+            said = " ".join(w["word"].strip() for w in idx.contained(s, e))
             emphatic = n == 1 and first in EMPHATIC
             rows.append(_row(s, e, REPEAT, said or phrase, "low" if emphatic else "medium",
                              KEEP if emphatic else TIGHTEN))
@@ -201,11 +233,11 @@ def review_range(source, words, a, b=None, audio=True, silence_db=SILENCE_DB,
                  ffmpeg=None, env=None):
     """Rows for source[a:b] in source seconds, sorted by start. words is
     every word of the source (or None for audio only); the ones whose
-    midpoint falls in [a, b) count. Returns (rows, threshold used)."""
+    midpoint falls in [a, b) count; a WordIndex of them saves re-sorting per
+    range. Returns (rows, threshold used)."""
     inside = None
     if words is not None:
-        inside = [w for w in words if a <= cutlist.midpoint(w) and
-                  (b is None or cutlist.midpoint(w) < b)]
+        inside = (words if isinstance(words, WordIndex) else WordIndex(words)).midpoint_in(a, b)
     rows, thr = [], None
     if audio:
         env = env if env is not None else envelope(source, a, b, ffmpeg)
@@ -233,6 +265,8 @@ def review_source(source, words=None, ranges=None, **opts):
     source seconds with source_start and source_end filled in. Returns
     {rows, thresholds}."""
     rows, thresholds = [], []
+    if words is not None:
+        words = WordIndex(words)
     for a, b in ranges or [(0.0, None)]:
         got, thr = review_range(source, words, a, b, **opts)
         thresholds.append(thr)
@@ -254,8 +288,8 @@ def review_manifest(manifest, words=None, **opts):
         for i, s in enumerate(clip["spans"], 1):
             src = cutlist.source_for(manifest, s)
             if src["id"] not in loaded:  # words given replace every source's own
-                loaded[src["id"]] = (words if words is not None
-                                     else cutlist.load_words(src["words"]))
+                loaded[src["id"]] = WordIndex(words if words is not None
+                                              else cutlist.load_words(src["words"]))
             a = cutlist.frame(s["in"], fps) / float(fps)
             b = cutlist.frame(s["out"], fps) / float(fps)
             got, thr = review_range(src["path"], loaded[src["id"]], a, b, **opts)

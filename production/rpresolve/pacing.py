@@ -41,6 +41,7 @@ import statistics
 import sys
 
 from . import captionlint, cutlist
+from .trimreview import WordIndex
 
 PAUSE_MIN_S = 0.25  # a gap under 250 ms is articulation, not a pause (Goldman-Eisler 1968)
 
@@ -57,15 +58,18 @@ def cut_words(words, spans):
     list, or {source id: list} when the spans name their sources."""
     cutlist.check_split_sources(spans)
     out, rec = [], 0.0
+    index = {}  # one WordIndex per word list, whatever the number of spans
     for i, s in enumerate(spans):
         lead = s.get("audio_lead", 0) - (spans[i - 1].get("audio_tail", 0) if i else 0)
         tail = s.get("audio_tail", 0) - (spans[i + 1].get("audio_lead", 0)
                                          if i + 1 < len(spans) else 0)
         a, b = float(s["in"]) - lead, float(s["out"]) + tail
-        for w in (words[s.get("source")] if isinstance(words, dict) else words):
-            if a <= (w["start"] + w["end"]) / 2 < b:
-                out.append({"start": rec - lead + max(w["start"], a) - a,
-                            "end": rec - lead + min(w["end"], b) - a, "word": w["word"]})
+        wl = words[s.get("source")] if isinstance(words, dict) else words
+        if id(wl) not in index:
+            index[id(wl)] = WordIndex(wl)
+        for w in index[id(wl)].midpoint_in(a, b):
+            out.append({"start": rec - lead + max(w["start"], a) - a,
+                        "end": rec - lead + min(w["end"], b) - a, "word": w["word"]})
         rec += float(s["out"]) - float(s["in"])
     # Sound before the first frame or past the last (a lead on the first span,
     # a tail on the last) is not in the cut: clip to it.
