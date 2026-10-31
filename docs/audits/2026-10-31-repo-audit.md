@@ -1,5 +1,7 @@
 # Repo audit, 2026-10-31
 
+**Status:** draft, 2026-10-31.
+
 Report only. This audit changes no code. It follows the `ponytail-audit` method: correct, safe, holds under load, tested, fast, lean, in that order.
 
 **What this repo does:** a facilitation and measurement methodology, plus production tools that work on anyone's footage: a DaVinci Resolve MCP server and command line (`production/rpresolve/`), a LUT lab (`production/lutlab/`), a stills pipeline (`production/rpstills/`), and small tools (`tools/vertcut/`, `tools/ograf-render/`, `tools/ipad-probe/`). Most outputs name private media, people and transcripts, and the repo is public, so the main safety rule is "private output never lands inside a git working tree".
@@ -233,3 +235,4 @@ Fix the git-tree guard first: findings 1 to 5 are one rule (private output never
 - Read only in part: `production/rpresolve/mixbuild.py`, `reframe.py`, `perceive.py`, `cut.py`, `syncbuild.py`, `clipline.py`, `production/lutlab/report.py`, `model.py`, `fit.py`, the BRAW helper, and the methodology documents beyond the privacy sweep.
 - Not run: the `tools/ograf-render` and `tools/ipad-probe` tests.
 - `phase-zero/` and `public-kit/` were skipped as a kit export.
+- Git history was not reviewed in this audit; only the current tree was read.
