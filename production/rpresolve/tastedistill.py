@@ -22,6 +22,7 @@ MIN_ANSWERS = 5
 REPEAT_AGREEMENT = 0.8
 EXEMPLARS = 3
 NON_LABEL = {"none", "hold", "approve", "go"}
+RATINGS = {"1", "2", "3", "4", "5"}  # a 1 to 5 rating logged as a string, on a line with no options
 
 HEADER = """# Taste profile
 
@@ -35,7 +36,9 @@ counted per noise type, never pooled.
 
 def read_events(path):
     """(events, malformed): events are (line number, dict); malformed counts
-    unreadable lines, non-objects and lines whose options are not an object."""
+    unreadable lines, non-objects, lines whose options are not an object, and
+    a label choice the line's options do not decode (a "1" to "5" rating on a
+    line with no options is kept)."""
     events, malformed = [], 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for n, line in enumerate(f, 1):
@@ -43,7 +46,7 @@ def read_events(path):
                 continue
             try:
                 e = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):  # RecursionError: nesting deeper than json can parse
                 malformed += 1
                 continue
             if isinstance(e, dict) and e.get("options") is None:
@@ -52,9 +55,9 @@ def read_events(path):
                 malformed += 1
                 continue
             c = e.get("choice")
-            if isinstance(c, (dict, list)) or (isinstance(c, str) and e["options"]
-                                               and c not in e["options"] and c not in NON_LABEL):
-                malformed += 1  # a label the line's own options cannot decode
+            if isinstance(c, (dict, list)) or (isinstance(c, str) and c not in e["options"] and c not in NON_LABEL
+                                               and not (not e["options"] and c in RATINGS)):
+                malformed += 1  # a label the line's own options cannot decode, empty options included
                 continue
             events.append((n, e))
     return events, malformed

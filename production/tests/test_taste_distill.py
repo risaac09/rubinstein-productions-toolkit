@@ -72,6 +72,18 @@ class DistillTests(unittest.TestCase):
         events, bad = td.read_events(self._write_tmp([json.dumps(e)]))
         self.assertEqual((len(events), bad), (1, 0))
 
+    def test_label_without_options_is_malformed(self):
+        # Labels are shuffled per sheet: a letter its line cannot decode is no direction.
+        lines = [json.dumps(dict(ev(c), options=None)) for c in ("A",) * 5 + ("4", "45")]
+        lines.append(json.dumps(ev("2")))  # a digit on a lettered sheet decodes to nothing either
+        events, bad = td.read_events(self._write_tmp(lines))
+        self.assertEqual((len(events), bad), (1, 7))
+
+    def test_deep_nesting_counted_not_fatal(self):
+        lines = ["[" * 100000 + "]" * 100000, json.dumps(ev("A"))]
+        events, bad = td.read_events(self._write_tmp(lines))
+        self.assertEqual((len(events), bad), (1, 1))
+
     def _write_tmp(self, lines):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
