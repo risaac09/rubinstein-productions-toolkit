@@ -177,6 +177,35 @@ class MissingBackends(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("ggml model", err)
 
+    def test_whisper_cpp_timeout_names_limit(self):
+        model = os.path.join(self.tmp.name, "m.bin")
+        Path(model).write_bytes(b"")
+        boom = tr.subprocess.TimeoutExpired("whisper-cli", 600)
+        with mock.patch.object(tr.shutil, "which", return_value="/bin/whisper-cli"), \
+                mock.patch.object(tr, "_cpp_timeout", return_value=600.0), \
+                mock.patch.object(tr.subprocess, "run", side_effect=boom):
+            code, _, err = cli(self.media, "--backend", "whisper.cpp", "--model", model)
+        self.assertEqual(code, 2)
+        self.assertIn("600 s", err)
+        self.assertIn("RPRESOLVE_WHISPER_CPP_TIMEOUT_S", err)
+
+    def test_cpp_timeout_scales_with_audio(self):
+        from rpresolve import delivercheck as dc
+        with mock.patch.object(dc, "probe", return_value={"format": {"duration": "1000.5"}}):
+            self.assertEqual(tr._cpp_timeout(self.media), 4002.0)
+        with mock.patch.object(dc, "probe", return_value={"format": {"duration": "10"}}):
+            self.assertEqual(tr._cpp_timeout(self.media), tr.CPP_TIMEOUT_FLOOR_S)
+        with mock.patch.object(dc, "probe", side_effect=dc.CheckError("no")):
+            self.assertEqual(tr._cpp_timeout(self.media), tr.CPP_TIMEOUT_UNKNOWN_S)
+
+    def test_cpp_timeout_env_override(self):
+        with mock.patch.dict(os.environ, {"RPRESOLVE_WHISPER_CPP_TIMEOUT_S": "90"}):
+            self.assertEqual(tr._cpp_timeout(self.media), 90.0)
+        for bad in ("0", "-5", "nan", "inf", "abc", ""):
+            with mock.patch.dict(os.environ, {"RPRESOLVE_WHISPER_CPP_TIMEOUT_S": bad}):
+                with self.assertRaises(tr.TranscribeError):
+                    tr._cpp_timeout(self.media)
+
     def test_resolve_stub(self):
         code, _, err = cli(self.media, "--backend", "resolve")
         self.assertEqual(code, 2)
