@@ -18,6 +18,7 @@ from pathlib import Path
 from rpresolve.api import DEFAULT_LUT_ROOTS
 
 from . import spaces
+from .guard import atomic_path
 
 EXTS = (".cube", ".dat")
 # (pattern on the lowercased relative path, guess); first match wins. A guess
@@ -128,10 +129,9 @@ def duplicate_groups(entries):
 
 def write(entries, outdir):
     p = Path(outdir) / "registry.json"
-    tmp = p.with_suffix(".json.part")
-    tmp.write_text(json.dumps({"lutlab_library": 1, "roots": list(DEFAULT_LUT_ROOTS), "entries": entries},
-                              indent=1) + "\n")
-    os.replace(tmp, p)
+    with atomic_path(p) as tmp:
+        Path(tmp).write_text(json.dumps({"lutlab_library": 1, "roots": list(DEFAULT_LUT_ROOTS), "entries": entries},
+                                        indent=1) + "\n")
     return p
 
 
