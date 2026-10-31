@@ -20,6 +20,7 @@ const CHROME_CANDIDATES = [
 const MIME = { ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json",
   ".css": "text/css", ".html": "text/html", ".woff2": "font/woff2", ".woff": "font/woff",
   ".ttf": "font/ttf", ".otf": "font/otf", ".png": "image/png", ".svg": "image/svg+xml" };
+const FONT_WAIT_MS = Number(process.env.OGRAF_FONT_WAIT_MS) || 2000;  // env lets a test shorten it
 const DEFAULT_FPS = "24000/1001";
 const GENERIC_FAMILIES = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy",
   "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "emoji", "inherit", "initial"]);
@@ -348,6 +349,7 @@ async function main() {
     ok(await call("setActionsSchedule", { schedule: defaultSchedule(manifest, data, fps, durationMs, total) }), "setActionsSchedule");
 
     let painted = false;
+    const fontWaitTimeouts = [];
     const visit = async (i) => {
       const timestamp = (i * 1000) / fps.value;
       ok(await call("goToTime", { timestamp }), `goToTime(${timestamp})`);
@@ -357,11 +359,13 @@ async function main() {
       // (rAF paused) from hanging the render.
       const paints = painted ? 0 : 2;
       painted = true;
-      await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(r, 2000)), (async () => {
+      const settled = await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(() => r(false), ${FONT_WAIT_MS})), (async () => {
         for (let k = 0; k < ${paints}; k++) await new Promise((r) => requestAnimationFrame(r));
         document.body.offsetHeight;
         await document.fonts.ready;
+        return true;
       })()])`);
+      if (!settled) fontWaitTimeouts.push(i);  // captured anyway; the report says so
       const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true });
       return { png: Buffer.from(shot.data, "base64"), boxes: await evaluate(cdp, BOXES_JS) };
     };
@@ -384,6 +388,11 @@ async function main() {
     }
     report.checks.determinism = { pass: drift.length === 0, probed: probe.length, differing_frames: drift.sort((a, b) => a - b) };
 
+    if (fontWaitTimeouts.length) {
+      const frames = [...new Set(fontWaitTimeouts)].sort((a, b) => a - b);
+      report.font_wait_timeouts = { frames, wait_ms: FONT_WAIT_MS, note: "the font/paint wait timed out; these frames were captured without confirmed fonts" };
+      process.stderr.write(`ograf-render: font/paint wait timed out after ${FONT_WAIT_MS} ms on ${frames.length} frame(s) (${frames.slice(0, 5).join(", ")}${frames.length > 5 ? ", ..." : ""}); captured anyway, see report.json\n`);
+    }
     report.fonts = await evaluate(cdp, FONTS_JS);
     ok(await call("dispose", {}).catch(() => null), "dispose");
   } finally {

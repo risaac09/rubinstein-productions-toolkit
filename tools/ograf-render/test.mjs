@@ -163,7 +163,24 @@ describe("ograf-render", { skip }, () => {
     assert.equal(readdirSync(out).some((f) => f.startsWith(".frames-")), false);
   });
 
+  it("notes a font wait that timed out in report.json and on stderr, and still renders", () => {
+    const d = join(work, "slowfonts");
+    mkdirSync(d);
+    writeFileSync(join(d, "fixture.js"), graphic("").replace("class Fixture",
+      "let n = 0; Object.defineProperty(document.fonts, 'ready', { get: () => (n++ < 20 ? new Promise(() => {}) : Promise.resolve()) });\nclass Fixture"));
+    writeFileSync(join(d, "fixture.ograf.json"), JSON.stringify(manifest()));
+    const out = join(work, "j");
+    const r = spawnSync("node", [SCRIPT, join(d, "fixture.ograf.json"), "--out", out, "--size", "320x180", "--no-video"],
+      { encoding: "utf8", env: { ...process.env, OGRAF_FONT_WAIT_MS: "50" } });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stderr, /font\/paint wait timed out/);
+    const t = JSON.parse(readFileSync(join(out, "report.json"), "utf8")).font_wait_timeouts;
+    assert.equal(t.wait_ms, 50);
+    assert.ok(t.frames.length > 0);
+  });
+
   it("flags a font that is not installed", () => {
+    assert.equal(report("a").font_wait_timeouts, undefined, "a normal render has no timeout note");
     assert.ok(report("a").fonts.some((f) => f.family === "Helvetica"), "the fixture names Helvetica");
     const d = join(work, "font");
     mkdirSync(d);
