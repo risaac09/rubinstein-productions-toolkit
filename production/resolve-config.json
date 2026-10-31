@@ -134,6 +134,7 @@
         "channels": 2,
         "bitrate_kbps": 320
       },
+      "min_fps": "30000/1001",
       "loudness": { "integrated_lufs": -14.0 },
       "captions": "burnin",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
