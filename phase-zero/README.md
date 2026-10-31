@@ -110,6 +110,10 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   old filename via `RETIRED_FILES`.
 - `hooks/session-brief.sh`: the SessionStart hook that injects the routing
   check and the standing pointers.
+- `global/engage-log.global.sh`: the user-level SessionEnd hook (OPS-10). Writes one
+  `sd-ai-engage` fragment per session to a spool under `~/.local/share/stack-data/`
+  and never lands it; `scripts/sd-engage-batch-land` lands the spool nightly. Installed
+  by `global/install-global.sh` with a 30 second timeout; exits 0 on any error.
 - `settings.json` — the hook registrations (both hooks), copied to a repo
   with no existing settings; merged in (jq) when one exists.
 - `global/auto-mode.json` — the auto-mode classifier config (`autoMode` block:

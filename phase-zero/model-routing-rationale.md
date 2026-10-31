@@ -97,7 +97,7 @@ pass validation untouched, so this needs no new machinery (since 2026-10-17 the
 optional keys `pool`, `cards`, `g1FirstPass` and `reviewEditLines` are
 validated, so Codex, local and OpenRouter rows can be compared with Claude's):
 
-    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
+    sd-ai-engage --json '{"routedTier":"opus-5.5/medium","secondRound":false}' --land
 
 (stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
 never rides a session branch.) Without that record this rule cannot be shown

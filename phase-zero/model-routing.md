@@ -53,7 +53,7 @@ by rarity.
 
 Log the tier and whether the work needed a second review round:
 
-    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false,"items":["OPS-07"]}' --land
+    sd-ai-engage --json '{"routedTier":"opus-5.5/medium","secondRound":false,"items":["OPS-07"]}' --land
 
 `items` names the planning ids the work moved (`scripts/sd-ref --list --state
 open`); the session id is filled from the environment.
@@ -62,7 +62,11 @@ To compare pools, add `pool` (claude, codex, local, openrouter or script). Add
 review load when you have it: `cards` (integer), `g1FirstPass` (0 to 1, the
 share of cards that passed the first gate) and `reviewEditLines` (integer,
 lines Isaac or a reviewer edited). All are optional and validated; a typo
-refuses the entry. `sd-ai-engage --summary [--since DATE]` reads the log back
+refuses the entry. `routedTier` is `<model>/<effort>` with model one of
+fable-5.1, opus-5.5, sonnet-5.5, haiku-5.5 and effort low, medium, high, xhigh
+or max (`sonnet-5.5/medium`), or `codex/<slug>`, `local/<slug>`, `openrouter/<slug>`.
+Detail goes in `model`, `effort` and `taskClass`, not in the tier string.
+`sd-ai-engage --summary [--since DATE]` reads the log back
 by pool and tier.
 
 The reasoning behind each rule, the known failure mode, and worked examples:
