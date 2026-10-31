@@ -11,6 +11,7 @@ subtitles filter, because Homebrew's ffmpeg ships without libass.
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -22,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # The file-name rule and the destination live in rpresolve (production/), not here.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "production"))
-from rpresolve import deliver  # noqa: E402
+from rpresolve import cutlist, deliver, hooklint, safezone, vision  # noqa: E402
 from rpresolve.config import ConfigError, load_config  # noqa: E402
 
 W, H = 1080, 1920
@@ -142,8 +143,10 @@ def parse_tc(s, fps):
     if len(parts) == 3:
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
     if len(parts) == 4:
-        h, m, sec, fr = parts
-        return int(h) * 3600 + int(m) * 60 + int(sec) + int(fr) / fps
+        try:  # NTSC-correct: frames count at the nominal rate, then divide by the real one
+            return cutlist.parse_timecode(s, fps)
+        except cutlist.CutlistError as e:
+            die(str(e))
     die("unparseable timecode: %s" % s)
 
 
@@ -176,10 +179,11 @@ def read_manifest(path, fps):
                 die("%s:%d needs at least id<TAB>in<TAB>out" % (path, lineno))
             cid, tin, tout = cols[0], cols[1], cols[2]
             title = cols[3] if len(cols) > 3 else ""
+            hook = cols[4] if len(cols) > 4 else ""     # optional; needs a title, as empty columns are dropped
             start, end = parse_tc(tin, fps), parse_tc(tout, fps)
             if end <= start:
                 die("%s:%d out (%s) is not after in (%s)" % (path, lineno, tout, tin))
-            rows.append({"id": cid, "start": start, "end": end, "title": title})
+            rows.append({"id": cid, "start": start, "end": end, "title": title, "hook": hook})
     if not rows:
         die("no clips in %s" % path)
     return rows
@@ -333,14 +337,70 @@ def resolve_style(file_path, text_color, bar_color, font):
     return style
 
 
-def render_cue(lines, font, path, style, opacity):
-    """Draw one cue: text on a partial-opacity bar. Returns (width, height)."""
+def cue_size(lines, font):
+    """(width, height, line height, pad x, pad y) of a cue's bar."""
     scratch = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     asc, desc = font.getmetrics()
     lh = int((asc + desc) * 1.15)
     pad_x, pad_y = font.size // 2, font.size // 4
-    width = int(max(scratch.textlength(l, font=font) for l in lines)) + pad_x * 2
-    height = lh * len(lines) + pad_y * 2
+    return (int(max(scratch.textlength(l, font=font) for l in lines)) + pad_x * 2,
+            lh * len(lines) + pad_y * 2, lh, pad_x, pad_y)
+
+
+def cue_box(lines, font, caption_y, frame=(W, H)):
+    """Pixel box (x0, y0, x1, y1) of a cue's bar: centred, its bottom edge at caption_y."""
+    width, height = cue_size(lines, font)[:2]
+    x0 = (frame[0] - width) / 2
+    return x0, caption_y - height, x0 + width, caption_y
+
+
+def unsafe_sides(box, frame=(W, H)):
+    """The sides of the safezone (rpresolve.safezone) a pixel box crosses, e.g. ['bottom']."""
+    fw, fh = frame
+    x0, y0, x1, y1 = box
+    return safezone.outside((x0 / fw, y0 / fh, x1 / fw, y1 / fh), safezone.margins(fw, fh))
+
+
+def overlaps(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def hook_lines(text):
+    """A hook's lines: `|` starts the next line."""
+    return [p.strip() for p in text.split("|") if p.strip()]
+
+
+def hook_hold(lines):
+    """Seconds on screen: the least hooklint accepts, max(0.8, 0.3 per word)."""
+    n = len([w for w in " ".join(lines).split() if re.search(r"\w", w)])
+    return max(hooklint.HOLD_FLOOR, hooklint.HOLD_PER_WORD * n)
+
+
+def plan_hook(lines, font, caption_y, line_chars):
+    """Pixel box of the hook card: top-centred at the top safezone edge. Raises CaptionError when it
+    leaves the portrait margins or meets the caption bar (two full lines, the largest it can be; none
+    when caption_y is None)."""
+    width, height = cue_size(lines, font)[:2]
+    x0, y0 = (W - width) // 2, math.ceil(H * safezone.PORTRAIT["top"])
+    box = (x0, y0, x0 + width, y0 + height)
+    sides = unsafe_sides(box)
+    if sides:
+        raise CaptionError("the hook card crosses the %s safezone; shorten the lines or lower --font-size"
+                           % "/".join(sides))
+    if caption_y is not None and overlaps(box, cue_box(["M" * line_chars] * MAX_LINES, font, caption_y)):
+        raise CaptionError("the hook card meets the caption bar; raise --caption-y or lower --font-size")
+    return box
+
+
+def hook_covers_face(box, faces):
+    """True when the pixel box overlaps any Vision face (normalized, top-left origin)."""
+    return any(overlaps(box, (f["x"] * W, f["y"] * H, (f["x"] + f["w"]) * W, (f["y"] + f["h"]) * H))
+               for f in faces)
+
+
+def render_cue(lines, font, path, style, opacity):
+    """Draw one cue: text on a partial-opacity bar. Returns (width, height)."""
+    width, height, lh, pad_x, pad_y = cue_size(lines, font)
     if width > W:
         raise CaptionError("a caption line is %d px wide, wider than the %d px frame; "
                            "lower --font-size or --line-chars" % (width, W))
@@ -378,6 +438,19 @@ def reframe_chain(src_w, src_h, mode, xoff):
     ), "fit"
 
 
+def frame0_faces(src, start, chain, tmp):
+    """Vision face boxes on the clip's reframed first frame, or None off the Mac (the check is skipped)."""
+    png = os.path.join(tmp, "frame0.png")
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "%.3f" % start, "-i", src,
+                        "-filter_complex", chain, "-map", "[base]", "-frames:v", "1", png])
+    if r.returncode != 0:
+        die("could not read frame 0 of %s" % src)
+    if sys.platform != "darwin" or not vision.vision_binary():
+        return None
+    found = vision.face_boxes([png])
+    return None if found is None else found.get(png, [])
+
+
 # ---------------------------------------------------------------- main
 
 def main():
@@ -406,6 +479,10 @@ def main():
     ap.add_argument("--font-size", type=int, default=66)
     ap.add_argument("--caption-y", type=int, default=CAPTION_BOTTOM,
                     help="y of the caption bar's bottom edge (default %d)" % CAPTION_BOTTOM)
+    ap.add_argument("--hook-text", metavar="TEXT",
+                    help="frame-0 hook, your own words verbatim, `|` between its two lines; checked with "
+                         "rpresolve.hooklint (exit 2 on a FAIL). A worksheet's fifth column sets one per clip")
+    ap.add_argument("--hook-source", metavar="REF", help="where the hook text comes from; required with a hook")
     ap.add_argument("--line-chars", type=int, default=LINE_CHARS,
                     help="characters per caption line, two lines at most (default %d)" % LINE_CHARS)
     ap.add_argument("--max-words", type=int, default=3)
@@ -460,11 +537,31 @@ def main():
         if not clips:
             die("--only matched no clip ids")
 
+    hooks = {}
+    for clip in clips:
+        text = clip["hook"] or args.hook_text
+        if not text:
+            continue
+        lines = hook_lines(text)
+        hold = hook_hold(lines)
+        bad = [r for r in hooklint.lint(lines, W, H, hold=hold, start=0) if r[1] == "FAIL"]
+        short = hold > clip["end"] - clip["start"]
+        if bad or short or not args.hook_source:
+            for name, _, detail in bad:
+                sys.stderr.write("vertcut: hook for clip %s: %s: %s\n" % (clip["id"], name, detail))
+            if not args.hook_source:
+                sys.stderr.write("vertcut: a hook needs --hook-source REF\n")
+            if short:
+                sys.stderr.write("vertcut: clip %s is shorter than its hook's %.1f s hold\n" % (clip["id"], hold))
+            raise SystemExit(2)
+        hooks[clip["id"]] = {"lines": lines, "text": "\n".join(lines), "hold": hold}
+
     words = None
     if not args.no_captions:
         if not args.words:
             die("captions need --words FILE (or pass --no-captions)")
         words = load_words(args.words)
+    if words is not None or hooks:
         if not 0 < args.bar_opacity <= 1:
             die("--bar-opacity must be above 0 and at most 1")
         if args.line_chars < 1:
@@ -476,13 +573,20 @@ def main():
         if not os.path.isfile(style["font"]):
             die("font not found: %s" % style["font"])
         font = ImageFont.truetype(style["font"], args.font_size)
+        for h in hooks.values():
+            try:
+                h["box"] = plan_hook(h["lines"], font, None if words is None else args.caption_y, args.line_chars)
+            except CaptionError as e:
+                die(str(e))
 
     chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
     os.makedirs(args.outdir, exist_ok=True)
     print("vertcut: source %dx%d @ %.3f fps, reframe=%s -> %dx%d"
           % (src_w, src_h, src_fps, mode, W, H))
 
+    warned = False
     for n, clip in enumerate(clips, 1):
+        hook = hooks.get(clip["id"])
         start = clip["start"] + args.offset
         end = clip["end"] + args.offset
         dur = end - start
@@ -501,8 +605,18 @@ def main():
             except CaptionError as e:
                 die("clip %s: %s" % (clip["id"], e))
 
-        print("vertcut: [%d/%d] %s  %.2fs  %d cues"
-              % (n, len(clips), os.path.basename(out), dur, len(cues)))
+        if hook:   # captions wait for the hook to leave
+            cues = [dict(c, start=max(c["start"], hook["hold"])) for c in cues if c["end"] - hook["hold"] >= 0.25]
+        if cues and not warned:
+            # The default bar sits inside the bottom UI band; reported, not moved.
+            sides = unsafe_sides(cue_box(["M" * args.line_chars] * MAX_LINES, font, args.caption_y))
+            if sides:
+                warned = True
+                sys.stderr.write("vertcut: WARN the caption bar (bottom edge y=%d) enters the %s safezone band\n"
+                                 % (args.caption_y, "/".join(sides)))
+        print("vertcut: [%d/%d] %s  %.2fs  %d cues%s"
+              % (n, len(clips), os.path.basename(out), dur, len(cues),
+                 "  hook %.1fs" % hook["hold"] if hook else ""))
         if args.dry_run:
             continue
 
@@ -525,6 +639,18 @@ def main():
                     % (label, i + 1, args.caption_y, cue["start"], cue["end"], nxt))
                 label = nxt
 
+            if hook:
+                png = os.path.join(tmp, "hook.png")
+                render_cue(hook["lines"], font, png, style, args.bar_opacity)
+                faces = frame0_faces(args.src, start, chain, tmp)
+                if faces is None:
+                    sys.stderr.write("vertcut: SKIP face check on frame 0 (needs macOS Vision)\n")
+                elif hook_covers_face(hook["box"], faces):
+                    die("clip %s: the hook card covers a face on frame 0" % clip["id"])
+                inputs += ["-loop", "1", "-i", png]
+                filters.append("%s[%d:v]overlay=x=%d:y=%d:enable='between(t,0,%.3f)'[vh]"
+                               % (label, len(cues) + 1, hook["box"][0], hook["box"][1], hook["hold"]))
+                label = "[vh]"
             filters.append("%s%s[vout]" % (label, COLOR_TAG_FILTER))
             label = "[vout]"
 
@@ -545,6 +671,12 @@ def main():
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+        if hook:
+            folder = os.path.join(os.path.dirname(out), "review-srt")
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, name + ".hook.json"), "w") as fh:
+                json.dump({"text": hook["text"], "source": args.hook_source,
+                           "box": [round(v) for v in hook["box"]], "start": 0, "end": hook["hold"]}, fh, indent=2)
         if cues:
             with open(srt_path(out, dest), "w") as fh:
                 for i, cue in enumerate(cues, 1):

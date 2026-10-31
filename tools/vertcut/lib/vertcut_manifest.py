@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """vertcut manifest: a cuts worksheet (id, in, out, title) as a cut manifest v2.
 
-The rows are read by vertcut_cut.read_manifest, the one worksheet parser. Its
-four-part HH:MM:SS:FF timecodes are swapped, for this run only, for the
-NTSC-correct reading rpresolve uses (frames counted at the nominal rate, then
-divided by the real one), so the spans written here are the ones
-rpresolve.cutlist reads back from the same worksheet.
+The rows are read by vertcut_cut.read_manifest, the one worksheet parser, whose
+HH:MM:SS:FF timecodes are NTSC-correct (rpresolve.cutlist.parse_timecode), so
+the spans written here are the ones rpresolve.cutlist reads from the worksheet.
 """
 
 import argparse
-import contextlib
 import json
 import os
 import sys
@@ -19,29 +16,8 @@ import vertcut_cut as vc  # noqa: E402  (puts production/ on sys.path)
 from rpresolve import cutlist, paths  # noqa: E402
 
 
-@contextlib.contextmanager
-def _ntsc_timecodes():
-    """vertcut_cut.parse_tc with its HH:MM:SS:FF branch replaced by cutlist's."""
-    orig = vc.parse_tc
-
-    def parse(s, fps):
-        if len(s.strip().split(":")) == 4:
-            try:
-                return cutlist.parse_timecode(s, fps)
-            except cutlist.CutlistError as e:
-                vc.die(str(e))
-        return orig(s, fps)
-
-    vc.parse_tc = parse
-    try:
-        yield
-    finally:
-        vc.parse_tc = orig
-
-
 def build(src, tsv, words, fps, offset=0.0):
-    with _ntsc_timecodes():
-        rows = vc.read_manifest(tsv, fps)
+    rows = vc.read_manifest(tsv, fps)
     if min(r["start"] for r in rows) + offset < 0:
         vc.die("--offset %g puts a worksheet in-point before the start of the media" % offset)
     spans = {}
