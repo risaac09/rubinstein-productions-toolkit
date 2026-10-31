@@ -23,11 +23,18 @@ cat > "$T/bin/df" <<'EOF'
 #!/bin/sh
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted\nfake 100 0 %s 0%% /x\n' "${FAKE_FREE:-999999999}"
 EOF
-# rclone fake: exit FAKE_RC, write FAKE_LOG into --log-file.
+# rclone fake: exit FAKE_RC, write FAKE_LOG into --log-file, and into --match
+# FAKE_MATCH when set, else every file under the source (a full match).
 cat > "$T/bin/rclone" <<'EOF'
 #!/bin/sh
-log=""; while [ $# -gt 0 ]; do [ "$1" = --log-file ] && log="$2"; shift; done
-[ -n "$log" ] && printf '%s\n' "${FAKE_LOG:-}" > "$log"
+src="$2"; log=""; match=""
+while [ $# -gt 0 ]; do case "$1" in --log-file) log="$2" ;; --match) match="$2" ;; esac; shift; done
+[ -z "$log" ] || printf '%s\n' "${FAKE_LOG:-}" > "$log"
+[ -z "${FAKE_ENV_OUT:-}" ] || env | grep '^RCLONE_' > "$FAKE_ENV_OUT"
+if [ -n "$match" ]; then
+  if [ -n "${FAKE_MATCH+x}" ]; then printf '%s' "$FAKE_MATCH" > "$match"
+  else (cd "$src" && find . -type f | sed 's|^\./||') > "$match"; fi
+fi
 exit "${FAKE_RC:-0}"
 EOF
 # dd that writes garbage instead of the input when it has an of= argument.
@@ -119,6 +126,12 @@ out=$(FAKE_LOG="NOTICE: 1 hashes could not be checked" "$O" safe "$d" remote:buc
 check "unhashed files are not safe" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && [ ! -e "$d.offsite.txt" ]'
 out=$(FAKE_RC=1 "$O" safe "$d" remote:bucket/x 2>&1); rc=$?
 check "rclone failure is not safe" '[ "$rc" -eq 1 ] && [ ! -e "$d.offsite.txt" ]'
+out=$(FAKE_MATCH="DCIM/100_PANA/P1000001.XML" "$O" safe "$d" remote:bucket/x 2>&1); rc=$?
+check "a check that matched only some files (a filter) is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "P1000001.MOV" && [ ! -e "$d.offsite.txt" ]'
+# rclone reads any flag from RCLONE_<FLAG>: RCLONE_SIZE_ONLY would pass a copy on size alone.
+out=$(RCLONE_SIZE_ONLY=true RCLONE_CONFIG_REMOTE_TYPE=b2 FAKE_ENV_OUT="$T/rclone.env" "$O" safe "$d" remote:bucket/x 2>&1); rc=$?
+check "rclone flag variables are cleared, remote and config variables kept" '[ "$rc" -eq 0 ] && ! grep -q RCLONE_SIZE_ONLY "$T/rclone.env" && grep -q RCLONE_CONFIG_REMOTE_TYPE "$T/rclone.env"'
+rm -f "$d.offsite.txt"
 run safe "$T/c1" remote:bucket/x
 check "folder without sidecars refused" '[ "$rc" -eq 2 ]'
 printf 'rot' >> "$d/DCIM/100_PANA/P1000001.XML"

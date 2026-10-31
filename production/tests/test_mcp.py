@@ -494,20 +494,32 @@ class TestStdioIsolation(unittest.TestCase):
 class TestServerInfo(unittest.TestCase):
     """resolve_status: the commit loaded at start against the commit on disk."""
 
-    def info(self, loaded, disk):
-        git = lambda *a: disk if a[0] == "rev-parse" and a[1] == "--short" else None  # noqa: E731
-        with mock.patch.object(tools_read, "LOADED_COMMIT", loaded), \
+    A, B = "abc1234" + "0" * 33, "def5678" + "0" * 33  # full SHAs
+    A2 = "abc1234e" + "1" * 32  # another commit whose first seven digits are A's
+
+    def info(self, loaded, disk, short=7):
+        """loaded and disk are full SHAs (None: git failed); git now prints `short` digits."""
+        def git(*a):
+            if a == ("rev-parse", "HEAD"):
+                return disk
+            return disk and disk[:short] if a == ("rev-parse", "--short", "HEAD") else None
+        with mock.patch.object(tools_read, "LOADED_COMMIT", loaded and loaded[:7]), \
+                mock.patch.object(tools_read, "LOADED_SHA", loaded), \
                 mock.patch.object(tools_read, "_git", git):
             return tools_read._server_info()
 
     def test_same_commit_is_not_stale(self):
-        i = self.info("abc1234", "abc1234")
+        i = self.info(self.A, self.A)
         self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]), ("abc1234",) * 2 + (False,))
 
     def test_a_different_commit_on_disk_is_stale(self):
-        i = self.info("abc1234", "def5678")
+        i = self.info(self.A, self.B)
         self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]),
                          ("abc1234", "def5678", True))
+
+    def test_a_longer_short_sha_compares_the_full_commit(self):
+        self.assertFalse(self.info(self.A, self.A, short=8)["stale"])  # git grew the abbreviation
+        self.assertTrue(self.info(self.A, self.A2, short=8)["stale"])  # abc1234e is not abc1234
 
     def test_no_git_is_not_called_stale(self):
         self.assertFalse(self.info(None, None)["stale"])

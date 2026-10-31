@@ -57,7 +57,7 @@ A template is a whole graph. A `.drx` replaces a clip's graph and does not appen
 |---|---|---|
 | 1 | `NR` | Noise reduction, off by default. Temporal before spatial, chroma heavy, luma light. |
 | 2 | `EXP` | Exposure. Offset or HDR Offset, not lift and gamma. |
-| 3 | `WB` | White balance and shot balance. The only node a script writes (see Open spikes). By hand: desaturate a still, wipe to a white area, then temperature and tint to neutral. |
+| 3 | `WB` | White balance and shot balance. The only corrective node a script may write, through `SetCDL`, which is unconfirmed (see Open spikes). By hand: desaturate a still, wipe to a white area, then temperature and tint to neutral. |
 | 4 | `CON` | Contrast, composite mode Luminosity, so it moves brightness and leaves hue and saturation alone. Pivot at 18% grey in DaVinci Intermediate. Toggling it must not move 18% grey. |
 | 5 | `SAT` | Saturation and density. HSV saturation; Color Slice for density instead of louder colour. |
 | 6 | `SKIN` | Skin qualifier, off by default. Skin stays on the vectorscope line. |
@@ -73,7 +73,7 @@ Everything works in DaVinci Intermediate on every camera, which is what makes ma
 
 **Look strength.** Build the look once at full strength and keep one strength control, so a client's "less" is one move, not a rebuild. By hand, put the look's nodes in a compound node labelled `LOOK` and use its Key Output Gain. A script has no evidence of reaching that control, so the scripted form is baked variants of the same template at 100, 66 and 33 percent, and the script picks one.
 
-**What a script may write.** Two things only. `apply_grade` puts a LUT on one node you name; pass `lut.node` 8 for the look, because its default is node 1, which is `NR`, and it does not check the label. The clip needs the node before the apply. A match step may also write `WB` through `SetCDL`, but that write does not exist yet and waits on the first spike below. Never `CON`, the other corrective nodes or the tail.
+**What a script may write.** Two things only. `apply_grade` puts a LUT on one node you name; pass `lut.node` 8 for the look, because its default is node 1, which is `NR`, and it does not check the label. The clip needs the node before the apply, and the apply needs `overwrite` true: a clip that carries the template is never a default graph, so without it every item is refused. A match step may also write `WB` through `SetCDL`, but that write does not exist yet and waits on the first spike below. Never `CON`, the other corrective nodes or the tail.
 
 **Open spikes.** None of these four is confirmed. Each needs a run against a sandbox project before a template relies on it, and until then the hand route above is the only one.
 - **SetCDL: unconfirmed.** `TimelineItem.SetCDL` (slope, offset, power, saturation on one node) is in the Resolve API but has not been exercised here. Whether it writes to `WB` of a template applied by `.drx`, reads back, and survives `DuplicateTimeline` is not known.
@@ -182,7 +182,8 @@ Two other hard API limits worth knowing before you file a bug against the
 tools:
 - **No node creation.** `apply_grade` with `lut.node` 8 (this spec's `LOOK`,
   the look) only works if that node already exists on the
-  clip: add it in the Color page first. The scripting API cannot create
+  clip (add it in the Color page first) and with `overwrite` true, since a
+  graph with that many nodes is not a default one. The scripting API cannot create
   color-page nodes.
 - **Vertical needs a timeline of its own.** Queueing never reframes. A
   destination of fixed shape (`linkedin_9x16`, `social_9x16`, `linkedin_1x1`) refuses a

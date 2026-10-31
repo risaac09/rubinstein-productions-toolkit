@@ -903,7 +903,7 @@ def register(registry):
                           "lock); the result's remaining lists the item numbers left."},
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
-        stabilize, title="Stabilize items", annotations=WRITE))
+        stabilize, title="Stabilize items", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "queue_render",
         "Queue one render job for a timeline for a delivery destination (with name and "
@@ -1063,7 +1063,7 @@ def register(registry):
             "offset": {"type": "integer", "minimum": 0, "default": 0},
             "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}},
          "required": ["project", "search_roots"], "additionalProperties": False},
-        relink, title="Relink offline clips", annotations=WRITE))
+        relink, title="Relink offline clips", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

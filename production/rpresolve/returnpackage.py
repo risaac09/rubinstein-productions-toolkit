@@ -86,6 +86,25 @@ def gate(config, finals, check=None, ignore=()):
     return blockers
 
 
+def _within(path, folder):
+    """path is folder or below it, judged by file identity, so a case or
+    Unicode-normalisation variant of the same folder (APFS) still counts."""
+    try:
+        target = os.stat(folder)
+    except OSError:
+        return False
+    p = os.path.realpath(path)
+    while True:
+        try:
+            if os.path.samestat(os.stat(p), target):
+                return True
+        except OSError:
+            pass  # not created yet; its parents may still be the folder
+        if os.path.dirname(p) == p:
+            return False
+        p = os.path.dirname(p)
+
+
 def _copy_tree(src, dst):
     """Copy and verify every file; {rel: sha256} of the copies, so camera
     originals are not read a third time for SHA256SUMS."""
@@ -125,8 +144,9 @@ def build(out, engagement, month, approval, prepared_by, originals, finals, conf
         raise PackageError("two original folders share a name; the folder name is the card name")
     here = os.path.realpath(out)
     for src in list(originals) + [finals] + ([session] if session else []):
-        there = os.path.realpath(src)
-        if here == there or here.startswith(there + os.sep) or there.startswith(here + os.sep):
+        there = os.path.realpath(src)  # spelling first; identity catches case and Unicode variants
+        if here == there or here.startswith(there + os.sep) or there.startswith(here + os.sep) \
+                or _within(out, src) or _within(src, out):
             raise PackageError(f"{out} and {src} contain one another; build the package elsewhere")
     final_dir = os.path.join(os.path.abspath(out), f"{month}_{engagement}")
     work = final_dir + ".partial"

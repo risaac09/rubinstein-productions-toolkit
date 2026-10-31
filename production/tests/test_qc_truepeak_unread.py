@@ -66,5 +66,34 @@ class UnreadShots(unittest.TestCase):
         self.assertIn("shot 2 unreadable", r["found"])
 
 
+class OneFullEburPass(unittest.TestCase):
+    """audit 2026-10-31 #26: the phone proxy reuses the framelog qc.run read,
+    so _sound_rows runs only the filtered (high-pass) ebur128 pass."""
+
+    def test_sound_rows_does_not_reread_the_full_file(self):
+        calls = []
+
+        def ebur(path, chain=""):
+            calls.append(chain)
+            return {}, [(0.0, -30.0, -30.0)]
+
+        fake_ar = types.SimpleNamespace(NO_READING_LUFS=-120.7)
+        row = {"check": "stub", "status": qc.PASS}
+        stubs = {n: mock.patch.object(qc, n, lambda *a, **k: row) for n in (
+            "_sound_true_peak_per_cut", "_sound_silence_at_cut", "_sound_speech_vs_rest",
+            "_sound_stems_sum")}
+        with mock.patch.object(qc, "_np", lambda: object()), \
+                mock.patch.object(qc, "_ar", lambda: fake_ar), \
+                mock.patch.object(qc, "_ebur", ebur), \
+                stubs["_sound_true_peak_per_cut"], stubs["_sound_silence_at_cut"], \
+                stubs["_sound_speech_vs_rest"], stubs["_sound_stems_sum"]:
+            rows = qc._sound_rows("x.wav", {"lra_lu": 3.0, "integrated_lufs": -16.0},
+                                  [(0.0, -20.0, -18.0)], qc.THRESHOLDS, None, None, None, None,
+                                  -1.0, 24.0, 3.0)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("highpass", calls[0])
+        self.assertIn("mix -18.0 LUFS", next(r for r in rows if r["check"] == "phone_proxy")["found"])
+
+
 if __name__ == "__main__":
     unittest.main()
