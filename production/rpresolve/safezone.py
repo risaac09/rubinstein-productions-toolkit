@@ -17,10 +17,15 @@ PORTRAIT = {"top": 0.14, "bottom": 0.35, "side": 0.06}   # the 9:16 UI bands
 TITLE_SAFE = 0.05                                          # each edge, landscape and square
 
 
+def tall(width, height):
+    """A vertical-video frame (9:16), not 4:5: the shape the UI bands cover."""
+    return height >= 1.5 * width
+
+
 def margins(width, height):
-    """(top, bottom, side) for a frame of this size. Only a tall frame (9:16,
-    not 4:5) carries the vertical-video UI bands."""
-    if height >= 1.5 * width:
+    """(top, bottom, side) for a frame of this size. Only a tall frame
+    carries the vertical-video UI bands."""
+    if tall(width, height):
         return PORTRAIT["top"], PORTRAIT["bottom"], PORTRAIT["side"]
     return TITLE_SAFE, TITLE_SAFE, TITLE_SAFE
 

@@ -33,6 +33,10 @@ class TestSafezone(unittest.TestCase):
         self.assertEqual(safezone.margins(1080, 1080), (0.05,) * 3)
         self.assertEqual(safezone.margins(1080, 1350), (0.05,) * 3)  # 4:5 feed: no UI bands
 
+    def test_empty_box_list_passes_and_none_skips(self):
+        self.assertEqual(dc._safe_zone(1080, 1920, [])["status"], dc.PASS)
+        self.assertEqual(dc._safe_zone(1080, 1920, None)["status"], dc.SKIP)
+
     def test_outside_names_the_sides(self):
         m = safezone.margins(1080, 1920)
         self.assertEqual(safezone.outside((0.1, 0.2, 0.9, 0.6), m), [])
