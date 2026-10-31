@@ -26,6 +26,7 @@ import os
 from . import api, cutlist
 from .deliver import exact_fps
 from .deliver import fps_number as _number  # the leading number of a property ('25.000')
+from .ingest import norm_path  # NFC: macOS names are often NFD
 from .trimreview import COLORS
 
 # The marker colours Resolve offers.
@@ -40,14 +41,14 @@ def source_items(tl, source):
     `source`: video tracks first, audio tracks when no video item uses it.
     Each item: {kind, track, start, end, src_fps, src_start_s, src_end_s,
     item}. skipped: [why] for items that cannot be mapped."""
-    want = os.path.realpath(source)
+    want = norm_path(source)
     found, skipped = {"video": [], "audio": []}, []
     for kind in ("video", "audio"):
         for t in range(1, int(api._safe_call(tl, "GetTrackCount", kind) or 0) + 1):
             for it in tl.GetItemListInTrack(kind, t) or []:
                 clip = api._safe_call(it, "GetMediaPoolItem")
                 path = api._safe_call(clip, "GetClipProperty", "File Path") or ""
-                if not path or os.path.realpath(path) != want:
+                if not path or norm_path(path) != want:
                     continue
                 label = f"{kind[0].upper()}{t} at {it.GetStart()}"
                 fps = exact_fps(api._safe_call(clip, "GetClipProperty", "FPS"))
