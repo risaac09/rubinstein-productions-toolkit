@@ -19,7 +19,8 @@ ranges added and nothing else:
   whole file, so a proxy re-rendered in place is never spliced with the old one.
 - A Host header that is not the bound address or localhost gets 421 (DNS
   rebinding); any IP literal passes when bound to 0.0.0.0. A file named
-  key.json is never served: the blind A/B key must not reach the reviewer.
+  key.json is never served, nor is any other name for the same file (a hard link), whether the
+  key sits under the folder or in its <folder>.key sibling: the blind A/B key must not reach the reviewer.
 - Fixed MIME types for the review formats (table below), so the answer does
   not depend on the machine's mime.types.
 - Cache-Control: no-cache on every file, so a browser always asks again and a
@@ -101,6 +102,28 @@ def _hidden(path):
     return any(unicodedata.normalize("NFKC", n).casefold() in HIDDEN_NAMES for n in names)
 
 
+def _is_key(root, st):
+    """True when st (a file's os.stat) is a hard link to a key.json under root or to the <root>.key/ sibling
+    (absheet keeps the blind A/B key there). Only a file with more than one link can be one, so the walk
+    runs for those alone."""
+    if st.st_nlink < 2:
+        return False
+    found, unreadable = [], []   # a folder the walk cannot read may hold the key: refuse rather than guess
+    for base in (root + ".key", root):
+        for here, _, names in os.walk(base, onerror=unreadable.append):
+            found += [os.path.join(here, n) for n in names if unicodedata.normalize("NFKC", n).casefold() in HIDDEN_NAMES]
+    if any(os.path.exists(e.filename) for e in unreadable):
+        return True
+    for k in found:
+        try:
+            ks = os.stat(k)
+        except OSError:
+            continue
+        if (ks.st_dev, ks.st_ino) == (st.st_dev, st.st_ino):
+            return True
+    return False
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "rpstills-serve"
     protocol_version = "HTTP/1.1"      # keep-alive; every response carries Content-Length
@@ -159,6 +182,10 @@ class Handler(SimpleHTTPRequestHandler):
             return None
         try:
             st = os.fstat(f.fileno())
+            if _is_key(os.path.realpath(self.directory), st):
+                f.close()
+                self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+                return None
             size = st.st_size
             etag = '"%x-%x"' % (st.st_mtime_ns, size)
             modified = self.date_time_string(st.st_mtime)

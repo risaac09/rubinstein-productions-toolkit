@@ -41,6 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps
 
 from . import cluster, frames, times as times_mod
+from .atomic import atomic_path
 
 try:
     import imagehash
@@ -146,8 +147,8 @@ def read_one(jpeg, proxy_dir, stem=None):
                         row["upright_w"], row["upright_h"] = existing.size
             if not reuse:   # absent, from another source, or from before the stamp: rebuild
                 row["upright_w"], row["upright_h"] = up.size
-                up.save(proxy + ".part", "JPEG", quality=88, comment=stamp)
-                os.replace(proxy + ".part", proxy)
+                with atomic_path(proxy) as tmp:
+                    up.save(tmp, "JPEG", quality=88, comment=stamp)
     except Exception as e:  # one bad frame must not stop the shoot
         row["error"] = f"{type(e).__name__}: {e}"
     return row
@@ -185,10 +186,9 @@ def augment_face_hash(out_dir, rows, log=print):
     for r in todo:
         r["face_hash"] = face_hash(os.path.join(out_dir, r["proxy"]), r["faces"])
     path = os.path.join(out_dir, "index.jsonl")
-    with open(path + ".part", "w") as f:
+    with atomic_path(path) as tmp, open(tmp, "w") as f:
         for r in rows:
             f.write(json.dumps(r, sort_keys=True) + "\n")
-    os.replace(path + ".part", path)
     return rows
 
 
@@ -284,7 +284,8 @@ def detect_tiles(rows, out_dir, workers=4, log=print):
                         tile = tile.resize((int(round(tile.width * f)), int(round(tile.height * f))),
                                            Image.LANCZOS)
                     path = os.path.join(tile_dir, f"{row['id']}_t{k}.jpg")
-                    tile.convert("RGB").save(path, "JPEG", quality=90)
+                    with atomic_path(path) as tmp:
+                        tile.convert("RGB").save(tmp, "JPEG", quality=90)
                     jobs.append((row["id"], box, width, height, path))
         except Exception as e:  # an unreadable original costs its tiles, not the shoot
             log(f"index: no tiles for {row['id']}: {type(e).__name__}: {e}")
@@ -332,10 +333,9 @@ def augment_frame_metrics(out_dir, rows, log=print):
     for r in todo:
         r["frame"] = frames.metrics(os.path.join(out_dir, r["proxy"]))
     path = os.path.join(out_dir, "index.jsonl")
-    with open(path + ".part", "w") as f:
+    with atomic_path(path) as tmp, open(tmp, "w") as f:
         for r in rows:
             f.write(json.dumps(r, sort_keys=True) + "\n")
-    os.replace(path + ".part", path)
     return rows
 
 
@@ -433,10 +433,9 @@ def build(folder, out_dir, workers=4, log=print, times_file=None, interval=None,
         r["sharpness"] = face_sharpness(os.path.join(out_dir, r["proxy"]), r["faces"]) if r["faces"] else []
         r["face_hash"] = face_hash(os.path.join(out_dir, r["proxy"]), r["faces"])
     path = os.path.join(out_dir, "index.jsonl")
-    with open(path + ".part", "w") as f:
+    with atomic_path(path) as tmp, open(tmp, "w") as f:
         for r in rows:
             f.write(json.dumps(r, sort_keys=True) + "\n")
-    os.replace(path + ".part", path)
     log(f"index: wrote {path}")
     return rows
 

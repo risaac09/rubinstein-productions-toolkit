@@ -69,6 +69,11 @@ def main(argv=None):
         return importlib.import_module("." + a.cmd, __package__).run(a)
     if a.cmd == "look":
         doc = look.load_params(a.params)
+        from rpresolve.paths import out_problem  # the params file is an input and may sit in a repo; the cube is the output
+        problem = out_problem(os.path.abspath(a.cube), any_git_tree=True)
+        if problem:
+            print(f"rpstills look: {problem}", file=sys.stderr)
+            return 1
         try:
             print(look.write_cube(os.path.abspath(a.cube), doc.get("params", doc), a.size, doc.get("name", "rpstills look")))
         except FileExistsError as e:
