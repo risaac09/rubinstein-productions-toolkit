@@ -2,6 +2,8 @@
 
 > **Status:** draft, 2026-10-20, pending the first shoot. One page per camera kit, to print or carry on a phone. Nothing here has been used on a shoot yet; the miss list (VP-101c) is written after the first one and this page is corrected from it.
 
+Which settings the offline readouts can and cannot confirm from footage: [capture-readout-gaps.md](capture-readout-gaps.md).
+
 The values come from [camera-transforms.json](camera-transforms.json) and [capture-standard.md](capture-standard.md). This page cites them and does not restate them as new numbers. If a row disagrees with those files, they win.
 
 **How to read the labels.** Every number is one of:
@@ -17,6 +19,7 @@ Nothing on this page is *measured on a shoot* yet. That label appears only after
 
 Each page below covers the picture. These apply to every kit and are not repeated:
 
+<!-- setting-ids: frame-rate+shutter-angle+resolution, white-balance, nd-exposure, landscape-framing, record-per-clip -->
 - 23.976 fps, shutter 180 degrees (1/48 s), UHD 3840x2160 (house working defaults, [capture-standard.md](capture-standard.md)).
 - White balance by hand and fixed for the scene: 5600 K daylight, 3200 K tungsten. Never auto.
 - Hold exposure with ND, not the shutter.
@@ -27,6 +30,7 @@ Each page below covers the picture. These apply to every kit and are not repeate
 
 Fill four lines before the first take of each scene. The values are decisions for that scene, not defaults:
 
+<!-- setting-ids: key-side, ratio-goal, practical-colour, negative-fill -->
 1. **Key side:** which side of the lens the key sits on.
 2. **Ratio goal:** key to fill, in stops.
 3. **Practical colour:** the colour temperature of any lamp in frame.
@@ -36,6 +40,7 @@ Scene: ______ Key side: ______ Ratio (stops): ______ Practical: ______ Negative 
 
 ## Blackmagic Pyxis, BRAW Gen 5
 
+<!-- setting-ids: profile, base-iso, exposure-target, code-value, zebra-waveform, resolve-input, record-per-clip -->
 | Item | Value | Label |
 |---|---|---|
 | Profile | Blackmagic RAW, Film Gen 5; BRAW constant bitrate 8:1 | house working default |
@@ -46,10 +51,12 @@ Scene: ______ Key side: ______ Ratio (stops): ______ Practical: ______ Negative 
 | Resolve input | auto (camera RAW), no per-clip tag | camera table |
 | Record per clip | ISO (400 or 3200); BRAW Gen (5; Gen 6 only after the chart-day measurement) | camera table |
 
+<!-- setting-ids: monitoring-lut -->
 Exposure is set by eye on the log image, then doubtful shots are checked against the grey level above. Monitoring LUT: 33-point `.cube` on the camera, screen only.
 
 ## Panasonic S5II, V-Log
 
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
 | Item | Value | Label |
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2 | house working default |
@@ -63,6 +70,7 @@ Monitoring LUT: the S5II loads house looks from the card (`lutlab looks --monito
 
 ## Panasonic GH7, V-Log
 
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
 | Item | Value | Label |
 |---|---|---|
 | Profile | V-Log, 10-bit 4:2:2; Open Gate (5760x4320) only for a planned vertical or square cut | house working default |
@@ -76,6 +84,7 @@ No monitoring LUT route is known for the GH7. Monitor in log or with the camera'
 
 ## iPhone 16 Pro Max, HLG
 
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
 | Item | Value | Label |
 |---|---|---|
 | Profile | HLG (ITU-R BT.2100), Rec.2020 primaries. The capture standard's Apple Log row is a separate profile with its own kit. | camera table |
@@ -91,12 +100,13 @@ Codec and resolution for HLG are not set in the capture standard. Record what th
 
 The same list for all four kits. Source: the capture standard's Audio, Sync and Slate sections, plus the sound capture checklist.
 
+<!-- setting-ids: sound-recorder, float-gain-test, scratch-audio, room-tone, slate, card-folder -->
 1. **Gear:** a separate recorder, 48 kHz, 24-bit WAV, 32-bit float if the recorder has it. Lavalier plus shotgun on every speaking setup.
 2. **Float and gain test before the first take:** record a short speech sample at each mic, check the level on the meters, and confirm the recorder is writing 32-bit float. The test is part of the sound checklist; the steps here are a house working default and will be corrected from the first shoot.
 3. **Camera scratch audio on, every take, every camera.** `sync_measure` cannot line up a take with the camera microphone off.
 4. **Room tone: 30 seconds per setup**, everyone silent, recorded on the same mics and gain as the take. House working default.
 5. **Slate:** spoken ident (date, camera, take), then one clap in view of the camera and in range of the recorder. If the head was missed, slate at the tail.
-6. **Card folder:** `YYYYMMDD_<CAM>_<card>`, native file names untouched.
+6. **Card folder:** `<CAM>-<id6>`, native file names untouched.
 
 ## After the shoot
 
