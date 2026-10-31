@@ -356,7 +356,7 @@ def end_check(words, out, end_words, env=None):
         result["silence"] = cut_is_clean(runs, out)
         result["nearest"] = nearest_clean(words, env, out)
         if result["silence"] is None and not result["reason"]:
-            if env:
+            if env and env[0][0] - HOP_S <= out <= env[-1][0] + HOP_S:
                 db = min((abs(t - out), d) for t, d in env)[1]
                 result["reason"] = (f"out-point is not in a silence (audio {db:.0f} dBFS there); "
                                     "it would clip a word")
@@ -590,18 +590,18 @@ def spans_from_cuts_script(path, var="CUTS"):
 def parse_timecode(text, fps=None):
     """Seconds from SS.mmm, MM:SS(.mmm), HH:MM:SS(.mmm) or HH:MM:SS:FF (needs fps)."""
     parts = text.strip().split(":")
+    if len(parts) == 4:
+        if not fps:
+            raise CutlistError(f"{text}: HH:MM:SS:FF needs fps")
+        from fractions import Fraction
+        from . import captions
+        rate = next((Fraction(n, 1001) for n in (24000, 30000, 60000)
+                     if abs(float(fps) - n / 1001) < 0.01), Fraction(fps).limit_denominator(1000))
+        try:  # NTSC labels count at the nominal rate, then divide by the real one
+            return float(captions.parse_timecode(text, rate))
+        except captions.CaptionError as e:
+            raise CutlistError(str(e))
     try:
-        if len(parts) == 4:
-            if not fps:
-                raise CutlistError(f"{text}: HH:MM:SS:FF needs fps")
-            from fractions import Fraction
-            from . import captions
-            rate = next((Fraction(n, 1001) for n in (24000, 30000, 60000)
-                         if abs(float(fps) - n / 1001) < 0.01), Fraction(fps).limit_denominator(1000))
-            try:  # NTSC labels count at the nominal rate, then divide by the real one
-                return float(captions.parse_timecode(text, rate))
-            except captions.CaptionError as e:
-                raise CutlistError(str(e))
         total = 0.0
         for p in parts:
             total = total * 60 + float(p)

@@ -98,6 +98,8 @@ class TestWordsAndEnds(unittest.TestCase):
         r = cutlist.end_check(self.words, 4.95, "very quiet", env=[])
         self.assertFalse(r["ok"])
         self.assertEqual(r["reason"], "no audio at the out-point")
+        r = cutlist.end_check(self.words, 4.95, "very quiet", env=[(i * 0.01, -20.0) for i in range(50)])
+        self.assertEqual(r["reason"], "no audio at the out-point")   # envelope ends before out
 
     def test_end_word_rule_without_audio(self):
         ok = cutlist.end_check(self.words, 4.95, "very quiet")
@@ -203,6 +205,8 @@ class TestTimecodeAndStream(unittest.TestCase):
         self.assertEqual(cutlist.parse_timecode("00:00:01:12", 24), 1.5)   # integer rates unchanged
         with self.assertRaises(cutlist.CutlistError):
             cutlist.parse_timecode("00:00:01:45", 29.97)                   # frame past the rate
+        with self.assertRaisesRegex(cutlist.CutlistError, "does not fit"):
+            cutlist.parse_timecode("00:00:01:24", 24)
 
     def test_decode_maps_the_audio_stream_like_audioreport(self):
         for stream in (0, 2):
