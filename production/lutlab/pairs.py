@@ -159,7 +159,7 @@ def _finish(p, name, outdir, xs, ys, cnt, test_x, test_y, sources, previews):
         side = np.concatenate([np.clip(spaces.from_lin709(spaces.to_lin709(src, p["in"]), "srgb"), 0, 1),
                                np.clip(model.evaluate(p, src), 0, 1), dst], 1)
         with guard.atomic_path(outdir / f"compare-{i + 1}.jpg") as tmp:
-            Image.fromarray((side * 255 + 0.5).astype(np.uint8)).save(tmp, quality=88)
+            Image.fromarray((side * 255 + 0.5).astype(np.uint8)).save(tmp, "JPEG", quality=88)
         images[f"pair {i + 1}: plain | model | target"] = f"compare-{i + 1}.jpg"
     notes = ("Fitted from image pairs: there is no residual, so `build` gives the model alone. The tone and colour "
              "numbers only know the colours these images contain; knots far from them hold their neighbours' values.")

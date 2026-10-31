@@ -7,11 +7,11 @@ import tempfile
 
 @contextlib.contextmanager
 def atomic_path(path):
-    """Yield a fresh temp path in path's folder (same extension, so an image library picks the format);
-    on a clean exit it is renamed onto path, on an error it is removed. An existing file or hard link at
+    """Yield a fresh temp path in path's folder. It ends in .part, so no scan for images or cubes lists a
+    half-written file (give an image library its format by name). On a clean exit it is renamed onto path, on an error it is removed. An existing file or hard link at
     path keeps its old content: the rename replaces the name, not the inode."""
-    path = os.path.abspath(path)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".part-" + os.path.basename(path) + "-", suffix=os.path.splitext(path)[1])
+    path = os.path.realpath(path)   # a symlink at the name is written through to its target, as open() did
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".part-" + os.path.basename(path)[:80] + "-", suffix=".part")
     os.close(fd)
     try:
         yield tmp

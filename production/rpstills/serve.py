@@ -108,10 +108,12 @@ def _is_key(root, st):
     runs for those alone."""
     if st.st_nlink < 2:
         return False
-    found = []
+    found, unreadable = [], []   # a folder the walk cannot read may hold the key: refuse rather than guess
     for base in (root + ".key", root):
-        for here, _, names in os.walk(base):
+        for here, _, names in os.walk(base, onerror=unreadable.append):
             found += [os.path.join(here, n) for n in names if unicodedata.normalize("NFKC", n).casefold() in HIDDEN_NAMES]
+    if any(os.path.exists(e.filename) for e in unreadable):
+        return True
     for k in found:
         try:
             ks = os.stat(k)

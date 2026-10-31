@@ -74,6 +74,17 @@ class AtomicPathTest(unittest.TestCase):
                         raise RuntimeError
                 self.assertEqual(sorted(os.listdir(d)), ["a.txt", "b.txt"])
 
+    def test_a_symlink_at_the_name_is_written_through_to_its_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            real, link = Path(d, "real.txt"), Path(d, "link.txt")
+            real.write_text("old")
+            link.symlink_to(real)
+            with atomic_path(link) as tmp:
+                Path(tmp).write_text("new")
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(real.read_text(), "new")
+            self.assertFalse([f for f in os.listdir(d) if f.startswith(".part")])
+
     @staticmethod
     def _umask():
         m = os.umask(0)
