@@ -85,7 +85,7 @@ import os
 import re
 import subprocess
 
-from . import cutlist, deliver, delivercheck as dc
+from . import cutlist, deliver, delivercheck as dc, safezone
 
 PASS, FAIL, SKIP = dc.PASS, dc.FAIL, dc.SKIP
 WARN = "WARN"
@@ -120,9 +120,9 @@ THRESHOLDS = {
     "social_min_fps": 30.0,         # Instagram's stated minimum (decision 14)
     "social_fps_tol": 0.05,         # so 29.97 passes
     "safe_frames": 8.0,             # frames sampled for the safe-zone row
-    "safe_top": 0.14,               # unsafe margin, fraction of height, from the top
-    "safe_bottom": 0.35,            # ... from the bottom
-    "safe_side": 0.06,              # ... fraction of width, each side
+    "safe_top": safezone.PORTRAIT["top"],        # unsafe margin, fraction of height, from the top
+    "safe_bottom": safezone.PORTRAIT["bottom"],  # ... from the bottom
+    "safe_side": safezone.PORTRAIT["side"],      # ... fraction of width, each side
     "safe_edge_grad": 60.0,         # gradient (0-255) that counts as an edge
     "safe_persist_frac": 0.004,     # persistent-edge share of a margin that warns
     "hook_still_s": 1.0,            # portrait: a still or freeze from 0 this long is a WARN
@@ -699,7 +699,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
         # Loudness is read once, below, from the same target.
         for r in dc.check(path, dest, fps=fps, size=size, loudness=False,
                           folders=config_folders)["checks"]:
-            if r["check"] not in ("loudness", "true_peak"):
+            if r["check"] not in ("loudness", "true_peak", "safe_zone", "video_bitrate"):  # qc has its own safe_zone
                 rows.append({**r, "source": "deliver_check"})
     else:
         rows.append(dict(dc._row("deliver_check", None, "not run", "a destination (--dest)"),
