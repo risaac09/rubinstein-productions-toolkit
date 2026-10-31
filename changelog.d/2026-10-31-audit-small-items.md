@@ -1,1 +1,1 @@
-timeline_items and media_pool read properties for the requested page only; the delivery manifest labels caption durations as hundredths, not frames; verify-copy refuses a destination parent that vanished while hashing.
+timeline_items and media_pool read properties for the requested page only; the delivery manifest labels caption durations as hundredths, not frames; verify-copy refuses a destination parent that vanished while hashing. (#315)

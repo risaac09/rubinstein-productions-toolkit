@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "production"))
 from rpresolve import cutlist, deliver, hooklint, safezone, vision  # noqa: E402
 from rpresolve.config import ConfigError, load_config  # noqa: E402
+from rpresolve.paths import in_any_git_tree  # noqa: E402
 
 W, H = 1080, 1920
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
@@ -580,6 +581,8 @@ def main():
                 die(str(e))
 
     chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
+    if in_any_git_tree(args.outdir):
+        die("%s is inside a git work tree; clips and captions name client speech, write them outside any repository (-o DIR)" % args.outdir)
     os.makedirs(args.outdir, exist_ok=True)
     print("vertcut: source %dx%d @ %.3f fps, reframe=%s -> %dx%d"
           % (src_w, src_h, src_fps, mode, W, H))
