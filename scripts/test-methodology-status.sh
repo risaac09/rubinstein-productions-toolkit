@@ -39,6 +39,14 @@ R="$TMP/badword"; mk "$R"
 printf '# T\n\n> **Status:** accepted 2026-10-16.\n' > "$R/production/a.md"
 expect "invalid word fails" "$R" 1 "production/a.md"
 
+for w in draft-ish operational/draft draft_old; do
+  R="$TMP/prefix"; mk "$R"; printf '# T\n\n**Status:** %s\n' "$w" > "$R/docs/a.md"
+  expect "word $w fails" "$R" 1 "docs/a.md"
+done
+
+R="$TMP/norooot"; mk "$R"; rm -rf "$R/methodology"
+expect "missing methodology/ fails" "$R" 1 "missing directory"
+
 R="$TMP/late"; mk "$R"
 { for _ in $(seq 30); do echo line; done; echo '**Status:** draft.'; } > "$R/docs/a.md"
 expect "status past line 25 fails" "$R" 1 "docs/a.md"

@@ -20,7 +20,7 @@ Keep what you will use and delete the rest in your first commit. A smaller fork 
 | `changelog.d/`, `CHANGELOG.md` | you want release notes | Delete the maintainer's history from `CHANGELOG.md` and keep the fragment mechanism. |
 | `README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md` | never as they stand | They name the maintainer and the maintainer's contact routes. Rewrite them for you. |
 
-Every document under `methodology/`, `docs/` and the top level of `production/` carries a `**Status:**` line, and `scripts/check-methodology-status.sh` fails CI when one is missing. Keep that habit for your own documents. A forecast that reads like a fact is the expensive mistake.
+Every document under `methodology/`, `docs/` and the top level of `production/` carries a `**Status:**` line, and `scripts/check-methodology-status.sh` fails CI when one is missing. The check skips `production/skills/` and the tool subfolders, and it does not cover the other top-level folders, so a document you add there needs the line by habit. Keep that habit for your own documents. A forecast that reads like a fact is the expensive mistake.
 
 Before you publish, search your fork for the maintainer's name, domain and e-mail address, and replace each with your own.
 
@@ -44,7 +44,7 @@ Before you publish, search your fork for the maintainer's name, domain and e-mai
   ```
 
   Keep that file in a repository you control, private if your repo list is private, and point `SD_ROOT` at its clone.
-- **Two places to edit by hand.** `PUBLIC_KIT_EXCLUDE` names one public repo of the maintainer's that is left out; set it to your own exclusions or to an empty string. `public_consumer_license_type` picks a licence template by repo name and has one maintainer-specific case; change it to your methodology-shaped repos, or delete the case so every repo defaults to MIT.
+- **Two places to edit by hand, for the public kit.** Both hold the maintainer's repo names, so a repo of yours with the same name would be skipped (`--all` modes) or get the wrong licence template (any mode). `PUBLIC_KIT_EXCLUDE` names one public repo of the maintainer's that is left out; set it to your own exclusions or to an empty string. `public_consumer_license_type` picks a licence template by repo name and has one maintainer-specific case; change it to your methodology-shaped repos, or delete the case so every repo defaults to MIT.
 - **Source of truth.** The header of `phase-zero/` says never to edit the copy here, because the maintainer exports it from a private source. In your fork there is no export, so the copy is the source. Edit it directly, and expect your changes to be lost if you ever merge the maintainer's later export over them.
 
 **Pending: release mechanics.** A `KIT_VERSION` file and a stated way to tell which export your fork carries do not exist yet. Until they do, record the upstream commit you forked from (in your own README or changelog), and compare against it by hand when you want newer kit files. This section will change when the release mechanics land.
@@ -62,7 +62,7 @@ For your own new work, `public-kit/` carries two templates: `LICENSE-MIT.templat
 
 ## Keep the deny and ask rules
 
-`phase-zero/settings.json` carries a permission block. Today the `deny` list blocks three Desktop Commander file-write tools, and the `ask` list is empty. The installer unions these into a target's existing `.claude/settings.json` and never drops a rule you already have. A rule you add yourself is kept. A rule the kit later retires is removed on the next install, which the script records in `RETIRED_ASK`.
+`phase-zero/settings.json` carries a permission block. Today the `deny` list blocks three Desktop Commander file-write tools, and the `ask` list is empty. The installer unions these into a target's existing `.claude/settings.json` and never drops a rule you already have. A rule you add yourself is kept, with one exception: the five `ask` rules named in `RETIRED_ASK` (a message-send tool and some Desktop Commander and osascript tools) are removed on every install, even if you added them. Delete that list in your copy if you want to keep any of them.
 
 `install.sh --check` fails if any kit rule is missing from a consumer, so deleting one shows up as drift. Do not remove a deny rule to make a tool work; allow the one action you need in your own settings and leave the clamp. The reason is the usual one for an agent with write access: a rule that asks first costs a second, and a rule that was never there costs a file. The maintainer moved some outward-facing actions (messages to other people) from a settings prompt to an explicit ask in conversation. If you copy that choice, say so in your own instructions file, because the settings no longer enforce it.
 

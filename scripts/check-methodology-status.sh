@@ -20,11 +20,14 @@
 set -u
 cd "${1:-$(dirname "$0")/..}" || exit
 bad=0
+for d in methodology docs production; do
+  [ -d "$d" ] || { echo "missing directory: $d" >&2; bad=1; }
+done
 while IFS= read -r f; do
-  if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)\b'; then
+  if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_/-]|$)'; then
     echo "no status header: $f" >&2
     bad=1
   fi
-done < <({ ls methodology/*.md production/*.md; find docs -name '*.md'; } 2>/dev/null | sort)
+done < <({ ls methodology/*.md production/*.md; find docs -name '*.md'; } | sort)
 [ "$bad" -eq 0 ] && echo "check-methodology-status: CLEAN"
 exit "$bad"
