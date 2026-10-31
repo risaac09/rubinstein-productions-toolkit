@@ -204,9 +204,9 @@ $PY -m lutlab apply look-a.cube look-b.cube --frame ~/footage/frame.jpg --width 
 $PY -m rpstills absheet "$R"/cand/frame*.png --out "$R/look-01" --seed 7 --title "Look 01"
 ```
 
-(The candidate PNGs are named `<frame> - <cube>.png`, so keep the glob.) Send `$R/look-01/sheet.jpg` alone, ask for a letter, and read `$R/look-01/key.json` only after the answer. For sound the same job is `mixbuild ab` in the sound lane above.
+(The candidate PNGs are named `<frame> - <cube>.png`, so keep the glob.) Send `$R/look-01/sheet.jpg` alone, ask for a letter, and read `$R/look-01.key/key.json` only after the answer. For sound the same job is `mixbuild ab` in the sound lane above.
 
-**A pass looks like:** one PNG per cube, `sheet.jpg` at most 2000 px and 1 MiB (smoke: 421 KiB, 0.2 s), and `key.json` mapping the letters.
+**A pass looks like:** one PNG per cube, `sheet.jpg` at most 2000 px and 1 MiB (smoke: 421 KiB, 0.2 s), and `key.json` mapping the letters, written to the sibling folder `look-01.key`.
 
 ## When it fails
 

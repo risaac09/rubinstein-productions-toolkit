@@ -10,7 +10,7 @@ letter on each: A, B, C ... It writes
 
   DIR/sheet.jpg   at most MAX_EDGE px on the long edge and under MAX_BYTES
                   (the JPEG quality steps down QUALITIES until it fits), sRGB
-  DIR/key.json    each letter -> its source file and size, the seed, the
+  DIR.key/key.json  (beside DIR, not in it) each letter -> its source file and size, the seed, the
                   grid, the sheet's size, bytes and quality
 
 The answer is a letter; key.json turns it back into a file.
@@ -191,13 +191,19 @@ def refuse_git(out_dir):
         raise ValueError(problem)
 
 
+def key_dir(out_dir):
+    """Where key.json goes: beside out_dir, never in it, so serving out_dir shows the reviewer only the sheet."""
+    return os.path.abspath(out_dir).rstrip(os.sep) + ".key"
+
+
 def build(paths, out_dir, seed=None, title=None):
-    """Write sheet.jpg and key.json in out_dir; returns the key document.
+    """Write sheet.jpg in out_dir and key.json in key_dir(out_dir); returns the key document.
     ValueError for a wrong count, an unreadable image or a refused folder."""
     if not MIN_IMAGES <= len(paths) <= MAX_IMAGES:
         raise ValueError(f"{len(paths)} images; a sheet takes {MIN_IMAGES} to {MAX_IMAGES}")
     out_dir = os.path.abspath(out_dir)
     refuse_git(out_dir)
+    refuse_git(key_dir(out_dir))
     seed = secrets.randbelow(2 ** 31) if seed is None else int(seed)
     paths = [os.path.abspath(p) for p in paths]
     sheet_path = os.path.realpath(os.path.join(out_dir, "sheet.jpg"))
@@ -208,6 +214,7 @@ def build(paths, out_dir, seed=None, title=None):
     sheet, geo = render([images[i] for i in perm], title)
     data, quality = encode(sheet)
     os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(key_dir(out_dir), exist_ok=True)
     _atomic(os.path.join(out_dir, "sheet.jpg"), data)
     doc = {"tool": "rpstills absheet", "seed": seed, "title": title,
            "labels": {LETTERS[k]: {"source": paths[i], "input_index": i, "size": list(images[i].size)}
@@ -216,7 +223,7 @@ def build(paths, out_dir, seed=None, title=None):
                      "grid": [geo["cols"], geo["rows"]], "cell": list(geo["cell"]), "label_px": geo["label_px"]},
            "params": {"max_edge": MAX_EDGE, "max_bytes": MAX_BYTES, "target_aspect": TARGET_ASPECT,
                       "label_share": LABEL_SHARE, "label_min_px": LABEL_MIN_PX}}
-    _atomic(os.path.join(out_dir, "key.json"), (json.dumps(doc, indent=1, sort_keys=True) + "\n").encode())
+    _atomic(os.path.join(key_dir(out_dir), "key.json"), (json.dumps(doc, indent=1, sort_keys=True) + "\n").encode())
     return doc
 
 
@@ -233,7 +240,7 @@ def summary(doc):
 
 def add_arguments(p):
     p.add_argument("images", nargs="+", metavar="IMG", help=f"{MIN_IMAGES} to {MAX_IMAGES} images (JPEG, PNG, TIFF)")
-    p.add_argument("--out", required=True, help="folder for sheet.jpg and key.json; never inside a git tree")
+    p.add_argument("--out", required=True, help="folder for sheet.jpg (key.json goes to OUT.key, apart from it); never inside a git tree")
     p.add_argument("--seed", type=int, help="shuffle seed (default: a random one, recorded in key.json)")
     p.add_argument("--title", help="a line of text across the top of the sheet")
 
@@ -245,5 +252,6 @@ def run(args):
         print(f"rpstills absheet: {e}", file=sys.stderr)
         return 1
     print(os.path.join(os.path.abspath(args.out), "sheet.jpg"))
+    print("key: " + os.path.join(key_dir(os.path.abspath(args.out)), "key.json"))
     print(summary(doc))
     return 0

@@ -18,7 +18,7 @@ Claude can measure a picture or a mix but cannot see taste in it, and it cannot 
 | Brief | One line: what is being judged and what the options differ in | none | chat | none needed |
 | Triage, stills | The review sheet for a whole session; on a phone, sheets of up to nine frames | `rpstills review`, `rpstills absheet` | desktop: Browser pane through `serve`; phone or iPad: SendUserFile | keep and drop in the sheet, or letters |
 | Triage, video | A contact sheet of frames per clip | `tools/ipad-probe/recipes/sheet.sh` (see [the iPad lane](../docs/ipad-lane.md)) | SendUserFile | clip numbers to keep |
-| Look | One A/B/C sheet of the same frame under two to nine looks, plus `key.json` | `rpstills absheet` | SendUserFile, display render | a letter, or `none` and a line |
+| Look | One A/B/C sheet of the same frame under two to nine looks, plus `key.json` (in the sibling folder `DIR.key`) | `rpstills absheet` | SendUserFile, display render | a letter, or `none` and a line |
 | Look, numbers | Skin Lab, hue and vectorscope angle, clipping, eye line and headroom per finished file, after the pick | `rpstills audit` | chat (the table), audit.json stays local | nothing, or a line |
 | Grade on video | A 10 to 20 s proxy (recipe below) and one scopes image | ffmpeg | desktop: Browser pane through `serve`; phone or iPad: SendUserFile up to 25 MiB, or Safari through `serve` on a private network | a letter or 1 to 5 |
 | Edit | A proxy render of the proposed cut; after approval, an interchange file for the editor | `rpresolve.interchange` (see [interchange](interchange.md)) | as for video | `approve`, `hold` or a line |

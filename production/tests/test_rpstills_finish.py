@@ -622,6 +622,50 @@ class FinishRunTest(unittest.TestCase):
             self.assertEqual(finish.run(p.parse_args([str(self.out)])), 1)
         self.assertIn("Vision helper cannot run", e.getvalue())
 
+    def test_each_frame_is_recorded_as_it_finishes_and_a_crash_is_an_error_row(self):
+        real = finish.finish_frame
+
+        def flaky(fid, *a, **k):
+            if fid == "F1":
+                raise RuntimeError("disk full")
+            return real(fid, *a, **k)
+        with mock.patch.object(finish, "finish_frame", flaky):
+            code, _, err = self.run_cli("--ids", "F1", "F2")
+        self.assertEqual(code, 1)
+        rows = {r["id"]: r for r in self.doc()["frames"]}
+        self.assertIn("disk full", rows["F1"]["error"])
+        self.assertNotIn("error", rows["F2"])
+
+    def test_an_interrupt_leaves_the_frames_done_so_far_on_disk(self):
+        real = finish.finish_frame
+
+        def stop_on_second(fid, *a, **k):
+            if fid == "F2":
+                raise KeyboardInterrupt
+            return real(fid, *a, **k)
+        with mock.patch.object(finish, "finish_frame", stop_on_second), self.assertRaises(KeyboardInterrupt):
+            self.run_cli("--ids", "F1", "F2")
+        self.assertEqual([r["id"] for r in self.doc()["frames"]], ["F1"])
+
+    def test_an_interrupted_rerun_keeps_the_earlier_rows_of_frames_it_never_reached(self):
+        save_tif16(self.out / "develop" / "F3.tif", self.img)
+        code, _, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        before = {r["id"]: r for r in self.doc()["frames"]}
+        self.assertEqual(sorted(before), ["F1", "F2", "F3"])
+        real = finish.finish_frame
+
+        def stop_on_second(fid, *a, **k):
+            if fid == "F2":
+                raise KeyboardInterrupt
+            return real(fid, *a, **k)
+        with mock.patch.object(finish, "finish_frame", stop_on_second), self.assertRaises(KeyboardInterrupt):
+            self.run_cli()
+        after = {r["id"]: r for r in self.doc()["frames"]}
+        self.assertEqual(sorted(after), ["F1", "F2", "F3"])
+        self.assertEqual(after["F2"], before["F2"])
+        self.assertEqual(after["F3"], before["F3"])
+
 
 if __name__ == "__main__":
     unittest.main()
