@@ -165,7 +165,7 @@ def _same_path(a, b):
 
 def relink(resolve, project_name, search_roots, folder=None, dry_run=True, project_id=None,
            max_items=None, check_cancel=None, expect_sha=None, probe=None,
-           exists=os.path.exists, stat=os.stat):
+           exists=os.path.exists, stat=os.stat, index=None):
     """Point offline clips of the open project at files under search_roots that
     verify as the same take (rpresolve.relink: timecode, frames, resolution and
     frame rate). Only a clip that is offline at plan time is touched; the clip
@@ -173,7 +173,9 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
     back. Returns {project, dry_run, results, counts, online, relinked,
     problems, ui_restore_problems, plan_sha, exit_status}. exit_status: 0 every
     offline clip relinked, 2 some offline clip remains (nothing verified for
-    it, or max_items stopped the run), 1 any relink failed or drifted."""
+    it, or max_items stopped the run), 1 any relink failed or drifted.
+    index: rprelink.index_roots(search_roots), when the caller walked the roots
+    before taking the Resolve lock."""
     probe_file = probe or _probe_file
     cache = {}
 
@@ -196,7 +198,8 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
             offline.append((bin_path, clip, props))
     online = len(pool) - len(offline)
 
-    index = rprelink.index_roots(search_roots, check=check_cancel)
+    if index is None:
+        index = rprelink.index_roots(search_roots, check=check_cancel)
     volumes = {}
     for _, _, p in offline:
         v = rprelink.volume_of(p["File Path"])
@@ -902,7 +905,15 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
             entry["overwrites"] = why
             targets.append(entry)
     shown = {k: v for k, v in spec.items() if k != "manifest"}
-    sha = plan_sha("grade", pin.unique_id, tl_id, track, shown,
+    # The files' bytes, not only their paths: a LUT or .drx edited after the dry run is a new plan.
+    from .cutlist import sha256_file  # LUTs and .drx stills are small
+    try:
+        digest = sha256_file(spec["path"])
+    except OSError as e:
+        raise Refused(f"cannot read {spec['path']}: {e.strerror or e}")
+    contents = [digest] + (
+        [spec["manifest"]] if spec["kind"] == "drx" else [])
+    sha = plan_sha("grade", pin.unique_id, tl_id, track, shown, contents,
                    [(t["index"], t["name"], t["fingerprint"]) for t in targets], overwrite)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
@@ -1060,14 +1071,14 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
                       "(use project settings), so set it back in the Inspector first")
     by_path = {}
     for e in fp["items"]:
-        by_path.setdefault(os.path.realpath(e["path"]), []).append(e)
+        by_path.setdefault(rpingest.norm_path(e["path"]), []).append(e)
     out_size = tuple(fp["out"])
     targets, unchanged, refusals = [], [], []
     for n in wanted:
         it = all_items[n - 1]
         name, path = it.GetName(), _item_path(it)
         row = {"index": n, "name": name, "media_id": _media_id(it)}
-        entries = by_path.get(os.path.realpath(path)) if path else None
+        entries = by_path.get(rpingest.norm_path(path)) if path else None
         if not entries:
             refusals.append({**row, "reasons": ["no plan entry for its file"]})
             continue
@@ -1196,6 +1207,9 @@ def _frames_to_timecode(frame, fps, drop=False):
     return f"{hh:02d}:{mm:02d}:{ss:02d}{sep}{ff:02d}"
 
 
+_STABILIZE_RUNS = {}  # shortcut: per server process; a restart forgets, when it matters keep it on disk
+
+
 def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=None,
               dry_run=False, project_id=None, check_cancel=None, expect_sha=None):
     """Call TimelineItem.Stabilize() on video items of one track of an ' [auto]'
@@ -1244,7 +1258,12 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
                         "item_id": api._safe_call(it, "GetUniqueId"),
                         "source_start": api._safe_call(it, "GetSourceStartFrame"),
                         "source_end": api._safe_call(it, "GetSourceEndFrame")})
-    sha = plan_sha("stabilize", pin.unique_id, tl_id, track,
+    # Stabilize() leaves nothing readable, so a plan cannot see that it already ran. What
+    # does go stale: where the track's items sit and how many there are.
+    placed = [(it.GetStart(), it.GetEnd()) for it in all_items]
+    ran_key = (pin.unique_id, tl_id, track, tuple(t["item_id"] for t in targets))
+    # The count of real runs of these items by this server: a plan_sha already used is stale.
+    sha = plan_sha("stabilize", pin.unique_id, tl_id, track, placed, _STABILIZE_RUNS.get(ran_key, 0),
                    [(t["index"], t["item_id"], t["source_start"], t["source_end"])
                     for t in targets])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
@@ -1257,7 +1276,8 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
         return out
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (the items or their source frames "
-                      "differ); run the dry run again and review it")
+                      "differ, or it already ran); run the dry run again and review it")
+    _STABILIZE_RUNS[ran_key] = _STABILIZE_RUNS.get(ran_key, 0) + 1
     raw_fps = str(api._safe_call(tl, "GetSetting", "timelineFrameRate") or "")
     m = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)", raw_fps)
     if not m:
@@ -1692,6 +1712,59 @@ def _file_key(path):
     return [path, st.st_size, int(st.st_mtime)]
 
 
+def sync_inputs(resolve, project_name, reference, other, bin=None, project_id=None,
+                probe=None):
+    """(paths, timeline fps) sync will measure, read quickly so the caller can
+    run the audio correlation before the Resolve lock; None when they cannot be
+    read here (sync itself then refuses with the reason)."""
+    from . import deliver, syncbuild as sb
+    try:
+        if bin:
+            if probe is None:
+                from . import sync as rpsync  # numpy
+                probe = rpsync.probe
+            paths = [os.path.realpath(os.path.expanduser(p)) for p in (reference, other)]
+            vid = probe(paths[0])["video"]
+            fps = vid["fps"] if vid else None
+        else:
+            _, project, _ = api.pin_for_write(resolve, project_name, project_id)
+            _, root = api.media_pool_root(project)
+            infos = []
+            for ref in (reference, other):
+                clip, _ = sb.find_clip(root, ref)
+                infos.append(sb.clip_info(clip) if clip is not None else None)
+            if not all(infos):
+                return None
+            paths, fps = [i["path"] for i in infos], infos[0]["fps"]
+        rate = sb.rate_string(fps) if fps else None
+        if not rate or not all(p and os.path.isfile(p) for p in paths):
+            return None
+        return paths, deliver.exact_fps(rate)
+    except (Refused, OSError, KeyError, TypeError, ValueError):
+        return None
+
+
+def precomputed_measure(measure, paths, fps, **kw):
+    """measure(*paths, fps=fps, **kw) run now, offline; the returned callable
+    answers sync's identical call from that result (or its error) and calls
+    `measure` itself for any other."""
+    from . import syncbuild as sb
+    same = {k: v for k, v in kw.items() if k != "check_cancel"}
+    try:
+        got, err = measure(paths[0], paths[1], fps=fps, **kw), None
+    except sb.SyncError as e:  # sync turns it into a refusal; replay it there
+        got, err = None, e
+
+    def replay(a, b, **kwargs):
+        rest = {k: v for k, v in kwargs.items() if k not in ("fps", "check_cancel")}
+        if (a, b) != tuple(paths) or kwargs.get("fps") != fps or rest != same:
+            return measure(a, b, **kwargs)
+        if err is not None:
+            raise err
+        return got
+    return replay
+
+
 def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=False,
          window_s=None, dry_run=False, project_id=None, expect_sha=None, check_cancel=None,
          measure=None, probe=None):
@@ -1972,19 +2045,10 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
 # trim-review markers: review rows as markers on an [auto] timeline
 # ---------------------------------------------------------------------------
 
-def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
-                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
-                        check_cancel=None):
-    """Review the parts of `source` an ' [auto]' timeline plays
-    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
-    per row there, reading each back with GetMarkers. Adds markers only:
-    nothing is cut, rippled, moved or deleted. A row that would land on a
-    frame already holding a marker is refused and reported. words: the
-    list from cutlist.load_words, or None for silences only. Returns
-    {project, timeline, source, items, skipped_items, rows, counts,
-    thresholds, planned, refused, results, plan_sha, dry_run,
-    ui_restore_problems, exit_status}."""
-    from . import deliver, markers as mk, trimreview as tr
+def _trim_scan(resolve, project_name, timeline, source, project_id):
+    """The Resolve reads trim_review_markers starts with: the pinned project, the
+    [auto] timeline, its frame rate and the items that play source."""
+    from . import deliver, markers as mk
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
     tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
@@ -2001,10 +2065,42 @@ def trim_review_markers(resolve, project_name, timeline, source, words=None, aud
     if not items:
         raise Refused(f"no item on '{tl_name}' plays {source} at its own speed" +
                       (": " + "; ".join(skipped) if skipped else "") + ".")
+    return pm, project, pin, tl, tl_name, tl_id, tl_fps, items, skipped
+
+
+def trim_ranges(resolve, project_name, timeline, source, project_id=None):
+    """The source ranges the timeline plays, so the caller can run the silence
+    review offline (rpresolve.trimreview.review_source) before the Resolve lock
+    and pass the result to trim_review_markers as `review`."""
+    from . import markers as mk
+    return mk.ranges(_trim_scan(resolve, project_name, timeline, source, project_id)[7])
+
+
+def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
+                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
+                        check_cancel=None, review=None):
+    """Review the parts of `source` an ' [auto]' timeline plays
+    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
+    per row there, reading each back with GetMarkers. Adds markers only:
+    nothing is cut, rippled, moved or deleted. A row that would land on a
+    frame already holding a marker is refused and reported. words: the
+    list from cutlist.load_words, or None for silences only. Returns
+    {project, timeline, source, items, skipped_items, rows, counts,
+    thresholds, planned, refused, results, plan_sha, dry_run,
+    ui_restore_problems, exit_status}.
+    review: (trim_ranges(...), review_source result) computed before the lock;
+    used only while the ranges still match the timeline."""
+    from . import markers as mk, trimreview as tr
+    pm, project, pin, tl, tl_name, tl_id, tl_fps, items, skipped = _trim_scan(
+        resolve, project_name, timeline, source, project_id)
     if check_cancel:
         check_cancel()
-    review = tr.review_source(source, words, ranges=mk.ranges(items), audio=audio,
-                              **(review_opts or {}))
+    ranges = mk.ranges(items)
+    if review is not None and review[0] == ranges:
+        review = review[1]
+    else:  # not precomputed, or the timeline moved since: review it now
+        review = tr.review_source(source, words, ranges=ranges, audio=audio,
+                                  **(review_opts or {}))
     existing = mk.existing_frames(tl)
     planned, refused = mk.plan(review["rows"], items, tl.GetStartFrame(), tl_fps, set(existing))
     shown = [{k: v for k, v in m.items() if k != "row"} for m in planned]

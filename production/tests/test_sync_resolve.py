@@ -559,6 +559,36 @@ class TestSyncTool(Base):
         self.assertEqual([(e["event"], e["tool"]) for e in events],
                          [("started", "sync"), ("finished", "sync")])
 
+    @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
+    def test_the_correlation_runs_before_the_lock(self):
+        from rpresolve import sync as rpsync
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+        held, seen = [], []
+
+        class Tracked(api.ResolveLock):
+            def __enter__(self):
+                super().__enter__()
+                held.append(1)
+                return self
+
+            def __exit__(self, *exc):
+                held.pop()
+                return super().__exit__(*exc)
+        inner = self.measure()
+
+        def measure(*a, **kw):
+            seen.append(bool(held))
+            return inner(*a, **kw)
+        args = schema.with_defaults(tool.input_schema, {
+            "project": P, "reference": "clip-cam", "other": "clip-rec"})
+        with mock.patch.object(api, "ResolveLock", Tracked), \
+                mock.patch.object(rpsync, "measure", measure):
+            r = tool.handler(args, ToolContext(session=rf.Session(self.resolve)))
+        self.assertEqual(seen, [False])  # measured once, outside the lock
+        self.assertIn("would build", r["summary"])
+
 
 class TestSyncSettingsDrift(Base):
     """The settings drift guard through sync: the stacked timeline's own custom

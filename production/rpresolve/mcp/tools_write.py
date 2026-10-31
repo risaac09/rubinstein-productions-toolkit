@@ -26,6 +26,7 @@ import os
 from .. import api, deliver, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
+from .. import relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
 
@@ -516,12 +517,24 @@ def deliver_captions(args, ctx):
 def sync(args, ctx):
     _require_sha(args)
     try:
-        from .. import sync as _numpy_check  # noqa: F401  (numpy, before the lock)
+        from .. import sync as rpsync  # numpy, before the lock
     except ImportError as e:
         raise RuntimeError(f"sync needs numpy ({e}); run the server on /usr/bin/python3.")
     if args.get("bin"):
         for field in ("reference", "other"):
             _existing(args[field], field)
+    ctx.check_cancel()
+    # The correlation runs here, before the lock; a short locked read gives it the files.
+    measure = None
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        got = workflows.sync_inputs(ctx.session.get(), args["project"], args["reference"],
+                                    args["other"], bin=args.get("bin"),
+                                    project_id=args.get("project_id"))
+    if got:
+        kw = {"check_cancel": ctx.check_cancel}
+        if args["window_s"]:
+            kw["window_s"] = args["window_s"]
+        measure = workflows.precomputed_measure(rpsync.measure, got[0], got[1], **kw)
     ctx.check_cancel()
 
     def run():
@@ -529,7 +542,7 @@ def sync(args, ctx):
                            name=args.get("name"), bin=args.get("bin"), autosync=args["autosync"],
                            window_s=args["window_s"], dry_run=args["dry_run"],
                            project_id=args.get("project_id"), expect_sha=args.get("plan_sha"),
-                           check_cancel=ctx.check_cancel)
+                           check_cancel=ctx.check_cancel, measure=measure)
         m, f = r["measurement"], r["measurement"]["frames"]
         d = m.get("drift") or {}
         where = (f"offset {m['offset_s']:+.4f} s, placed at {f['placed']:+d} frame(s) at "
@@ -577,6 +590,12 @@ def trim_review_markers(args, ctx):
         words_path = _existing(args["words"], "words") if args.get("words") else None
     words = cutlist.load_words(words_path) if words_path else None  # offline, before the lock
     ctx.check_cancel()
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):  # a short read: which ranges the timeline plays
+        ranges = workflows.trim_ranges(ctx.session.get(), args["project"], args["timeline"],
+                                       source, project_id=args.get("project_id"))
+    review = (ranges, trimreview.review_source(source, words, ranges=ranges, audio=args["audio"],
+                                               **review_opts(args)))  # offline, before the lock
+    ctx.check_cancel()
 
     def run():
         r = workflows.trim_review_markers(ctx.session.get(), args["project"], args["timeline"],
@@ -584,7 +603,7 @@ def trim_review_markers(args, ctx):
                                           review_opts=review_opts(args), dry_run=args["dry_run"],
                                           project_id=args.get("project_id"),
                                           expect_sha=args.get("plan_sha"),
-                                          check_cancel=ctx.check_cancel)
+                                          check_cancel=ctx.check_cancel, review=review)
         tl, c = r["timeline"]["name"], r["counts"]["kind"]
         kinds = ", ".join(f"{n} {k}" for k, n in c.items() if n)
         why = {}
@@ -616,12 +635,13 @@ def relink(args, ctx):
             raise ValueError(f"search_roots {root} is not a folder.")
         roots.append(os.path.normpath(root))
     ctx.check_cancel()
+    index = rprelink.index_roots(roots, check=ctx.check_cancel)  # the walk, before the lock
 
     def run():
         r = workflows.relink(ctx.session.get(), args["project"], roots, folder=args.get("folder"),
                              dry_run=args["dry_run"], project_id=args.get("project_id"),
                              max_items=args.get("max_items"), check_cancel=ctx.check_cancel,
-                             expect_sha=args.get("plan_sha"))
+                             expect_sha=args.get("plan_sha"), index=index)
         sc = r["status_counts"]
         offline = sum(sc.values())
         left = "; ".join(f"{n} {k}" for k, n in sorted(sc.items()) if k != "VERIFIED")
