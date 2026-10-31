@@ -371,6 +371,24 @@ class TestSyncImport(Base):
     def run_import(self, **kw):
         return self.twice(self.new_cam, self.new_rec, bin="Sync run", **kw)
 
+    def inputs(self, **kw):
+        kw = {"reference": self.new_cam, "other": self.new_rec, "bin": "Sync run", **kw}
+        return workflows.sync_inputs(self.resolve, P, probe=self.probe, **kw)
+
+    def test_refusals_that_need_no_audio_hand_the_caller_nothing_to_correlate(self):
+        # sync_inputs returning None is the caller's cue to skip the correlation;
+        # sync then refuses with the reason (checked in test_refusals_write_nothing).
+        self.assertIsNotNone(self.inputs())
+        self.assertIsNotNone(self.inputs(autosync=True))
+        self.assertIsNone(self.inputs(bin=None, autosync=True))  # autosync needs a bin
+        self.assertIsNone(self.inputs(bin="Day 1"))  # the bin exists
+        self.project.add(rf.Timeline("C001 sync [auto]", "tl-old"))
+        self.assertIsNone(self.inputs())  # the default timeline name is taken
+        self.assertIsNotNone(self.inputs(name="Other [auto]"))
+        self.assertIsNone(self.inputs(name="Other"))  # not an [auto] name
+        self.project.add(rf.Timeline("Other (AutoSyncAudio) [auto]", "tl-old2"))
+        self.assertIsNone(self.inputs(name="Other [auto]", autosync=True))
+
     def test_imports_into_a_new_bin_and_builds(self):
         dry, r = self.run_import()
         self.assertEqual(dry["mode"], "import")

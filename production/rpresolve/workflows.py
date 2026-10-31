@@ -1713,31 +1713,44 @@ def _file_key(path):
 
 
 def sync_inputs(resolve, project_name, reference, other, bin=None, project_id=None,
-                probe=None):
+                probe=None, autosync=False, name=None):
     """(paths, timeline fps) sync will measure, read quickly so the caller can
     run the audio correlation before the Resolve lock; None when they cannot be
-    read here (sync itself then refuses with the reason)."""
+    read here, or when sync will refuse without needing the audio (autosync
+    with no bin, a bin or timeline name already taken): sync itself then
+    refuses with the reason, and the correlation is not run for nothing."""
     from . import deliver, syncbuild as sb
+    if autosync and not bin:
+        return None
     try:
+        _, project, _ = api.pin_for_write(resolve, project_name, project_id)
+        _, root = api.media_pool_root(project)
         if bin:
             if probe is None:
                 from . import sync as rpsync  # numpy
                 probe = rpsync.probe
+            if any(f.GetName() == bin for f in root.GetSubFolderList() or []):
+                return None
             paths = [os.path.realpath(os.path.expanduser(p)) for p in (reference, other)]
             vid = probe(paths[0])["video"]
             fps = vid["fps"] if vid else None
+            first = os.path.basename(paths[0])
         else:
-            _, project, _ = api.pin_for_write(resolve, project_name, project_id)
-            _, root = api.media_pool_root(project)
             infos = []
             for ref in (reference, other):
                 clip, _ = sb.find_clip(root, ref)
                 infos.append(sb.clip_info(clip) if clip is not None else None)
             if not all(infos):
                 return None
-            paths, fps = [i["path"] for i in infos], infos[0]["fps"]
+            paths, fps, first = [i["path"] for i in infos], infos[0]["fps"], infos[0]["name"]
         rate = sb.rate_string(fps) if fps else None
         if not rate or not all(p and os.path.isfile(p) for p in paths):
+            return None
+        name = name or f"{os.path.splitext(first)[0]} sync{AUTO}"
+        taken = {project.GetTimelineByIndex(i).GetName()
+                 for i in range(1, int(project.GetTimelineCount() or 0) + 1)}
+        names = [name, name[:-len(AUTO)] + f" (AutoSyncAudio){AUTO}"] if autosync else [name]
+        if not name.endswith(AUTO) or taken & set(names):
             return None
         return paths, deliver.exact_fps(rate)
     except (Refused, OSError, KeyError, TypeError, ValueError):

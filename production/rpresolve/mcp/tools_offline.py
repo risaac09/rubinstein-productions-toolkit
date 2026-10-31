@@ -27,11 +27,11 @@ import os
 import tempfile
 import time
 
-from .. import cutlist, paths, workflows
+from .. import cli, cutlist, paths, workflows
 from .. import detect as rpdetect
 from .. import shoot_table as rpshoot
 from ..config import ConfigError, load_config
-from .registry import READ, Tool
+from .registry import READ, WRITE, Tool
 
 MAX_PATHS = 500
 
@@ -483,11 +483,6 @@ def _numpy(tool, e):
     return RuntimeError(f"{tool} needs numpy ({e}); run the server on /usr/bin/python3.")
 
 
-def _parse_size(text):
-    w, h = text.split("x")
-    return int(w), int(h)
-
-
 def shoot_table(args, ctx):
     out = _out(args)
     targets = [_abs(p, "paths") for p in args["paths"]]
@@ -534,7 +529,7 @@ def qc(args, ctx):
     stems = [_existing(s, "stems") for s in args.get("stems") or []] or None
     ctx.check_cancel()
     r = rpqc.run(path, dest, config_folders=folders, fps=args.get("fps"),
-                 size=_parse_size(args["size"]) if args.get("size") else None,
+                 size=cli.size(args["size"]) if args.get("size") else None,
                  expected_duration=args.get("duration"), thresholds=th,
                  shots=rpqc.shot_count(shots) if shots else None,
                  shot_cut_times=rpqc.shot_cuts(shots) if shots else None,
@@ -677,7 +672,7 @@ def register(registry):
                         "description": "Absolute paths of media files or folders."},
               **PAGING, "limit": _limit(100, 500),
               "out": _out_prop("every row as JSON")}, ["paths"]),
-        detect, title="Detect camera profiles", annotations=READ))
+        detect, title="Detect camera profiles", annotations=WRITE))
     registry.add(Tool(
         "survey",
         "Survey Resolve's projects from the project databases on disk: timelines, media, "
@@ -693,7 +688,7 @@ def register(registry):
                        "description": "Also write the survey as JSON."},
               "timeout": {"type": "integer", "minimum": 60, "maximum": 7200, "default": 1800,
                           "description": "Seconds before the survey is stopped."}}),
-        survey, title="Survey Resolve projects", annotations=READ))
+        survey, title="Survey Resolve projects", annotations=WRITE))
     registry.add(Tool(
         "measure",
         "Measure a rendered or source video file: luma percentiles, clipping, 8-bit legal "
@@ -710,7 +705,7 @@ def register(registry):
               "faces": {"type": "boolean", "default": True,
                         "description": "Find faces and measure skin."},
               "out": _out_prop("the full JSON report")}, ["file"]),
-        measure, title="Measure a video", annotations=READ))
+        measure, title="Measure a video", annotations=WRITE))
     registry.add(Tool(
         "endcheck",
         "Check a cut manifest's spans: does each out-point land in a real pause (source audio), "
@@ -724,7 +719,7 @@ def register(registry):
                         "description": "Check the source audio (needs the source file)."},
               **PAGING, "limit": _limit(50, 200),
               "out": _out_prop("every row as JSON")}, ["manifest"]),
-        endcheck, title="Check cut end points", annotations=READ))
+        endcheck, title="Check cut end points", annotations=WRITE))
     registry.add(Tool(
         "selects",
         "Propose clip spans from a word-level transcript that stay inside an approved text "
@@ -738,7 +733,7 @@ def register(registry):
               "max_seconds": {"type": "number", "minimum": 2, "maximum": 600, "default": 65},
               **PAGING, "limit": _limit(20, 200),
               "out": _out_prop("every proposal as TSV")}, ["words", "approved"]),
-        selects, title="Propose selects", annotations=READ))
+        selects, title="Propose selects", annotations=WRITE))
     registry.add(Tool(
         "reframe_plan",
         "Plan a static crop per span of a cut manifest for its 9:16, 1:1, 4:5 or 16:9 "
@@ -839,7 +834,7 @@ def register(registry):
               **PAGING, "limit": _limit(50, 400),
               "out": _out_prop("the manifest copy (the .reframe.tsv and .reframe.json "
                                "reports go beside it), or the framing plan")}, []),
-        reframe_plan, title="Plan reframes", annotations=READ))
+        reframe_plan, title="Plan reframes", annotations=WRITE))
     registry.add(Tool(
         "sync_measure",
         "Where one recording sits against another, from the sound both heard (dual-system "
@@ -861,7 +856,7 @@ def register(registry):
               "window_s": {"type": "number", "minimum": 5, "maximum": 300, "default": 30,
                            "description": "Seconds per measuring window."},
               "out": _out_prop("the full JSON report")}, ["reference", "other"]),
-        sync_measure, title="Measure dual-system sync", annotations=READ))
+        sync_measure, title="Measure dual-system sync", annotations=WRITE))
     registry.add(Tool(
         "trim_review",
         "Silence and filler review of an edit, as proposals: long silences from the source "
@@ -881,7 +876,7 @@ def register(registry):
                         "manifest's; without it a source gets silences only)."},
               **REVIEW_PROPS, **PAGING, "limit": _limit(100, 500),
               "out": _out_prop("the TSV")}),
-        trim_review, title="Review silences and fillers", annotations=READ))
+        trim_review, title="Review silences and fillers", annotations=WRITE))
     registry.add(Tool(
         "deliver_check",
         "Check a rendered deliverable against a delivery destination from resolve-config.json, "
@@ -935,7 +930,7 @@ def register(registry):
                                 "clip."},
               **PAGING, "limit": _limit(50, 200),
               "out": _out_prop("every row as CSV")}, ["paths"]),
-        shoot_table, title="Tabulate a shoot", annotations=READ))
+        shoot_table, title="Tabulate a shoot", annotations=WRITE))
     registry.add(Tool(
         "qc",
         "One FAIL-first QC table for a rendered file: ffmpeg blackdetect, freezedetect, scdet, "
@@ -987,7 +982,7 @@ def register(registry):
                                "8-bit codes (default 1.5)."},
               "out": _out_prop("the full JSON report, per-frame shifts included")},
              ["test", "reference"]),
-        pipeline_proof, title="Prove a pipeline", annotations=READ))
+        pipeline_proof, title="Prove a pipeline", annotations=WRITE))
     registry.add(Tool(
         "deliver_manifest",
         "Preview the manifest.md and checksums.txt of a delivery folder "
@@ -1035,7 +1030,7 @@ def register(registry):
               "targets": {"type": "boolean", "default": False,
                           "description": "Also write targets.json (numbers only)."}},
              ["file", "out"]),
-        perceive, title="Perceive a frame", annotations=READ))
+        perceive, title="Perceive a frame", annotations=WRITE))
     registry.add(Tool(
         "audio_report",
         "Loudness over time, spectrogram, peaks, clipping, clicks, silences and octave balance "
@@ -1060,7 +1055,7 @@ def register(registry):
               "ref_stream": {"type": "integer", "minimum": 0, "default": 0,
                              "description": "Audio stream of the reference."}},
              ["file", "out"]),
-        audio_report, title="Report on audio", annotations=READ))
+        audio_report, title="Report on audio", annotations=WRITE))
     registry.add(Tool(
         "overlay_check",
         "Check a graphic master rendered with alpha: tags, frame rate, clear frames, opaque "
@@ -1103,3 +1098,10 @@ def register(registry):
         _obj({"template": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9-]*$",
                            "description": "One template id (say-why-lower-third); default all."}}),
         ograf_template_check, title="Check OGraf templates", annotations=READ))
+
+    # These write new files (never over an existing one), so none is read-only.
+    for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report"):
+        registry.get(name).description += " Always writes new files, so it is not read-only."
+    for name in ("detect", "endcheck", "selects", "sync_measure", "shoot_table", "pipeline_proof"):
+        registry.get(name).description += (" Writes a new file when out is given, so it is not "
+                                           "read-only.")
