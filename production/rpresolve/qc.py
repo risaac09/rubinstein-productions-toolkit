@@ -352,12 +352,14 @@ def _sound_true_peak_per_cut(path, cuts, dur, ceiling, note):
         try:
             tp = _ar().loudness(path, 0, a, b)[0]["true_peak_dbtp"]
         except _ar().ReportError:
+            tp = None
+        if tp is None:  # a read that returned no peak is as unmeasured as a failed one
             unread.append(n)
             continue
         measured += 1
-        if tp is not None and (worst is None or tp > worst):
+        if worst is None or tp > worst:
             worst = tp
-        if tp is not None and tp > ceiling + 1e-9:
+        if tp > ceiling + 1e-9:
             over.append(f"shot {n} ({_at(a)} to {_at(b) if b is not None else 'the end'}): {tp} dBTP")
     shown = "; ".join(over[:3]) + (f" and {len(over) - 3} more" if len(over) > 3 else "")
     gone = f"shot {', '.join(map(str, unread))} unreadable" if unread else ""

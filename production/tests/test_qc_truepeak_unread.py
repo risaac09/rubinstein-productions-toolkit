@@ -21,12 +21,12 @@ class ReportError(Exception):
 
 
 def _row(reads, cuts=(1.0, 2.0)):
-    """reads: one value per shot, a dBTP number or None for a failed read."""
+    """reads: one value per shot, a dBTP number, "ERR" for a failed read, None for a read with no peak."""
     it = iter(reads)
 
     def loudness(path, ch, a, b):
         v = next(it)
-        if v is None:
+        if v == "ERR":
             raise ReportError("no read")
         return [{"true_peak_dbtp": v}]
 
@@ -42,19 +42,25 @@ class UnreadShots(unittest.TestCase):
         self.assertIn("3 shots, worst -2.0", r["found"])
 
     def test_some_unread_warns_and_is_left_out_of_n(self):
-        r = _row([-3.0, None, -4.0])
+        r = _row([-3.0, "ERR", -4.0])
         self.assertEqual(r["status"], qc.WARN)
         self.assertIn("2 shots", r["found"])
         self.assertIn("shot 2 unreadable", r["found"])
 
     def test_none_measured_fails_instead_of_passing(self):
-        r = _row([None, None, None])
+        r = _row(["ERR", "ERR", "ERR"])
         self.assertEqual(r["status"], qc.FAIL)
         self.assertIn("shot 1, 2, 3 unreadable", r["found"])
         self.assertNotIn("None dBTP", r["found"])
 
+    def test_a_read_with_no_peak_counts_as_unread(self):
+        # loudness() answered but gave true_peak_dbtp None
+        r = _row([None, None, None])
+        r2 = _row([-3.0, None, -4.0])
+        self.assertEqual((r["status"], r2["status"]), (qc.FAIL, qc.WARN))
+
     def test_over_ceiling_stays_fail_and_names_the_unread(self):
-        r = _row([0.5, None, -4.0])
+        r = _row([0.5, "ERR", -4.0])
         self.assertEqual(r["status"], qc.FAIL)
         self.assertIn("shot 1", r["found"])
         self.assertIn("shot 2 unreadable", r["found"])
