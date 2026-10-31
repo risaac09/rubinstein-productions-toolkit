@@ -29,13 +29,16 @@ def add_arguments(p):
     p.add_argument("--question", help="what was asked, e.g. warmth, ending, tempo, hook_text")
     p.add_argument("--noise-type", help="denoise decisions: rumble, wind, hiss, room or other:WORD")
     p.add_argument("--repeat-of", help="the ts of the line this repeats")
+    p.add_argument("--review-copy", metavar="FILE", help="the review copy this approve, go or hold is about; "
+                   "logs its name and sha256 for deliver-check --review-log")
 
 
 def run(args):
     from rpresolve import reviewlog
     try:
         line = reviewlog.append(args.dir, args.project, args.step, args.device, args.choice, args.reason,
-                                args.key, args.question, args.noise_type, args.repeat_of)
+                                args.key, args.question, args.noise_type, args.repeat_of,
+                                review_copy=args.review_copy)
     except (reviewlog.Refused, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
