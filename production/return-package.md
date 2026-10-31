@@ -30,9 +30,9 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
 ```
 2026-11_<engagement-id>/
   01_originals/
-    20261016_GH7_A01/       card folder exactly as shot
-    20261016_GH7_A02/
-    20261017_PYXIS_B01/
+    GH7-3fa9c1/            card folder exactly as shot
+    GH7-b07e42/
+    PYXIS-91d5aa/
     SHA256SUMS
   02_finals/
     <destination key>/      one subfolder per destination, as rendered
@@ -44,7 +44,7 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
   manifest.md
 ```
 
-Card folders are named `YYYYMMDD_<CAM>_<card>` under the [capture standard](capture-standard.md): the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
+Card folders are named `<CAM>-<id6>` under the [capture standard](capture-standard.md): the camera and the card's id. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
 
 `02_finals/` keeps the destination subfolders the render queue wrote, so the file names stay under the house rule from the [Deliver section](resolve-template-spec.md#file-names). `03_captions/` holds a copy of each sidecar `.srt`; the originals also stay beside their videos in `02_finals/`, and the manifest lists both.
 

@@ -1,6 +1,6 @@
 ---
 name: branded-doc-build
-description: 'Build, finish, or review a Word document that must look native to a client brand template or example document. Use for guides, field instruments, one-pagers, FAQs and briefs. Trigger for "make a Word document", "turn this into a docx", "one-pager", "review this document", "match the brand", or a template paired with content.'
+description: 'Build, finish, or review a Word document that must look native to a client brand template or example document. Use for guides, field instruments, one-pagers, FAQs and briefs. Trigger for "make a Word document", "turn this into a docx", "one-pager", "review this document", "match the brand", or a template paired with content. Needs a client brand template or example to build into. Not for generic decks or docs; use the generic docx skill for those.'
 ---
 
 # Branded document build

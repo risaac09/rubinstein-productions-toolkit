@@ -96,7 +96,7 @@ The same list for all four kits. Source: the capture standard's Audio, Sync and 
 3. **Camera scratch audio on, every take, every camera.** `sync_measure` cannot line up a take with the camera microphone off.
 4. **Room tone: 30 seconds per setup**, everyone silent, recorded on the same mics and gain as the take. House working default.
 5. **Slate:** spoken ident (date, camera, take), then one clap in view of the camera and in range of the recorder. If the head was missed, slate at the tail.
-6. **Card folder:** `YYYYMMDD_<CAM>_<card>`, native file names untouched.
+6. **Card folder:** `<CAM>-<id6>`, native file names untouched.
 
 ## After the shoot
 
