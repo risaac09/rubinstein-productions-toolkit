@@ -499,7 +499,7 @@ def _safe_zone(w, h, boxes):
     """Every caption and super box inside the safe zone for the frame
     (rpresolve.safezone). Pixels are not read: the boxes come from the caller."""
     expected = "every caption and super box inside the safe zone"
-    if not boxes:
+    if boxes is None:  # an empty list is a caller saying nothing is on screen: a pass
         return _row("safe_zone", None, "no boxes given", expected,
                     "pass --boxes (captionlint and overlay-check report them)")
     if not (w and h):

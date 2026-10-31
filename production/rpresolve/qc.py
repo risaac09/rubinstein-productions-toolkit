@@ -538,8 +538,8 @@ def _safe_zone(np, path, dest, th, dur, streams):
     v = next((x for x in streams if x.get("codec_type") == "video"), None)
     if v is None or not dur:
         return _srow("safe_zone", SKIP, "no video", expected)
-    if not (v.get("height") or 0) > (v.get("width") or 0):  # the margins are portrait numbers
-        return _srow("safe_zone", SKIP, f"{v.get('width')}x{v.get('height')} is not portrait", expected)
+    if not safezone.tall(v.get("width") or 0, v.get("height") or 0):  # the margins are 9:16 numbers
+        return _srow("safe_zone", SKIP, f"{v.get('width')}x{v.get('height')} is not 9:16 portrait", expected)
     if np is None:
         return _srow("safe_zone", SKIP, "needs numpy", expected)
     # shortcut: fps= decodes the whole file to sample frames; seek per sample for long renders.
