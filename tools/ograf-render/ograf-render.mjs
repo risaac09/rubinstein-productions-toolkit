@@ -7,7 +7,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
@@ -393,26 +393,28 @@ async function main() {
       "-i", join(framesDir, "%06d.png"), "-vf", vf, "-c:v", "prores_ks", "-profile:v", "4444",
       "-pix_fmt", "yuva444p10le", "-vendor", "apl0", tmpMov], { encoding: "utf8" });
     if (r.status !== 0) throw new Fail(`ffmpeg failed: ${r.stderr.trim().slice(-400)}`);
-    report.video = mov;
   }
-  // Every check has passed: now replace the previous outputs.
-  if (report.video) renameSync(tmpMov, mov); else rmSync(mov, { force: true });
+  const det = report.checks.determinism;
+  const lintBad = report.checks.lint?.ran && report.checks.lint.exit !== 0;
+  const passed = det.pass && !(o.strictFonts && missing.length) && !lintBad;
+  // Only a render that passed every check replaces the previous movie and frames; a failed one
+  // still writes its report and boxes, which describe the failure.
+  if (passed && !o.noVideo) { renameSync(tmpMov, mov); report.video = mov; }
   writeFileSync(join(outDir, "boxes.json"), JSON.stringify({ fps: fps.text, width, height, frames: boxes }, null, 1));
   if (o.keepFrames) {
-    // OUT/frames is kept only when this run can have it to itself; an existing folder is never replaced.
+    // An existing OUT/frames is never replaced: it may not be ours.
     const kept = join(outDir, "frames");
-    if (!existsSync(kept)) renameSync(framesDir, kept);
+    if (!existsSync(kept)) { renameSync(framesDir, kept); chmodSync(kept, 0o755); }
     else process.stderr.write(`ograf-render: ${kept} already exists and was left alone; frames not kept\n`);
   }
   writeFileSync(join(outDir, "report.json"), JSON.stringify(report, null, 1));
 
-  const det = report.checks.determinism;
   process.stdout.write(`${name}: ${last - first + 1} frames at ${fps.text}, ${width}x${height}${report.video ? ` -> ${mov}` : ""}\n`);
   process.stdout.write(`determinism: ${det.pass ? "PASS" : `FAIL (frames ${det.differing_frames.join(", ")} changed on revisit)`}\n`);
   if (missing.length) process.stdout.write(`fonts: ${o.strictFonts ? "FAIL" : "warn"}, not found: ${missing.join(", ")}\n`);
   if (report.checks.lint) process.stdout.write(`linter: ${report.checks.lint.ran ? `exit ${report.checks.lint.exit}\n${report.checks.lint.output}` : report.checks.lint.note}\n`);
-  const lintBad = report.checks.lint?.ran && report.checks.lint.exit !== 0;
-  return det.pass && !(o.strictFonts && missing.length) && !lintBad ? 0 : 1;
+  if (!passed && !o.noVideo) process.stdout.write("a failed render does not replace the previous movie\n");
+  return passed ? 0 : 1;
   }
 }
 

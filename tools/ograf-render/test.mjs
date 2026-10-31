@@ -157,7 +157,7 @@ describe("ograf-render", { skip }, () => {
     const out = join(work, "i");
     mkdirSync(join(out, "frames"), { recursive: true });
     writeFileSync(join(out, "frames", "mine.png"), "not the tool's");
-    const r = render("good", "i", "--no-video");
+    const r = render("good", "i", "--no-video", "--keep-frames");
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.deepEqual(readdirSync(join(out, "frames")), ["mine.png"]);
     assert.equal(readdirSync(out).some((f) => f.startsWith(".frames-")), false);
