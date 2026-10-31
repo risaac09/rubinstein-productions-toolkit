@@ -1753,7 +1753,7 @@ def sync_inputs(resolve, project_name, reference, other, bin=None, project_id=No
         if not name.endswith(AUTO) or taken & set(names):
             return None
         return paths, deliver.exact_fps(rate)
-    except (Refused, OSError, KeyError, TypeError, ValueError):
+    except (api.ResolveAPIError, OSError, KeyError, TypeError, ValueError):
         return None
 
 

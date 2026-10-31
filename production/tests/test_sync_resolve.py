@@ -607,6 +607,31 @@ class TestSyncTool(Base):
         self.assertEqual(seen, [False])  # measured once, outside the lock
         self.assertIn("would build", r["summary"])
 
+    @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
+    def test_refusals_that_need_no_audio_come_before_the_correlation(self):
+        from rpresolve import sync as rpsync
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+        self.project.add(rf.Timeline("Taken [auto]", "tl-taken"))
+        cases = [({"autosync": True}, "only on clips this run imports"),
+                 ({"name": "Taken [auto]"}, "already exists"),
+                 ({"bin": "Day 1", "reference": self.cam_path, "other": self.rec_path},
+                  "already exists at the media pool's root")]
+        for extra, why in cases:
+            with self.subTest(why=why):
+                calls = []
+
+                def measure(*a, **kw):
+                    calls.append(a)
+                    return self.measure()(*a, **kw)
+                args = schema.with_defaults(tool.input_schema, {
+                    "project": P, "reference": "clip-cam", "other": "clip-rec", **extra})
+                with mock.patch.object(rpsync, "measure", measure), \
+                        self.assertRaisesRegex(workflows.Refused, why):
+                    tool.handler(args, ToolContext(session=rf.Session(self.resolve)))
+                self.assertEqual(calls, [])
+
 
 class TestSyncSettingsDrift(Base):
     """The settings drift guard through sync: the stacked timeline's own custom

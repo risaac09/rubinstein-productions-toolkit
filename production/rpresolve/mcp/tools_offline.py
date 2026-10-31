@@ -377,8 +377,7 @@ def deliver_check(args, ctx):
     dest = deliver.destination(config, args["destination"])
     size = None
     if args.get("size"):
-        w, h = args["size"].split("x")
-        size = (int(w), int(h))
+        size = cli.size(args["size"])
     if args.get("fps"):
         dc.parse_fps(args["fps"])
     ctx.check_cancel()
@@ -1102,6 +1101,9 @@ def register(registry):
     # These write new files (never over an existing one), so none is read-only.
     for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report"):
         registry.get(name).description += " Always writes new files, so it is not read-only."
-    for name in ("detect", "endcheck", "selects", "sync_measure", "shoot_table", "pipeline_proof"):
-        registry.get(name).description += (" Writes a new file when out is given, so it is not "
-                                           "read-only.")
+    for name, when in (("detect", "out is given or the reply is paged"),
+                       ("endcheck", "out is given or the reply is paged"),
+                       ("selects", "out is given or the reply is paged"),
+                       ("shoot_table", "out is given or the reply is paged"),
+                       ("sync_measure", "out is given"), ("pipeline_proof", "out is given")):
+        registry.get(name).description += f" Writes a new file when {when}, so it is not read-only."
