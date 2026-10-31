@@ -609,7 +609,9 @@ def main():
             cues = [dict(c, start=max(c["start"], hook["hold"])) for c in cues if c["end"] - hook["hold"] >= 0.25]
         if cues and not warned:
             # The default bar sits inside the bottom UI band; reported, not moved.
-            sides = unsafe_sides(cue_box(["M" * args.line_chars] * MAX_LINES, font, args.caption_y))
+            # Height only: a cue too wide for the frame is refused when drawn, and 16 capital Ms is wider than any real cue.
+            sides = [s for s in unsafe_sides(cue_box(["M" * args.line_chars] * MAX_LINES, font, args.caption_y))
+                     if s in ("top", "bottom")]
             if sides:
                 warned = True
                 sys.stderr.write("vertcut: WARN the caption bar (bottom edge y=%d) enters the %s safezone band\n"
