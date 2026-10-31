@@ -3,7 +3,7 @@ rpresolve.mcp.session: the Resolve connection, made lazily and probed on
 reuse. The server starts in every Claude Code session, so it never
 connects at startup; the first tool that needs Resolve does.
 
-A fresh project manager and project are read on every call: Isaac may
+A fresh project manager and project are read on every call: the operator may
 switch projects between calls, and a cached project object would pin the
 wrong one. Only the top-level resolve object is kept, and it is probed
 with GetVersionString() before reuse; a dead one is dropped and replaced.

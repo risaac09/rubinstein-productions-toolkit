@@ -424,7 +424,7 @@ def queue_render(args, ctx):
         elif r["exit_status"] == 0:
             made = f" (made the folder {r['made_folder']})" if r.get("made_folder") else ""
             r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}{made}, job "
-                            f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "
+                            f"{r['job']['JobId']}; NOT started, the operator starts renders. Resolve's "
                             "job list does not report " +
                             (", ".join(r["unverified"]) or "nothing else") +
                             "; check the rendered file with deliver_check" + _ui(r) +
@@ -888,7 +888,7 @@ def register(registry):
         "queue_render",
         "Queue one render job for a timeline for a delivery destination (with name and "
         "target_dir); a destination is the only way to queue a render. It never starts a "
-        "render: Isaac starts renders. A destination sets format, codec, size, frame rate, "
+        "render: the operator starts renders. A destination sets format, codec, size, frame rate, "
         "audio, colour tags and captions, and names the file by the house rule "
         "(SW001_Guest_01_example-clip_16x9.mp4, or Client_slug_master.mov); it is refused "
         "when the folder is missing, on an unmounted share or in a git repository, when the "

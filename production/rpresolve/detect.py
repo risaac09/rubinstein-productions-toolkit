@@ -10,7 +10,7 @@ Three header sources are read per file:
       codes, full-range flag), Apple's logs atom, Dolby Vision dvvC. ffprobe
       shows neither the raw colr codes nor the logs atom.
 
-The decision table below was hand-verified against the footage on the NAS
+The decision table below was hand-verified against real footage
 on 2026-09-26. Rules run in order and the first match wins:
 
     0a  derived or render: encoder DaVinci Resolve, Lavf or HandBrake, or a

@@ -119,7 +119,7 @@ It cuts the same 20 s from each file, matches their loudness, shuffles them to A
 
 ### Before a render: what Resolve says about the audio
 
-With the timeline open in Resolve (Resolve Studio running), read its audio state and keep the JSON outside any git tree. After Isaac renders, hand it to `deliver-check` so the queued job's audio is compared with the destination:
+With the timeline open in Resolve (Resolve Studio running), read its audio state and keep the JSON outside any git tree. After the operator renders, hand it to `deliver-check` so the queued job's audio is compared with the destination:
 
 ```bash
 python3 resolve_workflow.py audio-state -o "$JOB/audio-state.json"

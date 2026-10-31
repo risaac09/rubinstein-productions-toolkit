@@ -1035,7 +1035,7 @@ folder; nothing from them is in this repository):
 | The same call recorded at both ends: a screen recording and the call app's audio file (82 and 79 min) | NO MATCH. Five middle windows agree on +127.3261 s (correlation +0.94 to +0.97; within 0.001 ms of each other across 52 minutes, one computer's clock); the head and tail windows find +127.142 s, inverted (-0.43, -0.69). Each voice reaches the two files by its own path, 184 ms apart, so no one placement holds both |
 | Two unrelated recordings | peak 1.05x, correlation +0.03: NO MATCH |
 
-Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
+Each measurement of a 77 to 82 minute pair took about 5 s on a recent Apple silicon Mac
 (decode included; the correlation alone 0.4 s).
 
 ### Stack

@@ -21,7 +21,7 @@ def add_arguments(p):
 
 def run(args):
     """Propose spans inside the approved text, as a TSV (in, out, seconds,
-    coverage, end words, text). Isaac picks; nothing is cut."""
+    coverage, end words, text). The operator picks; nothing is cut."""
     from rpresolve import cutlist
     problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
