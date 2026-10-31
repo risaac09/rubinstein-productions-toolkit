@@ -11,7 +11,7 @@ Top level, with nothing beside it except the lane key.
 | Field | Type | Rule |
 |---|---|---|
 | `schema` | `{name, version}` | `name` is `<lane>.<tool>`, e.g. `cine.perceive`, `sound.audio-report`, `story.story-packet`, `fusion.overlay-check`. `version` is an integer, bumped on any breaking change |
-| `clip_id` | string or null | `<card folder>/<stem>`. The card folder is the nearest folder above the file named `<CAM>-<id6>` (`^[A-Za-z0-9]+-[0-9a-f]{6}$`, the name `offload.sh` gives a card copy); otherwise the file's own folder (renders, flat handoff folders). `offload.sh` keeps the card tree, so `S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV` gives `S5II-a1b2c3/P1039630`, and the Archive and Work copies give the same id. An id two clips in one shoot share is flagged (`shared_ids`) and never joined on. Null when the sidecar covers more than one clip; its records then carry a `clip_id` each |
+| `clip_id` | string or null | `<card folder>/<stem>`. The card folder is the nearest folder above the file named `<CAM>-<id6>` (`^[A-Za-z0-9]+-[0-9a-f]{6}$`, the name `offload.sh` gives a card copy); otherwise the file's own folder (renders, flat handoff folders). `offload.sh` keeps the card tree, so `S5II-a1b2c3/DCIM/100_PANA/P1000110.MOV` gives `S5II-a1b2c3/P1000110`, and the Archive and Work copies give the same id. An id two clips in one shoot share is flagged (`shared_ids`) and never joined on. Null when the sidecar covers more than one clip; its records then carry a `clip_id` each |
 | `source` | `{path, sha256}` | `path` is absolute (a tool resolves a relative one against its working folder). `sha256` is copied from the card's `<CAM>-<id6>.SHA256SUMS` when one covers the file, otherwise null. No tool re-hashes a source for the header |
 | `transfer` | `{tag, read_as}` or null | `tag` is ffprobe's `color_transfer` (`untagged` when empty); `read_as` is the curve the tool assumed, e.g. `BT.1886 display: Rec.709 primaries, 2.4 gamma, D65`. Null for a tool that reads no picture (sound) |
 | `primaries` | `{tag, read_as}` or null | The same for `color_primaries` |
@@ -35,8 +35,8 @@ A `cine.*` sidecar must have non-null `transfer` and `primaries`: picture tools 
 ```json
 {
   "schema": {"name": "cine.perceive", "version": 2},
-  "clip_id": "S5II-a1b2c3/P1039630",
-  "source": {"path": "/Volumes/Work/Active/2026-x/03-Renders/P1039630_v01.mov", "sha256": null},
+  "clip_id": "S5II-a1b2c3/P1000110",
+  "source": {"path": "/Volumes/Work/Active/2026-x/03-Renders/P1000110_v01.mov", "sha256": null},
   "transfer": {"tag": "bt709", "read_as": "BT.1886 display: Rec.709 primaries, 2.4 gamma, D65"},
   "primaries": {"tag": "bt709", "read_as": "Rec.709"},
   "generated_by": {"tool": "rpresolve.perceive", "version": "1a07979"},

@@ -33,6 +33,7 @@ import re
 from . import api, cutlist, settingsguard
 from .deliver import exact_fps
 from .deliver import fps_number as _number  # the leading number of a property ('25.000')
+from .ingest import norm_path  # NFC: a path read back over SMB is often NFD
 
 AUTO = " [auto]"
 
@@ -106,9 +107,9 @@ def find_clip(root, ref, clips=None):
     if by_id:
         return by_id[0], None
     if os.path.isabs(os.path.expanduser(ref)):
-        want = os.path.realpath(os.path.expanduser(ref))
+        want = norm_path(os.path.expanduser(ref))
         by_path = [c for c in clips if c.GetClipProperty("File Path") and
-                   os.path.realpath(c.GetClipProperty("File Path")) == want]
+                   norm_path(c.GetClipProperty("File Path")) == want]
         if len(by_path) == 1:
             return by_path[0], None
         if len(by_path) > 1:

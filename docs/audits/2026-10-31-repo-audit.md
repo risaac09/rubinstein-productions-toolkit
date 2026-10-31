@@ -182,7 +182,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Test: no.
 
 34. **Code and docs name the author as the actor of a procedure** (`production/rpresolve/mcp/tools_write.py:427,891`, `production/rpresolve/mcp/server.py:18`, `production/rpresolve/mcp/session.py:6`, `production/rpresolve/trimreview.py:7`, `production/rpstills/cluster.py:19`, `production/rpstills/audit.py:46`, `production/rpresolve/mixbuild.py:175`, `production/rpstills-audit.md:5`, `production/cue-marker-sync.md:51`). Open PR #290 changes `server.py`.
-    - Problem: strings such as "Isaac starts renders" reach a stranger's client through the MCP tool descriptions and server instructions. The repo's own rule says the author is not the actor here.
+    - Problem: strings that name the author as the one who starts renders reach a stranger's client through the MCP tool descriptions and server instructions. The repo's own rule says the author is not the actor here.
     - Fix: "the operator" or "a person"; for the signed defaults, "working defaults until ...".
     - Test: no.
 
@@ -210,7 +210,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Fix: drop the internal framing and the private reference, or link the public `measurement-framework.md` instead.
 
 40. **The author's machine and storage are named in comments and docs** (`production/rpresolve/api.py:42`, `production/rpresolve/detect.py:13`, `production/resolve-template-spec.md:1013`, `production/rpstills-develop.md:106`, `prompts/skills/agentic-development.md:43`). Open PRs #289 and #290 change `resolve-template-spec.md`.
-    - Problem: "on the M4 Max", "the footage on the NAS", and a personal monthly spend figure. Harmless, but the repo rule names the author's machine as out of scope.
+    - Problem: the author's own machine model, the author's network storage, and a personal monthly spend figure. Harmless, but the repo rule names the author's machine as out of scope.
     - Fix: "on a recent Apple silicon Mac", "against real footage", and drop the spend figure.
 
 Left out: smaller items (a `stabilize` plan hash that can be replayed, `workflows.py:1227-1229`; the render-in-progress refusal applied by only some writes; per-row word scans in `trimreview.py` and `pacing.py`; `manifest.py:66-71` printing a frame label as a duration; the `burst-gate` placeholder filter at `:138` dropping a whole line; `verify-copy.sh` using `mkdir -p` after a long hash).

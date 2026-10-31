@@ -14,6 +14,7 @@ left, plus "px" on the full-resolution upright frame. Flags, per crop:
 
 import json
 import os
+import tempfile
 
 from .cluster import MIN_FACE, counted_faces
 
@@ -136,8 +137,9 @@ def build(rows, clusters, ids, cfg):
 
 def write(out_dir, plan, source, cfg):
     path = os.path.join(out_dir, "crops.json")
-    with open(path, "w") as f:
-        json.dump({"source": source, "config_version": cfg.get("version"), "frames": plan}, f, indent=1, sort_keys=True)
+    from rpresolve.paths import write_private  # temp file and rename: a hard link here never carries the output
+    write_private(path, json.dumps({"source": source, "config_version": cfg.get("version"), "frames": plan},
+                                   indent=1, sort_keys=True))
     return path
 
 
@@ -187,5 +189,12 @@ def preview(out_dir, rows, plan, cfg, limit=24):
     if hidden:
         d.text((4, (T + 16) * len(ids) + 2), f"+{hidden} more flagged frames not shown", fill="white")
     path = os.path.join(out_dir, "crops-preview.jpg")
-    sheet.save(path, quality=82)
+    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".crops-preview-", suffix=".jpg")   # then rename, as finish does:
+    os.close(fd)                                                                     # a hard link here keeps its old bytes
+    try:
+        sheet.save(tmp, "JPEG", quality=82)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
     return path, len(ids), len(plan)

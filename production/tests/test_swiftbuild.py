@@ -1,9 +1,13 @@
 import os
 import stat
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 
-from rpresolve import swiftbuild
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from rpresolve import swiftbuild  # noqa: E402
 
 
 def fake_swiftc(d, ok=True):
@@ -45,6 +49,17 @@ class BuildTests(unittest.TestCase):
         second = swiftbuild.build(self.src, self.cache, c)
         self.assertNotEqual(first, second)
         self.assertEqual(sorted(os.listdir(self.cache)), sorted(map(os.path.basename, (first, second))))
+
+    def test_a_helper_from_the_old_direct_builders_is_not_trusted(self):
+        import hashlib
+        self.write("a")
+        os.makedirs(self.cache)
+        old = os.path.join(self.cache, "h-" + hashlib.sha256(b"a").hexdigest()[:12])
+        with open(old, "wb") as f:   # a half-linked binary an interrupted `swiftc -o` left at the old name
+            f.write(b"\xcf\xfa\xed\xfe")
+        os.chmod(old, 0o755)
+        self.assertIsNone(swiftbuild.build(self.src, self.cache, os.path.join(self.d, "nope")))
+        self.assertNotEqual(swiftbuild.build(self.src, self.cache, fake_swiftc(self.d)), old)
 
     def test_missing_compiler_or_source(self):
         self.write("a")

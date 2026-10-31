@@ -1812,14 +1812,13 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
                 raise Refused(f"with bin, reference and other are absolute paths of files; "
                               f"{p} is not one.")
             paths.append(os.path.realpath(full))
-        if paths[0] == paths[1]:
+        if os.path.samefile(paths[0], paths[1]):  # a hard link, or one name in NFC and NFD
             raise Refused("reference and other are the same file.")
         if any(f.GetName() == bin for f in root.GetSubFolderList() or []):
             raise Refused(f"a bin named '{bin}' already exists at the media pool's root; the run "
                           "imports into a bin it makes and owns. Choose another name.")
-        pooled = {os.path.realpath(c.GetClipProperty("File Path"))
-                  for _, c in sb.walk(root) if c.GetClipProperty("File Path")}
-        already = [p for p in paths if p in pooled]
+        pooled = {rpingest.norm_path(p) for p in rpingest.pool_file_paths(root)}
+        already = [p for p in paths if rpingest.norm_path(p) in pooled]
         if already:
             raise Refused(f"{', '.join(already)} is already in the media pool; name the pool "
                           "clip instead of importing it again (and without autosync).")
@@ -1851,6 +1850,8 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
                               "(offline media); its audio cannot be measured.")
             if not info["fps"] or not info["frames"]:
                 raise Refused(f"Resolve does not report the {role} clip's FPS and Frames.")
+        if os.path.samefile(infos[0]["path"], infos[1]["path"]):
+            raise Refused("reference and other are two pool clips of the same file.")
         if not infos[0]["video"]:
             raise Refused("the reference clip has no video; the reference is the camera clip, "
                           "whose rate the timeline takes.")
@@ -1970,11 +1971,12 @@ def _import_pair(media_pool, root, bin, paths, rate, out):
     if not media_pool.SetCurrentFolder(folder):
         raise api.WriteNotApplied(f"could not open the bin '{bin}' to import into it")
     got = media_pool.ImportMedia(paths) or []
-    by_path = {os.path.realpath(c.GetClipProperty("File Path") or ""): c for c in got if c}
-    out["imported"] = [{"path": p, "uid": _uid(by_path.get(p))} for p in paths]
-    if any(p not in by_path for p in paths):
+    by_norm = {rpingest.norm_path(c.GetClipProperty("File Path") or ""): c for c in got if c}
+    by_path = {p: by_norm.get(rpingest.norm_path(p)) for p in paths}
+    out["imported"] = [{"path": p, "uid": _uid(by_path[p])} for p in paths]
+    if any(by_path[p] is None for p in paths):
         raise api.WriteNotApplied("ImportMedia did not return a clip for " + ", ".join(
-            p for p in paths if p not in by_path) + f"; what it did import is in the bin "
+            p for p in paths if by_path[p] is None) + f"; what it did import is in the bin "
             f"'{bin}'. Nothing was built.")
     clips = {"reference": by_path[paths[0]], "other": by_path[paths[1]]}
     infos = [sb.clip_info(clips["reference"]), sb.clip_info(clips["other"])]
