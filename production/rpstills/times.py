@@ -34,7 +34,8 @@ SEQUENCE = re.compile(r"^(?P<prefix>.*?[A-Za-z].*?)[_-](?P<n>\d{1,6})$")
 def parse_iso(text):
     """A datetime from an ISO-ish string, or None."""
     try:
-        return _dt.datetime.fromisoformat(str(text).strip().replace("Z", ""))
+        # naive wall-clock, like the EXIF times it is compared with
+        return _dt.datetime.fromisoformat(str(text).strip().replace("Z", "")).replace(tzinfo=None)
     except (TypeError, ValueError):
         return None
 
