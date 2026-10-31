@@ -23,7 +23,7 @@
 # are not in the parent transcript and are not counted. The row says
 # basisSource reconstructed for these reasons.
 #
-# Fast and safe: no network, no git, no validate. Any error is logged to
+# Fast and safe: no network, no git writes (one local read of origin/main), no validate. Any error is logged to
 # $SD_ENGAGE_SPOOL/hook.log and the hook exits 0, so it can never fail a wrap.
 # Needs jq; silent without it.
 #
@@ -47,6 +47,8 @@ run() {
   mkdir -p "$SPOOL" || return 0
   # One row per session: skip if the spool or the clone's log already has it.
   grep -qsF "\"$sid\"" "$SPOOL"/aie-*.json "$SPOOL"/rejected/aie-*.json "$SD"/data/ai-engagement-log/*.json 2>/dev/null && return 0
+  # The clone's working tree lags main when it is on a branch or was not pulled after a land; main's log is a local read.
+  git -C "$SD" grep -q -F -e "\"$sid\"" origin/main -- data/ai-engagement-log 2>/dev/null && return 0
 
   local facts
   facts="$(jq -nR '
