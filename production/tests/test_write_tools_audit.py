@@ -7,6 +7,7 @@ plan goes stale when the track moves.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
+import json
 import os
 import sys
 import unicodedata
@@ -19,11 +20,13 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import api, markers, relink as rprelink, trimreview, workflows  # noqa: E402
+from rpresolve import api, markers, relink as rprelink, syncbuild, trimreview, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 import test_mcp_writes2 as w2  # noqa: E402
+import test_reframe_apply as tra  # noqa: E402
 import test_relink as trl  # noqa: E402
+import test_sync_resolve as tsr  # noqa: E402
 import test_trim_markers as ttm  # noqa: E402
 
 HELD = []  # 1 while a ResolveLock is held by the tool under test
@@ -153,6 +156,72 @@ class TestNormalForm(unittest.TestCase):
             "video": [[rf.Item("Café.mov", 100, 150, clip, source=(0, 50))]], "audio": [[]]})
         items, _ = markers.source_items(tl, self.NFC)
         self.assertEqual(len(items["video"]) if isinstance(items, dict) else len(items), 1)
+
+
+class TestReframeNormalForm(tra.Base):
+    def test_an_nfd_clip_path_finds_its_nfc_plan_entry(self):
+        nfc = unicodedata.normalize("NFC", "/media/Café STAND.braw")
+        with open(self.plan_path) as f:
+            plan = json.load(f)
+        for e in plan["items"]:
+            if e["path"] == "/media/STAND.braw":
+                e["path"] = nfc
+        self.plan_path = self.write_plan(plan, "nfc.json")
+        self.stand.props["File Path"] = unicodedata.normalize("NFD", nfc)
+        dry = tra.call("reframe_apply", self.args(), self.resolve)
+        self.assertEqual([t["name"] for t in dry["targets"]], ["STAND"])
+
+
+class TestSyncNormalForm(tsr.Base):
+    """sync compares paths in NFC: Resolve can read a name back in NFD."""
+
+    def both(self, name):
+        nfc = self.file(unicodedata.normalize("NFC", name))
+        return nfc, unicodedata.normalize("NFD", nfc)
+
+    def test_a_pooled_file_in_the_other_form_is_not_imported_again(self):
+        nfc, nfd = self.both("Café.WAV")
+        self.bin.clips.append(rf.Clip("Café.WAV", "clip-cafe", self.rec_props(nfd)))
+        with self.assertRaisesRegex(workflows.Refused, "already in the media pool"):
+            self.run_it(self.file("C001.MOV"), nfc, bin="Sync run", dry_run=True)
+
+    def test_one_file_under_two_names_is_the_same_file(self):
+        nfc, nfd = self.both("Café.MOV")
+        link = os.path.join(self.dir, "link.MOV")
+        os.link(nfc, link)
+        others = [link] + ([nfd] if os.path.exists(nfd) else [])  # NFD names the file on macOS
+        for other in others:
+            with self.assertRaisesRegex(workflows.Refused, "the same file"):
+                self.run_it(nfc, other, bin="Sync run", dry_run=True)
+
+    def test_two_pool_clips_of_one_file_are_refused(self):
+        self.bin.clips.append(rf.Clip("A001 copy", "clip-cam-copy", self.cam_props(self.cam_path)))
+        with self.assertRaisesRegex(workflows.Refused, "the same file"):
+            self.run_it("clip-cam", "clip-cam-copy", dry_run=True)
+
+    def test_a_pool_clip_named_by_the_other_form_is_found(self):
+        nfc, nfd = self.both("Café.MOV")
+        clip = rf.Clip("Café.MOV", "clip-cafe", self.cam_props(nfd))
+        got, why = syncbuild.find_clip(rf.Folder("Master", [clip]), nfc)
+        self.assertIs(got, clip, why)
+
+    def test_an_import_read_back_in_the_other_form_builds(self):
+        cam, _ = self.both("Café.MOV")
+        rec = self.file("ZOOM0001.WAV")
+        rf.IMPORT_PROPS[cam] = {"Type": "Video + Audio", "FPS": "25", "Frames": "1500",
+                                "Audio Ch": "2"}
+        rf.IMPORT_PROPS[rec] = {"Type": "Audio", "FPS": "25", "Duration": tsr.tc(1601, 25),
+                                "Audio Ch": "2"}
+        real = self.project.pool.ImportMedia
+
+        def nfd_import(paths):
+            clips = real(paths)
+            for c in clips:
+                c.props["File Path"] = unicodedata.normalize("NFD", c.props["File Path"])
+            return clips
+        self.project.pool.ImportMedia = nfd_import
+        dry, r = self.twice(cam, rec, bin="Sync run")
+        self.assertEqual(r["exit_status"], 0, r["problems"])
 
 
 if __name__ == "__main__":
