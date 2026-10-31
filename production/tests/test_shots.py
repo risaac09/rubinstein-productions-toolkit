@@ -170,6 +170,20 @@ def stack(plan, seed=0, noise=0.4):
 
 
 @needs_numpy
+class TestBudget(unittest.TestCase):
+    def test_a_file_over_the_budget_is_refused_naming_the_limit_and_the_way_out(self):
+        proc = mock.Mock(returncode=0, stderr="")
+        with mock.patch.object(dc, "check_tools"), mock.patch("os.path.isfile", return_value=True), \
+                mock.patch.object(dc, "probe", return_value={"streams": [{"codec_type": "video", "avg_frame_rate": "25/1"}]}), \
+                mock.patch.object(dc, "duration", return_value=3 * 3600.0), mock.patch.object(dc, "_run", return_value=proc), \
+                mock.patch.object(shots, "grey_frames", side_effect=AssertionError("decoded")):
+            with self.assertRaises(dc.CheckError) as cm:
+                shots.build("long.mov")
+        self.assertIn("1 h", str(cm.exception))
+        self.assertIn("--no-dissolves", str(cm.exception))
+
+
+@needs_numpy
 class TestFindDissolves(unittest.TestCase):
     def test_lengths_found_with_their_frames(self):
         for n in (5, 8, 15, 30, 60):

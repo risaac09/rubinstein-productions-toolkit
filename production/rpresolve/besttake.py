@@ -256,7 +256,7 @@ def audio_measures(wav):
         if m["level_spread_db"] < MIN_SPREAD_DB:
             notes.append(f"level spread {m['level_spread_db']:g} dB: no room-tone stretch, so "
                          f"speech share and noise floor are unreliable")
-        dx = dxm.measure(wav)
+        dx = dxm.measure(wav, max_seconds=None)  # a long take scored before the budget existed
         m["integrated_lufs"], m["wada_snr_db"] = dx["integrated_lufs"], dx["wada_snr_db"]
     return m, notes
 
@@ -271,7 +271,11 @@ def video_measures(path, kinds, m, notes, words_path, faces):
         except (OSError, ValueError) as e:
             notes.append(f"transcript not read: {e}")
     if "video" in kinds:
-        sh = shots.build(path)
+        try:
+            sh = shots.build(path)
+        except shots.TooLong:
+            sh = shots.build(path, dissolves=False)
+            notes.append("over 1 h: cut count excludes dissolves")
         m["cuts"] = len(sh["cuts"])
         m["cuts_per_min"] = round(len(sh["cuts"]) / m["duration_s"] * 60, 1)
         m["longest_shot_share"] = round(max(s["duration"] for s in sh["shots"]) / sh["duration_s"], 3)
