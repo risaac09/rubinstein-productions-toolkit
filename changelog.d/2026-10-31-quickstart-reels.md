@@ -1,0 +1,1 @@
+The media lane quickstart gains section 6, the offline reel lane from card to clip set (offload, transcribe, reel-spans, the 30-minute gate, vertcut cut for social_9x16 with the person's own hook, lettered choices, deliver-check, qc, release-check), with the three open rulings and their defaults; a test checks every command and flag in it against the CLIs' --help.
