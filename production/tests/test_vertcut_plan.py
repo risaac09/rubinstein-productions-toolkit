@@ -324,7 +324,8 @@ class TestBoundedCaptions(unittest.TestCase):
                 r = subprocess.run([FFMPEG, "-hide_banner", "-i", old, "-i", new, "-lavfi", "psnr=stats_file=" + stats,
                                     "-f", "null", "-"], capture_output=True, text=True)
                 line = [ln for ln in r.stderr.splitlines() if "PSNR y:" in ln][-1]
-                self.assertIn("y:inf", line)                     # every luma sample of every frame, equal
+                bad = [ln.split()[0] for ln in Path(stats).read_text().splitlines() if "psnr_y:inf" not in ln]
+                self.assertIn("y:inf", line, "frames that differ: %s" % bad[:20])   # every luma sample, equal
                 u = float(line.split("u:")[1].split()[0])
                 self.assertGreater(u, 55.0, line)                # chroma: a few 2x2 blocks at rounded corners
 
