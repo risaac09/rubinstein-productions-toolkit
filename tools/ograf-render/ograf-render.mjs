@@ -350,6 +350,7 @@ async function main() {
 
     let painted = false;
     const fontWaitTimeouts = [];
+    let probing = false;  // determinism revisits are not the stored frames
     const visit = async (i) => {
       const timestamp = (i * 1000) / fps.value;
       ok(await call("goToTime", { timestamp }), `goToTime(${timestamp})`);
@@ -365,7 +366,7 @@ async function main() {
         await document.fonts.ready;
         return true;
       })()])`);
-      if (!settled) fontWaitTimeouts.push(i);  // captured anyway; the report says so
+      if (!settled && !probing) fontWaitTimeouts.push(i);  // captured anyway; the report says so
       const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true });
       return { png: Buffer.from(shot.data, "base64"), boxes: await evaluate(cdp, BOXES_JS) };
     };
@@ -383,6 +384,7 @@ async function main() {
     // in goToTime, gives a different PNG.
     const probe = [...new Set([first, last, ...Array.from({ length: 6 }, (_, k) => first + Math.round(((last - first) * (k + 1)) / 7))])].sort((a, b) => b - a);
     const drift = [];
+    probing = true;
     for (const i of probe) {
       if (sha256((await visit(i)).png) !== report.hashes[i]) drift.push(i);
     }
