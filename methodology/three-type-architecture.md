@@ -2,7 +2,7 @@
 
 # Three-Type Information Architecture
 *The epistemological foundation of the Bilingual Dashboard*
-*Authored 2026-05-09 | Read alongside: RP Measurement Framework, Nomadic Indicators Codebook, Say Why - Canonical Positioning & Skill Embedding*
+*Authored 2026-05-09 | Read alongside: [Measurement Framework](measurement-framework.md), [Nomadic Indicators Codebook](nomadic-indicators-codebook.md)*
 
 ---
 
@@ -24,7 +24,7 @@ This document does three things:
 2. Specifies the translation logic, and its limits, between the three types.
 3. Names what remains client-facing (the two-register Bilingual Dashboard) and what is internal methodology (the third type as backstop).
 
-It is an internal canonical. The client-facing language remains Royal/Nomadic, integrated into the Bilingual Dashboard format described in RP Measurement Framework §4.
+It is the foundation under the measurement framework, not a client document. The client-facing language remains Royal/Nomadic, integrated into the Bilingual Dashboard format described in RP Measurement Framework §4.
 
 ---
 

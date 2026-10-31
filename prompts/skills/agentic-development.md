@@ -40,7 +40,7 @@ Plan changes by file impact rather than perceived difficulty.
 
 ### 2. Model Selection and Economics
 
-**Subscription Economics**: Running 4-5 AI subscriptions (~$1k/month) provides effectively unlimited tokens versus per-API-call pricing that costs 5-10x more. This enables context-wasteful usage and multiple parallel agents.
+**Subscription Economics**: Running several AI subscriptions provides effectively unlimited tokens versus per-API-call pricing that costs 5-10x more. This enables context-wasteful usage and multiple parallel agents.
 
 **Model Characteristics**:
 - **GPT-5-Codex**: Reads extensively before acting, requires shorter prompts (1-2 sentences often suffice), more cautious with pushback on questionable requests, introverted communication style

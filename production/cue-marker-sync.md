@@ -28,7 +28,7 @@ Three lanes put marks on one timeline and two of them judge audio against pictur
 | `snd:` | sound |
 | `fx:` | Fusion and motion |
 
-A lane writes, edits and deletes only the markers carrying its own prefix. It reads the others and never changes them. A marker with no prefix belongs to a person: no tool touches it. A tool that writes markers to a timeline adds only its own prefix; one that removes its markers matches on the prefix, never on colour. A lane keeps its own colour so a person can tell them apart on the timeline; which colour each lane takes is unset: a lane proposes one and Isaac signs it.
+A lane writes, edits and deletes only the markers carrying its own prefix. It reads the others and never changes them. A marker with no prefix belongs to a person: no tool touches it. A tool that writes markers to a timeline adds only its own prefix; one that removes its markers matches on the prefix, never on colour. A lane keeps its own colour so a person can tell them apart on the timeline; which colour each lane takes is unset: a lane proposes one and the operator signs it.
 
 ## The sync sign
 
@@ -48,7 +48,7 @@ This contract takes the BT.1359 sign and treats early sound as the stricter side
 
 ## The sync window
 
-Working defaults, signed by Isaac on 2026-10-20 as house defaults until BT.1359 and EBU R37 are read at source:
+Working defaults until BT.1359 and EBU R37 are read at source:
 
 | Check | Default |
 |---|---|

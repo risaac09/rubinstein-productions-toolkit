@@ -6,7 +6,7 @@ installed (DaVinciResolveScript is imported lazily inside connect()).
 Safety rules for every script built on this module:
     1. Act only on the project that is already open. Pin it with
        ProjectPin at start and call check() before each batch of writes;
-       Isaac edits live, so a script must stop if he switched projects.
+       the operator edits live, so a script must stop if they switched projects.
     2. Never call ProjectManager.LoadProject or CreateProject. Opening or
        creating projects is a human decision made in the Resolve UI, with
        no exception: a test fails the build if any non-test file under
@@ -39,7 +39,7 @@ SCRIPT_MODULE_DIR = (
 
 # Folders Resolve scans for LUTs on macOS. Graph.GetLUT may report a path
 # relative to one of these rather than the absolute path passed to SetLUT.
-# ~/DaVinci Resolve/LUT is where the user LUTs actually live on the M4 Max
+# ~/DaVinci Resolve/LUT is where user LUTs usually live on a recent Apple silicon Mac
 # (read from disk 2026-09-26); the ~/Library folder is kept for other setups.
 DEFAULT_LUT_ROOTS = (
     "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT",

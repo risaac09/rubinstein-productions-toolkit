@@ -20,7 +20,7 @@ def add_arguments(p):
 
 def run(args):
     """Propose spans inside the approved text, as a TSV (in, out, seconds,
-    coverage, end words, text). Isaac picks; nothing is cut."""
+    coverage, end words, text). The operator picks; nothing is cut."""
     from rpresolve import cutlist
     try:
         words = cutlist.load_words(args.words)
