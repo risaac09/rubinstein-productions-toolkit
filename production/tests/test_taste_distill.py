@@ -125,6 +125,14 @@ class DistillTests(unittest.TestCase):
                  [ev("B", ts=f"r{i}", repeat_of="t0") for i in range(2)]
         self.assertEqual(distill(events)["look"]["pairs"], 21)
 
+    def test_reel_questions_group_by_question_key(self):
+        # Reel answers carry a `question`: five consistent endings form a rule, three tempo answers do not.
+        ends = [ev("A", question="ending", opts={"A": "loop", "B": "cut off"}) for _ in range(5)]
+        tempo = [ev("B", question="tempo", opts={"A": "slow", "B": "fast"}) for _ in range(3)]
+        res = distill(ends + tempo)
+        self.assertEqual((res["ending"]["verdict"], res["ending"]["direction"]), ("rule", "loop"))
+        self.assertEqual(res["tempo"]["verdict"], "not yet a rule")
+
     def test_noise_types_not_pooled(self):
         events = [ev("A", step="sound", noise_type="rumble")] * 3 + \
                  [ev("A", step="sound", noise_type="wind")] * 3
