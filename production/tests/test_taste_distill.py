@@ -110,6 +110,21 @@ class DistillTests(unittest.TestCase):
         events = [ev("A", stimulus=str(i)) for i in range(7)] + [ev("B", stimulus="z")]
         self.assertEqual(distill(events)["look"]["verdict"], "rule")
 
+    def test_repeat_of_chain_blocks_below_80(self):
+        # Each line repeats the one before it (a chain back to t0): 11 of 21 pairs agree.
+        events = [ev(c, ts=f"t{i}", **({"repeat_of": f"t{i - 1}"} if i else {}))
+                  for i, c in enumerate("AAAAABB")]
+        r = distill(events)["look"]
+        self.assertEqual((r["verdict"], r["agree"], r["pairs"]), ("inconsistent, no rule", 11, 21))
+        for e in events:
+            e.pop("repeat_of", None)
+        self.assertEqual(distill(events)["look"]["verdict"], "rule")
+
+    def test_repeat_of_joins_the_originals_stimulus(self):
+        events = [ev("A", ts="t0", stimulus="s")] + [ev("A", stimulus="s")] * 4 + \
+                 [ev("B", ts=f"r{i}", repeat_of="t0") for i in range(2)]
+        self.assertEqual(distill(events)["look"]["pairs"], 21)
+
     def test_noise_types_not_pooled(self):
         events = [ev("A", step="sound", noise_type="rumble")] * 3 + \
                  [ev("A", step="sound", noise_type="wind")] * 3

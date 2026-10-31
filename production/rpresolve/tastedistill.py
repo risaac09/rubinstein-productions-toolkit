@@ -11,8 +11,10 @@ no choice (a reason only) is counted apart and not used.
 A rule needs MIN_ANSWERS answers for one direction, a majority of the question's
 answers, AND the repeat-pair check: lines sharing a `stimulus` key (one comparison
 asked again, perhaps with its options shuffled) must agree in pairs at least
-REPEAT_AGREEMENT of the time. A line without `stimulus` joins no repeat group:
-different clips offering the same options are not repeats.
+REPEAT_AGREEMENT of the time. A line with `repeat_of` (the `ts` of the line it
+repeats) joins the group of the original that chain ends at, the original with
+it. A line with neither key joins no repeat group: different clips offering the
+same options are not repeats.
 """
 
 import json
@@ -90,16 +92,39 @@ def _repeat_agreement(answers):
     return agree, pairs
 
 
+def _repeat_keys(events):
+    """{line number: repeat-group key}: the line's `stimulus`, else that of the
+    original its `repeat_of` chain (by `ts`) ends at, else the original's `ts`
+    when the line repeats or is repeated. Lines in no group are absent."""
+    by_ts, cited = {}, set()
+    for _, e in events:
+        by_ts.setdefault(str(e.get("ts")), e)
+        if e.get("repeat_of"):
+            cited.add(str(e["repeat_of"]))
+    keys = {}
+    for n, e in events:
+        seen = set()
+        while not e.get("stimulus") and e.get("repeat_of") and id(e) not in seen:
+            seen.add(id(e))
+            ts = str(e["repeat_of"])
+            e = by_ts.get(ts, {"ts": ts})  # an original missing from the log still groups its repeats
+        if e.get("stimulus"):
+            keys[n] = "stimulus:" + str(e["stimulus"])
+        elif seen or str(e.get("ts")) in cited:
+            keys[n] = "ts:" + str(e.get("ts"))
+    return keys
+
+
 def distill(events):
     """Per question: counts, the verdict and the evidence. Pure; no I/O."""
     by_q = defaultdict(list)
+    keys = _repeat_keys(events)
     for n, e in events:
         d = _direction(e)
         if d is None:
             continue
         opts = tuple(sorted(str(v) for v in e["options"].values()))
-        key = str(e["stimulus"]) if e.get("stimulus") else None
-        by_q[_question(e)].append((n, opts, key, d))
+        by_q[_question(e)].append((n, opts, keys.get(n), d))
     out = {}
     for q, answers in sorted(by_q.items()):
         counts = Counter(a[3] for a in answers)
