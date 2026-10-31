@@ -1,7 +1,8 @@
 """
 release-check: one READY or BLOCKED table over an upload folder. Read-only.
 
-Per video file in the folder (flat; SHA256SUMS is the only other file read):
+Per video file in the folder, flat or one destination subfolder deep (the delivery
+layout <folder>/<destination key>/<files>; SHA256SUMS is the only other file read):
   sha       the file matches its SHA256SUMS line (manifest.sha256)
   name      the house rule (deliver.parse_name)
   stub      a ledger stub (deliver-check --ledger-row) says pass for this sha256
@@ -92,14 +93,35 @@ def _title_problem(title, count):
     return None
 
 
+def _videos(folder):
+    """(video paths relative to folder, other entries): files at the top level and one
+    destination subfolder down; anything else is reported, not checked."""
+    names, other = [], []
+    for n in sorted(os.listdir(folder)):
+        p = os.path.join(folder, n)
+        if n.startswith(".") or n == SUMS:
+            continue
+        if os.path.isdir(p):
+            for m in sorted(os.listdir(p)):
+                if m.startswith("."):
+                    continue
+                rel = f"{n}/{m}"
+                is_video = os.path.isfile(os.path.join(p, m)) and os.path.splitext(m)[1].lower() in mf.VIDEO_EXTS
+                (names if is_video else other).append(rel)
+        elif os.path.splitext(n)[1].lower() in mf.VIDEO_EXTS:
+            names.append(n)
+        else:
+            other.append(n)
+    return names, other
+
+
 def check(folder, titles, review_log=None, stubs=None):
     """(rows, orphans, verdict, other). rows: [{file, cells: {column: (status, note)}}]
     with status PASS, FAIL, BLOCK or SKIP; orphans: title or SHA256SUMS entries with no file; other: files not checked."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise ReleaseError(f"{folder} is not a folder")
-    names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n))
-                   and os.path.splitext(n)[1].lower() in mf.VIDEO_EXTS)
+    names, other = _videos(folder)
     sums, stub_rows = read_sums(folder), (read_stubs(stubs) if stubs else None)
     events = None
     if review_log:
@@ -117,23 +139,23 @@ def check(folder, titles, review_log=None, stubs=None):
             seen[t.casefold()] = seen.get(t.casefold(), 0) + 1
     rows = []
     for name in names:
-        path = os.path.join(folder, name)
+        path, base = os.path.join(folder, name), os.path.basename(name)
         try:
             actual, cells = mf.sha256(path), {}
         except OSError as e:
             raise ReleaseError(f"cannot read {path}: {e.strerror}")
-        want = sums.get(name)
+        want = sums.get(name, sums.get(base))
         cells["sha"] = (("FAIL", "no SHA256SUMS file or line") if want is None else
                         ("PASS", "") if want == actual else ("FAIL", "does not match SHA256SUMS"))
         try:
-            deliver.parse_name(name)
+            deliver.parse_name(base)
             cells["name"] = ("PASS", "")
         except deliver.NameRuleError as e:
             cells["name"] = ("FAIL", str(e))
         if stub_rows is None:
             cells["stub"] = ("SKIP", "--stubs not given")
         else:
-            s = stub_rows.get(name)
+            s = stub_rows.get(base)
             cells["stub"] = (("BLOCK", "no ledger stub") if s is None else
                              ("FAIL", "stub is not a pass") if s.get("check_status") != "pass" else
                              ("FAIL", "stub sha256 differs") if s.get("sha256") != actual else ("PASS", ""))
@@ -142,7 +164,7 @@ def check(folder, titles, review_log=None, stubs=None):
         else:
             line, why = dc.find_approval(events, path, actual)
             cells["approval"] = ("PASS", line.get("ts", "")) if line else ("BLOCK", why)
-        ts = by_file.get(name)
+        ts = by_file.get(base)
         if not ts:
             cells["title"] = ("FAIL", "no title row")
         else:
@@ -151,9 +173,9 @@ def check(folder, titles, review_log=None, stubs=None):
                 bad.append("two title rows")
             cells["title"] = ("FAIL", "; ".join(bad)) if bad else ("PASS", "")
         rows.append({"file": name, "cells": cells})
-    orphans = sorted(n for n in by_file if n not in names)
-    gone = sorted(n for n in sums if n not in names)
-    other = sorted(n for n in os.listdir(folder) if n not in names and n != SUMS and not n.startswith("."))
+    bases = {os.path.basename(n) for n in names}
+    orphans = sorted(n for n in by_file if n not in bases)
+    gone = sorted(n for n in sums if n not in names and n not in bases)
     states = {s for r in rows for s, _ in r["cells"].values()}
     verdict = "READY" if rows and not orphans and not gone and not states & {"FAIL", "BLOCK"} else "BLOCKED"
     return rows, orphans + [f"{n} (SHA256SUMS)" for n in gone], verdict, other
