@@ -152,6 +152,21 @@ class TestTimelineItems(Base):
         self.assertEqual(r["timeline"]["unique_id"], "tl-5")
 
 
+class TestPagingReadsOnlyThePage(Base):
+    def test_page_of_10_from_1000_items_reads_10(self):
+        items = [rf.Item(f"i{n}", n, n + 1) for n in range(1000)]
+        self.project.timelines.append(rf.Timeline("big", "tl-big", tracks={"video": [items], "audio": [[]]}))
+        with mock.patch.object(rf.Item, "GetProperty", autospec=True, return_value=1.0) as gp:
+            r = call("timeline_items", {"timeline": "tl-big", "limit": 10, "offset": 20,
+                                        "grades": False}, self.project)
+        self.assertEqual((r["total"], r["returned"], r["next_offset"]), (1000, 10, 30))
+        self.assertEqual(gp.call_count, 10 * len(self.transform_keys()))
+
+    def transform_keys(self):
+        from rpresolve.mcp import tools_read
+        return tools_read.TRANSFORM
+
+
 class TestMediaPool(Base):
     def test_tree_and_folder_clips(self):
         r = call("media_pool", {"depth": 1}, self.project)

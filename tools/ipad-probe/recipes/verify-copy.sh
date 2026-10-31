@@ -135,10 +135,14 @@ for d in "$@"; do
     continue
   fi
   total=$((total + 1))
-  mkdir -p "$d" || die "cannot make $d"
+  # The hash can take long: a parent that vanished meanwhile is a dropped drive, never recreated.
+  case "$d" in */*) parent=${d%/*}; [ -n "$parent" ] || parent=/ ;; *) parent=. ;; esac
+  [ -d "$parent" ] || die "$parent vanished while hashing (unplugged drive?); $d was not made"
+  [ -d "$d" ] || mkdir "$d" || die "cannot make $d"
   cp "$tmp/sums" "$d.SHA256SUMS" || die "cannot write $d.SHA256SUMS"
   bad=0
   while IFS= read -r rel; do
+    [ -d "$d" ] || die "$d vanished while copying (unplugged drive?)"
     case "$rel" in */*) mkdir -p "$d/${rel%/*}" ;; esac
     # Counted once, by the check below, which finds it missing or different.
     "$CP" -p "$src/$rel" "$d/$rel" || echo "verify-copy: copy failed: $rel" >&2

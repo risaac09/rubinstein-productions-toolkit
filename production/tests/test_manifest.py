@@ -63,7 +63,7 @@ GOLDEN = """\
 |---|---|---|---|---|---|---|---|---|---|
 | Client_example-slug_master.mov | mov | prores HQ, yuv422p10le | 64x36 | 25 | 00:00:02.00 | <loudness> | <sha256> | client_master | AP-1 |
 | SW001_Guest_01_example-clip_16x9.mp4 | mp4 | h264, yuv420p | 64x36 | 25 | 00:00:02.00 | <loudness> | <sha256> | youtube_16x9 | AP-1 |
-| SW001_Guest_01_example-clip_16x9.srt | srt | n/a | n/a | n/a | 00:00:01.50 | n/a | <sha256> | youtube_16x9 | AP-1 |
+| SW001_Guest_01_example-clip_16x9.srt | srt | n/a | n/a | n/a | 00:00:01.50 (hundredths) | n/a | <sha256> | youtube_16x9 | AP-1 |
 
 ## Licences used
 
