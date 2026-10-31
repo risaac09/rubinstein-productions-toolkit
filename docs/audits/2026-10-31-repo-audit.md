@@ -34,7 +34,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
    - Fix: call `rpresolve.paths.out_problem(os.path.join(out, "index.jsonl"), any_git_tree=True)` once at the top of `main` for these commands.
    - Test: no.
 
-5. **`vertcut cut` writes into the current folder by default** (`tools/vertcut/lib/vertcut_cut.py:387`)
+5. **`vertcut cut` writes into the current folder by default** (`tools/vertcut/lib/vertcut_cut.py:460`) Fixed in #338.
    - Problem: the default `-o vertcut-out` is relative. Run from a repo root, the captioned clips and `.srt` files (client speech) land in the tree; `.gitignore` covers neither `vertcut-out/` nor `*.mp4`. The recipes in `tools/ipad-probe/recipes/` refuse a git tree.
    - Fix: refuse an output folder inside a git tree, as `tools/ipad-probe/recipes/loudness.sh:43-48` does.
    - Test: no.
