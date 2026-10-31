@@ -53,13 +53,31 @@ class DistillTests(unittest.TestCase):
         self.assertEqual(distill([ev("A")] * 3 + [flipped] * 2)["look"]["direction"], "warm")
 
     def test_repeat_pairs_below_80_block(self):
-        r = distill([ev("A")] * 5 + [ev("B")] * 3)["look"]
+        events = [ev("A", stimulus="s")] * 5 + [ev("B", stimulus="s")] * 3
+        r = distill(events)["look"]
         self.assertEqual(r["verdict"], "inconsistent, no rule")
         self.assertEqual((r["agree"], r["pairs"]), (13, 28))
 
     def test_repeat_pairs_at_80_pass(self):
-        r = distill([ev("A")] * 9 + [ev("B")])["look"]  # 36 of 45 pairs agree
+        r = distill([ev("A", stimulus="s")] * 9 + [ev("B", stimulus="s")])["look"]  # 36 of 45
         self.assertEqual(r["verdict"], "rule")
+
+    def test_five_of_six_different_clips_is_a_rule(self):
+        r = distill([ev("A")] * 5 + [ev("B")])["look"]  # same options, no stimulus: no repeats
+        self.assertEqual((r["verdict"], r["pairs"]), ("rule", 0))
+
+    def test_null_options_is_not_malformed(self):
+        e = ev("none")
+        e["options"] = None
+        events, bad = td.read_events(self._write_tmp([json.dumps(e)]))
+        self.assertEqual((len(events), bad), (1, 0))
+
+    def _write_tmp(self, lines):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = os.path.join(tmp.name, "events.jsonl")
+        Path(p).write_text("\n".join(lines) + "\n")
+        return p
 
     def test_ratings_have_no_repeat_group(self):
         events = [ev(c, step="grade") for c in (5, 5, 5, 5, 5, 4, 3)]
@@ -109,8 +127,10 @@ class FileTests(unittest.TestCase):
         ap = argparse.ArgumentParser()
         cmd_taste_profile.add_arguments(ap)
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = cmd_taste_profile.run(ap.parse_args(argv))
+        self.err = err.getvalue()
         return code, out.getvalue()
 
     def test_malformed_counted_not_fatal(self):
@@ -141,7 +161,9 @@ class FileTests(unittest.TestCase):
         dest = os.path.join(repo, "taste-profile.md")
         code, out = self.run_cmd(self.log, "--out", dest)
         self.assertEqual(code, 1)
-        self.assertIn("git working tree", out)
+        self.assertEqual(out, "")
+        self.assertIn("ERROR", self.err)
+        self.assertIn("git working tree", self.err)
         self.assertFalse(os.path.exists(dest))
 
 

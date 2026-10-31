@@ -9,10 +9,10 @@ in `options` (a non-label choice such as `none` stands for itself). A line with
 no choice (a reason only) is counted apart and not used.
 
 A rule needs MIN_ANSWERS answers for one direction, a majority of the question's
-answers, AND the repeat-pair check: where the same stimulus (the optional
-`stimulus` key, else the same set of options) was asked more than once, pairs of
-answers must agree at least REPEAT_AGREEMENT of the time. A line with no options
-and no `stimulus` (a rating, `go`) has no repeat group.
+answers, AND the repeat-pair check: lines sharing a `stimulus` key (one comparison
+asked again, perhaps with its options shuffled) must agree in pairs at least
+REPEAT_AGREEMENT of the time. A line without `stimulus` joins no repeat group:
+different clips offering the same options are not repeats.
 """
 
 import json
@@ -46,10 +46,11 @@ def read_events(path):
             except ValueError:
                 malformed += 1
                 continue
-            if not isinstance(e, dict) or not isinstance(e.get("options", {}), dict):
+            if isinstance(e, dict) and e.get("options") is None:
+                e["options"] = {}
+            if not isinstance(e, dict) or not isinstance(e["options"], dict):
                 malformed += 1
                 continue
-            e.setdefault("options", {})
             c = e.get("choice")
             if isinstance(c, (dict, list)) or (isinstance(c, str) and e["options"]
                                                and c not in e["options"] and c not in NON_LABEL):
@@ -73,7 +74,7 @@ def _direction(e):
 
 
 def _repeat_agreement(answers):
-    """(agreeing pairs, pairs) over answers to the same option set."""
+    """(agreeing pairs, pairs) over answers sharing a stimulus key."""
     groups = defaultdict(Counter)
     for _, _, key, d in answers:
         if key:
@@ -94,7 +95,7 @@ def distill(events):
         if d is None:
             continue
         opts = tuple(sorted(str(v) for v in e["options"].values()))
-        key = ("stimulus", str(e["stimulus"])) if e.get("stimulus") else opts
+        key = str(e["stimulus"]) if e.get("stimulus") else None
         by_q[_question(e)].append((n, opts, key, d))
     out = {}
     for q, answers in sorted(by_q.items()):

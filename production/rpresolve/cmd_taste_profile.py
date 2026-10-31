@@ -5,6 +5,8 @@ with --out, and never inside a git working tree. The profile orders options and
 never picks. Reads one file and touches neither Resolve nor the log.
 """
 
+import sys
+
 from rpresolve import cli
 
 NAME = "taste-profile"
@@ -21,13 +23,13 @@ def run(args):
     try:
         text = tastedistill.build(args.log)
     except OSError as e:
-        print(f"ERROR: {e}")
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if args.out:
         try:
             paths.write_private(args.out, text, any_git_tree=True)
         except (paths.OutputRefused, OSError) as e:
-            print(f"ERROR: {e}")
+            print(f"ERROR: {e}", file=sys.stderr)
             return 1
         print(f"Wrote {args.out}")
         return 0
