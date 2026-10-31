@@ -162,6 +162,13 @@ class TestPagingReadsOnlyThePage(Base):
         self.assertEqual((r["total"], r["returned"], r["next_offset"]), (1000, 10, 30))
         self.assertEqual(gp.call_count, 10 * len(self.transform_keys()))
 
+    def test_a_media_pool_page_of_10_from_1000_clips_reads_10(self):
+        self.project.pool.root = rf.Folder("Master", [rf.Clip(f"c{n}", f"id{n}") for n in range(1000)])
+        with mock.patch.object(rf.Clip, "GetClipProperty", autospec=True, return_value={}) as gp:
+            r = call("media_pool", {"limit": 10, "offset": 20}, self.project)
+        self.assertEqual((r["total"], r["returned"], r["next_offset"]), (1000, 10, 30))
+        self.assertEqual(gp.call_count, 10)
+
     def transform_keys(self):
         from rpresolve.mcp import tools_read
         return tools_read.TRANSFORM
