@@ -20,7 +20,9 @@ def build(source, cache_dir, swiftc=None):
     swiftc = swiftc or SWIFTC
     try:
         with open(source, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
+            # salted: the helpers built before this module wrote straight to this name, so an
+            # interrupt could leave a broken binary there; a new name never trusts one of those
+            digest = hashlib.sha256(b"swiftbuild 1\0" + f.read()).hexdigest()[:12]
     except OSError:
         return None
     path = os.path.join(cache_dir, f"{os.path.splitext(os.path.basename(source))[0]}-{digest}")

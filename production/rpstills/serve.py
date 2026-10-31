@@ -36,6 +36,7 @@ import ipaddress
 import os
 import re
 import sys
+import unicodedata
 import urllib.parse
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -92,6 +93,14 @@ def parse_range(header, size):
     return start, size - 1 if last == "" else min(int(last), size - 1)
 
 
+def _hidden(path):
+    """True when the asked name, or the file a link resolves to, folds to a hidden name.
+    NFKC and casefold, because APFS matches a long s (U+017F) to s and the Kelvin sign
+    (U+212A) to k, which a plain lower() does not."""
+    names = (os.path.basename(path), os.path.basename(os.path.realpath(path)))
+    return any(unicodedata.normalize("NFKC", n).casefold() in HIDDEN_NAMES for n in names)
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "rpstills-serve"
     protocol_version = "HTTP/1.1"      # keep-alive; every response carries Content-Length
@@ -132,14 +141,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.MISDIRECTED_REQUEST, "Unexpected Host")
             return None
         path = self.translate_path(self.path)
-        if os.path.basename(path).lower() in HIDDEN_NAMES:
-            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
-            return None
         if path.endswith("/") and os.path.isdir(path):
             # a folder URL's index page goes through the same root check, ranges and no-cache as any file
             path = next((p for p in (path + "index.html", path + "index.htm") if os.path.exists(p)), path)
         if not self._inside_root(path):
             self.send_error(HTTPStatus.FORBIDDEN, "Outside the served folder")
+            return None
+        if _hidden(path):              # after the root check, which refuses a NUL or a lone surrogate
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
             return None
         if not os.path.isfile(path):   # folders (index.html, listing, redirect) and 404s
             return super().send_head()

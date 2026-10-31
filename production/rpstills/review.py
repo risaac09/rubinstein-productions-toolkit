@@ -140,6 +140,6 @@ def build(out_dir, session, source, rows, clusters, cull, title=None):
     page = (TEMPLATE.replace("__TITLE__", html.escape(title or f"Review: {session}"))
             .replace("__DATA__", json.dumps(data, sort_keys=True).replace("</", "<\\/")))
     path = os.path.join(out_dir, "review.html")
-    with open(path, "w") as f:
-        f.write(page)
+    from rpresolve.paths import write_private  # temp file and rename: a hard link here never carries the output
+    write_private(path, page)
     return path
