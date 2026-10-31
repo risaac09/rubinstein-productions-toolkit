@@ -49,13 +49,35 @@ The shared look is one of lutlab's six, from its `[RCM]` set, baked at 65 points
 
 ### Node structure (per clip)
 
-```
-Node 1: Balance (per clip: exposure, white balance, matching across cameras)
-Node 2: Look (one [RCM] look, the same file on every clip in the piece)
-Node 3: Creative grade (per clip, as needed)
-```
+A template is a whole graph. A `.drx` replaces a clip's graph and does not append to it, only clip graphs accept one, and the scripting API cannot make nodes. So each template carries the corrective nodes, the look and the tail in one file. The nodes are serial, in this order, and the labels are exact strings so a read-back of the node graph can check them.
 
-Node 1 works in DaVinci Intermediate on every camera, which is what makes matching across cameras one job rather than three.
+| # | Label | Job |
+|---|---|---|
+| 1 | `NR` | Noise reduction, off by default. Temporal before spatial, chroma heavy, luma light. |
+| 2 | `EXP` | Exposure. Offset or HDR Offset, not lift and gamma. |
+| 3 | `WB` | White balance and shot balance. The only node a script writes (see Open spikes). By hand: desaturate a still, wipe to a white area, then temperature and tint to neutral. |
+| 4 | `CON` | Contrast, composite mode Luminosity, so it moves brightness and leaves hue and saturation alone. Pivot at 18% grey in DaVinci Intermediate. Toggling it must not move 18% grey. |
+| 5 | `SAT` | Saturation and density. HSV saturation; Color Slice for density instead of louder colour. |
+| 6 | `SKIN` | Skin qualifier, off by default. Skin stays on the vectorscope line. |
+| 7 | `WIN` | Windows and depth, off by default. Power windows, tracker, Depth Map (Studio). |
+| 8 | `LOOK` | The look, at full strength. One `[RCM]` look, the same file on every clip in the piece. |
+| 9 | `TEX` | Halation and grain, last before the tail. |
+| 10 | `CST OUT` | Tail: DaVinci Intermediate to the display space, no tone map. |
+| 11 | `LUT` | Tail: display LUT slot, set with `SetLUT` (scriptable). |
+
+Nodes 10 and 11 are for a project that grades to a display space itself. In a colour-managed project (the pipeline of record above) Resolve's output transform does that work, so leave both empty there.
+
+Everything works in DaVinci Intermediate on every camera, which is what makes matching across cameras one job rather than three. Colour-space-aware grading tools are on. Input comes from the clip's tagged Input Color Space, so no template is per camera. A template is per look: a neutral one with `LOOK` empty, one with the house look, and optionally others.
+
+**Look strength.** Build the look once at full strength and keep one strength control, so a client's "less" is one move, not a rebuild. By hand, put the look's nodes in a compound node labelled `LOOK` and use its Key Output Gain. A script has no evidence of reaching that control, so the scripted form is baked variants of the same template at 100, 66 and 33 percent, and the script picks one.
+
+**What a script may write.** Two things only. `apply_grade` puts a LUT on one node you name; pass `lut.node` 8 for the look, because its default is node 1, which is `NR`, and it does not check the label. The clip needs the node before the apply. A match step may also write `WB` through `SetCDL`, but that write does not exist yet and waits on the first spike below. Never `CON`, the other corrective nodes or the tail.
+
+**Open spikes.** None of these four is confirmed. Each needs a run against a sandbox project before a template relies on it, and until then the hand route above is the only one.
+- **SetCDL: unconfirmed.** `TimelineItem.SetCDL` (slope, offset, power, saturation on one node) is in the Resolve API but has not been exercised here. Whether it writes to `WB` of a template applied by `.drx`, reads back, and survives `DuplicateTimeline` is not known.
+- **A compound node in a .drx: unconfirmed.** A `.drx` read-back has covered node labels and LUTs, not compound structure, Key Output Gain or a node's composite mode (Luminosity, Screen, Hardlight). Until it passes, the strength control and the `CON` composite mode are hand-built only.
+- **Tetrahedral read-back: unconfirmed.** Tetrahedral 3D LUT interpolation is the intended project setting (less banding than trilinear). Whether the API can read it back, and so whether `resolve_status` could report it, is not known.
+- **Mid-grey hold: unconfirmed.** Export a still of a gray ramp with `CON` enabled and again disabled (`ExportCurrentFrameAsStill`, no render). The 18% band must not move by more than 0.005 in code value. Not yet measured with a built `CON` node.
 
 ### In-camera LUTs
 
@@ -111,9 +133,9 @@ create the other bins, which are made by hand.
 2. Input Color Space tagged per clip by `ingest` (a Review clip is tagged by hand)
 3. Pull selects
 4. Build timeline
-5. Balance (Node 1), per clip, matching across cameras
-6. Apply the look (Node 2), one `[RCM]` look on every clip
-7. Manual creative grade (Node 3), per clip
+5. Balance (`EXP`, `WB`), per clip, matching across cameras
+6. Apply the look (`LOOK`, node 8), one `[RCM]` look on every clip
+7. Manual creative grade (`CON`, `SAT`, `SKIN`, `WIN`, `TEX`), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
 10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (queueing without it is flagged, not blocked, see the gate)
@@ -156,7 +178,7 @@ differently.
 
 Two other hard API limits worth knowing before you file a bug against the
 tools:
-- **No node creation.** `apply_grade` with `lut.node` 2 (this spec's Node 2,
+- **No node creation.** `apply_grade` with `lut.node` 8 (this spec's `LOOK`,
   the look) only works if that node already exists on the
   clip: add it in the Color page first. The scripting API cannot create
   color-page nodes.
@@ -185,9 +207,10 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 28 tools: reads of the open project, the offline checks (detect,
+as 35 tools: reads of the open project, the offline checks (detect,
 survey, measure, endcheck, selects, reframe_plan, deliver_check,
-sync_measure, trim_review), the offline caption conversion (deliver_captions), and
+sync_measure, trim_review, shoot_table, qc, pipeline_proof,
+deliver_manifest, perceive, audio_report, overlay_check), the offline caption conversion (deliver_captions), and
 additive writes (ingest, cut, duplicate, a timeline from clips in order,
 colour management set on a fresh project, grade onto `[auto]` timelines,
 auto captions on `[auto]` timelines, queue a render without starting it,
