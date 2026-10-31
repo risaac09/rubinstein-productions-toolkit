@@ -1,6 +1,6 @@
 # Cue, marker and sync contract (VP-146)
 
-> **Status:** aspirational, proposed 2026-10-20, a spec with no code yet. Held until the toolkit freeze lifts on 2026-11-01. The numbers in [the sync window](#the-sync-window) are house working defaults, not figures from a standard.
+> **Status:** draft, partly implemented: sting-sync (`rpresolve/stingsync.py`) enforces the sync sign, window, `intended_offset_ms` and 3-frame amendment; the marker TSV and lane prefixes are spec only. Proposed 2026-10-20. Held until the toolkit freeze lifts on 2026-11-01. The numbers in [the sync window](#the-sync-window) are house working defaults, not figures from a standard.
 
 Three lanes put marks on one timeline and two of them judge audio against picture. This page is the one set of rules they share: how markers are named so no lane overwrites another's, which way an offset is signed, how far a cue may sit from its picture event, and which files a check reads.
 
