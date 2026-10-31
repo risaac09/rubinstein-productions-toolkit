@@ -2,9 +2,9 @@
 
 **Status:** operational.
 
-Copy-paste checklists for the five lanes, from a fresh shell. The first two are the ones to run yourself; the other three are shorter. What each tool does is in [media-lane.md](media-lane.md).
+Copy-paste checklists for the six lanes, from a fresh shell. The first two are the ones to run yourself; the other four are shorter. What each tool does is in [media-lane.md](media-lane.md).
 
-Every command was run in a clean shell (`env -i` with only `HOME` and `PATH`) against real media. The times and numbers under "A pass looks like" are from those runs on an M-series Mac.
+Every command in sections 1 to 5 was run in a clean shell (`env -i` with only `HOME` and `PATH`) against real media. The times and numbers under "A pass looks like" are from those runs on an M-series Mac. Section 6 is a hand checklist: a test checks its commands and flags against the tools' `--help`, and it has not been run end to end on real media.
 
 ## Before you start
 
@@ -175,6 +175,8 @@ export SRC=~/footage/interview.mp4                    # a clip with speech
 export E=~/media-out/edit-job1                        # outside any git tree
 mkdir -p "$E"
 
+# `copy` prints the folder name; point SRC at one clip in it
+export SRC="$W/ingest/CAM_A-<id6>/clip.mov"
 $PY resolve_workflow.py transcribe "$SRC" --backend mlx-whisper --out "$E/words.json" --srt "$E/words.srt"
 $PY resolve_workflow.py wordsnap "$E/words.json" "$SRC" --out "$E/snapped.json"
 $PY resolve_workflow.py pacing --words "$E/snapped.json" --captions "$E/words.srt"
@@ -208,6 +210,134 @@ $PY -m rpstills absheet "$R"/cand/frame*.png --out "$R/look-01" --seed 7 --title
 
 **A pass looks like:** one PNG per cube, `sheet.jpg` at most 2000 px and 1 MiB (smoke: 421 KiB, 0.2 s), and `key.json` mapping the letters, written to the sibling folder `look-01.key`.
 
+## 6. Offline reels: card to clip set
+
+A card of talking footage to a set of captioned 9:16 clips, with a person's yes before the batch and before each clip leaves. Nothing here opens Resolve. Details: [transcribe.md](transcribe.md), [delivery-manifest.md](delivery-manifest.md), [media-review-loop.md](media-review-loop.md) and `tools/vertcut/README.md`. Names are placeholders; keep the work folder outside any git tree.
+
+```bash
+export PY=~/.venvs/rp-tools/bin/python
+export W=~/work/sw999-test                          # outside any git tree
+export CARD=/Volumes/CARD1                          # the mounted card
+mkdir -p "$W/ingest" "$W/reel" "$W/out"
+```
+
+### Offload, then transcribe
+
+```bash
+./offload.sh id "$CARD"
+./offload.sh copy "$CARD" "$W/ingest" --cam CAM_A
+$PY resolve_workflow.py transcribe "$SRC" --backend mlx-whisper --out "$W/reel/words.json" --srt "$W/reel/words.srt"
+```
+
+`copy` hashes the card, copies, reads every file back from the destination and writes `CAM_A-<id6>.SHA256SUMS` beside the folder. It never writes to the card. Format the card only after `./offload.sh safe "$W/ingest/CAM_A-<id6>" <rclone-remote>` says so; the offsite copy is a hand step. `transcribe` needs `mlx-whisper` (section 4).
+
+### Quote the spans, get a worksheet
+
+Read the transcript and write, one row per reel, the words where it starts and ends: title, start phrase, end phrase, tab separated (optional fourth and fifth columns pick the nth occurrence). The tool only finds your quotes; it proposes nothing.
+
+```bash
+printf 'Test reel one\tfirst words of the clip\tlast words of the clip\n' > "$W/reel/phrases.tsv"
+$PY resolve_workflow.py reel-spans "$W/reel/words.json" "$W/reel/phrases.tsv" -o "$W/reel/cuts.tsv"
+```
+
+Each row reports OK, WARN (under 5 s or over 90 s; `--min-s` and `--max-s` move those) or FAIL. A FAIL row is left out of `cuts.tsv` and the exit is 1: fix the quote and run again. For a hook, a fifth column of `cuts.tsv` takes the person's own words; never write one for them.
+
+```bash
+../tools/vertcut/vertcut manifest "$SRC" "$W/reel/cuts.tsv" --words "$W/reel/words.json" -o "$W/reel/manifest.json"
+```
+
+Result: a version 2 [manifest](manifest.md) for the Resolve route. The offline cut below reads `cuts.tsv` itself.
+
+### The 30-minute gate
+
+A batch estimated over 30 minutes, or one that would replace an existing output, stops until a person has seen a packet and said go. Build the packet from the plan, before any render, and send it as one message:
+
+```bash
+$PY resolve_workflow.py gate-packet --out "$W/gate" --project P-0001 --source "$SRC" --cuts "$W/reel/cuts.tsv"
+```
+
+It writes a contact sheet and two 20 s excerpts per clip, and `gate.json`. Wait for the answer, then log it verbatim:
+
+```bash
+$PY resolve_workflow.py review-log --dir "$W" --project P-0001 --step gate --device desktop --choice go --key "$W/gate" --reason "<their words>"
+```
+
+The log lands in `$W/review/events.jsonl`. Only the person's own `go` counts; Claude never writes one for them.
+
+### Cut
+
+```bash
+../tools/vertcut/vertcut cut "$SRC" "$W/reel/cuts.tsv" --words "$W/reel/words.json" \
+  --destination social_9x16 --show SW --episode 999 --guest Test \
+  --hook-text "FIRST LINE|SECOND LINE" --hook-source "words.json 00:00:12" \
+  --reviewed "$W/gate/gate.json" --review-log "$W/review/events.jsonl" \
+  -o "$W/out/social_9x16"
+```
+
+- `--destination social_9x16` sets the aspect in the name, the AAC format and a -14 LUFS target (stderr says so).
+- `--hook-text` is the person's own words, verbatim, `|` between two lines, at most nine words and 16 characters a line. `--hook-source` says where they said it. A hook that fails the check exits 2. They apply to every clip in the run: for a batch where each clip has its own hook, use the worksheet's fifth column instead and drop both flags, or cut one clip at a time with `--only`. Leave them off for a clip with no hook, or pass `--no-hook`.
+- `--reviewed` and `--review-log` are needed only when the gate applies. Both files sit outside any repository, and the gate must match this `cuts.tsv`.
+- Files are named by the house rule (`SW999_Test_01_<slug>_9x16.mp4`). Writing into a folder named for the destination lets the `folder` row pass.
+- Add `--dry-run` first to see what would render.
+
+### Pick between versions
+
+One decision per message. For a lettered, blind choice of one clip's crop or hook, render the variants:
+
+```bash
+../tools/vertcut/vertcut cut "$SRC" "$W/reel/cuts.tsv" --words "$W/reel/words.json" --show SW --episode 999 --guest Test --only 1 --review --variant x=0 --variant x=-0.4 -o "$W/ab"
+```
+
+For renders you already have (2 to 4 of the same reel):
+
+```bash
+$PY resolve_workflow.py reel-ab --out "$W/ab2" --seconds 10 --opening "<render-a>.mp4" "<render-b>.mp4"
+```
+
+Send the sheet alone, read the key (`$W/ab.key`, `$W/ab2.key`) only after the letter comes back, and log it with the `review-log` line the run prints. See section 5 and [media-review-loop.md](media-review-loop.md).
+
+### Check, then release
+
+```bash
+cat > "$W/reel/boxes.json" <<'EOF'
+[{"label": "caption", "box": [0.1, 0.55, 0.9, 0.7]}]
+EOF
+F="$W/out/social_9x16/SW999_Test_01_<slug>_9x16.mp4"
+mkdir -p "$W/reel/stubs"
+$PY resolve_workflow.py deliver-check "$F" --dest social_9x16 --boxes "$W/reel/boxes.json" --review-log "$W/review/events.jsonl" --ledger-row "$W/reel/stubs/SW999_Test_01.jsonl"
+$PY resolve_workflow.py qc "$F" --dest social_9x16 --words "$W/reel/words.json"
+$PY resolve_workflow.py release-check "$W/out/social_9x16" --titles "$W/reel/titles.tsv" --review-log "$W/review/events.jsonl" --stubs "$W/reel/stubs"
+```
+
+`boxes.json` holds each caption's or super's box as fractions of the frame (x0, y0, x1, y1); `captionlint --boxes-out` writes one for you. `--ledger-row` writes one row stub per file (keep one file each in `stubs/`); with the review log it fills the approval field. `release-check` also reads a `SHA256SUMS` file and a `titles.tsv` (`file`, tab, `title`), so write them before it runs:
+
+```bash
+(cd "$W/out/social_9x16" && shasum -a 256 *.mp4 > SHA256SUMS)
+printf 'SW999_Test_01_<slug>_9x16.mp4\tTest reel one\n' > "$W/reel/titles.tsv"
+```
+
+The The `approval` row WARNs until the log holds an `approve` or `go` line that names the file and its review copy. The person says yes; you record it, then run `deliver-check` and `release-check` again:
+
+```bash
+$PY resolve_workflow.py review-log --dir "$W" --project P-0001 --step gate --device desktop --choice approve --review-copy "$F" --reason "<their words>"
+```
+
+### Open rulings, and the default until one lands
+
+- **Caption bar position.** vertcut puts the bar's bottom edge at y=1680, inside the bottom UI band, and prints a WARN. Default: leave it and accept the WARN; do not move it clip by clip. `--caption-y` is there when a ruling comes.
+- **Conform at 23.976.** vertcut keeps the source rate (capped at 30), so a 23.976 source gives a 23.976 clip, and `deliver-check` and `qc` WARN `fps_floor` and `social_fps`. Default: ship as cut and report the WARN; do not retime.
+- **Approval record.** Nothing writes the final-approval line for a vertcut file. Default: the person's own `approve` or `go`, logged with `--review-copy`, is the record; without it `approval` stays a WARN.
+
+**A pass looks like:**
+
+- `copy` exits 0 and the folder, `.SHA256SUMS` and `.card.json` all exist.
+- Every `reel-spans` row is OK, or WARN with a reason you accept.
+- `gate.json` names the clip count and total runtime, and the log holds a `gate` line with choice `go`.
+- The clips sit in the destination folder with the house names.
+- `deliver-check` and `qc` show no FAIL; the only WARNs are the open rulings above.
+- `release-check` prints READY for each file once the sums, titles, stubs and approval line are in place.
+- Stays by hand: formatting the card, the offsite copy, every yes, the upload, and the ledger fields filled after publishing.
+
 ## When it fails
 
 | You see | It means | Do this |
@@ -221,4 +351,7 @@ $PY -m rpstills absheet "$R"/cand/frame*.png --out "$R/look-01" --seed 7 --title
 | `interchange`, `pacing` or `cut`: "audio_lead at a change of source is not supported" | A split edit would take sound from two files | Remove the `audio_lead` or `audio_tail` there |
 | `cut`: "UNREFRAMED ... several sources" | A 9:16 or 1:1 is planned for one source | Pass `make_9x16` false; the 16:9 is built from all sources |
 | `lutlab balance`: `no_neutral` or `no_face` | No white or grey reference below a found face, or no face at all (a chart) | Add `--face` and `--neutral-box`, or `--wb-from SHOT` for a shot in the same light |
+| `gate-packet` or `vertcut cut`: stops on the review gate | The batch is over 30 minutes or would replace an output, and no `go` is logged | Send the packet, log the person's `go`, pass `--reviewed` and `--review-log` |
+| `reel-spans`: a FAIL row | A quoted phrase is not in the transcript, or the span is reversed | Read the hint, fix the quote, run again; the row is left out of the worksheet |
+| `vertcut cut`: exit 2 on the hook | The hook text fails `hooklint` (nine words, two lines of 16 characters, no em-dash or emoji) | Shorten it in the person's own words, or pass `--no-hook` |
 | `lutlab shot-match`: "frames do not show the same content" (exit 2, nothing written) | The two stills are not the same scene, framed alike (rank correlation under 0.8) | Crop both to the same chart or subject |
