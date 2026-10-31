@@ -4,37 +4,14 @@ Decompositions of licensed LUTs, and the LUTs rebuilt from them, are not
 for any git repository, and nothing goes to iCloud. Every directory lutlab
 writes to passes check_out_dir first."""
 
-import contextlib
 import os
 import sys
-import tempfile
 from pathlib import Path
 
-from rpresolve.paths import in_any_git_tree  # stdlib-only; the one "not in a git tree" test
+# stdlib-only: the one "not in a repository" test and the one write-then-rename helper (re-exported)
+from rpresolve.paths import atomic_path, in_any_git_tree  # noqa: F401
 
 ICLOUD = [Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Library" / "Mobile Documents"]
-
-
-@contextlib.contextmanager
-def atomic_path(path):
-    """Yield a fresh temp path in path's folder. It ends in .part, so no scan for images or cubes lists a
-    half-written file (give an image library its format by name). On a clean exit it is renamed onto path, on an error it is removed. A hard link at path keeps its
-    old content: the rename replaces the name, not the inode."""
-    path = os.path.realpath(path)   # a symlink at the name is written through to its target, as open() did
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".part-" + os.path.basename(path)[:80] + "-", suffix=".part")
-    os.close(fd)
-    try:
-        yield tmp
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(tmp, 0o666 & ~umask)   # mkstemp makes 0600; open() would have made 0666 less the umask
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.remove(tmp)
-        except FileNotFoundError:
-            pass
-        raise
 
 
 def check_out_dir(path):
