@@ -23,7 +23,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, deliver, settingsguard, syncbuild, workflows
+from .. import api, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
 from .. import relink as rprelink, trimreview
@@ -416,6 +416,17 @@ def queue_render(args, ctx):
                                    expect_sha=args.get("plan_sha"),
                                    check_cancel=ctx.check_cancel)
         tl, d = r["timeline"]["name"], r["destination"]["name"]
+        # Added after plan_sha is fixed, so it never moves the sha; it never refuses.
+        floor, rate = deliver.destination(config, args["destination"]).get("min_fps"), \
+            deliver.exact_fps(r["timeline"]["fps"])
+        try:  # a bad min_fps in a config overlay must not fail a job already queued
+            floor = float(delivercheck.parse_fps(floor)) if floor else None
+        except ValueError:
+            floor = None
+        if floor and rate is not None and rate < floor - 0.005:
+            r["warnings"].append(f"the timeline runs at {r['timeline']['fps']} fps, under {d}'s "
+                                 f"{floor:.2f} fps floor; it is queued as it is, the frame "
+                                 "rate stays the timeline's.")
         side = f" with sidecar {os.path.basename(r['sidecar'])}" if r["sidecar"] else ""
         if r["dry_run"]:
             r["summary"] = (f"would queue '{tl}' for {d} as {r['output']}{side} (not started); "
