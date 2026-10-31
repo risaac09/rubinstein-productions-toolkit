@@ -21,7 +21,9 @@ mk near "Navigation is fine."
 "$SRC/scripts/check-voice.sh" "$TMP/clean" >/dev/null 2>&1 && ok "clean passes" || bad "clean passes"
 out=$("$SRC/scripts/check-voice.sh" "$TMP/dash" 2>&1) && bad "em-dash fails" || { case $out in *"docs/a.md:2: em-dash"*) ok "em-dash fails with file:line";; *) bad "em-dash report: $out";; esac; }
 out=$("$SRC/scripts/check-voice.sh" "$TMP/verb" 2>&1) && bad "verb fails" || { case $out in *"docs/a.md:1: banned verb"*) ok "banned verb fails with file:line";; *) bad "verb report: $out";; esac; }
-out=$("$SRC/scripts/check-voice.sh" "$TMP/phrase" 2>&1) || { [ "$(printf '%s\n' "$out" | grep -c 'banned verb')" -eq 4 ] && ok "all four phrase forms flagged" || bad "phrase report: $out"; }
+out=$("$SRC/scripts/check-voice.sh" "$TMP/phrase" 2>&1) && bad "phrase forms fail" || { [ "$(printf '%s\n' "$out" | grep -c 'banned verb')" -eq 4 ] && ok "all four phrase forms flagged" || bad "phrase report: $out"; }
+mk entity "Two &mdash; three, four &#8212; five."
+out=$("$SRC/scripts/check-voice.sh" "$TMP/entity" 2>&1) && bad "dash entities fail" || { case $out in *"docs/a.md:1: em-dash"*) ok "dash entities flagged";; *) bad "entity report: $out";; esac; }
 out=$("$SRC/scripts/check-voice.sh" "$TMP/readme" 2>&1) && bad "README-only em-dash fails" || { case $out in *"README.md:1: em-dash"*) ok "README-only tree reported with filename";; *) bad "readme report: $out";; esac; }
 "$SRC/scripts/check-voice.sh" "$TMP/near" >/dev/null 2>&1 && ok "navigation is not flagged" || bad "navigation is not flagged"
 exit "$fail"
