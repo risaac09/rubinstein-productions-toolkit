@@ -16,14 +16,14 @@ jobs:
         run: scripts/check-doc-links.sh
       - name: Methodology status headers
         run: scripts/check-methodology-status.sh
-      - name: Methodology status check tests
-        run: scripts/test-methodology-status.sh
       - name: Measurement instrument scoring test
         run: scripts/test-instrument-score.sh
       - name: Changelog fragment and burst-gate tests
         run: |
           scripts/test-changelog-fragments.sh
           scripts/test-burst-gate.sh
+      - name: Methodology status check tests
+        run: scripts/test-methodology-status.sh
       - name: Card offload tests
         run: production/tests/test-offload.sh
       - name: Changelog fragments are well formed
