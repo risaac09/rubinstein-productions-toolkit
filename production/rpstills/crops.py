@@ -14,6 +14,7 @@ left, plus "px" on the full-resolution upright frame. Flags, per crop:
 
 import json
 import os
+import tempfile
 
 from .cluster import MIN_FACE, counted_faces
 
@@ -188,6 +189,12 @@ def preview(out_dir, rows, plan, cfg, limit=24):
     if hidden:
         d.text((4, (T + 16) * len(ids) + 2), f"+{hidden} more flagged frames not shown", fill="white")
     path = os.path.join(out_dir, "crops-preview.jpg")
-    sheet.save(path + ".part", "JPEG", quality=82)   # then rename, as the proxies: a hard link here keeps its old bytes
-    os.replace(path + ".part", path)
+    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".crops-preview-", suffix=".jpg")   # then rename, as finish does:
+    os.close(fd)                                                                     # a hard link here keeps its old bytes
+    try:
+        sheet.save(tmp, "JPEG", quality=82)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
     return path, len(ids), len(plan)

@@ -77,7 +77,11 @@ def main(argv=None):
         return 0
     out = os.path.abspath(a.out)
     from rpresolve.paths import out_problem  # lazy: rpresolve is stdlib-only, imported only to write
-    for rel in ("index.jsonl", "proxies/x.jpg", "tiles/x.jpg"):   # proxies/ and tiles/ may be links elsewhere
+    # each file a command writes, by its own name: any of them, or proxies/ and tiles/, may be a link elsewhere
+    names = ["index.jsonl", "clusters.json", "cull.json", "crops.json", "crops-preview.jpg", "review.html"]
+    if a.cmd in ("index", "run"):
+        names += ["proxies/x.jpg", "tiles/x.jpg"]
+    for rel in names:
         problem = out_problem(os.path.join(out, rel), any_git_tree=True)
         if problem:
             print(f"rpstills {a.cmd}: {problem}", file=sys.stderr)

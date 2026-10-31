@@ -46,20 +46,23 @@ class GitTreeGuard(unittest.TestCase):
                 self.assertIn("git working tree", err.getvalue(), name)
             self.assertFalse(os.path.exists(out))
 
-    def test_a_proxies_or_tiles_link_into_a_git_tree_is_refused(self):
-        for sub in ("proxies", "tiles"):
+    def test_a_subfolder_or_output_file_linked_into_a_git_tree_is_refused(self):
+        for cmd, link, target in (("index", "proxies", ""), ("index", "tiles", ""),
+                                  ("cull", "cull.json", "x.json"), ("review", "review.html", "x.html")):
             with tempfile.TemporaryDirectory() as tmp:
                 repo, shoot, out = (os.path.join(tmp, n) for n in ("repo", "shoot", "out"))
                 subprocess.run(["git", "init", "-q", repo], check=True)
                 os.makedirs(shoot); os.makedirs(out)
                 jpeg(os.path.join(shoot, "a.jpg"), 90)
-                os.symlink(repo, os.path.join(out, sub))
+                os.symlink(os.path.join(repo, target), os.path.join(out, link))
+                argv = {"index": ["index", shoot, out], "cull": ["cull", out],
+                        "review": ["review", out, "--session", "s"]}[cmd]
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()), \
                         mock.patch.object(vision, "faces", return_value=None):
-                    self.assertEqual(cli.main(["index", shoot, out]), 1, sub)
-                self.assertIn("git working tree", err.getvalue(), sub)
-                self.assertEqual(os.listdir(repo), [".git"], sub)
+                    self.assertEqual(cli.main(argv), 1, link)
+                self.assertIn("git working tree", err.getvalue(), link)
+                self.assertEqual(os.listdir(repo), [".git"], link)
 
     def test_a_hard_link_to_a_tracked_file_keeps_its_content(self):
         from rpstills import cluster, crops, cull, review
