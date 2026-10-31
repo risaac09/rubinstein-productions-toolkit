@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
-from . import fit, model, report, spaces
+from . import cube, fit, guard, model, report, spaces
 
 DARKTABLE = "/Applications/darktable.app/Contents/MacOS/darktable-cli"
 WORK_PX = 1200
@@ -138,7 +138,7 @@ def _finish(p, name, outdir, xs, ys, cnt, test_x, test_y, sources, previews):
     p["source"] = {"file": ", ".join(Path(s).name for s in sources), "pairs": len(sources), "bins": int(len(xs)),
                    "pixels": int(cnt.sum()), "output_range": [0.0, 1.0]}
     p["skin_family"] = report.skin_family(lambda c: model.evaluate(p, c), p["in"], p["out"])
-    (outdir / "params.json").write_text(json.dumps(p, indent=1) + "\n")
+    cube.write_text(str(outdir / "params.json"), json.dumps(p, indent=1) + "\n", overwrite=True)
     rows, before, after = report.patch_table(lambda c: model.evaluate(p, c), p["in"], p["out"])
     rel = _rel_chroma(xs, p["in"])
     grey = rel < 0.04 if (rel < 0.04).sum() >= 20 else rel <= np.sort(rel)[min(19, len(rel) - 1)]
@@ -158,7 +158,8 @@ def _finish(p, name, outdir, xs, ys, cnt, test_x, test_y, sources, previews):
     for i, (src, dst) in enumerate(previews):
         side = np.concatenate([np.clip(spaces.from_lin709(spaces.to_lin709(src, p["in"]), "srgb"), 0, 1),
                                np.clip(model.evaluate(p, src), 0, 1), dst], 1)
-        Image.fromarray((side * 255 + 0.5).astype(np.uint8)).save(outdir / f"compare-{i + 1}.jpg", quality=88)
+        with guard.atomic_path(outdir / f"compare-{i + 1}.jpg") as tmp:
+            Image.fromarray((side * 255 + 0.5).astype(np.uint8)).save(tmp, quality=88)
         images[f"pair {i + 1}: plain | model | target"] = f"compare-{i + 1}.jpg"
     notes = ("Fitted from image pairs: there is no residual, so `build` gives the model alone. The tone and colour "
              "numbers only know the colours these images contain; knots far from them hold their neighbours' values.")
@@ -168,7 +169,7 @@ def _finish(p, name, outdir, xs, ys, cnt, test_x, test_y, sources, previews):
     nt = [[f"{e[i]:+.1f} stops", f"{xt[o][k][0]:.4f}", " ".join(f"{v:.3f}" for v in yt[o][k]),
            " ".join(f"{v:.3f}" for v in model.evaluate(p, xt[o][k]))]
           for k in np.unique(np.linspace(0, len(o) - 1, 7).astype(int)) for i in [o[k]]]
-    (outdir / "report.md").write_text(report.markdown(p, f"{name}: fitted from pairs", rows, nt, images, notes))
+    cube.write_text(str(outdir / "report.md"), report.markdown(p, f"{name}: fitted from pairs", rows, nt, images, notes), overwrite=True)
     return p
 
 
