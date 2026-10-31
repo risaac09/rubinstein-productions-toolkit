@@ -208,8 +208,8 @@ def build(rows, clusters):
 
 def write(out_dir, cull):
     path = os.path.join(out_dir, "cull.json")
-    with open(path, "w") as f:
-        json.dump(cull, f, indent=1, sort_keys=True)
+    from rpresolve.paths import write_private  # temp file and rename: a hard link here never carries the output
+    write_private(path, json.dumps(cull, indent=1, sort_keys=True))
     return path
 
 

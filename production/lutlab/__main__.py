@@ -167,6 +167,9 @@ def main(argv=None):
     pack.add_arguments(sub.add_parser("pack", help="zip of LUTs for Resolve, iPad too"))
     balance.add_arguments(sub.add_parser("balance", help="per-shot exposure and white balance, a CDL out"))
     a = ap.parse_args(argv)
+    name = getattr(a, "name", None)
+    if name and (Path(name).name != name or name in (".", "..")):   # files are named out/NAME...; a path would leave --out
+        ap.error(f"--name {name!r} is a file name, not a path")
 
     if a.cmd == "balance":
         return balance.run(a, ap)

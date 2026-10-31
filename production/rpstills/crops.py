@@ -136,8 +136,9 @@ def build(rows, clusters, ids, cfg):
 
 def write(out_dir, plan, source, cfg):
     path = os.path.join(out_dir, "crops.json")
-    with open(path, "w") as f:
-        json.dump({"source": source, "config_version": cfg.get("version"), "frames": plan}, f, indent=1, sort_keys=True)
+    from rpresolve.paths import write_private  # temp file and rename: a hard link here never carries the output
+    write_private(path, json.dumps({"source": source, "config_version": cfg.get("version"), "frames": plan},
+                                   indent=1, sort_keys=True))
     return path
 
 
@@ -187,5 +188,6 @@ def preview(out_dir, rows, plan, cfg, limit=24):
     if hidden:
         d.text((4, (T + 16) * len(ids) + 2), f"+{hidden} more flagged frames not shown", fill="white")
     path = os.path.join(out_dir, "crops-preview.jpg")
-    sheet.save(path, quality=82)
+    sheet.save(path + ".part", "JPEG", quality=82)   # then rename, as the proxies: a hard link here keeps its old bytes
+    os.replace(path + ".part", path)
     return path, len(ids), len(plan)

@@ -1,0 +1,1 @@
+Post-merge review of the output guards and media writers: rpstills serve no longer hands out the A/B key under a folded or linked name, the shoot commands refuse a proxies or tiles folder linked into a git tree and write through a hard link no more, lutlab --name cannot carry a file out of the checked folder, and Swift helpers cached before the atomic builder are rebuilt.

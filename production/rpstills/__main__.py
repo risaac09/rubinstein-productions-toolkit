@@ -77,10 +77,11 @@ def main(argv=None):
         return 0
     out = os.path.abspath(a.out)
     from rpresolve.paths import out_problem  # lazy: rpresolve is stdlib-only, imported only to write
-    problem = out_problem(os.path.join(out, "index.jsonl"), any_git_tree=True)
-    if problem:
-        print(f"rpstills {a.cmd}: {problem}", file=sys.stderr)
-        return 1
+    for rel in ("index.jsonl", "proxies/x.jpg", "tiles/x.jpg"):   # proxies/ and tiles/ may be links elsewhere
+        problem = out_problem(os.path.join(out, rel), any_git_tree=True)
+        if problem:
+            print(f"rpstills {a.cmd}: {problem}", file=sys.stderr)
+            return 1
     if a.cmd in ("index", "run"):
         try:
             rows = index.build(os.path.abspath(a.shoot), out, workers=a.workers, times_file=a.times,
