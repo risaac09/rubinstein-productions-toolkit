@@ -1,1 +1,1 @@
-rpresolve.paths now refuses any git working tree by default (any_git_tree=True), and lutlab.guard uses the same test, so a new caller no longer has to remember the flag.
+rpresolve.paths now refuses any working tree of a version-control repository by default, not only this one; commands that wrote output into an unrelated repo (manifest, detect, measure, trim-review, tilt-check and others) now refuse it, and any_git_tree=False restores the repo-only rule. lutlab.guard uses the same test.
