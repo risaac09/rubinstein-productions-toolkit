@@ -59,6 +59,14 @@ expect "status after a closed fence passes" "$R" 0
 printf '# T\n\n```\n**Status:** draft\n```\n> **Status:** draft\n' > "$R/docs/a.md"
 expect "quoted status after a fence passes" "$R" 0
 
+# Fences follow CommonMark: only the same character, as long or longer, closes.
+printf '# T\n\n````\n```\n**Status:** draft\n````\n' > "$R/docs/a.md"
+expect "3-backtick line inside a 4-backtick fence does not close it" "$R" 1 "docs/a.md"
+printf '# T\n\n```\n~~~\n**Status:** draft\n```\n' > "$R/docs/a.md"
+expect "~~~ inside a backtick fence does not close it" "$R" 1 "docs/a.md"
+printf '# T\n\n````\n```\n````\n\n**Status:** draft\n' > "$R/docs/a.md"
+expect "a matching longer run closes the fence" "$R" 0
+
 R="$TMP/skip"; mk "$R"
 printf '# Skill\n\nNo status.\n' > "$R/production/skills/s.md"
 printf '# Tool\n\nNo status.\n' > "$R/production/tool/t.md"

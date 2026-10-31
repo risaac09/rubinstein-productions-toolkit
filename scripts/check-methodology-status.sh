@@ -31,7 +31,13 @@ $(find docs -name '*.md')" || { echo "cannot list every covered folder" >&2; bad
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   if ! head -25 "$f" | awk '
-      /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+      # CommonMark: a fence closes only on the same character, at least as long, nothing after.
+      match($0, /^[[:space:]]*(```+|~~~+)/) {
+        run = substr($0, RSTART, RLENGTH); gsub(/[[:space:]]/, "", run)
+        if (!fence) { fence = 1; fch = substr(run, 1, 1); flen = length(run) }
+        else if (substr(run, 1, 1) == fch && length(run) >= flen && substr($0, RLENGTH + 1) ~ /^[[:space:]]*$/) fence = 0
+        next
+      }
       !fence && /\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_\/-]|$)/ { found = 1 }
       END { exit !found }'; then
     echo "no status header: $f" >&2

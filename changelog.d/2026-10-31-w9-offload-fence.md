@@ -1,0 +1,1 @@
+offload.sh safe now refuses an rclone remote of type local, an alias that ends at a local path, and a remote whose type cannot be read; check-methodology-status.sh closes a code fence only on a matching or longer run of the same character.
