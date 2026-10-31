@@ -24,14 +24,22 @@ def add_arguments(p):
                    "for the captions and supers on screen; each must sit inside the safe zone")
     p.add_argument("--no-loudness", action="store_true",
                    help="Skip the loudness read (it reads the whole file)")
+    p.add_argument("--ledger-row", metavar="PATH",
+                   help="Also write a release-ledger row stub (one JSON line, keyed to the house "
+                   "file name) to PATH, replacing any file there (one row per file); refused inside any git tree")
     p.add_argument("--json", action="store_true", help="Print the result as JSON")
 
 
 def run(args):
     """Check a rendered file against its destination. Exit 0 all pass, 1 any
     fail (or an unreadable file or boxes JSON), 2 ffprobe or ffmpeg missing."""
-    from rpresolve import audiostate, deliver, delivercheck as dc, safezone
+    from rpresolve import audiostate, deliver, delivercheck as dc, paths, safezone
+    ledger = getattr(args, "ledger_row", None)
     try:
+        if ledger:
+            problem = paths.out_problem(ledger, any_git_tree=True)
+            if problem:
+                raise ValueError(problem)
         config = cli.deliver_config(args)
         dest = deliver.destination(config, args.dest)
         size = cli.size(args.size) if args.size else None
@@ -52,6 +60,13 @@ def run(args):
         print(json.dumps(r, indent=1, default=str))
     else:
         sys.stdout.write(dc.format_report(r))
+    if ledger:  # after the report, so a write error never hides the result
+        try:
+            line = dc.ledger_line(dc.ledger_row(r, sha256=dc.file_sha256(args.file)))
+            paths.write_private(ledger, line, any_git_tree=True)
+        except (OSError, ValueError) as e:
+            print(f"ERROR: ledger row not written: {e}", file=sys.stderr)
+            return 1
     return 0 if r["status"] == "pass" else 1
 
 

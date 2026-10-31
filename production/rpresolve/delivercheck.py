@@ -43,6 +43,7 @@ measured values) that copies the video stream untouched and writes
 <stem>.loudfix<ext> beside the original; it never overwrites anything.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -575,6 +576,45 @@ def format_report(result):
     lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail, {c[SKIP]} skipped: "
                  f"{result['status'].upper()}")
     return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Release-ledger row stub
+# ---------------------------------------------------------------------------
+
+LEDGER_BLANKS = ("published_url", "publish_date", "approval")
+
+
+def file_sha256(path):
+    """sha256 of the file's bytes, read in chunks (a master is large)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ledger_row(result, sha256=None, now=None):
+    """A STUB release-ledger row (the ledger format is not fixed) for a
+    check() result: key is the house file name, or None with key_reason when
+    the name does not follow the rule (never a guess). Fields a person fills
+    after publishing stay empty. Returns a dict; ledger_line() serialises it."""
+    name = os.path.basename(result["file"])
+    try:
+        deliver.parse_name(name)
+        key, reason = name, None
+    except deliver.NameRuleError as e:
+        key, reason = None, str(e)
+    row = {"stub": True, "key": key, "key_reason": reason, "file": name,
+           "destination": result["destination"], "check_status": result["status"],
+           "counts": result["counts"], "sha256": sha256,
+           "checked_at": now or time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    row.update({k: "" for k in LEDGER_BLANKS})
+    return row
+
+
+def ledger_line(row):
+    return json.dumps(row, sort_keys=True) + "\n"
 
 
 # ---------------------------------------------------------------------------
