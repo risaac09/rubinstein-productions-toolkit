@@ -51,6 +51,8 @@ footer{padding:20px 16px;color:var(--mut);font-size:12px}
 <footer>Scores compare only within a run. A score marked f is a frame score (sharpness, exposure, composition) for a run with no subject face; hover for its parts. Names are yours to fill; the pipeline never guesses one. selects.json goes beside this file.</footer>
 <script>
 const DATA = __DATA__;
+const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const url = p => String(p).split("/").map(encodeURIComponent).join("/");
 const KEY = "rpstills:" + DATA.session;
 let state = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {marks:{}, names:{}}; }catch(e){ return {marks:{}, names:{}}; } }
@@ -70,7 +72,7 @@ function render(){
       h.textContent = `${seg}: ${s.start} to ${s.end}, ${s.frames} frames`; main.appendChild(h); }
     const box = document.createElement("section"); box.className = "run"; box.dataset.run = p.run;
     const head = document.createElement("div"); head.className = "runhead";
-    head.innerHTML = `<span class="cls">${run.class}</span><span class="meta">${p.run} · ${run.frames.length} frames · ${(run.start||"").slice(11,19)} to ${(run.end||"").slice(11,19)} · ${p.picks.length} proposed</span>`;
+    head.innerHTML = `<span class="cls">${esc(run.class)}</span><span class="meta">${esc(p.run)} · ${run.frames.length} frames · ${(run.start||"").slice(11,19)} to ${(run.end||"").slice(11,19)} · ${p.picks.length} proposed</span>`;
     const name = document.createElement("input"); name.placeholder = run.class === "solo" ? "name (optional)" : "label (optional)";
     name.value = state.names[p.run] || ""; name.addEventListener("input", () => { state.names[p.run] = name.value; save(); });
     head.appendChild(name); box.appendChild(head);
@@ -79,8 +81,8 @@ function render(){
       const f = frames[id]; if (!f) continue;
       const el = document.createElement("div"); el.className = "fr " + statusOf(id); el.dataset.id = id;
       const sc = f.score != null ? f.score.toFixed(2) : "";
-      el.innerHTML = `<img loading="lazy" src="${f.proxy}" alt="${id}"><span class="tag">${id}</span>` +
-        (sc ? `<span class="sc" title="${f.why || ""}">${sc}${f.kind === "frame" ? " f" : ""}</span>` : "") + (f.eyes === 0 ? `<span class="warn">eyes</span>` : "") +
+      el.innerHTML = `<img loading="lazy" src="${esc(url(f.proxy))}" alt="${esc(id)}"><span class="tag">${esc(id)}</span>` +
+        (sc ? `<span class="sc" title="${esc(f.why)}">${sc}${f.kind === "frame" ? " f" : ""}</span>` : "") + (f.eyes === 0 ? `<span class="warn">eyes</span>` : "") +
         (f.faces === 0 ? `<span class="warn">no face</span>` : "");
       el.addEventListener("click", () => { const cur = state.marks[id];
         state.marks[id] = cur === "keep" ? "drop" : cur === "drop" ? undefined : "keep";
