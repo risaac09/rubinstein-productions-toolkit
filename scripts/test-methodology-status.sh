@@ -51,6 +51,14 @@ R="$TMP/late"; mk "$R"
 { for _ in $(seq 30); do echo line; done; echo '**Status:** draft.'; } > "$R/docs/a.md"
 expect "status past line 25 fails" "$R" 1 "docs/a.md"
 
+R="$TMP/fenced"; mk "$R"
+printf '# T\n\n```\n**Status:** draft\n```\n' > "$R/docs/a.md"
+expect "status inside a code fence fails" "$R" 1 "docs/a.md"
+printf '# T\n\n```\nx\n```\n\n**Status:** draft\n' > "$R/docs/a.md"
+expect "status after a closed fence passes" "$R" 0
+printf '# T\n\n```\n**Status:** draft\n```\n> **Status:** draft\n' > "$R/docs/a.md"
+expect "quoted status after a fence passes" "$R" 0
+
 R="$TMP/skip"; mk "$R"
 printf '# Skill\n\nNo status.\n' > "$R/production/skills/s.md"
 printf '# Tool\n\nNo status.\n' > "$R/production/tool/t.md"

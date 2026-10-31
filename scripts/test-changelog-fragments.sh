@@ -118,88 +118,15 @@ inrepo "$CF" compile >/dev/null
 cmp -s "$R/CHANGELOG.md" "$TMP/want" && ok "compile reproduces the changelog byte for byte" || { bad "round trip differs"; diff "$TMP/want" "$R/CHANGELOG.md" | head; }
 git -C "$R" checkout -q -- CHANGELOG.md 2>/dev/null; cp "$TMP/orig" "$R/CHANGELOG.md"
 
-# Roadmap status fragments.
-mkdir -p "$R/docs"
-cat > "$R/docs/ROADMAP.md" <<'EOT'
-# Roadmap
-
-## Amendment 2
-
-1. **Two item.**
-
-   **Status: executed.** Old.
-2. **Second item.**
-
-## Amendment 3
-
-### Engineering
-
-1. **Three one.**
-
-   **Status: executed 2026-10-16.** Kept.
-2. **Three two.** Body.
-
-### Added
-
-30. **Last item.**
-
-   **Status: executed.** Kept too.
-EOT
-git -C "$R" add -A; git -C "$R" commit -qm roadmap
-cp "$R/docs/ROADMAP.md" "$TMP/road0"
-inrepo "$CF" status A3.2 two '**Status: executed 2026-10-17.** Done.' >/dev/null && ok "status writes a roadmap fragment" || bad "status failed"
-inrepo "$CF" status A3.30 last '**Update 2026-10-17:** More, with `a\\b` and `&`.' >/dev/null
-inrepo "$CF" status A2.1 two1 '**Status: executed.** Again.' >/dev/null
-inrepo "$CF" lint >/dev/null && ok "lint accepts roadmap fragments" || bad "lint rejects roadmap fragments"
-printf 'item: nope\ntext\n' > "$R/changelog.d/roadmap/bad.md"
-inrepo "$CF" lint >/dev/null 2>&1 && bad "lint accepted a bad item key" || ok "lint rejects a bad item key"
-rm -f "$R/changelog.d/roadmap/bad.md"
-inrepo "$CF" compile --dry-run 2>&1 | grep -q 'Done\.' && ok "dry run shows the roadmap diff" || bad "dry run missed roadmap"
-inrepo "$CF" compile >/dev/null && ok "compile applies roadmap statuses" || bad "roadmap compile failed"
-cat > "$TMP/road1" <<'EOT'
-# Roadmap
-
-## Amendment 2
-
-1. **Two item.**
-
-   **Status: executed.** Old.
-
-   **Status: executed.** Again.
-2. **Second item.**
-
-## Amendment 3
-
-### Engineering
-
-1. **Three one.**
-
-   **Status: executed 2026-10-16.** Kept.
-2. **Three two.** Body.
-
-   **Status: executed 2026-10-17.** Done.
-
-### Added
-
-30. **Last item.**
-
-   **Status: executed.** Kept too.
-
-   **Update 2026-10-17:** More, with `a\\b` and `&`.
-EOT
-cmp -s "$R/docs/ROADMAP.md" "$TMP/road1" && ok "statuses land under the right items" || { bad "roadmap wrong"; diff "$TMP/road1" "$R/docs/ROADMAP.md"; }
-[ -z "$(find "$R/changelog.d/roadmap" -type f 2>/dev/null)" ] && ok "compile removes roadmap fragments" || bad "roadmap fragments left"
-inrepo "$CF" status A3.99 ghost 'Nothing.' >/dev/null
-inrepo "$CF" compile >/dev/null 2>&1 && bad "compile accepted a missing item" || ok "compile fails on a missing item"
-rm -f "$R"/changelog.d/roadmap/*.md
-git -C "$R" add -A; git -C "$R" commit -qm after
-
-# pr: a direct status line fails, a fragment passes.
-git -C "$R" checkout -q -b rdirect main
-awk '{print} /Kept too/{print ""; print "   **Status: executed 2026-10-17.** Direct."}' "$R/docs/ROADMAP.md" > "$TMP/rm" && cp "$TMP/rm" "$R/docs/ROADMAP.md"
-inrepo "$CF" new rdirect "Roadmap edit." >/dev/null; git -C "$R" add -A; git -C "$R" commit -qm rdirect
-out="$(inrepo "$CF" pr main 2>&1)" && bad "pr passed a direct roadmap status" || { case "$out" in *"Add a fragment"*ROADMAP*|*ROADMAP*"Add a fragment"*) ok "pr fails a direct roadmap status" ;; *) bad "wrong message: $out" ;; esac; }
-git -C "$R" checkout -q main
+# The roadmap file is gone: no status subcommand, and compile needs no docs/ROADMAP.md.
+[ ! -e "$R/docs/ROADMAP.md" ] || bad "fixture has a ROADMAP.md"
+if inrepo "$CF" status A3.2 two 'x' >/dev/null 2>&1; then bad "status still exists"; else ok "status subcommand is gone"; fi
+[ -z "$(find "$R/changelog.d" -type f ! -name README.md)" ] && ok "status wrote nothing" || bad "status left a file"
+mkdir -p "$R/changelog.d/roadmap"; echo x > "$R/changelog.d/roadmap/old.md"
+if inrepo "$CF" lint >/dev/null 2>&1; then bad "lint ignored a leftover roadmap fragment"; else ok "lint flags a leftover roadmap fragment"; fi
+rm -rf "$R/changelog.d/roadmap"
+inrepo "$CF" new late "Entry after the roadmap went." >/dev/null
+inrepo "$CF" compile 2>&1 | grep -q 'compiled 1 entries into CHANGELOG.md' && ok "compile works with no ROADMAP.md" || bad "compile needs ROADMAP.md"
 
 echo
 [ "$fail" -eq 0 ] && echo "all changelog fragment tests passed" || { echo "changelog fragment tests FAILED"; exit 1; }
