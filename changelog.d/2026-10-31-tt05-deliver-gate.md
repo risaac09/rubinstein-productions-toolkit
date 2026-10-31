@@ -1,0 +1,1 @@
+deliver-check gains a safe_zone row (caption and super boxes against shared margins in rpresolve/safezone.py, also used by qc, captionlint and overlay-check) and a video_bitrate row that skips until a platform floor is published.
