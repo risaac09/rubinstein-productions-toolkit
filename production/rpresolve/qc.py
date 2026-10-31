@@ -699,7 +699,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
         # Loudness is read once, below, from the same target.
         for r in dc.check(path, dest, fps=fps, size=size, loudness=False,
                           folders=config_folders)["checks"]:
-            if r["check"] not in ("loudness", "true_peak", "safe_zone", "video_bitrate"):  # qc has its own safe_zone
+            if r["check"] not in ("loudness", "true_peak", "safe_zone"):  # qc has its own safe_zone
                 rows.append({**r, "source": "deliver_check"})
     else:
         rows.append(dict(dc._row("deliver_check", None, "not run", "a destination (--dest)"),

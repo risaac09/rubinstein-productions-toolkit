@@ -18,8 +18,9 @@ TITLE_SAFE = 0.05                                          # each edge, landscap
 
 
 def margins(width, height):
-    """(top, bottom, side) for a frame of this size."""
-    if height > width:
+    """(top, bottom, side) for a frame of this size. Only a tall frame (9:16,
+    not 4:5) carries the vertical-video UI bands."""
+    if height >= 1.5 * width:
         return PORTRAIT["top"], PORTRAIT["bottom"], PORTRAIT["side"]
     return TITLE_SAFE, TITLE_SAFE, TITLE_SAFE
 
