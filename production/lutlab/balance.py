@@ -153,19 +153,19 @@ def read_frames(shot, n):
         if not files:
             raise Refused(f"{shot}: no PNG, TIFF or JPEG frames", "unreadable")
         pick = [files[i] for i in sorted({int(round(v)) for v in np.linspace(0, len(files) - 1, min(n, len(files)))})]
-        imgs = [(f.name, read_image(f)) for f in pick]
+        imgs = ((f.name, read_image(f)) for f in pick)  # lazy: one full-resolution frame alive at a time
     elif p.is_file():
         try:
             w, h = verify.probe_size(p)
             d = _duration(p)
             ts = np.linspace(d * VIDEO_MARGIN, d * (1 - VIDEO_MARGIN), n)
-            imgs = [(f"t{t:.2f}s", verify.decode_frame(p, float(t), SOLVE_W, int(round(SOLVE_W * h / w)))) for t in ts]
+            imgs = [(f"t{t:.2f}s", verify.decode_frame(p, float(t), SOLVE_W, int(round(SOLVE_W * h / w)))) for t in ts]  # already SOLVE_W wide
         except (RuntimeError, OSError, ValueError) as e:
             raise Refused(f"{shot}: {e}", "unreadable")
     else:
         raise Refused(f"{shot}: no such file or folder", "unreadable")
     out = []
-    for label, im in imgs:
+    for label, im in imgs:  # shrink before keeping: eight 6048x4032 float64 frames would be 4.7 GB
         if im.shape[1] != SOLVE_W:
             im = cv2.resize(im, (SOLVE_W, int(round(im.shape[0] * SOLVE_W / im.shape[1]))), interpolation=cv2.INTER_AREA)
         out.append((label, np.asarray(im, np.float64)))

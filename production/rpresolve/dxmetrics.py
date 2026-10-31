@@ -85,6 +85,7 @@ LAG_SECONDS = 30.0
 MAX_LAG_MS = 250.0
 LAG_MIN_CORR = 0.05                # below this the best match is chance, not a lag
 ZERO_RUN_S = 0.001                 # a run of exact zeros this long is a dropout
+MAX_DECODE_S = 3600.0              # longest range decode() holds as float64 (about 6.6 GB peak in measure() at 48 kHz mono)
 BATCH = 64                         # FFT frames per numpy batch
 DELTAS = ("integrated_lufs", "lra_lu", "true_peak_dbtp", "sibilance_ratio_db", "flatness",
           "hum_excess_db_50", "hum_excess_db_60", "wada_snr_db")
@@ -106,13 +107,20 @@ def _finite(v, nd=2):
 # Reading audio (also used by roomtone and duckplan)
 # ---------------------------------------------------------------------------
 
-def decode(path, stream=0, start=None, end=None, rate=None):
+def decode(path, stream=0, start=None, end=None, rate=None, max_seconds=MAX_DECODE_S):
     """(samples, rate): one audio stream mixed to mono as float64, at its own
-    rate or `rate`. Raises ar.ReportError."""
+    rate or `rate`. Raises ar.ReportError for a range longer than `max_seconds`
+    (None lifts the limit)."""
     # shortcut: the whole range is held in memory, and measure() peaks at several copies of it
     # (about 1.1 GB per 10 min at 48 kHz); give a range for a long file, or move this to
     # block reads if that becomes common.
     info = ar.audio_stream(path, stream)
+    span = (min(end, info["duration_s"]) if end is not None and info["duration_s"] else
+            end if end is not None else info["duration_s"])
+    if max_seconds is not None and span is not None and span - (start or 0.0) > max_seconds:
+        raise ar.ReportError(f"{path}: {(span - (start or 0.0)) / 3600:.1f} h of audio is more than the "
+                             f"{max_seconds / 3600:g} h this tool holds in memory. Give --start and --end "
+                             f"for a range at most that long.")
     rate = int(rate or info["sample_rate"])
     # Input seek stops cutlist.SEEK_PREROLL_S short and an output seek drops the rest: an input
     # seek alone decodes AAC up to one packet early (see cutlist.decode_pcm).

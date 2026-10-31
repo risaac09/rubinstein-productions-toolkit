@@ -55,6 +55,7 @@ MIN_MOVE = 8.0      # mean grey levels (of 255) the picture must travel, first f
 STRAIGHT = 0.9      # distance travelled over distance walked, frame by frame
 MAX_OFF = 0.25      # a window frame may sit this far off the blend line, as a share of the move
 MAX_NOISE = 1.0     # grey levels a frame step can move on noise alone
+MAX_DISSOLVE_S = 3600.0  # longest file the dissolve pass holds in memory (about 200 MB of grey frames at 25 fps, a few times over in find_dissolves)
 MAX_STEP = 0.35     # no single frame step may be more than this share of the whole move
 
 
@@ -66,7 +67,7 @@ def scdet_filter(threshold=THRESHOLD):
 def grey_frames(source, total):
     """(n, GREY_H * GREY_W) float32 grey frames of a video file's first video stream. All of them
     are held in memory: 2.3 KB a frame, so an hour at 25 fps is about 200 MB, with a few more such
-    copies while find_dissolves runs; split a longer file first."""
+    copies while find_dissolves runs; a file above MAX_DISSOLVE_S is refused by build."""
     try:
         proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source),
                                "-map", "0:v:0", "-vf", f"scale={GREY_W}:{GREY_H}:flags=area,format=gray",
@@ -150,6 +151,10 @@ def build(source, threshold=THRESHOLD, dissolves=True):
         raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
     cuts = sorted({t for t in qc.parse_scdet(proc.stderr, threshold) if 0 < t < total})
     found = []
+    if dissolves and rate and total > MAX_DISSOLVE_S:
+        raise dc.CheckError(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
+                            f"and stops above {MAX_DISSOLVE_S / 3600:g} h. Pass --no-dissolves for cuts only, "
+                            f"or split the file first.")
     if dissolves and rate:
         found = find_dissolves(grey_frames(source, total), float(rate))
         # scdet can catch one frame of a quick dissolve: that is the dissolve, not a cut
