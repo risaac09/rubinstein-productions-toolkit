@@ -1,0 +1,1 @@
+ograf-render waits for the page's fonts (and two paints before the first frame) before each screenshot, so a frame can no longer be captured in a fallback face. This is the suspected cause of a rare flaky shuffled-order test; it adds about 1 ms per frame.
