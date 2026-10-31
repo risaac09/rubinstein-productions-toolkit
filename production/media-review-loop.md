@@ -23,7 +23,7 @@ Claude can measure a picture or a mix but cannot see taste in it, and it cannot 
 | Grade on video | A 10 to 20 s proxy (recipe below) and one scopes image | ffmpeg | desktop: Browser pane through `serve`; phone or iPad: SendUserFile up to 25 MiB, or Safari through `serve` on a private network | a letter or 1 to 5 |
 | Edit | A proxy render of the proposed cut; after approval, an interchange file for the editor | `rpresolve.interchange` (see [interchange](interchange.md)) | as for video | `approve`, `hold` or a line |
 | Sound | Two or more 20 to 30 s excerpts of the same span, loudness matched, labelled A, B, C with a sealed key | `rpresolve.mixbuild ab`; the numbers after the answer from [sound assist](sound-assist.md) | desktop: Browser pane through `serve`; phone or iPad: SendUserFile | a letter and, ideally, a line |
-| Gate | Before a render or batch longer than about 30 minutes, or any replacement of a file a client can see: one full-frame sheet per clip and the listening excerpts | the commands above | as above | `go` or `hold` |
+| Gate | Before a render or batch longer than about 30 minutes, or any replacement of a file a client can see: one full-frame sheet per clip and the listening excerpts | `resolve_workflow.py gate-packet` | as above | `go` or `hold` |
 
 The commands in full (`python` is the tool venv's interpreter from the [rpstills README](rpstills/README.md); `python3` is any Python 3.9 or later; rpresolve finds ffmpeg and ffprobe at the Homebrew paths and ignores `PATH`, so elsewhere set `RPRESOLVE_FFMPEG` and `RPRESOLVE_FFPROBE`, as in [requirements.txt](../requirements.txt)):
 
@@ -38,6 +38,14 @@ python -m rpstills audit <finished dir> --out <review dir>/audit
 
 # Blind audio packet: A.wav, B.wav ... matched within 0.5 LU, key sealed in sealed/key.json
 python3 -m rpresolve.mixbuild ab --out <review dir>/mix-01 take1.wav take2.wav --start 42 --seconds 25 [--noise-type rumble]
+
+# Gate packet: per clip a 6 x 4 sheet (<= 1920 px, < 1 MiB, cell times printed) and two 20 s 48 kHz excerpts
+# (from 0 s, and around the sendable line or the middle); gate.json holds the clip count, the total runtime,
+# each input's sha256 and the pending gate line. It states total runtime, never render time.
+python3 resolve_workflow.py gate-packet --out <review dir>/gate-01 --project P-0001 \
+  --clip copy1.mp4 copy2.mp4 [--sendable copy1=42.5]        # or: --source SRC.mov --cuts clips.tsv
+python3 resolve_workflow.py review-log --dir <project dir> --project P-0001 --step gate --device desktop \
+  --choice go --key <review dir>/gate-01                    # after his answer: go or hold
 
 # The approved cut as a timeline file for Resolve
 python3 -m rpresolve.interchange <manifest> --format fcpxml --out <review dir>/cut-v3.fcpxml
@@ -205,7 +213,7 @@ The quick loop never replaces these:
 - **The ear check.** Claude cannot hear. Every audio decision is the reviewer's; loudness, noise and sibilance numbers are evidence beside it, not a verdict.
 - **Final approval** of a grade, a cut or a mix before anything is delivered.
 - **Anything sent to a client** or anyone outside: an explicit yes in chat for that send, every time.
-- **Long renders and replacements.** Before a render or batch longer than about 30 minutes, or any change to a file a client can already see: the full-frame sheet, the listening excerpts, and a yes.
+- **Long renders and replacements.** Before a render or batch longer than about 30 minutes, or any change to a file a client can already see: the full-frame sheet, the listening excerpts (`gate-packet`, above), and a yes. The answer's `stimulus` is the packet's `packet_sha256` in `gate.json`, so a later tool can tie the `go` to that packet.
 
 ## Known limits
 
