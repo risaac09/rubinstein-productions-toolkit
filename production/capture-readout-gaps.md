@@ -1,5 +1,7 @@
 # Capture settings the readouts cannot confirm
 
+> **Status:** draft, 2026-10-31.
+
 VP-101c (the readout half; the capture brief's post-shoot miss list is separate and still to come). For every setting on the [capture brief](capture-brief.md), whether the offline `measure` and `perceive` readouts (`production/rpresolve/measure.py`, `perceive.py`) can confirm it from the footage. Both read one decoded video stream with ffprobe and ffmpeg, take it as display-encoded Rec.709, and report numbers about the picture. Neither reads audio, camera metadata beyond the stream's colour tags, or the Resolve project.
 
 **Confirms:** `yes` the readout reports the setting itself; `partly` it reports something the setting influences, so it can contradict the setting but not prove it; `no` nothing in the readout output speaks to it. A function in backticks, such as `measure.probe`, is the one that does the work or the one that comes closest; a `no` row says what the file or the output does not carry.
