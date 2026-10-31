@@ -14,6 +14,11 @@ what it expected:
     fps           an exact rational; a standard rate, and --fps when given
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
+    video_bitrate expect.min_video_kbps; SKIP while no destination sets one
+                  (platform-specs.md records no bitrate floor)
+    safe_zone     caption and super boxes (boxes=, from captionlint or
+                  overlay-check) inside rpresolve.safezone's margins; SKIP
+                  with no boxes
     color_*       primaries, transfer and matrix tags against the config;
                   an expected value of null is only reported. color_range:
                   limited ("tv") by default; a yuvj* pix_fmt counts as full
@@ -46,7 +51,7 @@ import subprocess
 import time
 from fractions import Fraction
 
-from . import deliver
+from . import deliver, safezone
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 FFPROBE = os.environ.get("RPRESOLVE_FFPROBE", "/opt/homebrew/bin/ffprobe")
@@ -302,7 +307,8 @@ def _one_of(value, want):
     return value in want if isinstance(want, (list, tuple)) else value == want
 
 
-def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None):
+def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None,
+          boxes=None):
     """Check path against the merged destination dest. fps: the timeline's
     frame rate to assert (any form parse_fps reads). size: (width, height)
     to assert when the destination renders at the timeline's size.
@@ -310,7 +316,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     this (a fixed file that is still beside its original). folders:
     {subfolder: destination key} from deliver.subfolders(config), so a file
     in another destination's folder fails. loudness=False
-    skips the ffmpeg read. Returns {file, destination, checks, counts,
+    skips the ffmpeg read. boxes: [(label, (x0, y0, x1, y1))] frame fractions
+    of the captions and supers on screen, judged by the safe_zone row.
+    Returns {file, destination, checks, counts,
     status}; raises ToolMissing or CheckError."""
     need_ffmpeg = loudness and deliver.has_loudness_target(dest)
     check_tools(ffmpeg=need_ffmpeg)
@@ -402,6 +410,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         else:
             rows.append(_row("pix_fmt", None, video.get("pix_fmt"), "not fixed"))
 
+        rows.append(_bitrate(video, exp))
+        rows.append(_safe_zone(w, h, boxes))
+
         cexp = (dest.get("color") or {}).get("expect") or {}
         for key in ("color_primaries", "color_transfer", "color_space"):
             found = video.get(key) or "unset"
@@ -465,6 +476,39 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
+
+
+def _bitrate(video, exp):
+    """video_bitrate against expect.min_video_kbps. No destination in
+    resolve-config.json sets one: platform-specs.md records no bitrate floor,
+    so the row skips until a published one is added to a destination."""
+    floor = exp.get("min_video_kbps")
+    if floor is None:
+        return _row("video_bitrate", None, "not asserted", "no floor",
+                    "no platform floor is published in platform-specs.md")
+    bps = video.get("bit_rate")
+    kbps = int(bps) / 1000 if str(bps or "").isdigit() else None
+    if kbps is None:  # ffprobe omits it for some containers; not a reason to fail a file
+        return _row("video_bitrate", None, "unreadable", f">= {float(floor):g} kbps",
+                    "ffprobe gave no video bit_rate")
+    return _row("video_bitrate", kbps >= float(floor), f"{kbps:g} kbps", f">= {float(floor):g} kbps")
+
+
+def _safe_zone(w, h, boxes):
+    """Every caption and super box inside the safe zone for the frame
+    (rpresolve.safezone). Pixels are not read: the boxes come from the caller."""
+    expected = "every caption and super box inside the safe zone"
+    if boxes is None:  # an empty list is a caller saying nothing is on screen: a pass
+        return _row("safe_zone", None, "no boxes given", expected,
+                    "pass --boxes (captionlint and overlay-check report them)")
+    if not (w and h):
+        return _row("safe_zone", False, "frame size unreadable", expected)
+    m = safezone.margins(w, h)
+    out = [f"{label}: crosses {', '.join(sides)}" for label, box in boxes
+           for sides in [safezone.outside(box, m)] if sides]
+    return _row("safe_zone", not out, f"{len(boxes) - len(out)} of {len(boxes)} inside"
+                + (f"; {'; '.join(out[:3])}" if out else ""),
+                f"top {m[0]:g}, bottom {m[1]:g}, sides {m[2]:g} of the frame clear")
 
 
 def add_rows(result, rows):

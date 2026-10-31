@@ -11,6 +11,10 @@ Rows, FAIL first in the report:
 - fps: the frame rate against --fps
 - clear: no visible pixel at each --clear-at time (default the first frame)
 - opaque: some fully opaque pixels at the hold time
+- safe: the visible pixels' bounding box at the hold time inside the safe zone
+  (rpresolve.safezone, the margins qc and deliver-check use); WARN, the
+  graphic may be moved on the timeline. The row carries the box for
+  deliver-check --boxes
 - fringe: edge colour error where the graphic meets transparency, read as
   straight and as premultiplied alpha, at the hold time
 - brand: CIEDE2000 between named sample points and token values passed in
@@ -29,7 +33,7 @@ import re
 
 import numpy as np
 
-from . import color
+from . import color, safezone
 from .delivercheck import parse_fps
 from .measure import FFMPEG, MeasureError, _run, bit_depth, decode_filter, probe as _probe
 
@@ -39,7 +43,8 @@ FULL = 1 - 0.5 / 1023    # alpha at full scale
 # wrapped to ProRes peaks at 0.997; that still counts as opaque, and the opaque row warns.
 OPAQUE = 1 - 5 / 1023
 CLEAR = 0.5 / 1023       # alpha at or below this counts as fully clear
-EDGE_RADIUS = 3          # px searched for the opaque fill and the clear side of an edge
+SAFE_ALPHA = 0.5          # alpha at which a pixel counts toward the safe-zone box; shadows and halos do not
+EDGE_RADIUS = 3         # px searched for the opaque fill and the clear side of an edge
 EDGE_ALPHA = (0.1, 0.9)  # edge pixels outside this alpha band are left out as noise
 # Working default, 10-bit codes at the median edge pixel. Measured 2.1 on Chrome-rendered
 # type wrapped from 8-bit PNG to ProRes 4444; a premultiplied file read as straight gave 135.
@@ -278,6 +283,14 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
              "If the graphic is meant to be solid, an 8-bit alpha was likely widened by a shift")
     else:
         _row(rows, "PASS", "opaque", detail)
+
+    ys, xs = np.nonzero(hold_rgba[..., 3] >= SAFE_ALPHA)
+    if len(xs):
+        box = (xs.min() / w, ys.min() / h, (xs.max() + 1) / w, (ys.max() + 1) / h)
+        sides = safezone.outside(box, safezone.margins(w, h))
+        rows.append({"status": "WARN" if sides else "PASS", "row": "safe", "box": [round(float(v), 4) for v in box],
+                     "detail": f"at {t_hold:.3f}s x {box[0]:.0%}-{box[2]:.0%}, y {box[1]:.0%}-{box[3]:.0%}"
+                     + (f"; crosses {', '.join(sides)} of the safe zone" if sides else "")})
 
     fr = fringe(hold_rgba)
     if fr["edge_pixels"] == 0:

@@ -161,8 +161,11 @@ class TestFiles(unittest.TestCase):
         r = self.run_check("straight", expect=[("color_space", "bt709"), ("color_primaries", "bt709")],
                            fps="23.976")
         self.assertEqual(r["status"], "pass", overlay.format_report(r))
-        for row in ("alpha", "codec", "clear", "fringe", "brand"):
+        for row in ("alpha", "codec", "clear", "safe", "fringe", "brand"):
             self.assertEqual(self.status(r, row), ["PASS"], row)
+        box = next(x["box"] for x in r["rows"] if x["row"] == "safe")
+        for got, want in zip(box, (0.25, 0.25, 0.75, 0.75)):
+            self.assertAlmostEqual(got, want, delta=0.02)
 
     def test_an_opaque_file_fails_alpha_and_clear(self):
         r = self.run_check("opaque", samples=[])

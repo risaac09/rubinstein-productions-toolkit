@@ -77,7 +77,7 @@ Checksums are taken last. A loudness fix, a caption change or a re-render after 
 ## Rules
 
 1. **Every file in a destination subfolder has a row, and every row names a file in one.** A file with no row is not delivered; a row with no file is a mistake.
-2. **Only `deliver_check` PASS files are listed as delivered.** A file with a FAIL is either fixed and checked again or listed in a short "Not delivered" note with the reason.
+2. **Only `deliver_check` PASS files are listed as delivered.** Pass `--boxes` for any caption or super on screen so the safe-zone row runs; without boxes it skips. A file with a FAIL is either fixed and checked again or listed in a short "Not delivered" note with the reason.
 3. **The approval reference is required.** A file with no approval reference was not approved, and does not ship. See the gate.
 4. **The manifest is not edited after delivery.** A correction is a new manifest with a new date, and the first one is kept.
 5. **The client sees the manifest in full, with the key and the approval message below.** It is their delivery. Nothing client-identifying goes in a public copy: the manifest holds a project slug and a guest field in the file names, and a manifest published in this repo or anywhere public uses placeholders.
