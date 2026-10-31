@@ -72,12 +72,27 @@ class Base(unittest.TestCase):
 
 
 class TestRegistry(unittest.TestCase):
-    def test_offline_tools_registered_and_read_only(self):
-        for name in ("detect", "survey", "measure", "endcheck", "selects"):
+    # Tools that write a new file (always, or when out is given): not read-only,
+    # but never destructive. Every other offline tool reads and writes nothing.
+    WRITES_FILES = {"detect", "survey", "measure", "endcheck", "selects", "reframe_plan",
+                    "sync_measure", "trim_review", "shoot_table", "pipeline_proof", "perceive",
+                    "audio_report"}
+    READS_ONLY = {"qc", "deliver_check", "deliver_manifest", "overlay_check",
+                  "ograf_template_check"}
+
+    def test_offline_tools_registered_with_honest_annotations(self):
+        for name in self.WRITES_FILES | self.READS_ONLY:
             t = REG.get(name)
             self.assertIsNotNone(t, name)
-            self.assertTrue(t.annotations["readOnlyHint"], name)
+            self.assertEqual(t.annotations["readOnlyHint"], name in self.READS_ONLY, name)
+            self.assertFalse(t.annotations["destructiveHint"], name)
             self.assertEqual(schema.validate({"type": "object"}, t.input_schema), [])
+
+    def test_every_tool_that_takes_out_is_not_read_only(self):
+        for t in REG.list():
+            if "out" in t.input_schema.get("properties", {}):
+                self.assertFalse(t.annotations["readOnlyHint"], t.name)
+                self.assertIn("not read-only", t.description, t.name)
 
 
 class TestPaths(Base):
@@ -305,7 +320,6 @@ class TestSevenMore(Base):
         for name, args in SEVEN.items():
             t = REG.get(name)
             self.assertIsNotNone(t, name)
-            self.assertTrue(t.annotations["readOnlyHint"], name)
             if name in ("pipeline_proof", "overlay_check", "perceive", "audio_report"):
                 try:
                     import numpy  # noqa: F401

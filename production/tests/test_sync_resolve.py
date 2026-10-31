@@ -371,6 +371,24 @@ class TestSyncImport(Base):
     def run_import(self, **kw):
         return self.twice(self.new_cam, self.new_rec, bin="Sync run", **kw)
 
+    def inputs(self, **kw):
+        kw = {"reference": self.new_cam, "other": self.new_rec, "bin": "Sync run", **kw}
+        return workflows.sync_inputs(self.resolve, P, probe=self.probe, **kw)
+
+    def test_refusals_that_need_no_audio_hand_the_caller_nothing_to_correlate(self):
+        # sync_inputs returning None is the caller's cue to skip the correlation;
+        # sync then refuses with the reason (checked in test_refusals_write_nothing).
+        self.assertIsNotNone(self.inputs())
+        self.assertIsNotNone(self.inputs(autosync=True))
+        self.assertIsNone(self.inputs(bin=None, autosync=True))  # autosync needs a bin
+        self.assertIsNone(self.inputs(bin="Day 1"))  # the bin exists
+        self.project.add(rf.Timeline("C001 sync [auto]", "tl-old"))
+        self.assertIsNone(self.inputs())  # the default timeline name is taken
+        self.assertIsNotNone(self.inputs(name="Other [auto]"))
+        self.assertIsNone(self.inputs(name="Other"))  # not an [auto] name
+        self.project.add(rf.Timeline("Other (AutoSyncAudio) [auto]", "tl-old2"))
+        self.assertIsNone(self.inputs(name="Other [auto]", autosync=True))
+
     def test_imports_into_a_new_bin_and_builds(self):
         dry, r = self.run_import()
         self.assertEqual(dry["mode"], "import")
@@ -588,6 +606,31 @@ class TestSyncTool(Base):
             r = tool.handler(args, ToolContext(session=rf.Session(self.resolve)))
         self.assertEqual(seen, [False])  # measured once, outside the lock
         self.assertIn("would build", r["summary"])
+
+    @unittest.skipUnless(HAS_NUMPY, "numpy not installed")
+    def test_refusals_that_need_no_audio_come_before_the_correlation(self):
+        from rpresolve import sync as rpsync
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("sync")
+        self.project.add(rf.Timeline("Taken [auto]", "tl-taken"))
+        cases = [({"autosync": True}, "only on clips this run imports"),
+                 ({"name": "Taken [auto]"}, "already exists"),
+                 ({"bin": "Day 1", "reference": self.cam_path, "other": self.rec_path},
+                  "already exists at the media pool's root")]
+        for extra, why in cases:
+            with self.subTest(why=why):
+                calls = []
+
+                def measure(*a, **kw):
+                    calls.append(a)
+                    return self.measure()(*a, **kw)
+                args = schema.with_defaults(tool.input_schema, {
+                    "project": P, "reference": "clip-cam", "other": "clip-rec", **extra})
+                with mock.patch.object(rpsync, "measure", measure), \
+                        self.assertRaisesRegex(workflows.Refused, why):
+                    tool.handler(args, ToolContext(session=rf.Session(self.resolve)))
+                self.assertEqual(calls, [])
 
 
 class TestSyncSettingsDrift(Base):

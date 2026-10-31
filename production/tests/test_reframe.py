@@ -620,7 +620,7 @@ class TestMCPTool(unittest.TestCase):
         from rpresolve.mcp import schema, server
         from rpresolve.mcp.registry import ToolContext
         tool = server.build_registry().get("reframe_plan")
-        self.assertTrue(tool.annotations["readOnlyHint"])
+        self.assertFalse(tool.annotations["readOnlyHint"])  # it writes the plan files
         with tempfile.TemporaryDirectory() as d:
             d = os.path.realpath(d)
             path = os.path.join(d, "m.json")

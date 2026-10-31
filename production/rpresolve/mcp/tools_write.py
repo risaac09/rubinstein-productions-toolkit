@@ -540,7 +540,8 @@ def sync(args, ctx):
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         got = workflows.sync_inputs(ctx.session.get(), args["project"], args["reference"],
                                     args["other"], bin=args.get("bin"),
-                                    project_id=args.get("project_id"))
+                                    project_id=args.get("project_id"),
+                                    autosync=args["autosync"], name=args.get("name"))
     if got:
         kw = {"check_cancel": ctx.check_cancel}
         if args["window_s"]:
