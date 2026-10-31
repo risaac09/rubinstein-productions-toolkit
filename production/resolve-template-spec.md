@@ -71,7 +71,7 @@ Everything works in DaVinci Intermediate on every camera, which is what makes ma
 
 **Look strength.** Build the look once at full strength and keep one strength control, so a client's "less" is one move, not a rebuild. By hand, put the look's nodes in a compound node labelled `LOOK` and use its Key Output Gain. A script has no evidence of reaching that control, so the scripted form is baked variants of the same template at 100, 66 and 33 percent, and the script picks one.
 
-**What a script may write.** Node 3, `WB`, and nothing else: never `LOOK`, `CON` or the tail. `apply_grade` puts a look on the `LOOK` node (index 8) and a clip needs that node before the apply.
+**What a script may write.** Two things only. `apply_grade` puts a LUT on one node you name; pass `lut.node` 8 for the look, because its default is node 1, which is `NR`, and it does not check the label. The clip needs the node before the apply. A match step may also write `WB` through `SetCDL`, but that write does not exist yet and waits on the first spike below. Never `CON`, the other corrective nodes or the tail.
 
 **Open spikes.** None of these four is confirmed. Each needs a run against a sandbox project before a template relies on it, and until then the hand route above is the only one.
 - **SetCDL: unconfirmed.** `TimelineItem.SetCDL` (slope, offset, power, saturation on one node) is in the Resolve API but has not been exercised here. Whether it writes to `WB` of a template applied by `.drx`, reads back, and survives `DuplicateTimeline` is not known.
