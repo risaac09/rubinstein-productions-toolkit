@@ -62,12 +62,24 @@ class TestPaths(unittest.TestCase):
             outside = os.path.join(d, "loose", "out.md")
             self.assertTrue(paths.in_any_git_tree(inside))
             self.assertFalse(paths.in_any_git_tree(outside))
-            self.assertIsNone(paths.out_problem(inside))  # this repo's rule alone lets it pass
-            self.assertIn("git working tree", paths.out_problem(inside, any_git_tree=True))
+            # the default refuses any git tree; only an explicit False is repo-only
+            self.assertIn("git working tree", paths.out_problem(inside))
+            self.assertIsNone(paths.out_problem(inside, any_git_tree=False))
             with self.assertRaises(paths.OutputRefused):
-                paths.write_private(inside, "x", any_git_tree=True)
+                paths.write_private(inside, "x")
             os.makedirs(os.path.dirname(outside))
-            self.assertEqual(paths.write_private(outside, "ok", any_git_tree=True), outside)
+            self.assertEqual(paths.write_private(outside, "ok"), outside)
+
+    def test_lutlab_guard_shares_the_default(self):
+        from lutlab import guard  # stdlib-only: no numpy needed
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "other-repo")
+            os.makedirs(repo)
+            subprocess.run(["git", "init", "-q", repo], check=True)
+            with self.assertRaises(PermissionError):
+                guard.check_out_dir(os.path.join(repo, "sub"))
+            self.assertFalse(os.path.exists(os.path.join(repo, "sub")))
+            self.assertTrue(guard.check_out_dir(os.path.join(d, "loose")).is_dir())
 
     def test_default_out_dir_honours_the_environment(self):
         with tempfile.TemporaryDirectory() as d:

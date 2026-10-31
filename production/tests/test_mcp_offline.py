@@ -215,6 +215,28 @@ class TestSurvey(Base):
         with self.assertRaisesRegex(ValueError, "does not end in .json"):
             call("survey", {"out": os.path.join(self.dir, "s.json")})
 
+    def test_free_survey_values_cannot_smuggle_an_option(self):
+        for field in ("projects", "tree_labels"):
+            for bad in (["A", "--out", "/elsewhere/x.md"], ["-x"], [""], []):
+                tool = REG.get("survey")
+                self.assertTrue(schema.validate(tool.input_schema, {field: bad}), (field, bad))
+                kw = {field: bad}
+                with self.assertRaises(workflows.Refused):
+                    workflows.survey_command("/o/r.md", **kw)
+        argv = workflows.survey_command("/o/r.md", projects=["A"], tree_labels=["L"])
+        self.assertEqual(argv.count("--out"), 1)
+
+    def test_empty_items_are_refused_by_schema_and_workflow(self):
+        for name in ("apply_grade", "reframe_apply", "stabilize"):
+            props = REG.get(name).input_schema["properties"]
+            self.assertEqual(props["items"]["minItems"], 1, name)
+            errs = schema.validate(REG.get(name).input_schema, {"items": []})
+            self.assertTrue(any("items" in e and "fewer than 1" in e for e in errs), name)
+        with self.assertRaises(workflows.Refused):
+            workflows._wanted_items([], 3)
+        self.assertEqual(workflows._wanted_items(None, 3), [1, 2, 3])
+        self.assertEqual(workflows._wanted_items([2, 1, 2], 3), [1, 2])
+
     def test_failed_survey_leaves_no_empty_report(self):
         def failing(out, json_out=None, **kw):
             return {"returncode": 1, "out": out, "json_out": json_out,

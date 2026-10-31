@@ -44,9 +44,33 @@ def binary(source=SOURCE):
     return path if proc.returncode == 0 and os.access(path, os.X_OK) else None
 
 
+def _batch(exe, flag, chunk):
+    """{path: doc} for one helper run, or None when it timed out or exited non-zero."""
+    try:
+        proc = subprocess.run([exe, *flag, *chunk], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, encoding="utf-8", errors="replace",
+                              timeout=TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode != 0:
+        return None
+    out = {}
+    for line in proc.stdout.splitlines():
+        try:
+            doc = json.loads(line)
+        except ValueError:
+            continue
+        out[doc.get("path")] = {"width": doc.get("width"), "height": doc.get("height"),
+                                "faces": doc.get("faces") or [],
+                                "people": doc.get("people") or [], "error": doc.get("error")}
+    return out
+
+
 def faces(images, landmarks=False):
     """{image path: {"width", "height", "faces": [...], "people": [...]}} or
-    None. landmarks=True adds each face's landmark points."""
+    None when the helper cannot run. landmarks=True adds each face's landmark
+    points. A batch that fails is retried one file at a time; a file that still
+    fails is absent from the result, so callers treat a missing path as unread."""
     exe = binary()
     if not exe:
         return None
@@ -54,22 +78,17 @@ def faces(images, landmarks=False):
     out = {}
     for start in range(0, len(images), BATCH):
         chunk = list(images[start:start + BATCH])
-        try:
-            proc = subprocess.run([exe, *flag, *chunk], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, encoding="utf-8", errors="replace",
-                                  timeout=TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            return None
-        if proc.returncode != 0:
-            return None
-        for line in proc.stdout.splitlines():
-            try:
-                doc = json.loads(line)
-            except ValueError:
-                continue
-            out[doc.get("path")] = {"width": doc.get("width"), "height": doc.get("height"),
-                                    "faces": doc.get("faces") or [],
-                                    "people": doc.get("people") or [], "error": doc.get("error")}
+        got = _batch(exe, flag, chunk)
+        if got is not None:
+            out.update(got)
+            continue
+        misses = 0
+        for one in chunk:
+            if misses >= 3:   # a wedged helper: leave the rest of this batch unread rather than wait on each file
+                break
+            got = _batch(exe, flag, [one])
+            misses = 0 if got is not None else misses + 1
+            out.update(got or {})
     return out
 
 

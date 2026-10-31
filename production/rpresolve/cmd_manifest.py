@@ -32,7 +32,7 @@ def add_arguments(p):
 def run(args):
     """Build a cut manifest (see rpresolve/cutlist.py) and write it to --out."""
     from rpresolve import cutlist
-    problem = rppaths.out_problem(args.out)
+    problem = rppaths.out_problem(args.out, any_git_tree=True)
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1

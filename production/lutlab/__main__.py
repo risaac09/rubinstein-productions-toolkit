@@ -251,7 +251,10 @@ def main(argv=None):
         out = guard.out_dir(a.out, "library")
         reg = Path(out) / "registry.json"
         if a.scan or not reg.exists():
-            entries = library.scan(overrides=library.load_overrides(out))
+            skipped = []
+            entries = library.scan(overrides=library.load_overrides(out), problems=skipped)
+            for path, why in skipped:
+                print(f"skipped {path}: {why}", file=sys.stderr)
             print(library.write(entries, out), f"({len(entries)} LUTs)")
         else:
             entries = json.loads(reg.read_text())["entries"]

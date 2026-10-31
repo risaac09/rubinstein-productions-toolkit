@@ -54,6 +54,20 @@ class ClusterTest(unittest.TestCase):
         self.assertEqual(len(c["segments"]), 1)
         self.assertEqual(len(c["runs"]), 1)
 
+    def test_out_of_order_times_do_not_join_distant_frames(self):
+        rows = [row(1, "2026-09-12T16:00:00"), row(2, "2026-09-11T09:00:00"), row(3, "2026-09-12T16:00:01")]
+        c = cluster.build(rows)
+        self.assertEqual([s["frames"] for s in c["segments"]], [["F002"], ["F001", "F003"]])
+
+    def test_mixed_time_zones_do_not_raise(self):
+        rows = [row(1, "2026-09-12T16:00:00"), row(2, "2026-09-12T16:00:01+01:00")]
+        self.assertEqual(len(cluster.build(rows)["segments"]), 1)
+
+    def test_empty_shoot(self):
+        c = cluster.build([])
+        self.assertEqual(c["runs"], [])
+        self.assertIn("bursts 0, longest 0", cluster.summary(c))
+
     def test_bad_rows_are_skipped(self):
         rows = [row(1, "2026-09-12T16:00:00"), dict(row(2, "2026-09-12T16:00:01"), error="boom")]
         self.assertEqual(len(cluster.build(rows)["runs"][0]["frames"]), 1)
@@ -199,6 +213,48 @@ class CullTest(unittest.TestCase):
         cu = cull.build(rows, cluster.build(rows))
         self.assertEqual(cu["proposal"][0]["picks"], [])
         self.assertEqual(cu["scores"]["F001"]["score"], 0.0)
+
+
+class ReviewEscapeTest(unittest.TestCase):
+    def test_names_are_escaped_before_they_reach_innerhtml(self):
+        import tempfile
+        from rpstills import review
+        name = 'a<b>"&#?%</script>'
+        r = row(1, "2026-09-12T16:00:00")
+        r["id"], r["proxy"] = name, f"proxies/{name}.jpg"
+        cl = cluster.build([r])
+        cu = {"scores": {}, "proposal": [{"run": "run001", "picks": [], "ranked": [name]}]}
+        with tempfile.TemporaryDirectory() as d:
+            page = Path(review.build(d, "s", "src", [r], cl, cu)).read_text()
+        self.assertNotIn("</script>" + "\n", page.split("const DATA")[1].split("const esc")[0])
+        self.assertIn('src="${esc(url(f.proxy))}"', page)
+        self.assertIn('alt="${esc(id)}"', page)
+        self.assertIn('<span class="tag">${esc(id)}</span>', page)
+        self.assertNotIn("${f.proxy}", page)
+
+
+class CropsPreviewTest(unittest.TestCase):
+    CFG = {"profiles": {"sq": {"aspect": [1, 1]}}}
+
+    def test_zero_frames(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(crops.preview(d, [], {}, self.CFG), (None, 0, 0))
+
+    def test_many_flagged_frames_are_capped(self):
+        import tempfile
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow missing")
+        n = crops.MAX_ROWS + 5
+        with tempfile.TemporaryDirectory() as d:
+            Image.new("RGB", (40, 30)).save(Path(d) / "p.jpg")
+            rows = [{"id": f"F{i}", "proxy": "p.jpg"} for i in range(n)]
+            plan = {r["id"]: {"crops": {"sq": {"x": 0, "y": 0, "w": 1, "h": 1, "flags": ["tight"]}}} for r in rows}
+            path, shown, total = crops.preview(d, rows, plan, self.CFG)
+            self.assertEqual((shown, total), (crops.MAX_ROWS, n))
+            self.assertTrue(Path(path).exists())
 
 
 if __name__ == "__main__":

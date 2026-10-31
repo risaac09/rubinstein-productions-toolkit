@@ -27,7 +27,7 @@ Row shape (index.jsonl):
    "width": 6000, "height": 4000, "upright_w": 6000, "upright_h": 4000,
    "iso": 400, "f": 3.2, "shutter": "1/1300", "focal": 141.0,
    "phash": "...", "face_hash": "..." | null, "faces": [...], "sharpness": [..per face..],
-   "people": [...], "face_source": "proxy" | "tiles" | null, "tiled": true | false,
+   "people": [...], "faces_unread": true | false, "face_source": "proxy" | "tiles" | null, "tiled": true | false,
    "time_source": "exif" | "sidecar" | "filename" | "sequence" | null,
    "frame": {"sharp", "mean", "contrast", "clip_lo", "clip_hi"} | null, "error": null}
 """
@@ -100,11 +100,13 @@ def raw_twin(jpeg):
 
 def frame_ids(files, folder):
     """A unique id per file: the bare stem when stems are unique across the
-    shoot, else the path relative to the shoot folder with '/' as '__'."""
+    shoot, else the path relative to the shoot folder (with the extension too if that still collides) with '/' as '__'."""
     stems = [os.path.splitext(os.path.basename(f))[0] for f in files]
     if len(set(stems)) == len(stems):
         return stems
-    return [os.path.splitext(os.path.relpath(f, folder))[0].replace(os.sep, "__") for f in files]
+    rel = [os.path.relpath(f, folder).replace(os.sep, "__") for f in files]
+    bare = [os.path.splitext(r)[0] for r in rel]
+    return bare if len(set(bare)) == len(bare) else rel   # X1.jpg and X1.jpeg in one folder keep their extensions
 
 
 def read_one(jpeg, proxy_dir, stem=None):
@@ -134,12 +136,17 @@ def read_one(jpeg, proxy_dir, stem=None):
             up.thumbnail((PROXY_EDGE, PROXY_EDGE))
             row["frame"] = frames.metrics_image(up)   # on the proxy-size image already in hand, in the worker
             proxy = os.path.join(proxy_dir, f"{stem}.jpg")
-            if os.path.exists(proxy):  # an earlier run's proxy stays; record its real size
+            st = os.stat(jpeg)
+            stamp = f"rpstills src {st.st_size} {st.st_mtime_ns}".encode()   # which source made this proxy
+            reuse = False
+            if os.path.exists(proxy):
                 with Image.open(proxy) as existing:
-                    row["upright_w"], row["upright_h"] = existing.size
-            else:
+                    reuse = existing.info.get("comment") == stamp
+                    if reuse:
+                        row["upright_w"], row["upright_h"] = existing.size
+            if not reuse:   # absent, from another source, or from before the stamp: rebuild
                 row["upright_w"], row["upright_h"] = up.size
-                up.save(proxy + ".part", "JPEG", quality=88)
+                up.save(proxy + ".part", "JPEG", quality=88, comment=stamp)
                 os.replace(proxy + ".part", proxy)
     except Exception as e:  # one bad frame must not stop the shoot
         row["error"] = f"{type(e).__name__}: {e}"
@@ -388,8 +395,13 @@ def build(folder, out_dir, workers=4, log=print, times_file=None, interval=None,
     seen = vision.faces(proxies)
     if seen is None:
         log("index: Vision helper unavailable; faces left empty")
+    else:
+        lost = sum(1 for p in proxies if p not in seen)
+        if lost:
+            log(f"index: Vision failed on {lost} proxies; their faces are left empty (faces_unread)")
     for r in rows:
         doc = (seen or {}).get(os.path.join(out_dir, r["proxy"]))
+        r["faces_unread"] = seen is not None and doc is None and not r["error"]   # the helper failed on this file
         r["faces"] = (doc or {}).get("faces") or []
         r["people"] = (doc or {}).get("people") or []
         r["face_source"] = "proxy" if r["faces"] else None
