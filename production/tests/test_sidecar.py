@@ -29,11 +29,11 @@ def doc(name, lane, **kw):
 
 class CardKey(unittest.TestCase):
     def test_panasonic_tree(self):
-        self.assertEqual(sc.card_key("/A/S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV"), "S5II-a1b2c3/P1039630")
+        self.assertEqual(sc.card_key("/A/S5II-a1b2c3/DCIM/100_PANA/P1000110.MOV"), "S5II-a1b2c3/P1000110")
 
     def test_work_copy_matches_archive_copy(self):
-        a = sc.card_key("/Volumes/Archive/2026-x/S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV")
-        w = sc.card_key("/Volumes/Work/Active/2026-x/01-Source/S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV")
+        a = sc.card_key("/Volumes/Archive/2026-x/S5II-a1b2c3/DCIM/100_PANA/P1000110.MOV")
+        w = sc.card_key("/Volumes/Work/Active/2026-x/01-Source/S5II-a1b2c3/DCIM/100_PANA/P1000110.MOV")
         self.assertEqual(a, w)
 
     def test_flat_render_folder(self):
@@ -50,12 +50,12 @@ class SourceSha(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             card = os.path.join(d, "S5II-a1b2c3", "DCIM", "100_PANA")
             os.makedirs(card)
-            clip = os.path.join(card, "P1039630.MOV")
+            clip = os.path.join(card, "P1000110.MOV")
             Path(clip).write_bytes(b"x")
             Path(d, "S5II-a1b2c3.SHA256SUMS").write_text(
-                f"{'b' * 64}  DCIM/100_PANA/P1039629.MOV\n{H}  DCIM/100_PANA/P1039630.MOV\n")
+                f"{'b' * 64}  DCIM/100_PANA/P1000109.MOV\n{H}  DCIM/100_PANA/P1000110.MOV\n")
             self.assertEqual(sc.source_sha256(clip), H)
-            self.assertIsNone(sc.source_sha256(os.path.join(card, "P1039631.MOV")))
+            self.assertIsNone(sc.source_sha256(os.path.join(card, "P1000111.MOV")))
             render = os.path.join(d, "renders", "v01.mov")
             self.assertIsNone(sc.source_sha256(render))
 

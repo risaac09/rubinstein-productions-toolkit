@@ -71,7 +71,7 @@ Times in the TSVs are timeline frames counted from zero, or source timecode wher
 
 ```
 {"track": 1, "index": 3, "name": "...", "record_in": 240, "record_out": 312,
- "clip_id": "S5II-a1b2c3/P1039630", "source_in": 1200, "source_out": 1272}
+ "clip_id": "S5II-a1b2c3/P1000110", "source_in": 1200, "source_out": 1272}
 ```
 
 `record_*` and `source_*` are frames, `clip_id` follows the [sidecar envelope](https://github.com/risaac09/rubinstein-productions-toolkit/pull/223) rule (`<card folder>/<stem>`). Sort by `track`, then `record_in`; serialise as JSON with sorted keys and no spaces; hash the UTF-8 bytes. Audio items are not in the hash: sound's own edits after lock do not move picture.
