@@ -7,6 +7,7 @@ refused inside any git working tree (another public repo would leak them
 just the same); any_git_tree=False narrows that to this repository's trees.
 """
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path
@@ -50,30 +51,42 @@ def out_problem(path, any_git_tree=True):
     return output_path_problem(path)
 
 
-def write_private(path, text, any_git_tree=True):
-    """Write output that names private media. Raises OutputRefused."""
-    problem = out_problem(path, any_git_tree)
-    if problem:
-        raise OutputRefused(problem)
-    # Temp file and rename: a hard link to the target elsewhere keeps its old
-    # content, so a link into a repository cannot carry the output there. The
-    # file keeps the mode open() gave it (0666 less the umask), and a missing
-    # folder still fails as it did.
-    target = os.path.realpath(path)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".rp-", suffix=".tmp")
+@contextlib.contextmanager
+def atomic_path(path, prefix=None, suffix=".part"):
+    """Yield a fresh temp path in path's folder (default name ends in .part, so no scan for images or
+    cubes lists a half-written file). On a clean exit it is renamed onto path, on an error it is removed.
+    A hard link at path keeps its old content: the rename replaces the name, not the inode. No tree
+    check here: callers that need one use write_private or their own guard."""
+    path = os.path.realpath(path)   # a symlink at the name is written through to its target, as open() did
+    if prefix is None:
+        prefix = ".part-" + os.path.basename(path)[:80] + "-"
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=prefix, suffix=suffix)
+    os.close(fd)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
+        yield tmp
         umask = os.umask(0)
         os.umask(umask)
-        os.chmod(tmp, 0o666 & ~umask)
-        os.replace(tmp, target)
+        os.chmod(tmp, 0o666 & ~umask)   # mkstemp makes 0600; open() would have made 0666 less the umask
+        os.replace(tmp, path)
     except BaseException:
         try:
             os.remove(tmp)
         except FileNotFoundError:
             pass
         raise
+
+
+def write_private(path, text, any_git_tree=True):
+    """Write output that names private media. Raises OutputRefused."""
+    problem = out_problem(path, any_git_tree)
+    if problem:
+        raise OutputRefused(problem)
+    # Temp file and rename: a hard link to the target elsewhere keeps its old
+    # content, so a link into a repository cannot carry the output there. A
+    # missing folder still fails as it did.
+    with atomic_path(path, prefix=".rp-", suffix=".tmp") as tmp:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
     return path
 
 
