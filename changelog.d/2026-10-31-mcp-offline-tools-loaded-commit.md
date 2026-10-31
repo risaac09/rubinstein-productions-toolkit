@@ -1,0 +1,1 @@
+resolve_status reports the commit the MCP server loaded beside the one on disk (stale when they differ) and a line per mounted media volume; seven more offline commands are MCP tools (shoot_table, qc, pipeline_proof, deliver_manifest as a preview and verify, perceive, audio_report, overlay_check).

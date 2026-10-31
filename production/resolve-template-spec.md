@@ -185,9 +185,10 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 28 tools: reads of the open project, the offline checks (detect,
+as 35 tools: reads of the open project, the offline checks (detect,
 survey, measure, endcheck, selects, reframe_plan, deliver_check,
-sync_measure, trim_review), the offline caption conversion (deliver_captions), and
+sync_measure, trim_review, shoot_table, qc, pipeline_proof,
+deliver_manifest, perceive, audio_report, overlay_check), the offline caption conversion (deliver_captions), and
 additive writes (ingest, cut, duplicate, a timeline from clips in order,
 colour management set on a fresh project, grade onto `[auto]` timelines,
 auto captions on `[auto]` timelines, queue a render without starting it,

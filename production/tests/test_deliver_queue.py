@@ -568,7 +568,7 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 28)  # 23, plus set_color_management, timeline_from_clips, relink, stabilize and reframe_apply
+        self.assertEqual(len(names), 35)  # 28, plus the seven offline tools of VP-18
         for name in ("deliver_check", "deliver_captions", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):

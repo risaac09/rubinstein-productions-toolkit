@@ -33,13 +33,32 @@ def _git(*args):
         return None
 
 
+LOADED_COMMIT = _git("rev-parse", "--short", "HEAD")  # once, at import: the commit this server runs
+
+
+def _mounts(volumes="/Volumes"):
+    """One line per mounted media volume under /Volumes, or ["none"]. Names
+    only, no stat of the volume's contents: a NAS that went to sleep must not
+    hang resolve_status. The boot volume is a symlink there and is left out."""
+    try:
+        names = [n for n in sorted(os.listdir(volumes))
+                 if not os.path.islink(os.path.join(volumes, n))]
+    except OSError:
+        names = []
+    return [f"{n} mounted" for n in names] or ["none"]
+
+
 def _server_info():
     commit = _git("rev-parse", "--short", "HEAD")
     status = _git("status", "--porcelain", "--untracked-files=no")
-    return {"version": __version__, "toolkit_path": os.path.dirname(TOOLKIT_DIR),
-            "commit": commit, "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+    info = {"version": __version__, "toolkit_path": os.path.dirname(TOOLKIT_DIR),
+            "commit": commit, "loaded_commit": LOADED_COMMIT,
+            "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "dirty": bool(status) if status is not None else None,
-            "python": sys.version.split()[0]}
+            "python": sys.version.split()[0], "mounts": _mounts()}
+    # Python read this code once at start, so a different commit on disk is code the server has not run.
+    info["stale"] = bool(commit and LOADED_COMMIT and commit != LOADED_COMMIT)
+    return info
 
 
 def _tools_available():
@@ -91,6 +110,9 @@ def resolve_status(args, ctx):
         out["summary"] = "Resolve is busy with another session"
     else:
         out["summary"] = "Resolve is not connected: " + r.get("error", "")
+    if out["server"]["stale"]:
+        out["summary"] += (f"; the server loaded {out['server']['loaded_commit']} but the checkout "
+                           f"is at {out['server']['commit']}: restart it")
     if out["server"].get("dirty"):
         out["summary"] += "; the toolkit checkout has uncommitted changes"
     return out
