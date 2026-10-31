@@ -30,7 +30,7 @@ Call `resolve_status` first; Resolve is edited live by a person, so never assume
 
 Reads, which change nothing: `resolve_status`, `list_timelines`, `timeline_items`, `media_pool`, `render_queue_status`.
 
-Offline, which never connect to Resolve and take absolute paths: `detect`, `survey`, `measure`, `endcheck`, `selects`, `reframe_plan`, `deliver_check`, `deliver_captions`, `sync_measure`, `trim_review`, `shoot_table`, `qc`, `pipeline_proof`, `deliver_manifest`, `perceive`, `audio_report`, `overlay_check`.
+Offline, which never connect to Resolve and take absolute paths: `detect`, `survey`, `measure`, `endcheck`, `selects`, `reframe_plan`, `deliver_check`, `deliver_captions`, `sync_measure`, `trim_review`, `shoot_table`, `qc`, `pipeline_proof`, `deliver_manifest`, `perceive`, `audio_report`, `overlay_check`, `ograf_template_check`.
 
 Writes, each a dry run first: `ingest`, `set_color_management`, `timeline_from_clips`, `duplicate_timeline_auto`, `cut`, `apply_grade`, `create_captions`, `queue_render`, `sync`, `relink`, `stabilize`, `reframe_apply`, `trim_review_markers`.
 

@@ -10,7 +10,8 @@ sync_measure correlates two recordings' audio; trim_review reads a source's
 audio and its word JSON and writes a review TSV; shoot_table, qc,
 pipeline_proof, overlay_check, perceive and audio_report read media with ffprobe
 and ffmpeg (the last two write a packet or report folder); deliver_manifest
-previews a delivery manifest and re-checks its checksums, writing nothing.
+previews a delivery manifest and re-checks its checksums, writing nothing;
+ograf_template_check hashes the installed OGraf templates against the repo's.
 
 Destinations come from production/resolve-config.json, with the overlay at
 $RPRESOLVE_CONFIG laid over it when that is set (deliver_config()).
@@ -643,6 +644,15 @@ def overlay_check(args, ctx):
     return r
 
 
+def ograf_template_check(args, ctx):
+    from .. import ografinstall
+    r = ografinstall.check(args.get("template"))
+    bad = [f"{x['template']}/{x['file']} {x['status']}" for x in r["rows"] if x["status"] != "installed"]
+    r["summary"] = "; ".join(bad + [r["notice"]] * bool(r["notice"])) or (
+        "all templates installed" if r["ok"] else "no template files found")
+    return r
+
+
 # ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
@@ -1081,3 +1091,11 @@ def register(registry):
               "de_max": {"type": "number", "minimum": 0,
                          "description": "CIEDE2000 allowed at a brand sample."}}, ["file"]),
         overlay_check, title="Check a graphic master", annotations=READ))
+    registry.add(Tool(
+        "ograf_template_check",
+        "Compare the OGraf templates installed in Resolve with the copies in the toolkit by "
+        "sha256: installed, missing or stale per file, plus a restart notice when a file was "
+        "installed after Resolve started. Reads only; never copies. Never connects to Resolve.",
+        _obj({"template": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9-]*$",
+                           "description": "One template id (say-why-lower-third); default all."}}),
+        ograf_template_check, title="Check OGraf templates", annotations=READ))

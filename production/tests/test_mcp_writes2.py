@@ -505,7 +505,7 @@ class TestQueueRenderIsDestinationOnly(Base):
     def test_the_listed_tool_has_no_preset(self):
         self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         tools = {t["name"]: t for t in self.h.recv()["result"]["tools"]}
-        self.assertEqual(len(tools), 35)  # 28, plus the seven offline tools of VP-18
+        self.assertEqual(len(tools), 36)  # 28, plus the seven offline tools of VP-18, plus ograf_template_check
         tool = tools["queue_render"]
         props = tool["inputSchema"]["properties"]
         self.assertEqual(sorted(props), ["destination", "dry_run", "name", "plan_sha", "project",
