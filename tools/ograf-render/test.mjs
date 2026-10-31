@@ -170,8 +170,8 @@ describe("ograf-render", { skip }, () => {
       "let n = 0; Object.defineProperty(document.fonts, 'ready', { get: () => (n++ < 20 ? new Promise(() => {}) : Promise.resolve()) });\nclass Fixture"));
     writeFileSync(join(d, "fixture.ograf.json"), JSON.stringify(manifest()));
     const out = join(work, "j");
-    const r = spawnSync("node", [SCRIPT, join(d, "fixture.ograf.json"), "--out", out, "--size", "320x180", "--no-video"],
-      { encoding: "utf8", env: { ...process.env, OGRAF_FONT_WAIT_MS: "50" } });
+    const r = spawnSync("node", [SCRIPT, join(d, "fixture.ograf.json"), "--out", out, "--size", "320x180", "--no-video", "--font-wait-ms", "50"],
+      { encoding: "utf8" });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stderr, /font\/paint wait timed out/);
     const t = JSON.parse(readFileSync(join(out, "report.json"), "utf8")).font_wait_timeouts;

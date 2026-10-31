@@ -20,7 +20,6 @@ const CHROME_CANDIDATES = [
 const MIME = { ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json",
   ".css": "text/css", ".html": "text/html", ".woff2": "font/woff2", ".woff": "font/woff",
   ".ttf": "font/ttf", ".otf": "font/otf", ".png": "image/png", ".svg": "image/svg+xml" };
-const FONT_WAIT_MS = Number(process.env.OGRAF_FONT_WAIT_MS) || 2000;  // env lets a test shorten it
 const DEFAULT_FPS = "24000/1001";
 const GENERIC_FAMILIES = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy",
   "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "emoji", "inherit", "initial"]);
@@ -41,6 +40,7 @@ const USAGE = `usage: ograf-render.mjs TEMPLATE.ograf.json --out DIR [options]
   --keep-frames        keep the PNGs in OUT/frames (not if it exists)
   --no-video           stop after the PNGs, boxes and report
   --strict-fonts       a missing font fails the run (default: a warning in report.json)
+  --font-wait-ms N     how long a frame waits for fonts and paint before it is captured anyway (default 2000)
   --chrome PATH        Chrome binary (default: CHROME env, then the usual names)
   --lint               run Resolve's own linter when installed (OGRAF_LINT overrides its path)
 `;
@@ -55,7 +55,7 @@ function parseArgs(argv) {
     else if (a === "--no-video") o.noVideo = true;
     else if (a === "--strict-fonts") o.strictFonts = true;
     else if (a === "--lint") o.lint = true;
-    else if (["--out", "--fps", "--size", "--duration", "--frames", "--order", "--data", "--chrome"].includes(a)) {
+    else if (["--out", "--fps", "--size", "--duration", "--frames", "--order", "--data", "--chrome", "--font-wait-ms"].includes(a)) {
       o[a.slice(2)] = need(i); i++;
     } else if (a.startsWith("-")) throw new Fail(`unknown option ${a}\n${USAGE}`);
     else if (o.template) throw new Fail(`one template at a time\n${USAGE}`);
@@ -349,6 +349,7 @@ async function main() {
     ok(await call("setActionsSchedule", { schedule: defaultSchedule(manifest, data, fps, durationMs, total) }), "setActionsSchedule");
 
     let painted = false;
+    const fontWaitMs = Number(o["font-wait-ms"]) || 2000;
     const fontWaitTimeouts = [];
     let probing = false;  // determinism revisits are not the stored frames
     const visit = async (i) => {
@@ -360,7 +361,7 @@ async function main() {
       // (rAF paused) from hanging the render.
       const paints = painted ? 0 : 2;
       painted = true;
-      const settled = await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(() => r(false), ${FONT_WAIT_MS})), (async () => {
+      const settled = await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(() => r(false), ${fontWaitMs})), (async () => {
         for (let k = 0; k < ${paints}; k++) await new Promise((r) => requestAnimationFrame(r));
         document.body.offsetHeight;
         await document.fonts.ready;
@@ -392,8 +393,8 @@ async function main() {
 
     if (fontWaitTimeouts.length) {
       const frames = [...new Set(fontWaitTimeouts)].sort((a, b) => a - b);
-      report.font_wait_timeouts = { frames, wait_ms: FONT_WAIT_MS, note: "the font/paint wait timed out; these frames were captured without confirmed fonts" };
-      process.stderr.write(`ograf-render: font/paint wait timed out after ${FONT_WAIT_MS} ms on ${frames.length} frame(s) (${frames.slice(0, 5).join(", ")}${frames.length > 5 ? ", ..." : ""}); captured anyway, see report.json\n`);
+      report.font_wait_timeouts = { frames, wait_ms: fontWaitMs, note: "the font/paint wait timed out; these frames were captured without confirmed fonts" };
+      process.stderr.write(`ograf-render: font/paint wait timed out after ${fontWaitMs} ms on ${frames.length} frame(s) (${frames.slice(0, 5).join(", ")}${frames.length > 5 ? ", ..." : ""}); captured anyway, see report.json\n`);
     }
     report.fonts = await evaluate(cdp, FONTS_JS);
     ok(await call("dispose", {}).catch(() => null), "dispose");
