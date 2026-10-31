@@ -1,0 +1,1 @@
+Social 9:16 destination gains min_fps (30000/1001): deliver_check adds an fps_floor row that WARNs below it (SKIP with none, never FAIL), and a queue_render dry run warns when the timeline is under it and still queues; plan_sha is unchanged. (B04)

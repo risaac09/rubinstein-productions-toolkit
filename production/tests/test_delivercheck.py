@@ -222,6 +222,17 @@ class TestCheck(unittest.TestCase):
         hot = self.clip(name=name, sidecar=None, size="36x64", lufs=-14.0, peaks=True)
         self.assertIn("true_peak", failed(dc.check(hot, d)))
 
+    def test_fps_floor_warns_below_min_fps_and_skips_without_one(self):
+        name = "SW001_Guest_01_example-clip_9x16.mp4"
+        for rate, want in (("24000/1001", dc.WARN), ("30000/1001", dc.PASS)):
+            path = self.clip(name=name, sidecar=None, size="36x64", lufs=-14.0, rate=rate)
+            r = dc.check(path, tiny("social_9x16"), loudness=False)
+            self.assertEqual(statuses(r)["fps_floor"], want, dc.format_report(r))
+            self.assertEqual(r["status"], "pass")  # a WARN never fails the check
+        path = self.clip(name=name, sidecar=None, size="36x64", rate="24000/1001")
+        self.assertEqual(statuses(dc.check(path, tiny("linkedin_9x16"), loudness=False))
+                         ["fps_floor"], dc.SKIP)
+
     def test_the_folder_row_knows_which_destination_a_folder_is_for(self):
         folders = deliver.subfolders(CFG)
         d = self.folder()
