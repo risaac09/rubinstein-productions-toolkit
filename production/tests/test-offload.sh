@@ -27,6 +27,8 @@ EOF
 # FAKE_MATCH when set, else every file under the source (a full match).
 cat > "$T/bin/rclone" <<'EOF'
 #!/bin/sh
+case "$1" in config) printf '[x]\nremote = %s\n' "${FAKE_TARGET-}"; exit 0 ;; esac
+case "$1" in listremotes) printf '%s\n' "${FAKE_REMOTES-remote:  b2}"; exit 0 ;; esac
 src="$2"; log=""; match=""
 while [ $# -gt 0 ]; do case "$1" in --log-file) log="$2" ;; --match) match="$2" ;; esac; shift; done
 [ -z "$log" ] || printf '%s\n' "${FAKE_LOG:-}" > "$log"
@@ -132,6 +134,40 @@ check "a check that matched only some files (a filter) is not safe" '[ "$rc" -eq
 out=$(RCLONE_SIZE_ONLY=true RCLONE_CONFIG_REMOTE_TYPE=b2 FAKE_ENV_OUT="$T/rclone.env" "$O" safe "$d" remote:bucket/x 2>&1); rc=$?
 check "rclone flag variables are cleared, remote and config variables kept" '[ "$rc" -eq 0 ] && ! grep -q RCLONE_SIZE_ONLY "$T/rclone.env" && grep -q RCLONE_CONFIG_REMOTE_TYPE "$T/rclone.env"'
 rm -f "$d.offsite.txt"
+# Same refusals through the fake (no rclone needed): type local, unreadable, union, wrapper chains.
+for c in "remote:  local" "" "remote:  union" "remote:  crypt" "remote:  alias"; do
+  out=$(FAKE_REMOTES="$c" FAKE_TARGET="/some/dir" "$O" safe "$d" remote:x 2>&1); rc=$?
+  check "fake remote '$c' is refused" '[ "$rc" -eq 2 ] && [ ! -e "$d.offsite.txt" ]'
+done
+out=$(FAKE_REMOTES="remote:  crypt" FAKE_TARGET="remote:" "$O" safe "$d" remote:x 2>&1); rc=$?
+check "a crypt that points at itself is refused after the hop limit" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "too deep"'
+out=$(FAKE_REMOTES="my b2:  b2" "$O" safe "$d" "my b2:x" 2>&1); rc=$?
+check "a remote name with a space is read" '[ "$rc" -eq 0 ]'
+rm -f "$d.offsite.txt"
+# A remote of type local, or an alias ending at one, is refused; so is one whose type cannot be read.
+if command -v rclone > /dev/null; then
+  # Real rclone reads the config; the check itself stays the fake and is never reached.
+  cat > "$T/bin/rclone-cfg" <<EOF
+#!/bin/sh
+case "\$1" in listremotes|config) exec rclone "\$@" ;; *) exec "$T/bin/rclone" "\$@" ;; esac
+EOF
+  chmod +x "$T/bin/rclone-cfg"
+  printf '[loc]\ntype = local\n\n[al]\ntype = alias\nremote = loc:/x\n\n[al2]\ntype = alias\nremote = al:\n\n[albare]\ntype = alias\nremote = /some/dir\n\n[far]\ntype = b2\n\n[alfar]\ntype = alias\nremote = far:bucket\n' > "$T/rc.conf"
+  safe_cfg() { out=$(RCLONE_BIN="$T/bin/rclone-cfg" RCLONE_CONFIG="$1" "$O" safe "$d" "$2" 2>&1); rc=$?; rm -f "$d.offsite.txt"; }
+  for r in loc:x al:x al2:x albare:x missing:x; do
+    safe_cfg "$T/rc.conf" "$r"
+    check "remote $r is refused" '[ "$rc" -eq 2 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+  done
+  for r in far:x alfar:x; do
+    safe_cfg "$T/rc.conf" "$r"
+    check "remote $r (non-local) passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+  done
+  printf 'not [valid\n' > "$T/bad.conf"
+  safe_cfg "$T/bad.conf" far:x
+  check "unreadable config is refused" '[ "$rc" -eq 2 ]'
+else
+  echo "skip rclone not installed: local and alias remote cases"
+fi
 run safe "$T/c1" remote:bucket/x
 check "folder without sidecars refused" '[ "$rc" -eq 2 ]'
 printf 'rot' >> "$d/DCIM/100_PANA/P1000001.XML"

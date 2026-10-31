@@ -175,15 +175,33 @@ cmd_copy() {
   echo "NOT safe to format yet: run 'offload.sh safe $final <remote>' once the offsite copy lands"
 }
 
+REMOTE_RE='^[A-Za-z0-9_][A-Za-z0-9_. -]+:'
+
 cmd_safe() {
   [ $# -eq 2 ] || die "usage: offload.sh safe <copy-dir> <rclone-remote>"
   local dir="${1%/}" remote="$2"
   [ -d "$dir" ] || die "not a directory: $dir"
   # Only an rclone remote ("name:path") is offsite; a bare path, even one on
   # another disk, is a local folder and never earns the verdict.
-  # shortcut: a remote of type local still passes; rclone's config is not read here.
-  printf '%s' "$remote" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_. -]+:' \
+  printf '%s' "$remote" | grep -qE "$REMOTE_RE" \
     || die "not an rclone remote: $remote (want name:path); a local folder is not an offsite copy"
+  # A remote of type local, or a wrapper (alias, crypt, ...) that ends at one, is a local folder too.
+  # A type that cannot be read is refused. Never contacts the remote.
+  local r="$remote" hops=0 t n
+  while :; do
+    n=${r%%:*}
+    t=$("$RCLONE_BIN" listremotes --long < /dev/null 2>/dev/null | awk -v n="$n:" 'index(tolower($0), tolower(n)) == 1 {print $NF; exit}')
+    case "$t" in
+      "") die "cannot read the type of rclone remote '$n'; refusing" ;;
+      local) die "rclone remote '$n' is of type local; a local folder is not an offsite copy" ;;
+      union|combine) die "rclone remote '$n' is of type $t and may sit on a local folder; refusing" ;;
+      alias|crypt|compress|chunker|hasher|cache)
+        hops=$((hops + 1)); [ "$hops" -le 8 ] || die "alias chain from $remote is too deep; refusing"
+        r=$("$RCLONE_BIN" config show "$n" < /dev/null 2>/dev/null | sed -n 's/^remote *= *//p' | head -n 1)
+        printf '%s' "$r" | grep -qE "$REMOTE_RE" || die "$t '$n' does not point at an rclone remote; a local folder is not an offsite copy" ;;
+      *) break ;;
+    esac
+  done
   local json="$dir.card.json"
   [ -f "$json" ] && [ -f "$dir.SHA256SUMS" ] || die "no sidecars beside $dir: it was not offloaded by this tool"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$json")
