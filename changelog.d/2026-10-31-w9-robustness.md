@@ -1,0 +1,1 @@
+review-log refuses a reason that is not valid UTF-8 with exit 2 instead of a traceback; ograf-template-check reports an unreadable installed file as an unreadable row and keeps checking the rest; ograf-render notes in report.json and on stderr when the font/paint wait times out, and still renders.
