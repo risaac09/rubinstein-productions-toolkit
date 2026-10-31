@@ -1,0 +1,1 @@
+The MCP deliver_check tool now says its WARN rows (the frame-rate floor) are advice that never change the outcome, and its summary names the WARN count when there is one. A destination's min_fps in a config overlay is checked when the config loads, so a value that is not a frame rate fails there with the destination and field named instead of inside deliver_check.
