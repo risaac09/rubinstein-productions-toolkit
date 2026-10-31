@@ -16,6 +16,14 @@ jobs:
         run: scripts/check-doc-links.sh
       - name: Methodology status headers
         run: scripts/check-methodology-status.sh
+      - name: Voice check (em-dashes, banned verbs)
+        run: scripts/check-voice.sh
+      - name: Licence scope check
+        run: scripts/check-licence-scope.sh
+      - name: Voice and licence check tests
+        run: |
+          scripts/test-check-voice.sh
+          scripts/test-check-licence-scope.sh
       - name: Measurement instrument scoring test
         run: scripts/test-instrument-score.sh
       - name: Changelog fragment and burst-gate tests
