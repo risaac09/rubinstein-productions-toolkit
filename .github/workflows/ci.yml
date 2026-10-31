@@ -16,6 +16,8 @@ jobs:
         run: scripts/check-doc-links.sh
       - name: Methodology status headers
         run: scripts/check-methodology-status.sh
+      - name: Methodology status check tests
+        run: scripts/test-methodology-status.sh
       - name: Measurement instrument scoring test
         run: scripts/test-instrument-score.sh
       - name: Changelog fragment and burst-gate tests
