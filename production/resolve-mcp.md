@@ -51,7 +51,7 @@ they return as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 35 tools: 5 reads, 17 offline tools
+tool must name that project. There are 36 tools: 5 reads, 18 offline tools
 (one of them, `deliver_captions`, writes a file beside a render) and 13
 writes.
 
@@ -78,6 +78,7 @@ writes.
 | `deliver_manifest` | offline | A delivery folder's `manifest.md` and `checksums.txt` as a preview, or with `verify` a re-check of `checksums.txt` against the files. Writes nothing; the CLI's `deliver-manifest` writes the two files. |
 | `perceive` | offline | One frame as scopes, a Lab palette and numbers (faces, skin, lighting ratio), with an optional reference, as a packet folder outside any repository. Needs numpy. |
 | `audio_report` | offline | Loudness over time, spectrogram, peaks, clipping, clicks, silences and octave balance of one audio stream: `audio-report.json` and two PNGs in a folder outside any repository, flags in the reply. Needs numpy. |
+| `ograf_template_check` | offline | The installed OGraf templates against the toolkit's copies, by sha256: installed, missing or stale per file, with a restart notice when a file went in after Resolve started. Reads only; never copies. |
 | `overlay_check` | offline | A graphic master rendered with alpha: tags, frame rate, clear and opaque frames, edge fringe and brand colour at named pixels, PASS, FAIL or SKIP per row. Needs numpy. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines and their 9:16 and 1:1 versions (`aspects`, default 9:16) from a cut manifest, gated by endcheck. Each version's items take their span's crop from `reframe_plan` (else the clip's `face_x`), every transform read back. A version with no reframe is not built and is named UNREFRAMED, nor is one whose input scaling is not scaleToFit or scaleToCrop (REFUSED); one whose picture does not fill the frame is built and named BARS. A timeline a failed build leaves behind is named in `left_behind` and in the journal. Each timeline is decided on its own: one that exists is skipped, and a missing version beside an existing 16:9 is built from it while its items still match the manifest's spans. |
