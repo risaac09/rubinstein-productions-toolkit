@@ -1,0 +1,1 @@
+qc adds two WARN-only rows on 9:16 renders: hook_text (the vertcut hook.json sidecar covers frame 0, SKIP with no sidecar) and speech_onset (first speech by 1.0 s from --words or the leading silence, or a hook covers frame 0). qc also drops deliver_check's fps_floor row on social destinations, since its own social_fps row says the same. Neither row changes the exit code.
