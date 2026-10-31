@@ -1,1 +1,1 @@
-Add `resolve_workflow.py review-log`, which appends one decoded answer (letters read from an absheet or mixbuild key) to a project's review/events.jsonl, and name the reel question keys and reel fields in the review-loop and story-options docs.
+Add `resolve_workflow.py review-log`, which appends one decoded answer (letters read from an absheet or mixbuild key) to a project's review/events.jsonl, and name the reel question keys and reel fields in the review-loop and story-options docs. (#331)

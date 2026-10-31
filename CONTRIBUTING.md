@@ -10,7 +10,7 @@ Open an issue. Issues are enabled on this repo. It may not get a response quickl
 
 Fork it.
 
-Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `dsh/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates, prompts, research, seed-bed, and architecture, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
+Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates and prompts, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
 
 An adaptation of the CC BY-SA material has to carry the same license. Read those two files for the exact terms.
 
