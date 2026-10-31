@@ -74,6 +74,12 @@ run "G4 fails on an em-dash in markdown" 1 "G4 style: em-dash"
 branch dashcode scripts/x.sh "echo '$EMD'"
 run "G4 ignores non-prose files" 0 "PASS G4 style"
 
+# A non-ASCII name is quoted by git unless quotePath is off; its lines must still be scanned.
+branch accent "docs/caf$(printf '\303\251').md" "see $HOMEPATH for details"
+run "G2 scans a file whose name git would quote" 1 "G2 privacy: private-looking text"
+branch tabname "docs/a$(printf '\t')b.md" "plain"
+run "G1 fails on a name git still quotes" 1 "file name git quotes"
+
 branch nofrag docs/a.md "plain" nofrag
 run "G5 fails with no fragment" 1 "G5 changelog: no changelog.d/ fragment"
 out="$(cd "$R" && "$G" --base main --tests true --fix 2>&1)"; rc=$?

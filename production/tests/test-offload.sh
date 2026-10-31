@@ -125,6 +125,16 @@ printf 'rot' >> "$d/DCIM/100_PANA/P1000001.XML"
 run safe "$d" remote:bucket/x
 check "a copy that rotted is not safe even when rclone passes" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "no longer matches"'
 
+# 8b. safe wants an rclone remote; a local folder, even a real one, is refused.
+rm -f "$d.offsite.txt"
+run safe "$d" "$T/a1"
+check "a local folder is not an offsite copy" '[ "$rc" -eq 2 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && [ ! -e "$d.offsite.txt" ]'
+
+# 8c. copy refuses a destination inside a git work tree.
+mkdir -p "$T/repo/sub"; git init -q "$T/repo"
+run copy "$T/c1" "$T/repo/sub" --cam S5M2
+check "copy into a git work tree refused, nothing written" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "git work tree" && [ -z "$(ls "$T/repo/sub")" ]'
+
 # 9. A read-back that fails is reported as a read failure, not a mismatch.
 cat > "$T/bin/dd-noread" <<'EOF'
 #!/bin/sh
