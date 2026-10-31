@@ -118,6 +118,8 @@ class Handler(SimpleHTTPRequestHandler):
         bound = self.server.server_address[0]
         if not host or host in ("localhost", bound):
             return True
+        if host.endswith(".local") and not ipaddress.ip_address(bound).is_loopback:
+            return True                # the Mac's own mDNS name, for an iPad on the same network
         try:
             ipaddress.ip_address(host)
         except ValueError:
@@ -130,7 +132,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.MISDIRECTED_REQUEST, "Unexpected Host")
             return None
         path = self.translate_path(self.path)
-        if os.path.basename(path) in HIDDEN_NAMES:
+        if os.path.basename(path).lower() in HIDDEN_NAMES:
             self.send_error(HTTPStatus.NOT_FOUND, "File not found")
             return None
         if path.endswith("/") and os.path.isdir(path):

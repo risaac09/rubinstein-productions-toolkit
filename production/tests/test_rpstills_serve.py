@@ -177,7 +177,7 @@ class ServerTest(unittest.TestCase):
                 self.assertNotIn(b"SECRET", body)
 
     def test_the_blind_key_is_never_served(self):
-        for rel in ("key.json", "sub/key.json"):
+        for rel in ("key.json", "sub/key.json", "KEY.JSON"):
             with open(os.path.join(self.root, rel), "w") as f:
                 f.write("{}")
             for method in ("GET", "HEAD"):

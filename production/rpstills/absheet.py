@@ -10,7 +10,7 @@ letter on each: A, B, C ... It writes
 
   DIR/sheet.jpg   at most MAX_EDGE px on the long edge and under MAX_BYTES
                   (the JPEG quality steps down QUALITIES until it fits), sRGB
-  DIR/key.json    each letter -> its source file and size, the seed, the
+  DIR.key/key.json  (beside DIR, not in it) each letter -> its source file and size, the seed, the
                   grid, the sheet's size, bytes and quality
 
 The answer is a letter; key.json turns it back into a file.
@@ -193,7 +193,7 @@ def refuse_git(out_dir):
 
 def key_dir(out_dir):
     """Where key.json goes: beside out_dir, never in it, so serving out_dir shows the reviewer only the sheet."""
-    return os.fspath(out_dir).rstrip(os.sep) + ".key"
+    return os.path.abspath(out_dir).rstrip(os.sep) + ".key"
 
 
 def build(paths, out_dir, seed=None, title=None):
@@ -203,6 +203,7 @@ def build(paths, out_dir, seed=None, title=None):
         raise ValueError(f"{len(paths)} images; a sheet takes {MIN_IMAGES} to {MAX_IMAGES}")
     out_dir = os.path.abspath(out_dir)
     refuse_git(out_dir)
+    refuse_git(key_dir(out_dir))
     seed = secrets.randbelow(2 ** 31) if seed is None else int(seed)
     paths = [os.path.abspath(p) for p in paths]
     sheet_path = os.path.realpath(os.path.join(out_dir, "sheet.jpg"))

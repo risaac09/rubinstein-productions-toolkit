@@ -743,7 +743,8 @@ def build(frames, backend, look, dest, detect=None, log=print, neutral_box=None,
                     ref = wb or wb_reference(rows.get(wb_from), wb_from, backend.name)
                 row = develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box, ref)
             except Exception as e:  # one bad frame is an error row; Ctrl-C still stops the run
-                row = {"id": fid, "raw": raw, "error": str(e), "converged": False, "status": "failed"}
+                row = {"id": fid, "raw": raw, "error": str(e) if isinstance(e, (ValueError, RuntimeError, OSError)) else f"{type(e).__name__}: {e}",
+                       "converged": False, "status": "failed"}
                 if os.path.exists(os.path.join(dest, f"{fid}.tif")):
                     row["stale_tif"] = "the TIFF on disk is from an earlier run"
             rows[fid] = row = {**common, **row, "seconds": round(time.monotonic() - t0, 2)}
