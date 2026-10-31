@@ -100,7 +100,10 @@ def _inspect(path):
     if not {"video", "audio"} <= kinds:
         raise ReelAbError(f"{path} needs a video stream and an audio stream")
     v = next(s for s in info["streams"] if s.get("codec_type") == "video")
-    return int(v["width"]), int(v["height"]), float(info["format"]["duration"])
+    try:
+        return int(v["width"]), int(v["height"]), float(info["format"]["duration"])
+    except (KeyError, ValueError, TypeError):
+        raise ReelAbError(f"{path} has no readable size or duration")
 
 
 def _frame0(files, out_jpg, seed):
@@ -136,7 +139,7 @@ def build(files, out_dir, start=0.0, seconds=10.0, seed=None, opening=False):
     kdir = key_dir(out_dir)
     if not 2 <= len(files) <= len(LETTERS):
         raise ReelAbError(f"{len(files)} renders; a packet takes 2 to {len(LETTERS)}")
-    if not 0 < seconds <= MAX_SECONDS or start < 0:
+    if not 0 < seconds <= MAX_SECONDS or not start >= 0:
         raise ReelAbError(f"--seconds must be above 0 and at most {MAX_SECONDS:g}, and --start 0 or more")
     for p in (out_dir, kdir):
         if os.path.lexists(p):
@@ -144,7 +147,14 @@ def build(files, out_dir, start=0.0, seconds=10.0, seed=None, opening=False):
         problem = paths.out_problem(os.path.join(p, "x"))
         if problem:
             raise ReelAbError(problem)
+    if opening:  # fail before the encodes, not after
+        try:
+            from rpstills import absheet  # noqa: F401
+        except ImportError as e:
+            raise ReelAbError(f"--opening needs Pillow and rpstills (the rp-tools venv): {e}")
     files = [os.path.abspath(f) for f in files]
+    if len({os.path.realpath(f) for f in files}) < len(files):
+        raise ReelAbError("a render is named twice; an A/B of one file with itself says nothing")
     for f in files:
         if not os.path.isfile(f):
             raise ReelAbError(f"not found: {f}")
@@ -160,8 +170,12 @@ def build(files, out_dir, start=0.0, seconds=10.0, seed=None, opening=False):
     labels = list(LETTERS[:len(files)])
     loud = [_lufs(f, start, seconds) for f in files]
     gains = [min(loud) - v for v in loud]  # only turning down
-    os.makedirs(out_dir)
+    created = []  # only what this run made is removed on failure
     try:
+        os.makedirs(out_dir)
+        created.append(out_dir)
+        os.makedirs(kdir)
+        created.append(kdir)
         outs = [os.path.join(out_dir, f"{lab}.mp4") for lab in labels]
         measured = [0.0] * len(labels)
         todo = set(range(len(labels)))
@@ -192,7 +206,6 @@ def build(files, out_dir, start=0.0, seconds=10.0, seed=None, opening=False):
                "sheet": {"file": "packet.json"},  # reviewlog hashes this as the stimulus
                "labels": {lab: {"source": files[perm[k]], "input_index": perm[k], "gain_db": round(gains[perm[k]], 3)}
                           for k, lab in enumerate(labels)}}
-        os.makedirs(kdir)
         key_path = os.path.join(kdir, "key.json")
         with open(key_path, "w", encoding="utf-8") as f:
             json.dump(key, f, indent=1, sort_keys=True)
@@ -205,7 +218,7 @@ def build(files, out_dir, start=0.0, seconds=10.0, seed=None, opening=False):
                     f"Levels are matched within {TOLERANCE_LU} LU, so loudness is not a clue. "
                     "The key is kept apart from this folder.\n")
     except BaseException:
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.rmtree(kdir, ignore_errors=True)
+        for d in created:
+            shutil.rmtree(d, ignore_errors=True)
         raise
     return packet

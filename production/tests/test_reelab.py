@@ -89,7 +89,7 @@ class ReelAbTests(unittest.TestCase):
 
     def test_key_maps_every_letter_and_stays_out_of_the_folder(self):
         key_path = os.path.join(reelab.key_dir(self.out), "key.json")
-        key = json.load(open(key_path))
+        key = json.loads(Path(key_path).read_text())
         self.assertEqual(sorted(key["labels"]), ["A", "B", "C"])
         self.assertEqual({v["source"] for v in key["labels"].values()}, set(self.srcs))
         self.assertFalse(any("key" in n for n in os.listdir(self.out)))
@@ -119,7 +119,7 @@ class ReelAbTests(unittest.TestCase):
         events, bad = tastedistill.read_events(os.path.join(proj, "review", "events.jsonl"))
         self.assertEqual((len(events), bad), (1, 0))
         line = events[0][1]
-        key = json.load(open(os.path.join(reelab.key_dir(self.out), "key.json")))
+        key = json.loads(Path(reelab.key_dir(self.out), "key.json").read_text())
         self.assertEqual(line["options"], {k: os.path.basename(v["source"]) for k, v in key["labels"].items()})
         self.assertEqual(line["stimulus"], reviewlog._sha256(os.path.join(self.out, "packet.json")))
 
@@ -135,6 +135,10 @@ class ReelAbTests(unittest.TestCase):
             reelab.build([self.srcs[0], self.wide], new, 0, 1.0)
         with self.assertRaisesRegex(reelab.ReelAbError, "past the shortest"):
             reelab.build(self.srcs, new, 3.5, 2.0)
+        with self.assertRaisesRegex(reelab.ReelAbError, "named twice"):
+            reelab.build([self.srcs[0], self.srcs[0]], new, 0, 1.0)
+        with self.assertRaisesRegex(reelab.ReelAbError, "at most 30"):
+            reelab.build(self.srcs, new, float("nan"), 1.0)
         with self.assertRaisesRegex(reelab.ReelAbError, "2 to 4"):
             reelab.build(self.srcs[:1], new, 0, 1.0)
         with self.assertRaisesRegex(reelab.ReelAbError, "at most 30"):

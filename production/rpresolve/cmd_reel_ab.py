@@ -31,7 +31,7 @@ def run(args):
     from rpresolve import reelab
     try:
         packet = reelab.build(args.files, args.out, args.start, args.seconds, args.seed, args.opening)
-    except (reelab.ReelAbError, dc.ToolMissing, OSError) as e:
+    except (reelab.ReelAbError, dc.ToolMissing, dc.CheckError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
     print(f"packet: {args.out} ({len(packet['labels'])} files, spread {packet['spread_lu']} LU)")
