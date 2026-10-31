@@ -8,28 +8,28 @@ Report only. This audit changes no code. It follows the `ponytail-audit` method:
 
 **Load assumed:** one person on one Mac, running one tool at a time, on media that can be hours long, shoots of thousands of frames, and sources on a network share that may be asleep. The MCP server serves one local client.
 
-**How to read a finding:** each has where it is, what goes wrong, and the smallest fix. "Test: no" means no test fails when it breaks. "Open PR" means a held pull request already changes that file; check it before fixing here. Nothing below is fixed by an open PR (#272, #286 to #292).
+**How to read a finding:** each has where it is, what goes wrong, and the smallest fix. "Test: no" means no test fails when it breaks. "Merged in" names the pull request that has since fixed or changed the finding. Pull requests #286 to #292 are merged; #272 is still open.
 
 Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
 
 ## Must fix
 
-1. **`transcribe` writes transcripts with no output guard** (`production/rpresolve/transcribe.py:231-235`)
+1. **`transcribe` writes transcripts with no output guard** (`production/rpresolve/transcribe.py:231-235`) Fixed in #301 (merged).
    - Problem: the `--out`, `--srt` and `--txt` files are written with plain `open(path, "w")`. Run from inside any repo, the full transcript of a person's speech lands in that working tree, ready for `git add -A`.
    - Fix: check all three paths with `paths.out_problem(p, any_git_tree=True)` before the backend runs, and write with `paths.write_private`.
    - Test: no.
 
-2. **The command-line guard refuses only this repo, and four writers skip the safe write** (`production/rpresolve/cli.py:152-157`, `cmd_detect.py:34,49`, `cmd_measure.py:35,52`, `cmd_shoot_table.py:74`, `proof.py:241`, `cmd_story_packet.py:34` against `:43`)
+2. **The command-line guard refuses only this repo, and four writers skip the safe write** (`production/rpresolve/cli.py:152-157`, `cmd_detect.py:34,49`, `cmd_measure.py:35,52`, `cmd_shoot_table.py:74`, `proof.py:241`, `cmd_story_packet.py:34` against `:43`) Fixed in #301 and #312 (merged).
    - Problem: `cli.write_private` and the direct `out_problem(...)` calls omit `any_git_tree=True`, so `detect --out <another repo>/x.tsv` writes full media paths into that other repo. The MCP tools pass `any_git_tree=True` for the same outputs, so the rule differs by entry point. `detect`, `measure`, `shoot-table` and `pipeline-proof` also write with plain `open`, so an `--out` that is a hard link to a tracked file truncates it; `write_private` exists to stop that.
    - Fix: pass `any_git_tree=True` in `cli.write_private` and route the four plain writes through it.
    - Test: only the in-repo refusal (`production/tests/test_detect.py:681`).
 
-3. **The MCP `survey` tool can be told to write anywhere** (`production/rpresolve/mcp/tools_offline.py:497-500`, `production/rpresolve/workflows.py:333-342`, `production/resolve_survey.py:1427-1438`). Open PR #290 changes `tools_offline.py`.
+3. **The MCP `survey` tool can be told to write anywhere** (`production/rpresolve/mcp/tools_offline.py:497-500`, `production/rpresolve/workflows.py:333-342`, `production/resolve_survey.py:1427-1438`). Fixed in #302 (merged).
    - Problem: `projects` and `tree_labels` are free strings appended to the child's argv after `--out`. `projects: ["A", "--out", "/elsewhere/x.md"]` makes argparse take the second `--out`. The server checked only the first one against any git tree; the child checks only this repo.
    - Fix: give both arrays' items `"pattern": "^[^-]"` and `"minLength": 1`, or put `--` before the values.
    - Test: no.
 
-4. **rpstills `index`, `run`, `cluster`, `cull`, `crops` and `review` have no git-tree guard** (`production/rpstills/__main__.py:77-112`, `production/rpstills/index.py:347,423-427`)
+4. **rpstills `index`, `run`, `cluster`, `cull`, `crops` and `review` have no git-tree guard** (`production/rpstills/__main__.py:77-112`, `production/rpstills/index.py:347,423-427`) Fixed in #299 and #303 (merged).
    - Problem: these write client JPEG proxies, `index.jsonl` (source paths) and `review.html` into any out folder, including a repo. `develop`, `finish`, `audit` and `absheet` all refuse a git tree; the commands that run first do not.
    - Fix: call `rpresolve.paths.out_problem(os.path.join(out, "index.jsonl"), any_git_tree=True)` once at the top of `main` for these commands.
    - Test: no.
@@ -39,27 +39,27 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
    - Fix: refuse an output folder inside a git tree, as `tools/ipad-probe/recipes/loudness.sh:43-48` does.
    - Test: no.
 
-6. **A rerun keeps a stale proxy, and two frames can share one id** (`production/rpstills/index.py:136-141`, `:101-105`)
+6. **A rerun keeps a stale proxy, and two frames can share one id** (`production/rpstills/index.py:136-141`, `:101-105`) Fixed in #299 (merged).
    - Problem: an existing `proxies/<stem>.jpg` is reused without checking it came from this file. Index card A, then a different `P1000001.jpg` from card B into the same out folder, and faces, sharpness, crops and review thumbnails describe card A's picture. Separately, `X1.jpg` and `X1.jpeg` in one folder both get id `X1`, because the fallback id still strips the extension.
    - Fix: reuse a proxy only when it is newer than its source (or put source size and mtime in its name); keep the extension in the fallback id.
    - Test: no.
 
-7. **One failed Vision batch throws away every face in the shoot** (`production/rpstills/vision.py:56-64`, used by `index.py:388` and `finish.py:348`)
+7. **One failed Vision batch throws away every face in the shoot** (`production/rpstills/vision.py:56-64`, used by `index.py:388` and `finish.py:348`) Fixed in #299 (merged).
    - Problem: images go to the helper in batches of 64. If any batch times out or exits non-zero, `faces()` returns `None` and the results of every earlier batch are dropped. A 5,000-frame shoot is then indexed with no faces, and `finish` stops, after one log line.
    - Fix: keep the batches that worked and mark only the failed batch's files (or retry that batch one file at a time).
    - Test: no (mocked only).
 
-8. **An empty `items` list grades, reframes or stabilizes every item** (`production/rpresolve/workflows.py:837,1033,1206`, schemas at `production/rpresolve/mcp/tools_write.py:810-812` and the matching `reframe_apply` and `stabilize` schemas)
+8. **An empty `items` list grades, reframes or stabilizes every item** (`production/rpresolve/workflows.py:837,1033,1206`, schemas at `production/rpresolve/mcp/tools_write.py:810-812` and the matching `reframe_apply` and `stabilize` schemas) Fixed in #302 (merged).
    - Problem: `wanted = sorted(set(items)) if items else all`. A client that sends `items: []` to mean "none" gets the whole track changed (stabilize is capped at 10 items).
    - Fix: add `"minItems": 1` to the three schemas.
    - Test: no.
 
-9. **`true_peak_per_cut` passes when no shot was measured** (`production/rpresolve/qc.py:354-362`). Open PR #287 changes `qc.py`.
+9. **`true_peak_per_cut` passes when no shot was measured** (`production/rpresolve/qc.py:354-362`). Fixed in #298 (merged).
    - Problem: a shot whose loudness read fails is skipped with `continue`. If every read fails, the row says PASS, "N shots, worst None dBTP", and unmeasured shots still count in N.
    - Fix: count the failed shots and return WARN (or FAIL) naming them; leave them out of N.
    - Test: no.
 
-10. **`ograf-render` deletes the old render and any `frames/` folder before it knows the new one will work** (`tools/ograf-render/ograf-render.mjs:317-318`)
+10. **`ograf-render` deletes the old render and any `frames/` folder before it knows the new one will work** (`tools/ograf-render/ograf-render.mjs:317-318`) Fixed in #300 (merged).
     - Problem: `--out ~/project` where `~/project/frames/` holds other images loses them (`rmSync(..., {recursive: true})`). A rerun with bad `--data` deletes the previous good `.mov` and then fails at template load.
     - Fix: render frames into `mkdtempSync(join(outDir, ".frames-"))` and write `NAME.mov` to a temp name, renaming only after the checks pass.
     - Test: no.
@@ -76,7 +76,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Fix: make both call `captions.parse_timecode` for the four-part form.
     - Test: no (only fps 24 is tested).
 
-13. **Three frame-rate parsers snap NTSC rates differently** (`production/rpresolve/delivercheck.py:166-174`, `interchange.py:103-111`, `deliver.py:601-608`). Open PR #287 changes `delivercheck.py`.
+13. **Three frame-rate parsers snap NTSC rates differently** (`production/rpresolve/delivercheck.py:166-174`, `interchange.py:103-111`, `deliver.py:601-608`). #287 (merged) changed `delivercheck.py`.
     - Problem: `parse_fps` snaps only the exact strings `29.97` and `23.976`, so `--fps 29.970` becomes 2997/100 and a correct 30000/1001 file fails `deliver_check`; `interchange.parse_rate` would pass the same file.
     - Fix: one parser with the `parse_rate` tolerance, used by all three.
     - Test: exact strings only.
@@ -181,19 +181,19 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Fix: count cues first and refuse above a stated limit, telling the user to cut a shorter clip.
     - Test: no.
 
-34. **Code and docs name the author as the actor of a procedure** (`production/rpresolve/mcp/tools_write.py:427,891`, `production/rpresolve/mcp/server.py:18`, `production/rpresolve/mcp/session.py:6`, `production/rpresolve/trimreview.py:7`, `production/rpstills/cluster.py:19`, `production/rpstills/audit.py:46`, `production/rpresolve/mixbuild.py:175`, `production/rpstills-audit.md:5`, `production/cue-marker-sync.md:51`). Open PR #290 changes `server.py`.
+34. **Code and docs name the author as the actor of a procedure** (`production/rpresolve/mcp/tools_write.py:427,891`, `production/rpresolve/mcp/server.py:18`, `production/rpresolve/mcp/session.py:6`, `production/rpresolve/trimreview.py:7`, `production/rpstills/cluster.py:19`, `production/rpstills/audit.py:46`, `production/rpresolve/mixbuild.py:175`, `production/rpstills-audit.md:5`, `production/cue-marker-sync.md:51`). #314 (merged) fixed it.
     - Problem: strings that name the author as the one who starts renders reach a stranger's client through the MCP tool descriptions and server instructions. The repo's own rule says the author is not the actor here.
     - Fix: "the operator" or "a person"; for the signed defaults, "working defaults until ...".
     - Test: no.
 
-35. **Two production docs describe one business's client procedure** (`production/return-package.md:24,113-139`, `production/delivery-manifest.md:87-124`). Open PRs #289 and #287 change these files.
+35. **Two production docs describe one business's client procedure** (`production/return-package.md:24,113-139`, `production/delivery-manifest.md:87-124`). #289 and #287 (merged) changed these files.
     - Problem: "RP deletes its copy 90 days after...", "RP sends a new review copy": a named producer's retention clock and client service steps, which the repo rule puts in the private ops repo.
     - Fix: make the actor "the producer" and the numbers defaults to set, or move the RP-specific sections to the private repo.
     - Test: no.
 
 ## Nice to have
 
-36. **`timeline_items` and `media_pool` build every row, then slice one page** (`production/rpresolve/mcp/tools_read.py:209-213,291-295`). Open PR #290 changes this file.
+36. **`timeline_items` and `media_pool` build every row, then slice one page** (`production/rpresolve/mcp/tools_read.py:209-213,291-295`). Fixed in #315 (merged).
     - Problem: a 1,500-item timeline with grades costs tens of thousands of API calls for every page, inside the 10 s read lock.
     - Fix: slice to `offset` and `limit` before building rows; count the total separately.
 
@@ -201,7 +201,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Problem: the directory listing shows `key.json` next to `sheet.jpg`, so the A/B/C answer is one tap away for the reviewer. A `Range` header with thousands of digits makes `int()` raise with no reply. There is no `Host` check against DNS rebinding.
     - Fix: write the key to a sibling folder outside the served one, cap the header length, and reject a `Host` that is not the bound address or `localhost`.
 
-38. **CI has no `permissions` block and the Pages job uses tag-pinned actions** (`.github/workflows/ci.yml:1-14`, `.github/workflows/deploy-architecture.yml:34-46`). Open PRs #286 and #272 change `ci.yml`.
+38. **CI has no `permissions` block and the Pages job uses tag-pinned actions** (`.github/workflows/ci.yml:1-14`, `.github/workflows/deploy-architecture.yml:34-46`). Fixed in #317 (merged); open PR #272 also changes `ci.yml`.
     - Problem: CI gets the repo's default token scope, and a moved tag on an action with `pages: write` runs new code with that right.
     - Fix: `permissions: contents: read` in `ci.yml`, and commit SHAs for the deploy actions.
 
@@ -209,7 +209,7 @@ Counts: 10 must fix, 25 should fix, 5 nice to have. 40 in all.
     - Problem: "It is an internal canonical", and "Read alongside" names a positioning note that is not in the repo. A reader cannot follow the reference.
     - Fix: drop the internal framing and the private reference, or link the public `measurement-framework.md` instead.
 
-40. **The author's machine and storage are named in comments and docs** (`production/rpresolve/api.py:42`, `production/rpresolve/detect.py:13`, `production/resolve-template-spec.md:1013`, `production/rpstills-develop.md:106`, `prompts/skills/agentic-development.md:43`). Open PRs #289 and #290 change `resolve-template-spec.md`.
+40. **The author's machine and storage are named in comments and docs** (`production/rpresolve/api.py:42`, `production/rpresolve/detect.py:13`, `production/resolve-template-spec.md:1013`, `production/rpstills-develop.md:106`, `prompts/skills/agentic-development.md:43`). #289 (merged) changed `resolve-template-spec.md`.
     - Problem: the author's own machine model, the author's network storage, and a personal monthly spend figure. Harmless, but the repo rule names the author's machine as out of scope.
     - Fix: "on a recent Apple silicon Mac", "against real footage", and drop the spend figure.
 
