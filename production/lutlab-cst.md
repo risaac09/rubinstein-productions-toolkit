@@ -2,7 +2,7 @@
 
 **Status:** operational.
 
-Three lutlab commands that need numpy and nothing else (only `pack --base`, which bakes looks, needs scipy). They run on the
+Three lutlab commands that need numpy and nothing else (only `pack --base`, which bakes looks, needs scipy and Pillow). They run on the
 `~/.venvs/rp-tools` venv like the rest of lutlab, and also on macOS's `/usr/bin/python3` (3.9) with numpy
 (checked), so a machine without the image packages can still make and check LUTs.
 

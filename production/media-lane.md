@@ -9,9 +9,9 @@ anywhere. These refuse to write inside a git tree: every `rpstills` command
 that takes an output folder (`index`, `run`, `cluster`, `cull`, `crops`,
 `review`, `develop`, `finish`, `audit`, `absheet`), `lutlab`, and
 `rpresolve.interchange`, `wordsnap`, `shots`, `beats`, `roomtone`, `dxmetrics`
-and `duckplan`. `rpstills look` and
-the iPad recipes write where they are told without checking, so give them an
-output path outside any repository.
+and `duckplan`. Only `rpstills look`
+writes where it is told without checking, so give it an output path outside
+any repository; the iPad recipes refuse a path inside a git work tree.
 
 To run a lane from a fresh shell, with the commands and what a pass looks like,
 use [media-lane-quickstart.md](media-lane-quickstart.md).
@@ -75,8 +75,8 @@ repository. The iPad route, with no Mac, is in [../docs/ipad-lane.md](../docs/ip
 - `lutlab balance` needs a face (Vision, macOS) or a `--face` box, and a neutral; a clip with
   neither is refused. `lutlab shot-match` takes two stills of the same content at the same framing,
   not two clips, and refuses an unpaired pair.
-- Beats are validated on synthetic loops only; shots finds hard cuts, not
-  dissolves.
+- Beats are validated on synthetic loops only; shots' dissolve pass is new and
+  untested on real footage.
 - `mixbuild` is the home for the dialogue chain; `duckplan` and `dxmetrics` feed it.
 - A third-party RAW engine (LightCraft) is an opt-in backend behind an
   environment variable; Apple's engine stays the default.
