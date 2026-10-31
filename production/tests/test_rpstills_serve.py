@@ -176,6 +176,23 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(r.status, 403, (method, path))
                 self.assertNotIn(b"SECRET", body)
 
+    def test_the_blind_key_is_never_served(self):
+        for rel in ("key.json", "sub/key.json"):
+            with open(os.path.join(self.root, rel), "w") as f:
+                f.write("{}")
+            for method in ("GET", "HEAD"):
+                self.assertEqual(self.get("/" + rel, method=method)[0].status, 404, (method, rel))
+
+    def test_a_foreign_host_header_is_refused(self):
+        self.assertEqual(self.get("/clip.mp4", headers={"Host": "evil.example:80"})[0].status, 421)
+        self.assertEqual(self.get("/clip.mp4", headers={"Host": "localhost:%d" % self.port})[0].status, 200)
+        self.assertEqual(self.get("/clip.mp4", headers={"Host": "127.0.0.1:%d" % self.port})[0].status, 200)
+        self.assertEqual(self.get("/clip.mp4", headers={"Host": "192.168.1.5"})[0].status, 421)
+
+    def test_a_huge_range_header_is_ignored_not_a_crash(self):
+        r, body = self.get("/clip.mp4", headers={"Range": "bytes=0-" + "9" * 6000})
+        self.assertEqual((r.status, len(body)), (200, len(DATA)))
+
     def test_inside_paths_work_and_any_dotdot_is_refused(self):
         r, body = self.get("/sub/../clip.mp4", headers={"Range": "bytes=0-3"})
         self.assertEqual(r.status, 403)   # browsers resolve .. before sending, so only a crafted request has one

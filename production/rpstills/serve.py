@@ -17,6 +17,9 @@ ranges added and nothing else:
   whole file is sent (RFC 9110 allows that); a range past the end gets 416.
   If-Range that does not match the file's ETag or Last-Modified sends the
   whole file, so a proxy re-rendered in place is never spliced with the old one.
+- A Host header that is not the bound address or localhost gets 421 (DNS
+  rebinding); any IP literal passes when bound to 0.0.0.0. A file named
+  key.json is never served: the blind A/B key must not reach the reviewer.
 - Fixed MIME types for the review formats (table below), so the answer does
   not depend on the machine's mime.types.
 - Cache-Control: no-cache on every file, so a browser always asks again and a
@@ -40,6 +43,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8780
 COPY_CHUNK = 256 * 1024     # bytes per write while sending a file or a range
+MAX_RANGE_HEADER = 64
+HIDDEN_NAMES = ("key.json",)    # never served, wherever it sits under the root
 IDLE_TIMEOUT_S = 60         # an idle keep-alive connection is closed after this
 
 MIME = {
@@ -68,6 +73,8 @@ def parse_range(header, size):
     None means serve the whole file: no header, or one this server does not
     honour (another unit, several ranges, bad syntax, last before first).
     Raises RangeNotSatisfiable when the range starts at or past the end."""
+    if len(header or "") > MAX_RANGE_HEADER:   # int() on thousands of digits raises; no real range is this long
+        return None
     m = _RANGE.fullmatch((header or "").strip())
     if not m or m.groups() == ("", ""):
         return None
@@ -106,9 +113,26 @@ class Handler(SimpleHTTPRequestHandler):
         real = os.path.realpath(path)
         return real == root or real.startswith(root.rstrip(os.sep) + os.sep)
 
+    def _host_ok(self):
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        bound = self.server.server_address[0]
+        if not host or host in ("localhost", bound):
+            return True
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return bound == "0.0.0.0"
+
     def send_head(self):
         self._remaining = None
+        if not self._host_ok():
+            self.send_error(HTTPStatus.MISDIRECTED_REQUEST, "Unexpected Host")
+            return None
         path = self.translate_path(self.path)
+        if os.path.basename(path) in HIDDEN_NAMES:
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return None
         if path.endswith("/") and os.path.isdir(path):
             # a folder URL's index page goes through the same root check, ranges and no-cache as any file
             path = next((p for p in (path + "index.html", path + "index.htm") if os.path.exists(p)), path)
