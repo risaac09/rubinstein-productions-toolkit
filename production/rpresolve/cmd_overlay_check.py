@@ -41,6 +41,9 @@ def add_arguments(p):
                    help="CIEDE2000 allowed at a brand sample (default: DE_MAX in "
                         "rpresolve/overlay.py)")
     p.add_argument("--json", action="store_true", help="Print the result as JSON")
+    p.add_argument("--boxes-out", metavar="PATH",
+                   help="Write the safe row's box (measured at the hold time) as the JSON deliver-check --boxes reads; "
+                        "refused inside any git tree")
 
 
 def run(args):
@@ -72,7 +75,18 @@ def run(args):
         print(json.dumps(r, indent=1))
     else:
         sys.stdout.write(overlay.format_report(r))
-    return 0 if r["status"] == "pass" else 1
+    code = 0 if r["status"] == "pass" else 1
+    if args.boxes_out:  # after the report, so a refused path does not hide the rows
+        from rpresolve import captionlint
+        box = next((x["box"] for x in r["rows"] if x["row"] == "safe"), None)
+        try:
+            if box is None:  # an empty list would tell deliver-check nothing is on screen
+                raise ValueError("--boxes-out: no visible pixels at the hold time, so no box")
+            captionlint.write_boxes(args.boxes_out, [("graphic", box)])
+        except (OSError, ValueError) as e:  # ValueError: paths.OutputRefused
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+    return code
 
 
 if __name__ == "__main__":

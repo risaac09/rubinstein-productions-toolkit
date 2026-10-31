@@ -29,12 +29,7 @@ class ManifestError(RuntimeError):
     """The delivery cannot be described truthfully, or would overwrite."""
 
 
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+sha256 = dc.file_sha256  # the one chunked reader; kept under this name for callers
 
 
 def scan(root):

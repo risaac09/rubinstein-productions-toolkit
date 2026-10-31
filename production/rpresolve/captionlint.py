@@ -48,7 +48,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
 
-from . import captions, delivercheck as dc, qc, safezone
+from . import captions, delivercheck as dc, paths, qc, safezone
 
 PASS, FAIL, SKIP = dc.PASS, dc.FAIL, dc.SKIP
 WARN = "WARN"
@@ -268,19 +268,42 @@ def parse_size(value):
     return int(m[1]), int(m[2])
 
 
+def write_boxes(path, boxes):
+    """Write [(label, box)] as the JSON list deliver-check --boxes reads
+    (safezone.load_boxes). Raises paths.OutputRefused inside any git tree."""
+    out = []
+    for k, b in boxes:
+        # off-frame stays on the edge, still outside the safe zone
+        b = [round(min(1.0, max(0.0, float(v))), 4) for v in b]
+        if not (b[0] < b[2] and b[1] < b[3]):
+            raise ValueError(f"{k}: box {b} has no area inside the frame")
+        out.append({"label": str(k), "box": b})
+    paths.write_private(path, json.dumps(out, indent=1) + "\n")
+
+
 def add_arguments(p):
     p.add_argument("captions", help="an .srt or TTML file (.ttml, .xml, .dfxp)")
     p.add_argument("--size", type=parse_size, help="frame size WxH, for pixel positions")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help=f"override a threshold ({', '.join(THRESHOLDS)})")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--boxes-out", metavar="PATH",
+                   help="write the positioned cues' boxes as the JSON deliver-check --boxes reads; "
+                        "refused inside any git tree")
     return p
 
 
 def run(args):
     try:
         th = qc.parse_overrides(args.set, base=THRESHOLDS)
-        result = lint(load(args.captions, args.size), th)
+        doc = load(args.captions, args.size)
+        result = lint(doc, th)
+        if args.boxes_out:
+            if not doc["boxes"] or doc["box_note"]:  # an empty or partial list hides cues from deliver-check
+                raise ValueError("--boxes-out: positions were not all read (" +
+                                 (doc["box_note"] or "the file carries none") + ")")
+            write_boxes(args.boxes_out, [(f"cue {k}" if isinstance(k, int) else k, b)
+                                         for k, b in doc["boxes"]])
     except (OSError, ValueError, captions.CaptionError) as e:  # bad UTF-8 is a ValueError
         print(f"captionlint: {e}", file=sys.stderr)
         return 2

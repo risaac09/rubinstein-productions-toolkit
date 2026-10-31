@@ -197,6 +197,23 @@ class TestFiles(unittest.TestCase):
         self.assertEqual(brand["status"], "FAIL")
         self.assertIn("not fully opaque", brand["detail"])
 
+    def test_boxes_out_reads_back_into_deliver_check(self):
+        from rpresolve import delivercheck, safezone
+        env = dict(os.environ, RPRESOLVE_FFMPEG=measure.FFMPEG, RPRESOLVE_FFPROBE=measure.FFPROBE)
+        out = str(Path(self.tmp.name) / "boxes.json")
+        base = [sys.executable, str(SCRIPT), "overlay-check", "--hold", "0.08", self.files["straight"]]
+        done = subprocess.run(base + ["--boxes-out", out], env=env, capture_output=True, text=True)
+        self.assertIn(done.returncode, (0, 1), done.stderr)
+        boxes = safezone.load_boxes(out)
+        self.assertEqual([k for k, _ in boxes], ["graphic"])
+        self.assertEqual(delivercheck._safe_zone(320, 180, boxes)["status"], delivercheck.PASS)
+        repo = Path(self.tmp.name) / "repo"
+        (repo / ".git").mkdir(parents=True)
+        bad = subprocess.run(base + ["--boxes-out", str(repo / "b.json")], env=env,
+                             capture_output=True, text=True)
+        self.assertEqual(bad.returncode, 1, bad.stderr)
+        self.assertFalse((repo / "b.json").exists())
+
     def test_the_command_exit_codes(self):
         env = dict(os.environ, RPRESOLVE_FFMPEG=measure.FFMPEG, RPRESOLVE_FFPROBE=measure.FFPROBE)
         base = [sys.executable, str(SCRIPT), "overlay-check", "--hold", "0.08",
