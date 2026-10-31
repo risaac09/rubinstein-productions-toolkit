@@ -144,6 +144,16 @@ check "a crypt that points at itself is refused after the hop limit" '[ "$rc" -e
 out=$(FAKE_REMOTES="my b2:  b2" "$O" safe "$d" "my b2:x" 2>&1); rc=$?
 check "a remote name with a space is read" '[ "$rc" -eq 0 ]'
 rm -f "$d.offsite.txt"
+# The type is the column after the name; a description follows it (rclone 1.67+).
+out=$(FAKE_REMOTES="remote: local copy for b2" "$O" safe "$d" remote:x 2>&1); rc=$?
+check "a local remote with a description is refused" '[ "$rc" -eq 2 ] && [ ! -e "$d.offsite.txt" ]'
+out=$(FAKE_REMOTES="remote: b2    nothing kept local" "$O" safe "$d" remote:x 2>&1); rc=$?
+check "a b2 remote whose description ends in local passes" '[ "$rc" -eq 0 ]'
+rm -f "$d.offsite.txt"
+# Remote names are case-sensitive: REMOTE (b2) is not remote (local).
+out=$(FAKE_REMOTES="REMOTE: b2
+remote: local" "$O" safe "$d" remote:x 2>&1); rc=$?
+check "a same-name remote in another case does not lend its type" '[ "$rc" -eq 2 ] && [ ! -e "$d.offsite.txt" ]'
 # A remote of type local, or an alias ending at one, is refused; so is one whose type cannot be read.
 if command -v rclone > /dev/null; then
   # Real rclone reads the config; the check itself stays the fake and is never reached.
@@ -165,6 +175,16 @@ EOF
   printf 'not [valid\n' > "$T/bad.conf"
   safe_cfg "$T/bad.conf" far:x
   check "unreadable config is refused" '[ "$rc" -eq 2 ]'
+  # An env override wins over the file, and listremotes then lists the name twice in two cases.
+  printf '[MYS3]\ntype = b2\n\n[desc]\ntype = local\ndescription = copy for b2\n' > "$T/env.conf"
+  RCLONE_CONFIG_MYS3_TYPE=local safe_cfg "$T/env.conf" MYS3:x
+  check "a b2 remote overridden to local in the environment is refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "type local"'
+  safe_cfg "$T/env.conf" desc:x
+  check "a local remote with a description is refused (real rclone)" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "type local"'
+  RCLONE_CONFIG_ENVLOC_TYPE=local safe_cfg "$T/env.conf" envloc:x
+  check "a local remote defined only in the environment is refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "type local"'
+  RCLONE_CONFIG_ENVB2_TYPE=b2 safe_cfg "$T/env.conf" envb2:x
+  check "a b2 remote defined only in the environment passes" '[ "$rc" -eq 0 ]'
 else
   echo "skip rclone not installed: local and alias remote cases"
 fi

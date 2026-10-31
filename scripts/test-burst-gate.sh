@@ -163,5 +163,11 @@ branch many docs/a.md "a $EMD b $HOMEPATH" nofrag
 out="$(gate)"; rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'FAILED: G2 G4 G5' && ok "the summary lists every failed gate" || bad "summary: $out"
 
+# A base with no merge base (a shallow clone) gives an empty diff: an error, never a pass.
+git -C "$R" checkout -q --orphan unrelated; git -C "$R" commit -qm unrelated
+git -C "$R" checkout -q homepath
+out="$(cd "$R" && "$G" --base unrelated --tests true 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "no merge base between" && ok "no merge base is an error, not a pass" || bad "no merge base: rc=$rc: $out"
+
 echo
 [ "$fail" -eq 0 ] && echo "all burst-gate tests passed" || { echo "burst-gate tests FAILED"; exit 1; }

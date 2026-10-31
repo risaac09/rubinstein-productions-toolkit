@@ -66,6 +66,11 @@ git -C "$R" checkout -q main; git -C "$R" checkout -q -b export
 mkdir -p "$R/phase-zero"; echo z > "$R/phase-zero/z.sh"; git -C "$R" add -A; git -C "$R" commit -qm "Export kit from stack-data abc"
 inrepo "$CF" pr main >/dev/null 2>&1 && ok "pr exempts kit-export paths" || bad "pr demanded a fragment for an export"
 
+# A base with no merge base (a shallow clone, an unrelated branch) is an error, never "no changes".
+git -C "$R" checkout -q --orphan unrelated; git -C "$R" commit -qm unrelated
+git -C "$R" checkout -q nofrag
+out="$(inrepo "$CF" pr unrelated 2>&1)" && bad "pr passed with no merge base" || { case "$out" in *"no merge base"*) ok "pr fails with no merge base" ;; *) bad "no merge base, wrong message: $out" ;; esac; }
+
 # Two parallel branches merge with no conflict; compile then folds both in.
 git -C "$R" checkout -q main
 for b in one two; do
