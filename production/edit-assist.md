@@ -42,16 +42,16 @@ What it does not do, and limits:
 ## shots
 
 ```sh
-python3 -m rpresolve.shots SOURCE --out SHOTS.tsv [--threshold 10]
+python3 -m rpresolve.shots SOURCE --out SHOTS.tsv [--threshold 10] [--no-dissolves]
 ```
 
-qc and rhythm run ffmpeg's `scdet` on a render. shots runs the same filter (`scdet=t=10`, qc's threshold) through the same parser (`qc.parse_scdet`) on the footage itself, and every frame that scores the threshold or more starts a new shot. The file has a header (`shot,in,out,duration`) and one row per shot, times in source seconds. A `.tsv` path is written tab-separated, the paper-edit shape rhythm reads; any other path is comma-separated. `qc --shots` counts the rows of either.
+qc and rhythm run ffmpeg's `scdet` on a render. shots runs the same filter (`scdet=t=10`, qc's threshold) through the same parser (`qc.parse_scdet`) on the footage itself, and every frame that scores the threshold or more starts a new shot. The file has a header (`shot,in,out,duration,into,blend_in,blend_out`) and one row per shot, times in source seconds. A `.tsv` path is written tab-separated, the paper-edit shape rhythm reads; any other path is comma-separated. `qc --shots` counts the rows of either.
 
 On three 3-second trims of camera test clips joined end to end (chart, lens-cap black, chart; 1920x1280 at 29.97 fps), shots found cuts at 3.003 s and 6.006 s, on the true joins to the frame. Joining three chart clips of the same framing at different ISO, the joins scored 4.3 and 3.2, under the threshold, and no cut was found (the next highest frame scored 0.4).
 
 What it does not do, and limits:
 
-- Dissolves, fades and wipes: scdet compares neighbouring frames, so a slow transition seldom crosses the threshold.
+- Fades, wipes and slow dissolves: scdet compares neighbouring frames, so a slow transition seldom crosses the threshold. A second pass (on by default, `--no-dissolves` skips it) finds dissolves as MIN_FRAMES or more of steady change, and can still miss some.
 - A hard cut between two shots of the same scene in the same light can score under 10 (as above). Lower `--threshold` for such footage, and expect false cuts on fast motion.
 - Flashes, strobes and whip pans can score as cuts.
 - It decodes every frame at full resolution: a long 6K HEVC file takes a while.

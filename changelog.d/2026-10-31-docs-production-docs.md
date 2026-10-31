@@ -1,0 +1,1 @@
+Production docs corrected against the tree (docs vs tree 2026-10-31): sidecar envelope tools and schema names, cue-marker-sync status, shots columns and dissolve pass, media-lane output-path and gaps lines, platform-specs loudness line, deliver-manifest enforcement, motionlint path, lutlab-cst Pillow note.

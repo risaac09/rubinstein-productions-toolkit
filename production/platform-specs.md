@@ -32,7 +32,7 @@ These come from the house rules under `deliver` in the config and are checked on
 
 ## Notes by class
 
-**Long-form video, UHD and HD.** The two keys differ only in size. Both are H.265 with no bit depth asserted, and the check expects an `hevc` stream at 4:2:0. The loudness target is -14 LUFS, the only class that uses it. Both keys are named for YouTube in the config.
+**Long-form video, UHD and HD.** The two keys differ only in size. Both are H.265 with no bit depth asserted, and the check expects an `hevc` stream at 4:2:0. The loudness target is -14 LUFS, which `social_9x16` also uses. Both keys are named for YouTube in the config.
 
 **Social landscape 16:9.** The LinkedIn 16:9 destination. Its numbers match the web embed row. Captions are a sidecar `.srt`, where the two social shapes below burn them in.
 
