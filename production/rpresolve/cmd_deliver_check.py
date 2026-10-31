@@ -37,7 +37,10 @@ def run(args):
     ledger = getattr(args, "ledger_row", None)
     try:
         if ledger:
-            problem = paths.out_problem(ledger, any_git_tree=True)
+            inputs = [args.file, args.audio_state, getattr(args, "boxes", None),
+                      getattr(args, "deliver_config", None), getattr(args, "config", None)]
+            problem = (paths.out_problem(ledger, any_git_tree=True)
+                       or paths.source_problem([ledger], [p for p in inputs if p]))
             if problem:
                 raise ValueError(problem)
         config = cli.deliver_config(args)
