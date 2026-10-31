@@ -72,7 +72,7 @@ function render(){
       h.textContent = `${seg}: ${s.start} to ${s.end}, ${s.frames} frames`; main.appendChild(h); }
     const box = document.createElement("section"); box.className = "run"; box.dataset.run = p.run;
     const head = document.createElement("div"); head.className = "runhead";
-    head.innerHTML = `<span class="cls">${esc(run.class)}</span><span class="meta">${esc(p.run)} · ${run.frames.length} frames · ${(run.start||"").slice(11,19)} to ${(run.end||"").slice(11,19)} · ${p.picks.length} proposed</span>`;
+    head.innerHTML = `<span class="cls">${esc(run.class)}</span><span class="meta">${esc(p.run)} · ${run.frames.length} frames · ${esc((run.start||"").slice(11,19))} to ${esc((run.end||"").slice(11,19))} · ${p.picks.length} proposed</span>`;
     const name = document.createElement("input"); name.placeholder = run.class === "solo" ? "name (optional)" : "label (optional)";
     name.value = state.names[p.run] || ""; name.addEventListener("input", () => { state.names[p.run] = name.value; save(); });
     head.appendChild(name); box.appendChild(head);

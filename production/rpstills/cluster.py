@@ -42,7 +42,7 @@ SUBJECT_RATIO = 0.5
 def _t(row):
     if not row.get("time"):
         return None
-    # wall-clock time: an aware sidecar time next to naive EXIF times would raise on compare
+    # wall-clock time (build's sort relies on every time being naive): an aware sidecar time next to naive EXIF times would raise on compare
     t = _dt.datetime.fromisoformat(row["time"]).replace(tzinfo=None)
     sub = row.get("subsec")
     if sub and sub.isdigit():
