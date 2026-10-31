@@ -557,7 +557,7 @@ class ApplyVideoTagTest(unittest.TestCase):
             apply.video(str(d / "l.cube"), "in.mov", str(d / "out.mp4"))
         cmd = run.call_args[0][0]
         self.assertEqual(cmd[cmd.index("-colorspace") + 1], "bt709")
-        self.assertEqual(cmd[cmd.index("-color_primaries") + 1], "bt709")
+        self.assertIn("matrix_coefficients=1", cmd[cmd.index("-bsf:v") + 1])
         vf = cmd[cmd.index("-vf") + 1]
         self.assertIn("in_color_matrix=bt709", vf)
         self.assertIn("out_color_matrix=bt709", vf)

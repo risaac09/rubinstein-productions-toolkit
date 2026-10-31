@@ -78,6 +78,6 @@ def video(lut_path, src, dst, overwrite=False, crf=18):
                "-vf", f"scale=in_color_matrix=bt709,lut3d=file={safe}:interp=tetrahedral,scale=out_color_matrix=bt709",
                "-c:v", "libx264", "-crf", str(crf), "-pix_fmt", "yuv420p",
                # verify.decode_frame reads every clip as bt709; tag the output so players agree
-               "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "192k", str(dst)]
+               "-colorspace", "bt709", "-bsf:v", "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1", "-c:a", "aac", "-b:a", "192k", str(dst)]
         subprocess.run(cmd, check=True)
     return [str(dst)]
