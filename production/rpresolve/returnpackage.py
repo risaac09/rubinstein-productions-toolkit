@@ -87,11 +87,16 @@ def gate(config, finals, check=None, ignore=()):
 
 
 def _copy_tree(src, dst):
+    """Copy and verify every file; {rel: sha256} of the copies, so camera
+    originals are not read a third time for SHA256SUMS."""
+    sums = {}
     for rel in files_under(src):
         os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
         shutil.copy2(os.path.join(src, rel), os.path.join(dst, rel))
-        if sha256(os.path.join(src, rel)) != sha256(os.path.join(dst, rel)):
+        sums[rel] = sha256(os.path.join(dst, rel))
+        if sha256(os.path.join(src, rel)) != sums[rel]:
             raise PackageError(f"{rel}: the copy does not match the source")
+    return sums
 
 
 def _cell(text):
@@ -130,19 +135,23 @@ def build(out, engagement, month, approval, prepared_by, originals, finals, conf
     names = [os.path.basename(r) for r in files_under(finals) if r.lower().endswith(".srt")]
     if len(set(names)) != len(names):
         raise PackageError("two captions share a file name; 03_captions holds them side by side")
-    for rel in [r for o in originals for r in files_under(o)] + files_under(finals):
+    for rel in ([r for o in originals for r in files_under(o)] + files_under(finals)
+                + (files_under(session) if session else [])
+                + ([os.path.basename(project_file)] if project_file else [])):
         if "|" in rel:
             raise PackageError(f"{rel}: a '|' in a file name cannot be listed in the manifest")
     blockers = gate(config, finals, check)
     if blockers:
         raise PackageError("blocked: not every final has a deliver_check PASS\n  " + "\n  ".join(blockers))
     try:
+        hashes = {}
         for o, card in zip(originals, cards):
-            _copy_tree(o, os.path.join(work, "01_originals", card))
+            hashes.update({f"{card}/{r}": h for r, h in
+                           _copy_tree(o, os.path.join(work, "01_originals", card)).items()})
         orig = os.path.join(work, "01_originals")
         listed = files_under(orig)
         with open(os.path.join(orig, SUMS), "w", encoding="utf-8") as f:
-            f.write("".join(f"{sha256(os.path.join(orig, r))}  ./{r}\n" for r in listed))
+            f.write("".join(f"{hashes[r]}  ./{r}\n" for r in listed))
         _copy_tree(finals, os.path.join(work, "02_finals"))
         for rel in files_under(finals):
             if rel.lower().endswith(".srt"):
