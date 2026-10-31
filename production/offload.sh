@@ -182,7 +182,7 @@ cmd_safe() {
   # Only an rclone remote ("name:path") is offsite; a bare path, even one on
   # another disk, is a local folder and never earns the verdict.
   # shortcut: a remote of type local still passes; rclone's config is not read here.
-  printf '%s' "$remote" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_. -]*:' \
+  printf '%s' "$remote" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_. -]+:' \
     || die "not an rclone remote: $remote (want name:path); a local folder is not an offsite copy"
   local json="$dir.card.json"
   [ -f "$json" ] && [ -f "$dir.SHA256SUMS" ] || die "no sidecars beside $dir: it was not offloaded by this tool"

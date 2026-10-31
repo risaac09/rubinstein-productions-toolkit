@@ -73,9 +73,11 @@ g1() {
   skipped G1 && return
   bad=0
   # quotePath=false still quotes names holding a tab, newline or quote; the scans cannot read those.
-  if printf '%s\n' "$DIFF_FILES" | grep -q '^"'; then
+  # Deleted paths are exempt: removing such a file is the fix.
+  qn="$(git -c core.quotePath=false diff --name-only --diff-filter=d "$BASE...HEAD" | grep '^"' || true)"
+  if [ -n "$qn" ]; then
     fail "G1 scope: file name git quotes, the scans cannot read it (rename it):"
-    printf '%s\n' "$DIFF_FILES" | grep '^"' | sed 's/^/       /'; bad=1
+    printf '%s\n' "$qn" | sed 's/^/       /'; bad=1
   fi
   tree="$(git status --porcelain)"
   if [ -n "$tree" ]; then
