@@ -70,6 +70,17 @@ class HookLint(unittest.TestCase):
         self.assertEqual(rows([])["lines"], "FAIL")
         self.assertEqual(rows(["a class act"], lexicon=["ass"])["lexicon"], "PASS")
 
+    def test_lookalikes_are_caught_after_normalising(self):
+        # escapes, not literal characters: an editor can strip an invisible one without anyone seeing
+        for dash in ("\uFE58", "\uFE31", "\u2E3A", "\u2015"):   # small and vertical em-dash (NFKC), two-em dash, bar
+            self.assertEqual(rows(["wait " + dash + " what"])["dash"], "FAIL", hex(ord(dash)))
+        for emoji in ("\u2764\uFE0F", "\u2764", "1\uFE0F\u20E3", "\u2714\uFE0F"):  # heart, keycap, emoji-style check
+            self.assertEqual(rows(["go " + emoji])["emoji"], "FAIL", ascii(emoji))
+        for text in ("a \uFF22\uFF21\uFF2E\uFF2E\uFF25\uFF24 b", "a ban\u200Bned b", "a ban\u200Dned b"):
+            self.assertEqual(rows([text], lexicon=["banned"])["lexicon"], "FAIL", ascii(text))
+        self.assertEqual(rows(["a banned b"], lexicon=["\uFEFFbanned"])["lexicon"], "FAIL")  # a BOM on the list's first line
+        self.assertEqual(rows(["a final b"], lexicon=["\uFB01nal"])["lexicon"], "FAIL")      # entries fold as the text does
+
     def test_cli_exit_codes(self):
         def run(*a):
             return subprocess.run([sys.executable, "-m", "rpresolve.hooklint", *a], cwd=PROD,
