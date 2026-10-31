@@ -26,7 +26,7 @@ Before you publish, search your fork for the maintainer's name, domain and e-mai
 
 ## Replacing the maintainer's deployment list
 
-`phase-zero/install.sh` installs the phase-zero kit into a repository's `.claude/`, and `public-kit/` into `.claude/public-kit/` with `--public`. The maintainer's script decides which repositories count as deployment targets at run time, from a private registry file, `data/repos.json`, in a private repository outside this one. That file is not here and you cannot see it. The script holds no list of names to edit. This is how it behaves, read from the script:
+`phase-zero/install.sh` installs the phase-zero kit into a repository's `.claude/`, and `public-kit/` into `.claude/public-kit/` with `--public`. The maintainer's script decides which repositories count as deployment targets at run time, from a private registry file, `data/repos.json`, in a private repository outside this one. That file is not here and you cannot see it. The script holds no roster to edit; what it does hold of the maintainer's is the `SD_ROOT` default and the two repo names under "Two places to edit by hand", both below. This is how it behaves, read from the script:
 
 - **One repo, no list needed.** `./phase-zero/install.sh <repo-dir>` and `./phase-zero/install.sh --check <repo-dir>` copy or verify the kit in that directory and never read a registry. `--public` works the same way. If you have a few repos, run it once per repo and stop here.
 - **Several repos need your own registry.** `--list`, `--all <parent-dir>` and `--check --all <parent-dir>` build the roster from `data/repos.json`. Without that file, or without `jq`, they exit with code 2 instead of running on an empty list.
