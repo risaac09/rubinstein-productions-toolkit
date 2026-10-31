@@ -23,11 +23,15 @@ bad=0
 for d in methodology docs production; do
   [ -d "$d" ] || { echo "missing directory: $d" >&2; bad=1; }
 done
+# A folder find cannot read is an error, never a clean pass.
+files=$(find methodology production -maxdepth 1 -name '*.md' && find docs -name '*.md') \
+  || { echo "cannot list every covered folder" >&2; bad=1; }
 while IFS= read -r f; do
+  [ -n "$f" ] || continue
   if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_/-]|$)'; then
     echo "no status header: $f" >&2
     bad=1
   fi
-done < <({ ls methodology/*.md production/*.md; find docs -name '*.md'; } | sort)
+done < <(printf '%s\n' "$files" | sort)
 [ "$bad" -eq 0 ] && echo "check-methodology-status: CLEAN"
 exit "$bad"

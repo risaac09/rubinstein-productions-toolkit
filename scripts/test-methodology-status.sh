@@ -56,6 +56,17 @@ printf '# Skill\n\nNo status.\n' > "$R/production/skills/s.md"
 printf '# Tool\n\nNo status.\n' > "$R/production/tool/t.md"
 expect "production subfolders are not checked" "$R" 0
 
+# A folder the check cannot list is an error, never a clean pass.
+R="$TMP/unlistable"; mk "$R"
+printf '# T\n\nNo status.\n' > "$R/docs/sub/x.md"; chmod 000 "$R/docs/sub"
+if [ -r "$R/docs/sub" ]; then ok "unlistable docs folder fails (skipped: running as root)"
+else expect "unlistable docs folder fails" "$R" 1 "cannot list"; fi
+chmod 755 "$R/docs/sub"
+R="$TMP/unlistable2"; mk "$R"; chmod 000 "$R/methodology"
+if [ -r "$R/methodology" ]; then ok "unlistable methodology folder fails (skipped: running as root)"
+else expect "unlistable methodology folder fails" "$R" 1 "cannot list"; fi
+chmod 755 "$R/methodology"
+
 # The repo itself must pass.
 if "$CHECK" >/dev/null 2>&1; then ok "repo tree passes"; else bad "repo tree fails"; fi
 exit "$fail"
