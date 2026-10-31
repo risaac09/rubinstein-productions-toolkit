@@ -133,5 +133,41 @@ class TestStyle(unittest.TestCase):
                               {"text_rgb": (1, 1, 1), "bar_rgb": (0, 0, 0)}, 0.88)
 
 
+@unittest.skipUnless(HAVE_PIL, "Pillow missing (vertcut needs it)")
+class TestSafeZone(unittest.TestCase):
+    def setUp(self):
+        self.v = load()
+        font = next((f for f in (self.v.DEFAULT_FONT, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+                     if os.path.isfile(f)), None)
+        self.font = ImageFont.truetype(font, 66) if font else ImageFont.load_default(size=66)
+
+    def test_cue_box_geometry_for_one_and_two_lines(self):
+        v = self.v
+        one = v.cue_box(["one line"], self.font, 1680)
+        two = v.cue_box(["one line", "two lines"], self.font, 1680)
+        self.assertEqual((one[3], two[3]), (1680, 1680))
+        w1, h1, lh = v.cue_size(["one line"], self.font)[:3]
+        self.assertEqual(one[2] - one[0], w1)
+        self.assertEqual(one[1], 1680 - h1)
+        self.assertEqual(two[3] - two[1] - (one[3] - one[1]), lh)       # the second line adds one line height
+        self.assertAlmostEqual((one[0] + one[2]) / 2, v.W / 2)           # centred
+
+    def test_default_caption_bar_sits_inside_the_bottom_band(self):
+        # Records today's default (CAPTION_BOTTOM=1680 against the lowest 35 percent, from y=1248). When
+        # the caption height is ruled, swap this for an assertion that the bar is safe.
+        v = self.v
+        self.assertEqual(v.CAPTION_BOTTOM, 1680)
+        self.assertEqual(v.unsafe_sides(v.cue_box(["one line"], self.font, v.CAPTION_BOTTOM)), ["bottom"])
+        self.assertEqual(v.unsafe_sides(v.cue_box(["one line"], self.font, 1240)), [])
+
+    def test_four_part_timecodes_are_ntsc_correct(self):
+        v = self.v
+        self.assertAlmostEqual(v.parse_tc("00:01:00:15", 29.97), 1815 * 1001 / 30000, places=4)    # 60.5605 s
+        self.assertAlmostEqual(v.parse_tc("00:01:00:12", 23.976), 1452 * 1001 / 24000, places=4)
+        self.assertAlmostEqual(v.parse_tc("00:01:00:12", 25), 60.48)
+        self.assertEqual(v.parse_tc("1:30", 25), 90)
+        self.assertEqual(v.parse_tc("2.5", 25), 2.5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,1 +1,1 @@
-rpresolve transcribe: whisper-cli now has a timeout scaled to the audio length (RPRESOLVE_WHISPER_CPP_TIMEOUT_S overrides); qc: the unfiltered full-file ebur128 pass runs once and is shared by the loudness rows and the phone proxy.
+rpresolve transcribe: whisper-cli now has a timeout scaled to the audio length (RPRESOLVE_WHISPER_CPP_TIMEOUT_S overrides); qc: the unfiltered full-file ebur128 pass runs once and is shared by the loudness rows and the phone proxy. (#318)

@@ -168,6 +168,15 @@ class TestEndToEnd(unittest.TestCase):
         p = self.run_cut("--preset", "warp")
         self.assertEqual(p.returncode, 2)
 
+    def test_an_output_folder_in_a_git_tree_is_refused(self):
+        repo = os.path.join(self.tmp.name, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        self.out = os.path.join(repo, "vertcut-out")
+        p = self.run_cut()
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("inside a git work tree", p.stderr)
+        self.assertFalse(os.path.exists(self.out))
+
 
 if __name__ == "__main__":
     unittest.main()

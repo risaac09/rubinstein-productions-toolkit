@@ -76,7 +76,7 @@ starting at 01:00:00:00, for instance. The sign is whichever direction lands the
 clip: render one row with `--only`, watch it, and flip to `--offset -3600` if it
 came out an hour early. Do not assume; check one clip first.
 
-To take a worksheet down the Resolve route instead (`reframe_plan`, `cut`, `create_captions`, which is where client-visible work belongs), `tools/vertcut/vertcut manifest SOURCE.mov clips.tsv --words SOURCE.json -o manifest.json` writes it as a version 2 cut manifest (`--offset` and `--fps` as above; the output must sit outside any repository). It reads `HH:MM:SS:FF` rows the NTSC-correct way; `vertcut cut` still adds `FF / fps` to whole seconds.
+To take a worksheet down the Resolve route instead (`reframe_plan`, `cut`, `create_captions`, which is where client-visible work belongs), `tools/vertcut/vertcut manifest SOURCE.mov clips.tsv --words SOURCE.json -o manifest.json` writes it as a version 2 cut manifest (`--offset` and `--fps` as above; the output must sit outside any repository). Both commands read `HH:MM:SS:FF` rows the NTSC-correct way (frames count at the nominal rate, then divide by the real one).
 
 ## 3. Cut
 
@@ -114,6 +114,12 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 | `--font-size` / `--caption-y` | `66` / `1680` | Caption size, and the y of the bar's bottom edge (lower third). |
 | `--only 1,2` | all | Render a subset while dialling in the framing. |
 | `--dry-run` | off | Print what would be rendered. |
+
+### Hook text and the safe zone
+
+`--hook-text "FIRST LINE|SECOND LINE" --hook-source REF` (or a fifth worksheet column, which needs a title) draws a frame-0 card at the top safezone edge and holds it for max(0.8 s, 0.3 s per word). The text is yours, used as given; the tool never writes or suggests copy. `rpresolve.hooklint` checks it first (nine words, two lines of 16 characters, no em-dash, no emoji), and a FAIL exits 2. Captions wait until the card leaves, `review-srt/<stem>.hook.json` records text, source, box and span, and on macOS a face on frame 0 under the card stops the run (elsewhere that check is skipped, with a note).
+
+The caption bar's bottom edge defaults to y=1680, which sits inside the bottom UI band (the lowest 35 percent of a 9:16 frame). A run with captions prints a `WARN` saying so and leaves the bar where it is; `--caption-y` moves it.
 
 ### Caption style
 
