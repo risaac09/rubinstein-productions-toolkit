@@ -1,6 +1,7 @@
 """
 Tests for the MCP offline tools (rpresolve.mcp.tools_offline): detect,
-survey, measure, endcheck and selects, called as the protocol calls them
+survey, measure, endcheck and selects (and shoot_table, qc, pipeline_proof,
+deliver_manifest, perceive, audio_report and overlay_check), called as the protocol calls them
 and once through the server as a subprocess. Synthetic words, text and
 media only; no Resolve. measure's clip test needs numpy and ffmpeg.
 
@@ -267,6 +268,57 @@ class TestMeasure(Base):
         with self.assertRaises(Cancelled):
             call("measure", {"file": clip, "samples": 2, "faces": False},
                  ToolContext(is_cancelled=lambda: True))
+
+
+SEVEN = {"shoot_table": {"paths": ["rel/a.mov"]}, "qc": {"file": "rel/a.mov"},
+         "pipeline_proof": {"test": "rel/a.mov", "reference": "rel/b.mov"},
+         "deliver_manifest": {"folder": "rel"},
+         "perceive": {"file": "rel/a.mov", "out": "/abs/out"},
+         "audio_report": {"file": "rel/a.mov", "out": "/abs/out"},
+         "overlay_check": {"file": "rel/a.mov"}}
+
+
+class TestSevenMore(Base):
+    def test_registered_read_only_and_refuse_relative_paths(self):
+        for name, args in SEVEN.items():
+            t = REG.get(name)
+            self.assertIsNotNone(t, name)
+            self.assertTrue(t.annotations["readOnlyHint"], name)
+            if name in ("pipeline_proof", "overlay_check", "perceive", "audio_report"):
+                try:
+                    import numpy  # noqa: F401
+                except ImportError:
+                    continue  # these raise the numpy message before the path check
+            with self.assertRaisesRegex(ValueError, "absolute"):
+                call(name, args)
+
+    def test_shoot_table_wants_cam_equals_seconds(self):
+        with self.assertRaisesRegex(ValueError, "CAM=SECONDS"):
+            call("shoot_table", {"paths": [self.dir], "camera_offset": ["cam-a"]})
+
+    def test_qc_fps_needs_a_destination(self):
+        with self.assertRaisesRegex(ValueError, "destination"):
+            call("qc", {"file": self.words, "fps": "25"})
+
+    def test_deliver_manifest_verify_reads_and_writes_nothing(self):
+        sub = os.path.join(self.dir, "deliv", "dest")
+        os.makedirs(sub)
+        with open(os.path.join(sub, "a.mp4"), "wb") as f:
+            f.write(b"abc")
+        sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        with open(os.path.join(self.dir, "deliv", "checksums.txt"), "w") as f:
+            f.write(f"{sha}  dest/a.mp4\n")
+        root = os.path.join(self.dir, "deliv")
+        r = call("deliver_manifest", {"folder": root, "verify": True})
+        self.assertTrue(r["ok"])
+        with open(os.path.join(sub, "a.mp4"), "wb") as f:
+            f.write(b"abd")
+        self.assertFalse(call("deliver_manifest", {"folder": root, "verify": True})["ok"])
+        self.assertFalse(os.path.exists(os.path.join(root, "manifest.md")))
+
+    def test_deliver_manifest_preview_names_what_is_missing(self):
+        with self.assertRaisesRegex(ValueError, "project, approval"):
+            call("deliver_manifest", {"folder": self.dir})
 
 
 class TestEndToEnd(Base):

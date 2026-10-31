@@ -19,6 +19,8 @@ Each destination renders into its own subfolder of the delivery folder, named by
 
 The manifest lives at the root of the delivery folder, beside the destination subfolders and not inside one. `deliver_check` reports a file in a folder no destination owns as SKIP on its folder row, which is the right result for the manifest. The manifest file name is `manifest.md`. Delivery folders never sit inside a git working tree; the queue refuses it.
 
+`deliver-check --ledger-row PATH` also writes a release-ledger row stub: one JSON line with the house file name as `key`, the destination, the check status and counts, the file's sha256 and the check time, and empty `published_url`, `publish_date` and `approval` for a person to fill after publishing. A file whose name breaks the naming rule gets `key: null` and a `key_reason`, never a guessed key. It is a stub: the ledger format is not fixed, and `stub: true` marks every row. The file at PATH is replaced, so give each checked file its own path. The path is refused inside any git working tree, and the command writes nothing without the flag.
+
 ## The template
 
 Copy this block, fill it in, and keep it with the delivery.
@@ -77,7 +79,7 @@ Checksums are taken last. A loudness fix, a caption change or a re-render after 
 ## Rules
 
 1. **Every file in a destination subfolder has a row, and every row names a file in one.** A file with no row is not delivered; a row with no file is a mistake.
-2. **Only `deliver_check` PASS files are listed as delivered.** A file with a FAIL is either fixed and checked again or listed in a short "Not delivered" note with the reason.
+2. **Only `deliver_check` PASS files are listed as delivered.** Pass `--boxes` for any caption or super on screen so the safe-zone row runs; without boxes it skips. A file with a FAIL is either fixed and checked again or listed in a short "Not delivered" note with the reason.
 3. **The approval reference is required.** A file with no approval reference was not approved, and does not ship. See the gate.
 4. **The manifest is not edited after delivery.** A correction is a new manifest with a new date, and the first one is kept.
 5. **The client sees the manifest in full, with the key and the approval message below.** It is their delivery. Nothing client-identifying goes in a public copy: the manifest holds a project slug and a guest field in the file names, and a manifest published in this repo or anywhere public uses placeholders.
