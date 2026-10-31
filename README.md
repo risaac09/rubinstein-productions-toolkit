@@ -39,9 +39,10 @@ Tools that work on anyone's footage, each with tests.
 - **[Media lane](production/media-lane.md)**: one page over colour, edit and sound: what each tool does, how a review with Claude Code runs, and what is still a hand step.
 
 ### `tools/`
-- **[`vertcut/`](tools/vertcut/README.md)**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`.
+- **[`vertcut/`](tools/vertcut/README.md)**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`; a third, `manifest`, writes the cuts manifest for the Resolve route.
 - **[`video-editor/`](tools/video-editor/README.md)**: a bounded prototype that drives video editing through Claude Code, wrapping the third-party `video-use` skill (Browser Use, MIT), which `fetch-video-use.sh` fetches at a pinned commit. Not a finished tool.
 - **[`ipad-probe/`](tools/ipad-probe/README.md)**: a POSIX `sh` probe of what an iPad's a-Shell ffmpeg, ffprobe and python3 can do, printed as one Markdown table, plus four recipes: verified card copy, proxy, two-pass loudness and contact sheet. Runs under dash.
+- **[`ograf-render/`](tools/ograf-render/README.md)**: renders an OGraf template offline to a ProRes 4444 master with alpha, so `overlay-check` can verify it without Resolve open. Needs Node 22 or newer, Chrome and ffmpeg.
 
 ### `prompts/`
 - **[`skills/`](prompts/skills/)**: Claude Code skill files. Branded deck and document builds that match a template, a prompting pattern library, and agentic-development notes. The last two are October 2025 snapshots and say so at the top.
@@ -54,7 +55,7 @@ Tools that work on anyone's footage, each with tests.
 - **[iPad lane](docs/ipad-lane.md)** (draft): what an iPad can do with no Mac at each stage from ingest to QC, what is verified, and the one-hour on-device probe that settles the rest.
 
 ### `scripts/`
-The doc-link checker, the methodology status check, the site builder, `burst-gate` (mechanical gates for a worker branch) and `changelog-fragments` (one release-note fragment per pull request in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time), each with a test script.
+The doc-link checker, the methodology status check, the site builder, `burst-gate` (mechanical gates for a worker branch) and `changelog-fragments` (one release-note fragment per pull request in [`changelog.d/`](changelog.d/README.md), compiled into [`CHANGELOG.md`](CHANGELOG.md) at tag time). All but the doc-link checker and the site builder have a test script.
 
 ### `phase-zero/` and `public-kit/`
 Two deployment kits, exported here from a private source. `phase-zero/` is session infrastructure for AI agents (hooks, an operating brief, model routing, a retrospective) that installs into a repository's `.claude/`. `public-kit/` is public-repository hygiene: license templates, a README shape, `CONTRIBUTING` and `SECURITY` templates, and public voice rules. Fork them freely; fixes sent here are not merged back by hand.
