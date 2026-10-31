@@ -1,0 +1,33 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "hook-card",
+  "version": "1.0.0",
+  "name": "Hook Card",
+  "description": "Two-line hook card for the first frames of a 1080x1920 or 1080x1080 clip, inside the platform safe zones.",
+  "main": "hook-card.js",
+  "supportsRealTime": false,
+  "supportsNonRealTime": true,
+  "stepCount": 1,
+  "actionDurations": [
+    { "type": "playAction", "duration": 334 },
+    { "type": "updateAction", "duration": 0 },
+    { "type": "stopAction", "duration": 500 }
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "line1": { "type": "string", "title": "Hook line 1", "gddType": "single-line", "default": "HOOK LINE ONE" },
+      "line2": { "type": "string", "title": "Hook line 2 (optional)", "gddType": "single-line", "default": "HOOK LINE TWO" },
+      "accentColor": {
+        "type": "string", "title": "Accent Color", "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$", "default": "#c8923a"
+      }
+    },
+    "required": ["line1"]
+  },
+  "renderRequirements": [
+    { "resolution": { "width": { "ideal": 1080 }, "height": { "ideal": 1920 } }, "frameRate": { "ideal": 24 } }
+  ],
+  "v_bmd": { "duration": 4 }
+}
