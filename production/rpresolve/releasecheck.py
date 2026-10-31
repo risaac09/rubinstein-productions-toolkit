@@ -4,7 +4,8 @@ release-check: one READY or BLOCKED table over an upload folder. Read-only.
 Per video file in the folder, flat or one destination subfolder deep (the delivery
 layout <folder>/<destination key>/<files>; SHA256SUMS is the only other file read):
   sha       the file matches its SHA256SUMS line (manifest.sha256)
-  name      the house rule (deliver.parse_name)
+  name      the house rule (deliver.parse_name), and one name is one video across
+            the destination folders (title, stub and approval match by name)
   stub      a ledger stub (deliver-check --ledger-row) says pass for this sha256
   approval  an approve or go line in the review log names it
             (delivercheck.find_approval); SKIP without a log
@@ -137,13 +138,18 @@ def check(folder, titles, review_log=None, stubs=None):
     for ts in by_file.values():
         for t in ts:
             seen[t.casefold()] = seen.get(t.casefold(), 0) + 1
-    rows = []
+    rows, actuals = [], {}
+    for name in names:
+        try:
+            actuals[name] = mf.sha256(os.path.join(folder, name))
+        except OSError as e:
+            raise ReleaseError(f"cannot read {os.path.join(folder, name)}: {e.strerror}")
+    shas_by_base = {}
+    for name, h in actuals.items():
+        shas_by_base.setdefault(os.path.basename(name), set()).add(h)
     for name in names:
         path, base = os.path.join(folder, name), os.path.basename(name)
-        try:
-            actual, cells = mf.sha256(path), {}
-        except OSError as e:
-            raise ReleaseError(f"cannot read {path}: {e.strerror}")
+        actual, cells = actuals[name], {}
         want = sums.get(name, sums.get(base))
         cells["sha"] = (("FAIL", "no SHA256SUMS file or line") if want is None else
                         ("PASS", "") if want == actual else ("FAIL", "does not match SHA256SUMS"))
@@ -152,6 +158,9 @@ def check(folder, titles, review_log=None, stubs=None):
             cells["name"] = ("PASS", "")
         except deliver.NameRuleError as e:
             cells["name"] = ("FAIL", str(e))
+        if len(shas_by_base[base]) > 1:  # title, stub and approval match by name, so one name is one video
+            cells["name"] = ("FAIL", "; ".join(filter(None, (cells["name"][1],
+                             "another folder holds a different file under this name"))))
         if stub_rows is None:
             cells["stub"] = ("SKIP", "--stubs not given")
         else:

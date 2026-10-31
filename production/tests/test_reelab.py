@@ -28,11 +28,18 @@ except dc.ToolMissing:
     HAVE_FFMPEG = False
 
 
-def make(path, gain_db, w=1080, h=1920, seconds=4):
+def make(path, gain_db, w=1080, h=1920, seconds=4, chapters=None):
+    extra = ["-f", "ffmetadata", "-i", chapters] if chapters else []
     subprocess.run([dc.FFMPEG, "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
                     f"testsrc2=s={w}x{h}:r=30:d={seconds}", "-f", "lavfi", "-i",
-                    f"sine=f=440:r=48000:d={seconds}", "-af", f"volume={gain_db}dB", "-c:v", "libx264",
+                    f"sine=f=440:r=48000:d={seconds}", *extra, "-af", f"volume={gain_db}dB", "-c:v", "libx264",
                     "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path], check=True)
+
+
+def chapter_count(path):
+    out = subprocess.run([dc.FFPROBE, "-v", "error", "-show_chapters", "-of", "json", path],
+                         capture_output=True, text=True, check=True).stdout
+    return len(json.loads(out).get("chapters", []))
 
 
 def top_level_atoms(path):
@@ -54,9 +61,11 @@ class ReelAbTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.root = os.path.realpath(cls.tmp.name)
         cls.srcs = []
+        meta = os.path.join(cls.root, "chapters.txt")
+        Path(meta).write_text(";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=4000\ntitle=b\n")
         for name, gain in (("a", -30), ("b", -20), ("c", -26)):
             p = os.path.join(cls.root, f"SW999_Test_{name}.mp4")
-            make(p, gain)
+            make(p, gain, chapters=meta if name == "b" else None)  # one render carries a chapter
             cls.srcs.append(p)
         cls.wide = os.path.join(cls.root, "SW999_Test_wide.mp4")
         make(cls.wide, -20, 1920, 1080)
@@ -81,6 +90,10 @@ class ReelAbTests(unittest.TestCase):
             self.assertLess(os.path.getsize(p), 25 * 1024 * 1024)
             atoms = top_level_atoms(p)
             self.assertLess(atoms.index("moov"), atoms.index("mdat"))
+
+    def test_no_chapter_survives_to_tell_the_letters_apart(self):
+        self.assertEqual(chapter_count(self.srcs[1]), 1)
+        self.assertEqual([chapter_count(os.path.join(self.out, f"{lab}.mp4")) for lab in "ABC"], [0, 0, 0])
 
     def test_loudness_matched(self):
         vals = [dc.measure_loudness(os.path.join(self.out, f"{lab}.mp4"))["integrated_lufs"] for lab in "ABC"]
