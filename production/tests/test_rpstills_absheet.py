@@ -77,7 +77,7 @@ class AbsheetTest(unittest.TestCase):
             out = self.tmp / f"out{n}"
             paths = self.solids(n)
             doc = absheet.build(paths, out, seed=7)
-            key = json.loads((out / "key.json").read_text())
+            key = json.loads((Path(absheet.key_dir(out)) / "key.json").read_text())
             self.assertEqual(key, json.loads(json.dumps(doc)))
             self.assertEqual(list(key["labels"]), list(absheet.LETTERS[:n]))
             self.assertEqual(sorted(v["input_index"] for v in key["labels"].values()), list(range(n)))
@@ -169,11 +169,17 @@ class AbsheetTest(unittest.TestCase):
         out = self.tmp / "round1"
         absheet.build(self.solids(2), out, seed=1)
         before = (out / "sheet.jpg").read_bytes()
-        key = (out / "key.json").read_text()
+        key = (Path(absheet.key_dir(out)) / "key.json").read_text()
         with self.assertRaisesRegex(ValueError, "would be overwritten"):
             absheet.build([str(out / "sheet.jpg"), *self.solids(3)[2:]], out, seed=2)
         self.assertEqual((out / "sheet.jpg").read_bytes(), before)
-        self.assertEqual((out / "key.json").read_text(), key)
+        self.assertEqual((Path(absheet.key_dir(out)) / "key.json").read_text(), key)
+
+    def test_the_key_sits_beside_the_served_folder_not_in_it(self):
+        out = self.tmp / "review"
+        absheet.build(self.solids(2), out, seed=1)
+        self.assertEqual(os.listdir(out), ["sheet.jpg"])
+        self.assertTrue((self.tmp / "review.key" / "key.json").is_file())
 
     def test_tiff16_and_exif_rotation_load(self):
         tif = self.tmp / "deep.tif"
@@ -222,7 +228,7 @@ class AbsheetTest(unittest.TestCase):
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(absheet.run(p.parse_args([*self.solids(3), "--out", str(self.tmp / "o")])), 0)
-        key = json.loads((self.tmp / "o" / "key.json").read_text())
+        key = json.loads((Path(absheet.key_dir(str(self.tmp / "o"))) / "key.json").read_text())
         self.assertIsInstance(key["seed"], int)
         self.assertIn(f"seed {key['seed']}", out.getvalue())
         self.assertIn("A=look", out.getvalue())

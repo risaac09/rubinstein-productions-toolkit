@@ -271,10 +271,9 @@ def build(out_dir, paths, detections, profiles, retouch_set, do_background, cfg_
     refuse_git(out_dir, jpeg_paths(out_dir, profiles, paths))
     refuse_overwrite(out_dir, paths, profiles)
     icc = srgb_icc()
-    rows = [finish_frame(fid, p, detections.get(p), profiles, out_dir, fid in retouch_set, do_background, icc)
-            for fid, p in paths.items()]
-    return {"tool": "rpstills finish", "frames": rows, "config_version": cfg_version,
-            "options": {"retouch": sorted(retouch_set), "background": "on" if do_background else "off",
+    rows = []
+    doc = {"tool": "rpstills finish", "frames": rows, "config_version": cfg_version,
+           "options": {"retouch": sorted(retouch_set), "background": "on" if do_background else "off",
                         "crops": list(profiles)},
             "params": {"jpeg_quality": JPEG_QUALITY, "subsampling": "4:4:4", "icc": "sRGB (Pillow ImageCms)",
                        "face": "largest box area",
@@ -283,14 +282,30 @@ def build(out_dir, paths, detections, profiles, retouch_set, do_background, cfg_
                                                                "eye_line", "out")}
                                     for n, p in profiles.items()},
                        "retouch": retouch.params(), "background": background.params()}}
+    for fid, p in paths.items():
+        try:
+            row = finish_frame(fid, p, detections.get(p), profiles, out_dir, fid in retouch_set, do_background, icc)
+        except Exception as e:  # one bad frame is an error row; Ctrl-C still stops the run
+            row = {"id": fid, "source": p, "error": f"{type(e).__name__}: {e}"}
+        rows.append(row)
+        write(out_dir, doc)  # a crash or Ctrl-C on a later frame keeps every row so far
+    return doc
 
 
 def write(out_dir, doc):
-    """finish.json in out_dir/finish, atomically."""
+    """finish.json in out_dir/finish, atomically, merged by frame id with the rows already on disk."""
     folder = os.path.join(out_dir, "finish")
     refuse_git(out_dir)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "finish.json")
+    try:                                  # keep rows of frames this run has not reached (or did not run)
+        with open(path) as f:
+            old = json.load(f).get("frames") or []
+    except (OSError, ValueError, AttributeError):
+        old = []
+    new = {r["id"]: r for r in doc["frames"]}
+    merged = [new.pop(r["id"], r) for r in old if isinstance(r, dict) and "id" in r]
+    doc = dict(doc, frames=merged + list(new.values()))
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=".finish-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
