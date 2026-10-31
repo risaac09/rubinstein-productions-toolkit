@@ -48,7 +48,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
 
-from . import captions, delivercheck as dc, paths, qc, safezone
+from . import captions, delivercheck as dc, qc, safezone
 
 PASS, FAIL, SKIP = dc.PASS, dc.FAIL, dc.SKIP
 WARN = "WARN"
@@ -268,17 +268,7 @@ def parse_size(value):
     return int(m[1]), int(m[2])
 
 
-def write_boxes(path, boxes):
-    """Write [(label, box)] as the JSON list deliver-check --boxes reads
-    (safezone.load_boxes). Raises paths.OutputRefused inside any git tree."""
-    out = []
-    for k, b in boxes:
-        # off-frame stays on the edge, still outside the safe zone
-        b = [round(min(1.0, max(0.0, float(v))), 4) for v in b]
-        if not (b[0] < b[2] and b[1] < b[3]):
-            raise ValueError(f"{k}: box {b} has no area inside the frame")
-        out.append({"label": str(k), "box": b})
-    paths.write_private(path, json.dumps(out, indent=1) + "\n")
+write_boxes = safezone.write_boxes   # kept for callers of the old home
 
 
 def add_arguments(p):
