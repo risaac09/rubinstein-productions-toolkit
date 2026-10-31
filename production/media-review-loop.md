@@ -147,6 +147,33 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 {"ts": "2026-10-22T14:03:11Z", "project": "P-0001", "step": "look", "options": {"A": "natural-v2", "B": "natural-v2, +200 K", "C": "warm-v1"}, "choice": "B", "reason": "skin reads less grey", "device": "ipad"}
 ```
 
+### Writing a line
+
+```bash
+cd production
+python3 resolve_workflow.py review-log --dir <project dir> --project P-0001 --step look --device ipad \
+  --choice B --key <review dir>/look-01 --question warmth --reason "skin reads less grey"
+```
+
+`--key` takes the `key.json` itself or the sheet folder (`rpstills absheet`, key in `DIR.key`) or packet folder (`mixbuild ab`, key in `sealed/`) that has one. The letter decodes into `options` (source file names), and `stimulus` is the sha256 of `sheet.jpg` or `packet.json`, so a re-asked comparison can be matched. `--repeat-of TS` marks a repeat. The command appends one line, stamps `ts` in UTC and makes it unique, and exits 2 without writing for a letter the key does not hold, a step or device outside the lists above, a project id that is not like `P-0001`, a `--repeat-of` that matches no line, or a log inside any git working tree. A `--question` outside the table below is logged with a warning.
+
+### Question keys
+
+The optional `question` key names what was asked, so the taste profile counts like with like. Reel decisions use these keys; the fields behind them are in [story options](story-options.md#reel-fields).
+
+| Key | Asked about |
+|---|---|
+| `reel_option` | which of the two or three reel structures |
+| `opening` | the frame-0 image |
+| `hook_text` | the text hook on screen |
+| `crop_x` | the horizontal position of the 9:16 crop |
+| `caption_style` | caption look and position |
+| `ending` | how the reel ends |
+| `tempo` | cutting pace |
+| `music_level` | music level under speech |
+
+Still-image and mix decisions use `warmth`, `skin`, `contrast`, `pace` and `music_level` the same way.
+
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, carrying the `ts` of the line it repeats, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
 The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
