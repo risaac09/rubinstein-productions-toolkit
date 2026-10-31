@@ -215,5 +215,23 @@ class TestCommand(Case):
             self.assertEqual(cmd_release_check.run(args), 2)
 
 
+class DestinationSubfolders(Case):
+    def test_delivery_layout_one_folder_down_is_ready(self):
+        sub = self.up / "linkedin_9x16"
+        sub.mkdir()
+        for n in NAMES:
+            (self.up / n).rename(sub / n)
+        (self.up / "SHA256SUMS").write_text("".join(f"{sha(b)}  linkedin_9x16/{n}\n" for n, b in self.data.items()))
+        rows, orphans, verdict, other = self.run_check()
+        self.assertEqual(sorted(r["file"] for r in rows), [f"linkedin_9x16/{n}" for n in NAMES])
+        self.assertEqual((orphans, verdict, other), ([], "READY", []))
+
+    def test_non_video_in_a_subfolder_is_reported(self):
+        sub = self.up / "linkedin_9x16"
+        sub.mkdir()
+        (sub / "notes.txt").write_text("x")
+        self.assertIn("linkedin_9x16/notes.txt", self.run_check()[3])
+
+
 if __name__ == "__main__":
     unittest.main()
