@@ -172,6 +172,15 @@ class TestCullFrames(unittest.TestCase):
                 row(4, t(4), m=metric(sharp=350.0), phash=ONES),                          # a different picture
                 row(5, t(5), m=metric(sharp=100.0, contrast=0.05), phash="f" * 8 + "0" * 8)]
 
+    def test_an_unread_frame_is_held_with_its_reason(self):
+        rows = self.stage()
+        rows[0]["faces_unread"] = True
+        c, cu = self.build(rows)
+        self.assertEqual(cu["scores"]["G000"]["reason"], "faces unread")
+        self.assertNotIn("reason", cu["scores"]["G001"])
+        held = [p for p in cu["proposal"] if p.get("held")]
+        self.assertEqual([(p["held"], p["held_reason"]) for p in held], [(["G000"], "faces unread")])
+
     def test_a_run_with_no_face_gets_picks(self):
         rows = self.stage()
         clusters, doc = self.build(rows)
@@ -601,6 +610,18 @@ class TestSwiftHelper(unittest.TestCase):
                 mock.patch.object(vision.subprocess, "run", return_value=proc):
             out = vision.faces(["/x/a.jpg"])
         self.assertEqual(out["/x/a.jpg"]["people"][0]["h"], 0.8)
+
+
+class TestCropsPreviewEmpty(unittest.TestCase):
+    def test_an_empty_plan_prints_nothing_to_preview(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(cli.index, "load", return_value=[]), \
+                 mock.patch.object(cli.crops, "selection", return_value=([], "all")), \
+                 mock.patch.object(cli.crops, "write", return_value="crops.json"), \
+                 redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(cli.main(["crops", d]), 0)
+        self.assertIn("nothing to preview", out.getvalue())
+        self.assertNotIn("None", out.getvalue())
 
 
 if __name__ == "__main__":
