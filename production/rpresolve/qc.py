@@ -487,8 +487,9 @@ def _sound_stems_sum(np, path, stems, mix_lufs, th):
                  f"{len(stems)} stems, residual is RMS" + (f", lengths differ by {short} samples" if short else ""))
 
 
-def _sound_rows(path, m, th, cuts, cuts_from, words, stems, ceiling, fps, dur):
-    """The VP-121 rows for a file with audio. m: measure_loudness's dict."""
+def _sound_rows(path, m, frames, th, cuts, cuts_from, words, stems, ceiling, fps, dur):
+    """The VP-121 rows for a file with audio. m: the loudness dict; frames: the
+    ebur128 framelog from the same pass (None without numpy)."""
     np = _np()
     rows = [_sound_lra(m)]
     if np is None:  # audioreport, which these rows read, imports numpy
@@ -498,7 +499,7 @@ def _sound_rows(path, m, th, cuts, cuts_from, words, stems, ceiling, fps, dur):
     rows.append(_sound_true_peak_per_cut(path, cuts, dur, ceiling, cuts_from))
     rows.append(_sound_silence_at_cut(np, path, cuts, th, fps))
     rows.append(_sound_speech_vs_rest(path, words, th))
-    rows.append(_sound_phone_proxy(path, _ebur(path)[1], th))
+    rows.append(_sound_phone_proxy(path, frames, th))
     rows.append(_sound_stems_sum(np, path, stems, m["integrated_lufs"], th))
     return rows
 
@@ -755,7 +756,8 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
 
     if has_audio:
         loud = (dest or {}).get("loudness") or {}
-        m = dc.measure_loudness(path)
+        # one full-file ebur128 pass feeds both the loudness rows and the phone proxy
+        m, frames = (dc.measure_loudness(path), None) if _np() is None else _ebur(path)
         i, tp = m["integrated_lufs"], m["true_peak_dbtp"]
         if dest is not None and deliver.has_loudness_target(dest):
             target, tol = float(loud["integrated_lufs"]), float(loud["tolerance_lu"])
@@ -784,7 +786,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
             sound_cuts, cuts_from = scdet_cuts, "cuts from scdet"
         fr = next((dc.rate(s.get("avg_frame_rate")) for s in streams
                    if s.get("codec_type") == "video" and dc.rate(s.get("avg_frame_rate"))), None)
-        rows += _sound_rows(path, m, th, sound_cuts, cuts_from, words, stems, tp_max,
+        rows += _sound_rows(path, m, frames, th, sound_cuts, cuts_from, words, stems, tp_max,
                             float(fr) if fr else 24.0, dur or 0.0)
     else:
         for n in ("loudness", "true_peak", "astats_peak", "astats_dc", "silencedetect", "lra",
