@@ -144,6 +144,10 @@ def build(source, threshold=THRESHOLD, dissolves=True):
     if total is None:
         raise dc.CheckError(f"{source} has no readable duration.")
     rate = dc.rate(video.get("avg_frame_rate"))
+    if dissolves and rate and total > MAX_DISSOLVE_S:
+        raise dc.CheckError(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
+                            f"and stops above {MAX_DISSOLVE_S / 3600:g} h. Pass --no-dissolves for cuts only, "
+                            f"or split the file first.")
     proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", dc._src(source),
                     "-map", "0:v:0", "-vf", scdet_filter(threshold), "-f", "null", "-"],
                    dc.READ_TIMEOUT_S)
@@ -151,10 +155,6 @@ def build(source, threshold=THRESHOLD, dissolves=True):
         raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
     cuts = sorted({t for t in qc.parse_scdet(proc.stderr, threshold) if 0 < t < total})
     found = []
-    if dissolves and rate and total > MAX_DISSOLVE_S:
-        raise dc.CheckError(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
-                            f"and stops above {MAX_DISSOLVE_S / 3600:g} h. Pass --no-dissolves for cuts only, "
-                            f"or split the file first.")
     if dissolves and rate:
         found = find_dissolves(grey_frames(source, total), float(rate))
         # scdet can catch one frame of a quick dissolve: that is the dissolve, not a cut

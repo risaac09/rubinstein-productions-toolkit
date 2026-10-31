@@ -85,7 +85,7 @@ LAG_SECONDS = 30.0
 MAX_LAG_MS = 250.0
 LAG_MIN_CORR = 0.05                # below this the best match is chance, not a lag
 ZERO_RUN_S = 0.001                 # a run of exact zeros this long is a dropout
-MAX_DECODE_S = 3600.0              # longest range decode() holds as float64 (about 6.6 GB peak in measure() at 48 kHz mono)
+MAX_DECODE_S = 3600.0              # longest range decode() holds as float64 (float64 at 48 kHz mono is 1.4 GB, and measure() peaks at about four copies)
 BATCH = 64                         # FFT frames per numpy batch
 DELTAS = ("integrated_lufs", "lra_lu", "true_peak_dbtp", "sibilance_ratio_db", "flatness",
           "hum_excess_db_50", "hum_excess_db_60", "wada_snr_db")
