@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # test_delivercheck, run on its own
 
 from rpresolve import delivercheck as dc, safezone  # noqa: E402
 from test_delivercheck import failed, make, needs_ffmpeg, statuses, tiny  # noqa: E402

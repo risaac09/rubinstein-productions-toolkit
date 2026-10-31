@@ -122,6 +122,23 @@ class ReturnPackage(unittest.TestCase):
             self.build(out=f"{self.tmp}/src/A01/pkg")
         self.assertIn("contain one another", str(cm.exception))
 
+    def test_nested_output_by_case_variant_refused(self):
+        variant = f"{self.tmp}/SRC/a01"
+        if not os.path.isdir(variant):
+            self.skipTest("case-sensitive file system: the variant is another folder")
+        with self.assertRaises(rp.PackageError) as cm:
+            self.build(out=f"{variant}/pkg")
+        self.assertIn("contain one another", str(cm.exception))
+        self.assertEqual(os.listdir(f"{self.tmp}/src/A01"), ["DCIM"])
+
+    def test_within_matches_a_unicode_variant(self):
+        nfc, nfd = f"{self.tmp}/café", f"{self.tmp}/café"
+        os.mkdir(nfc)
+        if not os.path.isdir(nfd):
+            self.skipTest("file system keeps NFC and NFD names apart")
+        self.assertTrue(rp._within(f"{nfd}/pkg", nfc))
+        self.assertFalse(rp._within(f"{self.tmp}/other/pkg", nfc))
+
     def test_bad_engagement_id(self):
         with self.assertRaises(rp.PackageError):
             rp.build(self.out, "Some Client", "2026-11", "AP-1", "x", [], "", CFG)

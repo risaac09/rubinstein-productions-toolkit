@@ -75,3 +75,14 @@ def write_private(path, text, any_git_tree=True):
             pass
         raise
     return path
+
+
+def source_problem(outs, sources):
+    """Why one of `outs` must not be written, or None: it is one of `sources`
+    (os.path.samefile, so another name for the same file, such as one that
+    differs only in case on a case-insensitive disk, counts too)."""
+    for o in outs:
+        for s in sources:
+            if os.path.exists(o) and os.path.exists(s) and os.path.samefile(o, s):
+                return f"{o} is the source {s}; a source is never written over"
+    return None
