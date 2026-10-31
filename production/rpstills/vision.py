@@ -14,7 +14,6 @@ as lists of [x, y] in the same normalized, top-left, whole-image convention
 asks for them. faces() returns None when the helper cannot run, and callers
 say so."""
 
-import hashlib
 import json
 import os
 import shutil
@@ -28,20 +27,8 @@ TIMEOUT_S = 900
 
 
 def binary(source=SOURCE):
-    try:
-        with open(source, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
-    except OSError:
-        return None
-    path = os.path.join(CACHE_DIR, f"{os.path.splitext(os.path.basename(source))[0]}-{digest}")
-    if os.access(path, os.X_OK):
-        return path
-    if not os.access(SWIFTC, os.X_OK):
-        return None
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    proc = subprocess.run([SWIFTC, "-O", source, "-o", path], stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return path if proc.returncode == 0 and os.access(path, os.X_OK) else None
+    from rpresolve import swiftbuild  # lazy, like rpresolve.paths: stdlib-only sibling package
+    return swiftbuild.build(source, CACHE_DIR, SWIFTC)
 
 
 def _batch(exe, flag, chunk):

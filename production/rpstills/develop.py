@@ -110,7 +110,6 @@ again. TIFFs and calibration.json name client frames: refused inside any
 git working tree.
 """
 
-import hashlib
 import json
 import os
 import platform
@@ -274,20 +273,8 @@ def solve(measure_fn, x0, bounds, target, free, max_iter=MAX_ITER, tol=TOL):
 def helper():
     """Path of the compiled develop_raw helper, compiling it on first use;
     None when it cannot be built (no swiftc, not macOS)."""
-    try:
-        with open(HELPER_SOURCE, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
-    except OSError:
-        return None
-    path = os.path.join(vision.CACHE_DIR, f"develop_raw-{digest}")
-    if os.access(path, os.X_OK):
-        return path
-    if not os.access(vision.SWIFTC, os.X_OK):
-        return None
-    os.makedirs(vision.CACHE_DIR, exist_ok=True)
-    proc = subprocess.run([vision.SWIFTC, "-O", HELPER_SOURCE, "-o", path], stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return path if proc.returncode == 0 and os.access(path, os.X_OK) else None
+    from rpresolve import swiftbuild  # lazy: stdlib-only sibling package
+    return swiftbuild.build(HELPER_SOURCE, vision.CACHE_DIR, vision.SWIFTC)
 
 
 def _run(cmd):

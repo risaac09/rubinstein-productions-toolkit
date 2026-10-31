@@ -12,46 +12,23 @@ Off-by-default hook for perceive's packet: a caller may attach
 scene.read(image) under a "scene" key; perceive does not call it today.
 """
 
-import hashlib
 import json
 import os
 import shutil
 import subprocess
 
+from . import swiftbuild
+
 SWIFTC = shutil.which("swiftc") or "/usr/bin/swiftc"
 SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scene_cli.swift")
 CACHE_DIR = os.path.expanduser("~/Library/Caches/rpresolve")
 TIMEOUT_S = 120
-BUILD_TIMEOUT_S = 300
 
 
 def scene_binary():
     """Compiled helper path, built into the cache on first use (keyed by the
     source sha256); None when swiftc is missing or the build fails."""
-    try:
-        with open(SOURCE, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
-    except OSError:
-        return None
-    binary = os.path.join(CACHE_DIR, f"scene_cli-{digest}")
-    if os.access(binary, os.X_OK):
-        return binary
-    if not os.access(SWIFTC, os.X_OK):
-        return None
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    tmp = f"{binary}.{os.getpid()}.tmp"  # atomic rename: a racing caller never runs a half-linked file
-    try:
-        proc = subprocess.run([SWIFTC, "-O", SOURCE, "-o", tmp], stdin=subprocess.DEVNULL,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=BUILD_TIMEOUT_S)
-        if proc.returncode != 0:
-            return None
-        os.replace(tmp, binary)
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-    return binary if os.access(binary, os.X_OK) else None
+    return swiftbuild.build(SOURCE, CACHE_DIR, SWIFTC)
 
 
 def _run(*argv):
