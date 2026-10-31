@@ -51,13 +51,13 @@ they return as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 28 tools: 5 reads, 10 offline tools
+tool must name that project. There are 35 tools: 5 reads, 17 offline tools
 (one of them, `deliver_captions`, writes a file beside a render) and 13
 writes.
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `resolve_status` | read | Toolkit commit and dirty flag, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. Works with Resolve closed. |
+| `resolve_status` | read | Toolkit commit on disk and the commit the server loaded (`stale` when they differ: restart it), dirty flag, one line per mounted media volume, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. Works with Resolve closed. |
 | `list_timelines` | read | Every timeline: index, name, unique id, frame rate, start and end frames, track counts, which is current, which end in ` [auto]`. |
 | `timeline_items` | read | One timeline's items per track: timeline and source frames, media file, input colour space and data level, transform, and grade (version, colour group, nodes with labels, LUTs and tools). Reads a timeline without making it current. |
 | `media_pool` | read | The folder tree (capped at 300 folders) and one folder's clips with their properties. |
@@ -72,6 +72,13 @@ writes.
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
 | `trim_review` | offline | Long silences from the source audio, fillers, repeats and Whisper loops from the word JSON, as proposals (keep, tighten, cut-candidate) in a TSV. Over a cut manifest the times run along each clip. Nothing is cut. |
+| `shoot_table` | offline | One CSV row per clip of a shoot: camera, start, duration, fps, size, profile, lens and audio, with long-take, VFR, weak-audio and unexpected-camera flags, a per-camera `camera_offset`, and a capture-audio audit (streams, noise floor, clipping, dead channel, dual mono, room tone). |
+| `qc` | offline | One FAIL-first QC table for a rendered file: black, freeze, scene cuts, loudness range, silence, phone-speaker proxy, sha256, and with `destination` deliver_check's rows (plus social fps and safe zone for a social one). With `words`, `stems` or `shots`, speech against the rest, stems summed against the mix, and true peak and silence at each cut. WARN rows never fail the table. |
+| `pipeline_proof` | offline | A test render against a reference render: luma and chroma shift, range, level shift, PSNR, SSIM and VMAF (where ffmpeg has libvmaf), PASS or FAIL per row. Needs numpy. |
+| `deliver_manifest` | offline | A delivery folder's `manifest.md` and `checksums.txt` as a preview, or with `verify` a re-check of `checksums.txt` against the files. Writes nothing; the CLI's `deliver-manifest` writes the two files. |
+| `perceive` | offline | One frame as scopes, a Lab palette and numbers (faces, skin, lighting ratio), with an optional reference, as a packet folder outside any repository. Needs numpy. |
+| `audio_report` | offline | Loudness over time, spectrogram, peaks, clipping, clicks, silences and octave balance of one audio stream: `audio-report.json` and two PNGs in a folder outside any repository, flags in the reply. Needs numpy. |
+| `overlay_check` | offline | A graphic master rendered with alpha: tags, frame rate, clear and opaque frames, edge fringe and brand colour at named pixels, PASS, FAIL or SKIP per row. Needs numpy. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines and their 9:16 and 1:1 versions (`aspects`, default 9:16) from a cut manifest, gated by endcheck. Each version's items take their span's crop from `reframe_plan` (else the clip's `face_x`), every transform read back. A version with no reframe is not built and is named UNREFRAMED, nor is one whose input scaling is not scaleToFit or scaleToCrop (REFUSED); one whose picture does not fill the frame is built and named BARS. A timeline a failed build leaves behind is named in `left_behind` and in the journal. Each timeline is decided on its own: one that exists is skipped, and a missing version beside an existing 16:9 is built from it while its items still match the manifest's spans. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
