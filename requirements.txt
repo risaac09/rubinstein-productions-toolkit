@@ -47,7 +47,7 @@
 #   VERTCUT_PYTHON               tools/vertcut/vertcut             ~/.venvs/rp-tools/bin/python              the Python with Pillow is another one.
 #   VERTCUT_MLX_WHISPER          tools/vertcut/vertcut transcribe  ~/.venvs/rp-tools/bin/mlx_whisper         mlx_whisper is installed elsewhere.
 #   RPSTILLS_LIGHTCRAFT          rpstills develop (trial backend)  unset (apple backend only)                you trial the LightCraft RAW backend: the lightcraft-cli path.
-#   FFMPEG, FFPROBE, PYTHON      tools/ipad-probe (and CP for      ffmpeg, ffprobe, python3 from PATH        a-Shell or another shell names them differently.
+#   FFMPEG, FFPROBE, PYTHON, CP  tools/ipad-probe (CP: only       ffmpeg, ffprobe, python3, cp from PATH    a-Shell or another shell names them differently.
 #                                verify-copy)
 #   LUTLAB_OUT                   production/lutlab                 none                                      always, unless every command gets --out.
 #   LUTLAB_BRAW2PPM              lutlab/verify.py (BRAW)            lutlab/braw/braw2ppm, beside the source   the BRAW helper was built elsewhere.
@@ -55,6 +55,22 @@
 #                                                                  RAW SDK/Mac
 #   LUTLAB_SKIP_RENDER_VERIFY    production/tests/test_lutlab.py   unset                                     tests: any value skips the render-verify test. Needed with
 #                                                                                                            an ffmpeg build whose colour differs from Homebrew's (CI's apt build).
+#   RPRESOLVE_WHISPER_MODEL      rpresolve transcribe (mlx)        mlx-community/whisper-large-v3-turbo      another mlx-whisper model or a local folder.
+#   RPRESOLVE_WHISPER_CPP_MODEL  rpresolve transcribe              none (--model required)                   the whisper.cpp model file lives in one place.
+#                                (whisper.cpp)
+#   RPRESOLVE_WHISPER_CPP_TIMEOUT_S
+#                                rpresolve transcribe              4x the audio length, at least 600 s;      whisper-cli needs longer or shorter: seconds, positive.
+#                                (whisper.cpp)                     6 h when the length is unreadable
+#   RPRESOLVE_RNNOISE_MODEL      rpresolve mixbuild (arnndn)       none (the step's model: required)         one .rnnn model serves every arnndn step.
+#   CHROME                       tools/ograf-render                Google Chrome, then chromium on PATH      Chrome is elsewhere (or --chrome PATH).
+#   OGRAF_LINT                   tools/ograf-render --lint         Resolve's lint-ograf.py                   Resolve's OGraf linter is elsewhere.
+#   RCLONE_BIN                   production/offload.sh safe        rclone from PATH                          rclone has another name or path.
+#   CI                           tools/ograf-render                unset                                     set by CI runners: Chrome starts with --no-sandbox.
+#   BURST_GATE_DENYLIST          scripts/burst-gate                unset (no extra patterns)                 you keep private regexes for the G2 privacy scan.
+#   DD_BIN, DF_BIN               production/offload.sh             dd, df from PATH                          tests: stand-ins for the system tools.
+#   DISKUTIL_BIN                 production/offload.sh             diskutil from PATH                        tests: a stand-in for diskutil.
+#   OFFLOAD_NOW                  production/offload.sh             unset (the clock)                         tests: a fixed UTC time stamp.
+#   RESOLVE_WORKFLOW             tools/ograf-render/test.mjs       production/resolve_workflow.py            tests: another copy of the workflow script.
 #
 # The tools do not find ffmpeg the same way. rpresolve reads RPRESOLVE_FFMPEG and RPRESOLVE_FFPROBE and
 # otherwise uses the Homebrew paths. lutlab and tools/vertcut call bare ffmpeg and ffprobe from PATH, so

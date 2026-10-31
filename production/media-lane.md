@@ -5,10 +5,11 @@
 What each tool in `production/` does for stills and video, in the order a job
 uses them, and what is still a hand step. Every tool here runs offline on a
 Mac; most of the offline half also runs on Linux CI. Nothing here sends media
-anywhere. These refuse to write inside a git tree: `rpstills develop`,
-`finish`, `audit` and `absheet`, `lutlab`, and `rpresolve.interchange`,
-`wordsnap`, `shots`, `beats`, `roomtone`, `dxmetrics` and `duckplan`. The older
-`rpstills` commands (`index`, `cluster`, `cull`, `review`, `crops`, `look`) and
+anywhere. These refuse to write inside a git tree: every `rpstills` command
+that takes an output folder (`index`, `run`, `cluster`, `cull`, `crops`,
+`review`, `develop`, `finish`, `audit`, `absheet`), `lutlab`, and
+`rpresolve.interchange`, `wordsnap`, `shots`, `beats`, `roomtone`, `dxmetrics`
+and `duckplan`. `rpstills look` and
 the iPad recipes write where they are told without checking, so give them an
 output path outside any repository.
 
