@@ -7,7 +7,10 @@ Resolve is open); endcheck and selects read a transcript, an approved text
 and, for endcheck, the source audio; deliver_check reads a rendered file
 with ffprobe and ffmpeg and checks it against a delivery destination;
 sync_measure correlates two recordings' audio; trim_review reads a source's
-audio and its word JSON and writes a review TSV.
+audio and its word JSON and writes a review TSV; shoot_table, qc,
+pipeline_proof, overlay_check, perceive and audio_report read media with ffprobe
+and ffmpeg (the last two write a packet or report folder); deliver_manifest
+previews a delivery manifest and re-checks its checksums, writing nothing.
 
 Destinations come from production/resolve-config.json, with the overlay at
 $RPRESOLVE_CONFIG laid over it when that is set (deliver_config()).
@@ -25,6 +28,7 @@ import time
 
 from .. import cutlist, paths, workflows
 from .. import detect as rpdetect
+from .. import shoot_table as rpshoot
 from ..config import ConfigError, load_config
 from .registry import READ, Tool
 
@@ -467,6 +471,179 @@ REVIEW_PROPS = {
 
 
 # ---------------------------------------------------------------------------
+# shoot_table, qc, pipeline_proof, deliver_manifest, perceive, audio_report,
+# overlay_check
+# ---------------------------------------------------------------------------
+
+def _numpy(tool, e):
+    return RuntimeError(f"{tool} needs numpy ({e}); run the server on /usr/bin/python3.")
+
+
+def _parse_size(text):
+    w, h = text.split("x")
+    return int(w), int(h)
+
+
+def shoot_table(args, ctx):
+    out = _out(args)
+    targets = [_abs(p, "paths") for p in args["paths"]]
+    offsets = {}
+    for item in args.get("camera_offset") or []:
+        cam, sep, secs = item.rpartition("=")
+        if not sep or not cam:
+            raise ValueError(f"camera_offset wants CAM=SECONDS (got '{item}').")
+        try:
+            offsets[cam] = float(secs)
+        except ValueError:
+            raise ValueError(f"camera_offset wants CAM=SECONDS (got '{item}').")
+    ctx.check_cancel()
+    rows, missing = rpshoot.build(targets, long_min=args["long_min"], weak_db=args["weak_db"],
+                                  offsets=offsets, audio_seconds=args["audio_seconds"])
+    if not rows:
+        raise ValueError("no video files found.")
+    bad = rpshoot.unknown_offsets(rows, offsets)
+    if bad:
+        raise ValueError("camera_offset names no camera in the table: " + ", ".join(bad) +
+                         " (cameras: " + ", ".join(sorted({r["camera"] for r in rows})) + ").")
+    result = {"summary": rpshoot.summarize(rows), "missing": missing}
+    result.update(_page(rows, args))
+    if out or result["next_offset"] is not None:
+        result["file"] = paths.write_private(out or _auto_out("shoot-table", ".csv"),
+                                             rpshoot.format_csv(rows), any_git_tree=True)
+    return result
+
+
+def qc(args, ctx):
+    from .. import deliver, delivercheck as dc, qc as rpqc
+    path = _existing(args["file"], "file")
+    th = rpqc.parse_overrides(args.get("set"))
+    if (args.get("fps") or args.get("size")) and not args.get("destination"):
+        raise ValueError("fps and size assert against a destination: give destination.")
+    dest = folders = None
+    if args.get("destination"):
+        config = deliver_config()
+        dest, folders = deliver.destination(config, args["destination"]), deliver.subfolders(config)
+    if args.get("fps"):
+        dc.parse_fps(args["fps"])
+    shots = _existing(args["shots"], "shots") if args.get("shots") else None
+    words = _existing(args["words"], "words") if args.get("words") else None
+    stems = [_existing(s, "stems") for s in args.get("stems") or []] or None
+    ctx.check_cancel()
+    r = rpqc.run(path, dest, config_folders=folders, fps=args.get("fps"),
+                 size=_parse_size(args["size"]) if args.get("size") else None,
+                 expected_duration=args.get("duration"), thresholds=th,
+                 shots=rpqc.shot_count(shots) if shots else None,
+                 shot_cut_times=rpqc.shot_cuts(shots) if shots else None,
+                 words=rpqc.load_words(words) if words else None, stems=stems,
+                 sha256=args.get("sha256"))
+    r["summary"] = rpqc.format_report(r).strip().splitlines()[-1]
+    return r
+
+
+def pipeline_proof(args, ctx):
+    try:
+        from .. import proof as rpproof
+    except ImportError as e:
+        raise _numpy("pipeline_proof", e)
+    test, ref = _existing(args["test"], "test"), _existing(args["reference"], "reference")
+    out = _out(args)
+    ctx.check_cancel()
+    r = rpproof.compare(test, ref, frames=args["frames"], thresholds={
+        k: args.get(k) for k in ("psnr", "ssim", "vmaf", "luma_shift", "chroma_shift")})
+    result = {"summary": rpproof.format_report(r).strip().splitlines()[-1], "passed": r["passed"],
+              "rows": r["rows"]}
+    if out:
+        result["file"] = paths.write_private(out, _json(r), any_git_tree=True)
+    return result
+
+
+def deliver_manifest(args, ctx):
+    """The manifest as text, or a checksums.txt re-check. Writes nothing."""
+    from .. import delivercheck as dc, manifest as mf
+    folder = _existing(args["folder"], "folder")
+    ctx.check_cancel()
+    if args["verify"]:
+        rows = [{"status": s, "file": rel} for s, rel in mf.verify(folder)]
+        bad = [r["file"] for r in rows if r["status"] != "OK"]
+        return {"summary": f"checksums.txt: {len(rows)} file(s), " +
+                (f"not OK: {', '.join(bad)}" if bad else "all OK"), "ok": not bad, "rows": rows}
+    need = ("project", "approval", "prepared_by", "review_copy", "review_sha256")
+    missing = [f for f in need if not args.get(f)]
+    if missing:
+        raise ValueError("a manifest preview needs " + ", ".join(missing) + ".")
+    dc.check_tools(ffmpeg=args["loudness"])
+    text, sums = mf.build(
+        folder, deliver_config(), args["project"], args["approval"], args["prepared_by"],
+        args["review_copy"], args["review_sha256"], args.get("delivered") or time.strftime("%Y-%m-%d"),
+        machine_steps=args["machine_steps"], credits=args["credits"],
+        platform_notes=args["platform_notes"], licences=args.get("licences") or [],
+        loudness=args["loudness"])
+    return {"summary": f"manifest.md for {len(sums)} file(s), not written; the CLI writes it "
+                       "(deliver-manifest)", "manifest": text,
+            "checksums": [{"file": rel, "sha256": h} for rel, h in sums]}
+
+
+def perceive(args, ctx):
+    try:
+        from .. import perceive as rpperceive
+    except ImportError as e:
+        raise _numpy("perceive", e)
+    path = _existing(args["file"], "file")
+    ref = _existing(args["ref"], "ref") if args.get("ref") else None
+    out = _abs(args["out"], "out")
+    ctx.check_cancel()
+    packet = rpperceive.perceive(path, out, at=args.get("at"), ref=ref, faces=args["faces"],
+                                 with_targets=args["targets"])
+    return {"summary": rpperceive.format_summary(packet, out).strip(), "folder": out,
+            "packet": os.path.join(out, "packet.json")}
+
+
+def audio_report(args, ctx):
+    try:
+        from .. import audioreport as ar
+    except ImportError as e:
+        raise _numpy("audio_report", e)
+    from .. import deliver
+    path = _existing(args["file"], "file")
+    out = _abs(args["out"], "out")
+    th, target = {}, args.get("target")
+    if args.get("destination"):
+        loud = deliver.destination(deliver_config(), args["destination"])["loudness"]
+        th = {k: loud[k] for k in ("true_peak_max_dbtp", "tolerance_lu")}
+        target = loud.get("integrated_lufs") if target is None else target
+    start = ar.parse_time(args["start"]) if args.get("start") else None
+    end = ar.parse_time(args["end"]) if args.get("end") else None
+    ref = _existing(args["reference"], "reference") if args.get("reference") else None
+    ctx.check_cancel()
+    r = ar.report(path, out, stream=args["stream"], start=start, end=end, reference=ref,
+                  ref_stream=args["ref_stream"], target_lufs=target, th=th)
+    # The window-by-window curves are in audio-report.json, not in the reply.
+    return {"summary": ar.format_summary(r).strip(), "flags": r["flags"], "images": r["images"],
+            "file": os.path.join(out, "audio-report.json")}
+
+
+def overlay_check(args, ctx):
+    try:
+        from .. import overlay
+    except ImportError as e:
+        raise _numpy("overlay_check", e)
+    path = _existing(args["file"], "file")
+    values = overlay.load_values(_existing(args["values"], "values")) if args.get("values") else None
+    clear_at = [] if args["no_clear"] else args.get("clear_at", [0.0])
+    ctx.check_cancel()
+    r = overlay.check(
+        path, expect=[overlay.parse_expect(s) for s in args.get("expect") or []],
+        fps=args.get("fps"), clear_at=clear_at, hold=args.get("hold"),
+        alpha_mode=args["alpha_mode"], values=values,
+        samples=[overlay.parse_sample(s) for s in args.get("sample") or []],
+        fringe_max=args.get("fringe_max", overlay.FRINGE_MAX),
+        de_max=args.get("de_max", overlay.DE_MAX),
+        sample_size=args.get("sample_box", overlay.SAMPLE_BOX))
+    r["summary"] = overlay.format_report(r).strip().splitlines()[0]
+    return r
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -722,3 +899,185 @@ def register(registry):
                               "the destination. Never connects to Resolve."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
+    registry.add(Tool(
+        "shoot_table",
+        "One CSV row per clip of a shoot: camera, start, duration, fps, size, profile, lens and "
+        "audio, with long-take, VFR, weak-audio and unexpected-camera flags, a per-camera "
+        "offset, and an audit of capture audio over its first audio_seconds (streams, noise "
+        "floor, clipping, dead channel, dual mono, room tone). Never connects to Resolve.",
+        _obj({"paths": {"type": "array", "minItems": 1, "maxItems": MAX_PATHS,
+                        "items": {"type": "string"},
+                        "description": "Absolute paths of media files or folders (searched "
+                        "recursively)."},
+              "camera_offset": {"type": "array", "items": {"type": "string"},
+                         "description": "CAM=SECONDS: a clock offset added to local_start for "
+                         "one camera name as detect names it."},
+              "long_min": {"type": "number", "minimum": 0, "default": rpshoot.LONG_TAKE_MIN,
+                           "description": "Flag takes longer than this many minutes."},
+              "weak_db": {"type": "number", "default": rpshoot.WEAK_AUDIO_DB,
+                          "description": "Flag audio whose mean volume is below this dB."},
+              "audio_seconds": {"type": "number", "minimum": 1, "default": rpshoot.AUDIO_SECONDS,
+                                "description": "Audit at most this many seconds of audio per "
+                                "clip."},
+              **PAGING, "limit": _limit(50, 200),
+              "out": _out_prop("every row as CSV")}, ["paths"]),
+        shoot_table, title="Tabulate a shoot", annotations=READ))
+    registry.add(Tool(
+        "qc",
+        "One FAIL-first QC table for a rendered file: ffmpeg blackdetect, freezedetect, scdet, "
+        "ebur128, astats and silencedetect rows, plus deliver_check's rows when a destination "
+        "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
+        "speech_vs_rest with words, stems_sum with stems), sha256, and for a social "
+        "destination social_fps and safe_zone. WARN rows never fail the table. Never connects "
+        "to Resolve.",
+        _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
+              "destination": {"type": "string", "minLength": 1,
+                              "description": "A key in resolve-config.json's destinations "
+                              "(checked when called): adds deliver_check's rows and the "
+                              "loudness target."},
+              "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
+                      "description": "The timeline's frame rate to assert (with destination)."},
+              "size": {"type": "string", "pattern": r"^\d+x\d+$",
+                       "description": "WIDTHxHEIGHT to assert for a timeline-size destination."},
+              "duration": {"type": "number", "minimum": 0,
+                           "description": "Expected duration in seconds (the lock)."},
+              "shots": {"type": "string", "description": "Absolute path of a shot list CSV: the "
+                        "cut count is checked against its rows minus one."},
+              "words": {"type": "string", "description": "Absolute path of the word JSON of this "
+                        "file: adds speech_vs_rest."},
+              "stems": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                        "description": "Absolute paths of stem files: adds stems_sum."},
+              "sha256": {"type": "string", "pattern": r"^[0-9a-fA-F]{64}$",
+                         "description": "Expected sha256 of the file."},
+              "set": {"type": "array", "items": {"type": "string"},
+                      "description": "KEY=VALUE threshold overrides (keys are in "
+                      "rpresolve/qc.py THRESHOLDS)."}}, ["file"]),
+        qc, title="QC a render", annotations=READ))
+    registry.add(Tool(
+        "pipeline_proof",
+        "Compare a test render with a reference render, for the G1 proof: per-frame luma and "
+        "chroma shift, range, gamma or level shift, PSNR, SSIM and VMAF (where ffmpeg has "
+        "libvmaf), PASS or FAIL per row. Compare render against render, or against Resolve's "
+        "own decode exported as a file, never against an ffmpeg decode of a log source. Never "
+        "connects to Resolve.",
+        _obj({"test": {"type": "string", "description": "Absolute path of the render under test."},
+              "reference": {"type": "string", "description": "Absolute path of the reference."},
+              "frames": {"type": "integer", "minimum": 1, "maximum": 3000, "default": 300,
+                         "description": "Frames to compare from the start."},
+              "psnr": {"type": "number", "description": "Minimum PSNR in dB (default 45)."},
+              "ssim": {"type": "number", "description": "Minimum SSIM (default 0.99)."},
+              "vmaf": {"type": "number", "description": "Minimum VMAF (default 95)."},
+              "luma_shift": {"type": "number",
+                             "description": "Largest mean luma shift in 8-bit codes (default 1.5)."},
+              "chroma_shift": {"type": "number", "description": "Largest mean chroma shift in "
+                               "8-bit codes (default 1.5)."},
+              "out": _out_prop("the full JSON report, per-frame shifts included")},
+             ["test", "reference"]),
+        pipeline_proof, title="Prove a pipeline", annotations=READ))
+    registry.add(Tool(
+        "deliver_manifest",
+        "Preview the manifest.md and checksums.txt of a delivery folder "
+        "(<folder>/<destination key>/<files>) from ffprobe and the files' bytes, or with "
+        "verify re-check checksums.txt against the files. Writes nothing: the CLI's "
+        "deliver-manifest writes the two files. Never connects to Resolve.",
+        _obj({"folder": {"type": "string", "description": "Absolute path of the delivery root."},
+              "verify": {"type": "boolean", "default": False,
+                         "description": "Re-check checksums.txt instead of previewing."},
+              "project": {"type": "string", "description": "Project slug, as used in the file "
+                          "names."},
+              "approval": {"type": "string", "description": "Approval reference id."},
+              "prepared_by": {"type": "string", "description": "Name and role."},
+              "review_copy": {"type": "string",
+                              "description": "File name of the approved review copy."},
+              "review_sha256": {"type": "string", "pattern": r"^[0-9a-f]{64}$",
+                                "description": "SHA-256 of the review copy, lowercase hex."},
+              "delivered": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$",
+                            "description": "Delivery date, YYYY-MM-DD (default today)."},
+              "machine_steps": {"type": "string", "default": "none stated"},
+              "credits": {"type": "string", "default": "none requested"},
+              "platform_notes": {"type": "string", "default": "none looked up"},
+              "licences": {"type": "array", "items": {"type": "string"},
+                           "description": "ASSET|LICENCE|ATTRIBUTION rows."},
+              "loudness": {"type": "boolean", "default": True,
+                           "description": "Measure each file's loudness (false: n/a)."}},
+             ["folder"]),
+        deliver_manifest, title="Preview a delivery manifest", annotations=READ))
+    registry.add(Tool(
+        "perceive",
+        "One frame of a video or still as scopes, a Lab palette and numbers, for reading light "
+        "and colour: a packet folder with packet.json, with face, skin and lighting-ratio "
+        "numbers, and optionally a comparison with a reference. Needs a new or empty folder "
+        "outside any git working tree. Never connects to Resolve.",
+        _obj({"file": {"type": "string", "description": "Absolute path of a video or still."},
+              "out": {"type": "string", "description": "Absolute path of a new folder for the "
+                      "packet, outside any git working tree: the packet holds frames of the "
+                      "media."},
+              "at": {"type": "number", "minimum": 0,
+                     "description": "Frame time in seconds (default the middle)."},
+              "ref": {"type": "string", "description": "Absolute path of a reference still (or "
+                      "clip) to compare against."},
+              "faces": {"type": "boolean", "default": True,
+                        "description": "Face, skin and lighting-ratio numbers."},
+              "targets": {"type": "boolean", "default": False,
+                          "description": "Also write targets.json (numbers only)."}},
+             ["file", "out"]),
+        perceive, title="Perceive a frame", annotations=READ))
+    registry.add(Tool(
+        "audio_report",
+        "Loudness over time, spectrogram, peaks, clipping, clicks, silences and octave balance "
+        "of one audio stream, as audio-report.json, loudness.png and spectrogram.png in a "
+        "folder outside any git working tree; the reply carries the summary and flags. "
+        "Optionally against a destination's loudness target, or a reference file. Never "
+        "connects to Resolve.",
+        _obj({"file": {"type": "string", "description": "Absolute path of the media file."},
+              "out": {"type": "string", "description": "Absolute path of the report folder "
+                      "(made if its parent exists), outside any git working tree."},
+              "start": {"type": "string", "description": "Seconds, m:ss or h:mm:ss (default 0)."},
+              "end": {"type": "string", "description": "Where to stop (default the end)."},
+              "stream": {"type": "integer", "minimum": 0, "default": 0,
+                         "description": "Audio stream (0 is the first)."},
+              "destination": {"type": "string", "minLength": 1,
+                              "description": "A key in resolve-config.json's destinations: "
+                              "its loudness target and true-peak ceiling."},
+              "target": {"type": "number",
+                         "description": "Integrated loudness target in LUFS (over destination's)."},
+              "reference": {"type": "string",
+                            "description": "Absolute path of a reference file, read whole."},
+              "ref_stream": {"type": "integer", "minimum": 0, "default": 0,
+                             "description": "Audio stream of the reference."}},
+             ["file", "out"]),
+        audio_report, title="Report on audio", annotations=READ))
+    registry.add(Tool(
+        "overlay_check",
+        "Check a graphic master rendered with alpha: tags, frame rate, clear frames, opaque "
+        "frames, edge fringe and brand colour at named pixels, each PASS, FAIL or SKIP. Never "
+        "connects to Resolve.",
+        _obj({"file": {"type": "string", "description": "Absolute path of the graphic master."},
+              "expect": {"type": "array", "items": {"type": "string"},
+                         "description": "KEY=VALUE tags the file must carry: color_range, "
+                         "color_space, color_primaries, color_transfer or pix_fmt."},
+              "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
+                      "description": "The frame rate to assert (23.976, 25, 24000/1001)."},
+              "clear_at": {"type": "array", "items": {"type": "number", "minimum": 0},
+                           "description": "Times with nothing visible (default the first frame)."},
+              "no_clear": {"type": "boolean", "default": False,
+                           "description": "Skip the clear row, for a graphic that starts visible."},
+              "hold": {"type": "number", "minimum": 0,
+                       "description": "The time of the opaque, fringe and brand rows (default "
+                       "mid-file)."},
+              "alpha_mode": {"type": "string", "enum": ["straight", "premultiplied"],
+                             "default": "straight",
+                             "description": "How the timeline will read the alpha."},
+              "values": {"type": "string", "description": "Absolute path of a JSON of name -> "
+                         "'#rrggbb', kept outside the repo."},
+              "sample": {"type": "array", "items": {"type": "string"},
+                         "description": "NAME=X,Y[@SECONDS]: a pixel that must match the value "
+                         "NAME."},
+              "sample_box": {"type": "integer", "minimum": 1,
+                             "description": "Side of the square each sample averages, odd."},
+              "fringe_max": {"type": "number", "minimum": 0,
+                             "description": "Edge error allowed, 10-bit codes at the median "
+                             "edge pixel."},
+              "de_max": {"type": "number", "minimum": 0,
+                         "description": "CIEDE2000 allowed at a brand sample."}}, ["file"]),
+        overlay_check, title="Check a graphic master", annotations=READ))
