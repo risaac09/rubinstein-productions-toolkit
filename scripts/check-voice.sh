@@ -11,11 +11,15 @@ cd "$ROOT"
 targets="README.md"
 [ -d docs ] && targets="$targets docs"
 n=0
+# grep exits 1 for no match and 2 for an error (an unreadable file): an error is never clean.
+rc=0
 # shellcheck disable=SC2086
-out=$(grep -rnIHi -e "$EMD" -e '&mdash;' -e '&#8212;' -e '&#x2014;' $targets || true)
+out=$(grep -rnIHi -e "$EMD" -e '&mdash;' -e '&#8212;' -e '&#x2014;' $targets) || rc=$?
+[ "$rc" -le 1 ] || { echo "grep failed (exit $rc) under $ROOT" >&2; exit 2; }
 [ -z "$out" ] || { printf '%s\n' "$out" | sed 's/^\([^:]*:[0-9]*\):.*/\1: em-dash/'; n=1; }
 # shellcheck disable=SC2086
-out=$(grep -rnIHiE -o -e "\\b($BANNED)\\b" $targets || true)
+out=$(grep -rnIHiE -o -e "\\b($BANNED)\\b" $targets) || rc=$?
+[ "$rc" -le 1 ] || { echo "grep failed (exit $rc) under $ROOT" >&2; exit 2; }
 [ -z "$out" ] || { printf '%s\n' "$out" | sed 's/^\([^:]*:[0-9]*\):\(.*\)/\1: banned verb "\2"/'; n=1; }
 [ "$n" -eq 0 ] || { echo "voice check failed" >&2; exit 1; }
 echo "voice check clean"

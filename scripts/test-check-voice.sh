@@ -26,4 +26,11 @@ mk entity "Two &mdash; three, four &#8212; five."
 out=$("$SRC/scripts/check-voice.sh" "$TMP/entity" 2>&1) && bad "dash entities fail" || { case $out in *"docs/a.md:1: em-dash"*) ok "dash entities flagged";; *) bad "entity report: $out";; esac; }
 out=$("$SRC/scripts/check-voice.sh" "$TMP/readme" 2>&1) && bad "README-only em-dash fails" || { case $out in *"README.md:1: em-dash"*) ok "README-only tree reported with filename";; *) bad "readme report: $out";; esac; }
 "$SRC/scripts/check-voice.sh" "$TMP/near" >/dev/null 2>&1 && ok "navigation is not flagged" || bad "navigation is not flagged"
+# A file grep cannot read is an error, never a clean pass.
+mk unread "Two $EMD three."; chmod 000 "$TMP/unread/docs/a.md"
+if [ -r "$TMP/unread/docs/a.md" ]; then ok "unreadable file fails closed (skipped: running as root)"
+else
+  out=$("$SRC/scripts/check-voice.sh" "$TMP/unread" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && ok "unreadable file fails closed" || bad "unreadable file (rc=$rc): $out"
+fi
 exit "$fail"

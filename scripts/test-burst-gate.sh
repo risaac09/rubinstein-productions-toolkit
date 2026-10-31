@@ -76,6 +76,22 @@ run "G4 fails on an em-dash in markdown" 1 "G4 style: em-dash"
 branch dashcode scripts/x.sh "echo '$EMD'"
 run "G4 ignores non-prose files" 0 "PASS G4 style"
 
+# An added line whose text starts "++ " looks like a file header in the diff;
+# the lines after it must still be scanned, and still count as the same file.
+branch plusplus docs/a.md "intro
+++ more
+key $TOKEN"
+run "G2 scans past an added line that looks like a header" 1 "G2 privacy: private-looking text"
+branch plusdash docs/a.md "intro
+++ b/x.sh
+a clause $EMD another"
+run "G4 scans past an added line that looks like a header" 1 "G4 style: em-dash"
+# A user's diff config must not change the text the scans read.
+branch noprefix docs/a.md "key $TOKEN"
+git -C "$R" config diff.noprefix true
+run "G2 scans with diff.noprefix set" 1 "G2 privacy: private-looking text"
+git -C "$R" config --unset diff.noprefix
+
 # A non-ASCII name is quoted by git unless quotePath is off; its lines must still be scanned.
 branch accent "docs/caf$(printf '\303\251').md" "see $HOMEPATH for details"
 run "G2 scans a file whose name git would quote" 1 "G2 privacy: private-looking text"
