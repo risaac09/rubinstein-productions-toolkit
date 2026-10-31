@@ -43,7 +43,7 @@ on its largest face (by box area, not Vision's first face):
 
 It writes audit.json (rows, reference, set spread, parameters) and prints a
 table with the spread of each metric (sd, min..max). Each row's checks name
-the skin metrics past CHECK, working defaults Isaac may change: a check asks a
+the skin metrics past CHECK, working defaults a person may change: a check asks a
 person to look, it is not a verdict. neutral_err past its CHECK value is
 counted on its own summary line, not as a check.
 Output names client files, so it is refused inside any git working tree.

@@ -16,7 +16,7 @@
   hash distance of PERSON_HASH or more, or either alone past HARD_GAP_S or
   HARD_HASH. A false split costs one shared name on the sheet; a missed
   split hides a person, so the rule leans toward splitting. The sheet asks
-  Isaac for the name, the pipeline never guesses one.
+  a person for the name, the pipeline never guesses one.
 
 Writes clusters.json: {"segments": [{"id", "start", "end", "frames"}],
 "bursts": [[ids]], "runs": [{"id", "segment", "class", "frames", "start",

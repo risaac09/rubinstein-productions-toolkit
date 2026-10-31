@@ -172,7 +172,7 @@ RNNOISE_ENV = "RPRESOLVE_RNNOISE_MODEL"  # arnndn's .rnnn when the step names no
 DUCK_KEY = "duck/duck-key.wav"   # a mix input that is the duck key; stem names hold no /
 # steps that distribute over a sum, so a mixed stem may carry them (loudnorm too, when linear)
 LINEAR = {"gain", "fade", "highpass", "lowpass", "eq", "dehum", "speechnorm"}
-# Starting chains for dialogue. Each says why, and none says it sounds better: Isaac's ear decides
+# Starting chains for dialogue. Each says why, and none says it sounds better: a person's ear decides
 # (preset-ab). No loudnorm: loudness is the mix's (speechnorm there).
 PRESETS = {
     "lav": {

@@ -4,7 +4,7 @@ review. Long silences come from the source audio, filler words and
 repeats from the mlx_whisper word JSON (cutlist.load_words), and the rows
 go to a TSV and, through workflows.trim_review_markers, onto an [auto]
 timeline as markers. Nothing is cut, rippled or deleted, here or
-downstream: the list proposes and Isaac trims. Stdlib only; numpy, when
+downstream: the list proposes and a person trims. Stdlib only; numpy, when
 present, only makes the silence envelope faster.
 
 Kinds, colours (markers) and suggestions:

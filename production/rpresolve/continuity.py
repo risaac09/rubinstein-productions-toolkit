@@ -14,7 +14,7 @@ Input: measure reports grouped by scene. Per scene it names
       are hints for the paper edit and the grade; nothing here blocks.
 
 Second run (`--before` the first report, new measure files of the same
-clips after Isaac ran Shot Match by hand in Resolve): per clip, skin
+clips after a person ran Shot Match by hand in Resolve): per clip, skin
 CIEDE2000 to the reference before and after, matched by file path, then by
 file stem.
 

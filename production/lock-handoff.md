@@ -110,4 +110,4 @@ A later item writes the checker. It passes a complete folder and fails, with the
 ## Open
 
 - The readers column follows the craft lanes index: grade reads the timeline files (OTIO plus EDL), the paper edit and the consent list; sound reads the timeline files and the markers plus a guide render; titles read the paper edit. `sound-handoff.json` and the cue sheet are sound's own additions to the folder.
-- The marker colour per lane is not fixed here; a lane proposes one and Isaac signs it.
+- The marker colour per lane is not fixed here; a lane proposes one and the operator signs it.
