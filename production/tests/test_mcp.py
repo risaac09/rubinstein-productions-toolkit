@@ -13,13 +13,15 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from rpresolve.mcp import protocol, schema  # noqa: E402
+from rpresolve.mcp import protocol, schema, tools_read  # noqa: E402
 from rpresolve.mcp.registry import READ, Registry, Tool  # noqa: E402
 from rpresolve.mcp.stdio import FramedWriter, LineReader  # noqa: E402
 
@@ -350,6 +352,37 @@ class TestStdioIsolation(unittest.TestCase):
         self.assertIn(b"native write to fd 1", err)
         self.assertIn(b"child stdout", err)
         self.assertEqual(p.returncode, 0)
+
+
+class TestServerInfo(unittest.TestCase):
+    """resolve_status: the commit loaded at start against the commit on disk."""
+
+    def info(self, loaded, disk):
+        git = lambda *a: disk if a[0] == "rev-parse" and a[1] == "--short" else None  # noqa: E731
+        with mock.patch.object(tools_read, "LOADED_COMMIT", loaded), \
+                mock.patch.object(tools_read, "_git", git):
+            return tools_read._server_info()
+
+    def test_same_commit_is_not_stale(self):
+        i = self.info("abc1234", "abc1234")
+        self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]), ("abc1234",) * 2 + (False,))
+
+    def test_a_different_commit_on_disk_is_stale(self):
+        i = self.info("abc1234", "def5678")
+        self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]),
+                         ("abc1234", "def5678", True))
+
+    def test_no_git_is_not_called_stale(self):
+        self.assertFalse(self.info(None, None)["stale"])
+
+    def test_mounts_name_each_volume_but_the_boot_symlink(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(tools_read._mounts(d), ["none"])
+            os.symlink("/", os.path.join(d, "Boot"))
+            self.assertEqual(tools_read._mounts(d), ["none"])
+            os.mkdir(os.path.join(d, "Media"))
+            self.assertEqual(tools_read._mounts(d), ["Media mounted"])
+        self.assertEqual(tools_read._mounts("/no/such/volumes"), ["none"])
 
 
 class TestEndToEnd(unittest.TestCase):
