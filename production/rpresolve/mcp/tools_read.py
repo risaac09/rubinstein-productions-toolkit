@@ -34,6 +34,7 @@ def _git(*args):
 
 
 LOADED_COMMIT = _git("rev-parse", "--short", "HEAD")  # once, at import: the commit this server runs
+LOADED_SHA = _git("rev-parse", "HEAD")  # the same in full: --short grows as the repository does
 
 
 def _mounts(volumes="/Volumes"):
@@ -57,7 +58,8 @@ def _server_info():
             "dirty": bool(status) if status is not None else None,
             "python": sys.version.split()[0], "mounts": _mounts()}
     # Python read this code once at start, so a different commit on disk is code the server has not run.
-    info["stale"] = bool(commit and LOADED_COMMIT and commit != LOADED_COMMIT)
+    sha = _git("rev-parse", "HEAD")
+    info["stale"] = bool(sha and LOADED_SHA and sha != LOADED_SHA)
     return info
 
 
