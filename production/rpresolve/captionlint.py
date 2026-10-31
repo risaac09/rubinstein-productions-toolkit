@@ -48,7 +48,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
 
-from . import captions, delivercheck as dc, qc
+from . import captions, delivercheck as dc, qc, safezone
 
 PASS, FAIL, SKIP = dc.PASS, dc.FAIL, dc.SKIP
 WARN = "WARN"
@@ -236,7 +236,7 @@ def lint(doc, thresholds=None):
             out = [(f"cue {k}" if isinstance(k, int) else k) +
                    f": x {x0:.0%}-{x1:.0%}, y {y0:.0%}-{y1:.0%}"
                    for k, (x0, y0, x1, y1) in doc["boxes"]
-                   if min(x0, y0) < m - 1e-9 or max(x1, y1) > 1 - m + 1e-9]
+                   if safezone.outside((x0, y0, x1, y1), (m, m, m))]
             r = _verdict("safe_zone", out, len(doc["boxes"]), expected, what="positioned")
             if doc["box_note"]:
                 r["note"] = "; ".join(x for x in (r.get("note"), doc["box_note"]) if x)
