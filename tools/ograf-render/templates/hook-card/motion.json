@@ -1,0 +1,25 @@
+{
+  "name": "hook-card",
+  "fps": "24000/1001",
+  "length": 96,
+  "min_hold": 12,
+  "curves": {
+    "out": [0.16, 1, 0.3, 1],
+    "exhale": [0.45, 0, 0.2, 1],
+    "inOut": [0.65, 0, 0.35, 1]
+  },
+  "segments": [
+    {"kind": "build", "frames": 8, "tweens": [
+      {"targets": ["rule"], "prop": "height", "ease": "out", "frames": 6},
+      {"targets": ["plate"], "prop": "opacity", "ease": "inOut", "frames": 4},
+      {"targets": ["line1", "line2"], "prop": "opacity", "ease": "out", "frames": 5, "stagger": 1, "start": 1},
+      {"targets": ["line1", "line2"], "prop": "y", "ease": "out", "frames": 5, "stagger": 1, "start": 1}
+    ]},
+    {"kind": "hold", "frames": 75},
+    {"kind": "resolve", "frames": 13, "tweens": [
+      {"targets": ["rule"], "prop": "height", "ease": "exhale", "frames": 12},
+      {"targets": ["plate", "line1", "line2"], "prop": "opacity", "ease": "inOut", "frames": 12}
+    ]}
+  ],
+  "cues": {"play": 0, "hold": 8, "stop": 83}
+}
