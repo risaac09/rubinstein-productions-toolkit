@@ -1,5 +1,7 @@
 # Media lane quickstart
 
+**Status:** operational.
+
 Copy-paste checklists for the five lanes, from a fresh shell. The first two are the ones to run yourself; the other three are shorter. What each tool does is in [media-lane.md](media-lane.md).
 
 Every command was run in a clean shell (`env -i` with only `HOME` and `PATH`) against real media. The times and numbers under "A pass looks like" are from those runs on an M-series Mac.

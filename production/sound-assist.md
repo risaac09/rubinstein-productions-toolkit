@@ -1,5 +1,7 @@
 # Sound assist: room tone, dialogue numbers, ducking
 
+**Status:** operational.
+
 Three offline modules in `production/rpresolve/` for the sound pass:
 
 - `roomtone` finds the room tone a recording already holds and loops it into a bed of any length.

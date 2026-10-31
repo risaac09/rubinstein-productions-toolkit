@@ -1,5 +1,7 @@
 # rpstills audit: the numbers of a set of finished stills
 
+**Status:** operational.
+
 `rpstills audit` measures a folder of finished portraits and writes the numbers down. It asks one question of a set: do the files agree with each other? Skin is compared with the set's own reference (the median, or a hero frame), not with a fixed skin number, because the house rule is to neutralise on a neutral reference and leave skin hue where the complexion puts it (see [rpstills-develop.md](rpstills-develop.md)). Each file also reports how neutral its white or grey garment reads.
 
 A file whose skin sits past a working default gets a check: a prompt to look, not a verdict. The defaults are a starting point that Isaac may change; nothing passes or fails. The neutral is counted on its own line of the summary, not as a check, because the mask cannot tell a cast on a white shirt from a pale coloured shirt.

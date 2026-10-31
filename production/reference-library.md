@@ -1,5 +1,7 @@
 # Reference library
 
+**Status:** operational.
+
 A private shelf of grade targets taken from your own finished work. A reference is a set of numbers (`targets.json`), never a deliverable and never a borrowed still: only work you made and own goes in. No stock-frame sites, public-domain, Creative Commons or commercial stills.
 
 ## Layout
