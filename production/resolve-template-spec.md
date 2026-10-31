@@ -1,4 +1,6 @@
 # DaVinci Resolve Template — Personal Post-Production
+
+**Status:** operational.
 *Phase B: General-Purpose Multi-Camera Template*
 
 ---

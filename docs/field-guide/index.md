@@ -1,5 +1,7 @@
 # Field Guide
 
+**Status:** operational.
+
 The toolkit is organized by artifact type: methodology, prompts, templates, production. That layout serves the person who built it. If you arrived here wanting to use these practices, the better map is by role. This guide gives you three entry paths, each a reading order plus a first working session.
 
 ## Pick your path

@@ -1,5 +1,7 @@
 # lutlab balance
 
+**Status:** operational.
+
 Per-shot exposure and white balance for video, onto a neutral reference or a skin target, with a CDL out that Resolve and ffmpeg can apply and a table of how well the set agrees.
 
 The rule is the one `rpstills develop` follows for stills: **neutralise on a neutral reference, set exposure on the skin, never push skin hue to a number.** A white or grey garment, or a grey card, tells the white balance; the cheek's L\* sets the exposure; the complexion keeps its own hue.

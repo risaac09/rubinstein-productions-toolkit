@@ -1,6 +1,6 @@
 # Lock handoff folder (VP-145)
 
-> **Status:** proposed 2026-10-20, a spec with no code yet. Held until the toolkit freeze lifts on 2026-11-01. Gate G6 of the card-to-delivery pipeline.
+> **Status:** aspirational, proposed 2026-10-20, a spec with no code yet. Held until the toolkit freeze lifts on 2026-11-01. Gate G6 of the card-to-delivery pipeline.
 
 When a cut is locked, picture stops moving and three lanes start reading it: colour, sound and titles. They read one folder, written once, so none of them invents its own export. This page says what the folder holds, how each file is named and checksummed, and what counts as a change after lock. The checker that enforces it is a later item; the acceptance test is stated at the end so the spec and the checker agree.
 

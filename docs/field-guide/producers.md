@@ -1,5 +1,7 @@
 # For Producers
 
+**Status:** operational.
+
 You make film or video, run client engagements, or facilitate recorded sessions. This path covers the session methodology and the shoot and post workflow.
 
 ## First hour

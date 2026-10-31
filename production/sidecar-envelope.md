@@ -1,5 +1,7 @@
 # Sidecar envelope (schema v2)
 
+**Status:** operational.
+
 Every JSON sidecar a toolkit tool writes (`perceive`, `audio-report`, `story-packet`, `overlay-check`) carries one header, so one validator checks all of them and a later step can join them on one key. Code: `production/rpresolve/sidecar.py` (`header`, `validate`, `card_key`, `source_sha256`). Stdlib only.
 
 ## Header

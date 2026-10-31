@@ -1,6 +1,6 @@
 # Licence register format (VP-147)
 
-> **Status:** proposed 2026-10-20, a format with no code yet. Held until the toolkit freeze lifts on 2026-11-01. It extends the register in [consent evidence](consent-evidence.md#licence-register), which covers music and fonts, to every asset a render can contain.
+> **Status:** aspirational, proposed 2026-10-20, a format with no code yet. Held until the toolkit freeze lifts on 2026-11-01. It extends the register in [consent evidence](consent-evidence.md#licence-register), which covers music and fonts, to every asset a render can contain.
 
 One register per engagement, one row per asset in the delivered work. The point of the format is that a tool can read it: a comp, a mix or a look that cites an asset whose licence is blocked or unknown is flagged before render.
 
