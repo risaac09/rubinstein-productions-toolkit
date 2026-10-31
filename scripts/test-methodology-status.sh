@@ -6,7 +6,7 @@ set -u
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 CHECK="$SRC/scripts/check-methodology-status.sh"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+trap 'chmod -R u+rwx "$TMP"; rm -rf "$TMP"' EXIT
 fail=0
 ok()  { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fail=1; }

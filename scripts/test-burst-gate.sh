@@ -86,6 +86,11 @@ branch plusdash docs/a.md "intro
 ++ b/x.sh
 a clause $EMD another"
 run "G4 scans past an added line that looks like a header" 1 "G4 style: em-dash"
+# A user's diff config must not change the text the scans read.
+branch noprefix docs/a.md "key $TOKEN"
+git -C "$R" config diff.noprefix true
+run "G2 scans with diff.noprefix set" 1 "G2 privacy: private-looking text"
+git -C "$R" config --unset diff.noprefix
 
 # A non-ASCII name is quoted by git unless quotePath is off; its lines must still be scanned.
 branch accent "docs/caf$(printf '\303\251').md" "see $HOMEPATH for details"

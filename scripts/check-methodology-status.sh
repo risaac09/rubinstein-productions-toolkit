@@ -24,8 +24,10 @@ for d in methodology docs production; do
   [ -d "$d" ] || { echo "missing directory: $d" >&2; bad=1; }
 done
 # A folder find cannot read is an error, never a clean pass.
-files=$(find methodology production -maxdepth 1 -name '*.md' && find docs -name '*.md') \
+files=$(find methodology production -maxdepth 1 -name '*.md' ! -name '.*') \
   || { echo "cannot list every covered folder" >&2; bad=1; }
+files="$files
+$(find docs -name '*.md')" || { echo "cannot list every covered folder" >&2; bad=1; }
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_/-]|$)'; then

@@ -196,15 +196,21 @@ cmd_safe() {
   local log match; log=$(mktemp) && match=$(mktemp) || fail "mktemp failed"
   # shellcheck disable=SC2064
   trap "rm -f '$log' '$match'" EXIT
-  "$RCLONE_BIN" check "$dir" "$remote" --one-way --match "$match" --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null
+  # rclone reads any flag from RCLONE_<FLAG> (RCLONE_SIZE_ONLY, RCLONE_EXCLUDE): the
+  # check runs without them, keeping the config, its password and remotes set in the environment.
+  local bin="$RCLONE_BIN"
+  ( for v in $(compgen -e); do
+      case "$v" in RCLONE_CONFIG*|RCLONE_PASSWORD_COMMAND) ;; RCLONE_*) unset "$v" ;; esac
+    done
+    exec "$bin" check "$dir" "$remote" --one-way --match "$match" --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null )
   local rc=$?
   # B2 and others report a file they could not hash as a pass on size alone.
   if grep -q "hashes could not be checked" "$log"; then
     fail "NOT safe to format: rclone could not compare some hashes (see its log); card $id"
   fi
   [ "$rc" -eq 0 ] || fail "NOT safe to format: rclone check exited $rc; card $id"
-  # A filter from the environment or rclone's config (RCLONE_EXCLUDE and the like)
-  # leaves files out and still exits 0: every hashed file must be among the matches.
+  # A check that left files out (a filter, by any route) still exits 0: every
+  # hashed file must be among the matches.
   local unmatched; unmatched=$(cut -c67- "$dir.SHA256SUMS" | LC_ALL=C sort | LC_ALL=C comm -23 - <(LC_ALL=C sort "$match")) \
     || fail "NOT safe to format: cannot compare rclone's matches with $base.SHA256SUMS; card $id"
   [ -z "$unmatched" ] || fail "NOT safe to format: rclone did not match $(printf '%s' "$unmatched" | tr '\n' ' ') (a filter?); card $id"
