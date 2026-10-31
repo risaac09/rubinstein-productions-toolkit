@@ -33,12 +33,16 @@ def read_sums(folder):
     """{file name: sha256} from SHA256SUMS ('<sha256>  <name>'); {} when absent."""
     path = os.path.join(folder, SUMS)
     out = {}
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                h, _, name = line.rstrip("\n").partition("  ")
-                if mf.SHA_RE.fullmatch(h.lower()):
-                    out[name.lstrip("*")] = h.lower()
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    h, _, name = line.rstrip("\r\n").partition(" ")
+                    name = name[1:] if name[:1] in (" ", "*") else name
+                    if mf.SHA_RE.fullmatch(h.lower()):
+                        out[name[2:] if name.startswith("./") else name] = h.lower()
+    except (OSError, ValueError) as e:
+        raise ReleaseError(f"cannot read {path}: {getattr(e, 'strerror', None) or 'not UTF-8 text'}")
     return out
 
 
@@ -47,19 +51,20 @@ def read_titles(path):
     try:
         with open(path, encoding="utf-8") as f:
             rows = [ln.rstrip("\r\n").split("\t", 1) for ln in f if ln.strip() and not ln.startswith("#")]
-    except OSError as e:
-        raise ReleaseError(f"cannot read {path}: {e.strerror}")
+    except (OSError, ValueError) as e:
+        raise ReleaseError(f"cannot read {path}: {getattr(e, 'strerror', None) or 'not UTF-8 text'}")
     if rows and rows[0][0].strip().lower() == "file":
         rows = rows[1:]
     return [(r[0].strip(), r[1].strip() if len(r) > 1 else "") for r in rows]
 
 
 def read_stubs(path):
-    """{file name: newest stub} from a JSONL file or a folder of them."""
+    """{file name: last stub read} from a JSONL file or a folder of them (name order)."""
     out = {}
     try:
         files = ([os.path.join(path, n) for n in sorted(os.listdir(path))]
                  if os.path.isdir(path) else [path])
+        files = [p for p in files if os.path.isfile(p) and not os.path.basename(p).startswith(".")]
         for p in files:
             with open(p, encoding="utf-8") as f:
                 for line in f:
@@ -67,10 +72,10 @@ def read_stubs(path):
                         row = json.loads(line)
                     except ValueError:
                         continue
-                    if isinstance(row, dict) and row.get("file"):
+                    if isinstance(row, dict) and isinstance(row.get("file"), str):
                         out[row["file"]] = row
-    except OSError as e:
-        raise ReleaseError(f"cannot read {path}: {e.strerror}")
+    except (OSError, ValueError) as e:
+        raise ReleaseError(f"cannot read {path}: {getattr(e, 'strerror', None) or 'not UTF-8 text'}")
     return out
 
 
@@ -88,8 +93,8 @@ def _title_problem(title, count):
 
 
 def check(folder, titles, review_log=None, stubs=None):
-    """(rows, orphans, verdict). rows: [{file, cells: {column: (status, note)}}]
-    with status PASS, FAIL, BLOCK or SKIP; orphans: title rows with no file."""
+    """(rows, orphans, verdict, other). rows: [{file, cells: {column: (status, note)}}]
+    with status PASS, FAIL, BLOCK or SKIP; orphans: title or SHA256SUMS entries with no file; other: files not checked."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise ReleaseError(f"{folder} is not a folder")
@@ -105,7 +110,7 @@ def check(folder, titles, review_log=None, stubs=None):
             raise ReleaseError(f"cannot read {review_log}: {e.strerror}")
     by_file = {}
     for n, t in titles:
-        by_file.setdefault(n, []).append(t)
+        by_file.setdefault(n, []).append(" ".join(t.split()))
     seen = {}
     for ts in by_file.values():
         for t in ts:
@@ -113,7 +118,10 @@ def check(folder, titles, review_log=None, stubs=None):
     rows = []
     for name in names:
         path = os.path.join(folder, name)
-        actual, cells = mf.sha256(path), {}
+        try:
+            actual, cells = mf.sha256(path), {}
+        except OSError as e:
+            raise ReleaseError(f"cannot read {path}: {e.strerror}")
         want = sums.get(name)
         cells["sha"] = (("FAIL", "no SHA256SUMS file or line") if want is None else
                         ("PASS", "") if want == actual else ("FAIL", "does not match SHA256SUMS"))
@@ -144,12 +152,14 @@ def check(folder, titles, review_log=None, stubs=None):
             cells["title"] = ("FAIL", "; ".join(bad)) if bad else ("PASS", "")
         rows.append({"file": name, "cells": cells})
     orphans = sorted(n for n in by_file if n not in names)
+    gone = sorted(n for n in sums if n not in names)
+    other = sorted(n for n in os.listdir(folder) if n not in names and n != SUMS and not n.startswith("."))
     states = {s for r in rows for s, _ in r["cells"].values()}
-    verdict = "READY" if rows and not orphans and not states & {"FAIL", "BLOCK"} else "BLOCKED"
-    return rows, orphans, verdict
+    verdict = "READY" if rows and not orphans and not gone and not states & {"FAIL", "BLOCK"} else "BLOCKED"
+    return rows, orphans + [f"{n} (SHA256SUMS)" for n in gone], verdict, other
 
 
-def format_table(rows, orphans, verdict):
+def format_table(rows, orphans, verdict, other=()):
     lines = ["| file | " + " | ".join(COLUMNS) + " | verdict |", "|---|" + "---|" * (len(COLUMNS) + 1)]
     notes = []
     for r in rows:
@@ -158,7 +168,8 @@ def format_table(rows, orphans, verdict):
         lines.append(f"| {r['file']} | " + " | ".join(c[k][0] for k in COLUMNS)
                      + f" | {'BLOCKED' if bad else 'READY'} |")
         notes += [f"{r['file']}: {k}: {c[k][1]}" for k in COLUMNS if c[k][0] in ("FAIL", "BLOCK") and c[k][1]]
-    notes += [f"{n}: title row has no file in the folder (orphan)" for n in orphans]
+    notes += [f"{n}: listed but not in the folder (orphan)" for n in orphans]
+    notes += [f"{n}: not checked (not an mp4 or mov)" for n in other]
     if not rows:
         notes.append("no mp4 or mov files in the folder")
     return "\n".join(lines + [""] + notes + ["", verdict]) + "\n"

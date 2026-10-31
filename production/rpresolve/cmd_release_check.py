@@ -28,9 +28,9 @@ def add_arguments(p):
 def run(args):
     from rpresolve import paths, releasecheck as rc
     try:
-        rows, orphans, verdict = rc.check(args.folder, rc.read_titles(args.titles),
+        rows, orphans, verdict, other = rc.check(args.folder, rc.read_titles(args.titles),
                                           args.review_log, args.stubs)
-        text = rc.format_table(rows, orphans, verdict)
+        text = rc.format_table(rows, orphans, verdict, other)
         if args.out:
             paths.write_private(args.out, text)
         else:

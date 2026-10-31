@@ -64,13 +64,13 @@ class Case(unittest.TestCase):
         return rc.check(self.up, rc.read_titles(t), self.log if log else None, self.stubs if stubs else None)
 
     def cell(self, name, col, **kw):
-        rows, _, _ = self.run_check(**kw)
+        rows = self.run_check(**kw)[0]
         return next(r for r in rows if r["file"] == name)["cells"][col]
 
 
 class TestReleaseCheck(Case):
     def test_clean_folder_is_all_ready(self):
-        rows, orphans, verdict = self.run_check()
+        rows, orphans, verdict, _ = self.run_check()
         self.assertEqual((verdict, orphans), ("READY", []))
         self.assertTrue(all(s == "PASS" for r in rows for s, _ in r["cells"].values()))
 
@@ -82,7 +82,7 @@ class TestReleaseCheck(Case):
 
     def test_off_rule_name_fails(self):
         (self.up / "Final Cut.mp4").write_bytes(b"x")
-        rows, _, verdict = self.run_check()
+        rows, _, verdict, _ = self.run_check()
         self.assertEqual(next(r for r in rows if r["file"] == "Final Cut.mp4")["cells"]["name"][0], "FAIL")
         self.assertEqual(verdict, "BLOCKED")
 
@@ -104,8 +104,29 @@ class TestReleaseCheck(Case):
 
     def test_orphan_title_row_fails(self):
         self.titles["SW999_Test_09_gone_9x16.mp4"] = "Orphan"
-        rows, orphans, verdict = self.run_check()
+        rows, orphans, verdict, _ = self.run_check()
         self.assertEqual((orphans, verdict), (["SW999_Test_09_gone_9x16.mp4"], "BLOCKED"))
+
+    def test_sums_entry_with_no_file_blocks(self):
+        (self.up / NAMES[1]).unlink()
+        del self.titles[NAMES[1]]
+        _, orphans, verdict, _ = self.run_check()
+        self.assertEqual((orphans, verdict), ([f"{NAMES[1]} (SHA256SUMS)"], "BLOCKED"))
+
+    def test_sums_binary_and_dot_slash_forms_parse(self):
+        (self.up / "SHA256SUMS").write_text("".join(
+            f"{sha(b)} *./{n}\r\n" if i else f"{sha(b)}  ./{n}\r\n"
+            for i, (n, b) in enumerate(self.data.items())))
+        self.assertEqual(self.cell(NAMES[0], "sha")[0], "PASS")
+        self.assertEqual(self.cell(NAMES[1], "sha")[0], "PASS")
+
+    def test_other_files_are_listed_not_checked(self):
+        (self.up / "extra.srt").write_text("x")
+        self.assertIn("extra.srt: not checked", rc.format_table(*self.run_check()))
+
+    def test_spaces_in_a_title_do_not_hide_a_duplicate(self):
+        self.titles[NAMES[1]] = "Placeholder  title 1"
+        self.assertEqual(self.cell(NAMES[0], "title")[0], "FAIL")
 
     def test_file_without_a_title_row_fails(self):
         del self.titles[NAMES[1]]
@@ -124,7 +145,7 @@ class TestReleaseCheck(Case):
         self.assertEqual(self.cell(NAMES[0], "approval")[0], "BLOCK")
 
     def test_no_log_or_stubs_skips_without_blocking(self):
-        rows, _, verdict = self.run_check(log=False, stubs=False)
+        rows, _, verdict, _ = self.run_check(log=False, stubs=False)
         self.assertEqual((rows[0]["cells"]["approval"][0], rows[0]["cells"]["stub"][0], verdict),
                          ("SKIP", "SKIP", "READY"))
 
@@ -181,6 +202,10 @@ class TestCommand(Case):
         out = self.d / "table.md"
         self.assertEqual(self.run_cmd("--out", str(out))[0], 0)
         self.assertIn("READY", out.read_text())
+
+    def test_binary_stub_file_exits_2(self):
+        self.stubs.write_bytes(b"\xff\xfe\x00bad")
+        self.assertEqual(self.run_cmd()[0], 2)
 
     def test_unreadable_titles_exits_2(self):
         p = argparse.ArgumentParser()
