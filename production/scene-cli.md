@@ -1,5 +1,7 @@
 # Scene reads: `rpresolve.scene`
 
+> **Status:** draft, 2026-10-31.
+
 Per-frame reads from macOS Vision through a small Swift helper
 (`production/rpresolve/scene_cli.swift`), compiled once into
 `~/Library/Caches/rpresolve` the same way as the face helper. macOS and
