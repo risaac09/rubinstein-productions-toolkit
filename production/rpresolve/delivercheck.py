@@ -3,7 +3,7 @@ rpresolve.delivercheck: check a rendered deliverable against its
 destination, and fix its loudness. Offline: ffprobe and ffmpeg only, never
 Resolve. Stdlib only.
 
-check() reports every rule as PASS, FAIL or SKIP with what it found and
+check() reports every rule as PASS, FAIL, SKIP or WARN with what it found and
 what it expected:
     name          the file name follows the naming rule for the destination
     folder        the file sits in its destination's subfolder; FAIL when it
@@ -12,6 +12,7 @@ what it expected:
     video_codec   codec (and profile, where the destination fixes one)
     size          width x height (a "timeline" size needs --size to assert)
     fps           an exact rational; a standard rate, and --fps when given
+    fps_floor     WARN under the destination's min_fps, SKIP with none; never FAIL
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
     video_bitrate expect.min_video_kbps; SKIP while no destination sets one
@@ -60,7 +61,7 @@ PROBE_TIMEOUT_S = 120
 # Loudness reads the whole file; a long render on a share takes a while.
 READ_TIMEOUT_S = 3600
 
-PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
+PASS, FAIL, SKIP, WARN = "PASS", "FAIL", "SKIP", "WARN"
 # How long after the video's last frame a caption cue may still end.
 CAPTION_END_SLACK_S = 0.5
 # Timeline rates as written in Resolve, as exact rationals.
@@ -399,6 +400,18 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         # An average rate that cannot be read fails: nothing then shows the file is constant.
         steady = (None if r_rate is None else
                   False if avg is None else abs(avg - r_rate) / r_rate < Fraction(1, 1000))
+        # WARN, never FAIL: the platforms' floor is advice until a conform ruling (platform-specs.md).
+        floor = dest.get("min_fps")
+        if floor is None or r_rate is None:
+            rows.append(_row("fps_floor", None, fmt_rate(r_rate),
+                             "no minimum on this destination" if floor is None
+                             else f">= {fmt_rate(parse_fps(floor))}"))
+        else:
+            want = parse_fps(floor)
+            rows.append(_row("fps_floor", True, fmt_rate(r_rate), f">= {fmt_rate(want)}")
+                        if r_rate >= want else
+                        dict(_row("fps_floor", False, fmt_rate(r_rate), f">= {fmt_rate(want)}"),
+                             status=WARN))
         rows.append(_row("fps_constant", steady, fmt_rate(avg), f"within 0.1% of {fmt_rate(r_rate)}"))
 
         chroma, bits = pix_fmt_family(video.get("pix_fmt"))
@@ -474,7 +487,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         rows.append(_row("true_peak", tp is not None and tp <= peak_max + 1e-9,
                          f"{tp} dBTP", f"<= {peak_max:g} dBTP"))
 
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP)}
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP, WARN)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
 
@@ -517,7 +530,7 @@ def add_rows(result, rows):
     check result and recount it."""
     result["checks"] += rows
     c = result["counts"] = {s: sum(1 for r in result["checks"] if r["status"] == s)
-                            for s in (PASS, FAIL, SKIP)}
+                            for s in (PASS, FAIL, SKIP, WARN)}
     result["status"] = "fail" if c[FAIL] else "pass"
     return result
 
@@ -573,7 +586,8 @@ def format_report(result):
         lines.append(f"  {r['status']:<4}  {r['check']:<17} found {r['found']}  "
                      f"(expected {r['expected']})" + (f"  [{r['note']}]" if r.get("note") else ""))
     c = result["counts"]
-    lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail, {c[SKIP]} skipped: "
+    warn = f", {c[WARN]} warn" if c.get(WARN) else ""
+    lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail{warn}, {c[SKIP]} skipped: "
                  f"{result['status'].upper()}")
     return "\n".join(lines) + "\n"
 

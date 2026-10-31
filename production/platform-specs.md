@@ -46,7 +46,7 @@ These come from the house rules under `deliver` in the config and are checked on
 - TikTok, [Making a post](https://www.tiktok.com/support/faq_detail?id=7581826684085606968) and [Unable to post videos](https://www.tiktok.com/support/faq_detail?id=7078299667292756485): neither states a resolution, codec, frame rate or loudness target. 1080x1920 H.264 is the repo's choice for a vertical web file, not a figure TikTok publishes there.
 - Neither platform's help pages state a loudness target. -14 LUFS is the repo's choice, the same level as the YouTube destinations.
 
-The frame rate stays the timeline's, as on every destination, so a 23.976, 24 or 25 fps timeline renders below Instagram's 30 FPS minimum, and `deliver_check` does not flag it. Set the timeline to 30 fps or higher before cutting a vertical meant for Instagram; the help page does not say what happens to a lower rate.
+The frame rate stays the timeline's, as on every destination, so a 23.976, 24 or 25 fps timeline renders below Instagram's 30 FPS minimum. The destination carries `min_fps` (30000/1001, so 29.97 passes): `deliver_check` gives a `fps_floor` WARN under it, SKIP on a destination with none, never FAIL, and a `queue_render` dry run adds a warning to its plan and still queues. Neither conforms the rate. Set the timeline to 30 fps or higher before cutting a vertical meant for Instagram; the help page does not say what happens to a lower rate.
 
 **Social square 1:1.** Same rules as vertical. Burnt-in captions run 24 characters per line on up to two lines.
 

@@ -466,6 +466,23 @@ class TestMCP(Base):
         self.assertEqual(real["journal"]["path"], os.environ["RPRESOLVE_MCP_JOURNAL"])
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
 
+    def test_social_dry_run_warns_under_the_fps_floor_and_still_queues(self):
+        a = self.args(destination="social_9x16")
+        a["timeline"] = "Clip 9x16 [auto]"  # 23.976
+        dry = self.call(a)
+        self.assertTrue(any("fps floor" in w for w in dry["warnings"]), dry["warnings"])
+        real = self.call({**a, "dry_run": False, "plan_sha": dry["plan_sha"]})
+        self.assertEqual(real["exit_status"], 0, real["summary"])
+        self.assertEqual(real["plan_sha"], dry["plan_sha"])
+
+    def test_no_fps_warning_at_the_floor_or_on_a_destination_without_one(self):
+        self.tall.fps = "29.97"
+        a = {**self.args(destination="social_9x16"), "timeline": "Clip 9x16 [auto]"}
+        self.assertFalse([w for w in self.call(a)["warnings"] if "fps floor" in w])
+        a = {**self.args(destination="linkedin_9x16"), "timeline": "Clip 9x16 [auto]"}
+        self.tall.fps = "23.976"
+        self.assertFalse([w for w in self.call(a)["warnings"] if "fps floor" in w])
+
     def test_a_mismatch_says_the_job_is_still_queued(self):
         add = self.project.AddRenderJob
 
