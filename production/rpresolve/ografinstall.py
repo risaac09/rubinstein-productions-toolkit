@@ -34,15 +34,17 @@ def parse_start(ps_text):
             try:
                 return time.mktime(time.strptime(" ".join(line.split()[:5]), "%a %b %d %H:%M:%S %Y"))
             except ValueError:
-                continue  # shortcut: English ps dates only; a localized one reads as not running
+                continue  # an unreadable date reads as not running: no restart notice
     return None
 
 
 def resolve_start_time():
     """Epoch seconds when the running Resolve started, or None when it is not running."""
     try:
+        # ps prints lstart in the user's locale (a French one reads "sam. 31 oct."); force C.
         return parse_start(subprocess.run(["ps", "-axo", "lstart=,command="], capture_output=True,
-                                          text=True, timeout=10).stdout)
+                                          text=True, timeout=10,
+                                          env={**os.environ, "LC_ALL": "C"}).stdout)
     except (OSError, subprocess.SubprocessError):
         return None
 
