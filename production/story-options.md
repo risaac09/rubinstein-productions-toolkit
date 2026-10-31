@@ -150,6 +150,10 @@ Practitioners report these; test them against the brief instead of applying them
 
 Platforms publish no universal threshold for a good opening; compare a post against the channel's own history. Figures that circulate without a source ("86.6% of top shorts use animated captions", "+22% for question openings") are folklore; leave them out of the reasoning.
 
+## From quoted phrases to cuts
+
+When the editor has chosen reels, `resolve_workflow.py reel-spans WORDS.json PHRASES.tsv -o CUTS.tsv` turns the words the editor quotes into the cuts worksheet that `vertcut` reads. `PHRASES.tsv` has one row per reel: title, start phrase, end phrase, and optionally which occurrence of each phrase (1 is the first) when it is said more than once. The tool picks no span and writes no title. Per row it reports OK, WARN or FAIL: a phrase not found (with the nearest transcript text as a hint, never used), a phrase found twice, an end before the start, a span over 90 s or under 5 s, and an end with no sentence-final punctuation. A FAIL row is left out of the worksheet. Read the report before `vertcut manifest`.
+
 ## Timeline names
 
 An option built for viewing gets its own timeline, named `<project> Option A v01 [auto]`. The assembly is `<project> Assembly v01 [auto]`, a fine cut `<project> Fine v03 [auto]`, the locked cut `<project> Lock v01 [auto]`. The ` [auto]` suffix stays last, because the MCP tools write only to timelines whose name ends with it. Nobody renames an old version; a new version is a duplicate with the next number.

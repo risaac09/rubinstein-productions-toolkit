@@ -39,6 +39,10 @@ what it expected:
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
 
+approval_row() is opt-in (cmd_deliver_check --review-log): a WARN-only row from
+the review log's approve or go line. It is not part of check(), so qc never
+shows it.
+
 fix_loudness() is a two-pass loudnorm (measure, then linear with the
 measured values) that copies the video stream untouched and writes
 <stem>.loudfix<ext> beside the original; it never overwrites anything.
@@ -608,7 +612,7 @@ def file_sha256(path):
     return h.hexdigest()
 
 
-def ledger_row(result, sha256=None, now=None):
+def ledger_row(result, sha256=None, now=None, approval=None):
     """A STUB release-ledger row (the ledger format is not fixed) for a
     check() result: key is the house file name, or None with key_reason when
     the name does not follow the rule (never a guess). Fields a person fills
@@ -624,11 +628,70 @@ def ledger_row(result, sha256=None, now=None):
            "counts": result["counts"], "sha256": sha256,
            "checked_at": now or time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     row.update({k: "" for k in LEDGER_BLANKS})
+    if approval:  # the matched review-log line fills the blank
+        row["approval"] = f"review-log {approval.get('ts', '')} {approval['review_sha256']}"
     return row
 
 
 def ledger_line(row):
     return json.dumps(row, sort_keys=True) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Approval from the review log (opt-in, WARN only)
+# ---------------------------------------------------------------------------
+
+SHA_RE = re.compile(r"[0-9a-f]{64}")
+APPROVING = ("approve", "go")
+
+
+def find_approval(events, path, sha256=None):
+    """(matched line or None, why not). events: tastedistill.read_events(log)[0].
+    A line names the file when review_sha256 is a sha256 and either review_copy
+    starts with the file's house stem plus an underscore (the name without
+    aspect and extension) or review_sha256 is the file's own sha256 (a clip
+    that names itself). The newest such line rules, so a later hold withdraws
+    an approve. It counts when its choice is approve or go and, if the review
+    copy sits beside the file, that copy's sha256 equals the logged one (a copy
+    kept elsewhere is not re-read). B14 imports this."""
+    name = os.path.basename(path)
+    try:
+        parts = deliver.parse_name(name)
+        stem = (name[:-len(parts["aspect"]) - len(parts["ext"]) - 2] if parts["kind"] == "clip"
+                else name.rsplit(".", 1)[0])
+    except deliver.NameRuleError:
+        stem = None
+    sha256 = sha256 or file_sha256(path)
+    newest = None
+    for _, e in events:
+        copy, sha = os.path.basename(str(e.get("review_copy") or "")), str(e.get("review_sha256") or "")
+        if SHA_RE.fullmatch(sha) and ((stem and copy.startswith(stem + "_")) or sha == sha256):
+            newest = e
+    if newest is None:
+        return None, f"no line names {stem or name} with a review copy and sha256"
+    if newest.get("choice") not in APPROVING:
+        return None, f"newest line for this file is {newest.get('choice')!r}"
+    copy, sha = os.path.basename(newest["review_copy"]), newest["review_sha256"]
+    beside = os.path.join(os.path.dirname(os.path.abspath(path)), copy)
+    if copy and os.path.isfile(beside) and file_sha256(beside) != sha:
+        return None, f"sha mismatch: {copy} beside the file is not the sha256 logged ({sha[:12]})"
+    return newest, None
+
+
+def approval_row(path, review_log, sha256=None):
+    """(row, matched line or None). SKIP without a log path; WARN otherwise
+    when nothing matches or the log cannot be read; never FAIL."""
+    expected = "an approve or go line with review_copy and review_sha256"
+    if not review_log:
+        return _row("approval", None, "not checked", "--review-log PATH"), None
+    from rpresolve import tastedistill
+    try:
+        line, why = find_approval(tastedistill.read_events(review_log)[0], path, sha256)
+    except OSError as e:
+        line, why = None, f"log unreadable ({e.strerror})"
+    if line:
+        return _row("approval", True, f"{line['choice']} {line.get('ts', '')}", expected), line
+    return {"check": "approval", "status": WARN, "found": why, "expected": expected}, None
 
 
 # ---------------------------------------------------------------------------
