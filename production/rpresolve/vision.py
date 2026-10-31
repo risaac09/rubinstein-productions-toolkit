@@ -10,11 +10,12 @@ The helper runs on macOS with swiftc (Xcode or the command line tools);
 anywhere else face_boxes() returns None and callers say so.
 """
 
-import hashlib
 import json
 import os
 import shutil
 import subprocess
+
+from . import swiftbuild
 
 SWIFTC = shutil.which("swiftc") or "/usr/bin/swiftc"
 VISION_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision_faces.swift")
@@ -26,20 +27,7 @@ def vision_binary():
     """Path of the compiled Vision helper, building it into the cache on
     first use (keyed by the source's sha256). None when swiftc is missing
     or the build fails."""
-    try:
-        with open(VISION_SOURCE, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()[:12]
-    except OSError:
-        return None
-    binary = os.path.join(CACHE_DIR, f"vision_faces-{digest}")
-    if os.access(binary, os.X_OK):
-        return binary
-    if not os.access(SWIFTC, os.X_OK):
-        return None
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    proc = subprocess.run([SWIFTC, "-O", VISION_SOURCE, "-o", binary],
-                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return binary if proc.returncode == 0 and os.access(binary, os.X_OK) else None
+    return swiftbuild.build(VISION_SOURCE, CACHE_DIR, SWIFTC)
 
 
 def face_boxes(images):
