@@ -261,6 +261,71 @@ class TestProtocol(unittest.TestCase):
                      "params": {"name": "typed", "arguments": {"n": 2.0}}})
         self.assertEqual(self.h.recv()["result"]["structuredContent"]["n_type"], "int")
 
+    def test_malformed_input_gets_an_error_and_the_server_keeps_serving(self):
+        init(self.h)
+        ok = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+              "params": {"name": "echo", "arguments": {}}}
+        for raw, code in [
+                (b"not json", protocol.PARSE_ERROR),
+                (b"[1, 2]", protocol.INVALID_REQUEST),  # a batch, refused under 2025-06-18
+                (b"42", protocol.INVALID_REQUEST),
+                (b'"hi"', protocol.INVALID_REQUEST),
+                (b'{"id": 1, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": [1], "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": {"a": 1}, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": true, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": null, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": 1, "method": ["ping"]}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": 1, "method": {"a": 1}}', protocol.INVALID_REQUEST)]:
+            with self.subTest(raw=raw):
+                self.h.send(raw)
+                self.assertEqual(self.h.recv()["error"]["code"], code)
+                self.h.send(ok)
+                self.assertEqual(self.h.recv()["id"], 9)
+
+    def test_a_request_without_a_method_is_refused_and_a_response_is_ignored(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_REQUEST)
+        self.h.send({"jsonrpc": "2.0", "id": 2, "method": None})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_REQUEST)
+        self.h.send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "x"}})
+        self.assertTrue(self.h.nothing())
+
+    def test_params_may_be_omitted_or_null(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": None})
+        self.assertIn("tools", self.h.recv()["result"])
+        self.assertTrue(self.h.server.initialized)  # the notification carried no params
+
+    def test_a_bad_params_shape_gets_invalid_params(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": [1]})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_PARAMS)
+        self.h.send({"jsonrpc": "2.0", "id": 2, "method": "ping"})
+        self.assertEqual(self.h.recv()["id"], 2)
+
+    def test_malformed_notifications_get_no_reply_and_do_not_stop_the_server(self):
+        init(self.h)
+        for params in ([1, 2], "x", 5, {"requestId": [1]}, {"requestId": {"a": 1}},
+                       {"requestId": True}, {"requestId": None}):
+            self.h.send({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": params})
+        self.h.send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": [1]})
+        self.assertTrue(self.h.nothing())
+        self.h.send({"jsonrpc": "2.0", "id": 3, "method": "ping"})
+        self.assertEqual(self.h.recv()["id"], 3)
+
+    def test_a_malformed_batch_member_is_answered_inside_the_batch(self):
+        init(self.h, "2025-03-26")
+        self.h.send([{"jsonrpc": "2.0", "id": [1], "method": "ping"}, 7,
+                     {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+                     {"jsonrpc": "2.0", "method": ["x"]}])
+        r = self.h.recv()
+        self.assertEqual([m.get("error", {}).get("code") for m in r],
+                         [protocol.INVALID_REQUEST, protocol.INVALID_REQUEST, None,
+                          protocol.INVALID_REQUEST])
+        self.assertEqual(r[2]["id"], 2)
+
     def test_eof_exits_zero(self):
         init(self.h)
         self.h.close()
@@ -331,6 +396,78 @@ class TestSchema(unittest.TestCase):
         self.assertTrue(schema.validate(self.S, {"paths": ["/x"], "n": True}))  # bool is no integer
         self.assertEqual(schema.validate(self.S, {"paths": ["/x"], "n": 2.0}), [])
         self.assertEqual(schema.with_defaults({"properties": {"k": {"default": 4}}}, {}), {"k": 4})
+
+
+class TestSchemaKeywords(unittest.TestCase):
+    """One passing and one failing case per keyword the tool schemas use."""
+
+    def check(self, sch, good, bad):
+        self.assertEqual(schema.validate(sch, good), [], good)
+        self.assertTrue(schema.validate(sch, bad), bad)
+
+    def test_types(self):
+        self.check({"type": "integer"}, 3, 3.5)
+        self.check({"type": "integer"}, 3, True)  # bool is not an integer
+        self.check({"type": "number"}, 2.5, False)
+        self.check({"type": "number"}, 2, "2")
+        self.check({"type": "string"}, "a", 1)
+        self.check({"type": "boolean"}, True, 1)
+        self.check({"type": "array"}, [], {})
+        self.check({"type": "object"}, {}, [])
+        self.check({"type": ["string", "null"]}, None, 1)
+
+    def test_enum_does_not_confuse_bool_and_int(self):
+        self.check({"enum": [1, "a"]}, 1, True)
+        self.check({"enum": [True]}, True, 1)
+
+    def test_pattern_is_a_search_and_a_closing_dollar_is_the_end(self):
+        self.check({"type": "string", "pattern": r"^SW\d+$"}, "SW1", "SW1\n")
+        self.check({"type": "string", "pattern": r" \[auto\]$"}, "T [auto]", "T [auto]\n")
+        self.check({"type": "string", "pattern": r"[a-z]+"}, "1abc1", "123")
+
+    def test_minlength(self):
+        self.check({"type": "string", "minLength": 2}, "ab", "a")
+
+    def test_array_keywords(self):
+        self.check({"type": "array", "minItems": 1}, [1], [])
+        self.check({"type": "array", "maxItems": 1}, [1], [1, 2])
+        self.check({"type": "array", "uniqueItems": True}, [1, 2], [1, 1])
+        self.check({"type": "array", "uniqueItems": True}, [1, True], [{"a": 1}, {"a": 1}])
+        self.check({"type": "array", "items": {"type": "integer"}}, [1], [1, "x"])
+
+    def test_minimum_maximum_and_non_finite(self):
+        self.check({"type": "number", "minimum": 1}, 1, 0.5)
+        self.check({"type": "number", "maximum": 5}, 5, 5.1)
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            self.assertTrue(schema.validate({"type": "number", "minimum": 0, "maximum": 5}, bad))
+            self.assertTrue(schema.validate({"type": "number"}, bad))
+
+    def test_required_and_additional_properties(self):
+        s = {"type": "object", "required": ["a"], "additionalProperties": False,
+             "properties": {"a": {"type": "integer"}}}
+        self.check(s, {"a": 1}, {})
+        self.check(s, {"a": 1}, {"a": 1, "b": 2})
+        self.check({"type": "object", "properties": {"a": {}}}, {"a": 1, "b": 2}, [])  # open by default
+        self.check(s, {"a": 1}, {"a": True})
+
+    def test_nested_items_and_properties(self):
+        s = {"type": "object", "properties": {"rows": {"type": "array", "items": {
+            "type": "object", "required": ["n"], "properties": {
+                "n": {"type": "integer", "minimum": 0}}}}}}
+        self.check(s, {"rows": [{"n": 1}]}, {"rows": [{"n": 1}, {"n": -1}]})
+        self.check(s, {"rows": [{"n": 1}]}, {"rows": [{}]})
+
+    def test_coerce_reaches_into_arrays_and_objects(self):
+        s = {"type": "object", "properties": {
+            "a": {"type": "array", "items": {"type": "integer"}},
+            "o": {"type": "object", "properties": {"n": {"type": "integer"}}},
+            "x": {"type": "number"}}}
+        out = schema.coerce(s, {"a": [2.0, 3], "o": {"n": 4.0}, "x": 1.0, "free": 5.0})
+        self.assertEqual(out, {"a": [2, 3], "o": {"n": 4}, "x": 1.0, "free": 5.0})
+        self.assertTrue(all(type(v) is int for v in out["a"]))
+        self.assertIs(type(out["o"]["n"]), int)
+        self.assertIs(type(out["x"]), float)
+        self.assertIs(type(schema.coerce({"type": ["integer", "null"]}, 3.0)), int)
 
 
 class TestStdioIsolation(unittest.TestCase):
