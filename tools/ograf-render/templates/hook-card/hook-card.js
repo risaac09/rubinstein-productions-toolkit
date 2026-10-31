@@ -74,18 +74,19 @@ class HookCard extends HTMLElement {
     // One plate width for both shapes: 8% side gaps clear the 6% portrait and 5% square margins.
     const pw = W * 0.84, left = (W - pw) / 2;
     const pad = 36 * s, ruleW = 8 * s, lh = 88 * s, gap = 8 * s;
-    const texts = [esc(data.line1), esc(data.line2)];
+    const texts = [esc(data.line1).trim(), esc(data.line2).trim()];
     const lines = [0, 1].filter((i) => i === 0 || texts[i] !== "");
     const ph = lines.length * lh + (lines.length - 1) * gap + pad * 2;
     const top = (port ? H * 0.30 : H * 0.5) - ph / 2; // portrait sits in the band between the top and bottom UI margins
     const tw = pw - ruleW - pad * 2;
+    const room = tw * 0.97; // a little slack so the longest line never meets the clip edge
 
     // Shrink both lines together until the longer one fits the plate.
     const base = 76 * s;
     this._m.style.fontSize = base + "px";
     let widest = 0;
     for (const i of lines) { this._m.textContent = texts[i]; widest = Math.max(widest, this._m.getBoundingClientRect().width); }
-    const fit = widest > tw ? base * tw / widest : base;
+    const fit = widest > room ? base * room / widest : base;
 
     let t = 0, a = 0, ruleP = 0;
     const show = Boolean(play);

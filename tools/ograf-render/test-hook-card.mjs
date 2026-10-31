@@ -22,7 +22,7 @@ const have = (cmd, args) => spawnSync(cmd, args, { stdio: "ignore" }).status ===
 const chrome = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
   .concat(process.env.CHROME || []).some((c) => (c.includes("/") ? existsSync(c) : have("which", [c])));
 const skip = !chrome ? "Chrome not found" : !have("ffmpeg", ["-version"]) ? "ffmpeg not found" : false;
-const py = (code) => spawnSync("python3", ["-I", "-c", code], { cwd: PRODUCTION, encoding: "utf8", env: { ...process.env, PYTHONPATH: PRODUCTION } });
+const py = (code) => spawnSync("python3", ["-c", code], { cwd: PRODUCTION, encoding: "utf8", env: { ...process.env, PYTHONPATH: PRODUCTION } });
 
 const spec = JSON.parse(readFileSync(join(DIR, "motion.json"), "utf8"));
 const FRAME_MS = 1001 / 24;
@@ -99,7 +99,8 @@ describe("Hook card", () => {
     before(() => {
       // The margins come from rpresolve.safezone, the one place they are written.
       const r = py("import json; from rpresolve import safezone as z; print(json.dumps({'tall': z.margins(1080, 1920), 'square': z.margins(1080, 1080)}))");
-      margins = r.status === 0 ? JSON.parse(r.stdout) : { tall: [0.14, 0.35, 0.06], square: [0.05, 0.05, 0.05] };
+      assert.equal(r.status, 0, "rpresolve.safezone must import: " + r.stderr);
+      margins = JSON.parse(r.stdout);
       work = mkdtempSync(join(tmpdir(), "hook-card-"));
       for (const [set, w, h] of RUNS) {
         const dir = join(work, `${set}-${w}x${h}`);
@@ -120,7 +121,7 @@ describe("Hook card", () => {
     const bbox = (run, f) => {
       let x0 = run.w, y0 = run.h, x1 = -1, y1 = -1;
       for (let y = 0; y < run.h; y++) for (let x = 0; x < run.w; x++) {
-        if (px(run, f, x, y)[3] > 0) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        if (run.raw[((f * run.h + y) * run.w + x) * 4 + 3] > 0) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
       }
       return x1 < 0 ? null : { x0, y0, x1, y1 };
     };
@@ -196,16 +197,21 @@ describe("Hook card", () => {
       }
     }));
 
-    it("fits the widest legal lines inside the plate", () => {
+    it("fits the widest legal lines inside the text area, unclipped", () => {
       for (const key of ["widePortrait-360x640", "wideSquare-540x540"]) {
         const run = out.get(key);
-        const f = spec.cues.hold + 4, plate = layer(run, f, "plate");
-        // Text pixels (brighter than the plate) stay left of the plate's right edge, with its padding spare.
-        for (let y = Math.round(plate.y); y < Math.round(plate.y + plate.h); y++) {
-          for (let x = Math.round(plate.x + plate.w * 0.97); x < Math.round(plate.x + plate.w); x++) {
-            assert.ok(lum(px(run, f, x, y)) < 0.05, `${key} text reaches the plate edge at ${x},${y}`);
-          }
+        const f = spec.cues.hold + 4, line = layer(run, f, "line1");
+        // The text box clips at its right edge, so text that overflowed would be bright in its last columns.
+        const x0 = Math.floor(line.x + line.w * 0.98), x1 = Math.round(line.x + line.w);
+        for (let y = Math.round(line.y); y < Math.round(line.y + line.h); y++) {
+          for (let x = x0; x < x1; x++) assert.ok(lum(px(run, f, x, y)) < 0.05, `${key} text meets the clip edge at ${x},${y}`);
         }
+        // And the widest line really is wide: it reaches into the last tenth of the box.
+        let reach = 0;
+        for (let y = Math.round(line.y); y < Math.round(line.y + line.h); y++) {
+          for (let x = Math.round(line.x); x < x1; x++) if (lum(px(run, f, x, y)) > 0.5) reach = Math.max(reach, x - line.x);
+        }
+        assert.ok(reach > line.w * 0.85, `${key} the widest line fills the box (${reach} of ${line.w})`);
       }
     });
 
