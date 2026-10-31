@@ -74,6 +74,9 @@ cmd_lint() {
     [ -n "$f" ] || continue
     msg="$(lint_one "$f")" || { echo "$msg"; fail=1; }
   done < <(list_fragments)
+  if [ -n "$(find "$DIR/roadmap" -type f 2>/dev/null)" ]; then
+    echo "$DIR/roadmap: retired with docs/ROADMAP.md; delete these files"; fail=1
+  fi
   [ "$fail" -eq 0 ] && echo "changelog fragments: $(list_fragments | wc -l | tr -d ' ') valid"
   return "$fail"
 }

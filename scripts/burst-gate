@@ -126,7 +126,7 @@ g1() {
 # Placeholder user names in examples are fine: blank only that match, so a real
 # secret on the same line is still scanned.
 scan_lines() {
-  added_lines | sed -E 's#[/]Users[/](you|me|name|user|username|example|yourname|someone)([/]|$|[^A-Za-z0-9._/-])#<ph>#g; s#[/]home[/](u|you|me|name|user|example|someone)([/]|$|[^A-Za-z0-9_/-])#<ph>#g'
+  added_lines | sed -E 's#[/]Users[/](you|me|name|user|username|example|yourname|someone)([/]|$|[^A-Za-z0-9._/-]|[.]($|[[:space:]]))#<ph>#g; s#(^|[^A-Za-z0-9._/-])[/]home[/](u|you|me|name|user|example|someone)([/]|$|[^A-Za-z0-9_/.()-]|[.]($|[[:space:]]))#\1<ph>#g'
 }
 # Patterns are written so their own source text does not match them: a
 # bracket around one character, so this file passes its own scan.
@@ -135,8 +135,8 @@ g2() {
   # Built-in patterns match case-sensitively; the denylist matches without
   # regard to case. The sk- shape needs a non-word character before it, or
   # "task-based-..." in prose would match.
-  pats='[/]Users[/][A-Za-z0-9._-]+([/]|$|[^A-Za-z0-9._/-])
-[/]home[/][a-z][a-z0-9_-]*([/]|$|[^A-Za-z0-9_/-])
+  pats='[/]Users[/][A-Za-z0-9._-]*[A-Za-z0-9_-]([/]|$|[^A-Za-z0-9._/-]|[.]($|[[:space:]]))
+(^|[^A-Za-z0-9._/-])[/]home[/][a-z][a-z0-9_-]*([/]|$|[^A-Za-z0-9_/.()-]|[.]($|[[:space:]]))
 [~][/](vault|stack-data|rp-intranet|stack-finance|sch-work|second-brain-mirror|[.]secrets|[.]ssh|[.]config[/](gh|rclone))
 gh[pousr]_[A-Za-z0-9]{20,}
 github_pat_[A-Za-z0-9_]{20,}

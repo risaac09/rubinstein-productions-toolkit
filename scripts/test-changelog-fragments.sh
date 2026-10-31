@@ -122,6 +122,9 @@ git -C "$R" checkout -q -- CHANGELOG.md 2>/dev/null; cp "$TMP/orig" "$R/CHANGELO
 [ ! -e "$R/docs/ROADMAP.md" ] || bad "fixture has a ROADMAP.md"
 if inrepo "$CF" status A3.2 two 'x' >/dev/null 2>&1; then bad "status still exists"; else ok "status subcommand is gone"; fi
 [ -z "$(find "$R/changelog.d" -type f ! -name README.md)" ] && ok "status wrote nothing" || bad "status left a file"
+mkdir -p "$R/changelog.d/roadmap"; echo x > "$R/changelog.d/roadmap/old.md"
+if inrepo "$CF" lint >/dev/null 2>&1; then bad "lint ignored a leftover roadmap fragment"; else ok "lint flags a leftover roadmap fragment"; fi
+rm -rf "$R/changelog.d/roadmap"
 inrepo "$CF" new late "Entry after the roadmap went." >/dev/null
 inrepo "$CF" compile 2>&1 | grep -q 'compiled 1 entries into CHANGELOG.md' && ok "compile works with no ROADMAP.md" || bad "compile needs ROADMAP.md"
 
