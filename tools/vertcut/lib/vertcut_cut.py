@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from fractions import Fraction
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -726,7 +727,7 @@ def main():
                       "-map", label] + (["-map", "0:a"] if has_audio else []) + [
                       "-t", "%.3f" % dur,
                       ] + video_codec_args(args.crf, args.preset) + [
-                      "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0)]
+                      "-pix_fmt", "yuv420p", "-r", str(Fraction(min(src_fps, 30.0)).limit_denominator(1001))]  # 30000/1001, not 29.97
                    + COLOR_TAG_ARGS + ["-movflags", "+faststart"]
                    + (audio_codec_args(dest) + ["-af", audio_filter] if has_audio else ["-an"])
                    + [out])
