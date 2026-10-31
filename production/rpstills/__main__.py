@@ -77,10 +77,15 @@ def main(argv=None):
         return 0
     out = os.path.abspath(a.out)
     from rpresolve.paths import out_problem  # lazy: rpresolve is stdlib-only, imported only to write
-    problem = out_problem(os.path.join(out, "index.jsonl"), any_git_tree=True)
-    if problem:
-        print(f"rpstills {a.cmd}: {problem}", file=sys.stderr)
-        return 1
+    # each file a command writes, by its own name: any of them, or proxies/ and tiles/, may be a link elsewhere
+    names = ["index.jsonl", "clusters.json", "cull.json", "crops.json", "crops-preview.jpg", "review.html"]
+    if a.cmd in ("index", "run"):
+        names += ["proxies/x.jpg", "tiles/x.jpg"]
+    for rel in names:
+        problem = out_problem(os.path.join(out, rel), any_git_tree=True)
+        if problem:
+            print(f"rpstills {a.cmd}: {problem}", file=sys.stderr)
+            return 1
     if a.cmd in ("index", "run"):
         try:
             rows = index.build(os.path.abspath(a.shoot), out, workers=a.workers, times_file=a.times,

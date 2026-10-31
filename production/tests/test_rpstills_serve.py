@@ -183,6 +183,16 @@ class ServerTest(unittest.TestCase):
             for method in ("GET", "HEAD"):
                 self.assertEqual(self.get("/" + rel, method=method)[0].status, 404, (method, rel))
 
+    def test_the_key_under_another_name_is_never_served(self):
+        with open(os.path.join(self.root, "key.json"), "w") as f:
+            f.write("SECRET-KEY")
+        os.symlink("key.json", os.path.join(self.root, "alias.json"))
+        # a long s and the Kelvin sign: APFS opens key.json for both, lower() does not fold them
+        for url in ("/alias.json", "/key.j%C5%BFon", "/%E2%84%AAey.json"):
+            r, body = self.get(url)
+            self.assertEqual(r.status, 404, url)
+            self.assertNotIn(b"SECRET", body)
+
     def test_a_foreign_host_header_is_refused(self):
         self.assertEqual(self.get("/clip.mp4", headers={"Host": "evil.example:80"})[0].status, 421)
         self.assertEqual(self.get("/clip.mp4", headers={"Host": "localhost:%d" % self.port})[0].status, 200)
