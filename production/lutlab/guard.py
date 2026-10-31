@@ -8,15 +8,9 @@ import os
 import sys
 from pathlib import Path
 
+from rpresolve.paths import in_any_git_tree  # stdlib-only; the one "not in a git tree" test
+
 ICLOUD = [Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Library" / "Mobile Documents"]
-
-
-def git_root(path):
-    p = Path(path).resolve()
-    for d in [p, *p.parents]:
-        if (d / ".git").exists():
-            return d
-    return None
 
 
 def check_out_dir(path):
@@ -28,9 +22,8 @@ def check_out_dir(path):
             pc, bc = pc.casefold(), bc.casefold()
         if pc == bc or pc.startswith(bc + os.sep):
             raise PermissionError(f"{p}: refusing to write under {bad} (iCloud-synced)")
-    root = git_root(p)
-    if root:
-        raise PermissionError(f"{p}: refusing to write inside the git work tree {root}; LUT values and "
+    if in_any_git_tree(p):
+        raise PermissionError(f"{p}: refusing to write inside a git work tree; LUT values and "
                               "decompositions stay out of repositories")
     p.mkdir(parents=True, exist_ok=True)
     return p

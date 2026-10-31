@@ -323,6 +323,26 @@ def _relink_one(media_pool, clip, e, exists, stat):
 # survey (offline, Python 3.14 subprocess)
 # ---------------------------------------------------------------------------
 
+def _wanted_items(items, count):
+    """None means every item; an explicit empty list is an error, not 'all'."""
+    if items is None:
+        return list(range(1, count + 1))
+    if not items:
+        raise Refused("items is empty; leave it out to take every item.")
+    return sorted(set(items))
+
+
+def _free_values(name, values):
+    """Values for a nargs='+' option. One starting with '-' would be read as
+    a second option (e.g. --out), and '--' cannot guard a nargs list."""
+    if not values:
+        raise Refused(f"{name} is empty; leave it out to take the default.")
+    bad = [v for v in values if not isinstance(v, str) or not v or v.startswith("-")]
+    if bad:
+        raise Refused(f"{name} values must be non-empty and not start with '-': {bad!r}")
+    return values
+
+
 def survey_command(out, json_out=None, projects=None, projects_dir=None, metadata_cache=None,
                    no_metadata_cache=False, tree_labels=None, python=SURVEY_PYTHON,
                    script=SURVEY_SCRIPT):
@@ -330,16 +350,16 @@ def survey_command(out, json_out=None, projects=None, projects_dir=None, metadat
     cmd = [python, str(script), "--out", out]
     if json_out:
         cmd += ["--json", json_out]
-    if projects:
-        cmd += ["--projects", *projects]
+    if projects is not None:
+        cmd += ["--projects", *_free_values("projects", projects)]
     if projects_dir:
         cmd += ["--projects-dir", projects_dir]
     if metadata_cache:
         cmd += ["--metadata-cache", metadata_cache]
     if no_metadata_cache:
         cmd.append("--no-metadata-cache")
-    if tree_labels:
-        cmd += ["--tree-labels", *tree_labels]
+    if tree_labels is not None:
+        cmd += ["--tree-labels", *_free_values("tree_labels", tree_labels)]
     return cmd
 
 
@@ -834,7 +854,7 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     if not 1 <= track <= tracks:
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    wanted = _wanted_items(items, len(all_items))
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
@@ -1030,7 +1050,7 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
         raise Refused(f"{rpcut.INPUT_SCALING} reads '{scaling}' on '{tl_name}' and the plan was "
                       f"made for '{fp.get('scaling')}'; plan again for this timeline")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    wanted = _wanted_items(items, len(all_items))
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
@@ -1203,7 +1223,7 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
     if not 1 <= track <= tracks:
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    wanted = _wanted_items(items, len(all_items))
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")

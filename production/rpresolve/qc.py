@@ -345,22 +345,31 @@ def _sound_true_peak_per_cut(path, cuts, dur, ceiling, note):
     # Cut times are seconds from the start of this file; any at or past its end are dropped.
     cuts = [c for c in sorted(cuts) if c > 0 and (not dur or c < dur)]
     edges = [0.0] + cuts + [dur or None]  # an unreadable duration leaves the last shot open-ended
-    over, worst = [], None
+    over, worst, unread, measured = [], None, [], 0
     for n, (a, b) in enumerate(zip(edges, edges[1:]), 1):
         if b is not None and b - a < 0.01:
             continue
         try:
             tp = _ar().loudness(path, 0, a, b)[0]["true_peak_dbtp"]
         except _ar().ReportError:
+            tp = None
+        if tp is None:  # a read that returned no peak is as unmeasured as a failed one
+            unread.append(n)
             continue
-        if tp is not None and (worst is None or tp > worst):
+        measured += 1
+        if worst is None or tp > worst:
             worst = tp
-        if tp is not None and tp > ceiling + 1e-9:
+        if tp > ceiling + 1e-9:
             over.append(f"shot {n} ({_at(a)} to {_at(b) if b is not None else 'the end'}): {tp} dBTP")
     shown = "; ".join(over[:3]) + (f" and {len(over) - 3} more" if len(over) > 3 else "")
-    return _srow("true_peak_per_cut", FAIL if over else PASS,
-                 shown if over else f"{len(edges) - 1} shots, worst {worst} dBTP",
-                 f"each shot <= {ceiling:g} dBTP", note)
+    gone = f"shot {', '.join(map(str, unread))} unreadable" if unread else ""
+    expected = f"each shot <= {ceiling:g} dBTP"
+    if over:
+        return _srow("true_peak_per_cut", FAIL, shown + (f"; {gone}" if gone else ""), expected, note)
+    if unread:  # nothing measured is a FAIL like an unreadable duration; some measured is a WARN
+        found = gone if not measured else f"{measured} shots, worst {worst} dBTP; {gone}"
+        return _srow("true_peak_per_cut", WARN if measured else FAIL, found, expected, note)
+    return _srow("true_peak_per_cut", PASS, f"{measured} shots, worst {worst} dBTP", expected, note)
 
 
 def _sound_silence_at_cut(np, path, cuts, th, fps):

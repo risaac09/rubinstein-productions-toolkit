@@ -23,7 +23,7 @@ use [media-lane-quickstart.md](media-lane-quickstart.md).
 | Develop and balance | `rpstills develop`: RAW with a per-frame skin solve ([rpstills-develop.md](rpstills-develop.md)) | [`lutlab cst`](lutlab-cst.md): camera log to DaVinci Intermediate or Rec.709; [`lutlab balance`](lutlab-balance.md): per-shot exposure and white balance as a CDL; [`lutlab shot-match`](lutlab/README.md#shot-match) for a paired second camera | [`rpresolve.roomtone`](sound-assist.md): find room tone, loop a bed |
 | Look | `rpstills look` (a LUT for Resolve) | [`lutlab`](lutlab/README.md) looks, `lutlab pack` for an iPad | [`mixbuild`](media-lane-quickstart.md#2-sound-a-dialogue-clip-mixed-and-checked): a mix spec, stems and a mix |
 | Cut | `rpstills crops`, `rpstills finish` ([rpstills-finish.md](rpstills-finish.md)) | cut manifest ([versions 1 and 2](manifest.md)), [`rpresolve.interchange`](interchange.md) to EDL, FCPXML or OTIO, [`wordsnap`, `shots`, `beats`](edit-assist.md) | [`rpresolve.duckplan`](sound-assist.md): music ducked under speech |
-| Measure | [`rpstills audit`](rpstills-audit.md), report only | measure, perceive, `lutlab lutstats` | [`rpresolve.dxmetrics`](sound-assist.md): before and after, with lag |
+| Measure | [`rpstills audit`](rpstills-audit.md), report only | measure, perceive, [scene reads](scene-cli.md), `lutlab lutstats` | [`rpresolve.dxmetrics`](sound-assist.md): before and after, with lag |
 | Review | `rpstills absheet`, `rpstills serve` | proxies through `rpstills serve` | loudness-matched excerpts |
 | Deliver | sRGB JPEGs with an embedded profile | deliver_check, qc | loudness fix in deliver_check |
 

@@ -3,9 +3,8 @@ rpresolve.paths: where output that names client media may go. Stdlib only.
 
 Reports, detect tables, manifests and endcheck results name clients, media
 paths and transcripts, and this toolkit is a public repository. They are
-refused inside this repository's working trees, and with any_git_tree=True
-inside any git working tree at all (another public repo would leak them
-just the same).
+refused inside any git working tree (another public repo would leak them
+just the same); any_git_tree=False narrows that to this repository's trees.
 """
 
 import os
@@ -38,9 +37,9 @@ def in_any_git_tree(path):
     return False
 
 
-def out_problem(path, any_git_tree=False):
-    """Why `path` cannot take private output, or None: inside this repo (or
-    any git tree with any_git_tree=True), a directory, or not writable."""
+def out_problem(path, any_git_tree=True):
+    """Why `path` cannot take private output, or None: inside any git tree
+    (only this repo's with any_git_tree=False), a directory, or not writable."""
     from resolve_survey import inside_repo, output_path_problem  # lazy: keeps this module light
     if inside_repo(path):
         return (f"{path} is inside this repository's git working tree. The output "
@@ -51,7 +50,7 @@ def out_problem(path, any_git_tree=False):
     return output_path_problem(path)
 
 
-def write_private(path, text, any_git_tree=False):
+def write_private(path, text, any_git_tree=True):
     """Write output that names private media. Raises OutputRefused."""
     problem = out_problem(path, any_git_tree)
     if problem:

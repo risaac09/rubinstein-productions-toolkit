@@ -151,18 +151,26 @@ def summary(plan):
     return f"{len(plan)} frames, {n} crops, flags {counts or 'none'}"
 
 
+MAX_ROWS = 100  # 100 rows of 216 px stay under JPEG's 65500 px height limit
+
+
 def preview(out_dir, rows, plan, cfg, limit=24):
     """Preview sheet: every flagged frame first (they are what a reviewer
-    must see), then unflagged frames up to limit rows in all. Returns
-    (path, shown, total)."""
+    must see), then unflagged frames up to limit rows in all, never more
+    than MAX_ROWS (a "+N more" line says so). Returns (path, shown, total);
+    path is None for an empty plan."""
+    if not plan:
+        return None, 0, 0
     from PIL import Image, ImageDraw
     by_id = {r["id"]: r for r in rows}
     names = [n for n in cfg["profiles"] if cfg["profiles"][n].get("aspect")]
     flagged = [f for f, fp in plan.items() if any(c["flags"] for c in fp["crops"].values())]
-    clean = [f for f in plan if f not in set(flagged)]
-    ids = (flagged + clean)[:max(limit, len(flagged))]
+    fset = set(flagged)
+    clean = [f for f in plan if f not in fset]
+    ids = (flagged + clean)[:min(MAX_ROWS, max(limit, len(flagged)))]
+    hidden = len(flagged) - len(set(flagged) & set(ids))
     T = 200
-    sheet = Image.new("RGB", (T * (len(names) + 1), (T + 16) * len(ids)), "#101010")
+    sheet = Image.new("RGB", (T * (len(names) + 1), (T + 16) * len(ids) + 16), "#101010")
     d = ImageDraw.Draw(sheet)
     for i, fid in enumerate(ids):
         im = Image.open(os.path.join(out_dir, by_id[fid]["proxy"])).convert("RGB")
@@ -176,6 +184,8 @@ def preview(out_dir, rows, plan, cfg, limit=24):
             tile = im.crop((int(c["x"] * W), int(c["y"] * H), int((c["x"] + c["w"]) * W), int((c["y"] + c["h"]) * H)))
             tile.thumbnail((T, T)); sheet.paste(tile, (j * T, i * (T + 16)))
             d.text((j * T + 4, i * (T + 16) + T + 2), n + (" " + ",".join(c["flags"]) if c["flags"] else ""), fill="white")
+    if hidden:
+        d.text((4, (T + 16) * len(ids) + 2), f"+{hidden} more flagged frames not shown", fill="white")
     path = os.path.join(out_dir, "crops-preview.jpg")
     sheet.save(path, quality=82)
     return path, len(ids), len(plan)
