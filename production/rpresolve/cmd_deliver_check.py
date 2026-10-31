@@ -34,9 +34,10 @@ def run(args):
     """Check a rendered file against its destination. Exit 0 all pass, 1 any
     fail (or an unreadable file or boxes JSON), 2 ffprobe or ffmpeg missing."""
     from rpresolve import audiostate, deliver, delivercheck as dc, paths, safezone
+    ledger = getattr(args, "ledger_row", None)
     try:
-        if args.ledger_row:
-            problem = paths.out_problem(args.ledger_row, any_git_tree=True)
+        if ledger:
+            problem = paths.out_problem(ledger, any_git_tree=True)
             if problem:
                 raise ValueError(problem)
         config = cli.deliver_config(args)
@@ -59,10 +60,10 @@ def run(args):
         print(json.dumps(r, indent=1, default=str))
     else:
         sys.stdout.write(dc.format_report(r))
-    if args.ledger_row:  # after the report, so a write error never hides the result
+    if ledger:  # after the report, so a write error never hides the result
         try:
             line = dc.ledger_line(dc.ledger_row(r, sha256=dc.file_sha256(args.file)))
-            paths.write_private(args.ledger_row, line, any_git_tree=True)
+            paths.write_private(ledger, line, any_git_tree=True)
         except (OSError, ValueError) as e:
             print(f"ERROR: ledger row not written: {e}", file=sys.stderr)
             return 1
