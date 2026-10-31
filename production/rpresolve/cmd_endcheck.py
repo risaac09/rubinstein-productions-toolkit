@@ -7,6 +7,7 @@ import json
 import sys
 
 from rpresolve import cli
+from rpresolve import paths as rppaths
 
 NAME = "endcheck"
 HELP = "Offline: check every cut's end, pause and text"
@@ -21,6 +22,10 @@ def add_arguments(p):
 def run(args):
     """Check a manifest. Exit 0 all pass, 2 any review, 1 any fail."""
     from rpresolve import cutlist
+    problem = rppaths.out_problem(args.json, any_git_tree=True) if args.json else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
     try:
         m = cutlist.load_manifest(args.manifest)
         rows = cutlist.endcheck(m, audio=not args.no_audio)

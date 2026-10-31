@@ -62,12 +62,12 @@ def run(args):
     span past the source's end), 1 error."""
     from rpresolve import cutlist, reframe
     out = os.path.abspath(args.out)
-    problem = rppaths.out_problem(out)
+    problem = rppaths.out_problem(out, any_git_tree=True)
     if not problem and os.path.realpath(args.manifest) == os.path.realpath(out):
         problem = f"{out} is the manifest itself; write the copy somewhere else."
     stem = os.path.splitext(out)[0] + ".reframe"
     for p in (stem + ".tsv", stem + ".json"):
-        problem = problem or rppaths.out_problem(p)
+        problem = problem or rppaths.out_problem(p, any_git_tree=True)
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1

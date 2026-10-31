@@ -34,7 +34,7 @@ import math
 import re
 from fractions import Fraction
 
-from . import measure
+from . import measure, paths
 from .measure import MeasureError
 
 DEFAULTS = {"psnr": 45.0, "ssim": 0.99, "vmaf": 95.0, "luma_shift": 1.5, "chroma_shift": 1.5}
@@ -238,6 +238,4 @@ def format_report(report):
 
 
 def write_json(report, path):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
-        f.write("\n")
+    paths.write_private(path, json.dumps(report, indent=2) + "\n", any_git_tree=True)

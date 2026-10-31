@@ -1,6 +1,6 @@
 # Return Package
 
-> **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. No tool builds the package yet; a person or an agent assembles it by hand with the commands here.
+> **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. `resolve_workflow.py return-package` assembles it (copies, never moves; refuses unless every final has a `deliver_check` PASS; writes `SHA256SUMS` and `manifest.md`) and `return-package --verify <package>` re-checks the checksums. The commands below are the same checks by hand. The tool's manifest carries the checksum, destination and approval columns; the technical columns come from `deliver-manifest`.
 
 The anti-extractive safeguards in section 6 of the [measurement framework](../methodology/measurement-framework.md) give clients their raw data on request. The camera-shipping model goes further and returns everything, cut and raw material both. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
 

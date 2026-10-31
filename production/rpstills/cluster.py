@@ -20,7 +20,7 @@
 
 Writes clusters.json: {"segments": [{"id", "start", "end", "frames"}],
 "bursts": [[ids]], "runs": [{"id", "segment", "class", "frames", "start",
-"end"}]}. Frame order is the index order (file name order).
+"end"}]}. Frames are in time order (index order for equal or missing times).
 """
 
 import datetime as _dt
@@ -42,7 +42,8 @@ SUBJECT_RATIO = 0.5
 def _t(row):
     if not row.get("time"):
         return None
-    t = _dt.datetime.fromisoformat(row["time"])
+    # wall-clock time (build's sort relies on every time being naive): an aware sidecar time next to naive EXIF times would raise on compare
+    t = _dt.datetime.fromisoformat(row["time"]).replace(tzinfo=None)
     sub = row.get("subsec")
     if sub and sub.isdigit():
         t += _dt.timedelta(seconds=int(sub) / (10 ** len(sub)))
@@ -77,6 +78,13 @@ def frame_class(row, min_face=MIN_FACE, ratio=SUBJECT_RATIO):
 
 def build(rows):
     rows = [r for r in rows if not r.get("error")]
+    # time order, so a second camera or a rolled counter cannot make a negative gap; a timeless
+    # frame sorts with the frame before it
+    last, keys = _dt.datetime.min, []
+    for r in rows:
+        last = _t(r) or last
+        keys.append(last)
+    rows = [r for _, r in sorted(zip(keys, rows), key=lambda kr: kr[0])]
     segments, bursts, runs = [], [], []
     prev, prev_t = None, None
     for r in rows:
@@ -124,7 +132,7 @@ def summary(clusters):
         by.setdefault(r["class"], []).append(len(r["frames"]))
     lines = [f"segments {len(clusters['segments'])}: " + ", ".join(
         f"{s['id']} {s['start']} to {s['end']} ({len(s['frames'])} frames)" for s in clusters["segments"])]
-    lines.append(f"bursts {len(clusters['bursts'])}, longest {max(len(b) for b in clusters['bursts'])}")
+    lines.append(f"bursts {len(clusters['bursts'])}, longest {max((len(b) for b in clusters['bursts']), default=0)}")
     for cls, sizes in sorted(by.items()):
         lines.append(f"runs {cls}: {len(sizes)} (frames {sum(sizes)}, largest {max(sizes)})")
     return "\n".join(lines)
