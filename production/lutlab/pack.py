@@ -155,17 +155,13 @@ def build(cameras, out, size=33, date=None, base=None, deltas=None, overwrite=Fa
         members = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
         (root / "SHA256SUMS").write_text("".join(f"{sha256(root / m)}  {m}\n" for m in members))
         stamp = (day.year, day.month, day.day, 0, 0, 0)
-        part = Path(str(zpath) + ".part")
-        try:
+        with guard.atomic_path(zpath) as part:   # a failed write leaves nothing behind
             with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as z:
                 for m in sorted(members + ["SHA256SUMS"]):
                     info = zipfile.ZipInfo(f"{name}/{m}", date_time=stamp)
                     info.compress_type = zipfile.ZIP_DEFLATED
                     info.external_attr = 0o644 << 16
                     z.writestr(info, (root / m).read_bytes())
-            os.replace(part, zpath)
-        finally:
-            part.unlink(missing_ok=True)  # a failed write leaves nothing behind
     return zpath
 
 

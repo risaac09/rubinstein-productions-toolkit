@@ -21,6 +21,8 @@ import os
 
 import numpy as np
 
+from .atomic import atomic_path
+
 DI_A, DI_B, DI_C, DI_M = 0.0075, 7.0, 0.07329248, 10.44426855
 DI_LIN_CUT, DI_LOG_CUT = 0.00262409, 0.02740668
 MID_GREY = 0.18
@@ -82,9 +84,8 @@ def write_cube(path, params, size=33, title="rpstills look"):
     the caller's check."""
     if os.path.exists(path):
         raise FileExistsError(path)
-    with open(path + ".part", "w") as f:
+    with atomic_path(path) as tmp, open(tmp, "w") as f:
         f.write(cube_text(params, size, title))
-    os.replace(path + ".part", path)
     return path
 
 

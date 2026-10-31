@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from . import model, spaces
+from .guard import atomic_path
 
 # ColorChecker 24, sRGB 8-bit (X-Rite published values), in chart order.
 PATCHES = [
@@ -168,7 +169,8 @@ class Plot:
             y += 16
 
     def save(self, path):
-        self.im.save(path)
+        with atomic_path(path) as tmp:
+            self.im.save(tmp, format="PNG")
 
 
 def hue_strip_colour(deg):
@@ -245,7 +247,8 @@ def plot_ramp(path, in_codes, out_codes, out, steps=17):
     for r, row in enumerate(rows):
         for i, c in enumerate(row):
             d.rectangle([i * cw, 24 + r * ch, (i + 1) * cw - 1, 24 + (r + 1) * ch - 1], fill=tuple(int(v * 255 + 0.5) for v in c))
-    im.save(path)
+    with atomic_path(path) as tmp:
+        im.save(tmp, format="PNG")
 
 
 def plot_patches(path, before, after):
@@ -258,7 +261,8 @@ def plot_patches(path, before, after):
         d.rectangle([x, y, x + s // 2, y + s - 2], fill=tuple(int(v * 255 + 0.5) for v in before[i]))
         d.rectangle([x + s // 2, y, x + s - 2, y + s - 2], fill=tuple(int(v * 255 + 0.5) for v in after[i]))
         d.text((x + 3, y + 3), str(i + 1), fill=(255, 255, 255), font=_font(11))
-    im.save(path)
+    with atomic_path(path) as tmp:
+        im.save(tmp, format="PNG")
 
 
 def plot_hist(path, de, title):

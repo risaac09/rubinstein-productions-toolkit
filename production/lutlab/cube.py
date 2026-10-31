@@ -12,6 +12,8 @@ import zlib
 
 import numpy as np
 
+from .guard import atomic_path
+
 
 def read_cube(path):
     size, dmin, dmax, title, rows, blue_fastest = None, [0.0] * 3, [1.0] * 3, "", [], False
@@ -93,9 +95,8 @@ def write_text(path, text, overwrite=False):
     edited in place, and Resolve caches a LUT by path."""
     if os.path.exists(path) and not overwrite:
         raise FileExistsError(path)
-    with open(path + ".part", "w") as f:
+    with atomic_path(path) as tmp, open(tmp, "w") as f:
         f.write(text)
-    os.replace(path + ".part", path)
     return path
 
 
@@ -129,7 +130,6 @@ def write_hald(path, fn, level=8, overwrite=False):
     if os.path.exists(path) and not overwrite:
         raise FileExistsError(path)
     data = png16(fn(hald_inputs(level)))
-    with open(path + ".part", "wb") as f:
+    with atomic_path(path) as tmp, open(tmp, "wb") as f:
         f.write(data)
-    os.replace(path + ".part", path)
     return path

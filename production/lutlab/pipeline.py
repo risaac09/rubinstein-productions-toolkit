@@ -92,7 +92,7 @@ def decompose(path, in_space, out, outdir, name=None, overwrite=False):
     p["skin_family"] = report.skin_family(lambda c: cube.sample(lut, c), in_space, out)
     rebuilt = model.evaluate(p, X) + cube.read_cube(str(outdir / res_name))["table"].reshape(-1, 3)
     p["source"]["rebuild_max_abs_error"] = float(np.abs(rebuilt - Y).max())
-    (outdir / "params.json").write_text(json.dumps(p, indent=1) + "\n")
+    cube.write_text(str(outdir / "params.json"), json.dumps(p, indent=1) + "\n", overwrite=True)
 
     rows, before, after = report.patch_table(lambda c: cube.sample(lut, c), in_space, out)
     e = model.exposure(spaces.to_lin709(dc[dw > 0], in_space)[:, 0])
@@ -106,7 +106,7 @@ def decompose(path, in_space, out, outdir, name=None, overwrite=False):
                             spaces.cielab(np.maximum(spaces.to_lin709(np.clip(model.evaluate(p, X[pl]), 0, 1), out), 0)))
     report.plot_hist(outdir / "residual.png", de, "What the numbers miss: Delta E 2000, plausible nodes, model vs source")
     md = report.markdown(p, f"{name}: decomposition", rows, neutral_rows(p, dc[dw > 0], dy[dw > 0], in_space), images)
-    (outdir / "report.md").write_text(md)
+    cube.write_text(str(outdir / "report.md"), md, overwrite=True)
     return p
 
 
