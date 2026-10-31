@@ -78,6 +78,6 @@ A spoken ident at the head of every take: date, camera, take. Then the clap. If 
 
 ## Cards and file names
 
-One folder per card, named `YYYYMMDD_<CAM>_<card>`, for example `20261016_GH7_A01`. The camera writes its own file names inside, and they are never renamed. `detect` uses the native names as one of its clues (the Blackmagic and Lumix file patterns, for example), and a renamed file loses that clue. `relink` never matches on a name, so it is unaffected either way.
+One folder per card, named `<CAM>-<id6>`, for example `GH7-3fa9c1`. The camera is the tag, and the six hex characters are the card's id, the first six of the id `offload.sh` computes from the card, so the same card always gets the same folder name. The camera writes its own file names inside, and they are never renamed. `detect` uses the native names as one of its clues (the Blackmagic and Lumix file patterns, for example), and a renamed file loses that clue. `relink` never matches on a name, so it is unaffected either way.
 
 Offload a card on arrival and wipe it only after the footage is checksummed and a second copy exists.
