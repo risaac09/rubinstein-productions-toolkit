@@ -193,16 +193,27 @@ cmd_safe() {
   local base; base=$(basename "$dir")
   (cd "$dir" && shasum -a 256 -c "../$base.SHA256SUMS" > /dev/null 2>&1) \
     || fail "NOT safe to format: $dir no longer matches $base.SHA256SUMS; card $id"
-  local log; log=$(mktemp) || fail "mktemp failed"
+  local log match; log=$(mktemp) && match=$(mktemp) || fail "mktemp failed"
   # shellcheck disable=SC2064
-  trap "rm -f '$log'" EXIT
-  "$RCLONE_BIN" check "$dir" "$remote" --one-way --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null
+  trap "rm -f '$log' '$match'" EXIT
+  # rclone reads any flag from RCLONE_<FLAG> (RCLONE_SIZE_ONLY, RCLONE_EXCLUDE): the
+  # check runs without them, keeping the config, its password and remotes set in the environment.
+  local bin="$RCLONE_BIN"
+  ( for v in $(compgen -e); do
+      case "$v" in RCLONE_CONFIG*|RCLONE_PASSWORD_COMMAND) ;; RCLONE_*) unset "$v" ;; esac
+    done
+    exec "$bin" check "$dir" "$remote" --one-way --match "$match" --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null )
   local rc=$?
   # B2 and others report a file they could not hash as a pass on size alone.
   if grep -q "hashes could not be checked" "$log"; then
     fail "NOT safe to format: rclone could not compare some hashes (see its log); card $id"
   fi
   [ "$rc" -eq 0 ] || fail "NOT safe to format: rclone check exited $rc; card $id"
+  # A check that left files out (a filter, by any route) still exits 0: every
+  # hashed file must be among the matches.
+  local unmatched; unmatched=$(cut -c67- "$dir.SHA256SUMS" | LC_ALL=C sort | LC_ALL=C comm -23 - <(LC_ALL=C sort "$match")) \
+    || fail "NOT safe to format: cannot compare rclone's matches with $base.SHA256SUMS; card $id"
+  [ -z "$unmatched" ] || fail "NOT safe to format: rclone did not match $(printf '%s' "$unmatched" | tr '\n' ' ') (a filter?); card $id"
   printf 'card_id %s\nremote %s\nchecked_utc %s\n' "$id" "$remote" "$(now)" > "$dir.offsite.txt" \
     || fail "cannot write $dir.offsite.txt"
   echo "SAFE TO FORMAT: card $id is verified at $dir and at $remote"
