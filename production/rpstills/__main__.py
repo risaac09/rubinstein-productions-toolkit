@@ -110,7 +110,10 @@ def main(argv=None):
         plan = crops.build(rows, cl, ids, cfg)
         print(crops.write(out, plan, src, cfg)); print("selection:", src); print(crops.summary(plan))
         path, shown, total = crops.preview(out, rows, plan, cfg)
-        print(path); print(f"preview shows {shown} of {total} frames, every flagged one first")
+        if path is None:
+            print("nothing to preview")
+        else:
+            print(path); print(f"preview shows {shown} of {total} frames, every flagged one first")
         return 0
     source = rows[0]["jpeg"].rsplit("/", 1)[0] if rows else a.shoot if hasattr(a, "shoot") else out
     print(review.build(out, a.session, source, rows, cl, cu, title=a.title))

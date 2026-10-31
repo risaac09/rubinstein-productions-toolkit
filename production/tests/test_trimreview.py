@@ -17,6 +17,7 @@ import struct
 import sys
 import tempfile
 import unittest
+import random
 import wave
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -270,6 +271,63 @@ class TestAudio(unittest.TestCase):
         self.assertGreater(r["counts"]["kind"]["silence"], 0)
         with self.assertRaisesRegex(ValueError, "exactly one"):
             tool.handler({**args, "manifest": dest}, ToolContext())
+
+
+class WordIndexTest(unittest.TestCase):
+    """The indexed word lookups give what the per-row scans gave."""
+
+    def words(self):
+        rng = random.Random(7)
+        out, t = [], 0.0
+        for i in range(400):
+            t += rng.choice([0.0, 0.1, 0.3, 0.9])
+            out.append(W(f"w{i}", round(t, 3), round(t + rng.choice([0.1, 0.25, 0.6]), 3)))
+        rng.shuffle(out)  # input order is not time order
+        return out
+
+    def test_midpoint_and_contained_match_the_scans(self):
+        words, rng = self.words(), random.Random(11)
+        idx = tr.WordIndex(words)
+        for _ in range(300):
+            a = round(rng.uniform(-1, 150), 3)
+            b = round(a + rng.choice([0.0, 0.2, 1.5, 12.0]), 3)
+            self.assertEqual(idx.midpoint_in(a, b),
+                             [w for w in words if a <= cutlist.midpoint(w) < b])
+            self.assertEqual(idx.midpoint_in(a), [w for w in words if a <= cutlist.midpoint(w)])
+            self.assertEqual(idx.contained(a, b),
+                             [w for w in words if a <= w["start"] and w["end"] <= b])
+        w0 = words[0]  # edges: a midpoint at b is out, a start at a and an end at b are in
+        self.assertEqual(idx.midpoint_in(0, cutlist.midpoint(w0)),
+                         [w for w in words if cutlist.midpoint(w) < cutlist.midpoint(w0)])
+        self.assertIn(w0, idx.contained(w0["start"], w0["end"]))
+
+    def test_pacing_cut_words_matches_the_old_scan(self):
+        from rpresolve import pacing
+        words = self.words()
+
+        def old(words, spans):
+            out, rec = [], 0.0
+            for i, s in enumerate(spans):
+                lead = s.get("audio_lead", 0) - (spans[i - 1].get("audio_tail", 0) if i else 0)
+                tail = s.get("audio_tail", 0) - (spans[i + 1].get("audio_lead", 0)
+                                                 if i + 1 < len(spans) else 0)
+                a, b = float(s["in"]) - lead, float(s["out"]) + tail
+                for w in words:
+                    if a <= (w["start"] + w["end"]) / 2 < b:
+                        out.append({"start": rec - lead + max(w["start"], a) - a,
+                                    "end": rec - lead + min(w["end"], b) - a, "word": w["word"]})
+                rec += float(s["out"]) - float(s["in"])
+            out = [dict(w, start=max(w["start"], 0.0), end=min(w["end"], rec)) for w in out
+                   if w["end"] > 0 and w["start"] < rec]
+            return out, rec
+
+        rng = random.Random(3)
+        spans, t = [], 0.0
+        for _ in range(300):
+            t += rng.uniform(0, 0.5)
+            spans.append({"in": round(t, 3), "out": round(t + rng.uniform(0.2, 2), 3),
+                          "audio_lead": rng.choice([0, 0.05]), "audio_tail": rng.choice([0, 0.05])})
+        self.assertEqual(pacing.cut_words(words, spans), old(words, spans))
 
 
 if __name__ == "__main__":
