@@ -144,7 +144,7 @@ Hand tweaks go in nodes 2 and up in the Color page, on top of it.
 `stills-looks/portrait-natural-v1.json` holds the first look with its fit and
 validation numbers. Refit for a new session; do not reuse the numbers.
 
-## Without Resolve: develop, finish, audit, compare, share
+## Without Resolve: develop, finish, audit, absheet, serve
 
 These five stages are self-contained subcommands; each refuses to write inside a
 git tree and echoes its parameters into its output JSON.

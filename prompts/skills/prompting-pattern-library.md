@@ -58,6 +58,8 @@ See `references/prompt-patterns.md` for comprehensive pattern catalog with examp
 
 ## When to Read References
 
+> This copy ships without its `references/` folder: the four files named below are not in this repository.
+
 ### Always Read First
 **Creating prompting educational content**: Read `references/prompt-patterns.md` for pattern catalog with "why it works" analysis
 **Debugging problematic prompts**: Read `references/failure-modes.md` for common issues and fixes with cross-referenced solutions
