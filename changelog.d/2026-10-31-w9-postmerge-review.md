@@ -1,0 +1,1 @@
+Post-merge review fixes: offload.sh safe reads the rclone remote type the way rclone resolves it (rclone config show, then the exact name in listremotes), so a description column, an environment override or a same-name remote in another case no longer decides it; burst-gate and changelog-fragments pr refuse a base with no merge base instead of passing an empty diff.

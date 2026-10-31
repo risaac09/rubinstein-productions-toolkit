@@ -77,12 +77,12 @@ def run(args):
         sys.stdout.write(overlay.format_report(r))
     code = 0 if r["status"] == "pass" else 1
     if args.boxes_out:  # after the report, so a refused path does not hide the rows
-        from rpresolve import captionlint
+        from rpresolve import safezone
         box = next((x["box"] for x in r["rows"] if x["row"] == "safe"), None)
         try:
             if box is None:  # an empty list would tell deliver-check nothing is on screen
                 raise ValueError("--boxes-out: no visible pixels at the hold time, so no box")
-            captionlint.write_boxes(args.boxes_out, [("graphic", box)])
+            safezone.write_boxes(args.boxes_out, [("graphic", box)])
         except (OSError, ValueError) as e:  # ValueError: paths.OutputRefused
             print(f"ERROR: {e}", file=sys.stderr)
             return 1

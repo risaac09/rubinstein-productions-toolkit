@@ -48,7 +48,7 @@ def resolve_start_time():
 
 
 def check(template=None, repo_root=None, installed_root=None, started_at=None):
-    """One row per template file: installed, missing or stale, with both hashes.
+    """One row per template file: installed, missing, stale or unreadable, with both hashes.
     `started_at` is a function so a test can fake the process start time."""
     repo_root, installed_root = Path(repo_root or REPO_TEMPLATES), Path(installed_root or INSTALLED_ROOT)
     started_at = started_at or resolve_start_time
@@ -62,14 +62,21 @@ def check(template=None, repo_root=None, installed_root=None, started_at=None):
             raise ValueError(f"no template '{tid}' in {repo_root}.")
         for f in sorted(p for p in src.iterdir() if p.name.endswith(SUFFIXES)):
             dest = installed_root / tid / f.name
-            installed_sha = _sha(dest) if dest.is_file() else None
-            repo_sha = _sha(f)
+            repo_sha, installed_sha, why = _sha(f), None, None
+            try:
+                installed_sha = _sha(dest) if dest.is_file() else None
+                mtime = dest.stat().st_mtime if installed_sha else 0.0
+            except OSError as e:  # a file we cannot read is never counted as installed
+                why = e.strerror or type(e).__name__
             if installed_sha and installed_sha == repo_sha:  # only a file Resolve would load
-                newest = max(newest, dest.stat().st_mtime)
-            rows.append({"template": tid, "file": f.name, "repo_sha256": repo_sha,
-                         "installed_sha256": installed_sha,
-                         "status": "missing" if installed_sha is None
-                         else "installed" if installed_sha == repo_sha else "stale"})
+                newest = max(newest, mtime)
+            row = {"template": tid, "file": f.name, "repo_sha256": repo_sha,
+                   "installed_sha256": installed_sha,
+                   "status": "unreadable" if why else "missing" if installed_sha is None
+                   else "installed" if installed_sha == repo_sha else "stale"}
+            if why:
+                row["reason"] = why
+            rows.append(row)
     start = started_at() if newest else None
     restart = bool(start and newest > start)
     return {"rows": rows, "restart_needed": restart,

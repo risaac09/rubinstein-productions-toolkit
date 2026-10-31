@@ -40,6 +40,7 @@ const USAGE = `usage: ograf-render.mjs TEMPLATE.ograf.json --out DIR [options]
   --keep-frames        keep the PNGs in OUT/frames (not if it exists)
   --no-video           stop after the PNGs, boxes and report
   --strict-fonts       a missing font fails the run (default: a warning in report.json)
+  --font-wait-ms N     how long a frame waits for fonts and paint before it is captured anyway (default 2000)
   --chrome PATH        Chrome binary (default: CHROME env, then the usual names)
   --lint               run Resolve's own linter when installed (OGRAF_LINT overrides its path)
 `;
@@ -54,7 +55,7 @@ function parseArgs(argv) {
     else if (a === "--no-video") o.noVideo = true;
     else if (a === "--strict-fonts") o.strictFonts = true;
     else if (a === "--lint") o.lint = true;
-    else if (["--out", "--fps", "--size", "--duration", "--frames", "--order", "--data", "--chrome"].includes(a)) {
+    else if (["--out", "--fps", "--size", "--duration", "--frames", "--order", "--data", "--chrome", "--font-wait-ms"].includes(a)) {
       o[a.slice(2)] = need(i); i++;
     } else if (a.startsWith("-")) throw new Fail(`unknown option ${a}\n${USAGE}`);
     else if (o.template) throw new Fail(`one template at a time\n${USAGE}`);
@@ -348,6 +349,9 @@ async function main() {
     ok(await call("setActionsSchedule", { schedule: defaultSchedule(manifest, data, fps, durationMs, total) }), "setActionsSchedule");
 
     let painted = false;
+    const fontWaitMs = Number(o["font-wait-ms"]) || 2000;
+    const fontWaitTimeouts = [];
+    let probing = false;  // determinism revisits are not the stored frames
     const visit = async (i) => {
       const timestamp = (i * 1000) / fps.value;
       ok(await call("goToTime", { timestamp }), `goToTime(${timestamp})`);
@@ -357,11 +361,13 @@ async function main() {
       // (rAF paused) from hanging the render.
       const paints = painted ? 0 : 2;
       painted = true;
-      await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(r, 2000)), (async () => {
+      const settled = await evaluate(cdp, `Promise.race([new Promise((r) => setTimeout(() => r(false), ${fontWaitMs})), (async () => {
         for (let k = 0; k < ${paints}; k++) await new Promise((r) => requestAnimationFrame(r));
         document.body.offsetHeight;
         await document.fonts.ready;
+        return true;
       })()])`);
+      if (!settled && !probing) fontWaitTimeouts.push(i);  // captured anyway; the report says so
       const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true });
       return { png: Buffer.from(shot.data, "base64"), boxes: await evaluate(cdp, BOXES_JS) };
     };
@@ -379,11 +385,17 @@ async function main() {
     // in goToTime, gives a different PNG.
     const probe = [...new Set([first, last, ...Array.from({ length: 6 }, (_, k) => first + Math.round(((last - first) * (k + 1)) / 7))])].sort((a, b) => b - a);
     const drift = [];
+    probing = true;
     for (const i of probe) {
       if (sha256((await visit(i)).png) !== report.hashes[i]) drift.push(i);
     }
     report.checks.determinism = { pass: drift.length === 0, probed: probe.length, differing_frames: drift.sort((a, b) => a - b) };
 
+    if (fontWaitTimeouts.length) {
+      const frames = [...new Set(fontWaitTimeouts)].sort((a, b) => a - b);
+      report.font_wait_timeouts = { frames, wait_ms: fontWaitMs, note: "the font/paint wait timed out; these frames were captured without confirmed fonts" };
+      process.stderr.write(`ograf-render: font/paint wait timed out after ${fontWaitMs} ms on ${frames.length} frame(s) (${frames.slice(0, 5).join(", ")}${frames.length > 5 ? ", ..." : ""}); captured anyway, see report.json\n`);
+    }
     report.fonts = await evaluate(cdp, FONTS_JS);
     ok(await call("dispose", {}).catch(() => null), "dispose");
   } finally {

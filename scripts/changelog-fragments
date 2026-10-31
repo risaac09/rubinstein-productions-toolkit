@@ -103,7 +103,7 @@ unreleased_range() {
 cmd_pr() {
   base="${1:-$(default_base)}"
   git rev-parse --verify -q "$base" >/dev/null || die "base ref '$base' not found (fetch it, or pass one)"
-  changed="$(git diff --name-only "$base...HEAD")"
+  changed="$(git diff --name-only "$base...HEAD")" || die "cannot diff $base...HEAD (no merge base? fetch full history)"
   [ -n "$changed" ] || { echo "no changes against $base"; return 0; }
   if ! printf '%s\n' "$changed" | grep -qvE "$EXEMPT_RE"; then
     echo "changelog: only kit-export paths changed; no fragment needed"; return 0

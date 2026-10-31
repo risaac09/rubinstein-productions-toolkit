@@ -89,6 +89,15 @@ class ReviewLogTests(unittest.TestCase):
             self.assertIn("ERROR", err)
         self.assertFalse(os.path.exists(self.log))
 
+    def test_reason_that_is_not_utf8_exits_2_and_writes_nothing(self):
+        bad = os.fsdecode(b"caf\xe9")  # what argv gives for a byte that is not UTF-8
+        for reason in (bad, "\ud800"):
+            code, out, err = self.run_cmd(*self.base("--reason", reason))
+            self.assertEqual((code, out), (2, ""))
+            self.assertIn("ERROR", err)
+            self.assertNotIn("Traceback", err)
+        self.assertFalse(os.path.exists(self.log))
+
     def test_log_inside_git_tree_refused(self):
         repo = os.path.join(self.root, "repo")
         os.mkdir(repo)

@@ -190,7 +190,10 @@ cmd_safe() {
   local r="$remote" hops=0 t n
   while :; do
     n=${r%%:*}
-    t=$("$RCLONE_BIN" listremotes --long < /dev/null 2>/dev/null | awk -v n="$n:" 'index(tolower($0), tolower(n)) == 1 {print $NF; exit}')
+    # config show gives the type rclone resolves (a file section with any env override); a remote defined
+    # only in the environment has no section, so its type is the column after its exact name in listremotes.
+    t=$("$RCLONE_BIN" config show "$n" < /dev/null 2>/dev/null | sed -n 's/^type *= *//p' | head -n 1)
+    [ -n "$t" ] || t=$("$RCLONE_BIN" listremotes --long < /dev/null 2>/dev/null | awk -v n="$n:" 'index($0, n) == 1 { split(substr($0, length(n) + 1), f, " "); print f[1]; exit }')
     case "$t" in
       "") die "cannot read the type of rclone remote '$n'; refusing" ;;
       local) die "rclone remote '$n' is of type local; a local folder is not an offsite copy" ;;

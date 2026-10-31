@@ -133,6 +133,10 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
                  ("review_sha256", review_copy and _sha256(review_copy))):
         if v:
             line[k] = v
+    try:
+        json.dumps(line, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:  # argv bytes that are not UTF-8 arrive as lone surrogates
+        raise Refused("a field of the line (the reason, for one) is not valid UTF-8; nothing was written")
     os.makedirs(os.path.dirname(log), exist_ok=True)
     fd = os.open(log, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
     try:

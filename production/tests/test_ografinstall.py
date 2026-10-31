@@ -51,6 +51,19 @@ class TestOgrafInstall(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertFalse(self.inst.exists())  # a check never creates anything
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads a chmod 000 file")
+    def test_unreadable_file_is_a_row_and_the_rest_are_still_checked(self):
+        self.install()
+        bad = self.inst / "t1" / "t1.js"
+        bad.chmod(0)
+        self.addCleanup(bad.chmod, 0o644)
+        r = self.run_check()
+        self.assertEqual(self.statuses(r), {"t1.js": "unreadable", "t1.ograf.json": "installed"})
+        row = next(x for x in r["rows"] if x["file"] == "t1.js")
+        self.assertTrue(row["reason"])
+        self.assertIsNone(row["installed_sha256"])
+        self.assertFalse(r["ok"])
+
     def test_matching(self):
         self.install()
         r = self.run_check()
