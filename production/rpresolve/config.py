@@ -149,7 +149,26 @@ def load_config(config_path=None, warn=None, strict=False):
         over = _read(named, True, warn, strict)
         if over:
             _lay(config, over)
+    if strict:
+        _check_min_fps(config)
     return config
+
+
+def _check_min_fps(config):
+    """A destination's min_fps must read as a frame rate; otherwise
+    deliver_check would raise on it later. delivercheck does not import this
+    module, so the import cannot cycle."""
+    from .delivercheck import parse_fps
+    dests = config.get("destinations")
+    for key, dest in (dests.items() if isinstance(dests, dict) else ()):
+        floor = dest.get("min_fps") if isinstance(dest, dict) else None
+        if floor is None:
+            continue
+        try:
+            parse_fps(floor)
+        except ValueError:
+            raise ConfigError(f"destination '{key}': min_fps {floor!r} is not a frame rate "
+                              "(use 30, 29.97 or 30000/1001).")
 
 
 def _read(path, named, warn, strict):

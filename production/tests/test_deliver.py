@@ -242,6 +242,18 @@ class TestConfig(unittest.TestCase):
                 rpconfig.load_config(os.path.join(tmp, "missing.json"), strict=True)
             self.assertTrue(issubclass(rpconfig.ConfigError, ValueError))
 
+    def test_a_malformed_min_fps_in_an_overlay_fails_at_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "o.json")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('{"destinations": {"social_9x16": {"min_fps": "fast"}}}')
+            with self.assertRaisesRegex(rpconfig.ConfigError, "social_9x16.*min_fps"):
+                rpconfig.load_config(p, strict=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('{"destinations": {"social_9x16": {"min_fps": "25"}}}')
+            self.assertEqual(rpconfig.load_config(p, strict=True)
+                             ["destinations"]["social_9x16"]["min_fps"], "25")
+
     def test_an_overlay_lies_over_the_repo_config_not_the_built_in_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = json.loads(json.dumps(rpconfig.DEFAULT_CONFIG))

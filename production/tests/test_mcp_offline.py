@@ -371,5 +371,24 @@ class TestEndToEnd(Base):
         self.assertIn("absolute", bad["content"][0]["text"])
 
 
+class TestDeliverCheckWarnSummary(Base):
+    def test_summary_names_warn_count_and_description_says_warn_is_advice(self):
+        def stub(warn):
+            rows = [{"check": "fps_floor", "status": "WARN" if warn else "PASS"}]
+            counts = {"PASS": 0 if warn else 1, "FAIL": 0, "SKIP": 0, "WARN": 1 if warn else 0}
+            return {"checks": rows, "counts": counts, "status": "pass"}
+        f = os.path.join(self.dir, "SW999_Test_a.mp4")
+        open(f, "w").close()
+        for warn in (True, False):
+            with mock.patch("rpresolve.delivercheck.check", return_value=stub(warn)):
+                r = call("deliver_check", {"file": f, "destination": "social_9x16",
+                                           "loudness": False})
+            self.assertEqual("1 warn" in r["summary"], warn, r["summary"])
+            self.assertEqual("every asserted rule passes" in r["summary"], not warn, r["summary"])
+        desc = REG.get("deliver_check").description
+        self.assertIn("WARN", desc)
+        self.assertIn("never changes the outcome", desc)
+
+
 if __name__ == "__main__":
     unittest.main()
