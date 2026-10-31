@@ -122,6 +122,22 @@ Keep the two profiles apart.
 
 Numbers describe a cut and never judge it. Average shot length alone hides the spread: report it with the median and the coefficient of variation (Barry Salt's measurements across 1,520 sound features put median over average near 0.62 and the coefficient near 1.1). Shuffle the shot order and compare before reading structure into a curve; random orders show trends too. A beat the editor marks by hand outranks any measured value.
 
+## Reel fields
+
+An option for a 9:16 reel adds these fields to the template. The editor supplies the text fields verbatim; the assistant never writes them.
+
+| Field | What it is |
+|---|---|
+| `frame_0_image` | The picture on the first frame: clip id and time |
+| `text_hook` | The words on screen at frame 0, at most two short lines |
+| `why_line` | One line saying why a viewer stays, in the editor's words |
+| `sendable_line` | The one line a viewer could repeat to a friend |
+| `sendable_time` | Where `sendable_line` lands, in seconds from the start |
+| `ending` | How the reel closes: the clip and what it closes |
+| `tempo` | The cutting pace, in the `short-form` profile's terms |
+
+When the editor chooses between reel options, log the answer with the matching question key (see [Recording the answers](media-review-loop.md#recording-the-answers)).
+
 ## Hooks
 
 Practitioners report these; test them against the brief instead of applying them.
