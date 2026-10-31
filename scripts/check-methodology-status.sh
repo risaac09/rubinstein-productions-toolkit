@@ -4,7 +4,7 @@
 #
 # Covered: methodology/*.md, docs/**/*.md (any depth) and production/*.md (top
 # level only; not production/skills/ or the tool subfolders). Each must carry a
-# line `**Status:** <word>` in its first 25 lines, where <word> is one of:
+# line `**Status:** <word>` in its first 25 lines, outside code fences, where <word> is one of:
 #   operational   in use as written
 #   draft         working text; parts are open or unsettled
 #   aspirational  describes a plan or forecast, not current practice
@@ -30,7 +30,10 @@ files="$files
 $(find docs -name '*.md')" || { echo "cannot list every covered folder" >&2; bad=1; }
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if ! head -25 "$f" | grep -Eq '\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_/-]|$)'; then
+  if ! head -25 "$f" | awk '
+      /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+      !fence && /\*\*Status:\*\* (operational|draft|aspirational|superseded)([^A-Za-z0-9_\/-]|$)/ { found = 1 }
+      END { exit !found }'; then
     echo "no status header: $f" >&2
     bad=1
   fi

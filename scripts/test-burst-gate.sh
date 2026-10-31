@@ -65,6 +65,19 @@ branch placeholder docs/a.md "see /Us""ers/you/notes"
 run "G2 allows a placeholder user name" 0 "PASS G2 privacy"
 branch phsecret docs/a.md "see /Us""ers/you/notes and $TOKEN"
 run "G2 still catches a token on a line with a placeholder" 1 "G2 privacy: private-looking text"
+# A bare home path (end of line, before a quote or punctuation) is as private as one with a slash.
+i=0
+for tail in "" '"' "." ")"; do
+  i=$((i + 1))
+  branch "bare$i" docs/a.md "see /Us""ers/someone""else$tail"
+  run "G2 fails on a bare /Users path ending in '$tail'" 1 "G2 privacy: private-looking text"
+done
+branch barehome docs/a.md "cd /ho""me/alice"
+run "G2 fails on a bare /home path" 1 "G2 privacy: private-looking text"
+branch bareph docs/a.md "set HOME=\"/Us""ers/you\" and /ho""me/u"
+run "G2 allows bare placeholder home paths" 0 "PASS G2 privacy"
+branch notpath docs/a.md "the /Us""ersGuide page"
+run "G2 ignores a word that merely starts like a home path" 0 "PASS G2 privacy"
 printf 'Acme Widgets\n# comment\n' > "$TMP/deny"
 branch client docs/a.md "worked with acme widgets"
 out="$(cd "$R" && BURST_GATE_DENYLIST="$TMP/deny" "$G" --base main --tests true 2>&1)"; rc=$?
@@ -114,6 +127,24 @@ branch testsfail docs/a.md "plain"
 out="$(cd "$R" && "$G" --base main --tests 'echo boom; exit 3' 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'G3 tests: exit 3' && printf '%s' "$out" | grep -q boom && ok "G3 fails and shows the output tail" || bad "G3 (rc=$rc)"
 run "G3 skip is reported" 0 "SKIP G3" --skip G3
+
+# G3's default set: a listed test script that is not executable fails, and says which.
+git -C "$R" checkout -q main; git -C "$R" checkout -q -b g3exec
+for t in check-doc-links check-methodology-status check-voice check-licence-scope test-instrument-score; do
+  printf '#!/bin/sh\nexit 0\n' > "$R/scripts/$t.sh"; chmod +x "$R/scripts/$t.sh"
+done
+for t in test-check-voice test-check-licence-scope test-methodology-status test-changelog-fragments test-burst-gate; do
+  printf '#!/bin/sh\nexit 0\n' > "$R/scripts/$t.sh"; chmod +x "$R/scripts/$t.sh"
+done
+mkdir -p "$R/production/tests"; printf '#!/bin/sh\nexit 0\n' > "$R/production/tests/test-offload.sh"; chmod +x "$R/production/tests/test-offload.sh"
+printf 'import unittest\nclass T(unittest.TestCase):\n    def test_ok(self): pass\n' > "$R/production/tests/test_stub.py"
+printf 'Changed g3exec.\n' > "$R/changelog.d/2026-10-16-g3exec.md"
+git -C "$R" add -A; git -C "$R" commit -qm g3exec
+out="$(cd "$R" && "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q 'PASS G3 tests' && ok "G3 default set passes when every listed script is executable" || bad "G3 default (rc=$rc): $out"
+chmod -x "$R/scripts/test-methodology-status.sh"; git -C "$R" commit -qam noexec
+out="$(cd "$R" && "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'not executable: scripts/test-methodology-status.sh' && ok "G3 fails and names a non-executable test script" || bad "G3 noexec (rc=$rc): $out"
 
 # A JSON declaration, when jq is present.
 if command -v jq >/dev/null; then
