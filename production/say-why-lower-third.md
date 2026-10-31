@@ -17,7 +17,7 @@ One template, two shapes. A landscape frame (1920x1080) puts the plate bottom-le
 
 ## Motion
 
-The spec is `motion.json` beside the template; `python3 -m rpresolve.motionlint tools/ograf-render/templates/say-why-lower-third/motion.json` (from `production/`) passes it. Three curves, all inside the signed bans (no elastic, bounce or back, no control point outside 0 to 1): `out` (0.16, 1, 0.3, 1), `exhale` (0.45, 0, 0.2, 1), `inOut` (0.65, 0, 0.35, 1).
+The spec is `motion.json` beside the template; `python3 -m rpresolve.motionlint ../tools/ograf-render/templates/say-why-lower-third/motion.json` (from `production/`) passes it. Three curves, all inside the signed bans (no elastic, bounce or back, no control point outside 0 to 1): `out` (0.16, 1, 0.3, 1), `exhale` (0.45, 0, 0.2, 1), `inOut` (0.65, 0, 0.35, 1).
 
 | Segment | Frames at 23.976 | What moves |
 |---|---|---|
