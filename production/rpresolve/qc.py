@@ -73,6 +73,14 @@ pass, no extra decode:
     hook_caption    a sidecar <stem>.srt's first cue starts by hook_caption_s;
                     SKIP with no sidecar (burnt-in captions need OCR)
 
+Tall (9:16) renders add two more WARN-only rows:
+    hook_text       <stem>.hook.json beside the file or in review-srt/ (the
+                    vertcut sidecar) covers frame 0; WARN when it does not,
+                    SKIP with no sidecar
+    speech_onset    first speech by speech_onset_s, or a hook covers frame 0;
+                    onset from --words, else the leading silence of the
+                    detect pass (silence_noise_db)
+
 A row is {check, status, found, expected, source[, note]}; status is PASS,
 FAIL, WARN or SKIP. WARN sorts after FAIL, counts on its own and never
 changes the result status (or the exit code).
@@ -129,6 +137,7 @@ THRESHOLDS = {
     "hook_sound_s": 0.5,            # portrait: silence from 0 past this is a WARN
     "tail_s": 0.7,                  # portrait: the last this-many seconds frozen or silent
     "hook_caption_s": 1.5,          # portrait: the first sidecar cue should start by here
+    "speech_onset_s": 1.0,          # tall: first speech by here, or a hook covers frame 0
 }
 
 
@@ -668,6 +677,41 @@ def _hook_rows(path, th, dur, black, frozen, gaps, has_video, has_audio):
     return rows
 
 
+def _hook_sidecar(path):
+    """The vertcut <stem>.hook.json beside the file or in review-srt/: (found, covers frame 0)."""
+    d, stem = os.path.split(os.path.splitext(path)[0])
+    for folder in (d, os.path.join(d, "review-srt")):
+        p = os.path.join(folder, stem + ".hook.json")
+        if os.path.isfile(p):
+            try:
+                with open(p, encoding="utf-8") as f:
+                    h = json.load(f)
+                return True, float(h["start"]) <= 0.1 and float(h["end"]) > float(h["start"])
+            except (OSError, ValueError, KeyError, TypeError):
+                return True, False
+    return False, False
+
+
+def _tall_rows(path, th, gaps, words, has_audio):
+    """hook_text and speech_onset for a 9:16 render; WARN or SKIP, never FAIL."""
+    found, covers = _hook_sidecar(path)
+    rows = [_hook_row("hook_text", covers if found else None,
+                      "hook covers frame 0" if covers else "sidecar does not cover frame 0" if found
+                      else "no sidecar", "a hook.json from frame 0",
+                      None if found else "vertcut --hook-text writes <stem>.hook.json")]
+    if has_audio:
+        lim = float(th["speech_onset_s"])
+        if words is not None:
+            onset = min((w["start"] for w in words), default=None)
+        else:  # shortcut: a leading gap under hook_sound_s is not seen, so it counts as speech at 0
+            lead = next(((a, d) for a, d in gaps if a <= 0.1), None)
+            onset = 0.0 if lead is None else None if lead[1] is None else lead[0] + lead[1]
+        ok = covers or (onset is not None and onset <= lim + 1e-9)
+        rows.append(_hook_row("speech_onset", ok, "no speech" if onset is None else f"first {'speech' if words is not None else 'sound'} at {_at(onset)}",
+                              f"by {lim:g}s, or a hook from frame 0"))
+    return rows
+
+
 def _gap(start, duration):
     return f"{_at(start)} for {_at(duration)}" if duration is not None else f"{_at(start)} to the end"
 
@@ -709,7 +753,8 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
         # Loudness is read once, below, from the same target.
         for r in dc.check(path, dest, fps=fps, size=size, loudness=False,
                           folders=config_folders)["checks"]:
-            if r["check"] not in ("loudness", "true_peak", "safe_zone"):  # qc has its own safe_zone
+            if r["check"] not in ("loudness", "true_peak", "safe_zone") and not (
+                    r["check"] == "fps_floor" and _is_social(dest)):  # qc has its own safe_zone and social_fps
                 rows.append({**r, "source": "deliver_check"})
     else:
         rows.append(dict(dc._row("deliver_check", None, "not run", "a destination (--dest)"),
@@ -799,6 +844,8 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
     rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
     if portrait:
         rows += _hook_rows(path, th, dur, black, frozen, gaps, has_video, has_audio)
+    if has_video and safezone.tall(vid.get("width") or 0, vid.get("height") or 0):
+        rows += _tall_rows(path, th, gaps, words, has_audio)
 
     order = {FAIL: 0, WARN: 1, PASS: 2, SKIP: 3}
     rows.sort(key=lambda r: order[r["status"]])  # stable: each source keeps its own order

@@ -9,6 +9,7 @@ Run: /usr/bin/python3 -m unittest production.tests.test_qc_offline -v
 """
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -162,6 +163,71 @@ class Offline(unittest.TestCase):
         out = subprocess.run([sys.executable, str(WORKFLOW), "qc", self.f["fps24"], "--json"],
                              capture_output=True, text=True)
         self.assertIn('"sha256"', out.stdout)
+
+@unittest.skipUnless(_have_ffmpeg(), "ffmpeg missing")
+class TallRows(unittest.TestCase):
+    """hook_text and speech_onset: WARN or SKIP only, on a 9:16 render."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.dir = cls._tmp.name
+        for name, size, onset in (("early", "108x192", 400), ("late", "108x192", 1600),
+                                  ("wide", "192x108", 1600)):
+            out = os.path.join(cls.dir, name + ".mp4")
+            subprocess.run(
+                [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-filter_complex",
+                 f"testsrc2=s={size}:r=30:d=4[v];sine=f=440:r=48000:d=4,volume='if(lt(t,{onset / 1000}),0,0.3)':eval=frame[a]",
+                 "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                 "-t", "4", out], stdin=subprocess.DEVNULL, check=True)
+        cls.p = {n: os.path.join(cls.dir, n + ".mp4") for n in ("early", "late", "wide")}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def hook(self, name, folder=None):
+        folder = folder or self.dir
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name + ".hook.json"), "w") as f:
+            json.dump({"text": "x", "source": "s", "box": [0, 0, 1, 1], "start": 0, "end": 1.2}, f)
+
+    def check(self, name):
+        r = qc.run(self.p[name], SOCIAL)
+        self.assertNotIn(qc.FAIL, [c["status"] for c in r["checks"] if c["check"] in ("hook_text", "speech_onset")])
+        return r
+
+    def test_early_onset_passes(self):
+        self.assertEqual(_row(self.check("early"), "speech_onset")["status"], qc.PASS)
+
+    def test_late_onset_warns_with_the_measurement(self):
+        row = _row(self.check("late"), "speech_onset")
+        self.assertEqual(row["status"], qc.WARN)
+        self.assertIn("1.6", row["found"])
+
+    def test_late_onset_with_a_hook_passes(self):
+        self.hook("late", os.path.join(self.dir, "review-srt"))
+        self.addCleanup(os.remove, os.path.join(self.dir, "review-srt", "late.hook.json"))
+        r = self.check("late")
+        self.assertEqual(_row(r, "speech_onset")["status"], qc.PASS)
+        self.assertEqual(_row(r, "hook_text")["status"], qc.PASS)
+
+    def test_no_sidecar_skips_hook_text(self):
+        self.assertEqual(_row(self.check("early"), "hook_text")["status"], qc.SKIP)
+
+    def test_words_file_sets_the_onset(self):
+        r = qc.run(self.p["early"], SOCIAL, words=[{"word": "a", "start": 2.0, "end": 2.4}])
+        self.assertEqual(_row(r, "speech_onset")["status"], qc.WARN)
+
+    def test_landscape_skips_both(self):
+        names = [c["check"] for c in qc.run(self.p["wide"], SOCIAL)["checks"]]
+        self.assertNotIn("hook_text", names)
+        self.assertNotIn("speech_onset", names)
+
+    def test_social_shows_social_fps_not_fps_floor(self):
+        names = [c["check"] for c in self.check("early")["checks"]]
+        self.assertIn("social_fps", names)
+        self.assertNotIn("fps_floor", names)
 
 
 if __name__ == "__main__":
