@@ -10,7 +10,7 @@ from . import tools_offline, tools_read, tools_write
 
 INSTRUCTIONS = """\
 Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
-- detect, survey, measure, endcheck, selects, reframe_plan, deliver_check, deliver_captions, sync_measure and trim_review never connect to Resolve; paths must be absolute.
+- detect, survey, measure, endcheck, selects, reframe_plan, deliver_check, deliver_captions, sync_measure, trim_review, shoot_table, qc, pipeline_proof, deliver_manifest, perceive, audio_report and overlay_check never connect to Resolve; paths must be absolute.
 - Before any Resolve tool, call resolve_status. Resolve is edited live by a person: never assume which project is open.
 - Every write tool must name the open project exactly (project, and project_id when you have it).
 - Write tools default to a dry run. Show the plan, then run for real with the plan_sha it returned.
