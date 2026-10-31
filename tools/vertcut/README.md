@@ -76,6 +76,8 @@ starting at 01:00:00:00, for instance. The sign is whichever direction lands the
 clip: render one row with `--only`, watch it, and flip to `--offset -3600` if it
 came out an hour early. Do not assume; check one clip first.
 
+To take a worksheet down the Resolve route instead (`reframe_plan`, `cut`, `create_captions`, which is where client-visible work belongs), `tools/vertcut/vertcut manifest SOURCE.mov clips.tsv --words SOURCE.json -o manifest.json` writes it as a version 2 cut manifest (`--offset` and `--fps` as above; the output must sit outside any repository). It reads `HH:MM:SS:FF` rows the NTSC-correct way; `vertcut cut` still adds `FF / fps` to whole seconds.
+
 ## 3. Cut
 
 ```
