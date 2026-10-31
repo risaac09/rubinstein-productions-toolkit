@@ -282,12 +282,17 @@ class WordIndexTest(unittest.TestCase):
         for i in range(400):
             t += rng.choice([0.0, 0.1, 0.3, 0.9])
             out.append(W(f"w{i}", round(t, 3), round(t + rng.choice([0.1, 0.25, 0.6]), 3)))
+        out[5:5] = [{"word": " n", "start": None, "end": 1.0}, {"word": " n", "start": 2.0, "end": None},
+                    {"word": " n", "start": float("nan"), "end": 3.0}, {"word": " n", "start": 4.0, "end": float("nan")}]
         rng.shuffle(out)  # input order is not time order
         return out
 
     def test_midpoint_and_contained_match_the_scans(self):
-        words, rng = self.words(), random.Random(11)
-        idx = tr.WordIndex(words)
+        allw, rng = self.words(), random.Random(11)
+        words = [w for w in allw if all(isinstance(w[k], float) and math.isfinite(w[k])
+                                        for k in ("start", "end"))]  # what the old scans could place
+        self.assertEqual(len(allw) - len(words), 4)
+        idx = tr.WordIndex(allw)
         for _ in range(300):
             a = round(rng.uniform(-1, 150), 3)
             b = round(a + rng.choice([0.0, 0.2, 1.5, 12.0]), 3)
@@ -304,6 +309,8 @@ class WordIndexTest(unittest.TestCase):
     def test_pacing_cut_words_matches_the_old_scan(self):
         from rpresolve import pacing
         words = self.words()
+        clean = [w for w in words if all(isinstance(w[k], float) and math.isfinite(w[k])
+                                         for k in ("start", "end"))]
 
         def old(words, spans):
             out, rec = [], 0.0
@@ -327,7 +334,7 @@ class WordIndexTest(unittest.TestCase):
             t += rng.uniform(0, 0.5)
             spans.append({"in": round(t, 3), "out": round(t + rng.uniform(0.2, 2), 3),
                           "audio_lead": rng.choice([0, 0.05]), "audio_tail": rng.choice([0, 0.05])})
-        self.assertEqual(pacing.cut_words(words, spans), old(words, spans))
+        self.assertEqual(pacing.cut_words(words, spans), old(clean, spans))
 
 
 if __name__ == "__main__":

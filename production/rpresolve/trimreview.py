@@ -39,6 +39,7 @@ with no TSV read or acted on, it retires to markers only, with a one-line
 note in resolve-template-spec.md.
 """
 
+import math
 import re
 from bisect import bisect_left
 
@@ -125,8 +126,11 @@ class WordIndex:
 
     def __init__(self, words):
         self.words = words
-        self._mid = sorted((cutlist.midpoint(w), i) for i, w in enumerate(words))
-        self._start = sorted((w["start"], i) for i, w in enumerate(words))
+        # a word with a null or NaN time never fell in a range under the old scans: leave it out
+        ok = [i for i, w in enumerate(words) if all(
+            isinstance(w.get(k), (int, float)) and math.isfinite(w[k]) for k in ("start", "end"))]
+        self._mid = sorted((cutlist.midpoint(words[i]), i) for i in ok)
+        self._start = sorted((words[i]["start"], i) for i in ok)
 
     def midpoint_in(self, a, b=None):
         """Words whose midpoint falls in [a, b); b None is no upper bound."""
