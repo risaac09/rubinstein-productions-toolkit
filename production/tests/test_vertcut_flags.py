@@ -6,7 +6,9 @@ exist so a destination that wants -14 LUFS is not a source edit.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
+import hashlib
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -176,6 +178,93 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(p.returncode, 1)
         self.assertIn("inside a git work tree", p.stderr)
         self.assertFalse(os.path.exists(self.out))
+
+    # --- the batch review gate: over 30 minutes, or a replacement, needs a gate-packet answered go
+    def long_tsv(self):
+        path = os.path.join(self.tmp.name, "long.tsv")   # 100 minutes of spans, 100 / 3 = 33 min estimated
+        Path(path).write_text("".join("%d\t%d\t%d\tpart %d\n" % (i, i * 600, i * 600 + 600, i) for i in range(10)))
+        return path
+
+    def make_gate(self, answer="go", sub="gate", runtime=6000.0, cuts=None):
+        cuts_sha = hashlib.sha256(Path(cuts or self.long_tsv()).read_bytes()).hexdigest()
+        d = os.path.join(self.tmp.name, sub)
+        os.makedirs(d)
+        packet = os.path.join(d, "packet.json")
+        Path(packet).write_text('{"version": 1, "files": []}')
+        sha = hashlib.sha256(Path(packet).read_bytes()).hexdigest()
+        gate = os.path.join(d, "gate.json")
+        Path(gate).write_text(json.dumps({"version": 1, "project": "P-0001", "packet_sha256": sha,
+                                          "total_runtime_s": runtime,
+                                          "inputs": [{"path": "cuts.tsv", "sha256": cuts_sha}]}))
+        log = os.path.join(d, "events.jsonl")
+        line = {"ts": "2026-10-31T10:00:00Z", "project": "P-0001", "step": "gate", "options": {},
+                "choice": answer, "device": "desktop", "stimulus": sha}
+        Path(log).write_text(json.dumps(line) + "\n" if answer else "")
+        return gate, log
+
+    def dry(self, tsv, *extra):
+        cmd = [sys.executable, str(CUT), self.src, tsv, "-o", self.out, "--no-captions", *self.NAME, "--dry-run", *extra]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def test_a_long_batch_is_refused_with_the_gate_packet_command(self):
+        p = self.dry(self.long_tsv())
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("estimated 33 min is over the 30 min gate", p.stderr)
+        self.assertIn("resolve_workflow.py gate-packet --out GATE_DIR --project P-0000 --source %s --cuts %s"
+                      % (self.src, self.long_tsv()), p.stderr)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_a_short_batch_prints_its_estimate_and_needs_no_gate(self):
+        p = self.dry(self.tsv)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("estimated 0.0 min to cut", p.stdout)
+
+    def test_a_go_outside_the_tree_passes_the_gate(self):
+        gate, log = self.make_gate()
+        p = self.dry(self.long_tsv(), "--reviewed", gate, "--review-log", log)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("estimated 33.3 min to cut", p.stdout)
+
+    def test_a_gate_without_a_go_is_refused(self):
+        for answer in (None, "hold"):
+            with self.subTest(answer=answer):
+                gate, log = self.make_gate(answer, sub="gate-%s" % answer)
+                p = self.dry(self.long_tsv(), "--reviewed", gate, "--review-log", log)
+                self.assertEqual(p.returncode, 1)
+                self.assertIn("no go for this gate-packet", p.stderr)
+
+    def test_a_gate_that_covers_less_than_the_batch_is_refused(self):
+        gate, log = self.make_gate(runtime=600.0)
+        p = self.dry(self.long_tsv(), "--reviewed", gate, "--review-log", log)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("covers 600 s of clips", p.stderr)
+
+    def test_a_gate_built_from_other_cuts_is_refused(self):
+        gate, log = self.make_gate(cuts=self.tsv)
+        p = self.dry(self.long_tsv(), "--reviewed", gate, "--review-log", log)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("not built from this cuts file", p.stderr)
+
+    def test_a_gate_or_log_inside_a_repository_is_refused(self):
+        gate, log = self.make_gate()
+        repo = os.path.join(self.tmp.name, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        shutil.copy(os.path.join(os.path.dirname(gate), "packet.json"), repo)
+        inside = (shutil.copy(gate, repo), shutil.copy(log, repo))
+        for gate_arg, log_arg in ((inside[0], log), (gate, inside[1])):
+            with self.subTest(gate=gate_arg, log=log_arg):
+                p = self.dry(self.long_tsv(), "--reviewed", gate_arg, "--review-log", log_arg)
+                self.assertEqual(p.returncode, 1)
+                self.assertIn("inside a git work tree", p.stderr)
+
+    def test_an_existing_output_name_triggers_the_gate(self):
+        os.makedirs(self.out)
+        Path(self.out, "SW001_Guest_01_a-test_9x16.mp4").write_bytes(b"x")
+        p = self.dry(self.tsv)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("SW001_Guest_01_a-test_9x16.mp4 already exists", p.stderr)
+        gate, log = self.make_gate(runtime=2.0, cuts=self.tsv)
+        self.assertEqual(self.dry(self.tsv, "--reviewed", gate, "--review-log", log).returncode, 0)
 
 
 if __name__ == "__main__":
