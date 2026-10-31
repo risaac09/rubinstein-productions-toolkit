@@ -26,7 +26,7 @@ def add_arguments(p):
                    help="Skip the loudness read (it reads the whole file)")
     p.add_argument("--ledger-row", metavar="PATH",
                    help="Also write a release-ledger row stub (one JSON line, keyed to the house "
-                   "file name) to PATH; refused inside any git tree")
+                   "file name) to PATH, replacing any file there (one row per file); refused inside any git tree")
     p.add_argument("--json", action="store_true", help="Print the result as JSON")
 
 
@@ -55,17 +55,17 @@ def run(args):
     except (dc.CheckError, deliver.DeliverError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-    if args.ledger_row:
-        try:
-            line = dc.ledger_line(dc.ledger_row(r, sha256=dc.file_sha256(args.file)))
-            paths.write_private(args.ledger_row, line, any_git_tree=True)
-        except (OSError, ValueError) as e:
-            print(f"ERROR: {e}", file=sys.stderr)
-            return 1
     if args.json:
         print(json.dumps(r, indent=1, default=str))
     else:
         sys.stdout.write(dc.format_report(r))
+    if args.ledger_row:  # after the report, so a write error never hides the result
+        try:
+            line = dc.ledger_line(dc.ledger_row(r, sha256=dc.file_sha256(args.file)))
+            paths.write_private(args.ledger_row, line, any_git_tree=True)
+        except (OSError, ValueError) as e:
+            print(f"ERROR: ledger row not written: {e}", file=sys.stderr)
+            return 1
     return 0 if r["status"] == "pass" else 1
 
 

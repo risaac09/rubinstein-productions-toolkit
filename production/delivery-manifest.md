@@ -19,7 +19,7 @@ Each destination renders into its own subfolder of the delivery folder, named by
 
 The manifest lives at the root of the delivery folder, beside the destination subfolders and not inside one. `deliver_check` reports a file in a folder no destination owns as SKIP on its folder row, which is the right result for the manifest. The manifest file name is `manifest.md`. Delivery folders never sit inside a git working tree; the queue refuses it.
 
-`deliver-check --ledger-row PATH` also writes a release-ledger row stub: one JSON line with the house file name as `key`, the destination, the check status and counts, the file's sha256 and the check time, and empty `published_url`, `publish_date` and `approval` for a person to fill after publishing. A file whose name breaks the naming rule gets `key: null` and a `key_reason`, never a guessed key. It is a stub: the ledger format is not fixed, and `stub: true` marks every row. The path is refused inside any git working tree, and the command writes nothing without the flag.
+`deliver-check --ledger-row PATH` also writes a release-ledger row stub: one JSON line with the house file name as `key`, the destination, the check status and counts, the file's sha256 and the check time, and empty `published_url`, `publish_date` and `approval` for a person to fill after publishing. A file whose name breaks the naming rule gets `key: null` and a `key_reason`, never a guessed key. It is a stub: the ledger format is not fixed, and `stub: true` marks every row. The file at PATH is replaced, so give each checked file its own path. The path is refused inside any git working tree, and the command writes nothing without the flag.
 
 ## The template
 
