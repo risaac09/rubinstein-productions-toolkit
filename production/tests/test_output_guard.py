@@ -21,7 +21,6 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rpresolve import cmd_detect, cmd_endcheck, cmd_selects, cmd_shoot_table, transcribe as tr  # noqa: E402
-from rpresolve import proof  # noqa: E402
 from rpresolve.paths import OutputRefused  # noqa: E402
 
 SEGS = {"segments": [{"start": 0.0, "end": 1.0, "text": "hello"}]}
@@ -114,6 +113,10 @@ class OutputGuard(unittest.TestCase):
         self.assertIn("inside a git working tree", err)
 
     def test_proof_write_json(self):
+        try:
+            from rpresolve import proof
+        except ImportError:
+            self.skipTest("numpy not installed")
         with self.assertRaises(OutputRefused):
             proof.write_json({"a": 1}, str(self.repo / "p.json"))
         self.assertFalse((self.repo / "p.json").exists())
