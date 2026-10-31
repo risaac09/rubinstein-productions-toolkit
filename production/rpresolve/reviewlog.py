@@ -90,8 +90,11 @@ def _utc(t):
 
 
 def append(project_dir, project, step, device, choice=None, reason=None, key=None, question=None,
-           noise_type=None, repeat_of=None, warn=None):
-    """Validate and append one line; returns the line (a dict). Raises Refused."""
+           noise_type=None, repeat_of=None, warn=None, review_copy=None):
+    """Validate and append one line; returns the line (a dict). Raises Refused.
+    review_copy: the review-copy file an approve, go or hold line is about; the
+    line records its name and sha256 (what deliver-check --review-log reads,
+    so a later hold withdraws an earlier approve)."""
     from rpresolve import paths
     warn = warn or (lambda m: print("WARN: " + m, file=sys.stderr))
     if not PROJECT_RE.fullmatch(project or ""):
@@ -102,6 +105,8 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
         raise Refused(f"device {device!r} is not one of {', '.join(DEVICES)}")
     if choice is None and not reason:
         raise Refused("give a choice, a reason, or both")
+    if review_copy and not os.path.isfile(review_copy):
+        raise Refused(f"review copy {review_copy} is not a file")
     options, stimulus, key_noise = ({}, None, None) if key is None else load_key(key)
     if choice is not None:
         ok = choice in options or choice in NON_LABEL or (not options and choice in RATINGS)
@@ -123,7 +128,9 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     line = {"ts": _utc(t), "project": project, "step": step, "options": options, "choice": choice,
             "reason": reason, "device": device}
     for k, v in (("question", question), ("noise_type", noise_type or key_noise),
-                 ("stimulus", stimulus), ("repeat_of", repeat_of)):
+                 ("stimulus", stimulus), ("repeat_of", repeat_of),
+                 ("review_copy", review_copy and os.path.basename(review_copy)),
+                 ("review_sha256", review_copy and _sha256(review_copy))):
         if v:
             line[k] = v
     os.makedirs(os.path.dirname(log), exist_ok=True)

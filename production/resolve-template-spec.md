@@ -690,6 +690,8 @@ Delivery waits for the client's approval of a review copy. The gate sits after t
 
 **What counts as approval.** A written statement from the approver, from an address the approver controls, that names the review copy by file name, carries its SHA-256 checksum and says it is approved. The checksum ties the approval to one file. A spoken approval never stands alone: it is noted, then confirmed in writing before anything is queued. Silence, a thumbs-up in passing, and "looks good" about a different version are not approval. An approval covers exactly one review copy: any change to the picture, the words or the credits after approval returns to the gate with a new review copy.
 
+**Logging the approval.** The written statement stays the record. A person may also log it in the project's review log: `review-log` writes an `approve` (or `go`) line for the review copy, recording the copy's name and SHA-256. The route is: render the review copy, log the approve line with the review copy, run `deliver-check --review-log PATH` on each deliverable, then pass the same SHA-256 to `deliver-manifest --review-sha256`. The `approval` row passes when an approve or go line names the deliverable's house stem (the name without aspect and extension) and a review copy, or names the deliverable's own SHA-256. It is a WARN with the found and expected values when nothing matches or the copy beside the file differs from the logged SHA-256, a SKIP without the flag, and it never fails the check or changes the exit code. Whether a logged line counts as the written approval is not settled; the row only reports what the log says.
+
 **The record.** One record per approved cut, kept with the project and not in this repository:
 
 | Field | Content |
