@@ -1,0 +1,1 @@
+shots refuses files over 1 h for the dissolve pass (--no-dissolves for cuts only), dxmetrics.decode refuses ranges over 1 h, and lutlab balance shrinks each still as it is read instead of holding eight full-resolution frames.

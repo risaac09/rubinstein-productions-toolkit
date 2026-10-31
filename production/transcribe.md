@@ -1,5 +1,7 @@
 # transcribe
 
+**Status:** operational.
+
 `python3 -m rpresolve.transcribe MEDIA --backend NAME` turns speech into the
 Whisper-shaped JSON the rest of `rpresolve` already reads. Run it from
 `production/`. Offline and stdlib only; a backend brings its own engine.

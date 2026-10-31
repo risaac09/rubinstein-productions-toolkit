@@ -50,6 +50,7 @@ Tools that work on anyone's footage, each with tests.
 ### `docs/`
 - **[Field Guide](docs/field-guide/index.md)**: a reading order and a first working session for writers, producers and evaluators. Also published as the repository's GitHub Pages site.
 - **[Deliverable portability](docs/deliverable-portability.md)** (draft): how to keep document and deck quality when the model changes.
+- **[Fork guide](docs/fork-guide.md)** (draft): for someone who forks this repo. What to keep or drop, how to supply your own deployment list for the kits, the licence split, the permission rules, and what assumes macOS or Resolve.
 - **[iPad lane](docs/ipad-lane.md)** (draft): what an iPad can do with no Mac at each stage from ingest to QC, what is verified, and the one-hour on-device probe that settles the rest.
 
 ### `scripts/`

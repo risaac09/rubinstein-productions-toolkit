@@ -1,6 +1,6 @@
 # Platform Specs
 
-> **Status:** accepted 2026-10-16. The rows restate what the deliver tooling already enforces.
+> **Status:** operational, accepted 2026-10-16. The rows restate what the deliver tooling already enforces.
 
 One row per destination key in `production/resolve-config.json`, and the config has eight. A destination class is a kind of place a deliverable goes, and each row names the class its key belongs to. Where two keys share a class, each still gets its own row, because `queue_render` and `deliver_check` apply that key's numbers. A test in `production/tests/test_platform_specs.py` fails when a key in the config has no row here. The source of every value is the [Deliver section of the Resolve spec](resolve-template-spec.md#deliver) and the config file; this document does not replace either. If they disagree, the config wins.
 

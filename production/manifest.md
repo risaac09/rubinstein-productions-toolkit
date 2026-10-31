@@ -1,6 +1,6 @@
 # Cut manifest: versions 1 and 2
 
-> **Status:** version 2 added 2026-10-22. Version 1 is read forever; nothing rewrites a version 1 file.
+> **Status:** operational, version 2 added 2026-10-22. Version 1 is read forever; nothing rewrites a version 1 file.
 
 A cut manifest is the JSON file `cut`, `endcheck`, `trim_review`, `reframe_plan`, `pacing` and `interchange` share. It names the footage, the frame rate and, per clip, the spans that play in order. The code is `rpresolve/cutlist.py`.
 

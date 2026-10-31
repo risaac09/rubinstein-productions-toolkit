@@ -1,5 +1,7 @@
 # Media lane: colour, edit and sound in one page
 
+**Status:** operational.
+
 What each tool in `production/` does for stills and video, in the order a job
 uses them, and what is still a hand step. Every tool here runs offline on a
 Mac; most of the offline half also runs on Linux CI. Nothing here sends media
