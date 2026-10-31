@@ -1,0 +1,1 @@
+Fix cutlist: endcheck no longer crashes on an out-point past the end of the audio, HH:MM:SS:FF at NTSC rates converts through the captions parser, and the audio stream is chosen as 0:a:N like the other tools.

@@ -38,7 +38,7 @@ import subprocess
 import sys
 import tempfile
 
-from . import captions
+from . import captions, paths
 
 DEFAULT_MLX_MODEL = "mlx-community/whisper-large-v3-turbo"  # roadmap D9; vertcut transcribe's default too
 
@@ -223,6 +223,11 @@ def run(args):
     try:
         if args.backend != "fake" and not os.path.isfile(args.media):
             raise TranscribeError(f"no such media file: {args.media}")
+        outs = [p for p in (args.out, args.srt, args.txt) if p]
+        for p in outs:  # before the backend runs: no work wasted on a refused path
+            problem = paths.out_problem(p, any_git_tree=True)
+            if problem:
+                raise TranscribeError(problem)
         segs = run_backend(args.backend, args.media, args.language,
                            model=args.model, source=args.source)
         if not segs:
@@ -232,8 +237,7 @@ def run(args):
         for path, text in ((args.out, doc),
                            (args.srt, to_srt(segs)), (args.txt, to_txt(segs))):
             if path:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(text)
+                paths.write_private(path, text, any_git_tree=True)
         if not args.out:
             sys.stdout.write(doc)
     except (TranscribeError, OSError) as e:
