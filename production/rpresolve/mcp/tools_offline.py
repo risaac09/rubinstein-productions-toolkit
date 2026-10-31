@@ -671,9 +671,9 @@ def register(registry):
         "input colour spaces, LUTs and grades per project, as a Markdown report (and JSON). "
         "Never connects to Resolve, so it is safe while Resolve is open. Can take minutes; "
         "returns the report's path.",
-        _obj({"projects": {"type": "array", "items": {"type": "string"},
+        _obj({"projects": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "^[^-]"},
                            "description": "Only these project names (default: all)."},
-              "tree_labels": {"type": "array", "items": {"type": "string"},
+              "tree_labels": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "^[^-]"},
                               "description": "Only projects under these library labels."},
               "out": _out_prop("the Markdown report (the JSON goes beside it)"),
               "json": {"type": "boolean", "default": True,
