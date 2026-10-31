@@ -117,6 +117,11 @@ g1() {
 }
 
 # -------------------------------------------------------------- G2 privacy
+# Placeholder user names in examples are fine: blank only that match, so a real
+# secret on the same line is still scanned.
+scan_lines() {
+  added_lines | sed -E 's#[/]Users[/](you|me|name|user|username|example|yourname|someone)[/]#<ph>#g'
+}
 # Patterns are written so their own source text does not match them: a
 # bracket around one character, so this file passes its own scan.
 g2() {
@@ -134,16 +139,16 @@ AKIA[0-9A-Z]{16}
 xox[abprs]-[A-Za-z0-9-]{10,}
 -----BEGIN [A-Z ]*PRIVATE KEY-----'
   pf="$(mktemp)"; printf '%s\n' "$pats" > "$pf"
-  hits="$(added_lines | grep -E -f "$pf" || true)"
+  lines="$(scan_lines)"
+  hits="$(printf '%s\n' "$lines" | grep -E -f "$pf" || true)"
   if [ -n "${BURST_GATE_DENYLIST:-}" ]; then
     [ -f "$BURST_GATE_DENYLIST" ] || { rm -f "$pf"; fail "G2 privacy: BURST_GATE_DENYLIST '$BURST_GATE_DENYLIST' not found"; return; }
     grep -v '^[[:space:]]*\(#.*\)\?$' "$BURST_GATE_DENYLIST" > "$pf"
     hits="$hits
-$(added_lines | grep -E -i -f "$pf" || true)"
+$(printf '%s\n' "$lines" | grep -E -i -f "$pf" || true)"
   fi
   rm -f "$pf"
-  # Placeholder user names in examples are fine.
-  hits="$(printf '%s\n' "$hits" | grep -v -E '[/]Users[/](you|me|name|user|username|example|yourname|someone)[/]' | grep -v '^$' || true)"
+  hits="$(printf '%s\n' "$hits" | grep -v '^$' || true)"
   if [ -n "$hits" ]; then
     fail "G2 privacy: private-looking text in added lines (log as a privacy event):"
     printf '%s\n' "$hits" | cut -c1-160 | sed 's/^/       /'
