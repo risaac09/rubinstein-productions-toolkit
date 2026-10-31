@@ -17,17 +17,16 @@ import re
 import sys
 import time
 
+from rpresolve.tastedistill import NON_LABEL, RATINGS  # the reader's own sets
+
 STEPS = ("triage", "look", "grade", "edit", "sound", "gate")
 DEVICES = ("desktop", "phone", "ipad")
-NON_LABEL = ("none", "hold", "approve", "go")
-RATINGS = ("1", "2", "3", "4", "5")
 PROJECT_RE = re.compile(r"^[A-Z]+-[0-9]+$")
 
 # Question keys the taste profile groups by. The reel keys come from the reel
 # fields in story-options.md; a key outside this list is logged with a WARN.
 QUESTIONS = ("warmth", "skin", "contrast", "pace", "music_level",
              "reel_option", "opening", "hook_text", "crop_x", "caption_style", "ending", "tempo")
-REEL_FIELDS = ("frame_0_image", "text_hook", "why_line", "sendable_line", "sendable_time", "ending", "tempo")
 
 
 class Refused(ValueError):
@@ -95,7 +94,7 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     """Validate and append one line; returns the line (a dict). Raises Refused."""
     from rpresolve import paths
     warn = warn or (lambda m: print("WARN: " + m, file=sys.stderr))
-    if not PROJECT_RE.match(project or ""):
+    if not PROJECT_RE.fullmatch(project or ""):
         raise Refused(f"project id {project!r} must look like P-0001 (letters, a hyphen, digits); no names")
     if step not in STEPS:
         raise Refused(f"step {step!r} is not one of {', '.join(STEPS)}")
@@ -128,9 +127,11 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
         if v:
             line[k] = v
     os.makedirs(os.path.dirname(log), exist_ok=True)
-    fd = os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    fd = os.open(log, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
     try:
-        os.write(fd, (json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
+        size = os.fstat(fd).st_size
+        lead = b"\n" if size and os.pread(fd, 1, size - 1) != b"\n" else b""  # a torn last line stays its own line
+        os.write(fd, lead + (json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
     finally:
         os.close(fd)
     return line

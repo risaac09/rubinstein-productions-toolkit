@@ -118,10 +118,20 @@ class ReviewLogTests(unittest.TestCase):
         code, _, err = self.run_cmd(*self.base("--choice", "none", "--question", "ending"))
         self.assertEqual((code, err), (0, ""))
 
+    def test_log_without_final_newline_keeps_both_lines(self):
+        os.makedirs(os.path.dirname(self.log))
+        Path(self.log).write_text('{"torn": ')
+        self.run_cmd(*self.base("--choice", "none"))
+        lines = Path(self.log).read_text().splitlines()
+        self.assertEqual((lines[0], json.loads(lines[1])["choice"]), ('{"torn": ', "none"))
+
     def test_rating_without_key_is_kept(self):
         self.assertEqual(self.run_cmd(*self.base("--choice", "4", step="grade"))[0], 0)
         events, bad = tastedistill.read_events(self.log)
         self.assertEqual((len(events), bad), (1, 0))
+
+
+REEL_FIELDS = ("frame_0_image", "text_hook", "why_line", "sendable_line", "sendable_time", "ending", "tempo")
 
 
 class VocabularyDocTests(unittest.TestCase):
@@ -134,7 +144,7 @@ class VocabularyDocTests(unittest.TestCase):
 
     def test_every_reel_field_is_in_story_options(self):
         text = (self.PROD / "story-options.md").read_text()
-        for k in reviewlog.REEL_FIELDS:
+        for k in REEL_FIELDS:
             self.assertIn(f"`{k}`", text, k)
 
 

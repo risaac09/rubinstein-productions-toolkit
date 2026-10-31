@@ -172,7 +172,7 @@ The optional `question` key names what was asked, so the taste profile counts li
 | `tempo` | cutting pace |
 | `music_level` | music level under speech |
 
-Still-image and mix decisions use `warmth`, `skin`, `contrast`, `pace` and `music_level` the same way.
+Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix decisions `pace`, the same way.
 
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, carrying the `ts` of the line it repeats, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
