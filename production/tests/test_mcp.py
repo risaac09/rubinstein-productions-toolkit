@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from rpresolve.mcp import protocol, schema, tools_read  # noqa: E402
-from rpresolve.mcp.registry import READ, Registry, Tool  # noqa: E402
+from rpresolve.mcp.registry import READ, Registry, Tool, ToolContext  # noqa: E402
 from rpresolve.mcp.stdio import FramedWriter, LineReader  # noqa: E402
 
 SERVER = HERE.parent / "resolve_mcp.py"
@@ -521,8 +521,21 @@ class TestServerInfo(unittest.TestCase):
         self.assertFalse(self.info(self.A, self.A, short=8)["stale"])  # git grew the abbreviation
         self.assertTrue(self.info(self.A, self.A2, short=8)["stale"])  # abc1234e is not abc1234
 
-    def test_no_git_is_not_called_stale(self):
-        self.assertFalse(self.info(None, None)["stale"])
+    def test_no_git_is_unknown_not_fresh(self):
+        self.assertIsNone(self.info(None, None)["stale"])
+        self.assertIsNone(self.info(None, self.A)["stale"])  # git failed at start
+        self.assertIsNone(self.info(self.A, None)["stale"])
+
+    def test_the_summary_says_staleness_cannot_be_judged(self):
+        class Session:
+            def get(self):
+                from rpresolve import api
+                raise api.ResolveAPIError("down")
+        with mock.patch.object(tools_read, "LOADED_SHA", None), \
+                mock.patch.object(tools_read, "_git", lambda *a: None):
+            r = tools_read.resolve_status({}, ToolContext(session=Session()))
+        self.assertIsNone(r["server"]["stale"])
+        self.assertIn("staleness cannot be judged", r["summary"])
 
     def test_mounts_name_each_volume_but_the_boot_symlink(self):
         with tempfile.TemporaryDirectory() as d:
