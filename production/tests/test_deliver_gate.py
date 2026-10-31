@@ -65,6 +65,14 @@ class TestSafezone(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     safezone.load_boxes(bad)
 
+    def test_write_boxes_round_trip(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "b.json")
+            safezone.write_boxes(out, [("a", (0.1, 0.2, 0.5, 0.6)), (3, (-0.5, 0.0, 0.4, 1.5))])
+            self.assertEqual(safezone.load_boxes(out), [("a", (0.1, 0.2, 0.5, 0.6)), ("3", (0.0, 0.0, 0.4, 1.0))])
+            with self.assertRaises(ValueError):
+                safezone.write_boxes(out, [("flat", (0.5, 0.2, 0.5, 0.6))])
+
 
 @needs_ffmpeg
 class TestGate(unittest.TestCase):

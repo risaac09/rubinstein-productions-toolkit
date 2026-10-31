@@ -13,6 +13,8 @@ numbers (platform-specs.md records none).
 
 import json
 
+from .paths import write_private
+
 PORTRAIT = {"top": 0.14, "bottom": 0.35, "side": 0.06}   # the 9:16 UI bands
 TITLE_SAFE = 0.05                                          # each edge, landscape and square
 
@@ -58,3 +60,16 @@ def load_boxes(path):
                              "with 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1")
         out.append((str(e.get("label") or f"box {i + 1}"), tuple(float(v) for v in b)))
     return out
+
+
+def write_boxes(path, boxes):
+    """Write [(label, box)] as the JSON list deliver-check --boxes reads
+    (load_boxes). Raises paths.OutputRefused inside any git tree."""
+    out = []
+    for k, b in boxes:
+        # off-frame stays on the edge, still outside the safe zone
+        b = [round(min(1.0, max(0.0, float(v))), 4) for v in b]
+        if not (b[0] < b[2] and b[1] < b[3]):
+            raise ValueError(f"{k}: box {b} has no area inside the frame")
+        out.append({"label": str(k), "box": b})
+    write_private(path, json.dumps(out, indent=1) + "\n")
