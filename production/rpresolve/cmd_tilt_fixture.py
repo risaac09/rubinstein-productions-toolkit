@@ -47,7 +47,7 @@ def run(args):
     from rpresolve import reframe
     folder = os.path.abspath(args.out)
     for name in (reframe.TILT_VIDEO, reframe.TILT_EXPECT_FILE):
-        problem = rppaths.out_problem(os.path.join(folder, name))
+        problem = rppaths.out_problem(os.path.join(folder, name), any_git_tree=True)
         if problem:
             print(f"ERROR: {problem}", file=sys.stderr)
             return 1

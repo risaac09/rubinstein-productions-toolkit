@@ -66,7 +66,7 @@ def run(args):
         if not os.path.isfile(path_):
             print(f"ERROR: the source {path_} is not a file.", file=sys.stderr)
             return 1
-    problem = rppaths.out_problem(args.out) if args.out else None
+    problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1

@@ -31,7 +31,7 @@ def run(args):
     run goes on."""
     # The same guards as the survey, checked before any file is probed:
     # rows carry full media paths, and this repository is public.
-    problem = rppaths.out_problem(args.out) if args.out else None
+    problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
@@ -46,8 +46,7 @@ def run(args):
 
     text = rpdetect.format_json(rows) if args.json else rpdetect.format_tsv(rows)
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            f.write(text)
+        cli.write_private(args.out, text)
         print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(text)

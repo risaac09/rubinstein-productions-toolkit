@@ -39,7 +39,7 @@ def run(args):
     """Write the shoot table CSV (see rpresolve/shoot_table.py). Never
     connects to Resolve. Exit status: 0 clean, 2 when any row carries a
     flag, 1 on a usage error, missing tools or no file found."""
-    problem = rppaths.out_problem(args.out) if args.out else None
+    problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
@@ -71,8 +71,7 @@ def run(args):
         return 1
     text = rpshoot.format_csv(rows)
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            f.write(text)
+        cli.write_private(args.out, text)
         print(f"Wrote {len(rows)} row(s) to {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(text)

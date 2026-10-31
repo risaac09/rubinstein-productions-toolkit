@@ -31,7 +31,7 @@ def run(args):
     """One Markdown packet from a shoot table, words and labels, for the
     selects board. Scores and chooses nothing. Exit 0 written, 1 failed."""
     from rpresolve import cutlist, storypacket as sp
-    problem = rppaths.out_problem(args.out) if args.out else None
+    problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1

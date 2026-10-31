@@ -386,7 +386,7 @@ def main(argv=None):
     ap.add_argument("--window", type=float, default=WINDOW_S, help="Seconds per cutting-rate bin")
     ap.add_argument("--out", help="Write the report here (refused in this repo)")
     args = ap.parse_args(argv)
-    problem = paths.out_problem(args.out) if args.out else None
+    problem = paths.out_problem(args.out, any_git_tree=True) if args.out else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
@@ -396,7 +396,7 @@ def main(argv=None):
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if args.out:
-        paths.write_private(args.out, text)
+        paths.write_private(args.out, text, any_git_tree=True)
         print(f"Wrote {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(text)

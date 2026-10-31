@@ -32,7 +32,7 @@ def run(args):
     except ImportError as e:
         print(f"ERROR: measure needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
         return 1
-    problem = rppaths.out_problem(args.json) if args.json else None
+    problem = rppaths.out_problem(args.json, any_git_tree=True) if args.json else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
@@ -49,9 +49,7 @@ def run(args):
         return 1
     sys.stdout.write(rpmeasure.format_summary(report))
     if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=2)
-            f.write("\n")
+        cli.write_private(args.json, json.dumps(report, indent=2) + "\n")
         print(f"Wrote {args.json}", file=sys.stderr)
     return 0
 

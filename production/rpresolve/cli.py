@@ -152,7 +152,7 @@ def get_project(resolve):
 def write_private(path, text):
     """Write a file that names private media and words; refused in the repo."""
     try:
-        rppaths.write_private(path, text)
+        rppaths.write_private(path, text, any_git_tree=True)
     except rppaths.OutputRefused as e:
         raise SystemExit(f"ERROR: {e}")
 
