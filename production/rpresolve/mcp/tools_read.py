@@ -59,7 +59,8 @@ def _server_info():
             "python": sys.version.split()[0], "mounts": _mounts()}
     # Python read this code once at start, so a different commit on disk is code the server has not run.
     sha = _git("rev-parse", "HEAD")
-    info["stale"] = bool(sha and LOADED_SHA and sha != LOADED_SHA)
+    # None, not False, when git failed at either end: staleness cannot be judged.
+    info["stale"] = (sha != LOADED_SHA) if sha and LOADED_SHA else None
     return info
 
 
@@ -112,7 +113,9 @@ def resolve_status(args, ctx):
         out["summary"] = "Resolve is busy with another session"
     else:
         out["summary"] = "Resolve is not connected: " + r.get("error", "")
-    if out["server"]["stale"]:
+    if out["server"]["stale"] is None:
+        out["summary"] += "; staleness cannot be judged (git could not read the loaded commit)"
+    elif out["server"]["stale"]:
         out["summary"] += (f"; the server loaded {out['server']['loaded_commit']} but the checkout "
                            f"is at {out['server']['commit']}: restart it")
     if out["server"].get("dirty"):
