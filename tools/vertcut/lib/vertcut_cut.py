@@ -19,12 +19,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from fractions import Fraction
 
 from PIL import Image, ImageDraw, ImageFont
 
 # The file-name rule and the destination live in rpresolve (production/), not here.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "production"))
-from rpresolve import cutlist, deliver, hooklint, reviewlog, safezone, vision  # noqa: E402
+from rpresolve import cutlist, deliver, delivercheck, hooklint, paths, reelab, reviewlog, safezone, vision  # noqa: E402
 from rpresolve.config import ConfigError, load_config  # noqa: E402
 from rpresolve.paths import in_any_git_tree  # noqa: E402
 from rpresolve.tastedistill import read_events  # noqa: E402
@@ -45,6 +46,7 @@ DEFAULT_DEST = "linkedin_9x16"
 # third of real time on Apple silicon, and a veryfast x264 encode is assumed to cost no more.
 RATIO = 1 / 3
 GATE_MINUTES = 30                   # the review gate of production/media-review-loop.md
+NTSC_30 = Fraction(30000, 1001)
 X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 
 
@@ -133,6 +135,15 @@ def clip_name(dest, parts, title):
 
 def video_codec_args(crf, preset):
     return ["-c:v", "libx264", "-crf", str(crf), "-preset", preset]
+
+
+def out_rate(src_fps):
+    """The output frame rate, as a Fraction: the source's, capped at 30. A source above 30 in the NTSC
+    family (59.94) goes out at 30000/1001, not 30; any other above 30 goes out at 30."""
+    fr = Fraction(src_fps).limit_denominator(1001)
+    if fr <= 30:
+        return fr
+    return NTSC_30 if fr.denominator == 1001 else Fraction(30)
 
 
 # ---------------------------------------------------------------- timecodes
@@ -502,8 +513,87 @@ def gate_problem(args, spans, outs, estimate):
     return None
 
 
+REVIEW_VALUE_FLAGS = ("--review-seed", "--variant", "--ledger-row")
+
+
+def parse_variant(spec):
+    """One --variant: comma-separated x=N, style=FILE, hook=on|off. Only what is named changes."""
+    opts = {}
+    for part in spec.split(","):
+        k, _, v = part.strip().partition("=")
+        if not (k in ("x", "style") and v) and not (k == "hook" and v in ("on", "off")) or k in opts:
+            die("--variant %r: use x=N, style=FILE, hook=on|off, each once" % spec)
+        opts[k] = v
+    return opts
+
+
+def child_args(argv, opts):
+    """The cut command line for one variant: this run's own arguments without the review flags, then the
+    variant's, which win as the later flags."""
+    out, i = [], 0
+    while i < len(argv):
+        name = argv[i].split("=", 1)[0]
+        if name == "--review":
+            i += 1
+        elif name in REVIEW_VALUE_FLAGS:
+            i += 1 if "=" in argv[i] else 2
+        else:
+            out.append(argv[i])
+            i += 1
+    if "x" in opts:
+        out += ["--x=" + opts["x"]]    # = form: a negative number is not read as a flag
+    if "style" in opts:
+        out += ["--caption-style", opts["style"]]
+    if opts.get("hook") == "off":
+        out.append("--no-hook")
+    return out
+
+
+def review(args, argv):
+    """Render 2 to 4 variants of one worksheet row and hand them to rpresolve.reelab: a lettered,
+    loudness-matched packet in -o DIR, its sealed key in DIR.key. Log the answer with review-log."""
+    variants = [parse_variant(v) for v in args.variant]
+    if not 2 <= len(variants) <= 4:
+        die("--review takes 2 to 4 --variant options, got %d" % len(variants))
+    if len({tuple(sorted(v.items())) for v in variants}) < len(variants):
+        die("two --variant options are the same; a variant differs from the others in what it names")
+    if not args.only or "," in args.only:
+        die("--review takes --only with one clip id")
+    if args.dry_run or args.no_hook or args.ledger_row or args.reviewed:
+        die("--review renders every variant as asked; drop --dry-run, --no-hook, --ledger-row and --reviewed")
+    row = next((c for c in read_manifest(args.manifest, args.fps or probe(args.src)[2]) if c["id"] == args.only.strip()), None)
+    if row is None:
+        die("--only matched no clip ids")
+    if any(v.get("hook") == "on" for v in variants) and not (row["hook"] or args.hook_text):
+        die("hook=on, but clip %s has no hook (a fifth worksheet column or --hook-text)" % row["id"])
+    tmp = tempfile.mkdtemp(prefix="vertcut-review-")
+    try:
+        files = []
+        for k, (spec, opts) in enumerate(zip(args.variant, variants)):
+            d = os.path.join(tmp, str(k))
+            r = subprocess.run([sys.executable, os.path.abspath(__file__)] + child_args(argv, opts) + ["-o", d])
+            made = [f for f in os.listdir(d) if f.endswith(".mp4")] if r.returncode == 0 else []
+            if len(made) != 1:
+                die("variant %r did not render" % spec)
+            named = os.path.join(tmp, "variant%d-%s.mp4" % (k + 1, re.sub(r"[^A-Za-z0-9.-]+", "_", spec.replace("=", "-"))))
+            os.rename(os.path.join(d, made[0]), named)   # review-log records these names beside each letter
+            files.append(named)
+        seconds = min(reelab.MAX_SECONDS, min(reelab._inspect(f)[2] for f in files) - 0.05)
+        if seconds <= 0:
+            die("clip %s is too short for a review packet" % row["id"])
+        packet = reelab.build(files, args.outdir, 0.0, seconds, args.review_seed)
+    except (reelab.ReelAbError, delivercheck.ToolMissing, delivercheck.CheckError, OSError) as e:
+        die(str(e))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("vertcut: packet %s (%d variants, spread %s LU); key in %s"
+          % (args.outdir, len(variants), packet["spread_lu"], reelab.key_dir(args.outdir)))
+    print("vertcut: log the answer: python3 production/resolve_workflow.py review-log --dir PROJECT_DIR "
+          "--project P-0000 --step edit --device phone --choice LETTER --key %s --question reel_option" % args.outdir)
+
+
 def main():
-    ap = argparse.ArgumentParser(prog="vertcut cut", add_help=True)
+    ap = argparse.ArgumentParser(prog="vertcut cut", add_help=True, allow_abbrev=False)
     ap.add_argument("src")
     ap.add_argument("manifest")
     ap.add_argument("-o", "--outdir", default="vertcut-out")
@@ -546,6 +636,16 @@ def main():
     ap.add_argument("--tp", type=float, default=DEFAULT_TP, help="true-peak ceiling in dBTP (default %g)" % DEFAULT_TP)
     ap.add_argument("--lra", type=float, default=DEFAULT_LRA, help="loudness range target (default %g)" % DEFAULT_LRA)
     ap.add_argument("--only", help="comma-separated clip ids to render")
+    ap.add_argument("--review", action="store_true",
+                    help="render the --variant options of the one --only clip and write a blind, loudness-matched "
+                         "A/B packet to -o DIR (key in DIR.key); log the answer with review-log")
+    ap.add_argument("--variant", action="append", default=[], metavar="SPEC",
+                    help="with --review, 2 to 4 times: comma-separated x=N, style=FILE, hook=on|off")
+    ap.add_argument("--review-seed", type=int, help="letter-order seed for --review (default: random, kept in the key)")
+    ap.add_argument("--no-hook", action="store_true", help="draw no hook, whatever the worksheet or --hook-text says")
+    ap.add_argument("--ledger-row", metavar="PATH",
+                    help="write a release-ledger row stub per clip (JSON lines, from delivercheck.ledger_row) "
+                         "to this file, outside any repository")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reviewed", metavar="GATE_JSON",
                     help="gate.json of a gate-packet answered go; a batch over %d min or a replacement needs it" % GATE_MINUTES)
@@ -563,13 +663,26 @@ def main():
 
     if not os.path.isfile(args.src):
         die("no such file: %s" % args.src)
+    if args.review:
+        return review(args, sys.argv[1:])
+    if args.variant or args.review_seed is not None:
+        die("--variant and --review-seed go with --review")
+    if args.ledger_row:
+        problem = paths.out_problem(args.ledger_row) or paths.source_problem([args.ledger_row], [args.src, args.manifest])
+        if problem:
+            die(problem)
     src_w, src_h, src_fps = probe(args.src)
     has_audio = has_audio_stream(args.src)
     fps = args.fps or src_fps
     dest = load_destination(args.destination)
     check_destination(dest)
-    lufs = args.lufs if args.lufs is not None else (
-        (dest.get("loudness") or {}).get("integrated_lufs") or DEFAULT_LUFS)
+    lufs = args.lufs
+    if lufs is None:
+        lufs = (dest.get("loudness") or {}).get("integrated_lufs")
+        if lufs is None:
+            lufs = DEFAULT_LUFS
+        else:
+            sys.stderr.write("vertcut: --lufs not given; using %s's target, %g LUFS\n" % (dest["key"], lufs))
     audio_filter = loudnorm_filter(lufs, args.tp, args.lra)   # validated before any work
     name_parts = {"show": args.show, "episode": args.episode, "guest": args.guest}
     if not args.draft_names:
@@ -591,7 +704,7 @@ def main():
 
     hooks = {}
     for clip in clips:
-        text = clip["hook"] or args.hook_text
+        text = None if args.no_hook else (clip["hook"] or args.hook_text)
         if not text:
             continue
         lines = hook_lines(text)
@@ -652,7 +765,7 @@ def main():
     print("vertcut: source %dx%d @ %.3f fps, reframe=%s -> %dx%d"
           % (src_w, src_h, src_fps, mode, W, H))
 
-    warned = False
+    warned, ledger = False, 0
     for n, clip in enumerate(clips, 1):
         hook = hooks.get(clip["id"])
         start = clip["start"] + args.offset
@@ -726,7 +839,7 @@ def main():
                       "-map", label] + (["-map", "0:a"] if has_audio else []) + [
                       "-t", "%.3f" % dur,
                       ] + video_codec_args(args.crf, args.preset) + [
-                      "-pix_fmt", "yuv420p", "-r", "%.4f" % min(src_fps, 30.0)]
+                      "-pix_fmt", "yuv420p", "-r", str(out_rate(src_fps))]
                    + COLOR_TAG_ARGS + ["-movflags", "+faststart"]
                    + (audio_codec_args(dest) + ["-af", audio_filter] if has_audio else ["-an"])
                    + [out])
@@ -736,6 +849,19 @@ def main():
                 die("ffmpeg failed on clip %s" % clip["id"])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+        if args.ledger_row:
+            try:
+                result = delivercheck.check(out, dest)
+                if result["status"] != "pass":
+                    sys.stderr.write("vertcut: WARN clip %s: deliver check %s\n" % (clip["id"], result["status"]))
+                line = delivercheck.ledger_line(delivercheck.ledger_row(result, sha256=delivercheck.file_sha256(out)))
+                # appended and written per clip, so an earlier batch's rows and a half-done batch's rows survive
+                old = open(args.ledger_row, encoding="utf-8").read() if os.path.isfile(args.ledger_row) else ""
+                paths.write_private(args.ledger_row, old + line)
+                ledger += 1
+            except (delivercheck.CheckError, delivercheck.ToolMissing, OSError, paths.OutputRefused) as e:
+                die("ledger row for clip %s: %s" % (clip["id"], e))
 
         if hook:
             folder = os.path.join(os.path.dirname(out), "review-srt")
@@ -749,6 +875,8 @@ def main():
                     fh.write("%d\n%s --> %s\n%s\n\n"
                              % (i, srt_tc(cue["start"]), srt_tc(cue["end"]), cue["text"]))
 
+    if ledger:
+        print("vertcut: %d ledger row stubs added to %s" % (ledger, args.ledger_row))
     print("vertcut: done -> %s" % args.outdir)
 
 

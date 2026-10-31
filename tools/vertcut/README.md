@@ -113,6 +113,7 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 | `--gap` | `0.6` | Seconds of silence between words that breaks a cue. |
 | `--font-size` / `--caption-y` | `66` / `1680` | Caption size, and the y of the bar's bottom edge (lower third). |
 | `--only 1,2` | all | Render a subset while dialling in the framing. |
+| `--no-hook` | off | Draw no hook, whatever the worksheet or `--hook-text` says. |
 | `--dry-run` | off | Print what would be rendered. |
 
 ### Hook text and the safe zone
@@ -120,6 +121,18 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 `--hook-text "FIRST LINE|SECOND LINE" --hook-source REF` (or a fifth worksheet column, which needs a title) draws a frame-0 card at the top safezone edge and holds it for max(0.8 s, 0.3 s per word). The text is yours, used as given; the tool never writes or suggests copy. `rpresolve.hooklint` checks it first (nine words, two lines of 16 characters, no em-dash, no emoji), and a FAIL exits 2. Captions wait until the card leaves, `review-srt/<stem>.hook.json` records text, source, box and span, and on macOS a face on frame 0 under the card stops the run (elsewhere that check is skipped, with a note).
 
 The caption bar's bottom edge defaults to y=1680, which sits inside the bottom UI band (the lowest 35 percent of a 9:16 frame). A run with captions prints a `WARN` saying so and leaves the bar where it is; `--caption-y` moves it.
+
+### The review gate
+
+A batch whose estimate is over 30 minutes, or one that would replace an existing output, stops until a person has read a gate-packet and answered go. The estimate is the clips' total length times `RATIO`, a third (transcription runs at about a third of real time on Apple silicon, and a veryfast encode is assumed to cost no more). Build the packet with `resolve_workflow.py gate-packet`, log `go` with `review-log --step gate`, then pass `--reviewed GATE_DIR/gate.json --review-log PROJECT_DIR/review/events.jsonl`. Both files must sit outside any repository, and the gate must match this cuts file and cover this batch.
+
+### Review variants
+
+`--review --only ID --variant SPEC --variant SPEC -o PACKET_DIR` renders 2 to 4 variants of one worksheet row and hands them to `reel-ab`: a lettered, loudness-matched 720p packet in `PACKET_DIR` and a sealed key in `PACKET_DIR.key`. A SPEC names only what differs, from `x=N` (crop x), `style=FILE` (a caption style file) and `hook=on|off`, comma-separated; nothing is invented, and two identical specs are refused. Everything else comes from the rest of the command line. The run prints the `review-log` line that records the answer.
+
+### Release chain
+
+`--ledger-row PATH` adds one release-ledger row stub per clip to PATH (JSON lines, outside any repository, never replaced) through `delivercheck.ledger_row`, so the row carries the file's name, hash, destination and check status; the fields a person fills after publishing stay empty. When the destination has a loudness target (`social_9x16` is -14 LUFS) and `--lufs` is not given, that target is used and stderr says so. The output frame rate follows the source up to 30, and a 59.94 source is written at 30000/1001.
 
 ### Caption style
 
