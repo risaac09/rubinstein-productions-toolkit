@@ -138,6 +138,32 @@ def mlx_whisper(path, language, model=None, **_):
     return normalize(res.get("segments"))
 
 
+CPP_TIMEOUT_FLOOR_S = 600
+CPP_TIMEOUT_PER_AUDIO_S = 4  # whisper.cpp on CPU runs near real time; 4x is generous
+
+
+def _cpp_timeout(path):
+    """Seconds to let whisper-cli run: the env override, else a multiple of the
+    audio length (ffprobe) with a floor; the floor alone when the length is unreadable."""
+    env = os.environ.get("RPRESOLVE_WHISPER_CPP_TIMEOUT_S")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            raise TranscribeError("RPRESOLVE_WHISPER_CPP_TIMEOUT_S must be a number of seconds")
+    dur = 0.0
+    probe = shutil.which("ffprobe")
+    if probe:
+        try:
+            dur = float(subprocess.run(
+                [probe, "-v", "error", "-show_entries", "format=duration", "-of",
+                 "default=nw=1:nk=1", path], capture_output=True, text=True,
+                timeout=60).stdout.strip())
+        except (ValueError, subprocess.SubprocessError, OSError):
+            pass
+    return max(CPP_TIMEOUT_FLOOR_S, CPP_TIMEOUT_PER_AUDIO_S * dur)
+
+
 def whisper_cpp(path, language, model=None, **_):
     exe = shutil.which("whisper-cli")
     if not exe:
@@ -150,7 +176,12 @@ def whisper_cpp(path, language, model=None, **_):
         prefix = os.path.join(tmp, "out")
         cmd = [exe, "-m", model, "-f", path, "-oj", "-ojf", "-of", prefix,
                "-l", language or "auto"]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        limit = _cpp_timeout(path)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=limit)
+        except subprocess.TimeoutExpired:
+            raise TranscribeError(f"whisper-cli timed out after {limit:.0f} s; raise the limit "
+                                  "with RPRESOLVE_WHISPER_CPP_TIMEOUT_S (seconds)")
         if r.returncode or not os.path.isfile(prefix + ".json"):
             raise TranscribeError(f"whisper-cli failed ({r.returncode}): {r.stderr.strip()[-300:]}")
         with open(prefix + ".json", encoding="utf-8") as f:
