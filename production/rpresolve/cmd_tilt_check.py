@@ -42,7 +42,7 @@ def run(args):
     result["still"] = os.path.basename(args.still)
     result["input_scaling"] = expect.get("input_scaling")
     path = os.path.join(folder, reframe.TILT_RESULT_FILE)
-    problem = rppaths.out_problem(path)
+    problem = rppaths.out_problem(path, any_git_tree=True)
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
