@@ -187,6 +187,7 @@ class TestEndToEnd(unittest.TestCase):
 
     def make_gate(self, answer="go", sub="gate", runtime=6000.0, cuts=None):
         cuts_sha = hashlib.sha256(Path(cuts or self.long_tsv()).read_bytes()).hexdigest()
+        src_sha = hashlib.sha256(Path(self.src).read_bytes()).hexdigest()
         d = os.path.join(self.tmp.name, sub)
         os.makedirs(d)
         packet = os.path.join(d, "packet.json")
@@ -195,7 +196,8 @@ class TestEndToEnd(unittest.TestCase):
         gate = os.path.join(d, "gate.json")
         Path(gate).write_text(json.dumps({"version": 1, "project": "P-0001", "packet_sha256": sha,
                                           "total_runtime_s": runtime,
-                                          "inputs": [{"path": "cuts.tsv", "sha256": cuts_sha}]}))
+                                          "inputs": [{"path": "src.mp4", "sha256": src_sha},
+                                                     {"path": "cuts.tsv", "sha256": cuts_sha}]}))
         log = os.path.join(d, "events.jsonl")
         line = {"ts": "2026-10-31T10:00:00Z", "project": "P-0001", "step": "gate", "options": {},
                 "choice": answer, "device": "desktop", "stimulus": sha}

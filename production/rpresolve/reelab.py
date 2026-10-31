@@ -84,7 +84,7 @@ def _encode(src, out, start, seconds, gain_db):
            "-vf", f"scale={SIZE[0]}:{SIZE[1]}:flags=lanczos,setsar=1,format=yuv420p",
            "-af", f"volume={gain_db:.6f}dB", "-c:v", "libx264", "-profile:v", "high", "-crf", "23",
            "-maxrate", "4M", "-bufsize", "8M", "-preset", "medium", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
-           "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-t", f"{seconds:.3f}", out]
+           "-map_metadata", "-1", "-movflags", "+faststart", "-t", f"{seconds:.3f}", out]
     proc = dc._run(cmd, TIMEOUT_S)
     if proc.returncode != 0:
         raise ReelAbError(f"could not encode {src}: {proc.stderr.strip()[-300:]}")

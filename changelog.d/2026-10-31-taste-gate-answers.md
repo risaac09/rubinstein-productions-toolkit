@@ -1,1 +1,0 @@
-The taste profile no longer reads `hold`, `go` or `approve` as a preference. Gate answers are tallied per question ("Gate answers: go 4, hold 1") and stay out of the direction counts, majority, repeat check, "never" list and exemplars, so five `hold` answers print a tally and no rule.

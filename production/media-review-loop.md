@@ -184,7 +184,7 @@ Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix de
 
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, carrying the `ts` of the line it repeats, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
-The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. Gate answers (`go`, `approve`, `hold`) decide whether a step proceeds, not which option is better: the profile tallies them per question and never turns them into a rule. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
+The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
 
 ### Running the distiller
 

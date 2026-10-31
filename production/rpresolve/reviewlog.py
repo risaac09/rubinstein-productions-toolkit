@@ -10,8 +10,6 @@ the packet (packet.json) the reviewer saw. Append-only: the existing bytes are
 never touched.
 """
 
-import errno
-import fcntl
 import hashlib
 import json
 import os
@@ -121,9 +119,13 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     problem = paths.out_problem(log)
     if problem:
         raise Refused(problem)
-    if repeat_of and repeat_of not in _existing_ts(log):
+    seen = _existing_ts(log)
+    if repeat_of and repeat_of not in seen:
         raise Refused(f"--repeat-of {repeat_of}: no line in {log} has that ts")
-    line = {"ts": None, "project": project, "step": step, "options": options, "choice": choice,
+    t = time.time()
+    while _utc(t) in seen:  # ts names a line for repeat_of, so it stays unique
+        t += 1
+    line = {"ts": _utc(t), "project": project, "step": step, "options": options, "choice": choice,
             "reason": reason, "device": device}
     for k, v in (("question", question), ("noise_type", noise_type or key_noise),
                  ("stimulus", stimulus), ("repeat_of", repeat_of),
@@ -134,18 +136,6 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
     os.makedirs(os.path.dirname(log), exist_ok=True)
     fd = os.open(log, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX)  # two writers in one second would otherwise take the same ts
-        except OSError as e:  # shortcut: a share without flock appends unlocked, as before; a lock file if it races
-            if e.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOLCK):
-                raise
-        if os.fstat(fd).st_nlink > 1:  # an append would land in the other name too, maybe inside a repo
-            raise Refused(f"{log} has another hard link; the log is never written through one")
-        seen = _existing_ts(log)
-        t = time.time()
-        while _utc(t) in seen:  # ts names a line for repeat_of, so it stays unique
-            t += 1
-        line["ts"] = _utc(t)
         size = os.fstat(fd).st_size
         lead = b"\n" if size and os.pread(fd, 1, size - 1) != b"\n" else b""  # a torn last line stays its own line
         os.write(fd, lead + (json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))

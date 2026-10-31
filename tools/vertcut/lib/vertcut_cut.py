@@ -124,6 +124,15 @@ def srt_path(out, dest):
     return os.path.join(folder, os.path.basename(path))
 
 
+def write_sidecar(path, text):
+    """Write a caption or hook file as every private output is written: refused when its real path (a
+    review-srt folder that is a symlink counts by where it leads) is inside a repository."""
+    try:
+        paths.write_private(path, text)
+    except (paths.OutputRefused, OSError) as e:
+        die("%s: %s" % (path, e))
+
+
 def clip_name(dest, parts, title):
     """The house file name for one clip: parts are show, episode, guest, index. The slug comes
     from the title. Exits with the rule's own message when a part breaks it."""
@@ -154,12 +163,15 @@ def parse_tc(s, fps):
     if not s:
         die("empty timecode")
     parts = s.split(":")
-    if len(parts) == 1:
-        return float(parts[0])
-    if len(parts) == 2:
-        return int(parts[0]) * 60 + float(parts[1])
-    if len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    try:
+        if len(parts) == 1:
+            return float(parts[0])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    except ValueError:   # a drop-frame HH:MM:SS;FF lands here
+        die("not a timecode: %s (use SS.mmm, MM:SS, HH:MM:SS or HH:MM:SS:FF)" % s)
     if len(parts) == 4:
         try:  # NTSC-correct: frames count at the nominal rate, then divide by the real one
             return cutlist.parse_timecode(s, fps)
@@ -416,8 +428,28 @@ def hook_covers_face(box, faces):
                for f in faces)
 
 
-def render_cue(lines, font, path, style, opacity):
-    """Draw one cue: text on a partial-opacity bar. Returns (width, height)."""
+def edge_padded(img, canvas, at):
+    """img on a canvas of transparent pixels that keep the nearest edge pixel's colour. ffmpeg's yuv420
+    overlay subsamples chroma with a filter that reads past the picture's edge, where it repeats the edge
+    pixel; black padding would tint the chroma at the bar's border and differ from a cue overlaid alone."""
+    (w, h), (cw, ch), (x, y) = img.size, canvas, at
+    out = Image.new("RGBA", canvas)
+    out.paste(img, at)
+    for box, src, size in (((x, 0), (x, y, x + w, y + 1), (w, y)), ((x, y + h), (x, y + h - 1, x + w, y + h), (w, ch - y - h))):
+        if size[1]:
+            out.paste(out.crop(src).resize(size, Image.NEAREST), box)
+    for box, src, size in (((0, 0), (x, 0, x + 1, ch), (x, ch)), ((x + w, 0), (x + w - 1, 0, x + w, ch), (cw - x - w, ch))):
+        if size[0]:
+            out.paste(out.crop(src).resize(size, Image.NEAREST), box)
+    alpha = Image.new("L", canvas, 0)
+    alpha.paste(img.getchannel("A"), at)
+    out.putalpha(alpha)
+    return out
+
+
+def render_cue(lines, font, path, style, opacity, canvas=None, at=(0, 0)):
+    """Draw one cue: text on a partial-opacity bar. Returns (width, height). With canvas (width, height)
+    the file is that size, the bar pasted at `at` on transparent pixels, so cues share one overlay."""
     width, height, lh, pad_x, pad_y = cue_size(lines, font)
     if width > W:
         raise CaptionError("a caption line is %d px wide, wider than the %d px frame; "
@@ -430,8 +462,86 @@ def render_cue(lines, font, path, style, opacity):
         lw = dd.textlength(line, font=font)
         dd.text(((width - lw) / 2, pad_y + i * lh), line, font=font,
                 fill=style["text_rgb"] + (255,))
+    if canvas:
+        img = edge_padded(img, canvas, at)
     img.save(path)
     return width, height
+
+
+# image2 stamps a still at 25 frames a second unless told otherwise, which moves a cue's switch by up to
+# 20 ms; a thousand a second leaves it where the list puts it.
+FINE = "option framerate 1000\n"
+
+
+def phase_of(start, fps):
+    """Seconds from a clip's start to its first frame: the source's frames fall on k / fps, and the cut
+    keeps the first one at or after `start`."""
+    fd = 1.0 / float(fps)
+    return math.ceil(start / fd - 1e-9) * fd - start
+
+
+def cue_streams(cues, lines_of, font, caption_y, tmp, style, opacity, fps, phase=0.0):
+    """The cues as at most four ffmpeg inputs however many there are, so the filter graph stays one size
+    for 3 cues or 3000 (one input and overlay per cue grew without bound). Each stream is a concat list
+    that holds a transparent canvas per cue for the frames it shows on and a blank one between. ffmpeg's yuv420 overlay subsamples the picture's chroma from the picture's own origin, so a
+    cue keeps the grid it had alone: cues are grouped by the parity of their x and y, and each group's
+    canvas starts on that parity, with the cue at an even offset in it. Returns [(list path, x, y)]
+    for `overlay=x:y`."""
+    ch = max(cue_size(lines_of(c), font)[1] for c in cues)
+    fd = 1.0 / float(fps)     # one source frame; shortcut: a variable-rate source drifts off this grid
+    # Frame indices [first, stop) each cue shows on, as the enable window it replaces did (a frame at or
+    # after the start, up to and including the end), cut at the next cue's first frame whatever its group.
+    # Frame j is at phase + j * fd, phase being how far the clip's first frame sits past its own start.
+    firsts = [math.ceil((round(c["start"], 3) - phase) / fd - 1e-9) for c in cues]
+    spans = {}
+    for i, c in enumerate(cues):
+        stop = math.floor((round(c["end"], 3) - phase) / fd + 1e-9) + 1
+        if i + 1 < len(cues):
+            stop = min(stop, firsts[i + 1])
+        if stop > firsts[i]:
+            spans[i] = (firsts[i], stop)
+    groups = {}
+    for i, c in enumerate(cues):
+        w, h = cue_size(lines_of(c), font)[:2]
+        groups.setdefault((int((W - w) / 2) % 2, (caption_y - h) % 2), []).append(i)
+    out = []
+    for (qx, qy), members in sorted(groups.items()):
+        x0 = -qx                                              # origin on parity qx, at or left of 0
+        y0 = caption_y - ch - ((caption_y - ch - qy) % 2)     # origin on parity qy, at or above the tallest bar
+        canvas = (W + qx, caption_y - y0)
+        blank = os.path.join(tmp, "blank%d%d.png" % (qx, qy))
+        Image.new("RGBA", canvas, (0, 0, 0, 0)).save(blank)
+        rows, done = [], 0.0
+
+        def at_of(frame):
+            # The stream switches a quarter of a frame before the frame it first applies to: not on the frame
+            # time (a microsecond of rounding would move it a frame) and not at the midpoint between two
+            # (where ffmpeg's frame sync can pick either); rounded as a running total, so entries do not drift.
+            return round(max(0.0, phase + (frame - 0.25) * fd), 6)
+
+        def hold_until(png, frame):
+            nonlocal done
+            rows.append("file '%s'\n%sduration %.6f" % (png, FINE, at_of(frame) - done))
+            done = at_of(frame)
+
+        for i in members:
+            if i not in spans:
+                continue
+            first, stop = spans[i]
+            if at_of(first) > done:
+                hold_until(blank, first)
+            lines = lines_of(cues[i])
+            w, h = cue_size(lines, font)[:2]
+            png = os.path.join(tmp, "cue%03d.png" % i)
+            render_cue(lines, font, png, style, opacity, canvas, (int((W - w) / 2) - x0, caption_y - h - y0))
+            hold_until(png, stop)
+        rows.append("file '%s'\n%sduration 3600" % (blank, FINE))
+        rows.append("file '%s'\n%s" % (blank, FINE.strip()))    # concat ignores the last entry's duration; repeat it
+        path = os.path.join(tmp, "cues%d%d.ffconcat" % (qx, qy))
+        with open(path, "w") as fh:
+            fh.write("ffconcat version 1.0\n" + "\n".join(rows) + "\n")
+        out.append((path, x0, y0))
+    return out
 
 
 # ---------------------------------------------------------------- reframing
@@ -454,6 +564,68 @@ def reframe_chain(src_w, src_h, mode, xoff):
         "[0:v]scale=%d:-2:flags=lanczos[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]" % (W, H, W, H, W)
     ), "fit"
+
+
+def plan_chain(plan_path, src, src_w, src_h, rows, fps, offset):
+    """{row id: filter string producing [base]} from a reframe-plan manifest copy (its --out file).
+    A worksheet row takes the 9x16 crop of the one plan span that holds it: the row's media time
+    (in/out plus --offset) must lie inside the span's in/out, within a frame. Time, not the clip
+    name, because the worksheet's ids are free text and the plan's spans are the only thing that
+    says which footage a crop was judged on; when two spans hold a row, the clip named for the
+    row's id wins. Refused, never guessed: a plan made for another source, another picture size, a
+    squeezed or barred crop, a crop that left the frame, a moving crop, a row no span holds."""
+    try:
+        with open(plan_path, encoding="utf-8") as fh:
+            m = json.load(fh)
+        cutlist.validate_manifest(m, allow_no_speech=True)
+    except (OSError, ValueError, cutlist.CutlistError) as e:
+        die("--plan %s: %s" % (plan_path, e))
+    if "9x16" not in ((m.get("reframe_plan") or {}).get("aspects") or []):
+        die("--plan %s has no 9x16 crops; make it with reframe-plan (--aspects 9x16)" % plan_path)
+    tol = 1.0 / fps
+    real = os.path.realpath(src)
+    held = [(c, sp) for c in m["clips"] for sp in c["spans"]
+            if os.path.realpath(cutlist.source_for(m, sp)["path"]) == real]
+    if not held:
+        die("--plan %s was made for another source file than %s" % (plan_path, src))
+    out = {}
+    for row in rows:
+        a, b = row["start"] + offset, row["end"] + offset
+        hits = [(c, sp) for c, sp in held if sp["in"] - tol <= a and b <= sp["out"] + tol]
+        if len(hits) > 1:
+            hits = [h for h in hits if h[0]["name"] == row["id"]] or hits
+        crops = {json.dumps((sp.get("reframe") or {}).get("9x16"), sort_keys=True) for _, sp in hits}
+        if not hits or len(crops) > 1:
+            die("row %s (%.2f-%.2f s): %s" % (row["id"], a, b, "no plan span holds it, so there is no crop"
+                if not hits else "several plan spans hold it with different crops; split the row"))
+        c, sp = hits[0]
+        e = (sp.get("reframe") or {}).get("9x16")
+        why = None
+        if not e:
+            why = "its span has no 9x16 crop"
+        elif e.get("status") not in ("pass", "fallback") or e.get("bars"):
+            why = "its crop is %s%s, not a crop that fills the frame" % (e.get("status"), " with bars" if e.get("bars") else "")
+        elif any(isinstance(e.get(k), (list, dict)) for k in ("x", "y", "scale")) or e.get("keyframes"):
+            why = "its crop moves; only a static crop is read"
+        elif e.get("x") is None or e.get("y") is None or not e.get("scale"):
+            why = "its crop has no x, y and scale"
+        elif (e.get("stored") and list(e["stored"]) != list(e.get("src") or [])) or e.get("squeeze") not in (None, 1, 1.0):
+            why = "its source is squeezed, and vertcut does not desqueeze"
+        elif list(e.get("src") or []) != [src_w, src_h]:
+            why = "it was planned on a %s picture and this source is %dx%d" % (
+                "x".join(str(v) for v in e.get("src") or ["?"]), src_w, src_h)
+        elif e.get("out") and list(e["out"]) != [W, H]:
+            why = "its crop was planned for a %sx%s frame, not %dx%d" % (e["out"][0], e["out"][1], W, H)
+        if why:
+            die("row %s: plan span %s-%s of clip %s: %s" % (row["id"], sp["in"], sp["out"], c["name"], why))
+        cw, chh = W / float(e["scale"]), H / float(e["scale"])
+        x0, y0 = float(e["x"]) - cw / 2, float(e["y"]) - chh / 2
+        if x0 < -0.5 or y0 < -0.5 or x0 + cw > src_w + 0.5 or y0 + chh > src_h + 0.5:
+            die("row %s: plan crop %.0fx%.0f at (%.0f, %.0f) leaves the %dx%d picture" % (row["id"], cw, chh, x0, y0, src_w, src_h))
+        iw, ih = min(int(round(cw)), src_w), min(int(round(chh)), src_h)
+        ix, iy = max(0, min(src_w - iw, int(round(x0)))), max(0, min(src_h - ih, int(round(y0))))
+        out[row["index"]] = "[0:v]crop=%d:%d:%d:%d,scale=%d:%d:flags=lanczos,setsar=1[base]" % (iw, ih, ix, iy, W, H)
+    return out
 
 
 def frame0_faces(src, start, chain, tmp):
@@ -500,6 +672,8 @@ def gate_problem(args, spans, outs, estimate):
             return "gate.json does not match its packet.json; build the packet again"
         if reviewlog._sha256(args.manifest) not in {i.get("sha256") for i in gate["inputs"]}:
             return "gate.json was not built from this cuts file; build it with --source and --cuts"
+        if reviewlog._sha256(args.src) not in {i.get("sha256") for i in gate["inputs"]}:
+            return "gate.json was not built from this source file; build it with --source and --cuts"
         if gate["total_runtime_s"] + 1 < sum(spans):
             return "the gate-packet covers %.0f s of clips, this batch is %.0f s" % (gate["total_runtime_s"], sum(spans))
         events, _ = read_events(args.review_log)
@@ -599,9 +773,12 @@ def main():
     ap.add_argument("-o", "--outdir", default="vertcut-out")
     ap.add_argument("--words", help="Whisper JSON with word timestamps")
     ap.add_argument("--no-captions", action="store_true")
-    ap.add_argument("--frame", choices=["crop", "fit"], default="crop")
+    ap.add_argument("--frame", choices=["crop", "fit"], help="default crop")
     ap.add_argument("--x", type=float, default=0.0,
                     help="crop offset, -1 (full left) .. 1 (full right)")
+    ap.add_argument("--plan", metavar="PLAN.json",
+                    help="a reframe-plan manifest copy: each row takes the static 9x16 crop of the plan span "
+                         "that holds it, in place of --x; a row no span holds, or a plan for another source, is refused")
     ap.add_argument("--offset", type=float, default=0.0,
                     help="seconds to add to every manifest timecode, when the "
                          "manifest's zero is not the media file's zero; verify "
@@ -744,7 +921,12 @@ def main():
             except CaptionError as e:
                 die(str(e))
 
-    chain, mode = reframe_chain(src_w, src_h, args.frame, args.x)
+    chain, mode = reframe_chain(src_w, src_h, args.frame or "crop", args.x)
+    plan_chains = {}
+    if args.plan:
+        if args.x or args.frame == "fit":
+            die("--plan sets the crop; it does not go with --x or --frame fit")
+        plan_chains, mode = plan_chain(args.plan, args.src, src_w, src_h, clips, src_fps, args.offset), "plan"
     if in_any_git_tree(args.outdir):
         die("%s is inside a git work tree; clips and captions name client speech, write them outside any repository (-o DIR)" % args.outdir)
 
@@ -801,34 +983,35 @@ def main():
 
         tmp = tempfile.mkdtemp(prefix="vertcut-")
         try:
-            filters = [chain]
+            row_chain = plan_chains[clip["index"]] if args.plan else chain   # a plan gives each row its own crop
+            filters = [row_chain]
             inputs = ["-ss", "%.3f" % start, "-to", "%.3f" % end, "-i", args.src]
             label = "[base]"
-            for i, cue in enumerate(cues):
-                png = os.path.join(tmp, "cue%03d.png" % i)
+            if cues:
                 try:
-                    render_cue(wrap_chars(cue["text"], args.line_chars), font, png,
-                               style, args.bar_opacity)
+                    streams = cue_streams(cues, lambda c: wrap_chars(c["text"], args.line_chars),
+                                          font, args.caption_y, tmp, style, args.bar_opacity, src_fps,
+                                          phase_of(start, src_fps))
                 except CaptionError as e:
                     die("clip %s: %s" % (clip["id"], e))
-                inputs += ["-loop", "1", "-i", png]
-                nxt = "[v%d]" % i
-                filters.append(
-                    "%s[%d:v]overlay=x=(W-w)/2:y=%d-h:enable='between(t,%.3f,%.3f)'%s"
-                    % (label, i + 1, args.caption_y, cue["start"], cue["end"], nxt))
-                label = nxt
+                for lst, cx, cy in streams:
+                    inputs += ["-f", "concat", "-safe", "0", "-i", lst]
+                    nxt = "[v%d]" % len(filters)
+                    filters.append("%s[%d:v]overlay=x=%d:y=%d%s"
+                                   % (label, inputs.count("-i") - 1, cx, cy, nxt))
+                    label = nxt
 
             if hook:
                 png = os.path.join(tmp, "hook.png")
                 render_cue(hook["lines"], font, png, style, args.bar_opacity)
-                faces = frame0_faces(args.src, start, chain, tmp)
+                faces = frame0_faces(args.src, start, row_chain, tmp)
                 if faces is None:
                     sys.stderr.write("vertcut: SKIP face check on frame 0 (needs macOS Vision)\n")
                 elif hook_covers_face(hook["box"], faces):
                     die("clip %s: the hook card covers a face on frame 0" % clip["id"])
                 inputs += ["-loop", "1", "-i", png]
                 filters.append("%s[%d:v]overlay=x=%d:y=%d:enable='between(t,0,%.3f)'[vh]"
-                               % (label, len(cues) + 1, hook["box"][0], hook["box"][1], hook["hold"]))
+                               % (label, inputs.count("-i") - 1, hook["box"][0], hook["box"][1], hook["hold"]))
                 label = "[vh]"
             filters.append("%s%s[vout]" % (label, COLOR_TAG_FILTER))
             label = "[vout]"
@@ -866,14 +1049,14 @@ def main():
         if hook:
             folder = os.path.join(os.path.dirname(out), "review-srt")
             os.makedirs(folder, exist_ok=True)
-            with open(os.path.join(folder, name + ".hook.json"), "w") as fh:
-                json.dump({"text": hook["text"], "source": args.hook_source,
-                           "box": [round(v) for v in hook["box"]], "start": 0, "end": hook["hold"]}, fh, indent=2)
+            write_sidecar(os.path.join(folder, name + ".hook.json"),
+                          json.dumps({"text": hook["text"], "source": args.hook_source,
+                                      "box": [round(v) for v in hook["box"]], "start": 0, "end": hook["hold"]},
+                                     indent=2))
         if cues:
-            with open(srt_path(out, dest), "w") as fh:
-                for i, cue in enumerate(cues, 1):
-                    fh.write("%d\n%s --> %s\n%s\n\n"
-                             % (i, srt_tc(cue["start"]), srt_tc(cue["end"]), cue["text"]))
+            write_sidecar(srt_path(out, dest), "".join(
+                "%d\n%s --> %s\n%s\n\n" % (i, srt_tc(c["start"]), srt_tc(c["end"]), c["text"])
+                for i, c in enumerate(cues, 1)))
 
     if ledger:
         print("vertcut: %d ledger row stubs added to %s" % (ledger, args.ledger_row))

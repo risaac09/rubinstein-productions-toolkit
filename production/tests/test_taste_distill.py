@@ -143,26 +143,6 @@ class DistillTests(unittest.TestCase):
     def test_line_only_answer_not_counted(self):
         self.assertEqual(distill([ev(None)] * 6), {})
 
-    def test_gate_answers_form_no_rule(self):
-        r = distill([ev("hold", step="gate")] * 5)["gate"]
-        self.assertEqual((r["verdict"], r["gates"]), (None, [("hold", 5)]))
-        text = td.render({"gate": r}, 5, 0)
-        self.assertIn("Gate answers: hold 5", text)
-        self.assertNotIn("Rule", text)
-
-    def test_letters_form_rule_gates_tallied_apart(self):
-        r = distill([ev("A")] * 5 + [ev("go")] * 4 + [ev("hold")] * 3)["look"]
-        self.assertEqual((r["verdict"], r["total"], r["gates"]), ("rule", 5, [("go", 4), ("hold", 3)]))
-        self.assertEqual((r["never"], r["exemplars"], r["contradictions"]), (["cool"], [1, 2, 3], []))
-
-    def test_repeat_pairs_ignore_gate_answers(self):
-        r = distill([ev("A", stimulus="s")] * 5 + [ev("hold", stimulus="s")] * 3)["look"]
-        self.assertEqual((r["verdict"], r["agree"], r["pairs"]), ("rule", 10, 10))
-
-    def test_option_text_hold_is_still_a_direction(self):
-        r = distill([ev("A", opts={"A": "hold", "B": "release"})] * 5)["look"]
-        self.assertEqual((r["verdict"], r["direction"], r.get("gates")), ("rule", "hold", None))
-
     def test_never_list(self):
         opts = {"A": "warm", "B": "cool", "C": "green"}
         self.assertEqual(distill([ev("A", opts=opts)] * 5)["look"]["never"], ["cool", "green"])
