@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import captionlint as cl  # noqa: E402
+from rpresolve import captionlint as cl, delivercheck as dc, safezone  # noqa: E402
 
 CLEAN = """1
 00:00:01,000 --> 00:00:04,000
@@ -106,6 +106,42 @@ class CaptionLintTest(unittest.TestCase):
         self.assertEqual(by["safe_zone"]["status"], cl.FAIL)
         self.assertIn("region edge", by["safe_zone"]["note"])
         self.assertNotIn("region low", by["safe_zone"]["note"])
+
+    def run_main(self, argv):
+        with open(os.devnull, "w") as null:
+            out, err, sys.stdout, sys.stderr = sys.stdout, sys.stderr, null, null
+            try:
+                return cl.main(argv)
+            finally:
+                sys.stdout, sys.stderr = out, err
+
+    def test_boxes_out_reads_back_into_deliver_check(self):
+        src, out = (os.path.join(self.tmp.name, n) for n in ("c.ttml", "boxes.json"))
+        Path(src).write_text(TTML, encoding="utf-8")
+        self.assertEqual(self.run_main([src, "--boxes-out", out]), 1)  # safe_zone FAILs
+        boxes = safezone.load_boxes(out)
+        self.assertEqual([k for k, _ in boxes], ["region edge (1 element(s))", "region low (1 element(s))"])
+        row = dc._safe_zone(1920, 1080, boxes)
+        self.assertEqual((row["status"], row["found"].split(";")[0]), (dc.FAIL, "1 of 2 inside"))
+        srt = os.path.join(self.tmp.name, "p.srt")
+        Path(srt).write_text(BAD, encoding="utf-8")
+        self.assertEqual(self.run_main([srt, "--size", "1920x1080", "--boxes-out", out]), 1)
+        self.assertEqual(safezone.load_boxes(out)[0][0], "cue 3")
+        Path(srt).write_text(BAD.replace("X2:1900", "X2:2400"), encoding="utf-8")  # past the frame edge
+        self.assertEqual(self.run_main([srt, "--size", "1920x1080", "--boxes-out", out]), 1)
+        self.assertEqual(dc._safe_zone(1920, 1080, safezone.load_boxes(out))["status"], dc.FAIL)
+
+    def test_boxes_out_refuses_no_positions_and_a_git_tree(self):
+        src = os.path.join(self.tmp.name, "good.srt")
+        Path(src).write_text(CLEAN, encoding="utf-8")
+        out = os.path.join(self.tmp.name, "none.json")
+        self.assertEqual(self.run_main([src, "--boxes-out", out]), 2)
+        self.assertFalse(os.path.exists(out))
+        repo = os.path.join(self.tmp.name, "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        Path(src).write_text(BAD, encoding="utf-8")
+        self.assertEqual(self.run_main([src, "--size", "1920x1080",
+                                        "--boxes-out", os.path.join(repo, "b.json")]), 2)
 
     def test_unreadable_srt_is_a_parse_fail(self):
         r, by = self.lint("not a caption\n")

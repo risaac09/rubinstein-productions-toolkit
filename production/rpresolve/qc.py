@@ -87,7 +87,6 @@ changes the result status (or the exit code).
 """
 
 import csv
-import hashlib
 import json
 import os
 import re
@@ -536,11 +535,7 @@ def _social_fps(streams, dest, th):
 
 
 def _sha256_row(path, want):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    got = h.hexdigest()
+    got = dc.file_sha256(path)
     if want is None:
         return _srow("sha256", SKIP, got, "reported (--sha256 HEX to assert)")
     ok = got == want.strip().lower()
