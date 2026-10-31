@@ -12,13 +12,8 @@
 #   changelog-fragments lint               validate every fragment in the tree
 #   changelog-fragments pr [BASE]          the pull-request rules, against BASE
 #                                          (default origin/main, else main)
-#   changelog-fragments status ITEM SLUG TEXT...
-#                                          write changelog.d/roadmap/<date>-<slug>.md,
-#                                          a status line for docs/ROADMAP.md item
-#                                          ITEM (A3.30 is Amendment 3, item 30)
 #   changelog-fragments compile [--dry-run]
-#                                          move fragments into CHANGELOG.md and
-#                                          roadmap status fragments into docs/ROADMAP.md
+#                                          move fragments into CHANGELOG.md
 #
 # Runs against the repository holding the current directory. Pure bash, git
 # and awk. Exit 1 on any finding.
@@ -28,8 +23,6 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in a git repo
 cd "$ROOT" || exit 2
 DIR=changelog.d
 LOG=CHANGELOG.md
-RDIR=changelog.d/roadmap
-ROAD=docs/ROADMAP.md
 # A pull request that touches only these prefixes needs no fragment: the kit
 # exports are listed once by their commit titles, never itemized.
 EXEMPT_RE='^(phase-zero|public-kit|\.claude)/'
@@ -40,33 +33,6 @@ die() { echo "changelog-fragments: $*" >&2; exit 1; }
 list_fragments() {
   [ -d "$DIR" ] || return 0
   find "$DIR" -maxdepth 1 -type f -name '*.md' ! -name README.md | sort
-}
-
-# Roadmap status fragments, one per line, sorted by name (date first, so two
-# fragments for one item land oldest first; on one day, name them to sort).
-list_roadmap() {
-  [ -d "$RDIR" ] || return 0
-  find "$RDIR" -maxdepth 1 -type f -name '*.md' | sort
-}
-
-# lint_roadmap FILE: line 1 is "item: A<amendment>.<item>", then one
-# paragraph of ready-to-insert Markdown (it carries its own bold lead, such
-# as "**Status: executed 2026-10-16, [#1](...).** ...").
-lint_roadmap() {
-  f="$1"
-  case "$(basename "$f")" in
-    *[!a-z0-9._-]*|[!a-z0-9]*) echo "$f: file name may use only a-z, 0-9, dot, dash and underscore, and starts with a letter or digit"; return 1 ;;
-  esac
-  body="$(sed -e 's/[[:space:]]*$//' "$f")"
-  [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || { echo "$f: empty"; return 1; }
-  printf '%s\n' "$body" | grep -qE '^[[:space:]]*$' && { echo "$f: no blank lines; one paragraph"; return 1; }
-  first="$(printf '%s\n' "$body" | sed -n '1p')"
-  printf '%s\n' "$first" | grep -qE '^item: A[0-9]+\.[0-9]+$' || { echo "$f: line 1 must be 'item: A<amendment>.<item>', such as 'item: A3.30'"; return 1; }
-  [ "$(printf '%s\n' "$body" | wc -l | tr -d ' ')" -ge 2 ] || { echo "$f: no status text after the item line"; return 1; }
-  case "$(printf '%s\n' "$body" | sed -n '2p')" in
-    '#'*|'- '*|'* '*) echo "$f: the text is a plain paragraph, no heading or bullet"; return 1 ;;
-  esac
-  return 0
 }
 
 default_base() {
@@ -108,46 +74,11 @@ cmd_lint() {
     [ -n "$f" ] || continue
     msg="$(lint_one "$f")" || { echo "$msg"; fail=1; }
   done < <(list_fragments)
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    msg="$(lint_roadmap "$f")" || { echo "$msg"; fail=1; }
-  done < <(list_roadmap)
-  [ "$fail" -eq 0 ] && echo "changelog fragments: $(list_fragments | wc -l | tr -d ' ') valid, $(list_roadmap | wc -l | tr -d ' ') roadmap"
+  if [ -n "$(find "$DIR/roadmap" -type f 2>/dev/null)" ]; then
+    echo "$DIR/roadmap: retired with docs/ROADMAP.md; delete these files"; fail=1
+  fi
+  [ "$fail" -eq 0 ] && echo "changelog fragments: $(list_fragments | wc -l | tr -d ' ') valid"
   return "$fail"
-}
-
-cmd_status() {
-  [ $# -ge 3 ] || die "usage: status ITEM SLUG TEXT... (ITEM like A3.30)"
-  item="$1"; slug="$2"; shift 2
-  mkdir -p "$RDIR"
-  f="$RDIR/$(date -u +%Y-%m-%d)-$slug.md"
-  [ ! -e "$f" ] || die "$f exists"
-  printf 'item: %s\n%s\n' "$item" "$*" > "$f"
-  msg="$(lint_roadmap "$f")" || { rm -f "$f"; die "$msg"; }
-  echo "$f"
-}
-
-# roadmap_insert FILE ITEM TEXT: print FILE with TEXT added after the last
-# line of ITEM (A3.30) in its amendment section, indented under the item the
-# way the existing status lines are. Exit 1 when the item is not found.
-roadmap_insert() {
-  RM_TXT="$3" awk -v key="$2" '
-    BEGIN { txt = ENVIRON["RM_TXT"]; split(key, k, /[A.]/); amend = k[2]; num = k[3] }
-    { line[NR] = $0 }
-    END {
-      sec = 0; start = 0; stop = NR
-      for (i = 1; i <= NR; i++) {
-        if (line[i] ~ /^## /) { if (start) { stop = i - 1; break } sec = (line[i] ~ ("^## Amendment " amend "( |$)")) }
-        else if (sec && !start && line[i] ~ ("^" num "\\. \\*\\*")) start = i
-        else if (start && line[i] ~ /^[0-9]+\. /) { stop = i - 1; break }
-        else if (start && line[i] ~ /^#/) { stop = i - 1; break }
-      }
-      if (!start) exit 1
-      while (stop > start && line[stop] ~ /^[[:space:]]*$/) stop--
-      for (i = 1; i <= stop; i++) print line[i]
-      print ""; print "   " txt
-      for (i = stop + 1; i <= NR; i++) print line[i]
-    }' "$1"
 }
 
 cmd_new() {
@@ -177,10 +108,8 @@ cmd_pr() {
   if ! printf '%s\n' "$changed" | grep -qvE "$EXEMPT_RE"; then
     echo "changelog: only kit-export paths changed; no fragment needed"; return 0
   fi
-  added="$(git diff --name-only --diff-filter=A "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' | grep -v "^$RDIR/" | grep '\.md$' || true)"
-  deleted="$(git diff --name-only --diff-filter=D "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' | grep -v "^$RDIR/" || true)"
-  radded="$(git diff --name-only --diff-filter=A "$base...HEAD" -- "$RDIR" | grep '\.md$' || true)"
-  rdeleted="$(git diff --name-only --diff-filter=D "$base...HEAD" -- "$RDIR" || true)"
+  added="$(git diff --name-only --diff-filter=A "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' | grep '\.md$' || true)"
+  deleted="$(git diff --name-only --diff-filter=D "$base...HEAD" -- "$DIR" | grep -v '^changelog\.d/README\.md$' || true)"
   fail=0
   if printf '%s\n' "$changed" | grep -qx "$LOG"; then
     if [ -z "$deleted" ]; then
@@ -199,14 +128,6 @@ cmd_pr() {
       fi
     fi
   fi
-  # Status lines go in as fragments; only the assembler (it deletes some) adds them to the file.
-  if printf '%s\n' "$changed" | grep -qx "$ROAD" && [ -z "$rdeleted" ]; then
-    rhit="$(git diff -U0 "$base...HEAD" -- "$ROAD" | grep -cE '^\+ *\*\*(Status|Update|Open)' || true)"
-    if [ "${rhit:-0}" -gt 0 ]; then
-      echo "FAIL: $ROAD gained $rhit status line(s). Add a fragment instead: scripts/changelog-fragments status ITEM SLUG TEXT"
-      fail=1
-    fi
-  fi
   if [ -z "$added" ] && [ -z "$deleted" ]; then
     echo "FAIL: no changelog fragment added. Run: scripts/changelog-fragments new SLUG TEXT (or a one-line 'skip: reason' fragment)"
     fail=1
@@ -218,12 +139,6 @@ cmd_pr() {
   done <<EOF2
 $added
 EOF2
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    msg="$(lint_roadmap "$f")" || { echo "FAIL: $msg"; fail=1; }
-  done <<EOF2
-$radded
-EOF2
   [ "$fail" -eq 0 ] && echo "changelog: fragment rules satisfied against $base"
   return "$fail"
 }
@@ -233,9 +148,8 @@ cmd_compile() {
   [ "${1:-}" = "--dry-run" ] && dry=1
   cmd_lint >/dev/null || { cmd_lint; die "fix the fragments first"; }
   files="$(list_fragments | sort -r)"
-  rfiles="$(list_roadmap)"
-  [ -n "$files$rfiles" ] || { echo "no fragments to compile"; return 0; }
-  out="$(mktemp)"; rnew="$(mktemp)"; trap 'rm -f "$out" "$rnew"' EXIT
+  [ -n "$files" ] || { echo "no fragments to compile"; return 0; }
+  out="$(mktemp)"; trap 'rm -f "$out"' EXIT
   n=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -246,27 +160,9 @@ cmd_compile() {
   done <<EOF2
 $files
 EOF2
-  # Roadmap statuses, oldest first, each inserted into the running copy.
-  rn=0
-  if [ -n "$rfiles" ]; then
-    [ -f "$ROAD" ] || die "no $ROAD"
-    cp "$ROAD" "$rnew"
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      item="$(sed -n '1s/^item: //p' "$f")"
-      text="$(sed -n '2,$p' "$f" | tr '\n' ' ' | sed -e 's/[[:space:]]*$//')"
-      step="$(mktemp)"
-      roadmap_insert "$rnew" "$item" "$text" > "$step" || { rm -f "$step"; die "$f: no item $item in $ROAD"; }
-      cat "$step" > "$rnew"; rm -f "$step"
-      rn=$((rn + 1))
-    done <<EOF2
-$rfiles
-EOF2
-  fi
   if [ "$dry" -eq 1 ]; then
     cat "$out"
-    [ "$rn" -gt 0 ] && { diff "$ROAD" "$rnew"; true; }
-    echo "($n entries, $rn roadmap statuses, dry run, nothing written)" >&2; return 0
+    echo "($n entries, dry run, nothing written)" >&2; return 0
   fi
   if [ -n "$files" ]; then
     grep -qx '## Unreleased' "$LOG" || die "no '## Unreleased' heading in $LOG"
@@ -276,20 +172,17 @@ EOF2
       $0 == "## Unreleased" && !d { getline nxt; print ""; while ((getline line < ins) > 0) print line; if (nxt != "") print nxt; if ((getline nx2) > 0) { if (nx2 ~ /^#/) print ""; print nx2 } d = 1 }' "$LOG" > "$new"
     cat "$new" > "$LOG"; rm -f "$new"
   fi
-  [ "$rn" -gt 0 ] && cat "$rnew" > "$ROAD"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     git ls-files --error-unmatch "$f" >/dev/null 2>&1 && git rm -q -f "$f" || rm -f "$f"
   done <<EOF2
 $files
-$rfiles
 EOF2
-  echo "compiled $n entries into $LOG and $rn statuses into $ROAD; removed $(printf '%s\n%s\n' "$files" "$rfiles" | grep -c .) fragment file(s)"
+  echo "compiled $n entries into $LOG; removed $(printf '%s\n' "$files" | grep -c .) fragment file(s)"
 }
 
 case "${1:-}" in
   new) shift; cmd_new "$@" ;;
-  status) shift; cmd_status "$@" ;;
   lint) cmd_lint ;;
   pr) shift; cmd_pr "$@" ;;
   compile) shift; cmd_compile "$@" ;;
