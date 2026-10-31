@@ -1,5 +1,7 @@
 # For Writers
 
+**Status:** operational.
+
 You write narrative, copy, or story development, and you want to see how a working practice mines sessions for language and keeps its published work honest. This path covers the language sources and the editorial disciplines, plus the prompt tooling that supports them.
 
 ## First hour

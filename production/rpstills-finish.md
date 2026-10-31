@@ -1,5 +1,7 @@
 # rpstills finish and absheet: retouch, background, crop, and the A/B/C sheet
 
+**Status:** operational.
+
 `rpstills finish` turns developed portraits into delivery JPEGs: an optional background burn, an optional retouch, then one crop per profile with the eye line placed from face landmarks. `rpstills absheet` makes the one picture that asks for a choice between candidates (looks, crops, retouch strengths), answered with a letter.
 
 Both rest on the face landmarks from Vision (`vision.faces(..., landmarks=True)`) and the masks in `rpstills/skin.py`, described in [rpstills-audit.md](rpstills-audit.md).

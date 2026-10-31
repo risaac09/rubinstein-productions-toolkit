@@ -1,5 +1,7 @@
 # For Evaluators
 
+**Status:** operational.
+
 You measure impact, design assessments, or write and manage grants. This path maps the measurement corpus, which overlaps in ways the filenames do not explain, and then covers the working tools.
 
 ## The map, before the reading

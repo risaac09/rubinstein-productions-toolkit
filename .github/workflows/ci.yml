@@ -37,6 +37,8 @@ jobs:
         run: |
           scripts/test-changelog-fragments.sh
           scripts/test-burst-gate.sh
+      - name: Methodology status check tests
+        run: scripts/test-methodology-status.sh
       - name: Card offload tests
         run: production/tests/test-offload.sh
       - name: Changelog fragments are well formed

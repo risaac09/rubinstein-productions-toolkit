@@ -1,6 +1,6 @@
 # Credits and AI Disclosure
 
-> **Status:** accepted 2026-10-16. Two short standards for produced work, built from what the production tooling does and what the consent tiers already promise. This document states no copyright or licence terms.
+> **Status:** operational, accepted 2026-10-16. Two short standards for produced work, built from what the production tooling does and what the consent tiers already promise. This document states no copyright or licence terms.
 
 ## Credits
 

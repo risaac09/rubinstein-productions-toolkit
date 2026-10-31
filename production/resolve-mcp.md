@@ -1,5 +1,7 @@
 # The Resolve MCP server
 
+**Status:** operational.
+
 `resolve_mcp.py` is a Model Context Protocol server over stdio that lets an
 MCP client (Claude Code here) drive DaVinci Resolve through the `rpresolve`
 library beside it. It is the only way this toolkit writes to Resolve:

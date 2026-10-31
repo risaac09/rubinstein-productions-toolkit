@@ -1,5 +1,7 @@
 # Edit assist: wordsnap, shots, beats
 
+**Status:** operational.
+
 Three offline helpers for the edit. Each reads media with ffmpeg, does its arithmetic in numpy, writes one file outside any git working tree (and never over its own input), and never touches Resolve. Each proposes; the editor decides. They run on Python 3.9 with numpy, like the rest of `rpresolve`.
 
 | Tool | Reads | Writes | Feeds |

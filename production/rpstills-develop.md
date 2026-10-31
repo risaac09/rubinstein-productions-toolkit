@@ -1,5 +1,7 @@
 # rpstills develop: RAW to 16-bit TIFF, neutral per person, exposure on the cheek
 
+**Status:** operational.
+
 `rpstills develop` develops each selected RAW file and moves three settings, exposure, white balance temperature and tint, until the frame measures what the look asks for. It writes a 16-bit sRGB TIFF per frame and a `calibration.json` that says, frame by frame, where the solve landed and whether it met the target. It is the step between the cull and `rpstills finish`.
 
 The house rule for delivered portraits: **neutralise on a neutral reference, set exposure on the cheek, never push skin hue to a number.** That is the look's `solve.mode` `"neutral"`, shipped as `stills-looks/portrait-neutral-v1.json`. The older mode, `"target"`, solves the cheek's whole colour onto one CIELAB target; it stays for matching a set to one hero frame.

@@ -1,5 +1,7 @@
 # Best-take proposals
 
+**Status:** operational.
+
 `python3 -m rpresolve.besttake` reads the takes of one answer and proposes an
 order from numbers. It writes nothing into the takes, never calls one "best",
 and the editor picks. Run from `production/`.
