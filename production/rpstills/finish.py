@@ -293,11 +293,19 @@ def build(out_dir, paths, detections, profiles, retouch_set, do_background, cfg_
 
 
 def write(out_dir, doc):
-    """finish.json in out_dir/finish, atomically."""
+    """finish.json in out_dir/finish, atomically, merged by frame id with the rows already on disk."""
     folder = os.path.join(out_dir, "finish")
     refuse_git(out_dir)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "finish.json")
+    try:                                  # keep rows of frames this run has not reached (or did not run)
+        with open(path) as f:
+            old = json.load(f).get("frames") or []
+    except (OSError, ValueError, AttributeError):
+        old = []
+    new = {r["id"]: r for r in doc["frames"]}
+    merged = [new.pop(r["id"], r) for r in old if isinstance(r, dict) and "id" in r]
+    doc = dict(doc, frames=merged + list(new.values()))
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=".finish-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:

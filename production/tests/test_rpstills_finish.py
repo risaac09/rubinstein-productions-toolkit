@@ -647,6 +647,25 @@ class FinishRunTest(unittest.TestCase):
             self.run_cli("--ids", "F1", "F2")
         self.assertEqual([r["id"] for r in self.doc()["frames"]], ["F1"])
 
+    def test_an_interrupted_rerun_keeps_the_earlier_rows_of_frames_it_never_reached(self):
+        save_tif16(self.out / "develop" / "F3.tif", self.img)
+        code, _, err = self.run_cli()
+        self.assertEqual(code, 0, err)
+        before = {r["id"]: r for r in self.doc()["frames"]}
+        self.assertEqual(sorted(before), ["F1", "F2", "F3"])
+        real = finish.finish_frame
+
+        def stop_on_second(fid, *a, **k):
+            if fid == "F2":
+                raise KeyboardInterrupt
+            return real(fid, *a, **k)
+        with mock.patch.object(finish, "finish_frame", stop_on_second), self.assertRaises(KeyboardInterrupt):
+            self.run_cli()
+        after = {r["id"]: r for r in self.doc()["frames"]}
+        self.assertEqual(sorted(after), ["F1", "F2", "F3"])
+        self.assertEqual(after["F2"], before["F2"])
+        self.assertEqual(after["F3"], before["F3"])
+
 
 if __name__ == "__main__":
     unittest.main()
