@@ -39,6 +39,25 @@ PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL = (
 _EOF = object()
 
 
+def _id_ok(rid):
+    """A JSON-RPC id here is a string or an integer (not bool, not null)."""
+    return isinstance(rid, (str, int)) and not isinstance(rid, bool)
+
+
+def _malformed(m):
+    """Why m is not a usable JSON-RPC 2.0 message, or None."""
+    if not isinstance(m, dict) or m.get("jsonrpc") != "2.0":
+        return "not a JSON-RPC 2.0 message"
+    method = m.get("method")
+    if method is None and ("result" in m or "error" in m):
+        return None  # a response to something we never sent; the caller ignores it
+    if not isinstance(method, str):
+        return "method must be a string"
+    if "id" in m and not _id_ok(m["id"]):
+        return "id must be a string or an integer"
+    return None
+
+
 def log(*parts):
     print("[rpresolve-mcp]", *parts, file=sys.stderr, flush=True)
 
@@ -85,14 +104,15 @@ class Server:
 
     def _route_batch_member(self, m):
         """Answer one batch member inside the main loop (responses collect)."""
-        if not isinstance(m, dict) or m.get("jsonrpc") != "2.0" or m.get("method") is None:
-            if isinstance(m, dict) and m.get("method") is None and "id" in m:
-                return  # a response; nothing to answer
-            self.error(m.get("id") if isinstance(m, dict) else None, INVALID_REQUEST,
-                       "not a JSON-RPC 2.0 message")
+        bad = _malformed(m)
+        if bad:
+            self.error(m.get("id") if isinstance(m, dict) and _id_ok(m.get("id")) else None,
+                       INVALID_REQUEST, bad)
             return
+        if m.get("method") is None:
+            return  # a response; nothing to answer
         if "id" not in m:
-            self._notification(m["method"], m.get("params") or {})
+            self._notification(m["method"], m.get("params"))
         elif m["method"] == "ping":
             self.reply(m["id"], {})
         else:
@@ -120,40 +140,51 @@ class Server:
             if not line.strip():
                 continue
             try:
-                msg = json.loads(line)
-            except ValueError as e:
-                self.error(None, PARSE_ERROR, f"parse error: {e}")
-                continue
-            if isinstance(msg, list):
-                if self.version not in BATCH_VERSIONS or not msg:
-                    self.error(None, INVALID_REQUEST, "batch requests are not supported "
-                               f"under protocol {self.version}")
+                try:
+                    msg = json.loads(line)
+                except ValueError as e:
+                    self.error(None, PARSE_ERROR, f"parse error: {e}")
                     continue
-                self.queue.put(("batch", msg))
-                continue
-            self._route(msg)
+                if isinstance(msg, list):
+                    if self.version not in BATCH_VERSIONS or not msg:
+                        self.error(None, INVALID_REQUEST, "batch requests are not supported "
+                                   f"under protocol {self.version}")
+                        continue
+                    self.queue.put(("batch", msg))
+                    continue
+                self._route(msg)
+            except Exception:  # one bad line must never end the reader thread
+                log("bad line:\n" + traceback.format_exc())
+                self.error(None, INVALID_REQUEST, "invalid request")
         self.queue.put(_EOF)
 
     def _route(self, msg):
-        if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0":
-            self.error(msg.get("id") if isinstance(msg, dict) else None, INVALID_REQUEST,
-                       "not a JSON-RPC 2.0 message")
+        bad = _malformed(msg)
+        if bad:
+            self.error(msg.get("id") if isinstance(msg, dict) and _id_ok(msg.get("id")) else None,
+                       INVALID_REQUEST, bad)
             return
         method = msg.get("method")
         if method is None:
             return  # a response to something we never send; ignore
         if "id" not in msg:
-            self._notification(method, msg.get("params") or {})
+            self._notification(method, msg.get("params"))
         elif method == "ping":
             self.reply(msg["id"], {})
         else:
             self.queue.put(msg)
 
     def _notification(self, method, params):
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return  # notifications never get a reply, so a bad shape is dropped
         if method == "notifications/initialized":
             self.initialized = True
         elif method == "notifications/cancelled":
             rid = params.get("requestId")
+            if not _id_ok(rid):
+                return
             with self.lock:
                 if len(self.cancelled) >= 1000:  # ids for requests that never came
                     self.cancelled.clear()
@@ -201,7 +232,8 @@ class Server:
                     self.cancelled.discard(rid)
 
     def handle(self, msg):
-        rid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
+        rid, method, params = msg.get("id"), msg.get("method"), msg.get("params")
+        params = {} if params is None else params
         if not isinstance(params, dict):
             self.error(rid, INVALID_PARAMS, "params must be an object")
             return

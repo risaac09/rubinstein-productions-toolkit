@@ -2,11 +2,15 @@
 rpresolve.mcp.schema: validate tool arguments against the JSON Schema
 subset the tools use: type, properties, required, additionalProperties
 (false), enum, minimum, maximum, minLength, minItems, maxItems, items,
-pattern, uniqueItems, default (not applied). validate() returns a list of messages;
+pattern (an unanchored search as in JSON Schema, but a closing $ means the very end, so a trailing newline fails), uniqueItems, default (not applied).
+Every other keyword is ignored: description, title, and anything the tools
+do not use today (oneOf, anyOf, format, ...); add it here before a tool
+relies on it. Numbers must be finite. validate() returns a list of messages;
 empty means valid.
 """
 
 import json
+import math
 import re
 
 _TYPES = {
@@ -23,6 +27,19 @@ def _is(value, kind):
     return isinstance(value, _TYPES[kind])
 
 
+def _same(a, b):
+    """Equality where True is not 1."""
+    return a == b and isinstance(a, bool) == isinstance(b, bool)
+
+
+def _strict_end(pattern):
+    # Python's $ also matches before a final newline, so "SW\n" would pass ^SW$.
+    # shortcut: only a closing $ is rewritten, not one inside a group.
+    if pattern.endswith("$") and not pattern.endswith("\\$"):
+        return pattern[:-1] + r"\Z"
+    return pattern
+
+
 def validate(schema, value, path="arguments"):
     errors = []
     kind = schema.get("type")
@@ -30,9 +47,11 @@ def validate(schema, value, path="arguments"):
         kinds = kind if isinstance(kind, list) else [kind]
         if not any(_is(value, k) for k in kinds):
             return [f"{path}: expected {' or '.join(kinds)}, got {type(value).__name__}"]
-    if "enum" in schema and value not in schema["enum"]:
+    if "enum" in schema and not any(_same(value, e) for e in schema["enum"]):
         errors.append(f"{path}: {value!r} is not one of {schema['enum']}")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if isinstance(value, float) and not math.isfinite(value):
+            return [f"{path}: {value} is not a finite number"]
         if "minimum" in schema and value < schema["minimum"]:
             errors.append(f"{path}: {value} is below the minimum {schema['minimum']}")
         if "maximum" in schema and value > schema["maximum"]:
@@ -40,7 +59,7 @@ def validate(schema, value, path="arguments"):
     if isinstance(value, str):
         if "minLength" in schema and len(value) < schema["minLength"]:
             errors.append(f"{path}: shorter than {schema['minLength']} character(s)")
-        if "pattern" in schema and not re.search(schema["pattern"], value):
+        if "pattern" in schema and not re.search(_strict_end(schema["pattern"]), value):
             errors.append(f"{path}: {value!r} does not match {schema['pattern']}")
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:
@@ -67,15 +86,19 @@ def validate(schema, value, path="arguments"):
     return errors
 
 
-def coerce(schema, args):
-    """args with integer-typed top-level values given as whole floats (2.0)
-    turned into ints, so a handler can use them as indexes or counts."""
-    out = dict(args or {})
-    for name, sub in (schema.get("properties") or {}).items():
-        v = out.get(name)
-        if sub.get("type") == "integer" and isinstance(v, float) and v.is_integer():
-            out[name] = int(v)
-    return out
+def coerce(schema, value):
+    """value with whole floats (2.0) turned into ints wherever the schema says
+    integer, at any depth, so a handler can use them as indexes or counts."""
+    kind = schema.get("type")
+    if (kind == "integer" or isinstance(kind, list) and "integer" in kind
+            and "number" not in kind) and isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        props = schema.get("properties") or {}
+        return {k: coerce(props[k], v) if k in props else v for k, v in value.items()}
+    if isinstance(value, list) and "items" in schema:
+        return [coerce(schema["items"], v) for v in value]
+    return value
 
 
 def with_defaults(schema, args):
