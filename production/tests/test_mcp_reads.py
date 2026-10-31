@@ -38,19 +38,19 @@ def call(name, args, project):
 
 
 def sandbox():
-    gh7 = rf.Clip("P1001861.MOV", "clip-gh7", {"File Path": "/w/P1001861.MOV",
+    gh7 = rf.Clip("P1000121.MOV", "clip-gh7", {"File Path": "/w/P1000121.MOV",
                                                "Input Color Space": "Panasonic V-Gamut/V-Log",
                                                "Data Level": "Auto", "FPS": 25.0,
                                                "Type": "Video"})
     iphone = rf.Clip("IMG_1.MOV", "clip-ip", {"File Path": "/w/IMG_1.MOV",
                                               "Input Color Space": "Rec.2100 HLG"})
-    v1 = [rf.Item("P1001861.MOV", 86400, 86424, gh7, [("", LUT, ["LUT: S5 IIX"])],
+    v1 = [rf.Item("P1000121.MOV", 86400, 86424, gh7, [("", LUT, ["LUT: S5 IIX"])],
                   {"ZoomX": 1.0, "Pan": 0.0}, (0, 29), {"versionName": "Version 1",
                                                         "versionType": 0}),
           rf.Item("IMG_1.MOV", 86424, 86448, iphone)]
     graded = rf.Timeline("A3 spike grades", "tl-1", 24.0, 86400, 86448,
                          {"video": [v1, [rf.Item("title", 86400, 86410)]],
-                          "audio": [[rf.Item("P1001861.MOV", 86400, 86424, gh7, nodes=None)]]})
+                          "audio": [[rf.Item("P1000121.MOV", 86400, 86424, gh7, nodes=None)]]})
     current = rf.Timeline("A3 smartreframe 9x16", "tl-2", 24.0, 86400, 86760)
     auto = rf.Timeline("SW_rigor_30 [auto]", "tl-3", 25.0, 86400, 87150)
     twin_a = rf.Timeline("Same", "tl-4")

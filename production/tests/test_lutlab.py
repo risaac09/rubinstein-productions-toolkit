@@ -240,6 +240,26 @@ class GuardTest(unittest.TestCase):
         d = guard.check_out_dir(Path(tempfile.mkdtemp()) / "x")
         self.assertTrue(d.is_dir())
 
+    @unittest.skipUnless(shutil.which("git"), "needs git")
+    def test_a_name_cannot_carry_a_file_out_of_the_checked_folder(self):
+        import contextlib
+        import io
+        from lutlab.__main__ import main
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        repo, out = tmp / "repo", tmp / "out"
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        out.mkdir()
+        lut = out / "l.cube"
+        cube.write_cube(str(lut), cube.lattice(3), "t")
+        for argv in (["port", str(lut), "--from", "r709", "--to", "r709", "--size", "3"],
+                     ["decompose", str(lut), "--in", "r709"]):
+            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                main(argv + ["--out", str(out), "--name", "../repo/leak"])
+            self.assertEqual(cm.exception.code, 2, argv[0])
+        self.assertEqual(sorted(p.name for p in repo.iterdir()), [".git"])
+
 
 class CameraSpacesTest(unittest.TestCase):
     def test_published_mid_grey(self):

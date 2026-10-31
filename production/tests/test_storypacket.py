@@ -141,7 +141,7 @@ class Matching(unittest.TestCase):
         self.assertEqual(amb, {"/a/CARD1/P1.MOV"})
 
     def test_clip_id_climbs_to_the_card_folder(self):
-        self.assertEqual(sp.card_key("/A/S5II-a1b2c3/DCIM/100_PANA/P1039630.MOV"), "S5II-a1b2c3/P1039630")
+        self.assertEqual(sp.card_key("/A/S5II-a1b2c3/DCIM/100_PANA/P1000110.MOV"), "S5II-a1b2c3/P1000110")
         self.assertEqual(sp.card_key("/A/For-review/C016.mov"), "For-review/C016")
 
     def test_a_shared_clip_id_matches_nothing_by_id(self):
