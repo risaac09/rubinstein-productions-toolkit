@@ -158,7 +158,7 @@ def _cpp_timeout(path):
         return v
     from . import delivercheck as dc
     try:
-        dur = dc.duration(dc.probe(path)) or dc.format_duration(dc.probe(path))
+        dur = dc.duration(dc.probe(path))
     except Exception:  # unreadable length is not fatal here; the cap below still applies
         dur = None
     if not dur:
