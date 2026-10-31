@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only by default; no job here writes to the repo, PRs or checks.
+permissions:
+  contents: read
+
 # A new commit on a PR cancels that PR's earlier run. Every other event (a push
 # to main, a manual dispatch) gets a group of its own, so main is never
 # cancelled. Branch pushes do not trigger CI; the pull_request run covers them.

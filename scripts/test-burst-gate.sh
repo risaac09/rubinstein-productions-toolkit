@@ -63,6 +63,8 @@ branch taskword docs/a.md "a task-based-routing-for-everything-here approach"
 run "G2 does not flag sk- inside a word" 0 "PASS G2 privacy"
 branch placeholder docs/a.md "see /Us""ers/you/notes"
 run "G2 allows a placeholder user name" 0 "PASS G2 privacy"
+branch phsecret docs/a.md "see /Us""ers/you/notes and $TOKEN"
+run "G2 still catches a token on a line with a placeholder" 1 "G2 privacy: private-looking text"
 printf 'Acme Widgets\n# comment\n' > "$TMP/deny"
 branch client docs/a.md "worked with acme widgets"
 out="$(cd "$R" && BURST_GATE_DENYLIST="$TMP/deny" "$G" --base main --tests true 2>&1)"; rc=$?
