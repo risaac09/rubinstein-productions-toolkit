@@ -81,4 +81,4 @@ For your own new work, `public-kit/` carries two templates: `LICENSE-MIT.templat
 3. Add your own copyright line to `LICENSE` and `LICENSE-CONTENT`.
 4. Decide whether to keep the git history.
 
-**Pending: history scrub.** The maintainer has not yet cleaned this repository's git history, and a fork copies all of it. If you want a history that is already scrubbed, wait for that to land and fork afterwards. If you fork now, expect to rebase or re-fork later, and check the history yourself for anything you would not want under your name before you make your fork public. A fork you start from a clean tree with no history (copy the files, `git init`) avoids the question.
+**Pending: history.** A fork copies the full git history, and how this repository will handle its history is not settled yet. If you want none of it, start from a clean tree: copy the files and `git init`. Either way, read what you publish under your own name before you make a fork public.
