@@ -151,6 +151,18 @@ Readers ignore keys they do not know, so a line may carry more (`repeat_of` for 
 
 The log is distilled, by hand or by a scheduled task, into a **taste profile** kept privately, outside this repository (the location is decided, 2026-10-22): per question (warmth, skin, contrast, pace, music level) the preferred direction with its count, a short "never" list, the ids of exemplar answers, and the answers that contradict each rule. A rule enters the profile only after at least five consistent answers. The profile sets the starting point of the next proposal and the order of options. It never makes a choice on its own.
 
+### Running the distiller
+
+```bash
+cd production
+python3 resolve_workflow.py taste-profile <project>/review/events.jsonl            # dry run: prints the profile
+python3 resolve_workflow.py taste-profile <project>/review/events.jsonl --out <private dir>/taste-profile.md
+```
+
+It reads the log and changes nothing; `--out` is the only way a file is written, and a path inside any git working tree is refused. A question is the line's optional `question` key (warmth, skin, pace), else its `step`; a `noise_type` makes each type its own question. Two optional line keys help it: `question`, and `stimulus` (an id for one comparison, so a re-asked comparison counts as a repeat even with its options shuffled). A rule needs five answers for one direction and a majority of the question's answers, and where the same stimulus (else the same option set) was asked more than once the repeats must agree at least 80 percent of the time, otherwise the question prints as "inconsistent, no rule" with the counts. "Never" lists options offered at least five times and never chosen. Malformed lines are counted in the header, never fatal. The profile orders options and never picks.
+
+Scheduling: not set; the maintainer decides cadence
+
 ### Denoise answers are counted per noise type
 
 Whether a denoiser helps depends on what it removes. A reviewer may prefer the treated clip against wind on a mic and the untreated one when the same car rumble is part of the scene. So any denoise or noise-treatment decision carries a `noise_type` in its log line, and the taste profile counts answers per type: "1 of 5 for rumble: not yet a rule". Five consistent answers are five for one type; answers for different types are never pooled, and a rule for one type says nothing about another. Until a type has a rule of its own, the dialogue default (arnndn with `std.rnnn` over afftdn, decided 2026-10-22) stays the starting point for dialogue; the profile orders options and never picks.
