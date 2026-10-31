@@ -27,7 +27,7 @@ python3 production/resolve_workflow.py overlay-check out/thing/Thing.mov --fps 2
 | `--frames A-B` | Render only those frames. |
 | `--order shuffled` | Visit frames in a fixed shuffled order. The output must equal a sequential run. |
 | `--data JSON` or `@FILE` | Property values over the schema defaults. |
-| `--keep-frames`, `--no-video` | Keep `OUT/frames`; stop before ffmpeg. |
+| `--keep-frames`, `--no-video` | Keep `OUT/frames` (never replaces a folder already there); stop before ffmpeg. |
 | `--strict-fonts` | A missing font fails the run instead of warning. |
 | `--lint` | Run Resolve's own `lint-ograf.py` when it is installed (`OGRAF_LINT` sets another path). It is never copied here. |
 | `--chrome PATH` | Chrome binary; also the `CHROME` environment variable. |

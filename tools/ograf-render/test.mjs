@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -135,6 +135,32 @@ describe("ograf-render", { skip }, () => {
     assert.equal(r.status, 2);
     assert.match(r.stderr, /supportsNonRealTime/);
     assert.equal(existsSync(join(work, "e", "fixture.mov")), false);
+  });
+
+  it("leaves an earlier render and an unrelated frames folder alone when the new run fails", () => {
+    const d = join(work, "broken");
+    mkdirSync(d);
+    writeFileSync(join(d, "fixture.js"), "throw new Error('import fails');\n");
+    writeFileSync(join(d, "fixture.ograf.json"), JSON.stringify(manifest()));
+    const out = join(work, "h");
+    mkdirSync(join(out, "frames"), { recursive: true });
+    writeFileSync(join(out, "fixture.mov"), "previous good render");
+    writeFileSync(join(out, "frames", "mine.png"), "not the tool's");
+    const r = spawnSync("node", [SCRIPT, join(d, "fixture.ograf.json"), "--out", out, "--size", "320x180", "--keep-frames"], { encoding: "utf8" });
+    assert.notEqual(r.status, 0);
+    assert.equal(readFileSync(join(out, "fixture.mov"), "utf8"), "previous good render");
+    assert.equal(readFileSync(join(out, "frames", "mine.png"), "utf8"), "not the tool's");
+    assert.deepEqual(readdirSync(out).sort(), ["fixture.mov", "frames"], "no temp folder or file left behind");
+  });
+
+  it("does not replace an existing frames folder when asked to keep frames", () => {
+    const out = join(work, "i");
+    mkdirSync(join(out, "frames"), { recursive: true });
+    writeFileSync(join(out, "frames", "mine.png"), "not the tool's");
+    const r = render("good", "i", "--no-video", "--keep-frames");
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(readdirSync(join(out, "frames")), ["mine.png"]);
+    assert.equal(readdirSync(out).some((f) => f.startsWith(".frames-")), false);
   });
 
   it("flags a font that is not installed", () => {

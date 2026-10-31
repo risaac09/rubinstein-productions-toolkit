@@ -7,7 +7,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
@@ -37,7 +37,7 @@ const USAGE = `usage: ograf-render.mjs TEMPLATE.ograf.json --out DIR [options]
   --frames A-B         render only frames A to B inclusive (default all)
   --order sequential|shuffled   frame visiting order (default sequential); the output is the same
   --data JSON|@FILE    property values merged over the schema defaults
-  --keep-frames        keep the PNGs in OUT/frames
+  --keep-frames        keep the PNGs in OUT/frames (not if it exists)
   --no-video           stop after the PNGs, boxes and report
   --strict-fonts       a missing font fails the run (default: a warning in report.json)
   --chrome PATH        Chrome binary (default: CHROME env, then the usual names)
@@ -309,15 +309,23 @@ async function main() {
   const data = { ...schemaDefaults(manifest.schema), ...extra };
   const name = basename(manifestPath).replace(/\.ograf\.json$|\.json$/, "");
   const outDir = resolve(o.out);
-  const framesDir = join(outDir, "frames");
   const mov = join(outDir, `${name}.mov`);
+  const tmpMov = join(outDir, `.${name}.tmp.mov`);
 
   if (!o.noVideo && spawnSync("ffmpeg", ["-version"]).status !== 0) throw new Fail("ffmpeg not found on PATH", 3);
   const chromeBin = findChrome(o.chrome);
-  for (const f of ["boxes.json", "report.json", `${name}.mov`]) rmSync(join(outDir, f), { force: true });
-  rmSync(framesDir, { recursive: true, force: true });
-  mkdirSync(framesDir, { recursive: true });
+  // Nothing already in OUT is touched until the new render has passed its checks: frames go
+  // to a temp folder this run made, the movie to a temp name, and both are cleaned up on failure.
+  mkdirSync(outDir, { recursive: true });
+  const framesDir = mkdtempSync(join(outDir, ".frames-"));
+  try {
+    return await render();
+  } finally {
+    rmSync(framesDir, { recursive: true, force: true });
+    rmSync(tmpMov, { force: true });
+  }
 
+  async function render() {
   const { server, port } = await serve(root, manifest.main);
   const cdp = await launchChrome(chromeBin);
   const report = { template: basename(manifestPath), id: manifest.id, fps: fps.text, width, height,
@@ -374,7 +382,6 @@ async function main() {
   const missing = report.fonts.filter((f) => !f.present).map((f) => f.family);
   report.checks.fonts = { pass: missing.length === 0, missing };
   if (o.lint) report.checks.lint = runLinter(manifestPath);
-  writeFileSync(join(outDir, "boxes.json"), JSON.stringify({ fps: fps.text, width, height, frames: boxes }, null, 1));
 
   if (!o.noVideo) {
     // PNG is straight-alpha RGBA; scale does the RGB to BT.709 limited-range YUV conversion and
@@ -384,20 +391,31 @@ async function main() {
       "setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709";
     const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-framerate", fps.text, "-start_number", String(first),
       "-i", join(framesDir, "%06d.png"), "-vf", vf, "-c:v", "prores_ks", "-profile:v", "4444",
-      "-pix_fmt", "yuva444p10le", "-vendor", "apl0", mov], { encoding: "utf8" });
+      "-pix_fmt", "yuva444p10le", "-vendor", "apl0", tmpMov], { encoding: "utf8" });
     if (r.status !== 0) throw new Fail(`ffmpeg failed: ${r.stderr.trim().slice(-400)}`);
-    report.video = mov;
   }
-  if (!o.keepFrames) rmSync(framesDir, { recursive: true, force: true });
+  const det = report.checks.determinism;
+  const lintBad = report.checks.lint?.ran && report.checks.lint.exit !== 0;
+  const passed = det.pass && !(o.strictFonts && missing.length) && !lintBad;
+  // Only a render that passed every check replaces the previous movie and frames; a failed one
+  // still writes its report and boxes, which describe the failure.
+  if (passed && !o.noVideo) { renameSync(tmpMov, mov); report.video = mov; }
+  writeFileSync(join(outDir, "boxes.json"), JSON.stringify({ fps: fps.text, width, height, frames: boxes }, null, 1));
+  if (o.keepFrames) {
+    // An existing OUT/frames is never replaced: it may not be ours.
+    const kept = join(outDir, "frames");
+    if (!existsSync(kept)) { renameSync(framesDir, kept); chmodSync(kept, 0o755); }
+    else process.stderr.write(`ograf-render: ${kept} already exists and was left alone; frames not kept\n`);
+  }
   writeFileSync(join(outDir, "report.json"), JSON.stringify(report, null, 1));
 
-  const det = report.checks.determinism;
   process.stdout.write(`${name}: ${last - first + 1} frames at ${fps.text}, ${width}x${height}${report.video ? ` -> ${mov}` : ""}\n`);
   process.stdout.write(`determinism: ${det.pass ? "PASS" : `FAIL (frames ${det.differing_frames.join(", ")} changed on revisit)`}\n`);
   if (missing.length) process.stdout.write(`fonts: ${o.strictFonts ? "FAIL" : "warn"}, not found: ${missing.join(", ")}\n`);
   if (report.checks.lint) process.stdout.write(`linter: ${report.checks.lint.ran ? `exit ${report.checks.lint.exit}\n${report.checks.lint.output}` : report.checks.lint.note}\n`);
-  const lintBad = report.checks.lint?.ran && report.checks.lint.exit !== 0;
-  return det.pass && !(o.strictFonts && missing.length) && !lintBad ? 0 : 1;
+  if (!passed && !o.noVideo) process.stdout.write("a failed render does not replace the previous movie\n");
+  return passed ? 0 : 1;
+  }
 }
 
 main().then((c) => process.exit(c), (e) => {
