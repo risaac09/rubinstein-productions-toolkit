@@ -51,9 +51,9 @@ footer{padding:20px 16px;color:var(--mut);font-size:12px}
 <footer>Scores compare only within a run. A score marked f is a frame score (sharpness, exposure, composition) for a run with no subject face; hover for its parts. Names are yours to fill; the pipeline never guesses one. selects.json goes beside this file.</footer>
 <script>
 const DATA = __DATA__;
+const KEY = "rpstills:" + DATA.session;
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 const url = p => String(p).split("/").map(encodeURIComponent).join("/");
-const KEY = "rpstills:" + DATA.session;
 let state = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {marks:{}, names:{}}; }catch(e){ return {marks:{}, names:{}}; } }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
