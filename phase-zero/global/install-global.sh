@@ -12,7 +12,7 @@
 #   ./install-global.sh --check    verify the installed copy, no writes
 #
 # --check byte-compares every file this script installs against its source,
-# confirms the three hook registrations in settings.json, and confirms the
+# confirms the five hook registrations in settings.json, and confirms the
 # autoMode sections match what the kit (then the machine-local overlay) would
 # merge. Prints DRIFT lines and exits 1 on any drift, 0 when current.
 # CLAUDE_HOME picks the target, as for an install.
@@ -35,8 +35,10 @@ $KITROOT/retrospective.md|retrospective.md
 $KITROOT/model-routing.md|model-routing.md
 $KITROOT/operating-brief.md|operating-brief.md
 $SRC/session-brief.global.sh|hooks/session-brief.sh
-$SRC/relations-guard.global.sh|hooks/relations-guard.sh"
-GLOBAL_EXEC="hooks/phase-zero-trigger.sh hooks/session-brief.sh hooks/relations-guard.sh"
+$SRC/workspace-check.global.sh|hooks/workspace-check.sh
+$SRC/relations-guard.global.sh|hooks/relations-guard.sh
+$SRC/engage-log.global.sh|hooks/engage-log.sh"
+GLOBAL_EXEC="hooks/phase-zero-trigger.sh hooks/session-brief.sh hooks/workspace-check.sh hooks/relations-guard.sh hooks/engage-log.sh"
 
 settings="$DEST/settings.json"
 # Single quotes on purpose: $HOME is expanded by the hook runner, not here.
@@ -45,7 +47,11 @@ hook_cmd='bash "$HOME/.claude/hooks/phase-zero-trigger.sh"'
 # shellcheck disable=SC2016
 session_cmd='bash "$HOME/.claude/hooks/session-brief.sh"'
 # shellcheck disable=SC2016
+workspace_cmd='bash "$HOME/.claude/hooks/workspace-check.sh"'
+# shellcheck disable=SC2016
 relations_cmd='bash "$HOME/.claude/hooks/relations-guard.sh"'
+# shellcheck disable=SC2016
+engage_cmd='bash "$HOME/.claude/hooks/engage-log.sh"'
 OVERLAY="${AUTO_MODE_OVERLAY:-$HOME/.claude/auto-mode.local.json}"
 
 if [ "${1:-}" = "--check" ]; then
@@ -64,7 +70,7 @@ EOF_FILES
   elif ! command -v jq >/dev/null 2>&1; then
     echo "DRIFT cannot verify settings.json (jq is not installed): $DEST"; drift=1
   else
-    for pair in "UserPromptSubmit|phase-zero-trigger" "SessionStart|session-brief" "PreToolUse|relations-guard"; do
+    for pair in "UserPromptSubmit|phase-zero-trigger" "SessionStart|session-brief" "SessionStart|workspace-check" "PreToolUse|relations-guard" "SessionEnd|engage-log"; do
       ev="${pair%%|*}"; pat="${pair##*|}"
       jq -e --arg ev "$ev" --arg pat "$pat" \
         'any(.hooks[$ev][]?; (.hooks[]?.command // "") | test($pat))' "$settings" >/dev/null \
@@ -100,8 +106,10 @@ for f in $GLOBAL_EXEC; do chmod +x "$DEST/$f"; done
 if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
   entry=$(jq -n --arg cmd "$hook_cmd" '{hooks:[{type:"command",command:$cmd}]}')
   session_entry=$(jq -n --arg cmd "$session_cmd" '{hooks:[{type:"command",command:$cmd}]}')
+  workspace_entry=$(jq -n --arg cmd "$workspace_cmd" '{hooks:[{type:"command",command:$cmd}]}')
   relations_entry=$(jq -n --arg cmd "$relations_cmd" '{matcher:"Read|Grep|Glob",hooks:[{type:"command",command:$cmd}]}')
-  jq --argjson entry "$entry" --argjson session_entry "$session_entry" --argjson relations_entry "$relations_entry" '
+  engage_entry=$(jq -n --arg cmd "$engage_cmd" '{hooks:[{type:"command",command:$cmd,timeout:30}]}')
+  jq --argjson engage_entry "$engage_entry" --argjson entry "$entry" --argjson session_entry "$session_entry" --argjson workspace_entry "$workspace_entry" --argjson relations_entry "$relations_entry" '
     .hooks //= {} |
     .hooks.UserPromptSubmit //= [] |
     (if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
@@ -109,9 +117,14 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
     .hooks.SessionStart //= [] |
     (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("session-brief"))
      then . else .hooks.SessionStart += [$session_entry] end) |
+    (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("workspace-check"))
+     then . else .hooks.SessionStart += [$workspace_entry] end) |
     .hooks.PreToolUse //= [] |
     (if any(.hooks.PreToolUse[]?; (.hooks[]?.command // "") | test("relations-guard"))
-     then . else .hooks.PreToolUse += [$relations_entry] end)
+     then . else .hooks.PreToolUse += [$relations_entry] end) |
+    .hooks.SessionEnd //= [] |
+    (if any(.hooks.SessionEnd[]?; (.hooks[]?.command // "") | test("engage-log"))
+     then . else .hooks.SessionEnd += [$engage_entry] end)
   ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
 elif [ -f "$settings" ]; then
   # jq is missing and a settings.json exists: never clobber it. Fail loudly,
@@ -120,15 +133,19 @@ elif [ -f "$settings" ]; then
   echo "Install jq, or add these hooks to it by hand:" >&2
   echo "  UserPromptSubmit: $hook_cmd" >&2
   echo "  SessionStart:     $session_cmd" >&2
+  echo "  SessionStart:     $workspace_cmd" >&2
   echo "  PreToolUse (Read|Grep|Glob): $relations_cmd" >&2
+  echo "  SessionEnd:       $engage_cmd (timeout 30)" >&2
   exit 1
 elif command -v jq >/dev/null 2>&1; then
-  jq -n --arg hook_cmd "$hook_cmd" --arg session_cmd "$session_cmd" --arg relations_cmd "$relations_cmd" '
+  jq -n --arg engage_cmd "$engage_cmd" --arg hook_cmd "$hook_cmd" --arg session_cmd "$session_cmd" --arg workspace_cmd "$workspace_cmd" --arg relations_cmd "$relations_cmd" '
     {
       hooks: {
         UserPromptSubmit: [ { hooks: [ { type: "command", command: $hook_cmd } ] } ],
-        SessionStart:     [ { hooks: [ { type: "command", command: $session_cmd } ] } ],
-        PreToolUse:       [ { matcher: "Read|Grep|Glob", hooks: [ { type: "command", command: $relations_cmd } ] } ]
+        SessionStart:     [ { hooks: [ { type: "command", command: $session_cmd } ] },
+                            { hooks: [ { type: "command", command: $workspace_cmd } ] } ],
+        PreToolUse:       [ { matcher: "Read|Grep|Glob", hooks: [ { type: "command", command: $relations_cmd } ] } ],
+        SessionEnd:       [ { hooks: [ { type: "command", command: $engage_cmd, timeout: 30 } ] } ]
       }
     }
   ' > "$settings"
@@ -140,7 +157,9 @@ else
   echo "Install jq, or create $settings by hand with these hooks:" >&2
   echo "  UserPromptSubmit: $hook_cmd" >&2
   echo "  SessionStart:     $session_cmd" >&2
+  echo "  SessionStart:     $workspace_cmd" >&2
   echo "  PreToolUse (Read|Grep|Glob): $relations_cmd" >&2
+  echo "  SessionEnd:       $engage_cmd (timeout 30)" >&2
   exit 1
 fi
 

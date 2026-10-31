@@ -742,12 +742,15 @@ def build(frames, backend, look, dest, detect=None, log=print, neutral_box=None,
                 if wb_from and fid != wb_from:
                     ref = wb or wb_reference(rows.get(wb_from), wb_from, backend.name)
                 row = develop_frame(fid, raw, backend, look, dest, work, detect, neutral_box, ref)
-            except (ValueError, RuntimeError, OSError) as e:
-                row = {"id": fid, "raw": raw, "error": str(e), "converged": False, "status": "failed"}
+            except Exception as e:  # one bad frame is an error row; Ctrl-C still stops the run
+                row = {"id": fid, "raw": raw, "error": str(e) if isinstance(e, (ValueError, RuntimeError, OSError)) else f"{type(e).__name__}: {e}",
+                       "converged": False, "status": "failed"}
                 if os.path.exists(os.path.join(dest, f"{fid}.tif")):
                     row["stale_tif"] = "the TIFF on disk is from an earlier run"
             rows[fid] = row = {**common, **row, "seconds": round(time.monotonic() - t0, 2)}
             log(_line(row))
+            # a crash or Ctrl-C on a later frame keeps every row so far (write merges rows already on disk)
+            write(dest, {"tool": "rpstills develop", "frames": rows, **common, "look_values_ignored": ignored})
     return {"tool": "rpstills develop", "frames": rows, **common, "look_values_ignored": ignored}
 
 

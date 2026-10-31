@@ -5,6 +5,7 @@ selects: propose spans that sit inside the approved text.
 import sys
 
 from rpresolve import cli
+from rpresolve import paths as rppaths
 
 NAME = "selects"
 HELP = "Offline: propose spans inside the approved text"
@@ -22,6 +23,10 @@ def run(args):
     """Propose spans inside the approved text, as a TSV (in, out, seconds,
     coverage, end words, text). The operator picks; nothing is cut."""
     from rpresolve import cutlist
+    problem = rppaths.out_problem(args.out, any_git_tree=True) if args.out else None
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 1
     try:
         words = cutlist.load_words(args.words)
         approved = cutlist.load_approved(args.approved)

@@ -1,6 +1,6 @@
 # Return Package
 
-> **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. No tool builds the package yet; a person or an agent assembles it by hand with the commands here.
+> **Status:** draft, 2026-10-16. The standard for what "everything is returned" means in files. Decided 2026-10-16: contents, medium, folder layout, checksums and retention below are the standard. `resolve_workflow.py return-package` assembles it (copies, never moves; refuses unless every final has a `deliver_check` PASS; writes `SHA256SUMS` and `manifest.md`) and `return-package --verify <package>` re-checks the checksums. The commands below are the same checks by hand. The tool's manifest carries the checksum, destination and approval columns; the technical columns come from `deliver-manifest`.
 
 The anti-extractive safeguards in section 6 of the [measurement framework](../methodology/measurement-framework.md) give clients their raw data on request. The camera-shipping model goes further and returns everything, cut and raw material both. This document makes that checkable. A client who has the package can open every file RP shot or made for them, and can prove each file arrived intact.
 
@@ -30,9 +30,9 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
 ```
 2026-11_<engagement-id>/
   01_originals/
-    20261016_GH7_A01/       card folder exactly as shot
-    20261016_GH7_A02/
-    20261017_PYXIS_B01/
+    GH7-3fa9c1/            card folder exactly as shot
+    GH7-b07e42/
+    PYXIS-91d5aa/
     SHA256SUMS
   02_finals/
     <destination key>/      one subfolder per destination, as rendered
@@ -44,7 +44,7 @@ One folder per engagement, named `<YYYY-MM>_<engagement-id>/`. The month is the 
   manifest.md
 ```
 
-Card folders are named `YYYYMMDD_<CAM>_<card>` under the [capture standard](capture-standard.md): the shoot date, the camera, the card. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
+Card folders are named `<CAM>-<id6>` under the [capture standard](capture-standard.md): the camera and the card's id. The folder name is the only name RP adds. Camera file names are never changed: `detect` uses the native names as one of its clues, and the client should find their files under the names their camera gave them.
 
 `02_finals/` keeps the destination subfolders the render queue wrote, so the file names stay under the house rule from the [Deliver section](resolve-template-spec.md#file-names). `03_captions/` holds a copy of each sidecar `.srt`; the originals also stay beside their videos in `02_finals/`, and the manifest lists both.
 

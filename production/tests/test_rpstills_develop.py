@@ -356,7 +356,7 @@ class DevelopFrameTest(unittest.TestCase):
         a = cv2.imread(r["tif"], cv2.IMREAD_UNCHANGED)
         self.assertEqual((a.dtype, a.shape[1], a.shape[0]), (np.dtype(np.uint16), *FULL))
         self.assertEqual(os.path.basename(r["tif"]), "F1.tif")
-        self.assertEqual(sorted(os.listdir(self.dest)), ["F1.tif"])  # no part file left
+        self.assertEqual(sorted(os.listdir(self.dest)), ["F1.tif", "calibration.json"])  # no part file left
         solves = backend.calls[:-1]
         self.assertTrue(all(c["long_edge"] == 400 and not c["bit16"] for c in solves))
         self.assertEqual((backend.calls[-1]["long_edge"], backend.calls[-1]["bit16"]), (None, True))
@@ -402,6 +402,23 @@ class DevelopFrameTest(unittest.TestCase):
         self.assertEqual(r["status_solve"], "converged")
         self.assertEqual((r["status"], r["converged"]), ("not_converged", False))
         self.assertAlmostEqual(r["lab_out"][0] - r["lab"][0], 3.0, delta=0.6)
+
+    def test_an_unexpected_exception_is_an_error_row_and_the_run_continues(self):
+        with mock.patch.object(develop, "develop_frame",
+                               side_effect=[KeyError("boom"), {"id": "F2", "status": "converged", "error": "x"}]):
+            doc = self.build([("F1", "/raw/F1.RW2"), ("F2", "/raw/F2.RW2")])
+        self.assertIn("boom", doc["frames"]["F1"]["error"])
+        self.assertEqual(doc["frames"]["F2"]["status"], "converged")
+
+    def test_an_interrupt_after_n_frames_leaves_n_rows_on_disk(self):
+        def frame(fid, *a, **k):
+            if fid == "F3":
+                raise KeyboardInterrupt
+            return {"id": fid, "status": "converged", "error": "x"}
+        frames = [(f"F{i}", f"/raw/F{i}.RW2") for i in (1, 2, 3, 4)]
+        with mock.patch.object(develop, "develop_frame", frame), self.assertRaises(KeyboardInterrupt):
+            self.build(frames)
+        self.assertEqual(sorted(develop._rows_on_disk(str(self.dest))), ["F1", "F2"])
 
     def test_failures_are_rows_and_the_rest_still_run(self):
         frames = [("NORAW", None), ("BAD", "/raw/BAD.RW2"), ("F1", "/raw/F1.RW2")]

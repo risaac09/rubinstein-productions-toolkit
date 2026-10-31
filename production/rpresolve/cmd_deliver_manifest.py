@@ -32,6 +32,8 @@ def add_arguments(p):
     p.add_argument("--platform-notes", default="none looked up")
     p.add_argument("--licence", action="append", default=[], metavar="ASSET|LICENCE|ATTRIBUTION",
                    help="A licence row; repeat for more (default: none)")
+    p.add_argument("--require-pass", action="store_true",
+                   help="Run deliver-check on every video first and refuse unless all PASS")
     p.add_argument("--no-loudness", action="store_true",
                    help="Record loudness as n/a (skips reading each file's audio)")
 
@@ -41,7 +43,7 @@ def run(args):
     --verify re-check checksums.txt. Exit 0 written or all OK, 1 refused or
     a mismatch, 2 ffprobe or ffmpeg missing."""
     import time
-    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf
+    from rpresolve import deliver as rpdeliver, delivercheck as dc, manifest as mf, returnpackage as rp
     try:
         if args.verify:
             results = mf.verify(args.folder)
@@ -53,7 +55,12 @@ def run(args):
         if missing:
             raise mf.ManifestError("required to write a manifest: --" +
                                    ", --".join(m.replace("_", "-") for m in missing))
-        dc.check_tools(ffmpeg=not args.no_loudness)
+        dc.check_tools(ffmpeg=args.require_pass or not args.no_loudness)
+        if args.require_pass:
+            blockers = rp.gate(cli.deliver_config(args), args.folder, ignore=(mf.MANIFEST, mf.CHECKSUMS))
+            if blockers:
+                raise mf.ManifestError("blocked: not every file has a deliver_check PASS\n  "
+                                       + "\n  ".join(blockers))
         text, sums = mf.build(
             args.folder, cli.deliver_config(args), args.project, args.approval, args.prepared_by,
             args.review_copy, args.review_sha256, args.delivered or time.strftime("%Y-%m-%d"),
