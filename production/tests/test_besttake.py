@@ -24,7 +24,7 @@ from rpresolve import delivercheck as dc, vision  # noqa: E402
 
 try:
     import numpy as np  # noqa: E402
-    from rpresolve import besttake as bt  # noqa: E402
+    from rpresolve import besttake as bt, shots  # noqa: E402
     HAVE_NUMPY = True
 except ImportError:   # the stdlib-only job: besttake needs numpy like dxmetrics
     HAVE_NUMPY = False
@@ -279,6 +279,18 @@ class TestVideo(unittest.TestCase):
         self.assertEqual(j["cuts"], 1)
         self.assertAlmostEqual(j["longest_shot_share"], 0.5, delta=0.02)
         self.assertNotIn("face_share", s)
+
+    def test_a_take_over_the_dissolve_budget_still_scores_on_cuts_only(self):
+        info = {"streams": [{"codec_type": "video", "avg_frame_rate": "25/1"}]}
+        with mock.patch.object(shots.dc, "check_tools"), mock.patch("os.path.isfile", return_value=True), \
+                mock.patch.object(shots.dc, "probe", return_value=info), \
+                mock.patch.object(shots.dc, "duration", return_value=2 * 3600.0), \
+                mock.patch.object(shots.dc, "_run", return_value=mock.Mock(returncode=0, stderr="")), \
+                mock.patch.object(shots, "grey_frames", side_effect=AssertionError("decoded")):
+            m, notes = {"duration_s": 7200.0}, []
+            bt.video_measures("long.mov", ["video"], m, notes, None, False)
+        self.assertEqual(m["cuts"], 0)
+        self.assertIn("over 1 h: cut count excludes dissolves", notes)
 
     def test_faces_share_from_vision(self):
         def one_face(images):

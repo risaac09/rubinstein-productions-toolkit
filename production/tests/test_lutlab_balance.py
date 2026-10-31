@@ -25,6 +25,7 @@ sys.path.insert(0, str(PROD))
 
 from lutlab import balance, cdl, cube, spaces  # noqa: E402
 from lutlab.__main__ import main  # noqa: E402
+from lutlab.pairs import read_image  # noqa: E402
 
 FACE = {"x": 0.35, "y": 0.08, "w": 0.30, "h": 0.40}
 FACE_ARGS = ["--face", "0.35", "0.08", "0.30", "0.40"]
@@ -189,6 +190,21 @@ class Balance(unittest.TestCase):
             frames = balance.read_frames("clip.mov", 5)
         self.assertEqual([round(c.args[1], 2) for c in dec.call_args_list], [1.0, 3.0, 5.0, 7.0, 9.0])
         self.assertEqual(len(frames), 5)
+
+    def test_large_stills_are_shrunk_as_read_and_match_a_resize_of_the_whole(self):
+        d = Path(self.tmp) / "big"
+        d.mkdir()
+        rng = np.random.default_rng(3)
+        for i in range(3):  # 1280 wide: twice SOLVE_W
+            cv2.imwrite(str(d / f"b{i}.png"), (rng.random((720, 1280, 3)) * 65535).astype(np.uint16))
+        got = balance.read_frames(str(d), 3)
+        self.assertEqual(len(got), 3)
+        for (label, im), f in zip(got, sorted(d.iterdir())):
+            full = read_image(f)
+            want = cv2.resize(full, (balance.SOLVE_W, 360), interpolation=cv2.INTER_AREA)
+            self.assertEqual(im.shape, (360, balance.SOLVE_W, 3))
+            self.assertEqual(im.dtype, np.float64)
+            np.testing.assert_array_equal(im, want)
 
     def test_bad_hero_and_existing_outputs_stop_before_writing(self):
         shot = write_shot(self.tmp, "h", "vlog")
