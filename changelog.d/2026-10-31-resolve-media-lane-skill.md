@@ -1,1 +1,1 @@
-A Claude skill, resolve-media-lane, routes media-lane work (rpstills, lutlab, mixbuild, interchange, card offload and the Resolve MCP tools) to the right tool and states the safety rules the server already enforces; a test checks every tool and cmd module it names exists. (DEV-13)
+A Claude skill, resolve-media-lane, routes media-lane work (rpstills, lutlab, mixbuild, interchange, card offload and the Resolve MCP tools) to the right tool and states the safety rules the server already enforces; a test checks every tool and cmd module it names exists. (DEV-13) (#288)
