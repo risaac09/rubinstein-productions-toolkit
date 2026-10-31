@@ -348,6 +348,18 @@ class TestVerifyCopy(unittest.TestCase):
         self.assertIn("(python)", p.stdout)
         self.check_copy(self.d / "py")
 
+    def test_parent_lost_during_hash_is_not_recreated(self):
+        """A share that drops while the card hashes is refused, not rebuilt."""
+        share = self.d / "share"
+        share.mkdir()
+        bin_ = self.d / "shim"
+        bin_.mkdir()
+        stub(bin_, "sha256sum", f'rmdir "{share}" 2>/dev/null\nexec shasum -a 256 "$@"\n')
+        p = self.vc(share / "copy", env={"PATH": f"{bin_}:{os.environ['PATH']}"})
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("vanished", p.stderr)
+        self.assertFalse(share.exists())
+
     def test_refusals(self):
         full = self.d / "full"
         full.mkdir()

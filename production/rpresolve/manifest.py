@@ -79,7 +79,7 @@ def _srt_row(path):
     end = cues[-1][1]
     s, cs = divmod(int(round(end * 100)), 100)
     return {"codec": "n/a", "res": "n/a", "fps": "n/a", "loud": "n/a",
-            "dur": f"{s // 3600:02d}:{s // 60 % 60:02d}:{s % 60:02d}.{cs:02d}"}
+            "dur": f"{s // 3600:02d}:{s // 60 % 60:02d}:{s % 60:02d}.{cs:02d} (hundredths)"}  # not frames
 
 
 def _video_row(path, loudness):

@@ -146,6 +146,13 @@ def _page(rows, args):
             "next_offset": nxt if nxt < len(rows) else None, "rows": page}
 
 
+def _page_lazy(entries, args, build):
+    """_page over cheap entries, building rows (the costly reads) for the page only."""
+    page = _page(entries, args)
+    page["rows"] = [build(e) for e in page["rows"]]
+    return page
+
+
 def _timelines(project):
     count = int(_call(project, "GetTimelineCount") or 0)
     return [(i, project.GetTimelineByIndex(i)) for i in range(1, count + 1)]
@@ -228,11 +235,13 @@ def timeline_items(args, ctx):
         wanted = [args["track"]] if args.get("track") else list(range(1, tracks + 1))
         if args.get("track") and args["track"] > tracks:
             raise ValueError(f"'{tl.GetName()}' has {tracks} {kind} track(s).")
-        rows = []
-        for t in wanted:
-            for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1):
-                ctx.check_cancel()
-                rows.append(_item_row(item, kind, t, n, args["grades"] and kind == "video"))
+        entries = [(t, n, item) for t in wanted
+                   for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1)]
+
+        def build(e):
+            ctx.check_cancel()
+            return _item_row(e[2], kind, e[0], e[1], args["grades"] and kind == "video")
+        page = _page_lazy(entries, args, build)
         result = {"project": _project_info(project),
                   "timeline": {"index": index, "name": tl.GetName(),
                                "unique_id": _call(tl, "GetUniqueId"),
@@ -240,7 +249,7 @@ def timeline_items(args, ctx):
                                "start_frame": _call(tl, "GetStartFrame"),
                                "auto": tl.GetName().endswith(AUTO_SUFFIX)},
                   "track_type": kind, "tracks": tracks}
-    result.update(_page(rows, args))
+    result.update(page)
     result["summary"] = (f"{result['total']} {kind} item(s) on '{result['timeline']['name']}'"
                          f" across {len(wanted)} track(s)")
     result["note"] = ("start/end are timeline frames; source_start/source_end count in the "
@@ -310,12 +319,13 @@ def media_pool(args, ctx):
             result["tree_note"] = (f"the tree stops at {TREE_MAX_FOLDERS} folders; nodes marked "
                                    "children_omitted have more. Ask for a subfolder, or less "
                                    "depth.")
-        rows = []
-        if args["clips"]:
-            for clip in _call(folder, "GetClipList") or []:
-                ctx.check_cancel()
-                rows.append(_clip_row(clip))
-    result.update(_page(rows, args))
+        clips = (_call(folder, "GetClipList") or []) if args["clips"] else []
+
+        def build(clip):
+            ctx.check_cancel()
+            return _clip_row(clip)
+        page = _page_lazy(clips, args, build)
+    result.update(page)
     result["summary"] = (f"'{path}': {result['tree']['clips']} clip(s), "
                          f"{result['tree']['subfolders']} subfolder(s)")
     return result
