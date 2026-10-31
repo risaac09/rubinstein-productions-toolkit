@@ -1,0 +1,1 @@
+rpstills develop and finish record each frame as it completes and turn any per-frame exception into an error row; serve never serves key.json, ignores oversized Range headers and refuses a foreign Host; absheet writes the key to a sibling DIR.key folder.
