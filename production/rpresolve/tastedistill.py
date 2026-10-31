@@ -11,8 +11,10 @@ no choice (a reason only) is counted apart and not used.
 A rule needs MIN_ANSWERS answers for one direction, a majority of the question's
 answers, AND the repeat-pair check: lines sharing a `stimulus` key (one comparison
 asked again, perhaps with its options shuffled) must agree in pairs at least
-REPEAT_AGREEMENT of the time. A line without `stimulus` joins no repeat group:
-different clips offering the same options are not repeats.
+REPEAT_AGREEMENT of the time. A line with `repeat_of` (the `ts` of the line it
+repeats) joins the group of the original that chain ends at, the original with
+it. A line with neither key joins no repeat group: different clips offering the
+same options are not repeats.
 """
 
 import json
@@ -22,6 +24,7 @@ MIN_ANSWERS = 5
 REPEAT_AGREEMENT = 0.8
 EXEMPLARS = 3
 NON_LABEL = {"none", "hold", "approve", "go"}
+RATINGS = {"1", "2", "3", "4", "5"}  # a 1 to 5 rating logged as a string, on a line with no options
 
 HEADER = """# Taste profile
 
@@ -35,7 +38,9 @@ counted per noise type, never pooled.
 
 def read_events(path):
     """(events, malformed): events are (line number, dict); malformed counts
-    unreadable lines, non-objects and lines whose options are not an object."""
+    unreadable lines, non-objects, lines whose options are not an object, and
+    a label choice the line's options do not decode (a "1" to "5" rating on a
+    line with no options is kept)."""
     events, malformed = [], 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for n, line in enumerate(f, 1):
@@ -43,7 +48,7 @@ def read_events(path):
                 continue
             try:
                 e = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):  # RecursionError: nesting deeper than json can parse
                 malformed += 1
                 continue
             if isinstance(e, dict) and e.get("options") is None:
@@ -52,9 +57,9 @@ def read_events(path):
                 malformed += 1
                 continue
             c = e.get("choice")
-            if isinstance(c, (dict, list)) or (isinstance(c, str) and e["options"]
-                                               and c not in e["options"] and c not in NON_LABEL):
-                malformed += 1  # a label the line's own options cannot decode
+            if isinstance(c, (dict, list)) or (isinstance(c, str) and c not in e["options"] and c not in NON_LABEL
+                                               and not (not e["options"] and c in RATINGS)):
+                malformed += 1  # a label the line's own options cannot decode, empty options included
                 continue
             events.append((n, e))
     return events, malformed
@@ -87,16 +92,39 @@ def _repeat_agreement(answers):
     return agree, pairs
 
 
+def _repeat_keys(events):
+    """{line number: repeat-group key}: the line's `stimulus`, else that of the
+    original its `repeat_of` chain (by `ts`) ends at, else the original's `ts`
+    when the line repeats or is repeated. Lines in no group are absent."""
+    by_ts, cited = {}, set()
+    for _, e in events:
+        by_ts.setdefault(str(e.get("ts")), e)
+        if e.get("repeat_of"):
+            cited.add(str(e["repeat_of"]))
+    keys = {}
+    for n, e in events:
+        seen = set()
+        while not e.get("stimulus") and e.get("repeat_of") and id(e) not in seen:
+            seen.add(id(e))
+            ts = str(e["repeat_of"])
+            e = by_ts.get(ts, {"ts": ts})  # an original missing from the log still groups its repeats
+        if e.get("stimulus"):
+            keys[n] = "stimulus:" + str(e["stimulus"])
+        elif seen or str(e.get("ts")) in cited:
+            keys[n] = "ts:" + str(e.get("ts"))
+    return keys
+
+
 def distill(events):
     """Per question: counts, the verdict and the evidence. Pure; no I/O."""
     by_q = defaultdict(list)
+    keys = _repeat_keys(events)
     for n, e in events:
         d = _direction(e)
         if d is None:
             continue
         opts = tuple(sorted(str(v) for v in e["options"].values()))
-        key = str(e["stimulus"]) if e.get("stimulus") else None
-        by_q[_question(e)].append((n, opts, key, d))
+        by_q[_question(e)].append((n, opts, keys.get(n), d))
     out = {}
     for q, answers in sorted(by_q.items()):
         counts = Counter(a[3] for a in answers)
