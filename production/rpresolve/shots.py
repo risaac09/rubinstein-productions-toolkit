@@ -59,6 +59,10 @@ MAX_DISSOLVE_S = 3600.0  # longest file the dissolve pass holds in memory (about
 MAX_STEP = 0.35     # no single frame step may be more than this share of the whole move
 
 
+class TooLong(dc.CheckError):
+    """The file is over MAX_DISSOLVE_S, so the dissolve pass will not run."""
+
+
 def scdet_filter(threshold=THRESHOLD):
     """The scdet filter exactly as qc and rhythm attach it."""
     return f"scdet=t={threshold}"
@@ -145,7 +149,7 @@ def build(source, threshold=THRESHOLD, dissolves=True):
         raise dc.CheckError(f"{source} has no readable duration.")
     rate = dc.rate(video.get("avg_frame_rate"))
     if dissolves and rate and total > MAX_DISSOLVE_S:
-        raise dc.CheckError(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
+        raise TooLong(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
                             f"and stops above {MAX_DISSOLVE_S / 3600:g} h. Pass --no-dissolves for cuts only, "
                             f"or split the file first.")
     proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", dc._src(source),

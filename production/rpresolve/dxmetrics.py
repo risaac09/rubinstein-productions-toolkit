@@ -312,12 +312,12 @@ def wada_snr_db(x):
     return _finite(np.interp(g, table, snrs), 1)
 
 
-def measure(path, stream=0, start=None, end=None):
+def measure(path, stream=0, start=None, end=None, max_seconds=MAX_DECODE_S):
     """Every number for one stream (or a range of it)."""
     dc.check_tools(ffmpeg=True)
     if end is not None and end <= (start or 0.0):
         raise ValueError("--end must come after --start")
-    x, rate = decode(path, stream, start, end)
+    x, rate = decode(path, stream, start, end, max_seconds=max_seconds)
     loud, _ = ar.loudness(path, stream, start, end)
     hum = hum_excess_db(x, rate)
     return {"file": path, "stream": stream, "sample_rate": rate,
