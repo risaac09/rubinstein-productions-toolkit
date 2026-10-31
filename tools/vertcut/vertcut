@@ -3,6 +3,7 @@
 #
 #   vertcut transcribe SRC [-o DIR] [--model M]   word-level transcript for clip picking
 #   vertcut cut SRC CLIPS.tsv [options]           9:16 captioned exports from a cuts manifest
+#   vertcut manifest SRC CLIPS.tsv --words J -o OUT.json   cuts manifest v2 for the Resolve route
 #
 # Full docs: tools/vertcut/README.md
 set -euo pipefail
@@ -73,9 +74,14 @@ cmd_cut() {
   exec "$PY" "$HERE/lib/vertcut_cut.py" "$@"
 }
 
+cmd_manifest() {
+  exec "$PY" "$HERE/lib/vertcut_manifest.py" "$@"
+}
+
 case "${1:-}" in
   transcribe) shift; cmd_transcribe "$@" ;;
   cut)        shift; cmd_cut "$@" ;;
+  manifest)   shift; cmd_manifest "$@" ;;
   -h|--help|"") usage ;;
   *) die "unknown command: $1 (try --help)" ;;
 esac
