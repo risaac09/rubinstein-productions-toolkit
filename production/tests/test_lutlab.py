@@ -534,6 +534,34 @@ class LibraryTest(unittest.TestCase):
         o = library.scan([str(root)], {e["Look.CUBE"]["sha256"]: {"space": "r709", "note": "creative"}})
         self.assertTrue(all(x["space"] == "r709" for x in o if x["name"].startswith("Look")))
 
+    def test_bad_header_is_reported_and_skipped(self):
+        from lutlab import library
+        root = Path(tempfile.mkdtemp())
+        (root / "good.cube").write_text(cube.cube_text(cube.lattice(2)))
+        (root / "bad.cube").write_text("LUT_3D_SIZE\n0 0 0\n")
+        (root / "bad2.cube").write_text("LUT_3D_SIZE big\n")
+        problems = []
+        e = library.scan([str(root)], problems=problems)
+        self.assertEqual([x["rel"] for x in e], ["good.cube"])
+        self.assertEqual(sorted(os.path.basename(p) for p, _ in problems), ["bad.cube", "bad2.cube"])
+        self.assertTrue(all("bad header" in why for _, why in problems))
+
+
+class ApplyVideoTagTest(unittest.TestCase):
+    def test_ffmpeg_args_carry_the_matrix_verify_reads(self):
+        from unittest import mock
+        from lutlab import apply
+        d = Path(tempfile.mkdtemp())
+        cube.write_cube(str(d / "l.cube"), cube.lattice(2), "t")
+        with mock.patch.object(apply.subprocess, "run") as run:
+            apply.video(str(d / "l.cube"), "in.mov", str(d / "out.mp4"))
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[cmd.index("-colorspace") + 1], "bt709")
+        self.assertEqual(cmd[cmd.index("-color_primaries") + 1], "bt709")
+        vf = cmd[cmd.index("-vf") + 1]
+        self.assertIn("in_color_matrix=bt709", vf)
+        self.assertIn("out_color_matrix=bt709", vf)
+
 
 class LooksMonitorTest(unittest.TestCase):
     """looks --monitor: 33-point, 0..1, card-safe names, never for rcm."""

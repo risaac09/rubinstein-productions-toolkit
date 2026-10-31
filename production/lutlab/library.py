@@ -75,7 +75,8 @@ def sha256(path):
     return h.hexdigest()
 
 
-def scan(roots=DEFAULT_LUT_ROOTS, overrides=None):
+def scan(roots=DEFAULT_LUT_ROOTS, overrides=None, problems=None):
+    """problems, if given, collects (path, reason) for each LUT skipped as unreadable."""
     overrides = overrides or {}
     seen, entries = set(), []
     for root in roots:
@@ -96,7 +97,9 @@ def scan(roots=DEFAULT_LUT_ROOTS, overrides=None):
                 rel = os.path.relpath(path, root)
                 try:
                     size, title = header(path)
-                except OSError:
+                except (OSError, ValueError, IndexError) as err:
+                    if problems is not None:
+                        problems.append((path, f"bad header: {err}"))
                     continue
                 if size is None:
                     continue  # 1D, shaper or not a 3D LUT
