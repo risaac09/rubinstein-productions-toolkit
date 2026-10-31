@@ -94,6 +94,11 @@ class TestWordsAndEnds(unittest.TestCase):
         self.assertEqual(cutlist.end_words_for(self.words, 4.95, 2), "very quiet.")
         self.assertEqual(cutlist.span_text(self.words, 3.6, 4.95), "I kept that very quiet.")
 
+    def test_out_point_past_the_audio_gives_a_reason_not_a_crash(self):
+        r = cutlist.end_check(self.words, 4.95, "very quiet", env=[])
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["reason"], "no audio at the out-point")
+
     def test_end_word_rule_without_audio(self):
         ok = cutlist.end_check(self.words, 4.95, "very quiet")
         self.assertTrue(ok["ok"])
@@ -185,6 +190,27 @@ class TestSilences(unittest.TestCase):
         with open(p, "w") as f:
             json.dump(words_from(SPEECH), f)
         return p
+
+
+class TestTimecodeAndStream(unittest.TestCase):
+    def test_four_part_timecode_matches_captions_at_ntsc(self):
+        from fractions import Fraction
+        from rpresolve import captions
+        want = float(captions.parse_timecode("01:00:00:00", Fraction(30000, 1001)))
+        self.assertAlmostEqual(want, 3603.6, places=6)
+        for fps in (29.97, 30000 / 1001):
+            self.assertAlmostEqual(cutlist.parse_timecode("01:00:00:00", fps), want, places=6)
+        self.assertEqual(cutlist.parse_timecode("00:00:01:12", 24), 1.5)   # integer rates unchanged
+        with self.assertRaises(cutlist.CutlistError):
+            cutlist.parse_timecode("00:00:01:45", 29.97)                   # frame past the rate
+
+    def test_decode_maps_the_audio_stream_like_audioreport(self):
+        for stream in (0, 2):
+            with mock.patch.object(cutlist.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, b"", b"")) as run:
+                cutlist.decode_pcm("x.m4a", 0.0, 1.0, stream=stream)
+            cmd = run.call_args[0][0]
+            self.assertEqual(cmd[cmd.index("-map") + 1], f"0:a:{stream}")
 
 
 class TestManifest(unittest.TestCase):

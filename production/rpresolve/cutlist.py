@@ -245,9 +245,9 @@ def end_words_for(words, out, count=3):
 # Audio: where the silences are
 # ---------------------------------------------------------------------------
 
-def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
+def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120, stream=0):
     """Mono 16 kHz signed 16-bit samples (bytes) of source[t0:t1]; t1 None
-    reads to the end."""
+    reads to the end. stream is the audio-stream index, as 0:a:N in audioreport."""
     t0 = max(0.0, t0)
     # On ffmpeg 7+ an input seek on AAC, even to 0, decodes the audio up to one
     # 1024-sample packet early (23 ms at 44.1 kHz, 64 ms at 16 kHz). So the input
@@ -258,7 +258,7 @@ def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
     cmd = [ffmpeg or FFMPEG, "-v", "error"] + (["-ss", f"{head:.3f}"] if head > 0 else [])
     cmd += ["-i", "file:" + source] + (["-ss", f"{pre:.3f}"] if pre > 0 else [])
     cmd += ["-t", f"{t1 - t0:.3f}"] if t1 is not None else []
-    cmd += ["-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
+    cmd += ["-map", f"0:a:{stream}", "-vn", "-ac", "1", "-ar", str(AUDIO_RATE), "-f", "s16le", "-"]
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, timeout=timeout)
@@ -270,12 +270,12 @@ def decode_pcm(source, t0, t1=None, ffmpeg=None, timeout=120):
     return proc.stdout[:len(proc.stdout) // 2 * 2]
 
 
-def envelope(source, t0, t1, ffmpeg=None, timeout=120):
+def envelope(source, t0, t1, ffmpeg=None, timeout=120, stream=0):
     """[(time, dBFS)] per 10 ms of mono 16 kHz audio from source[t0:t1]
     (t1 None: to the end)."""
     t0 = max(0.0, t0)
     samples = array.array("h")
-    samples.frombytes(decode_pcm(source, t0, t1, ffmpeg, timeout))
+    samples.frombytes(decode_pcm(source, t0, t1, ffmpeg, timeout, stream))
     hop = int(AUDIO_RATE * HOP_S)
     out = []
     for i in range(0, len(samples) - hop + 1, hop):
@@ -356,9 +356,12 @@ def end_check(words, out, end_words, env=None):
         result["silence"] = cut_is_clean(runs, out)
         result["nearest"] = nearest_clean(words, env, out)
         if result["silence"] is None and not result["reason"]:
-            db = min((abs(t - out), d) for t, d in env)[1] if env else None
-            result["reason"] = (f"out-point is not in a silence (audio {db:.0f} dBFS there); "
-                                "it would clip a word")
+            if env:
+                db = min((abs(t - out), d) for t, d in env)[1]
+                result["reason"] = (f"out-point is not in a silence (audio {db:.0f} dBFS there); "
+                                    "it would clip a word")
+            else:
+                result["reason"] = "no audio at the out-point"
         # Suggest the earliest silence in the window whose midpoint passes
         # the word rule itself: the words before it end in end_words.
         mids = [midpoint(w) for w in words]
@@ -591,8 +594,14 @@ def parse_timecode(text, fps=None):
         if len(parts) == 4:
             if not fps:
                 raise CutlistError(f"{text}: HH:MM:SS:FF needs fps")
-            h, m, s, f = (int(p) for p in parts)
-            return h * 3600 + m * 60 + s + f / fps
+            from fractions import Fraction
+            from . import captions
+            rate = next((Fraction(n, 1001) for n in (24000, 30000, 60000)
+                         if abs(float(fps) - n / 1001) < 0.01), Fraction(fps).limit_denominator(1000))
+            try:  # NTSC labels count at the nominal rate, then divide by the real one
+                return float(captions.parse_timecode(text, rate))
+            except captions.CaptionError as e:
+                raise CutlistError(str(e))
         total = 0.0
         for p in parts:
             total = total * 60 + float(p)
