@@ -270,10 +270,12 @@ def load_words(path):
     return words
 
 
-# --labels: which withheld spans get a bracketed card on the clip
-LABEL_SETS = {"none": (), "music": ("sung", "music"),
+# A withheld uncertain span is sung-leaning (or next to a sung one): refused like
+# singing, and labelled with it under --labels music.
+REFUSE_KINDS = ("sung", "music", "uncertain")
+# --labels: which withheld spans get a bracketed cue on the clip
+LABEL_SETS = {"none": (), "music": REFUSE_KINDS,
               "all": ("sung", "music", "hallucination", "uncertain")}
-REFUSE_KINDS = ("sung", "music", "uncertain")   # uncertain here is withheld, i.e. sung-leaning
 
 
 def music_overlaps(blocks, start, end):

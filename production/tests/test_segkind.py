@@ -293,7 +293,8 @@ class TestGuardWiring(unittest.TestCase):
         self.assertIn("withheld as music", rows[1]["reason"])
 
     def test_trim_review_reports_a_withheld_span_as_non_speech(self):
-        rows, _ = trimreview.review_range(None, self.words, 0.0, 17.0, audio=False)
+        # through review_source, which indexes the words first (the MCP tool's path)
+        rows = trimreview.review_source(None, self.words, [(0.0, 17.0)], audio=False)["rows"]
         held = [r for r in rows if r["kind"] == trimreview.NONSPEECH]
         self.assertEqual([(r["start"], r["end"], r["suggestion"]) for r in held],
                          [(6.0, 11.0, trimreview.KEEP)])

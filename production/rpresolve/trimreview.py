@@ -131,6 +131,7 @@ class WordIndex:
 
     def __init__(self, words):
         self.words = words
+        self.blocks = cutlist.blocks_of(words)   # the withheld spans travel with the index
         # a word with a null or NaN time never fell in a range under the old scans: leave it out
         ok = [i for i, w in enumerate(words) if all(
             isinstance(w.get(k), (int, float)) and math.isfinite(w[k]) for k in ("start", "end"))]

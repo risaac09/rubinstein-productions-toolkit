@@ -63,13 +63,3 @@ def load(path, audio_path=None):
               and r["start"] is not None and r["end"] is not None]
     return data, blocks, bool(checked)
 
-
-def overlapping(blocks, start, end, kinds=None):
-    """The blocks that overlap [start, end), optionally of certain kinds."""
-    return [b for b in blocks or ()
-            if b["start"] < end and b["end"] > start and (kinds is None or b["kind"] in kinds)]
-
-
-def describe(block):
-    """'sung 12.0-20.5 s': a kind and a time range, never words."""
-    return "%s %.1f-%.1f s" % (block["kind"], block["start"], block["end"])
