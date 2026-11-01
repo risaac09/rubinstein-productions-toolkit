@@ -62,6 +62,39 @@ Extracts 16k mono audio, runs `whisper-large-v3-turbo` locally with word
 timestamps, writes `<name>.json` beside the source (`-o`/`--out DIR` writes it to another folder; `--model` picks another mlx-whisper model, default `mlx-community/whisper-large-v3-turbo`). Roughly real-time / 3 on an
 M2 Pro (measured then; newer Apple silicon is faster). Nothing leaves the machine.
 
+### What the transcript withholds
+
+Whisper writes singing down as words (lyrics, if the song is one) and wind or
+silence as sentences. Before anything reads the transcript, `lib/segkind.py`
+decides what each segment is from numbers, never from the words: Whisper's own
+confidence and compression figures, words per second, repetition, and, while
+the audio is still in the temp folder, pitch (held notes, a semitone grid, a
+steady beat). Three files come out:
+
+- `<name>.json`, the safe transcript every tool reads. A segment screened as
+  sung, music or a hallucination keeps its timestamps and gets a `[singing]`,
+  `[music]` or `[inaudible]` label in place of its text; its words are gone.
+  A `safety` block records the classifier version and the counts.
+- `<name>.kinds.json`, kinds and time ranges only, no text. Other tools read
+  it to warn about sung spans without opening the transcript.
+- `<name>.raw.json`, the unredacted Whisper output, mode 600. Nothing reads it
+  by default and `vertcut cut --words` refuses it by name. `--discard-raw`
+  deletes it; keep it when a wrong call may need undoing.
+
+`vertcut kinds <name>.json` prints what each span is and when, nothing else;
+`--segments` adds the scores. The classifier is tuned for recall and is honest
+about its limits: hallucinations are caught reliably from Whisper's numbers,
+singing is not reliably separable from speech by simple features (group
+singing outdoors least of all), so a segment next to a sung one is withheld
+too, and an uncertain segment that leans sung is withheld. A `sung.tsv`
+(`clip<TAB>start<TAB>end<TAB>kind`, kind one of `speech`, `sung`, `music`,
+`hallucination`) is authoritative in either direction: `vertcut kinds
+<name>.json --apply-overrides sung.tsv` rewrites the safe JSON and the sidecar
+from the raw file, and `vertcut transcribe --overrides sung.tsv` applies it on
+the first pass. A transcript made elsewhere (rpresolve's `transcribe`, or a
+raw Whisper JSON) is screened in memory when read, from the Whisper numbers
+and text counts alone, and the tools say that singing was not screened.
+
 The DaVinci ASR export is fine for *finding* moments, but its timings are too
 coarse to drive captions. This JSON is what the caption burner reads.
 
@@ -115,6 +148,8 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 | `--destination` | `linkedin_9x16` | Key in `resolve-config.json` that sets the aspect in the name and the audio format. |
 | `--draft-names` | off | Old `<id>-<title-slug>.mp4` names, for review copies. They fail the name row. |
 | `--no-captions` | off | Reframe only. |
+| `--allow-music` | off | Render a clip that overlaps a span the transcript withheld as singing or music. Without it the run stops and names the clips. The words stay withheld either way. |
+| `--labels music\|all\|none` | `music` | Which withheld spans get a bracketed cue: `music` draws `[singing]` and `[music]`, `all` adds `[inaudible]`, `none` draws no label. |
 | `--max-words` / `--max-chars` | `3` / `32` | Caption density. A cue never runs past two lines of `--line-chars`. |
 | `--line-chars` | `16` | Characters per caption line, two lines at most (the portrait standard). A single word longer than this stops the run. |
 | `--caption-style FILE` | none | JSON with `text_color`, `bar_color` and `font`. Without the flag, `tools/vertcut/captions.local.json` is read if it exists. |
