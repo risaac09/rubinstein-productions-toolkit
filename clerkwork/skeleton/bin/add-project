@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# add-project: append a project for one contact, with deliverables and due dates.
+# Generalized from stack-data scripts/sd-add-project, 2026-10-22.
+#
+# Usage: add-project CONTACT_ID TITLE --value AMOUNT
+#                    [--deliverable "TITLE:YYYY-MM-DD"]... [--currency CODE] [--id p-SLUG]
+# The id comes from the title unless --id is given. Currency defaults to the
+# one in practice.yaml. Refuses an unknown contact and a duplicate id.
+# Exit 0 on success, 1 on a refusal or a change the validator rejects.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+
+[ $# -ge 2 ] || { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+CONTACT="$1"; TITLE="$2"; shift 2
+VALUE=""; DELIVERABLES="[]"; PCUR="$CURRENCY"; ID="p-$(slug "$TITLE")"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --value) VALUE="${2:?--value needs a number}"; shift 2 ;;
+    --currency) PCUR="${2:?--currency needs a value}"; shift 2 ;;
+    --id) ID="${2:?--id needs a value}"; shift 2 ;;
+    --deliverable)
+      d="${2:?--deliverable needs TITLE:YYYY-MM-DD}"; shift 2
+      [[ "$d" == *:* ]] || die "--deliverable wants TITLE:YYYY-MM-DD, got: $d"
+      DELIVERABLES="$(jq -c --arg t "${d%:*}" --arg due "${d##*:}" \
+        '. + [{title: $t, due: $due, status: "planned"}]' <<<"$DELIVERABLES")" ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+[ "$ID" != "p-" ] || die "the title gives no id; pass --id p-SLUG"
+[ -n "$VALUE" ] || die "--value is required: add-invoice bills from it"
+
+jq -e --arg id "$CONTACT" 'any(.[]; .id == $id)' "$DATA/contacts.json" >/dev/null \
+  || die "no contact $CONTACT"
+jq -e --arg id "$ID" 'any(.[]; .id == $id)' "$DATA/projects.json" >/dev/null \
+  && die "project $ID already exists (use --id)"
+
+jq --arg id "$ID" --arg contact "$CONTACT" --arg title "$TITLE" --argjson value "$VALUE" \
+   --arg cur "$PCUR" --argjson dels "$DELIVERABLES" --arg now "$NOW" '
+  . + [{
+    id: $id, contactId: $contact, title: $title, status: "active",
+    contractValue: $value, currency: $cur, deliverables: $dels, created: $now
+  }]' "$DATA/projects.json" | commit projects
+echo "added $ID for $CONTACT"

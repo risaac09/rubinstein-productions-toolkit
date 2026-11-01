@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "financials.schema.json",
+  "title": "Financials",
+  "description": "Invoices and expenses. bin/validate reads the enums below, so this file is the source for them. A sent invoice past its due date is overdue; that is worked out from the date, not stored as a status.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "projectId", "kind", "status", "amount", "currency", "issued", "due", "paid", "created"],
+    "properties": {
+      "id": { "type": "string", "pattern": "^f-[a-z0-9-]+$" },
+      "projectId": { "type": ["string", "null"], "description": "Must resolve to an id in projects.json when set." },
+      "kind": { "enum": ["invoice", "expense"] },
+      "status": { "enum": ["draft", "sent", "paid"] },
+      "amount": { "type": "number", "description": "Positive." },
+      "currency": { "type": "string" },
+      "issued": { "type": "string", "format": "date" },
+      "due": { "type": ["string", "null"], "format": "date" },
+      "paid": { "type": ["string", "null"], "format": "date", "description": "Set exactly when status is paid, and only by a person." },
+      "created": { "type": "string", "format": "date-time" }
+    }
+  }
+}

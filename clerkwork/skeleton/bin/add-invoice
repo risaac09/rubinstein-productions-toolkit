@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# add-invoice: draft an invoice for a project. It is never marked sent or paid here.
+# Generalized from stack-data scripts/sd-add-financial, 2026-10-22.
+#
+# Usage: add-invoice PROJECT_ID [--due YYYY-MM-DD]
+# Appends a financials entry: kind invoice, status draft, amount taken from the
+# project's contractValue, issued today, due in 30 days unless --due is given.
+# Refuses an unknown project, a project with no contractValue, and a project
+# that already has an invoice (for part payments, edit data/financials.json).
+# A person sends the invoice and records that it was sent and paid.
+# Exit 0 on success, 1 on a refusal or a change the validator rejects.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+
+[ $# -ge 1 ] || { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+PROJECT="$1"; shift
+DUE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --due) DUE="${2:?--due needs a date}"; shift 2 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+[ -n "$DUE" ] || DUE="$(add_days "$TODAY" 30)"
+
+proj="$(jq -c --arg id "$PROJECT" '.[] | select(.id == $id)' "$DATA/projects.json")"
+[ -n "$proj" ] || die "no project $PROJECT"
+jq -e '.contractValue != null' <<<"$proj" >/dev/null || die "$PROJECT has no contractValue"
+jq -e --arg id "$PROJECT" 'any(.[]; .kind == "invoice" and .projectId == $id)' "$DATA/financials.json" >/dev/null \
+  && die "$PROJECT already has an invoice"
+
+ID="f-${PROJECT#p-}-1"
+jq --arg id "$ID" --argjson proj "$proj" --arg today "$TODAY" --arg due "$DUE" --arg now "$NOW" '
+  . + [{
+    id: $id, projectId: $proj.id, kind: "invoice", status: "draft",
+    amount: $proj.contractValue, currency: $proj.currency,
+    issued: $today, due: $due, paid: null, created: $now
+  }]' "$DATA/financials.json" | commit financials
+echo "drafted $ID: $(jq -r '"\(.contractValue) \(.currency)"' <<<"$proj"), due $DUE. Not sent."

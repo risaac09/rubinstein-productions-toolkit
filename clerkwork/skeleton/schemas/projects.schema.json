@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "projects.schema.json",
+  "title": "Projects",
+  "description": "Paid work for one contact. bin/validate reads the enums below, so this file is the source for them.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "contactId", "title", "status", "contractValue", "currency", "deliverables", "created"],
+    "properties": {
+      "id": { "type": "string", "pattern": "^p-[a-z0-9-]+$" },
+      "contactId": { "type": "string", "description": "Must resolve to an id in contacts.json." },
+      "title": { "type": "string" },
+      "status": { "enum": ["active", "delivered"] },
+      "contractValue": { "type": ["number", "null"], "description": "What add-invoice bills." },
+      "currency": { "type": "string" },
+      "deliverables": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "due", "status"],
+          "properties": {
+            "title": { "type": "string" },
+            "due": { "type": "string", "format": "date" },
+            "status": { "enum": ["planned", "done"] }
+          }
+        }
+      },
+      "created": { "type": "string", "format": "date-time" }
+    }
+  }
+}

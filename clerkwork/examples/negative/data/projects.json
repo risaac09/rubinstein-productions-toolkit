@@ -1,0 +1,23 @@
+[
+  {
+    "id": "p-orphan-film",
+    "contactId": "c-ghost-contact",
+    "title": "Tran Ceramics studio film",
+    "status": "active",
+    "contractValue": 4800,
+    "currency": "USD",
+    "deliverables": [
+      {
+        "title": "Interview day",
+        "due": "2026-10-05",
+        "status": "done"
+      },
+      {
+        "title": "Rough cut",
+        "due": "2026-10-30",
+        "status": "planned"
+      }
+    ],
+    "created": "2026-09-22T09:00:00Z"
+  }
+]
