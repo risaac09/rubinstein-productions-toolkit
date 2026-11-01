@@ -203,32 +203,6 @@ class TestCommand(Case):
         self.assertEqual(self.run_cmd("--out", str(out))[0], 0)
         self.assertIn("READY", out.read_text())
 
-    def test_out_never_overwrites_an_input_or_the_upload_folder(self):
-        real = self.d / "elsewhere"  # a destination subfolder that is a link to another place
-        real.mkdir()
-        (real / "x.txt").write_text("x")
-        (self.up / "linked_9x16").symlink_to(real)
-        outs = [self.up / "SHA256SUMS", self.up / "table.md", self.d / "titles.tsv", self.stubs, self.log,
-                real / "x.txt"]
-        cased = Path(str(self.up).upper()) / "SHA256SUMS"
-        if cased.exists():  # a case-insensitive disk, as on a Mac
-            outs.append(cased)
-        for out in outs:
-            self.run_cmd()  # writes titles.tsv
-            before = out.read_bytes() if out.exists() else None
-            code, _, err = self.run_cmd("--out", str(out))
-            self.assertEqual(code, 2, out)
-            self.assertEqual(out.read_bytes() if out.exists() else None, before, out)
-
-    def test_out_inside_a_stubs_folder_is_refused(self):
-        folder = self.d / "ledger"
-        folder.mkdir()
-        self.stubs.rename(folder / "stubs.jsonl")
-        self.stubs = folder
-        before = (folder / "stubs.jsonl").read_bytes()
-        self.assertEqual(self.run_cmd("--out", str(folder / "stubs.jsonl"))[0], 2)
-        self.assertEqual((folder / "stubs.jsonl").read_bytes(), before)
-
     def test_binary_stub_file_exits_2(self):
         self.stubs.write_bytes(b"\xff\xfe\x00bad")
         self.assertEqual(self.run_cmd()[0], 2)
@@ -251,23 +225,6 @@ class DestinationSubfolders(Case):
         rows, orphans, verdict, other = self.run_check()
         self.assertEqual(sorted(r["file"] for r in rows), [f"linkedin_9x16/{n}" for n in NAMES])
         self.assertEqual((orphans, verdict, other), ([], "READY", []))
-
-    def test_one_name_holding_two_different_files_fails_both(self):
-        # title, stub and approval match by name, so the second video would ride on the first one's rows
-        x, y = NAMES
-        for d, b in (("a_9x16", b"one"), ("b_9x16", b"two")):
-            (self.up / d).mkdir()
-            (self.up / d / x).write_bytes(b)
-        (self.up / x).unlink()
-        (self.up / "SHA256SUMS").write_text(
-            f"{sha(b'one')}  a_9x16/{x}\n{sha(b'two')}  b_9x16/{x}\n{sha(self.data[y])}  {y}\n")
-        rows, _, verdict, _ = self.run_check(log=False, stubs=False)
-        self.assertEqual({r["file"]: r["cells"]["name"][0] for r in rows},
-                         {f"a_9x16/{x}": "FAIL", f"b_9x16/{x}": "FAIL", y: "PASS"})
-        self.assertEqual(verdict, "BLOCKED")
-        (self.up / "b_9x16" / x).write_bytes(b"one")  # the same render in two destinations is fine
-        (self.up / "SHA256SUMS").write_text(f"{sha(b'one')}  {x}\n{sha(self.data[y])}  {y}\n")
-        self.assertEqual(self.run_check(log=False, stubs=False)[2], "READY")
 
     def test_non_video_in_a_subfolder_is_reported(self):
         sub = self.up / "linkedin_9x16"

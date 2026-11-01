@@ -100,12 +100,17 @@ where you would rather not burn in. For a burn-in destination such as
 `linkedin_9x16` the `.srt` goes to `review-srt/` inside the output folder,
 because `deliver_check` fails a burn-in file with a caption file beside it.
 
+### Crops from a reframe plan
+
+`--plan` reads the static 9x16 crop that `reframe-plan` judged against the speaker's face. A row takes the crop of the one plan span whose in and out hold the row's media time (in and out plus `--offset`, within a frame). Time decides, not the row id: ids are free text, and the span is what says which footage the crop was checked on. If two spans hold a row, the plan clip named for the row's id wins. It stops, and builds nothing, when the plan was made for another source file or picture size, has no 9x16 crops, no span holds the row (or the row straddles two), the span's crop is not a pass or fallback that fills the frame (manual, no face, bars), is squeezed, moves, or reaches outside the picture. A crop is never invented. `--plan` does not go with `--x` or `--frame`.
+
 ### Options worth knowing
 
 | flag | default | what it does |
 |---|---|---|
 | `--frame crop\|fit` | `crop` | `crop` fills 9:16 from a 16:9 subject; `fit` letterboxes the full frame over a blurred copy. Use `fit` for two-shots. |
 | `--x -1..1` | `0` | Shifts the crop window. `-0.4` when the speaker sits left of centre. |
+| `--plan PLAN.json` | none | Takes each row's crop from a `reframe_plan` manifest copy (the file `reframe-plan --out` writes) in place of `--x`. See below. |
 | `--show` / `--episode` / `--guest` | required | Parts of the house file name. The index and slug come from the manifest row. |
 | `--destination` | `linkedin_9x16` | Key in `resolve-config.json` that sets the aspect in the name and the audio format. |
 | `--draft-names` | off | Old `<id>-<title-slug>.mp4` names, for review copies. They fail the name row. |
@@ -129,6 +134,10 @@ because `deliver_check` fails a burn-in file with a caption file beside it.
 `--hook-text "FIRST LINE|SECOND LINE" --hook-source REF` (or a fifth worksheet column, which needs a title) draws a frame-0 card at the top safezone edge and holds it for max(0.8 s, 0.3 s per word). The text is yours, used as given; the tool never writes or suggests copy. `rpresolve.hooklint` checks it first (nine words, two lines of 16 characters, no em-dash, no emoji), and a FAIL exits 2. Captions wait until the card leaves, `review-srt/<stem>.hook.json` records text, source, box and span, and on macOS a face on frame 0 under the card stops the run (elsewhere that check is skipped, with a note).
 
 The caption bar's bottom edge defaults to y=1680, which sits inside the bottom UI band (the lowest 35 percent of a 9:16 frame). A run with captions prints a `WARN` saying so and leaves the bar where it is; `--caption-y` moves it.
+
+How many cues a clip has does not change the ffmpeg command: the cues go in as at most four image streams (grouped by the odd or even position of their bar, which keeps the chroma the same as a cue overlaid alone), each timed to the source's frames. On the current ffmpeg, luma is bit for bit what one overlay per cue gave and chroma differs by rounding in a few pixels at a bar's rounded corners; on an older ffmpeg (6.1 was measured) a cue's first or last frame can land one frame either way. Where one cue ends on the frame the next begins, the new cue alone is drawn; before, both were, stacked for that one frame. A variable-frame-rate source can drift off the frame grid the streams are timed to.
+
+A batch that needs the review gate (over 30 minutes, or replacing a file) must name the same source file and cuts file the gate-packet was built from. `--offset` is not recorded in gate.json, so the gate cannot tell two offsets apart; check it yourself.
 
 ### The review gate
 

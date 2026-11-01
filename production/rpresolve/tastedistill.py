@@ -8,9 +8,6 @@ never pooled. The direction an answer prefers is what the chosen label stood for
 in `options` (a non-label choice such as `none` stands for itself). A line with
 no choice (a reason only) is counted apart and not used.
 
-A gate answer (`hold`, `approve`, `go`) is tallied per question and never counted as
-a direction: it forms no rule, no majority, no repeat pair, no "never" entry, no exemplar.
-
 A rule needs MIN_ANSWERS answers for one direction, a majority of the question's
 answers, AND the repeat-pair check: lines sharing a `stimulus` key (one comparison
 asked again, perhaps with its options shuffled) must agree in pairs at least
@@ -26,8 +23,7 @@ from collections import Counter, defaultdict
 MIN_ANSWERS = 5
 REPEAT_AGREEMENT = 0.8
 EXEMPLARS = 3
-GATE = {"hold", "approve", "go"}  # does this proceed: a gate decision, never a taste direction
-NON_LABEL = {"none"} | GATE
+NON_LABEL = {"none", "hold", "approve", "go"}
 RATINGS = {"1", "2", "3", "4", "5"}  # a 1 to 5 rating logged as a string, on a line with no options
 
 HEADER = """# Taste profile
@@ -122,24 +118,15 @@ def _repeat_keys(events):
 def distill(events):
     """Per question: counts, the verdict and the evidence. Pure; no I/O."""
     by_q = defaultdict(list)
-    gates = defaultdict(Counter)
     keys = _repeat_keys(events)
     for n, e in events:
         d = _direction(e)
         if d is None:
             continue
-        if e["choice"] in GATE:  # the raw choice: an option whose text is "hold" is still a direction
-            gates[_question(e)][d] += 1
-            continue
         opts = tuple(sorted(str(v) for v in e["options"].values()))
         by_q[_question(e)].append((n, opts, keys.get(n), d))
     out = {}
-    for q in sorted(set(by_q) | set(gates)):
-        answers = by_q.get(q)
-        if not answers:
-            out[q] = {"total": 0, "counts": [], "gates": gates[q].most_common(), "verdict": None,
-                      "agree": 0, "pairs": 0, "direction": None, "top_n": 0}
-            continue
+    for q, answers in sorted(by_q.items()):
         counts = Counter(a[3] for a in answers)
         ranked = counts.most_common()
         top, top_n = ranked[0]
@@ -162,23 +149,16 @@ def distill(events):
             r["contradictions"] = [a[0] for a in answers if a[3] != top]
             # offered at least MIN_ANSWERS times and never chosen
             r["never"] = sorted(o for o, k in offered.items() if k >= MIN_ANSWERS and not counts[o])
-        if gates[q]:
-            r["gates"] = gates[q].most_common()
         out[q] = r
     return out
 
 
-def render(result, answers, malformed, line_only=0, gate=0):
+def render(result, answers, malformed, line_only=0):
     out = [HEADER, f"Read {answers} answers; {malformed} malformed lines skipped; "
-                   f"{line_only} line-only answers (no choice) not counted; {gate} gate answers tallied apart.\n"]
+                   f"{line_only} line-only answers (no choice) not counted.\n"]
     for q, r in result.items():
         counts = ", ".join(f"{d}: {k}" for d, k in r["counts"])
         out.append(f"## {q}\n")
-        if r.get("gates"):
-            out.append("- Gate answers: " + ", ".join(f"{d} {k}" for d, k in r["gates"]))
-        if r["verdict"] is None:
-            out.append("")
-            continue
         out.append(f"- Answers: {r['total']} ({counts})")
         out.append("- Repeat check: " + (f"{r['agree']} of {r['pairs']} repeat pairs agree"
                                          if r["pairs"] else "no repeated pairs yet"))
@@ -200,5 +180,4 @@ def render(result, answers, malformed, line_only=0, gate=0):
 def build(path):
     events, malformed = read_events(path)
     line_only = sum(1 for _, e in events if _direction(e) is None)
-    gate = sum(1 for _, e in events if e.get("choice") in GATE)
-    return render(distill(events), len(events) - line_only - gate, malformed, line_only, gate)
+    return render(distill(events), len(events) - line_only, malformed, line_only)

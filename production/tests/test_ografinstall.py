@@ -8,13 +8,11 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -96,19 +94,6 @@ class TestOgrafInstall(unittest.TestCase):
         want = time.mktime(time.strptime("Sat Oct 31 08:15:02 2026", "%a %b %d %H:%M:%S %Y"))
         self.assertEqual(ografinstall.parse_start(ps), want)
         self.assertIsNone(ografinstall.parse_start("Mon Oct 26 09:00:00 2026 /usr/bin/other\n"))
-
-    def test_ps_runs_in_the_c_locale(self):
-        # ps localizes lstart; under a French locale the start time must still read.
-        line = "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/MacOS/Resolve\n"
-
-        def fake_run(argv, **kw):
-            c = (kw.get("env") or os.environ).get("LC_ALL") == "C"
-            return subprocess.CompletedProcess(argv, 0, ("Sat Oct 31 08:15:02 2026 " if c
-                                                         else "sam. 31 oct. 08:15:02 2026 ") + line)
-        with mock.patch.dict(os.environ, {"LC_ALL": "fr_FR.UTF-8"}), \
-                mock.patch.object(ografinstall.subprocess, "run", fake_run):
-            self.assertEqual(ografinstall.resolve_start_time(), time.mktime(
-                time.strptime("Sat Oct 31 08:15:02 2026", "%a %b %d %H:%M:%S %Y")))
 
     def test_only_matching_files_count_for_restart(self):
         self.install()

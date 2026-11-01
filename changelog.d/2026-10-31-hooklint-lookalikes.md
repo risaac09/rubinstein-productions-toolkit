@@ -1,1 +1,0 @@
-hooklint folds compatibility forms (NFKC) and drops invisible format characters in the hook text and the banned list before the dash, emoji and lexicon rows; the horizontal bar and the two- and three-em dash count as dashes, and the emoji presentation selector, the keycap and the heart as emoji.
