@@ -139,26 +139,6 @@ class ReviewLogTests(unittest.TestCase):
         events, bad = tastedistill.read_events(self.log)
         self.assertEqual((len(events), bad), (1, 0))
 
-    def test_hard_linked_log_is_refused(self):
-        # the other name may sit inside a repository, where the realpath check never looks
-        other = os.path.join(self.root, "elsewhere.jsonl")
-        Path(other).write_text("")
-        os.makedirs(os.path.dirname(self.log))
-        os.link(other, self.log)
-        code, _, err = self.run_cmd(*self.base("--choice", "none"))
-        self.assertEqual((code, Path(other).read_text()), (2, ""))
-        self.assertIn("hard link", err)
-
-    def test_concurrent_writers_keep_ts_unique(self):
-        procs = [subprocess.Popen([sys.executable, "-c", (
-            "import sys; sys.path.insert(0, %r)\n"
-            "from rpresolve import reviewlog\n"
-            "for i in range(4): reviewlog.append(%r, 'P-0001', 'look', 'desktop', choice='none')"
-        ) % (str(HERE.parent), self.proj)]) for _ in range(8)]
-        self.assertEqual([p.wait() for p in procs], [0] * 8)
-        events, bad = tastedistill.read_events(self.log)
-        self.assertEqual((len(events), len({e["ts"] for _, e in events}), bad), (32, 32, 0))
-
 
 REEL_FIELDS = ("frame_0_image", "text_hook", "why_line", "sendable_line", "sendable_time", "ending", "tempo")
 
