@@ -1,0 +1,27 @@
+[
+  {
+    "id": "p-tran-studio-film",
+    "contactId": "c-marisol-tran",
+    "title": "Tran Ceramics studio film",
+    "status": "active",
+    "contractValue": 4800,
+    "currency": "USD",
+    "deliverables": [
+      {"title": "Interview day", "due": "2026-10-05", "status": "done"},
+      {"title": "Rough cut", "due": "2026-10-30", "status": "planned"}
+    ],
+    "created": "2026-09-22T09:00:00Z"
+  },
+  {
+    "id": "p-park-newsletter-redesign",
+    "contactId": "c-edith-park",
+    "title": "Park Mill newsletter redesign",
+    "status": "delivered",
+    "contractValue": 1200,
+    "currency": "USD",
+    "deliverables": [
+      {"title": "Final files", "due": "2026-08-28", "status": "done"}
+    ],
+    "created": "2026-07-01T11:00:00Z"
+  }
+]

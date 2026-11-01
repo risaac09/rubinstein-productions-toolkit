@@ -1,0 +1,1 @@
+Add clerkwork/, a practice admin kit (PR 1 of 3, draft): a skeleton with contacts, projects and financials ledgers and schemas, the add-contact, add-project, add-invoice, today and validate scripts, an invented example practice, and two shell tests run in the hygiene-checks job. Decision: stack-data 2026-10-22 (risaac09/stack-data#535).

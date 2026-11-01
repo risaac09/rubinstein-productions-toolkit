@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contacts.schema.json",
+  "title": "Contacts",
+  "description": "People the practice talks to. bin/validate reads the enums below, so this file is the source for them.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "stage", "touches", "created"],
+    "properties": {
+      "id": { "type": "string", "pattern": "^c-[a-z0-9-]+$", "description": "Stable slug, e.g. c-ada-example" },
+      "name": { "type": "string" },
+      "email": { "type": ["string", "null"], "description": "Compared lowercase and trimmed; two contacts may not share one." },
+      "org": { "type": ["string", "null"] },
+      "stage": { "enum": ["lead", "active", "past"] },
+      "touches": {
+        "type": "array",
+        "description": "Append-only. The last touch holds the open next action, if any.",
+        "items": {
+          "type": "object",
+          "required": ["date", "kind", "nextAction", "due"],
+          "properties": {
+            "date": { "type": "string", "format": "date" },
+            "kind": { "enum": ["email", "call", "meeting", "other"] },
+            "nextAction": { "type": ["string", "null"], "description": "What is owed next; null when nothing is." },
+            "due": { "type": ["string", "null"], "format": "date" }
+          }
+        }
+      },
+      "created": { "type": "string", "format": "date-time" }
+    }
+  }
+}

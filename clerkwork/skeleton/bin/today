@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# today: print the Monday queue, two lists, every line led by the record id.
+# Generalized from stack-data scripts/sd-loop-status, 2026-10-22.
+#
+# Usage: today
+# Calls made     records written in the last 7 days (the agent's work to read).
+# Decisions owed touches due or overdue, invoices still draft, sent invoices
+#                past their due date, projects delivered with no invoice.
+# Each decision is a yes, an edit or a no. Read-only. Env: CLERKWORK_ROOT,
+# CLERKWORK_TODAY (see bin/lib.sh). Exit 0.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+
+"$HERE/validate" "$ROOT" >/dev/null || { "$HERE/validate" "$ROOT" >&2 || true; exit 1; }
+
+jq -nr --arg t "$TODAY" \
+  --slurpfile C "$DATA/contacts.json" --slurpfile P "$DATA/projects.json" --slurpfile F "$DATA/financials.json" '
+  def ep: strptime("%Y-%m-%d") | mktime;
+  def days($a; $b): (($a | ep) - ($b | ep)) / 86400;
+  def section($title; $lines): $title, (if ($lines | length) == 0 then "  none" else $lines[] end);
+  $C[0] as $c | $P[0] as $p | $F[0] as $f |
+  (($t | ep) - 7 * 86400 | strftime("%Y-%m-%d")) as $cut |
+
+  section("Calls made (since \($cut))"; [
+    ($c[] | select(.created[0:10] >= $cut) | "  \(.id)  contact added: \(.name)"),
+    ($p[] | select(.created[0:10] >= $cut) | "  \(.id)  project added: \(.title)"),
+    ($f[] | select(.created[0:10] >= $cut) | "  \(.id)  \(.kind) \(.status): \(.amount) \(.currency)")
+  ]),
+  "",
+  section("Decisions owed"; [
+    ($c[] | (.touches[-1]) as $l
+      | select($l != null and ($l.nextAction // "") != "" and $l.due != null and $l.due <= $t)
+      | "  \(.id)  touch \(if $l.due < $t then "overdue \(days($t; $l.due) | floor)d" else "due today" end): \($l.nextAction)"),
+    ($f[] | select(.kind == "invoice" and .status == "draft")
+      | "  \(.id)  invoice draft, not sent: \(.amount) \(.currency) for \(.projectId)"),
+    ($f[] | select(.kind == "invoice" and .status == "sent" and .due != null and .due < $t)
+      | "  \(.id)  invoice overdue \(days($t; .due) | floor)d: \(.amount) \(.currency) for \(.projectId)"),
+    ($p[] | .id as $i | select(.status == "delivered")
+      | select([$f[] | select(.kind == "invoice" and .projectId == $i)] | length == 0)
+      | "  \(.id)  delivered, not invoiced: \(.title)")
+  ])'
