@@ -146,7 +146,7 @@ def load_audio(path):
                     return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
         except (wave.Error, EOFError, OSError):
             pass
-    ffmpeg = os.environ.get("VERTCUT_FFMPEG", "ffmpeg")
+    ffmpeg = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")   # the toolkit's one variable
     try:
         r = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", path, "-vn",
                             "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"],
