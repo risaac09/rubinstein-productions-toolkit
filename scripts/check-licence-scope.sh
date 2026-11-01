@@ -4,7 +4,7 @@
 # checked against the Scope paragraph of LICENSE; everything else is CC BY-SA. An unclassified directory fails.
 set -eu
 ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
-MIT=" scripts production tools phase-zero public-kit "
+MIT=" scripts production tools phase-zero public-kit clerkwork "
 CC=" docs methodology templates prompts "
 EXEMPT=" changelog.d .github .claude .agents "
 cd "$ROOT"
