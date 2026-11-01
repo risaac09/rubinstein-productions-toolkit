@@ -1,0 +1,34 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "say-why-lower-third",
+  "version": "1.0.0",
+  "name": "Say Why Lower Third",
+  "description": "Name and role lower third, with an optional title line, for 1920x1080 and 1080x1920.",
+  "main": "say-why-lower-third.js",
+  "supportsRealTime": false,
+  "supportsNonRealTime": true,
+  "stepCount": 1,
+  "actionDurations": [
+    { "type": "playAction", "duration": 700 },
+    { "type": "updateAction", "duration": 0 },
+    { "type": "stopAction", "duration": 500 }
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": { "type": "string", "title": "Name", "gddType": "single-line", "default": "Alex Example" },
+      "role": { "type": "string", "title": "Role", "gddType": "single-line", "default": "Guest" },
+      "title": { "type": "string", "title": "Title line (optional)", "gddType": "single-line", "default": "" },
+      "accentColor": {
+        "type": "string", "title": "Accent Color", "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$", "default": "#c8923a"
+      }
+    },
+    "required": ["name"]
+  },
+  "renderRequirements": [
+    { "resolution": { "width": { "ideal": 1920 }, "height": { "ideal": 1080 } }, "frameRate": { "ideal": 24 } }
+  ],
+  "v_bmd": { "duration": 5 }
+}

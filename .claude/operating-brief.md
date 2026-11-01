@@ -119,11 +119,12 @@ are the cheapest review the stack owns.
 
 Phase zero opens a session, the retrospective closes it, and between them the
 standing records carry what earlier sessions settled. Cite
-`stack-data/docs/DECISIONS.md` instead of re-deriving a settled call. Check
+`stack-data/docs/DECISIONS.md` and `docs/decisions/` (one file per decision
+since 2026-10-05) instead of re-deriving a settled call. Check
 `stack-data/docs/FAILURE-MODES.md` when a task rhymes with an old failure. The
 house rule under all four slips is the same one the bibliography build proved: a
 named gap beats a smooth fabrication, every time.
 
 This copy is kit-deployed. The source lives in
-`rubinstein-productions-toolkit/phase-zero/operating-brief.md`; edit it there and
+`stack-data/kit/phase-zero/operating-brief.md`; edit it there and
 redeploy. Never edit the deployed copy.

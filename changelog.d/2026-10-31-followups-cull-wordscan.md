@@ -1,0 +1,1 @@
+rpstills cull holds a frame whose faces Vision could not read (reason: faces unread); the crops command says nothing to preview on an empty plan; trim review and pacing look words up by index, same rows. (#319)

@@ -1,10 +1,12 @@
 # The measurement framework (ENIF), in plain language
 
-> **Canonical doc:** [`methodology/measurement-framework.md`](measurement-framework.md). That file is the source of truth, a snapshot of the vault canonical and the April 2026 consolidation of the original 780-line ENIF. This is the teaching layer for readers with no evaluation background.
+> **Canonical doc:** [`methodology/measurement-framework.md`](measurement-framework.md). That file is the source of truth. This is the teaching layer for readers with no evaluation background.
+
+> **Status:** operational.
 
 ## What it is
 
-This is the client-work measurement system for Rubinstein Productions, the practice-level counterpart to the grant-facing Say Why evaluation framework. Most agencies pick a side: art, which goes unmeasured, or ROI, which goes soulless. This framework tracks every engagement in two registers at once and reports them together as the Bilingual Dashboard.
+This is a client-work measurement system, the practice-level counterpart to the grant-facing Say Why evaluation framework. Most agencies pick a side: art, which goes unmeasured, or ROI, which goes soulless. This framework tracks every engagement in two registers at once and reports them together as the Bilingual Dashboard.
 
 ## Register 1: institutional metrics
 
@@ -21,7 +23,7 @@ What emerged that nobody predicted. The primary metric is consistency mapping: w
 
 ## How it runs
 
-Session transcripts get coded by hand against a six-domain guide, generously on the first pass. The quantitative side lives in Airtable across five tables, with a weekly five-minute update, a monthly half hour, and deeper quarterly and annual reviews. On the last Friday of each month the practitioner runs a two to three hour synthesis ritual: immerse in the data, look for patterns across clients, analyze consistency scores, and write a memo.
+Session transcripts get coded by hand against a six-domain guide, generously on the first pass. The quantitative side comes from survey items scored by a script, and the qualitative side from the coded transcripts.
 
 ## What the client sees
 
@@ -33,4 +35,4 @@ Measurement of this depth could turn extractive, so the framework builds in cons
 
 ## What the framework does not claim
 
-The target benchmarks are labeled starting points to adjust with experience, and no result has been claimed against them. The consolidation cut the original ENIF's aspirational material on AI analysis, agent-based modeling, and certification, to be revisited at 25 or more client engagements, so none of that is claimed as current practice. The scoring scales are the practice's own instruments rather than validated psychometrics, and the framework presents its relational indicators as things that matter precisely because they resist standardization.
+The consolidation cut the original ENIF's aspirational material on AI analysis, agent-based modeling, and certification, to be revisited at 25 or more client engagements, so none of that is claimed as current practice. The scoring scales are this framework's own instruments rather than validated psychometrics, and the framework presents its relational indicators as things that matter precisely because they resist standardization.

@@ -1,0 +1,1 @@
+CLI outputs that name private media (transcribe, detect, measure, shoot-table, pipeline-proof, rhythm and the shared writer) are now refused inside any git working tree, not only this repository, matching the MCP tools. Transcribe checks all its output paths before the backend runs. (#301)

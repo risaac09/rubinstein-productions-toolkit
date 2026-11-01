@@ -1,0 +1,1 @@
+The MCP survey tool refuses project and tree-label values that start with a dash, so they cannot smuggle a second --out; an empty items list is now refused by apply_grade, reframe_apply and stabilize instead of meaning every item. (#302)

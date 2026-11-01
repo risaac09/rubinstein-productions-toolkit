@@ -3,7 +3,7 @@ rpresolve.delivercheck: check a rendered deliverable against its
 destination, and fix its loudness. Offline: ffprobe and ffmpeg only, never
 Resolve. Stdlib only.
 
-check() reports every rule as PASS, FAIL or SKIP with what it found and
+check() reports every rule as PASS, FAIL, SKIP or WARN with what it found and
 what it expected:
     name          the file name follows the naming rule for the destination
     folder        the file sits in its destination's subfolder; FAIL when it
@@ -12,8 +12,14 @@ what it expected:
     video_codec   codec (and profile, where the destination fixes one)
     size          width x height (a "timeline" size needs --size to assert)
     fps           an exact rational; a standard rate, and --fps when given
+    fps_floor     WARN under the destination's min_fps, SKIP with none; never FAIL
     fps_constant  average and nominal frame rate agree (no VFR)
     pix_fmt       chroma family and bit depth, where the destination fixes them
+    video_bitrate expect.min_video_kbps; SKIP while no destination sets one
+                  (platform-specs.md records no bitrate floor)
+    safe_zone     caption and super boxes (boxes=, from captionlint or
+                  overlay-check) inside rpresolve.safezone's margins; SKIP
+                  with no boxes
     color_*       primaries, transfer and matrix tags against the config;
                   an expected value of null is only reported. color_range:
                   limited ("tv") by default; a yuvj* pix_fmt counts as full
@@ -33,11 +39,16 @@ what it expected:
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
 
+approval_row() is opt-in (cmd_deliver_check --review-log): a WARN-only row from
+the review log's approve or go line. It is not part of check(), so qc never
+shows it.
+
 fix_loudness() is a two-pass loudnorm (measure, then linear with the
 measured values) that copies the video stream untouched and writes
 <stem>.loudfix<ext> beside the original; it never overwrites anything.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -46,7 +57,7 @@ import subprocess
 import time
 from fractions import Fraction
 
-from . import deliver
+from . import deliver, safezone
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 FFPROBE = os.environ.get("RPRESOLVE_FFPROBE", "/opt/homebrew/bin/ffprobe")
@@ -54,7 +65,7 @@ PROBE_TIMEOUT_S = 120
 # Loudness reads the whole file; a long render on a share takes a while.
 READ_TIMEOUT_S = 3600
 
-PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
+PASS, FAIL, SKIP, WARN = "PASS", "FAIL", "SKIP", "WARN"
 # How long after the video's last frame a caption cue may still end.
 CAPTION_END_SLACK_S = 0.5
 # Timeline rates as written in Resolve, as exact rationals.
@@ -302,7 +313,8 @@ def _one_of(value, want):
     return value in want if isinstance(want, (list, tuple)) else value == want
 
 
-def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None):
+def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None,
+          boxes=None):
     """Check path against the merged destination dest. fps: the timeline's
     frame rate to assert (any form parse_fps reads). size: (width, height)
     to assert when the destination renders at the timeline's size.
@@ -310,7 +322,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     this (a fixed file that is still beside its original). folders:
     {subfolder: destination key} from deliver.subfolders(config), so a file
     in another destination's folder fails. loudness=False
-    skips the ffmpeg read. Returns {file, destination, checks, counts,
+    skips the ffmpeg read. boxes: [(label, (x0, y0, x1, y1))] frame fractions
+    of the captions and supers on screen, judged by the safe_zone row.
+    Returns {file, destination, checks, counts,
     status}; raises ToolMissing or CheckError."""
     need_ffmpeg = loudness and deliver.has_loudness_target(dest)
     check_tools(ffmpeg=need_ffmpeg)
@@ -390,6 +404,18 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         # An average rate that cannot be read fails: nothing then shows the file is constant.
         steady = (None if r_rate is None else
                   False if avg is None else abs(avg - r_rate) / r_rate < Fraction(1, 1000))
+        # WARN, never FAIL: the platforms' floor is advice until a conform ruling (platform-specs.md).
+        floor = dest.get("min_fps")
+        if floor is None or r_rate is None:
+            rows.append(_row("fps_floor", None, fmt_rate(r_rate),
+                             "no minimum on this destination" if floor is None
+                             else f">= {fmt_rate(parse_fps(floor))}"))
+        else:
+            want = parse_fps(floor)
+            rows.append(_row("fps_floor", True, fmt_rate(r_rate), f">= {fmt_rate(want)}")
+                        if r_rate >= want else
+                        dict(_row("fps_floor", False, fmt_rate(r_rate), f">= {fmt_rate(want)}"),
+                             status=WARN))
         rows.append(_row("fps_constant", steady, fmt_rate(avg), f"within 0.1% of {fmt_rate(r_rate)}"))
 
         chroma, bits = pix_fmt_family(video.get("pix_fmt"))
@@ -401,6 +427,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                              f"{want_c or 'any'} chroma" + (f", {want_b}-bit" if want_b else "")))
         else:
             rows.append(_row("pix_fmt", None, video.get("pix_fmt"), "not fixed"))
+
+        rows.append(_bitrate(video, exp))
+        rows.append(_safe_zone(w, h, boxes))
 
         cexp = (dest.get("color") or {}).get("expect") or {}
         for key in ("color_primaries", "color_transfer", "color_space"):
@@ -462,9 +491,52 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         rows.append(_row("true_peak", tp is not None and tp <= peak_max + 1e-9,
                          f"{tp} dBTP", f"<= {peak_max:g} dBTP"))
 
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP)}
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP, WARN)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
+
+
+def _bitrate(video, exp):
+    """video_bitrate against expect.min_video_kbps. No destination in
+    resolve-config.json sets one: platform-specs.md records no bitrate floor,
+    so the row skips until a published one is added to a destination."""
+    floor = exp.get("min_video_kbps")
+    if floor is None:
+        return _row("video_bitrate", None, "not asserted", "no floor",
+                    "no platform floor is published in platform-specs.md")
+    bps = video.get("bit_rate")
+    kbps = int(bps) / 1000 if str(bps or "").isdigit() else None
+    if kbps is None:  # ffprobe omits it for some containers; not a reason to fail a file
+        return _row("video_bitrate", None, "unreadable", f">= {float(floor):g} kbps",
+                    "ffprobe gave no video bit_rate")
+    return _row("video_bitrate", kbps >= float(floor), f"{kbps:g} kbps", f">= {float(floor):g} kbps")
+
+
+def _safe_zone(w, h, boxes):
+    """Every caption and super box inside the safe zone for the frame
+    (rpresolve.safezone). Pixels are not read: the boxes come from the caller."""
+    expected = "every caption and super box inside the safe zone"
+    if boxes is None:  # an empty list is a caller saying nothing is on screen: a pass
+        return _row("safe_zone", None, "no boxes given", expected,
+                    "pass --boxes (captionlint and overlay-check report them)")
+    if not (w and h):
+        return _row("safe_zone", False, "frame size unreadable", expected)
+    m = safezone.margins(w, h)
+    out = [f"{label}: crosses {', '.join(sides)}" for label, box in boxes
+           for sides in [safezone.outside(box, m)] if sides]
+    return _row("safe_zone", not out, f"{len(boxes) - len(out)} of {len(boxes)} inside"
+                + (f"; {'; '.join(out[:3])}" if out else ""),
+                f"top {m[0]:g}, bottom {m[1]:g}, sides {m[2]:g} of the frame clear")
+
+
+def add_rows(result, rows):
+    """Append extra rows (the queued jobs' audio from audiostate.compare) to a
+    check result and recount it."""
+    result["checks"] += rows
+    c = result["counts"] = {s: sum(1 for r in result["checks"] if r["status"] == s)
+                            for s in (PASS, FAIL, SKIP, WARN)}
+    result["status"] = "fail" if c[FAIL] else "pass"
+    return result
 
 
 def _captions(path, name, dest, streams, duration_s=None):
@@ -518,9 +590,108 @@ def format_report(result):
         lines.append(f"  {r['status']:<4}  {r['check']:<17} found {r['found']}  "
                      f"(expected {r['expected']})" + (f"  [{r['note']}]" if r.get("note") else ""))
     c = result["counts"]
-    lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail, {c[SKIP]} skipped: "
+    warn = f", {c[WARN]} warn" if c.get(WARN) else ""
+    lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail{warn}, {c[SKIP]} skipped: "
                  f"{result['status'].upper()}")
     return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Release-ledger row stub
+# ---------------------------------------------------------------------------
+
+LEDGER_BLANKS = ("published_url", "publish_date", "approval")
+
+
+def file_sha256(path):
+    """sha256 of the file's bytes, read in chunks (a master is large)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ledger_row(result, sha256=None, now=None, approval=None):
+    """A STUB release-ledger row (the ledger format is not fixed) for a
+    check() result: key is the house file name, or None with key_reason when
+    the name does not follow the rule (never a guess). Fields a person fills
+    after publishing stay empty. Returns a dict; ledger_line() serialises it."""
+    name = os.path.basename(result["file"])
+    try:
+        deliver.parse_name(name)
+        key, reason = name, None
+    except deliver.NameRuleError as e:
+        key, reason = None, str(e)
+    row = {"stub": True, "key": key, "key_reason": reason, "file": name,
+           "destination": result["destination"], "check_status": result["status"],
+           "counts": result["counts"], "sha256": sha256,
+           "checked_at": now or time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    row.update({k: "" for k in LEDGER_BLANKS})
+    if approval:  # the matched review-log line fills the blank
+        row["approval"] = f"review-log {approval.get('ts', '')} {approval['review_sha256']}"
+    return row
+
+
+def ledger_line(row):
+    return json.dumps(row, sort_keys=True) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Approval from the review log (opt-in, WARN only)
+# ---------------------------------------------------------------------------
+
+SHA_RE = re.compile(r"[0-9a-f]{64}")
+APPROVING = ("approve", "go")
+
+
+def find_approval(events, path, sha256=None):
+    """(matched line or None, why not). events: tastedistill.read_events(log)[0].
+    A line names the file when review_sha256 is a sha256 and either review_copy
+    starts with the file's house stem plus an underscore (the name without
+    aspect and extension) or review_sha256 is the file's own sha256 (a clip
+    that names itself). The newest such line rules, so a later hold withdraws
+    an approve. It counts when its choice is approve or go and, if the review
+    copy sits beside the file, that copy's sha256 equals the logged one (a copy
+    kept elsewhere is not re-read). B14 imports this."""
+    name = os.path.basename(path)
+    try:
+        parts = deliver.parse_name(name)
+        stem = (name[:-len(parts["aspect"]) - len(parts["ext"]) - 2] if parts["kind"] == "clip"
+                else name.rsplit(".", 1)[0])
+    except deliver.NameRuleError:
+        stem = None
+    sha256 = sha256 or file_sha256(path)
+    newest = None
+    for _, e in events:
+        copy, sha = os.path.basename(str(e.get("review_copy") or "")), str(e.get("review_sha256") or "")
+        if SHA_RE.fullmatch(sha) and ((stem and copy.startswith(stem + "_")) or sha == sha256):
+            newest = e
+    if newest is None:
+        return None, f"no line names {stem or name} with a review copy and sha256"
+    if newest.get("choice") not in APPROVING:
+        return None, f"newest line for this file is {newest.get('choice')!r}"
+    copy, sha = os.path.basename(newest["review_copy"]), newest["review_sha256"]
+    beside = os.path.join(os.path.dirname(os.path.abspath(path)), copy)
+    if copy and os.path.isfile(beside) and file_sha256(beside) != sha:
+        return None, f"sha mismatch: {copy} beside the file is not the sha256 logged ({sha[:12]})"
+    return newest, None
+
+
+def approval_row(path, review_log, sha256=None):
+    """(row, matched line or None). SKIP without a log path; WARN otherwise
+    when nothing matches or the log cannot be read; never FAIL."""
+    expected = "an approve or go line with review_copy and review_sha256"
+    if not review_log:
+        return _row("approval", None, "not checked", "--review-log PATH"), None
+    from rpresolve import tastedistill
+    try:
+        line, why = find_approval(tastedistill.read_events(review_log)[0], path, sha256)
+    except OSError as e:
+        line, why = None, f"log unreadable ({e.strerror})"
+    if line:
+        return _row("approval", True, f"{line['choice']} {line.get('ts', '')}", expected), line
+    return {"check": "approval", "status": WARN, "found": why, "expected": expected}, None
 
 
 # ---------------------------------------------------------------------------

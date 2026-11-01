@@ -1,79 +1,108 @@
 # DaVinci Resolve Template — Personal Post-Production
+
+**Status:** operational.
 *Phase B: General-Purpose Multi-Camera Template*
 
 ---
 
 ## Project Settings
 
-- **Resolution:** 3840 × 2160 (UHD 4K) — all exports, no exceptions
+- **Resolution:** 3840 × 2160 (UHD 4K) for the project and its timelines; each delivery
+  destination sets its own frame size (see Deliver)
 - **Timeline framerate:** 23.976 fps (default) or 29.97 fps — set per project
-- **Color science:** DaVinci YRGB Color Managed
+- **Color science:** DaVinci YRGB Color Managed v2, timeline DaVinci WG/Intermediate, output Rec.709 Gamma 2.4 (see [Colour Pipeline of Record](#colour-pipeline-of-record))
 
 ---
 
-## Camera Sources & Color Pipeline
+## Colour Pipeline of Record
 
-Three cameras, three different log profiles. Each needs its own conversion path before the shared creative grade.
+*Decided 2026-10-16 (Amendment 2, item 16).* One pipeline is in force: Resolve Color Management v2 with a DaVinci Wide Gamut timeline. It replaces the earlier design, where a camera LUT on node 1 turned each camera's log into Rec.709 before the shared grade. That design is kept below as the alternative for a project that is not colour managed. Where this section and `resolve-config.json` or lutlab's README disagree, this section is the record and the others get fixed.
 
-| Camera | Log Profile | Conversion | Notes |
-|--------|-----------|------------|-------|
-| **iPhone 15 Pro** | Apple Log | TheOneLUT (AppleLog → Arri709 V5, 33pt .cube) | Already in Powergrades folder |
-| **Panasonic GH7** | V-Log L (or V-Log) | V-Log to Rec.709 LUT (Panasonic-supplied or custom) | GH7 shoots 5.7K Open Gate — may need to scale/crop to 4K timeline |
-| **Panasonic GH5** | V-Log L | V-Log L to Rec.709 LUT (Panasonic-supplied or custom) | Different sensor / color response than GH7 — may need separate base correction |
+### Project settings
 
-### Node Structure (per clip)
+| Setting | Value | Who sets it |
+|---|---|---|
+| Color science | DaVinci YRGB Color Managed v2 (`davinciYRGBColorManagedv2`) | `set_color_management` on a fresh project, or by hand |
+| Timeline colour space | DaVinci WG/Intermediate | By hand, in Project Settings, Color Management |
+| Output colour space | Rec.709 Gamma 2.4 | By hand, same place |
+| Tone mapping, gamut mapping | None | By hand, same place |
 
-```
-Node 1: Source Conversion (camera-specific LUT)
-  → iPhone: TheOneLUT
-  → GH7: V-Log to Rec.709
-  → GH5: V-Log L to Rec.709
+A fresh colour-managed project starts with its timeline and output both at Rec.709 (Scene), so the last three rows are a hand step after `set_color_management`, which sets the first row only. Its preset gains a key only after that key has been set through the API on a live Resolve (see `rpresolve/colormgmt.py`), and the timeline and output keys have not been. Tone mapping stays off because the looks already compress the picture once.
 
-Node 2: PowerGrade — Low Contrast (shared across all sources)
+### Per camera
 
-Node 3: Manual creative grade (per clip, as needed)
-```
+Capture settings for each camera are in the [capture standard](capture-standard.md). After capture, every camera takes the same path: `ingest` tags each clip's Input Color Space from what `detect` reads in the file, Resolve converts it into the timeline space, and the grade happens there.
 
-The key: Node 1 normalizes all three cameras to the same Rec.709 starting point. Node 2 applies the unified Low Contrast look. Node 3 is where you do per-clip work to match across cameras or push the creative grade.
+| Camera | Records | Input Color Space (`ingest`) | Conversion | Look |
+|---|---|---|---|---|
+| iPhone 15 Pro | Apple Log | `Apple Log` | Resolve, from the tag | `[RCM]` set |
+| Panasonic GH7 | V-Log | `Panasonic V-Gamut/V-Log` | Resolve, from the tag | `[RCM]` set |
+| Panasonic GH5 | V-Log L | `Panasonic V-Gamut/V-Log` | Resolve, from the tag; V-Log L uses the V-Log curve | `[RCM]` set |
+| Panasonic S5II | V-Log | `Panasonic V-Gamut/V-Log` | Resolve, from the tag | `[RCM]` set |
+| Pyxis | BRAW, decoded as Film Gen 5 | `auto (camera RAW)` | Resolve's RAW decode into DaVinci Wide Gamut, no per-clip tag | `[RCM]` set |
 
-### PowerGrades to Save in Resolve
+`detect` marks the GH5's V-Log L gamut as unverified and gives that row medium confidence; a clip it cannot pin goes to the Review bin with an empty tag, and a person sets it. Of these names, only `Panasonic V-Gamut/V-Log` has been written through the API and read back; the others are Resolve's own auto-tag strings (see `rpresolve/detect.py`).
 
-- **Low Contrast** — the base creative look (already exists)
-- **iPhone Source** — TheOneLUT as a saved node
-- **GH7 Source** — V-Log conversion as a saved node
-- **GH5 Source** — V-Log L conversion as a saved node
+### The look
 
-Tag each clip on import so you know which source node to apply.
+The shared look is one of lutlab's six, from its `[RCM]` set, baked at 65 points (`lutlab looks BASE/params.json --camera rcm --size 65`). An `[RCM]` look reads DaVinci Intermediate and writes the finished picture back in DaVinci Intermediate, and Resolve's output transform turns that into Rec.709 Gamma 2.4. One file serves every camera in the table. Measured on an S5II V-Log clip, the Rec.709 render lands 0.79 (Neutral) and 0.82 (Print Teal) median Delta E from the camera look, and on a Pyxis BRAW clip 0.95; the numbers and their method are in [lutlab's README](lutlab/README.md).
 
----
+`apply_grade` puts the look on a node of an `[auto]` timeline's items. The scripting API cannot make nodes, so the node has to exist on each clip before the apply.
 
-## Branded Intro
+### Node structure (per clip)
 
-- **Asset:** `say-why-intro-4k.png` (3840 × 2160)
-- Marrow background, "Say Why" in Bone, amber accent line
-- Optional — use only when the project calls for it
-- This is a personal creative brand, not RP client delivery
+A template is a whole graph. A `.drx` replaces a clip's graph and does not append to it, only clip graphs accept one, and the scripting API cannot make nodes. So each template carries the corrective nodes, the look and the tail in one file. The nodes are serial, in this order, and the labels are exact strings so a read-back of the node graph can check them.
+
+| # | Label | Job |
+|---|---|---|
+| 1 | `NR` | Noise reduction, off by default. Temporal before spatial, chroma heavy, luma light. |
+| 2 | `EXP` | Exposure. Offset or HDR Offset, not lift and gamma. |
+| 3 | `WB` | White balance and shot balance. The only corrective node a script may write, through `SetCDL`, which is unconfirmed (see Open spikes). By hand: desaturate a still, wipe to a white area, then temperature and tint to neutral. |
+| 4 | `CON` | Contrast, composite mode Luminosity, so it moves brightness and leaves hue and saturation alone. Pivot at 18% grey in DaVinci Intermediate. Toggling it must not move 18% grey. |
+| 5 | `SAT` | Saturation and density. HSV saturation; Color Slice for density instead of louder colour. |
+| 6 | `SKIN` | Skin qualifier, off by default. Skin stays on the vectorscope line. |
+| 7 | `WIN` | Windows and depth, off by default. Power windows, tracker, Depth Map (Studio). |
+| 8 | `LOOK` | The look, at full strength. One `[RCM]` look, the same file on every clip in the piece. |
+| 9 | `TEX` | Halation and grain, last before the tail. |
+| 10 | `CST OUT` | Tail: DaVinci Intermediate to the display space, no tone map. |
+| 11 | `LUT` | Tail: display LUT slot, set with `SetLUT` (scriptable). |
+
+Nodes 10 and 11 are for a project that grades to a display space itself. In a colour-managed project (the pipeline of record above) Resolve's output transform does that work, so leave both empty there.
+
+Everything works in DaVinci Intermediate on every camera, which is what makes matching across cameras one job rather than three. Colour-space-aware grading tools are on. Input comes from the clip's tagged Input Color Space, so no template is per camera. A template is per look: a neutral one with `LOOK` empty, one with the house look, and optionally others.
+
+**Look strength.** Build the look once at full strength and keep one strength control, so a client's "less" is one move, not a rebuild. By hand, put the look's nodes in a compound node labelled `LOOK` and use its Key Output Gain. A script has no evidence of reaching that control, so the scripted form is baked variants of the same template at 100, 66 and 33 percent, and the script picks one.
+
+**What a script may write.** Two things only. `apply_grade` puts a LUT on one node you name; pass `lut.node` 8 for the look, because its default is node 1, which is `NR`, and it does not check the label. The clip needs the node before the apply, and the apply needs `overwrite` true: a clip that carries the template is never a default graph, so without it every item is refused. A match step may also write `WB` through `SetCDL`, but that write does not exist yet and waits on the first spike below. Never `CON`, the other corrective nodes or the tail.
+
+**Open spikes.** None of these four is confirmed. Each needs a run against a sandbox project before a template relies on it, and until then the hand route above is the only one.
+- **SetCDL: unconfirmed.** `TimelineItem.SetCDL` (slope, offset, power, saturation on one node) is in the Resolve API but has not been exercised here. Whether it writes to `WB` of a template applied by `.drx`, reads back, and survives `DuplicateTimeline` is not known.
+- **A compound node in a .drx: unconfirmed.** A `.drx` read-back has covered node labels and LUTs, not compound structure, Key Output Gain or a node's composite mode (Luminosity, Screen, Hardlight). Until it passes, the strength control and the `CON` composite mode are hand-built only.
+- **Tetrahedral read-back: unconfirmed.** Tetrahedral 3D LUT interpolation is the intended project setting (less banding than trilinear). Whether the API can read it back, and so whether `resolve_status` could report it, is not known.
+- **Mid-grey hold: unconfirmed.** Export a still of a gray ramp with `CON` enabled and again disabled (`ExportCurrentFrameAsStill`, no render). The 18% band must not move by more than 0.005 in code value. Not yet measured with a built `CON` node.
+
+### In-camera LUTs
+
+The S5II and the Pyxis can load a 33-point `--monitor` copy of a look for the screen on set. It is for monitoring only. The camera records log, and the grade starts from the log.
+
+### The alternative: no colour management
+
+A project left at DaVinci YRGB, not colour managed, uses the old node-1 design: a camera LUT on node 1 turns that camera's log into Rec.709, and the looks come from the per-camera sets (`[S5II]`, `[Pyxis]`). For the iPhone that LUT was TheOneLUT (Apple Log to Arri709 V5, 33 points, in the PowerGrades folder). Choosing the items for each camera is a person's step, since nothing applies a LUT by camera tag. `ingest` refuses such a project, so this path has no ingest and no tags. Use it only for a project that already exists that way. Do not mix the two: a Rec.709-out camera LUT in a colour-managed project is converted twice, and a V-Log LUT fed Rec.709 (Scene) clips everything above about 2.5 stops over.
+
+### Dated open points
+
+- **The Low Contrast PowerGrade (open, 2026-10-16).** It was built for the old chain, where it saw Rec.709 after the node-1 LUT. In the managed pipeline its node sees DaVinci Intermediate, so it is not part of the pipeline of record until someone rebuilds it in the timeline space or checks it there. Until then the `[RCM]` looks are the shared look.
+- **The bins list in `resolve-config.json` (closed, 2026-10-17).** Its Source bin lists iPhone, GH7, GH5, S5II, Pyxis and Audio, mirrored in `rpresolve/config.py`. Ingest names each camera bin from the camera column `detect` reports, so the list is a default and not a limit.
+- **GH5 against GH7 (open, 2026-10-16).** No base correction for the GH5 until a side-by-side of both cameras on one scene, through this pipeline, shows a need. That test closes it either way.
 
 ---
 
 ## Subtitles
 
-- **Font:** Inter 500
-- **Color:** White or Bone (#f2ece4) on semi-transparent dark bar
+- **Font and color:** this spec publishes no values. Use your own caption standard: light text on a dark, semi-transparent bar, set by hand
 - **Position:** Lower third, consistent
-- **Source:** Auto captions on the `[auto]` timeline (`captions`, see Deliver),
+- **Source:** Auto captions on the `[auto]` timeline (`create_captions`, see Deliver),
   or File > Import > Subtitle by hand; the style is applied by hand
-
----
-
-## Export Presets — Always 4K (3840 × 2160)
-
-| Preset | Codec | Bitrate | Use |
-|--------|-------|---------|-----|
-| YouTube | H.265 | 40–60 Mbps | Primary web delivery |
-| LinkedIn | H.264 | 20–30 Mbps | Social feed |
-| Master | ProRes 422 HQ | — | Archive / highest quality |
-| Instagram / Story | H.264 (1080×1920 crop) | 15–20 Mbps | Vertical reformat |
 
 ---
 
@@ -84,6 +113,8 @@ Tag each clip on import so you know which source node to apply.
    📁 iPhone
    📁 GH7
    📁 GH5
+   📁 S5II
+   📁 Pyxis
    📁 Audio (external)
 📁 Selects
 📁 Timeline
@@ -92,54 +123,75 @@ Tag each clip on import so you know which source node to apply.
 📁 Exports
 ```
 
-Separate source bins by camera so you can batch-apply the correct source conversion node.
+Separate source bins by camera so footage is easy to find and match. Conversion needs no bin: it follows each clip's Input Color Space (see [Colour Pipeline of Record](#colour-pipeline-of-record)).
+The MCP `ingest` tool makes the camera bins and a Review bin under `Source`; it does not
+create the other bins, which are made by hand.
 
 ---
 
 ## Workflow
 
 1. Import media → Source bins (separated by camera)
-2. Tag clips by camera source
+2. Input Color Space tagged per clip by `ingest` (a Review clip is tagged by hand)
 3. Pull selects
 4. Build timeline
-5. Apply camera-specific source conversion (Node 1) — batch per camera bin
-6. Apply Low Contrast PowerGrade (Node 2) — all clips
-7. Manual creative grade (Node 3) — per clip, match across cameras
+5. Balance (`EXP`, `WB`), per clip, matching across cameras
+6. Apply the look (`LOOK`, node 8), one `[RCM]` look on every clip
+7. Manual creative grade (`CON`, `SAT`, `SKIN`, `WIN`, `TEX`), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
-10. Queue 4K export presets in Deliver page
-11. Render
+10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (queueing without it is flagged, not blocked, see the gate)
+11. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
+12. Render the queued jobs on the Deliver page (no tool starts one)
+13. Write the delivery manifest once `deliver_check` passes ([delivery manifest](delivery-manifest.md))
 
 ---
 
-## Phase C: CLI Automation
+## Phase C: Automation
 
-`resolve_workflow.py` implements this against the DaVinci Resolve Scripting
-API. Resolve must be running — the API connects to a live instance, not
-headless. Coverage against the original Phase C list, checked 2026-08-17:
+Phase C is built on the DaVinci Resolve Scripting API, which connects to a
+live instance of Resolve, not a headless one. The MCP server
+([`resolve_mcp.py`](resolve-mcp.md)) is the only code that writes to Resolve.
+`resolve_workflow.py` keeps the commands that only read Resolve or work
+offline; its write commands (`new-project`, `import-media`, `build-timeline`,
+`add-subtitles`, `auto-subtitle`, `render`, `render-all`, `clear-queue`,
+`apply-lut`, `apply-drx`, `open-page`, `export-project`, `ingest`, `cut`,
+`deliver-queue`, `captions`, `sync` and `trim-review --markers`) are retired,
+and [resolve-mcp.md](resolve-mcp.md#the-command-line-script) says what
+replaced each. Coverage against the original Phase C list, checked 2026-08-17
+and re-read against the MCP tools on 2026-10-07:
 
 | Bullet | Status |
 |---|---|
-| Auto-create project with bin structure | Done (`new-project`) |
-| Auto-queue render presets | Done (`render` / `render-all`) |
-| Auto-apply source conversion nodes by camera tag | Done (`import-media` tags clips by clip color; `apply-lut --camera <key>` filters by it) |
-| Auto-sort media into camera bins by metadata | Not done — `--camera` on `import-media` is still a human-supplied flag, not metadata-driven |
-| Auto-apply Low Contrast PowerGrade | Not done — no PowerGrade/gallery-still API call exists in the script; use `apply-drx` with a hand-exported `.drx` instead |
-| Subtitle import | Auto captions done (`captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so `add-subtitles` counts the items on every video, audio and subtitle track before and after, exits 0 only when subtitle items alone grew, and otherwise exits 1 naming each track that changed (or that none did); import an .srt by hand (File > Import > Subtitle) |
-| Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently — don't wait for it to get built. |
+| Auto-create project with bin structure | Not scripted. Create the project by hand and set its colour science to DaVinci YRGB Color Managed (Project Settings > Color Management; the menu path is from memory, not checked against a live Resolve). `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin under `parent` (default `Source`). It does not create the Audio, Selects, Timeline, Graphics and Exports tree in Project Bin Structure above; make those bins by hand if you want them. |
+| Auto-queue renders | Done (`queue_render`, for a delivery `destination`; the older render presets are gone, and a call that passes one is refused). It queues the job and never starts it. |
+| Auto-apply source conversion nodes by camera tag | Changed, and only partly there. Nothing applies a node or LUT by camera tag now: the clip-colour camera tag and the `--camera` filter went with the retired commands. What exists is `ingest`, which tags each clip's Input Color Space from `detect`, and `apply_grade`, which puts a LUT on one node of the items of an `[auto]` timeline that you choose by item number (`timeline_items` lists them with their input colour space). Choosing the items that belong to one camera is a person's step. |
+| Auto-sort media into camera bins by metadata | Done (`ingest` bins by the camera `detect` reads from the file headers; a file it cannot classify goes to a Review bin). |
+| Auto-apply Low Contrast PowerGrade | Not done: no PowerGrade or gallery-still API call exists. `apply_grade` applies a hand-exported `.drx`, checked against a label manifest beside it. |
+| Subtitle import | Auto captions done (`create_captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so import an .srt by hand (File > Import > Subtitle). The retired `add-subtitles` command counted the items on every track before and after and exited 1 unless subtitle items alone grew. |
+| Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently; don't wait for it to get built. |
 | Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
 
+The menu paths named in this table (Project Settings > Color Management,
+File > Import > Subtitle) and in resolve-mcp.md's replacement table for the
+retired commands are written from memory. They were not checked against a live
+Resolve when the commands were retired, and a Resolve version may label them
+differently.
+
 Two other hard API limits worth knowing before you file a bug against the
-script:
-- **No node creation.** `apply-lut --node 2` (this spec's Node 2, the
-  Low Contrast PowerGrade) only works if that node already exists on the
-  clip — add it in the Color page first. The scripting API cannot create
+tools:
+- **No node creation.** `apply_grade` with `lut.node` 8 (this spec's `LOOK`,
+  the look) only works if that node already exists on the
+  clip (add it in the Color page first) and with `overwrite` true, since a
+  graph with that many nodes is not a default one. The scripting API cannot create
   color-page nodes.
-- **Vertical export is resize-only.** The `story` preset changes canvas
-  dimensions; it does not reframe subjects. `reframe-plan` plans a crop
-  per span and `cut --aspects 9x16 1x1` applies it (see Reframe below);
-  a timeline built any other way needs its Pan/Zoom set before rendering
-  vertical, or the crop will be arbitrary.
+- **Vertical needs a timeline of its own.** Queueing never reframes. A
+  destination of fixed shape (`linkedin_9x16`, `social_9x16`, `linkedin_1x1`) refuses a
+  timeline of another shape, since Resolve would scale the picture into the
+  frame with bars. `reframe_plan` plans a crop per span and `cut` with
+  `aspects` builds the 9:16 and 1:1 timelines with it applied (see Reframe
+  below); a timeline built any other way needs its Pan/Zoom set before
+  queueing vertical, or the crop will be arbitrary.
 
 ### Offline survey of existing projects
 
@@ -158,13 +210,18 @@ paths, so `--out` is refused inside this repository.
 ### MCP server
 
 [`resolve_mcp.py`](resolve-mcp.md) serves the same library to Claude Code
-as 23 tools: reads of the open project, the offline checks (detect,
+as 36 tools: reads of the open project, the offline checks (detect,
 survey, measure, endcheck, selects, reframe_plan, deliver_check,
-sync_measure, trim_review), the offline caption conversion (deliver_captions), and
-additive writes (ingest, cut, duplicate, grade onto `[auto]` timelines,
+sync_measure, trim_review, shoot_table, qc, pipeline_proof,
+deliver_manifest, perceive, audio_report, overlay_check, ograf_template_check), the offline caption conversion (deliver_captions), and
+additive writes (ingest, cut, duplicate, a timeline from clips in order,
+colour management set on a fresh project, grade onto `[auto]` timelines,
 auto captions on `[auto]` timelines, queue a render without starting it,
 stack dual-system sound on a new `[auto]` timeline, trim-review markers on
-`[auto]` timelines), each write shown as a plan before it runs.
+`[auto]` timelines, and stabilize and reframe-apply on `[auto]` timelines), and
+one repair, relink, which points an offline clip at a
+file that verifies as the same take. Each write is shown as a plan before it runs. It is the only
+code that writes to Resolve.
 
 ---
 
@@ -175,11 +232,17 @@ centred on the speaker's face (plan A7). The check: the face box stays
 inside the crop on every sampled frame. Two steps: plan offline, then
 `cut` applies the plan and reads every transform back.
 
+Every crop keeps the subject's whole head with room above it, and the same
+planner frames the master timeline's own shape (a 2.25:1
+festival timeline, say) for `reframe_apply`: see Framing in `resolve-mcp.md`.
+
 ### Plan
 
 `resolve_workflow.py reframe-plan <manifest> [--aspects 9x16 1x1]
-[--samples 8] [--per-second 0.5] [--speaker-x PX] [--allow-bars] [--only
-CLIP ...] --out <copy.json>`, or the MCP `reframe_plan`. Offline: ffmpeg
+[--samples 8] [--per-second 0.5] [--speaker-x PX [--speaker-y PX]]
+[--subject-region X0 Y0 X1 Y1] [--min-face-height SHARE] [--prefer
+present|largest] [--min-checked 0.5] [--allow-bars] [--only CLIP ...]
+--out <copy.json>`, or the MCP `reframe_plan`. Offline: ffmpeg
 reads frames, macOS Vision finds faces (the same cached helper `measure`
 uses, `rpresolve/vision.py`), nothing touches Resolve. The manifest itself
 is never changed.
@@ -191,9 +254,15 @@ For each span of each clip:
    gets 13), never more than 120. A time at or past the source's end is
    not read: the span is flagged, and one wholly past the end gets no
    crop, while the rest of the plan goes on.
-2. **Picture area.** The rows and columns whose mean luma is above 24 of
-   255 in at least one sample. A call recording can letterbox its panes
-   inside the 16:9 frame, and a crop that leaves the picture shows bars.
+2. **Picture area.** The frame less its black bars. A bar is a run of
+   rows or columns from an edge whose brightest pixel is at or below 40 of
+   255 in every sample: flat and black. A call recording can letterbox its
+   panes inside the 16:9 frame, and a crop that leaves the picture shows
+   bars. A dark scene is not a bar: a night stage has lights and sensor
+   speckle above that level in every row and keeps its whole frame. (An
+   earlier version took the rows whose mean luma was above 24, which cannot
+   tell a bar from a dark room: a night frame lost 88% of its height and
+   the "widest filled scale" became a zoom of 33.)
 3. **The face.** Vision's boxes are linked across samples into tracks by
    overlap (IoU 0.2 or more, or centres within three quarters of a box
    width). A track in at least half as many samples as the most present
@@ -204,7 +273,16 @@ For each span of each clip:
    speaker as they turn or lean, so the steadier listener can win on
    presence, and "larger" says nothing about who is speaking either.
    `--speaker-x` names the speaker (source pixels): the eligible track
-   whose median centre is nearest.
+   whose median centre is nearest, by distance in both axes when
+   `--speaker-y` is given too.
+   Where the footage has no single speaker (a stage with an audience), the
+   subject is steered instead: `--subject-region` keeps only faces whose
+   centre is inside a source-pixel rectangle, `--min-face-height` drops
+   faces shorter than a share of the frame height (the audience in the
+   distance), and `--prefer largest` ranks the eligible faces by size
+   before presence. What these left out is counted in the report
+   (`ignored`). Nothing here guesses: with two comparable faces and no
+   hint the span is still flagged.
    Every sample is judged. On a sample where the primary face is missing,
    the box nearest its path is checked in its place when it lies within
    three face widths and no other eligible track holds it: a lean that
@@ -212,8 +290,12 @@ For each span of each clip:
    may still be the speaker. Otherwise the sample is unchecked. Either case
    flags the span for review, whatever its status.
 4. **The crop.** Centred on the median face centre, clamped so the crop
-   stays inside the picture area, at the clip's `reframe.scale` (default
-   2.25 output pixels per source pixel, `cut`'s convention). When that
+   stays inside the picture area, at the clip's `reframe.scale` (output
+   pixels per source pixel, `cut`'s convention). With no scale named the
+   planner derives one from the source and the aspect: the widest scale
+   that fills the frame (0.7257 for a 5952x2646 source into 9:16, a zoom of
+   about 4; 2.6667 for a 720p one). With `--allow-bars` and no scale the
+   Ep 002 punch-in, 2.25, is the starting scale instead. When the scale
    loses the face, the middle of the checked boxes' extent (each grown by
    the margin), clamped the same way, is tried at the same scale: a face
    that sits still and then moves can fit a window its median cannot.
@@ -221,24 +303,33 @@ For each span of each clip:
    (to the 0.1 px it is rounded to), so a crop that fails both fails at
    that scale. The report names the centre used (`median` or `extent`).
 5. **The check.** Every checked box (the primary face's, and any taken in
-   its place), grown by 10% of its width and height on each side, is
+   its place), grown by 10% of its width and height on each side and
+   clipped to the picture area (a margin the frame does not hold cannot be
+   required: a face at the top edge of the source has none above it), is
    mapped through that exact transform (centre and scale rounded as
-   written) and must sit inside the output frame. Reported over all the
+   written) and must sit inside the output frame. A box that reaches past
+   the picture's edge is flagged for review; the crop keeps the face but
+   not the usual margin there. A crop also needs enough evidence: at least
+   `--min-checked` (default half) of the span's samples, and never fewer
+   than 3, must have a checked face. A face seen on one frame of fifteen
+   passes nothing, however well that one box sits: the span is `manual`
+   and says how many samples showed the face. Reported over all the
    span's samples: inside, unchecked, the share inside (an unchecked
    sample never counts as inside), the worst sample's time and its slack
    in output pixels (negative: outside by that much).
-6. **Fallback.** When the default scale leaves bars or loses the face,
-   the widest scale that still fills the frame is tried and checked the
-   same way, median then extent (rounded up at the fourth decimal, so
+6. **Fallback.** When a scale the clip named (or the punch-in) leaves bars
+   or loses the face, the widest scale that still fills the frame is tried
+   and checked the same way, median then extent (rounded up at the fourth decimal, so
    rounding never opens a bar). When that fails too, the span is
    `manual`: it needs a manual reframe or a split. A span with no face in
    any sample is `no_face` and gets no centre. `--allow-bars` keeps the
    default scale when it holds the face but leaves bars (status `bars`,
    the Ep 002 look, named as such).
 
-Statuses: `pass` (the default scale fills and holds), `fallback` (the
-widest filled scale holds), `bars` (only with `--allow-bars`), `manual`,
-`no_face`. Exit 0 when every crop holds; 2 when a span needs a person
+Statuses: `pass` (the scale fills and holds; with no scale named, the
+widest filled one), `fallback` (a named scale failed and the widest filled
+one holds), `bars` (only with `--allow-bars`), `manual` (no crop holds, or
+too few samples had a face), `no_face`. Exit 0 when every crop holds; 2 when a span needs a person
 (`manual`, `no_face`, `bars`, or a flagged span: a choice of face, a
 face off its track, an unchecked sample); 1 on an error, including a
 Vision helper that cannot run (no face is ever invented).
@@ -271,12 +362,16 @@ the unchecked samples' times.
 Resolve fits a source whose size differs from the timeline's by
 `fit = min(W/sw, H/sh)` (`timelineInputResMismatchBehavior` scaleToFit,
 the default; scaleToCrop uses the max), zooms about the frame centre, then
-moves the picture in timeline pixels. A crop of `s` output pixels per
-source pixel centred on source point `(cx, cy)` is
+moves the picture. A crop of `s` output pixels per source pixel centred on
+source point `(cx, cy)` moves the picture by `dx = (sw/2 - cx) * s` and
+`dy = (sh/2 - cy) * s` output pixels (y down), and
 
     ZoomX = ZoomY = s / fit
-    Pan  = (sw/2 - cx) * s
-    Tilt = (cy - sh/2) * s
+    Pan  = dx * W / (sw * fit)
+    Tilt = -dy * H / (sh * fit)
+
+because Pan and Tilt are measured against the fitted picture on each axis,
+not in timeline pixels (settled 2026-10-15, below).
 
 and a source point `(x, y)` lands at `X = W/2 + (x - cx) s`,
 `Y = H/2 + (y - cy) s`. The widest crop with no bars over a picture area
@@ -288,22 +383,72 @@ and a source point `(x, y)` lands at `X = W/2 + (x - cx) s`,
 | 1920x1080 | Zoom 4 | s 1.7778, Zoom 3.1605 | s 1.0, Zoom 1.7778 |
 | 3840x2160 | Zoom 8 | s 0.8889, Zoom 3.1605 | s 0.5, Zoom 1.7778 |
 
-At 2.25 a 720-row source covers 1620 of 1920 rows: the default, taken
+At 2.25 a 720-row source covers 1620 of 1920 rows: that scale, taken
 from the Ep 002 script, never filled a 9:16 frame from that source. On
-1080p and 4K sources it crops tightly (a 480x853 window of a 4K frame),
-and the fallback carries.
+1080p and 4K sources it crops tightly (a 480x853 window of a 4K frame) and
+on a 5952x2646 anamorphic source it is a zoom of 12.4, a face filling the
+frame. So it is no longer the default: with no scale named the planner
+derives the widest filled one for the source, and 2.25 is kept only for
+`--allow-bars` and for a clip that names it.
 
-Pan's sign and units are confirmed on a render: in the sandbox 9:16
-render (below) the face centre sits where `X = W/2 + (x - cx) s` puts it,
-within 3 pixels, from Vision on the render and on the source frame. Tilt's
-sign assumes Resolve's y axis points up; no render has confirmed it, so
-every report row whose crop sets a Tilt says so (and the summary counts
-them), and `cut` says so whenever it writes a Tilt other than 0.
+Pan and Tilt are confirmed, sign and units, on Resolve 21.1.1.10
+(2026-10-15). Six fixtures (`tilt-fixture --variant` 9x16, master, 1x1,
+9x16-6k, master-fit, 16x9-crop: two input scalings, four timeline shapes,
+UHD and 3:2 6K sources) were built in a sandbox project and exported as
+stills with `ExportCurrentFrameAsStill`. That run was Claude's, at the
+editor's request, not a person pressing Render. Typed as timeline pixels, Tilt moved
+the picture by 0.315 to 1.496 of its value, each within 0.8% of
+`(sh * fit) / H`, and Pan by 0.664 where `(sw * fit) / W` is 0.667. Typed
+with the formulas above, `tilt-check` confirmed Pan and Tilt on all six,
+every marker within a pixel. Negative Tilt moves the picture down and shows
+the top of the source. The earlier sandbox 9:16 confirmed Pan only because
+a 9:16 at scaleToFit is fit by width. `TILT_CONFIRMED` is `True` and the
+unconfirmed notes are gone; they come back if it is set to `False`.
+
+### Re-checking Pan and Tilt (a new Resolve version)
+
+1. `python3 resolve_workflow.py tilt-fixture --out <new folder outside any
+   repo>` writes a short UHD clip with three markers (white at the crop
+   centre, red at the middle of the source, yellow above the white one)
+   and `tilt-expect.json`, and prints the numbers for step 3.
+2. In a scratch project, make a timeline of the size and input scaling
+   the fixture prints (1080x1920 at scale entire image to fit for the
+   stock one) and put the clip on it.
+3. In the Inspector set Zoom X and Zoom Y, Pan and Tilt to the printed
+   values (3.1605, 136.535, -1213.6448 for the stock fixture).
+4. Deliver one still of any frame, or export the current frame as a still.
+5. `python3 resolve_workflow.py tilt-check <still> --fixture <folder>`
+   finds the white and red markers and says, for Pan and Tilt separately,
+   `confirmed` (both markers where this module's convention puts them),
+   `inverted` (where the flipped reading puts them: a flipped Tilt puts the
+   white marker near the top, hundreds of pixels from the centre) or
+   `unclear` (somewhere else; check the typed values and the input
+   scaling). It writes `tilt-result.json` beside the fixture and exits 0
+   only when both are confirmed.
+6. If either is not confirmed, set `TILT_CONFIRMED` to `False` and fix
+   `resolve_props` in a commit that cites the output; the fixtures'
+   expected numbers (pinned in `tests/test_reframe_wide.py`) move with it.
+
+### Footage with no speech
+
+A performance or a landscape has no words and no approved text. Mark the
+manifest `"speech": false` and `reframe_plan` (the CLI and the MCP tool)
+needs only `source_path` and `clips`; `words`, `approved_text`,
+`source_sha256` and `fps` are optional and are not read. The manifest copy
+keeps `"speech": false`. (Both manifest versions are described in [manifest.md](manifest.md).) Every other tool that loads a manifest (`cut`,
+`endcheck`, `selects`, `trim_review`) refuses it with a message saying why,
+because they check words: building the 9:16 timeline for such footage with
+`cut` is not supported yet, and the report's crops are then applied by hand.
+
+```json
+{"speech": false, "source_path": "/abs/performance.mov",
+ "clips": [{"name": "set_one", "spans": [{"in": 30, "out": 60}]}]}
+```
 
 ### Build
 
-`resolve_workflow.py cut <copy.json> --project ... --aspects 9x16 1x1`,
-or the MCP `cut` with `aspects`. Each version is a duplicate of the
+The MCP `cut` with the copy as `manifest` and `aspects` `["9x16", "1x1"]`
+(a dry run first, then the real run with its `plan_sha`). Each version is a duplicate of the
 clip's 16:9, set to 1080x1920 or 1080x1080 and read back; each V1 item
 gets its span's transform (ZoomX, ZoomY, Pan, Tilt), and every property is
 read back. The input scaling is read before anything is duplicated, from
@@ -321,23 +466,39 @@ its versions.
 - **UNREFRAMED.** A version with a span that has neither, or an entry
   that `reframe-plan` left without a crop, is not built. The dry run lists
   it under `unreframed` and leaves it out of `would_create`; the real run
-  names it UNREFRAMED with the span and the reason, and exits 1. A 9:16 is
+  names it UNREFRAMED with the span and the reason, and its `exit_status` is 1. A 9:16 is
   never built quietly at Zoom 1.
 - **REFUSED.** An input scaling other than scaleToFit or scaleToCrop, or
   a V1 item of the 16:9 with its own `Scaling` (the Inspector's per-clip
   Crop, Fit, Fill or Stretch; the transform is computed for 0, use project
   settings): the version is not built. An item that does not report its
   `Scaling` is counted in a note and taken as 0. The dry run lists it under `refused` and leaves it
-  out of `would_create`; the real run names it REFUSED and exits 1.
+  out of `would_create`; the real run names it REFUSED and its `exit_status` is 1.
 - **BARS.** A version whose picture does not fill the frame (by the entry's
   picture area, else the whole source frame) is built, and its result
-  names each span ("the picture covers 1620 of 1920 rows"); exit 2.
+  names each span ("the picture covers 1620 of 1920 rows"); its `exit_status` is 2.
 - **LEFT BEHIND.** A version that fails after the duplicate (a write that
   does not read back, a different number of V1 items, a different input
   scaling) names the timeline it left behind in `left_behind`, in the
   result, the summary and the MCP journal, with how many of its items were
   transformed. A re-run skips a timeline that exists, so delete that one
   first. A 16:9 that fails its read-back is named the same way.
+- **SETTINGS DRIFT (opt-in, off by default).** Setting a timeline to custom
+  settings is reported to change colour management and scaling settings (see
+  `resolve-mcp.md`). With the guard enabled (`RPRESOLVE_SETTINGS_GUARD=on` in
+  the environment of the process that runs `cut`), `cut` reads each new
+  timeline's settings before and after its writes and lists
+  every key that reads differently, other than the ones it wrote (the custom
+  flag, the frame rate, the size), under the result's `settings_drift`, with
+  the write each changed at. A 16:9 is compared with itself before its first
+  write; a version with the 16:9 it was copied from. The timeline is built and
+  read back, so this is neither a failure nor `left_behind`, and the `exit_status`
+  does not change. Nothing is set back. A timeline whose settings could
+  not be read says `unchecked` and why. If the key that changed is the input
+  scaling, a version refused for it names this as the cause. A re-run skips a
+  timeline that exists and does not read it, so the first run's result and
+  journal summary are the record. With the guard off, which is the default,
+  `cut` makes none of these reads and `settings_drift` is null.
 - **One timeline at a time.** Each name is decided on its own: one that
   exists is skipped and listed under `skipped_existing`. A version missing
   beside a 16:9 that exists (the 1:1 asked for after the 9:16 was cut, say)
@@ -380,11 +541,11 @@ source does. Its per-span numbers stay out of this public document.
 
 So for such a source a filled 9:16 needs splits or manual reframes, and
 the decision between that and the letterboxed look (`--allow-bars`) is
-Isaac's.
+the editor's.
 
 ### What is known and what is not
 
-Owed live, in the sandbox ("RP Automation Sandbox"), Resolve being closed
+Owed live, in a sandbox project, Resolve being closed
 on 2026-09-30:
 
 1. Read back the transforms of the MCP-built 9:16 and
@@ -394,13 +555,23 @@ on 2026-09-30:
    `reframe-plan` (letterboxed, `--allow-bars`) were built by `cut`, each
    span's item with its own Pan, every transform read back. A 1:1 build
    is still owed.
-3. Tilt's sign: set a Tilt on a sandbox item, export a still
-   (`ExportCurrentFrameAsStill`), and find the face with Vision.
+3. Tilt's sign and both units: settled 2026-10-15 on six exported stills
+   (above). A Deliver render of the same fixture is not yet compared.
 4. Whether `timelineInputResMismatchBehavior` reads on a duplicated
-   timeline, and whether scaleToCrop's Pan counts the same pixels.
+   timeline. (scaleToCrop's Pan and Tilt follow the same rule as
+   scaleToFit's: settled 2026-10-15.)
 5. What `GetProperty("Scaling")` reads on an item appended by `cut`
    (expected 0, use project settings) and on one set to Fill in the
    Inspector (expected 3).
+6. What a timeline's first and repeat `useCustomSettings` write change on
+   this Mac (the forum reports are from Windows and Linux): which keys move,
+   whether a repeat write on a custom timeline moves them again, whether a
+   duplicate of a custom timeline keeps them, whether `GetSettings()` answers
+   on 21.1.1.10, and whether `timelineInputResMismatchBehavior` is one of them.
+   `sync` makes the same write on its stacked and verification timelines. Run it
+   on a scratch project, never a client project, with
+   `RPRESOLVE_SETTINGS_GUARD=on`; the guard is off by default until this
+   confirms the calls.
 
 Gaps in the method:
 
@@ -428,8 +599,7 @@ No new standing surface.
 
 A deliverable is rendered for a **destination**: what one platform wants,
 kept in `resolve-config.json` under `destinations`, laid over the house
-rules under `deliver`. These sit beside the older `render_presets`, which
-`render` and `render-all` still use.
+rules under `deliver`. `queue_render` takes a destination and nothing else.
 
 | Destination | Container, video | Size | Audio | Loudness | Captions |
 |---|---|---|---|---|---|
@@ -437,27 +607,28 @@ rules under `deliver`. These sit beside the older `render_presets`, which
 | `youtube_16x9_hd` | mp4, H.265 | 1920x1080 | AAC 48 kHz stereo | -14 LUFS | sidecar .srt |
 | `linkedin_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `linkedin_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -16 LUFS | burnt in |
+| `social_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -14 LUFS | burnt in |
 | `linkedin_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `client_master` | mov, ProRes 422 HQ | the timeline's | LPCM 24-bit 48 kHz | none (unnormalized) | none |
 
-Each destination sets its own frame size; the "always 4K" rule under Project
-Settings and Export Presets describes the render presets.
+Each destination sets its own frame size.
 
 House rules, all in the config: integrated loudness within +/-0.5 LU of the
 target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
 colour tags Rec.709 primaries and matrix, with the transfer tagged per
 destination: web files use `GammaTag` "Rec.709-A", which writes the
 transfer as bt709 (asserted by the check), and the client master keeps
-the house "Gamma 2.4", which writes it unspecified (reported only). Isaac
-compared both renders and chose Rec.709-A for the web on 2026-09-29. Limited
+the house "Gamma 2.4", which writes it unspecified (reported only). A
+comparison of both renders chose Rec.709-A for the web on 2026-09-29. Limited
 range (a `yuvj*` pixel format or a `pc` flag fails; an unflagged YUV
 stream counts as limited, as decoders read it), and auto-caption line
 length by frame shape (`deliver.captions`: 42 characters on one line for
 landscape, 16 on up to two lines for portrait, 24 on up to two lines for
 square). An overlay
-kept outside this repository (`--config` on the CLI, `RPRESOLVE_CONFIG` for
-the MCP server) lies over `resolve-config.json`: it changes any one field
+kept outside this repository (`--config` on `deliver-check`,
+`deliver-captions` and `deliver-fix-loudness`, `RPRESOLVE_CONFIG` for the MCP
+server) lies over `resolve-config.json`: it changes any one field
 of a destination, adds a private `target_dir`, adds a destination, or
 removes one with `null`, and leaves every other value as the repo file
 has it. An overlay
@@ -500,23 +671,61 @@ has a `folder` row: PASS in the destination's own subfolder, FAIL in
 another destination's (a LinkedIn check of YouTube's file), SKIP in a
 folder no destination owns.
 
+### The final-approval gate
+
+> **Status:** accepted 2026-10-16. No tool enforces this gate. `queue_render` does not know whether a cut was approved, and the house file name has no place for an approval reference, so the gate is a step a person holds and a record a person keeps.
+
+Delivery waits for the client's approval of a review copy. The gate sits after the audio work and before the first deliverable is queued, because a deliverable is a final file and the loop's later steps (captions to `.srt`, the loudness fix, the check) change the container, the audio level and the sidecar and leave the picture and the words alone. The audio level does change, so the review copy is rendered at the destination's loudness target (run the loudness fix on it first) and the approver hears what ships.
+
+**Who approves.** The person on camera approves their own words and likeness. Where an organization commissioned the work and the commissioner is a different person, the commissioner approves as well, and both must approve. Where the participant is also the commissioner, there is one person and one approval. The approver is named at scope and the name goes in the record. Approval by anyone else is not approval.
+
+**What is shown.** A review copy: a render of the cut that is not a deliverable. No `queue_render` destination makes one, so a person renders it on the Deliver page, with a timecode burn-in so a change request can cite a time (the config keeps the burn-in off deliverables for this reason). The approver sees, in one sitting:
+
+- the picture and sound of the cut at the length it will ship;
+- the captions as they will appear, burnt in or from the sidecar;
+- the 9:16 and 1:1 versions, where they are going to ship, because a reframe is a different edit of the frame;
+- the credits line, so each person named has read their own credit (see [credits and AI disclosure](credits-and-disclosure.md));
+- the list of machine-assisted steps used, as [credits and AI disclosure](credits-and-disclosure.md) defines them;
+- the destinations the cut will go to, from [platform specs](platform-specs.md).
+
+**What counts as approval.** A written statement from the approver, from an address the approver controls, that names the review copy by file name, carries its SHA-256 checksum and says it is approved. The checksum ties the approval to one file. A spoken approval never stands alone: it is noted, then confirmed in writing before anything is queued. Silence, a thumbs-up in passing, and "looks good" about a different version are not approval. An approval covers exactly one review copy: any change to the picture, the words or the credits after approval returns to the gate with a new review copy.
+
+**Logging the approval.** The written statement stays the record. A person may also log it in the project's review log: `review-log` writes an `approve` (or `go`) line for the review copy, recording the copy's name and SHA-256. The route is: render the review copy, log the approve line with the review copy, run `deliver-check --review-log PATH` on each deliverable, then pass the same SHA-256 to `deliver-manifest --review-sha256`. The `approval` row passes when an approve or go line names the deliverable's house stem (the name without aspect and extension) and a review copy, or names the deliverable's own SHA-256. It is a WARN with the found and expected values when nothing matches or the copy beside the file differs from the logged SHA-256, a SKIP without the flag, and it never fails the check or changes the exit code. Whether a logged line counts as the written approval is not settled; the row only reports what the log says.
+
+**The record.** One record per approved cut, kept with the project and not in this repository:
+
+| Field | Content |
+|---|---|
+| Approval reference | A short id, such as `AP-1`, repeated on every manifest row of this cut. One id covers a cut only once every required approver has approved it |
+| Review copy | File name and SHA-256. The same copy for every approver; a change after one approval returns the cut to the gate for all of them |
+| Approver | Name and role of each approver; where two approve, both are listed |
+| Date and method | The date and how the approval arrived, with the message kept |
+| Rounds | How many change rounds ran before this approval |
+| Conditions | Anything the approval depends on, or "none" |
+
+The approval reference goes in the [delivery manifest](delivery-manifest.md). It does not go in the file name: the house rule is validated by the tools and has no field for it.
+
+**Change requests.** Changes are asked for by timecode against the review copy, in one list per round. Each round produces a new review copy and a new request for approval, so the approved copy is always one the approver has seen whole. This document states no number of rounds. Each scope writes its own, `R`. When `R` is used up, a further round is a change the commissioner agrees in writing before it starts.
+
+Two kinds of request never count as a round. A participant removing or correcting their own words, or withdrawing consent, is the measurement framework's data-sovereignty right and holds at every stage. A correction to the file itself, such as a wrong name in the credits or a caption error against the audio, is a defect in the work and not a request to change it.
+
+**Queueing without a record.** Queueing a deliverable with no approval record is flagged, not blocked: the person queuing writes that down in the project record before the render starts. `queue_render` has no field for an approval reference and the record is kept outside this repository, so the tool has nothing to check. The one place a record is already required is the manifest step: the [delivery manifest](delivery-manifest.md) rule is that no row is written without an approval reference. `deliver-manifest` requires `--approval` before it writes a manifest, so the manifest step is the one place a record is enforced by code. Revisit this after three real deliveries, the same trigger the manifest uses.
+
 ### The loop
 
 Queue, render, captions to .srt (sidecar destinations), fix loudness,
-check. Isaac chose on 2026-09-29 to run the loudness fix on every render
-as the standard last step, so the check that follows judges the file that
+check. The standard, since 2026-09-29, is to run the loudness fix on every render
+as the last step, so the check that follows judges the file that
 ships.
 
 0. **Captions first**, for a destination that wants them (sidecar or burnt
-   in): `resolve_workflow.py captions --project ... --timeline "<name>
-   [auto]" --dry-run`, then again with `--plan-sha`; or the MCP
-   `create_captions`. See Captions below. The queue refuses a captioned
-   destination whose timeline has no subtitle items.
-1. **Queue.** `resolve_workflow.py deliver-queue --project ... --timeline ...
-   --dest <key> --show SW --episode 1 --guest Guest --index 1 --slug
-   example-clip --target-dir <folder> --dry-run`, then again with
-   `--plan-sha`; or the MCP `queue_render` with `destination`, `name` and
-   `target_dir`. It sets format and codec, the render mode Single clip
+   in): the MCP `create_captions` on the `[auto]` timeline, a dry run and
+   then the real run with its `plan_sha`. See Captions below. The queue
+   refuses a captioned destination whose timeline has no subtitle items.
+1. **Queue.** The MCP `queue_render` with `project`, `timeline`,
+   `destination` (a key), `name` (`show`, `episode`, `guest`, `index`,
+   `slug`, and `client` for the client master) and `target_dir`, a dry run
+   and then the real run with its `plan_sha`. It sets format and codec, the render mode Single clip
    (read back before the job is added; format, codec and mode are put back
    after), then size, frame rate, audio codec, bit depth and sample rate,
    colour tags, captions (`ExportSubtitle`, `SubtitleFormat` `SeparateFile`
@@ -538,7 +747,7 @@ ships.
    there (`.srt`, `.vtt`, `.scc`, `.ttml` or `.xml`, in any case); when
    captions are wanted and the timeline has no subtitle track, or only
    empty ones. It never starts the render.
-2. **Render.** Isaac starts it on the Deliver page.
+2. **Render.** The editor starts it on the Deliver page.
 3. **Captions to .srt**, for a sidecar destination:
    `resolve_workflow.py deliver-captions <file> --dest <key>` (or the MCP
    `deliver_captions`). Resolve writes the sidecar as TTML timed from the
@@ -572,7 +781,7 @@ ships.
 
 ### Captions
 
-**Making them.** `captions` (MCP `create_captions`) runs Resolve's auto
+**Making them.** `create_captions` runs Resolve's auto
 captions (`Timeline.CreateSubtitlesFromAudio`, Resolve Studio) on one
 `[auto]` timeline. The line length and line breaks come from
 `deliver.captions` for the timeline's shape, read from its resolution:
@@ -585,7 +794,7 @@ progress, and a Resolve that does not define a constant the settings need
 current and opens the Edit page for the call, then puts back the current
 timeline and page. It then reads the subtitle tracks back and fails when
 no item is there, whatever the call returned. On the sandbox the call
-took 36 s on a 37 s portrait timeline (45 s for the whole command) and
+took 36 s on a 37 s portrait timeline (45 s for the whole call) and
 gave 22 items, the longest line 22 characters on one or two lines (39 on
 one line at the defaults). Checked on a render
 (2026-09-30): 20 characters ran off the frame edge on 161 of 865 frames, 16 on
@@ -657,7 +866,7 @@ are still open.
 
 - **Settled 2026-09-29 by a real render:** `GammaTag` "Gamma 2.4" writes
   the transfer as unspecified (1-2-1), so each player guesses the gamma;
-  "Rec.709-A" writes bt709 (1-1-1). Isaac compared the two renders and
+  "Rec.709-A" writes bt709 (1-1-1). A comparison of the two renders
   chose Rec.709-A for web destinations, whose check now asserts transfer
   bt709. The client master keeps Gamma 2.4.
 - The tag strings `Rec.709` and `Gamma 2.4`, the `AudioCodec` strings
@@ -691,7 +900,7 @@ are still open.
 
 ### Live steps owed (sandbox project only)
 
-Run each in the "RP Automation Sandbox" project, pinned by its unique id,
+Run each in a sandbox project, pinned by its unique id,
 and write down what Resolve did. Steps 2 and 5 ran on 2026-09-29 (the
 transfer tag and the sidecar above), including step 2's Rec.709-A
 comparison, which settled the web tag; no result for steps 1, 3 and 4 is
@@ -704,7 +913,7 @@ recorded here.
    field, and the valid strings must be confirmed some other way (for
    example `SaveAsNewRenderPreset` and reading the preset back).
 2. **Valid tag strings.** Queue `linkedin_16x9` on a short 16:9 sandbox
-   timeline with `deliver-queue`, render it by hand, and run
+   timeline with `queue_render`, render it by hand, and run
    `deliver-check`. Done 2026-09-29: "Gamma 2.4" reads unspecified,
    "Rec.709-A" reads bt709, and web destinations now assert bt709.
 3. **Render mode.** Leave the Deliver page in Individual clips, queue a
@@ -736,7 +945,8 @@ step (the API has no multicam call).
 ### Measure
 
 `resolve_workflow.py sync-measure <reference> <other> [--fps F] [--window
-S] [--json]`, or the MCP `sync_measure`. Offline; nothing touches Resolve.
+S] [--ref-stream N] [--other-stream N] [--json]`, or the MCP `sync_measure`.
+Offline; nothing touches Resolve.
 The reference is the camera clip.
 
 - Both files' audio is decoded to mono at 8 kHz (ffmpeg, every channel
@@ -828,25 +1038,25 @@ folder; nothing from them is in this repository):
 | The same call recorded at both ends: a screen recording and the call app's audio file (82 and 79 min) | NO MATCH. Five middle windows agree on +127.3261 s (correlation +0.94 to +0.97; within 0.001 ms of each other across 52 minutes, one computer's clock); the head and tail windows find +127.142 s, inverted (-0.43, -0.69). Each voice reaches the two files by its own path, 184 ms apart, so no one placement holds both |
 | Two unrelated recordings | peak 1.05x, correlation +0.03: NO MATCH |
 
-Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
+Each measurement of a 77 to 82 minute pair took about 5 s on a recent Apple silicon Mac
 (decode included; the correlation alone 0.4 s).
 
 ### Stack
 
-`resolve_workflow.py sync <reference> <other> --project "<open project>"
-[--project-id ID] [--bin NAME] [--name "<name> [auto]"] [--autosync]
---dry-run`, then again with `--plan-sha`; or the MCP `sync`.
+The MCP `sync` with `project`, `reference` and `other`, and optionally
+`project_id`, `bin`, `name` (ending ` [auto]`) and `autosync`: a dry run, then
+the real run with its `plan_sha`.
 
 - **Clips.** `reference` and `other` name media-pool clips by unique id,
-  file path or clip name (one clip each, or it is refused). With `--bin`
+  file path or clip name (one clip each, or it is refused). With `bin`
   they are files instead, imported into a new bin of that name at the
   pool's root, which the run then owns; a bin of that name that exists
   already, or a file already in the pool, is refused. The new timelines
-  are made in that bin, and the folder Isaac had open is put back.
+  are made in that bin, and the folder the editor had open is put back.
 - **Measured first.** The files are measured as above, at the timeline's
   frame rate. A result that is not a match is refused with its reasons
   (and the offset groups), and nothing is built.
-- **The timeline:** `<reference> sync [auto]` (or `--name`, which must
+- **The timeline:** `<reference> sync [auto]` (or `name`, which must
   end ` [auto]`; an existing name is refused), at the reference's frame
   rate, set while it is empty and read back. Resolve spells an NTSC rate
   short (`29.97`); the frame math uses the rate it stands for
@@ -867,10 +1077,10 @@ Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
   items when a clip is due there is not placed onto.
 - **Drift:** the other clip is placed at the offset the drift line gives
   at the overlap's midpoint. When the rounding plus half the drift leaves
-  either end more than half a frame out, that is reported (exit 2), with
+  either end more than half a frame out, that is reported (`exit_status` 2), with
   the retime that would cancel the drift and where the retimed clip's
   first frame belongs. Nothing retimes the clip; that is a hand step.
-- **AutoSyncAudio** (`--autosync`, MCP `autosync`) runs only with `--bin`:
+- **AutoSyncAudio** (`autosync`) runs only with `bin`:
   it links the audio into the clips it syncs, changing media-pool items,
   so it touches only clips this run imported. It runs after the stacked
   timeline is built and read back, with waveform mode on the mix of every
@@ -880,12 +1090,12 @@ Each measurement of a 77 to 82 minute pair took about 5 s on the M4 Max
   compared, and a second timeline, `<name> (AutoSyncAudio) [auto]`, holds
   the synced reference so its items show where Resolve put the other
   file. The verdict is `agrees` (within a frame of the measured offset),
-  `disagrees` (exit 1), or `unverifiable` (exit 2) when the other file is
+  `disagrees` (`exit_status` 1), or `unverifiable` (`exit_status` 2) when the other file is
   not an item of its own there.
 
-Exit status: 0 built and read back (or planned with `--dry-run`); 2 built
-with drift over the threshold or an unverifiable AutoSyncAudio; 1 refused
-or failed.
+The result's `exit_status`: 0 built and read back (or planned, on a dry run);
+2 built with drift over the threshold or an unverifiable AutoSyncAudio; 1
+refused or failed.
 
 ### What is known and what is not
 
@@ -986,10 +1196,9 @@ noise gate reads as digital silence, so the threshold went to -70 dBFS),
 
 ### Markers
 
-`resolve_workflow.py trim-review <manifest-or-source> [--words W]
---markers --timeline "<name> [auto]" --project "<open project>"
---dry-run`, then again with `--plan-sha`; or the MCP
-`trim_review_markers`.
+The MCP `trim_review_markers` with `project`, `timeline` (an `[auto]`
+timeline), a `manifest` or a `source` with its `words`: a dry run, then the
+real run with its `plan_sha`. The script's `trim-review` writes the TSV only.
 
 - `[auto]` timelines only. The rows are computed for the stretches of
   the source the timeline plays: the items whose media is the source file
@@ -1029,10 +1238,10 @@ a one-line note here saying when.
 
 ## Open Questions
 
-- Do you have a preferred V-Log / V-Log L → Rec.709 LUT for the GH7 and GH5, or are you using the Panasonic-supplied ones?
-- Is the GH7 shooting in Open Gate (5.7K) that needs crop/scale, or are you already shooting in a 4K mode?
+- ~~Which V-Log / V-Log L to Rec.709 LUT for the GH7 and GH5?~~ Closed 2026-10-16: none. Under colour management Resolve converts V-Log and V-Log L from the Input Color Space tag (see [Colour Pipeline of Record](#colour-pipeline-of-record)).
+- ~~Does GH7 Open Gate (5.7K) need a crop or scale?~~ Closed 2026-10-16 by rule: shoot UHD 16:9 unless the scope plans a vertical or square cut; then shoot Open Gate, and `reframe_plan` and `reframe_apply` frame each shape from it (see Reframe and the capture standard).
 - Do you want an outro card or is the intro sufficient for personal work?
 
 ---
 
-*Version 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Version 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Version 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Version 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable.*
+*Document revision 1.10, 2026-10-16: the final-approval gate's open points settled. Document revision 1.9, 2026-10-16: the Colour Pipeline of Record replaces Camera Sources & Color Pipeline (Resolve Color Management v2 with a DaVinci Wide Gamut timeline and lutlab's `[RCM]` looks; node-1 camera LUTs kept as the alternative for a project that is not colour managed), and two Open Questions closed. Document revision 1.8, 2026-10-16: the final-approval gate before the loop and two workflow steps, approval and manifest. Document revision 1.7, 2026-10-07: the Export Presets table and the four legacy render presets removed, so `queue_render` queues for a delivery destination and nothing else. Document revision 1.6, 2026-10-07: the write commands of `resolve_workflow.py` retired, so the MCP server is the only code that writes to Resolve (Phase C section, the loop, sync and trim review now name the MCP tools; the script keeps its read-only and offline commands). Document revision 1.5, 2026-09-29: sync (dual-system sound measured by FFT cross-correlation with drift and confidence, stacked on an `[auto]` timeline with every placement read back; AutoSyncAudio only on clips the run imported, checked against the measurement) and trim review (a proposals TSV and markers, nothing deleted; its kill criterion). Document revision 1.4, 2026-09-29: captions (auto captions by frame shape, Resolve's TTML sidecar to a zero-based .srt, the check's cue-time rule), the loop with the loudness fix as its standard last step, the Gamma 2.4 transfer tag read from a real render. Document revision 1.3, 2026-09-29: the Deliver section (destinations, names, queue, check, loudness fix). Document revision 1.2, 2026-08-17: Phase C automation shipped and audited; coverage table above reflects what's actually implemented vs. not scriptable. This is the revision of this document. The repository's own version is in `CHANGELOG.md`.*

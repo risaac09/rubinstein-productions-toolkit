@@ -1,0 +1,1 @@
+Add `resolve_workflow.py gate-packet`, which writes the review gate's packet (a contact sheet and two 20 s listening excerpts per clip, and `gate.json` with a pending review-log line) from review copies or from a source and a cuts worksheet.

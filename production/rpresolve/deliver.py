@@ -42,7 +42,7 @@ text at Resolve's default size, a 16:9 frame the default 42.
 import os
 import re
 
-from . import paths
+from . import paths, refs
 
 ASPECTS = ("16x9", "9x16", "1x1")
 ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0}
@@ -459,6 +459,9 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
     if paths.in_any_git_tree(real):
         problems.append(f"{target_dir} is inside a git working tree; deliverables go outside "
                         "any repository.")
+    ref = refs.reference_problem(real)
+    if ref:
+        problems.append(ref)
     folder = real
     if subfolder:
         folder = os.path.join(real, subfolder)
@@ -571,9 +574,9 @@ def timeline_problems(dest, subtitle_counts, disabled_counts=()):
                 "Enable the caption track first."]
     if not subtitle_counts:
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline has no "
-                "subtitle track. Add the captions first: resolve_workflow.py captions, or the "
-                "MCP create_captions, on an [auto] timeline (duplicate_timeline_auto makes "
-                "one from a timeline that is not)."]
+                "subtitle track. Add the captions first: the MCP create_captions, on an "
+                "[auto] timeline (duplicate_timeline_auto makes one from a timeline that "
+                "is not)."]
     if not any(subtitle_counts):
         return [f"'{dest['key']}' wants {dest['captions']} captions but the timeline's "
                 f"{len(subtitle_counts)} subtitle track(s) are empty."]

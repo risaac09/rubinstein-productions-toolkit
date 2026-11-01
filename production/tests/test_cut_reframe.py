@@ -98,10 +98,10 @@ class TestPerSpan(Base):
         self.assertIsNone(tall["props"])  # the spans differ
         items = self.items("T_hi_9x16 [auto]")
         self.assertEqual([round(i.props["Pan"], 4) for i in items], [832.5, -810.0])
-        self.assertEqual([round(i.props["Tilt"], 4) for i in items], [0.0, -135.0])
+        self.assertEqual([round(i.props["Tilt"], 4) for i in items], [0.0, -426.6667])
         self.assertEqual({round(i.props["ZoomX"], 4) for i in items}, {2.6667})
         self.assertEqual([x["read_back"]["Pan"] for x in tall["items"]], [832.5, -810.0])
-        self.assertTrue(any("Tilt" in w for w in tall["warnings"]))
+        self.assertFalse(any("Tilt" in w for w in tall["warnings"]))  # confirmed 2026-10-15
         self.assertTrue(any("scaleToFit assumed" in w for w in tall["warnings"]))
         # The 16:9 is untouched, and so is the UI.
         self.assertEqual([i.props for i in self.items("T_hi [auto]")], [{}, {}])
@@ -416,22 +416,6 @@ class TestLoud(Base):
         r = call({**base, "dry_run": False, "plan_sha": dry["plan_sha"]})
         self.assertIn("UNREFRAMED (not built): V_hi_9x16 [auto]", r["summary"])
         self.assertNotIn("FAILED", r["summary"])
-
-
-class TestCLI(unittest.TestCase):
-    def test_no_9x16_with_aspects_is_one_error_line_before_any_work(self):
-        import argparse
-        import io
-        from contextlib import redirect_stderr
-        import resolve_workflow as rw
-        args = argparse.Namespace(manifest="/nonexistent/m.json", only=None, no_audio=True,
-                                  force=False, no_9x16=True, aspects=["1x1"], project="P",
-                                  prefix="T")
-        err = io.StringIO()
-        with redirect_stderr(err):
-            self.assertEqual(rw.cmd_cut(args), 1)
-        self.assertEqual(err.getvalue(), "ERROR: --no-9x16 and --aspects each choose the "
-                         "versions; give one of them.\n")
 
 
 class TestItemPlans(unittest.TestCase):

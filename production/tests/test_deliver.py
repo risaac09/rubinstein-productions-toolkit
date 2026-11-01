@@ -105,6 +105,8 @@ class TestNames(unittest.TestCase):
     def test_name_for_a_destination(self):
         self.assertEqual(deliver.name_for(dest("linkedin_9x16"), CLIP),
                          "SW001_Guest_01_example-clip_9x16.mp4")
+        self.assertEqual(deliver.name_for(dest("social_9x16"), CLIP),
+                         "SW001_Guest_01_example-clip_9x16.mp4")
         self.assertEqual(deliver.name_for(dest("client_master"),
                                           {"client": "Client", "slug": "example-slug"}),
                          "Client_example-slug_master.mov")
@@ -129,7 +131,7 @@ class TestConfig(unittest.TestCase):
         cfg = rpconfig.load_config("/nonexistent/config.json")
         self.assertEqual(deliver.destination_keys(cfg), sorted([
             "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16",
-            "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
+            "social_9x16", "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
         yt = deliver.destination(cfg, "youtube_16x9")
         self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
                          ("mp4", "H265", {"width": 3840, "height": 2160}))
@@ -150,7 +152,7 @@ class TestConfig(unittest.TestCase):
                                                  "color_range": "tv"})
         # every web destination carries the tag; the client master keeps the house Gamma 2.4
         for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "linkedin_9x16",
-                    "linkedin_1x1", "substack_16x9"):
+                    "linkedin_1x1", "social_9x16", "substack_16x9"):
             d = dest(key)
             self.assertEqual((d["color"]["resolve"]["GammaTag"],
                               d["color"]["expect"]["color_transfer"]), ("Rec.709-A", "bt709"), key)
@@ -165,6 +167,12 @@ class TestConfig(unittest.TestCase):
             self.assertEqual((d["codec"], d["format"], d["loudness"]["integrated_lufs"],
                               (d["resolution"]["width"], d["resolution"]["height"]),
                               d["captions"]), ("H264", "mp4", -16.0, size, captions))
+        s = deliver.destination(cfg, "social_9x16")
+        self.assertEqual((s["codec"], s["format"], s["loudness"]["integrated_lufs"],
+                          s["loudness"]["tolerance_lu"], s["loudness"]["true_peak_max_dbtp"],
+                          (s["resolution"]["width"], s["resolution"]["height"]), s["captions"],
+                          s["audio"]["sample_rate"]),
+                         ("H264", "mp4", -14.0, 0.5, -1.0, (1080, 1920), "burnin", 48000))
         m = deliver.destination(cfg, "client_master")
         self.assertEqual((m["format"], m["codec"], m["resolution"], m["captions"]),
                          ("mov", "ProRes422HQ", "timeline", "none"))
@@ -178,6 +186,14 @@ class TestConfig(unittest.TestCase):
         for key in ("deliver", "destinations"):
             self.assertEqual(repo[key], rpconfig.DEFAULT_CONFIG[key], key)
         self.assertNotIn("/Volumes", json.dumps(repo))
+
+    def test_there_are_no_render_presets_in_the_defaults_or_the_repo_config(self):
+        with open(PRODUCTION / "resolve-config.json", encoding="utf-8") as f:
+            repo = json.load(f)
+        self.assertNotIn("render_presets", rpconfig.DEFAULT_CONFIG)
+        self.assertNotIn("render_presets", repo)
+        self.assertNotIn("render_presets", rpconfig.load_config("/nonexistent/config.json"))
+        self.assertNotIn("render_presets", rpconfig.load_config())
 
     def test_an_overlay_changes_one_field_and_keeps_the_rest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -201,9 +217,8 @@ class TestConfig(unittest.TestCase):
         self.assertNotIn("linkedin_1x1", deliver.destination_keys(cfg))
         with self.assertRaisesRegex(deliver.DeliverError, "unknown destination 'linkedin_1x1'"):
             deliver.destination(cfg, "linkedin_1x1")
-        # render presets still replace as before
-        self.assertEqual(sorted(cfg["render_presets"]), ["linkedin", "master", "story",
-                                                         "youtube"])
+        # the render presets are gone: nothing in a loaded config brings them back
+        self.assertNotIn("render_presets", cfg)
 
     def test_a_named_overlay_that_cannot_be_read_is_an_error_when_strict(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -226,6 +241,18 @@ class TestConfig(unittest.TestCase):
             with self.assertRaisesRegex(rpconfig.ConfigError, "not found"):
                 rpconfig.load_config(os.path.join(tmp, "missing.json"), strict=True)
             self.assertTrue(issubclass(rpconfig.ConfigError, ValueError))
+
+    def test_a_malformed_min_fps_in_an_overlay_fails_at_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "o.json")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('{"destinations": {"social_9x16": {"min_fps": "fast"}}}')
+            with self.assertRaisesRegex(rpconfig.ConfigError, "social_9x16.*min_fps"):
+                rpconfig.load_config(p, strict=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('{"destinations": {"social_9x16": {"min_fps": "25"}}}')
+            self.assertEqual(rpconfig.load_config(p, strict=True)
+                             ["destinations"]["social_9x16"]["min_fps"], "25")
 
     def test_an_overlay_lies_over_the_repo_config_not_the_built_in_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:

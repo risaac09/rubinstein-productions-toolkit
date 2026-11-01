@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# test-burst-gate.sh: run scripts/burst-gate against throwaway branches, one
+# failure per gate and one clean pass. G3 is exercised with --tests commands;
+# the default test set is not run here. Exit 1 on any failure.
+set -u
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+fail=0
+ok()  { echo "ok   $1"; }
+bad() { echo "FAIL $1"; fail=1; }
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@localhost GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@localhost
+
+R="$TMP/repo"; mkdir -p "$R/scripts" "$R/changelog.d" "$R/docs" "$R/phase-zero"
+cp "$SRC/scripts/burst-gate" "$SRC/scripts/changelog-fragments" "$R/scripts/"
+cp "$SRC/changelog.d/README.md" "$R/changelog.d/"
+printf '# Changelog\n\n## Unreleased\n\n- Old.\n' > "$R/CHANGELOG.md"
+echo base > "$R/docs/a.md"; echo base > "$R/phase-zero/k.sh"
+git -C "$R" init -q -b main && git -C "$R" add -A && git -C "$R" commit -qm base
+G="$R/scripts/burst-gate"
+# Fixtures that would trip a scan are built here, so this file stays clean.
+EMD=$'\xe2\x80\x94'
+HOMEPATH="/Us""ers/someone""else/notes"
+TOKEN="gh""p_$(printf 'a%.0s' $(seq 1 30))"
+
+# branch NAME FILE CONTENT [fragment?]: new branch off main with one commit.
+branch() {
+  git -C "$R" checkout -q main; git -C "$R" checkout -q -b "$1"
+  mkdir -p "$R/$(dirname "$2")"; printf '%s\n' "$3" > "$R/$2"
+  [ "${4:-frag}" = nofrag ] || printf 'Changed %s.\n' "$1" > "$R/changelog.d/2026-10-16-$1.md"
+  git -C "$R" add -A; git -C "$R" commit -qm "change $1"
+}
+gate() { (cd "$R" && "$G" --base main --tests true "$@" 2>&1); }
+run() { # name exit-wanted text-wanted args...
+  name="$1"; want="$2"; text="$3"; shift 3
+  out="$(gate "$@")"; rc=$?
+  if [ "$rc" -eq "$want" ] && printf '%s' "$out" | grep -qF -- "$text"; then ok "$name"; else bad "$name (rc=$rc, wanted $want / '$text')"; printf '%s\n' "$out" | sed 's/^/       /'; fi
+}
+
+printf 'docs/a.md\n' > "$TMP/decl-ok"; printf 'docs/b.md\n' > "$TMP/decl-wrong"
+
+branch clean docs/a.md "plain words here"
+run "clean branch passes every gate" 0 "all gates that ran passed" --declared "$TMP/decl-ok"
+run "no --declared still passes, with a note" 0 "no --declared given"
+
+branch undeclared docs/a.md "plain words"
+run "G1 fails when the diff differs from the declaration" 1 "G1 scope: diff and declared files differ" --declared "$TMP/decl-wrong"
+
+branch kit phase-zero/k.sh "changed" 
+run "G1 fails on an edit under phase-zero" 1 "touches the kit exports"
+git -C "$R" checkout -q main; git -C "$R" checkout -q -b kit2; mkdir -p "$R/public-kit"; echo x > "$R/public-kit/x.md"; git -C "$R" add -A; git -C "$R" commit -qm kit2
+run "G1 fails on an edit under public-kit" 1 "touches the kit exports"
+
+branch dirty docs/a.md "plain words"; echo more >> "$R/docs/a.md"
+run "G1 fails on an uncommitted change" 1 "uncommitted changes"
+git -C "$R" checkout -q -- docs/a.md
+
+branch homepath docs/a.md "see $HOMEPATH for details"
+run "G2 fails on a home path" 1 "G2 privacy: private-looking text"
+branch token docs/a.md "key $TOKEN"
+run "G2 fails on a token shape" 1 "G2 privacy: private-looking text"
+branch taskword docs/a.md "a task-based-routing-for-everything-here approach"
+run "G2 does not flag sk- inside a word" 0 "PASS G2 privacy"
+branch placeholder docs/a.md "see /Us""ers/you/notes"
+run "G2 allows a placeholder user name" 0 "PASS G2 privacy"
+branch phsecret docs/a.md "see /Us""ers/you/notes and $TOKEN"
+run "G2 still catches a token on a line with a placeholder" 1 "G2 privacy: private-looking text"
+# A bare home path (end of line, before a quote or punctuation) is as private as one with a slash.
+i=0
+for tail in "" '"' "." ")"; do
+  i=$((i + 1))
+  branch "bare$i" docs/a.md "see /Us""ers/someone""else$tail"
+  run "G2 fails on a bare /Users path ending in '$tail'" 1 "G2 privacy: private-looking text"
+done
+branch barehome docs/a.md "cd /ho""me/alice"
+run "G2 fails on a bare /home path" 1 "G2 privacy: private-looking text"
+branch bareph docs/a.md "set HOME=\"/Us""ers/you\" and /ho""me/u"
+run "G2 allows bare placeholder home paths" 0 "PASS G2 privacy"
+branch routes docs/a.md "see src/ho""me/page.js and /ho""me/index.html and (/ho""me/dashboard)"
+run "G2 ignores web routes and source paths named home" 0 "PASS G2 privacy"
+branch phdot docs/a.md "Set it to /Us""ers/you."
+run "G2 allows a placeholder at the end of a sentence" 0 "PASS G2 privacy"
+branch realdot docs/a.md "Set it to /Us""ers/alice."
+run "G2 fails on a real name at the end of a sentence" 1 "G2 privacy: private-looking text"
+branch notpath docs/a.md "the /Us""ersGuide page"
+run "G2 ignores a word that merely starts like a home path" 0 "PASS G2 privacy"
+printf 'Acme Widgets\n# comment\n' > "$TMP/deny"
+branch client docs/a.md "worked with acme widgets"
+out="$(cd "$R" && BURST_GATE_DENYLIST="$TMP/deny" "$G" --base main --tests true 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'G2 privacy: private' && ok "G2 honours the denylist file, case-insensitively" || bad "G2 denylist (rc=$rc)"
+run "G2 skip is reported" 0 "SKIP G2" --skip G2
+
+branch dash docs/a.md "a clause $EMD another"
+run "G4 fails on an em-dash in markdown" 1 "G4 style: em-dash"
+branch dashcode scripts/x.sh "echo '$EMD'"
+run "G4 ignores non-prose files" 0 "PASS G4 style"
+
+# An added line whose text starts "++ " looks like a file header in the diff;
+# the lines after it must still be scanned, and still count as the same file.
+branch plusplus docs/a.md "intro
+++ more
+key $TOKEN"
+run "G2 scans past an added line that looks like a header" 1 "G2 privacy: private-looking text"
+branch plusdash docs/a.md "intro
+++ b/x.sh
+a clause $EMD another"
+run "G4 scans past an added line that looks like a header" 1 "G4 style: em-dash"
+# A user's diff config must not change the text the scans read.
+branch noprefix docs/a.md "key $TOKEN"
+git -C "$R" config diff.noprefix true
+run "G2 scans with diff.noprefix set" 1 "G2 privacy: private-looking text"
+git -C "$R" config --unset diff.noprefix
+
+# A non-ASCII name is quoted by git unless quotePath is off; its lines must still be scanned.
+branch accent "docs/caf$(printf '\303\251').md" "see $HOMEPATH for details"
+run "G2 scans a file whose name git would quote" 1 "G2 privacy: private-looking text"
+branch tabname "docs/a$(printf '\t')b.md" "plain"
+run "G1 fails on a name git still quotes" 1 "file name git quotes"
+
+branch nofrag docs/a.md "plain" nofrag
+run "G5 fails with no fragment" 1 "G5 changelog: no changelog.d/ fragment"
+out="$(cd "$R" && "$G" --base main --tests true --fix 2>&1)"; rc=$?
+ls "$R"/changelog.d/*nofrag*.md >/dev/null 2>&1 && [ "$rc" -eq 0 ] && ok "G5 --fix writes a fragment and passes" || bad "G5 --fix (rc=$rc): $out"
+git -C "$R" checkout -q -f main; git -C "$R" clean -qfd
+
+branch badfrag docs/a.md "plain" nofrag; printf '%s\n' '- bullet marker' > "$R/changelog.d/2026-10-16-badfrag.md"; git -C "$R" add -A; git -C "$R" commit -qm bf
+run "G5 fails on a malformed fragment" 1 "a fragment is malformed"
+
+branch export phase-zero/k.sh "e" nofrag
+run "an export branch still fails G1 (no exception for workers)" 1 "touches the kit exports"
+
+branch testsfail docs/a.md "plain"
+out="$(cd "$R" && "$G" --base main --tests 'echo boom; exit 3' 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'G3 tests: exit 3' && printf '%s' "$out" | grep -q boom && ok "G3 fails and shows the output tail" || bad "G3 (rc=$rc)"
+run "G3 skip is reported" 0 "SKIP G3" --skip G3
+
+# G3's default set: a listed test script that is not executable fails, and says which.
+git -C "$R" checkout -q main; git -C "$R" checkout -q -b g3exec
+for t in check-doc-links check-methodology-status check-voice check-licence-scope test-instrument-score; do
+  printf '#!/bin/sh\nexit 0\n' > "$R/scripts/$t.sh"; chmod +x "$R/scripts/$t.sh"
+done
+for t in test-check-voice test-check-licence-scope test-methodology-status test-changelog-fragments test-burst-gate; do
+  printf '#!/bin/sh\nexit 0\n' > "$R/scripts/$t.sh"; chmod +x "$R/scripts/$t.sh"
+done
+mkdir -p "$R/production/tests"; printf '#!/bin/sh\nexit 0\n' > "$R/production/tests/test-offload.sh"; chmod +x "$R/production/tests/test-offload.sh"
+printf 'import unittest\nclass T(unittest.TestCase):\n    def test_ok(self): pass\n' > "$R/production/tests/test_stub.py"
+printf 'Changed g3exec.\n' > "$R/changelog.d/2026-10-16-g3exec.md"
+git -C "$R" add -A; git -C "$R" commit -qm g3exec
+out="$(cd "$R" && PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q 'PASS G3 tests' && ok "G3 default set passes when every listed script is executable" || bad "G3 default (rc=$rc): $out"
+chmod -x "$R/scripts/test-methodology-status.sh"; git -C "$R" commit -qam noexec
+out="$(cd "$R" && PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'not executable: scripts/test-methodology-status.sh' && ok "G3 fails and names a non-executable test script" || bad "G3 noexec (rc=$rc): $out"
+
+# A JSON declaration, when jq is present.
+if command -v jq >/dev/null; then
+  branch jsondecl docs/a.md "plain"; printf '{"finding":"f1","files_touched":["docs/a.md"],"claims":[]}\n' > "$TMP/r.json"
+  run "G1 reads files_touched from a return JSON" 0 "PASS G1 scope" --declared "$TMP/r.json"
+fi
+
+# All failures are listed, not just the first.
+branch many docs/a.md "a $EMD b $HOMEPATH" nofrag
+out="$(gate)"; rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'FAILED: G2 G4 G5' && ok "the summary lists every failed gate" || bad "summary: $out"
+
+# A base with no merge base (a shallow clone) gives an empty diff: an error, never a pass.
+git -C "$R" checkout -q --orphan unrelated; git -C "$R" commit -qm unrelated
+git -C "$R" checkout -q homepath
+out="$(cd "$R" && "$G" --base unrelated --tests true 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "no merge base between" && ok "no merge base is an error, not a pass" || bad "no merge base: rc=$rc: $out"
+
+echo
+[ "$fail" -eq 0 ] && echo "all burst-gate tests passed" || { echo "burst-gate tests FAILED"; exit 1; }

@@ -1,0 +1,7 @@
+# Tracked binary bundles and office files that CI lets through.
+# CI fails on any tracked .skill .zip .plugin .docx .xlsx .pptx file not
+# listed here. These formats hide their contents from git grep and from the
+# privacy scans, so each one is a deliberate entry, never a default.
+# One repo-relative path per line; lines starting with # are comments.
+# Seeded 2026-10-01 with what was tracked that day.
+# Empty since 2026-10-15: the two .skill bundles were deleted, prompts/skills/*.md is the source.

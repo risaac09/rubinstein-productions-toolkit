@@ -211,6 +211,28 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(failed(dc.check(path, tiny("linkedin_9x16"), loudness=False)),
                          ["captions"])
 
+    def test_social_9x16_wants_minus_14_and_a_low_peak(self):
+        d = tiny("social_9x16")
+        name = "SW001_Guest_01_example-clip_9x16.mp4"
+        ok = self.clip(name=name, sidecar=None, size="36x64", lufs=-14.0)
+        self.assertEqual(failed(dc.check(ok, d)), [], dc.format_report(dc.check(ok, d)))
+        # the LinkedIn level is 2 LU too quiet for this destination
+        quiet = self.clip(name=name, sidecar=None, size="36x64", lufs=-16.0)
+        self.assertEqual(failed(dc.check(quiet, d)), ["loudness"])
+        hot = self.clip(name=name, sidecar=None, size="36x64", lufs=-14.0, peaks=True)
+        self.assertIn("true_peak", failed(dc.check(hot, d)))
+
+    def test_fps_floor_warns_below_min_fps_and_skips_without_one(self):
+        name = "SW001_Guest_01_example-clip_9x16.mp4"
+        for rate, want in (("24000/1001", dc.WARN), ("30000/1001", dc.PASS)):
+            path = self.clip(name=name, sidecar=None, size="36x64", lufs=-14.0, rate=rate)
+            r = dc.check(path, tiny("social_9x16"), loudness=False)
+            self.assertEqual(statuses(r)["fps_floor"], want, dc.format_report(r))
+            self.assertEqual(r["status"], "pass")  # a WARN never fails the check
+        path = self.clip(name=name, sidecar=None, size="36x64", rate="24000/1001")
+        self.assertEqual(statuses(dc.check(path, tiny("linkedin_9x16"), loudness=False))
+                         ["fps_floor"], dc.SKIP)
+
     def test_the_folder_row_knows_which_destination_a_folder_is_for(self):
         folders = deliver.subfolders(CFG)
         d = self.folder()
@@ -420,6 +442,15 @@ class TestFixLoudness(unittest.TestCase):
                 dc.fix_loudness(self.path, self.dest, replace=True, trash_root=self.dir, now=0)
         self.assertEqual(self.streamhash(self.path), before)
         self.assertTrue(os.path.isfile(dc.fixed_path(self.path)))
+
+    def test_social_9x16_is_fixed_to_minus_14(self):
+        dest = tiny("social_9x16")
+        path = make(os.path.join(self.dir, "SW001_Guest_01_example-clip_9x16.mp4"),
+                    size="36x64", lufs=-23.0)
+        self.assertEqual(failed(dc.check(path, dest)), ["loudness"])
+        r = dc.fix_loudness(path, dest, fps="23.976")
+        self.assertEqual(r["status"], "pass", dc.format_report(r["check"]))
+        self.assertAlmostEqual(float(r["result_loudnorm"]["output_i"]), -14.0, delta=0.5)
 
     def test_nothing_to_fix_without_a_target(self):
         with self.assertRaisesRegex(dc.CheckError, "no loudness target"):

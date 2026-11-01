@@ -7,17 +7,50 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only by default; no job here writes to the repo, PRs or checks.
+permissions:
+  contents: read
+
+# A new commit on a PR cancels that PR's earlier run. Every other event (a push
+# to main, a manual dispatch) gets a group of its own, so main is never
+# cancelled. Branch pushes do not trigger CI; the pull_request run covers them.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  cli-smoke-test:
+  hygiene-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: CLI smoke test (GNU userland)
-        run: scripts/cli-smoke-test.sh
-      - name: Vault-mirror drift check
-        run: TOOLKIT_ROOT="$GITHUB_WORKSPACE" scripts/check-vault-mirror-drift.sh
       - name: Markdown link check
         run: scripts/check-doc-links.sh
+      - name: Methodology status headers
+        run: scripts/check-methodology-status.sh
+      - name: Voice check (em-dashes, banned verbs)
+        run: scripts/check-voice.sh
+      - name: Licence scope check
+        run: scripts/check-licence-scope.sh
+      - name: Voice and licence check tests
+        run: |
+          scripts/test-check-voice.sh
+          scripts/test-check-licence-scope.sh
+      - name: Measurement instrument scoring test
+        run: scripts/test-instrument-score.sh
+      - name: Changelog fragment and burst-gate tests
+        run: |
+          scripts/test-changelog-fragments.sh
+          scripts/test-burst-gate.sh
+      - name: Methodology status check tests
+        run: scripts/test-methodology-status.sh
+      - name: Card offload tests
+        run: production/tests/test-offload.sh
+      - name: clerkwork validator and walk tests
+        run: |
+          clerkwork/tests/test-validate.sh
+          clerkwork/tests/test-walk.sh
+      - name: Changelog fragments are well formed
+        run: scripts/changelog-fragments lint
       - name: Unresolved merge marker check
         run: |
           if git grep -n -E '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- . ':(exclude)*.skill'; then
@@ -39,11 +72,138 @@ jobs:
           done
           [ "$n" -gt 0 ] || { echo "no phase-zero shell files matched; the glob is wrong" >&2; exit 1; }
           echo "phase-zero: $n shell file(s) parse clean"
+      # bash -n passed on the 2026-09 history purge, which replaced the SRC=
+      # line in install.sh and install-global.sh with a marker: the marker
+      # parses as a command. shellcheck reports it as an error. Strictest
+      # level that passes the current tree, with two exclusions:
+      # SC1090, the hooks source their lib from a path found at runtime, by
+      # design; SC2015, three notes in the global trigger, a deployed file
+      # whose every edit forces a reinstall on each machine.
+      - name: Phase-zero shellcheck
+        run: |
+          set -eu
+          shellcheck --version | sed -n 2p
+          shellcheck -S style -e SC1090,SC2015 $(git ls-files 'phase-zero/*.sh' 'phase-zero/**/*.sh')
+          echo "phase-zero: shellcheck clean"
+      # The rest of the first-party shell, at warning level. The set comes
+      # from git, so a new script is picked up with no list to maintain: every
+      # tracked *.sh, plus extensionless files whose first line is a shell
+      # shebang. Left out: phase-zero (its own step above), the deployed kit
+      # copies in public-kit and .claude, and the vendored video-use tree.
+      - name: First-party shellcheck
+        run: |
+          set -eu
+          shellcheck --version | sed -n 2p
+          list=$(mktemp)
+          git ls-files -z | grep -zvE '^(phase-zero|public-kit|\.claude)/|/video-use/' | while IFS= read -r -d '' f; do
+            [ -f "$f" ] || continue
+            if [ "${f%.sh}" != "$f" ]; then printf '%s\0' "$f"
+            elif head -n 1 "$f" | grep -qE '^#!.*[/ ](ba)?sh( |$)'; then printf '%s\0' "$f"
+            fi
+          done > "$list"
+          [ -s "$list" ] || { echo "no first-party scripts found" >&2; exit 1; }
+          tr '\0' '\n' < "$list"
+          xargs -0 shellcheck -S warning < "$list"
+          echo "first-party scripts: shellcheck clean"
+      # Run the installers for real. A syntax check cannot see a script that
+      # parses but dies on its first line (an unset SRC under set -u).
+      - name: Phase-zero install and check, for real
+        run: |
+          set -eu
+          export GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@localhost GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@localhost
+          # Since 2026-10-08 the consumer roster is read from the private
+          # stack-data registry (phaseZeroConsumer in data/repos.json), which
+          # CI does not have: --list must refuse with exit 2 and say why.
+          rc=0; err="$(SD_ROOT="$RUNNER_TEMP/no-stack-data" bash phase-zero/install.sh --list 2>&1 >/dev/null)" || rc=$?
+          [ "$rc" -eq 2 ] || { echo "install.sh --list exited $rc without the registry, want 2" >&2; exit 1; }
+          echo "$err" | grep -q 'cannot build the .*roster' || { echo "$err"; echo "no clear message for --list" >&2; exit 1; }
+          echo "install.sh --list: refuses without the registry, as expected"
+          # A target with no origin: install, then check (the committed-state
+          # compare is skipped and says why).
+          t="$(mktemp -d)"; git -C "$t" init -q
+          bash phase-zero/install.sh "$t"
+          bash phase-zero/install.sh --check "$t"
+          # Give it an origin whose default branch lacks the kit: the
+          # committed-state compare must fire.
+          o="$(mktemp -d)"; git init -q --bare "$o"
+          git -C "$t" remote add origin "$o"
+          git -C "$t" commit -q --allow-empty -m init
+          git -C "$t" push -q origin HEAD:refs/heads/main
+          git -C "$t" fetch -q origin
+          git -C "$t" remote set-head origin main
+          if out="$(bash phase-zero/install.sh --check "$t")"; then
+            echo "$out"; echo "check passed with the kit uncommitted" >&2; exit 1
+          fi
+          echo "$out" | grep -q '^DRIFT uncommitted: ' || { echo "$out"; echo "no DRIFT uncommitted line" >&2; exit 1; }
+          echo "committed-state compare fires on an uncommitted kit"
+          # Commit the kit (force-added: .claude/ is often globally ignored)
+          # and push it; the check must pass.
+          git -C "$t" add -f .claude
+          git -C "$t" commit -q -m kit
+          git -C "$t" push -q origin HEAD:refs/heads/main
+          git -C "$t" fetch -q origin
+          bash phase-zero/install.sh --check "$t"
+          # The global installer into a throwaway CLAUDE_HOME, then --check.
+          ch="$(mktemp -d)"
+          CLAUDE_HOME="$ch" bash phase-zero/global/install-global.sh
+          CLAUDE_HOME="$ch" bash phase-zero/global/install-global.sh --check
+          echo x >> "$ch/hooks/session-brief.sh"
+          if CLAUDE_HOME="$ch" bash phase-zero/global/install-global.sh --check; then
+            echo "install-global.sh --check passed on a stale hook" >&2; exit 1
+          fi
+          echo "install-global.sh --check fires on a stale hook"
+      # The public-kit roster comes from the private stack-data registry,
+      # which CI does not have. Assert only that every roster mode refuses
+      # with exit 2 and says why, rather than running on an empty list.
+      - name: Public-kit refuses without the registry
+        run: |
+          set -eu
+          export SD_ROOT="$RUNNER_TEMP/no-stack-data"
+          p="$(mktemp -d)"
+          for mode in "--list" "--check --all $p" "--all $p"; do
+            rc=0
+            err="$(bash phase-zero/install.sh --public $mode 2>&1 >/dev/null)" || rc=$?
+            if [ "$rc" -ne 2 ]; then echo "install.sh --public $mode exited $rc, want 2" >&2; exit 1; fi
+            echo "$err" | grep -q 'cannot build the .*roster' || { echo "$err"; echo "no clear message for --public $mode" >&2; exit 1; }
+            echo "install.sh --public $mode: exit 2 as expected"
+          done
+      # The 2026-09 history purge left its marker inside two scripts. Fail on
+      # any tracked file that still carries one. The patterns are split so
+      # this file does not match itself.
+      - name: History-purge marker check
+        run: |
+          m1='REMOVED FROM PUBLIC'' HISTORY'
+          m2='***''REMOVED***'
+          if git grep -I -n -F -e "$m1" -e "$m2"; then
+            echo "history-purge marker found in a tracked file" >&2
+            exit 1
+          fi
+          echo "no history-purge markers"
+      # Bundles and office files hide their contents from git grep and the
+      # privacy scans. Each tracked one must be listed in .binary-allowlist.
+      - name: Binary allowlist
+        run: |
+          set -eu
+          bad=0
+          # Read the list once; a grep -q at the end of a pipe under
+          # pipefail can fail on SIGPIPE and report a listed file as missing.
+          allowed="$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .binary-allowlist || true)"
+          while IFS= read -r f; do
+            if ! grep -qxF -- "$f" <<<"$allowed"; then
+              echo "not in .binary-allowlist: $f" >&2
+              bad=1
+            fi
+          done < <(git ls-files | grep -iE '\.(skill|zip|plugin|docx|xlsx|pptx)$' || true)
+          [ "$bad" -eq 0 ] || exit 1
+          echo "binary allowlist: clean"
 
   # The Resolve MCP server core and the library under it are stdlib-only
   # and run on the system Python 3.9 on the Mac; this job runs their tests
-  # on 3.9 so a newer-Python construct or a protocol regression fails the PR.
-  # Tests that need Resolve, numpy, ffmpeg or macOS skip themselves.
+  # on 3.9 with nothing installed, so a newer-Python construct, a stdlib
+  # regression or a protocol regression fails the PR. The module list comes
+  # from the directory, as in the job below, so a new command's test file
+  # runs here with no edit. Tests that need Resolve, numpy, ffmpeg or macOS
+  # skip themselves.
   resolve-mcp-tests:
     runs-on: ubuntu-latest
     steps:
@@ -51,13 +211,135 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - name: MCP protocol, schema, stdio isolation, end to end
-        run: python -m unittest -v production.tests.test_mcp
-      - name: MCP offline tools
-        run: python -m unittest -v production.tests.test_mcp_offline
-      - name: MCP read tools
-        run: python -m unittest -v production.tests.test_mcp_reads
-      - name: MCP write tools, journal, forbidden calls
-        run: python -m unittest -v production.tests.test_mcp_writes production.tests.test_mcp_writes2
-      - name: Library and workflows
-        run: python -m unittest production.tests.test_workflows production.tests.test_rpresolve_lib
+      - name: Every module but lutlab, rpstills and vertcut, stdlib only
+        run: |
+          set -euo pipefail
+          mods="$(ls production/tests/test_*.py | grep -vE 'lutlab|rpstills|vertcut' | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods
+
+  # rpresolve runs under the Resolve MCP server on the Mac's Python 3.9 and imports numpy for
+  # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
+  # every module except lutlab, rpstills and vertcut (which live on 3.14) on 3.9 with numpy
+  # alone, at the 3.9 pin in requirements.txt. A 3.10+ construct in rpresolve fails here.
+  rpresolve-tests-3-9:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install numpy at the 3.9 pin
+        run: python -m pip install "$(grep -E '^numpy==.*python_version < "3.10"' requirements.txt | sed 's/;.*//')"
+      - name: Install ffmpeg
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Every module but lutlab, rpstills and vertcut
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          mods="$(ls production/tests/test_*.py | grep -vE 'lutlab|rpstills|vertcut' | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+      - name: No skips for numpy or ffmpeg
+        run: |
+          set -eu
+          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -iE "numpy|ffmpeg missing|needs ffmpeg|ffprobe"; then
+            echo "a test skipped because numpy or ffmpeg is missing" >&2
+            exit 1
+          fi
+
+  # Every pull request adds a changelog.d/ fragment and never edits
+  # CHANGELOG.md under Unreleased, so parallel pull requests cannot conflict
+  # there. Kit-export pull requests are exempt (see changelog.d/README.md).
+  changelog-fragment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fragment rules against the base branch
+        run: scripts/changelog-fragments pr "origin/${{ github.base_ref }}"
+
+  # The full production suite: every module in production/tests, on the Homebrew Python 3.14
+  # the Mac's tool venv uses (~/.venvs/rp-tools), with the image and numeric packages that lutlab, rpstills,
+  # measure, sync, trim review and vertcut import (requirements.txt). The job
+  # above stays stdlib-only on purpose, so a stdlib regression still fails
+  # there. Without the packages 85 tests skip themselves and three modules
+  # fail to import, which is why the install is not optional here. The last
+  # step fails on any skip that names a missing Python package, so a missing
+  # package cannot turn the suite quietly green again. On 3.14 it also fails
+  # on a skip for compression.zstd, so resolve_survey's 24 zstd tests always
+  # run here (they replaced a separate resolve-survey-3-14 job). Skips for
+  # macOS-only pieces (swiftc, the Vision helper, the 3.14 survey interpreter)
+  # are expected on Linux and are only counted.
+  production-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the pinned packages
+        run: python -m pip install -r requirements.txt
+      # ubuntu-latest does not carry ffmpeg; the apt build has libx264, libx265
+      # and prores_ks, which the render and reframe tests probe for.
+      - name: Install ffmpeg
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | sed -n 1p
+          ffprobe -version | sed -n 1p
+      - name: All production test modules
+        run: |
+          set -euo pipefail
+          # The tools default to Homebrew paths; point them at the runner's.
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          # Ubuntu's ffmpeg reads colour differently from the Homebrew build the
+          # verify-render bounds were set on (median dE2000 4.5 against under 1).
+          export LUTLAB_SKIP_RENDER_VERIFY=1
+          mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+      - name: No skips for a missing package
+        run: |
+          set -eu
+          if grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | grep -iE "numpy|pillow|PIL|opencv|cv2|scipy|imagehash|ffmpeg missing|needs ffmpeg|ffprobe|compression\.zstd"; then
+            echo "a test skipped because a package, ffmpeg or compression.zstd is missing" >&2
+            exit 1
+          fi
+          echo "skips for packages and ffmpeg: none. Other skips:"
+          grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
+      # Node 22, once, for every Node test: each tracked test*.mjs runs under
+      # node --test with no edit here.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Node tests
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          node --version
+          tests="$(git ls-files '*.mjs' | grep -E '(^|/)test[^/]*\.mjs$' | grep -vE '^(phase-zero|public-kit|\.claude)/|/video-use/' || true)"
+          if [ -z "$tests" ]; then echo "no Node tests"; exit 0; fi
+          echo "$tests"
+          node --test $tests
+
+  # The Pages site builds from scripts/build-site.py, and the deploy workflow
+  # runs only on pushes to main. Build into a temp directory here so a docs
+  # change that breaks the build fails the pull request, and deploy nothing.
+  site-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the pinned markdown
+        run: python -m pip install "$(grep -E '^markdown==' requirements.txt)"
+      - name: Build the site into a temp directory
+        run: python scripts/build-site.py "$RUNNER_TEMP/site"

@@ -16,6 +16,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -93,6 +94,13 @@ class TestWordsAndEnds(unittest.TestCase):
         self.assertEqual(cutlist.end_words_for(self.words, 4.95, 2), "very quiet.")
         self.assertEqual(cutlist.span_text(self.words, 3.6, 4.95), "I kept that very quiet.")
 
+    def test_out_point_past_the_audio_gives_a_reason_not_a_crash(self):
+        r = cutlist.end_check(self.words, 4.95, "very quiet", env=[])
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["reason"], "no audio at the out-point")
+        r = cutlist.end_check(self.words, 4.95, "very quiet", env=[(i * 0.01, -20.0) for i in range(50)])
+        self.assertEqual(r["reason"], "no audio at the out-point")   # envelope ends before out
+
     def test_end_word_rule_without_audio(self):
         ok = cutlist.end_check(self.words, 4.95, "very quiet")
         self.assertTrue(ok["ok"])
@@ -148,11 +156,67 @@ class TestSilences(unittest.TestCase):
             good = cutlist.end_check(words, 4.95, "very quiet", env)
             self.assertTrue(good["ok"], good["reason"])
 
+    @unittest.skipUnless(os.access(cutlist.FFMPEG, os.X_OK), "ffmpeg missing")
+    def test_decode_from_start_keeps_aac_priming(self):
+        # On ffmpeg 7+ an input seek, even to 0, read AAC audio up to a packet early
+        # (64 ms at 16 kHz). ffmpeg 6 (CI) reads it right either way, so the command
+        # itself is pinned in test_decode_seeks_exactly_on_the_output_side.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav, m4a = os.path.join(tmp, "t.wav"), os.path.join(tmp, "t.m4a")
+            tone_wav(wav, [(1.0, 0.0), (1.0, 0.5), (1.0, 0.0), (1.0, 0.5)])
+            subprocess.run([cutlist.FFMPEG, "-v", "error", "-i", wav, "-c:a", "aac", "-b:a", "192k", m4a],
+                           check=True)
+            for t0, t1, want in ((0.0, None, 1.0), (0.5, 1.5, 1.0), (2.5, 3.5, 3.0)):
+                pcm = cutlist.decode_pcm(m4a, t0, t1)
+                samples = struct.unpack(f"<{len(pcm) // 2}h", pcm)
+                onset = t0 + next(i for i, s in enumerate(samples) if abs(s) > 3000) / cutlist.AUDIO_RATE
+                self.assertAlmostEqual(onset, want, delta=0.005, msg=f"read from {t0}")
+
+    def test_decode_seeks_exactly_on_the_output_side(self):
+        def cmd_for(t0, t1=None):
+            with mock.patch.object(cutlist.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, b"", b"")) as run:
+                cutlist.decode_pcm("x.m4a", t0, t1)
+            cmd = run.call_args[0][0]
+            i = cmd.index("-i")
+            return cmd[:i], cmd[i + 2:]
+        for t0 in (0.0, 2.2e-16, 0.0004):            # float noise above 0 is still the start
+            self.assertNotIn("-ss", sum(cmd_for(t0), []))
+        before, after = cmd_for(0.5, 1.5)
+        self.assertNotIn("-ss", before)
+        self.assertEqual(after[:4], ["-ss", "0.500", "-t", "1.000"])
+        before, after = cmd_for(12.34, 13.34)
+        self.assertEqual(before[-2:], ["-ss", "11.340"])
+        self.assertEqual(after[:4], ["-ss", "1.000", "-t", "1.000"])
+
     def _words(self, tmp):
         p = os.path.join(tmp, "w.json")
         with open(p, "w") as f:
             json.dump(words_from(SPEECH), f)
         return p
+
+
+class TestTimecodeAndStream(unittest.TestCase):
+    def test_four_part_timecode_matches_captions_at_ntsc(self):
+        from fractions import Fraction
+        from rpresolve import captions
+        want = float(captions.parse_timecode("01:00:00:00", Fraction(30000, 1001)))
+        self.assertAlmostEqual(want, 3603.6, places=6)
+        for fps in (29.97, 30000 / 1001):
+            self.assertAlmostEqual(cutlist.parse_timecode("01:00:00:00", fps), want, places=6)
+        self.assertEqual(cutlist.parse_timecode("00:00:01:12", 24), 1.5)   # integer rates unchanged
+        with self.assertRaises(cutlist.CutlistError):
+            cutlist.parse_timecode("00:00:01:45", 29.97)                   # frame past the rate
+        with self.assertRaisesRegex(cutlist.CutlistError, "does not fit"):
+            cutlist.parse_timecode("00:00:01:24", 24)
+
+    def test_decode_maps_the_audio_stream_like_audioreport(self):
+        for stream in (0, 2):
+            with mock.patch.object(cutlist.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, b"", b"")) as run:
+                cutlist.decode_pcm("x.m4a", 0.0, 1.0, stream=stream)
+            cmd = run.call_args[0][0]
+            self.assertEqual(cmd[cmd.index("-map") + 1], f"0:a:{stream}")
 
 
 class TestManifest(unittest.TestCase):

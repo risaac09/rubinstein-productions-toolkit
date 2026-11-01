@@ -13,14 +13,16 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from rpresolve.mcp import protocol, schema  # noqa: E402
-from rpresolve.mcp.registry import READ, Registry, Tool  # noqa: E402
+from rpresolve.mcp import protocol, schema, tools_read  # noqa: E402
+from rpresolve.mcp.registry import READ, Registry, Tool, ToolContext  # noqa: E402
 from rpresolve.mcp.stdio import FramedWriter, LineReader  # noqa: E402
 
 SERVER = HERE.parent / "resolve_mcp.py"
@@ -261,10 +263,124 @@ class TestProtocol(unittest.TestCase):
                      "params": {"name": "typed", "arguments": {"n": 2.0}}})
         self.assertEqual(self.h.recv()["result"]["structuredContent"]["n_type"], "int")
 
+    def test_malformed_input_gets_an_error_and_the_server_keeps_serving(self):
+        init(self.h)
+        ok = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+              "params": {"name": "echo", "arguments": {}}}
+        for raw, code in [
+                (b"not json", protocol.PARSE_ERROR),
+                (b"[1, 2]", protocol.INVALID_REQUEST),  # a batch, refused under 2025-06-18
+                (b"42", protocol.INVALID_REQUEST),
+                (b'"hi"', protocol.INVALID_REQUEST),
+                (b'{"id": 1, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": [1], "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": {"a": 1}, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": true, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": null, "method": "ping"}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": 1, "method": ["ping"]}', protocol.INVALID_REQUEST),
+                (b'{"jsonrpc": "2.0", "id": 1, "method": {"a": 1}}', protocol.INVALID_REQUEST)]:
+            with self.subTest(raw=raw):
+                self.h.send(raw)
+                self.assertEqual(self.h.recv()["error"]["code"], code)
+                self.h.send(ok)
+                self.assertEqual(self.h.recv()["id"], 9)
+
+    def test_a_request_without_a_method_is_refused_and_a_response_is_ignored(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_REQUEST)
+        self.h.send({"jsonrpc": "2.0", "id": 2, "method": None})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_REQUEST)
+        self.h.send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "x"}})
+        self.assertTrue(self.h.nothing())
+
+    def test_params_may_be_omitted_or_null(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": None})
+        self.assertIn("tools", self.h.recv()["result"])
+        self.assertTrue(self.h.server.initialized)  # the notification carried no params
+
+    def test_a_bad_params_shape_gets_invalid_params(self):
+        init(self.h)
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": [1]})
+        self.assertEqual(self.h.recv()["error"]["code"], protocol.INVALID_PARAMS)
+        self.h.send({"jsonrpc": "2.0", "id": 2, "method": "ping"})
+        self.assertEqual(self.h.recv()["id"], 2)
+
+    def test_malformed_notifications_get_no_reply_and_do_not_stop_the_server(self):
+        init(self.h)
+        for params in ([1, 2], "x", 5, {"requestId": [1]}, {"requestId": {"a": 1}},
+                       {"requestId": True}, {"requestId": None}):
+            self.h.send({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": params})
+        self.h.send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": [1]})
+        self.assertTrue(self.h.nothing())
+        self.h.send({"jsonrpc": "2.0", "id": 3, "method": "ping"})
+        self.assertEqual(self.h.recv()["id"], 3)
+
+    def test_a_malformed_batch_member_is_answered_inside_the_batch(self):
+        init(self.h, "2025-03-26")
+        self.h.send([{"jsonrpc": "2.0", "id": [1], "method": "ping"}, 7,
+                     {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+                     {"jsonrpc": "2.0", "method": ["x"]}])
+        r = self.h.recv()
+        self.assertEqual([m.get("error", {}).get("code") for m in r],
+                         [protocol.INVALID_REQUEST, protocol.INVALID_REQUEST, None,
+                          protocol.INVALID_REQUEST])
+        self.assertEqual(r[2]["id"], 2)
+
     def test_eof_exits_zero(self):
         init(self.h)
         self.h.close()
         self.assertEqual(self.h.exit_codes, [0])
+
+
+class TestRetiredArguments(unittest.TestCase):
+    """A schema that forbids unknown properties would answer an argument a
+    tool has dropped with "unknown property"; retired_args says what to pass."""
+
+    SCHEMA = {"type": "object", "required": ["new"], "additionalProperties": False,
+              "properties": {"new": {"type": "string"}}}
+
+    def setUp(self):
+        reg = Registry()
+        reg.add(Tool("moved", "moved", self.SCHEMA, lambda args, ctx: {"summary": "ran"},
+                     retired_args={"old": "Pass 'new' instead."}))
+        self.h = Harness(reg)
+        init(self.h)
+
+    def tearDown(self):
+        try:
+            self.h.close()
+        except OSError:
+            pass
+
+    def call(self, arguments):
+        self.h.send({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                     "params": {"name": "moved", "arguments": arguments}})
+        return self.h.recv()["result"]
+
+    def test_a_retired_argument_is_told_what_replaced_it(self):
+        r = self.call({"new": "x", "old": "y"})
+        self.assertTrue(r["isError"])
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        self.assertEqual(errors, ["arguments: 'old' was removed. Pass 'new' instead."])
+
+    def test_other_unknown_arguments_keep_the_generic_message(self):
+        r = self.call({"new": "x", "old": "y", "other": 1})
+        errors = json.loads(r["content"][0]["text"])["errors"]
+        self.assertEqual(errors, ["arguments: 'old' was removed. Pass 'new' instead.",
+                                  "arguments: unknown property 'other'"])
+
+    def test_the_schema_a_client_sees_does_not_list_it(self):
+        self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tool = self.h.recv()["result"]["tools"][0]
+        self.assertEqual(tool["inputSchema"], self.SCHEMA)
+        self.assertNotIn("old", json.dumps(tool))
+
+    def test_a_valid_call_is_untouched(self):
+        r = self.call({"new": "x"})
+        self.assertFalse(r["isError"])
+        self.assertEqual(r["structuredContent"]["summary"], "ran")
 
 
 class TestSchema(unittest.TestCase):
@@ -284,6 +400,78 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(schema.with_defaults({"properties": {"k": {"default": 4}}}, {}), {"k": 4})
 
 
+class TestSchemaKeywords(unittest.TestCase):
+    """One passing and one failing case per keyword the tool schemas use."""
+
+    def check(self, sch, good, bad):
+        self.assertEqual(schema.validate(sch, good), [], good)
+        self.assertTrue(schema.validate(sch, bad), bad)
+
+    def test_types(self):
+        self.check({"type": "integer"}, 3, 3.5)
+        self.check({"type": "integer"}, 3, True)  # bool is not an integer
+        self.check({"type": "number"}, 2.5, False)
+        self.check({"type": "number"}, 2, "2")
+        self.check({"type": "string"}, "a", 1)
+        self.check({"type": "boolean"}, True, 1)
+        self.check({"type": "array"}, [], {})
+        self.check({"type": "object"}, {}, [])
+        self.check({"type": ["string", "null"]}, None, 1)
+
+    def test_enum_does_not_confuse_bool_and_int(self):
+        self.check({"enum": [1, "a"]}, 1, True)
+        self.check({"enum": [True]}, True, 1)
+
+    def test_pattern_is_a_search_and_a_closing_dollar_is_the_end(self):
+        self.check({"type": "string", "pattern": r"^SW\d+$"}, "SW1", "SW1\n")
+        self.check({"type": "string", "pattern": r" \[auto\]$"}, "T [auto]", "T [auto]\n")
+        self.check({"type": "string", "pattern": r"[a-z]+"}, "1abc1", "123")
+
+    def test_minlength(self):
+        self.check({"type": "string", "minLength": 2}, "ab", "a")
+
+    def test_array_keywords(self):
+        self.check({"type": "array", "minItems": 1}, [1], [])
+        self.check({"type": "array", "maxItems": 1}, [1], [1, 2])
+        self.check({"type": "array", "uniqueItems": True}, [1, 2], [1, 1])
+        self.check({"type": "array", "uniqueItems": True}, [1, True], [{"a": 1}, {"a": 1}])
+        self.check({"type": "array", "items": {"type": "integer"}}, [1], [1, "x"])
+
+    def test_minimum_maximum_and_non_finite(self):
+        self.check({"type": "number", "minimum": 1}, 1, 0.5)
+        self.check({"type": "number", "maximum": 5}, 5, 5.1)
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            self.assertTrue(schema.validate({"type": "number", "minimum": 0, "maximum": 5}, bad))
+            self.assertTrue(schema.validate({"type": "number"}, bad))
+
+    def test_required_and_additional_properties(self):
+        s = {"type": "object", "required": ["a"], "additionalProperties": False,
+             "properties": {"a": {"type": "integer"}}}
+        self.check(s, {"a": 1}, {})
+        self.check(s, {"a": 1}, {"a": 1, "b": 2})
+        self.check({"type": "object", "properties": {"a": {}}}, {"a": 1, "b": 2}, [])  # open by default
+        self.check(s, {"a": 1}, {"a": True})
+
+    def test_nested_items_and_properties(self):
+        s = {"type": "object", "properties": {"rows": {"type": "array", "items": {
+            "type": "object", "required": ["n"], "properties": {
+                "n": {"type": "integer", "minimum": 0}}}}}}
+        self.check(s, {"rows": [{"n": 1}]}, {"rows": [{"n": 1}, {"n": -1}]})
+        self.check(s, {"rows": [{"n": 1}]}, {"rows": [{}]})
+
+    def test_coerce_reaches_into_arrays_and_objects(self):
+        s = {"type": "object", "properties": {
+            "a": {"type": "array", "items": {"type": "integer"}},
+            "o": {"type": "object", "properties": {"n": {"type": "integer"}}},
+            "x": {"type": "number"}}}
+        out = schema.coerce(s, {"a": [2.0, 3], "o": {"n": 4.0}, "x": 1.0, "free": 5.0})
+        self.assertEqual(out, {"a": [2, 3], "o": {"n": 4}, "x": 1.0, "free": 5.0})
+        self.assertTrue(all(type(v) is int for v in out["a"]))
+        self.assertIs(type(out["o"]["n"]), int)
+        self.assertIs(type(out["x"]), float)
+        self.assertIs(type(schema.coerce({"type": ["integer", "null"]}, 3.0)), int)
+
+
 class TestStdioIsolation(unittest.TestCase):
     def test_noise_never_reaches_the_protocol(self):
         p = subprocess.Popen([sys.executable, str(HERE / "mcp_noisy_server.py")],
@@ -301,6 +489,62 @@ class TestStdioIsolation(unittest.TestCase):
         self.assertIn(b"native write to fd 1", err)
         self.assertIn(b"child stdout", err)
         self.assertEqual(p.returncode, 0)
+
+
+class TestServerInfo(unittest.TestCase):
+    """resolve_status: the commit loaded at start against the commit on disk."""
+
+    A, B = "abc1234" + "0" * 33, "def5678" + "0" * 33  # full SHAs
+    A2 = "abc1234e" + "1" * 32  # another commit whose first seven digits are A's
+
+    def info(self, loaded, disk, short=7):
+        """loaded and disk are full SHAs (None: git failed); git now prints `short` digits."""
+        def git(*a):
+            if a == ("rev-parse", "HEAD"):
+                return disk
+            return disk and disk[:short] if a == ("rev-parse", "--short", "HEAD") else None
+        with mock.patch.object(tools_read, "LOADED_COMMIT", loaded and loaded[:7]), \
+                mock.patch.object(tools_read, "LOADED_SHA", loaded), \
+                mock.patch.object(tools_read, "_git", git):
+            return tools_read._server_info()
+
+    def test_same_commit_is_not_stale(self):
+        i = self.info(self.A, self.A)
+        self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]), ("abc1234",) * 2 + (False,))
+
+    def test_a_different_commit_on_disk_is_stale(self):
+        i = self.info(self.A, self.B)
+        self.assertEqual((i["loaded_commit"], i["commit"], i["stale"]),
+                         ("abc1234", "def5678", True))
+
+    def test_a_longer_short_sha_compares_the_full_commit(self):
+        self.assertFalse(self.info(self.A, self.A, short=8)["stale"])  # git grew the abbreviation
+        self.assertTrue(self.info(self.A, self.A2, short=8)["stale"])  # abc1234e is not abc1234
+
+    def test_no_git_is_unknown_not_fresh(self):
+        self.assertIsNone(self.info(None, None)["stale"])
+        self.assertIsNone(self.info(None, self.A)["stale"])  # git failed at start
+        self.assertIsNone(self.info(self.A, None)["stale"])
+
+    def test_the_summary_says_staleness_cannot_be_judged(self):
+        class Session:
+            def get(self):
+                from rpresolve import api
+                raise api.ResolveAPIError("down")
+        with mock.patch.object(tools_read, "LOADED_SHA", None), \
+                mock.patch.object(tools_read, "_git", lambda *a: None):
+            r = tools_read.resolve_status({}, ToolContext(session=Session()))
+        self.assertIsNone(r["server"]["stale"])
+        self.assertIn("staleness cannot be judged", r["summary"])
+
+    def test_mounts_name_each_volume_but_the_boot_symlink(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(tools_read._mounts(d), ["none"])
+            os.symlink("/", os.path.join(d, "Boot"))
+            self.assertEqual(tools_read._mounts(d), ["none"])
+            os.mkdir(os.path.join(d, "Media"))
+            self.assertEqual(tools_read._mounts(d), ["Media mounted"])
+        self.assertEqual(tools_read._mounts("/no/such/volumes"), ["none"])
 
 
 class TestEndToEnd(unittest.TestCase):

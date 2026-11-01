@@ -40,22 +40,22 @@ Claude-context dependence goes to a strong Codex model, not to Opus.
 
 Tier follows Q1 and Q2. Effort follows Q3 and the surface area. Pool follows
 Q4 and the capacity contract. Three levers, not one lookup. The anchor is
-Sonnet 5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
+Sonnet 5.5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
 to start.
 
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
 - Routine synthesis, continuity work, component edits, extraction, and
-  research legwork: Sonnet 5 at medium.
+  research legwork: Sonnet 5.5 at medium.
 - Orchestration, architecture, hard reasoning, and final synthesis: begin on
-  Sonnet 5 at medium. Escalate to Opus 5 only when a named difficulty survives
+  Sonnet 5.5 at medium. Escalate to Opus 5.5 only when a named difficulty survives
   that pass.
-- The single hardest long-horizon task worth the premium: Fable 5, sweep
+- The single hardest long-horizon task worth the premium: Fable 5.1, sweep
   effort low to high.
-- Bulk reads, search, mechanical edits, validation: Haiku 4.5 at low.
+- Bulk reads, search, mechanical edits, validation: Haiku 5.5 at low.
 - Low-impact preprocessing (markitdown conversion, summarization, bulk
-  classification, light drafts): Haiku 4.5 at low, batched. The old local
+  classification, light drafts): Haiku 5.5 at low, batched. The old local
   lane was retired 2026-09-13, when the 96GB machine was replaced by a 48GB
   one and its models stopped fitting, so this work costs subscription quota.
   A narrower lane returned 2026-10-05 (stack-data DECISIONS, "The local lane
@@ -70,9 +70,9 @@ to start.
   arbitrates, never supplies citations or identifiers, runs no tools, and does
   not take the bulk floor until a Phase 1 eval shows which tasks it wins.
 
-## Capacity contract, effective 2026-08-12
+## Capacity contract, effective 2026-09-13
 
-- Claude runs on Max 5x. ChatGPT Plus is a separate paid pool. Claude carries
+- Claude runs on Max 20x. ChatGPT Plus is a separate paid pool. Claude carries
   synthesis, continuity, Isaac-voice work, and Claude-native projects. Work
   that clears Q4 with no Claude-context dependence goes to Codex at a tier set
   by Q1 and Q2, not automatically to Terra at medium.
@@ -93,9 +93,11 @@ to start.
 
 Log two fields per substantive task: the tier routed to, and whether the work
 needed a second review round. The destination already exists, and extra keys
-pass validation untouched, so this needs no new machinery:
+pass validation untouched, so this needs no new machinery (since 2026-10-17 the
+optional keys `pool`, `cards`, `g1FirstPass` and `reviewEditLines` are
+validated, so Codex, local and OpenRouter rows can be compared with Claude's):
 
-    sd-ai-engage --json '{"routedTier":"opus-5/medium","secondRound":false}' --land
+    sd-ai-engage --json '{"routedTier":"opus-5.5/medium","secondRound":false}' --land
 
 (stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
 never rides a session branch.) Without that record this rule cannot be shown

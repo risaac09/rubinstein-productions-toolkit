@@ -1,14 +1,16 @@
 # CLAUDE.md
 
 ## What this repo is
-The public toolkit: methodology, templates, docs, generic CLI tools, and the two deployment kit sources (`phase-zero/`, `public-kit/`). Take what's useful is the license posture. Business strategy, brand/voice prompts, and RP-specific production tooling live in the private `rp-intranet` — an August 2026 audit found this repo's older "nothing private lands here" claim wasn't actually true and moved that content out. A second pass on 2026-08-23 removed what that audit's scope missed: the eval corpus, service-tier pricing, revenue projections, and a snapshot of the local permission allow list. See README.md's "What's Not Here" for the full accounting. Before adding anything here, assume public means public.
+The public toolkit: a facilitation and measurement methodology, production tools that work on anyone's footage (the Resolve MCP and library, lutlab, rpstills, vertcut), a few generic agent skills, their tests and CI, and an export of two deployment kits (`phase-zero/`, `public-kit/`). Public means public.
+
+## What belongs here
+Only what a stranger with their own practice could reuse as is. Rubinstein Productions' own operations, client lifecycle, service delivery, pricing, brand values, agent setup and internal records live in the private `rp-intranet` repo (decision of 2026-10-17, "The toolkit is the generic kit"). A file that names a client, a price, a private note or repo's contents, the author's machine, or the author as the actor of a procedure does not land here.
 
 ## The one guardrail
-This repo is the kit source, now for two independent kits sharing one installer, `phase-zero/install.sh`.
+`phase-zero/` and `public-kit/` are an export. Never edit them in this repo. Their source is `kit/phase-zero/` and `kit/public-kit/` in the private stack-data repo; `scripts/sd-kit-export` there privacy-scans, mirrors both directories byte for byte, and redeploys this repo's `.claude/`. Title the commit and its PR with the line it prints, `Export kit from stack-data <sha>`. Any other commit touching these two directories breaks the rule. Deploy commands and the consumer roster are in `phase-zero/README.md` and `phase-zero/install.sh`.
 
-**phase-zero** (AI-agent session infrastructure): edit `phase-zero/` here, then redeploy with `phase-zero/install.sh --all <parent-dir>`. The deployed `.claude/` copies in the consuming repos are byte-identical output; never edit one in place, the next install overwrites it and the edit dies silently. Consuming repos: the `CONSUMERS` allowlist in `phase-zero/install.sh` is the list of record (history of additions and removals: git log and stack-data `docs/DECISIONS.md`). A direct one-repository install remains available for an intentional exception.
-
-**public-kit** (public-repo hygiene: license templates, README shape, CONTRIBUTING/SECURITY templates, public voice rules), added 2026-08-21: edit `public-kit/` here, then redeploy with `phase-zero/install.sh --public --all <parent-dir>`. Deploys into `.claude/public-kit/`, never repo root — the LICENSE/README/CONTRIBUTING/SECURITY templates are references a human promotes deliberately, not auto-applied files. Separate allowlist, `PUBLIC_CONSUMERS`, scoped to repos that are actually public: alchemy, gene-keys-data, rubinsteinproductions, risaac09, three-type-evaluation (its public paper side only), isaacrubinstein.com, and this repo itself. Fully independent of `CONSUMERS` — `rp-intranet` takes phase-zero without public-kit (private, no public-hygiene need), `risaac09` takes public-kit without phase-zero (explicitly not a phase-zero consumer), some repos take both, most take neither.
-
-## Routing
-- Tier: none, the kit source, not a data store. Phase-zero triggers, session close, and research routing come from the deployed `.claude/` kit (source: `phase-zero/` in this repo).
+## Working here
+- One fragment per pull request in `changelog.d/` (`scripts/changelog-fragments new SLUG "TEXT"`).
+- CI runs the link check, the methodology status check, the instrument test, the fragment and burst-gate tests, shellcheck, and the production unit tests; run the relevant ones before pushing.
+- A new `resolve_workflow.py` command is one module, `production/rpresolve/cmd_<name>.py`, plus its own test file; it edits no shared file (`production/rpresolve/cli.py` says how).
+- Public voice rules: `public-kit/VOICE-RULES.md`.

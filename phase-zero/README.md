@@ -3,6 +3,14 @@
 The portable global-awareness layer. It travels into every repo so every clone
 session, local or remote, runs the same infrastructure.
 
+Source and export. The source of this kit is `stack-data/kit/phase-zero/`
+(private), beside the decisions, retros and tests that warrant it.
+`stack-data/scripts/sd-kit-export` copies it byte for byte into the public
+toolkit at `rubinstein-productions-toolkit/phase-zero/`. Edit the source in
+stack-data and export; never edit the toolkit copy, which the next export
+overwrites. Decision of record: "The kit source lives in stack-data; the
+toolkit carries an export" (2026-10-07).
+
 A separate, independent kit for public-repo hygiene (license templates,
 README shape, CONTRIBUTING/SECURITY templates, public voice rules) lives
 alongside this one at `../public-kit/`, sharing this directory's
@@ -45,7 +53,10 @@ The bookend is the retrospective. When a prompt contains "log learnings",
 reflect-and-log prompt instead. The agent runs a four-direction retrospective on
 the session and logs the one learning worth keeping with `scripts/sd-retro` in
 stack-data. Phase zero opens a session, the retrospective closes it. The log is
-private and never feeds phase zero back.
+private and never feeds phase zero back. A session that crossed repos, merged,
+changed a floor or started other sessions picks the prompt's deep form on its
+own: ranked keeps, structured threads, a counterfactual, failure-mode and
+decision candidates, evidence and a review count (2026-10-20).
 
 ## The session brief (v2)
 
@@ -99,6 +110,10 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   old filename via `RETIRED_FILES`.
 - `hooks/session-brief.sh`: the SessionStart hook that injects the routing
   check and the standing pointers.
+- `global/engage-log.global.sh`: the user-level SessionEnd hook (OPS-10). Writes one
+  `sd-ai-engage` fragment per session to a spool under `~/.local/share/stack-data/`
+  and never lands it; `scripts/sd-engage-batch-land` lands the spool nightly. Installed
+  by `global/install-global.sh` with a 30 second timeout; exits 0 on any error.
 - `settings.json` — the hook registrations (both hooks), copied to a repo
   with no existing settings; merged in (jq) when one exists.
 - `global/auto-mode.json` — the auto-mode classifier config (`autoMode` block:
@@ -115,8 +130,16 @@ SessionStart hook when one exists, so the routing brief never prints twice.
 - `install.sh` — the distribution path.
 - `redeploy-prs.sh` — the same deploy as one pull request per consumer from
   temp worktrees, for a machine whose auto-mode clamp refuses agent merges;
-  the operator merges them after the toolkit change that holds the kit source.
+  the operator merges them after the stack-data change that holds the kit source.
   It reads its roster from `install.sh --list`, so the two never disagree.
+  `--public` does the same for the public-kit (`chore/public-kit-<date>`
+  branches, roster from `install.sh --public --list`); `--dry-run` works in
+  both modes.
+- `--check` (both kits) also compares each deployed file with the consumer's
+  committed default branch (`origin/HEAD`, no fetch) and prints
+  `DRIFT uncommitted` when the file on disk is missing there or differs.
+  `global/install-global.sh --check` verifies the per-machine install the
+  same way, read-only.
 
 ## Source of truth
 

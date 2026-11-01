@@ -102,7 +102,7 @@ def pool_file_paths(root):
 
 def ensure_folder(media_pool, root, parts):
     """The bin at root/parts[0]/parts[1]/..., created where missing. The
-    first same-named sibling wins, as in resolve_workflow.find_folder."""
+    first same-named sibling wins (the Media Pool allows duplicate folder names)."""
     current = root
     for part in parts:
         match = next((f for f in current.GetSubFolderList() or [] if f.GetName() == part), None)

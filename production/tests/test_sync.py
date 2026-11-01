@@ -416,7 +416,7 @@ class TestFrames(unittest.TestCase):
         self.assertEqual(sync.drift(ws, 0.0, 120.0)["worst_ms"], 1.0)
 
 
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 
 
 @needs_numpy
@@ -506,7 +506,7 @@ class TestFiles(unittest.TestCase):
         from rpresolve.mcp import schema, server
         from rpresolve.mcp.registry import ToolContext
         tool = server.build_registry().get("sync_measure")
-        self.assertTrue(tool.annotations["readOnlyHint"])
+        self.assertFalse(tool.annotations["readOnlyHint"])  # writes a report when out is given
         args = schema.with_defaults(tool.input_schema, {"reference": self.camera,
                                                         "other": self.recorder})
         self.assertEqual(schema.validate(tool.input_schema, args), [])

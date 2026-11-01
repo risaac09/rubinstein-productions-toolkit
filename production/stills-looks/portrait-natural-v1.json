@@ -1,0 +1,36 @@
+{
+  "name": "rpstills portrait natural v1",
+  "version": "1.0.0",
+  "space": "DaVinci Wide Gamut / DaVinci Intermediate in and out; the timeline's output colour space is sRGB, so the look has no output transform",
+  "source_policy": "Fitted and applied on RAW decodes only (paid deliverables are RAW).",
+  "params": {
+    "exposure_ev": 0.704,
+    "wb": [1.0015, 1.0, 0.958],
+    "contrast": 1.05,
+    "shoulder_knee": 0.55,
+    "saturation": 1.0
+  },
+  "fit": {
+    "target_skin_lab": [48.0, 11.0, 9.5],
+    "note": "Session median skin, CIELAB. The targets are defaults for natural, slightly warm portrait skin and are the decision to revisit on a hero frame: raise b* for warmer, L* for brighter.",
+    "measured_on": "49 solo portraits, one overcast outdoor session, neutral RAW decode",
+    "neutral_median_skin_lab": [38.1, 9.4, 5.6],
+    "converged_in_iterations": 2,
+    "residual_delta_e": 0.6
+  },
+  "per_shot_trim": {
+    "rule": "look.trim_ev(frame skin L*, session median skin L*), measured on the neutral render: half the exposure error, limit 0.6 EV, step 0.2 EV. One LUT variant per distinct trim, params.exposure_ev plus the trim.",
+    "validation": {
+      "skin_l_p10_to_p90_neutral": 12.2,
+      "skin_l_p10_to_p90_shared_look": 15.1,
+      "skin_l_p10_to_p90_with_trims": 8.2,
+      "frames_over_8_l_from_median": {"shared_look": 9, "with_trims": 0},
+      "skin_hue_deg_p10_p50_p90": [28.1, 40.3, 46.5]
+    }
+  },
+  "known_limits": [
+    "Pale overcast skies go to clean white (up to 40% of the frame near white on the brightest backgrounds). Lower shoulder_knee or exposure_ev for sky tone.",
+    "One session-wide white balance warms every face by the same amount. Hue spread between people is preserved, but a naturally warm face can read warm; check the warmest by hue.",
+    "Fitted for one lighting condition. Refit with the same procedure for a new session; do not reuse the numbers."
+  ]
+}

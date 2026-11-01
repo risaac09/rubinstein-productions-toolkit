@@ -1,15 +1,16 @@
 """
-rpresolve.workflows: the orchestration behind the CLI's detect, ingest,
-survey and cut, as functions that return a dict and raise typed errors.
-The CLI and the MCP server call these, so both enforce the same gates.
+rpresolve.workflows: the orchestration behind the MCP tools (and the
+script's offline detect and survey), as functions that return a dict and
+raise typed errors. The MCP server calls the write paths, so every write
+enforces the same gates.
 
 Nothing here prints or exits the interpreter. Preconditions that fail raise
 Refused (a ResolveAPIError); Resolve problems raise api's own errors;
 detect.ToolMissing and cutlist.CutlistError pass through.
 
-Write paths (ingest, cut, duplicate_auto, apply_grade, queue_render and its
-destination form, queue_destination, create_captions, sync,
-trim_review_markers) pin the open project by name (and unique id when
+Write paths (ingest, cut, duplicate_auto, set_color_management,
+timeline_from_clips, apply_grade, stabilize, queue_render and its destination form,
+queue_destination, create_captions, sync, trim_review_markers) pin the open project by name (and unique id when
 given), re-check the pin before every batch of writes, and take a
 `check_cancel` callable that raises to stop at the next safe point. A dry
 run returns a plan_sha; a real run given that sha refuses when the plan it
@@ -20,14 +21,18 @@ import hashlib
 import json
 import os
 import subprocess
+import re
 import time
 from pathlib import Path
 
-from . import api, grade
+from . import api, captions, grade
 from . import detect as rpdetect
 from . import ingest as rpingest
+from . import relink as rprelink
+from .renderguard import RenderGuard
 
-SURVEY_PYTHON = "/opt/homebrew/bin/python3.14"
+# RPRESOLVE_SURVEY_PYTHON names another Python 3.14+ (the survey needs compression.zstd).
+SURVEY_PYTHON = os.environ.get("RPRESOLVE_SURVEY_PYTHON") or "/opt/homebrew/bin/python3.14"
 SURVEY_SCRIPT = Path(__file__).resolve().parent.parent / "resolve_survey.py"
 
 
@@ -126,8 +131,220 @@ def ingest(resolve, project_name, paths, parent="Source", dry_run=False, project
 
 
 # ---------------------------------------------------------------------------
+# relink
+# ---------------------------------------------------------------------------
+
+def _probe_file(path):
+    """Comparable facts of a media file from ffprobe, or None when it cannot be read."""
+    info, _ = rpdetect.run_ffprobe(path)
+    if not info:
+        return None
+    return rprelink.probe_facts(info, captions.file_start(info)[0])
+
+
+def _find_bin(root, path):
+    current = root
+    for part in [p for p in path.split("/") if p]:
+        current = next((f for f in current.GetSubFolderList() or [] if f.GetName() == part), None)
+        if current is None:
+            raise Refused(f"there is no bin '{path}' in the media pool")
+    return current
+
+
+def _walk_bins(folder, prefix=""):
+    """(bin path, clip) for every clip under folder, depth first."""
+    for clip in folder.GetClipList() or []:
+        yield prefix or "Master", clip
+    for sub in folder.GetSubFolderList() or []:
+        yield from _walk_bins(sub, f"{prefix}/{sub.GetName()}" if prefix else sub.GetName())
+
+
+def _same_path(a, b):
+    return rprelink.nfc(os.path.normpath(a)) == rprelink.nfc(os.path.normpath(b))
+
+
+def relink(resolve, project_name, search_roots, folder=None, dry_run=True, project_id=None,
+           max_items=None, check_cancel=None, expect_sha=None, probe=None,
+           exists=os.path.exists, stat=os.stat, index=None):
+    """Point offline clips of the open project at files under search_roots that
+    verify as the same take (rpresolve.relink: timecode, frames, resolution and
+    frame rate). Only a clip that is offline at plan time is touched; the clip
+    keeps its identity, timeline items, grade and tags, and each relink is read
+    back. Returns {project, dry_run, results, counts, online, relinked,
+    problems, ui_restore_problems, plan_sha, exit_status}. exit_status: 0 every
+    offline clip relinked, 2 some offline clip remains (nothing verified for
+    it, or max_items stopped the run), 1 any relink failed or drifted.
+    index: rprelink.index_roots(search_roots), when the caller walked the roots
+    before taking the Resolve lock."""
+    probe_file = probe or _probe_file
+    cache = {}
+
+    def probe(path):  # one ffprobe per file per call, however many clips name it
+        if path not in cache:
+            cache[path] = probe_file(path)
+        return cache[path]
+
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    start = _find_bin(root, folder) if folder else root
+    pool, offline = {}, []
+    for bin_path, clip in _walk_bins(start):
+        props = clip.GetClipProperty() or {}
+        path = props.get("File Path") or ""
+        if not path:
+            continue  # generators, compound clips, titles: not file-backed
+        pool[clip.GetUniqueId()] = clip
+        if not exists(path):
+            offline.append((bin_path, clip, props))
+    online = len(pool) - len(offline)
+
+    if index is None:
+        index = rprelink.index_roots(search_roots, check=check_cancel)
+    volumes = {}
+    for _, _, p in offline:
+        v = rprelink.volume_of(p["File Path"])
+        volumes[v] = volumes.get(v, 0) + 1
+    votes = rprelink.folder_votes([os.path.basename(p["File Path"]) for _, _, p in offline], index)
+    entries = []
+    for bin_path, clip, props in offline:
+        if check_cancel:
+            check_cancel()
+        facts = rprelink.clip_facts(props)
+        probed = []
+        if facts["kind"] == "video":
+            for cand in rprelink.rank_candidates(index.get(rprelink.name_key(os.path.basename(facts["path"])), []), votes):
+                try:
+                    probed.append((cand, probe(cand), stat(cand).st_size))
+                except OSError:
+                    probed.append((cand, None, None))
+        decision = rprelink.decide(facts, probed, search_roots)
+        mtime = None
+        if decision["status"] == rprelink.VERIFIED:
+            try:
+                mtime = stat(decision["path"]).st_mtime
+            except OSError:
+                decision.update(status=rprelink.NO_MATCH, path="", reason="the file vanished while planning")
+        entries.append({"id": clip.GetUniqueId(), "name": clip.GetName(), "bin": bin_path,
+                        "old_path": facts["path"], "new_path": decision["path"],
+                        "status": decision["status"], "reason": decision["reason"],
+                        "alternates": decision["alternates"], "size": decision["size"], "mtime": mtime})
+    sha = plan_sha("relink", pin.unique_id,
+                   [[e["id"], e["old_path"], e["status"], e["new_path"], e["size"], e["mtime"]]
+                    for e in entries])
+    verified = [e for e in entries if e["status"] == rprelink.VERIFIED]
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run,
+           "plan_sha": sha, "online": online, "offline_volumes": dict(sorted(volumes.items())),
+           "problems": [], "ui_restore_problems": [],
+           "relinked": [], "exit_status": 0}
+
+    def row(e, result, **more):
+        return {"id": e["id"], "name": e["name"], "bin": e["bin"], "old_path": e["old_path"],
+                "new_path": e["new_path"], "status": e["status"], "reason": e["reason"],
+                "alternates": e["alternates"], "result": result, **more}
+
+    if dry_run:
+        out["results"] = [row(e, "planned" if e["status"] == rprelink.VERIFIED else "refused")
+                          for e in entries]
+    else:
+        if expect_sha and expect_sha != sha:
+            raise Refused("the plan changed since the dry run (the media pool or the files under "
+                          "the search roots differ); run the dry run again and review it")
+        todo = verified[:max_items] if max_items else verified
+        done = {e["id"]: None for e in todo}
+        check = _check(pin, pm, check_cancel)
+        previous = media_pool.GetCurrentFolder()
+        snap = api.UISnapshot(resolve, project)
+        with snap:
+            try:
+                for e in todo:
+                    check()
+                    done[e["id"]] = _relink_one(media_pool, pool[e["id"]], e, exists, stat)
+                    if done[e["id"]]["result"] == "relinked":
+                        out["relinked"].append({"id": e["id"], "name": e["name"],
+                                                "old_path": e["old_path"], "new_path": e["new_path"]})
+            except BaseException as stop:
+                # A stop part-way (project switched, cancel, a Resolve error) must not lose
+                # which clips already moved: the journal's error line carries them.
+                stop.relinked = list(out["relinked"])
+                if out["relinked"]:
+                    stop.args = (f"{stop.args[0] if stop.args else stop} ({len(out['relinked'])} clip(s) "
+                                 "were already relinked; the journal lists them)",) + tuple(stop.args[1:])
+                raise
+            finally:
+                if previous:
+                    media_pool.SetCurrentFolder(previous)
+        out["ui_restore_problems"] = snap.problems
+        results = []
+        for e in entries:
+            if e["id"] in done and done[e["id"]] is not None:
+                r = done[e["id"]]
+                results.append(row(e, r["result"], drift=r.get("drift") or {}))
+                if r.get("drift"):
+                    out["problems"].append(f"{e['name']}: {', '.join(r['drift'])} read differently "
+                                           "after the relink; nothing was set back")
+            elif e["status"] == rprelink.VERIFIED:
+                results.append(row(e, "not attempted (max_items)"))
+            else:
+                results.append(row(e, "refused"))
+        out["results"] = results
+        failed = any(r["result"].startswith("FAILED") for r in results)
+        left = any(r["result"] != "relinked" for r in results)
+        out["exit_status"] = 1 if failed or out["problems"] else (2 if left else 0)
+    counts = {}
+    for r in out["results"]:
+        key = r["result"].split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+    out["counts"] = counts
+    out["status_counts"] = {}
+    for e in entries:
+        out["status_counts"][e["status"]] = out["status_counts"].get(e["status"], 0) + 1
+    return out
+
+
+def _relink_one(media_pool, clip, e, exists, stat):
+    """Relink one verified clip and read it back: {result, drift}."""
+    props = clip.GetClipProperty() or {}
+    if exists(props.get("File Path") or ""):
+        return {"result": "skipped: the clip is online now"}
+    try:
+        size = stat(e["new_path"]).st_size
+    except OSError:
+        return {"result": "FAILED: the file is gone"}
+    if size != e["size"]:
+        return {"result": "FAILED: the file changed since the plan"}
+    before = {k: props.get(k) for k in rprelink.STABLE_PROPS}
+    ok = media_pool.RelinkClips([clip], os.path.dirname(e["new_path"]))
+    after = clip.GetClipProperty() or {}
+    if not ok:
+        return {"result": "FAILED: Resolve's RelinkClips returned false"}
+    if not _same_path(after.get("File Path") or "", e["new_path"]):
+        return {"result": f"FAILED: File Path reads '{after.get('File Path')}' after the relink"}
+    return {"result": "relinked", "drift": rprelink.drift(before, after)}
+
+
+# ---------------------------------------------------------------------------
 # survey (offline, Python 3.14 subprocess)
 # ---------------------------------------------------------------------------
+
+def _wanted_items(items, count):
+    """None means every item; an explicit empty list is an error, not 'all'."""
+    if items is None:
+        return list(range(1, count + 1))
+    if not items:
+        raise Refused("items is empty; leave it out to take every item.")
+    return sorted(set(items))
+
+
+def _free_values(name, values):
+    """Values for a nargs='+' option. One starting with '-' would be read as
+    a second option (e.g. --out), and '--' cannot guard a nargs list."""
+    if not values:
+        raise Refused(f"{name} is empty; leave it out to take the default.")
+    bad = [v for v in values if not isinstance(v, str) or not v or v.startswith("-")]
+    if bad:
+        raise Refused(f"{name} values must be non-empty and not start with '-': {bad!r}")
+    return values
+
 
 def survey_command(out, json_out=None, projects=None, projects_dir=None, metadata_cache=None,
                    no_metadata_cache=False, tree_labels=None, python=SURVEY_PYTHON,
@@ -136,16 +353,16 @@ def survey_command(out, json_out=None, projects=None, projects_dir=None, metadat
     cmd = [python, str(script), "--out", out]
     if json_out:
         cmd += ["--json", json_out]
-    if projects:
-        cmd += ["--projects", *projects]
+    if projects is not None:
+        cmd += ["--projects", *_free_values("projects", projects)]
     if projects_dir:
         cmd += ["--projects-dir", projects_dir]
     if metadata_cache:
         cmd += ["--metadata-cache", metadata_cache]
     if no_metadata_cache:
         cmd.append("--no-metadata-cache")
-    if tree_labels:
-        cmd += ["--tree-labels", *tree_labels]
+    if tree_labels is not None:
+        cmd += ["--tree-labels", *_free_values("tree_labels", tree_labels)]
     return cmd
 
 
@@ -158,7 +375,8 @@ def survey(out, json_out=None, projects=None, projects_dir=None, metadata_cache=
     missing."""
     if not os.path.exists(SURVEY_PYTHON):
         raise Refused(f"{SURVEY_PYTHON} not found. The survey needs Python 3.14+ "
-                      "(compression.zstd); install it with Homebrew (python@3.14).")
+                      "(compression.zstd); install it with Homebrew (python@3.14) "
+                      "or set RPRESOLVE_SURVEY_PYTHON.")
     if not SURVEY_SCRIPT.exists():
         raise Refused(f"{SURVEY_SCRIPT} not found; keep resolve_survey.py next to "
                       "resolve_workflow.py.")
@@ -180,6 +398,13 @@ def survey(out, json_out=None, projects=None, projects_dir=None, metadata_cache=
 # cut
 # ---------------------------------------------------------------------------
 
+def _clip_sources(m, clips):
+    """The manifest sources the clips' spans play from, in manifest order."""
+    from . import cutlist
+    ids = {cutlist.source_for(m, s)["id"] for c in clips for s in c["spans"]}
+    return [s for s in cutlist.sources(m) if s["id"] in ids]
+
+
 def cut_gate(manifest_path, only=None, audio=True, force=False):
     """The offline half of cut: load, check the source sha256, run
     endcheck. Returns {manifest, clips (to build), blocked {clip: [reasons]},
@@ -188,10 +413,11 @@ def cut_gate(manifest_path, only=None, audio=True, force=False):
     from . import cut as rpcut, cutlist
     m = cutlist.load_manifest(manifest_path)
     clips = rpcut.plan_clips(m, only)
-    src = m["source_path"]
-    if not os.path.isfile(src) or cutlist.sha256_file(src) != m["source_sha256"]:
-        raise Refused(f"{src} is missing or no longer matches the manifest's sha256; the "
-                      "words were read from a different file.")
+    for one in _clip_sources(m, clips):
+        src = one["path"]
+        if not os.path.isfile(src) or cutlist.sha256_file(src) != one["sha256"]:
+            raise Refused(f"{src} is missing or no longer matches the manifest's sha256; the "
+                          "words were read from a different file.")
     fails = rpcut.gate_clips(m, clips, audio=audio)
     blocked = {k: v for k, v in fails.items() if v}
     if blocked and not force:
@@ -226,7 +452,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     and/or 1x1; default 9x16, none with make_9x16 false). Returns {project,
     gate, source_item, aspects, would_create, unreframed, refused,
     reframes, skipped_existing, results, left_behind, ui_restore_problems,
-    plan_sha, exit_status}. A version with no reframe for a span is not
+    plan_sha, exit_status, settings_drift_rows}. A version with no reframe for a span is not
     built and is named in `unreframed`, and one whose input scaling the
     transform is not known for in `refused` (dry run and real run); a
     version whose picture does not fill the frame is built and named in
@@ -236,18 +462,42 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     from it when its V1 items still match the manifest (refused when they
     do not). exit_status: 0 all built and read back, 2 built but some
     version leaves bars, 1 any failure, unreframed or refused version. A
-    dry run stops before anything is created."""
-    from . import cut as rpcut
+    dry run stops before anything is created. The settings guard is off by
+    default (RPRESOLVE_SETTINGS_GUARD=on enables it): then each result's
+    settings_drift is None and settings_drift_rows is []. When it is enabled,
+    each result carries settings_drift (settingsguard's report on the
+    timeline's settings around the custom-settings writes), and
+    settings_drift_rows lists the timelines that drifted or could not be
+    checked; it never changes exit_status."""
+    from . import cut as rpcut, cutlist
+    from . import settingsguard as rpguard
     aspects = cut_aspects(make_9x16, aspects)
     gate = gate or cut_gate(manifest_path, only, audio, force)
     m, clips = gate["manifest"], gate["clips"]
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
-    item = rpcut.find_source_item(root, m["source_sha256"], os.path.getsize(m["source_path"]))
-    if item is None:
-        raise Refused("no media-pool clip in this project matches the manifest source's "
-                      "sha256. Import the source first.")
+    found, found_sources = {}, _clip_sources(m, clips)
+    for one in found_sources:
+        found[one["id"]] = rpcut.find_source_item(root, one["sha256"],
+                                                  os.path.getsize(one["path"]))
+        if found[one["id"]] is None:
+            raise Refused(f"no media-pool clip in this project matches the manifest source "
+                          f"{one['id']}'s sha256. Import the source first.")
+    one = next(s for s in cutlist.sources(m) if s["id"] in found)
+    item = found[one["id"]]
+    # Spans name their source (or none, with one source): the clip each plays from.
+    items_of = {c["name"]: {s.get("source"): found[cutlist.source_for(m, s)["id"]]
+                            for s in c["spans"]} for c in clips}
+
+    def clip_item(c):
+        """The media-pool clip a one-source clip plays from, else the dict of them."""
+        d = items_of[c["name"]]
+        uniq = list({id(v): v for v in d.values()}.values())
+        return uniq[0] if len(uniq) == 1 else d
     src = rpcut.parse_resolution(item.GetClipProperty("Resolution"))
+    srcs_of = {c["name"]: (src if clip_item(c) is item else
+                           rpcut.parse_resolution(clip_item(c).GetClipProperty("Resolution"))
+                           if not isinstance(clip_item(c), dict) else None) for c in clips}
     existing = rpcut.timeline_names(project)
     scaling, scaling_note = rpcut.input_scaling(project)
     todo, skipped, would, unreframed, refused, reframes = [], [], [], [], [], []
@@ -263,7 +513,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
             would.append(wide)
         elif e["aspects"]:
             # Built from the 16:9 that exists: only when it is still the manifest's cut.
-            rows, _, problems = rpcut.read_back_wide(existing[wide], c, m["fps"], item)
+            rows, _, problems = rpcut.read_back_wide(existing[wide], c, m["fps"], clip_item(c))
             e["base"] = {"id": existing[wide].GetUniqueId(),
                          "items": [[r["start"], r["duration"], r["source_start"]] for r in rows]}
             own, _ = rpcut.item_scaling(existing[wide].GetItemListInTrack("video", 1) or [])
@@ -274,6 +524,12 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                 e["mismatch"] = (f"'{wide}' exists and {'; '.join(own)}; the transform is "
                                  "computed for 0 (use project settings), so set it back in the "
                                  "Inspector or build under a new prefix")
+        if srcs_of[c["name"]] is None and e["aspects"]:
+            # A reframe is planned from one source's picture; a clip over several is 16:9 only.
+            unreframed += [f"{names[a]}: the clip plays from several sources, and a reframe is "
+                           f"planned for one; the {a} version was not built (pass make_9x16 "
+                           "false for a 16:9 only)" for a in e["aspects"]]
+            e["aspects"] = []
         if not e["build_wide"] and not e["aspects"]:
             continue
         todo.append(e)
@@ -286,7 +542,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                 refused.append(f"{name}: {rpcut.scaling_problem(scaling)}")
                 continue
             try:
-                plans = rpcut.item_plans(c, a, src, scaling)
+                plans = rpcut.item_plans(c, a, srcs_of[c["name"]], scaling)
             except rpcut.Unreframed as err:
                 unreframed.append(f"{name}: {err}")
                 continue
@@ -296,18 +552,21 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                           "bars": p["bars"]} for p in plans]
     # The transforms shown depend on the source's resolution and the input
     # scaling, so both are part of what the dry run showed.
-    sha = plan_sha("cut", pin.unique_id, prefix, m["source_sha256"], list(aspects), list(src),
+    sha = plan_sha("cut", pin.unique_id, prefix, [s["sha256"] for s in found_sources], list(aspects),
+                   list(src), [srcs_of[c["name"]] for c in clips],
                    scaling, [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
                               "reframe": e["clip"].get("reframe"), "build_wide": e["build_wide"],
                               "aspects": e["aspects"], "base": e["base"]} for e in todo])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "gate": {"blocked": gate["blocked"], "forced": gate["forced"]},
+           "source_items": [{"id": k, "name": v.GetName()} for k, v in found.items()],
            "source_item": {"name": item.GetName(), "file_path": item.GetClipProperty("File Path"),
                            "resolution": list(src)},
            "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
            "unreframed": unreframed, "refused": refused, "reframes": reframes,
            "skipped_existing": skipped, "results": [], "left_behind": [],
-           "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
+           "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0,
+           "settings_drift_rows": []}
     if scaling_note:
         out["input_scaling_note"] = scaling_note
     if dry_run:
@@ -322,10 +581,12 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     with snap:
         for e in todo:
             clip = e["clip"]
+            wide_drift = None  # the 16:9's report, when this run built it
             if e["build_wide"]:
-                r = rpcut.build_clip(project, media_pool, item, clip, m["fps"], prefix,
+                r = rpcut.build_clip(project, media_pool, clip_item(clip), clip, m["fps"], prefix,
                                      check=check)
                 r["kind"] = "16x9"
+                wide_drift = r.get("settings_drift")
                 out["results"].append(r)
                 failed |= not r["ok"]
                 if not r["ok"]:
@@ -336,18 +597,25 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                         "name": f"{prefix}_{clip['name']}_{a}{rpcut.AUTO}", "kind": a,
                         "ok": False, "refused": True, "unreframed": False,
                         "left_behind": None, "props": None, "items": [], "bars": [],
-                        "warnings": [], "reason": f"REFUSED: {e['mismatch']}; the {a} version "
+                        "warnings": [], "settings_drift": None,
+                        "reason": f"REFUSED: {e['mismatch']}; the {a} version "
                         "was not built"})
                     failed = True
                     continue
                 wide = rpcut.timeline_names(project).get(e["wide"])
-                t = rpcut.build_aspect(project, wide, clip, src, prefix, a, check=check,
+                t = rpcut.build_aspect(project, wide, clip, srcs_of[clip["name"]], prefix, a, check=check,
                                        scaling=scaling)
+                if t.get("refused") and wide_drift:
+                    # The 'plan was made for X' refusal can be the custom-settings write's doing;
+                    # explain() answers only for a refusal that names the input scaling.
+                    t["reason"] += rpguard.explain(wide_drift, rpcut.INPUT_SCALING, t["reason"])
                 out["results"].append(t)
                 failed |= not t["ok"]
                 bars |= bool(t["bars"])
     out["ui_restore_problems"] = snap.problems
     out["left_behind"] = [x["left_behind"] for x in out["results"] if x.get("left_behind")]
+    out["settings_drift_rows"] = rpguard.digest([(x["name"], x.get("settings_drift"))
+                                           for x in out["results"]])
     out["exit_status"] = 1 if failed else (2 if bars else 0)
     return out
 
@@ -419,6 +687,117 @@ def duplicate_auto(resolve, project_name, timeline, new_name=None, dry_run=False
     return out
 
 
+def set_color_management(resolve, project_name, preset=None, dry_run=False, project_id=None,
+                         expect_sha=None, check_cancel=None):
+    """Set a colour-management preset (rpresolve.colormgmt) on the open
+    project, so `ingest` will take it. Refuses unless the project is fresh:
+    no timelines and no clip in the media pool. Writes each key of the
+    preset in order, reads each back, then reads them all again to catch a
+    key Resolve reset when another changed. Never creates, loads or saves a
+    project. Returns {project, preset, plan, would_change, applied, failed,
+    drift, plan_sha, dry_run, ui_restore_problems, exit_status}: exit_status
+    0 done or nothing to do, 1 a write failed or drifted."""
+    from . import colormgmt as cm
+    preset = preset or cm.DEFAULT_PRESET
+    keys = cm.PRESETS.get(preset)
+    if keys is None:
+        raise Refused(f"unknown preset '{preset}'; the presets are {', '.join(sorted(cm.PRESETS))}.")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, root = api.media_pool_root(project)
+    rows = cm.plan_rows(project, keys)
+    todo = [r for r in rows if r["action"] == "set"]
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "preset": preset, "plan": rows,
+           "would_change": [r["key"] for r in todo], "applied": [], "failed": None, "drift": [],
+           "dry_run": dry_run, "ui_restore_problems": [], "exit_status": 0}
+    if todo:
+        reasons = cm.not_fresh(project, root)
+        if reasons:
+            raise Refused(f"'{pin.name}' is not a fresh project: it has " + " and ".join(reasons) +
+                          ". Changing colour science under existing timelines and clips changes "
+                          "how they look, so this tool sets it only on an empty project; change "
+                          "it in Project Settings by hand.")
+    out["plan_sha"] = plan_sha("color_management", pin.unique_id, preset, rows)
+    if dry_run or not todo:
+        return out
+    if expect_sha and expect_sha != out["plan_sha"]:
+        raise Refused("the plan changed since the dry run (the project's settings, timelines or "
+                      "media pool differ); run the dry run again and review it")
+    check = _check(pin, pm, check_cancel)
+    for r in todo:
+        check()
+        try:
+            got = api.set_setting_checked(project, r["key"], r["wanted"])
+        except api.WriteNotApplied as e:
+            out["failed"] = {"key": r["key"], "problem": str(e)}
+            break
+        out["applied"].append({"key": r["key"], "was": r["now"], "now": got})
+    if not out["failed"]:
+        out["drift"] = cm.final_drift(project, keys)
+    out["exit_status"] = 1 if out["failed"] or out["drift"] else 0
+    return out
+
+
+def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order="name",
+                        dry_run=False, project_id=None, expect_sha=None, check_cancel=None):
+    """Build a new ' [auto]' timeline from media-pool clips in order
+    (rpresolve.clipline): the clips directly in a bin, or the clips named in
+    `clips` (unique ids, absolute file paths or names). Picture only, on V1,
+    following the project's frame rate and size. Every item is read back.
+    The current timeline, playhead and page are put back. Returns {project,
+    timeline, rate, order, plan, skipped, total_frames, conformed, plan_sha,
+    dry_run, created, items, problems, left_behind, lands_in_bin,
+    ui_restore_problems, exit_status}. The new timeline goes into the media-pool
+    folder that is open in Resolve (CreateEmptyTimeline adds it there);
+    lands_in_bin names it."""
+    from . import clipline as cl
+    from . import deliver
+    if not name.endswith(AUTO):
+        raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
+    if bool(bin) == bool(clips):
+        raise Refused("give exactly one of bin (the clips directly in a bin) and clips (the "
+                      "clips to place, by unique id, absolute path or name).")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    count = int(project.GetTimelineCount() or 0)
+    if any(project.GetTimelineByIndex(i).GetName() == name for i in range(1, count + 1)):
+        raise Refused(f"a timeline named '{name}' already exists; nothing is overwritten.")
+    rate = str(project.GetSetting("timelineFrameRate") or "")
+    tl_fps = deliver.exact_fps(rate)
+    if not tl_fps:
+        raise Refused(f"the project's timelineFrameRate reads '{rate}'; cannot plan lengths.")
+    try:
+        planned = cl.plan(root, tl_fps, bin_path=bin, refs=clips, order=order)
+    except cl.PlanError as e:
+        raise Refused(str(e))
+    rows = planned["rows"]
+    sha = plan_sha("clip_timeline", pin.unique_id, name, rate, order, rows)
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
+           "order": order, "plan": rows, "skipped": planned["skipped"],
+           "total_frames": sum(r["length"] for r in rows),
+           "conformed": [r["name"] for r in rows if r["conformed"]], "plan_sha": sha,
+           "dry_run": dry_run, "created": None, "items": [], "problems": [], "left_behind": None,
+           "lands_in_bin": api._safe_call(media_pool.GetCurrentFolder(), "GetName"),
+           "ui_restore_problems": [], "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the clips, their order or the project's "
+                      "frame rate differ); run the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        project = pin.check(pm)
+        built = cl.build(project, media_pool, name, rows, planned["clips"],
+                         _check(pin, pm, check_cancel))
+    out["created"] = {"name": built["name"], "unique_id": built["unique_id"],
+                      "items": len(built["items"])}  # the rows go in out["items"], not the journal
+    out["items"] = built["items"]
+    out["problems"] = built["problems"]
+    out["left_behind"] = built["left_behind"]
+    out["ui_restore_problems"] = snap.problems
+    out["exit_status"] = 1 if built["problems"] else 0
+    return out
+
+
 def _fingerprints(items):
     return [grade.graph_fingerprint(g) if g else None
             for g in (api._safe_call(it, "GetNodeGraph") for it in items)]
@@ -478,7 +857,7 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     if not 1 <= track <= tracks:
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = sorted(set(items)) if items else list(range(1, len(all_items) + 1))
+    wanted = _wanted_items(items, len(all_items))
     bad = [n for n in wanted if not 1 <= n <= len(all_items)]
     if bad:
         raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
@@ -526,7 +905,15 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
             entry["overwrites"] = why
             targets.append(entry)
     shown = {k: v for k, v in spec.items() if k != "manifest"}
-    sha = plan_sha("grade", pin.unique_id, tl_id, track, shown,
+    # The files' bytes, not only their paths: a LUT or .drx edited after the dry run is a new plan.
+    from .cutlist import sha256_file  # LUTs and .drx stills are small
+    try:
+        digest = sha256_file(spec["path"])
+    except OSError as e:
+        raise Refused(f"cannot read {spec['path']}: {e.strerror or e}")
+    contents = [digest] + (
+        [spec["manifest"]] if spec["kind"] == "drx" else [])
+    sha = plan_sha("grade", pin.unique_id, tl_id, track, shown, contents,
                    [(t["index"], t["name"], t["fingerprint"]) for t in targets], overwrite)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
@@ -579,104 +966,383 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     return out
 
 
-def queue_render(resolve, project_name, timeline, preset_key=None, output_dir=None, presets=None,
-                 custom_name=None, dry_run=False, project_id=None, expect_sha=None,
-                 destination=None, name_parts=None, config=None, check_cancel=None,
-                 volumes_root="/Volumes"):
-    """Queue one render job for a timeline from a preset, never start it.
-    Makes the timeline current only while queueing, then puts back the
-    current timeline, page and the Deliver page's format and codec. The
-    other Deliver fields it sets cannot be read back or restored, so every
-    result lists them. Refuses when a render is running or the output file
-    exists. Returns {project, timeline, preset, output, plan_sha, dry_run,
-    job, readback_problems, deliver_changed, warnings, ui_restore_problems,
-    exit_status}.
+FRAMING_FINGERPRINT = ("ZoomX", "ZoomY", "Pan", "Tilt", "RotationAngle", "CropLeft",
+                       "CropRight", "CropTop", "CropBottom", "FlipX", "FlipY")
 
-    With destination (a key in config["destinations"]) instead of a preset,
-    output_dir is the target folder (default: the destination's
-    target_dir) and name_parts name the file; see queue_destination."""
-    if destination:
-        return queue_destination(resolve, project_name, timeline, destination, output_dir,
-                                 name_parts, config=config, dry_run=dry_run,
-                                 project_id=project_id, expect_sha=expect_sha,
-                                 check_cancel=check_cancel, volumes_root=volumes_root)
-    from . import render
-    if not presets or not preset_key or not output_dir:
-        raise Refused("give a preset and an output folder, or a destination.")
+
+def _transforms(items):
+    return [tuple(api._safe_call(it, "GetProperty", k) for k in FRAMING_FINGERPRINT)
+            for it in items]
+
+
+def _item_path(item):
+    clip = api._safe_call(item, "GetMediaPoolItem")
+    return api._safe_call(clip, "GetClipProperty", "File Path") or ""
+
+
+def _source_seconds(item):
+    """(in, out) of the item's source in seconds, or None when unread."""
+    clip = api._safe_call(item, "GetMediaPoolItem")
+    try:
+        fps = float(api._safe_call(clip, "GetClipProperty", "FPS") or 0)
+        a = api._safe_call(item, "GetSourceStartFrame")
+        b = api._safe_call(item, "GetSourceEndFrame")
+        if fps > 0 and a is not None and b is not None:
+            return float(a) / fps, float(b) / fps
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def load_framing(plan):
+    """A framing plan (reframe.plan_items) from a dict or a JSON path."""
+    if isinstance(plan, dict):
+        p = plan
+    else:
+        path = os.path.expanduser(str(plan))
+        if not os.path.isfile(path):
+            raise Refused(f"framing plan '{path}' not found")
+        with open(path, encoding="utf-8") as f:
+            p = json.load(f)
+    if p.get("kind") != "framing" or not isinstance(p.get("items"), list):
+        raise Refused("not a framing plan: reframe_plan with items writes one")
+    return p
+
+
+def _pick(entries, span):
+    """The plan item for a timeline item: the only one for its file, else
+    the one whose [in, out) overlaps the item's source range most; None
+    when the file has several and the item's range cannot be read, or none
+    of them overlaps it."""
+    if len(entries) == 1:
+        return entries[0]
+    if span is None:
+        return None
+    best = max(entries, key=lambda e: min(e["out"], span[1]) - max(e["in"], span[0]))
+    return best if min(best["out"], span[1]) > max(best["in"], span[0]) else None
+
+
+def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, allow_bars=False,
+                  dry_run=False, project_id=None, check_cancel=None, expect_sha=None):
+    """Set ZoomX, ZoomY, Pan and Tilt on items of one video track of an
+    ' [auto]' timeline from a framing plan (reframe.plan_items), read each
+    back, and check that nothing changed on any other timeline using the
+    same media, nor on items of this one that were not targets. Each item
+    takes the plan entry for its file (by path; by source range when the
+    file has several). The props are computed here, for the timeline's own
+    size and input scaling, from the entry's centre and scale.
+    Refused: a timeline not ending ' [auto]'; a timeline whose size, or
+    input scaling, is not the plan's; an item whose own Scaling is not 0
+    (cut.item_scaling). Per item, refused: no plan entry, an entry with no
+    crop (manual, no_face), a clip whose resolution is not the one planned,
+    a scale below the fill scale unless allow_bars (it would show black).
+    An entry whose move is 'none' writes nothing (centre fill already keeps
+    the head), nor does one the item already carries. Returns {project,
+    timeline, plan, targets, unchanged, refused, results, leaks, plan_sha,
+    dry_run, exit_status}."""
+    from . import cut as rpcut
+    from . import reframe as rf
+    fp = load_framing(plan)
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
-    preset = presets.get(preset_key)
-    if not preset:
-        raise Refused(f"unknown preset '{preset_key}'; configured: {', '.join(presets)}")
-    if not os.path.isdir(output_dir):
-        raise Refused(f"output_dir {output_dir} is not an existing folder.")
-    if project.IsRenderingInProgress():
-        raise Refused("a render is running; queue after it finishes.")
-    base = (custom_name or tl.GetName()) + preset["suffix"]
-    target = os.path.join(os.path.realpath(output_dir), f"{base}.{preset['format']}")
-    if os.path.exists(target):
-        raise Refused(f"{target} already exists; a render would overwrite it. Choose another "
-                      "custom_name or folder.")
-    sha = plan_sha("render", pin.unique_id, tl.GetUniqueId(), preset_key, preset,
-                   os.path.realpath(output_dir), base)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Framing goes only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    size = _timeline_size(project, tl)
+    if list(size) != list(fp["out"]):
+        raise Refused(f"'{tl_name}' is {size[0]}x{size[1]}; the plan was made for "
+                      f"{fp['out'][0]}x{fp['out'][1]}")
+    scaling, note = rpcut.input_scaling(project, tl)
+    if scaling != fp.get("scaling"):
+        raise Refused(f"{rpcut.INPUT_SCALING} reads '{scaling}' on '{tl_name}' and the plan was "
+                      f"made for '{fp.get('scaling')}'; plan again for this timeline")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = _wanted_items(items, len(all_items))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    own, _ = rpcut.item_scaling([all_items[n - 1] for n in wanted])
+    if own:
+        raise Refused(f"on '{tl_name}', {'; '.join(own)}; the transform is computed for 0 "
+                      "(use project settings), so set it back in the Inspector first")
+    by_path = {}
+    for e in fp["items"]:
+        by_path.setdefault(rpingest.norm_path(e["path"]), []).append(e)
+    out_size = tuple(fp["out"])
+    targets, unchanged, refusals = [], [], []
+    for n in wanted:
+        it = all_items[n - 1]
+        name, path = it.GetName(), _item_path(it)
+        row = {"index": n, "name": name, "media_id": _media_id(it)}
+        entries = by_path.get(rpingest.norm_path(path)) if path else None
+        if not entries:
+            refusals.append({**row, "reasons": ["no plan entry for its file"]})
+            continue
+        pe = _pick(entries, _source_seconds(it))
+        if pe is None:
+            refusals.append({**row, "reasons": [
+                f"the plan has {len(entries)} entries for its file and the item's source range "
+                "is unread or overlaps none of them"]})
+            continue
+        e = pe["entry"]
+        row["plan_item"] = pe["name"]
+        if e.get("x") is None or e.get("scale") is None:
+            refusals.append({**row, "reasons": [f"the plan has no crop for it ({e.get('status')}: "
+                                                f"{e.get('reason', '')})"]})
+            continue
+        clip = api._safe_call(it, "GetMediaPoolItem")
+        res = rpcut.parse_resolution(api._safe_call(clip, "GetClipProperty", "Resolution"))
+        stored = tuple(e.get("stored") or e["src"])
+        if res[1] and tuple(res) != stored:
+            refusals.append({**row, "reasons": [f"the clip is {res[0]}x{res[1]} and the plan was "
+                                                f"made on {stored[0]}x{stored[1]}"]})
+            continue
+        src, area, scale = tuple(e["src"]), tuple(e["area"]), float(e["scale"])
+        widest = rf.fill_scale(out_size, area)
+        if scale < widest - 1e-4 and not allow_bars:
+            refusals.append({**row, "reasons": [f"scale {scale:g} is below the fill scale "
+                                                f"{widest:g}: it would show black (allow_bars)"]})
+            continue
+        props = {k: round(v, 4) for k, v in
+                 rf.resolve_props(src, out_size, scale, (e["x"], e["y"]), scaling).items()}
+        if not rf.TILT_CONFIRMED:
+            props.pop("Tilt")
+        now = {k: api._safe_call(it, "GetProperty", k) for k in props}
+        if float(e.get("squeeze") or 1.0) != 1.0:
+            row["warning"] = (f"squeeze {e['squeeze']:g}: the transform assumes Resolve fits the "
+                              "desqueezed picture (the clip's Pixel Aspect Ratio set); no live "
+                              "run has checked that, so look at the frame")
+        row.update(move=e.get("move"), props=props, current=now,
+                   headroom_px=e.get("headroom_px"), status=e.get("status"))
+        same = all(isinstance(now[k], (int, float)) and abs(now[k] - v) <= 1e-3
+                   for k, v in props.items())
+        if e.get("move") == "none" or same:
+            row["why"] = ("centre fill already keeps the head" if e.get("move") == "none" else
+                          "the item already carries this framing")
+            unchanged.append(row)
+        else:
+            targets.append(row)
+    sha = plan_sha("reframe_apply", pin.unique_id, tl_id, track, list(out_size), scaling,
+                   [(t["index"], t["name"], t["props"]) for t in targets], allow_bars)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
-           "timeline": {"name": tl.GetName(), "unique_id": tl.GetUniqueId()},
-           "preset": {"key": preset_key, **preset}, "output": target, "plan_sha": sha,
-           "dry_run": dry_run, "job": None, "readback_problems": [],
-           "deliver_changed": list(render.DELIVER_FIELDS), "warnings": [],
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "size": list(size), "input_scaling": scaling},
+           "plan": {"aspect": fp.get("aspect"), "out": fp["out"], "scaling": fp.get("scaling")},
+           "targets": [{k: v for k, v in t.items() if k != "media_id"} for t in targets],
+           "unchanged": [{k: v for k, v in t.items() if k != "media_id"} for t in unchanged],
+           "refused": refusals, "results": [], "leaks": [], "plan_sha": sha,
+           "dry_run": dry_run, "warnings": ([note] if note else []) +
+           [f"#{t['index']} {t['name']}: {t['warning']}" for t in targets + unchanged
+            if t.get("warning")], "exit_status": 0}
+    if dry_run or not targets:
+        out["exit_status"] = 2 if refusals else 0
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (items or their framing differ); "
+                      "run the dry run again and review it")
+    media = {t["media_id"] for t in targets if t["media_id"]}
+    shared = _shared_items(project, tl_id, media)
+    before = _transforms([it for _, it in shared])
+    idx = {t["index"] for t in targets}
+    untouched = [it for n, it in enumerate(all_items, 1) if n not in idx]
+    untouched_before = _transforms(untouched)
+    for t in targets:
+        if check_cancel:
+            check_cancel()
+        pin.check(pm)
+        it = all_items[t["index"] - 1]
+        try:
+            back = {k: api.set_property_checked(it, k, v) for k, v in t["props"].items()}
+            out["results"].append({"index": t["index"], "name": t["name"], "ok": True,
+                                   "read_back": back})
+        except api.WriteNotApplied as e:
+            out["results"].append({"index": t["index"], "name": t["name"], "ok": False,
+                                   "detail": str(e)})
+    after = _transforms([it for _, it in shared])
+    out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
+    if _transforms(untouched) != untouched_before:
+        out["leaks"].append(f"{tl_name}: an item that was not a target changed")
+    failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
+    out["exit_status"] = 1 if failed else (2 if refusals else 0)
+    return out
+
+
+STABILIZE_PAGE = "color"
+# Items per real call. Stabilize() can take minutes on a 6K item and the call holds the
+# Resolve lock, so one call does at most this many; the result names what is left.
+STABILIZE_DEFAULT_ITEMS = 10
+STABILIZE_MAX_ITEMS = 25
+STABILIZE_NOTE = (
+    "Stabilize() returned the value reported per item. Stabilization is not visible through "
+    "GetProperty (a 2026-09-26 spike found SmartReframe's result invisible there, and the "
+    "same is assumed here until a live run shows otherwise), so nothing was read back and "
+    "the effect is not verified. Stabilize() uses each item's current stabilizer settings "
+    "(mode, strength, smooth, zoom) from the Color page, which the API cannot set.")
+
+
+def _frames_to_timecode(frame, fps, drop=False):
+    """HH:MM:SS:FF for an absolute frame count at a nominal rate (23.976 counts as
+    24); with drop (29.97 and 59.94 only) the drop-frame form with ';'."""
+    base = int(round(float(fps)))
+    frame = int(frame)
+    sep = ":"
+    if drop and base in (30, 60):
+        skip = 2 if base == 30 else 4
+        per_10 = base * 600 - skip * 9
+        per_min = base * 60 - skip
+        tens, rem = divmod(frame, per_10)
+        if rem > skip:
+            frame += skip * 9 * tens + skip * ((rem - skip) // per_min)
+        else:
+            frame += skip * 9 * tens
+        sep = ";"
+    ff = frame % base
+    ss = (frame // base) % 60
+    mm = (frame // (base * 60)) % 60
+    hh = frame // (base * 3600)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}{sep}{ff:02d}"
+
+
+_STABILIZE_RUNS = {}  # shortcut: per server process; a restart forgets, when it matters keep it on disk
+
+
+def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=None,
+              dry_run=False, project_id=None, check_cancel=None, expect_sha=None):
+    """Call TimelineItem.Stabilize() on video items of one track of an ' [auto]'
+    timeline in the open project named project_name. items are 1-based item
+    numbers on the track (default all); max_items keeps only the first N of
+    those (a sample: stabilize a few, look, dry run again for the rest). The
+    timeline is made current, the Color page opened and the playhead put at
+    each item's start for the call; the current timeline, page and playhead are
+    put back after. Each result records what Stabilize() returned and the
+    seconds it took. The effect is NOT verified: stabilization is not visible
+    through GetProperty. Returns {project, timeline, targets, planned_total,
+    results, verified, note, plan_sha, dry_run, ui_restore_problems,
+    exit_status}; exit_status 1 when any item returned False. An error or a
+    cancel mid-run carries the items done so far on the exception's
+    `stabilized`."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Stabilization goes only onto "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
+    if project.IsRenderingInProgress():
+        raise Refused("a render is running; stabilize after it finishes.")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = _wanted_items(items, len(all_items))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    if max_items is None:
+        max_items = STABILIZE_DEFAULT_ITEMS
+    if not 1 <= max_items <= STABILIZE_MAX_ITEMS:
+        raise Refused(f"max_items must be 1 to {STABILIZE_MAX_ITEMS} (one call holds the Resolve "
+                      "lock while it runs; call again with items for the rest).")
+    planned_total = len(wanted)
+    remaining = wanted[max_items:]
+    wanted = wanted[:max_items]
+    if not wanted:
+        raise Refused(f"no items on V{track} of '{tl_name}' to stabilize.")
+    targets = []
+    for n in wanted:
+        it = all_items[n - 1]
+        targets.append({"index": n, "name": it.GetName(),
+                        "item_id": api._safe_call(it, "GetUniqueId"),
+                        "source_start": api._safe_call(it, "GetSourceStartFrame"),
+                        "source_end": api._safe_call(it, "GetSourceEndFrame")})
+    # Stabilize() leaves nothing readable, so a plan cannot see that it already ran. What
+    # does go stale: where the track's items sit and how many there are.
+    placed = [(it.GetStart(), it.GetEnd()) for it in all_items]
+    ran_key = (pin.unique_id, tl_id, track, tuple(t["item_id"] for t in targets))
+    # The count of real runs of these items by this server: a plan_sha already used is stale.
+    sha = plan_sha("stabilize", pin.unique_id, tl_id, track, placed, _STABILIZE_RUNS.get(ran_key, 0),
+                   [(t["index"], t["item_id"], t["source_start"], t["source_end"])
+                    for t in targets])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "targets": targets, "planned_total": planned_total, "remaining": remaining,
+           "results": [],
+           "verified": False, "note": STABILIZE_NOTE, "plan_sha": sha, "dry_run": dry_run,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
     if expect_sha and expect_sha != sha:
-        raise Refused("the plan changed since the dry run; run the dry run again and review it")
+        raise Refused("the plan changed since the dry run (the items or their source frames "
+                      "differ, or it already ran); run the dry run again and review it")
+    _STABILIZE_RUNS[ran_key] = _STABILIZE_RUNS.get(ran_key, 0) + 1
+    raw_fps = str(api._safe_call(tl, "GetSetting", "timelineFrameRate") or "")
+    m = re.match(r"\s*([0-9]+(?:\.[0-9]+)?)", raw_fps)
+    if not m:
+        raise Refused(f"the frame rate of '{tl_name}' could not be read ({raw_fps!r}), so the "
+                      "playhead cannot be placed on each item.")
+    fps = float(m.group(1))
+    drop = (str(api._safe_call(tl, "GetSetting", "timelineDropFrameTimecode")) == "1"
+            or "DF" in raw_fps.upper())
     snap = api.UISnapshot(resolve, project)
-    with snap:
-        project = pin.check(pm)
-        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
-        if not project.SetCurrentTimeline(tl):
-            raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
-        try:
-            q = render.queue_render_job(project, preset_key, os.path.realpath(output_dir),
-                                        presets, custom_name)
-        finally:
-            _restore_format(project, fmt0, out["warnings"])
-    out["warnings"] = q["warnings"] + out["warnings"]
+    try:
+        with snap:
+            if check_cancel:
+                check_cancel()
+            project = pin.check(pm)
+            if project.IsRenderingInProgress():
+                raise Refused("a render started; nothing was stabilized.")
+            if not project.SetCurrentTimeline(tl) or api._safe_call(
+                    api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") != tl_id:
+                raise api.WriteNotApplied(f"could not make '{tl_name}' current to stabilize it")
+            if api._safe_call(resolve, "GetCurrentPage") != STABILIZE_PAGE and not (
+                    resolve.OpenPage(STABILIZE_PAGE)
+                    and resolve.GetCurrentPage() == STABILIZE_PAGE):
+                raise api.WriteNotApplied(f"could not open the {STABILIZE_PAGE} page to "
+                                          f"stabilize on '{tl_name}'")
+            for t in targets:
+                if check_cancel:
+                    check_cancel()
+                pin.check(pm)
+                it = all_items[t["index"] - 1]
+                tc = _frames_to_timecode(it.GetStart(), fps, drop)
+                at_item = bool(tl.SetCurrentTimecode(tc))
+                row = {"index": t["index"], "name": t["name"], "item_id": t["item_id"],
+                       "playhead": tc, "playhead_set": at_item}
+                began = time.monotonic()
+                try:
+                    row["ok"] = bool(it.Stabilize())
+                    row["detail"] = ("Stabilize() returned True" if row["ok"]
+                                     else "Stabilize() returned False")
+                except Exception as e:
+                    row["ok"] = False
+                    row["detail"] = f"Stabilize() raised {type(e).__name__}: {e}"
+                row["elapsed_s"] = round(time.monotonic() - began, 3)
+                if not at_item:
+                    row["detail"] += "; the playhead could not be put at the item's start"
+                out["results"].append(row)
+    except BaseException as e:
+        e.stabilized = list(out["results"])
+        raise
     out["ui_restore_problems"] = snap.problems
-    if q["error"] or not q["job_id"]:
-        out["exit_status"] = 1
-        out["warnings"].insert(0, q["error"] or "no job id")
-        return out
-    job, problems = render.render_job_readback(
-        project, q["job_id"], {"TargetDir": os.path.realpath(output_dir),
-                               "TimelineName": tl.GetName(),
-                               "FormatWidth": preset["resolution"]["width"],
-                               "FormatHeight": preset["resolution"]["height"]})
-    out["job"] = job
-    out["readback_problems"] = problems
-    out["exit_status"] = 1 if problems else 0
+    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
     return out
 
 
-def _restore_format(project, fmt0, warnings):
-    """Put the Deliver page's format and codec back to fmt0."""
-    if fmt0.get("format") and fmt0.get("format") != "unknown":
-        if not (project.SetCurrentRenderFormatAndCodec(fmt0["format"], fmt0.get("codec"))
-                and (project.GetCurrentRenderFormatAndCodec() or {}) == fmt0):
-            warnings.append(f"could not put the Deliver format/codec back to {fmt0}")
-    else:
-        warnings.append("the Deliver page had no format set before, so the queued job's "
-                        "format stays selected there")
-
-
-def _restore_mode(project, mode0, warnings):
-    """Put the Deliver page's render mode back to mode0 (0 Individual
-    clips, 1 Single clip), when it was read and has changed."""
-    if mode0 not in (0, 1):
-        warnings.append(f"the Deliver page's render mode read as {mode0!r} before queueing, "
-                        "so it stays on Single clip")
-    elif project.GetCurrentRenderMode() != mode0:
-        if not (project.SetCurrentRenderMode(mode0) and project.GetCurrentRenderMode() == mode0):
-            warnings.append(f"could not put the Deliver page's render mode back to {mode0}")
+def queue_render(resolve, project_name, timeline, destination, output_dir=None,
+                 name_parts=None, config=None, dry_run=False, project_id=None, expect_sha=None,
+                 check_cancel=None, volumes_root="/Volumes"):
+    """Queue one render job for a timeline for a delivery destination (a key
+    in config["destinations"]), never start it. output_dir is the target
+    folder (default: the destination's target_dir) and name_parts name the
+    file; see queue_destination, which does the work and whose result this
+    returns."""
+    return queue_destination(resolve, project_name, timeline, destination, output_dir,
+                             name_parts, config=config, dry_run=dry_run,
+                             project_id=project_id, expect_sha=expect_sha,
+                             check_cancel=check_cancel, volumes_root=volumes_root)
 
 
 def _subtitle_tracks(project, tl):
@@ -797,7 +1463,7 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
                                + deliver.changed_fields(steps)),
            "carried_over": deliver.carried_over(steps),
            "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0,
-           "made_folder": None}
+           "made_folder": None, "render_guard": None}
     unnamed = render.unreported_jobs(project)
     if unnamed:
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
@@ -819,8 +1485,6 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
         if check_cancel:
             check_cancel()
         project = pin.check(pm)
-        fmt0 = project.GetCurrentRenderFormatAndCodec() or {}
-        mode0 = project.GetCurrentRenderMode()
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{tl.GetName()}' current to queue it")
         # Now current, so the subtitle tracks' on/off state reads true (_subtitle_tracks).
@@ -834,15 +1498,17 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
             except OSError as e:
                 raise api.WriteNotApplied(f"could not make the destination folder "
                                           f"{real_dir}: {e}")
+        guard = RenderGuard(project, tl)
         try:
-            q = render.queue_destination_job(project, dest, steps)
+            with guard:
+                guard.touch(deliver.changed_fields(steps))
+                q = render.queue_destination_job(project, dest, steps)
         except BaseException:
             if made:
                 _remove_if_empty(real_dir)
             raise
-        finally:
-            _restore_format(project, fmt0, restore_warnings)
-            _restore_mode(project, mode0, restore_warnings)
+        restore_warnings += guard.warnings()
+        out["render_guard"] = dict(guard.report(), hand_reset=guard.hand_reset())
     out["codec"] = q["codec"]
     out["warnings"] += q["warnings"] + restore_warnings
     out["ui_restore_problems"] = snap.problems
@@ -1120,6 +1786,72 @@ def _file_key(path):
     return [path, st.st_size, int(st.st_mtime)]
 
 
+def sync_inputs(resolve, project_name, reference, other, bin=None, project_id=None,
+                probe=None, autosync=False, name=None):
+    """(paths, timeline fps) sync will measure, read quickly so the caller can
+    run the audio correlation before the Resolve lock; None when they cannot be
+    read here, or when sync will refuse without needing the audio (autosync
+    with no bin, a bin or timeline name already taken): sync itself then
+    refuses with the reason, and the correlation is not run for nothing."""
+    from . import deliver, syncbuild as sb
+    if autosync and not bin:
+        return None
+    try:
+        _, project, _ = api.pin_for_write(resolve, project_name, project_id)
+        _, root = api.media_pool_root(project)
+        if bin:
+            if probe is None:
+                from . import sync as rpsync  # numpy
+                probe = rpsync.probe
+            if any(f.GetName() == bin for f in root.GetSubFolderList() or []):
+                return None
+            paths = [os.path.realpath(os.path.expanduser(p)) for p in (reference, other)]
+            vid = probe(paths[0])["video"]
+            fps = vid["fps"] if vid else None
+            first = os.path.basename(paths[0])
+        else:
+            infos = []
+            for ref in (reference, other):
+                clip, _ = sb.find_clip(root, ref)
+                infos.append(sb.clip_info(clip) if clip is not None else None)
+            if not all(infos):
+                return None
+            paths, fps, first = [i["path"] for i in infos], infos[0]["fps"], infos[0]["name"]
+        rate = sb.rate_string(fps) if fps else None
+        if not rate or not all(p and os.path.isfile(p) for p in paths):
+            return None
+        name = name or f"{os.path.splitext(first)[0]} sync{AUTO}"
+        taken = {project.GetTimelineByIndex(i).GetName()
+                 for i in range(1, int(project.GetTimelineCount() or 0) + 1)}
+        names = [name, name[:-len(AUTO)] + f" (AutoSyncAudio){AUTO}"] if autosync else [name]
+        if not name.endswith(AUTO) or taken & set(names):
+            return None
+        return paths, deliver.exact_fps(rate)
+    except (api.ResolveAPIError, OSError, KeyError, TypeError, ValueError):
+        return None
+
+
+def precomputed_measure(measure, paths, fps, **kw):
+    """measure(*paths, fps=fps, **kw) run now, offline; the returned callable
+    answers sync's identical call from that result (or its error) and calls
+    `measure` itself for any other."""
+    from . import syncbuild as sb
+    same = {k: v for k, v in kw.items() if k != "check_cancel"}
+    try:
+        got, err = measure(paths[0], paths[1], fps=fps, **kw), None
+    except sb.SyncError as e:  # sync turns it into a refusal; replay it there
+        got, err = None, e
+
+    def replay(a, b, **kwargs):
+        rest = {k: v for k, v in kwargs.items() if k not in ("fps", "check_cancel")}
+        if (a, b) != tuple(paths) or kwargs.get("fps") != fps or rest != same:
+            return measure(a, b, **kwargs)
+        if err is not None:
+            raise err
+        return got
+    return replay
+
+
 def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=False,
          window_s=None, dry_run=False, project_id=None, expect_sha=None, check_cancel=None,
          measure=None, probe=None):
@@ -1142,8 +1874,14 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
     Returns {project, mode, reference, other, measurement, timeline,
     would_create, bin, rate, offset_frames, plan, plan_sha, dry_run,
     imported, built, autosync, problems, ui_restore_problems,
-    exit_status}."""
-    from . import deliver, syncbuild as sb
+    exit_status, settings_drift_rows}. The settings guard is off by default
+    (RPRESOLVE_SETTINGS_GUARD=on enables it): then built and autosync carry
+    settings_drift None and settings_drift_rows is []. When it is enabled,
+    built and autosync each carry settings_drift (settingsguard's report on
+    that timeline), and the top-level list names the timelines that drifted
+    or could not be checked; it is not in problems and never changes
+    exit_status."""
+    from . import deliver, settingsguard as rpguard, syncbuild as sb
     if measure is None or (bin and probe is None):
         from . import sync as rpsync  # numpy
         measure, probe = measure or rpsync.measure, probe or rpsync.probe
@@ -1161,14 +1899,13 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
                 raise Refused(f"with bin, reference and other are absolute paths of files; "
                               f"{p} is not one.")
             paths.append(os.path.realpath(full))
-        if paths[0] == paths[1]:
+        if os.path.samefile(paths[0], paths[1]):  # a hard link, or one name in NFC and NFD
             raise Refused("reference and other are the same file.")
         if any(f.GetName() == bin for f in root.GetSubFolderList() or []):
             raise Refused(f"a bin named '{bin}' already exists at the media pool's root; the run "
                           "imports into a bin it makes and owns. Choose another name.")
-        pooled = {os.path.realpath(c.GetClipProperty("File Path"))
-                  for _, c in sb.walk(root) if c.GetClipProperty("File Path")}
-        already = [p for p in paths if p in pooled]
+        pooled = {rpingest.norm_path(p) for p in rpingest.pool_file_paths(root)}
+        already = [p for p in paths if rpingest.norm_path(p) in pooled]
         if already:
             raise Refused(f"{', '.join(already)} is already in the media pool; name the pool "
                           "clip instead of importing it again (and without autosync).")
@@ -1200,6 +1937,8 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
                               "(offline media); its audio cannot be measured.")
             if not info["fps"] or not info["frames"]:
                 raise Refused(f"Resolve does not report the {role} clip's FPS and Frames.")
+        if os.path.samefile(infos[0]["path"], infos[1]["path"]):
+            raise Refused("reference and other are two pool clips of the same file.")
         if not infos[0]["video"]:
             raise Refused("the reference clip has no video; the reference is the camera clip, "
                           "whose rate the timeline takes.")
@@ -1257,7 +1996,7 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
            "would_create": [name] + ([vname] if autosync else []), "bin": bin, "rate": rate,
            "offset_frames": offset_frames, "plan": the_plan["placements"], "plan_sha": sha,
            "dry_run": dry_run, "imported": [], "built": None, "autosync": None, "problems": [],
-           "ui_restore_problems": [], "exit_status": 0}
+           "ui_restore_problems": [], "exit_status": 0, "settings_drift_rows": []}
     if importing:
         out["lengths_note"] = ("lengths are from ffprobe until the files are imported; the real "
                                "run places them at the lengths Resolve reports")
@@ -1294,6 +2033,9 @@ def sync(resolve, project_name, reference, other, name=None, bin=None, autosync=
             if previous:
                 media_pool.SetCurrentFolder(previous)
     out["ui_restore_problems"] = snap.problems
+    out["settings_drift_rows"] = rpguard.digest([
+        (name, (out["built"] or {}).get("settings_drift")),
+        (vname, (out["autosync"] or {}).get("settings_drift"))])
     out["exit_status"] = (1 if out["problems"] else
                           2 if drift.get("exceeds") or (out["autosync"] or {}).get("verdict")
                           == "unverifiable" else 0)
@@ -1316,11 +2058,12 @@ def _import_pair(media_pool, root, bin, paths, rate, out):
     if not media_pool.SetCurrentFolder(folder):
         raise api.WriteNotApplied(f"could not open the bin '{bin}' to import into it")
     got = media_pool.ImportMedia(paths) or []
-    by_path = {os.path.realpath(c.GetClipProperty("File Path") or ""): c for c in got if c}
-    out["imported"] = [{"path": p, "uid": _uid(by_path.get(p))} for p in paths]
-    if any(p not in by_path for p in paths):
+    by_norm = {rpingest.norm_path(c.GetClipProperty("File Path") or ""): c for c in got if c}
+    by_path = {p: by_norm.get(rpingest.norm_path(p)) for p in paths}
+    out["imported"] = [{"path": p, "uid": _uid(by_path[p])} for p in paths]
+    if any(by_path[p] is None for p in paths):
         raise api.WriteNotApplied("ImportMedia did not return a clip for " + ", ".join(
-            p for p in paths if p not in by_path) + f"; what it did import is in the bin "
+            p for p in paths if by_path[p] is None) + f"; what it did import is in the bin "
             f"'{bin}'. Nothing was built.")
     clips = {"reference": by_path[paths[0]], "other": by_path[paths[1]]}
     infos = [sb.clip_info(clips["reference"]), sb.clip_info(clips["other"])]
@@ -1341,11 +2084,11 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
     and after, and a second [auto] timeline holding the synced reference,
     whose items say where Resolve put the other file. Returns {returned,
     changed_properties, verification_timeline, implied_offset_s, verdict,
-    problems}."""
+    problems, settings_drift}."""
     from . import deliver, syncbuild as sb
     fps = deliver.exact_fps(rate)
     res = {"returned": None, "changed_properties": [], "verification_timeline": vname,
-           "implied_offset_s": None, "verdict": None, "problems": []}
+           "implied_offset_s": None, "verdict": None, "problems": [], "settings_drift": None}
     check()
     before = sb.clip_props(clips["reference"])
     res["returned"] = bool(media_pool.AutoSyncAudio([clips["reference"], clips["other"]],
@@ -1362,7 +2105,7 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
             f"{a[0]} {a[1][0].upper()}{a[2]} {a[3]} -> {b[3]}" for a, b in zip(was, now)
             if a != b))
     check()
-    vt = sb.new_timeline(project, media_pool, vname, rate)
+    vt = sb.new_timeline(project, media_pool, vname, rate, report=res)  # sets res['settings_drift']
     problem = sb.ensure_track(vt, "audio", 2, sb.audio_subtype(infos[1]["channels"]))
     if problem:
         res["problems"].append(problem)
@@ -1391,19 +2134,10 @@ def _autosync(resolve, project, media_pool, clips, infos, tl, built, build_plan,
 # trim-review markers: review rows as markers on an [auto] timeline
 # ---------------------------------------------------------------------------
 
-def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
-                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
-                        check_cancel=None):
-    """Review the parts of `source` an ' [auto]' timeline plays
-    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
-    per row there, reading each back with GetMarkers. Adds markers only:
-    nothing is cut, rippled, moved or deleted. A row that would land on a
-    frame already holding a marker is refused and reported. words: the
-    list from cutlist.load_words, or None for silences only. Returns
-    {project, timeline, source, items, skipped_items, rows, counts,
-    thresholds, planned, refused, results, plan_sha, dry_run,
-    ui_restore_problems, exit_status}."""
-    from . import deliver, markers as mk, trimreview as tr
+def _trim_scan(resolve, project_name, timeline, source, project_id):
+    """The Resolve reads trim_review_markers starts with: the pinned project, the
+    [auto] timeline, its frame rate and the items that play source."""
+    from . import deliver, markers as mk
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
     tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
@@ -1420,10 +2154,42 @@ def trim_review_markers(resolve, project_name, timeline, source, words=None, aud
     if not items:
         raise Refused(f"no item on '{tl_name}' plays {source} at its own speed" +
                       (": " + "; ".join(skipped) if skipped else "") + ".")
+    return pm, project, pin, tl, tl_name, tl_id, tl_fps, items, skipped
+
+
+def trim_ranges(resolve, project_name, timeline, source, project_id=None):
+    """The source ranges the timeline plays, so the caller can run the silence
+    review offline (rpresolve.trimreview.review_source) before the Resolve lock
+    and pass the result to trim_review_markers as `review`."""
+    from . import markers as mk
+    return mk.ranges(_trim_scan(resolve, project_name, timeline, source, project_id)[7])
+
+
+def trim_review_markers(resolve, project_name, timeline, source, words=None, audio=True,
+                        review_opts=None, dry_run=False, project_id=None, expect_sha=None,
+                        check_cancel=None, review=None):
+    """Review the parts of `source` an ' [auto]' timeline plays
+    (rpresolve.trimreview: silences, fillers, repeats) and add one marker
+    per row there, reading each back with GetMarkers. Adds markers only:
+    nothing is cut, rippled, moved or deleted. A row that would land on a
+    frame already holding a marker is refused and reported. words: the
+    list from cutlist.load_words, or None for silences only. Returns
+    {project, timeline, source, items, skipped_items, rows, counts,
+    thresholds, planned, refused, results, plan_sha, dry_run,
+    ui_restore_problems, exit_status}.
+    review: (trim_ranges(...), review_source result) computed before the lock;
+    used only while the ranges still match the timeline."""
+    from . import markers as mk, trimreview as tr
+    pm, project, pin, tl, tl_name, tl_id, tl_fps, items, skipped = _trim_scan(
+        resolve, project_name, timeline, source, project_id)
     if check_cancel:
         check_cancel()
-    review = tr.review_source(source, words, ranges=mk.ranges(items), audio=audio,
-                              **(review_opts or {}))
+    ranges = mk.ranges(items)
+    if review is not None and review[0] == ranges:
+        review = review[1]
+    else:  # not precomputed, or the timeline moved since: review it now
+        review = tr.review_source(source, words, ranges=ranges, audio=audio,
+                                  **(review_opts or {}))
     existing = mk.existing_frames(tl)
     planned, refused = mk.plan(review["rows"], items, tl.GetStartFrame(), tl_fps, set(existing))
     shown = [{k: v for k, v in m.items() if k != "row"} for m in planned]

@@ -38,19 +38,19 @@ def call(name, args, project):
 
 
 def sandbox():
-    gh7 = rf.Clip("P1001861.MOV", "clip-gh7", {"File Path": "/w/P1001861.MOV",
+    gh7 = rf.Clip("P1000121.MOV", "clip-gh7", {"File Path": "/w/P1000121.MOV",
                                                "Input Color Space": "Panasonic V-Gamut/V-Log",
                                                "Data Level": "Auto", "FPS": 25.0,
                                                "Type": "Video"})
     iphone = rf.Clip("IMG_1.MOV", "clip-ip", {"File Path": "/w/IMG_1.MOV",
                                               "Input Color Space": "Rec.2100 HLG"})
-    v1 = [rf.Item("P1001861.MOV", 86400, 86424, gh7, [("", LUT, ["LUT: S5 IIX"])],
+    v1 = [rf.Item("P1000121.MOV", 86400, 86424, gh7, [("", LUT, ["LUT: S5 IIX"])],
                   {"ZoomX": 1.0, "Pan": 0.0}, (0, 29), {"versionName": "Version 1",
                                                         "versionType": 0}),
           rf.Item("IMG_1.MOV", 86424, 86448, iphone)]
     graded = rf.Timeline("A3 spike grades", "tl-1", 24.0, 86400, 86448,
                          {"video": [v1, [rf.Item("title", 86400, 86410)]],
-                          "audio": [[rf.Item("P1001861.MOV", 86400, 86424, gh7, nodes=None)]]})
+                          "audio": [[rf.Item("P1000121.MOV", 86400, 86424, gh7, nodes=None)]]})
     current = rf.Timeline("A3 smartreframe 9x16", "tl-2", 24.0, 86400, 86760)
     auto = rf.Timeline("SW_rigor_30 [auto]", "tl-3", 25.0, 86400, 87150)
     twin_a = rf.Timeline("Same", "tl-4")
@@ -150,6 +150,28 @@ class TestTimelineItems(Base):
             call("timeline_items", {"timeline": "Same"}, self.project)
         r = call("timeline_items", {"timeline": "tl-5"}, self.project)
         self.assertEqual(r["timeline"]["unique_id"], "tl-5")
+
+
+class TestPagingReadsOnlyThePage(Base):
+    def test_page_of_10_from_1000_items_reads_10(self):
+        items = [rf.Item(f"i{n}", n, n + 1) for n in range(1000)]
+        self.project.timelines.append(rf.Timeline("big", "tl-big", tracks={"video": [items], "audio": [[]]}))
+        with mock.patch.object(rf.Item, "GetProperty", autospec=True, return_value=1.0) as gp:
+            r = call("timeline_items", {"timeline": "tl-big", "limit": 10, "offset": 20,
+                                        "grades": False}, self.project)
+        self.assertEqual((r["total"], r["returned"], r["next_offset"]), (1000, 10, 30))
+        self.assertEqual(gp.call_count, 10 * len(self.transform_keys()))
+
+    def test_a_media_pool_page_of_10_from_1000_clips_reads_10(self):
+        self.project.pool.root = rf.Folder("Master", [rf.Clip(f"c{n}", f"id{n}") for n in range(1000)])
+        with mock.patch.object(rf.Clip, "GetClipProperty", autospec=True, return_value={}) as gp:
+            r = call("media_pool", {"limit": 10, "offset": 20}, self.project)
+        self.assertEqual((r["total"], r["returned"], r["next_offset"]), (1000, 10, 30))
+        self.assertEqual(gp.call_count, 10)
+
+    def transform_keys(self):
+        from rpresolve.mcp import tools_read
+        return tools_read.TRANSFORM
 
 
 class TestMediaPool(Base):

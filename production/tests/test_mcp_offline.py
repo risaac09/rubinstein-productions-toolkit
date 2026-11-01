@@ -1,6 +1,7 @@
 """
 Tests for the MCP offline tools (rpresolve.mcp.tools_offline): detect,
-survey, measure, endcheck and selects, called as the protocol calls them
+survey, measure, endcheck and selects (and shoot_table, qc, pipeline_proof,
+deliver_manifest, perceive, audio_report and overlay_check), called as the protocol calls them
 and once through the server as a subprocess. Synthetic words, text and
 media only; no Resolve. measure's clip test needs numpy and ffmpeg.
 
@@ -71,12 +72,27 @@ class Base(unittest.TestCase):
 
 
 class TestRegistry(unittest.TestCase):
-    def test_offline_tools_registered_and_read_only(self):
-        for name in ("detect", "survey", "measure", "endcheck", "selects"):
+    # Tools that write a new file (always, or when out is given): not read-only,
+    # but never destructive. Every other offline tool reads and writes nothing.
+    WRITES_FILES = {"detect", "survey", "measure", "endcheck", "selects", "reframe_plan",
+                    "sync_measure", "trim_review", "shoot_table", "pipeline_proof", "perceive",
+                    "audio_report"}
+    READS_ONLY = {"qc", "deliver_check", "deliver_manifest", "overlay_check",
+                  "ograf_template_check"}
+
+    def test_offline_tools_registered_with_honest_annotations(self):
+        for name in self.WRITES_FILES | self.READS_ONLY:
             t = REG.get(name)
             self.assertIsNotNone(t, name)
-            self.assertTrue(t.annotations["readOnlyHint"], name)
+            self.assertEqual(t.annotations["readOnlyHint"], name in self.READS_ONLY, name)
+            self.assertFalse(t.annotations["destructiveHint"], name)
             self.assertEqual(schema.validate({"type": "object"}, t.input_schema), [])
+
+    def test_every_tool_that_takes_out_is_not_read_only(self):
+        for t in REG.list():
+            if "out" in t.input_schema.get("properties", {}):
+                self.assertFalse(t.annotations["readOnlyHint"], t.name)
+                self.assertIn("not read-only", t.description, t.name)
 
 
 class TestPaths(Base):
@@ -214,6 +230,28 @@ class TestSurvey(Base):
         with self.assertRaisesRegex(ValueError, "does not end in .json"):
             call("survey", {"out": os.path.join(self.dir, "s.json")})
 
+    def test_free_survey_values_cannot_smuggle_an_option(self):
+        for field in ("projects", "tree_labels"):
+            for bad in (["A", "--out", "/elsewhere/x.md"], ["-x"], [""], []):
+                tool = REG.get("survey")
+                self.assertTrue(schema.validate(tool.input_schema, {field: bad}), (field, bad))
+                kw = {field: bad}
+                with self.assertRaises(workflows.Refused):
+                    workflows.survey_command("/o/r.md", **kw)
+        argv = workflows.survey_command("/o/r.md", projects=["A"], tree_labels=["L"])
+        self.assertEqual(argv.count("--out"), 1)
+
+    def test_empty_items_are_refused_by_schema_and_workflow(self):
+        for name in ("apply_grade", "reframe_apply", "stabilize"):
+            props = REG.get(name).input_schema["properties"]
+            self.assertEqual(props["items"]["minItems"], 1, name)
+            errs = schema.validate(REG.get(name).input_schema, {"items": []})
+            self.assertTrue(any("items" in e and "fewer than 1" in e for e in errs), name)
+        with self.assertRaises(workflows.Refused):
+            workflows._wanted_items([], 3)
+        self.assertEqual(workflows._wanted_items(None, 3), [1, 2, 3])
+        self.assertEqual(workflows._wanted_items([2, 1, 2], 3), [1, 2])
+
     def test_failed_survey_leaves_no_empty_report(self):
         def failing(out, json_out=None, **kw):
             return {"returncode": 1, "out": out, "json_out": json_out,
@@ -269,6 +307,56 @@ class TestMeasure(Base):
                  ToolContext(is_cancelled=lambda: True))
 
 
+SEVEN = {"shoot_table": {"paths": ["rel/a.mov"]}, "qc": {"file": "rel/a.mov"},
+         "pipeline_proof": {"test": "rel/a.mov", "reference": "rel/b.mov"},
+         "deliver_manifest": {"folder": "rel"},
+         "perceive": {"file": "rel/a.mov", "out": "/abs/out"},
+         "audio_report": {"file": "rel/a.mov", "out": "/abs/out"},
+         "overlay_check": {"file": "rel/a.mov"}}
+
+
+class TestSevenMore(Base):
+    def test_registered_read_only_and_refuse_relative_paths(self):
+        for name, args in SEVEN.items():
+            t = REG.get(name)
+            self.assertIsNotNone(t, name)
+            if name in ("pipeline_proof", "overlay_check", "perceive", "audio_report"):
+                try:
+                    import numpy  # noqa: F401
+                except ImportError:
+                    continue  # these raise the numpy message before the path check
+            with self.assertRaisesRegex(ValueError, "absolute"):
+                call(name, args)
+
+    def test_shoot_table_wants_cam_equals_seconds(self):
+        with self.assertRaisesRegex(ValueError, "CAM=SECONDS"):
+            call("shoot_table", {"paths": [self.dir], "camera_offset": ["cam-a"]})
+
+    def test_qc_fps_needs_a_destination(self):
+        with self.assertRaisesRegex(ValueError, "destination"):
+            call("qc", {"file": self.words, "fps": "25"})
+
+    def test_deliver_manifest_verify_reads_and_writes_nothing(self):
+        sub = os.path.join(self.dir, "deliv", "dest")
+        os.makedirs(sub)
+        with open(os.path.join(sub, "a.mp4"), "wb") as f:
+            f.write(b"abc")
+        sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        with open(os.path.join(self.dir, "deliv", "checksums.txt"), "w") as f:
+            f.write(f"{sha}  dest/a.mp4\n")
+        root = os.path.join(self.dir, "deliv")
+        r = call("deliver_manifest", {"folder": root, "verify": True})
+        self.assertTrue(r["ok"])
+        with open(os.path.join(sub, "a.mp4"), "wb") as f:
+            f.write(b"abd")
+        self.assertFalse(call("deliver_manifest", {"folder": root, "verify": True})["ok"])
+        self.assertFalse(os.path.exists(os.path.join(root, "manifest.md")))
+
+    def test_deliver_manifest_preview_names_what_is_missing(self):
+        with self.assertRaisesRegex(ValueError, "project, approval"):
+            call("deliver_manifest", {"folder": self.dir})
+
+
 class TestEndToEnd(Base):
     def test_selects_through_the_server(self):
         env = dict(os.environ, RPRESOLVE_MCP_NO_RESOLVE="1")
@@ -295,6 +383,25 @@ class TestEndToEnd(Base):
         bad = by_id[4]["result"]
         self.assertTrue(bad["isError"])
         self.assertIn("absolute", bad["content"][0]["text"])
+
+
+class TestDeliverCheckWarnSummary(Base):
+    def test_summary_names_warn_count_and_description_says_warn_is_advice(self):
+        def stub(warn):
+            rows = [{"check": "fps_floor", "status": "WARN" if warn else "PASS"}]
+            counts = {"PASS": 0 if warn else 1, "FAIL": 0, "SKIP": 0, "WARN": 1 if warn else 0}
+            return {"checks": rows, "counts": counts, "status": "pass"}
+        f = os.path.join(self.dir, "SW999_Test_a.mp4")
+        open(f, "w").close()
+        for warn in (True, False):
+            with mock.patch("rpresolve.delivercheck.check", return_value=stub(warn)):
+                r = call("deliver_check", {"file": f, "destination": "social_9x16",
+                                           "loudness": False})
+            self.assertEqual("1 warn" in r["summary"], warn, r["summary"])
+            self.assertEqual("every asserted rule passes" in r["summary"], not warn, r["summary"])
+        desc = REG.get("deliver_check").description
+        self.assertIn("WARN", desc)
+        self.assertIn("never changes the outcome", desc)
 
 
 if __name__ == "__main__":

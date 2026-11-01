@@ -5,7 +5,10 @@ deliver_captions, which adds a file beside a render.
 The rules every write tool keeps:
 - The call names the project (project, and project_id when known); the
   open project must match, and is re-checked before every change.
-- Additive only: nothing that already exists is modified.
+- Additive only: nothing that already exists is modified. There are two exceptions:
+  set_color_management, only on a fresh project (no timeline, no clip), and relink,
+  which points a clip that is offline at plan time at a file that verifies as the
+  same take (never an online clip, never on a name alone).
 - dry_run defaults to true and returns a plan_sha. A real run must pass
   that plan_sha, and is refused when the plan has changed since.
 - Every run holds the cross-process lock; a real run is journalled
@@ -20,18 +23,30 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, deliver, paths, syncbuild, workflows
-from ..config import load_config
+from .. import api, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
+from .. import relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
 
 DESTRUCTIVE = {**WRITE, "destructiveHint": True}
-from .tools_offline import (REVIEW_PROPS, _abs, _existing, _page, deliver_config,
-                            destination_keys)
+from .tools_offline import (PAGING, REVIEW_PROPS, _abs, _existing, _limit, _page,
+                            deliver_config, destination_keys)
 
 WRITE_LOCK_WAIT = 30.0
+
+# queue_render once took a render preset (preset, with output_dir and custom_name). A call
+# that still passes one hears what to pass now, not just "unknown property".
+QUEUE_RENDER_RETIRED = {
+    "preset": "The render presets are gone: queue_render queues for a delivery destination. "
+              "Pass 'destination' (a key in the config's destinations, such as youtube_16x9 or "
+              "client_master) with 'name' and 'target_dir'.",
+    "output_dir": "It went with the presets. Pass 'destination' with 'target_dir' (the folder) "
+                  "and 'name' (the file name parts).",
+    "custom_name": "It went with the presets. Pass 'destination' with 'name'; the house rule "
+                   "names the file from those parts.",
+}
 
 
 def _require_sha(args):
@@ -49,14 +64,17 @@ def _journalled(tool, args, run):
     try:
         result = run()
     except BaseException as e:
-        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}")
+        done = {k: getattr(e, k) for k in ("relinked", "stabilized") if getattr(e, k, None)}
+        warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}", done or None)
         if warn:
             e.args = (f"{e} ({warn})",) + e.args[1:]
         raise
     status = {0: "ok", 2: "needs_review"}.get(result.get("exit_status"), "failed")
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
-                                                      "left_behind", "plan_sha") if k in result})
+                                                      "applied", "left_behind", "plan_sha",
+                                                      "settings_drift_rows", "relinked", "stabilized")
+                           if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
         result["journal"]["warning"] = warn
@@ -154,6 +172,7 @@ def cut(args, ctx):
                                       if x.get("refused")]) +
                             (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
                              if bars else "") +
+                            settingsguard.clause(r.get("settings_drift_rows")) +
                             ("; the UI was not fully restored" if r["ui_restore_problems"]
                              else ""))
         return r
@@ -217,6 +236,75 @@ def duplicate_timeline_auto(args, ctx):
         return run() if args["dry_run"] else _journalled("duplicate_timeline_auto", args, run)
 
 
+# ---------------------------------------------------------------------------
+# set_color_management, timeline_from_clips
+# ---------------------------------------------------------------------------
+
+def set_color_management(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.set_color_management(
+            ctx.session.get(), args["project"], args.get("preset"), dry_run=args["dry_run"],
+            project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
+            expect_sha=args.get("plan_sha"))
+        name = r["project"]["name"]
+        if not r["would_change"]:
+            r["summary"] = (f"'{name}' already has the '{r['preset']}' settings; nothing to set")
+        elif r["dry_run"]:
+            r["summary"] = (f"would set {', '.join(r['would_change'])} on '{name}' (a fresh "
+                            f"project, '{r['preset']}' preset)" + _how(r))
+        elif r["failed"]:
+            kept = ", ".join(a["key"] for a in r["applied"]) or "none"
+            r["summary"] = (f"set_color_management FAILED on {r['failed']['key']}: "
+                            f"{r['failed']['problem']} Nothing is rolled back; keys already "
+                            f"set and left as they are: {kept}")
+        elif r["drift"]:
+            r["summary"] = ("set " + ", ".join(a["key"] for a in r["applied"]) + f" on '{name}', "
+                            "but Resolve changed something afterwards: " + "; ".join(r["drift"]))
+        else:
+            r["summary"] = (f"set {', '.join(a['key'] for a in r['applied'])} on '{name}' and "
+                            "read each back")
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("set_color_management", args, run)
+
+
+def timeline_from_clips(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.timeline_from_clips(
+            ctx.session.get(), args["project"], args["name"], bin=args.get("bin"),
+            clips=args.get("clips"), order=args["order"], dry_run=args["dry_run"],
+            project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
+            expect_sha=args.get("plan_sha"))
+        n, skipped, conf = len(r["plan"]), len(r["skipped"]), len(r["conformed"])
+        extra = ((f"; {skipped} item(s) in the bin skipped (not placeable)" if skipped else "") +
+                 (f"; {conf} clip(s) at another frame rate than the timeline, conformed by "
+                  "Resolve to real time" if conf else ""))
+        if r["dry_run"]:
+            r["summary"] = (f"would build '{r['timeline']}' from {n} clip(s), "
+                            f"{r['total_frames']} frames at {r['rate']} fps, in {r['order']} "
+                            f"order, in the open bin '{r['lands_in_bin']}'" + extra + _how(r))
+        elif r["problems"]:
+            r["summary"] = (f"timeline_from_clips FAILED: '{r['timeline']}' was made but does "
+                            "not match the plan, and is left in the project for you to check or "
+                            "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
+        else:
+            r["summary"] = (f"built '{r['timeline']}' from {n} clip(s), every item read back in "
+                            "order" + extra + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        r = run() if args["dry_run"] else _journalled("timeline_from_clips", args, run)
+    page = _page(r["plan"], args)
+    r["plan"] = page.pop("rows")
+    r.update(page)
+    return r
+
+
 def apply_grade(args, ctx):
     _require_sha(args)
 
@@ -248,51 +336,74 @@ def apply_grade(args, ctx):
         return run() if args["dry_run"] else _journalled("apply_grade", args, run)
 
 
-def queue_render(args, ctx):
+def reframe_apply(args, ctx):
     _require_sha(args)
-    if bool(args.get("preset")) == bool(args.get("destination")):
-        raise workflows.Refused("give exactly one of preset (a render preset, with output_dir) "
-                                "or destination (a delivery destination, with name and "
-                                "target_dir).")
-    if args.get("destination"):
-        return _queue_destination(args, ctx)
-    if args.get("name") or args.get("target_dir"):
-        raise ValueError("name and target_dir go with destination; a preset takes output_dir "
-                         "and custom_name.")
-    if not args.get("output_dir"):
-        raise ValueError("a preset needs output_dir.")
-    out_dir = _abs(args["output_dir"], "output_dir")
-    problem = paths.out_problem(os.path.join(out_dir, "x"), any_git_tree=True)
-    if problem:
-        raise paths.OutputRefused(problem.replace(os.path.join(out_dir, "x"), out_dir))
-    presets = load_config()["render_presets"]
+    plan = _abs(args["plan"], "plan")
 
     def run():
-        r = workflows.queue_render(ctx.session.get(), args["project"], args["timeline"],
-                                   args["preset"], out_dir, presets, args.get("custom_name"),
-                                   dry_run=args["dry_run"], project_id=args.get("project_id"),
-                                   expect_sha=args.get("plan_sha"))
-        tl, name = r["timeline"]["name"], r["preset"]["name"]
-        changed = ", ".join(r["deliver_changed"])
+        r = workflows.reframe_apply(ctx.session.get(), args["project"], args["timeline"], plan,
+                                    track=args["track"], items=args.get("items"),
+                                    allow_bars=args["allow_bars"], dry_run=args["dry_run"],
+                                    project_id=args.get("project_id"),
+                                    check_cancel=ctx.check_cancel,
+                                    expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        rest = (f"; {len(r['unchanged'])} unchanged" if r["unchanged"] else "") + \
+               (f"; {len(r['refused'])} refused" if r["refused"] else "")
+        if any("squeeze" in w for w in r["warnings"]):
+            rest += "; squeezed items: the anamorphic transform is unchecked live, look at them"
         if r["dry_run"]:
-            r["summary"] = (f"would queue '{tl}' as {name} to {r['output']} (not started); this "
-                            f"sets the Deliver page's {changed}" + _how(r))
-        elif r["exit_status"] == 0:
-            r["summary"] = (f"queued '{tl}' as {name} to {r['output']}, job "
-                            f"{r['job']['JobId']}; NOT started, Isaac starts renders. Deliver "
-                            f"page fields now changed: {changed}" + _ui(r))
+            r["summary"] = (f"would set Zoom, Pan and Tilt on {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']}{rest}" + _how(r))
+        elif not n:
+            r["summary"] = f"nothing to write on '{tl}'{rest}"
         else:
-            r["summary"] = _not_clean(r)
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["applied"] = ok
+            r["summary"] = (f"set and read back the framing of {ok} of {len(r['results'])} "
+                            f"item(s) on '{tl}'{rest}" +
+                            (f"; FRAMING LEAKED to {len(r['leaks'])} item(s) elsewhere"
+                             if r["leaks"] else "; no other timeline changed"))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
-        return run() if args["dry_run"] else _journalled("queue_render", args, run)
+        return run() if args["dry_run"] else _journalled("reframe_apply", args, run)
 
 
-def _queue_destination(args, ctx):
-    if args.get("output_dir") or args.get("custom_name"):
-        raise ValueError("a destination takes target_dir and name; output_dir and custom_name "
-                         "go with preset.")
+def stabilize(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.stabilize(ctx.session.get(), args["project"], args["timeline"],
+                                track=args["track"], items=args.get("items"),
+                                max_items=args.get("max_items"), dry_run=args["dry_run"],
+                                project_id=args.get("project_id"),
+                                check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        rest = r["remaining"]
+        sample = ((f" ({n} of {r['planned_total']} item(s); call again with "
+                   + (f"item {rest[0]}" if len(rest) == 1 else f"items {rest[0]} to {rest[-1]}")
+                   + " for the rest)") if rest else "")
+        if not r["dry_run"]:
+            r["stabilized"] = r["results"]
+        if r["dry_run"]:
+            r["summary"] = (f"would call Stabilize() on {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']}{sample}; it can take a long time on large "
+                            "items, and the effect cannot be read back" + _how(r))
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            secs = sum(x["elapsed_s"] for x in r["results"])
+            r["summary"] = (f"Stabilize() returned True for {ok} of {len(r['results'])} item(s) "
+                            f"on '{tl}' in {secs:.1f} s{sample}; the effect is NOT verified "
+                            "(stabilization is not visible through GetProperty)" + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("stabilize", args, run)
+
+
+def queue_render(args, ctx):
+    _require_sha(args)
     config = deliver_config()
     target = _abs(args["target_dir"], "target_dir") if args.get("target_dir") else None
     ctx.check_cancel()
@@ -305,6 +416,17 @@ def _queue_destination(args, ctx):
                                    expect_sha=args.get("plan_sha"),
                                    check_cancel=ctx.check_cancel)
         tl, d = r["timeline"]["name"], r["destination"]["name"]
+        # Added after plan_sha is fixed, so it never moves the sha; it never refuses.
+        floor, rate = deliver.destination(config, args["destination"]).get("min_fps"), \
+            deliver.exact_fps(r["timeline"]["fps"])
+        try:  # a bad min_fps in a config overlay must not fail a job already queued
+            floor = float(delivercheck.parse_fps(floor)) if floor else None
+        except ValueError:
+            floor = None
+        if floor and rate is not None and rate < floor - 0.005:
+            r["warnings"].append(f"the timeline runs at {r['timeline']['fps']} fps, under {d}'s "
+                                 f"{floor:.2f} fps floor; it is queued as it is, the frame "
+                                 "rate stays the timeline's.")
         side = f" with sidecar {os.path.basename(r['sidecar'])}" if r["sidecar"] else ""
         if r["dry_run"]:
             r["summary"] = (f"would queue '{tl}' for {d} as {r['output']}{side} (not started); "
@@ -314,10 +436,12 @@ def _queue_destination(args, ctx):
         elif r["exit_status"] == 0:
             made = f" (made the folder {r['made_folder']})" if r.get("made_folder") else ""
             r["summary"] = (f"queued '{tl}' for {d} as {r['output']}{side}{made}, job "
-                            f"{r['job']['JobId']}; NOT started, Isaac starts renders. Resolve's "
+                            f"{r['job']['JobId']}; NOT started, the operator starts renders. Resolve's "
                             "job list does not report " +
                             (", ".join(r["unverified"]) or "nothing else") +
-                            "; check the rendered file with deliver_check" + _ui(r))
+                            "; check the rendered file with deliver_check" + _ui(r) +
+                            (f"; {hand}" if (hand := (r.get("render_guard") or {})
+                                             .get("hand_reset")) else ""))
         else:
             r["summary"] = _not_clean(r)
         return r
@@ -406,12 +530,25 @@ def deliver_captions(args, ctx):
 def sync(args, ctx):
     _require_sha(args)
     try:
-        from .. import sync as _numpy_check  # noqa: F401  (numpy, before the lock)
+        from .. import sync as rpsync  # numpy, before the lock
     except ImportError as e:
         raise RuntimeError(f"sync needs numpy ({e}); run the server on /usr/bin/python3.")
     if args.get("bin"):
         for field in ("reference", "other"):
             _existing(args[field], field)
+    ctx.check_cancel()
+    # The correlation runs here, before the lock; a short locked read gives it the files.
+    measure = None
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        got = workflows.sync_inputs(ctx.session.get(), args["project"], args["reference"],
+                                    args["other"], bin=args.get("bin"),
+                                    project_id=args.get("project_id"),
+                                    autosync=args["autosync"], name=args.get("name"))
+    if got:
+        kw = {"check_cancel": ctx.check_cancel}
+        if args["window_s"]:
+            kw["window_s"] = args["window_s"]
+        measure = workflows.precomputed_measure(rpsync.measure, got[0], got[1], **kw)
     ctx.check_cancel()
 
     def run():
@@ -419,7 +556,7 @@ def sync(args, ctx):
                            name=args.get("name"), bin=args.get("bin"), autosync=args["autosync"],
                            window_s=args["window_s"], dry_run=args["dry_run"],
                            project_id=args.get("project_id"), expect_sha=args.get("plan_sha"),
-                           check_cancel=ctx.check_cancel)
+                           check_cancel=ctx.check_cancel, measure=measure)
         m, f = r["measurement"], r["measurement"]["frames"]
         d = m.get("drift") or {}
         where = (f"offset {m['offset_s']:+.4f} s, placed at {f['placed']:+d} frame(s) at "
@@ -442,6 +579,7 @@ def sync(args, ctx):
             r["summary"] = (f"built '{r['timeline']}': {ok} of {n} placement(s) read back as "
                             f"planned; {where}{drift}" +
                             (f"; AutoSyncAudio {a['verdict']}" if a else "") +
+                            settingsguard.clause(r.get("settings_drift_rows")) +
                             (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "") +
                             _ui(r))
         return r
@@ -451,19 +589,26 @@ def sync(args, ctx):
 
 
 def trim_review_markers(args, ctx):
-    from .. import cutlist, trimreview as tr
+    from .. import cutlist
     from .tools_offline import review_opts
     _require_sha(args)
     if bool(args.get("manifest")) == bool(args.get("source")):
         raise ValueError("give exactly one of manifest (a cut manifest) or source (a media file).")
     if args.get("manifest"):
         m = cutlist.load_manifest(_existing(args["manifest"], "manifest"))
-        source = m["source_path"]
-        words_path = _existing(args["words"], "words") if args.get("words") else m["words"]
+        one = cutlist.single_source(m, "trim_review_markers")
+        source = one["path"]
+        words_path = _existing(args["words"], "words") if args.get("words") else one["words"]
     else:
         source = _existing(args["source"], "source")
         words_path = _existing(args["words"], "words") if args.get("words") else None
     words = cutlist.load_words(words_path) if words_path else None  # offline, before the lock
+    ctx.check_cancel()
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):  # a short read: which ranges the timeline plays
+        ranges = workflows.trim_ranges(ctx.session.get(), args["project"], args["timeline"],
+                                       source, project_id=args.get("project_id"))
+    review = (ranges, trimreview.review_source(source, words, ranges=ranges, audio=args["audio"],
+                                               **review_opts(args)))  # offline, before the lock
     ctx.check_cancel()
 
     def run():
@@ -472,7 +617,7 @@ def trim_review_markers(args, ctx):
                                           review_opts=review_opts(args), dry_run=args["dry_run"],
                                           project_id=args.get("project_id"),
                                           expect_sha=args.get("plan_sha"),
-                                          check_cancel=ctx.check_cancel)
+                                          check_cancel=ctx.check_cancel, review=review)
         tl, c = r["timeline"]["name"], r["counts"]["kind"]
         kinds = ", ".join(f"{n} {k}" for k, n in c.items() if n)
         why = {}
@@ -493,6 +638,53 @@ def trim_review_markers(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("trim_review_markers", args, run)
+
+
+def relink(args, ctx):
+    _require_sha(args)
+    roots = []
+    for p in args["search_roots"]:
+        root = _existing(p, "search_roots")
+        if not os.path.isdir(root):
+            raise ValueError(f"search_roots {root} is not a folder.")
+        roots.append(os.path.normpath(root))
+    ctx.check_cancel()
+    index = rprelink.index_roots(roots, check=ctx.check_cancel)  # the walk, before the lock
+
+    def run():
+        r = workflows.relink(ctx.session.get(), args["project"], roots, folder=args.get("folder"),
+                             dry_run=args["dry_run"], project_id=args.get("project_id"),
+                             max_items=args.get("max_items"), check_cancel=ctx.check_cancel,
+                             expect_sha=args.get("plan_sha"), index=index)
+        sc = r["status_counts"]
+        offline = sum(sc.values())
+        left = "; ".join(f"{n} {k}" for k, n in sorted(sc.items()) if k != "VERIFIED")
+        left = f"; not relinked: {left}" if left else ""
+        if r["dry_run"]:
+            where = ", ".join(f"{v} ({n})" for v, n in sorted(r["offline_volumes"].items(),
+                                                              key=lambda kv: -kv[1])[:5])
+            r["summary"] = (f"would relink {sc.get('VERIFIED', 0)} of {offline} offline clip(s) "
+                            f"({r['online']} online clip(s) are not touched){left}. Offline paths are "
+                            f"under: {where or 'none'}; check that every share and drive you expect "
+                            "is mounted, since an unmounted one reads as offline" + _how(r))
+        else:
+            c = r["counts"]
+            r["summary"] = (f"relinked {c.get('relinked', 0)} of {offline} offline clip(s), each "
+                            f"read back{left}"
+                            + (f"; {c['FAILED']} FAILED" if c.get("FAILED") else "")
+                            + (f"; {c['not attempted (max_items)']} not attempted (max_items): "
+                               "dry run again to plan the rest"
+                               if c.get("not attempted (max_items)") else "")
+                            + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
+                            + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        r = run() if args["dry_run"] else _journalled("relink", args, run)
+    page = _page(r.pop("results"), args)
+    r["results"] = page.pop("rows")
+    r.update(page)
+    return r
 
 
 # ---------------------------------------------------------------------------
@@ -538,11 +730,17 @@ def register(registry):
         "[auto]' timeline per clip from the source's frames, plus reframed 9:16 and 1:1 "
         "versions ('<prefix>_<clip>_9x16 [auto]', '_1x1 [auto]'; aspects) whose items each "
         "take their span's crop (from reframe_plan) or the clip's face_x, reading every item "
-        "and transform back. A version with no reframe is not built and is named UNREFRAMED; "
+        "and transform back. A manifest with several sources builds the 16:9 with each item from "
+        "its own source's media-pool clip (import every source first) and no reframed version. "
+        "A version with no reframe is not built and is named UNREFRAMED; "
         "one whose picture does not fill the frame is built and named BARS. Clips that fail "
         "endcheck are skipped unless force is true. Each timeline that already exists is "
         "skipped; a missing version beside an existing 16:9 is built from it when its items "
-        "still match the manifest's spans, and refused when they do not. "
+        "still match the manifest's spans, and refused when they do not. When the settings "
+        "guard is enabled (RPRESOLVE_SETTINGS_GUARD=on; off by default), a timeline whose "
+        "settings read differently after its custom-settings write is named SETTINGS DRIFT "
+        "(settings_drift_rows); it is reported, nothing is set back, and the exit status does "
+        "not change. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
@@ -581,6 +779,55 @@ def register(registry):
          "required": ["project", "timeline"], "additionalProperties": False},
         duplicate_timeline_auto, title="Duplicate a timeline as [auto]", annotations=WRITE))
     registry.add(Tool(
+        "set_color_management",
+        "Set the colour-management Project Settings that `ingest` needs (preset 'managed': "
+        "colorScienceMode davinciYRGBColorManagedv2) on the open project, each value read "
+        "back, then every key read again to catch one Resolve reset. Refuses unless the "
+        "project is fresh: no timelines and no clips in the media pool, because changing "
+        "colour science under existing work changes how it looks. Never creates, loads or "
+        "saves a project: a person makes the project in Resolve, then calls this. Dry run "
+        "first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "preset": {"type": "string", "enum": ["managed"], "default": "managed",
+                       "description": "The settings to apply (rpresolve.colormgmt.PRESETS)."},
+            **DRY_RUN},
+         "required": ["project"], "additionalProperties": False},
+        set_color_management, title="Set colour management on a fresh project",
+        annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "timeline_from_clips",
+        "Build a new timeline whose name ends ' [auto]' from media-pool clips, one after "
+        "another in a stated order: the clips directly in a bin (bin, as a path from the root "
+        "such as 'GH7'), or clips named in `clips` (unique ids, absolute file paths or "
+        "names). order is name or path (natural order, so P2 comes before P10) or given. "
+        "Picture only, on V1, following the project's frame rate and size; a clip at another "
+        "frame rate is conformed by Resolve to real time and the plan says so. Items in a bin "
+        "that cannot be placed (timelines, audio-only clips) are listed under skipped. Every "
+        "item is read back (the clip, its first source frame, its length, no gap or overlap). "
+        "The timeline is added to the media-pool bin that is open in Resolve (lands_in_bin). "
+        "Nothing existing is modified or removed; a timeline that does not read back is named "
+        "under left_behind. The current timeline, playhead and page are put back. Dry run "
+        "first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "name": {"type": "string", "pattern": " \\[auto\\]$", "minLength": 8,
+                     "description": "Name for the timeline; must end ' [auto]'."},
+            "bin": {"type": "string", "minLength": 1,
+                    "description": "A bin path from the root; its clips are placed. Give this "
+                    "or clips."},
+            "clips": {"type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": True,
+                      "items": {"type": "string", "minLength": 1},
+                      "description": "Clips to place, by unique id, absolute file path or "
+                      "clip name. Give this or bin."},
+            "order": {"type": "string", "enum": ["name", "path", "given"], "default": "name",
+                      "description": "name or path: natural order of the clip name or file "
+                      "path. given: the order of clips (or the bin as Resolve lists it)."},
+            **DRY_RUN,
+            **PAGING, "limit": _limit(100, 500)},
+         "required": ["project", "name"], "additionalProperties": False},
+        timeline_from_clips, title="Build a timeline from clips", annotations=WRITE))
+    registry.add(Tool(
         "apply_grade",
         "Apply a LUT (to one node) or a .drx grade still (with its {num_nodes, labels} "
         "manifest beside it) to items on one video track of an ' [auto]' timeline only, and "
@@ -594,7 +841,7 @@ def register(registry):
             "timeline": {"type": "string",
                          "description": "An ' [auto]' timeline's name or unique id."},
             "track": {"type": "integer", "minimum": 1, "default": 1},
-            "items": {"type": "array", "items": {"type": "integer", "minimum": 1},
+            "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Item numbers on the track, from 1 (default: all)."},
             "lut": {"type": "object", "properties": {
@@ -615,10 +862,67 @@ def register(registry):
          "required": ["project", "timeline"], "additionalProperties": False},
         apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
     registry.add(Tool(
+        "reframe_apply",
+        "Set ZoomX, ZoomY, Pan and Tilt on video items of one track of an ' [auto]' timeline "
+        "from a framing plan (reframe_plan with items), and read each back. Each item takes "
+        "the plan entry for its file; the props are computed for this timeline's size and "
+        "input scaling, which must be the plan's. Refused: a timeline not ending ' [auto]', "
+        "an item with its own Scaling, a clip of another resolution than planned, an entry "
+        "with no crop, a zoom below the fill scale (black would show) unless allow_bars. An "
+        "entry whose move is 'none' writes nothing: centre fill already keeps the head. "
+        "After the real run every item on other timelines using the same media is compared "
+        "and any change is reported as a leak. Dry run first; the real run needs its "
+        "plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "plan": {"type": "string",
+                     "description": "Absolute path of the framing plan JSON reframe_plan wrote."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            "allow_bars": {"type": "boolean", "default": False,
+                           "description": "Allow a scale below the fill scale (black bars)."},
+            **DRY_RUN},
+         "required": ["project", "timeline", "plan"], "additionalProperties": False},
+        reframe_apply, title="Apply a framing plan", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "stabilize",
+        "Call Resolve's TimelineItem.Stabilize() on video items of one track of an ' [auto]' "
+        "timeline only (any other timeline is refused). It makes the timeline current, opens "
+        "the Color page and puts the playhead at each item's start, then calls Stabilize() "
+        "item by item and records what it returned (True or False) and the seconds it took. "
+        "Stabilize() uses each item's current stabilizer settings (mode, strength, smooth, "
+        "zoom) from the Color page, which the API cannot set. THE EFFECT IS NOT VERIFIED: "
+        "stabilization is not visible through GetProperty (a 2026-09-26 spike found "
+        "SmartReframe's result invisible there; the same is assumed), so the tool reports "
+        "only what Stabilize() returned. It can take a long time on large (6K) items, and the "
+        "call holds the Resolve lock throughout, so one call does at most max_items (default "
+        "10, at most 25) and names the rest; stabilize a small sample first and check it by eye. A cancel stops before the next "
+        "item. The current timeline, page and playhead are put back. Dry run first; the real "
+        "run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10,
+                          "description": "Stabilize at most this many items per call, the first "
+                          "of the selection (default 10, at most 25: one call holds the Resolve "
+                          "lock); the result's remaining lists the item numbers left."},
+            **DRY_RUN},
+         "required": ["project", "timeline"], "additionalProperties": False},
+        stabilize, title="Stabilize items", annotations=DESTRUCTIVE))
+    registry.add(Tool(
         "queue_render",
-        "Queue one render job for a timeline, from a resolve-config.json preset (with "
-        "output_dir) or a delivery destination (with name and target_dir). It never starts a "
-        "render: Isaac starts renders. A destination sets format, codec, size, frame rate, "
+        "Queue one render job for a timeline for a delivery destination (with name and "
+        "target_dir); a destination is the only way to queue a render. It never starts a "
+        "render: the operator starts renders. A destination sets format, codec, size, frame rate, "
         "audio, colour tags and captions, and names the file by the house rule "
         "(SW001_Guest_01_example-clip_16x9.mp4, or Client_slug_master.mov); it is refused "
         "when the folder is missing, on an unmounted share or in a git repository, when the "
@@ -631,14 +935,6 @@ def register(registry):
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string", "description": "Timeline name or unique id."},
-            "preset": {"type": "string", "enum": sorted(load_config()["render_presets"]),
-                       "description": "A render preset from resolve-config.json."},
-            "output_dir": {"type": "string",
-                           "description": "With preset: absolute path of an existing folder "
-                           "outside any git repository."},
-            "custom_name": {"type": "string", "pattern": "^[A-Za-z0-9 _.()-]{1,120}$",
-                            "description": "With preset: file name before the preset suffix "
-                            "(default: the timeline name)."},
             "destination": {"type": "string", "minLength": 1,
                             "description": "A delivery destination, a key in the config's "
                             "destinations (checked when called, so an overlay edit needs no "
@@ -656,16 +952,17 @@ def register(registry):
                 "client": {"type": "string", "pattern": f"^{deliver.WORD}$",
                            "description": "client_master only."}},
                 "additionalProperties": False,
-                "description": "With destination: show, episode, guest, index and slug; for "
-                "client_master, client and slug."},
+                "description": "Show, episode, guest, index and slug; for client_master, "
+                "client and slug."},
             "target_dir": {"type": "string",
-                           "description": "With destination: absolute path of an existing "
-                           "folder outside any git repository (default: the destination's "
-                           "target_dir in the config)."},
+                           "description": "Absolute path of an existing folder outside any "
+                           "git repository (default: the destination's target_dir in the "
+                           "config)."},
             **DRY_RUN},
-         "required": ["project", "timeline"],
+         "required": ["project", "timeline", "destination"],
          "additionalProperties": False},
-        queue_render, title="Queue a render", annotations=WRITE))
+        queue_render, title="Queue a render", annotations=WRITE,
+        retired_args=QUEUE_RENDER_RETIRED))
     registry.add(Tool(
         "create_captions",
         "Transcribe an ' [auto]' timeline's audio into captions with Resolve's auto captions "
@@ -703,7 +1000,11 @@ def register(registry):
         "compared with the measured offset, never trusted alone. A weak or inconsistent match is "
         "refused; a placement that leaves either end of the overlap more than half a frame out "
         "(rounding plus half the drift) is reported with the retime that would cancel the "
-        "drift, never corrected. "
+        "drift, never corrected. When the settings guard is enabled "
+        "(RPRESOLVE_SETTINGS_GUARD=on; off by default), a timeline whose settings read "
+        "differently after its custom-settings write is named SETTINGS DRIFT "
+        "(settings_drift_rows); it is reported, nothing is set back, and the exit status does "
+        "not change. "
         "Making a multicam clip stays a hand step. Dry run first; the real run needs its "
         "plan_sha.",
         {"type": "object", "properties": {
@@ -749,6 +1050,37 @@ def register(registry):
             **REVIEW_PROPS, **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         trim_review_markers, title="Mark silences and fillers", annotations=WRITE))
+    registry.add(Tool(
+        "relink",
+        "Point the open project's offline clips (File Path missing on disk) at files under "
+        "search_roots that verify as the same take: start timecode, frame count (one frame of "
+        "slack), resolution and frame rate must all be known and agree. A name alone never "
+        "relinks; stills and audio-only clips are reported UNVERIFIABLE and left alone; two "
+        "verified files of different sizes are AMBIGUOUS and left alone. Online clips are never "
+        "touched. Uses Resolve's RelinkClips (the folder only), which should leave the clip's "
+        "identity, timeline items, grade and tags alone; each clip is read back, and a property "
+        "that reads differently afterwards is reported, never set back. That has not yet been "
+        "confirmed on a live project: try it on a scratch project first. This is the one write "
+        "that changes an existing clip, and only an offline one. An unmounted share or drive "
+        "reads as offline, so check the dry run's offline paths. Keep search_roots narrow: they "
+        "are walked while the lock is held. max_items relinks a sample first; dry run again "
+        "before the rest. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "search_roots": {"type": "array", "minItems": 1, "maxItems": 20,
+                             "items": {"type": "string"},
+                             "description": "Absolute folders to search for the files (walked "
+                             "recursively; earlier folders win between identical copies)."},
+            "folder": {"type": "string",
+                       "description": "Only the clips in this media pool bin and below, "
+                       "e.g. 'Source/GH7'. Default: the whole pool."},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 5000,
+                          "description": "Relink at most this many verified clips (a sample)."},
+            **DRY_RUN,
+            "offset": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}},
+         "required": ["project", "search_roots"], "additionalProperties": False},
+        relink, title="Relink offline clips", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

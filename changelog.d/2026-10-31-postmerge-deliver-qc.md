@@ -1,0 +1,1 @@
+Post-merge review fixes for delivery checks and the return package: deliver-check --ledger-row refuses a path that is one of its inputs (the checked file, the audio-state, boxes or config file), return-package refuses an output nested in an input by a case or Unicode variant of its path, and tests now pin qc's single ebur128 pass and run test_deliver_gate on its own. (#323)

@@ -8,8 +8,11 @@ SetCurrentFolder, ...) that the fake does not implement. The setters the
 write tools need are implemented, and record themselves in CALLS too.
 """
 
+import contextlib
 import copy
 import itertools
+import os
+from unittest import mock
 
 
 CALLS = []
@@ -24,6 +27,32 @@ def mutating_calls():
 
 def _log(obj, name, *args):
     CALLS.append((type(obj).__name__, name, args))
+
+
+def _put_env(name, value):
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = value
+
+
+def set_env(test, name, value):
+    """Set the environment variable `name` to `value` (None unsets it) for one
+    test. The whole environment is put back when the test ends, so nothing
+    leaks into the next one."""
+    patcher = mock.patch.dict(os.environ)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    _put_env(name, value)
+
+
+@contextlib.contextmanager
+def scoped_env(name, value):
+    """`name` set to `value` (None unsets it) inside the block only; the whole
+    environment is as it was after it."""
+    with mock.patch.dict(os.environ):
+        _put_env(name, value)
+        yield
 
 
 # path -> [(label, lut, tools)]: the graph ApplyGradeFromDRX leaves behind.
@@ -84,6 +113,9 @@ class Clip(Fake):
         return dict(self.props) if key is None else self.props.get(key, "")
 
 
+_ITEM_IDS = itertools.count(1)
+
+
 class Item(Fake):
     def __init__(self, name, start, end, clip=None, nodes=(("", "", None),), props=None,
                  source=(0, None), version=None):
@@ -91,6 +123,19 @@ class Item(Fake):
         self.graph = Graph(list(nodes)) if nodes is not None else None
         self.props = dict(props or {})
         self.source, self.version = source, version
+        self.uid = "item-%d" % next(_ITEM_IDS)
+        self.stabilize_returns = True  # what Stabilize() answers; a raised Exception is also possible
+
+    def GetUniqueId(self): return self.uid
+
+    def Stabilize(self):
+        _log(self, "Stabilize", self.uid)
+        hook = self.__dict__.get("on_stabilize")
+        if hook:
+            hook()
+        if isinstance(self.stabilize_returns, Exception):
+            raise self.stabilize_returns
+        return self.stabilize_returns
 
     def GetName(self): return self.name
     def GetStart(self): return self.start
@@ -120,6 +165,8 @@ class Timeline(Fake):
         self.name, self.uid, self.fps, self.start, self.end = name, uid, fps, start, end
         self.tracks = tracks or {"video": [[]], "audio": [[]]}  # kind -> [track items]
         self.settings = dict(settings or {})
+        self.playhead = "01:00:00:00"
+        self.refuse_playhead = False  # SetCurrentTimecode answers False and does not move
         self.disabled = set()  # (kind, index) of tracks switched off
         # Caption items CreateSubtitlesFromAudio makes; 0 is a Resolve that
         # returns True and places nothing.
@@ -144,6 +191,24 @@ class Timeline(Fake):
     def GetSetting(self, key=None):
         return self.fps if key == "timelineFrameRate" else self.settings.get(key)
 
+    def GetCurrentTimecode(self): return self.playhead
+
+    def SetCurrentTimecode(self, tc):
+        _log(self, "SetCurrentTimecode", tc)
+        self.playhead = tc
+        return not self.refuse_playhead
+
+    def GetSettings(self):
+        # As the 21.1 README says: the project's settings while the timeline follows them, its
+        # own over them once it is custom. Unlogged, like the other getters. The project is read
+        # through __dict__ because a Fake answers any other attribute name.
+        project = self.__dict__.get("project")
+        got = dict(project.settings) if project is not None else {}
+        if self.settings.get("useCustomSettings") == "1":
+            got.update(self.settings)
+            got["timelineFrameRate"] = self.fps
+        return got
+
     def GetItemListInTrack(self, kind, index):
         tracks = self.tracks.get(kind, [])
         return list(tracks[index - 1]) if 1 <= index <= len(tracks) else None
@@ -160,6 +225,15 @@ class Timeline(Fake):
             self.fps = float(value)
             if self.tc_start:
                 self.start = self.end = int(round(3600 * self.fps))
+        if key == "useCustomSettings" and str(value) == "1":
+            # Opt-in, off by default: a project's flip_resets (a dict) is what a forum thread
+            # reports Resolve changing the first time a timeline goes custom, and
+            # flip_each_time makes a repeat write change it again. Neither is verified here.
+            project = self.__dict__.get("project")
+            flip = project.__dict__.get("flip_resets") if project is not None else None
+            if flip and (not self.__dict__.get("flipped") or project.__dict__.get("flip_each_time")):
+                self.settings.update(flip)
+                self.flipped = True
         self.settings[key] = value
         return True
 
@@ -224,6 +298,11 @@ class Timeline(Fake):
                   for k, v in self.tracks.items()}
         dup = Timeline(name or self.name + " copy", f"{self.uid}-dup{len(CALLS)}", self.fps,
                        self.start, self.end, tracks)
+        if project is not None and project.__dict__.get("dup_copies_settings"):
+            # Unverified: whether Resolve's copy of a custom timeline keeps its settings. Off by
+            # default, which keeps the copy starting from the project's as it always did here.
+            dup.settings = dict(self.settings)
+            dup.flipped = self.__dict__.get("flipped", False)
         if project is not None:
             project.add(dup)
             project.current = dup  # Resolve makes the copy current (spike 18)
@@ -234,6 +313,7 @@ def _copy_item(it):
     new = copy.copy(it)
     new.graph = Graph([tuple(n) for n in it.graph.nodes]) if it.graph else None
     new.props = dict(it.props)  # a duplicate's transform is its own, as in Resolve
+    new.uid = "item-%d" % next(_ITEM_IDS)  # and so is its unique id
     return new
 
 
@@ -257,6 +337,9 @@ class Pool(Fake):
         self.root, self.project, self.current = root, project, root
         self.autosync_separate = True  # the synced audio is an item of its own on a timeline
         self.autosync_offset = 0  # timeline frames: where the synced audio's start lands
+        self.relink_ok = True  # RelinkClips says yes and moves the clips
+        self.relink_stuck = False  # RelinkClips says yes and moves nothing
+        self.relink_drift = {}  # properties every relinked clip then reads differently
 
     def GetRootFolder(self): return self.root
     def GetCurrentFolder(self): return self.current
@@ -271,6 +354,17 @@ class Pool(Fake):
         folder = Folder(name)
         parent.subs.append(folder)
         return folder
+
+    def RelinkClips(self, clips, folder_path):
+        _log(self, "RelinkClips", [c.name for c in clips], folder_path)
+        if not self.relink_ok:
+            return False
+        if self.relink_stuck:
+            return True
+        for c in clips:  # Resolve updates the folder; the file name stays
+            c.props["File Path"] = os.path.join(folder_path, os.path.basename(c.props["File Path"]))
+            c.props.update(self.relink_drift)
+        return True
 
     def ImportMedia(self, paths):
         _log(self, "ImportMedia", list(paths))
@@ -368,6 +462,11 @@ class Project(Fake):
         self.refuse = set()  # SetRenderSettings keys this fake refuses
         self.render_mode = 1  # 0 Individual clips, 1 Single clip
         self.stuck_mode = False  # SetCurrentRenderMode says yes and changes nothing
+        self.ignore_settings = set()  # project SetSetting keys a modal dialog swallows
+        self.reset_on = {}  # project SetSetting key -> {other key: value} Resolve changes with it
+        self.flip_resets = {}  # settings a timeline's first useCustomSettings write changes
+        self.flip_each_time = False  # a repeat write changes them again
+        self.dup_copies_settings = False  # DuplicateTimeline keeps a custom timeline's settings
         self.settings = {"colorScienceMode": "davinciYRGBColorManagedv2",
                          "timelineResolutionWidth": "3840", "timelineResolutionHeight": "2160",
                          "timelineFrameRate": "25"}
@@ -382,6 +481,18 @@ class Project(Fake):
     def GetCurrentTimeline(self): return self.current
     def GetMediaPool(self): return self.pool
     def GetSetting(self, key=None): return self.settings.get(key)
+    def GetSettings(self): return dict(self.settings)
+
+    def SetSetting(self, key, value):
+        # Project-level settings, as a timeline's: the call says True. `ignore_settings` is a
+        # Resolve with a modal dialog open, which swallows a write and still says True;
+        # `reset_on` ({key: {other key: value}}) is a key whose write makes Resolve change another.
+        _log(self, "SetSetting", key, value)
+        if key not in self.ignore_settings:
+            self.settings[key] = str(value)
+            self.settings.update(self.reset_on.get(key, {}))
+        return True
+
     def GetRenderJobList(self): return [dict(j) for j in self.jobs]
 
     def GetRenderJobStatus(self, job_id):
@@ -516,3 +627,31 @@ class Session:
     def project(self):
         pm = self.resolve.GetProjectManager()
         return self.resolve, pm, pm.GetCurrentProject()
+
+
+class SettingsReads:
+    """Context manager: records each GetSettings() and each GetSetting() with
+    no key on the fake timelines and projects, the two forms the settings guard
+    reads with. A keyed GetSetting is the build's own read-back and is not
+    counted. `calls` holds 'Timeline.GetSettings' style names."""
+
+    def __init__(self):
+        self.calls = []
+        self._patches = []
+
+    def __enter__(self):
+        for cls in (Timeline, Project):
+            for name in ("GetSettings", "GetSetting"):
+                def spy(obj, *args, _real=getattr(cls, name), _cls=cls, _name=name, **kw):
+                    key = args[0] if args else kw.get("key")
+                    if _name == "GetSettings" or key is None:
+                        self.calls.append(f"{_cls.__name__}.{_name}")
+                    return _real(obj, *args, **kw)
+                patch = mock.patch.object(cls, name, spy)
+                patch.start()
+                self._patches.append(patch)
+        return self
+
+    def __exit__(self, *exc):
+        while self._patches:
+            self._patches.pop().stop()

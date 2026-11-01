@@ -1,0 +1,1 @@
+rpstills shoot commands refuse an out folder in a git tree, a proxy is reused only for the source that made it, X1.jpg and X1.jpeg get distinct ids, and one failed Vision batch no longer drops the other batches' faces. (#299)

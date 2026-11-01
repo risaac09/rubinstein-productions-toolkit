@@ -9,6 +9,13 @@
 # Usage:
 #   ./install-global.sh
 #   STACK_DATA_DIR=/path/to/stack-data ./install-global.sh   # pin the live source
+#   ./install-global.sh --check    verify the installed copy, no writes
+#
+# --check byte-compares every file this script installs against its source,
+# confirms the five hook registrations in settings.json, and confirms the
+# autoMode sections match what the kit (then the machine-local overlay) would
+# merge. Prints DRIFT lines and exits 1 on any drift, 0 when current.
+# CLAUDE_HOME picks the target, as for an install.
 #
 # The global hooks defer to a repo's own phase-zero kit when you are inside one,
 # so phase zero and the routing brief never print twice.
@@ -18,29 +25,91 @@ SRC="$(cd "$(dirname "$0")" && pwd)"      # .../phase-zero/global
 KITROOT="$(cd "$SRC/.." && pwd)"          # .../phase-zero
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
 
-mkdir -p "$DEST/hooks"
-cp "$KITROOT/hooks/phase-zero-lib.sh" "$DEST/hooks/phase-zero-lib.sh"
-cp "$SRC/phase-zero-trigger.global.sh" "$DEST/hooks/phase-zero-trigger.sh"
-chmod +x "$DEST/hooks/phase-zero-trigger.sh"
-cp "$KITROOT/phase-zero.md" "$DEST/phase-zero.md"   # guaranteed fallback core
-cp "$KITROOT/retrospective.md" "$DEST/retrospective.md"   # retrospective prompt fallback
-cp "$KITROOT/model-routing.md" "$DEST/model-routing.md"
-cp "$KITROOT/operating-brief.md" "$DEST/operating-brief.md"
-cp "$SRC/session-brief.global.sh" "$DEST/hooks/session-brief.sh"
-chmod +x "$DEST/hooks/session-brief.sh"
-cp "$SRC/relations-guard.global.sh" "$DEST/hooks/relations-guard.sh"
-chmod +x "$DEST/hooks/relations-guard.sh"
+# One list, read by both the install and --check: "source|destination under
+# DEST". phase-zero.md is the guaranteed fallback core, retrospective.md the
+# retrospective prompt fallback.
+GLOBAL_FILES="$KITROOT/hooks/phase-zero-lib.sh|hooks/phase-zero-lib.sh
+$SRC/phase-zero-trigger.global.sh|hooks/phase-zero-trigger.sh
+$KITROOT/phase-zero.md|phase-zero.md
+$KITROOT/retrospective.md|retrospective.md
+$KITROOT/model-routing.md|model-routing.md
+$KITROOT/operating-brief.md|operating-brief.md
+$SRC/session-brief.global.sh|hooks/session-brief.sh
+$SRC/workspace-check.global.sh|hooks/workspace-check.sh
+$SRC/relations-guard.global.sh|hooks/relations-guard.sh
+$SRC/engage-log.global.sh|hooks/engage-log.sh"
+GLOBAL_EXEC="hooks/phase-zero-trigger.sh hooks/session-brief.sh hooks/workspace-check.sh hooks/relations-guard.sh hooks/engage-log.sh"
 
 settings="$DEST/settings.json"
+# Single quotes on purpose: $HOME is expanded by the hook runner, not here.
+# shellcheck disable=SC2016
 hook_cmd='bash "$HOME/.claude/hooks/phase-zero-trigger.sh"'
+# shellcheck disable=SC2016
 session_cmd='bash "$HOME/.claude/hooks/session-brief.sh"'
+# shellcheck disable=SC2016
+workspace_cmd='bash "$HOME/.claude/hooks/workspace-check.sh"'
+# shellcheck disable=SC2016
 relations_cmd='bash "$HOME/.claude/hooks/relations-guard.sh"'
+# shellcheck disable=SC2016
+engage_cmd='bash "$HOME/.claude/hooks/engage-log.sh"'
+OVERLAY="${AUTO_MODE_OVERLAY:-$HOME/.claude/auto-mode.local.json}"
+
+if [ "${1:-}" = "--check" ]; then
+  drift=0
+  while IFS='|' read -r src dst; do
+    if [ ! -f "$DEST/$dst" ]; then
+      echo "DRIFT missing $dst: $DEST"; drift=1
+    elif ! cmp -s "$src" "$DEST/$dst"; then
+      echo "DRIFT stale $dst: $DEST"; drift=1
+    fi
+  done <<EOF_FILES
+$GLOBAL_FILES
+EOF_FILES
+  if [ ! -f "$settings" ]; then
+    echo "DRIFT missing settings.json: $DEST"; drift=1
+  elif ! command -v jq >/dev/null 2>&1; then
+    echo "DRIFT cannot verify settings.json (jq is not installed): $DEST"; drift=1
+  else
+    for pair in "UserPromptSubmit|phase-zero-trigger" "SessionStart|session-brief" "SessionStart|workspace-check" "PreToolUse|relations-guard" "SessionEnd|engage-log"; do
+      ev="${pair%%|*}"; pat="${pair##*|}"
+      jq -e --arg ev "$ev" --arg pat "$pat" \
+        'any(.hooks[$ev][]?; (.hooks[]?.command // "") | test($pat))' "$settings" >/dev/null \
+        || { echo "DRIFT hook unregistered ($ev: $pat): $DEST"; drift=1; }
+    done
+    # autoMode: each section the kit provides must equal what the install
+    # would leave there, the overlay's list when it has one, else the kit's.
+    overlay_json='{}'
+    [ ! -f "$OVERLAY" ] || overlay_json="$(cat "$OVERLAY")"
+    stale="$(jq -r --slurpfile kit "$SRC/auto-mode.json" --argjson local "$overlay_json" '
+      . as $s
+      | ["environment","allow","soft_deny","hard_deny"][]
+      | . as $k
+      | (if (($local.autoMode[$k] // []) | length) > 0 then $local.autoMode[$k]
+         elif (($kit[0].autoMode[$k] // []) | length) > 0 then $kit[0].autoMode[$k]
+         else null end) as $want
+      | select($want != null and ($s.autoMode[$k] // null) != $want)
+      | $k' "$settings")" || { echo "DRIFT cannot read autoMode (invalid JSON in settings or overlay): $DEST"; drift=1; stale=""; }
+    for k in $stale; do echo "DRIFT autoMode.$k differs from kit/overlay: $DEST"; drift=1; done
+  fi
+  [ "$drift" -ne 0 ] || echo "global kit current: $DEST"
+  exit "$drift"
+fi
+
+mkdir -p "$DEST/hooks"
+while IFS='|' read -r src dst; do
+  cp "$src" "$DEST/$dst"
+done <<EOF_FILES
+$GLOBAL_FILES
+EOF_FILES
+for f in $GLOBAL_EXEC; do chmod +x "$DEST/$f"; done
 
 if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
   entry=$(jq -n --arg cmd "$hook_cmd" '{hooks:[{type:"command",command:$cmd}]}')
   session_entry=$(jq -n --arg cmd "$session_cmd" '{hooks:[{type:"command",command:$cmd}]}')
+  workspace_entry=$(jq -n --arg cmd "$workspace_cmd" '{hooks:[{type:"command",command:$cmd}]}')
   relations_entry=$(jq -n --arg cmd "$relations_cmd" '{matcher:"Read|Grep|Glob",hooks:[{type:"command",command:$cmd}]}')
-  jq --argjson entry "$entry" --argjson session_entry "$session_entry" --argjson relations_entry "$relations_entry" '
+  engage_entry=$(jq -n --arg cmd "$engage_cmd" '{hooks:[{type:"command",command:$cmd,timeout:30}]}')
+  jq --argjson engage_entry "$engage_entry" --argjson entry "$entry" --argjson session_entry "$session_entry" --argjson workspace_entry "$workspace_entry" --argjson relations_entry "$relations_entry" '
     .hooks //= {} |
     .hooks.UserPromptSubmit //= [] |
     (if any(.hooks.UserPromptSubmit[]?; (.hooks[]?.command // "") | test("phase-zero-trigger"))
@@ -48,9 +117,14 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
     .hooks.SessionStart //= [] |
     (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("session-brief"))
      then . else .hooks.SessionStart += [$session_entry] end) |
+    (if any(.hooks.SessionStart[]?; (.hooks[]?.command // "") | test("workspace-check"))
+     then . else .hooks.SessionStart += [$workspace_entry] end) |
     .hooks.PreToolUse //= [] |
     (if any(.hooks.PreToolUse[]?; (.hooks[]?.command // "") | test("relations-guard"))
-     then . else .hooks.PreToolUse += [$relations_entry] end)
+     then . else .hooks.PreToolUse += [$relations_entry] end) |
+    .hooks.SessionEnd //= [] |
+    (if any(.hooks.SessionEnd[]?; (.hooks[]?.command // "") | test("engage-log"))
+     then . else .hooks.SessionEnd += [$engage_entry] end)
   ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
 elif [ -f "$settings" ]; then
   # jq is missing and a settings.json exists: never clobber it. Fail loudly,
@@ -59,15 +133,19 @@ elif [ -f "$settings" ]; then
   echo "Install jq, or add these hooks to it by hand:" >&2
   echo "  UserPromptSubmit: $hook_cmd" >&2
   echo "  SessionStart:     $session_cmd" >&2
+  echo "  SessionStart:     $workspace_cmd" >&2
   echo "  PreToolUse (Read|Grep|Glob): $relations_cmd" >&2
+  echo "  SessionEnd:       $engage_cmd (timeout 30)" >&2
   exit 1
 elif command -v jq >/dev/null 2>&1; then
-  jq -n --arg hook_cmd "$hook_cmd" --arg session_cmd "$session_cmd" --arg relations_cmd "$relations_cmd" '
+  jq -n --arg engage_cmd "$engage_cmd" --arg hook_cmd "$hook_cmd" --arg session_cmd "$session_cmd" --arg workspace_cmd "$workspace_cmd" --arg relations_cmd "$relations_cmd" '
     {
       hooks: {
         UserPromptSubmit: [ { hooks: [ { type: "command", command: $hook_cmd } ] } ],
-        SessionStart:     [ { hooks: [ { type: "command", command: $session_cmd } ] } ],
-        PreToolUse:       [ { matcher: "Read|Grep|Glob", hooks: [ { type: "command", command: $relations_cmd } ] } ]
+        SessionStart:     [ { hooks: [ { type: "command", command: $session_cmd } ] },
+                            { hooks: [ { type: "command", command: $workspace_cmd } ] } ],
+        PreToolUse:       [ { matcher: "Read|Grep|Glob", hooks: [ { type: "command", command: $relations_cmd } ] } ],
+        SessionEnd:       [ { hooks: [ { type: "command", command: $engage_cmd, timeout: 30 } ] } ]
       }
     }
   ' > "$settings"
@@ -79,7 +157,9 @@ else
   echo "Install jq, or create $settings by hand with these hooks:" >&2
   echo "  UserPromptSubmit: $hook_cmd" >&2
   echo "  SessionStart:     $session_cmd" >&2
+  echo "  SessionStart:     $workspace_cmd" >&2
   echo "  PreToolUse (Read|Grep|Glob): $relations_cmd" >&2
+  echo "  SessionEnd:       $engage_cmd (timeout 30)" >&2
   exit 1
 fi
 
@@ -104,7 +184,6 @@ if command -v jq >/dev/null 2>&1; then
   # local paths. They are deliberately absent from the kit file, because this
   # repo is public and that inventory is a map of what is worth taking. Same
   # section-wholesale semantics as the kit merge above.
-  OVERLAY="${AUTO_MODE_OVERLAY:-$HOME/.claude/auto-mode.local.json}"
   if [ -f "$OVERLAY" ]; then
     # Fail loudly. A malformed overlay that silently did not merge would leave
     # the generic kit environment in place while the operator believed their

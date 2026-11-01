@@ -1,5 +1,7 @@
 # For Evaluators
 
+**Status:** operational.
+
 You measure impact, design assessments, or write and manage grants. This path maps the measurement corpus, which overlaps in ways the filenames do not explain, and then covers the working tools.
 
 ## The map, before the reading
@@ -8,26 +10,25 @@ Four documents share the same core idea and serve different jobs. The core idea 
 
 | Document | Job | Use it when |
 |---|---|---|
-| [RP Measurement Framework](../../methodology/measurement-framework.md) | The operational framework for a running practice: both registers, reporting cadence, data safeguards | You are measuring ongoing client work |
+| [Measurement Framework](../../methodology/measurement-framework.md) | The operational framework for a running practice: both registers, the dashboard, data safeguards | You are measuring ongoing client work |
 | [Evaluation Framework](../../methodology/evaluation-framework.md) | Assessment design for grant-funded cohorts, written to be funder-legible | You are designing evaluation for a funded program |
+| [Measurement Instrument](../../methodology/measurement-instrument.md) | The survey items, a response CSV, the scoring procedure and a worked example, with a script (draft) | You are collecting and scoring the Likert, NPS and consistency items |
 | [Nomadic Indicators Codebook](../../methodology/nomadic-indicators-codebook.md) | The coding manual: per-code definitions, examples, and markers across six domains | You are coding transcripts, recordings, or field notes |
+| [Deliverable Outlines](../../methodology/deliverable-outlines.md) | One-screen outlines (draft) for the Impact Evaluation Report and the Bilingual Dashboard (Lite), among others | You are scoping what a Program Engagement hands over |
 | [Theory of Change](../../methodology/theory-of-change.md) | The logic model connecting the methodology to public-health outcomes | You are writing the grant narrative |
 
-One note on provenance: the codebook is the canonical coding reference. The framework document points to it rather than carrying its own copy of the codes. (The `grants/` directory that used to hold pointer stubs to these files was removed 2026-08-21 — `methodology/theory-of-change.md` and `methodology/evaluation-framework.md` are directly canonical now.)
+One note on provenance: the codebook is the canonical coding reference. The framework document points to it rather than carrying its own copy of the codes.
 
 ## First hour
 
-Read the [RP Measurement Framework](../../methodology/measurement-framework.md) end to end. It is the consolidation point: the institutional register, the relational register, the monthly synthesis ritual, and the consent tiers that govern what data can be collected and published. Then open the [Codebook](../../methodology/nomadic-indicators-codebook.md) beside a real transcript and try coding one page. The codes are learnable in a sitting; reliability comes with practice.
+Read the [Measurement Framework](../../methodology/measurement-framework.md) end to end. It is the consolidation point: the institutional register, the relational register, the post-engagement impact conversations, and the consent tiers that govern what data can be collected and published. Then open the [Codebook](../../methodology/nomadic-indicators-codebook.md) beside a real transcript and try coding one page. The codes are learnable in a sitting; reliability comes with practice.
 
 ## Working with the data
 
-- **Consent tiers.** Three tiers govern every piece of participant data, set at intake and recorded in the [Case Study template](../../templates/case-study-template.md). Publication is governed by the tier the participant chose.
+- **Funded cohorts run two schedules.** The evaluation framework's waves are interview-coded narrative coherence, and the survey runs at the instrument's five points. The line is in [Measurement Instrument](../../methodology/measurement-instrument.md#24-assessment-points), section 2.4.
+- **Consent tiers.** Three tiers govern every piece of participant data, set at intake and recorded in the [Case Study template](../../templates/case-study-template.md). Publication is governed by the tier the participant chose, and [Consent evidence](../../production/consent-evidence.md) says what proves each tier.
 - **[Source Tracking Protocol](../../methodology/source-tracking-protocol.md)**. Provenance categories and claim-level tracing for anything externally cited. Grant reports that survive scrutiny are built this way.
-- **Reporting cadence.** The frameworks specify who hears what and when: funders quarterly in their register, participants after engagement in theirs, the field annually.
-
-## The grant pipeline
-
-`rp-grant` tracks funders as markdown files with YAML frontmatter: `add` for intake, `list` by status, `deadlines` sorted by date, `update` and `log` as the relationship moves. Statuses run research, loi-prep, submitted, reviewed, awarded or declined. Run `rp-grant --help` for the full command set, and see the [Funder template](../../templates/funder-template.md) for the fields.
+- **Reporting.** The [Evaluation Framework](../../methodology/evaluation-framework.md) specifies who hears what and when, in each audience's own register.
 
 ## First working session
 
@@ -35,4 +36,4 @@ Take one engagement you already ran, under any methodology. Fill in the Royal Me
 
 ## What to adapt rather than adopt
 
-The specific codes and benchmarks assume facilitated documentary sessions. The transferable layer is the two-register structure itself: report institutional legibility and relational change side by side, and refuse to collapse either into the other.
+The specific codes assume facilitated documentary sessions. The transferable layer is the two-register structure itself: report institutional legibility and relational change side by side, and refuse to collapse either into the other.

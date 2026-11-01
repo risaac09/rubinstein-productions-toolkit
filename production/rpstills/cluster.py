@@ -1,0 +1,138 @@
+"""rpstills.cluster: segments, bursts and runs from an index.
+
+- segment: frames separated by a gap longer than SEGMENT_GAP_S belong to
+  different segments (a headshot session and the event after it).
+- burst: consecutive frames within BURST_GAP_S whose phash distance is at
+  most BURST_HASH; one pick per burst at most.
+- counted faces: a face counts when its height is at least MIN_FACE of the
+  upright image and at least SUBJECT_RATIO of the largest face in the frame.
+  The second test is what keeps an audience out of the count: a performer
+  and forty people behind them are one subject, not a group. Detection that
+  reaches small faces (index.py's tiled pass) would otherwise turn every
+  stage frame into a group.
+- run: consecutive frames of the same class (solo, pair, group, none) with
+  no gap over RUN_GAP_S. Inside solo frames a run also ends when the next
+  person steps in: a pause of PERSON_GAP_S or more together with a face-crop
+  hash distance of PERSON_HASH or more, or either alone past HARD_GAP_S or
+  HARD_HASH. A false split costs one shared name on the sheet; a missed
+  split hides a person, so the rule leans toward splitting. The sheet asks
+  a person for the name, the pipeline never guesses one.
+
+Writes clusters.json: {"segments": [{"id", "start", "end", "frames"}],
+"bursts": [[ids]], "runs": [{"id", "segment", "class", "frames", "start",
+"end"}]}. Frames are in time order (index order for equal or missing times).
+"""
+
+import datetime as _dt
+import json
+import os
+
+SEGMENT_GAP_S = 20 * 60
+BURST_GAP_S = 2.0
+BURST_HASH = 8
+RUN_GAP_S = 45
+PERSON_GAP_S = 10
+PERSON_HASH = 16
+HARD_GAP_S = 30
+HARD_HASH = 30
+MIN_FACE = 0.04
+SUBJECT_RATIO = 0.5
+
+
+def _t(row):
+    if not row.get("time"):
+        return None
+    # wall-clock time (build's sort relies on every time being naive): an aware sidecar time next to naive EXIF times would raise on compare
+    t = _dt.datetime.fromisoformat(row["time"]).replace(tzinfo=None)
+    sub = row.get("subsec")
+    if sub and sub.isdigit():
+        t += _dt.timedelta(seconds=int(sub) / (10 ** len(sub)))
+    return t
+
+
+def _hash_distance(a, b):
+    if not a or not b:
+        return 64
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
+hash_distance = _hash_distance
+
+
+def counted_faces(row, min_face=MIN_FACE, ratio=SUBJECT_RATIO):
+    """The faces of a row that count as its subjects: at least min_face of the
+    upright image's height, and at least `ratio` of the largest such face
+    (a bystander or an audience in the background is not a second subject)."""
+    faces = [f for f in row.get("faces") or [] if f.get("h", 0) >= min_face]
+    if not faces:
+        return []
+    top = max(f["h"] for f in faces)
+    return [f for f in faces if f["h"] >= ratio * top]
+
+
+def frame_class(row, min_face=MIN_FACE, ratio=SUBJECT_RATIO):
+    """solo, pair, group or none, counting the faces counted_faces() keeps."""
+    n = len(counted_faces(row, min_face, ratio))
+    return "none" if n == 0 else "solo" if n == 1 else "pair" if n == 2 else "group"
+
+
+def build(rows):
+    rows = [r for r in rows if not r.get("error")]
+    # time order, so a second camera or a rolled counter cannot make a negative gap; a timeless
+    # frame sorts with the frame before it
+    last, keys = _dt.datetime.min, []
+    for r in rows:
+        last = _t(r) or last
+        keys.append(last)
+    rows = [r for _, r in sorted(zip(keys, rows), key=lambda kr: kr[0])]
+    segments, bursts, runs = [], [], []
+    prev, prev_t = None, None
+    for r in rows:
+        t = _t(r)
+        # a frame without a time stays with its neighbours (gap 0)
+        gap = None if prev is None else ((t - prev_t).total_seconds() if (t and prev_t) else 0.0)
+        cls = frame_class(r)
+        if prev is None or gap > SEGMENT_GAP_S:
+            segments.append({"id": f"seg{len(segments) + 1:02d}", "start": r.get("time"), "end": r.get("time"), "frames": []})
+        segments[-1]["frames"].append(r["id"])
+        segments[-1]["end"] = r.get("time")
+        if prev is not None and gap <= BURST_GAP_S and _hash_distance(prev.get("phash"), r.get("phash")) <= BURST_HASH:
+            bursts[-1].append(r["id"])
+        else:
+            bursts.append([r["id"]])
+        person_change = False
+        if prev is not None and cls == "solo" and runs and runs[-1]["class"] == "solo":
+            fd = _hash_distance(prev.get("face_hash"), r.get("face_hash")) if (prev.get("face_hash") and r.get("face_hash")) else 0
+            person_change = (gap >= PERSON_GAP_S and fd >= PERSON_HASH) or gap >= HARD_GAP_S or fd >= HARD_HASH
+        if (prev is None or gap > RUN_GAP_S or person_change or runs[-1]["class"] != cls
+                or runs[-1]["segment"] != segments[-1]["id"]):
+            runs.append({"id": f"run{len(runs) + 1:03d}", "segment": segments[-1]["id"], "class": cls,
+                         "frames": [], "start": r.get("time"), "end": r.get("time")})
+        runs[-1]["frames"].append(r["id"])
+        runs[-1]["end"] = r.get("time")
+        prev, prev_t = r, t or prev_t
+    return {"segments": segments, "bursts": bursts, "runs": runs,
+            "params": {"segment_gap_s": SEGMENT_GAP_S, "burst_gap_s": BURST_GAP_S,
+                       "burst_hash": BURST_HASH, "run_gap_s": RUN_GAP_S, "person_gap_s": PERSON_GAP_S,
+                       "person_hash": PERSON_HASH, "hard_gap_s": HARD_GAP_S, "hard_hash": HARD_HASH,
+                       "min_face": MIN_FACE, "subject_ratio": SUBJECT_RATIO}}
+
+
+def write(out_dir, clusters):
+    path = os.path.join(out_dir, "clusters.json")
+    from rpresolve.paths import write_private  # temp file and rename: a hard link here never carries the output
+    write_private(path, json.dumps(clusters, indent=1, sort_keys=True))
+    return path
+
+
+def summary(clusters):
+    runs = clusters["runs"]
+    by = {}
+    for r in runs:
+        by.setdefault(r["class"], []).append(len(r["frames"]))
+    lines = [f"segments {len(clusters['segments'])}: " + ", ".join(
+        f"{s['id']} {s['start']} to {s['end']} ({len(s['frames'])} frames)" for s in clusters["segments"])]
+    lines.append(f"bursts {len(clusters['bursts'])}, longest {max((len(b) for b in clusters['bursts']), default=0)}")
+    for cls, sizes in sorted(by.items()):
+        lines.append(f"runs {cls}: {len(sizes)} (frames {sum(sizes)}, largest {max(sizes)})")
+    return "\n".join(lines)

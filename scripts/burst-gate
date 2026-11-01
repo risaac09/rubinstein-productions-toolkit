@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# burst-gate: five mechanical gates for a worker's branch, no model calls.
+#
+# A burst farms independent tasks to workers, one worktree and branch each.
+# Before any reviewer spends time on a branch, this script checks what a
+# script can check. Run it inside the worker's worktree.
+#
+#   G1 scope      the diff equals the declared files; nothing in phase-zero/
+#                 or public-kit/ (the exports, never edited here); clean tree
+#   G2 privacy    no home paths, private-repo paths, key shapes, or terms from
+#                 the optional denylist, in lines the branch adds
+#   G3 tests      the hygiene scripts, the offload test and the production
+#                 unit tests, as CI runs them; shellcheck, the Node tests
+#                 and the binary checks run only in CI
+#   G4 style      no em-dash in added prose
+#   G5 changelog  a changelog.d/ fragment exists (--fix writes one)
+#
+# Usage: burst-gate [--base REF] [--declared FILE] [--skip G3,...]
+#                   [--tests CMD] [--fix]
+#   --base      branch point; default origin/main, else main
+#   --declared  file listing the declared paths, one per line, or a .json
+#               with a "files" or "files_touched" array (needs jq)
+#   --skip      comma list of gates to skip; skipped gates print SKIP
+#   --tests     command G3 runs instead of the default set
+#   --fix       G5 adds a fragment built from the branch's commit subjects
+#               (left uncommitted; commit it)
+# Env: BURST_GATE_DENYLIST names a file of extended regexes, one per line,
+# for terms that must not leave the machine (client names and the like). The
+# list itself stays out of this repository.
+# Exit 0 when every gate that ran passed, 1 otherwise, 2 when it cannot run (no
+# repository, no base ref, no merge base: fetch full history). Every gate runs; the
+# summary lists all failures.
+set -uo pipefail
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in a git repository" >&2; exit 2; }
+cd "$ROOT" || exit 2
+
+BASE=""; DECLARED=""; SKIP=","; TESTS_CMD=""; FIX=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base) BASE="${2:?--base needs a ref}"; shift 2 ;;
+    --declared) DECLARED="${2:?--declared needs a file}"; shift 2 ;;
+    --skip) SKIP=",${2:?--skip needs a list},"; shift 2 ;;
+    --tests) TESTS_CMD="${2:?--tests needs a command}"; shift 2 ;;
+    --fix) FIX=1; shift ;;
+    -h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+if [ -z "$BASE" ]; then
+  if git rev-parse --verify -q origin/main >/dev/null; then BASE=origin/main; else BASE=main; fi
+fi
+git rev-parse --verify -q "$BASE" >/dev/null || { echo "base ref '$BASE' not found" >&2; exit 2; }
+# No merge base (a shallow clone) makes every diff below empty, and every scan of it a pass.
+git merge-base "$BASE" HEAD >/dev/null || { echo "no merge base between '$BASE' and HEAD: fetch full history" >&2; exit 2; }
+
+FAILED=""
+pass() { echo "PASS $1"; }
+note() { echo "     $1"; }
+fail() { echo "FAIL $1"; FAILED="$FAILED ${1%% *}"; }
+skipped() { case "$SKIP" in *",$1,"*) echo "SKIP $1"; return 0 ;; esac; return 1; }
+
+# Added lines of the branch, "path<TAB>text", skipping deleted and binary files.
+# "+++ " is a header only between "diff --git" and the first "@@"; inside a hunk
+# it is an added line whose text starts "++ ", and must be scanned like any other.
+# Fixed prefixes and no external diff or textconv, so no user config changes the text scanned.
+added_lines() {
+  git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-textconv \
+      --src-prefix=a/ --dst-prefix=b/ "$BASE...HEAD" | awk '
+    /^diff --git / { hdr = 1; path = ""; next }
+    hdr && /^\+\+\+ b\// { path = substr($0, 7); next }
+    hdr && /^\+\+\+ / { path = ""; next }
+    /^@@/ { hdr = 0; next }
+    !hdr && /^\+/ && path != "" { print path "\t" substr($0, 2) }'
+}
+
+DIFF_FILES="$(git -c core.quotePath=false diff --name-only "$BASE...HEAD")"
+
+# ---------------------------------------------------------------- G1 scope
+g1() {
+  skipped G1 && return
+  bad=0
+  # quotePath=false still quotes names holding a tab, newline or quote; the scans cannot read those.
+  # Deleted paths are exempt: removing such a file is the fix.
+  qn="$(git -c core.quotePath=false diff --name-only --diff-filter=d "$BASE...HEAD" | grep '^"' || true)"
+  if [ -n "$qn" ]; then
+    fail "G1 scope: file name git quotes, the scans cannot read it (rename it):"
+    printf '%s\n' "$qn" | sed 's/^/       /'; bad=1
+  fi
+  tree="$(git status --porcelain)"
+  if [ -n "$tree" ]; then
+    # A fragment --fix just wrote is the one allowed dirty path.
+    other="$(printf '%s\n' "$tree" | grep -v ' changelog\.d/' || true)"
+    if [ -n "$other" ]; then fail "G1 scope: uncommitted changes (the gate checks commits):"; printf '%s\n' "$other" | sed 's/^/       /'; bad=1; fi
+  fi
+  forbidden="$(printf '%s\n' "$DIFF_FILES" | grep -E '^(phase-zero|public-kit)/' || true)"
+  if [ -n "$forbidden" ]; then
+    [ "$bad" -eq 1 ] || fail "G1 scope: the diff touches the kit exports:"
+    printf '%s\n' "$forbidden" | sed 's/^/       /'; bad=1
+  fi
+  if [ -n "$DECLARED" ]; then
+    [ -f "$DECLARED" ] || { fail "G1 scope: declared file '$DECLARED' not found"; return; }
+    case "$DECLARED" in
+      *.json)
+        command -v jq >/dev/null || { fail "G1 scope: jq is needed to read $DECLARED"; return; }
+        decl="$(jq -r '(.files // .files_touched // [])[]' "$DECLARED")" ;;
+      *) decl="$(grep -v '^[[:space:]]*\(#.*\)\?$' "$DECLARED")" ;;
+    esac
+    # Fragments are G5's business and may appear without being declared.
+    actual="$(printf '%s\n' "$DIFF_FILES" | grep -v '^changelog\.d/' | sort -u)"
+    want="$(printf '%s\n' "$decl" | sort -u)"
+    extra="$(comm -13 <(printf '%s\n' "$want") <(printf '%s\n' "$actual") | grep -v '^$' || true)"
+    missing="$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$actual") | grep -v '^$' || true)"
+    if [ -n "$extra" ] || [ -n "$missing" ]; then
+      [ "$bad" -eq 1 ] || fail "G1 scope: diff and declared files differ:"
+      [ -z "$extra" ] || printf '%s\n' "$extra" | sed 's/^/       not declared: /'
+      [ -z "$missing" ] || printf '%s\n' "$missing" | sed 's/^/       declared, not in diff: /'
+      bad=1
+    fi
+  fi
+  if [ "$bad" -eq 0 ]; then
+    pass "G1 scope"
+    [ -n "$DECLARED" ] || note "no --declared given: checked the export paths and the tree only"
+  fi
+}
+
+# -------------------------------------------------------------- G2 privacy
+# Placeholder user names in examples are fine: blank only that match, so a real
+# secret on the same line is still scanned.
+scan_lines() {
+  added_lines | sed -E 's#[/]Users[/](you|me|name|user|username|example|yourname|someone)([/]|$|[^A-Za-z0-9._/-]|[.]($|[[:space:]]))#<ph>#g; s#(^|[^A-Za-z0-9._/-])[/]home[/](u|you|me|name|user|example|someone)([/]|$|[^A-Za-z0-9_/.()-]|[.]($|[[:space:]]))#\1<ph>#g'
+}
+# Patterns are written so their own source text does not match them: a
+# bracket around one character, so this file passes its own scan.
+g2() {
+  skipped G2 && return
+  # Built-in patterns match case-sensitively; the denylist matches without
+  # regard to case. The sk- shape needs a non-word character before it, or
+  # "task-based-..." in prose would match.
+  pats='[/]Users[/][A-Za-z0-9._-]*[A-Za-z0-9_-]([/]|$|[^A-Za-z0-9._/-]|[.]($|[[:space:]]))
+(^|[^A-Za-z0-9._/-])[/]home[/][a-z][a-z0-9_-]*([/]|$|[^A-Za-z0-9_/.()-]|[.]($|[[:space:]]))
+[~][/](vault|stack-data|rp-intranet|stack-finance|sch-work|second-brain-mirror|[.]secrets|[.]ssh|[.]config[/](gh|rclone))
+gh[pousr]_[A-Za-z0-9]{20,}
+github_pat_[A-Za-z0-9_]{20,}
+(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}
+AKIA[0-9A-Z]{16}
+xox[abprs]-[A-Za-z0-9-]{10,}
+-----BEGIN [A-Z ]*PRIVATE KEY-----'
+  pf="$(mktemp)"; printf '%s\n' "$pats" > "$pf"
+  lines="$(scan_lines)"
+  hits="$(printf '%s\n' "$lines" | grep -E -f "$pf" || true)"
+  if [ -n "${BURST_GATE_DENYLIST:-}" ]; then
+    [ -f "$BURST_GATE_DENYLIST" ] || { rm -f "$pf"; fail "G2 privacy: BURST_GATE_DENYLIST '$BURST_GATE_DENYLIST' not found"; return; }
+    grep -v '^[[:space:]]*\(#.*\)\?$' "$BURST_GATE_DENYLIST" > "$pf"
+    hits="$hits
+$(printf '%s\n' "$lines" | grep -E -i -f "$pf" || true)"
+  fi
+  rm -f "$pf"
+  hits="$(printf '%s\n' "$hits" | grep -v '^$' || true)"
+  if [ -n "$hits" ]; then
+    fail "G2 privacy: private-looking text in added lines (log as a privacy event):"
+    printf '%s\n' "$hits" | cut -c1-160 | sed 's/^/       /'
+  else
+    pass "G2 privacy"
+    [ -n "${BURST_GATE_DENYLIST:-}" ] || note "built-in patterns only; set BURST_GATE_DENYLIST for client terms"
+  fi
+}
+
+# ---------------------------------------------------------------- G3 tests
+default_tests() {
+  set -e
+  scripts/check-doc-links.sh
+  scripts/check-methodology-status.sh
+  scripts/check-voice.sh
+  scripts/check-licence-scope.sh
+  scripts/test-instrument-score.sh
+  scripts/changelog-fragments lint
+  for t in scripts/test-check-voice.sh scripts/test-check-licence-scope.sh scripts/test-methodology-status.sh scripts/test-changelog-fragments.sh scripts/test-burst-gate.sh production/tests/test-offload.sh; do
+    [ -x "$t" ] || { echo "listed test script missing or not executable: $t"; return 1; }
+    "$t"
+  done
+  if [ -d production/tests ]; then
+    mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
+    LUTLAB_SKIP_RENDER_VERIFY=1 python3 -m unittest $mods
+  fi
+}
+
+g3() {
+  skipped G3 && return
+  log="$(mktemp)"
+  if [ -n "$TESTS_CMD" ]; then bash -c "$TESTS_CMD" >"$log" 2>&1; rc=$?
+  else (default_tests) >"$log" 2>&1; rc=$?; fi
+  if [ "$rc" -eq 0 ]; then pass "G3 tests"
+  else fail "G3 tests: exit $rc, last lines:"; tail -n 15 "$log" | sed 's/^/       /'; fi
+  rm -f "$log"
+}
+
+# ---------------------------------------------------------------- G4 style
+g4() {
+  skipped G4 && return
+  dash=$'\xe2\x80\x94'
+  hits="$(added_lines | grep -E $'^[^\t]+\\.(md|txt|rst)\t' | grep -F "$dash" || true)"
+  if [ -n "$hits" ]; then
+    fail "G4 style: em-dash in added prose (use a comma, colon or full stop):"
+    printf '%s\n' "$hits" | cut -c1-160 | sed 's/^/       /'
+  else
+    pass "G4 style"
+  fi
+}
+
+# ------------------------------------------------------------ G5 changelog
+g5() {
+  skipped G5 && return
+  if printf '%s\n' "$DIFF_FILES" | grep -qvE '^(phase-zero|public-kit|[.]claude)/' \
+     && ! printf '%s\n' "$DIFF_FILES" | grep -qE '^changelog\.d/.+\.md$'; then
+    if [ "$FIX" -eq 1 ]; then
+      subject="$(git log --reverse --format=%s "$BASE..HEAD" | head -n 1)"
+      slug="$(git rev-parse --abbrev-ref HEAD | sed 's#.*/##; s/[^a-zA-Z0-9]/-/g' | tr 'A-Z' 'a-z' | cut -c1-40)"
+      [ -n "$subject" ] || { fail "G5 changelog: no commits to build a fragment from"; return; }
+      if f="$("$SELF_DIR/changelog-fragments" new "${slug:-change}" "$subject")"; then
+        pass "G5 changelog (added $f, uncommitted; commit it)"
+      else
+        fail "G5 changelog: --fix could not write a fragment"
+      fi
+    else
+      fail "G5 changelog: no changelog.d/ fragment. Run scripts/changelog-fragments new SLUG TEXT, or burst-gate --fix"
+    fi
+    return
+  fi
+  if "$SELF_DIR/changelog-fragments" lint >/dev/null 2>&1; then pass "G5 changelog"
+  else fail "G5 changelog: a fragment is malformed:"; "$SELF_DIR/changelog-fragments" lint 2>&1 | sed 's/^/       /'; fi
+}
+
+echo "burst-gate: $(git rev-parse --abbrev-ref HEAD) against $BASE ($(printf '%s\n' "$DIFF_FILES" | grep -c .) file(s) in diff)"
+g1; g2; g4; g5; g3
+if [ -n "$FAILED" ]; then echo "burst-gate: FAILED:$FAILED"; exit 1; fi
+echo "burst-gate: all gates that ran passed"

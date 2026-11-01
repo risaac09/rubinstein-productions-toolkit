@@ -33,13 +33,35 @@ def _git(*args):
         return None
 
 
+LOADED_COMMIT = _git("rev-parse", "--short", "HEAD")  # once, at import: the commit this server runs
+LOADED_SHA = _git("rev-parse", "HEAD")  # the same in full: --short grows as the repository does
+
+
+def _mounts(volumes="/Volumes"):
+    """One line per mounted media volume under /Volumes, or ["none"]. Names
+    only, no stat of the volume's contents: a NAS that went to sleep must not
+    hang resolve_status. The boot volume is a symlink there and is left out."""
+    try:
+        names = [n for n in sorted(os.listdir(volumes))
+                 if not os.path.islink(os.path.join(volumes, n))]
+    except OSError:
+        names = []
+    return [f"{n} mounted" for n in names] or ["none"]
+
+
 def _server_info():
     commit = _git("rev-parse", "--short", "HEAD")
     status = _git("status", "--porcelain", "--untracked-files=no")
-    return {"version": __version__, "toolkit_path": os.path.dirname(TOOLKIT_DIR),
-            "commit": commit, "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+    info = {"version": __version__, "toolkit_path": os.path.dirname(TOOLKIT_DIR),
+            "commit": commit, "loaded_commit": LOADED_COMMIT,
+            "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "dirty": bool(status) if status is not None else None,
-            "python": sys.version.split()[0]}
+            "python": sys.version.split()[0], "mounts": _mounts()}
+    # Python read this code once at start, so a different commit on disk is code the server has not run.
+    sha = _git("rev-parse", "HEAD")
+    # None, not False, when git failed at either end: staleness cannot be judged.
+    info["stale"] = (sha != LOADED_SHA) if sha and LOADED_SHA else None
+    return info
 
 
 def _tools_available():
@@ -88,9 +110,14 @@ def resolve_status(args, ctx):
                           (f"project '{p['name']}' open ({p['timeline_count']} timelines)"
                            if p.get("open") else "no project open"))
     elif r.get("busy"):
-        out["summary"] = "Resolve is busy with another session or the CLI"
+        out["summary"] = "Resolve is busy with another session"
     else:
         out["summary"] = "Resolve is not connected: " + r.get("error", "")
+    if out["server"]["stale"] is None:
+        out["summary"] += "; staleness cannot be judged (git could not read the loaded commit)"
+    elif out["server"]["stale"]:
+        out["summary"] += (f"; the server loaded {out['server']['loaded_commit']} but the checkout "
+                           f"is at {out['server']['commit']}: restart it")
     if out["server"].get("dirty"):
         out["summary"] += "; the toolkit checkout has uncommitted changes"
     return out
@@ -122,6 +149,13 @@ def _page(rows, args):
     nxt = offset + len(page)
     return {"total": len(rows), "offset": offset, "returned": len(page),
             "next_offset": nxt if nxt < len(rows) else None, "rows": page}
+
+
+def _page_lazy(entries, args, build):
+    """_page over cheap entries, building rows (the costly reads) for the page only."""
+    page = _page(entries, args)
+    page["rows"] = [build(e) for e in page["rows"]]
+    return page
 
 
 def _timelines(project):
@@ -206,11 +240,13 @@ def timeline_items(args, ctx):
         wanted = [args["track"]] if args.get("track") else list(range(1, tracks + 1))
         if args.get("track") and args["track"] > tracks:
             raise ValueError(f"'{tl.GetName()}' has {tracks} {kind} track(s).")
-        rows = []
-        for t in wanted:
-            for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1):
-                ctx.check_cancel()
-                rows.append(_item_row(item, kind, t, n, args["grades"] and kind == "video"))
+        entries = [(t, n, item) for t in wanted
+                   for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1)]
+
+        def build(e):
+            ctx.check_cancel()
+            return _item_row(e[2], kind, e[0], e[1], args["grades"] and kind == "video")
+        page = _page_lazy(entries, args, build)
         result = {"project": _project_info(project),
                   "timeline": {"index": index, "name": tl.GetName(),
                                "unique_id": _call(tl, "GetUniqueId"),
@@ -218,7 +254,7 @@ def timeline_items(args, ctx):
                                "start_frame": _call(tl, "GetStartFrame"),
                                "auto": tl.GetName().endswith(AUTO_SUFFIX)},
                   "track_type": kind, "tracks": tracks}
-    result.update(_page(rows, args))
+    result.update(page)
     result["summary"] = (f"{result['total']} {kind} item(s) on '{result['timeline']['name']}'"
                          f" across {len(wanted)} track(s)")
     result["note"] = ("start/end are timeline frames; source_start/source_end count in the "
@@ -288,12 +324,13 @@ def media_pool(args, ctx):
             result["tree_note"] = (f"the tree stops at {TREE_MAX_FOLDERS} folders; nodes marked "
                                    "children_omitted have more. Ask for a subfolder, or less "
                                    "depth.")
-        rows = []
-        if args["clips"]:
-            for clip in _call(folder, "GetClipList") or []:
-                ctx.check_cancel()
-                rows.append(_clip_row(clip))
-    result.update(_page(rows, args))
+        clips = (_call(folder, "GetClipList") or []) if args["clips"] else []
+
+        def build(clip):
+            ctx.check_cancel()
+            return _clip_row(clip)
+        page = _page_lazy(clips, args, build)
+    result.update(page)
     result["summary"] = (f"'{path}': {result['tree']['clips']} clip(s), "
                          f"{result['tree']['subfolders']} subfolder(s)")
     return result

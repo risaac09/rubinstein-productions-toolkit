@@ -10,7 +10,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit
 
 fail=0
 while IFS= read -r file; do

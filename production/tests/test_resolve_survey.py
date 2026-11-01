@@ -5,7 +5,7 @@ install and no real project data is needed or read.
 
 The survey decodes zstd blobs with compression.zstd, which exists only in
 Python 3.14+. Under an older interpreter (the system /usr/bin/python3 is
-3.9) this whole module skips itself.
+3.9) the tests that need it skip one by one and the rest still run.
 
 stdlib unittest only.
 
@@ -17,9 +17,12 @@ import unittest
 try:
     from compression import zstd
 except ImportError:
-    raise unittest.SkipTest(
-        "resolve_survey needs compression.zstd (Python 3.14+); run "
-        "/opt/homebrew/bin/python3.14 -m unittest discover production/tests")
+    zstd = None
+
+needs_zstd = unittest.skipIf(
+    zstd is None,
+    "needs compression.zstd (Python 3.14+); run "
+    "/opt/homebrew/bin/python3.14 -m unittest discover production/tests")
 
 import io
 import json
@@ -299,6 +302,7 @@ class TestProtobuf(unittest.TestCase):
 
 
 class TestFraming(unittest.TestCase):
+    @needs_zstd
     def test_zstd_unwrap(self):
         payload = msg(fld(1, "hello"), fld(2, 42)) * 50
         self.assertEqual(rs.unwrap_blob(zblob(payload)), payload)
@@ -311,12 +315,14 @@ class TestFraming(unittest.TestCase):
             with self.assertRaises(rs.DecodeError):
                 rs.unwrap_blob(bad)
 
+    @needs_zstd
     def test_fields_blob_tags_and_payload(self):
         payload = msg(fld(1, "/mnt/CARD"), fld(2, "C0001.MOV"))
         self.assertEqual(rs.unwrap_fields_blob(fields_blob(payload, tag=2)), payload)
         self.assertEqual(rs.unwrap_fields_blob(fields_blob(payload, tag=1)), payload)
         self.assertEqual(rs.unwrap_fields_blob(fields_blob(payload, compressed=False)), payload)
 
+    @needs_zstd
     def test_fields_blob_rejects_bad_frames(self):
         good = fields_blob(b"\x08\x01")
         for bad in (good[:6], good[:-1], struct.pack(">I", 3) + good[4:]):
@@ -362,6 +368,7 @@ class TestFieldDecoders(unittest.TestCase):
             with self.assertRaises(rs.DecodeError):
                 rs.decode_frame_rate(bad)
 
+    @needs_zstd
     def test_media_clip_and_geometry(self):
         self.assertEqual(rs.decode_media_clip(clip_blob("/mnt/CARD_A/DCIM", "C1.MOV", "hvc1")),
                          ("/mnt/CARD_A/DCIM", "C1.MOV", "hvc1"))
@@ -375,6 +382,7 @@ class TestFieldDecoders(unittest.TestCase):
         self.assertEqual(rs.media_root("/home/u", home="/home/u"), "~")
         self.assertEqual(rs.media_root("", home="/home/u"), rs.UNDECODED)
 
+    @needs_zstd
     def test_settings_with_fields(self):
         fields = rs.decode_setup_fields(setup_blob(msg(
             fld(1, "3840 x 2160 Ultra HD"), fixed32(248, struct.pack("<f", 23.976)),
@@ -449,6 +457,7 @@ class TestNodeGraph(unittest.TestCase):
         self.assertEqual(rs.extract_ofx_plugins(ofx_stack(CST) + ofx_stack("com.x:y")), [CST, "com.x:y"])
         self.assertEqual(rs.extract_ofx_plugins(b""), [])
 
+    @needs_zstd
     def test_graph_decode_order_labels_luts_ofx_edges(self):
         g = rs.decode_grade_body(house_grade())
         self.assertEqual(g["kind"], "graph")
@@ -463,6 +472,7 @@ class TestNodeGraph(unittest.TestCase):
         self.assertIn((1, 2, 0), g["edges"])
         self.assertEqual(len(g["edges"]), 8)
 
+    @needs_zstd
     def test_parallel_mixer_order_and_input_index(self):
         nodes = [node(4, node_type=68), node(3, "B"), node(2, "A"), node(1, "IN")]
         g = rs.decode_grade_body(grade_body(nodes, [edge(1, 2), edge(1, 3), edge(2, 4), edge(3, 4, 1)]))
@@ -470,6 +480,7 @@ class TestNodeGraph(unittest.TestCase):
         self.assertEqual(g["nodes"][-1]["type_name"], "mixer")
         self.assertIn((3, 4, 1), g["edges"])
 
+    @needs_zstd
     def test_raw_legacy_and_bad_bodies(self):
         self.assertEqual(len(rs.decode_grade_body(grade_body([node(1, "X")], [], compressed=False))["nodes"]), 1)
         self.assertEqual(rs.decode_grade_body(b"GRF X{AID{1}}")["kind"], "legacy")
@@ -477,6 +488,7 @@ class TestNodeGraph(unittest.TestCase):
             with self.assertRaises(rs.DecodeError):
                 rs.decode_grade_body(bad)
 
+    @needs_zstd
     def test_node_payload_with_wrong_wire_type_is_undecoded(self):
         # Node fields 9 (LUT params) and 10 (OFX stack) stored as varints:
         # the values must never reach parse_message, and the node's LUTs and
@@ -493,6 +505,7 @@ class TestNodeGraph(unittest.TestCase):
         self.assertEqual((absent["nodes"][0]["luts"], absent["nodes"][0]["ofx"]), ([], []))
         self.assertEqual(absent["problems"], [])
 
+    @needs_zstd
     def test_label_with_wrong_wire_type_is_undecoded(self):
         # Field 6 as a varint: an UNDECODED label with the problem noted.
         # Only an absent field 6 reads as unlabeled.
@@ -501,6 +514,7 @@ class TestNodeGraph(unittest.TestCase):
         self.assertEqual([n["label"] for n in g["nodes"]], [rs.UNDECODED, "", "B"])
         self.assertEqual(g["problems"], ["node label (field 6) with wire type 0"])
 
+    @needs_zstd
     def test_other_node_and_edge_fields_with_wrong_wire_type(self):
         nodes = [msg(fld(1, 1), fld(6, "A"), fld(8, "44")), msg(fld(1, "2"), fld(6, "B"), fld(8, 44))]
         edges = [msg(fld(1, "1"), fld(3, 2), fld(4, b"\x00"))]
@@ -513,6 +527,7 @@ class TestNodeGraph(unittest.TestCase):
             "edge input index (field 4) with wire type 2", "edge source (field 1) with wire type 2",
             "node id (field 1) with wire type 2", "node type (field 8) with wire type 2"])
 
+    @needs_zstd
     def test_undecoded_label_reaches_the_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = os.path.join(tmp, "Project.db")
@@ -548,6 +563,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         build_project_db(str(folder / "Project.db"), **kw)
         return folder
 
+    @needs_zstd
     def test_snapshot_of_read_only_source(self):
         folder = self.make_project("A & B #1")
         live = folder / "Project.db"
@@ -560,6 +576,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(con.execute("select count(*) from Sm2Timeline").fetchone()[0], 2)
         con.close()
 
+    @needs_zstd
     def test_live_files_are_opened_only_through_a_mode_ro_uri(self):
         # The chmod test above cannot tell a mode=ro URI from a plain
         # read-write connect (SQLite falls back to read-only on a 0400
@@ -599,6 +616,7 @@ class TestSnapshotAndProject(unittest.TestCase):
             self.assertNotIn("immutable", params, database)
             self.assertNotIn("immutable", database)
 
+    @needs_zstd
     def test_snapshot_gives_up_on_a_locked_database(self):
         folder = self.make_project("Locked")
         live = str(folder / "Project.db")
@@ -618,6 +636,7 @@ class TestSnapshotAndProject(unittest.TestCase):
             writer.execute("ROLLBACK")
             writer.close()
 
+    @needs_zstd
     def test_survey_project(self):
         folder = self.make_project("Synthetic")
         work = self.tmp / "work"
@@ -656,6 +675,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         work.mkdir()
         return rs.survey_project(str(folder), str(work), home="/home/u")
 
+    @needs_zstd
     def test_malformed_values_keep_the_project_row(self):
         set_body = 'update "ListMgt::LmVersion" set Body = ? where "ListMgt::LmVersion_id" = ?'
         huge_node = grade_body([msg(fld(1, 1), fld(6, "X"), fld(8, 44), fld(9, 2 ** 62))], [])
@@ -688,6 +708,7 @@ class TestSnapshotAndProject(unittest.TestCase):
             self.assertIn(expected, text)
         json.dumps(rs._json_ready({"projects": [p]}))  # nothing unserializable reached the report
 
+    @needs_zstd
     def test_unexpected_errors_are_contained(self):
         folder = self.make_project("Contained", corrupt_grade=False)
         work = self.tmp / "work"
@@ -736,6 +757,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertFalse(p["read"])
         self.assertTrue(p["errors"])
 
+    @needs_zstd
     def test_main_end_to_end(self):
         self.make_project("First")
         self.make_project("Second", corrupt_grade=False)
@@ -761,6 +783,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(luts, {HOUSE_LUT: 2, LOOK_LUT: 2})
         self.assertNotIn("grades", data["projects"][0]["grades"])
 
+    @needs_zstd
     def test_main_counts_failed_sections(self):
         # A zero-byte Project.db snapshots fine and holds no table; a DB
         # without BtVideoInfo (older schema) loses only its media section.
@@ -789,6 +812,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(row[2], "2")
         self.assertIn("no such table: BtVideoInfo", md)
 
+    @needs_zstd
     def test_duplicate_project_names_are_surveyed_once(self):
         self.make_project("Only", corrupt_grade=False)
         dirs, _, unknown = rs.list_projects(self.tmp / "Projects", ["Only", "Only"])
@@ -803,6 +827,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(rows, {})
         self.assertIn("metadata cache unreadable: PermissionError", error)
 
+    @needs_zstd
     def test_main_checks_output_paths_before_reading_any_project(self):
         self.make_project("Only", corrupt_grade=False)
         base = ["--no-metadata-cache", "--projects-dir", str(self.tmp / "Projects")]
@@ -822,6 +847,7 @@ class TestSnapshotAndProject(unittest.TestCase):
             surveyed.assert_not_called()
         self.assertFalse((self.tmp / "a.md").exists())
 
+    @needs_zstd
     def test_main_rejects_unknown_project(self):
         self.make_project("Only")
         with redirect_stderr(io.StringIO()):
@@ -843,6 +869,7 @@ class TestSnapshotAndProject(unittest.TestCase):
         self.assertEqual(rs.cache_disagreements(settings, rows["Synthetic"]), ["cache fps 60"])
         self.assertEqual(rs.read_metadata_cache(str(self.tmp / "none.db"), str(self.tmp))[0], {})
 
+    @needs_zstd
     def test_main_marks_projects_missing_from_the_cache(self):
         self.make_project("Cached", corrupt_grade=False)
         self.make_project("Uncached", corrupt_grade=False)

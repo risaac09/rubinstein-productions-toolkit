@@ -1,0 +1,23 @@
+{
+  "name": "condense",
+  "fps": "24000/1001",
+  "length": 120,
+  "min_hold": 12,
+  "curves": {
+    "out": [0.16, 1, 0.3, 1],
+    "exhale": [0.45, 0, 0.2, 1],
+    "inOut": [0.65, 0, 0.35, 1]
+  },
+  "segments": [
+    {"kind": "hold", "frames": 20},
+    {"kind": "build", "frames": 23, "tweens": [
+      {"targets": ["line"], "prop": "width", "ease": "out", "frames": 11}
+    ]},
+    {"kind": "resolve", "frames": 35, "tweens": [
+      {"targets": ["line"], "prop": "width", "ease": "exhale", "frames": 35},
+      {"targets": ["caps", "prod"], "prop": "opacity", "ease": "inOut", "frames": 20, "stagger": 6}
+    ]},
+    {"kind": "hold", "frames": 42}
+  ],
+  "cues": {"cut_start": 20, "exhale_start": 43, "lock": 78, "settled": 88}
+}

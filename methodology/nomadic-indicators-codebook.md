@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Nomadic Indicators Codebook.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use. This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins.
+> This codebook is the canonical coding reference: where it and the [Measurement Framework](measurement-framework.md) disagree about codes, the codebook wins. **Status:** operational.
 
 # Nomadic Indicators Codebook
 ## Qualitative Coding Guide for Emergence & Systemic Change
@@ -252,7 +252,7 @@ This codebook provides a systematic approach to analyzing qualitative data from 
 
 ## The foundational unit: the three registers and the loop
 
-This codebook is one instrument of the foundational unit (`stack-data/context/foundational-unit.md`): one recorded relational encounter, witnessed, measured, and theorized in one body, given back legible and alive. Coding is how an encounter is metabolized, so the six domains are not a flat list. They sit under the three registers of the single act.
+This codebook is one instrument of the foundational unit: one recorded relational encounter, witnessed, measured, and theorized in one body, given back legible and alive. Coding is how an encounter is metabolized, so the six domains are not a flat list. They sit under the three registers of the single act.
 
 | register and loop moment | the domains that read it |
 |---|---|
@@ -353,11 +353,9 @@ This is a key moment. The client is spontaneously generating more resonant langu
 
 ---
 
-## Monthly Synthesis Ritual Integration
+## Monthly Synthesis Integration
 
-*From RP Measurement Framework*
-
-During your monthly synthesis ritual, review coded materials across all clients to identify:
+During a monthly synthesis, review coded materials across all clients to identify:
 
 1. **Cross-Client Patterns:** Are certain codes appearing across multiple engagements?
 2. **Methodology Signals:** Which facilitation approaches generate more Lines of Flight?

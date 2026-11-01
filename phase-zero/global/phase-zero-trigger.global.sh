@@ -125,7 +125,7 @@ emit_full() {
     if [ -f "$cand/PHASE-ZERO.md" ]; then cat "$cand/PHASE-ZERO.md" && return 0; fi
   done
   if [ -f "$HOME/.claude/phase-zero.md" ]; then cat "$HOME/.claude/phase-zero.md" && return 0; fi
-  echo "(portable core missing; run the kit's global installer: rubinstein-productions-toolkit/phase-zero/global/install-global.sh)"
+  echo "(portable core missing; run the kit's global installer: stack-data/kit/phase-zero/global/install-global.sh)"
   return 1
 }
 

@@ -1,21 +1,19 @@
 .DS_Store
 *.xlsx
 *.csv
+# the invented worked example for the measurement instrument is tracked on purpose
+!methodology/instrument/responses-example.csv
 node_modules/
 .env
 *.dpx
 *.drx
 *.cube
-prospects/
-grants/funders/
 *.baksite/
-intranet/site/
-02 Practice/
 
 # Personal Claude usage reports — do not commit
 *-claude-usage-report.md
 
-# Plugin distribution artifacts (sync via second-brain-mirror/_sync instead)
+# Plugin distribution artifacts
 dist/
 
 # Python bytecode caches
@@ -23,8 +21,12 @@ __pycache__/
 *.pyc
 _site/
 
-# Scratch working copies of third-party video tooling
-tools/video-editor/
+# Third-party video-use, fetched by tools/video-editor/fetch-video-use.sh, never tracked
+tools/video-editor/video-use/
 
 # camera media staged here by mistake; never commit
 DCIM/
+production/lutlab/braw/braw2ppm
+
+# Local caption style for vertcut (brand colours and face); the repo is public
+tools/vertcut/captions.local.json

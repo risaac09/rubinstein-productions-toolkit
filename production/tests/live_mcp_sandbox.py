@@ -8,9 +8,10 @@ hand with Resolve open on the sandbox; CI never runs it.
         --timeline "<an existing timeline to copy>" \\
         --lut "<a .cube, absolute or relative to Resolve's LUT folder>" \\
         [--drx <.drx with its .json label manifest beside it>] \\
-        [--render-dir <existing folder outside any git repo>] \\
+        [--render-dir <existing folder outside any git repo; a client_master job is queued for it>] \\
         [--ingest <camera file not yet in the pool>] \\
-        [--manifest <cut manifest> --clip <clip name>] [--captions]
+        [--manifest <cut manifest> --clip <clip name>] [--captions] \\
+        [--bin <a media-pool bin of video clips; timeline_from_clips builds from it>]
 
 It refuses unless the open project's name contains "Sandbox" and its
 unique id is --project-id. It snapshots every timeline (items, frames and
@@ -18,8 +19,9 @@ grade fingerprints), every pool clip's properties, the UI, the render
 queue and the Deliver format; then drives the server over stdio through
 every tool, dry run then real run for the writes, plus the refusals
 (a non-[auto] grade, the wrong project, a stale plan_sha). Last, it deletes
-the one render job it queued and checks that nothing that existed before
-changed and that the UI is where it was. New timelines are named
+the one render job it queued (and the empty folder that job's destination
+made) and checks that nothing that existed before changed and that the UI
+is where it was. New timelines are named
 "MCP live <time> ... [auto]" and stay in the sandbox. With --captions it
 also runs create_captions on the copy (Resolve transcribes it, about as
 long as the timeline runs); the copy must have audio and no subtitle items.
@@ -77,18 +79,20 @@ class Client:
             if msg.get("id") == self.n:
                 return msg
 
-    def tool(self, name, **args):
-        r = self.rpc("tools/call", {"name": name, "arguments": args})["result"]
+    # The tool's own name is positional and called tool_name, because a tool's
+    # arguments may themselves include "name" (queue_render's file-name parts).
+    def tool(self, tool_name, **args):
+        r = self.rpc("tools/call", {"name": tool_name, "arguments": args})["result"]
         body = r.get("structuredContent") or {"summary": r["content"][0]["text"][:300]}
-        print(f"  {name}{'' if args.get('dry_run', True) is not False else ' (real)'}: "
+        print(f"  {tool_name}{'' if args.get('dry_run', True) is not False else ' (real)'}: "
               f"{'ERROR ' if r['isError'] else ''}{body.get('summary', '')[:220]}")
         return r["isError"], body
 
-    def both(self, name, **args):
-        err, dry = self.tool(name, **args)
+    def both(self, tool_name, **args):
+        err, dry = self.tool(tool_name, **args)
         if err or "plan_sha" not in dry:
             return err, dry
-        return self.tool(name, **args, dry_run=False, plan_sha=dry["plan_sha"])
+        return self.tool(tool_name, **args, dry_run=False, plan_sha=dry["plan_sha"])
 
     def close(self):
         self.proc.stdin.close()
@@ -133,6 +137,7 @@ def main():
     ap.add_argument("--ingest")
     ap.add_argument("--manifest")
     ap.add_argument("--clip")
+    ap.add_argument("--bin", help="a media-pool bin of video clips for timeline_from_clips")
     ap.add_argument("--captions", action="store_true",
                     help="Also run create_captions on the copy")
     a = ap.parse_args()
@@ -156,7 +161,7 @@ def main():
     dup_name = f"MCP live {stamp} [auto]"
     P = {"project": a.project, "project_id": a.project_id}
     c = Client()
-    job_id = None
+    job_id = made_folder = None
     try:
         print("Reads")
         err, st = c.tool("resolve_status")
@@ -181,6 +186,13 @@ def main():
                         dry_run=False, plan_sha="0" * 64)
         check(err and "plan changed" in r["summary"], "a stale plan_sha is refused")
 
+        # The sandbox holds work, so set_color_management must refuse it (or have nothing to do,
+        # when it is already managed). Either way it writes nothing.
+        err, r = c.tool("set_color_management", **P)
+        check(err and "not a fresh project" in r["summary"] or
+              not err and not r.get("would_change"),
+              "set_color_management refuses a project that holds work, or has nothing to set")
+
         print("Writes")
         err, r = c.both("duplicate_timeline_auto", **P, timeline=a.timeline, new_name=dup_name)
         check(not err and r.get("mismatches") == [], "duplicate matches its origin")
@@ -193,11 +205,21 @@ def main():
         elif a.drx:
             print("  skip  .drx: the timeline has one item on V1 (the LUT took it)")
         if a.render_dir:
-            err, r = c.both("queue_render", **P, timeline=dup_name, preset="master",
-                            output_dir=a.render_dir, custom_name=f"mcp_live_{stamp}")
+            err, r = c.both("queue_render", **P, timeline=dup_name, destination="client_master",
+                            target_dir=a.render_dir,
+                            name={"client": "McpLive", "slug": f"live-{stamp}"})
             job_id = (r.get("job") or {}).get("JobId")
+            made_folder = r.get("made_folder")
             check(not err and job_id and r["readback_problems"] == [], "render queued and read back")
-            check(not r.get("warnings"), "Deliver format put back without warnings")
+            restore = [w for w in r.get("warnings", []) if "back to" in w or "stays" in w]
+            check(not restore, "Deliver format and render mode put back without warnings")
+        if a.bin:
+            tl_name = f"MCP live {stamp} ladder [auto]"
+            err, r = c.both("timeline_from_clips", **P, name=tl_name, bin=a.bin)
+            check(not err and r["problems"] == [] and r["created"] and
+                  all(i["ok"] for i in r["items"]),
+                  "timeline_from_clips built the bin in order and read every item back")
+            check(not r.get("ui_restore_problems"), "its UI (timeline, playhead, page) was put back")
         if a.ingest:
             err, r = c.both("ingest", **P, paths=[a.ingest])
             check(not err and r["exit_status"] in (0, 2), "ingest ran")
@@ -219,6 +241,12 @@ def main():
                 check(not rendering, "no render was started")
                 if not rendering:
                     check(bool(project.DeleteRenderJob(job_id)), "the test render job was deleted")
+            if made_folder:
+                # The folder the destination made for the job; empty, as nothing rendered.
+                try:
+                    os.rmdir(made_folder)
+                except OSError:
+                    pass
     check(code == 0, "the server exited cleanly")
 
     with api.ResolveLock():
@@ -252,6 +280,13 @@ if __name__ == "__main__":
     status = 1
     try:
         status = main()
+    except BaseException:
+        # os._exit below skips the interpreter's own traceback print, so
+        # print it here or the run ends silent with exit 1.
+        import traceback
+        traceback.print_exc()
+        print("FAIL: the harness stopped on the exception above", flush=True)
     finally:
         sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(status)

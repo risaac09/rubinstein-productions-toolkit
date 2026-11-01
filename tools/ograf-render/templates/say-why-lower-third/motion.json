@@ -1,0 +1,25 @@
+{
+  "name": "say-why-lower-third",
+  "fps": "24000/1001",
+  "length": 120,
+  "min_hold": 12,
+  "curves": {
+    "out": [0.16, 1, 0.3, 1],
+    "exhale": [0.45, 0, 0.2, 1],
+    "inOut": [0.65, 0, 0.35, 1]
+  },
+  "segments": [
+    {"kind": "build", "frames": 17, "tweens": [
+      {"targets": ["rule"], "prop": "height", "ease": "out", "frames": 12},
+      {"targets": ["plate"], "prop": "opacity", "ease": "inOut", "frames": 7},
+      {"targets": ["name", "role", "title"], "prop": "opacity", "ease": "out", "frames": 9, "stagger": 2, "start": 3},
+      {"targets": ["name", "role", "title"], "prop": "y", "ease": "out", "frames": 9, "stagger": 2, "start": 3}
+    ]},
+    {"kind": "hold", "frames": 90},
+    {"kind": "resolve", "frames": 13, "tweens": [
+      {"targets": ["rule"], "prop": "height", "ease": "exhale", "frames": 12},
+      {"targets": ["plate", "name", "role", "title"], "prop": "opacity", "ease": "inOut", "frames": 12}
+    ]}
+  ],
+  "cues": {"play": 0, "hold": 17, "stop": 107}
+}

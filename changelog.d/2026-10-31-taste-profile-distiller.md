@@ -1,0 +1,1 @@
+Added `resolve_workflow.py taste-profile`, a dry-run distiller that turns the review log into a taste profile: rules after five consistent answers and an 80 percent repeat-pair check, denoise counted per noise type, malformed lines counted. See the media review loop doc. (#292)

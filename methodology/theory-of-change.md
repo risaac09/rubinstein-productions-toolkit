@@ -1,4 +1,4 @@
-> **Canonical source:** `00 Canonical/Say Why - Theory of Change.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
+> **Status:** operational.
 
 # Say Why - Theory of Change
 ### A Rubinstein Productions Social Impact Initiative
@@ -52,6 +52,8 @@ OUTCOMES (Short-term)            OUTCOMES (Medium-term)           IMPACT (Long-t
                                                                    over generated content in
                                                                    social impact storytelling
 ```
+
+In the Inputs column, PIPA is Participatory Impact Pathways Analysis: in the Container phase the group maps the project's linear logic, and stakeholders get a logic model they can sign off on. CBSD is Community Based System Dynamics: in the Excavation phase the group maps the feedback loops that keep honest expression contained.
 
 ## Mechanism of Change
 

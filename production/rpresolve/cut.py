@@ -38,6 +38,13 @@ Gates before anything is built:
 Every write is read back: timeline settings, each item's source frames and
 duration, and the reframe properties.
 
+Switching a timeline to custom settings is reported to change more than
+itself (colour management, input and output scaling). When the guard is
+enabled (RPRESOLVE_SETTINGS_GUARD=on; it is off by default), settingsguard
+reads each new timeline's settings around those writes and names any key that
+reads differently in the result's settings_drift. It is reported, never
+corrected. With the guard off, nothing is read and settings_drift is None.
+
 A span covers source frames [round(in*fps), round(out*fps)). Resolve's
 AppendToTimeline endFrame is exclusive (measured on Ep 002: the old script's
 round(out*fps) - 1 lost one frame per span), so endFrame = round(out*fps).
@@ -49,11 +56,12 @@ import re
 from . import api
 from . import cutlist
 from . import reframe as rf
+from . import settingsguard
 
 AUTO = " [auto]"
 WIDE = (1920, 1080)
 TALL = (1080, 1920)
-ASPECT_SIZES = dict(rf.ASPECTS)  # "9x16": (1080, 1920), "1x1": (1080, 1080)
+ASPECT_SIZES = {a: rf.ASPECTS[a] for a in ("9x16", "1x1")}  # the versions cut builds
 DEFAULT_SCALE = rf.DEFAULT_SCALE
 INPUT_SCALING = "timelineInputResMismatchBehavior"
 ITEM_SCALING = "Scaling"  # an item's own: 0 use the project's, then Crop, Fit, Fill, Stretch
@@ -106,15 +114,25 @@ def _setup(timeline, fps, size):
     api.set_setting_checked(timeline, "timelineResolutionHeight", str(size[1]))
 
 
+def span_item(item, span):
+    """The media-pool clip a span plays from: item itself, or for a clip over
+    several sources item[span.get("source")]."""
+    return item[span.get("source")] if isinstance(item, dict) else item
+
+
 def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
-    """Build one clip's 16:9 timeline and read it back. Returns
-    {name, frames_expected, frames, items, ok, reason, left_behind}: a
-    timeline created and then failing its read-back is named there."""
+    """Build one clip's 16:9 timeline and read it back. item is the source's
+    media-pool clip, or {span "source": clip} when the spans name several. Returns
+    {name, frames_expected, frames, items, ok, reason, left_behind, warnings,
+    settings_drift}: a timeline created and then failing its read-back is
+    named there. settings_drift is settingsguard's report on the timeline's
+    settings around the custom-settings writes (None when the guard is off,
+    which is the default, or none was made)."""
     name = f"{prefix}_{clip['name']}{AUTO}"
     spans = clip["spans"]
     expected = cutlist.clip_frames(clip, fps)
     out = {"name": name, "frames_expected": expected, "frames": None, "items": [], "ok": False,
-           "reason": "", "left_behind": None}
+           "reason": "", "left_behind": None, "warnings": [], "settings_drift": None}
     if check:
         check()
     tl = media_pool.CreateEmptyTimeline(name)
@@ -125,10 +143,13 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
             out["reason"] += f"; LEFT BEHIND: it made '{tl.GetName()}' instead"
         return out
     project.SetCurrentTimeline(tl)
+    watch = settingsguard.Watch(tl, settingsguard.WROTE_CLIP, project)
+    watch.mark("new timeline")  # still following the project's settings
     # Frame rate is fixed once a timeline holds a clip; set it while empty.
     # Resolve reads it back as a float (25.0), so compare numbers.
     tl.SetSetting("useCustomSettings", "1")
     tl.SetSetting("timelineFrameRate", str(int(fps)) if float(fps).is_integer() else str(fps))
+    watch.mark("first custom write")
     got = tl.GetSetting("timelineFrameRate")
     try:
         rate_ok = abs(float(got) - float(fps)) < 1e-3
@@ -138,17 +159,20 @@ def build_clip(project, media_pool, item, clip, fps, prefix, check=None):
         if not rate_ok:
             raise api.WriteNotApplied(f"timelineFrameRate: wrote {fps}, read back {got!r}")
         _setup(tl, fps, WIDE)
+        watch.mark("second custom write")  # _setup writes the flag again
     except api.WriteNotApplied as e:
         raise api.WriteNotApplied(f"{e}; LEFT BEHIND: '{name}' exists, empty; delete it "
-                                  "before a re-run")
+                                  "before a re-run" + watch.tail())
+    out["settings_drift"] = watch.report()
+    out["warnings"] += settingsguard.warnings(out["settings_drift"])
     start = tl.GetStartFrame()
     record = start
     for s in spans:
         a, b = cutlist.frame(s["in"], fps), cutlist.frame(s["out"], fps)
-        media_pool.AppendToTimeline([{"mediaPoolItem": item, "startFrame": a, "endFrame": b,
+        media_pool.AppendToTimeline([{"mediaPoolItem": span_item(item, s), "startFrame": a, "endFrame": b,
                                       "trackIndex": 1, "recordFrame": record}])
         record += b - a
-    out["items"], out["frames"], problems = read_back_wide(tl, clip, fps)
+    out["items"], out["frames"], problems = read_back_wide(tl, clip, fps, item if isinstance(item, dict) else None)
     out["reason"] = "; ".join(problems)
     out["ok"] = not problems
     if problems:
@@ -162,7 +186,8 @@ def read_back_wide(tl, clip, fps, source_item=None):
     """(items, frames, problems): a 16:9's V1 items against the clip's
     spans, in order: each one's duration and source start, the count, and
     the timeline's length. With source_item, each item must come from that
-    media-pool clip (when the item says which)."""
+    media-pool clip (when the item says which); a dict {span "source": clip}
+    is checked span by span."""
     spans = clip["spans"]
     items = tl.GetItemListInTrack("video", 1) or []
     rows, problems = [], []
@@ -180,11 +205,12 @@ def read_back_wide(tl, clip, fps, source_item=None):
         if got["source_start"] is not None and got["source_start"] != got["want_source"]:
             problems.append(f"span {i}: source starts at {got['source_start']}, expected {got['want_source']}")
         if source_item is not None:
+            want = span_item(source_item, spans[i - 1])
             clip_of = getattr(it, "GetMediaPoolItem", lambda: None)()
-            if clip_of is not None and clip_of.GetUniqueId() != source_item.GetUniqueId():
+            if clip_of is not None and clip_of.GetUniqueId() != want.GetUniqueId():
                 problems.append(f"span {i} comes from the media-pool clip "
                                 f"'{clip_of.GetName()}', and the manifest's source is "
-                                f"'{source_item.GetName()}'")
+                                f"'{want.GetName()}'")
     expected = cutlist.clip_frames(clip, fps)
     if frames != expected:
         problems.append(f"timeline {frames} frames, expected {expected}")
@@ -282,7 +308,9 @@ def item_plans(clip, aspect, src, scaling=rf.SCALE_TO_FIT):
                 raise Unreframed(f"span {i} has no {aspect} crop (reframe-plan: "
                                  f"{e.get('status', 'no x or scale')}"
                                  + (f": {e['reason']}" if e.get("reason") else "") + ")")
-            planned = [int(v) for v in e.get("src") or []]
+            # A squeezed source is planned on its desqueezed picture (src) and recorded
+            # with the file's own size (stored); the clip reports the stored size.
+            planned = [int(v) for v in e.get("stored") or e.get("src") or []]
             if planned and sh and planned != [sw, sh]:
                 raise Unreframed(f"span {i}: its {aspect} crop was planned on a "
                                  f"{planned[0]}x{planned[1]} source, and this clip is {sw}x{sh}")
@@ -291,8 +319,9 @@ def item_plans(clip, aspect, src, scaling=rf.SCALE_TO_FIT):
                                  "crop cannot be placed")
             y = e.get("y")
             scale, centre = float(e["scale"]), (float(e["x"]), sh / 2.0 if y is None else float(y))
-            area = e.get("area") or (0, 0, sw, sh)
-            props = rf.resolve_props((sw, sh), out, scale, centre, scaling)
+            pic = tuple(int(v) for v in e.get("src") or (sw, sh))
+            area = e.get("area") or (0, 0) + pic
+            props = rf.resolve_props(pic, out, scale, centre, scaling)
             source, review = "span", e.get("review", "")
         elif clip_rf.get("face_x") is not None:
             scale = float(clip_rf.get("scale", DEFAULT_SCALE))
@@ -317,7 +346,8 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     """Duplicate a built 16:9 timeline as the clip's `aspect` version (9x16
     or 1x1): set its resolution, give each V1 item its span's transform and
     read every property back. Returns {name, kind, ok, reason, unreframed,
-    refused, left_behind, props, items, bars, warnings, input_scaling}.
+    refused, left_behind, props, items, bars, warnings, input_scaling,
+    settings_drift}.
     Nothing is duplicated for a version with no reframe (unreframed), an
     input scaling the transform is not known for, or one other than
     `scaling` (the one the plan was made for, when given) (refused); a
@@ -325,7 +355,7 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     name = f"{prefix}_{clip['name']}_{aspect}{AUTO}"
     out = {"name": name, "kind": aspect, "ok": False, "reason": "", "unreframed": False,
            "refused": False, "left_behind": None, "props": None, "items": [], "bars": [],
-           "warnings": [], "input_scaling": None}
+           "warnings": [], "input_scaling": None, "settings_drift": None}
     planned = scaling
     scaling, note = input_scaling(project, wide_tl)
     out["input_scaling"] = scaling
@@ -348,6 +378,10 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
     if check:
         check()
     project.SetCurrentTimeline(wide_tl)
+    # The baseline is the 16:9, read from its own handle before the copy exists (the copy
+    # becomes current), so a version reports only what its own write did.
+    watch = settingsguard.Watch(wide_tl, settingsguard.WROTE_ASPECT, baseline="the 16:9")
+    watch.mark("16:9")
     tl = wide_tl.DuplicateTimeline(name)
     if not tl:
         out["reason"] = "DuplicateTimeline failed"
@@ -360,15 +394,21 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
         done = len(out["items"])
         state = ("no item transformed" if not done else
                  f"{done} of its {seen['items']} V1 items transformed and the rest untransformed")
+        out["settings_drift"] = watch.report()
         out["reason"] = (f"{reason}; LEFT BEHIND: '{out['left_behind']}' exists with {state}; "
-                         "delete it before a re-run, which skips a timeline that exists")
+                         "delete it before a re-run, which skips a timeline that exists"
+                         + settingsguard.tail(out["settings_drift"]))
         return out
     if tl.GetName() != name:
         return left(f"DuplicateTimeline made '{tl.GetName()}', expected '{name}'", tl.GetName())
+    watch.mark("copy", tl)
     try:
         _setup(tl, None, ASPECT_SIZES[aspect])
     except api.WriteNotApplied as e:
+        watch.mark("custom write", tl)
         return left(str(e))
+    watch.mark("custom write", tl)
+    out["settings_drift"] = watch.report()
     got_scaling, note = input_scaling(project, tl)
     out["input_scaling"] = got_scaling
     if got_scaling != scaling:
@@ -404,9 +444,10 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
         warnings.append("reframed from the clip's hand-set face_x; nothing checked the face "
                         "inside this crop (reframe-plan does)")
     warnings += [f"span {p['span']}: {p['review']}" for p in plans if p["review"]]
-    if any(abs(p["props"].get("Tilt", 0.0)) > 1e-6 for p in plans):
+    if not rf.TILT_CONFIRMED and any(abs(p["props"].get("Tilt", 0.0)) > 1e-6 for p in plans):
         warnings.append("Tilt is set on at least one item; its sign (up is positive) is not yet "
                         "confirmed on a render, so check a still")
+    warnings += settingsguard.warnings(out["settings_drift"])
     out["warnings"] = warnings
     out["ok"] = True
     return out

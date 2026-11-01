@@ -1,8 +1,8 @@
-> **Canonical source:** `00 Canonical/RP Three-Type Information Architecture.md` in vault, last synced 2026-09-07. Edit there; this file is a snapshot for skills and public repo use.
+> **Status:** operational.
 
 # Three-Type Information Architecture
 *The epistemological foundation of the Bilingual Dashboard*
-*Authored 2026-05-09 | Read alongside: RP Measurement Framework, Nomadic Indicators Codebook, Say Why - Canonical Positioning & Skill Embedding*
+*Authored 2026-05-09 | Read alongside: [Measurement Framework](measurement-framework.md), [Nomadic Indicators Codebook](nomadic-indicators-codebook.md)*
 
 ---
 
@@ -20,11 +20,11 @@ The third type is not a new addition. It is the explicit recovery of what was na
 
 This document does three things:
 
-1. Defines each type, its ontological commitment, and its theoretical anchors in the existing research vault.
+1. Defines each type, its ontological commitment, and its theoretical anchors in the existing research literature.
 2. Specifies the translation logic, and its limits, between the three types.
 3. Names what remains client-facing (the two-register Bilingual Dashboard) and what is internal methodology (the third type as backstop).
 
-It is an internal canonical. The client-facing language remains Royal/Nomadic, integrated into the Bilingual Dashboard format described in RP Measurement Framework §5.
+It is the foundation under the measurement framework, not a client document. The client-facing language remains Royal/Nomadic, integrated into the Bilingual Dashboard format described in RP Measurement Framework §4.
 
 ---
 
@@ -40,7 +40,7 @@ It is an internal canonical. The client-facing language remains Royal/Nomadic, i
 
 **Ontological commitment.** The system being measured exists prior to and independent of the measurement. Properties of the system can be quantified without disturbing them. The measurer is interchangeable. This is the standard positivist commitment of public health surveillance and program reporting.
 
-**Theoretical anchors (in-vault).**
+**Theoretical anchors.**
 
 - Standard validity theory (construct, content, ecological), implicitly underwriting all institutional metrics
 - Results-Based Accountability ("How much? How well? Is anyone better off?"), operational backbone of the CPU-HEZ engagement
@@ -61,24 +61,24 @@ It is an internal canonical. The client-facing language remains Royal/Nomadic, i
 
 **Shannon-Weaver level.** Level B, semantic precision. Bateson's "difference that makes a difference", information defined by its effect on the receiver, not by its objective signal properties.
 
-**Ontological commitment.** The phenomenon being measured does not pre-exist the measurement. Three convergent claims from in-vault sources warrant this commitment:
+**Ontological commitment.** The phenomenon being measured does not pre-exist the measurement. Three convergent claims from the cited sources warrant this commitment:
 
 - Following Mol's *The Body Multiple*: methods enact realities rather than describing them. The relational field is brought into existence by the act of attention paid to it.
 - Following Barad's agential realism: the measurement device and the measured phenomenon are mutually constituted by the agential cut. There is no relational field independent of the cut that frames it.
 - Following Wynter's sociogenic principle: any representation of the human encodes an ontological commitment about what kind of being humans are. To measure "engagement" is to enact a particular kind of human subject.
 
-**Theoretical anchors (in-vault).**
+**Theoretical anchors.**
 
 - Bateson, "difference that makes a difference", multiple files including Recursive Visions, Second-Order Cybernetics and the Ecology of Mind and The Net of Indra in the Machine
 - Nora Bateson on Warm Data as transcontextual information, Dark Matter Labs, Relational Metrics for Technology Assessment
 - Annemarie Mol on method assemblage and ontological multiplicity, The Parliament of Things
 - Karen Barad on intra-action and the agential cut, Agential Realism, Quantum Mechanics as Relational Ethico-Onto-Epistemology
-- Sylvia Wynter on the sociogenic principle as counter-ontology to quantitative evaluation, The Sociogenic Turn (the most directly applicable text in the vault)
+- Sylvia Wynter on the sociogenic principle as counter-ontology to quantitative evaluation, The Sociogenic Turn (the most directly applicable text here)
 - Bruno Latour on translation as actor-network process, The Architecture of Association
 - Floridi, MacKay, Dretske on semantic information, named in The Syntactic Severance
 - Foucault on the examination as normalizing judgment, The Architecture of Control; the warrant for treating Type 1 as itself a contestable enactment rather than neutral measurement
 
-**Practical instruments.** Nomadic Indicators Codebook (six coding domains: Consistency, Texture, Process, Fear, Somatic, Relational); the Three Consistency Questions matrix; transcript coding via the `nomadic-indicators-coder` skill; cross-stakeholder variance analysis through the `consistency-scoring-aggregator` skill.
+**Practical instruments.** Nomadic Indicators Codebook (six coding domains: Consistency, Texture, Process, Fear, Somatic, Relational); the Three Consistency Questions matrix; transcript coding; cross-stakeholder variance analysis.
 
 **What it cannot do.** It cannot satisfy a funder request for attribution. It cannot replace Type 1 reporting in a compliance context. It does not answer "did the intervention work" in the language the institution expects.
 
@@ -88,13 +88,13 @@ It is an internal canonical. The client-facing language remains Royal/Nomadic, i
 
 **Definition.** Information about the practitioner's own observational position. What the facilitator notices about their own noticing, the quality of their attention, the projections they catch themselves making, the somatic resonance and dissonance that occurs in real time during the work.
 
-**Examples in current practice (where this happens implicitly).** The Monthly Synthesis Ritual (RP Measurement Framework §7) Stage 4, Generator Integration: "Which projects energized vs. depleted? Where did I follow sacral response vs. mental override? How well did I honor latency periods? What shadows emerged?" The original ENIF Register 3 sub-indicators: question quality, projection management, deep listening ratio, shadow integration, methodology flexibility, bilingual translation facility.
+**Examples in current practice (where this happens implicitly).** A monthly synthesis ritual (a practitioner practice, not documented in this kit), Stage 4, Generator Integration: "Which projects energized vs. depleted? Where did I follow sacral response vs. mental override? How well did I honor latency periods? What shadows emerged?" The original ENIF Register 3 sub-indicators: question quality, projection management, deep listening ratio, shadow integration, methodology flexibility, bilingual translation facility.
 
 **Shannon-Weaver level.** Level C, effectiveness. The information is constituted by its effect on the observer's subsequent action. This is the level Shannon explicitly bracketed and Weaver acknowledged could not be addressed without a theory of mind.
 
 **Ontological commitment.** The observer is inside the system. Following von Foerster's second-order cybernetics: cybernetic principles apply to the act of observation itself; objectivity is a subject's delusion that observing can be done without him. Following Merleau-Ponty: the body is the primary site of knowing; intercorporeity precedes intersubjectivity. Following Varela, Thompson, and Rosch: cognition is enacted through embodied action; sense-making is a property of the autonomous observing system, not of an external reality being mirrored. Following Barad: the observer is part of the phenomenon, not external to it.
 
-**Theoretical anchors (in-vault).**
+**Theoretical anchors.**
 
 - Heinz von Foerster on second-order cybernetics, Recursive Visions
 - Maurice Merleau-Ponty on intercorporeity and the flesh of the world, The Flesh of the World
@@ -103,7 +103,7 @@ It is an internal canonical. The client-facing language remains Royal/Nomadic, i
 - Polyvagal theory repositioned from neuroanatomy to design principle, 2026-04-13-auto-research-polyvagal-controversy-mirror-leadership (the 39-expert critique and the pragmatic pivot)
 - Foucault on the "care of the self" as practice rather than introspection, The Architecture of Control and The Neoliberal Self, Governmentality, Extraction
 
-**Practical instruments.** The Monthly Synthesis Ritual Stage 4 (currently the primary Type 3 instrument, though not named as such); facilitation pre-session somatic check-in; post-session structured reflexive note (one paragraph capturing: question I asked that shifted the room; projection I caught; place I followed sacral vs. mental; shadow that surfaced); peer supervision when available; the narrative paragraph in the `consistency-scoring-aggregator` synthesis when written reflexively rather than descriptively.
+**Practical instruments.** A monthly synthesis ritual's Stage 4 (currently the primary Type 3 instrument, though not named as such); facilitation pre-session somatic check-in; post-session structured reflexive note (one paragraph capturing: question I asked that shifted the room; projection I caught; place I followed sacral vs. mental; shadow that surfaced); peer supervision when available.
 
 **What it cannot do.** It cannot be reported as evidence to a funder in its raw form. It is the source from which other claims are warranted, not itself a deliverable claim. It is also the type most vulnerable to being mistaken for self-report data, which is Type 1 about the practitioner, not Type 3.
 
@@ -180,7 +180,7 @@ A Type 1 metric (e.g., Likert "I felt seen" = 4.2) cannot be reduced to a Type 2
 
 A Type 2 finding (e.g., a CONSISTENCY-SHIFT marker in the participant's speech) becomes Type 3 when the practitioner asks: *what did I do, just before that shift, that changed the conditions in the room?* The Type 2 observation is data about the encounter. The Type 3 observation is data about the practitioner's contribution to the encounter.
 
-**What is possible:** structured reflexive inquiry. The Monthly Synthesis Ritual Stage 4 ("Generator Integration") is the existing operational form. A pre-session somatic check-in plus a post-session reflexive paragraph (question I asked that shifted the room; projection I caught; place I followed sacral vs. mental; shadow that surfaced) would extend this into per-session practice.
+**What is possible:** structured reflexive inquiry. A monthly synthesis ritual's Stage 4 ("Generator Integration") is the existing operational form. A pre-session somatic check-in plus a post-session reflexive paragraph (question I asked that shifted the room; projection I caught; place I followed sacral vs. mental; shadow that surfaced) would extend this into per-session practice.
 
 **What is not possible:** collapsing the practitioner's reflexive observation into the participant's experience. The participant's experience of the engagement is Type 2. The practitioner's experience is Type 3. Conflating them is the failure mode of solipsistic facilitation, where the facilitator's felt sense substitutes for the participant's reported experience.
 
@@ -200,7 +200,7 @@ The framework is not a mixed-methods design. Mixed-methods designs assume two ty
 
 The methodological move is not triangulation toward truth. It is **assemblage**: the deliberate juxtaposition of three distinct knowledge enactments such that what cannot be said in one becomes visible by its absence in the others.
 
-Cartwright's philosophy of capacities provides the analytic warrant for the same refusal. Convergent quantitative and qualitative evidence does not produce a stronger claim about a shared reality; it documents different capacities operating under different conditions, none of which transfers to a new context without ceteris paribus reasoning about support conditions (Cartwright, *The Dappled World*, 1999; Cartwright & Hardie, 2012). The post-structuralist STS argument (Mol, Barad, Wynter, already in vault) and the analytic-philosophy argument (Cartwright, Hacking, Longino, see Philosophy of Science) arrive at the same architectural claim from different traditions. Showing both routes is the complete defense.
+Cartwright's philosophy of capacities provides the analytic warrant for the same refusal. Convergent quantitative and qualitative evidence does not produce a stronger claim about a shared reality; it documents different capacities operating under different conditions, none of which transfers to a new context without ceteris paribus reasoning about support conditions (Cartwright, *The Dappled World*, 1999; Cartwright & Hardie, 2012). The post-structuralist STS argument (Mol, Barad, Wynter, covered above) and the analytic-philosophy argument (Cartwright, Hacking, Longino, see Philosophy of Science) arrive at the same architectural claim from different traditions. Showing both routes is the complete defense.
 
 ---
 
@@ -208,7 +208,7 @@ Cartwright's philosophy of capacities provides the analytic warrant for the same
 
 ### 4.1 What stays client-facing
 
-The current Bilingual Dashboard format (RP Measurement Framework §5) remains the client deliverable. Clients see:
+The current Bilingual Dashboard format (RP Measurement Framework §4) remains the client deliverable. Clients see:
 
 - Type 1 (Institutional / Royal) metrics in the funder-grammar columns
 - Type 2 (Relational / Nomadic) findings in the narrative-resonance columns
@@ -245,7 +245,7 @@ The discipline matters: per Independent Evaluator - Positioning, Deleuzian and s
 |---|---|
 | RP Measurement Framework §1–2 | This document **updates** §1–2. The two-register language remains valid as client-facing vocabulary; this document specifies that the two registers are the public face of a three-type internal architecture. |
 | RP Measurement Framework §3 (Coding Guide) | Unchanged. The six coding domains are Type 2 instruments. |
-| RP Measurement Framework §7 (Monthly Synthesis Ritual) | Stage 4 ("Generator Integration") is **renamed and reframed**: it is the primary Type 3 instrument. Stages 1–3 remain Type 1 / Type 2. |
+| Monthly synthesis ritual (practitioner practice) | Stage 4 ("Generator Integration") is **renamed and reframed**: it is the primary Type 3 instrument. Stages 1–3 remain Type 1 / Type 2. |
 | Nomadic Indicators Codebook | Unchanged. The codebook is the operational definition of Type 2 instruments. |
 | Say Why - Canonical Positioning & Skill Embedding | Compatible. The positioning doc's foundational principles (relational ontology, polyvagal-informed practice, narrative as social determinant of health) are the **ontological commitments that require the three-type architecture**. The positioning doc gestures at this without naming it. |
 | Say Why - Theory of Change | Compatible. The theory of change names "witnessing under conditions of relational safety" as the mechanism, Type 3 (the practitioner's witnessing) and Type 2 (the participant's experience) are both implicit in the mechanism. |
@@ -261,7 +261,7 @@ The discipline matters: per Independent Evaluator - Positioning, Deleuzian and s
 
 ### 6.1 Type 1 anchors
 
-In-vault primary references:
+Primary references:
 - Standard validity theory (construct, content, ecological)
 - Results-Based Accountability (Friedman 2005), operational backbone for partner-level reporting
 - Sullivan & Haley (2009) on multi-level assessment, used in PPHC Data Academy
@@ -280,8 +280,8 @@ Bridge to Type 2 (frameworks that acknowledge mechanism/context but report insti
 
 ### 6.2 Type 2 anchors
 
-In-vault primary references:
-- Bateson, "difference that makes a difference", central across multiple in-vault files
+Primary references:
+- Bateson, "difference that makes a difference", central across multiple sources
 - Nora Bateson on Warm Data, bridge to measurement
 - Mol on method assemblage and ontological multiplicity
 - Barad on intra-action and agential cuts
@@ -298,7 +298,7 @@ External anchors (see Qualitative Methodology):
 
 ### 6.3 Type 3 anchors
 
-In-vault primary references:
+Primary references:
 - von Foerster on second-order cybernetics
 - Merleau-Ponty on intercorporeity
 - Varela, Thompson, Rosch on enaction
@@ -328,7 +328,7 @@ The §7 "external citation gaps" enumerated in the original 2026-05-09 draft of 
 - Indigenous Methodology, Tuhiwai Smith, Wilson, Bartlett & Marshall, Coulthard (with explicit positionality limits, see "On positionality and use" in the note)
 - Philosophy of Science, Hacking, Cartwright, Longino
 
-Together these complete the analytic-philosophy backstop for the framework alongside the post-structuralist/STS coverage already in vault (Barad, Mol, Wynter, Latour, Bateson). The two halves are convergent, not competing: Barad's agential cut is Hacking's looping effect made quantum-mechanical; Mol's ontological multiplicity is Cartwright's dappled world made ethnographic; Wynter's counter-ontology is Longino's constitutive values made structural. An evaluator trained on Haraway and a philosopher trained on van Fraassen arrive at the same architectural claim by different routes. Presenting both is the complete defense.
+Together these complete the analytic-philosophy backstop for the framework alongside the post-structuralist/STS coverage already covered (Barad, Mol, Wynter, Latour, Bateson). The two halves are convergent, not competing: Barad's agential cut is Hacking's looping effect made quantum-mechanical; Mol's ontological multiplicity is Cartwright's dappled world made ethnographic; Wynter's counter-ontology is Longino's constitutive values made structural. An evaluator trained on Haraway and a philosopher trained on van Fraassen arrive at the same architectural claim by different routes. Presenting both is the complete defense.
 
 ### Remaining gaps
 

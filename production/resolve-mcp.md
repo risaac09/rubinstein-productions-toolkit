@@ -1,10 +1,15 @@
 # The Resolve MCP server
 
+**Status:** operational.
+
 `resolve_mcp.py` is a Model Context Protocol server over stdio that lets an
-MCP client (Claude Code here) drive DaVinci Resolve through the same library
-the `resolve_workflow.py` CLI uses. It is standard-library Python, with no
-SDK and nothing to install, and runs on macOS's `/usr/bin/python3` (3.9),
-where Resolve's scripting module, numpy and OpenCV live.
+MCP client (Claude Code here) drive DaVinci Resolve through the `rpresolve`
+library beside it. It is the only way this toolkit writes to Resolve:
+`resolve_workflow.py` keeps read-only and offline commands only (see
+[The command-line script](#the-command-line-script)). The server is
+standard-library Python, with no SDK and nothing to install, and runs on
+macOS's `/usr/bin/python3` (3.9), where Resolve's scripting module, numpy and
+OpenCV live.
 
 Resolve is edited live by a person while the server runs. Everything below
 follows from that: the server reads freely, writes only in addition to what
@@ -37,42 +42,63 @@ overlay that only adds a `target_dir`. A named overlay that is missing,
 does not parse, or is not a JSON object stops the tool with an error; it
 is never quietly replaced by the defaults.
 
-Keep the write tools on "ask" in Claude Code's permissions. Their results
-name media files, people and transcript text, so treat anything they return
-as private.
+Whether the write tools sit on "ask" in Claude Code's permissions is the
+operator's call: each dry-runs first, needs its plan_sha, journals every
+run and never starts a render, so a dialog per write adds little. Their
+results name media files, people and transcript text, so treat anything
+they return as private.
 
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 23 tools: 5 reads, 10 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 8
+tool must name that project. There are 36 tools: 5 reads, 18 offline tools
+(one of them, `deliver_captions`, writes a file beside a render) and 13
 writes.
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `resolve_status` | read | Toolkit commit and dirty flag, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. Works with Resolve closed. |
+| `resolve_status` | read | Toolkit commit on disk and the commit the server loaded (`stale` when they differ: restart it), dirty flag, one line per mounted media volume, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. Works with Resolve closed. |
 | `list_timelines` | read | Every timeline: index, name, unique id, frame rate, start and end frames, track counts, which is current, which end in ` [auto]`. |
 | `timeline_items` | read | One timeline's items per track: timeline and source frames, media file, input colour space and data level, transform, and grade (version, colour group, nodes with labels, LUTs and tools). Reads a timeline without making it current. |
 | `media_pool` | read | The folder tree (capped at 300 folders) and one folder's clips with their properties. |
 | `render_queue_status` | read | Every render job with its status, whether a render is running, and the Deliver page's format and codec. |
 | `detect` | offline | Camera and picture profile per media file, with the proposed Input Color Space and Data Level. |
 | `survey` | offline | The read-only survey of every project from Resolve's databases on disk (needs Python 3.14). |
-| `measure` | offline | Luma, clipping, legal range, skin tone in faces found by macOS Vision, and camera match for a video file. |
+| `measure` | offline | Luma (p1, p5, p50, p95, p99), clipping, legal range, highlight tail slope, shadow classes (readable, sculpted, lost), skin tone and per-face lighting ratio in stops in faces found by macOS Vision, and camera match for a video file, with the transfer named. The CLI's `--delivery` adds the master-against-encode readable-shadow row. |
 | `endcheck` | offline | For each span in a cut manifest: does the out-point land in a pause, on the intended words, inside the approved text. |
 | `selects` | offline | Proposed spans from a word-level transcript that stay inside an approved text. |
-| `reframe_plan` | offline | A static crop per span for the 9:16 and 1:1 versions, centred on the speaker's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger, or the one nearest `speaker_x`), the crop kept inside the picture area, and every sampled face box (10% margin) checked inside it. When the default scale (2.25) leaves bars or loses the face, the widest filled scale is tried; else the span needs a manual reframe or a split, and a span with no face gets no crop (`allow_bars` keeps the default when it holds the face, named `bars`). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
+| `reframe_plan` | offline | A static crop per span for the 9:16, 1:1, 4:5 or 16:9 versions or the master shape (`aspects`; `master` needs `master_size`), or, with `items`, a framing plan for a timeline's clips that `reframe_apply` writes (see Framing below). Each crop is centred on the subject's face: frames sampled across each span, faces from macOS Vision tracked across the samples (the one in the most samples, then the larger; or the one nearest `speaker_x` and `speaker_y`; or the largest with `prefer`), the crop kept inside the picture area (black bars trimmed, a dark scene kept whole), and every sampled face box (10% margin, clipped to the picture) checked inside it. With no scale on the clip the planner derives the widest scale that fills the frame for the source and the aspect (a zoom of about 4 for a 5952x2646 source into 9:16); `allow_bars` starts from the Ep 002 punch-in (2.25) instead and keeps it when it holds the face, named `bars`. A crop passes only when at least `min_checked` (default half, never under 3) of the span's samples had a checked face; else the span is manual. `subject_region` and `min_face_height` leave an audience out. Footage with no speech takes a manifest with `"speech": false` and only `source_path` and `clips`. A span with no face gets no crop. The crop keeps the whole head and room above it (Framing). Writes a manifest copy with per-span reframes (what `cut` reads) and a TSV and JSON report beside it. |
 | `deliver_check` | offline | A rendered file against its delivery destination: name rule, folder (its destination's subfolder), container, codec, size, exact fps, pixel format, colour tags and range, audio, captions (a sidecar `.srt` whose cues sit inside the video), loudness and true peak, each PASS, FAIL or SKIP with found and expected. |
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
 | `trim_review` | offline | Long silences from the source audio, fillers, repeats and Whisper loops from the word JSON, as proposals (keep, tighten, cut-candidate) in a TSV. Over a cut manifest the times run along each clip. Nothing is cut. |
+| `shoot_table` | offline | One CSV row per clip of a shoot: camera, start, duration, fps, size, profile, lens and audio, with long-take, VFR, weak-audio and unexpected-camera flags, a per-camera `camera_offset`, and a capture-audio audit (streams, noise floor, clipping, dead channel, dual mono, room tone). |
+| `qc` | offline | One FAIL-first QC table for a rendered file: black, freeze, scene cuts, loudness range, silence, phone-speaker proxy, sha256, and with `destination` deliver_check's rows (plus social fps and safe zone for a social one). With `words`, `stems` or `shots`, speech against the rest, stems summed against the mix, and true peak and silence at each cut. WARN rows never fail the table. |
+| `pipeline_proof` | offline | A test render against a reference render: luma and chroma shift, range, level shift, PSNR, SSIM and VMAF (where ffmpeg has libvmaf), PASS or FAIL per row. Needs numpy. |
+| `deliver_manifest` | offline | A delivery folder's `manifest.md` and `checksums.txt` as a preview, or with `verify` a re-check of `checksums.txt` against the files. Writes nothing; the CLI's `deliver-manifest` writes the two files. |
+| `perceive` | offline | One frame as scopes, a Lab palette and numbers (faces, skin, lighting ratio), with an optional reference, as a packet folder outside any repository. Needs numpy. |
+| `audio_report` | offline | Loudness over time, spectrogram, peaks, clipping, clicks, silences and octave balance of one audio stream: `audio-report.json` and two PNGs in a folder outside any repository, flags in the reply. Needs numpy. |
+| `ograf_template_check` | offline | The installed OGraf templates against the toolkit's copies, by sha256: installed, missing or stale per file, with a restart notice when a file went in after Resolve started. Reads only; never copies. |
+| `overlay_check` | offline | A graphic master rendered with alpha: tags, frame rate, clear and opaque frames, edge fringe and brand colour at named pixels, PASS, FAIL or SKIP per row. Needs numpy. |
 | `ingest` | write | Import media under camera bins and tag Input Color Space and Data Level, reading each tag back. Skips files already in the pool. |
 | `cut` | write | Build `<prefix>_<clip> [auto]` timelines and their 9:16 and 1:1 versions (`aspects`, default 9:16) from a cut manifest, gated by endcheck. Each version's items take their span's crop from `reframe_plan` (else the clip's `face_x`), every transform read back. A version with no reframe is not built and is named UNREFRAMED, nor is one whose input scaling is not scaleToFit or scaleToCrop (REFUSED); one whose picture does not fill the frame is built and named BARS. A timeline a failed build leaves behind is named in `left_behind` and in the journal. Each timeline is decided on its own: one that exists is skipped, and a missing version beside an existing 16:9 is built from it while its items still match the manifest's spans. |
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
+| `set_color_management` | write | Set the colour-management Project Settings `ingest` needs (preset `managed`: `colorScienceMode` `davinciYRGBColorManagedv2`) on the open project, each value read back and every key read again after. Refuses unless the project is fresh: no timelines and no clips in the media pool. Never creates, loads or saves a project; a person makes the project in Resolve. |
+| `timeline_from_clips` | write | A new ` [auto]` timeline from media-pool clips one after another: the clips directly in a bin, or clips named by unique id, path or name, in name, path or given order (natural order, so P2 comes before P10). Picture only, on V1, following the project's frame rate and size; a clip at another rate is conformed by Resolve to real time and the plan says so. Every item is read back: the clip, its first source frame, its length, no gap or overlap. The timeline goes into the media-pool bin open in Resolve (`lands_in_bin` says which). |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
-| `queue_render` | write | Queue one render job from a `resolve-config.json` preset, or for a delivery destination under the house file name. Never starts it. |
+| `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
 | `sync` | write | Stack dual-system sound on a new ` [auto]` timeline: the reference on V1/A1, the other on A2 (or V2/A2) at the measured offset, every placement read back (start and source start exactly, length within a frame). Pool clips, or files imported into a new bin the run owns; only those may also go through AutoSyncAudio, which is checked against the measured offset. |
+| `relink` | write, changes an offline clip | Point the open project's offline clips (File Path missing on disk) at files under `search_roots` that verify as the same take: start timecode, frame count (one frame of slack), resolution and frame rate must all be known and agree. Never on a name alone; a clip with no timecode, a still and an audio-only clip are UNVERIFIABLE and left alone; two verified files of different sizes are AMBIGUOUS and left alone; identical copies resolve to the earliest search root. An online clip is never touched. Uses `MediaPool.RelinkClips` (the folder only), which should leave the clip's identity, timeline items, grade and tags alone (not yet confirmed on a live project: try a scratch project first); each clip is read back, and a property that reads differently afterwards is reported, never set back. `max_items` relinks a sample; dry run again before the rest. |
+| `stabilize` | write, changes an item | Call `TimelineItem.Stabilize()` on video items of one track (`track`, default 1) of an ` [auto]` timeline (any other is refused); `items` picks item numbers from 1 (default all) and `max_items` keeps only the first N of them, so a sample can go first. Makes the timeline current, opens the Color page and puts the playhead at each item's start, then calls `Stabilize()` item by item, recording the bool it returned and the seconds it took; a cancel stops before the next item. **The effect is not verified:** stabilization is not visible through `GetProperty` (a 2026-09-26 spike found SmartReframe's result invisible there, and the same is assumed until a live run shows otherwise), so the result says what `Stabilize()` returned and nothing more (`verified` is false). `Stabilize()` uses the item's current stabilizer settings (mode, strength, smooth, zoom) from the Color page, which the API cannot set. It can take a long time on 6K items; the call holds the Resolve lock throughout, so use `max_items` first. |
+| `reframe_apply` | write, changes an item | Set ZoomX, ZoomY, Pan and Tilt on the video items of one track of an ` [auto]` timeline from a framing plan (`reframe_plan` with `items`), each read back. Each item takes the plan entry for its file (by source range when the file has several). The timeline's size and input scaling must be the plan's; an item with its own Scaling, a clip of another resolution, an entry with no crop and a zoom below fill (unless `allow_bars`) are refused. An entry whose move is `none`, or one the item already carries, writes nothing. After the real run, a change on another timeline using the same media is reported as a leak. |
 | `trim_review_markers` | write | The trim-review rows as markers (a colour per kind) on an ` [auto]` timeline, mapped through the items that play the source, each read back; a frame that already holds a marker is refused. Adds markers only. |
+
+`production/rpresolve/grade.py` is a helper library, not a tool and not a
+stub. It uses the standard library only and holds the LUT and `.drx`
+apply-and-read-back code and the grade reader that `apply_grade` and
+`timeline_items` use. It registers no MCP tool, and no `grade` or `match`
+tool exists.
 
 The offline tools never connect to Resolve. Every path they take must be
 absolute, since the server's working directory is not the caller's.
@@ -91,7 +117,7 @@ tree and never overwrites an `.srt`.
 - **Plan first.** `dry_run` defaults to true and returns a `plan_sha`. A real
   run needs that `plan_sha` and is refused when the plan has changed since
   (files, media pool, items or grades differ).
-- **Additive only.** Nothing that existed before is modified. New timelines
+- **Additive only, with four exceptions.** Nothing that existed before is modified. The exceptions are `set_color_management`, which sets a project setting only on a fresh project, one with no timeline and no clip in its media pool, so nothing anyone has made is reached (it refuses any other project, never creates, loads or saves one, and is annotated destructive so a client asks first), `relink`, which may point a clip that is offline at plan time at a file that verifies as the same take, `stabilize`, which runs Resolve's stabilizer on items, changing them, but only on ` [auto]` timelines, the same boundary grades keep, and `reframe_apply`, which sets Zoom, Pan and Tilt on items of ` [auto]` timelines only and compares every other use of the same media before and after. `relink` never touches an online clip, never relinks on a name alone, moves or deletes no file, and journals every old path against its new one, so a relink can be undone by relinking back. New timelines
   end in ` [auto]`. Grades and auto captions go only onto ` [auto]`
   timelines, and `create_captions` refuses a timeline that already has any
   subtitle item. An item whose
@@ -100,6 +126,43 @@ tree and never overwrites an `.srt`.
   unless `overwrite` is true. After a real grade run, every item on other
   timelines that uses the same media is compared with before, and any change
   is reported as a leak.
+- **Settings the first custom write changes are reported, never corrected
+  (opt-in guard).**
+  `cut` and `sync` switch each new timeline to custom settings
+  (`useCustomSettings` 1). A Blackmagic forum report (board 12, topic 212784;
+  Windows and Linux, Resolve 20.3 to 21.1.1; none from a Mac) says that write
+  also changes colour management, input and output scaling and the monitor
+  format, and that some of those keys cannot be set back. The guard has not
+  yet run against a live project, so what happens on this Mac is not known.
+  **The guard is off by default.** It reads settings through
+  `Timeline.GetSettings()` (else `GetSetting()` with no key), and
+  `GetSettings()` on Resolve 21.1.1.10 is unconfirmed. A call that hangs
+  inside Resolve cannot be caught by a try/except, so the guard makes no
+  whole-settings read until someone turns it on. With it off, `cut` and `sync`
+  make no `GetSettings()` call and no `GetSetting()` call without a key (they
+  still read back single keys such as the frame rate and the input scaling),
+  `settings_drift` is null on every timeline's entry,
+  `settings_drift_rows` is empty and nothing is warned. To enable it, set
+  `RPRESOLVE_SETTINGS_GUARD=on` in the MCP server's environment (`1`, `yes`
+  and `true` also work; any other value, `off` included, leaves it off),
+  then restart the server (with the Claude CLI, add
+  `-e "RPRESOLVE_SETTINGS_GUARD=on"` to the registration, as for
+  `RPRESOLVE_CONFIG` above). Make the first measurement on a scratch project,
+  never a client project.
+  With the guard on, each tool reads the timeline's settings before and
+  after its writes and names any key that reads differently, apart from the
+  ones it wrote on purpose (the custom flag, the frame rate, the size). The
+  result carries it as `settings_drift` (on each timeline's entry) and
+  `settings_drift_rows` (a list on the whole result), and the summary names
+  it SETTINGS DRIFT. A 16:9 or a sync
+  timeline is compared with itself before the write; a 9:16 or 1:1 with the
+  16:9 it was copied from. Nothing is set back, and `exit_status` and `plan_sha`
+  are the same with the guard on or off; a failure's message gains a short
+  settings-drift clause when the guard is on and found drift. SETTINGS NOT CHECKED
+  means the settings could not be read, or the last reading failed, so the
+  comparison is missing or partial; the result's `notes` say why. Only keys
+  that both readings hold are compared, so a few that exist only on a custom
+  timeline are not seen.
 - **Renders are queued, never started.** `queue_render` refuses while a
   render runs and when the output file already exists. Resolve cannot read
   back the Deliver page's settings, so the tool puts back the format and
@@ -109,8 +172,11 @@ tree and never overwrites an `.srt`.
   queued in Single clip mode, read back first, and the mode is put back
   after; the result also lists the render settings the job takes from the
   Deliver page as it stands (`carried_over`).
-- **Deliverables by destination.** With `destination`, `name` and
-  `target_dir` in place of `preset` and `output_dir`, `queue_render` names
+- **Deliverables by destination.** `queue_render` takes a `destination`,
+  with `name` and `target_dir`, and nothing else: the render presets, with
+  their `preset`, `output_dir` and `custom_name` arguments, are gone, and a
+  call that still passes one is refused before it runs, with a message that
+  says to give a `destination`. It names
   the file by the house rule and also refuses when a fixed-size
   destination gets a timeline of another shape (a 9:16 destination wants
   the 9:16 copy), when the folder sits under
@@ -133,29 +199,160 @@ tree and never overwrites an `.srt`.
   than half a frame out, with the retime that would cancel the drift. `AutoSyncAudio` changes the clips it links, so it runs only on
   clips the same call imported into its own new bin, and its result is
   compared with the measured offset through a second ` [auto]` timeline.
+- **Stabilization changes the item, and is not read back.** `stabilize`
+  calls `TimelineItem.Stabilize()` only on ` [auto]` timelines and only on the
+  items its dry run listed (`plan_sha` covers the timeline, the track, the
+  item ids and their source frames; `max_items` shortens the list before it is
+  hashed, so a sample and the full run have different plans). Each item's
+  result is the bool `Stabilize()` returned plus its elapsed seconds. Nothing
+  else is checked: stabilization does not show in `GetProperty`, so
+  `verified` is false in every result and a True means only that Resolve said
+  so. Judge a sample by eye before the rest. The stabilizer's mode, strength,
+  smooth and zoom are whatever the item has on the Color page; the API cannot
+  set them. The call is long and the Resolve lock is held throughout, so other
+  Resolve tools wait and may report Resolve as busy. A cancel or an error
+  between items stops there and the journal's finished line keeps the items
+  done so far.
 - **Markers only.** `trim_review_markers` adds markers to an ` [auto]`
   timeline and reads each back; it never cuts, ripples, moves or deletes,
   and refuses a row whose frame already holds a marker.
 - **The UI is put back.** `DuplicateTimeline` makes the copy current and
   `ApplyGradeFromDRX` opens the Color page; queueing makes the timeline
   current; `create_captions` makes the timeline current and opens the Edit
-  page; `sync` makes each new timeline current to place clips on it (and,
-  importing, opens its bin); `trim_review_markers` makes the timeline
-  current while marking. The current timeline, playhead, page and media
+  page; `sync` and `timeline_from_clips` make each new timeline current to
+  place clips on it (and, `sync` importing, opens its bin);
+  `trim_review_markers` makes the timeline
+  current while marking; `stabilize` makes the timeline current, opens the
+  Color page and moves the playhead to each item. The current timeline, playhead, page and media
   pool folder are restored after each, and any restore problem is in the
   result.
 - **One writer at a time.** Every Claude Code session starts its own server,
   so all Resolve access takes a lock at `~/Library/Caches/rpresolve/resolve.lock`,
-  shared with the CLI's write commands. `resolve_status` waits up to 5 s,
+  shared by every session's server. `resolve_status` waits up to 5 s,
   the other reads 10 s and writes 30 s, then report Resolve as busy.
 - **A record of every write.** A real run writes a synced "started" line to
   `~/Library/Logs/rpresolve-mcp/writes.jsonl` (mode 0600) before touching
   Resolve and a "finished" line after, which names what was created and
   any timeline a failed build left behind (`left_behind`). If the started
   line cannot be written, the write does not happen.
-- **Calls that are never made.** A test scans all the code the server can
-  reach for `LoadProject`, `CreateProject`, `SaveProject`, `StartRendering`,
-  any `Delete*`, `eval` and `exec`, as names or strings.
+- **Calls that are never made, and one place that writes.** A test scans the
+  non-test `.py` files under `production/` (everything except the top-level
+  `production/tests/`), the script and the launcher among them.
+  It fails any file that names `LoadProject`, `CreateProject`, `SaveProject`,
+  `StartRendering`, any `Delete*`, `eval`, `exec` or one of the other calls that
+  close, import, restore, archive or export a project, as a name or a string.
+  It also fails any file outside `production/rpresolve/` that names a call on
+  its list of Resolve write calls (`ImportMedia`, `SetLUT`, `AddRenderJob`,
+  `OpenPage`, `LoadRenderPreset`, `GrabStill`, `Quit` and the rest) or a name
+  that starts with a change verb (Set, Add, Create, Import, Load, Save, Grab,
+  Export, Convert, Render and the others). It is a name tripwire and nothing
+  more: a call built at run time (a string assembled and passed to `getattr`)
+  and a direct python import of Resolve's own module are not caught, and test
+  files, the hand-run live harness `production/tests/live_mcp_sandbox.py`
+  among them, are not scanned. The library and this server are the only code
+  the scan allows those write calls in.
+
+## The command-line script
+
+`resolve_workflow.py` no longer writes to Resolve. A write goes through the
+server above: the project is named and pinned, the plan is shown first, the
+real run needs its `plan_sha`, every change is read back, and each real run
+leaves a journal line. The script's write commands kept no journal, made the
+dry run and the `plan_sha` optional, and several acted on whatever project or
+timeline was current. `render --start` started every queued job and
+`clear-queue` deleted every queued job, the ones the server had queued
+included. They are retired, not hidden: running one exits 2 and says what to
+use instead (the table below says the same), without connecting to Resolve.
+
+| Retired command | Do this instead |
+|---|---|
+| `new-project` | No tool creates a project: a person makes it in Resolve (`CreateProject` makes the new project current, which can drop an editor's unsaved work). Then `set_color_management` sets Color science to DaVinci YRGB Color Managed on that fresh, empty project, or set it by hand in Project Settings > Color Management. `ingest` refuses a project that is not DaVinci YRGB Color Managed, and makes its own camera bins and a Review bin; it does not make the old Audio, Selects, Timeline, Graphics and Exports tree, which you can make by hand if you want it. Set the resolution and frame rate in Project Settings too. |
+| `import-media` | `ingest`: media goes under camera bins in `parent` (default `Source`) and each clip's Input Color Space and Data Level are tagged from `detect`. There is no custom bin and no clip colour; `timeline_items` shows each item's input colour space. |
+| `build-timeline` | No tool builds an intro and outro timeline: make it by hand. `cut`, `sync`, `duplicate_timeline_auto` and `timeline_from_clips` make ` [auto]` timelines; `timeline_from_clips` is the one for "these clips, in this order" (a test ladder, a camera comparison, a selects reel). |
+| `add-subtitles`, `auto-subtitle`, `captions` | `create_captions` on an ` [auto]` timeline. An `.srt` cannot be placed by script on Resolve 21: use File > Import > Subtitle by hand. |
+| `render`, `render-all`, `deliver-queue` | `queue_render` with a `destination`, a delivery destination in `resolve-config.json`, under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per destination. The four render presets `render` and `render-all` took (`youtube`, `linkedin`, `master`, `story`) no longer exist; the Deliver section of `resolve-template-spec.md` lists the destinations and their frame sizes. |
+| `clear-queue` | No tool. Remove jobs on the Deliver page; no tool deletes anything. |
+| `apply-lut`, `apply-drx` | `apply_grade` on an ` [auto]` timeline. A `.drx` needs a label manifest beside it, a hand-written `<name>.json` holding `{"num_nodes": 3, "labels": ["CST IN", "", "CST OUT"]}`: the node count and the node labels the graph should show after the apply, so the result can be read back (either key may be left out). The `--camera` filter by clip colour is gone; choose items by number with `items` (`timeline_items` lists them). |
+| `open-page` | No tool. Click the page tab in Resolve. |
+| `export-project` | No tool. Export the project by hand in Resolve: from the Project Manager, or with File > Export Project Archive. The command only wrote a project file to disk and changed nothing in Resolve; it is retired with the rest. |
+| `ingest`, `cut`, `sync` | The tools of the same names. |
+| `trim-review --markers` | `trim_review_markers`. |
+
+The menu paths this table gives for creating and exporting a project
+(Project Settings > Color Management > Color science, the Project Manager,
+File > Export Project Archive) are written from memory and have not been
+checked against a live Resolve; the labels may differ by version.
+
+Still in the script: `python3 resolve_workflow.py --help` lists the commands,
+one line each, and `<command> --help` gives a command's flags. Each command is
+one module, `rpresolve/cmd_<name>.py` (the name with its hyphens as
+underscores), whose docstring says what it does; from `production/` it also
+runs alone as `python3 -m rpresolve.cmd_<name>`. The script finds the modules
+at import, so a new command adds its module and its tests and edits no shared
+file, this one included (`rpresolve/cli.py` says how).
+
+- Read Resolve and change nothing (Resolve Studio must be running):
+  `list-projects`, `list-timelines`, `list-render-formats`, `info` and `audio-state`.
+- Every other command never connects to Resolve.
+
+A command has an MCP tool when one of the same name with underscores is in
+[Tools](#tools); `info` is covered by `resolve_status`, `list_timelines` and
+`render_queue_status` together. A command with a tool keeps a few flags the
+tool lacks: the script's `sync-measure` takes `--ref-stream` and
+`--other-stream`, and its `survey` takes `--projects-dir`, `--metadata-cache`
+and `--no-metadata-cache`, none of which the tools do.
+
+`audio-state` reads one timeline's audio from Resolve and changes nothing: the
+audio tracks (type, name, on or off, item count), each audio item's `Audio*`
+properties (volume, Voice Isolation, Dialogue Leveler, as the item reports
+them) and its source's audio mapping, the Deliver page's format, codec and
+render mode, the audio codec, sample rate and bit depth of the render jobs
+queued for that timeline, and the project's loudness-meter settings. `-o`
+writes the JSON (refused inside any git tree). The report ends with what the
+API cannot read: the mixer, clip and track EQ, Dynamics and effects, the AI
+Music Remixer, the Deliver page's Audio tab and render range (written by
+`SetRenderSettings`, never read back), and loudness itself. `deliver-check
+--audio-state FILE`, and the `deliver_check` tool's `audio_state`, add rows
+`job_audio_codec`, `job_audio_sample_rate` and `job_audio_bit_depth` that
+compare the queued jobs with the destination (SKIP when no job reports a
+field).
+
+`queue_render` puts the Deliver page back through `rpresolve.renderguard`: the
+format and codec, the render mode and the timeline's mark In and Out are read
+before, set back (also when the queue raises) and read again, and a value that
+did not come back is a warning. Resolve has no `GetRenderSettings`, so
+`AudioSampleRate` and the `SelectAllFrames` render range cannot be read or put
+back; the result's `render_guard.hand_reset` and the summary name them. The
+guard also restores any touched key when a Resolve does answer
+`GetRenderSettings` with a dict. It never starts a render.
+
+`perceive --targets` also writes `targets.json` for a private reference library;
+see `reference-library.md`.
+
+`audio-report` measures one audio stream, whole or between `--start` and
+`--end`, and writes `audio-report.json`, `loudness.png` (short-term and
+momentary loudness over time, silences shaded, clips and clicks marked) and
+`spectrogram.png` into the `-o` folder, which is refused inside any git
+tree. The JSON holds integrated loudness, LRA and true peak (read as
+`deliver_check` reads them), per-channel peak, RMS, crest factor, DC and
+clip runs, clicks, silences, dropouts, stereo correlation and balance,
+octave balance, and flags, each flag with its value, threshold and first
+times; `--ref` adds a reference file's numbers and the difference.
+`--dest` or `--target` sets the loudness target. Every threshold is a
+working default, not a standard. It measures and does not listen: a clean
+report does not mean a voice is clear, so a person still hears the hardest
+passage as an A/B before a mix is called done.
+
+`sting-sync` re-measures each hit of an intro's sound sting from the audio and
+checks it against the lockup's picture keyframes: signed offsets in frames and
+ms, FAIL first. It has no tool; exit 0 pass, 1 any FAIL, 2 an input missing or
+breaking the contract.
+
+To run a read-only command from a terminal, export the two variables the
+registration above sets (`RESOLVE_SCRIPT_API` and `RESOLVE_SCRIPT_LIB`).
+`rpresolve.api.connect` adds Resolve's `Scripting/Modules` folder to the
+import path itself, so `PYTHONPATH` is needed only for a Resolve installed
+somewhere else.
 
 ## Where output goes
 
@@ -166,6 +363,26 @@ with `offset` and `limit` and writes every row to
 choose the file.
 
 ## Things that cost time to find
+
+- `set_color_management` and `timeline_from_clips` are tested against the
+  shared fakes only (`tests/test_mcp_project_timeline.py`). Neither has run
+  against a live Resolve yet. Run `tests/live_mcp_sandbox.py` on a sandbox
+  project before relying on them. What is unconfirmed: that
+  `Project.SetSetting('colorScienceMode', ...)` takes effect and reads back on
+  21.1.1.10 (the 21.1 README marks `SetSetting` deprecated for
+  `SetSettings`), and how `AppendToTimeline` with no `recordFrame` places a
+  conformed clip. Both tools read everything back and refuse to call a
+  mismatch a success. What a live dry run did confirm (2026-10-08, read
+  only): both plans read a real project's bins and clips; GH7 and S5II
+  plans matched the timelines made by hand frame for frame (3030 and 3135);
+  Resolve truncates a conformed clip's length (35 PYXIS clips at 30 fps on a
+  29.97 fps timeline, 7723 frames against 7758 rounded), so the plan
+  truncates too.
+- `timeline_from_clips` places picture only. How Resolve lays a multichannel
+  clip's sound over audio tracks that do not exist yet has not been checked.
+- Whether the timeline and output colour spaces and the tone and gamut mapping
+  can be set through the API, so that `set_color_management` could set more
+  than `colorScienceMode`, is open.
 
 - Resolve's scripting library leaves the process in the C locale once
   connected. A text file opened without `encoding="utf-8"` then decodes as
@@ -193,7 +410,8 @@ choose the file.
   1620 of 1920 rows of a 9:16 frame, and a picture letterboxed to a
   360-row band covers 810. The sandbox 9:16 that rendered with bars was
   built at that default; `cut` now names BARS, and `reframe_plan`
-  measures the picture area.
+  measures the picture area and, with no scale named, derives the widest
+  one that fills the frame instead of starting from 2.25.
 - `MediaPool.AppendToTimeline` works on the current timeline and answers
   truthy even when it places nothing, including for a track index that
   does not exist yet; `sync` adds tracks with `AddTrack` first and reads
@@ -204,6 +422,103 @@ choose the file.
   (the scripting README's `GetMarkers` example), unlike `recordFrame`;
   not yet confirmed on a live Resolve (see the Trim review section of
   `resolve-template-spec.md`).
+- Whether a second `useCustomSettings` write on an already custom timeline
+  changes those keys again is not known. `cut` makes that write twice on
+  every 16:9 (once in `build_clip`, once in its size step) and once on each
+  version, and `settings_drift` (with the guard enabled) names the write after
+  which each key changed.
+  `Timeline.GetSettings()` is in the 21.1 scripting README and stub, and
+  `GetSetting()` with no key is its older, deprecated form; neither has been
+  confirmed on Resolve 21.1.1.10, which is why the guard is off by default
+  until one run on a scratch project confirms the calls. A key that reads
+  differently because the tool wrote the frame rate or the size would be a
+  false alarm; the guard leaves those writes out.
+- Live-verified against Resolve Studio 21.0.4.5, from the script these notes
+  used to live in. `Timeline.ApplyGradeFromDRX(path, mode, items)` does not
+  exist in 21.0.4, and the scripting README's example for it is stale. The
+  working call is per item: `item.GetNodeGraph().ApplyGradeFromDRX(path,
+  gradeMode)` returns a bool, with `gradeMode` 0 for no keyframes, 1 for
+  source timecode aligned and 2 for start frames aligned. It very likely
+  replaces the item's node graph, which is why `apply_grade` reads the graph
+  back and checks it against the label manifest.
+- Grades go through the `Graph` object from `item.GetNodeGraph()`:
+  `GetNumNodes()`, `GetNodeLabel(i)`, `GetLUT(i)`, `SetLUT(i, path)`,
+  `GetToolsInNode(i)` and `SetNodeEnabled(i, bool)`. Node indexes are
+  1-based. `TimelineItem.GetNumNodes`, `SetLUT` and `GetLUT` are deprecated
+  aliases.
+- `SetLUT` only accepts a LUT Resolve has scanned (`Project.RefreshLUTList()`
+  rescans), and `GetLUT` may report the path relative to a LUT folder.
+  `apply_grade` rescans first, sends the path it was given (a link in a LUT
+  folder goes by its own path, not its target's) and reports a read-back that
+  differs as a failure.
+- `GetToolsInNode(i)` returns None for a node whose corrections are all at
+  their defaults; it is reliable only for OFX nodes.
+- The scripting API cannot create colour-page nodes. A LUT onto a node
+  beyond what the clip already has is refused (`cannot add node N`). Add the
+  node on the Color page first, or apply a `.drx` that already contains it.
+- Unknown `resolve.CONSTANT` names return None silently, so a missing
+  constant reads as a value rather than an error. Check them.
+- Piped output from the Resolve client is lost unless flushed before the
+  interpreter exits, and the client can segfault at shutdown after some
+  calls: the server and the script both leave through
+  `rpresolve.api.exit_clean` (flush both streams, then `os._exit`).
+- Subtitle styling (font, colour, position) has no scripting entry point. It
+  stays a manual Edit-page step.
+- Queueing a render never reframes. A 9:16 or 1:1 destination refuses a
+  timeline of another shape. `reframe_plan` plans a crop per span and `cut`
+  applies it to the 9:16 and 1:1 versions (Zoom, Pan and Tilt, each read back).
+- **Pan and Tilt are not timeline pixels** (Resolve 21.1.1.10, measured
+  2026-10-15 on six fixtures). Each is measured against the fitted picture
+  on its own axis: a Pan of P moves the picture right by
+  P × (source width × fit) / timeline width, and a Tilt of T moves it up by
+  T × (source height × fit) / timeline height, where fit is the input
+  scaling's factor before Zoom. They read as pixels only on an axis where
+  the fitted picture spans the timeline, which is why Pan looked confirmed
+  on the Ep 002 9:16 and Tilt did not. A 9:16 from a UHD source needs a
+  Tilt 3.16 times the pixel move; a 2.25:1 master (3:2 at scale full
+  frame with crop into 5952x2646) needs 0.667 of it. Negative Tilt moves
+  the picture down and shows the top of the source. `tilt-fixture
+  --variant` rebuilds any of the six; `tilt-check` reads a still of it.
+
+## Framing
+
+Every crop the toolkit plans, for the master timeline shape or a platform
+version, keeps the subject's whole head. The rules, in `rpresolve/reframe.py`:
+
+- **The head is above the face box.** Vision's face box stops near the
+  brows, so the head's top is taken `HEAD_ABOVE` (0.6) face heights above
+  it, and the check covers the head, not only the face.
+- **Room above the head.** The crop moves up, never down, until the median
+  head has `HEADROOM` (0.65) face heights of room above it and no sample's
+  head is cut. Both values are tunable constants. HEADROOM came from the editor's
+  hand fixes on two standing performers (a 2026-10 festival shoot), so those
+  two clips are its calibration, not its proof.
+- **Do nothing when nothing is needed.** The master shape starts from
+  centre fill (the shot as shot). When that already keeps every head with
+  its room, the plan's `move` is `none` and `reframe_apply` writes nothing.
+  Platform versions start centred on the face, as before.
+- **Fallbacks say why.** A head that runs past the top of the picture (the
+  subject at the sensor's edge), or a crop that cannot give the room the
+  picture holds without losing the face below, is `fallback` with the
+  reason. A shot the camera framed tight passes with a note: nothing above
+  the head was there to keep.
+- **Squeeze is read.** An anamorphic source is planned on its desqueezed
+  picture (width × squeeze). The squeeze comes from the manifest's
+  `squeeze`, the `squeeze` argument or the file's tag (BRAW writes
+  `anamorphic`), in that order; with none it is 1.0, and the summary says
+  it was assumed. The S5II container carries no squeeze flag, so give it.
+  The transform for a squeezed clip assumes Resolve fits its desqueezed
+  picture once the clip's Pixel Aspect Ratio is set. No live run has
+  checked that yet, so `reframe_apply` warns on every squeezed item.
+- **BRAW is judged on stills.** ffmpeg cannot decode BRAW. Give `stills`
+  (any size of the source's shape: Resolve's exported frames, a proxy) and
+  `src`, the size Resolve reads (6048x4032 for the Pyxis). A still of
+  another shape is refused, and stills are never removed.
+- **Zoom never goes below fill** unless `allow_bars` is set.
+
+The order on a live project: `reframe_plan` with `items` (offline) writes
+the framing plan, `duplicate_timeline_auto` makes the ` [auto]` copy, then
+`reframe_apply` writes the plan onto it, dry run first.
 
 ## Check it against a live Resolve
 

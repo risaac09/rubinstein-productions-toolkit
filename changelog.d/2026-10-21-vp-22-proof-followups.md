@@ -1,0 +1,1 @@
+Extend pipeline-proof: an fps row that fails when frame rates differ even if frame counts match, a WARN row naming both when an explicit tv or pc range tag disagrees with the measured extremes, and a test for the libvmaf success path (skipped with a reason when the ffmpeg build has none). (VP-22)

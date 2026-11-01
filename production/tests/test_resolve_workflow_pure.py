@@ -1,9 +1,13 @@
 """
-Offline unit tests for resolve_workflow.py's pure-logic functions — the
-pieces that don't touch DaVinciResolveScript, so they run without Resolve
-installed or running. Everything Resolve-shaped (connection, media pool,
-timeline calls) is deliberately excluded from this file; test it by hand
-against a live instance instead.
+Offline unit tests for resolve_workflow.py and rpresolve/cli.py: their
+pure-logic functions (the pieces that don't touch DaVinciResolveScript, so they
+run without Resolve installed or running), the codec and config code they share
+with the library, and what is left of the script's surface once its write
+commands are retired: the parser holds only the command modules
+(rpresolve/cmd_*.py, found at import, so a new command edits nothing here), and
+each retired command, and trim-review --markers with its flags, exits 2 without
+connecting to Resolve, naming the MCP tool that replaced it or, for the
+commands that have no tool, saying so and what to do by hand.
 
 stdlib unittest only — no pytest/dependency to install for a public kit.
 
@@ -13,27 +17,31 @@ Run: python3 production/tests/test_resolve_workflow_pure.py
 import argparse
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from resolve_workflow import (
-    pick_codec,
-    collect_media_files,
-    duration_to_frames,
-    parse_framerate,
-    safe_fps,
-    load_config,
-    build_survey_command,
-    DEFAULT_CONFIG,
-    SURVEY_PYTHON,
-    SURVEY_SCRIPT,
-)
+import resolve_workflow
+from rpresolve import cli
+from rpresolve import config as rpconfig
+from rpresolve.cli import safe_fps
+from rpresolve.cmd_survey import build_survey_command, SURVEY_PYTHON, SURVEY_SCRIPT
+from rpresolve.config import DEFAULT_CONFIG
+from rpresolve.mcp import server
+from rpresolve.render import pick_codec
+
+
+def load_config(path):
+    """resolve-config.json merged over the defaults; a malformed file prints a
+    warning and degrades to the defaults (rpresolve.config)."""
+    return rpconfig.load_config(path, warn=print)
 
 
 class TestPickCodec(unittest.TestCase):
@@ -71,52 +79,7 @@ class TestPickCodec(unittest.TestCase):
         self.assertFalse(matched)
 
 
-class TestCollectMediaFiles(unittest.TestCase):
-    def test_recursive(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "DCIM" / "100_PANA").mkdir(parents=True)
-            (root / "DCIM" / "100_PANA" / "clip1.mov").write_bytes(b"x")
-            (root / "DCIM" / "100_PANA" / "notes.txt").write_bytes(b"x")
-            (root / "top.mp4").write_bytes(b"x")
-
-            files, skipped = collect_media_files([str(root)])
-            names = sorted(Path(f).name for f in files)
-
-            self.assertEqual(names, ["clip1.mov", "top.mp4"])
-            self.assertEqual(skipped, [])
-
-    def test_reports_missing_paths(self):
-        files, skipped = collect_media_files(["/definitely/not/a/real/path.mov"])
-        self.assertEqual(files, [])
-        self.assertEqual(skipped, ["/definitely/not/a/real/path.mov"])
-
-    def test_single_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            f = Path(tmp) / "clip.mov"
-            f.write_bytes(b"x")
-            files, skipped = collect_media_files([str(f)])
-            # collect_media_files resolves paths (e.g. macOS /tmp -> /private/tmp),
-            # so compare against the same resolution rather than the raw string.
-            self.assertEqual(files, [str(f.resolve())])
-
-
-class TestDurationAndFramerate(unittest.TestCase):
-    def test_duration_to_frames(self):
-        self.assertEqual(duration_to_frames(4.0, 24), 96)
-        self.assertEqual(duration_to_frames(4.0, 23.976), 96)
-        self.assertEqual(duration_to_frames(1.5, 30), 45)
-
-    def test_parse_framerate_known(self):
-        value, known = parse_framerate("23.976")
-        self.assertEqual(value, "23.976")
-        self.assertTrue(known)
-
-    def test_parse_framerate_unknown_still_passes_through(self):
-        value, known = parse_framerate("24fps")
-        self.assertEqual(value, "24fps")
-        self.assertFalse(known)
-
+class TestSafeFps(unittest.TestCase):
     def test_safe_fps_valid(self):
         self.assertEqual(safe_fps("23.976"), 23.976)
 
@@ -128,7 +91,6 @@ class TestDurationAndFramerate(unittest.TestCase):
 class TestLoadConfig(unittest.TestCase):
     def test_missing_file_returns_defaults(self):
         config = load_config("/definitely/not/a/config.json")
-        self.assertEqual(config["cameras"]["iphone"]["clip_color"], "Blue")
         self.assertEqual(config, DEFAULT_CONFIG)
 
     def test_merges_real_file(self):
@@ -138,7 +100,7 @@ class TestLoadConfig(unittest.TestCase):
             config = load_config(str(p))
             self.assertEqual(config["default_framerate"], "29.97")
             # untouched keys still fall back to defaults
-            self.assertEqual(config["cameras"]["gh7"]["clip_color"], "Orange")
+            self.assertIn("24", config["deliver"]["frame_rates"])
 
     def test_malformed_file_warns_and_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,6 +175,192 @@ class TestSurveyCommand(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stderr.decode())
         self.assertIn(b"inside this repository", proc.stderr)
         self.assertFalse(target.exists())
+
+
+# The commands are the modules rpresolve/cmd_*.py; a new one is picked up with no edit here.
+KEPT = [m.NAME for m in cli.commands()]
+# The commands at VP-152. A lost module fails this floor; a new command does not touch it.
+FLOOR = {"list-projects", "list-timelines", "list-render-formats", "info", "survey", "detect",
+         "shoot-table", "measure", "perceive", "pipeline-proof", "manifest", "endcheck", "selects",
+         "reframe-plan", "tilt-fixture", "tilt-check", "deliver-check", "qc", "overlay-check",
+         "deliver-captions", "deliver-fix-loudness", "deliver-manifest", "sync-measure",
+         "audio-report", "trim-review", "story-packet"}
+RETIRED_COMMANDS = ["new-project", "import-media", "build-timeline", "add-subtitles",
+                    "auto-subtitle", "render", "render-all", "clear-queue", "apply-lut",
+                    "apply-drx", "open-page", "export-project", "ingest", "cut", "deliver-queue",
+                    "captions", "sync"]
+
+
+def run_main(*argv, module=None):
+    """main() with this argv, in process; (exit status, stdout, stderr). Resolve
+    is not reachable: a call to get_resolve fails the test."""
+    out, err = io.StringIO(), io.StringIO()
+    connect = mock.Mock(side_effect=AssertionError("connected to Resolve"))
+    with mock.patch.object(cli, "get_resolve", connect), redirect_stdout(out), redirect_stderr(err):
+        try:
+            status = resolve_workflow.main(list(argv), module=module)
+        except SystemExit as e:  # argparse: --help and usage errors
+            status = e.code
+    return status, out.getvalue(), err.getvalue()
+
+
+class TestOnlyReadAndOfflineCommandsRemain(unittest.TestCase):
+    def parser_commands(self):
+        status, _, err = run_main("not-a-command")
+        self.assertEqual(status, 2)
+        return err
+
+    def test_the_parser_holds_exactly_the_kept_commands(self):
+        err = self.parser_commands()
+        listed = err.split("(choose from ")[1].rstrip(")\n").replace("'", "").split(", ")
+        self.assertEqual(listed, KEPT)
+        self.assertLessEqual(FLOOR, set(KEPT))
+        self.assertFalse(set(KEPT) & set(cli.RETIRED), "a retired command is back")
+
+    def test_every_retired_command_exits_2_and_names_its_replacement(self):
+        self.assertEqual(sorted(cli.RETIRED), sorted(RETIRED_COMMANDS))
+        for name in RETIRED_COMMANDS:
+            with self.subTest(command=name):
+                status, out, err = run_main(name)
+                self.assertEqual(status, 2)
+                self.assertEqual(out, "")
+                self.assertIn(f"'{name}' is retired", err)
+                self.assertIn(cli.RETIRED[name], err)
+                self.assertNotIn("only way to write to Resolve", err)
+                self.assertNotIn("Traceback", err)
+
+    def test_a_command_with_no_tool_says_so_and_the_others_name_their_tool(self):
+        self.assertEqual(sorted(cli.BY_HAND),
+                         ["build-timeline", "clear-queue", "export-project", "new-project",
+                          "open-page"])
+        tools = {t.name for t in server.build_registry().list()}
+        for name in RETIRED_COMMANDS:
+            with self.subTest(command=name):
+                _, _, err = run_main(name)
+                text = cli.RETIRED[name]
+                if name in cli.BY_HAND:
+                    self.assertIn(f"'{name}' is retired and has no MCP tool; do it by hand "
+                                  f"in Resolve: {text}", err)
+                    self.assertNotIn("use the MCP", text)
+                else:
+                    self.assertNotIn("no MCP tool", err)
+                    named = re.findall(r"MCP (\w+) tool", text)
+                    self.assertTrue(named, text)
+                    for tool in named:
+                        self.assertIn(tool, tools)
+
+    def test_a_retired_command_with_its_old_arguments_still_stops_at_the_parser(self):
+        for argv in (["new-project", "Example"], ["render-all", "--output", "/x", "--start"],
+                     ["ingest", "/card", "--project", "P", "--dry-run"],
+                     ["--config", "/x.json", "cut", "m.json", "--project", "P"]):
+            with self.subTest(argv=argv):
+                status, _, err = run_main(*argv)
+                self.assertEqual(status, 2)
+                self.assertIn("is retired", err)
+
+    def test_trim_review_markers_is_retired_and_the_tsv_flags_are_not(self):
+        status, _, err = run_main("trim-review", "m.json", "--markers", "--timeline", "T",
+                                  "--project", "P")
+        self.assertEqual(status, 2)
+        self.assertIn("trim-review no longer takes", err)
+        self.assertIn("trim_review_markers", err)
+        self.assertNotIn("only way to write to Resolve", err)
+        status, out, _ = run_main("trim-review", "--help")
+        self.assertEqual(status, 0)
+        for flag in ("--words", "--out", "--silence-db", "--no-audio"):
+            self.assertIn(flag, out)
+        for flag in ("--markers", "--timeline", "--project", "--dry-run", "--plan-sha"):
+            self.assertNotIn(flag, out)
+
+    def test_each_removed_trim_review_flag_alone_gets_the_pointer(self):
+        for flag, value in (("--markers", None), ("--timeline", "T"), ("--project", "P"),
+                            ("--project-id", "id"), ("--dry-run", None), ("--plan-sha", "abc")):
+            for argv in (["trim-review", "m.json", flag] + ([value] if value else []),
+                         ["trim-review", "m.json", f"{flag}=x"]):
+                with self.subTest(argv=argv):
+                    status, out, err = run_main(*argv)
+                    self.assertEqual(status, 2)
+                    self.assertEqual(out, "")
+                    self.assertIn("trim-review no longer takes", err)
+                    self.assertIn("trim_review_markers", err)
+
+    def test_the_trim_review_pointer_fires_for_no_other_command_or_flag(self):
+        for argv in (["detect", "/x", "--markers"], ["info", "--markers"],
+                     ["info", "--project", "P"], ["list-timelines", "--dry-run"],
+                     ["measure", "r.mov", "--timeline", "T"],
+                     ["trim-review", "m.json", "--bogus"]):
+            with self.subTest(argv=argv):
+                status, out, err = run_main(*argv)
+                self.assertEqual(status, 2)
+                self.assertEqual(out, "")
+                self.assertIn("unrecognized arguments", err)
+                self.assertNotIn("no longer takes", err)
+                self.assertNotIn("trim_review_markers", err)
+
+    def test_each_kept_command_still_has_a_help_page_without_resolve(self):
+        for name in KEPT:
+            with self.subTest(command=name):
+                status, out, _ = run_main(name, "--help")
+                self.assertEqual(status, 0)
+                self.assertIn(f"resolve_workflow {name}", out)
+
+    def test_main_returns_the_status_instead_of_leaving(self):
+        # Command tests call main() in process; only __main__ leaves through exit_clean.
+        with mock.patch("rpresolve.cmd_info.run", return_value=3), \
+                mock.patch.object(cli.rpapi, "exit_clean", side_effect=AssertionError("left")):
+            self.assertEqual(run_main("info")[0], 3)
+            self.assertEqual(run_main()[0], 1)
+
+    def test_the_old_function_names_still_run_each_command(self):
+        for m in cli.commands():
+            with self.subTest(command=m.NAME):
+                self.assertIs(getattr(resolve_workflow, "cmd_" + m.NAME.replace("-", "_")), m.run)
+
+    def test_the_help_says_where_writes_go(self):
+        status, out, _ = run_main("--help")
+        self.assertEqual(status, 0)
+        self.assertIn("does not write to Resolve", out)
+        self.assertIn("production/resolve_mcp.py", out)
+        for name in RETIRED_COMMANDS:
+            self.assertNotIn(f"resolve_workflow.py {name} ", out)
+
+
+class TestCommandModules(unittest.TestCase):
+    """Each rpresolve/cmd_<name>.py keeps the shape cli.py describes."""
+
+    def test_each_module_has_the_contract(self):
+        self.assertEqual(len(KEPT), len(set(KEPT)))
+        for m in cli.commands():
+            with self.subTest(command=m.NAME):
+                self.assertEqual(m.__name__, "rpresolve.cmd_" + m.NAME.replace("-", "_"))
+                self.assertTrue(m.HELP and m.__doc__ and m.__doc__.strip().startswith(m.NAME + ":"))
+                self.assertTrue(callable(m.add_arguments) and callable(m.run))
+                self.assertIn('if __name__ == "__main__":\n    cli.script(__name__)\n',
+                              Path(m.__file__).read_text(encoding="utf-8"))
+
+    def test_only_the_read_commands_reach_resolve(self):
+        # resolve-mcp.md: every other command never connects. shortcut: a text scan, blind to
+        # a library helper that connects; patch rpapi.connect per command if one ever does.
+        reach = {m.NAME for m in cli.commands()
+                 if re.search(r"get_resolve|rpapi\.connect|\.connect\(",
+                              Path(m.__file__).read_text(encoding="utf-8"))}
+        self.assertEqual(reach, {"list-projects", "list-timelines", "list-render-formats", "info",
+                                 "audio-state"})
+
+    def test_a_module_runs_alone_with_python_m(self):
+        # The __main__ block is the same in every module (checked above); one run proves it.
+        production = Path(resolve_workflow.__file__).resolve().parent
+        proc = subprocess.run([sys.executable, "-m", "rpresolve.cmd_detect", "--help"],
+                              cwd=str(production), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn("usage: python3 -m rpresolve.cmd_detect", proc.stdout.decode())
+
+    def test_a_module_run_alone_keeps_the_trim_review_tombstone(self):
+        from rpresolve import cmd_trim_review
+        status, out, err = run_main("m.json", "--markers", module=cmd_trim_review)
+        self.assertEqual(status, 2)
+        self.assertEqual(out, "")
+        self.assertIn("trim_review_markers", err)
 
 
 if __name__ == "__main__":

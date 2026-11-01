@@ -1,0 +1,1 @@
+Capture readout gaps (VP-101c): a table of which capture-brief settings the measure and perceive readouts can and cannot confirm from footage, with a test that keeps it in step with the brief and the code. (#291)

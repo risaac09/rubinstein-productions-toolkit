@@ -18,7 +18,7 @@
 # Silent when the kit payload is absent, so a repo without the kit loses
 # nothing. Exit 0 always; a context hook must never block a session.
 #
-# Source of truth: rubinstein-productions-toolkit/phase-zero/. Deployed
+# Source of truth: stack-data/kit/phase-zero/. Deployed
 # copies are overwritten on every install; edit the source and redeploy.
 
 set -euo pipefail
@@ -98,9 +98,14 @@ elif [ -f "$root/../stack-data/docs/DECISIONS.md" ]; then
   records="../stack-data/docs"
 fi
 if [ -n "$records" ]; then
-  echo "Decisions of record: $records/DECISIONS.md. Cite a settled call instead of re-deriving it."
+  echo "Decisions of record: $records/DECISIONS.md (ledger, frozen 2026-10-05) and $records/decisions/ (one file each since). In force: ${records%docs}scripts/sd-decisions --open. Cite a settled call instead of re-deriving it."
   if [ -f "$root/$records/FAILURE-MODES.md" ]; then
     echo "Failure catalog: $records/FAILURE-MODES.md."
+  fi
+  # The return edge of the session loop (Torus report 2, 2026-10-07): no hook
+  # named LEARNINGS, and 0 of 80 retros since 2026-09-02 cited it.
+  if [ -f "$root/$records/LEARNINGS.md" ]; then
+    echo "Durable learnings: $records/LEARNINGS.md."
   fi
 fi
 

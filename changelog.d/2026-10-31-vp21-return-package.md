@@ -1,0 +1,1 @@
+Return package assembly: resolve_workflow.py return-package copies card folders, finals, captions, project and session files into the standard layout, writes SHA256SUMS and manifest.md, refuses unless every final has a deliver_check PASS or the output is inside a git tree, and re-checks a built package with --verify. deliver-manifest gains --require-pass. (#293)

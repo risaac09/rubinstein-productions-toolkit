@@ -1,6 +1,5 @@
 """
-rpresolve.config: resolve-config.json (camera bins, clip colours, render
-presets, delivery destinations) with built-in defaults for any missing key.
+rpresolve.config: resolve-config.json (delivery house rules and destinations) with built-in defaults for any missing key.
 Stdlib only.
 
 Most top-level keys in a config file replace the default outright. The two
@@ -36,7 +35,7 @@ def _web(name, aspect, width, height, codec, lufs, captions):
         "loudness": {"integrated_lufs": lufs},
         "captions": captions,
         # Web files are tagged Rec.709-A, which writes the transfer as bt709 (1-1-1);
-        # "Gamma 2.4" writes it unspecified and players guess. Isaac compared both
+        # "Gamma 2.4" writes it unspecified and players guess. the operator compared both
         # renders and chose Rec.709-A on 2026-09-29 (pipeline note, spike 21).
         "color": {"resolve": {"GammaTag": "Rec.709-A"}, "expect": {"color_transfer": "bt709"}},
         # Further SetRenderSettings keys, sent one by one; a refusal is a warning.
@@ -50,43 +49,15 @@ def _web(name, aspect, width, height, codec, lufs, captions):
 
 DEFAULT_CONFIG = {
     "bins": {
-        "Source": ["iPhone", "GH7", "GH5", "Audio"],
+        "Source": ["iPhone", "GH7", "GH5", "S5II", "Pyxis", "Audio"],
         "Selects": [],
         "Timeline": [],
         "Graphics": [],
         "Exports": [],
     },
-    "cameras": {
-        "iphone": {"bin": ["Source", "iPhone"], "clip_color": "Blue"},
-        "gh7": {"bin": ["Source", "GH7"], "clip_color": "Orange"},
-        "gh5": {"bin": ["Source", "GH5"], "clip_color": "Yellow"},
-    },
     "default_resolution": {"width": 3840, "height": 2160},
     "default_framerate": "23.976",
     "color_science_mode": "davinciYRGBColorManagedv2",
-    "render_presets": {
-        "youtube": {
-            "name": "YouTube 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H265", "codec_fallbacks": ["HEVC", "H.265"],
-            "suffix": "_youtube",
-        },
-        "linkedin": {
-            "name": "LinkedIn 4K", "resolution": {"width": 3840, "height": 2160},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_linkedin",
-        },
-        "master": {
-            "name": "Master ProRes", "resolution": {"width": 3840, "height": 2160},
-            "format": "mov", "codec": "ProRes422HQ",
-            "codec_fallbacks": ["Apple ProRes 422 HQ"], "suffix": "_master",
-        },
-        "story": {
-            "name": "Instagram Story", "resolution": {"width": 1080, "height": 1920},
-            "format": "mp4", "codec": "H264", "codec_fallbacks": ["H.264", "AVC"],
-            "suffix": "_story",
-            "note": "Resize only, no automatic reframe. Set per-clip Pan/Zoom before rendering vertical.",
-        },
-    },
     # House delivery rules every destination starts from (rpresolve.deliver).
     # A destination's own "loudness" and "color" override these field by field.
     "deliver": {
@@ -123,6 +94,8 @@ DEFAULT_CONFIG = {
         "youtube_16x9_hd": _web("YouTube 16:9 HD", "16x9", 1920, 1080, "H265", -14.0, "sidecar"),
         "linkedin_16x9": _web("LinkedIn 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "linkedin_9x16": _web("LinkedIn 9:16", "9x16", 1080, 1920, "H264", -16.0, "burnin"),
+        "social_9x16": {**_web("Social 9:16 (TikTok, Instagram)", "9x16", 1080, 1920, "H264", -14.0,
+                             "burnin"), "min_fps": "30000/1001"},
         "linkedin_1x1": _web("LinkedIn 1:1", "1x1", 1080, 1080, "H264", -16.0, "burnin"),
         "substack_16x9": _web("Substack 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "client_master": {
@@ -176,7 +149,26 @@ def load_config(config_path=None, warn=None, strict=False):
         over = _read(named, True, warn, strict)
         if over:
             _lay(config, over)
+    if strict:
+        _check_min_fps(config)
     return config
+
+
+def _check_min_fps(config):
+    """A destination's min_fps must read as a frame rate; otherwise
+    deliver_check would raise on it later. delivercheck does not import this
+    module, so the import cannot cycle."""
+    from .delivercheck import parse_fps
+    dests = config.get("destinations")
+    for key, dest in (dests.items() if isinstance(dests, dict) else ()):
+        floor = dest.get("min_fps") if isinstance(dest, dict) else None
+        if floor is None:
+            continue
+        try:
+            parse_fps(floor)
+        except ValueError:
+            raise ConfigError(f"destination '{key}': min_fps {floor!r} is not a frame rate "
+                              "(use 30, 29.97 or 30000/1001).")
 
 
 def _read(path, named, warn, strict):

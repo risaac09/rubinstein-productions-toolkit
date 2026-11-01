@@ -1,0 +1,137 @@
+"""lutlab.verify: check a Resolve render against the LUT it should carry.
+
+Decode one frame of the source and one of the render with ffmpeg, fit the
+source to the render's frame, run the source through the LUT with cube.sample,
+and report Delta E 2000 between that and the render over the interior of the
+frame. A median under about 1 means Resolve applied the LUT the way lutlab
+models it. The source has to be in the LUT's input encoding: an S5II V-Log
+clip as shot, or a Pyxis frame rendered out of Resolve in Gen 5 (ffmpeg can't
+read BRAW). Both files are read as BT.709 video."""
+
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from . import cube, fit, spaces
+
+
+def probe_size(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:stream_side_data=rotation",
+                        "-of", "json", str(path)], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"ffprobe failed on {path}: {r.stderr[-300:]}")
+    s = json.loads(r.stdout)["streams"][0]
+    w, h = int(s["width"]), int(s["height"])
+    rot = next((d["rotation"] for d in s.get("side_data_list", []) if "rotation" in d), 0)
+    return (h, w) if abs(int(rot)) % 180 == 90 else (w, h)  # ffmpeg autorotates on decode
+
+
+def decode_frame(path, t, width, height):
+    """The frame at t seconds as float RGB (height, width, 3) in 0..1, 16-bit,
+    scaled to fit width x height (aspect kept, black bars) and full range."""
+    # convert to RGB first, with the matrix forced, then resize and pad in RGB
+    vf = (f"scale=iw:ih:in_color_matrix=bt709:out_range=full,format=rgb48le,"
+          f"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=area,"
+          f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black")
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1",
+           "-vf", vf, "-f", "rawvideo", "-"]
+    r = subprocess.run(cmd, capture_output=True)
+    need = width * height * 6
+    if r.returncode or len(r.stdout) != need:
+        raise RuntimeError(f"cannot decode a frame of {path} at {t}s: {r.stderr.decode()[-300:]}")
+    return np.frombuffer(r.stdout, dtype="<u2").reshape(height, width, 3).astype(np.float64) / 65535
+
+
+def content_box(src_size, width, height, margin):
+    """(x0, x1, y0, y1) of the picture inside the fitted frame, trimmed by margin on every side."""
+    sw, sh = src_size
+    k = min(width / sw, height / sh)
+    cw, ch = sw * k, sh * k
+    x0, y0 = (width - cw) / 2, (height - ch) / 2
+    return (int(np.ceil(x0 + cw * margin)), int(np.floor(x0 + cw * (1 - margin))),
+            int(np.ceil(y0 + ch * margin)), int(np.floor(y0 + ch * (1 - margin))))
+
+
+def verify(source, render, lut_path, t, render_t=None, out="r709", margin=0.10, fit_to=None, render_in=None):
+    """render_in names the space the render's code values are in when that is not `out` (a render from a
+    project whose output colour space is DaVinci Intermediate: render_in="di"); it is converted to `out`
+    before the comparison."""
+    if not 0 <= margin < 0.5:
+        raise ValueError("margin must be from 0 up to (not including) 0.5")
+    lut = cube.read_cube(lut_path)
+    width, height = fit_to or probe_size(render)
+    src = decode_frame(source, t, width, height)
+    ren = decode_frame(render, t if render_t is None else render_t, width, height)
+    x0, x1, y0, y1 = content_box(probe_size(source), width, height, margin)
+    src, ren = src[y0:y1, x0:x1], ren[y0:y1, x0:x1]
+    if render_in:
+        ren = spaces.from_lin709(spaces.to_lin709(ren, render_in), out)
+    want = cube.sample(lut, src)
+    lab = lambda y: spaces.cielab(np.maximum(spaces.to_lin709(np.clip(y, 0, 1), out), 0))
+    de = spaces.delta_e2000(lab(want).reshape(-1, 3), lab(ren).reshape(-1, 3))
+    bias = (ren - want).reshape(-1, 3).mean(0)
+    return {"lut": str(lut_path), "frame": [width, height], "t": t, "pixels": int(de.size),
+            "dE2000": fit.stats(de), "mean render minus lut (r,g,b, 0..1)": [round(float(b), 4) for b in bias]}
+
+
+def grab(clip, times, outdir, width=1280, rotate=0, overwrite=False):
+    """Stills of a clip, decoded the way verify reads it (BT.709 matrix, full range), as 16-bit PNGs:
+    the inputs `apply` wants for a log camera. rotate is 0, 90, 180 or 270 degrees clockwise, for a clip
+    whose rotation flag ffmpeg did not honour. Returns the paths: <clip stem> t<seconds>s.png."""
+    if rotate % 90:
+        raise ValueError("rotate must be a multiple of 90")
+    if str(clip).lower().endswith(".braw"):
+        return _grab_braw(clip, times, outdir, width, rotate, overwrite)
+    w0, h0 = probe_size(clip)
+    height = int(round(width * h0 / w0))
+    written = []
+    for t in times:
+        dst = Path(outdir) / f"{Path(clip).stem} t{t:g}s.png"
+        if dst.exists() and not overwrite:
+            raise FileExistsError(dst)
+        img = np.rot90(decode_frame(clip, t, width, height), -(rotate // 90))  # np.rot90 turns counter-clockwise
+        cv2.imwrite(str(dst), np.round(img[..., ::-1] * 65535).astype(np.uint16))
+        written.append(str(dst))
+    return written
+
+
+def braw_helper():
+    """The braw2ppm helper (lutlab/braw/build.sh), from LUTLAB_BRAW2PPM or beside its source."""
+    p = Path(os.environ.get("LUTLAB_BRAW2PPM") or Path(__file__).resolve().parent / "braw" / "braw2ppm")
+    if not p.exists():
+        raise FileNotFoundError(f"{p} not built; run lutlab/braw/build.sh (needs the Blackmagic RAW SDK)")
+    return str(p)
+
+
+def read_ppm16(path):
+    with open(path, "rb") as f:
+        if f.readline().strip() != b"P6":
+            raise ValueError(f"{path} is not a binary PPM")
+        w, h = map(int, f.readline().split())
+        f.readline()
+        return np.frombuffer(f.read(), dtype=">u2").reshape(h, w, 3).astype(np.float32) / 65535
+
+
+def _grab_braw(clip, times, outdir, width, rotate, overwrite):
+    """BRAW stills as Film Gen 5: ffmpeg cannot read BRAW, the SDK helper can."""
+    helper, written = braw_helper(), []
+    for t in times:
+        dst = Path(outdir) / f"{Path(clip).stem} t{t:g}s.png"
+        if dst.exists() and not overwrite:
+            raise FileExistsError(dst)
+        with tempfile.TemporaryDirectory() as tmp:
+            ppm = os.path.join(tmp, "f.ppm")
+            r = subprocess.run([helper, str(clip), f"{t}s", ppm], capture_output=True, text=True)
+            if r.returncode or not os.path.exists(ppm):
+                raise RuntimeError(f"braw2ppm failed on {clip} at {t}s: {r.stderr[-300:]}")
+            img = read_ppm16(ppm)
+        h = int(round(width * img.shape[0] / img.shape[1]))
+        img = np.rot90(cv2.resize(img, (width, h), interpolation=cv2.INTER_AREA), -(rotate // 90))
+        cv2.imwrite(str(dst), np.round(np.clip(img, 0, 1)[..., ::-1] * 65535).astype(np.uint16))
+        written.append(str(dst))
+    return written

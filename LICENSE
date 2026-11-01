@@ -1,9 +1,8 @@
-Scope: this MIT license covers code and tooling only — `cli/`, `scripts/`,
-`production/resolve_workflow.py`, and the `phase-zero/` and `public-kit/`
-deployment mechanisms. Methodology, templates, and docs (`methodology/`,
-`templates/`, `docs/`) are licensed CC BY-SA 4.0 instead — see
-`LICENSE-CONTENT` for the full text and rationale. Nothing of consequence
-in this repo is data; if that changes, data is CC0.
+Scope:
+
+Code is licensed under the MIT License in `LICENSE`, covering `scripts/`, `production/`, `tools/`, `phase-zero/`, and `public-kit/`; everything else, including methodology, docs, templates and prompts, is licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) in `LICENSE-CONTENT`.
+
+Nothing of consequence in this repo is data; if that changes, data is CC0.
 
 ---
 

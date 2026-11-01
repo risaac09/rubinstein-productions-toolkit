@@ -1,9 +1,9 @@
 """
-Tests for queueing a render for a delivery destination
-(rpresolve.workflows.queue_render with destination=, render.py's
-destination helpers) against the shared Resolve fakes: dry run then
-plan_sha, every pre-check refusal, a refused Deliver setting, the read
-back from the render queue, and that nothing is ever started.
+Tests for queueing a render for a delivery destination, the only way to
+queue one (rpresolve.workflows.queue_render, render.py's destination
+helpers) against the shared Resolve fakes: dry run then plan_sha, every
+pre-check refusal, a refused Deliver setting, the read back from the
+render queue, and that nothing is ever started.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
@@ -142,6 +142,14 @@ class TestQueueDestination(Base):
         self.assertEqual(self.project.render_mode, 0)  # put back
         self.assertEqual(r["warnings"], [])
 
+    def test_the_guard_names_the_settings_resolve_cannot_read_back(self):
+        dry, r = self.twice()
+        g = r["render_guard"]
+        self.assertEqual(g["mismatched"], [])
+        self.assertIn("AudioSampleRate", g["unrestorable"])
+        self.assertIn("SelectAllFrames", g["hand_reset"])
+        self.assertEqual(r["warnings"], [])  # true on every queue, so not a warning
+
     def test_a_render_mode_that_does_not_take_queues_nothing(self):
         self.project.render_mode = 0
         self.project.stuck_mode = True  # SetCurrentRenderMode says yes, the mode stays 0
@@ -156,7 +164,8 @@ class TestQueueDestination(Base):
         for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "substack_16x9"):
             parts = {**CLIP, "slug": key.replace("_", "-")}
             names.append(self.twice(dest=key, parts=parts)[1]["job"]["OutputFilename"])
-        for key, tl in (("linkedin_9x16", "Clip 9x16 [auto]"), ("linkedin_1x1", "Clip 1x1 [auto]")):
+        for key, tl in (("linkedin_9x16", "Clip 9x16 [auto]"), ("linkedin_1x1", "Clip 1x1 [auto]"),
+                       ("social_9x16", "Clip 9x16 [auto]")):
             r = self.twice(dest=key, timeline=tl)[1]
             self.assertEqual(r["exit_status"], 0, r)
             names.append(r["job"]["OutputFilename"])
@@ -211,6 +220,19 @@ class TestQueueDestination(Base):
         self.assertEqual((r["settings"][0]["settings"]["FormatWidth"],
                           r["settings"][0]["settings"]["FormatHeight"]), (3840, 2160))
 
+    def test_an_old_overlay_that_still_has_render_presets_queues_the_same_job(self):
+        overlay = os.path.join(self.dir, "old-overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"render_presets": {"master": {"name": "Master ProRes", "suffix": "_master",
+                                                     "format": "mov", "codec": "ProRes422HQ"}}}, f)
+        old = rpconfig.load_config(overlay, strict=True)  # read without complaint
+        plain = self.queue(dry_run=True)
+        kept = workflows.queue_render(self.resolve, P, "Clip [auto]", output_dir=self.out,
+                                      destination="youtube_16x9", name_parts=CLIP, config=old,
+                                      dry_run=True)
+        self.assertEqual(kept["plan_sha"], plain["plan_sha"])
+        self.assertEqual((kept["output"], kept["settings"]), (plain["output"], plain["settings"]))
+
     def test_stale_sha_is_refused(self):
         with self.assertRaisesRegex(workflows.Refused, "plan changed"):
             self.queue(expect_sha="0" * 64)
@@ -223,7 +245,8 @@ class TestRefusals(Base):
                  ("linkedin_1x1", "Clip [auto]", "square"),
                  ("youtube_16x9", "Clip 9x16 [auto]", "landscape"),
                  ("linkedin_16x9", "Clip 1x1 [auto]", "landscape"),
-                 ("linkedin_9x16", "Clip 1x1 [auto]", "portrait"))
+                 ("linkedin_9x16", "Clip 1x1 [auto]", "portrait"),
+                 ("social_9x16", "Clip [auto]", "portrait"))
         for key, tl, shape in cases:
             with self.subTest(dest=key, timeline=tl):
                 with self.assertRaisesRegex(workflows.Refused, f"{shape}.*with bars"):
@@ -386,6 +409,14 @@ class TestReadback(unittest.TestCase):
                 self.assertEqual(len(render.readback_report({"FrameRate": got},
                                                             {"FrameRate": 23.976}, {})[0]), 1)
 
+    def test_a_trailing_slash_and_a_number_as_text_are_the_same(self):
+        job = {"TargetDir": "/out/", "FormatWidth": "3840", "FormatHeight": 2160.0}
+        problems, warnings, unverified = render.readback_report(
+            job, {"TargetDir": "/out", "FormatWidth": 3840, "FormatHeight": 2160}, {})
+        self.assertEqual((problems, warnings, unverified), ([], [], []))
+        self.assertEqual(len(render.readback_report({"TargetDir": "/out"},
+                                                    {"TargetDir": "/elsewhere"}, {})[0]), 1)
+
     def test_queued_outputs(self):
         project = rf.Project(jobs=[{"JobId": "j1", "TargetDir": "/a", "OutputFilename": "b.mp4"},
                                    {"JobId": "j2"}])
@@ -435,6 +466,23 @@ class TestMCP(Base):
         self.assertEqual(real["journal"]["path"], os.environ["RPRESOLVE_MCP_JOURNAL"])
         self.assertNotIn("StartRendering", [c[1] for c in rf.CALLS])
 
+    def test_social_dry_run_warns_under_the_fps_floor_and_still_queues(self):
+        a = self.args(destination="social_9x16")
+        a["timeline"] = "Clip 9x16 [auto]"  # 23.976
+        dry = self.call(a)
+        self.assertTrue(any("fps floor" in w for w in dry["warnings"]), dry["warnings"])
+        real = self.call({**a, "dry_run": False, "plan_sha": dry["plan_sha"]})
+        self.assertEqual(real["exit_status"], 0, real["summary"])
+        self.assertEqual(real["plan_sha"], dry["plan_sha"])
+
+    def test_no_fps_warning_at_the_floor_or_on_a_destination_without_one(self):
+        self.tall.fps = "29.97"
+        a = {**self.args(destination="social_9x16"), "timeline": "Clip 9x16 [auto]"}
+        self.assertFalse([w for w in self.call(a)["warnings"] if "fps floor" in w])
+        a = {**self.args(destination="linkedin_9x16"), "timeline": "Clip 9x16 [auto]"}
+        self.tall.fps = "23.976"
+        self.assertFalse([w for w in self.call(a)["warnings"] if "fps floor" in w])
+
     def test_a_mismatch_says_the_job_is_still_queued(self):
         add = self.project.AddRenderJob
 
@@ -451,12 +499,6 @@ class TestMCP(Base):
         self.assertIn("remove it or check it before rendering", r["summary"])
         self.assertNotIn("FAILED", r["summary"])
         self.assertEqual([j["JobId"] for j in self.project.jobs], ["job-1"])
-        # the preset form says the same
-        p = self.call({"preset": "master", "output_dir": self.out})
-        r = self.call({"preset": "master", "output_dir": self.out, "dry_run": False,
-                       "plan_sha": p["plan_sha"]})
-        self.assertTrue(r["summary"].startswith("queued job job-2 but Resolve holds"),
-                        r["summary"])
 
     def test_failed_means_nothing_was_queued(self):
         self.project.refuse = {"GammaTag"}
@@ -467,18 +509,17 @@ class TestMCP(Base):
                         r["summary"])
         self.assertEqual(self.project.jobs, [])
 
-    def test_preset_or_destination_never_both(self):
-        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
-            self.call(self.args(preset="master"))
-        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
-            self.call({"output_dir": self.out})
-        with self.assertRaisesRegex(ValueError, "target_dir and name"):
-            self.call(self.args(output_dir=self.out))
-        with self.assertRaisesRegex(ValueError, "go with destination"):
-            self.call({"preset": "master", "output_dir": self.out, "name": dict(CLIP)})
-        # the preset form still works as before
-        r = self.call({"preset": "master", "output_dir": self.out})
-        self.assertTrue(r["output"].endswith("Clip [auto]_master.mov"))
+    def test_a_destination_is_required_and_the_preset_arguments_are_gone(self):
+        with self.assertRaisesRegex(AssertionError, "missing required 'destination'"):
+            self.call({"target_dir": self.out})
+        for gone in ({"preset": "master"}, {"output_dir": self.out}, {"custom_name": "x"}):
+            with self.subTest(gone=gone):
+                with self.assertRaisesRegex(AssertionError, "unknown property"):
+                    self.call(self.args(**gone))
+        # the destination form needs no preset, so a bare one is refused, not queued
+        with self.assertRaisesRegex(AssertionError, "missing required 'destination'"):
+            self.call({"preset": "master", "output_dir": self.out})
+        self.assertEqual((self.project.jobs, rf.CALLS, self.journal()), ([], [], []))
 
     def test_schema_and_argument_refusals(self):
         for bad in ({"name": {**CLIP, "slug": "Bad Slug"}},
@@ -524,26 +565,37 @@ class TestMCP(Base):
         media = os.path.join(self.dir, "SW001_Guest_01_example-clip_16x9.mp4")
         open(media, "w").close()
         check = REG.get("deliver_check")
-        with mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
+        # Resolve must never be reached: any use of the session fails the test where it
+        # happens, and the call counts are asserted too.
+        reached = AssertionError("the tool reached Resolve with an overlay it could not read")
+        with mock.patch.object(rf.Session, "get", side_effect=reached) as get, \
+                mock.patch.object(rf.Session, "project", side_effect=reached) as project, \
+                mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}):
             with self.assertRaisesRegex(ValueError, "RPRESOLVE_CONFIG.*could not read"):
                 tools_offline.deliver_config()
             with self.assertRaisesRegex(ValueError, "could not read"):
                 self.call(self.args())
             with self.assertRaisesRegex(ValueError, "could not read"):
+                self.call(self.args(dry_run=False, plan_sha="0" * 64))
+            with self.assertRaisesRegex(ValueError, "could not read"):
                 check.handler(schema.with_defaults(check.input_schema, {
                     "file": media, "destination": "linkedin_16x9"}), ToolContext())
-        self.assertEqual(self.project.jobs, [])
+        self.assertEqual((get.call_count, project.call_count), (0, 0))
+        self.assertEqual((self.project.jobs, rf.CALLS, self.journal()), ([], [], []))
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 23)
+        self.assertEqual(len(names), 36)  # 28, plus the seven offline tools of VP-18, plus ograf_template_check
         for name in ("deliver_check", "deliver_captions", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):
             self.assertFalse(REG.get(name).annotations["readOnlyHint"], name)
             self.assertTrue(REG.get(name).input_schema["properties"]["dry_run"]["default"])
         schema_ = REG.get("queue_render").input_schema
-        self.assertEqual(schema_["required"], ["project", "timeline"])
+        self.assertEqual(schema_["required"], ["project", "timeline", "destination"])
+        for gone in ("preset", "output_dir", "custom_name"):
+            self.assertNotIn(gone, schema_["properties"])
+        self.assertNotIn("preset", REG.get("queue_render").description.lower())
         self.assertNotIn("enum", schema_["properties"]["destination"])
         self.assertIn("client_master", schema_["properties"]["destination"]["description"])
         self.assertTrue(REG.get("deliver_check").annotations["readOnlyHint"])

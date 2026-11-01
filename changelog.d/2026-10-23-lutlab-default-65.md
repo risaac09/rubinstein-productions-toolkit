@@ -1,0 +1,1 @@
+lutlab: `cst`, `build`, `looks`, `port`, `shot-match` and `lutstats roundtrip` now default to 65-point cubes (V-Log to DI mean Delta E 0.026 against 0.074 at 33; 7.4 MB against 970 KB; 0.3 s against 0.1 s to build). `--size 33` still works; `pack` and the `--monitor` camera copies stay at 33.

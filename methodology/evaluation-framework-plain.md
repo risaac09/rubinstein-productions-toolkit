@@ -1,6 +1,8 @@
 # The evaluation framework, in plain language
 
-> **Canonical doc:** [`methodology/evaluation-framework.md`](evaluation-framework.md). That file is the source of truth, a snapshot of the vault canonical. This is the teaching layer for readers with no evaluation background.
+> **Canonical doc:** [`methodology/evaluation-framework.md`](evaluation-framework.md). That file is the source of truth. This is the teaching layer for readers with no evaluation background.
+
+> **Status:** operational.
 
 ## The problem it answers
 

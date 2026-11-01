@@ -5,12 +5,14 @@
 #                                                 singing, music and hallucinations withheld
 #   vertcut kinds FILE [--apply-overrides SUNG_TSV]  what each segment is: kinds and time ranges only
 #   vertcut cut SRC CLIPS.tsv [options]           9:16 captioned exports from a cuts manifest
+#   vertcut cut SRC CLIPS.tsv --review --only ID --variant SPEC ... -o DIR   blind A/B packet of one row
+#   vertcut manifest SRC CLIPS.tsv --words J -o OUT.json   cuts manifest v2 for the Resolve route
 #
 # Full docs: tools/vertcut/README.md
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY="${VERTCUT_PYTHON:-/usr/bin/python3}"
+PY="${VERTCUT_PYTHON:-$HOME/.venvs/rp-tools/bin/python}"
 
 die() { printf 'vertcut: %s\n' "$1" >&2; exit 1; }
 
@@ -25,9 +27,9 @@ cmd_transcribe() {
   local src="" out="" model="mlx-community/whisper-large-v3-turbo" overrides="" keep_raw=1
   while [ $# -gt 0 ]; do
     case "$1" in
-      -o|--out) out="$2"; shift 2 ;;
-      --model)  model="$2"; shift 2 ;;
-      --overrides) overrides="$2"; shift 2 ;;
+      -o|--out) out="${2:?-o needs a directory}"; shift 2 ;;
+      --model)  model="${2:?--model needs a name}"; shift 2 ;;
+      --overrides) overrides="${2:?--overrides needs a sung.tsv}"; shift 2 ;;
       --discard-raw) keep_raw=0; shift ;;
       -h|--help) usage ;;
       *) [ -z "$src" ] && src="$1" && shift || die "unexpected argument: $1" ;;
@@ -38,8 +40,12 @@ cmd_transcribe() {
   [ -z "$overrides" ] || [ -f "$overrides" ] || die "no such sung.tsv: $overrides"
 
   local mw
-  mw="$(command -v mlx_whisper || echo "$HOME/Library/Python/3.9/bin/mlx_whisper")"
-  [ -x "$mw" ] || die "mlx_whisper not found (pip3 install --user mlx-whisper)"
+  # The venv's copy first, then one on PATH; VERTCUT_MLX_WHISPER overrides both.
+  mw="${VERTCUT_MLX_WHISPER:-$HOME/.venvs/rp-tools/bin/mlx_whisper}"
+  [ -n "${VERTCUT_MLX_WHISPER:-}" ] || [ -x "$mw" ] || mw="$(command -v mlx_whisper || echo "$mw")"
+  [ -x "$mw" ] || die "mlx_whisper not found at $mw (install it into the venv:
+  ~/.venvs/rp-tools/bin/python -m pip install -c $(cd "$HERE/../.." && pwd)/requirements.txt mlx-whisper==0.4.3,
+  or set VERTCUT_MLX_WHISPER)"
   need ffmpeg
 
   local base; base="$(basename "${src%.*}")"
@@ -106,10 +112,15 @@ cmd_cut() {
   exec "$PY" "$HERE/lib/vertcut_cut.py" "$@"
 }
 
+cmd_manifest() {
+  exec "$PY" "$HERE/lib/vertcut_manifest.py" "$@"
+}
+
 case "${1:-}" in
   transcribe) shift; cmd_transcribe "$@" ;;
   kinds)      shift; cmd_kinds "$@" ;;
   cut)        shift; cmd_cut "$@" ;;
+  manifest)   shift; cmd_manifest "$@" ;;
   -h|--help|"") usage ;;
   *) die "unknown command: $1 (try --help)" ;;
 esac
