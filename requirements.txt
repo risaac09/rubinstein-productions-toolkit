@@ -33,7 +33,8 @@
 #
 #   Variable                     Read by                           Default                                   Set it when
 #   RPRESOLVE_FFMPEG             rpresolve measure, sync,          /opt/homebrew/bin/ffmpeg                  ffmpeg is not at the default path.
-#                                delivercheck, reframe, cutlist
+#                                delivercheck, reframe, cutlist,
+#                                vertcut segkind
 #   RPRESOLVE_FFPROBE            rpresolve measure, sync,          /opt/homebrew/bin/ffprobe                 ffprobe is not at the default path.
 #                                delivercheck, detect
 #   RPRESOLVE_EXIFTOOL           rpresolve detect                  /usr/local/bin/exiftool                   exiftool is not at the default path.

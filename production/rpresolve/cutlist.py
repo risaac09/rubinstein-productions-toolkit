@@ -28,7 +28,11 @@ only source_path and clips; reframe_plan reads such a manifest (and nothing
 else does: cut, endcheck and selects refuse it, since they check words).
 
 The words JSON is the one ASR source of truth: end_words and source_text
-are read from it, and endcheck checks every out-point against it.
+are read from it, and endcheck checks every out-point against it. It is read
+through rpresolve.guard: text Whisper wrote for singing, music or wind is
+withheld (a [label], no words), so no span's words, end_words or source_text
+can be lyrics, and endcheck and selects refuse a span that overlaps what was
+withheld.
 
 Word timestamps say which words a span holds; they cannot place a cut.
 Whisper's word boundaries drift by a couple of tenths of a second and often
@@ -184,21 +188,53 @@ def approved_check(span_tokens, approved_tokens):
 # Words (mlx_whisper word-level JSON)
 # ---------------------------------------------------------------------------
 
+class Words(list):
+    """The spoken words of a transcript, [{start, end, word}], and what was
+    withheld from it: `blocks`, [{start, end, kind, label}] for each segment
+    guard took out (singing, music, hallucination, or a sung-leaning
+    uncertain one), and `audio_checked`, whether singing was screened from
+    the audio. The blocks travel with the list so a caller that only passes
+    the words on still has them."""
+    blocks = ()
+    audio_checked = False
+
+
 def load_words(path):
-    """[{start, end, word}] in source-time order from a Whisper JSON with
-    word timestamps (segments[].words[])."""
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    words = []
+    """Words (a list of {start, end, word} in source-time order) from a
+    Whisper JSON with word timestamps (segments[].words[]), read through
+    rpresolve.guard: withheld segments carry no words, and Words.blocks
+    says where they were."""
+    from . import guard
+    try:
+        data, blocks, checked = guard.load(path)
+    except guard.GuardError as e:
+        raise CutlistError(str(e))
+    words = Words()
     for seg in data.get("segments") or []:
         for w in seg.get("words") or []:
             text = (w.get("word") or w.get("text") or "").strip()
             if text and w.get("start") is not None and w.get("end") is not None:
                 words.append({"start": float(w["start"]), "end": float(w["end"]), "word": text})
+    words.blocks, words.audio_checked = blocks, checked
     if not words:
-        raise CutlistError(f"no word timestamps in {path} (transcribe with word timestamps)")
+        why = (f"; {len(blocks)} segment(s) were withheld as singing, music or hallucination"
+               if blocks else "")
+        raise CutlistError(f"no word timestamps in {path} (transcribe with word timestamps){why}")
     words.sort(key=lambda w: (w["start"], w["end"]))
     return words
+
+
+def blocks_of(words):
+    """The withheld spans that came with a words list ([] for a plain list)."""
+    return list(getattr(words, "blocks", ()) or ())
+
+
+def overlaps_block(blocks, a, b):
+    """The first withheld span overlapping [a, b), or None."""
+    for blk in blocks:
+        if blk["start"] < b and blk["end"] > a:
+            return blk
+    return None
 
 
 def repetition_loops(words, n=3, repeats=3):
@@ -667,8 +703,10 @@ def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
     approved text. Returns [{clip, span, source, in, out, frames, end, text,
     ok}]. words and approved, when given, replace those of every source (a
     single-source caller's override). A source with no approved text gets
-    the verdict "none" (ok, never "pass"). check_cancel() is called before
-    each span (it raises to stop); progress(done, total) after each."""
+    the verdict "none" (ok, never "pass"). A span that overlaps text the
+    guard withheld (singing, music, a hallucination) fails without a check.
+    check_cancel() is called before each span (it raises to stop);
+    progress(done, total) after each."""
     cache = {}
 
     def of(src):
@@ -676,7 +714,7 @@ def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
             w = words if words is not None else load_words(src["words"])
             ap = approved if approved is not None else (
                 load_approved(src["approved_text"]) if src.get("approved_text") else None)
-            cache[src["id"]] = (w, ap, repetition_loops(w))
+            cache[src["id"]] = (w, ap, repetition_loops(w), blocks_of(w))
         return cache[src["id"]]
 
     rows = []
@@ -688,9 +726,16 @@ def endcheck(manifest, words=None, approved=None, audio=True, ffmpeg=None,
             if progress and rows:
                 progress(len(rows), total)
             src = source_for(manifest, s)
-            w, ap, loops = of(src)
+            w, ap, loops, blocks = of(src)
             base = {"clip": clip["name"], "span": i, "source": src["id"], "in": s["in"],
                     "out": s["out"], "frames": frames(s, manifest["fps"])}
+            held = overlaps_block(blocks, s["in"], s["out"])
+            if held:
+                rows.append({**base, "end": None, "text": None, "ok": False,
+                             "reason": f"the span overlaps text withheld as {held['kind']} at "
+                             f"{held['start']:.1f}-{held['end']:.1f}s; label the span with "
+                             "`vertcut kinds --apply-overrides` or cut elsewhere"})
+                continue
             bad = [lp for lp in loops if lp[0] < s["out"] + SEARCH_S and lp[1] > s["in"]]
             if bad:
                 a0, b0, phrase = bad[0]
@@ -763,6 +808,7 @@ def selects(words, approved, min_s=20.0, max_s=65.0, pad=0.15):
     of its sentences' matched words over their total, and a window holding
     any sentence that fails on its own is skipped."""
     sents = sentences(words)
+    blocks = blocks_of(words)
     scored = []
     for s in sents:
         toks = content_tokens(" ".join(w["word"] for w in s))
@@ -780,6 +826,8 @@ def selects(words, approved, min_s=20.0, max_s=65.0, pad=0.15):
             dur = b - a
             if dur > max_s:
                 break
+            if blocks and overlaps_block(blocks, a - 0.05, b + pad):
+                break               # text was withheld in here: not a window to propose
             if dur < min_s or n == 0:
                 continue
             span_words = [w for s in sents[i:j + 1] for w in s]
