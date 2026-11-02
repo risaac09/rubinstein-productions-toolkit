@@ -40,7 +40,6 @@ Tools that work on anyone's footage, each with tests.
 
 ### `tools/`
 - **[`vertcut/`](tools/vertcut/README.md)**: turns a long recording into 9:16 captioned pull-clips with two commands, `transcribe` and `cut`; a third, `manifest`, writes the cuts manifest for the Resolve route.
-- **[`video-editor/`](tools/video-editor/README.md)**: a bounded prototype that drives video editing through Claude Code, wrapping the third-party `video-use` skill (Browser Use, MIT), which `fetch-video-use.sh` fetches at a pinned commit. Not a finished tool.
 - **[`ipad-probe/`](tools/ipad-probe/README.md)**: a POSIX `sh` probe of what an iPad's a-Shell ffmpeg, ffprobe and python3 can do, printed as one Markdown table, plus four recipes: verified card copy, proxy, two-pass loudness and contact sheet. Runs under dash.
 - **[`ograf-render/`](tools/ograf-render/README.md)**: renders an OGraf template offline to a ProRes 4444 master with alpha, so `overlay-check` can verify it without Resolve open. Needs Node 22 or newer, Chrome and ffmpeg.
 
