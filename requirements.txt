@@ -71,6 +71,10 @@
 #   DD_BIN, DF_BIN               production/offload.sh             dd, df from PATH                          tests: stand-ins for the system tools.
 #   DISKUTIL_BIN                 production/offload.sh             diskutil from PATH                        tests: a stand-in for diskutil.
 #   OFFLOAD_NOW                  production/offload.sh             unset (the clock)                         tests: a fixed UTC time stamp.
+#   SMBUTIL_BIN                  production/offload.sh             smbutil from PATH                         tests: a stand-in for smbutil.
+#   OFFLOAD_SMB_ROOT             production/offload.sh             /Volumes                                  shares mount elsewhere; tests: a temp root.
+#   OFFLOAD_FAST_HOST            production/offload.sh             10.10.10.2                                the wired NAS address differs.
+#   OFFLOAD_ROUTE_OVERRIDE       production/offload.sh             unset                                     take a slow route on purpose (--route-override sets it).
 #   RESOLVE_WORKFLOW             tools/ograf-render/test.mjs       production/resolve_workflow.py            tests: another copy of the workflow script.
 #
 # The tools do not find ffmpeg the same way. rpresolve reads RPRESOLVE_FFMPEG and RPRESOLVE_FFPROBE and
