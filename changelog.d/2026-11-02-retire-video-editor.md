@@ -1,0 +1,1 @@
+tools/video-editor (the video-use prototype) is retired per D-06; README, SECURITY and the sound packet docstring no longer name it. vertcut stays until one parity clip and the transcript-safety call.

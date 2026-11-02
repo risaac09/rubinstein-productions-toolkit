@@ -14,5 +14,4 @@ The repo is methodology and tooling. It is documents and local command-line tool
 
 ## What's out of scope
 
-- `video-use`, the upstream skill that `tools/video-editor/` wraps. Report issues in it upstream to Browser Use.
 - Anything in a third-party dependency. Report it to that project.
