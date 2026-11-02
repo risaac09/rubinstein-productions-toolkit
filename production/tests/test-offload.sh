@@ -19,6 +19,12 @@ cat > "$T/bin/diskutil" <<'EOF'
 #!/bin/sh
 printf '   Volume Name:              CARD\n   Volume UUID:              %s\n' "${FAKE_UUID:-11111111-2222-3333-4444-555555555555}"
 EOF
+# smbutil fake: a SERVER_NAME line from FAKE_SMB_HOST, nothing when unset (a local disk).
+cat > "$T/bin/smbutil" <<'EOF'
+#!/bin/sh
+[ -n "${FAKE_SMB_HOST:-}" ] && printf 'SHARE ATTRIBUTE VALUE\nArchive\n   SERVER_NAME   %s\n' "$FAKE_SMB_HOST"
+exit 0
+EOF
 cat > "$T/bin/df" <<'EOF'
 #!/bin/sh
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted\nfake 100 0 %s 0%% /x\n' "${FAKE_FREE:-999999999}"
@@ -46,7 +52,7 @@ for a in "$@"; do case "$a" in of=*) printf 'garbage' > "${a#of=}"; exit 0 ;; es
 exec dd "$@"
 EOF
 chmod +x "$T/bin/"*
-export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone"
+export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil"
 export OFFLOAD_CAFFEINATED=1 OFFLOAD_NOW=2026-10-20T12:00:00Z READ_FLAGS=""
 
 # card NAME: a small camera card with nested folders, a clip, OS junk.
@@ -118,6 +124,27 @@ check "no space refused, nothing written" '[ "$rc" -eq 2 ] && [ -z "$(ls "$T/a7"
 mkdir "$T/empty"
 run id "$T/empty"
 check "empty card refused" '[ "$rc" -eq 2 ]'
+
+# 7b. Route: a share mounted from a slow address refuses copy and safe; the fast
+# host, a local disk, and --route-override pass.
+mkdir -p "$T/vol/Archive/in"
+export OFFLOAD_SMB_ROOT="$T/vol"
+out=$(FAKE_SMB_HOST=192.168.1.83 "$O" copy "$T/c1" "$T/vol/Archive/in" --cam S5M2 2>&1); rc=$?
+check "slow route refused, nothing written" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "mounted from 192.168.1.83" && [ -z "$(ls "$T/vol/Archive/in")" ]'
+out=$(FAKE_SMB_HOST=10.10.10.2 "$O" copy "$T/c1" "$T/vol/Archive/in" --cam S5M2 2>&1); rc=$?
+check "fast host passes" '[ "$rc" -eq 0 ]'
+mkdir -p "$T/vol/T7/in"
+out=$(FAKE_SMB_HOST='' "$O" copy "$T/c1" "$T/vol/T7/in" --cam S5M2 2>&1); rc=$?
+check "local disk under the root passes (no SERVER_NAME)" '[ "$rc" -eq 0 ]'
+mkdir -p "$T/vol/Archive/ov"
+out=$(FAKE_SMB_HOST=192.168.1.83 "$O" copy "$T/c1" "$T/vol/Archive/ov" --cam S5M2 --route-override 2>&1); rc=$?
+check "--route-override takes the slow route and says so" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "slow route"'
+vd=$(ls -d "$T/vol/Archive/in"/S5M2-*/); vd=${vd%/}
+out=$(FAKE_SMB_HOST=192.168.1.83 "$O" safe "$vd" remote:bucket/x 2>&1); rc=$?
+check "safe on a slow route refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "mounted from"'
+out=$(FAKE_SMB_HOST=192.168.1.83 OFFLOAD_ROUTE_OVERRIDE=1 "$O" safe "$vd" remote:bucket/x 2>&1); rc=$?
+check "safe with the override runs the check" '[ "$rc" -eq 0 ]'
+unset OFFLOAD_SMB_ROOT
 
 # 8. safe: pass, unhashed files, rclone failure, untracked folder.
 d="$T/a1/$n"

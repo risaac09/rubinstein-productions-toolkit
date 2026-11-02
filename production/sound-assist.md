@@ -92,3 +92,21 @@ Limits:
 - `roomtone find` gives the `[start, end]` of a noise-only stretch, which a denoise step that learns its noise from a sample (`afftdn`'s `sample_noise` command) would take.
 
 None of these modules runs `loudnorm`. A chain that does should end with `aresample=48000`: `loudnorm` outputs 192 kHz.
+
+## By instrument, then by ear
+
+A passing number is not the perception. On real jobs every loudness and SNR
+reading passed on a render the editor heard as unusable, and an 8 s audio
+drift passed every LUFS check. The instrument has to hear the fault class:
+
+- Sync and drift: transcribe the mix at each cut (word timestamps) and compare
+  to the cut list; loudness meters cannot see time.
+- A processing chain's latency: cross-correlate the processed file against its
+  source before anyone listens; a constant 30 ms offset shows in minutes and
+  never by ear across a hundred clips.
+- Denoise quality: rank candidates on transcription confidence and
+  hallucination (a looping phrase is the signal), not on SNR.
+- Stability across independent measurements (chunks, bands, methods) beats one
+  correlation score.
+
+Then the ear decides, on a short blind A/B, never on the whole programme.
