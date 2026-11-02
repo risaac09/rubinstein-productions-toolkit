@@ -6,6 +6,10 @@
 #   offload.sh copy <card> <dest-parent> --cam CAM  copy, verify, write sidecars
 #   offload.sh safe <copy-dir> <rclone-remote>      offsite check, then the verdict
 #
+# copy and safe refuse to start on a share mounted from a slow address (Wi-Fi,
+# the tailnet): smbutil must report OFFLOAD_FAST_HOST (10.10.10.2) for the share,
+# or --route-override takes the slow route on purpose.
+#
 # copy writes <dest-parent>/<CAM>-<id6>/ plus <CAM>-<id6>.SHA256SUMS and
 # <CAM>-<id6>.card.json beside it. It works inside _partial-<CAM>-<id6>/ and
 # renames only after every file's read-back hash equals the card's. It never
@@ -25,7 +29,13 @@ DD_BIN="${DD_BIN:-dd}"
 DF_BIN="${DF_BIN:-df}"
 DISKUTIL_BIN="${DISKUTIL_BIN:-diskutil}"
 RCLONE_BIN="${RCLONE_BIN:-rclone}"
+SMBUTIL_BIN="${SMBUTIL_BIN:-smbutil}"
 OFFLOAD_NOW="${OFFLOAD_NOW:-}"
+# Network shares mount under OFFLOAD_SMB_ROOT; a share counts as fast only when
+# smbutil reports it mounted from OFFLOAD_FAST_HOST (the wired address).
+OFFLOAD_SMB_ROOT="${OFFLOAD_SMB_ROOT:-/Volumes}"
+OFFLOAD_FAST_HOST="${OFFLOAD_FAST_HOST:-10.10.10.2}"
+OFFLOAD_ROUTE_OVERRIDE="${OFFLOAD_ROUTE_OVERRIDE:-}"
 # Read-back bypasses the page cache where dd supports it (macOS), so the hash
 # comes from the destination, not from RAM. GNU dd's direct I/O fails on tmpfs.
 if [ -z "${READ_FLAGS+x}" ]; then
@@ -66,6 +76,29 @@ card_id() {
   NBYTES=$(printf '%s\n' "$lst" | awk '{s += $NF} END {printf "%.0f", s}')
 }
 
+# route_check DIR: when DIR sits on an SMB share under OFFLOAD_SMB_ROOT, the share
+# must be mounted from the fast host. The mount point looks the same over Wi-Fi,
+# a hostname on the tailnet, or 10GbE, and a slow route makes every copy and
+# every hash read-back pay eightfold (2026-11-01: a 161 GB card, two safe checks
+# and an import, about three hours, on an Archive mounted from a Wi-Fi address).
+# A local disk under the root (a T7) reports no SERVER_NAME and passes.
+# --route-override, or OFFLOAD_ROUTE_OVERRIDE=1, takes the slow route on purpose.
+route_check() {
+  local p root share srv
+  p=$(cd -P "$1" 2>/dev/null && pwd -P) || return 0
+  root=$(cd -P "$OFFLOAD_SMB_ROOT" 2>/dev/null && pwd -P) || return 0
+  case "$p" in "$root"/*) ;; *) return 0 ;; esac
+  share=${p#"$root"/}; share=${share%%/*}
+  srv=$("$SMBUTIL_BIN" statshares -m "$root/$share" 2>/dev/null | awk '/SERVER_NAME/ {print $2; exit}')
+  [ -n "$srv" ] || return 0
+  [ "$srv" = "$OFFLOAD_FAST_HOST" ] && return 0
+  if [ -n "$OFFLOAD_ROUTE_OVERRIDE" ]; then
+    echo "note: $share is mounted from $srv, not $OFFLOAD_FAST_HOST; taking the slow route on --route-override" >&2
+    return 0
+  fi
+  die "$share is mounted from $srv, not $OFFLOAD_FAST_HOST: a slow route (Wi-Fi or the tailnet) makes every copy and hash check pay eightfold; remount from the fast host, or pass --route-override to take it anyway"
+}
+
 # Prints nothing when the read fails (pipefail), so a failed read is never a hash.
 read_hash() { local h; h=$("$DD_BIN" if="$1" bs=1048576 $READ_FLAGS 2>/dev/null | sha) && echo "$h"; }
 
@@ -90,6 +123,7 @@ cmd_copy() {
   [ -d "$card" ] || die "card not found: $card"
   [ -d "$parent" ] || die "destination parent missing: $parent (a dropped share looks like this; it is never created)"
   [ -w "$parent" ] || die "destination parent not writable: $parent"
+  route_check "$parent"
   # Footage and sidecars never go inside a git work tree (walk up from the physical path).
   local g; g=$(cd -P "$parent" && pwd -P) || die "cannot resolve $parent"
   while [ -n "$g" ] && [ ! -e "$g/.git" ]; do g=${g%/*}; done
@@ -181,6 +215,7 @@ cmd_safe() {
   [ $# -eq 2 ] || die "usage: offload.sh safe <copy-dir> <rclone-remote>"
   local dir="${1%/}" remote="$2"
   [ -d "$dir" ] || die "not a directory: $dir"
+  route_check "$dir"
   # Only an rclone remote ("name:path") is offsite; a bare path, even one on
   # another disk, is a local folder and never earns the verdict.
   printf '%s' "$remote" | grep -qE "$REMOTE_RE" \
@@ -242,6 +277,11 @@ cmd_safe() {
 
 [ $# -ge 1 ] || die "usage: offload.sh id|copy|safe ..."
 sub="$1"; shift
+# --route-override may sit anywhere after the subcommand.
+args=()
+# Exported, so the caffeinate re-exec of copy keeps it.
+for a in "$@"; do case "$a" in --route-override) export OFFLOAD_ROUTE_OVERRIDE=1 ;; *) args+=("$a") ;; esac; done
+set -- ${args[@]+"${args[@]}"}
 case "$sub" in
   id) cmd_id "$@" ;;
   copy)

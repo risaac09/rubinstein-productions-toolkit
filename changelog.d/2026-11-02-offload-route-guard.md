@@ -1,0 +1,1 @@
+offload.sh copy and safe refuse to start on a share mounted from a slow address (Wi-Fi, the tailnet): smbutil must report the fast host for the share, or --route-override takes the slow route on purpose. sound-assist.md gains the instrument-then-ear rule for judging a processed file.
