@@ -115,6 +115,34 @@ are the cheapest review the stack owns.
 2. Does naming this layer change a decision today. (West)
 3. Whose nervous system is this built for, and who does it cost. (South)
 
+## Before orchestrating
+
+The harness is state to read, not a rule to assume. Eleven sessions in
+October lost a round trip or a wave to one of these (stack-data
+docs/learnings-synthesis-2026-11-01.md, family F1). Check each before the
+first brief goes out:
+
+- A session starts only from a line Isaac types in the desktop app; a turn
+  that an event or another session's message began cannot start one, and a
+  proposal card cannot name a folder. Batch each wave's starts behind one
+  typed word, and tell him the word.
+- The parent lives in a project folder, never a scratch workspace, or the
+  refill-at-two rule cannot start anything.
+- Every session in one permission mode: `list_sessions` (linked) shows
+  `permissionMode`; the desktop app remembers a mode per folder and overrides
+  `defaultMode` (FAILURE-MODES 33).
+- Auto-fix wakes a session only on failure: a session told to merge on green
+  watches CI itself (`gh pr checks --watch` in the background).
+- A message to a busy session queues silently; relay through the main
+  session, and read the child's latest state before relaying an answer Isaac
+  may already have given it directly.
+- Approval-prompting calls (Artifact publishes, browser-opening writes) cost
+  Isaac a click each, in bypass too: batch them.
+- Before a long computer-use job: `request_keep_awake`, and confirm computer
+  use is on; an agent-launched Terminal lacks the Photos grant.
+- Every PR body records its `/code-review` findings and fixes (decision
+  2026-11-02).
+
 ## Bookends and records
 
 Phase zero opens a session, the retrospective closes it, and between them the

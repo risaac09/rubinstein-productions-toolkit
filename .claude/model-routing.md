@@ -41,6 +41,14 @@ model at a lower effort is often right.
 
 Fan-out: at most five live writers per parent. Input tokens ran about 240x output on 2026-10-20, so parent context lifetime is the cost. End a long lane at a checkpoint with a written handover instead of keeping one context alive for hours.
 
+Scout before the fan-out, in this order, each a minute: a one-word probe of
+the tool the agents will use (a default that worked last week can be refused
+today); the holder of the document or the source's own index (one email, one
+List of Illustrations, beat six and nine agents); the queue items gated on
+Isaac's own pending calls, asked first (a 29-agent run moved 5 of 46 without
+that); the shared file every writer will touch, removed before any routing
+change. Evidence: stack-data docs/learnings-synthesis-2026-11-01.md, family F4.
+
 ## Capacity contract (2026-09-13)
 
 Claude runs on Max 20x; ChatGPT Plus is a separate pool. No usage credits or
