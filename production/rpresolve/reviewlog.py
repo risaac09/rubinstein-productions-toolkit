@@ -6,8 +6,9 @@ Standard library only. The line shape is the one production/media-review-loop.md
 The key is what `rpstills absheet` writes (DIR.key/key.json, beside the sheet
 folder) or `rpresolve.mixbuild ab` writes (DIR/sealed/key.json). Its letters
 decode into `options`, and `stimulus` is the sha256 of the sheet (sheet.jpg) or
-the packet (packet.json) the reviewer saw. Append-only: the existing bytes are
-never touched.
+the packet (packet.json) the reviewer saw. A question no tool sealed gives its
+letters inline instead (parse_options): the letter is logged and decoded, and the
+line has no stimulus. Append-only: the existing bytes are never touched.
 """
 
 import hashlib
@@ -20,13 +21,14 @@ import time
 from rpresolve.tastedistill import NON_LABEL, RATINGS  # the reader's own sets
 
 STEPS = ("triage", "look", "grade", "edit", "sound", "gate")
-DEVICES = ("desktop", "phone", "ipad")
+DEVICES = ("desktop", "phone", "ipad", "remote", "unknown")  # remote: answered over Remote Control
 PROJECT_RE = re.compile(r"^[A-Z]+-[0-9]+$")
 
 # Question keys the taste profile groups by. The reel keys come from the reel
 # fields in story-options.md; a key outside this list is logged with a WARN.
 QUESTIONS = ("warmth", "skin", "contrast", "pace", "music_level",
-             "reel_option", "opening", "hook_text", "crop_x", "caption_style", "ending", "tempo")
+             "reel_option", "opening", "hook_text", "crop_x", "caption_style", "ending", "tempo",
+             "speed", "transform", "exposure", "stabilizer", "squeeze")
 
 
 class Refused(ValueError):
@@ -71,6 +73,19 @@ def load_key(path):
     return options, _sha256(stim), doc.get("noise_type")
 
 
+def parse_options(items):
+    """{label: what it stood for} from LABEL=TEXT strings. Raises Refused."""
+    options = {}
+    for item in items:
+        label, sep, text = item.partition("=")
+        if not sep or not label.strip() or not text.strip():
+            raise Refused(f"--option wants LABEL=TEXT (got {item!r})")
+        if label in options:
+            raise Refused(f"--option gives label {label!r} twice")
+        options[label] = text
+    return options
+
+
 def _existing_ts(log):
     out = set()
     if os.path.exists(log):
@@ -90,8 +105,9 @@ def _utc(t):
 
 
 def append(project_dir, project, step, device, choice=None, reason=None, key=None, question=None,
-           noise_type=None, repeat_of=None, warn=None, review_copy=None):
+           noise_type=None, repeat_of=None, warn=None, review_copy=None, inline_options=None):
     """Validate and append one line; returns the line (a dict). Raises Refused.
+    inline_options: {label: text} for a lettered question no key was sealed for.
     review_copy: the review-copy file an approve, go or hold line is about; the
     line records its name and sha256 (what deliver-check --review-log reads,
     so a later hold withdraws an earlier approve)."""
@@ -107,7 +123,9 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
         raise Refused("give a choice, a reason, or both")
     if review_copy and not os.path.isfile(review_copy):
         raise Refused(f"review copy {review_copy} is not a file")
-    options, stimulus, key_noise = ({}, None, None) if key is None else load_key(key)
+    if key is not None and inline_options:
+        raise Refused("give a key or inline options, not both")
+    options, stimulus, key_noise = (inline_options or {}, None, None) if key is None else load_key(key)
     if choice is not None:
         ok = choice in options or choice in NON_LABEL or (not options and choice in RATINGS)
         if not ok:

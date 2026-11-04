@@ -145,10 +145,10 @@ Every answer becomes one line of JSON in an append-only log beside the project's
 | `ts` | UTC time of the answer, ISO 8601 |
 | `project` | the project id, never a client's or a person's name |
 | `step` | `triage`, `look`, `grade`, `edit`, `sound` or `gate` |
-| `options` | each label and what it stood for (look file and version, parameter change, source file), taken from `key.json` or the sealed audio key after the answer, so the line decodes without the sheet |
+| `options` | each label and what it stood for (look file and version, parameter change, source file), taken from `key.json` or the sealed audio key after the answer, or given inline with `--option`, so the line decodes without the sheet |
 | `choice` | the label, a rating 1 to 5, `approve` (edit), `go` (gate), `none` or `hold`; null when the answer is only a line, which goes in `reason` |
 | `reason` | the reviewer's line, verbatim, or null |
-| `device` | `desktop`, `phone` or `ipad`; screens differ, and none of them is calibrated against the others |
+| `device` | `desktop`, `phone`, `ipad`, `remote` (answered over Remote Control, so the session cannot see which screen) or `unknown`; screens differ, and none of them is calibrated against the others. A value the session cannot vouch for is `unknown`, never a guess |
 | `noise_type` | denoise and noise-treatment sheets only: `rumble`, `wind`, `hiss`, `room`, or `other:WORD` with a word that says what. `mixbuild ab --noise-type T` keeps it in the sealed key; otherwise Claude asks or states the type before the sheet goes out |
 
 ```json
@@ -163,7 +163,7 @@ python3 resolve_workflow.py review-log --dir <project dir> --project P-0001 --st
   --choice B --key <review dir>/look-01 --question warmth --reason "skin reads less grey"
 ```
 
-`--key` takes the `key.json` itself or the sheet folder (`rpstills absheet`, key in `DIR.key`) or packet folder (`mixbuild ab`, key in `sealed/`) that has one. The letter decodes into `options` (source file names), and `stimulus` is the sha256 of `sheet.jpg` or `packet.json`, so a re-asked comparison can be matched. `--repeat-of TS` marks a repeat. The command appends one line, stamps `ts` in UTC and makes it unique, and exits 2 without writing for a letter the key does not hold, a step or device outside the lists above, a project id that is not like `P-0001`, a `--repeat-of` that matches no line, or a log inside any git working tree. A `--question` outside the table below is logged with a warning.
+`--key` takes the `key.json` itself or the sheet folder (`rpstills absheet`, key in `DIR.key`) or packet folder (`mixbuild ab`, key in `sealed/`) that has one. The letter decodes into `options` (source file names), and `stimulus` is the sha256 of `sheet.jpg` or `packet.json`, so a re-asked comparison can be matched. A lettered question no tool sealed a key for gives its letters inline, `--option A="23.976" --option B="29.97"`: the letter is checked against them and decodes the same way, and the line has no `stimulus`, so only `--repeat-of TS` can mark its repeat; on any line that flag marks a repeat. The command appends one line, stamps `ts` in UTC and makes it unique, and exits 2 without writing for a letter the key or the `--option` list does not hold, a key and `--option` together, a step or device outside the lists above, a project id that is not like `P-0001`, a `--repeat-of` that matches no line, or a log inside any git working tree. A `--question` outside the table below is logged with a warning.
 
 ### Question keys
 
@@ -180,7 +180,7 @@ The optional `question` key names what was asked, so the taste profile counts li
 | `tempo` | cutting pace |
 | `music_level` | music level under speech |
 
-Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix decisions `pace`, the same way.
+Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix decisions `pace`, the same way. Source-footage decisions use `speed` (a retime), `transform` (the input transform or LUT), `exposure`, `stabilizer` and `squeeze` (the desqueeze).
 
 Readers ignore keys they do not know, so a line may carry more (`repeat_of` for a repeated comparison, carrying the `ts` of the line it repeats, for instance). About one comparison in ten is a repeat of an earlier one in a new order, which shows how consistent the answers are.
 
