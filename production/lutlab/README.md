@@ -209,6 +209,20 @@ Blackmagic RAW SDK (`sh lutlab/braw/build.sh`; the binary stays out of git, and 
 points at another build). Checked against Resolve's Gen 5 render of the same frame: median Delta E
 0.3 once both are blurred, so colour agrees and only resampling differs.
 
+The helper is also the one route for excerpts before a project has media: `braw2ppm clip.braw START
+COUNT -` streams PPM frames to stdout, each with its own header, and START is a frame, `SECONDSs`,
+`mid` or `last`. The stream is Film Gen 5, so it looks flat. Check a late frame of each file before
+serving a packet.
+
+```bash
+lutlab/braw/braw2ppm clip.braw mid 300 - | \
+  ffmpeg -f image2pipe -c:v ppm -framerate 30000/1001 -i - -c:v libx264 -crf 14 -pix_fmt yuv420p excerpt.mp4
+```
+
+Take the size from the frames, never from the file's tags: a clip's header size and decoded size can
+differ, so stderr prints both. `--spherical`, the first argument, ignores a clip's anamorphic flag, for
+spherical glass the camera flagged anamorphic; without it the SDK follows the flag.
+
 **Tuning the looks on footage.** The loop, with a new output folder each
 round because Resolve caches a LUT by path:
 
