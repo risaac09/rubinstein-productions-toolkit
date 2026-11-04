@@ -1,0 +1,1 @@
+Capture brief and camera-transforms.json gain the Panasonic S9, DJI Osmo Action 5 Pro and Atomos Ninja V, with maker figures only where a page is linked and to be measured otherwise. The Pyxis sheet notes how an off-speed clip sits in its container.

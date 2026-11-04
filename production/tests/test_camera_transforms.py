@@ -65,7 +65,8 @@ class Table(unittest.TestCase):
     def test_rows_and_fields(self):
         names = [r["camera"] for r in self.t["cameras"]]
         self.assertEqual(names, ["Blackmagic Pyxis", "Panasonic S5II",
-                                 "Panasonic GH7", "iPhone 15 Pro or later"])
+                                 "Panasonic GH7", "iPhone 15 Pro or later",
+                                 "Panasonic S9", "DJI Osmo Action 5 Pro", "Atomos Ninja V"])
         for r in self.t["cameras"]:
             for k in ("input_curve", "input_primaries", "measure_linearise",
                       "resolve_input_colour_space", "record_per_clip"):
@@ -79,6 +80,7 @@ class Table(unittest.TestCase):
         for r in self.t["cameras"][1:3]:
             self.assertEqual(r["measure_linearise"], "rpresolve.color.vlog_decode")
         self.assertEqual(self.t["cameras"][3]["measure_linearise"], "rpresolve.color.hlg_decode")
+        self.assertEqual(self.t["cameras"][4]["measure_linearise"], "rpresolve.color.vlog_decode")
 
 
 if __name__ == "__main__":
