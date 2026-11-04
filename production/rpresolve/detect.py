@@ -60,7 +60,9 @@ which of the two camera SDR should get is an open decision (spike 7). Both
 read 'Rec.709 Gamma 2.4' until it is made; the decision changes one line.
 
 Output columns are COLUMNS: the eight the pipeline plan names, plus a note
-saying why a row was pinned or what is missing.
+saying why a row was pinned or what is missing. `vfr` is yes, no or unknown,
+or off-speed on a BRAW clip whose sensor ran away from its container rate
+(Headers.vfr says why BRAW is read apart).
 """
 
 import json
@@ -99,6 +101,7 @@ VIDEO_EXTENSIONS = {
 SKIP_DIRS = {"#recycle", "@eaDir", "#snapshot"}
 
 BRAW_FOURCCS = {"brst", "brhq", "brxq", "brlt"}
+OFFSPEED_SAME = 0.0005  # the frame time is a float32; 23.976 against 24 is 0.1%
 PRORES_RAW_FOURCCS = {"aprn", "aprh"}
 APPLE_LOG_TAG = "com.apple.rec2020.apple-log"
 DOVI_COMPAT_HLG = 4  # Dolby Vision bl_signal_compatibility_id for an HLG base
@@ -667,11 +670,36 @@ class Headers:
             return "full" if c["full_range"] else "video"
         return "unknown"
 
+    def is_braw(self):
+        return self.video_fourcc() in BRAW_FOURCCS or self.ext == ".braw"
+
+    def offspeed(self):
+        """(sensor fps, container fps or None) for a BRAW clip the camera ran
+        off speed, else None. OffspeedFrameTime is the camera's own record,
+        seconds per sensor frame; the container keeps the project rate."""
+        frame_time = _fraction(next(iter(self.exif_values("OffspeedFrameTime")), ""))
+        if frame_time is None:
+            return None
+        sensor = 1 / frame_time
+        container = _fraction(self.video.get("r_frame_rate"))
+        if container and abs(sensor / container - 1) < OFFSPEED_SAME:
+            return None
+        return float(sensor), float(container) if container else None
+
     def vfr(self):
         """'yes' when avg_frame_rate differs from r_frame_rate at all. The
         comparison is exact on purpose: a real iPhone VFR clip (the HLG
         fixture) differs by only 0.018%, so any tolerance wide enough to
-        absorb container rounding would also hide true VFR."""
+        absorb container rounding would also hide true VFR.
+
+        BRAW never reaches that comparison. Its frames are constant, and its
+        last packet can run long, which moves avg_frame_rate by 0.0005% on one
+        clip and 20% on another: no tolerance sorts those from real VFR. So a
+        BRAW clip reads 'off-speed' from the camera's own record, else 'no'."""
+        if self.is_braw():
+            if self.offspeed():
+                return "off-speed"
+            return "no" if self.exif else "unknown"
         if not self.video:
             return "unknown"
         r = _fraction(self.video.get("r_frame_rate"))
@@ -754,8 +782,7 @@ def rule_0c_proxy(h):
 
 
 def rule_1_braw(h):
-    fourcc = h.video_fourcc()
-    if fourcc not in BRAW_FOURCCS and h.ext != ".braw":
+    if not h.is_braw():
         return None
     camera = h.tag("camera_type") or h.exif_value("Keys:CameraType")
     note = []
@@ -1113,6 +1140,10 @@ def classify(doc):
         data_level = "video"  # OBS records partial range (basic.ini)
     if vfr == "yes" and row["profile"] not in (REVIEW, CORRUPT, "derived", "proxy"):
         row["note"] = _join(row["note"], "VFR: conform to CFR before editing")
+    if vfr == "off-speed":
+        sensor, container = h.offspeed()
+        row["note"] = _join(row["note"], f"off-speed: sensor {round(sensor, 3):g} fps in a "
+                            + (f"{round(container, 3):g} fps container" if container else "container of unread rate"))
     out = {"path": h.path, "data_level": data_level, "vfr": vfr}
     out.update(row)
     return {c: out.get(c, "") for c in COLUMNS}

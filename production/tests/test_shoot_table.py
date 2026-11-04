@@ -8,6 +8,7 @@ need ffmpeg skip themselves when it is missing.
 Run: python3 -m unittest production.tests.test_shoot_table -v
 """
 
+import datetime
 import os
 import re
 import shutil
@@ -36,7 +37,9 @@ printf '['
 sep=''
 for a in "$@"; do
   case "$a" in -*|LargeFileSupport=1) continue;; esac
-  printf '%s{"SourceFile":"%s","QuickTime:CreateDate":"2026:10:16 10:00:00","ExifIFD:LensModel":"Test 24mm"}' "$sep" "$a"
+  extra=''
+  case "$a" in *_C002.braw) extra=',"Keys:OffspeedFrameTime":0.0416666679';; esac
+  printf '%s{"SourceFile":"%s","QuickTime:CreateDate":"2026:10:16 10:00:00","ExifIFD:LensModel":"Test 24mm"%s}' "$sep" "$a" "$extra"
   sep=','
 done
 printf ']'
@@ -116,6 +119,50 @@ class TestShootTable(unittest.TestCase):
         r = self.rows(offsets={"obs (capture card)": 90})
         self.assertEqual(r["a_normal.mov"]["local_start"], "2026-10-16T10:01:30")
         self.assertEqual(shoot_table.unknown_offsets(list(r.values()), {"GH7": 1}), ["GH7"])
+
+    def test_mixed_clock_bases_need_no_offset(self):
+        # The stub tags every file 10:00 UTC; the names hold a wall clock four hours behind it.
+        card = os.path.join(self.tmp, "mixed")
+        os.mkdir(card)
+        vid = ["-f", "lavfi", "-i", "testsrc=size=64x48:rate=25:duration=1", "-an", *self.enc[:4]]
+        names = ("DJI_20261016060000_0001_D.MP4", "A001_10160600_C001.braw", "renamed.braw", "P1000001.MOV")
+        for name in names:
+            ff(*vid, "-f", "mov", os.path.join(card, name))
+        rows, _ = shoot_table.build([card], ffprobe=FFPROBE, exiftool=self.exiftool, ffmpeg=FFMPEG)
+        got = {os.path.basename(r["file"]): (r["local_start"], r["clock_base"]) for r in rows}
+        self.assertEqual(got, {"DJI_20261016060000_0001_D.MP4": ("2026-10-16T06:00:00", "filename"),
+                               "A001_10160600_C001.braw": ("2026-10-16T06:00:00", "filename"),
+                               "renamed.braw": ("2026-10-16T10:00:00", "utc"),
+                               "P1000001.MOV": ("2026-10-16T10:00:00", "tag")})
+        renamed = next(r for r in rows if r["file"].endswith("renamed.braw"))
+        self.assertIn("start is UTC", renamed["note"])
+
+    def test_name_clock_shift(self):
+        at = lambda *a: datetime.datetime(*a)
+        self.assertEqual(shoot_table.name_clock_shift("DJI_20260520204844_0002_D.MP4", at(2026, 5, 21, 0, 48, 45)), -14400)
+        self.assertEqual(shoot_table.name_clock_shift("A001_05201106_C003.braw", at(2026, 5, 20, 15, 6, 10)), -14400)
+        self.assertEqual(shoot_table.name_clock_shift("A001_05201106_C003.mp4", at(2026, 5, 20, 15, 6, 10)), -14400)
+        self.assertEqual(shoot_table.name_clock_shift("A001_12312330_C001.braw", at(2027, 1, 1, 3, 30, 20)), -14400)
+        self.assertEqual(shoot_table.name_clock_shift("A001_01010030_C001.braw", at(2026, 12, 31, 23, 30, 20)), 3600)
+        self.assertEqual(shoot_table.name_clock_shift("A001_02291200_C001.braw", at(2028, 2, 29, 17, 0, 0)), -18000)
+        self.assertEqual(shoot_table.name_clock_shift("A001_05201106_C003.braw", at(2026, 5, 20, 16, 51, 0)), -20700)  # a quarter-hour zone
+        self.assertIsNone(shoot_table.name_clock_shift("A001_05201106_C003.braw", at(2026, 1, 1, 0, 0, 0)))  # no zone explains it
+        self.assertIsNone(shoot_table.name_clock_shift("A001_13991106_C003.braw", at(2026, 5, 20, 15, 0, 0)))  # not a date
+        self.assertIsNone(shoot_table.name_clock_shift("P1000001.MOV", at(2026, 5, 20, 10, 39, 33)))
+
+    def test_braw_rows_agree_with_detect(self):
+        card = os.path.join(self.tmp, "braw")
+        os.mkdir(card)
+        vid = ["-f", "lavfi", "-i", "testsrc=size=64x48:rate=25:duration=1", "-an", *self.enc[:4], "-f", "mov"]
+        ff(*vid, os.path.join(card, "A001_10160600_C001.braw"))
+        ff(*vid, os.path.join(card, "A001_10160601_C002.braw"))
+        rows, _ = shoot_table.build([card], ffprobe=FFPROBE, exiftool=self.exiftool, ffmpeg=FFMPEG)
+        plain, off = sorted(rows, key=lambda r: r["file"])
+        self.assertEqual((plain["vfr"], plain["flags"], plain["duration_s"]), ("no", "", "1.000"))
+        self.assertEqual((off["vfr"], off["flags"]), ("off-speed", "off-speed"))
+        self.assertIn("off-speed: sensor 24 fps in a 25 fps container", off["note"])
+        self.assertNotIn("conform", off["note"])
+        self.assertEqual(off["audio_source"], "not measured (BRAW)")
 
     def test_golden_csv(self):
         rows, _ = self.build()

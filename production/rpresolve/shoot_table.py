@@ -6,19 +6,28 @@ read-only; nothing here imports Resolve.
 Camera and profile come from detect.classify, never re-derived here. The
 rest is ffprobe (duration, fps, size, sample aspect, audio stream),
 exiftool (start time, lens, squeeze) and one ffmpeg volumedetect pass over
-the audio of a non-BRAW clip. A BRAW file is never handed to ffmpeg: its
-facts come from exiftool alone, and its audio is reported as not measured.
+the audio of a non-BRAW clip. A BRAW file is never handed to ffmpeg: ffprobe
+reads its headers, as detect does, and its audio is reported as not measured.
 
 Columns are COLUMNS. `camera` and `profile` are detect's names; `size` is
-WxH; `flags` is a semicolon list of: long-take, vfr, no-audio, weak-audio,
-unexpected (detect did not pin the row: review, corrupt, derived, proxy or
-unknown camera, or a capture-audit flag below). `local_start` is the camera's wall-clock digits with any
-timezone suffix dropped, plus the --offset for that camera.
+WxH; `vfr` is detect's value, off-speed included; `flags` is a semicolon list
+of: long-take, vfr, off-speed, no-audio, weak-audio, unexpected (detect did
+not pin the row: review, corrupt, derived, proxy or unknown camera, or a
+capture-audit flag below).
+
+`local_start` is the camera's wall clock with any timezone suffix dropped,
+plus the --offset for that camera. The last column, `clock_base`, says where
+the clock came from. PYXIS and DJI bodies tag UTC but name their files by the
+wall clock, so a name that holds a clock moves the tag by the whole zone
+between them: `filename`. Any other row is `tag`, the tag's digits as they
+stand (Panasonic writes wall clock there), or `utc` when a BRAW or DJI file
+was renamed and its digits stay UTC; the note says so. A shoot on mixed
+cameras needs no --offset for the zone, only for a clock set wrong.
 
 Capture audit (VP-124, VP-124a). The last columns are `audio_streams`,
 `audio_channels`, `noise_floor_dbfs`, `clip_runs`, `dead_channel`,
-`dual_mono` and `clean_tone_s`; they sit at the end so readers of the
-older columns keep working. They come from audioreport's _Stats over at
+`dual_mono` and `clean_tone_s`, before `clock_base`; they sit at the end so
+readers of the older columns keep working. They come from audioreport's _Stats over at
 most the first --audio-seconds of audio (default AUDIO_SECONDS). Flags:
 no-audio-stream (no audio stream; BRAW is never decoded, so never flagged),
 silent-audio (first SILENT_S seconds under SILENT_DB on every channel),
@@ -47,7 +56,7 @@ COLUMNS = (
     "file", "camera", "local_start", "duration_s", "fps", "vfr", "size",
     "profile", "squeeze", "lens", "audio_source", "flags", "note",
     "audio_streams", "audio_channels", "noise_floor_dbfs", "clip_runs", "dead_channel",
-    "dual_mono", "clean_tone_s",
+    "dual_mono", "clean_tone_s", "clock_base",
 )
 
 LONG_TAKE_MIN = 10.0
@@ -66,6 +75,11 @@ _START_TAGS = ("CreationDate", "DateTimeOriginal", "CreateDate", "MediaCreateDat
                "TrackCreateDate")
 _LENS_TAGS = ("LensModel", "LensID", "LensType", "Lens")
 _SQUEEZE_TAGS = ("AnamorphicRatio", "SqueezeFactor", "Squeeze", "Anamorphic")
+
+_DJI_NAME = re.compile(r"DJI_(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)_")
+_BRAW_NAME = re.compile(r"[A-Z]\d{3}_(\d\d)(\d\d)(\d\d)(\d\d)_[CS]\d{3}\b", re.I)  # MMDDHHMM, no year
+ZONE_STEP_S = 900        # zones sit on quarter hours; the name and tag can differ by a tick
+ZONE_MAX_S = 14 * 3600   # further apart than any zone: not a clock this name holds
 
 
 def _exif(exif, *names):
@@ -95,6 +109,30 @@ def _start(h):
         if t:
             return t
     return parse_start(h.format_tags.get("creation_time", ""))
+
+
+def name_clock_shift(name, tag):
+    """Seconds from a tag to the wall clock in a DJI or Blackmagic file name,
+    in whole zone steps, or None when the name holds no clock or no zone
+    could explain the gap."""
+    m = _DJI_NAME.match(name)
+    if m:
+        dates = [m.groups()]
+    else:
+        m = _BRAW_NAME.match(name)
+        if not m:
+            return None
+        dates = [(y, *m.groups()) for y in (tag.year - 1, tag.year, tag.year + 1)]
+    gaps = []
+    for d in dates:
+        try:
+            gaps.append((datetime.datetime(*(int(p) for p in d)) - tag).total_seconds())
+        except ValueError:  # not a date, or 29 February in the wrong year
+            pass
+    if not gaps:
+        return None
+    shift = round(min(gaps, key=abs) / ZONE_STEP_S) * ZONE_STEP_S
+    return shift if abs(shift) <= ZONE_MAX_S else None
 
 
 def _duration(h, is_braw):
@@ -203,16 +241,10 @@ def build(paths, long_min=LONG_TAKE_MIN, weak_db=WEAK_AUDIO_DB, offsets=None,
     exif = detect.run_exiftool(files, exiftool=exiftool) if files else {}
     cache, rows = {}, []
     for f in files:
-        is_braw = f.lower().endswith(".braw")
         try:
-            if is_braw:  # metadata only: no ffprobe, no ffmpeg
-                doc = {"path": f, "ffprobe": None, "ffprobe_error": "",
-                       "exiftool": exif.get(f) or {}, "atoms": detect.read_atoms(f),
-                       "proxy_original": detect.find_proxy_original(f, cache)}
-            else:
-                doc = detect.probe(f, exif.get(f), ffprobe=ffprobe, dir_cache=cache)
-            d = detect.classify(doc)
-            rows.append(_row(f, detect.Headers(doc), d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds))
+            doc = detect.probe(f, exif.get(f), ffprobe=ffprobe, dir_cache=cache)
+            d, h = detect.classify(doc), detect.Headers(doc)
+            rows.append(_row(f, h, d, h.is_braw(), long_min, weak_db, offs, ffmpeg, audio_seconds))
         except detect.ToolMissing:
             raise
         except Exception as e:
@@ -226,14 +258,25 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
         flags.append("unexpected")
     if d["vfr"] == "yes":
         flags.append("vfr")
+    elif d["vfr"] == "off-speed":
+        flags.append("off-speed")
     dur = _duration(h, is_braw)
     if dur is not None and dur > long_min * 60:
         flags.append("long-take")
-    start = _start(h)
+    start, base = _start(h), ""
+    if start:
+        shift = name_clock_shift(h.name, start)
+        if shift is not None:
+            start, base = start + datetime.timedelta(seconds=shift), "filename"
+        elif is_braw or d["camera"].startswith("DJI Osmo"):
+            base = "utc"
+            notes.append("start is UTC: the file name holds no wall clock, so give this camera an --offset")
+        else:
+            base = "tag"
     cam_off = offs.get(d["camera"].lower())
     if start and cam_off:
         start += datetime.timedelta(seconds=cam_off)
-    extra = {}
+    extra = {"clock_base": base}
     if is_braw:
         audio = "not measured (BRAW)"
     else:

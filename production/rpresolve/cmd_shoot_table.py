@@ -1,7 +1,7 @@
 """
 shoot-table: one CSV row per clip: camera, start, duration, fps, size, profile,
-lens and audio, with long-take, VFR, weak-audio and unexpected-camera flags and
-a per-camera --offset. The last columns audit capture audio (streams, noise
+lens and audio, with long-take, VFR, off-speed, weak-audio and unexpected-camera
+flags, a clock_base column and a per-camera --offset. The last columns audit capture audio (streams, noise
 floor, clipping, dead channel, dual mono, room tone) over the first
 --audio-seconds. It calls detect for camera and profile.
 """
@@ -21,7 +21,8 @@ def add_arguments(p):
     p.add_argument("paths", nargs="+", help="Absolute paths of media files or folders (searched recursively)")
     p.add_argument("--out", "-o", help="Write the CSV here instead of stdout")
     p.add_argument("--offset", action="append", metavar="CAM=SECONDS",
-                   help="Clock offset added to local_start for one camera name as detect names it (repeatable)")
+                   help="Clock offset added to local_start for one camera name as detect names it (repeatable). "
+                        "For a clock set wrong: the zone between UTC tags and wall clock needs none")
     p.add_argument("--long-min", type=float, default=rpshoot.LONG_TAKE_MIN,
                    help="Flag takes longer than this many minutes (default %(default)s)")
     p.add_argument("--weak-db", type=float, default=rpshoot.WEAK_AUDIO_DB,
