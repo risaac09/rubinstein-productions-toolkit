@@ -930,8 +930,8 @@ def register(registry):
     registry.add(Tool(
         "shoot_table",
         "One CSV row per clip of a shoot: camera, start, duration, fps, size, profile, lens and "
-        "audio, with long-take, VFR, weak-audio and unexpected-camera flags, a per-camera "
-        "offset, and an audit of capture audio over its first audio_seconds (streams, noise "
+        "audio, with long-take, VFR, off-speed, weak-audio and unexpected-camera flags, a "
+        "clock_base per row, a per-camera offset, and an audit of capture audio over its first audio_seconds (streams, noise "
         "floor, clipping, dead channel, dual mono, room tone). Never connects to Resolve.",
         _obj({"paths": {"type": "array", "minItems": 1, "maxItems": MAX_PATHS,
                         "items": {"type": "string"},
@@ -939,7 +939,8 @@ def register(registry):
                         "recursively)."},
               "camera_offset": {"type": "array", "items": {"type": "string"},
                          "description": "CAM=SECONDS: a clock offset added to local_start for "
-                         "one camera name as detect names it."},
+                         "one camera name as detect names it. For a clock set wrong: the "
+                         "zone between UTC tags and wall clock needs none."},
               "long_min": {"type": "number", "minimum": 0, "default": rpshoot.LONG_TAKE_MIN,
                            "description": "Flag takes longer than this many minutes."},
               "weak_db": {"type": "number", "default": rpshoot.WEAK_AUDIO_DB,

@@ -134,7 +134,7 @@ class TestFixtureClassification(unittest.TestCase):
             with self.subTest(fixture=path.name):
                 self.assertEqual(tuple(row), detect.COLUMNS)
                 self.assertIn(row["data_level"], ("full", "video", "unknown"))
-                self.assertIn(row["vfr"], ("yes", "no", "unknown"))
+                self.assertIn(row["vfr"], ("yes", "no", "unknown", "off-speed"))
                 self.assertIn(row["confidence"], ("high", "medium", "low"))
 
 
@@ -301,6 +301,38 @@ class TestHeaders(unittest.TestCase):
         # The iPhone HLG fixture is true VFR at 0.018% off its nominal rate.
         h = detect.Headers(load("r6_iphone_hlg_dolby_vision"))
         self.assertEqual(h.vfr(), "yes")
+
+    def test_braw_rate_gap_is_not_vfr(self):
+        # A long last packet moves avg_frame_rate by 0.0005% or by 20%: both are constant frames.
+        for avg in ("12450000/415417", "991875/41329"):
+            doc = load("r1_braw_pyxis")
+            doc["ffprobe"]["streams"][0].update(r_frame_rate="30000/1001", avg_frame_rate=avg)
+            row = detect.classify(doc)
+            self.assertEqual(row["vfr"], "no")
+            self.assertNotIn("conform", row["note"])
+
+    def test_braw_off_speed_reads_the_camera_record(self):
+        for frame_time, sensor in ((0.0416666679, "24"), (0.0277799997, "35.997")):
+            doc = load("r1_braw_pyxis")
+            doc["ffprobe"]["streams"][0].update(r_frame_rate="30000/1001", avg_frame_rate="991875/41329")
+            doc["exiftool"]["Keys:OffspeedFrameTime"] = frame_time
+            row = detect.classify(doc)
+            self.assertEqual(row["vfr"], "off-speed")
+            self.assertIn(f"off-speed: sensor {sensor} fps in a 29.97 fps container", row["note"])
+            self.assertNotIn("conform", row["note"])
+
+    def test_braw_frame_time_at_the_container_rate_is_not_off_speed(self):
+        doc = load("r1_braw_pyxis")
+        doc["ffprobe"]["streams"][0].update(r_frame_rate="24000/1001", avg_frame_rate="24000/1001")
+        doc["exiftool"]["Keys:OffspeedFrameTime"] = 0.0417083353
+        self.assertEqual(detect.classify(doc)["vfr"], "no")
+        doc["exiftool"]["Keys:OffspeedFrameTime"] = 0
+        self.assertEqual(detect.classify(doc)["vfr"], "no")
+
+    def test_braw_with_no_exiftool_record_is_unknown(self):
+        doc = load("r1_braw_pyxis")
+        doc["exiftool"] = {}
+        self.assertEqual(detect.Headers(doc).vfr(), "unknown")
 
     def test_dolby_vision_is_hlg_only_on_an_hlg_base(self):
         def doc(compat=None, side=None, colr=(9, 16, 9)):
