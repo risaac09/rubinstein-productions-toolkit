@@ -37,6 +37,33 @@
       "measure_linearise": "rpresolve.color.hlg_decode",
       "resolve_input_colour_space": "Rec.2100 HLG (Resolve's own name; unverified through the API, confirm on screen)",
       "record_per_clip": ["Profile tag (HLG or Apple Log)", "ISO (as shown in the camera app, if shown)"]
+    },
+    {
+      "camera": "Panasonic S9",
+      "profile": "V-Log",
+      "input_curve": "Panasonic V-Log",
+      "input_primaries": "Panasonic V-Gamut",
+      "measure_linearise": "rpresolve.color.vlog_decode",
+      "resolve_input_colour_space": "Panasonic V-Gamut/V-Log",
+      "record_per_clip": ["ISO (dual native 640 or 4000)", "Photo Style, when it is not V-Log"]
+    },
+    {
+      "camera": "DJI Osmo Action 5 Pro",
+      "profile": "D-Log M, 10-bit",
+      "input_curve": "DJI D-Log M (no published curve in this repository; to be measured)",
+      "input_primaries": "to be measured",
+      "measure_linearise": "none: rpresolve.color has no D-Log M curve",
+      "resolve_input_colour_space": "to be measured: detect sends these clips to review, because D-Log M is not in the headers",
+      "record_per_clip": ["Colour mode (Normal, D-Log M or HLG): it cannot be read from the file", "ISO"]
+    },
+    {
+      "camera": "Atomos Ninja V",
+      "profile": "a recorder: the profile of the camera feeding it, over HDMI",
+      "input_curve": "the feeding camera's row",
+      "input_primaries": "the feeding camera's row",
+      "measure_linearise": "the feeding camera's row",
+      "resolve_input_colour_space": "the feeding camera's row, from the com.atomos.hdr tags; review when no HDMI metadata reached the recorder",
+      "record_per_clip": ["Which body fed it, and that body's profile", "Recording codec"]
     }
   ]
 }

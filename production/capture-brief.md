@@ -9,11 +9,11 @@ The values come from [camera-transforms.json](camera-transforms.json) and [captu
 **How to read the labels.** Every number is one of:
 
 - **house working default**: a setting we chose to start from. It has not been checked against a shoot.
-- **maker spec**: the manufacturer's published figure, from the capture standard.
+- **maker spec**: the manufacturer's published figure, from the capture standard or the page the sheet links.
 - **computed**: derived from the curve code in `production/rpresolve/color.py`, not read off a camera.
 - **to be measured**: no figure yet. Do not fill it in from another body.
 
-Nothing on this page is *measured on a shoot* yet. That label appears only after the VP-101c miss list.
+No number on this page is *measured on a shoot* yet. That label appears only after the VP-101c miss list.
 
 ## Before any camera page
 
@@ -53,6 +53,8 @@ Scene: ______ Key side: ______ Ratio (stops): ______ Practical: ______ Negative 
 
 <!-- setting-ids: monitoring-lut -->
 Exposure is set by eye on the log image, then doubtful shots are checked against the grey level above. Monitoring LUT: 33-point `.cube` on the camera, screen only.
+
+Off-speed: a clip shot away from the project rate stays in a container at the project rate. Shot below it, the file holds fewer real frames than its stamped length and ends on one held frame padded out to the real-time audio; keep out-points inside the real frames. `detect` and `shoot-table` report these clips as `off-speed` with the sensor rate. This was read from the packets of one clip, and how Resolve plays such a clip has not been tested.
 
 ## Panasonic S5II, V-Log
 
@@ -96,9 +98,56 @@ No monitoring LUT route is known for the GH7. Monitor in log or with the camera'
 
 Codec and resolution for HLG are not set in the capture standard. Record what the phone writes and add it to the standard after the shoot. No monitoring LUT route is known; monitor with the phone's own display.
 
+## Panasonic S9, V-Log
+
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
+| Item | Value | Label |
+|---|---|---|
+| Profile | V-Log, 14+ stops of latitude; bit depth and codec not set here | maker spec ([DC-S9 specifications](https://help.na.panasonic.com/answers/features-and-specifications-lumix-s-series-model-dc-s9k)) |
+| Base ISO | 640 or 4000, dual native, in V-Log | maker spec (same page) |
+| Exposure target | 18% grey at 10-bit code 433, about 42% of the full-range signal (percent of full range, the scale the capture standard uses for every row) | computed from the V-Log curve |
+| Zebra and waveform | not set; the S9 manual's zebra and waveform sections are not yet read for this page | to be measured |
+| Resolve input | Panasonic V-Gamut/V-Log | camera table |
+| Record per clip | ISO (640 or 4000); Photo Style, when it is not V-Log | camera table |
+
+No monitoring LUT route is confirmed for the S9. Check V-Log is the selected Photo Style before each scene: a clip shot in another style is not log.
+
+## DJI Osmo Action 5 Pro, D-Log M
+
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
+| Item | Value | Label |
+|---|---|---|
+| Profile | D-Log M, 10-bit; MP4 (HEVC), 120 Mbps at most | maker spec ([specifications](https://www.dji.com/osmo-action-5-pro/specs), [10-bit modes](https://www.dji.com/media-center/announcements/dji-osmo-action-5-pro-en)) |
+| Base ISO | to be measured. The maker gives a video range of 100 to 51200, and no base ISO for D-Log M. | to be measured |
+| Exposure target | to be measured. No D-Log M curve is in this repository, so no grey level is quoted here. | to be measured |
+| Zebra and waveform | not set; the camera's exposure tools are not yet read for this page | to be measured |
+| Resolve input | to be measured. `detect` sends these clips to review: D-Log M is not in the headers, and no Resolve colour-space name has been checked. | to be measured |
+| Record per clip | Colour mode (Normal, D-Log M or HLG), which the file cannot show; ISO | camera table |
+
+DJI lists an [official D-Log M to Rec.709 LUT](https://support.dji.com/help/content?customId=01700007105&spaceId=17&re=US&lang=en&documentType=&paperDocType=ARTICLE) for this body. A file's name does not say which body it was made for: check the hash and the header of the file you use. Neither the file nor the mode is confirmed by the darkest pixel in the frame; log and display-referred clips overlap there.
+
+## Atomos Ninja V, recorder
+
+The Ninja records what the camera sends, so this page is the recorder's. Profile, ISO and exposure target come from the sheet of the camera feeding it.
+
+<!-- setting-ids: profile, base-iso, exposure-target, zebra-waveform, resolve-input, record-per-clip -->
+| Item | Value | Label |
+|---|---|---|
+| Profile | The feeding camera's, over HDMI: 10-bit or 8-bit 4:2:2 depending on the camera; Apple ProRes, ProRes RAW or Avid DNxHR | maker spec ([Ninja V](https://www.atomos.com/ninjav)) |
+| Base ISO | The feeding camera's sheet | camera table |
+| Exposure target | The feeding camera's sheet | camera table |
+| Zebra and waveform | not set; the recorder's manual is not yet read for this page | to be measured |
+| Resolve input | The feeding camera's, read from the recorder's HDMI metadata tags. With no metadata `detect` sends the clip to review. A ProRes RAW path through Resolve is untested. | camera table |
+| Record per clip | Which body fed it and that body's profile; recording codec | camera table |
+
+<!-- setting-ids: monitoring-lut -->
+Monitoring LUT: the Ninja V takes 3D `.cube` LUTs ([maker page](https://www.atomos.com/ninjav)); which slot and how many are not yet read for this page. Screen only: confirm no LUT is burned into the recording.
+
+The recorder keeps its own clock, so set it with the camera's before the first take, and do not expect its start times to line up with the camera's. Match a recorder take to its camera take by audio.
+
 ## Sound checklist (every kit)
 
-The same list for all four kits. Source: the capture standard's Audio, Sync and Slate sections, plus the sound capture checklist.
+The same list for every kit. Source: the capture standard's Audio, Sync and Slate sections, plus the sound capture checklist.
 
 <!-- setting-ids: sound-recorder, float-gain-test, scratch-audio, room-tone, slate, card-folder -->
 1. **Gear:** a separate recorder, 48 kHz, 24-bit WAV, 32-bit float if the recorder has it. Lavalier plus shotgun on every speaking setup.
