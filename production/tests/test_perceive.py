@@ -41,8 +41,9 @@ def ring(cx, cy, rx, ry, n=8):
 
 
 FACE_BOX = {"x": 0.25, "y": 0.15, "w": 0.50, "h": 0.70, "confidence": 1.0}
-FACE = dict(FACE_BOX, landmarks={"leftEye": ring(0.38, 0.40, 0.05, 0.02), "rightEye": ring(0.62, 0.40, 0.05, 0.02),
-                                 "outerLips": ring(0.50, 0.70, 0.08, 0.03, 12)})
+if np is not None:
+    FACE = dict(FACE_BOX, landmarks={"leftEye": ring(0.38, 0.40, 0.05, 0.02), "rightEye": ring(0.62, 0.40, 0.05, 0.02),
+                                     "outerLips": ring(0.50, 0.70, 0.08, 0.03, 12)})
 
 
 def portrait(skin=SKIN, shade=1.0, size=400):
@@ -135,7 +136,8 @@ class TestCheekRead(unittest.TestCase):
 @needs_numpy
 @unittest.skipUnless(os.path.exists(measure.FFMPEG if np else ""), "ffmpeg not found")
 class TestFacesEndToEnd(unittest.TestCase):
-    """Generated 16-bit TIFFs through both tools, with the Vision helper stubbed."""
+    """Generated 16-bit TIFFs through both tools, with the Vision helper stubbed
+    and measure's still for it unwritten (that needs OpenCV, which CI's 3.9 lane has not)."""
 
     def tiff(self, tmp, img, name="still.tif"):
         path = os.path.join(tmp, name)
@@ -168,7 +170,7 @@ class TestFacesEndToEnd(unittest.TestCase):
         self.assertIn("WARNING: ", perceive.format_summary(packet, out))
 
     def test_measure_reads_the_same_cheek_as_perceive(self):
-        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE):
+        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE), mock.patch.object(measure, "_write_png"):
             still = self.tiff(tmp, portrait(shade=0.6))
             packet = perceive.perceive(still, os.path.join(tmp, "packet"))
             report = measure.measure(still, samples=1)
@@ -185,7 +187,7 @@ class TestFacesEndToEnd(unittest.TestCase):
                 perceive.perceive(still, os.path.join(tmp, "packet"), at=0.5, faces=False)
 
     def test_measure_carries_a_warning_to_its_summary(self):
-        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE_BOX):
+        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE_BOX), mock.patch.object(measure, "_write_png"):
             report = measure.measure(self.tiff(tmp, portrait()), samples=1)
         self.assertIn("do not set exposure from it", report["skin"]["warnings"][0])
         self.assertIn("WARNING: skin", measure.format_summary(report))
