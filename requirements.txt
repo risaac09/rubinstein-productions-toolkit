@@ -54,6 +54,8 @@
 #   LUTLAB_BRAW2PPM              lutlab/verify.py (BRAW)            lutlab/braw/braw2ppm, beside the source   the BRAW helper was built elsewhere.
 #   BRAW_SDK                     lutlab/braw/build.sh, braw2ppm    /Applications/Blackmagic RAW/Blackmagic   the Blackmagic RAW SDK is installed elsewhere.
 #                                                                  RAW SDK/Mac
+#   BRAW2PPM_OUT                 lutlab/braw/build.sh               lutlab/braw/braw2ppm                      the helper should be built somewhere else.
+#   BRAW_TEST_CLIP               tests/test_braw2ppm.py             unset, so the late-frame test skips       a BRAW clip of many frames is at hand.
 #   LUTLAB_SKIP_RENDER_VERIFY    production/tests/test_lutlab.py   unset                                     tests: any value skips the render-verify test. Needed with
 #                                                                                                            an ffmpeg build whose colour differs from Homebrew's (CI's apt build).
 #   RPRESOLVE_WHISPER_MODEL      rpresolve transcribe (mlx)        mlx-community/whisper-large-v3-turbo      another mlx-whisper model or a local folder.

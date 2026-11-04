@@ -1,0 +1,1 @@
+braw2ppm is the one BRAW frame and excerpt route: START COUNT - streams Film Gen 5 frames as PPMs that carry their own size, with mid and last as starts, a --spherical option for a false anamorphic flag, real exit codes, and the SDK's padding kept out of the stream.
