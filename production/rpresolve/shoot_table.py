@@ -241,11 +241,10 @@ def build(paths, long_min=LONG_TAKE_MIN, weak_db=WEAK_AUDIO_DB, offsets=None,
     exif = detect.run_exiftool(files, exiftool=exiftool) if files else {}
     cache, rows = {}, []
     for f in files:
-        is_braw = f.lower().endswith(".braw")
         try:
             doc = detect.probe(f, exif.get(f), ffprobe=ffprobe, dir_cache=cache)
-            d = detect.classify(doc)
-            rows.append(_row(f, detect.Headers(doc), d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds))
+            d, h = detect.classify(doc), detect.Headers(doc)
+            rows.append(_row(f, h, d, h.is_braw(), long_min, weak_db, offs, ffmpeg, audio_seconds))
         except detect.ToolMissing:
             raise
         except Exception as e:
@@ -269,7 +268,7 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
         shift = name_clock_shift(h.name, start)
         if shift is not None:
             start, base = start + datetime.timedelta(seconds=shift), "filename"
-        elif is_braw or "DJI" in d["camera"]:
+        elif is_braw or d["camera"].startswith("DJI Osmo"):
             base = "utc"
             notes.append("start is UTC: the file name holds no wall clock, so give this camera an --offset")
         else:
