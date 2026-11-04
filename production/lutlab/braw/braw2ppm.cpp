@@ -33,6 +33,7 @@
 // resampling).
 #include "BlackmagicRawAPI.h"
 #include "ppmwriter.h"
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -129,11 +130,17 @@ int main(int argc, const char* argv[]) {
     clip->GetFrameCount(&frames); clip->GetFrameRate(&fps);
     clip->GetWidth(&g_clip_w); clip->GetHeight(&g_clip_h);
     long first;
-    if (start == "mid") first = (long)frames / 2 - count / 2;
+    char* tail = nullptr;
+    if (start == "mid") first = std::max(0L, (long)frames / 2 - count / 2);
     else if (start == "last") first = (long)frames - 1;
-    else if (!start.empty() && start.back() == 's') first = (long)(atof(start.c_str()) * fps + 0.5f);
-    else first = atol(start.c_str());
-    if (first < 0) first = 0;
+    else if (!start.empty() && start.back() == 's') {
+        double t = strtod(start.c_str(), &tail);
+        if (t < 0 || std::string(tail) != "s") { std::cerr << USAGE; return 1; }
+        first = (long)(t * fps + 0.5);
+    } else {
+        first = strtol(start.c_str(), &tail, 10);
+        if (first < 0 || tail == start.c_str() || *tail) { std::cerr << USAGE; return 1; }
+    }
     long end = first + count > (long)frames ? (long)frames : first + count;
     std::cerr << "rate " << fps << " frames " << frames << " writing " << first << " to " << end - 1 << std::endl;
     if (first >= end) { std::cerr << "START is past the clip's end\n"; return 4; }

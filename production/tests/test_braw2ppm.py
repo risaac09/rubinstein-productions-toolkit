@@ -97,6 +97,8 @@ class Helper(unittest.TestCase):
     def test_usage(self):
         self.assertEqual(self.run_tool(SAMPLE).returncode, 1)
         self.assertEqual(self.run_tool(SAMPLE, 0, 0, "-").returncode, 1)
+        for start in ("-1", "end", "2x", "xs", "-1s"):
+            self.assertEqual(self.run_tool(SAMPLE, start, "-").returncode, 1, start)
 
     @unittest.skipUnless(os.environ.get("BRAW_TEST_CLIP"), "set BRAW_TEST_CLIP to a clip of many frames")
     def test_late_frames_of_a_real_clip(self):
