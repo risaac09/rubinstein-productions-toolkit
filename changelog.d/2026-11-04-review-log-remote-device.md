@@ -1,0 +1,1 @@
+review-log gains device values remote (answered over Remote Control) and unknown, inline letters with --option for a question no tool sealed a key for, and the question keys speed, transform, exposure, stabilizer and squeeze; taste-profile reads them all.

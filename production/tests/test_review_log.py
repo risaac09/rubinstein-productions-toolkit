@@ -72,6 +72,26 @@ class ReviewLogTests(unittest.TestCase):
         self.assertEqual(sound["noise_type"], "rumble")
         self.assertRegex(look["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
+    def test_inline_options_log_the_letter_and_the_taste_profile_reads_it(self):
+        argv = self.base("--choice", "B", "--option", "A=23.976", "--option", "B=a=b", "--question", "speed",
+                         dev="remote")
+        code, out, err = self.run_cmd(*argv)
+        self.assertEqual((code, err), (0, ""))
+        (_, line), = tastedistill.read_events(self.log)[0]
+        self.assertEqual((line["options"], line["choice"], line["device"]),
+                         ({"A": "23.976", "B": "a=b"}, "B", "remote"))
+        self.assertNotIn("stimulus", line)
+        self.assertEqual(tastedistill.distill(tastedistill.read_events(self.log)[0])["speed"]["counts"], [("a=b", 1)])
+
+    def test_new_devices_and_questions_draw_no_warning(self):
+        for dev in ("remote", "unknown"):
+            for q in ("speed", "transform", "exposure", "stabilizer", "squeeze"):
+                code, _, err = self.run_cmd(*self.base("--choice", "A", "--key", self.abkey, "--question", q, dev=dev))
+                self.assertEqual((code, err), (0, ""))
+        events, bad = tastedistill.read_events(self.log)
+        self.assertEqual((len(events), bad), (10, 0))
+        self.assertEqual(set(tastedistill.distill(events)), {"speed", "transform", "exposure", "stabilizer", "squeeze"})
+
     def test_refusals_exit_2_and_write_nothing(self):
         cases = [
             self.base("--choice", "C", "--key", self.abkey),          # letter the key lacks
@@ -82,6 +102,11 @@ class ReviewLogTests(unittest.TestCase):
             self.base("--choice", "A", "--key", self.abkey, dev="watch"),
             self.base("--choice", "3", "--key", self.abkey),            # a rating on a lettered sheet
             self.base(),                                                 # neither choice nor reason
+            self.base("--choice", "C", "--option", "A=x", "--option", "B=y"),  # letter the options lack
+            self.base("--choice", "A", "--option", "A=x", "--key", self.abkey),  # both routes
+            self.base("--choice", "A", "--option", "A"),                # no text
+            self.base("--choice", "A", "--option", "=x"),               # no label
+            self.base("--choice", "A", "--option", "A=x", "--option", "A=y"),  # label twice
         ]
         for argv in cases:
             code, out, err = self.run_cmd(*argv)
