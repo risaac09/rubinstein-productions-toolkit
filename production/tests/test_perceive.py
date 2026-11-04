@@ -17,6 +17,7 @@ import unittest
 import zlib
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -32,6 +33,162 @@ SKIN = (0.80, 0.60, 0.50)
 
 def flat(rgb, h=60, w=80):
     return np.broadcast_to(np.array(rgb, float), (h, w, 3)).copy()
+
+
+def ring(cx, cy, rx, ry, n=8):
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], 1).tolist()
+
+
+FACE_BOX = {"x": 0.25, "y": 0.15, "w": 0.50, "h": 0.70, "confidence": 1.0}
+FACE = dict(FACE_BOX, landmarks={"leftEye": ring(0.38, 0.40, 0.05, 0.02), "rightEye": ring(0.62, 0.40, 0.05, 0.02),
+                                 "outerLips": ring(0.50, 0.70, 0.08, 0.03, 12)})
+
+
+def portrait(skin=SKIN, shade=1.0, size=400):
+    """A face: skin on blue, the right side at `shade` of the signal, with eyes,
+    brows, a nose shadow, lips and a beard, which fill the inner face box as they do
+    on a person and stay off the cheek apples."""
+    img = flat((0.1, 0.2, 0.8), size, size)
+
+    def fill(colour, x0, x1, y0, y1):
+        img[int(y0 * size):int(y1 * size), int(x0 * size):int(x1 * size)] = colour
+    skin = np.array(skin)
+    fill(skin, 0.25, 0.50, 0.15, 0.85)
+    fill(skin * shade, 0.50, 0.75, 0.15, 0.85)
+    warm_shadow = (0.30, 0.19, 0.14)
+    for x in (0.31, 0.55):
+        fill((0.15, 0.11, 0.09), x, x + 0.14, 0.34, 0.37)   # brow
+        fill(warm_shadow, x, x + 0.14, 0.38, 0.44)          # eye socket
+    fill(warm_shadow, 0.45, 0.55, 0.45, 0.62)               # nose shadow
+    fill(warm_shadow, 0.30, 0.70, 0.62, 0.85)               # beard
+    fill((0.55, 0.20, 0.20), 0.42, 0.58, 0.67, 0.73)        # lips
+    return img
+
+
+@needs_numpy
+class TestCheekRead(unittest.TestCase):
+    def test_reads_the_cheek_not_the_features_around_it(self):
+        f = perceive.face_entry(portrait(), FACE)
+        self.assertEqual(f["skin"]["region"], "cheek")
+        self.assertEqual(f["skin"]["warnings"], [])
+        self.assertAlmostEqual(f["skin"]["lab"][0], float(color.rec709_to_lab(np.array(SKIN))[0]), places=1)
+        self.assertAlmostEqual(f["skin"]["L_srgb"], float(color.srgb_l_star(np.array(SKIN))), places=1)
+        self.assertNotIn("landmarks", f["box"])
+
+    def test_the_face_box_alone_reads_low_and_says_so(self):
+        cheek = perceive.face_entry(portrait(), FACE)
+        box = perceive.face_entry(portrait(), FACE_BOX)
+        self.assertEqual(box["skin"]["region"], "box")
+        self.assertLess(box["skin"]["lab"][0], cheek["skin"]["lab"][0] - 8)
+        self.assertIn("do not set exposure from it", box["skin"]["warnings"][0])
+
+    def test_pale_bright_skin_stays_in_the_sample(self):
+        pale = (0.95, 0.92, 0.90)  # outside the fixed chroma box
+        self.assertFalse(measure.skin_mask(np.array([[pale]])).any())
+        f = perceive.face_entry(portrait(pale), FACE)
+        self.assertAlmostEqual(f["skin"]["L_srgb"], float(color.srgb_l_star(np.array(pale))), places=1)
+        self.assertGreater(f["skin"]["pixels"], 500)
+        self.assertTrue(any("skin tone box" in w for w in f["skin"]["warnings"]))
+
+    def test_brightening_keeps_the_sample_and_the_lighting_ratio(self):
+        before = perceive.face_entry(portrait(shade=0.6), FACE)
+        after = perceive.face_entry(np.clip(portrait(shade=0.6) * 1.15, 0, 1), FACE)
+        self.assertEqual(after["skin"]["pixels"], before["skin"]["pixels"])
+        self.assertEqual(after["lighting"]["ratio"], before["lighting"]["ratio"])
+        self.assertAlmostEqual(before["lighting"]["stops"], 2.4 * np.log2(1 / 0.6), places=2)
+        self.assertEqual(before["lighting"]["lit_side"], "left")
+
+    def test_two_cheeks_in_side_light_average_rather_than_pick_one(self):
+        skin = perceive.face_entry(portrait(shade=0.6), FACE)["skin"]
+        lit, shaded = (float(color.srgb_l_star(np.array(SKIN) * k)) for k in (1.0, 0.6))
+        self.assertAlmostEqual(skin["L_srgb"], (lit + shaded) / 2, delta=1.0)
+
+    def test_a_clipped_cheek_withholds_the_ratio_and_says_so(self):
+        for box in (FACE, FACE_BOX):
+            f = perceive.face_entry(np.clip(portrait(shade=0.6) * 1.4, 0, 1), box)
+            self.assertIsNone(f["lighting"])
+            self.assertTrue(any("at clip" in w for w in f["skin"]["warnings"]))
+
+    def test_left_and_right_pair_by_image_side_whatever_vision_called_them(self):
+        swapped = dict(FACE, landmarks=dict(FACE["landmarks"], leftEye=FACE["landmarks"]["rightEye"],
+                                            rightEye=FACE["landmarks"]["leftEye"]))
+        self.assertEqual(perceive.face_entry(portrait(shade=0.6), swapped)["lighting"]["lit_side"], "left")
+
+    def test_a_face_off_any_frame_edge_reads_nothing(self):
+        for dx, dy in ((2.0, 0), (-2.0, 0), (0, 2.0), (0, -2.0)):
+            gone = dict(FACE, landmarks={k: [[x + dx, y + dy] for x, y in v] for k, v in FACE["landmarks"].items()})
+            f = perceive.face_entry(portrait(), gone)
+            self.assertIsNone(f["skin"])
+            self.assertIsNone(f["lighting"])
+            self.assertIsNone(f["skin_ire_p50"])
+
+    def test_a_box_read_sees_clipping_its_mask_dropped(self):
+        img = portrait()
+        img[int(0.15 * 400):int(0.85 * 400), 100:300] = (1.0, 1.0, 1.0)  # blown, so outside the chroma box
+        img[250:300, 130:270] = SKIN                                     # a remnant the mask keeps
+        sample = measure.skin_sample(img, FACE_BOX)
+        self.assertTrue(sample["clipped"])
+        self.assertIsNone(measure.lighting_ratio(sample))
+
+
+@needs_numpy
+@unittest.skipUnless(os.path.exists(measure.FFMPEG if np else ""), "ffmpeg not found")
+class TestFacesEndToEnd(unittest.TestCase):
+    """Generated 16-bit TIFFs through both tools, with the Vision helper stubbed."""
+
+    def tiff(self, tmp, img, name="still.tif"):
+        path = os.path.join(tmp, name)
+        h, w = img.shape[:2]
+        subprocess.run([measure.FFMPEG, "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", f"{w}x{h}",
+                        "-i", "-", "-frames:v", "1", "-pix_fmt", "rgb48le", "-y", path],
+                       input=(img * 65535 + 0.5).astype("<u2").tobytes(), check=True)
+        return path
+
+    @staticmethod
+    def stub(face):
+        return mock.patch.object(measure, "face_boxes",
+                                 lambda images, landmarks=False: {p: [face] if landmarks else [FACE_BOX]
+                                                                  for p in images})
+
+    def test_packet_and_targets_state_a_clipped_face(self):
+        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE):
+            still = self.tiff(tmp, np.clip(portrait(shade=0.6) * 1.4, 0, 1))
+            out = os.path.join(tmp, "packet")
+            packet = perceive.perceive(still, out, with_targets=True)
+            with open(os.path.join(out, "packet.json"), encoding="utf-8") as f:
+                on_disk = json.load(f)
+            with open(os.path.join(out, "targets.json"), encoding="utf-8") as f:
+                targets = json.load(f)
+        face = on_disk["cine"]["faces"][0]
+        self.assertEqual(face["skin"]["region"], "cheek")
+        self.assertIsNone(face["lighting"])
+        self.assertEqual(targets["skin_warnings"], face["skin"]["warnings"])
+        self.assertTrue(face["skin"]["warnings"])
+        self.assertIn("WARNING: ", perceive.format_summary(packet, out))
+
+    def test_measure_reads_the_same_cheek_as_perceive(self):
+        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE):
+            still = self.tiff(tmp, portrait(shade=0.6))
+            packet = perceive.perceive(still, os.path.join(tmp, "packet"))
+            report = measure.measure(still, samples=1)
+        face = packet["cine"]["faces"][0]
+        self.assertEqual(report["skin"]["lab"], face["skin"]["lab"])
+        self.assertEqual(report["skin"]["L_srgb"], face["skin"]["L_srgb"])
+        self.assertEqual(report["skin"]["warnings"], [])
+        self.assertEqual(report["frames"][0]["lighting"][0]["ratio"], face["lighting"]["ratio"])
+
+    def test_a_time_on_a_still_is_refused_by_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            still = self.tiff(tmp, portrait())
+            with self.assertRaisesRegex(perceive.PerceiveError, "outside"):
+                perceive.perceive(still, os.path.join(tmp, "packet"), at=0.5, faces=False)
+
+    def test_measure_carries_a_warning_to_its_summary(self):
+        with tempfile.TemporaryDirectory() as tmp, self.stub(FACE_BOX):
+            report = measure.measure(self.tiff(tmp, portrait()), samples=1)
+        self.assertIn("do not set exposure from it", report["skin"]["warnings"][0])
+        self.assertIn("WARNING: skin", measure.format_summary(report))
 
 
 @needs_numpy

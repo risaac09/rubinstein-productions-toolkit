@@ -9,11 +9,14 @@ Per sampled frame, and pooled over the file:
       every channel at zero
     - legal range: ffmpeg signalstats YMIN / YMAX, scaled to 8-bit code
       values (legal video range is 16..235)
-    - skin, where macOS Vision finds a face: median Lab, chroma, and the
-      vectorscope hue angle against the skin-tone line (123 degrees)
+    - skin, where macOS Vision finds a face: Lab, chroma, and the
+      vectorscope hue angle against the skin-tone line (123 degrees), read on
+      the cheek apples as rpstills reads them, with L_srgb the number to set
+      beside `rpstills audit`; warnings say when the read cannot be trusted
     - light: per face, the lighting ratio by the (key + fill) : fill
-      convention in stops (the lit side's linear luma over the shadow
-      side's; one stop is 2:1); the share of the frame in each shadow class
+      convention in stops (the lit cheek's linear luma over the shadow
+      cheek's; one stop is 2:1), withheld when the cheeks are at clip; the
+      share of the frame in each shadow class
       (readable, sculpted, lost); highlight clip share and tail slope in
       the top 10 percent
 With a delivery encode (--delivery), the readable-shadow share of the master
@@ -50,8 +53,16 @@ FFPROBE = os.environ.get("RPRESOLVE_FFPROBE", "/opt/homebrew/bin/ffprobe")
 SKIN_LINE_DEG = 123.0
 UNAVAILABLE = "UNAVAILABLE"
 # Skin mask inside a face box, as YCbCr ranges on 8-bit full-range values
-# (the widely used Chai and Ngan bounds).
+# (the widely used Chai and Ngan bounds). Only for a face without landmarks.
 SKIN_CB, SKIN_CR = (77, 127), (133, 173)
+# The cheek sample, as rpstills.skin and rpstills.measure take it. rpresolve does
+# not import rpstills (numpy only, Python 3.9), so test_rpstills_skin pins these to it.
+CHEEK_AT = 0.40             # share of the way from the eye centre to the same-side mouth corner
+CHEEK_RADII = (0.06, 0.05)  # ellipse radii as shares of the face box (width, height)
+CHEEK_TONE_CB, CHEEK_TONE_CR = (77, 135), (133, 180)  # BT.601 8-bit, as OpenCV's YCrCb
+CHEEK_TONE_MIN = 0.5        # the tone gate applies only when at least this share of the patch passes it
+CLIP_AT = 252 / 255         # a channel at or above this is clipped
+CLIP_MAX = 0.05             # house convention: past this share of clipped sample pixels, the read is a floor
 PIXEL_STRIDE = 2  # per-frame luma and clipping use every second row and column
 TIMEOUT_S = 300   # per ffmpeg/ffprobe call; a stalled SMB read must not hang the run
 READ_AS = "BT.1886 display: Rec.709 primaries, 2.4 gamma, D65"
@@ -90,7 +101,7 @@ def probe(path):
     first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
            "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration",
+           "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration,format_name",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -100,10 +111,13 @@ def probe(path):
     if not streams:
         raise MeasureError(f"no video stream in {path}")
     s = streams[0]
+    fmt = data.get("format") or {}
     try:
-        duration = float((data.get("format") or {}).get("duration") or 0)
+        duration = float(fmt.get("duration") or 0)
     except ValueError:
         duration = 0.0
+    if "image2" in (fmt.get("format_name") or "").split(","):
+        duration = 0.0  # ffmpeg gives a JPEG one frame's 0.04s, and any seek then loses its only frame
     width, height = int(s["width"]), int(s["height"])
     # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
     if rotation(s) % 180 == 90:
@@ -154,8 +168,10 @@ def sample_times(duration, count):
 def read_frame(path, t, width, height, vf=None):
     """One frame at time t as float RGB 0..1, shape (h, w, 3), decoded by
     ffmpeg to full-range 16-bit RGB (limited-range sources are expanded).
-    width and height are the displayed (rotated) size from probe()."""
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", "1"]
+    width and height are the displayed (rotated) size from probe(). A still
+    reads at 0, which seeks nothing: a seek loses a JPEG's only frame."""
+    seek = ["-ss", f"{t:.3f}"] if t > 0 else []
+    cmd = [FFMPEG, "-v", "error", *seek, "-i", "file:" + path, "-frames:v", "1"]
     cmd += ["-vf", vf] if vf else []
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-"]
     proc = _run(cmd)
@@ -174,7 +190,8 @@ def signal_frames(path, bit_depth, t=0.0, count=1):
     """Per frame from ffmpeg signalstats, from time t: a list of dicts with
     ymin, ymax, yavg, uavg and vavg in 8-bit code values. Empty when
     signalstats printed nothing."""
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", "file:" + path, "-frames:v", str(count),
+    seek = ["-ss", f"{t:.3f}"] if t > 0 else []
+    cmd = [FFMPEG, "-v", "error", *seek, "-i", "file:" + path, "-frames:v", str(count),
            "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     scale = 2 ** (bit_depth - 8)
@@ -250,6 +267,76 @@ def face_region(rgb, box):
     return rgb[y0:y1, x0:x1]
 
 
+def cheek_patches(rgb, box):
+    """(left, right) pixels of the cheek apples, image-left first: an ellipse
+    CHEEK_AT of the way from each eye centre to the mouth corner on its side.
+    Eyes and corners pair by image x, whatever Vision called them. None when
+    the box has no landmarks."""
+    marks = box.get("landmarks") or {}
+    if not all(marks.get(k) for k in ("leftEye", "rightEye", "outerLips")):
+        return None
+    h, w = rgb.shape[:2]
+    size = np.array([w, h], float)
+    eyes = sorted((np.asarray(marks[k], float).reshape(-1, 2).mean(axis=0) * size for k in ("leftEye", "rightEye")),
+                  key=lambda e: e[0])
+    lips = np.asarray(marks["outerLips"], float).reshape(-1, 2) * size
+    corners = lips[lips[:, 0].argmin()], lips[lips[:, 0].argmax()]
+    rx, ry = max(1.0, CHEEK_RADII[0] * box["w"] * w), max(1.0, CHEEK_RADII[1] * box["h"] * h)
+    patches = []
+    for eye, corner in zip(eyes, corners):
+        cx, cy = eye + CHEEK_AT * (corner - eye)
+        x0, x1 = max(0, int(cx - rx)), max(0, min(w, int(cx + rx) + 2))  # landmarks can run off the frame
+        y0, y1 = max(0, int(cy - ry)), max(0, min(h, int(cy + ry) + 2))
+        yy, xx = np.ogrid[y0:y1, x0:x1]
+        patches.append(rgb[y0:y1, x0:x1][((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 <= 1])
+    return tuple(patches)
+
+
+def cheek_tone(px):
+    """Which pixels (n, 3) sit in the cheek tone box: rpstills.skin.tone_mask."""
+    q = np.rint(np.clip(px, 0, 1) * 255)
+    y = color._dot3(q, (0.299, 0.587, 0.114))
+    cr, cb = np.rint((q[:, 0] - y) * 0.713 + 128), np.rint((q[:, 2] - y) * 0.564 + 128)
+    return ((cb >= CHEEK_TONE_CB[0]) & (cb <= CHEEK_TONE_CB[1])
+            & (cr >= CHEEK_TONE_CR[0]) & (cr <= CHEEK_TONE_CR[1]))
+
+
+def skin_sample(rgb, box):
+    """The pixels one face's skin is read on: {"left", "right", "region",
+    "clipped", "warnings"}. With landmarks, the cheek apples (region "cheek"),
+    which stay put when the exposure moves, keeping only the tone box's pixels
+    (a spectacle rim is not skin) unless under CHEEK_TONE_MIN of them pass.
+    Without, skin_mask over the inner face box (region "box"): a fixed chroma
+    box over eyes, brows and lips, which reads low and drops bright skin, so
+    it always warns."""
+    patches = cheek_patches(rgb, box)
+    warnings = []
+    if patches is None:
+        inner = face_region(rgb, box)
+        mask, half = skin_mask(inner), inner.shape[1] // 2
+        left, right, region = inner[:, :half][mask[:, :half]], inner[:, half:][mask[:, half:]], "box"
+        warnings.append("no face landmarks: read on the skin mask of the face box, not the cheek. It sits "
+                        "well off a cheek read and loses bright skin; do not set exposure from it")
+    else:
+        left, right = patches
+        region = "cheek"
+    both = np.concatenate([left, right])
+    if patches is not None and len(both):
+        tone = cheek_tone(both)
+        if tone.mean() >= CHEEK_TONE_MIN:
+            left, right = left[cheek_tone(left)], right[cheek_tone(right)]
+        else:
+            warnings.append(f"only {tone.mean():.0%} of the cheek sample is in the skin tone box, so it is read "
+                            "whole: the white balance is far off, or something other than skin is on the cheek")
+    # A box is checked before its mask, which has already dropped the brightest skin.
+    checked = both if patches is not None else inner.reshape(-1, 3)
+    clip = float((checked.max(axis=1) >= CLIP_AT).mean()) if len(checked) else 0.0
+    if clip > CLIP_MAX:
+        warnings.append(f"{clip:.0%} of the sample has a channel at clip: L* and hue are limits, not readings, "
+                        "and the lighting ratio is withheld")
+    return {"left": left, "right": right, "region": region, "clipped": clip > CLIP_MAX, "warnings": warnings}
+
+
 def linear_luma(rgb):
     """Linear light luma of display-encoded RGB read as a 2.4 gamma."""
     return color._dot3(np.clip(rgb, 0, 1) ** 2.4, color.REC709_LUMA)
@@ -264,15 +351,15 @@ def ratio_name(stops):
     return next(name for top, name in RATIO_NAMES if stops <= top)
 
 
-def lighting_ratio(region, mask):
-    """The lighting ratio of a face region (RGB) and its skin mask: the
-    linear luma of the lit half over the shadow half, which is (key + fill) :
-    fill because the shadow side gets fill only. None when a half has fewer
-    than SIDE_MIN_PIXELS skin pixels."""
-    half = region.shape[1] // 2
-    sides = []
-    for part, m in ((region[:, :half], mask[:, :half]), (region[:, half:], mask[:, half:])):
-        sides.append(float(np.median(linear_luma(part[m]))) if m.sum() >= SIDE_MIN_PIXELS else None)
+def lighting_ratio(sample):
+    """The lighting ratio of a skin_sample: the linear luma of the lit side
+    over the shadow side, which is (key + fill) : fill because the shadow side
+    gets fill only. None when a side has fewer than SIDE_MIN_PIXELS pixels, or
+    when the sample is clipped: clipping eats the lit side's lead."""
+    if sample["clipped"]:
+        return None
+    sides = [float(np.median(linear_luma(part))) if len(part) >= SIDE_MIN_PIXELS else None
+             for part in (sample["left"], sample["right"])]
     if None in sides or min(sides) <= 0:
         return None
     ratio = max(sides) / min(sides)
@@ -318,26 +405,30 @@ def highlights(rgb, stride=PIXEL_STRIDE):
 
 
 def skin_stats(rgb, boxes, min_pixels=200):
-    """Median skin Lab, chroma and vectorscope hue over every face box, or
-    None when no box yields min_pixels skin pixels."""
-    pixels = []
-    for box in boxes:
-        region = face_region(rgb, box)
-        mask = skin_mask(region)
-        if mask.any():
-            pixels.append(region[mask])
-    if not pixels:
+    """Skin Lab, chroma and median vectorscope hue over every face box, or
+    None when no box yields min_pixels skin pixels. lab is on the 2.4 gamma
+    like every number here; L_srgb is the same pixels on rpstills' sRGB curve.
+    region is "cheek" when every face was read there; warnings say what not
+    to trust. Cheeks take the mean, as rpstills does: two cheeks in side light
+    are two tones, and a median lands on one of them. A box takes the median."""
+    samples = [skin_sample(rgb, box) for box in boxes]
+    if not samples:
         return None
-    px = np.concatenate(pixels)
+    px = np.concatenate([part for s in samples for part in (s["left"], s["right"])])
     if len(px) < min_pixels:
         return None
-    lab = np.median(color.rec709_to_lab(px), axis=0)
+    region = "cheek" if all(s["region"] == "cheek" for s in samples) else "box"
+    average = np.mean if region == "cheek" else np.median
+    lab = average(color.rec709_to_lab(px), axis=0)
     hue = float(np.median(color.vectorscope_angle(px)))
     return {"lab": [round(float(v), 3) for v in lab],
             "chroma": round(float(color.chroma(lab)), 3),
             "hue_deg": round(hue, 2),
             "hue_off_skin_line_deg": round(hue - SKIN_LINE_DEG, 2),
-            "pixels": int(len(px))}
+            "pixels": int(len(px)),
+            "L_srgb": round(float(average(color.srgb_l_star(px))), 3),
+            "region": region,
+            "warnings": sorted({w for s in samples for w in s["warnings"]})}
 
 
 def parse_segment(text):
@@ -355,8 +446,7 @@ def face_lighting(rgb, boxes):
     """The lighting ratio of each face box that yields one."""
     out = []
     for box in boxes:
-        region = face_region(rgb, box)
-        light = lighting_ratio(region, skin_mask(region))
+        light = lighting_ratio(skin_sample(rgb, box))
         if light:
             out.append(light)
     return out
@@ -487,7 +577,7 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
                 _write_png(rgb, still)
                 stills.append((frame, still, rgb))
             frames.append(frame)
-        boxes = face_boxes([s for _, s, _ in stills]) if stills else None
+        boxes = face_boxes([s for _, s, _ in stills], landmarks=True) if stills else None
         for frame, still, rgb in stills:
             if boxes is None:
                 frame["skin"] = UNAVAILABLE
@@ -525,7 +615,9 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
                           "lab": [round(float(v), 3) for v in lab],
                           "chroma": round(float(color.chroma(lab)), 3),
                           "hue_deg": round(hue, 2),
-                          "hue_off_skin_line_deg": round(hue - SKIN_LINE_DEG, 2)}
+                          "hue_off_skin_line_deg": round(hue - SKIN_LINE_DEG, 2),
+                          "L_srgb": round(float(np.median([s["L_srgb"] for s in skins])), 3),
+                          "warnings": sorted({w for s in skins for w in s["warnings"]})}
     else:
         report["skin"] = "no face with enough skin pixels in the sampled frames"
     if transfer["withheld"]:
@@ -533,7 +625,8 @@ def measure(path, samples=10, segments=(), hero=None, faces=True, check_cancel=N
     elif not faces or report["skin"] == UNAVAILABLE or str(report["skin"]).startswith(UNAVAILABLE):
         report["lighting"] = report["skin"]
     else:
-        report["lighting"] = pooled_lighting(frames) or "no face with a lit and a shadow side in the sampled frames"
+        report["lighting"] = pooled_lighting(frames) or ("no lighting ratio from the sampled frames: too few cheek pixels on a "
+                                                       "side, or withheld at clip (see skin warnings)")
     if delivery:
         report["shadow_vs_delivery"] = dict(shadow_compare(path, delivery, check_cancel=check_cancel), file=delivery)
     if segments:
@@ -578,6 +671,7 @@ def format_summary(report):
     if isinstance(skin, dict):
         lines.append(f"  skin: {skin['frames_with_skin']} frame(s); chroma {skin['chroma']}; "
                      f"hue {skin['hue_deg']} deg ({skin['hue_off_skin_line_deg']:+} vs the 123 deg line)")
+        lines += [f"  WARNING: skin in some frames: {w}" for w in skin["warnings"]]
     else:
         lines.append(f"  skin: {skin}")
     match = report.get("camera_match")

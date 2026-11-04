@@ -27,6 +27,19 @@ SCRIPT = Path(__file__).resolve().parent.parent / "resolve_workflow.py"
 ACCENT = "#3ad06e"  # a test colour (not a brand value) that a BT.601/709 mix-up moves far
 
 
+@needs_numpy
+@unittest.skipUnless(os.path.exists(overlay.FFMPEG if np else ""), "ffmpeg not found")
+class TestStillRead(unittest.TestCase):
+    def test_a_jpeg_reads_as_opaque(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "still.jpg")  # this size opens as image2, where a seek loses the frame
+            subprocess.run([overlay.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=1:duration=1",
+                            "-frames:v", "1", "-q:v", "2", "-y", path], check=True)
+            rgba = overlay.read_rgba(path, 0.0, 640, 360)
+        self.assertEqual(rgba.shape, (360, 640, 4))
+        self.assertTrue((rgba[..., 3] == 1).all())
+
+
 def edge_frame(premultiplied=False, size=40):
     """An accent-coloured square with a 3 px alpha ramp on a clear field."""
     y, x = np.mgrid[0:size, 0:size].astype(float)

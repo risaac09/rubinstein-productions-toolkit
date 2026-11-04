@@ -94,7 +94,8 @@ def alpha_bits(pix_fmt):
 def read_rgba(path, t, width, height, vf=None):
     """One frame at time t as float RGBA 0..1, shape (h, w, 4). A source
     without alpha reads as fully opaque."""
-    cmd = [FFMPEG, "-v", "error", "-ss", f"{t:.4f}", "-i", "file:" + path, "-frames:v", "1"]
+    seek = ["-ss", f"{t:.4f}"] if t > 0 else []  # a seek loses a JPEG's only frame
+    cmd = [FFMPEG, "-v", "error", *seek, "-i", "file:" + path, "-frames:v", "1"]
     cmd += ["-vf", vf] if vf else []
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgba64le", "-"]
     proc = _call(cmd)

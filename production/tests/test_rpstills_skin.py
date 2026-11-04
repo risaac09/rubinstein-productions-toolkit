@@ -19,6 +19,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
+from rpresolve import color, measure as rp_measure  # noqa: E402
 from rpstills import measure, skin, vision  # noqa: E402
 
 W, H = 800, 1000
@@ -62,6 +63,34 @@ def portrait(features=True):
                        ("outerLips", (0.55, 0.2, 0.2))):
             cv2.fillPoly(img, [np.round(lm[k]).astype(np.int32)], col)
     return img
+
+
+class RpresolveCheekTest(unittest.TestCase):
+    """rpresolve keeps its own numpy copy of the cheek sample: these pin it to this one."""
+
+    def test_the_constants_match(self):
+        self.assertEqual(rp_measure.CHEEK_AT, skin.CHEEK_AT)
+        self.assertEqual(rp_measure.CHEEK_RADII, skin.CHEEK_RADII)
+        self.assertEqual((rp_measure.CHEEK_TONE_CB, rp_measure.CHEEK_TONE_CR), (skin.SKIN_CB, skin.SKIN_CR))
+        self.assertEqual(rp_measure.CHEEK_TONE_MIN, measure.CHEEK_TONE_MIN)
+        self.assertEqual(rp_measure.CLIP_AT, measure.CLIP_AT)
+
+    def test_the_tone_gate_matches_on_any_colour(self):
+        px = np.random.default_rng(0).integers(0, 256, (200000, 3)).astype(np.uint8)
+        same = rp_measure.cheek_tone(px / 255.0) == skin.tone_mask(px)
+        self.assertGreater(float(same.mean()), 0.995)  # rounding at the box's edge only
+
+    def test_both_read_the_same_cheek_on_a_portrait(self):
+        for img in (portrait(), np.clip(portrait() * 1.3, 0, 1)):
+            want = measure.skin_lab(img, skin.to_pixels(face(), W, H), "cheek")
+            got = rp_measure.skin_stats(img.astype(np.float64), [face()])
+            self.assertAlmostEqual(got["L_srgb"], want["L"], delta=0.05)
+            self.assertAlmostEqual(got["pixels"], want["n_px"], delta=want["n_px"] * 0.1)  # OpenCV rounds the radii
+
+    def test_the_same_pixels_differ_only_by_the_curve(self):
+        got = rp_measure.skin_stats(portrait().astype(np.float64), [face()])
+        self.assertAlmostEqual(got["lab"][0], float(color.rec709_to_lab(measure.lab_to_srgb(TARGET))[0]), places=1)
+        self.assertLess(got["lab"][0], got["L_srgb"])
 
 
 class GeometryTest(unittest.TestCase):

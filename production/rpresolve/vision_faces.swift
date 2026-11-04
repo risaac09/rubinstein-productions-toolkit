@@ -1,12 +1,15 @@
 // vision_faces: print the face rectangles macOS Vision finds in each image.
 // Built and cached by rpresolve.vision (swiftc -O); macOS only.
 //
-// Usage: vision_faces IMAGE...
+// Usage: vision_faces [--landmarks] IMAGE...
 // Output: one JSON object per image, one per line:
 //   {"path": "...", "width": W, "height": H,
 //    "faces": [{"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87}]}
 // Boxes are normalized with the origin at the TOP left (Vision's own origin
 // is bottom left; it is flipped here so callers index image rows directly).
+// --landmarks (first argument) adds to each face
+//   "landmarks": {"leftEye": [[x, y], ...], "rightEye", "outerLips"}
+// in the same whole-image, top-left convention.
 
 import AppKit
 import Foundation
@@ -17,23 +20,42 @@ func jsonString(_ object: Any) -> String {
     return String(data: data, encoding: .utf8)!
 }
 
-for path in CommandLine.arguments.dropFirst() {
+func points(_ region: VNFaceLandmarkRegion2D?, _ box: CGRect) -> [[Double]]? {
+    guard let region = region, region.pointCount > 0 else { return nil }
+    return region.normalizedPoints.map {
+        [Double(box.minX + CGFloat($0.x) * box.width), Double(1 - (box.minY + CGFloat($0.y) * box.height))]
+    }
+}
+
+var paths = Array(CommandLine.arguments.dropFirst())
+let wantLandmarks = paths.first == "--landmarks"
+if wantLandmarks { paths.removeFirst() }
+
+for path in paths {
     guard let image = NSImage(contentsOfFile: path),
           let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
         print(jsonString(["path": path, "error": "unreadable image"]))
         continue
     }
-    let request = VNDetectFaceRectanglesRequest()
+    let request: VNImageBasedRequest = wantLandmarks ? VNDetectFaceLandmarksRequest() : VNDetectFaceRectanglesRequest()
     do {
         try VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
     } catch {
         print(jsonString(["path": path, "error": "\(error)"]))
         continue
     }
-    let faces: [[String: Any]] = (request.results ?? []).map { face in
+    let faces: [[String: Any]] = (request.results as? [VNFaceObservation] ?? []).map { face in
         let b = face.boundingBox
-        return ["x": Double(b.minX), "y": Double(1 - b.maxY), "w": Double(b.width),
-                "h": Double(b.height), "confidence": Double(face.confidence)]
+        var d: [String: Any] = ["x": Double(b.minX), "y": Double(1 - b.maxY), "w": Double(b.width),
+                                "h": Double(b.height), "confidence": Double(face.confidence)]
+        if wantLandmarks, let l = face.landmarks {
+            var marks: [String: Any] = [:]
+            for (name, region) in [("leftEye", l.leftEye), ("rightEye", l.rightEye), ("outerLips", l.outerLips)] {
+                if let pts = points(region, b) { marks[name] = pts }
+            }
+            d["landmarks"] = marks
+        }
+        return d
     }
     print(jsonString(["path": path, "width": cg.width, "height": cg.height, "faces": faces]))
 }

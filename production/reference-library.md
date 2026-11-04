@@ -38,7 +38,7 @@ python3 production/resolve_workflow.py perceive hero.png --out /path/outside/rep
 - the Lab palette (k-means, fixed seed);
 - mean chroma and hue for three fixed luma bands: shadows under 33 IRE, mids 33 to 66, highlights 66 and over, and the hue shift of shadows against highlights in degrees (-180 to 180);
 - the near-neutral cast (median a\*, b\*);
-- the largest face's skin Lab, when one is found.
+- the largest face's skin Lab, when one is found, read on the cheeks, with `skin_warnings` naming anything that makes it untrustworthy (a clipped cheek, a face without landmarks).
 
 Two runs on one still give the same file apart from `generated_at`. A file tagged PQ, HLG, linear or log gets a `transfer_note` and no bands.
 
