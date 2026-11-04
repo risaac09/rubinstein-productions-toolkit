@@ -6,6 +6,9 @@ imports it from here.
 
 Boxes are normalized with the origin at the top left:
     {"x": 0.41, "y": 0.18, "w": 0.21, "h": 0.30, "confidence": 0.87}
+With landmarks=True each box also carries
+    "landmarks": {"leftEye": [[x, y], ...], "rightEye", "outerLips"}
+in the same normalized convention (Vision's left and right naming).
 The helper runs on macOS with swiftc (Xcode or the command line tools);
 anywhere else face_boxes() returns None and callers say so.
 """
@@ -30,14 +33,14 @@ def vision_binary():
     return swiftbuild.build(VISION_SOURCE, CACHE_DIR, SWIFTC)
 
 
-def face_boxes(images):
+def face_boxes(images, landmarks=False):
     """{image path: [box]} from the Vision helper, or None when the helper
     cannot run. An image Vision could not read maps to []."""
     binary = vision_binary()
     if not binary:
         return None
     try:
-        proc = subprocess.run([binary, *images], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        proc = subprocess.run([binary, *(["--landmarks"] if landmarks else []), *images], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
                               timeout=TIMEOUT_S)
     except subprocess.TimeoutExpired:

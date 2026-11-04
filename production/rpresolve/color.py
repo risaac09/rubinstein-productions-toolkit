@@ -40,6 +40,15 @@ def rec709_to_lab(rgb, gamma=2.4):
                      200 * (f[..., 1] - f[..., 2])], axis=-1)
 
 
+def srgb_l_star(rgb):
+    """L* of display RGB read on the sRGB curve, the way rpstills reads a
+    still, not on the 2.4 gamma of rec709_to_lab: 2 to 4 L* higher at mid
+    tones, so this is the number to set beside `rpstills audit`."""
+    rgb = np.clip(np.asarray(rgb, dtype=float), 0.0, 1.0)
+    lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    return rec709_to_lab(lin ** (1 / 2.4))[..., 0]
+
+
 def chroma(lab):
     lab = np.asarray(lab, dtype=float)
     return np.hypot(lab[..., 1], lab[..., 2])

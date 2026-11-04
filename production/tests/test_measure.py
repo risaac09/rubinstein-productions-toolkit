@@ -15,12 +15,13 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     import numpy as np
-    from rpresolve import color, measure
+    from rpresolve import color, measure, vision
 except ImportError:  # numpy missing on this interpreter
     np = None
 
@@ -68,6 +69,20 @@ class TestPureMeasurements(unittest.TestCase):
         self.assertEqual(stats["p1"], 0.0)
         clip = measure.clipping(img)
         self.assertEqual((clip["high_pct"], clip["low_pct"]), (25.0, 25.0))
+
+    def test_face_boxes_asks_the_helper_for_landmarks_only_when_told(self):
+        done = subprocess.CompletedProcess([], 0, stdout='{"path": "a.png", "faces": [{"x": 0.1}]}\n', stderr="")
+        with mock.patch.object(vision, "vision_binary", return_value="helper"), \
+                mock.patch.object(vision.subprocess, "run", return_value=done) as run:
+            self.assertEqual(vision.face_boxes(["a.png"], landmarks=True), {"a.png": [{"x": 0.1}]})
+            vision.face_boxes(["a.png"])
+        self.assertEqual([c.args[0] for c in run.call_args_list],
+                         [["helper", "--landmarks", "a.png"], ["helper", "a.png"]])
+
+    def test_srgb_l_star_is_the_srgb_reading_of_the_same_value(self):
+        self.assertAlmostEqual(float(color.srgb_l_star(np.array([0.5, 0.5, 0.5]))), 53.39, places=1)
+        self.assertAlmostEqual(float(color.srgb_l_star(np.array([1.0, 1.0, 1.0]))), 100.0, places=2)
+        self.assertLess(float(color.rec709_to_lab(np.array([0.5, 0.5, 0.5]))[0]), 51.0)  # the 2.4 reading
 
     def test_skin_stats_inside_a_face_box(self):
         img = np.zeros((100, 100, 3))
@@ -174,6 +189,58 @@ class TestOnAGeneratedClip(unittest.TestCase):
         # After a quarter turn the split runs across rows: each row is uniform.
         self.assertTrue(((rows > 0.9) | (rows < 0.1)).all(), rows[:5])
         self.assertAlmostEqual(float((rows > 0.9).mean()), 0.5, delta=0.02)
+
+
+@needs_numpy
+@unittest.skipUnless(os.path.exists(measure.FFMPEG if np else ""), "ffmpeg not found")
+class TestStills(unittest.TestCase):
+    def jpeg(self, tmp):
+        """A JPEG big enough to open as ffmpeg's image2, as a camera's does; one
+        small enough to end inside the probe buffer opens as jpeg_pipe and never fails."""
+        path = os.path.join(tmp, "still.jpg")
+        subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=1:duration=1",
+                        "-frames:v", "1", "-q:v", "2", "-y", path], check=True)
+        fmt = subprocess.run([measure.FFPROBE, "-v", "error", "-show_entries", "format=format_name",
+                              "-of", "csv=p=0", "file:" + path], stdout=subprocess.PIPE, encoding="utf-8", check=True)
+        self.assertEqual(fmt.stdout.strip(), "image2")
+        return path
+
+    def test_a_jpeg_reads_as_a_still(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.jpeg(tmp)
+            info = measure.probe(path)
+            self.assertEqual(info["duration"], 0.0)
+            times = measure.sample_times(info["duration"], 5)
+            self.assertEqual(times, [0.0])
+            rgb = measure.read_frame(path, times[0], info["width"], info["height"],
+                                     measure.decode_filter(info["tags"])[0])
+            report = measure.measure(path, samples=5, faces=False)
+        self.assertEqual(rgb.shape, (360, 640, 3))
+        self.assertGreater(float(rgb.std()), 0.05)
+        self.assertEqual(report["frames_sampled"], 1)
+
+    def test_tiff_and_png_still_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("still.tif", "still.png"):
+                path = os.path.join(tmp, name)
+                subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "color=c=0x996644:size=64x48",
+                                "-frames:v", "1", "-pix_fmt", "rgb48le", "-y", path], check=True)
+                info = measure.probe(path)
+                rgb = measure.read_frame(path, 0.0, info["width"], info["height"],
+                                         measure.decode_filter(info["tags"])[0])
+                self.assertAlmostEqual(float(rgb[..., 0].mean()), 0x99 / 255, delta=0.01)
+
+    def test_a_clip_still_seeks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = os.path.join(tmp, "clip.mov")
+            subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                            "color=c=black:size=64x48:rate=24:duration=2,drawbox=w=64:h=48:color=white:t=fill:"
+                            "enable='gte(t,1)'", "-c:v", "prores_ks", "-y", clip], check=True)
+            info = measure.probe(clip)
+            vf = measure.decode_filter(info["tags"])[0]
+            self.assertGreater(info["duration"], 1.9)
+            self.assertLess(float(measure.read_frame(clip, 0.0, 64, 48, vf).mean()), 0.2)
+            self.assertGreater(float(measure.read_frame(clip, 1.5, 64, 48, vf).mean()), 0.8)
 
 
 @needs_numpy

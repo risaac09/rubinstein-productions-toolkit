@@ -23,6 +23,10 @@ clipping, the share of the frame in each false-colour band, chroma, the
 cast of the near-neutral pixels, a Lab palette, and per face (macOS Vision)
 the skin Lab and hue against the 123 degree line, the skin's exposure, the
 ratio of its lit side to its shadow side, and its size and place in frame.
+Skin is read on the cheek apples as `rpstills audit` reads it, so its L_srgb
+agrees with audit's cheek L*; its lab is on perceive's own 2.4 gamma, 2 to 4
+L* lower at mid tones. skin.warnings says when a face's numbers cannot be
+trusted, and a clipped cheek gets no lighting ratio.
 
 The frame is decoded as measure decodes it: display-encoded Rec.709 with a
 2.4 gamma, D65, and the luma percentiles are measure's own on that frame.
@@ -33,8 +37,8 @@ the right curve. packet.json is a sidecar envelope, schema cine.perceive
 version 2 (production/sidecar-envelope.md): the shared header (schema,
 clip_id, source {path, sha256}, transfer, primaries, generated_by,
 generated_at), then everything perceive measured under one "cine" key
-(source, legend, files, luma, clipping, chroma, neutral_cast, palette,
-faces, false_colour, and
+(source, legend, skin_note, files, luma, clipping, chroma, neutral_cast,
+palette, faces, false_colour, and
 reference and compare with a ref still); paths inside it are relative to
 the packet folder. With targets=True a targets.json (schema cine.targets;
 numbers only) joins it, for a reference library. numpy only; PNGs via zlib.
@@ -92,6 +96,11 @@ LEGEND = {
     "sheet": "Frame (top left) and false colour (top right); waveform and vectorscope below; the "
              "palette strip at the bottom. Each is a resized copy of its own file.",
 }
+
+
+SKIN_NOTE = ("Skin is read on the cheek apples, as `rpstills audit` reads it. skin.lab is on the 2.4 gamma of every "
+             "number here; skin.L_srgb is the same pixels on the sRGB curve, the number to set beside audit's cheek "
+             "L*, 2 to 4 higher at mid tones. skin.warnings says when a face's numbers cannot be trusted.")
 
 
 class PerceiveError(RuntimeError):
@@ -322,11 +331,11 @@ def face_entry(rgb, box):
              "centre": [round(float(box["x"] + box["w"] / 2), 3), round(float(box["y"] + box["h"] / 2), 3)],
              "area_pct": round(float(box["w"] * box["h"]) * 100, 2),
              "skin": measure.skin_stats(rgb, [box]), "skin_ire_p50": None, "lighting": None}
-    region = measure.face_region(rgb, box)
-    mask = measure.skin_mask(region)
-    if mask.any():
-        entry["skin_ire_p50"] = round(float(np.median(color.luma_ire(region[mask]))), 2)
-    entry["lighting"] = measure.lighting_ratio(region, mask)
+    sample = measure.skin_sample(rgb, box)
+    px = np.concatenate([sample["left"], sample["right"]])
+    if len(px):
+        entry["skin_ire_p50"] = round(float(np.median(color.luma_ire(px))), 2)
+    entry["lighting"] = measure.lighting_ratio(sample)
     return entry
 
 
@@ -341,7 +350,7 @@ def read(path, at=None):
     info = measure.probe(path)
     if at is None:
         at = measure.sample_times(info["duration"], 1)[0]
-    elif at < 0 or (info["duration"] > 0 and at > info["duration"]):
+    elif at < 0 or at > info["duration"]:
         raise PerceiveError(f"--at {at} is outside {path} (0..{info['duration']:.3f}s)")
     vf, note = measure.decode_filter(info["tags"])
     rgb = measure.read_frame(path, at, info["width"], info["height"], vf)
@@ -384,7 +393,7 @@ def analyse(rgb, folder, faces=True):
     if not faces:
         out["faces"] = "not measured (--no-faces)"
     else:
-        boxes = measure.face_boxes([os.path.join(folder, files["frame"])])
+        boxes = measure.face_boxes([os.path.join(folder, files["frame"])], landmarks=True)
         if boxes is None:
             out["faces"] = measure.UNAVAILABLE + " (macOS Vision helper could not be built or run)"
         else:
@@ -398,7 +407,7 @@ def _largest_skin(numbers):
     if isinstance(faces, list):
         for f in faces:
             if f.get("skin"):
-                return f["skin"]["lab"]
+                return f["skin"]
     return None
 
 
@@ -434,13 +443,15 @@ def targets(rgb, source, numbers):
     Bands and contrast are None when the transfer tag is not Rec.709."""
     bands = {"bands": None, "hue_shift_shadows_vs_highlights_deg": None} if "transfer_note" in source \
         else band_colour(rgb)
+    skin = _largest_skin(numbers)
     out = {"schema": {"name": "cine.targets", "version": 1}, "transfer": source["transfer"],
            "generated_by": "rpresolve.perceive",
            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "bands_split": "luma IRE: shadows < 33, mids 33 to 66, highlights >= 66",
            "luma_ire": numbers["luma"]["ire"], "display_contrast_stops": numbers["luma"]["display_contrast_stops"],
            "palette": [{k: p[k] for k in ("lab", "share_pct")} for p in numbers["palette"]],
-           **bands, "neutral_cast": numbers["neutral_cast"], "skin_lab": _largest_skin(numbers)}
+           **bands, "neutral_cast": numbers["neutral_cast"], "skin_lab": skin and skin["lab"],
+           "skin_warnings": skin["warnings"] if skin else []}
     if "transfer_note" in source:
         out["transfer_note"] = source["transfer_note"]
     return out
@@ -461,7 +472,7 @@ def compare(frame, ref):
         out["neutral_cast_delta"] = {k: round(frame["neutral_cast"][k] - ref["neutral_cast"][k], 2) for k in "ab"}
     fs, rs = _largest_skin(frame), _largest_skin(ref)
     if fs and rs:
-        out["skin_de2000"] = round(float(color.delta_e_2000(np.array(fs), np.array(rs))), 2)
+        out["skin_de2000"] = round(float(color.delta_e_2000(np.array(fs["lab"]), np.array(rs["lab"]))), 2)
     # Each frame colour against its nearest reference colour, weighted by share.
     ref_labs = np.array([p["lab"] for p in ref["palette"]])
     near = [(p["share_pct"], float(np.min(color.delta_e_2000(np.array(p["lab"])[None], ref_labs))))
@@ -508,7 +519,7 @@ def perceive(path, out, at=None, ref=None, faces=True, with_targets=False):
 
 
 def _write(out, rgb, source, ref, ref_rgb, ref_source, faces, with_targets=False):
-    cine = {"source": source, "legend": LEGEND, **analyse(rgb, out, faces)}
+    cine = {"source": source, "legend": LEGEND, "skin_note": SKIN_NOTE, **analyse(rgb, out, faces)}
     if "transfer_note" in source:
         withhold_ratios(cine)
     if ref:
@@ -557,6 +568,7 @@ def format_summary(packet, out):
                             if skin else "too few skin pixels")
                          + (f"; {f['skin_ire_p50']} IRE" if f["skin_ire_p50"] is not None else "")
                          + (f"; {lit['lit_side']} side lit {lit['ratio']}:1 ({lit['stops']} stops)" if lit else ""))
+            lines += [f"      WARNING: {w}" for w in (skin or {}).get("warnings", [])]
     else:
         lines.append(f"  faces: {faces}")
     cmp_ = packet.get("compare")
