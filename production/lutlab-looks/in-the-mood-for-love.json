@@ -1,0 +1,10 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP In the Mood for Love look",
+ "description": "After In the Mood for Love (2000): very warm, red-amber mids and highlights over a faint green in the deep shadows, blacks slightly crushed, harder contrast, reds and pinks pushed, greens a little up, and skin allowed to go toward red as the film does. Our own numbers, measured from five stills.",
+ "white_balance": {"temp": 30, "tint": 3},
+ "tone": {"black": -0.005, "contrast": 1.12},
+ "split_tone": {"L=0.10": {"hue": 150, "amount": 0.8}, "L=0.25": {"hue": 120, "amount": 0.5}, "L=0.55": {"hue": 35, "amount": 1.0}, "L=0.70": {"hue": 28, "amount": 1.4}, "L=0.85": {"hue": 40, "amount": 0.8}},
+ "hue_shift": {"all": {"030 red": -4, "060 orange": -6}},
+ "sat_gain": {"all": {"000 pink": 1.15, "030 red": 1.25, "150 green": 1.1, "210 cyan": 0.9, "240 azure": 0.9, "270 blue": 0.9}}
+}

@@ -70,6 +70,25 @@ camera at once, writing `<look> [<Camera>].cube`. The deltas ship in
 | `print-teal` | print contrast, greens to teal, teal and orange split, black lifted slightly |
 | `soft-print` | low contrast and saturation, open shadows, long soft shoulder |
 | `bleach` | saturation to about 60%, harder contrast, steel shadows |
+| `kiki` | after Kiki's Delivery Service: lifted soft blacks, low contrast, blue-grey shadows and mids under a faint cream highlight, greens toward leaf green, skies azure |
+| `spirited-away` | after Spirited Away: the Kiki base with blue shadows, amber highlights, yellow-greens and reds pushed, contrast kept |
+| `amelie` | after Amélie: warm throughout, gold mids and yellow-green highlights over warm shadows, deep blacks, greens turned to yellow and pushed, blues held back |
+| `her` | after Her: warm and bright with a soft white, coral highlights over amber mids, blues and cyans drained, lifted black, low contrast |
+| `moonlight` | after Moonlight: cool with a green lean, blue shadows, cyan-green mids and highlights, pinks and blues up, skin cooled toward amber |
+| `br2049` | after Blade Runner 2049 (the ochre look): very warm, heavy amber split through the mids, dusty white, cyan trace in the deepest shadows, blues and greens drained, harder contrast |
+| `grand-budapest` | after The Grand Budapest Hotel: pastel, low contrast, lifted black and soft white, pink-red shadows and mids, pinks and magentas forward |
+| `in-the-mood-for-love` | after In the Mood for Love: very warm, red-amber mids and highlights over a faint green in the deep shadows, blacks crushed a little, harder contrast, reds pushed, skin toward red |
+
+The eight film looks are our own numbers, measured from publicly posted stills of each film with `rpresolve.perceive`; the stills and their packets are study material and stay outside the repository. `looks`, `pack` and the tests take every delta in the folder, so the film looks ship with the six. Bake them into their own folder so Resolve lists them apart:
+
+```bash
+~/.venvs/rp-tools/bin/python -m lutlab looks "$HOME/DaVinci Resolve/lutlab-base/arri-logc3-709/params.json" \
+  --deltas lutlab-looks/kiki.json lutlab-looks/spirited-away.json lutlab-looks/amelie.json lutlab-looks/her.json \
+  lutlab-looks/moonlight.json lutlab-looks/br2049.json lutlab-looks/grand-budapest.json lutlab-looks/in-the-mood-for-love.json \
+  --camera rcm,s5ii,pyxis --size 65 --out "$LUTLAB_OUT/RP Film Looks"
+```
+
+The `[RCM]` set goes on a node after the correction nodes in a colour-managed project; the camera sets serve non-managed timelines (GH7 uses the `[S5II]` file).
 
 **Looks on a camera monitor.** `looks --monitor` also writes, for each camera look, a 33-point copy clipped
 to 0..1 beside the full-size file. It is the same copy `port --monitor` makes (one shared function), and
@@ -77,8 +96,9 @@ to 0..1 beside the full-size file. It is the same copy `port --monitor` makes (o
 --monitor` the `rcm` files are still written and the monitor copies skip it, with a note on stderr; with
 `--camera rcm` alone the command refuses. The file name is the camera's first two letters or digits plus the
 first four of the look's name without its leading "RP ", upper case, so it fits the S5II's 8-character FAT32
-limit: `S5PRIN.cube` is Print Teal for the S5II, `PYPRIN.cube` for the Pyxis. The six shipped looks give
-`BLEA`, `ICEB`, `NEUT`, `PRIN`, `SOFT` and `TUNG`, which do not collide. If two looks in one run would, the
+limit: `S5PRIN.cube` is Print Teal for the S5II, `PYPRIN.cube` for the Pyxis. The fourteen shipped looks give
+`BLEA`, `ICEB`, `NEUT`, `PRIN`, `SOFT`, `TUNG` and, for the film looks, `KIKI`, `SPIR`, `AMLI`, `HERL`, `MOON`,
+`BLAD`, `GRAN` and `INTH`, which do not collide. If two looks in one run would, the
 last two characters become two hex digits of a hash of the look's name, and the run refuses if they still
 collide. Copy the file to the root of the card.
 

@@ -1,0 +1,1 @@
+lutlab ships eight film looks as deltas in production/lutlab-looks (Kiki's Delivery Service, Spirited Away, Amélie, Her, Moonlight, Blade Runner 2049, The Grand Budapest Hotel, In the Mood for Love), our own numbers measured from stills of each film; the looks test bakes every shipped delta at 17 points.

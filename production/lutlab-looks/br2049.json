@@ -1,0 +1,9 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Blade Runner 2049 look",
+ "description": "After Blade Runner 2049 (2017), the ochre Las Vegas look: very warm, heavy amber split across the mids, a dusty white with no clean highlight, a trace of cyan in the deepest shadows, blues, cyans and greens drained, harder contrast. Skin held near neutral. Our own numbers, measured from five stills.",
+ "white_balance": {"temp": 30, "tint": 2},
+ "tone": {"white": -0.04, "contrast": 1.15},
+ "split_tone": {"L=0.10": {"hue": 200, "amount": 0.5}, "L=0.25": {"hue": 20, "amount": 0.4}, "L=0.40": {"hue": 65, "amount": 1.6}, "L=0.55": {"hue": 70, "amount": 1.8}, "L=0.70": {"hue": 75, "amount": 1.2}},
+ "sat_gain": {"all": {"060 orange": 1.05, "090 amber": 1.1, "120 yellow": 0.95, "150 green": 0.7, "180 teal": 0.6, "210 cyan": 0.6, "240 azure": 0.55, "270 blue": 0.5, "300 violet": 0.7}}
+}

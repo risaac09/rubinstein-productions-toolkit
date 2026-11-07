@@ -1,0 +1,10 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Moonlight look",
+ "description": "After Moonlight (2016): cool with a green lean, blue shadows, cyan-green mids and highlights, pinks and blues pushed, and skin allowed to cool a little toward amber, as the film does. Our own numbers, measured from five stills.",
+ "white_balance": {"temp": -10, "tint": -2},
+ "tone": {"contrast": 1.05},
+ "split_tone": {"L=0.10": {"hue": 250, "amount": 1.2}, "L=0.25": {"hue": 235, "amount": 1.4}, "L=0.55": {"hue": 170, "amount": 0.5}, "L=0.85": {"hue": 190, "amount": 0.8}},
+ "hue_shift": {"all": {"030 red": 4, "060 orange": 8}},
+ "sat_gain": {"all": {"000 pink": 1.2, "060 orange": 0.95, "120 yellow": 1.05, "150 green": 1.05, "210 cyan": 1.1, "240 azure": 1.15, "270 blue": 1.1, "330 magenta": 1.05}}
+}
