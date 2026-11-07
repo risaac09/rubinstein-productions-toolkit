@@ -446,6 +446,148 @@ class TestRefusals(unittest.TestCase):
         self.assertIn("(assumed)", ic.summary(ic.report(tl, "edl")))
 
 
+class TestReelFields(unittest.TestCase):
+    """transition, scale, layer and music (production/reel.md) in the FCPXML, and
+    the other formats naming what they drop. The lane files are not on this
+    machine, so their lengths follow the spans."""
+
+    MUSIC = "/nonexistent-interchange-test/beat.wav"
+    LAYER = "/nonexistent-interchange-test/pop.mov"
+
+    def tl(self, spans, music=None, **kw):
+        m = manifest(spans, fps=25)
+        if music:
+            m["music"] = music
+        kw.setdefault("media", media(Fraction(25), frames=5000))
+        return ic.timeline(m, **kw)
+
+    def setUp(self):
+        spans = [{"in": 1.0, "out": 3.0},
+                 {"in": 4.0, "out": 6.0, "transition": {"type": "dissolve", "frames": 12},
+                  "scale": 1.2},
+                 {"in": 10.0, "out": 11.0, "transition": {"type": "cut"},
+                  "layer": {"path": self.LAYER}}]
+        self.tl_ = self.tl(spans, music={"path": self.MUSIC, "in": 2.0})
+        self.root = ET.fromstring(ic.fcpxml(self.tl_).split("\n", 2)[2])
+        self.spine = self.root.find("library/event/project/sequence/spine")
+
+    def test_events_carry_the_fields(self):
+        e = self.tl_["events"]
+        self.assertEqual([x["transition"] for x in e],
+                         [None, {"type": "dissolve", "frames": 12, "rec_in": 50 - 6}, None])
+        self.assertEqual([x["scale"] for x in e], [None, 1.2, None])
+        self.assertEqual(e[2]["layer"], {"path": self.LAYER, "frames": 25})
+        self.assertEqual(self.tl_["music"], {"path": self.MUSIC, "in": 50, "frames": 125})
+        self.assertEqual(sum("not on this machine" in w for w in self.tl_["warnings"]), 2)
+
+    def test_the_fcpxml_holds_a_dissolve_a_scale_and_two_lanes(self):
+        t = lambda f: ic.fcp_time(f, Fraction(25))
+        r0 = self.tl_["record_start"]
+        effect = self.root.find("resources/effect")
+        self.assertEqual((effect.get("name"), effect.get("uid")), (ic.DISSOLVE, ic.DISSOLVE_UID))
+        kids = list(self.spine)
+        self.assertEqual([k.tag for k in kids], ["asset-clip", "transition", "asset-clip",
+                                                  "asset-clip"])
+        tr = kids[1]
+        self.assertEqual((tr.get("name"), tr.get("offset"), tr.get("duration")),
+                         (ic.DISSOLVE, t(r0 + 44), t(12)))
+        self.assertEqual(tr.find("filter-video").get("ref"), effect.get("id"))
+        self.assertEqual(kids[2].find("adjust-transform").get("scale"), "1.2 1.2")
+        self.assertIsNone(kids[0].find("adjust-transform"))
+        music = kids[0].find("asset-clip")
+        self.assertEqual((music.get("lane"), music.get("offset"), music.get("start"),
+                          music.get("duration")), ("-1", kids[0].get("start"), t(50), t(125)))
+        layer = kids[3].find("asset-clip")
+        self.assertEqual((layer.get("lane"), layer.get("offset"), layer.get("duration")),
+                         ("1", kids[3].get("start"), t(25)))
+        assets = {a.get("name"): a for a in self.root.findall("resources/asset")}
+        self.assertEqual(assets["beat.wav"].get("hasVideo"), "1")  # unprobed: unknown, not denied
+        self.assertEqual(assets["pop.mov"].get("format"), "r1")
+        self.assertEqual(assets["beat.wav"].find("media-rep").get("src"),
+                         "file:///nonexistent-interchange-test/beat.wav")
+        self.assertEqual(self.root.findall("resources/asset")[0].get("id"), "r2")
+        ids = [a.get("id") for a in self.root.findall("resources/asset")] + [effect.get("id")]
+        self.assertEqual(len(ids), len(set(ids)))
+        rep = ic.report(self.tl_, "fcpxml")
+        self.assertEqual((rep["transitions"], rep["scaled"], rep["layers"], rep["music"]),
+                         (1, 1, 1, "beat.wav"))
+        self.assertIn("1 dissolve(s), 1 scaled, 1 layer(s), music beat.wav", ic.summary(rep))
+
+    def test_edl_and_otio_say_what_they_drop(self):
+        for fmt in ("edl", "otio"):
+            tl = self.tl([{"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0, "scale": 1.2}])
+            ic.WRITERS[fmt](tl)
+            self.assertTrue(any(w.startswith(f"{fmt} carries none") for w in tl["warnings"]), fmt)
+        tl = self.tl([{"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0}])
+        ic.edl(tl)
+        self.assertEqual(tl["warnings"], [])
+
+    def test_a_plain_manifest_writes_the_same_fcpxml_as_before(self):
+        tl = self.tl([{"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0, "scale": 1.0,
+                                                  "transition": {"type": "cut"}}])
+        root = ET.fromstring(ic.fcpxml(tl).split("\n", 2)[2])
+        self.assertIsNone(root.find("resources/effect"))
+        self.assertEqual([k.tag for k in root.find("library/event/project/sequence/spine")],
+                         ["asset-clip", "asset-clip"])
+        self.assertEqual([list(k) for k in root.find("library/event/project/sequence/spine")],
+                         [[], []])
+
+    def test_refusals(self):
+        a, b = {"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0}
+        bad = [
+            ([{**a, "transition": {"type": "dissolve", "frames": 12}}, b], "span before"),
+            ([a, {**b, "transition": {"type": "dip", "frames": 12}}], "not cut or dissolve"),
+            ([a, {**b, "transition": {"type": "dissolve", "frames": 1}}], "2 or more"),
+            ([a, {**b, "transition": {"type": "dissolve", "frames": 2.5}}], "whole frames"),
+            ([{"in": 0.0, "out": 0.08}, {"in": 0.12, "out": 2.0,
+                                         "transition": {"type": "dissolve", "frames": 12}}],
+             "handle before"),
+            ([a, {**b, "scale": 0}], "0.1 to 10"),
+            ([a, {**b, "scale": "big"}], "0.1 to 10"),
+            ([a, {**b, "layer": {"path": "relative/pop.mov"}}], "absolute"),
+        ]
+        for spans, why in bad:
+            with self.subTest(why=why), self.assertRaisesRegex(ic.InterchangeError, why):
+                self.tl(spans)
+        with self.assertRaisesRegex(ic.InterchangeError, "handle after"):
+            self.tl([{"in": 1.0, "out": 4.0},
+                     {"in": 4.0, "out": 4.1, "transition": {"type": "dissolve", "frames": 12}}],
+                    media=media(Fraction(25), frames=104))
+        with self.assertRaisesRegex(ic.InterchangeError, "0 or more"):
+            self.tl([a, b], music={"path": self.MUSIC, "in": -1})
+
+
+@unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
+class TestReelFieldsProbed(unittest.TestCase):
+    def test_a_probed_music_and_layer_file_set_the_lengths(self):
+        with tempfile.TemporaryDirectory() as d:
+            music = os.path.join(d, "beat.wav")
+            subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "sine=frequency=440:sample_rate=48000:duration=3", music],
+                           stdin=subprocess.DEVNULL, check=True)
+            layer = make_clip(os.path.join(d, "pop.mov"), seconds=0.5, rate="25", audio=False)
+            m = manifest([{"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0,
+                                                    "layer": {"path": layer}}], fps=25)
+            m["music"] = {"path": music, "in": 1.0}
+            tl = ic.timeline(m, media=media(Fraction(25), frames=5000))
+            self.assertEqual(tl["music"], {"path": music, "in": 25, "frames": 50})  # 3 s - 1 s
+            self.assertEqual(tl["events"][1]["layer"]["path"], layer)
+            self.assertIn(tl["events"][1]["layer"]["frames"], (12, 13))  # 0.5 s as ffprobe times it
+            self.assertEqual(tl["warnings"], [])
+            root = ET.fromstring(ic.fcpxml(tl).split("\n", 2)[2])
+            assets = {a.get("name"): a for a in root.findall("resources/asset")}
+            self.assertEqual((assets["beat.wav"].get("hasVideo"), assets["beat.wav"].get("hasAudio"),
+                              assets["beat.wav"].get("duration")), ("0", "1", "3s"))
+            self.assertEqual((assets["pop.mov"].get("hasVideo"), assets["pop.mov"].get("hasAudio")),
+                             ("1", "0"))
+            m["music"] = {"path": music, "in": 3.0}
+            with self.assertRaisesRegex(ic.InterchangeError, "leaves no sound"):
+                ic.timeline(m, media=media(Fraction(25), frames=5000))
+            m["music"] = {"path": layer}
+            with self.assertRaisesRegex(ic.InterchangeError, "has no sound"):
+                ic.timeline(m, media=media(Fraction(25), frames=5000))
+
+
 @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestProbedSource(unittest.TestCase):
     """Real files from lavfi: the camera's timecode reaches every format."""

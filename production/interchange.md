@@ -41,6 +41,19 @@ A span may carry two optional fields, in seconds:
 
 The neighbouring span's sound gives way by the same amount, as a rolling edit leaves it, so the sound stays one unbroken run as long as the picture. A J cut on the first span, an L cut on the last, and a J cut and an L cut meeting at one edit are refused. How long a split should be is an editing choice; the writer applies whatever the manifest says.
 
+## Reel fields
+
+Four optional fields carry a social reel's dressing (written by `rpresolve.reel`, see [reel.md](reel.md)); only FCPXML holds them, and EDL and OTIO warn that they drop them. The vocabulary is what Resolve 21.2 imports from FCPXML (spike S0, [resolve-mcp.md](resolve-mcp.md#fcpxml-import)): cross dissolves, a static scale, lanes. Dips, keyframed moves and speed changes do not survive the import and are not written.
+
+| Field | On | Written as | Rule |
+|---|---|---|---|
+| `transition` `{"type": "dissolve", "frames": N}` | a span: the join into it | a `Cross Dissolve` `transition` in the spine, N frames centred on the cut | needs ceil(N/2) frames of source on both sides of the cut (refused otherwise); `{"type": "cut"}` is the default; the first span takes none |
+| `scale` (number) | a span | `adjust-transform scale="s s"`, which Resolve reads as Zoom | 0.1 to 10; 1 writes nothing |
+| `layer` `{"path"}` | a span | a connected `asset-clip` on `lane="1"` from the span's first frame, for the span's length or the file's if shorter | an absolute path; a clip with alpha (ProRes 4444) sits over the picture |
+| `music` `{"path", "in"}` | the manifest | a connected `asset-clip` on `lane="-1"` under the first span, from record 0, for the timeline's length or what is left of the file after `in` | an absolute path; `in` in seconds, default 0 |
+
+A lane file is probed when it is on this machine (length, picture, sound); otherwise its length follows the span or the timeline and the summary says so.
+
 ## What each format holds
 
 | | EDL (CMX 3600) | FCPXML 1.10 | OTIO JSON |
@@ -55,8 +68,8 @@ Every FCPXML time is a whole number of frame durations, written over the frame d
 
 ## What it does not do
 
-- A [version 2 manifest](manifest.md) with several sources writes one asset per source (a reel per source in the EDL), events in span order. All sources must run at the timeline rate and agree on drop-frame; picture size follows the first source (a warning names a difference). OTIO needs every source to have sound or none to. A split edit at a change of source is refused. Music beds and B-roll on other tracks are not written.
-- No transitions, speed changes, reframes, crops, titles, captions or markers. A reframed 9:16 or 1:1 version is still built by `cut` in Resolve.
+- A [version 2 manifest](manifest.md) with several sources writes one asset per source (a reel per source in the EDL), events in span order. All sources must run at the timeline rate and agree on drop-frame; picture size follows the first source (a warning names a difference). OTIO needs every source to have sound or none to. A split edit at a change of source is refused. Beyond one music bed and one layer per span (FCPXML only), nothing goes on other tracks.
+- No dips or other transitions beyond the cross dissolve, no speed changes, reframes, crops, titles, captions or markers. A reframed 9:16 or 1:1 version is still built by `cut` in Resolve.
 - No reading. It writes these files and reads none of them back.
 - Sound is written as one AA pair or one audio track. A file with four mono streams is described as four sources in FCPXML, but the EDL and OTIO do not map channels.
 - No validation against Apple's DTD inside the tool. See the checks below.
@@ -83,7 +96,7 @@ For each import, note the menu path used, the version of Resolve, and:
 | Format | Desktop Resolve | Resolve for iPad | Notes |
 |---|---|---|---|
 | EDL | not yet tried | not yet tried | |
-| FCPXML | not yet tried | not yet tried | |
+| FCPXML | 2026-11-07, Resolve Studio 21.2.0.6: a hand-written file of the same shape (spike S0) imported through `ImportTimelineFromFile`, every clip at its record position, dissolves and lanes in place, read back by `import_timeline`; a writer-made file over real footage not yet tried | not yet tried | the import route is the MCP `import_timeline` tool |
 | OTIO | not yet tried | not yet tried | |
 
 Replace a cell with what happened and the date. Until a row says it imports, treat that format as untested for that app.
