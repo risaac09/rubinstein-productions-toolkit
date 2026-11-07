@@ -1,7 +1,7 @@
 """
 The resolve_workflow commands that wrap an rpresolve module with its own CLI
 (interchange, shots, wordsnap, beats, roomtone, dxmetrics, duckplan, captionlint,
-pacing, transcribe, besttake, trim-apply, cutout): each
+pacing, transcribe, besttake, trim-apply, cutout, reel): each
 shows that module's flags under --help and hands the parsed arguments to its
 run(). The modules' own tests cover the work.
 
@@ -29,6 +29,8 @@ WRAPPERS = {
     "shots": (["src.mov", "--out", "o.csv"], "--no-dissolves", ("source", "src.mov")),
     "wordsnap": (["w.json", "src.wav", "--out", "o.json"], "--margin-db", ("source", "src.wav")),
     "beats": (["m.wav", "--out", "b.json"], "--prior-bpm", ("music", "m.wav")),
+    "reel": (["plan", "m.json", "--music", "t.mp3", "--beats", "b.json", "--out", "dir"],
+             "{plan,preview,duck}", ("step", "plan")),
     "roomtone": (["find", "a.wav"], "{find,bed}", ("action", "find")),
     "dxmetrics": (["lag", "a.wav", "b.wav"], "{measure,compare,lag}", ("action", "lag")),
     "duckplan": (["plan", "d.wav", "--out", "dir"], "{plan,render}", ("action", "plan")),

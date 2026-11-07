@@ -43,7 +43,7 @@ The neighbouring span's sound gives way by the same amount, as a rolling edit le
 
 ## Reel fields
 
-Four optional fields carry a social reel's dressing (written by `rpresolve.reel`, which lands with its own `reel.md`); only FCPXML holds them, and EDL and OTIO warn that they drop them. The vocabulary is what Resolve 21.2 imports from FCPXML (spike S0, [resolve-mcp.md](resolve-mcp.md#fcpxml-import)): cross dissolves, a static scale, lanes. Dips, keyframed moves and speed changes do not survive the import and are not written.
+Four optional fields carry a social reel's dressing (written by `rpresolve.reel`, see [reel.md](reel.md)); only FCPXML holds them, and EDL and OTIO warn that they drop them. The vocabulary is what Resolve 21.2 imports from FCPXML (spike S0, [resolve-mcp.md](resolve-mcp.md#fcpxml-import)): cross dissolves, a static scale, lanes. Dips, keyframed moves and speed changes do not survive the import and are not written.
 
 | Field | On | Written as | Rule |
 |---|---|---|---|
