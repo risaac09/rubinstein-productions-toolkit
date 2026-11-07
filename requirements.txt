@@ -39,6 +39,8 @@
 #                                delivercheck, detect
 #   RPRESOLVE_EXIFTOOL           rpresolve detect                  /usr/local/bin/exiftool                   exiftool is not at the default path.
 #   RPRESOLVE_SURVEY_PYTHON      rpresolve workflows (survey)      /opt/homebrew/bin/python3.14              a Python 3.14+ lives elsewhere.
+#   BRAW2PPM                     lutlab braw-proxy.sh              braw2ppm beside the script                the decoder lives elsewhere.
+#   BRAW_PROXY_LANES             lutlab braw-proxy.sh              2                                         you want more or fewer clips at once.
 #   RPRESOLVE_CONFIG             Resolve MCP deliver_check         none (resolve-config.json alone)          you keep a local overlay of the config.
 #   RPRESOLVE_LOCK               rpresolve ResolveLock             ~/Library/Caches/rpresolve/resolve.lock   the lock file needs another place.
 #   RPRESOLVE_MCP_OUT            Resolve MCP server                ~/Library/Caches/rpresolve/mcp            tool output needs another folder.
