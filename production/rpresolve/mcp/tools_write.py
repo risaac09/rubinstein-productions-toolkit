@@ -282,7 +282,8 @@ def timeline_from_clips(args, ctx):
             ctx.session.get(), args["project"], args["name"], bin=args.get("bin"),
             clips=args.get("clips"), order=args["order"], dry_run=args["dry_run"],
             project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
-            expect_sha=args.get("plan_sha"))
+            expect_sha=args.get("plan_sha"), fps=args.get("fps"), width=args.get("width"),
+            height=args.get("height"))
         n, skipped, conf = len(r["plan"]), len(r["skipped"]), len(r["conformed"])
         extra = ((f"; {skipped} item(s) in the bin skipped (not placeable)" if skipped else "") +
                  (f"; {conf} clip(s) at another frame rate than the timeline, conformed by "
@@ -820,7 +821,10 @@ def register(registry):
         "such as 'GH7'), or clips named in `clips` (unique ids, absolute file paths or "
         "names). order is name or path (natural order, so P2 comes before P10) or given. "
         "Picture only, on V1, following the project's frame rate and size; a clip at another "
-        "frame rate is conformed by Resolve to real time and the plan says so. Items in a bin "
+        "frame rate is conformed by Resolve to real time and the plan says so. fps 'filmed' "
+        "instead makes the timeline at the rate the clips were filmed at, each cut to the "
+        "frames its file holds; clips filmed at different rates are refused. width and height "
+        "set the timeline's size. Items in a bin "
         "that cannot be placed (timelines, audio-only clips) are listed under skipped. Every "
         "item is read back (the clip, its first source frame, its length, no gap or overlap). "
         "The timeline is added to the media-pool bin that is open in Resolve (lands_in_bin). "
@@ -841,6 +845,13 @@ def register(registry):
             "order": {"type": "string", "enum": ["name", "path", "given"], "default": "name",
                       "description": "name or path: natural order of the clip name or file "
                       "path. given: the order of clips (or the bin as Resolve lists it)."},
+            "fps": {"type": "string", "enum": ["filmed"],
+                    "description": "filmed: the timeline takes the rate the clips were filmed "
+                    "at. Default: the project's."},
+            "width": {"type": "integer", "minimum": 16, "maximum": 16384,
+                      "description": "Timeline width; give height too."},
+            "height": {"type": "integer", "minimum": 16, "maximum": 16384,
+                       "description": "Timeline height; give width too."},
             **DRY_RUN,
             **PAGING, "limit": _limit(100, 500)},
          "required": ["project", "name"], "additionalProperties": False},
@@ -1103,7 +1114,7 @@ def register(registry):
         "link_proxies",
         "Link each BRAW clip of the open project to its ProRes LT proxy (made in the background "
         "after ingest, ~/Movies/RPProxies/<project>) and set the project to prefer proxies; "
-        "every link is read back. A clip whose proxy has not landed is reported and left "
+        "every link is read back. A clip no timeline uses then takes the rate it was filmed at. A clip whose proxy has not landed is reported and left "
         "alone, so run it again later. The source file, grades and timelines are not touched. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {

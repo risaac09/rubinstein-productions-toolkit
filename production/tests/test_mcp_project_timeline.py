@@ -213,15 +213,20 @@ class TestLinkProxies(Base):
                 self.props["Proxy Media Path"] = path
                 return True
 
-        self.a = Braw("A.braw", "a", {"File Path": "/c/A.braw"})
-        self.b = Braw("B.braw", "b", {"File Path": "/c/B.braw"})
+            def SetClipProperty(self, key, value):
+                self.props[key] = value
+                return True
+
+        self.a = Braw("A.braw", "a", {"File Path": "/c/A.braw", "FPS": "29.97", "Usage": "0"})
+        self.b = Braw("B.braw", "b", {"File Path": "/c/B.braw", "FPS": "29.97", "Usage": "0"})
         self.project = rf.Project(root=rf.Folder("Master", clips=[self.a, self.b]))
         self.project.settings = {"perfProxyMediaMode": "2"}
         self.resolve = rf.Resolve(self.project, page="edit")
 
     def run_it(self, **kw):
         return workflows.link_proxies(self.resolve, self.project.GetName(), folder="/p",
-                                      exists=lambda p: p == "/p/A.mov", **kw)
+                                      exists=lambda p: p == "/p/A.mov",
+                                      probe=lambda p: {"fps": "24", "frames": 1}, **kw)
 
     def test_dry_run_changes_nothing(self):
         r = self.run_it(dry_run=True)
@@ -235,6 +240,14 @@ class TestLinkProxies(Base):
         self.assertNotIn("Proxy Media Path", self.b.props)
         self.assertEqual(self.project.GetSetting("perfProxyMediaMode"), "1")
         self.assertEqual(r["exit_status"], 2)  # B has no proxy yet
+        self.assertEqual(self.a.props["FPS"], "24")  # after the link
+        self.assertEqual(self.b.props["FPS"], "29.97")
+
+    def test_a_clip_on_a_timeline_keeps_its_rate(self):
+        self.a.props["Usage"] = "3"
+        r = self.run_it(dry_run=False)
+        self.assertEqual(self.a.props["FPS"], "29.97")
+        self.assertIn("rate stays", r["results"][0]["result"])
 
 
 class TestTimelineFromClips(Base):

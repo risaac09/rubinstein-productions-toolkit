@@ -43,4 +43,5 @@ one() {
   fi
 }
 export -f one frames_of; export OUT BRAW2PPM
+# shellcheck disable=SC2016  # $1 belongs to the inner bash
 printf '%s\0' "$@" | xargs -0 -P "$LANES" -I{} bash -c 'one "$1"' _ {}
