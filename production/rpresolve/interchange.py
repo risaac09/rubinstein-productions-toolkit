@@ -63,8 +63,16 @@ the summary says so.
 
 The output names client media, so it is refused inside any git working tree,
 and refused when --out is the manifest or the source. It is written to a
-temporary file that then replaces --out. Not handled: transitions, speed changes, reframes, captions, markers, split
-edits across a change of source. See production/interchange.md.
+temporary file that then replaces --out.
+
+Reel fields (production/reel.md), FCPXML only; EDL and OTIO warn that they
+drop them: a span's "transition" ({type: dissolve, frames}: a Cross
+Dissolve centred on the cut into it, refused without source handles),
+"scale" (a static zoom, written as an adjust-transform) and "layer"
+({path}: a clip with alpha on the lane above the span); the manifest's
+"music" ({path, in}: a bed on the lane below, from record 0). Not handled:
+other transitions, speed changes, reframes, captions, markers, split edits
+across a change of source. See production/interchange.md.
 """
 
 import argparse
@@ -90,6 +98,10 @@ NTSC_TOLERANCE = Fraction(1, 1000)  # fps: 29.97 and friends read as n*1000/1001
 DEFAULT_SIZE = (1920, 1080)
 DEFAULT_AUDIO = {"streams": 1, "channels": 2, "rate": 48000}
 COLOR_SPACE = "1-1-1 (Rec. 709)"
+# The one transition Resolve 21.2 imports by name from FCPXML (resolve-mcp.md, FCPXML import)
+DISSOLVE = "Cross Dissolve"
+DISSOLVE_UID = "FxPlug:4731E73A-8DAC-4113-9A30-AE85B1761265"
+REEL_FIELDS = "transitions, scales, layers and music"
 
 
 class InterchangeError(ValueError):
@@ -329,17 +341,132 @@ def timeline(manifest, clip=None, fps=None, media=None, media_root=None, title=N
     for sid, src in by_id.items():
         src["frames"] = src["frames"] or max(max(e["v_out"], e["a_out"])
                                             for e in events if e["src"] == sid)
+    extras = _extras(c, manifest, events, by_id, rec, rate, fr, media_root, warnings)
     return {"title": _one_line(title or c["name"]), "clip": c["name"], "rate": rate, "drop": drop,
             "record_start": record_start, "source": first, "sources": by_id, "events": events,
-            "frames": rec, "warnings": warnings}
+            "frames": rec, "warnings": warnings, **extras}
+
+
+def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
+    """The optional reel fields (production/reel.md): per span `transition`
+    ({type: cut|dissolve, frames}: the join into that span, centred on the
+    cut), `scale` (a static zoom), `layer` ({path}: a clip with alpha laid
+    over the span on the lane above it); per manifest `music` ({path, in}:
+    a sound file on the lane below, from record 0). Each event gains
+    transition, scale and layer (None when absent); the timeline gains music
+    (None when absent) and lanes, the clips the lanes reference. A dissolve
+    needs half its frames of handle in the source on both sides of the cut,
+    else it is refused."""
+    lanes = {}
+
+    def lane_file(path, what, video, audio):
+        """video and audio are what the lane expects of the file, used when it
+        cannot be probed (a music bed has sound, a layer has picture)."""
+        if path in lanes:
+            return lanes[path]
+        if not isinstance(path, str) or not os.path.isabs(path):
+            raise InterchangeError(f"{what}: path must be absolute, not {path!r}")
+        p = probe_any(path) if os.path.isfile(path) else None
+        name = os.path.basename(path)
+        if p is None:
+            warnings.append(f"{name} is not on this machine, so it was not probed; its length is "
+                            "taken from the span it covers")
+        url_path = posixpath.join(media_root, name) if media_root else os.path.abspath(path)
+        lanes[path] = {"path": path, "name": name, "url": "file://" + quote(url_path),
+                       "frames": None if p is None else cutlist.frame(p["seconds"], fr),
+                       "video": video if p is None else p["video"],
+                       "audio": audio if p is None else p["audio"], "probed": p is not None}
+        return lanes[path]
+
+    for k, (s, e) in enumerate(zip(c["spans"], events)):
+        where = f"{c['name']} span {k + 1}"
+        e["transition"] = e["scale"] = e["layer"] = None
+        tr = s.get("transition")
+        if tr and tr.get("type", "cut") != "cut":
+            if tr.get("type") != "dissolve":
+                raise InterchangeError(f"{where}: transition type {tr.get('type')!r} is not cut or "
+                                       "dissolve (Resolve imports a Dip to Color as a dissolve)")
+            n = tr.get("frames")
+            if not isinstance(n, int) or n < 2:
+                raise InterchangeError(f"{where}: a dissolve needs whole frames, 2 or more")
+            if k == 0:
+                raise InterchangeError(f"{where}: a transition needs a span before it")
+            half = (n + 1) // 2
+            prev = events[k - 1]
+            src_prev, src = by_id[prev["src"]], by_id[e["src"]]
+            if min(prev["v_out"] - prev["v_in"], e["v_out"] - e["v_in"]) < half:
+                raise InterchangeError(f"{where}: a {n}-frame dissolve needs {half} frames in "
+                                       "each span it joins; one is shorter")
+            if e["v_in"] - half < 0:
+                raise InterchangeError(f"{where}: a {n}-frame dissolve needs {half} frames of "
+                                       f"handle before {s['in']} s and {src['name']} has none")
+            if src_prev["frames"] and prev["v_out"] + half > src_prev["frames"]:
+                raise InterchangeError(f"{where}: a {n}-frame dissolve needs {half} frames of "
+                                       f"handle after span {k} and {src_prev['name']} ends first")
+            e["transition"] = {"type": "dissolve", "frames": n, "rec_in": e["rec_in"] - half}
+        sc = s.get("scale")
+        if sc is not None:
+            if not isinstance(sc, (int, float)) or not 0.1 <= sc <= 10:
+                raise InterchangeError(f"{where}: scale must be a number from 0.1 to 10")
+            if abs(sc - 1) > 1e-9:
+                e["scale"] = float(sc)
+        ly = s.get("layer")
+        if ly:
+            f = lane_file(ly.get("path"), f"{where} layer", video=True, audio=False)
+            if f["video"] is False:
+                raise InterchangeError(f"{where}: layer {f['name']} has no picture")
+            span_len = e["v_out"] - e["v_in"]
+            e["layer"] = {"path": f["path"], "frames": min(span_len, f["frames"] or span_len)}
+    music = None
+    mu = manifest.get("music")
+    if mu:
+        f = lane_file(mu.get("path"), "music", video=False, audio=True)
+        if f["audio"] is False:
+            raise InterchangeError(f"music {f['name']} has no sound")
+        m_in_s = mu.get("in", 0)
+        if not isinstance(m_in_s, (int, float)) or not math.isfinite(m_in_s) or m_in_s < 0:
+            raise InterchangeError("music: in must be 0 or more seconds")
+        m_in = cutlist.frame(m_in_s, fr)
+        length = total if f["frames"] is None else min(total, f["frames"] - m_in)
+        if length <= 0:
+            raise InterchangeError(f"music {f['name']}: in of {mu.get('in')} s leaves no sound")
+        music = {"path": f["path"], "in": m_in, "frames": length}
+    return {"music": music, "lanes": lanes}
+
+
+def probe_any(path):
+    """{seconds, video, audio} of any media file: what a lane needs."""
+    try:
+        info, err = detect.run_ffprobe(path)
+    except detect.ToolMissing as e:
+        raise InterchangeError(f"cannot probe {path}: {e} (set RPRESOLVE_FFPROBE)")
+    if info is None:
+        raise InterchangeError(f"ffprobe cannot read {path}: {err}")
+    kinds = {s.get("codec_type") for s in info.get("streams") or []}
+    try:
+        seconds = float((info.get("format") or {}).get("duration"))
+    except (TypeError, ValueError):
+        raise InterchangeError(f"ffprobe gives no duration for {path}")
+    return {"seconds": seconds, "video": "video" in kinds, "audio": "audio" in kinds}
 
 
 # ---------------------------------------------------------------------------
 # Writers
 # ---------------------------------------------------------------------------
 
+def _reel_fields_dropped(tl, fmt):
+    """A warning when the timeline carries reel fields this format cannot hold."""
+    note = (f"{fmt} carries none of the reel fields ({REEL_FIELDS}); the cuts are written "
+            "without them. Write fcpxml to keep them")
+    if note not in tl["warnings"] and (
+            tl.get("music") or any(e.get("transition") or e.get("scale") or e.get("layer")
+                                   for e in tl["events"])):
+        tl["warnings"].append(note)
+
+
 def edl(tl):
     """CMX 3600 text."""
+    _reel_fields_dropped(tl, "edl")
     rate, drop = tl["rate"], tl["drop"]
     r0 = tl["record_start"]
     rows = []
@@ -386,20 +513,54 @@ def fcpxml(tl):
                          audioRate=str(s["audio"]["rate"]))
         ET.SubElement(ET.SubElement(res, "asset", asset), "media-rep", kind="original-media",
                       src=s["url"])
+    lane_ref = {}
+    for path, f in tl.get("lanes", {}).items():
+        lane_ref[path] = f"r{len(ref) + len(lane_ref) + 2}"
+        asset = {"id": lane_ref[path], "name": f["name"], "start": "0s",
+                 "hasVideo": "0" if f["video"] is False else "1",
+                 "hasAudio": "0" if f["audio"] is False else "1"}
+        if f["frames"] is not None:
+            asset["duration"] = t(f["frames"])
+        if asset["hasVideo"] == "1":
+            asset["format"] = "r1"
+        ET.SubElement(ET.SubElement(res, "asset", asset), "media-rep", kind="original-media",
+                      src=f["url"])
+    dissolve = None
+    if any(e.get("transition") for e in tl["events"]):
+        dissolve = f"r{len(ref) + len(lane_ref) + 2}"
+        ET.SubElement(res, "effect", id=dissolve, name=DISSOLVE, uid=DISSOLVE_UID)
     event = ET.SubElement(ET.SubElement(root, "library"), "event", name=tl["title"])
     seq = ET.SubElement(ET.SubElement(event, "project", name=tl["title"]), "sequence", format="r1",
                         duration=t(tl["frames"]), tcStart=t(r0), tcFormat=tc_format,
                         audioLayout="stereo", audioRate="48k")
     spine = ET.SubElement(seq, "spine")
-    for e in tl["events"]:
+    for k, e in enumerate(tl["events"]):
         s = tl["sources"][e["src"]]
         s0 = s["start"]
+        tr = e.get("transition")
+        if tr:
+            ET.SubElement(ET.SubElement(spine, "transition", name=DISSOLVE,
+                                        offset=t(r0 + tr["rec_in"]), duration=t(tr["frames"])),
+                          "filter-video", ref=dissolve, name=DISSOLVE)
         clip = {"ref": ref[e["src"]], "name": s["name"], "offset": t(r0 + e["rec_in"]),
                 "start": t(s0 + e["v_in"]), "duration": t(e["v_out"] - e["v_in"]),
                 "tcFormat": tc_format}
         if (e["a_in"], e["a_out"]) != (e["v_in"], e["v_out"]):
             clip.update(audioStart=t(s0 + e["a_in"]), audioDuration=t(e["a_out"] - e["a_in"]))
-        ET.SubElement(spine, "asset-clip", clip)
+        el = ET.SubElement(spine, "asset-clip", clip)
+        # a connected clip's offset counts from its parent's `start`
+        local = s0 + e["v_in"]
+        music = tl.get("music")
+        if k == 0 and music:
+            f = tl["lanes"][music["path"]]
+            ET.SubElement(el, "asset-clip", ref=lane_ref[music["path"]], name=f["name"], lane="-1",
+                          offset=t(local), start=t(music["in"]), duration=t(music["frames"]))
+        if e.get("layer"):
+            f = tl["lanes"][e["layer"]["path"]]
+            ET.SubElement(el, "asset-clip", ref=lane_ref[e["layer"]["path"]], name=f["name"],
+                          lane="1", offset=t(local), start="0s", duration=t(e["layer"]["frames"]))
+        if e.get("scale"):
+            ET.SubElement(el, "adjust-transform", scale=f"{e['scale']:g} {e['scale']:g}")
     ET.indent(root)
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n\n'
             + ET.tostring(root, encoding="unicode") + "\n")
@@ -407,6 +568,7 @@ def fcpxml(tl):
 
 def otio(tl):
     """OpenTimelineIO JSON text."""
+    _reel_fields_dropped(tl, "otio")
     rate = float(tl["rate"])
     have = [bool(s["audio"]) for s in tl["sources"].values()]
     if any(have) and not all(have):
@@ -474,6 +636,10 @@ def report(tl, fmt):
             "audio": src["audio"], "spans": len(tl["events"]), "frames": tl["frames"],
             "seconds": round(float(tl["frames"] / rate), 3),
             "split_edits": sum(1 for e in tl["events"] if e["lead"] or e["tail"]),
+            "transitions": sum(1 for e in tl["events"] if e.get("transition")),
+            "scaled": sum(1 for e in tl["events"] if e.get("scale")),
+            "layers": sum(1 for e in tl["events"] if e.get("layer")),
+            "music": os.path.basename(tl["music"]["path"]) if tl.get("music") else None,
             "warnings": list(tl["warnings"])}
 
 
@@ -482,7 +648,10 @@ def summary(rep):
     return (f"{rep['format']} {rep['title']}: {rep['spans']} span(s), {rep['frames']} frames "
             f"({rep['seconds']} s) at {rep['fps']}{' DF' if rep['drop_frame'] else ''}, source TC "
             f"{rep['source_tc']}{'' if rep['probed'] else ' (assumed)'}, "
-            f"{rep['split_edits']} split edit(s)")
+            f"{rep['split_edits']} split edit(s)" +
+            (f", {rep['transitions']} dissolve(s), {rep['scaled']} scaled, {rep['layers']} "
+             f"layer(s), music {rep['music'] or 'none'}"
+             if rep["transitions"] or rep["scaled"] or rep["layers"] or rep["music"] else ""))
 
 
 def add_arguments(p):
