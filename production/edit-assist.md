@@ -1,4 +1,4 @@
-# Edit assist: wordsnap, shots, beats
+# Edit assist: wordsnap, shots, beats, cutout
 
 **Status:** operational.
 
@@ -9,6 +9,7 @@ Three offline helpers for the edit. Each reads media with ffmpeg, does its arith
 | `wordsnap` | an mlx_whisper words JSON and the media it came from | the same JSON with word edges moved onto the speech | anything that reads words through `cutlist.load_words`: selects, endcheck, trim review |
 | `shots` | a video file (camera original, screen recording, supplied edit) | a shot list, `.csv` or `.tsv` | `qc --shots`, and rhythm (`.tsv`) |
 | `beats` | a music file, or a cut's own audio | `beats.json` | rhythm `--beats` |
+| `cutout` | a span of a talking-head clip | a ProRes 4444 clip with alpha and `cutout-report.json` | a Resolve timeline or an ffmpeg overlay |
 
 Run each from `production/`. Every one also exposes `add_arguments(parser)` and `run(args)` for a parent CLI.
 
@@ -103,3 +104,20 @@ Rows are counted from 1 down the TSV. `--accepted-file` takes numbers and ranges
 `NEW.json.applied.json` records the file hashes, the accepted rows, each cut and the spans it left, the frames removed per clip and every field cleared. `end_words` and `source_text` of a changed span are cleared, not guessed, and `audio_lead` and `audio_tail` stay only on the first and last piece, so run `endcheck` on the copy. A version 1 manifest comes back version 1.
 
 Not here: an MCP tool, `--overwrite`, applying Resolve marker selections, re-deriving end words, and checking that the TSV came from this exact manifest (it carries no hash; the check is that every row lies inside its span).
+
+## cutout
+
+```sh
+python3 -m rpresolve.cutout SOURCE --in S --out S --out-dir DIR [--quality accurate|balanced|fast] [--feather PX] [--height 1080]
+```
+
+The person in a span of a clip, segmented from the background: a clip with alpha that Resolve reads as a clip with alpha and ffmpeg lays over anything with `overlay`. ffmpeg extracts the span's frames as PNGs into a temp folder under `--out-dir`, scaled to `--height` with the aspect kept; a small Swift helper (`vision_person.swift`, compiled once into `~/Library/Caches/rpresolve` like the face helper) runs macOS Vision's person segmentation over them at the chosen quality and writes one 8-bit matte per frame; `--feather` box-blurs the matte by that many pixels; ffmpeg `alphamerge` joins picture and matte and ProRes 4444 writes `<stem>_cutout_<in>-<out>.mov` at the source's frame rate, picture only, tagged bt709. The temp frames are removed. The report, on stdout and in `cutout-report.json` beside the clip, gives the frame count, the mean matte coverage, the frames where no person was found (a WARN line), the quality level and the output path. Output is refused inside any git working tree (exit 2) and never written over the source; without macOS and `swiftc` the helper cannot run and the tool exits 1 with that reason.
+
+What it does not do, and limits:
+
+- One person at a time is what Vision gives: with two people in frame the matte covers both, or jumps between them. Frame one subject.
+- Hair edges and thin things (glasses arms, a mic cable) come out soft or missing; `accurate` is slowest and best, `fast` is a coarse matte for a preview. `--feather 2` or `3` hides a hard edge on a busy background.
+- Fast motion (a hand swung across the lens, a quick turn) smears the matte for a frame or two. Pick a still span.
+- The matte is Vision's; nothing here checks it. Look at the clip over a flat colour before it goes into an edit.
+- The picture goes through 8-bit PNG frames, so a 10-bit source lands as 8-bit picture; a log source stays log (tagged bt709 all the same), so grade the cut-out the way the source is graded.
+- No audio: the cut-out is picture. Lay it over the edit on a video track and keep the source's sound.
