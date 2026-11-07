@@ -374,6 +374,22 @@ class Pool(Fake):
         self.current.clips.extend(clips)
         return clips
 
+    # path -> {"video": [[(name, record, frames), ...] per track], "audio": [...]} that
+    # ImportTimelineFromFile places; None answers None (Resolve could not read the file).
+    import_layout = {}
+
+    def ImportTimelineFromFile(self, path, options=None):
+        _log(self, "ImportTimelineFromFile", path, dict(options or {}))
+        layout = self.import_layout.get(path)
+        if layout is None:
+            return None
+        tl = self.CreateEmptyTimeline((options or {}).get("timelineName") or "Imported")
+        tl.tracks = {kind: [[Item(name, tl.start + rec, tl.start + rec + n,
+                                  Clip(name, f"imp-{name}", {"File Path": path}))
+                             for name, rec, n in track] for track in tracks]
+                     for kind, tracks in layout.items()}
+        return tl
+
     def CreateEmptyTimeline(self, name):
         _log(self, "CreateEmptyTimeline", name)
         fps = float(self.project.settings.get("timelineFrameRate", 25)) if self.project else 25.0

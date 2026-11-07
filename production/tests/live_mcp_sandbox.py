@@ -138,6 +138,7 @@ def main():
     ap.add_argument("--manifest")
     ap.add_argument("--clip")
     ap.add_argument("--bin", help="a media-pool bin of video clips for timeline_from_clips")
+    ap.add_argument("--fcpxml", help="an FCPXML file for import_timeline (its media must exist)")
     ap.add_argument("--captions", action="store_true",
                     help="Also run create_captions on the copy")
     a = ap.parse_args()
@@ -219,6 +220,13 @@ def main():
             check(not err and r["problems"] == [] and r["created"] and
                   all(i["ok"] for i in r["items"]),
                   "timeline_from_clips built the bin in order and read every item back")
+            check(not r.get("ui_restore_problems"), "its UI (timeline, playhead, page) was put back")
+        if a.fcpxml:
+            tl_name = f"MCP live {stamp} fcpxml [auto]"
+            err, r = c.both("import_timeline", **P, name=tl_name, file=a.fcpxml)
+            check(not err and r["problems"] == [] and r["created"] and
+                  all(i["ok"] for i in r["items"]),
+                  "import_timeline imported the file and read every video clip back in place")
             check(not r.get("ui_restore_problems"), "its UI (timeline, playhead, page) was put back")
         if a.ingest:
             err, r = c.both("ingest", **P, paths=[a.ingest])

@@ -309,6 +309,43 @@ def timeline_from_clips(args, ctx):
     return r
 
 
+def import_timeline(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.import_timeline(
+            ctx.session.get(), args["project"], args["name"], args["file"],
+            dry_run=args["dry_run"], project_id=args.get("project_id"),
+            check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        n = sum(1 for e in r["events"] if e["kind"] == "video")
+        na = len(r["events"]) - n
+        nt = len(r["transitions"])
+        what = f"{n} video clip(s), {na} audio clip(s) and {nt} transition(s) at {r['rate']} fps"
+        missing = (f"; {len(r['media_missing'])} media file(s) missing" if r["media_missing"]
+                   else "")
+        if r["dry_run"]:
+            r["summary"] = (f"would import '{os.path.basename(r['file'])}' as '{r['timeline']}': "
+                            f"{what}, source clips into the open bin '{r['lands_in_bin']}'" +
+                            missing + _how(r))
+        elif r["problems"]:
+            r["summary"] = (f"import_timeline FAILED: '{r['timeline']}' was made but does not "
+                            "match the file, and is left in the project for you to check or "
+                            "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
+        else:
+            r["summary"] = (f"imported '{r['timeline']}': {what}; every video clip read back at "
+                            "its record position" +
+                            (f"; {nt} transition(s) not verifiable through the API, check the "
+                             "Edit page" if nt else "") + _ui(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        r = run() if args["dry_run"] else _journalled("import_timeline", args, run)
+    page = _page(r["events"], args)
+    r["events"] = page.pop("rows")
+    r.update(page)
+    return r
+
+
 def apply_grade(args, ctx):
     _require_sha(args)
 
@@ -856,6 +893,28 @@ def register(registry):
             **PAGING, "limit": _limit(100, 500)},
          "required": ["project", "name"], "additionalProperties": False},
         timeline_from_clips, title="Build a timeline from clips", annotations=WRITE))
+    registry.add(Tool(
+        "import_timeline",
+        "Import an FCPXML file as a new timeline whose name ends ' [auto]', its source clips "
+        "imported into the media-pool bin open in Resolve (lands_in_bin). The plan lists what "
+        "the file says: every clip with its lane, record position and length, the transitions, "
+        "and media files missing on this machine. After the real run every video clip is read "
+        "back at its record position and length on some video track; transitions and "
+        "transforms are not visible through the API and are reported as unverified. Nothing "
+        "existing is modified or removed; a timeline that does not read back is named under "
+        "left_behind. The current timeline, playhead and page are put back. Dry run first; the "
+        "real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "name": {"type": "string", "pattern": " \\[auto\\]$", "minLength": 8,
+                     "description": "Name for the timeline; must end ' [auto]'."},
+            "file": {"type": "string", "minLength": 1,
+                     "description": "Absolute path of the .fcpxml file (rpresolve.interchange "
+                     "or reel write one)."},
+            **DRY_RUN,
+            **PAGING, "limit": _limit(100, 500)},
+         "required": ["project", "name", "file"], "additionalProperties": False},
+        import_timeline, title="Import a timeline from FCPXML", annotations=WRITE))
     registry.add(Tool(
         "apply_grade",
         "Apply a LUT (to one node) or a .drx grade still (with its {num_nodes, labels} "

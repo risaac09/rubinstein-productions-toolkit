@@ -880,6 +880,121 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
     return out
 
 
+def import_timeline(resolve, project_name, name, file, dry_run=False, project_id=None,
+                    expect_sha=None, check_cancel=None):
+    """Import an FCPXML file as a new ' [auto]' timeline through
+    MediaPool.ImportTimelineFromFile, its source clips imported into the
+    media-pool bin open in Resolve, and read the timeline back against what
+    the file says (rpresolve.fcpxmlread): every video clip's record position
+    and length on some video track, the item counts per track. Transitions
+    and transforms are not visible through the API, so the file's
+    transitions are listed as unverified. The current timeline, playhead and
+    page are put back. Returns {project, timeline, file, file_sha256, rate,
+    events, transitions, media_missing, warnings, plan_sha, dry_run, created,
+    items, tracks, problems, left_behind, lands_in_bin, ui_restore_problems,
+    exit_status}."""
+    from . import fcpxmlread
+    if not name.endswith(AUTO):
+        raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
+    if not os.path.isabs(file) or not os.path.isfile(file):
+        raise Refused(f"file must be an existing absolute path (got '{file}').")
+    if not file.lower().endswith(".fcpxml"):
+        raise Refused("only .fcpxml is read in this version (what rpresolve.interchange and "
+                      "reel write).")
+    try:
+        read = fcpxmlread.read(file)
+    except fcpxmlread.FcpxmlError as e:
+        raise Refused(str(e))
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    media_pool, root = api.media_pool_root(project)
+    count = int(project.GetTimelineCount() or 0)
+    if any(project.GetTimelineByIndex(i).GetName() == name for i in range(1, count + 1)):
+        raise Refused(f"a timeline named '{name}' already exists; nothing is overwritten.")
+    with open(file, "rb") as f:
+        file_sha = hashlib.sha256(f.read()).hexdigest()
+    rate = f"{read['rate'].numerator}/{read['rate'].denominator}"
+    missing = sorted(p for p, ok in read["media"].items() if not ok)
+    sha = plan_sha("import_timeline", pin.unique_id, name, file_sha)
+    out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "file": file,
+           "file_sha256": file_sha, "rate": rate, "events": read["events"],
+           "transitions": read["transitions"], "media_missing": missing,
+           "warnings": list(read["warnings"]), "plan_sha": sha, "dry_run": dry_run,
+           "created": None, "items": [], "tracks": {}, "problems": [], "left_behind": None,
+           "lands_in_bin": api._safe_call(media_pool.GetCurrentFolder(), "GetName"),
+           "ui_restore_problems": [], "exit_status": 0}
+    if missing:
+        out["warnings"].append(f"{len(missing)} media file(s) named in the file are not on this "
+                               "machine; Resolve will import them offline")
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the file or the project differ); run "
+                      "the dry run again and review it")
+    snap = api.UISnapshot(resolve, project)
+    with snap:
+        project = pin.check(pm)
+        if check_cancel:
+            check_cancel()
+        tl = media_pool.ImportTimelineFromFile(file, {"timelineName": name,
+                                                      "importSourceClips": True})
+        if not tl or api._safe_call(tl, "GetName") != name:
+            raise api.WriteNotApplied(f"ImportTimelineFromFile('{os.path.basename(file)}') "
+                                      f"returned {tl and api._safe_call(tl, 'GetName')!r}")
+        out["created"] = {"name": name, "unique_id": _uid(tl)}
+        try:
+            out["items"], out["tracks"], out["problems"] = _import_read_back(tl, read)
+        except api.ResolveAPIError as e:
+            out["problems"].append(f"{type(e).__name__}: {e}")
+    out["ui_restore_problems"] = snap.problems
+    if out["problems"]:
+        out["left_behind"] = name
+    out["exit_status"] = 1 if out["problems"] else 0
+    return out
+
+
+def _import_read_back(tl, read):
+    """Every video event of the file against the timeline's video tracks: one
+    item at its record position with its length, on any track (Resolve
+    decides the track a lane lands on). Returns (items, tracks, problems);
+    an item is {n, name, lane, record, frames, track, ok}; tracks counts the
+    items per track as read."""
+    start0 = int(tl.GetStartFrame())
+    have, tracks = [], {}
+    for kind in ("video", "audio"):
+        for t in range(1, int(api._safe_call(tl, "GetTrackCount", kind) or 0) + 1):
+            its = tl.GetItemListInTrack(kind, t) or []
+            tracks[f"{kind[0].upper()}{t}"] = len(its)
+            for it in its:
+                have.append({"kind": kind, "track": t, "record": int(it.GetStart()) - start0,
+                             "frames": int(it.GetEnd()) - int(it.GetStart()), "used": False,
+                             "name": api._safe_call(it, "GetName")})
+    items, problems = [], []
+    for n, ev in enumerate(e for e in read["events"] if e["kind"] == "video"):
+        match = next((h for h in have if h["kind"] == "video" and not h["used"]
+                      and h["record"] == ev["record"] and h["frames"] == ev["frames"]), None)
+        if match:
+            match["used"] = True
+        else:
+            near = [h for h in have if h["kind"] == "video" and not h["used"]
+                    and abs(h["record"] - ev["record"]) <= 2]
+            problems.append(f"#{n + 1} {ev['name']}: no item at record {ev['record']} for "
+                            f"{ev['frames']} frames" +
+                            (f" (nearest: {near[0]['name']} at {near[0]['record']} for "
+                             f"{near[0]['frames']})" if near else ""))
+        items.append({"n": n + 1, "name": ev["name"], "lane": ev["lane"], "record": ev["record"],
+                      "frames": ev["frames"], "track": match and match["track"],
+                      "ok": bool(match)})
+    extra = [h for h in have if h["kind"] == "video" and not h["used"]]
+    if extra:
+        problems.append(f"{len(extra)} video item(s) the file does not name: " +
+                        ", ".join(f"{h['name']} at {h['record']}" for h in extra[:3]))
+    want_audio = sum(1 for e in read["events"] if e["kind"] == "audio")
+    got_audio = sum(1 for h in have if h["kind"] == "audio")
+    if want_audio and not got_audio:
+        problems.append(f"the file names {want_audio} audio clip(s); no audio item was placed")
+    return items, tracks, problems
+
+
 def _fingerprints(items):
     return [grade.graph_fingerprint(g) if g else None
             for g in (api._safe_call(it, "GetNodeGraph") for it in items)]
