@@ -1,0 +1,1 @@
+A real ingest now starts ProRes LT proxies for BRAW in the background, on the laptop, matched frame for frame to Resolve's reading of clips shot off-speed; the new link_proxies tool attaches them and sets the project to prefer proxies and the clip to its filmed rate. timeline_from_clips can follow the filmed rate, cut each clip to its real frames, and set its own size.

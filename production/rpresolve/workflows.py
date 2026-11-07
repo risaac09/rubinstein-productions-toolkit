@@ -27,7 +27,9 @@ from pathlib import Path
 
 from . import api, captions, grade
 from . import detect as rpdetect
+from . import filmed as rpfilmed
 from . import ingest as rpingest
+from . import proxies as rpproxies
 from . import relink as rprelink
 from .renderguard import RenderGuard
 
@@ -301,6 +303,22 @@ def relink(resolve, project_name, search_roots, folder=None, dry_run=True, proje
     return out
 
 
+def _set_filmed_rate(clip, probe):
+    """A note for the result row; a clip on a timeline keeps its rate."""
+    try:
+        want = probe(clip.GetClipProperty("File Path"))["fps"]
+    except ValueError:
+        return ", filmed rate unreadable, so its rate stays"
+    if abs(float(clip.GetClipProperty("FPS")) - float(want)) <= 0.01:
+        return ""
+    if str(clip.GetClipProperty("Usage") or "0") != "0":
+        return f", filmed at {want} but a timeline uses it, so its rate stays"
+    clip.SetClipProperty("FPS", want)
+    if abs(float(clip.GetClipProperty("FPS")) - float(want)) > 0.01:
+        return f", could not set {want} fps"
+    return f" at {want} fps"
+
+
 def _relink_one(media_pool, clip, e, exists, stat):
     """Relink one verified clip and read it back: {result, drift}."""
     props = clip.GetClipProperty() or {}
@@ -320,6 +338,55 @@ def _relink_one(media_pool, clip, e, exists, stat):
     if not _same_path(after.get("File Path") or "", e["new_path"]):
         return {"result": f"FAILED: File Path reads '{after.get('File Path')}' after the relink"}
     return {"result": "relinked", "drift": rprelink.drift(before, after)}
+
+
+# ---------------------------------------------------------------------------
+# link_proxies
+# ---------------------------------------------------------------------------
+
+def link_proxies(resolve, project_name, folder=None, dry_run=True, project_id=None,
+                 check_cancel=None, expect_sha=None, exists=os.path.exists,
+                 probe=rpfilmed.read):
+    """Link each BRAW clip of the open project to its ProRes LT proxy in folder
+    (default rpproxies.proxy_dir) and set the project to prefer proxies, each
+    read back. A clip no timeline uses then takes the rate it was filmed at:
+    after the link, because Resolve refuses a link on a clip at a changed rate.
+    Returns {project, dry_run, folder, results, counts, plan_sha,
+    exit_status}. exit_status: 0 every clip is on its proxy, 2 some have none
+    yet, 1 a link failed."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, root = api.media_pool_root(project)
+    folder = folder or rpproxies.proxy_dir(pin.name)
+    clips = [(c, c.GetClipProperty() or {}) for _, c in _walk_bins(root)]
+    rows = rpproxies.plan_links(clips, folder, exists=exists)
+    sha = plan_sha("link_proxies", pin.unique_id, folder,
+                   [(r["name"], r["action"]) for r in rows])
+    if not dry_run and expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run; run the dry run again and review it")
+    results = []
+    check = _check(pin, pm, check_cancel)
+    for r in rows:
+        result = r["action"] if dry_run or r["action"] != "link" else None
+        if result is None:
+            check()
+            ok = r["clip"].LinkProxyMedia(r["proxy"])
+            read = r["clip"].GetClipProperty("Proxy Media Path")
+            result = "linked" if ok and read == r["proxy"] else f"FAILED: reads '{read}'"
+            if result == "linked":
+                result += _set_filmed_rate(r["clip"], probe)
+        results.append({"name": r["name"], "proxy": r["proxy"], "result": result})
+    mode = str(project.GetSetting("perfProxyMediaMode"))
+    if not dry_run and mode != rpproxies.PREFER_PROXIES:
+        project.SetSetting("perfProxyMediaMode", rpproxies.PREFER_PROXIES)
+        mode = str(project.GetSetting("perfProxyMediaMode"))
+    counts = {}
+    for r in results:
+        key = r["result"].split(":")[0].split(",")[0]
+        counts[key] = counts.get(key, 0) + 1
+    failed = "FAILED" in counts or (not dry_run and mode != rpproxies.PREFER_PROXIES)
+    return {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run,
+            "folder": folder, "results": results, "counts": counts, "proxy_mode": mode,
+            "plan_sha": sha, "exit_status": 1 if failed else (2 if "no proxy yet" in counts else 0)}
 
 
 # ---------------------------------------------------------------------------
@@ -738,11 +805,14 @@ def set_color_management(resolve, project_name, preset=None, dry_run=False, proj
 
 
 def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order="name",
-                        dry_run=False, project_id=None, expect_sha=None, check_cancel=None):
+                        dry_run=False, project_id=None, expect_sha=None, check_cancel=None,
+                        fps=None, width=None, height=None, probe=rpfilmed.read):
     """Build a new ' [auto]' timeline from media-pool clips in order
     (rpresolve.clipline): the clips directly in a bin, or the clips named in
     `clips` (unique ids, absolute file paths or names). Picture only, on V1,
-    following the project's frame rate and size. Every item is read back.
+    following the project's frame rate and size, unless fps='filmed' (the rate
+    the clips were filmed at, each cut to the frames its file holds) or width
+    and height say otherwise. Every item is read back.
     The current timeline, playhead and page are put back. Returns {project,
     timeline, rate, order, plan, skipped, total_frames, conformed, plan_sha,
     dry_run, created, items, problems, left_behind, lands_in_bin,
@@ -765,12 +835,24 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
     tl_fps = deliver.exact_fps(rate)
     if not tl_fps:
         raise Refused(f"the project's timelineFrameRate reads '{rate}'; cannot plan lengths.")
+    if bool(width) != bool(height):
+        raise Refused("give both width and height, or neither.")
+    settings = {}
     try:
         planned = cl.plan(root, tl_fps, bin_path=bin, refs=clips, order=order)
-    except cl.PlanError as e:
+        if fps == "filmed":
+            rate, real = rpfilmed.timeline_rate(planned["rows"], probe)
+            planned = cl.plan(root, deliver.exact_fps(rate), bin_path=bin, refs=clips, order=order)
+            rpfilmed.trim(planned["rows"], real)
+            settings["timelineFrameRate"] = rate
+    except (cl.PlanError, ValueError) as e:
         raise Refused(str(e))
+    if width:
+        settings.update(timelineResolutionWidth=str(width), timelineResolutionHeight=str(height))
+    if settings:
+        settings = {"useCustomSettings": "1", **settings}
     rows = planned["rows"]
-    sha = plan_sha("clip_timeline", pin.unique_id, name, rate, order, rows)
+    sha = plan_sha("clip_timeline", pin.unique_id, name, rate, order, rows, settings)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "order": order, "plan": rows, "skipped": planned["skipped"],
            "total_frames": sum(r["length"] for r in rows),
@@ -787,7 +869,7 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
     with snap:
         project = pin.check(pm)
         built = cl.build(project, media_pool, name, rows, planned["clips"],
-                         _check(pin, pm, check_cancel))
+                         _check(pin, pm, check_cancel), settings)
     out["created"] = {"name": built["name"], "unique_id": built["unique_id"],
                       "items": len(built["items"])}  # the rows go in out["items"], not the journal
     out["items"] = built["items"]

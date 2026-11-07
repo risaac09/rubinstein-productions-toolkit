@@ -26,7 +26,7 @@ import os
 from .. import api, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
-from .. import relink as rprelink, trimreview
+from .. import proxies as rpproxies, relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
 
@@ -100,6 +100,9 @@ def ingest(args, ctx):
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         r = run() if args["dry_run"] else _journalled("ingest", args, run)
     r["missing"] = missing
+    if not args["dry_run"]:  # the proxies outlive this call; link_proxies attaches them
+        r["proxies"] = rpproxies.start(args["project"], [
+            x["path"] for x in r["results"] if x["result"] in ("imported", "tagged")])
     # One row per file: the result, plus the plan's camera, profile and reason
     # (why a file is skipped, sent to Review, or needs conforming).
     by_path = {e["path"]: e for e in r.pop("plan")}
@@ -279,7 +282,8 @@ def timeline_from_clips(args, ctx):
             ctx.session.get(), args["project"], args["name"], bin=args.get("bin"),
             clips=args.get("clips"), order=args["order"], dry_run=args["dry_run"],
             project_id=args.get("project_id"), check_cancel=ctx.check_cancel,
-            expect_sha=args.get("plan_sha"))
+            expect_sha=args.get("plan_sha"), fps=args.get("fps"), width=args.get("width"),
+            height=args.get("height"))
         n, skipped, conf = len(r["plan"]), len(r["skipped"]), len(r["conformed"])
         extra = ((f"; {skipped} item(s) in the bin skipped (not placeable)" if skipped else "") +
                  (f"; {conf} clip(s) at another frame rate than the timeline, conformed by "
@@ -640,6 +644,21 @@ def trim_review_markers(args, ctx):
         return run() if args["dry_run"] else _journalled("trim_review_markers", args, run)
 
 
+def link_proxies(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.link_proxies(ctx.session.get(), args["project"], folder=args.get("folder"),
+                                   dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                   check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        c = ", ".join(f"{n} {k}" for k, n in sorted(r["counts"].items()))
+        r["summary"] = f"proxies in {r['folder']}: {c or 'no BRAW clips'}" + _how(r)
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("link_proxies", args, run)
+
+
 def relink(args, ctx):
     _require_sha(args)
     roots = []
@@ -802,7 +821,10 @@ def register(registry):
         "such as 'GH7'), or clips named in `clips` (unique ids, absolute file paths or "
         "names). order is name or path (natural order, so P2 comes before P10) or given. "
         "Picture only, on V1, following the project's frame rate and size; a clip at another "
-        "frame rate is conformed by Resolve to real time and the plan says so. Items in a bin "
+        "frame rate is conformed by Resolve to real time and the plan says so. fps 'filmed' "
+        "instead makes the timeline at the rate the clips were filmed at, each cut to the "
+        "frames its file holds; clips filmed at different rates are refused. width and height "
+        "set the timeline's size. Items in a bin "
         "that cannot be placed (timelines, audio-only clips) are listed under skipped. Every "
         "item is read back (the clip, its first source frame, its length, no gap or overlap). "
         "The timeline is added to the media-pool bin that is open in Resolve (lands_in_bin). "
@@ -823,6 +845,13 @@ def register(registry):
             "order": {"type": "string", "enum": ["name", "path", "given"], "default": "name",
                       "description": "name or path: natural order of the clip name or file "
                       "path. given: the order of clips (or the bin as Resolve lists it)."},
+            "fps": {"type": "string", "enum": ["filmed"],
+                    "description": "filmed: the timeline takes the rate the clips were filmed "
+                    "at. Default: the project's."},
+            "width": {"type": "integer", "minimum": 16, "maximum": 16384,
+                      "description": "Timeline width; give height too."},
+            "height": {"type": "integer", "minimum": 16, "maximum": 16384,
+                       "description": "Timeline height; give width too."},
             **DRY_RUN,
             **PAGING, "limit": _limit(100, 500)},
          "required": ["project", "name"], "additionalProperties": False},
@@ -1081,6 +1110,20 @@ def register(registry):
             "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}},
          "required": ["project", "search_roots"], "additionalProperties": False},
         relink, title="Relink offline clips", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "link_proxies",
+        "Link each BRAW clip of the open project to its ProRes LT proxy (made in the background "
+        "after ingest, ~/Movies/RPProxies/<project>) and set the project to prefer proxies; "
+        "every link is read back. A clip no timeline uses then takes the rate it was filmed at. A clip whose proxy has not landed is reported and left "
+        "alone, so run it again later. The source file, grades and timelines are not touched. "
+        "Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "folder": {"type": "string", "description": "Absolute folder holding the proxies. "
+                       "Default: ~/Movies/RPProxies/<project>."},
+            **DRY_RUN},
+         "required": ["project"], "additionalProperties": False},
+        link_proxies, title="Link BRAW proxies", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

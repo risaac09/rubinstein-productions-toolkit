@@ -187,7 +187,7 @@ def read_back(tl, rows):
     return items, problems
 
 
-def build(project, media_pool, name, rows, clips, check=None):
+def build(project, media_pool, name, rows, clips, check=None, settings=None):
     """Make the timeline, make it current, append every row, read it back.
     Raises api.WriteNotApplied before anything exists (the timeline could
     not be made). After that a Resolve problem, or the project changing, is
@@ -201,6 +201,12 @@ def build(project, media_pool, name, rows, clips, check=None):
     out = {"name": name, "unique_id": sb._uid(tl), "start_frame": None, "items": [],
            "problems": [], "left_behind": None}
     try:
+        for key, value in (settings or {}).items():  # before any clip: a rate locks after
+            read = None
+            if tl.SetSetting(key, value):
+                read = tl.GetSetting(key)
+            if read is None or float(read) != float(value):
+                raise api.WriteNotApplied(f"timeline setting {key} reads '{read}', wanted '{value}'")
         if not project.SetCurrentTimeline(tl) or sb._uid(project.GetCurrentTimeline()) != sb._uid(tl):
             raise api.WriteNotApplied(f"could not make '{name}' current to place clips on it")
         out["start_frame"] = int(tl.GetStartFrame())
@@ -208,7 +214,7 @@ def build(project, media_pool, name, rows, clips, check=None):
             if check:
                 check()
             media_pool.AppendToTimeline([{"mediaPoolItem": clips[row["uid"]], "startFrame": 0,
-                                          "endFrame": row["frames"], "mediaType": VIDEO,
+                                          "endFrame": row.get("end", row["frames"]), "mediaType": VIDEO,
                                           "trackIndex": 1}])
         out["items"], out["problems"] = read_back(tl, rows)
     except api.ProjectChanged as e:
