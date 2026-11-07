@@ -287,15 +287,42 @@ class TestPlan(Base):
 @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK) and os.access(dc.FFPROBE, os.X_OK),
                      "ffmpeg missing")
 class TestPreview(Base):
-    def test_the_preview_renders_the_plan_as_9x16(self):
+    def media(self):
+        # a tone that stops and starts, so duckplan has speech above a floor
+        talk = ("sine=frequency=440:sample_rate=48000:duration=12,"
+                "volume=volume=0:enable='lt(mod(t,2),1)'")
         subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
                         "-i", f"testsrc2=size=320x180:rate={FPS}:duration=12",
-                        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=12",
+                        "-f", "lavfi", "-i", talk,
                         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-shortest", self.src], stdin=subprocess.DEVNULL, check=True)
         subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
                         "-i", "sine=frequency=110:sample_rate=48000:duration=30", self.music],
                        stdin=subprocess.DEVNULL, check=True)
+
+    def test_duck_writes_a_stem_the_timeline_and_the_preview_carry(self):
+        try:
+            import numpy  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("duck needs numpy")
+        self.media()
+        r, rows, _ = reel.plan(self.manifest(self.SPANS), self.music, beats(), self.dir, music_in=1.5)
+        out = os.path.join(self.dir, "duck")
+        with open(reel.duck(r, out), encoding="utf-8") as f:
+            ducked = json.load(f)
+        self.assertEqual((ducked["music"]["in"], ducked["music"]["ducked"]), (0.0, True))
+        self.assertEqual(ducked["music"]["source"], r["music"])
+        stem = ducked["music"]["path"]
+        self.assertEqual(stem, os.path.join(out, "music-ducked.wav"))
+        self.assertAlmostEqual(ic.probe_any(stem)["seconds"], rows[-1]["cut_s"], delta=0.05)
+        self.assertIn("music-ducked.wav", ic.fcpxml(ic.timeline(ducked)))
+        preview = reel.preview_command(ducked, os.path.join(self.dir, "p.mp4"))[0]
+        self.assertNotIn("sidechaincompress", " ".join(preview))
+        with self.assertRaisesRegex(reel.ReelError, "already a ducked stem"):
+            reel.duck(ducked, out)
+
+    def test_the_preview_renders_the_plan_as_9x16(self):
+        self.media()
         layer = os.path.join(self.dir, "pop.mov")
         subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
                         "-i", f"color=c=green@0.5:s=320x180:r={FPS}:d=1,format=rgba",

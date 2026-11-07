@@ -30,7 +30,7 @@ WRAPPERS = {
     "wordsnap": (["w.json", "src.wav", "--out", "o.json"], "--margin-db", ("source", "src.wav")),
     "beats": (["m.wav", "--out", "b.json"], "--prior-bpm", ("music", "m.wav")),
     "reel": (["plan", "m.json", "--music", "t.mp3", "--beats", "b.json", "--out", "dir"],
-             "{plan,preview}", ("step", "plan")),
+             "{plan,preview,duck}", ("step", "plan")),
     "roomtone": (["find", "a.wav"], "{find,bed}", ("action", "find")),
     "dxmetrics": (["lag", "a.wav", "b.wav"], "{measure,compare,lag}", ("action", "lag")),
     "duckplan": (["plan", "d.wav", "--out", "dir"], "{plan,render}", ("action", "plan")),

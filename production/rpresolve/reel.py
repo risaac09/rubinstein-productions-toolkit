@@ -7,6 +7,7 @@ Run from production/:
     python3 -m rpresolve.reel plan MANIFEST --music TRACK --beats BEATS.json --out DIR
         [--max-s 45] [--transition dissolve:6|cut] [--punch 1.0,1.2]
         [--cutout 2,5] [--downbeat-offset 0] [--music-in 0] [--clip NAME] [--fps RATE]
+    python3 -m rpresolve.reel duck REEL.json --out DIR [--depth 14]
     python3 -m rpresolve.reel preview REEL.json --out FILE.mp4 [--lufs -14] [--crf 18]
 
 plan: the clip's spans play in manifest order from record 0, which is also
@@ -40,11 +41,18 @@ fields, so endcheck, pacing and interchange read it unchanged, plus a
 in, out, record, beat, offset ms, length change, transition, scale, cutout,
 the words at the cut). The folder is refused inside any git working tree.
 
+duck: the bed as a stem for the timeline, since FCPXML carries no ducking: the
+reel's dialogue is built on the plan's frames, rpresolve.duckplan ducks the
+music from its in-point under it, and DIR/reel-ducked.json is the plan with
+its music pointing at DIR/music-ducked.wav ({path, in: 0, ducked: true,
+source}). Use that file for interchange and preview. Needs numpy.
+
 preview: the plan as a 1080x1920 H.264 file: each span filled and cropped to
 9:16 (times its scale), cuts joined by concat and dissolves by xfade over
 the same handles the FCPXML uses (so record positions match), a layer with
 alpha overlaid where a span names one, the music bed ducked under the
-dialogue by sidechaincompress, loudnorm to --lufs, AAC 320k 48 kHz stereo,
+dialogue by sidechaincompress (a stem from duck goes in as it is), loudnorm
+to --lufs, AAC 320k 48 kHz stereo,
 bt709 tags, faststart. No captions: those come from Resolve's
 create_captions after the import, or from vertcut.
 """
@@ -68,6 +76,7 @@ EDGE_S = cutlist.EDGE_S
 W, H = 1080, 1920
 DEFAULT_LUFS, TP, LRA = -14.0, -1.5, 11.0   # short-form feeds; -16 for LinkedIn
 DUCK = "sidechaincompress=threshold=0.02:ratio=6:attack=30:release=500:level_sc=1"
+DUCK_DB = 14.0          # the stem's depth; duckplan calls 12 to 18 a common start under talk
 # setparams is what makes the tags reach the file; the encoder flags alone leave them unspecified
 COLOR_TAG = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv"
 
@@ -342,9 +351,11 @@ def out_rate(src_fps):
     return Fraction(30000, 1001) if fr.denominator == 1001 else Fraction(30)
 
 
-def preview_command(reel, out, lufs=DEFAULT_LUFS, crf=18, clip=None, ffmpeg=None):
+def preview_command(reel, out, lufs=DEFAULT_LUFS, crf=18, clip=None, ffmpeg=None,
+                    dialogue_only=False):
     """The ffmpeg command for the preview, built on interchange.timeline so
-    the frames match the FCPXML. Returns (argv, seconds)."""
+    the frames match the FCPXML. Returns (argv, seconds). dialogue_only
+    writes the sound of a reel with no music as it stands, to a WAV."""
     media = {s["id"]: ic.probe(s["path"]) if os.path.isfile(s["path"]) else None
              for s in cutlist.sources(reel)}
     missing = [s["path"] for s in cutlist.sources(reel) if media[s["id"]] is None]
@@ -420,15 +431,22 @@ def preview_command(reel, out, lufs=DEFAULT_LUFS, crf=18, clip=None, ffmpeg=None
         mi = inp(m["path"])
         f.append(f"[{mi}:a]atrim=start={m['in'] / fps:.6f}:end={(m['in'] + m['frames']) / fps:.6f},"
                  f"asetpts=PTS-STARTPTS,{audio_fmt},apad=whole_dur={total_s:.6f}[mus]")
-        f.append(f"[{a}]asplit[d1][d2]")
-        f.append(f"[mus][d1]{DUCK}[duck]")
-        f.append(f"[duck][d2]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]")
+        mix = "amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]"
+        if reel["music"].get("ducked"):
+            f.append(f"[mus][{a}]{mix}")
+        else:
+            f.append(f"[{a}]asplit[d1][d2]")
+            f.append(f"[mus][d1]{DUCK}[duck]")
+            f.append(f"[duck][d2]{mix}")
         a = "mix"
-    f.append(f"[{a}]loudnorm=I={lufs:g}:TP={TP:g}:LRA={LRA:g}[aout]")
     f.append(f"[{v}]{COLOR_TAG}[vout]")
     argv = [ffmpeg or dc.FFMPEG, "-v", "error", "-y"]
     for p in inputs:
         argv += ["-i", p]
+    if dialogue_only:  # an unmapped picture would stop the graph, so it goes to null
+        return argv + ["-filter_complex", ";".join(f), "-map", "[vout]", "-f", "null", "-",
+                       "-map", f"[{a}]", "-c:a", "pcm_s24le", "-ar", "48000", out], total_s
+    f.append(f"[{a}]loudnorm=I={lufs:g}:TP={TP:g}:LRA={LRA:g}[aout]")
     argv += ["-filter_complex", ";".join(f), "-map", "[vout]", "-map", "[aout]",
              "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p",
              "-r", f"{rate.numerator}/{rate.denominator}",
@@ -442,11 +460,44 @@ def preview(reel, out, **kw):
     if problem:
         raise paths.OutputRefused(problem)
     argv, seconds = preview_command(reel, out, **kw)
+    _ffmpeg(argv, out)
+    return seconds
+
+
+def _ffmpeg(argv, out):
     proc = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
     if proc.returncode or not os.path.isfile(out):
         raise ReelError("ffmpeg failed: " + (proc.stderr or "").strip()[:800])  # the cause comes first
-    return seconds
+
+
+def duck(reel, out_dir, depth=DUCK_DB, clip=None):
+    """The bed ducked under the reel's dialogue, as a stem. Returns the path
+    of reel-ducked.json, the plan with its music pointing at the stem."""
+    from . import duckplan  # numpy; the plan and the preview stay stdlib
+    music = reel.get("music")
+    if not music:
+        raise ReelError("the plan has no music to duck")
+    if music.get("ducked"):
+        raise ReelError("the plan's music is already a ducked stem")
+    out_dir = os.path.abspath(out_dir)  # the stem's path goes into the plan
+    rp = os.path.join(out_dir, "reel-ducked.json")
+    problem = paths.out_problem(rp, any_git_tree=True)
+    if problem:
+        raise paths.OutputRefused(problem)
+    os.makedirs(out_dir, exist_ok=True)
+    dialogue, bed = os.path.join(out_dir, "dialogue.wav"), os.path.join(out_dir, "bed.wav")
+    argv, seconds = preview_command({k: v for k, v in reel.items() if k != "music"}, dialogue,
+                                    clip=clip, dialogue_only=True)
+    _ffmpeg(argv, dialogue)
+    _ffmpeg([dc.FFMPEG, "-v", "error", "-y", "-ss", f"{music.get('in') or 0:.6f}",
+             "-t", f"{seconds:.6f}", "-i", music["path"], "-ar", "48000", "-ac", "2",
+             "-c:a", "pcm_s24le", bed], bed)
+    p = duckplan.render(bed, dialogue, out_dir, depth_db=depth)
+    from resolve_survey import write_report  # atomic: temp file, then replace
+    write_report(rp, json.dumps(dict(reel, music={"path": p["out"], "in": 0.0, "ducked": True,
+                                                  "source": music}), indent=2) + "\n")
+    return rp
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +529,12 @@ def add_arguments(p):
                    help=f"loudness target (default {DEFAULT_LUFS:g}; -16 for LinkedIn)")
     b.add_argument("--crf", type=int, default=18)
     b.add_argument("--clip", help="the manifest clip (needed when it holds several)")
+    c = sub.add_parser("duck", help="the bed as a stem ducked under the dialogue, for the timeline")
+    c.add_argument("reel", help="reel.json from plan")
+    c.add_argument("--out", required=True, help="folder for the stem and reel-ducked.json, outside "
+                                                "any git tree")
+    c.add_argument("--depth", type=float, default=DUCK_DB, help=f"dB (default {DUCK_DB:g})")
+    c.add_argument("--clip", help="the manifest clip (needed when it holds several)")
 
 
 def run(args):
@@ -504,10 +561,14 @@ def run(args):
         with open(args.reel, encoding="utf-8") as fh:
             reel = json.load(fh)
         cutlist.validate_manifest(reel, allow_no_speech=True)
+        if args.step == "duck":
+            print(f"duck: {args.depth:g} dB -> {duck(reel, args.out, args.depth, args.clip)}")
+            return 0
         seconds = preview(reel, args.out, lufs=args.lufs, crf=args.crf, clip=args.clip)
         print(f"preview: {seconds:.3f} s, {W}x{H} -> {args.out}")
         return 0
-    except (OSError, ValueError) as e:  # ReelError, CutlistError, InterchangeError, OutputRefused
+    # ReelError, CutlistError, InterchangeError, OutputRefused; RuntimeError from duckplan's tools
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"reel: {e}", file=sys.stderr)
         return 2
 

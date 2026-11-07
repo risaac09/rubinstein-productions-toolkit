@@ -13,8 +13,9 @@ Run from `production/`; Python 3.9, stdlib for the plan, ffmpeg for the preview.
 3. The beat map: `python3 -m rpresolve.beats MUSIC --out beats.json` ([edit-assist.md](edit-assist.md#beats)).
 4. The plan: `python3 -m rpresolve.reel plan MANIFEST --music MUSIC --beats beats.json --out DIR`.
 5. Subject cutouts where the plan marks them: `cutout` writes a ProRes 4444 clip per span; put its path in the span's `layer` ([interchange.md](interchange.md#reel-fields)).
-6. The preview: `python3 -m rpresolve.reel preview DIR/reel.json --out DIR/preview.mp4`, then `qc --destination social_9x16` on it and the A/B through `reel_ab`.
-7. Resolve: `python3 -m rpresolve.interchange DIR/reel.json --format fcpxml --out DIR/reel.fcpxml`, then the MCP `import_timeline` tool ([resolve-mcp.md](resolve-mcp.md)), `apply_grade` for the look, `create_captions`, `queue_render`.
+6. The stem: `python3 -m rpresolve.reel duck DIR/reel.json --out DIR/duck`. FCPXML carries no ducking, so the timeline takes the bed already ducked; everything after this reads `DIR/duck/reel-ducked.json`.
+7. The preview: `python3 -m rpresolve.reel preview DIR/duck/reel-ducked.json --out DIR/preview.mp4`, then `qc --dest social_9x16` on it and the A/B through `reel_ab`.
+8. Resolve: `python3 -m rpresolve.interchange DIR/duck/reel-ducked.json --format fcpxml --out DIR/reel.fcpxml`, then the MCP `import_timeline` tool ([resolve-mcp.md](resolve-mcp.md)), `apply_grade` for the look, `create_captions`, `queue_render`.
 
 ## plan
 
@@ -35,13 +36,21 @@ Dressing goes into the fields `interchange` writes ([reel fields](interchange.md
 
 Output, in a folder outside any git tree: `reel.json` (the manifest with the moved spans and the new fields, plus a `reel` block: tempo, beats file, downbeat offset, length, one row per cut, `proposal: true`) and `reel-plan.tsv` (span, in, out, record, cut, beat, offset in ms, length change in frames, transition, scale, cutout, the words at the cut). Beats are rounded to the frame grid, so `offset_ms` shows how far the frame sits from the beat: half a frame at most.
 
+## duck
+
+```sh
+python3 -m rpresolve.reel duck REEL.json --out DIR [--depth 14] [--clip NAME]
+```
+
+Builds the reel's dialogue on the plan's frames (`dialogue.wav`), cuts the bed from its `--music-in` point to the reel's length (`bed.wav`), and runs [`duckplan render`](sound-assist.md) on the pair, which writes `music-ducked.wav` and its `duckplan.json`. `reel-ducked.json` is the plan with `music` as `{path, in: 0, ducked: true, source}`, `source` keeping the track the credit line names. Needs numpy.
+
 ## preview
 
 ```sh
 python3 -m rpresolve.reel preview REEL.json --out FILE.mp4 [--lufs -14] [--crf 18] [--clip NAME]
 ```
 
-1080x1920 H.264 at the source's rate (capped at 30): each span filled and cropped to 9:16 and scaled by its punch-in, cuts joined by concat and dissolves by xfade over the same handles the FCPXML uses, so record positions match the timeline frame for frame; a layer with alpha overlaid where a span names one; the music bed ducked under the dialogue by `sidechaincompress`; `loudnorm` to `--lufs` (-14 for the feeds, -16 for LinkedIn); AAC 320k 48 kHz stereo; bt709 tags; faststart. No captions: those come from Resolve's `create_captions` after the import, or from `vertcut`.
+1080x1920 H.264 at the source's rate (capped at 30): each span filled and cropped to 9:16 and scaled by its punch-in, cuts joined by concat and dissolves by xfade over the same handles the FCPXML uses, so record positions match the timeline frame for frame; a layer with alpha overlaid where a span names one; the music bed ducked under the dialogue by `sidechaincompress`, or a stem from `duck` taken as it is; `loudnorm` to `--lufs` (-14 for the feeds, -16 for LinkedIn); AAC 320k 48 kHz stereo; bt709 tags; faststart. No captions: those come from Resolve's `create_captions` after the import, or from `vertcut`.
 
 ## Checks
 
