@@ -1,0 +1,44 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Spirited Away look",
+ "description": "After Spirited Away (2001): the Kiki base with blue shadows, warm amber highlights, yellow-greens and reds pushed, skies azure, contrast kept. Our own numbers, measured from five stills; strength set at 130 percent of the first draft on Isaac's letter, 2026-11-07.",
+ "white_balance": {
+  "temp": 5.2
+ },
+ "tone": {
+  "black": 0.026
+ },
+ "split_tone": {
+  "L=0.10": {
+   "hue": 260,
+   "amount": 1.04
+  },
+  "L=0.25": {
+   "hue": 240,
+   "amount": 0.78
+  },
+  "L=0.85": {
+   "hue": 85,
+   "amount": 1.3
+  }
+ },
+ "hue_shift": {
+  "all": {
+   "150 green": -13.0,
+   "180 teal": -5.2
+  }
+ },
+ "sat_gain": {
+  "all": {
+   "000 pink": 1.065,
+   "030 red": 1.104,
+   "090 amber": 1.065,
+   "120 yellow": 1.13,
+   "150 green": 1.195,
+   "210 cyan": 1.065,
+   "240 azure": 1.104,
+   "300 violet": 0.935,
+   "330 magenta": 0.935
+  }
+ }
+}

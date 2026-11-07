@@ -1,0 +1,42 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Her look",
+ "description": "After Her (2013): warm and bright with a soft shoulder and no hard white, coral in the highlights, amber mids and warm shadows, blues and cyans drained, greens quiet, lifted black. Skin held near neutral. Our own numbers, measured from five stills; strength set at 130 percent of the first draft on Isaac's letter, 2026-11-07.",
+ "white_balance": {
+  "temp": 23.4,
+  "tint": 1.3
+ },
+ "tone": {
+  "black": 0.016,
+  "white": -0.039,
+  "contrast": 0.896
+ },
+ "split_tone": {
+  "L=0.25": {
+   "hue": 70,
+   "amount": 1.04
+  },
+  "L=0.55": {
+   "hue": 60,
+   "amount": 1.04
+  },
+  "L=0.85": {
+   "hue": 50,
+   "amount": 1.3
+  }
+ },
+ "sat_gain": {
+  "all": {
+   "000 pink": 1.13,
+   "060 orange": 1.052,
+   "120 yellow": 0.87,
+   "150 green": 0.74,
+   "180 teal": 0.675,
+   "210 cyan": 0.61,
+   "240 azure": 0.48,
+   "270 blue": 0.415,
+   "300 violet": 0.61,
+   "330 magenta": 0.87
+  }
+ }
+}

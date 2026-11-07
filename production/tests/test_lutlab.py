@@ -376,8 +376,11 @@ class DeltaTest(unittest.TestCase):
         base.mkdir()
         (base / "params.json").write_text(json.dumps(synthetic_params("logc3")))
         files = sorted(looks.glob("*.json"))
-        self.assertGreaterEqual(len(files), 6)
-        out = pipeline.looks(base / "params.json", [str(f) for f in files], ["pyxis", "s5ii"], tmp, size=9)
+        self.assertGreaterEqual(len(files), 14)
+        for slug in ("kiki", "spirited-away", "amelie", "her", "moonlight", "br2049", "grand-budapest",
+                     "in-the-mood-for-love"):  # the film looks
+            self.assertIn(slug, [f.stem for f in files])
+        out = pipeline.looks(base / "params.json", [str(f) for f in files], ["pyxis", "s5ii"], tmp, size=17)
         self.assertEqual(len(out), 2 * len(files))
         for f in out:
             self.assertTrue(np.isfinite(cube.read_cube(f)["table"]).all(), f)
@@ -608,9 +611,11 @@ class LooksMonitorTest(unittest.TestCase):
             self.assertEqual(lut["table"].shape, (33, 33, 33, 3))
             self.assertGreaterEqual(lut["table"].min(), 0.0)
             self.assertLessEqual(lut["table"].max(), 1.0)
-        self.assertEqual(len({f.name for f in mon}), len(mon))  # no collisions across the six looks
+        self.assertEqual(len({f.name for f in mon}), len(mon))  # no collisions across the shipped looks
         self.assertEqual(sorted(f.name for f in mon if f.name.startswith("S5")),
-                         ["S5BLEA.cube", "S5ICEB.cube", "S5NEUT.cube", "S5PRIN.cube", "S5SOFT.cube", "S5TUNG.cube"])
+                         ["S5AMLI.cube", "S5BLAD.cube", "S5BLEA.cube", "S5GRAN.cube", "S5HERL.cube", "S5ICEB.cube",
+                          "S5INTH.cube", "S5KIKI.cube", "S5MOON.cube", "S5NEUT.cube", "S5PRIN.cube", "S5SOFT.cube",
+                          "S5SPIR.cube", "S5TUNG.cube"])
         self.assertEqual(len(written), 4 * len(self.files))
 
     def test_monitor_matches_the_look_when_unclipped(self):

@@ -1,0 +1,38 @@
+{
+ "lutlab_delta": 1,
+ "name": "RP Grand Budapest Hotel look",
+ "description": "After The Grand Budapest Hotel (2014): pastel, low contrast, lifted black and a soft white, pink-red in the shadows and mids with a faint pink highlight, pinks, magentas and violets forward, greens quiet. Skin held near neutral. Our own numbers, measured from five stills; strength set at 100 percent of the first draft on Isaac's letter, 2026-11-07.",
+ "white_balance": {
+  "temp": 6.0,
+  "tint": 4.0
+ },
+ "tone": {
+  "black": 0.025,
+  "white": -0.01,
+  "contrast": 0.9
+ },
+ "split_tone": {
+  "L=0.25": {
+   "hue": 10,
+   "amount": 0.9
+  },
+  "L=0.55": {
+   "hue": 20,
+   "amount": 0.8
+  },
+  "L=0.85": {
+   "hue": 355,
+   "amount": 1.0
+  }
+ },
+ "sat_gain": {
+  "all": {
+   "000 pink": 1.3,
+   "030 red": 1.06,
+   "150 green": 0.9,
+   "180 teal": 0.9,
+   "300 violet": 1.1,
+   "330 magenta": 1.2
+  }
+ }
+}
