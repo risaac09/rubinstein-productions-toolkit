@@ -85,7 +85,7 @@ writes.
 | `duplicate_timeline_auto` | write | Copy a timeline to a new ` [auto]` name and compare every item with the origin. |
 | `set_color_management` | write | Set the colour-management Project Settings `ingest` needs (preset `managed`: `colorScienceMode` `davinciYRGBColorManagedv2`) on the open project, each value read back and every key read again after. Refuses unless the project is fresh: no timelines and no clips in the media pool. Never creates, loads or saves a project; a person makes the project in Resolve. |
 | `timeline_from_clips` | write | A new ` [auto]` timeline from media-pool clips one after another: the clips directly in a bin, or clips named by unique id, path or name, in name, path or given order (natural order, so P2 comes before P10). Picture only, on V1, following the project's frame rate and size; a clip at another rate is conformed by Resolve to real time and the plan says so. Every item is read back: the clip, its first source frame, its length, no gap or overlap. The timeline goes into the media-pool bin open in Resolve (`lands_in_bin` says which). |
-| `import_timeline` | write | An FCPXML file (what `rpresolve.interchange` and `reel` write) as a new ` [auto]` timeline through Resolve's `ImportTimelineFromFile`, its source clips imported into the bin open in Resolve. The plan lists what the file says (`rpresolve.fcpxmlread`): every clip with its lane, record position and length, the transitions, and media missing on this machine. After the real run every video clip is read back at its record position and length on some video track (Resolve decides which track a lane lands on); transitions and transforms are not visible through the API and are reported as unverified. A timeline that does not read back is left in place and named under `left_behind`. |
+| `import_timeline` | write | An FCPXML file (what `rpresolve.interchange` and `reel` write) as a new ` [auto]` timeline through Resolve's `ImportTimelineFromFile`, its source clips imported into the bin open in Resolve. The plan lists what the file says (`rpresolve.fcpxmlread`): every clip with its lane, record position and length, the transitions, and media missing on this machine. After the real run every video clip is read back at its record position and length on some video track (Resolve decides which track a lane lands on) and at its ZoomX where the file set a static scale, and every transition at its position and length as the transition item Resolve placed, naming the kind (a Dip to Color imports as a Cross Dissolve). Keyframed transforms and retimes are not read back; see [FCPXML import](#fcpxml-import). A timeline that does not read back is left in place and named under `left_behind`. |
 | `apply_grade` | write, destructive | A LUT on one node, or a `.drx` still checked against its label manifest, on an ` [auto]` timeline's items. |
 | `create_captions` | write | Resolve's auto captions on an ` [auto]` timeline that has no subtitle items, with characters per line and line breaks for its shape (`deliver.captions`), read back from the subtitle track. |
 | `queue_render` | write | Queue one render job for a delivery destination, under the house file name. A destination is the only way to queue a render. Never starts it. |
@@ -482,6 +482,29 @@ choose the file.
   frame with crop into 5952x2646) needs 0.667 of it. Negative Tilt moves
   the picture down and shows the top of the source. `tilt-fixture
   --variant` rebuilds any of the six; `tilt-check` reads a still of it.
+
+## FCPXML import
+
+What Resolve Studio 21.2.0.6 made of a hand-written FCPXML 1.10 file
+through `ImportTimelineFromFile` (spike S0, 2026-11-07, two lavfi clips at
+30000/1001, a click track, a ProRes 4444 clip with alpha), read back through
+`GetItemListInTrack` and `GetProperty`:
+
+| In the file | What Resolve placed | Read back |
+|---|---|---|
+| spine `asset-clip`s | V1 and A1 items at the file's record positions and lengths | yes |
+| `<transition name="Cross Dissolve">` with its `effect` resource | a 15-frame item named Cross Dissolve on V1, no media-pool clip, `GetLeftOffset` None | yes: position, length and name |
+| `<transition name="Dip to Color Dissolve">` | a Cross Dissolve (the name is not mapped) | placed as Cross Dissolve |
+| `<adjust-transform scale="1.2 1.2"/>` | ZoomX and ZoomY 1.2 | yes |
+| `<adjust-transform>` with a keyframed `scale` | ZoomX 1.0 (keyframes, if any, are invisible to `GetProperty`) | no |
+| connected `asset-clip lane="1"` (video with alpha) | V2, at its record position | yes |
+| connected `asset-clip lane="-1"` (audio only) | A2, at its record position | yes |
+| `<timeMap>` retime | an item of the right length whose media path reads empty and `GetRightOffset` negative: broken | no |
+
+So `import_timeline` checks clips, static scale and transitions, and
+`rpresolve.interchange` writes only what the first six rows cover: cuts,
+cross dissolves, a static scale per clip, and lanes. Dips, keyframed moves
+and speed changes stay hand steps on the Edit page.
 
 ## Framing
 

@@ -94,9 +94,12 @@ def read(path):
             asset = assets.get(el.get("ref"), {})
             if el.tag != "gap":
                 kind = "audio" if el.tag == "audio" or (asset and not asset["video"]) else "video"
-                out["events"].append({"name": el.get("name") or asset.get("name") or el.tag,
-                                      "kind": kind, "lane": lane, "record": record,
-                                      "frames": length, "path": asset.get("path")})
+                ev = {"name": el.get("name") or asset.get("name") or el.tag, "kind": kind,
+                      "lane": lane, "record": record, "frames": length, "path": asset.get("path")}
+                scale = _static_scale(el.find("adjust-transform"))
+                if scale is not None:
+                    ev["scale"] = scale
+                out["events"].append(ev)
             # children connected to this clip: their offsets count from its `start`
             walk(el, record, frames(el.get("start", "0s"), el.get("name", el.tag)))
 
@@ -111,6 +114,17 @@ def read(path):
         if a["path"]:
             out["media"][a["path"]] = os.path.isfile(a["path"])
     return out
+
+
+def _static_scale(adjust):
+    """The x scale of a static <adjust-transform scale="x y"/>, or None (no
+    element, or a keyframed one, which Resolve's API cannot read back)."""
+    if adjust is None or not adjust.get("scale"):
+        return None
+    try:
+        return float(adjust.get("scale").split()[0])
+    except ValueError:
+        return None
 
 
 def _file_path(src):

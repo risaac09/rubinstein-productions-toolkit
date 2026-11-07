@@ -886,13 +886,14 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
     MediaPool.ImportTimelineFromFile, its source clips imported into the
     media-pool bin open in Resolve, and read the timeline back against what
     the file says (rpresolve.fcpxmlread): every video clip's record position
-    and length on some video track, the item counts per track. Transitions
-    and transforms are not visible through the API, so the file's
-    transitions are listed as unverified. The current timeline, playhead and
-    page are put back. Returns {project, timeline, file, file_sha256, rate,
-    events, transitions, media_missing, warnings, plan_sha, dry_run, created,
-    items, tracks, problems, left_behind, lands_in_bin, ui_restore_problems,
-    exit_status}."""
+    and length on some video track and its ZoomX where the file set a static
+    scale, every transition's position and length (as the transition items
+    Resolve placed; the kind placed is reported), the item counts per track.
+    Keyframed transforms and retimes are not read back. The current timeline,
+    playhead and page are put back. Returns {project, timeline, file,
+    file_sha256, rate, events, transitions, media_missing, warnings,
+    plan_sha, dry_run, created, items, tracks, problems, left_behind,
+    lands_in_bin, ui_restore_problems, exit_status}."""
     from . import fcpxmlread
     if not name.endswith(AUTO):
         raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
@@ -942,7 +943,8 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
                                       f"returned {tl and api._safe_call(tl, 'GetName')!r}")
         out["created"] = {"name": name, "unique_id": _uid(tl)}
         try:
-            out["items"], out["tracks"], out["problems"] = _import_read_back(tl, read)
+            (out["items"], out["transitions"], out["tracks"],
+             out["problems"]) = _import_read_back(tl, read)
         except api.ResolveAPIError as e:
             out["problems"].append(f"{type(e).__name__}: {e}")
     out["ui_restore_problems"] = snap.problems
@@ -955,9 +957,15 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
 def _import_read_back(tl, read):
     """Every video event of the file against the timeline's video tracks: one
     item at its record position with its length, on any track (Resolve
-    decides the track a lane lands on). Returns (items, tracks, problems);
-    an item is {n, name, lane, record, frames, track, ok}; tracks counts the
-    items per track as read."""
+    decides the track a lane lands on), its ZoomX when the file gave it a
+    static scale; and every transition of the file against the transition
+    items Resolve placed (an item with no media-pool clip; spike S0,
+    2026-11-07: a Cross Dissolve reads back as one, a Dip to Color
+    Dissolve comes in as a Cross Dissolve, so the kind placed is reported
+    and only position and length are checked). Returns (items,
+    transitions, tracks, problems); an item is {n, name, lane, record,
+    frames, track, zoom, ok}; a transition is the file's entry plus
+    {placed_as, track, ok}; tracks counts the items per track as read."""
     start0 = int(tl.GetStartFrame())
     have, tracks = [], {}
     for kind in ("video", "audio"):
@@ -965,34 +973,63 @@ def _import_read_back(tl, read):
             its = tl.GetItemListInTrack(kind, t) or []
             tracks[f"{kind[0].upper()}{t}"] = len(its)
             for it in its:
-                have.append({"kind": kind, "track": t, "record": int(it.GetStart()) - start0,
+                clip = api._safe_call(it, "GetMediaPoolItem") if kind == "video" else True
+                have.append({"kind": kind if clip is not None else "transition", "track": t,
+                             "record": int(it.GetStart()) - start0,
                              "frames": int(it.GetEnd()) - int(it.GetStart()), "used": False,
-                             "name": api._safe_call(it, "GetName")})
+                             "name": api._safe_call(it, "GetName"), "item": it})
+
+    def take(kind, record, frames):
+        h = next((h for h in have if h["kind"] == kind and not h["used"]
+                  and h["record"] == record and h["frames"] == frames), None)
+        if h:
+            h["used"] = True
+        return h
+
+    def nearest(kind, record):
+        near = [h for h in have if h["kind"] == kind and not h["used"]
+                and abs(h["record"] - record) <= 2]
+        return (f" (nearest: {near[0]['name']} at {near[0]['record']} for "
+                f"{near[0]['frames']})" if near else "")
+
     items, problems = [], []
     for n, ev in enumerate(e for e in read["events"] if e["kind"] == "video"):
-        match = next((h for h in have if h["kind"] == "video" and not h["used"]
-                      and h["record"] == ev["record"] and h["frames"] == ev["frames"]), None)
-        if match:
-            match["used"] = True
-        else:
-            near = [h for h in have if h["kind"] == "video" and not h["used"]
-                    and abs(h["record"] - ev["record"]) <= 2]
-            problems.append(f"#{n + 1} {ev['name']}: no item at record {ev['record']} for "
-                            f"{ev['frames']} frames" +
-                            (f" (nearest: {near[0]['name']} at {near[0]['record']} for "
-                             f"{near[0]['frames']})" if near else ""))
+        match = take("video", ev["record"], ev["frames"])
+        zoom = None
+        bad = []
+        if not match:
+            bad.append(f"no item at record {ev['record']} for {ev['frames']} frames" +
+                       nearest("video", ev["record"]))
+        elif "scale" in ev:
+            zoom = api._safe_call(match["item"], "GetProperty", "ZoomX")
+            try:
+                if abs(float(zoom) - ev["scale"]) > 0.001:
+                    bad.append(f"ZoomX reads {zoom}, the file says {ev['scale']}")
+            except (TypeError, ValueError):
+                bad.append(f"ZoomX reads {zoom!r}, the file says {ev['scale']}")
+        if bad:
+            problems.append(f"#{n + 1} {ev['name']}: " + "; ".join(bad))
         items.append({"n": n + 1, "name": ev["name"], "lane": ev["lane"], "record": ev["record"],
-                      "frames": ev["frames"], "track": match and match["track"],
-                      "ok": bool(match)})
-    extra = [h for h in have if h["kind"] == "video" and not h["used"]]
-    if extra:
-        problems.append(f"{len(extra)} video item(s) the file does not name: " +
-                        ", ".join(f"{h['name']} at {h['record']}" for h in extra[:3]))
+                      "frames": ev["frames"], "track": match and match["track"], "zoom": zoom,
+                      "ok": not bad})
+    transitions = []
+    for n, tr in enumerate(read["transitions"]):
+        match = take("transition", tr["record"], tr["frames"])
+        if not match:
+            problems.append(f"transition #{n + 1} {tr['name']}: none at record {tr['record']} "
+                            f"for {tr['frames']} frames" + nearest("transition", tr["record"]))
+        transitions.append({**tr, "placed_as": match and match["name"],
+                            "track": match and match["track"], "ok": bool(match)})
+    for kind, what in (("video", "video item(s)"), ("transition", "transition(s)")):
+        extra = [h for h in have if h["kind"] == kind and not h["used"]]
+        if extra:
+            problems.append(f"{len(extra)} {what} the file does not name: " +
+                            ", ".join(f"{h['name']} at {h['record']}" for h in extra[:3]))
     want_audio = sum(1 for e in read["events"] if e["kind"] == "audio")
     got_audio = sum(1 for h in have if h["kind"] == "audio")
     if want_audio and not got_audio:
         problems.append(f"the file names {want_audio} audio clip(s); no audio item was placed")
-    return items, tracks, problems
+    return items, transitions, tracks, problems
 
 
 def _fingerprints(items):

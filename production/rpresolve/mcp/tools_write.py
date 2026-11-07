@@ -332,10 +332,11 @@ def import_timeline(args, ctx):
                             "match the file, and is left in the project for you to check or "
                             "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
         else:
+            kinds = sorted({t["placed_as"] for t in r["transitions"] if t.get("placed_as")})
             r["summary"] = (f"imported '{r['timeline']}': {what}; every video clip read back at "
                             "its record position" +
-                            (f"; {nt} transition(s) not verifiable through the API, check the "
-                             "Edit page" if nt else "") + _ui(r))
+                            (f", every transition in place (placed as {', '.join(kinds)})"
+                             if nt else "") + _ui(r))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -899,8 +900,10 @@ def register(registry):
         "imported into the media-pool bin open in Resolve (lands_in_bin). The plan lists what "
         "the file says: every clip with its lane, record position and length, the transitions, "
         "and media files missing on this machine. After the real run every video clip is read "
-        "back at its record position and length on some video track; transitions and "
-        "transforms are not visible through the API and are reported as unverified. Nothing "
+        "back at its record position and length on some video track (and its ZoomX where the "
+        "file set a static scale), and every transition at its position and length, with the "
+        "kind Resolve placed (a Dip to Color imports as a Cross Dissolve). Keyframed "
+        "transforms and retimes are not read back. Nothing "
         "existing is modified or removed; a timeline that does not read back is named under "
         "left_behind. The current timeline, playhead and page are put back. Dry run first; the "
         "real run needs its plan_sha.",

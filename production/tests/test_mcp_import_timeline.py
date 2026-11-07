@@ -95,7 +95,8 @@ class Base(unittest.TestCase):
         self.name = "Reel 01 [auto]"
         # what the fake Resolve places for this file: the file's own layout
         self.pool.import_layout = {self.file: {
-            "video": [[("a1", 0, 75), ("a2", 75, 75), ("a3", 150, 75)], [("cutout", 75, 50)]],
+            "video": [[("a1", 0, 75), ("Cross Dissolve", 66, 12, {"transition": True}),
+                       ("a2", 75, 75, {"ZoomX": 1.2}), ("a3", 150, 75)], [("cutout", 75, 50)]],
             "audio": [[("a1", 0, 75), ("a2", 75, 75), ("a3", 150, 75)], [("music", 0, 225)]]}}
 
     def journal(self):
@@ -122,6 +123,7 @@ class TestReader(Base):
                           ("a2", "video", 0, 75, 75), ("cutout", "video", 1, 75, 50),
                           ("a3", "video", 0, 150, 75)])
         self.assertEqual(r["transitions"], [{"name": "Cross Dissolve", "record": 66, "frames": 12}])
+        self.assertEqual([e.get("scale") for e in r["events"]], [None, None, 1.2, None, None])
         self.assertEqual(r["media"], {os.path.join(self.dir, "a.mp4"): True,
                                       os.path.join(self.dir, "music.wav"): True,
                                       os.path.join(self.dir, "missing.mov"): False})
@@ -156,11 +158,15 @@ class TestImportTimeline(Base):
         self.assertIn("1 media file(s) missing", dry["summary"])
         self.assertEqual(real["exit_status"], 0)
         self.assertEqual(real["problems"], [])
-        self.assertEqual([(i["name"], i["track"], i["ok"]) for i in real["items"]],
-                         [("a1", 1, True), ("a2", 1, True), ("cutout", 2, True), ("a3", 1, True)])
-        self.assertEqual(real["tracks"], {"V1": 3, "V2": 1, "A1": 3, "A2": 1})
+        self.assertEqual([(i["name"], i["track"], i["zoom"], i["ok"]) for i in real["items"]],
+                         [("a1", 1, None, True), ("a2", 1, 1.2, True), ("cutout", 2, None, True),
+                          ("a3", 1, None, True)])
+        self.assertEqual(real["transitions"], [{"name": "Cross Dissolve", "record": 66,
+                                                "frames": 12, "placed_as": "Cross Dissolve",
+                                                "track": 1, "ok": True}])
+        self.assertEqual(real["tracks"], {"V1": 4, "V2": 1, "A1": 3, "A2": 1})
         self.assertIn(self.name, self.tl_names())
-        self.assertIn("1 transition(s) not verifiable", real["summary"])
+        self.assertIn("every transition in place (placed as Cross Dissolve)", real["summary"])
         call = rf.CALLS[[c[1] for c in rf.CALLS].index("ImportTimelineFromFile")]
         self.assertEqual(call[2], (self.file, {"timelineName": self.name,
                                                "importSourceClips": True}))
@@ -180,17 +186,38 @@ class TestImportTimeline(Base):
         self.assertEqual(real["ui_restore_problems"], [])
 
     def test_a_timeline_that_does_not_match_the_file_is_left_behind_and_named(self):
-        self.pool.import_layout[self.file]["video"][0][1] = ("a2", 76, 75)  # a frame late
-        del self.pool.import_layout[self.file]["audio"][1]
+        v1 = self.pool.import_layout[self.file]["video"][0]
+        v1[2] = ("a2", 76, 75, {"ZoomX": 1.2})  # a frame late
+        v1[1] = ("Cross Dissolve", 66, 10, {"transition": True})  # two frames short
+        v1.append(("a3", 170, 10, {"ZoomX": 1.0}))  # a stray second item
         _, real = run_twice("import_timeline", {"name": self.name, "file": self.file},
                             self.resolve)
         self.assertEqual(real["exit_status"], 1)
         self.assertEqual(real["left_behind"], self.name)
         self.assertIn("a2: no item at record 75", real["problems"][0])
         self.assertIn("nearest: a2 at 76", real["problems"][0])
+        self.assertIn("transition #1 Cross Dissolve: none at record 66", real["problems"][1])
+        self.assertIn("2 video item(s) the file does not name: a2 at 76, a3 at 170",
+                      real["problems"][2])
+        self.assertIn("1 transition(s) the file does not name", real["problems"][3])
         self.assertFalse(real["items"][1]["ok"])
+        self.assertFalse(real["transitions"][0]["ok"])
         self.assertIn("FAILED", real["summary"])
         self.assertIn(self.name, self.tl_names())
+
+    def test_a_scale_the_file_set_must_read_back_as_zoom(self):
+        self.pool.import_layout[self.file]["video"][0][2] = ("a2", 75, 75, {"ZoomX": 1.0})
+        _, real = run_twice("import_timeline", {"name": self.name, "file": self.file},
+                            self.resolve)
+        self.assertEqual(real["problems"], ["#2 a2: ZoomX reads 1.0, the file says 1.2"])
+        self.assertFalse(real["items"][1]["ok"])
+
+    def test_no_audio_placed_is_a_problem(self):
+        del self.pool.import_layout[self.file]["audio"]
+        _, real = run_twice("import_timeline", {"name": self.name, "file": self.file},
+                            self.resolve)
+        self.assertEqual(real["problems"],
+                         ["the file names 1 audio clip(s); no audio item was placed"])
 
     def test_refusals(self):
         with self.assertRaises(workflows.Refused):

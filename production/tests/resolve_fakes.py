@@ -374,8 +374,9 @@ class Pool(Fake):
         self.current.clips.extend(clips)
         return clips
 
-    # path -> {"video": [[(name, record, frames), ...] per track], "audio": [...]} that
-    # ImportTimelineFromFile places; None answers None (Resolve could not read the file).
+    # path -> {"video": [[(name, record, frames[, props]), ...] per track], "audio": [...]}
+    # that ImportTimelineFromFile places; props {"transition": True} makes an item with no
+    # media-pool clip, as Resolve places a transition; None answers None (unreadable file).
     import_layout = {}
 
     def ImportTimelineFromFile(self, path, options=None):
@@ -384,9 +385,15 @@ class Pool(Fake):
         if layout is None:
             return None
         tl = self.CreateEmptyTimeline((options or {}).get("timelineName") or "Imported")
-        tl.tracks = {kind: [[Item(name, tl.start + rec, tl.start + rec + n,
-                                  Clip(name, f"imp-{name}", {"File Path": path}))
-                             for name, rec, n in track] for track in tracks]
+
+        def item(name, rec, n, props=None):
+            props = dict(props or {})
+            clip = None if props.pop("transition", False) else Clip(name, f"imp-{name}",
+                                                                   {"File Path": path})
+            return Item(name, tl.start + rec, tl.start + rec + n, clip,
+                        props={"ZoomX": 1.0, "ZoomY": 1.0, **props})
+
+        tl.tracks = {kind: [[item(*row) for row in track] for track in tracks]
                      for kind, tracks in layout.items()}
         return tl
 
