@@ -1,1 +1,1 @@
-A real ingest now starts ProRes LT proxies for BRAW in the background, on the laptop, built to Resolve's frame count for clips shot off-speed; the new link_proxies tool attaches them and sets the project to prefer proxies.
+A real ingest now starts ProRes LT proxies for BRAW in the background, on the laptop, matched frame for frame to Resolve's reading of clips shot off-speed; the new link_proxies tool attaches them and sets the project to prefer proxies.
