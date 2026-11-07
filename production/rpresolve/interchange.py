@@ -359,7 +359,9 @@ def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
     else it is refused."""
     lanes = {}
 
-    def lane_file(path, what):
+    def lane_file(path, what, video, audio):
+        """video and audio are what the lane expects of the file, used when it
+        cannot be probed (a music bed has sound, a layer has picture)."""
         if path in lanes:
             return lanes[path]
         if not isinstance(path, str) or not os.path.isabs(path):
@@ -372,8 +374,8 @@ def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
         url_path = posixpath.join(media_root, name) if media_root else os.path.abspath(path)
         lanes[path] = {"path": path, "name": name, "url": "file://" + quote(url_path),
                        "frames": None if p is None else cutlist.frame(p["seconds"], fr),
-                       "video": None if p is None else p["video"],
-                       "audio": None if p is None else p["audio"], "probed": p is not None}
+                       "video": video if p is None else p["video"],
+                       "audio": audio if p is None else p["audio"], "probed": p is not None}
         return lanes[path]
 
     for k, (s, e) in enumerate(zip(c["spans"], events)):
@@ -392,6 +394,9 @@ def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
             half = (n + 1) // 2
             prev = events[k - 1]
             src_prev, src = by_id[prev["src"]], by_id[e["src"]]
+            if min(prev["v_out"] - prev["v_in"], e["v_out"] - e["v_in"]) < half:
+                raise InterchangeError(f"{where}: a {n}-frame dissolve needs {half} frames in "
+                                       "each span it joins; one is shorter")
             if e["v_in"] - half < 0:
                 raise InterchangeError(f"{where}: a {n}-frame dissolve needs {half} frames of "
                                        f"handle before {s['in']} s and {src['name']} has none")
@@ -407,7 +412,7 @@ def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
                 e["scale"] = float(sc)
         ly = s.get("layer")
         if ly:
-            f = lane_file(ly.get("path"), f"{where} layer")
+            f = lane_file(ly.get("path"), f"{where} layer", video=True, audio=False)
             if f["video"] is False:
                 raise InterchangeError(f"{where}: layer {f['name']} has no picture")
             span_len = e["v_out"] - e["v_in"]
@@ -415,12 +420,13 @@ def _extras(c, manifest, events, by_id, total, rate, fr, media_root, warnings):
     music = None
     mu = manifest.get("music")
     if mu:
-        f = lane_file(mu.get("path"), "music")
+        f = lane_file(mu.get("path"), "music", video=False, audio=True)
         if f["audio"] is False:
             raise InterchangeError(f"music {f['name']} has no sound")
-        m_in = cutlist.frame(mu.get("in", 0), fr)
-        if m_in < 0:
+        m_in_s = mu.get("in", 0)
+        if not isinstance(m_in_s, (int, float)) or not math.isfinite(m_in_s) or m_in_s < 0:
             raise InterchangeError("music: in must be 0 or more seconds")
+        m_in = cutlist.frame(m_in_s, fr)
         length = total if f["frames"] is None else min(total, f["frames"] - m_in)
         if length <= 0:
             raise InterchangeError(f"music {f['name']}: in of {mu.get('in')} s leaves no sound")
@@ -450,10 +456,12 @@ def probe_any(path):
 
 def _reel_fields_dropped(tl, fmt):
     """A warning when the timeline carries reel fields this format cannot hold."""
-    if tl.get("music") or any(e.get("transition") or e.get("scale") or e.get("layer")
-                              for e in tl["events"]):
-        tl["warnings"].append(f"{fmt} carries none of the reel fields ({REEL_FIELDS}); the cuts "
-                              "are written without them. Write fcpxml to keep them")
+    note = (f"{fmt} carries none of the reel fields ({REEL_FIELDS}); the cuts are written "
+            "without them. Write fcpxml to keep them")
+    if note not in tl["warnings"] and (
+            tl.get("music") or any(e.get("transition") or e.get("scale") or e.get("layer")
+                                   for e in tl["events"])):
+        tl["warnings"].append(note)
 
 
 def edl(tl):

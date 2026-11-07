@@ -501,8 +501,11 @@ class TestReelFields(unittest.TestCase):
         self.assertEqual((layer.get("lane"), layer.get("offset"), layer.get("duration")),
                          ("1", kids[3].get("start"), t(25)))
         assets = {a.get("name"): a for a in self.root.findall("resources/asset")}
-        self.assertEqual(assets["beat.wav"].get("hasVideo"), "1")  # unprobed: unknown, not denied
-        self.assertEqual(assets["pop.mov"].get("format"), "r1")
+        # unprobed: a bed is sound, a layer is picture
+        self.assertEqual((assets["beat.wav"].get("hasVideo"), assets["beat.wav"].get("hasAudio"),
+                          assets["beat.wav"].get("format")), ("0", "1", None))
+        self.assertEqual((assets["pop.mov"].get("hasVideo"), assets["pop.mov"].get("hasAudio"),
+                          assets["pop.mov"].get("format")), ("1", "0", "r1"))
         self.assertEqual(assets["beat.wav"].find("media-rep").get("src"),
                          "file:///nonexistent-interchange-test/beat.wav")
         self.assertEqual(self.root.findall("resources/asset")[0].get("id"), "r2")
@@ -541,7 +544,9 @@ class TestReelFields(unittest.TestCase):
             ([a, {**b, "transition": {"type": "dissolve", "frames": 2.5}}], "whole frames"),
             ([{"in": 0.0, "out": 0.08}, {"in": 0.12, "out": 2.0,
                                          "transition": {"type": "dissolve", "frames": 12}}],
-             "handle before"),
+             "one is shorter"),
+            ([{"in": 1.0, "out": 1.2}, {**b, "transition": {"type": "dissolve", "frames": 12}}],
+             "one is shorter"),
             ([a, {**b, "scale": 0}], "0.1 to 10"),
             ([a, {**b, "scale": "big"}], "0.1 to 10"),
             ([a, {**b, "layer": {"path": "relative/pop.mov"}}], "absolute"),
@@ -549,12 +554,35 @@ class TestReelFields(unittest.TestCase):
         for spans, why in bad:
             with self.subTest(why=why), self.assertRaisesRegex(ic.InterchangeError, why):
                 self.tl(spans)
+        # handles live in the source outside the span: two sources, each cut at its very end
+        # or start, so the span lengths pass and the files run out
+        def two(a_span, b_span, a_frames=5000):
+            m = cutlist.validate_manifest(
+                {"version": 2, "speech": False, "fps": 25,
+                 "sources": [{"id": "a", "path": "/nonexistent-interchange-test/a.mov"},
+                             {"id": "b", "path": "/nonexistent-interchange-test/b.mov"}],
+                 "clips": [{"name": "cut", "spans": [{**a_span, "source": "a"},
+                                                      {**b_span, "source": "b",
+                                                       "transition": {"type": "dissolve",
+                                                                      "frames": 12}}]}]},
+                allow_no_speech=True)
+            return ic.timeline(m, media={"a": media(Fraction(25), frames=a_frames),
+                                         "b": media(Fraction(25), frames=5000)})
+        with self.assertRaisesRegex(ic.InterchangeError, "handle before"):
+            two({"in": 1.0, "out": 3.0}, {"in": 0.0, "out": 2.0})
         with self.assertRaisesRegex(ic.InterchangeError, "handle after"):
-            self.tl([{"in": 1.0, "out": 4.0},
-                     {"in": 4.0, "out": 4.1, "transition": {"type": "dissolve", "frames": 12}}],
-                    media=media(Fraction(25), frames=104))
-        with self.assertRaisesRegex(ic.InterchangeError, "0 or more"):
-            self.tl([a, b], music={"path": self.MUSIC, "in": -1})
+            two({"in": 1.0, "out": 4.0}, {"in": 1.0, "out": 2.0}, a_frames=100)
+        self.assertEqual(two({"in": 1.0, "out": 3.0}, {"in": 1.0, "out": 2.0})["events"][1]
+                         ["transition"]["rec_in"], 44)
+        for bad_in in (-1, "2", float("nan")):
+            with self.assertRaisesRegex(ic.InterchangeError, "0 or more"):
+                self.tl([a, b], music={"path": self.MUSIC, "in": bad_in})
+
+    def test_the_drop_warning_is_written_once(self):
+        tl = self.tl([{"in": 1.0, "out": 3.0}, {"in": 4.0, "out": 6.0, "scale": 1.2}])
+        ic.edl(tl)
+        ic.edl(tl)
+        self.assertEqual(len(tl["warnings"]), 1)
 
 
 @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
