@@ -129,6 +129,22 @@ class TestReader(Base):
                                       os.path.join(self.dir, "missing.mov"): False})
         self.assertEqual(r["warnings"], [])
 
+    def test_spine_offsets_from_tcstart_read_the_same_as_offsets_from_zero(self):
+        want = fcpxmlread.read(self.file)
+        with open(self.file, encoding="utf-8") as f:
+            text = f.read()
+        for old, new in (('name="a1" offset="0s"', 'name="a1" offset="3600s"'),
+                         ('offset="66/25s"', 'offset="90066/25s"'),
+                         ('name="a2" offset="3s"', 'name="a2" offset="3603s"'),
+                         ('name="a3" offset="6s"', 'name="a3" offset="3606s"')):
+            self.assertIn(old, text)
+            text = text.replace(old, new)
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(text)
+        got = fcpxmlread.read(self.file)  # interchange writes them this way
+        self.assertEqual(got["events"], want["events"])
+        self.assertEqual(got["transitions"], want["transitions"])
+
     def test_a_time_off_the_frame_grid_is_rounded_and_named(self):
         with open(self.file, "w", encoding="utf-8") as f:
             f.write(FCPXML.format(dir=self.dir).replace('name="a3" offset="6s"',

@@ -9,8 +9,10 @@ read(path) -> {rate, drop, events, transitions, media, warnings}
           the sequence start), frames, path (the asset's file, or None)}
   transitions: [{name, record, frames}] on the spine, in record order
   media: {path: exists} for every asset with a file URL
-A connected clip's offset is in its parent's local time (the parent's `start`
-is its local zero), as the FCPXML format defines it. Only the first project
+Record 0 is the first spine element, whether spine offsets count from the
+sequence's tcStart or from 0. A connected clip's offset is in its parent's
+local time (the parent's `start` is its local zero), as the FCPXML format
+defines it. Only the first project
 of the first event is read. Times that do not land on a whole frame are
 rounded and named in warnings.
 """
@@ -115,7 +117,10 @@ def read(path):
     spine = seq.find("spine")
     if spine is None:
         raise FcpxmlError(f"{path}: the sequence has no spine")
-    walk(spine, 0, 0)
+    # spine offsets may count from the sequence's tcStart (interchange's do) or from 0; either
+    # way the sequence starts at its first spine element
+    first = next((el for el in spine if el.tag in CLIP_TAGS), None)
+    walk(spine, 0, frames(first.get("offset", "0s"), "spine") if first is not None else 0)
     # at one record time: the spine clip, then the lanes above it, then those below
     out["events"].sort(key=lambda e: (e["record"], e["lane"] < 0, abs(e["lane"])))
     out["transitions"].sort(key=lambda t: t["record"])
