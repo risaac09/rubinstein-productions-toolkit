@@ -6,13 +6,17 @@ Tests for rpresolve.reel: the beat-aligned plan on synthetic words and a
 Run: /usr/bin/python3 -m unittest tests.test_reel -v
 """
 
+import argparse
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -49,6 +53,12 @@ def words_list():
 def beats(seconds=60, beat=BEAT):
     return {"file": "/nonexistent/beat.wav", "duration_s": seconds, "tempo": round(60 / beat, 1),
             "beats_s": [round(k * beat, 3) for k in range(int(seconds / beat))]}
+
+
+def reel_args(manifest, music, out):
+    p = argparse.ArgumentParser()
+    reel.add_arguments(p)
+    return p.parse_args(["plan", manifest, "--music", music, "--beats", "b.json", "--out", out])
 
 
 class Base(unittest.TestCase):
@@ -140,6 +150,61 @@ class TestPlan(Base):
                                         transition="dissolve:12", downbeat_offset=3)
         self.assertEqual(rows2[1]["transition"], "cut")
         self.assertTrue(any("cut instead" in w for w in warnings2))
+        cutlist.validate_manifest(r2)  # spans 1 and 2 share the pause after "two": no overlap
+
+    def test_music_in_moves_the_grid_and_keeps_the_downbeat(self):
+        r, rows, _ = reel.plan(self.manifest(self.SPANS), self.music, beats(), self.dir, music_in=1.5)
+        for row in rows:  # a cut at record t is music time t + 1.5
+            self.assertLessEqual(abs(row["cut_s"] + 1.5 - row["beat"] * BEAT), 0.5 / FPS + 1e-9)
+        self.assertEqual(rows[0]["beat"] % reel.BEATS_PER_BAR, 0)
+        with self.assertRaisesRegex(reel.ReelError, "ends before it"):
+            reel.plan(self.manifest(self.SPANS), self.music, beats(), self.dir, music_in=90.0)
+
+    def test_the_last_span_may_end_off_the_beat(self):
+        grid = dict(beats(), beats_s=[k * BEAT for k in range(11)])  # the grid stops at 5 s
+        r, rows, warnings = reel.plan(self.manifest(self.SPANS), self.music, grid, self.dir)
+        self.assertEqual(warnings, ["span 3 ends off the beat: no beat in its range"])
+        self.assertIsNone(rows[-1]["beat"])
+        self.assertIsNone(rows[-1]["offset_ms"])
+        self.assertIsNotNone(rows[-2]["beat"])
+        s = r["clips"][0]["spans"][-1]
+        self.assertAlmostEqual(rows[-1]["cut_s"] - rows[-2]["cut_s"], s["out"] - s["in"], places=3)
+        reel.tsv(rows)
+        cutlist.validate_manifest(r)
+
+    def test_the_last_out_point_stays_inside_the_source(self):
+        open(self.src, "wb").close()
+        with mock.patch.object(reel.ic, "probe", return_value={"frames": 240}):  # 9.6 s
+            r, _, _ = reel.plan(self.manifest(self.SPANS), self.music, beats(), self.dir)
+        self.assertLessEqual(r["clips"][0]["spans"][-1]["out"], 9.6)
+
+    def test_two_spans_either_side_of_one_pause_split_it(self):
+        # "four" ends at 2.8, "five" starts at 4.0: both spans may drift into that pause
+        m = self.manifest([{"in": 0.92, "out": 2.84}, {"in": 3.96, "out": 6.52}])
+        ws = cutlist.load_words(self.words)
+        wins = [reel.windows(ws, s, FPS) for s in m["clips"][0]["spans"]]
+        self.assertGreater(wins[0]["out_hi"], wins[1]["in_lo"])
+        reel._share_pauses(m, m["clips"][0]["spans"], wins)
+        self.assertEqual(wins[0]["out_hi"], 85)
+        self.assertEqual(wins[1]["in_lo"], 85)
+        self.assertEqual(wins[1]["in_hi"], 99)  # unchanged
+        self.assertEqual((wins[0]["hold_hi"], wins[1]["hold_lo"]), (99, 71))  # handles keep the pause
+        r, rows, _ = reel.plan(m, self.music, beats(), self.dir)
+        s1, s2 = r["clips"][0]["spans"]
+        self.assertLessEqual(s1["out"], s2["in"])
+        cutlist.validate_manifest(r)
+        # the later span's in-point sits early in the pause: the split stops there, not at the middle
+        early = self.manifest([{"in": 0.92, "out": 2.84}, {"in": 2.88, "out": 6.52}])
+        wins = [reel.windows(ws, s, FPS) for s in early["clips"][0]["spans"]]
+        reel._share_pauses(early, early["clips"][0]["spans"], wins)
+        self.assertEqual((wins[0]["out_hi"], wins[1]["in_lo"], wins[1]["in_hi"]), (72, 72, 72))
+        r, rows, _ = reel.plan(early, self.music, beats(), self.dir, downbeat_offset=1,
+                               transition="dissolve:6")
+        cutlist.validate_manifest(r)
+        self.assertEqual(rows[1]["transition"], "cut")  # a handle before 72 would reach "four"
+        r, rows, _ = reel.plan(m, self.music, beats(), self.dir, transition="dissolve:6")
+        cutlist.validate_manifest(r)
+        self.assertEqual(rows[1]["transition"], "dissolve 6")  # handles overlap in the pause
 
     def test_punch_in_alternates_and_skips_cutouts(self):
         m = self.manifest(self.SPANS)
@@ -178,12 +243,23 @@ class TestPlan(Base):
             reel.write_plan(r, rows, os.path.join(os.path.dirname(__file__), "reel-out"))
         out = os.path.join(self.dir, "plan")
         path = reel.write_plan(r, rows, out)
+        self.assertEqual(reel.write_plan(r, rows, out), path)  # a second run reuses the folder
         with open(path, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["reel"]["tempo"], 120.0)
         with open(os.path.join(out, "reel-plan.tsv"), encoding="utf-8") as f:
             lines = f.read().splitlines()
         self.assertEqual(lines[0].split("\t")[:3], ["span", "in", "out"])
         self.assertEqual(len(lines), 4)
+
+    def test_plan_refuses_to_write_over_its_input(self):
+        path = os.path.join(self.dir, "reel.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.manifest(self.SPANS), f)
+        args = reel_args(path, self.music, self.dir)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            self.assertEqual(reel.run(args), 2)
+        self.assertIn("own output", err.getvalue())
 
     def test_bad_flags(self):
         with self.assertRaisesRegex(reel.ReelError, "dissolve:N"):
@@ -233,6 +309,7 @@ class TestPreview(Base):
         self.assertEqual(xml.count("<transition "), 2)
         self.assertIn('lane="-1"', xml)
         out = os.path.join(self.dir, "preview.mp4")
+        self.assertIn("setpts=PTS-STARTPTS+0.120000/TB", " ".join(reel.preview_command(r, out)[0]))
         seconds = reel.preview(r, out)
         self.assertAlmostEqual(seconds, rows[-1]["cut_s"], places=3)
         probe = subprocess.run([dc.FFPROBE, "-v", "error", "-show_entries",
@@ -246,6 +323,8 @@ class TestPreview(Base):
                          (1080, 1920, f"{FPS}/1", "bt709"))
         self.assertEqual((a["sample_rate"], a["channels"]), ("48000", 2))
         self.assertAlmostEqual(float(info["format"]["duration"]), seconds, delta=0.15)
+        del r["clips"][0]["spans"][1]["transition"]  # a cut into a dissolve: concat feeds xfade
+        self.assertAlmostEqual(reel.preview(r, out), seconds, places=3)
 
 
 if __name__ == "__main__":

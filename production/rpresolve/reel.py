@@ -15,12 +15,16 @@ the music's time 0 (less --music-in). Every cut lands on a beat of the map
 last word, from the word's end plus EDGE_S to the next word's start less
 EDGE_S (or MAX_PAUSE_S past the word when no word follows), and its in-point
 may move earlier, down to the previous word's end plus EDGE_S, never later.
+Two consecutive spans either side of one pause split it, so their edges cannot
+cross.
 That gives each span a range of lengths; a dynamic programme over (span,
 beat) picks the beats that change the original lengths least. The first cut,
 the end of the hook, must be a downbeat: every BEATS_PER_BAR-th beat from
 --downbeat-offset, since the beat map carries no bar phase. A span with no
 beat in its range stops the plan and is named (exit 2); nothing is trimmed
-into a word. Over --max-s whole trailing spans are dropped with a warning.
+into a word. The last span is the exception: the reel's end is not a cut, so
+with no beat in range it ends where its words allow, with a warning. Over
+--max-s whole trailing spans are dropped with a warning.
 Run wordsnap on the words first: Whisper's edges drift into pauses.
 
 Dressing, in the fields interchange writes (production/interchange.md, Reel
@@ -90,7 +94,8 @@ def load_beats(path):
 
 def windows(words, span, fps):
     """How far a span's edges may move, in source frames: {in_lo, in_hi,
-    out_lo, out_hi, d_orig, first, last, pause_before, pause_after}."""
+    out_lo, out_hi, d_orig, first, last}, and how far a dissolve's handles
+    may reach before touching a word: {hold_lo, hold_hi}."""
     inside = cutlist.words_between(words, span["in"], span["out"])
     if not inside:
         raise ReelError(f"no words inside {span['in']}-{span['out']} s")
@@ -105,11 +110,10 @@ def windows(words, span, fps):
     out_hi = (next_start - EDGE_S) if next_start is not None else last["end"] + MAX_PAUSE_S
     out_hi = max(out_hi, out_lo)
     f = lambda t: cutlist.frame(t, fps)
-    return {"in_lo": math.ceil(in_lo * fps - 1e-9), "in_hi": f(in_hi),
-            "out_lo": math.ceil(out_lo * fps - 1e-9), "out_hi": math.floor(out_hi * fps + 1e-9),
+    lo, hi = math.ceil(in_lo * fps - 1e-9), math.floor(out_hi * fps + 1e-9)
+    return {"in_lo": lo, "in_hi": f(in_hi), "out_lo": math.ceil(out_lo * fps - 1e-9), "out_hi": hi,
             "d_orig": f(span["out"]) - f(span["in"]), "first": first["word"].strip(),
-            "last": last["word"].strip(), "pause_before": in_hi - in_lo,
-            "pause_after": out_hi - out_lo}
+            "last": last["word"].strip(), "hold_lo": lo, "hold_hi": hi}
 
 
 def place(win, d):
@@ -183,34 +187,59 @@ def plan(manifest, music, beats, out_dir, max_s=DEFAULT_MAX_S, transition="cut",
     bad = [x for x in cutout if not 1 <= x <= len(spans)]
     if bad:
         raise ReelError(f"--cutout {bad[0]}: the clip has {len(spans)} span(s)")
+    # the words stop before the file does; a source not on this machine is checked at preview
+    length = {i: ic.probe(s["path"])["frames"] for i, s in srcs.items() if os.path.isfile(s["path"])}
     wins = []
     for s in spans:
         sid = cutlist.source_for(manifest, s)["id"]
-        wins.append(windows(words_by[sid], s, fr))
-    beat_f = [cutlist.frame(b, fr) for b in beats["beats_s"]]
+        w = windows(words_by[sid], s, fr)
+        if length.get(sid):
+            w["out_hi"] = w["hold_hi"] = max(w["out_lo"], min(w["out_hi"], length[sid]))
+        wins.append(w)
+    _share_pauses(manifest, spans, wins)
+    # the beats on the record clock; `skipped` keeps the downbeat phase of the file's own map
+    beat_s = [b - music_in for b in beats["beats_s"] if b >= music_in]
+    skipped = len(beats["beats_s"]) - len(beat_s)
+    if len(beat_s) < 2:
+        raise ReelError(f"--music-in {music_in:g}: the beat map ends before it")
+    beat_f = [cutlist.frame(b, fr) for b in beat_s]
     warnings = []
     cap = cutlist.frame(max_s, fr)
     while True:
-        picks = snap(wins, beat_f, downbeat_offset)
-        if beat_f[picks[-1]] <= cap:
+        try:
+            picks = snap(wins, beat_f, downbeat_offset - skipped)
+            ends = [beat_f[j] for j in picks]
+        except ReelError:
+            if len(wins) == 1:
+                raise
+            # the reel's end is not a cut: the last span may end where its words allow
+            picks = snap(wins[:-1], beat_f, downbeat_offset - skipped)
+            ends = [beat_f[j] for j in picks]
+            w = wins[-1]
+            ends.append(ends[-1] + min(w["out_hi"] - w["in_lo"],
+                                       max(w["out_lo"] - w["in_hi"], w["d_orig"])))
+            picks = picks + [None]
+        if ends[-1] <= cap:
             break
         if len(wins) == 1:
             warnings.append(f"the one span left runs past {max_s:g} s; nothing to drop")
             break
         warnings.append(f"span {len(wins)} dropped: the reel would run past {max_s:g} s")
         wins, spans = wins[:-1], spans[:-1]
+    if picks[-1] is None:
+        warnings.append(f"span {len(wins)} ends off the beat: no beat in its range")
     new_spans, rows = [], []
     t_prev = punched = 0
     half = (tr_frames + 1) // 2 if tr_type == "dissolve" else 0
-    for k, (s, w, j) in enumerate(zip(spans, wins, picks)):
-        d = beat_f[j] - t_prev
+    for k, (s, w, j, end) in enumerate(zip(spans, wins, picks, ends)):
+        d = end - t_prev
         in_f, out_f = place(w, d)
         ns = {kk: v for kk, v in s.items() if kk not in ("in", "out", "transition", "scale")}
         ns["in"], ns["out"] = round(in_f / fr, 4), round(out_f / fr, 4)
         tr = "cut"
         if k and half:
-            room_after = wins[k - 1]["out_hi"] - prev_out
-            room_before = in_f - w["in_lo"]
+            room_after = wins[k - 1]["hold_hi"] - prev_out
+            room_before = in_f - w["hold_lo"]
             if room_after >= half and room_before >= half:
                 ns["transition"] = {"type": "dissolve", "frames": tr_frames}
                 tr = f"dissolve {tr_frames}"
@@ -224,14 +253,13 @@ def plan(manifest, music, beats, out_dir, max_s=DEFAULT_MAX_S, transition="cut",
             ns["scale"] = scales[punched % len(scales)]
             punched += 1
         new_spans.append(ns)
-        beat_s = beats["beats_s"][j]
         rows.append({"span": k + 1, "in": ns["in"], "out": ns["out"], "record_s": round(t_prev / fr, 4),
-                     "cut_s": round(beat_f[j] / fr, 4), "beat": j,
-                     "offset_ms": round((beat_f[j] / fr - beat_s) * 1000, 1),
+                     "cut_s": round(end / fr, 4), "beat": None if j is None else j + skipped,
+                     "offset_ms": None if j is None else round((end / fr - beat_s[j]) * 1000, 1),
                      "change_frames": d - w["d_orig"], "transition": tr,
                      "scale": ns.get("scale"), "cutout": is_cut,
                      "words": f"{w['first']} ... {w['last']}"})
-        t_prev, prev_out = beat_f[j], out_f
+        t_prev, prev_out = end, out_f
     reel = dict(manifest)
     reel["clips"] = [dict(x, spans=new_spans) if x is c else x for x in clips]
     reel["music"] = {"path": os.path.abspath(music), "in": float(music_in)}
@@ -241,6 +269,23 @@ def plan(manifest, music, beats, out_dir, max_s=DEFAULT_MAX_S, transition="cut",
                     "cuts": [{"span": r["span"], "beat": r["beat"], "cut_s": r["cut_s"]}
                              for r in rows], "proposal": True}
     return reel, rows, warnings
+
+
+def _share_pauses(manifest, spans, wins):
+    """Two consecutive spans of one source that sit either side of the same
+    pause split it at its middle, or at the later span's in-point when that
+    comes first (an in-point never moves later), so the edges cannot cross.
+    Dissolve handles may still overlap in the pause: hold_lo and hold_hi stay."""
+    for k in range(1, len(spans)):
+        a, b = spans[k - 1], spans[k]
+        if cutlist.source_for(manifest, a)["id"] != cutlist.source_for(manifest, b)["id"]:
+            continue
+        first, second = (k - 1, k) if a["in"] <= b["in"] else (k, k - 1)
+        wa, wb = wins[first], wins[second]
+        if wb["in_lo"] < wa["out_hi"]:  # the ranges overlap: one pause between them
+            mid = min((wa["out_lo"] + wa["out_hi"]) // 2, wb["in_hi"])
+            wa["out_hi"] = max(wa["out_lo"], mid)
+            wb["in_lo"] = max(wb["in_lo"], mid)
 
 
 def _transition(spec):
@@ -274,12 +319,12 @@ def tsv(rows):
 
 
 def write_plan(reel, rows, out_dir):
-    problem = paths.out_problem(out_dir, any_git_tree=True)
+    rp = os.path.join(out_dir, "reel.json")
+    problem = paths.out_problem(rp, any_git_tree=True)  # the file, so a second run may reuse the folder
     if problem:
         raise paths.OutputRefused(problem)
     os.makedirs(out_dir, exist_ok=True)
     from resolve_survey import write_report  # atomic: temp file, then replace
-    rp = os.path.join(out_dir, "reel.json")
     write_report(rp, json.dumps(reel, indent=2) + "\n")
     write_report(os.path.join(out_dir, "reel-plan.tsv"), tsv(rows))
     return rp
@@ -341,14 +386,14 @@ def preview_command(reel, out, lufs=DEFAULT_LUFS, crf=18, clip=None, ffmpeg=None
                 f"crop={W}:{H}" if s > 1 else f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2")
         if e.get("layer"):
             li = inp(e["layer"]["path"])
-            f.append(f"[{li}:v]trim=start_frame=0:end_frame={e['layer']['frames']},setpts=PTS-STARTPTS,"
+            # its first frame sits on the span's in-point, after the dissolve handle
+            f.append(f"[{li}:v]trim=start_frame=0:end_frame={e['layer']['frames']},"
+                     f"setpts=PTS-STARTPTS+{head[k] / fps:.6f}/TB,"
                      f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
                      f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=yuva420p,"
                      f"fps={rate.numerator}/{rate.denominator}[l{k}]")
-            # the layer sits at the span's own in-point, after the dissolve handle
-            when = f":enable=gte(n\\,{head[k]})" if head[k] else ""
-            vf += f"[p{k}];[p{k}][l{k}]overlay=0:0:eof_action=pass{when}"
-        f.append(vf + f"[v{k}]")
+            vf += f"[p{k}];[p{k}][l{k}]overlay=0:0:eof_action=pass"
+        f.append(vf + f",settb=AVTB[v{k}]")  # concat's own timebase: xfade needs both inputs alike
         af = (f"[{i}:a]atrim=start={v_in / fps:.6f}:end={v_out / fps:.6f},asetpts=PTS-STARTPTS,"
               f"{audio_fmt}[a{k}]" if src["audio"] else
               f"anullsrc=r=48000:cl=stereo,atrim=end={(v_out - v_in) / fps:.6f}[a{k}]")
@@ -400,7 +445,7 @@ def preview(reel, out, **kw):
     proc = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
     if proc.returncode or not os.path.isfile(out):
-        raise ReelError("ffmpeg failed: " + (proc.stderr or "").strip()[-800:])
+        raise ReelError("ffmpeg failed: " + (proc.stderr or "").strip()[:800])  # the cause comes first
     return seconds
 
 
@@ -438,6 +483,8 @@ def add_arguments(p):
 def run(args):
     try:
         if args.step == "plan":
+            if os.path.realpath(args.manifest) == os.path.realpath(os.path.join(args.out, "reel.json")):
+                raise ReelError(f"{args.manifest} is the plan's own output; give another --out")
             manifest = cutlist.load_manifest(args.manifest)
             beats = load_beats(args.beats)
             if not os.path.isfile(args.music):

@@ -9,7 +9,7 @@ Run from `production/`; Python 3.9, stdlib for the plan, ffmpeg for the preview.
 ## The job
 
 1. Transcribe the master and snap the word edges: `transcribe`, then [`wordsnap`](edit-assist.md).
-2. Pick the spans: `reel-spans` or `selects` into a cut manifest ([manifest.md](manifest.md)) whose `sources[].words` points at the snapped JSON. The hook goes first.
+2. Pick the spans: `reel-spans` or `selects` into a cut manifest ([manifest.md](manifest.md)) whose `sources[].words` points at the snapped JSON. The hook goes first; a hook taken from later in the take needs a version 2 manifest, since version 1 spans run forward.
 3. The beat map: `python3 -m rpresolve.beats MUSIC --out beats.json` ([edit-assist.md](edit-assist.md#beats)).
 4. The plan: `python3 -m rpresolve.reel plan MANIFEST --music MUSIC --beats beats.json --out DIR`.
 5. Subject cutouts where the plan marks them: `cutout` writes a ProRes 4444 clip per span; put its path in the span's `layer` ([interchange.md](interchange.md#reel-fields)).
@@ -24,7 +24,7 @@ python3 -m rpresolve.reel plan MANIFEST --music TRACK --beats BEATS.json --out D
     [--downbeat-offset 0] [--music-in 0] [--clip NAME] [--fps RATE]
 ```
 
-The spans play in manifest order from record 0, and record 0 is the music's time 0 (less `--music-in`). Each span has a range of lengths the words allow: its out-point may sit anywhere in the pause after its last word (from the word's end plus 10 ms to the next word's start less 10 ms, or 1 s past the word when none follows), and its in-point may move earlier, down to the previous word's end plus 10 ms, never later. A dynamic programme over (span, beat) picks the beat for each cut that changes the original lengths least; the out-point moves first and the in-point only when the out-point cannot reach. The first cut, the end of the hook, must be a downbeat: every fourth beat of the map from `--downbeat-offset`, since the beat map carries no bar phase (the report says which beat it took). A span with no beat in its range stops the plan with its first and last words named (exit 2); nothing is trimmed into a word. Over `--max-s`, whole trailing spans are dropped with a warning.
+The spans play in manifest order from record 0, and record 0 is the music's time 0 (less `--music-in`). Each span has a range of lengths the words allow: its out-point may sit anywhere in the pause after its last word (from the word's end plus 10 ms to the next word's start less 10 ms, or 1 s past the word when none follows), and its in-point may move earlier, down to the previous word's end plus 10 ms, never later; two consecutive spans either side of one pause split it, so their edges cannot cross, while a dissolve's handles may still overlap there. A dynamic programme over (span, beat) picks the beat for each cut that changes the original lengths least; the out-point moves first and the in-point only when the out-point cannot reach. The first cut, the end of the hook, must be a downbeat: every fourth beat of the map from `--downbeat-offset`, since the beat map carries no bar phase (the report says which beat it took). A span with no beat in its range stops the plan with its first and last words named (exit 2); nothing is trimmed into a word. The last span is the exception: the reel's end is not a cut, so with no beat in range it ends where its words allow, with a warning. An out-point never passes the end of the source file. Over `--max-s`, whole trailing spans are dropped with a warning.
 
 Dressing goes into the fields `interchange` writes ([reel fields](interchange.md#reel-fields)):
 
@@ -45,7 +45,7 @@ python3 -m rpresolve.reel preview REEL.json --out FILE.mp4 [--lufs -14] [--crf 1
 
 ## Checks
 
-`tests/test_reel.py`: on a synthetic transcript and a 120 BPM grid, every cut sits on a beat (within half a frame) and outside every word, the hook ends on a downbeat, `--downbeat-offset` moves it, a dissolve too long for its pause falls back to a cut with a warning, `--max-s` drops trailing spans, a span with no beat in range is named, writes refuse a git tree, and the preview (lavfi fixtures with a dissolve, a punch-in and an alpha layer) comes out 1080x1920, 48 kHz stereo, bt709, at the planned length, from a plan that also writes as FCPXML with its two transitions and the music lane.
+`tests/test_reel.py`: on a synthetic transcript and a 120 BPM grid, every cut sits on a beat (within half a frame) and outside every word, the hook ends on a downbeat, `--downbeat-offset` moves it, a dissolve too long for its pause falls back to a cut with a warning, `--max-s` drops trailing spans, a span with no beat in range is named, the last span may end off the beat, `--music-in` moves the grid, two spans either side of one pause split it, an out-point stays inside the source, writes refuse a git tree, and the preview (lavfi fixtures with an odd dissolve, a cut into a dissolve, a punch-in under 1 and an alpha layer) comes out 1080x1920, 48 kHz stereo, bt709, at the planned length, from a plan that also writes as FCPXML with its two transitions and the music lane.
 
 ## Not done
 
