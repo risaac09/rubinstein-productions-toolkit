@@ -1,7 +1,7 @@
 """
 The resolve_workflow commands that wrap an rpresolve module with its own CLI
 (interchange, shots, wordsnap, beats, roomtone, dxmetrics, duckplan, captionlint,
-pacing, transcribe, besttake, trim-apply): each
+pacing, transcribe, besttake, trim-apply, cutout): each
 shows that module's flags under --help and hands the parsed arguments to its
 run(). The modules' own tests cover the work.
 
@@ -38,6 +38,7 @@ WRAPPERS = {
     "besttake": (["folder"], "--no-faces", ("source", "folder")),
     "trim-apply": (["m.json", "r.tsv", "--out", "o.json", "--accept", "1"], "--accepted-file",
                    ("review", "r.tsv")),
+    "cutout": (["src.mov", "--in", "1", "--out", "4", "--out-dir", "dir"], "--feather", ("t_out", 4.0)),
 }
 
 
