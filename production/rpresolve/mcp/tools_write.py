@@ -26,7 +26,7 @@ import os
 from .. import api, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
-from .. import relink as rprelink, trimreview
+from .. import proxies as rpproxies, relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
 
@@ -100,6 +100,9 @@ def ingest(args, ctx):
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         r = run() if args["dry_run"] else _journalled("ingest", args, run)
     r["missing"] = missing
+    if not args["dry_run"]:  # the proxies outlive this call; link_proxies attaches them
+        r["proxies"] = rpproxies.start(args["project"], [
+            x["path"] for x in r["results"] if x["result"] in ("imported", "tagged")])
     # One row per file: the result, plus the plan's camera, profile and reason
     # (why a file is skipped, sent to Review, or needs conforming).
     by_path = {e["path"]: e for e in r.pop("plan")}
@@ -640,6 +643,21 @@ def trim_review_markers(args, ctx):
         return run() if args["dry_run"] else _journalled("trim_review_markers", args, run)
 
 
+def link_proxies(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.link_proxies(ctx.session.get(), args["project"], folder=args.get("folder"),
+                                   dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                   check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        c = ", ".join(f"{n} {k}" for k, n in sorted(r["counts"].items()))
+        r["summary"] = f"proxies in {r['folder']}: {c or 'no BRAW clips'}" + _how(r)
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("link_proxies", args, run)
+
+
 def relink(args, ctx):
     _require_sha(args)
     roots = []
@@ -1081,6 +1099,20 @@ def register(registry):
             "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}},
          "required": ["project", "search_roots"], "additionalProperties": False},
         relink, title="Relink offline clips", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "link_proxies",
+        "Link each BRAW clip of the open project to its ProRes LT proxy (made in the background "
+        "after ingest, ~/Movies/RPProxies/<project>) and set the project to prefer proxies; "
+        "every link is read back. A clip whose proxy has not landed is reported and left "
+        "alone, so run it again later. The source file, grades and timelines are not touched. "
+        "Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "folder": {"type": "string", "description": "Absolute folder holding the proxies. "
+                       "Default: ~/Movies/RPProxies/<project>."},
+            **DRY_RUN},
+         "required": ["project"], "additionalProperties": False},
+        link_proxies, title="Link BRAW proxies", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "

@@ -28,6 +28,7 @@ from pathlib import Path
 from . import api, captions, grade
 from . import detect as rpdetect
 from . import ingest as rpingest
+from . import proxies as rpproxies
 from . import relink as rprelink
 from .renderguard import RenderGuard
 
@@ -320,6 +321,50 @@ def _relink_one(media_pool, clip, e, exists, stat):
     if not _same_path(after.get("File Path") or "", e["new_path"]):
         return {"result": f"FAILED: File Path reads '{after.get('File Path')}' after the relink"}
     return {"result": "relinked", "drift": rprelink.drift(before, after)}
+
+
+# ---------------------------------------------------------------------------
+# link_proxies
+# ---------------------------------------------------------------------------
+
+def link_proxies(resolve, project_name, folder=None, dry_run=True, project_id=None,
+                 check_cancel=None, expect_sha=None, exists=os.path.exists):
+    """Link each BRAW clip of the open project to its ProRes LT proxy in folder
+    (default rpproxies.proxy_dir) and set the project to prefer proxies, each
+    read back. Returns {project, dry_run, folder, results, counts, plan_sha,
+    exit_status}. exit_status: 0 every clip is on its proxy, 2 some have none
+    yet, 1 a link failed."""
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, root = api.media_pool_root(project)
+    folder = folder or rpproxies.proxy_dir(pin.name)
+    clips = [(c, c.GetClipProperty() or {}) for _, c in _walk_bins(root)]
+    rows = rpproxies.plan_links(clips, folder, exists=exists)
+    sha = plan_sha("link_proxies", pin.unique_id, folder,
+                   [(r["name"], r["action"]) for r in rows])
+    if not dry_run and expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run; run the dry run again and review it")
+    results = []
+    check = _check(pin, pm, check_cancel)
+    for r in rows:
+        result = r["action"] if dry_run or r["action"] != "link" else None
+        if result is None:
+            check()
+            ok = r["clip"].LinkProxyMedia(r["proxy"])
+            read = r["clip"].GetClipProperty("Proxy Media Path")
+            result = "linked" if ok and read == r["proxy"] else f"FAILED: reads '{read}'"
+        results.append({"name": r["name"], "proxy": r["proxy"], "result": result})
+    mode = str(project.GetSetting("perfProxyMediaMode"))
+    if not dry_run and mode != rpproxies.PREFER_PROXIES:
+        project.SetSetting("perfProxyMediaMode", rpproxies.PREFER_PROXIES)
+        mode = str(project.GetSetting("perfProxyMediaMode"))
+    counts = {}
+    for r in results:
+        key = r["result"].split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+    failed = "FAILED" in counts or (not dry_run and mode != rpproxies.PREFER_PROXIES)
+    return {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run,
+            "folder": folder, "results": results, "counts": counts, "proxy_mode": mode,
+            "plan_sha": sha, "exit_status": 1 if failed else (2 if "no proxy yet" in counts else 0)}
 
 
 # ---------------------------------------------------------------------------
