@@ -365,9 +365,10 @@ choose the file.
 ## Things that cost time to find
 
 - `set_color_management` and `timeline_from_clips` are tested against the
-  shared fakes only (`tests/test_mcp_project_timeline.py`). Neither has run
-  against a live Resolve yet. Run `tests/live_mcp_sandbox.py` on a sandbox
-  project before relying on them. What is unconfirmed: that
+  shared fakes only (`tests/test_mcp_project_timeline.py`). `timeline_from_clips`
+  ran live on 2026-10-11 (Resolve 21.1.1.10) and 2026-11-07 (21.2.0.6); the
+  fresh-project write of `set_color_management` has not. Run
+  `tests/live_mcp_sandbox.py` on a sandbox project before relying on them. What is unconfirmed: that
   `Project.SetSetting('colorScienceMode', ...)` takes effect and reads back on
   21.1.1.10 (the 21.1 README marks `SetSetting` deprecated for
   `SetSettings`), and how `AppendToTimeline` with no `recordFrame` places a
@@ -527,3 +528,10 @@ then checks that nothing that existed before changed. See its docstring
 for the arguments. It refuses to run unless the open project's name
 contains "Sandbox" and its unique id matches the one you pass. Run it by
 hand; CI runs the offline tests only.
+
+Last runs: 2026-10-11, PASS on Resolve Studio 21.1.1.10; 2026-11-07, PASS, 24 of
+24, on 21.2.0.6, with `--timeline "MCP_twenty_30 [auto]"`,
+`--lut "RP/aaron-jamie-soft-daylight-60.cube"`,
+`--bin "A3 ingest/Panasonic DC-GH7"` and a `--render-dir` outside any repo.
+Give `--bin` a bin of video clips: a bin that holds a still fails the
+`timeline_from_clips` check by that tool's own refusal, not Resolve's.

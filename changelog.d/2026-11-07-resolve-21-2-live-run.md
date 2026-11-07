@@ -1,0 +1,1 @@
+Docs: the live sandbox harness passed 24 of 24 on Resolve Studio 21.2.0.6 (2026-11-07); resolve-mcp.md records the run, its arguments and that timeline_from_clips has run live twice while set_color_management's fresh-project write has not.
