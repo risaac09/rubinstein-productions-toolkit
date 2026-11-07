@@ -374,6 +374,32 @@ class Pool(Fake):
         self.current.clips.extend(clips)
         return clips
 
+    # path -> {"video": [[(name, record, frames[, props]), ...] per track], "audio": [...]}
+    # that ImportTimelineFromFile places (set on the instance); props {"transition": True}
+    # makes an item with no media-pool clip, as Resolve places a transition; an unlisted
+    # path answers None (Resolve could not read the file). The clips land in the open bin.
+    def ImportTimelineFromFile(self, path, options=None):
+        _log(self, "ImportTimelineFromFile", path, dict(options or {}))
+        layout = self.__dict__.get("import_layout", {}).get(path)
+        if layout is None:
+            return None
+        # rename_import (set on the instance) is the name Resolve gives the timeline instead
+        tl = self.CreateEmptyTimeline(self.__dict__.get("rename_import") or
+                                      (options or {}).get("timelineName") or "Imported")
+
+        def item(name, rec, n, props=None):
+            props = dict(props or {})
+            clip = None
+            if not props.pop("transition", False):
+                clip = Clip(name, f"imp-{name}", {"File Path": path})
+                self.current.clips.append(clip)
+            return Item(name, tl.start + rec, tl.start + rec + n, clip,
+                        props={"ZoomX": 1.0, "ZoomY": 1.0, **props})
+
+        tl.tracks = {kind: [[item(*row) for row in track] for track in tracks]
+                     for kind, tracks in layout.items()}
+        return tl
+
     def CreateEmptyTimeline(self, name):
         _log(self, "CreateEmptyTimeline", name)
         fps = float(self.project.settings.get("timelineFrameRate", 25)) if self.project else 25.0
