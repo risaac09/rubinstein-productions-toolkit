@@ -892,8 +892,9 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
     Keyframed transforms and retimes are not read back. The current timeline,
     playhead and page are put back. Returns {project, timeline, file,
     file_sha256, rate, events, transitions, media_missing, warnings,
-    plan_sha, dry_run, created, items, tracks, problems, left_behind,
-    lands_in_bin, ui_restore_problems, exit_status}."""
+    plan_sha, dry_run, created, clips_added (what the import put in the open
+    bin), items, tracks, problems, left_behind, lands_in_bin,
+    ui_restore_problems, exit_status}."""
     from . import fcpxmlread
     if not name.endswith(AUTO):
         raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
@@ -920,7 +921,8 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
            "file_sha256": file_sha, "rate": rate, "events": read["events"],
            "transitions": read["transitions"], "media_missing": missing,
            "warnings": list(read["warnings"]), "plan_sha": sha, "dry_run": dry_run,
-           "created": None, "items": [], "tracks": {}, "problems": [], "left_behind": None,
+           "created": None, "clips_added": [], "items": [], "tracks": {}, "problems": [],
+           "left_behind": None,
            "lands_in_bin": api._safe_call(media_pool.GetCurrentFolder(), "GetName"),
            "ui_restore_problems": [], "exit_status": 0}
     if missing:
@@ -936,11 +938,19 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
         project = pin.check(pm)
         if check_cancel:
             check_cancel()
+        folder = media_pool.GetCurrentFolder()
+        before = {_uid(c) for c in api._safe_call(folder, "GetClipList") or []}
         tl = media_pool.ImportTimelineFromFile(file, {"timelineName": name,
                                                       "importSourceClips": True})
+        # the clips the import added to the open bin, named even when the timeline is wrong
+        out["clips_added"] = [api._safe_call(c, "GetName")
+                              for c in api._safe_call(folder, "GetClipList") or []
+                              if _uid(c) not in before]
         if not tl or api._safe_call(tl, "GetName") != name:
             raise api.WriteNotApplied(f"ImportTimelineFromFile('{os.path.basename(file)}') "
-                                      f"returned {tl and api._safe_call(tl, 'GetName')!r}")
+                                      f"returned {tl and api._safe_call(tl, 'GetName')!r}; "
+                                      f"{len(out['clips_added'])} clip(s) were added to the bin "
+                                      f"'{out['lands_in_bin']}': {out['clips_added'][:5]}")
         out["created"] = {"name": name, "unique_id": _uid(tl)}
         try:
             (out["items"], out["transitions"], out["tracks"],
@@ -973,8 +983,11 @@ def _import_read_back(tl, read):
             its = tl.GetItemListInTrack(kind, t) or []
             tracks[f"{kind[0].upper()}{t}"] = len(its)
             for it in its:
-                clip = api._safe_call(it, "GetMediaPoolItem") if kind == "video" else True
-                have.append({"kind": kind if clip is not None else "transition", "track": t,
+                clip = api._safe_call(it, "GetMediaPoolItem")
+                # no media-pool clip: a transition (an audio crossfade is not a placed clip)
+                have.append({"kind": (kind if clip is not None else
+                                      "transition" if kind == "video" else "audio_transition"),
+                             "track": t,
                              "record": int(it.GetStart()) - start0,
                              "frames": int(it.GetEnd()) - int(it.GetStart()), "used": False,
                              "name": api._safe_call(it, "GetName"), "item": it})

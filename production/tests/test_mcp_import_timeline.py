@@ -17,7 +17,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import fcpxmlread, workflows  # noqa: E402
+from rpresolve import api, fcpxmlread, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 
@@ -165,6 +165,8 @@ class TestImportTimeline(Base):
                                                 "frames": 12, "placed_as": "Cross Dissolve",
                                                 "track": 1, "ok": True}])
         self.assertEqual(real["tracks"], {"V1": 4, "V2": 1, "A1": 3, "A2": 1})
+        self.assertEqual(real["clips_added"], ["a1", "a2", "a3", "cutout", "a1", "a2", "a3",
+                                               "music"])
         self.assertIn(self.name, self.tl_names())
         self.assertIn("every transition in place (placed as Cross Dissolve)", real["summary"])
         call = rf.CALLS[[c[1] for c in rf.CALLS].index("ImportTimelineFromFile")]
@@ -212,12 +214,47 @@ class TestImportTimeline(Base):
         self.assertEqual(real["problems"], ["#2 a2: ZoomX reads 1.0, the file says 1.2"])
         self.assertFalse(real["items"][1]["ok"])
 
-    def test_no_audio_placed_is_a_problem(self):
-        del self.pool.import_layout[self.file]["audio"]
+    def test_no_audio_placed_is_a_problem_and_a_crossfade_is_not_audio(self):
+        self.pool.import_layout[self.file]["audio"] = [[("Cross Fade", 66, 12,
+                                                         {"transition": True})]]
         _, real = run_twice("import_timeline", {"name": self.name, "file": self.file},
                             self.resolve)
         self.assertEqual(real["problems"],
                          ["the file names 1 audio clip(s); no audio item was placed"])
+
+    def test_a_timeline_under_another_name_is_not_applied_and_names_the_clips_added(self):
+        layout = self.pool.import_layout.pop(self.file)
+        self.pool.import_layout[self.file] = layout
+        self.pool.rename_import = "Something else"
+        with self.assertRaises(api.WriteNotApplied) as cm:
+            run_twice("import_timeline", {"name": self.name, "file": self.file}, self.resolve)
+        self.assertIn("8 clip(s) were added to the bin 'Master'", str(cm.exception))
+
+
+class TestReaderWrappers(Base):
+    def test_a_clip_wrapper_counts_once_and_its_connected_lane_still_counts(self):
+        wrapped = FCPXML.format(dir=self.dir).replace(
+            '<asset-clip ref="r2" name="a3" offset="6s" start="9s" duration="3s"/>',
+            '<clip name="a3" offset="6s" start="9s" duration="3s"><video ref="r2" offset="9s" '
+            'duration="3s"/><audio ref="r2" offset="9s" duration="3s"/>'
+            '<video ref="r4" name="pop" lane="1" offset="10s" duration="1s"/></clip>')
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(wrapped)
+        r = fcpxmlread.read(self.file)
+        self.assertEqual([(e["name"], e["lane"], e["record"]) for e in r["events"]
+                          if e["record"] >= 150], [("a3", 0, 150), ("pop", 1, 175)])
+
+    def test_a_zero_frame_duration_and_a_bad_scale_are_named(self):
+        text = FCPXML.format(dir=self.dir).replace('scale="1.2 1.2"', 'scale="1,2 1,2"')
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(text)
+        r = fcpxmlread.read(self.file)
+        self.assertNotIn("scale", [k for e in r["events"] for k in e])
+        self.assertEqual(r["warnings"], ["a2: scale '1,2 1,2' is not a number; not checked"])
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(text.replace('frameDuration="1/25s"', 'frameDuration="0s"'))
+        with self.assertRaises(fcpxmlread.FcpxmlError):
+            fcpxmlread.read(self.file)
 
     def test_refusals(self):
         with self.assertRaises(workflows.Refused):

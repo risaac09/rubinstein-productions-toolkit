@@ -67,7 +67,10 @@ def read(path):
     fmt = formats.get(seq.get("format"))
     if fmt is None or not fmt.get("frameDuration"):
         raise FcpxmlError(f"{path}: the sequence's format has no frameDuration")
-    rate = 1 / secs(fmt.get("frameDuration"))
+    fd = secs(fmt.get("frameDuration"))
+    if fd <= 0:
+        raise FcpxmlError(f"{path}: frameDuration '{fmt.get('frameDuration')}' is not positive")
+    rate = 1 / fd
     warnings = []
     out = {"rate": rate, "drop": seq.get("tcFormat", "NDF") == "DF", "events": [],
            "transitions": [], "media": {}, "warnings": warnings}
@@ -87,6 +90,8 @@ def read(path):
                 continue
             if el.tag not in CLIP_TAGS:
                 continue
+            if el.tag in ("video", "audio") and parent.tag != "spine" and not el.get("lane"):
+                continue  # a <clip>'s own picture or sound, not a connected clip
             offset = frames(el.get("offset", "0s"), el.get("name", el.tag))
             record = record_base + offset - local_zero
             length = frames(el.get("duration", "0s"), el.get("name", el.tag))
@@ -96,9 +101,13 @@ def read(path):
                 kind = "audio" if el.tag == "audio" or (asset and not asset["video"]) else "video"
                 ev = {"name": el.get("name") or asset.get("name") or el.tag, "kind": kind,
                       "lane": lane, "record": record, "frames": length, "path": asset.get("path")}
-                scale = _static_scale(el.find("adjust-transform"))
-                if scale is not None:
-                    ev["scale"] = scale
+                adjust = el.find("adjust-transform")
+                if adjust is not None and adjust.get("scale"):
+                    try:
+                        ev["scale"] = float(adjust.get("scale").split()[0])
+                    except ValueError:
+                        warnings.append(f"{ev['name']}: scale '{adjust.get('scale')}' is not a "
+                                        "number; not checked")
                 out["events"].append(ev)
             # children connected to this clip: their offsets count from its `start`
             walk(el, record, frames(el.get("start", "0s"), el.get("name", el.tag)))
@@ -114,17 +123,6 @@ def read(path):
         if a["path"]:
             out["media"][a["path"]] = os.path.isfile(a["path"])
     return out
-
-
-def _static_scale(adjust):
-    """The x scale of a static <adjust-transform scale="x y"/>, or None (no
-    element, or a keyframed one, which Resolve's API cannot read back)."""
-    if adjust is None or not adjust.get("scale"):
-        return None
-    try:
-        return float(adjust.get("scale").split()[0])
-    except ValueError:
-        return None
 
 
 def _file_path(src):
