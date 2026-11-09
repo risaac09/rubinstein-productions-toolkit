@@ -154,7 +154,7 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None):
         vf += [f"scale=trunc({w}*{s}/2)*2:trunc({h}*{s}/2)*2",
                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"]
     if lut:
-        vf.append(f"lut3d=file={lut}")
+        vf.append("lut3d=file=look.cube")  # relative: the job runs in the plan's work folder
     missing = []
     for e in effects:
         f = effect_filter(e, seconds, fps, w, h)
@@ -222,7 +222,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         cmd = (["ffmpeg", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox"] if hw else [])
                + ["-ss", f"{span['in']:.4f}", "-i", src, "-an", "-vf", vf,
                   "-frames:v", str(n), "-r", str(fps)] + enc + [out])
-        jobs.append({"cmd": cmd, "out": out, "seconds": seconds})
+        jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work})
         frames += n
     black = methods.end_black(m)
     if black:
@@ -231,7 +231,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         jobs.append({"cmd": ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
                              f"color=black:s={w}x{h}:r={fps}", "-frames:v", str(n),
                              "-pix_fmt", "yuv420p"] + enc + [out],
-                     "out": out, "seconds": n / fps})
+                     "out": out, "seconds": n / fps, "frames": n, "cwd": work})
         frames += n
     for step in (man.get("method") or {}).get("ui_steps") or []:
         if step["control"] in ("Speed", "Zoom keyframes", "Duration"):
@@ -240,11 +240,26 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
                   "notes": notes}
 
 
+def frame_count(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+                        "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path],
+                       capture_output=True, text=True)
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return None
+
+
 def run_job(job):
-    r = subprocess.run(job["cmd"], capture_output=True, text=True)
+    r = subprocess.run(job["cmd"], capture_output=True, text=True, cwd=job.get("cwd"))
     if r.returncode != 0 or not os.path.isfile(job["out"]):
         raise DraftError(f"ffmpeg failed on {os.path.basename(job['out'])}: "
                          f"{r.stderr.strip()[-400:]}")
+    if job.get("frames"):
+        got = frame_count(job["out"])
+        if got != job["frames"]:  # ffmpeg stops quietly at the source's end
+            raise DraftError(f"{os.path.basename(job['out'])} has {got} frames, the plan "
+                             f"{job['frames']}: the fill runs past the end of its source")
 
 
 def _wave(jobs, lanes, runner):
@@ -291,7 +306,7 @@ def run_lanes(jobs, lanes=None, cap=None, runner=run_job):
 def _concat(parts, out, work):
     lst = os.path.join(work, "concat.txt")
     with open(lst, "w", encoding="utf-8") as f:
-        f.writelines(f"file '{p}'\n" for p in parts)
+        f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
     r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
                         "-c", "copy", "-movflags", "+faststart", out],
                        capture_output=True, text=True)
@@ -355,7 +370,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 doc["sheet"] = {"dir": os.path.join(out, "sheet"),
                                 "key": absheet.key_dir(os.path.join(out, "sheet")),
                                 "summary": absheet.summary(sheet)}
-            except ImportError as e:  # Pillow missing
+            except (ImportError, ValueError) as e:  # Pillow missing, more than 9 drafts
                 doc["sheet"] = {"error": f"no sheet: {e}"}
         with open(os.path.join(out, "drafts.json"), "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=2)

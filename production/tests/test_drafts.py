@@ -114,11 +114,21 @@ class TestRender(Base):
             f.write("LUT_3D_SIZE 2\n" + "".join(f"{r} {g} {b}\n" for b in (0, 1) for g in (0, 1)
                                                 for r in (0, 1)))
         a = self.plan("graded", METHOD, self.src)
-        doc = drafts.build([a], os.path.join(self.dir, "out"), camera="Cam",
+        doc = drafts.build([a], os.path.join(self.dir, "Isaac's out, take: 2"), camera="Cam",
                            lut_root=os.path.dirname(root), hw=False, lanes=1)
         self.assertTrue(doc["drafts"][0]["lut"].endswith("RP Print Teal [Cam].cube"))
         self.assertFalse(any("not applied" in n for n in doc["drafts"][0]["notes"]))
         self.assertIsNone(doc["sheet"])
+        self.assertEqual(int(probe(doc["drafts"][0]["file"])["nb_read_frames"]), 60)
+
+    def test_a_fill_past_the_source_end_is_refused(self):
+        short = os.path.join(self.dir, "short.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=24:d=2", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", short], check=True)
+        a = self.plan("short", METHOD, short)  # the third slot runs to 3.75 s of a 2 s clip
+        with self.assertRaisesRegex(drafts.DraftError, "past the end of its source"):
+            drafts.build([a], os.path.join(self.dir, "out"), hw=False, lanes=1)
 
 
 class TestRefusals(Base):
@@ -162,10 +172,10 @@ class TestLanes(unittest.TestCase):
             with lock:
                 live[0] += 1
                 seen.append(live[0])
-            time.sleep(0.004 / rate_for_lanes(live[0]))
+            time.sleep(0.01 / rate_for_lanes(live[0]))
             with lock:
                 live[0] -= 1
-        jobs = [{"seconds": 0.004} for _ in range(n_jobs)]
+        jobs = [{"seconds": 0.01} for _ in range(n_jobs)]
         return drafts.run_lanes(jobs, cap=cap, runner=runner), seen
 
     def test_adds_lanes_while_throughput_rises(self):
@@ -174,7 +184,7 @@ class TestLanes(unittest.TestCase):
         self.assertEqual(r["probe"][0][0], 1)
 
     def test_stops_when_throughput_stops_rising(self):
-        r, _ = self.tune(lambda n: 1.0 / n)  # one engine: more lanes, slower jobs
+        r, _ = self.tune(lambda n: 1.0 / (n * n))  # contention: each lane lowers throughput
         self.assertEqual(r["lanes"], 1)
 
     def test_fixed_lanes_and_cap(self):
