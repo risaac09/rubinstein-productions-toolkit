@@ -1,6 +1,6 @@
 # Resolve traps
 
-> **Status:** measured in DaVinci Resolve Studio 21.2 on 2026-11-09, on scripted ` [auto]` timelines in a sandbox project. Each entry says what was seen and what works instead. An entry marked "not tested" is a claim from the scripting docs that nobody here has run.
+> **Status:** operational 2026-11-09. Measured in DaVinci Resolve Studio 21.2, on scripted ` [auto]` timelines in a sandbox project. Each entry says what was seen and what works instead. An entry marked "not tested" is a claim from the scripting docs that nobody here has run.
 
 Other docs cite these by number (`T3`). A number never changes; a corrected trap keeps its number and says what replaced it.
 
