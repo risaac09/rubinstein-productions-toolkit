@@ -64,7 +64,8 @@ def _journalled(tool, args, run):
     try:
         result = run()
     except BaseException as e:
-        done = {k: getattr(e, k) for k in ("relinked", "stabilized") if getattr(e, k, None)}
+        done = {k: getattr(e, k) for k in ("relinked", "stabilized", "effects_added")
+                if getattr(e, k, None)}
         warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}", done or None)
         if warn:
             e.args = (f"{e} ({warn})",) + e.args[1:]
@@ -984,7 +985,8 @@ def register(registry):
         "<effect>' to each item, build the macro's tools in it with their keyframes, wire them "
         "between MediaIn1 and MediaOut1, and read the comp back (tools, keyframes, no handle "
         "overshoot, wiring). Nothing existing changes: the comp is new, and an item that "
-        "already has a comp of that name is refused. Values are the macro's own; three need "
+        "already has any Fusion comp is refused, since the new comp would become the one "
+        "that renders. Values are the macro's own; three need "
         "an eye before delivery (person-matte-text's placeholder matte, exposure-flash's "
         "strength, text-word's font and colour; fusion-macros.md). Dry run first; the real "
         "run needs its plan_sha.",

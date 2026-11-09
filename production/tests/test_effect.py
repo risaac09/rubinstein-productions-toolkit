@@ -106,8 +106,9 @@ class FComp:
 
 
 def give_fusion(item):
-    """Fusion comps on a fake timeline item: AddFusionComp adds 'Composition N'."""
-    item.comps = {"Composition 1": FComp()}
+    """Fusion comps on a fake timeline item: none at first, as on a fresh item;
+    AddFusionComp adds 'Composition N'."""
+    item.comps = {}
 
     def add():
         rf.CALLS.append(("Item", "AddFusionComp", (item.uid,)))
@@ -226,8 +227,41 @@ class TestApplyEffect(Base):
         again = self.fx(items=[2, 1])
         self.assertEqual([r["index"] for r in again["refused"]], [2])
         self.assertEqual([t["index"] for t in again["targets"]], [1])
-        with self.assertRaisesRegex(workflows.Refused, "already has a comp"):
+        with self.assertRaisesRegex(workflows.Refused, "already has Fusion comp"):
             self.fx(items=[2])
+
+    def test_an_item_with_any_comp_is_refused(self):
+        self.items[0].comps["Composition 1"] = FComp()
+        dry = self.fx()
+        self.assertEqual([r["index"] for r in dry["refused"]], [1])
+        self.assertIn("would replace the one that renders", dry["refused"][0]["reasons"][0])
+
+    def test_dip_needs_a_readable_length(self):
+        self.items[0].GetDuration = lambda: None
+        dry = self.fx(effect="dip-to-black")
+        self.assertEqual([r["index"] for r in dry["refused"]], [1])
+        self.assertIn("length cannot be read", dry["refused"][0]["reasons"][0])
+
+    def test_a_failure_mid_run_names_the_items_done(self):
+        dry = self.fx()
+        def boom():
+            raise RuntimeError("link dropped")
+        self.items[1].AddFusionComp = boom
+        with self.assertRaisesRegex(RuntimeError, "link dropped") as ctx:
+            self.fx(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual([r["index"] for r in ctx.exception.effects_added], [1])
+        self.assertEqual(self.journal()[-2:], ["started", "finished"])
+
+    def test_a_missing_tool_is_named_not_raised(self):
+        _, parsed = cmd_effect.load_macro("text-word")
+        comp = FComp()
+        real_add = comp.AddTool
+        comp.AddTool = lambda ctor, *a, **k: None if ctor == "Merge" else real_add(ctor, *a, **k)
+        skipped, animated = cmd_effect._build(comp, parsed)
+        cmd_effect._wire(comp, "text-word")
+        problems = cmd_effect._read_back(comp, "text-word", parsed, animated)
+        self.assertIn("Merge1 missing", problems)
+        self.assertTrue(any("AddTool Merge failed" in x for x in skipped))
 
     def test_two_input_wiring_and_skipped_values(self):
         _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "items": [1],
@@ -240,7 +274,7 @@ class TestApplyEffect(Base):
                       comp.FindTool("SubjectMatte_PLACEHOLDER"))
         self.assertEqual(comp.FindTool("Text1").values["Font"], "Arial")
         self.assertTrue(real["results"][0]["ok"])
-        _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "items": [1],
+        _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "items": [2],
                                              "effect": "exposure-flash"}, self.resolve)
         self.assertEqual(real["results"][0]["skipped"], ["ColorCorrector1.ColorRanges"])
 

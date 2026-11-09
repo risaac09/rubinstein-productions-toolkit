@@ -336,8 +336,11 @@ def _wire(comp, effect):
     w = WIRING[effect]
     media_in, media_out = comp.FindTool("MediaIn1"), comp.FindTool("MediaOut1")
     for tool, inp in w["in"]:
-        comp.FindTool(tool).ConnectInput(inp, media_in)
-    media_out.ConnectInput("Input", comp.FindTool(w["out"]))
+        t = comp.FindTool(tool)
+        if t:  # a tool AddTool could not make is named by the read-back
+            t.ConnectInput(inp, media_in)
+    if comp.FindTool(w["out"]):
+        media_out.ConnectInput("Input", comp.FindTool(w["out"]))
 
 
 def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, dry_run=False,
@@ -345,7 +348,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     """Add a Fusion comp named 'rp-fx <effect>' to each item (1-based numbers on one
     video track, default all) of an ' [auto]' timeline, paste the macro's tools into
     it, wire them between MediaIn1 and MediaOut1, and read the comp back. An item that
-    already has a comp of that name is refused. Returns {project, timeline, effect,
+    already has any Fusion comp is refused (the new comp would replace the one that
+    renders). Returns {project, timeline, effect,
     targets, refused, results, plan_sha, dry_run, exit_status}; exit_status 1 when any
     item failed its read-back."""
     text, parsed = load_macro(effect)
@@ -373,8 +377,16 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         row = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
                "comps": names, "frames": frames,
                "key_offset": end_offset(parsed, frames) if effect in END_ANCHORED else 0}
-        if comp_name in names:
-            refused.append({**row, "reasons": [f"it already has a comp named '{comp_name}'"]})
+        why = []
+        # AddFusionComp makes the new comp the one that renders, so an item that has
+        # a comp already would change: refuse it (this also stops a second run).
+        if names:
+            why.append(f"it already has Fusion comp(s) ({', '.join(names)}); a new comp "
+                       "would replace the one that renders")
+        if effect in END_ANCHORED and not isinstance(frames, int):
+            why.append("its length cannot be read, so the fade cannot be put at its end")
+        if why:
+            refused.append({**row, "reasons": why})
         else:
             targets.append(row)
     if not targets:
@@ -394,6 +406,16 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (the items, their comps or the "
                       "macro differ); run the dry run again and review it")
+    try:
+        _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel)
+    except BaseException as e:
+        e.effects_added = list(out["results"])
+        raise
+    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
+    return out
+
+
+def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel):
     for t in targets:
         if check_cancel:
             check_cancel()
@@ -425,8 +447,6 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         row["detail"] = ("comp read back: tools present, wired MediaIn1 to MediaOut1"
                          if not problems else "; ".join(problems))
         out["results"].append(row)
-    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
-    return out
 
 
 # ---------------------------------------------------------------------------

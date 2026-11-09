@@ -678,7 +678,7 @@ def edit_methods(args, ctx):
             _abs(ref, "path")
         try:
             m = methods.load(ref)
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             return {"ok": False, "problems": [str(e)], "summary": f"not a sound method: {e}"}
         return {"ok": True, "method": m, "problems": [],
                 "summary": f"{m['id']}: {len(m['slots'])} slots, {m['length_s']} s, {m['aspect']}"}
@@ -688,7 +688,7 @@ def edit_methods(args, ctx):
             continue
         try:
             m = methods.load(os.path.join(methods.METHOD_DIR, name))
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             bad[name] = str(e)
             continue
         row = {k: m[k] for k in ("id", "name", "summary", "fits", "aspect", "fps", "length_s",
