@@ -23,7 +23,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, deliver, delivercheck, settingsguard, syncbuild, workflows
+from .. import api, cmd_effect, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
 from .. import proxies as rpproxies, relink as rprelink, trimreview
@@ -442,6 +442,31 @@ def stabilize(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("stabilize", args, run)
+
+
+def apply_effect(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = cmd_effect.apply_effect(ctx.session.get(), args["project"], args["timeline"],
+                                    args["effect"], track=args["track"], items=args.get("items"),
+                                    dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                    check_cancel=ctx.check_cancel,
+                                    expect_sha=args.get("plan_sha"))
+        tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
+        skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
+        if r["dry_run"]:
+            r["summary"] = (f"would add a Fusion comp '{r['effect']['comp']}' with the {e} macro "
+                            f"to {n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}" + _how(r))
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["applied"] = ok
+            r["summary"] = (f"added and read back the {e} comp on {ok} of {len(r['results'])} "
+                            f"item(s) on '{tl}'{skipped}; look at it on the Fusion page")
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("apply_effect", args, run)
 
 
 def queue_render(args, ctx):
@@ -952,6 +977,30 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         apply_grade, title="Apply a grade", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "apply_effect",
+        "Apply a Fusion macro from production/fusion-macros (effect: its id) to items on one "
+        "video track of an ' [auto]' timeline only: add a new Fusion comp named 'rp-fx "
+        "<effect>' to each item, build the macro's tools in it with their keyframes, wire them "
+        "between MediaIn1 and MediaOut1, and read the comp back (tools, keyframes, no handle "
+        "overshoot, wiring). Nothing existing changes: the comp is new, and an item that "
+        "already has a comp of that name is refused. Values are the macro's own; three need "
+        "an eye before delivery (person-matte-text's placeholder matte, exposure-flash's "
+        "strength, text-word's font and colour; fusion-macros.md). Dry run first; the real "
+        "run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "An ' [auto]' timeline's name or unique id."},
+            "effect": {"type": "string", "enum": sorted(cmd_effect.WIRING),
+                       "description": "The macro id (fusion-macros.md)."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
+                      "uniqueItems": True,
+                      "description": "Item numbers on the track, from 1 (default: all)."},
+            **DRY_RUN},
+         "required": ["project", "timeline", "effect"], "additionalProperties": False},
+        apply_effect, title="Apply a Fusion effect", annotations=WRITE))
     registry.add(Tool(
         "reframe_apply",
         "Set ZoomX, ZoomY, Pan and Tilt on video items of one track of an ' [auto]' timeline "

@@ -670,6 +670,35 @@ def ograf_template_check(args, ctx):
     return r
 
 
+def edit_methods(args, ctx):
+    from .. import methods
+    if args.get("id") or args.get("path"):
+        ref = args.get("path") or args["id"]
+        if args.get("path"):
+            _abs(ref, "path")
+        try:
+            m = methods.load(ref)
+        except ValueError as e:
+            return {"ok": False, "problems": [str(e)], "summary": f"not a sound method: {e}"}
+        return {"ok": True, "method": m, "problems": [],
+                "summary": f"{m['id']}: {len(m['slots'])} slots, {m['length_s']} s, {m['aspect']}"}
+    rows, bad = [], {}
+    for name in sorted(os.listdir(methods.METHOD_DIR)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            m = methods.load(os.path.join(methods.METHOD_DIR, name))
+        except ValueError as e:
+            bad[name] = str(e)
+            continue
+        row = {k: m[k] for k in ("id", "name", "summary", "fits", "aspect", "fps", "length_s",
+                                 "bpm", "look")}
+        rows.append({**row, "slots": len(m["slots"])})
+    return {"ok": not bad, "methods": rows, "problems": bad,
+            "summary": f"{len(rows)} sound method(s)" + (f"; {len(bad)} not sound: "
+                                                          f"{', '.join(sorted(bad))}" if bad else "")}
+
+
 # ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
@@ -1118,6 +1147,18 @@ def register(registry):
         _obj({"template": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9-]*$",
                            "description": "One template id (say-why-lower-third); default all."}}),
         ograf_template_check, title="Check OGraf templates", annotations=READ))
+
+    registry.add(Tool(
+        "edit_methods",
+        "List the edit methods (production/edit-methods: reusable social edit recipes, one "
+        "timed slot per shot) with their fits tags, aspect, length and slot count, checking "
+        "each against the method format; with id or path, return one method in full or say "
+        "why it is not sound. Reads only; never connects to Resolve.",
+        _obj({"id": {"type": "string", "pattern": r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                     "description": "One method's id (punch-montage)."},
+              "path": {"type": "string",
+                       "description": "Absolute path of a method JSON to check."}}),
+        edit_methods, title="List edit methods", annotations=READ))
 
     # These write new files (never over an existing one), so none is read-only.
     for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report"):

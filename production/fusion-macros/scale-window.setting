@@ -1,0 +1,64 @@
+{
+	Tools = ordered() {
+		Transform1 = Transform {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			CtrlWZoom = false,
+			Inputs = {
+				Size = Input {
+					Source = "Value",
+					SourceOp = "Transform1Size"
+				},
+				Center = Input {
+					Source = "Value",
+					SourceOp = "XYPath1"
+				}
+			}
+		},
+		XYPath1 = XYPath {
+			DrawMode = "ModifyOnly",
+			Inputs = {
+				X = Input {
+					Source = "Value",
+					SourceOp = "XYPath1X"
+				},
+				Y = Input {
+					Source = "Value",
+					SourceOp = "XYPath1Y"
+				}
+			},
+			ShowKeyPoints = false
+		},
+		XYPath1X = BezierSpline {
+			KeyFrames = {
+				[0] = { 0.5, RH = { 3, 0.483333333333333 }, Flags = { Linear = true } },
+				[9] = { 0.45, RH = { 12, 0.483333333333333 }, Flags = { Linear = true }, LH = { 6, 0.466666666666667 } },
+				[18] = { 0.55, RH = { 21, 0.526666666666667 }, Flags = { Linear = true }, LH = { 15, 0.516666666666667 } },
+				[27] = { 0.48, RH = { 30, 0.486666666666667 }, Flags = { Linear = true }, LH = { 24, 0.503333333333333 } },
+				[36] = { 0.5, Flags = { Linear = true }, LH = { 33, 0.493333333333333 } }
+			},
+			SplineColor = { Blue = 0, Green = 0, Red = 255 },
+			NameSet = true
+		},
+		XYPath1Y = BezierSpline {
+			KeyFrames = {
+				[0] = { 0.45, RH = { 3, 0.456666666666667 }, Flags = { Linear = true } },
+				[9] = { 0.47, RH = { 12, 0.48 }, Flags = { Linear = true }, LH = { 6, 0.463333333333333 } },
+				[18] = { 0.5, RH = { 21, 0.5 }, Flags = { Linear = true }, LH = { 15, 0.49 } },
+				[27] = { 0.5, RH = { 30, 0.5 }, Flags = { Linear = true }, LH = { 24, 0.5 } },
+				[36] = { 0.5, Flags = { Linear = true }, LH = { 33, 0.5 } }
+			},
+			SplineColor = { Blue = 0, Green = 255, Red = 0 },
+			NameSet = true
+		},
+		Transform1Size = BezierSpline {
+			CtrlWZoom = false,
+			SplineColor = { Blue = 225, Green = 0, Red = 225 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0.22, RH = { 12, 0.386666666666667 }, Flags = { Linear = true } },
+				[36] = { 0.72, RH = { 36.3333333333333, 0.813333333333333 }, Flags = { Linear = true }, LH = { 24, 0.553333333333333 } },
+				[37] = { 1, Flags = { Linear = true }, LH = { 36.6666666666667, 0.906666666666667 } }
+			}
+		}
+	}
+}

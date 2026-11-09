@@ -1,0 +1,69 @@
+{
+	Tools = ordered() {
+		Text1 = TextPlus {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				VerticalJustificationNew = Input { Value = 3 },
+				HorizontalJustificationNew = Input { Value = 3 },
+				Center = Input { Value = { 0.55, 0.55 } },
+				Size = Input { Value = 0.32 },
+				Wrap = Input { Value = 1 },
+				StyledText = Input { Value = "WILD" },
+				GlobalOut = Input { Value = 167 },
+				UseFrameFormatSettings = Input { Value = 1 },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" } },
+				TransformRotation = Input { Value = 1 },
+				Width = Input { Value = 5760 },
+				LayoutRotation = Input { Value = 1 },
+				Height = Input { Value = 4320 },
+				Red1 = Input { Value = 0.843 },
+				Style = Input { Value = "Bold" },
+				Blue1 = Input { Value = 0.122 },
+				Softness1 = Input { Value = 1 },
+				Green1 = Input { Value = 0.216 },
+				Font = Input { Value = "Arial" }
+			},
+			Version = 1
+		},
+		Merge1 = Merge {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				Foreground = Input {
+					SourceOp = "Text1",
+					Source = "Output"
+				},
+				PerformDepthMerge = Input { Value = 0 }
+			}
+		},
+		SubjectMatte_PLACEHOLDER = RectangleMask {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				PixelAspect = Input { Value = { 1, 1 } },
+				ClippingMode = Input { Value = FuID { "None" } },
+				UseFrameFormatSettings = Input { Value = 1 },
+				Center = Input { Value = { 0.623, 0.5 } },
+				Height = Input { Value = 1 },
+				Filter = Input { Value = FuID { "Fast Gaussian" } },
+				Width = Input { Value = 0.05 },
+				SoftEdge = Input { Value = 0.002 },
+				MaskWidth = Input { Value = 5760 },
+				MaskHeight = Input { Value = 4320 }
+			}
+		},
+		Merge2 = Merge {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				EffectMask = Input {
+					SourceOp = "SubjectMatte_PLACEHOLDER",
+					Source = "Mask"
+				},
+				PerformDepthMerge = Input { Value = 0 },
+				Background = Input {
+					SourceOp = "Merge1",
+					Source = "Output"
+				}
+			},
+			CtrlWZoom = false
+		}
+	}
+}

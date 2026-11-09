@@ -1,0 +1,60 @@
+{
+	Tools = ordered() {
+		Text1 = TextPlus {
+			ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+			Version = 1,
+			Inputs = {
+				Center = Input { Value = { 0.5, 0.62 } },
+				GlobalOut = Input { Value = 167 },
+				UseFrameFormatSettings = Input { Value = 1 },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" } },
+				LayoutRotation = Input { Value = 1 },
+				CharacterSpacing = Input { Value = 1.2 },
+				TransformRotation = Input { Value = 1 },
+				Alpha1 = Input { Value = 0.75 },
+				Size = Input { Value = 0.14 },
+				Font = Input { Value = "Arial" },
+				HorizontalJustificationNew = Input { Value = 3 },
+				Height = Input { Value = 4320 },
+				VerticalJustificationNew = Input { Value = 3 },
+				Style = Input { Value = "Bold" },
+				Width = Input { Value = 5760 },
+				Wrap = Input { Value = 1 },
+				StyledText = Input { Value = "OUTSIDE" },
+				Softness1 = Input { Value = 1 }
+			}
+		},
+		Transform1 = Transform {
+			ViewInfo = OperatorInfo { Pos = { 110, 0 } },
+			Inputs = {
+				Input = Input {
+					SourceOp = "Text1",
+					Source = "Output"
+				},
+				Size = Input {
+					SourceOp = "Transform1Size",
+					Source = "Value"
+				}
+			}
+		},
+		Transform1Size = BezierSpline {
+			SplineColor = { Green = 0, Blue = 225, Red = 225 },
+			CtrlWZoom = false,
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0.6, RH = { 1.66666666666667, 0.6 } },
+				[5] = { 1, LH = { 3.33333333333333, 1 } }
+			}
+		},
+		Merge1 = Merge {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				PerformDepthMerge = Input { Value = 0 },
+				Foreground = Input {
+					SourceOp = "Transform1",
+					Source = "Output"
+				}
+			}
+		}
+	}
+}

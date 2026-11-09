@@ -1,0 +1,456 @@
+"""
+effect: the Fusion macros in production/fusion-macros/ that the MCP apply_effect tool
+puts on [auto] timeline items. Offline, the command lists each macro with the tools it
+wires between MediaIn1 and MediaOut1, and checks that every macro parses.
+
+apply_effect(), the work behind the MCP tool, adds a Fusion comp to each named item of
+an ' [auto]' timeline (TimelineItem.AddFusionComp), pastes the macro's tools into it,
+wires them between the comp's MediaIn1 and MediaOut1, and reads the comp back. The
+comp it adds is new, so nothing that existed before is changed; a timeline whose name
+does not end ' [auto]' is refused, as apply_grade refuses one.
+"""
+
+import os
+import re
+
+from rpresolve import api, cli
+from rpresolve.workflows import AUTO, Refused, _wanted_items, plan_sha
+
+NAME = "effect"
+HELP = "Offline: list the Fusion macros apply_effect applies and check that each parses"
+
+MACRO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "fusion-macros")
+
+# How each macro sits between MediaIn1 and MediaOut1: the (tool, input) pairs MediaIn1
+# feeds, and the tool whose Output feeds MediaOut1. The macros carry no MediaIn or
+# MediaOut, so this is the one place the wiring is written down (fusion-macros.md).
+WIRING = {
+    "crop-window": {"in": [("Merge1", "Foreground")], "out": "Merge1"},
+    "cross-dissolve-short": {"in": [("Merge1", "Foreground")], "out": "Merge1"},
+    "dip-to-black": {"in": [("BrightnessContrast1", "Input")], "out": "BrightnessContrast1"},
+    "exposure-flash": {"in": [("ColorCorrector1", "Input")], "out": "ColorCorrector1"},
+    # The subject goes over the text through the matte: MediaIn1 is the background of
+    # the text merge and the foreground of the matted merge.
+    "person-matte-text": {"in": [("Merge1", "Background"), ("Merge2", "Foreground")],
+                          "out": "Merge2"},
+    "scale-window": {"in": [("Transform1", "Input")], "out": "Transform1"},
+    "text-word": {"in": [("Merge1", "Background")], "out": "Merge1"},
+    "zoom-push": {"in": [("Transform1", "Input")], "out": "Transform1"},
+}
+
+# Macros whose animation belongs at the end of an item (an outgoing fade): their keyframes
+# are moved so the last one sits on the item's last frame. The rest start at frame 0.
+END_ANCHORED = {"dip-to-black"}
+
+COMP_PREFIX = "rp-fx "  # the added comp's name: "rp-fx <id>"
+
+
+# ---------------------------------------------------------------------------
+# .setting files: a Lua table, read into the dict Fusion's Python Paste() takes
+# ---------------------------------------------------------------------------
+
+_TOKEN = re.compile(r"""\s*(?:
+    (?P<str>"(?:[^"\\]|\\.)*")
+  | (?P<num>-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?)
+  | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
+  | (?P<punct>[{}\[\]=,;()])
+)""", re.X)
+
+
+def _tokens(text):
+    text = re.sub(r"--[^\n]*", "", text)  # Lua line comments
+    pos, out = 0, []
+    while pos < len(text):
+        if text[pos:].strip() == "":
+            break
+        m = _TOKEN.match(text, pos)
+        if not m:
+            raise ValueError(f"cannot read the macro at character {pos}: {text[pos:pos + 20]!r}")
+        kind = m.lastgroup
+        out.append((kind, m.group(kind)))
+        pos = m.end()
+    return out
+
+
+def parse_setting(text):
+    """A .setting file's Lua table as Python: a typed table `Name { ... }` becomes a
+    dict with '__ctor': Name, positional entries take keys 1, 2, ... as in Lua, and
+    `ordered()` keeps its tools in file order."""
+    toks = _tokens(text)
+    i = 0
+
+    def peek(k=0):
+        return toks[i + k] if i + k < len(toks) else (None, None)
+
+    def take(want=None):
+        nonlocal i
+        tok = peek()
+        if tok[0] is None or (want and tok[1] != want):
+            raise ValueError(f"expected {want or 'a value'} in the macro, found {tok[1]!r}")
+        i += 1
+        return tok
+
+    def value():
+        kind, v = peek()
+        if kind == "str":
+            take()
+            return bytes(v[1:-1], "utf-8").decode("unicode_escape")
+        if kind == "num":
+            take()
+            return float(v) if re.search(r"[.eE]", v) else int(v)
+        if kind == "name":
+            take()
+            if v in ("true", "false"):
+                return v == "true"
+            if v == "nil":
+                return None
+            if peek()[1] == "(":  # ordered() and the like
+                take("(")
+                take(")")
+            t = table()
+            t["__ctor"] = v
+            return t
+        if v == "{":
+            return table()
+        raise ValueError(f"unexpected {v!r} in the macro")
+
+    def table():
+        take("{")
+        out, n = {}, 0
+        while peek()[1] != "}":
+            kind, v = peek()
+            if v == "[":
+                take("[")
+                key = value()
+                take("]")
+                take("=")
+                out[key] = value()
+            elif kind == "name" and peek(1)[1] == "=":
+                take()
+                take("=")
+                out[v] = value()
+            else:
+                n += 1
+                out[n] = value()
+            if peek()[1] in (",", ";"):
+                take()
+        take("}")
+        return out
+
+    result = value()
+    if peek()[0] is not None:
+        raise ValueError("text after the macro's closing brace")
+    return result
+
+
+def macro_path(effect):
+    if effect not in WIRING:
+        raise Refused(f"no macro '{effect}'; the macros are {', '.join(sorted(WIRING))}.")
+    return os.path.join(MACRO_DIR, effect + ".setting")
+
+
+def load_macro(effect):
+    """(text, parsed) for a macro id; refuses an unknown id or a macro whose tools do
+    not include every tool its wiring names."""
+    path = macro_path(effect)
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    try:
+        parsed = parse_setting(text)
+    except ValueError as e:
+        raise Refused(f"{os.path.basename(path)}: {e}")
+    tools = parsed.get("Tools") or {}
+    w = WIRING[effect]
+    missing = sorted(({t for t, _ in w["in"]} | {w["out"]}) - set(tools))
+    if missing:
+        raise Refused(f"{os.path.basename(path)} has no tool(s) {missing}, which its wiring names.")
+    return text, parsed
+
+
+def shifted(parsed, offset):
+    """A copy of the parsed macro with every keyframe moved by offset frames."""
+    if not offset:
+        return parsed
+    tools = {}
+    for name, spec in parsed["Tools"].items():
+        if isinstance(spec, dict) and isinstance(spec.get("KeyFrames"), dict):
+            spec = {**spec, "KeyFrames": {(f + offset if isinstance(f, int) else f): k
+                                          for f, k in spec["KeyFrames"].items()}}
+        tools[name] = spec
+    return {**parsed, "Tools": tools}
+
+
+def end_offset(parsed, frames):
+    """The move that puts the macro's last keyframe on frame `frames - 1`."""
+    last = max((f for spec in parsed["Tools"].values() if isinstance(spec, dict)
+                for f in (spec.get("KeyFrames") or {}) if isinstance(f, int)), default=None)
+    return 0 if last is None or not frames else int(frames) - 1 - last
+
+
+def tool_names(parsed):
+    return [k for k in (parsed.get("Tools") or {}) if k != "__ctor"]
+
+
+# ---------------------------------------------------------------------------
+# apply_effect
+# ---------------------------------------------------------------------------
+
+def _comp_names(item):
+    return list(api._safe_call(item, "GetFusionCompNameList") or [])
+
+
+MODIFIERS = ("BezierSpline", "XYPath", "PolyPath")
+
+
+def _value(v):
+    """A parsed input value as Fusion's SetInput takes it: a FuID as its string, a point
+    as {1: x, 2: y}; None for a structured value (ColorCurves) this does not carry."""
+    if not isinstance(v, dict):
+        return v
+    if v.get("__ctor") == "FuID":
+        return v.get(1)
+    if "__ctor" in v or not all(isinstance(k, int) for k in v):
+        return None
+    return v
+
+
+def relative_handles(keyframes):
+    """The macro's keyframes with each LH and RH as an offset from its key: a .setting
+    file stores handles as absolute (frame, value), SetKeyFrames reads them as offsets
+    (found live, Resolve 21.2: absolute handles overshoot a 1.0 to 1.15 zoom to 1.7)."""
+    out = {}
+    for frame, key in keyframes.items():
+        if not isinstance(frame, int) or not isinstance(key, dict):
+            continue
+        k = dict(key)
+        for h in ("LH", "RH"):
+            if isinstance(k.get(h), dict) and 1 in k[h] and 2 in k[h]:
+                k[h] = {1: k[h][1] - frame, 2: k[h][2] - key[1]}
+        out[frame] = k
+    return out
+
+
+def _set_inputs(comp, tool, inputs, specs, links, skipped, animated):
+    """Set one tool's (or modifier's) inputs from the macro: a value with SetInput, an
+    animated input by adding its modifier and copying the keyframes, a link to another
+    tool into links (connected once every tool exists)."""
+    for key, spec in inputs.items():
+        if key == "__ctor" or not isinstance(spec, dict):
+            continue
+        src = spec.get("SourceOp")
+        if src is None:
+            v = _value(spec.get("Value"))
+            if v is None:
+                skipped.append(f"{tool.Name}.{key}")
+            else:
+                tool.SetInput(key, v)
+            continue
+        mod = specs.get(src) or {}
+        if mod.get("__ctor") in MODIFIERS:
+            tool.AddModifier(key, mod["__ctor"])
+            out = tool[key].GetConnectedOutput()
+            m = out.GetTool() if out else None
+            if not m:
+                skipped.append(f"{tool.Name}.{key} (modifier)")
+                continue
+            m.SetAttrs({"TOOLS_Name": src})
+            if mod.get("KeyFrames"):
+                m.SetKeyFrames(relative_handles(mod["KeyFrames"]), True)
+                animated.append((tool.Name, key, src))
+            _set_inputs(comp, m, mod.get("Inputs") or {}, specs, links, skipped, animated)
+        else:
+            links.append((tool.Name, key, src))
+
+
+def _build(comp, parsed):
+    """Add the macro's tools to comp: each tool by AddTool under its macro name, its
+    inputs, keyframes and links. Returns (the inputs it could not carry, the animated
+    inputs as (tool, input, spline))."""
+    specs = {k: v for k, v in parsed["Tools"].items() if k != "__ctor"}
+    skipped, links, animated = [], [], []
+    for name, spec in specs.items():
+        if spec.get("__ctor") in MODIFIERS:
+            continue
+        t = comp.AddTool(spec["__ctor"], -32768, -32768)
+        if not t:
+            skipped.append(f"{name} (AddTool {spec['__ctor']} failed)")
+            continue
+        t.SetAttrs({"TOOLS_Name": name})
+    for name, spec in specs.items():
+        t = comp.FindTool(name)
+        if t and spec.get("__ctor") not in MODIFIERS:
+            _set_inputs(comp, t, spec.get("Inputs") or {}, specs, links, skipped, animated)
+    for name, key, src in links:
+        other = comp.FindTool(src)
+        if other:
+            comp.FindTool(name).ConnectInput(key, other)
+        else:
+            skipped.append(f"{name}.{key} (no {src})")
+    return skipped, animated
+
+
+def _read_back(comp, effect, parsed, animated=()):
+    """What the comp holds after the build: each macro tool and modifier present, each
+    animated input's keyframes on the macro's frames and its value between two keys
+    within theirs (no handle overshoot), MediaIn1 on the wired inputs, the out tool on
+    MediaOut1's input. Returns a list of problems."""
+    w, problems = WIRING[effect], []
+    for tname, key, sname in animated:
+        keys = sorted((f, k[1]) for f, k in parsed["Tools"][sname]["KeyFrames"].items()
+                      if isinstance(f, int))
+        tool = comp.FindTool(tname)
+        for (f0, v0), (f1, v1) in zip(keys, keys[1:]):
+            mid = tool.GetInput(key, (f0 + f1) / 2.0) if tool else None
+            if not isinstance(mid, (int, float)):
+                continue  # a point input: its X and Y splines are checked on their own
+            if not min(v0, v1) - 1e-3 <= mid <= max(v0, v1) + 1e-3:
+                problems.append(f"{tname}.{key} reads {mid:.3f} between frames {f0} and {f1}, "
+                                f"outside {v0} to {v1}")
+    specs = {k: v for k, v in parsed["Tools"].items() if k != "__ctor"}
+    for name, spec in specs.items():
+        t = comp.FindTool(name)
+        if not t:
+            problems.append(f"{name} missing")
+        elif spec.get("KeyFrames"):
+            kf = t.GetKeyFrames() or {}  # a spline answers {frame: key}
+            got = sorted(int(round(float(f))) for f in kf)
+            want = sorted(k for k in spec["KeyFrames"] if isinstance(k, int))
+            if got != want:
+                problems.append(f"{name} keyframes at {got}, the macro has {want}")
+    media_in, media_out = comp.FindTool("MediaIn1"), comp.FindTool("MediaOut1")
+    if not media_in or not media_out:
+        return problems + ["the comp has no MediaIn1 or MediaOut1"]
+    for tool, inp in w["in"]:
+        t = comp.FindTool(tool)
+        conn = t[inp].GetConnectedOutput() if t else None
+        if not conn or conn.GetTool().Name != "MediaIn1":
+            problems.append(f"{tool}.{inp} is not fed by MediaIn1")
+    conn = media_out["Input"].GetConnectedOutput()
+    if not conn or conn.GetTool().Name != w["out"]:
+        problems.append(f"MediaOut1 is not fed by {w['out']}")
+    return problems
+
+
+def _wire(comp, effect):
+    w = WIRING[effect]
+    media_in, media_out = comp.FindTool("MediaIn1"), comp.FindTool("MediaOut1")
+    for tool, inp in w["in"]:
+        comp.FindTool(tool).ConnectInput(inp, media_in)
+    media_out.ConnectInput("Input", comp.FindTool(w["out"]))
+
+
+def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, dry_run=False,
+                 project_id=None, check_cancel=None, expect_sha=None):
+    """Add a Fusion comp named 'rp-fx <effect>' to each item (1-based numbers on one
+    video track, default all) of an ' [auto]' timeline, paste the macro's tools into
+    it, wire them between MediaIn1 and MediaOut1, and read the comp back. An item that
+    already has a comp of that name is refused. Returns {project, timeline, effect,
+    targets, refused, results, plan_sha, dry_run, exit_status}; exit_status 1 when any
+    item failed its read-back."""
+    text, parsed = load_macro(effect)
+    tools = tool_names(parsed)
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, timeline)
+    tl_name, tl_id = tl.GetName(), tl.GetUniqueId()
+    if not tl_name.endswith(AUTO):
+        raise Refused(f"'{tl_name}' is not an [auto] timeline. Effects go only onto timelines "
+                      "these tools made; duplicate it first (duplicate_timeline_auto).")
+    tracks = int(tl.GetTrackCount("video") or 0)
+    if not 1 <= track <= tracks:
+        raise Refused(f"'{tl_name}' has {tracks} video track(s).")
+    all_items = tl.GetItemListInTrack("video", track) or []
+    wanted = _wanted_items(items, len(all_items))
+    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    if bad:
+        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+    comp_name = COMP_PREFIX + effect
+    targets, refused = [], []
+    for n in wanted:
+        it = all_items[n - 1]
+        names = _comp_names(it)
+        frames = api._safe_call(it, "GetDuration")
+        row = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
+               "comps": names, "frames": frames,
+               "key_offset": end_offset(parsed, frames) if effect in END_ANCHORED else 0}
+        if comp_name in names:
+            refused.append({**row, "reasons": [f"it already has a comp named '{comp_name}'"]})
+        else:
+            targets.append(row)
+    if not targets:
+        raise Refused("no item may take the effect: " + "; ".join(
+            f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refused))
+    sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
+                   [(t["index"], t["item_id"], t["comps"], t["frames"]) for t in targets])
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "effect": {"id": effect, "comp": comp_name, "tools": tools,
+                      "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
+                                 "out": WIRING[effect]["out"]}},
+           "targets": targets, "refused": refused, "results": [], "plan_sha": sha,
+           "dry_run": dry_run, "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the items, their comps or the "
+                      "macro differ); run the dry run again and review it")
+    for t in targets:
+        if check_cancel:
+            check_cancel()
+        pin.check(pm)
+        it = all_items[t["index"] - 1]
+        row = {"index": t["index"], "name": t["name"], "item_id": t["item_id"]}
+        comp = it.AddFusionComp()
+        if not comp:
+            out["results"].append({**row, "ok": False, "detail": "AddFusionComp() returned None"})
+            continue
+        # AddFusionComp names the new comp "Composition N" and makes it the item's
+        # current one; the new name is the one not in the list before.
+        added = [c for c in _comp_names(it) if c not in t["comps"]]
+        if len(added) == 1:
+            it.RenameFusionCompByName(added[0], comp_name)
+        macro = shifted(parsed, t["key_offset"])
+        comp.Lock()
+        try:
+            skipped, animated = _build(comp, macro)
+            _wire(comp, effect)
+        finally:
+            comp.Unlock()
+        problems = _read_back(comp, effect, macro, animated)
+        if comp_name not in _comp_names(it):
+            problems.append(f"the comp is not named '{comp_name}'")
+        if skipped:
+            row["skipped"] = skipped
+        row["ok"] = not problems
+        row["detail"] = ("comp read back: tools present, wired MediaIn1 to MediaOut1"
+                         if not problems else "; ".join(problems))
+        out["results"].append(row)
+    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The command
+# ---------------------------------------------------------------------------
+
+def add_arguments(p):
+    """No flags."""
+
+
+def run(args):
+    status = 0
+    for effect in sorted(WIRING):
+        try:
+            _, parsed = load_macro(effect)
+        except (Refused, OSError) as e:
+            print(f"{effect}: REFUSED {e}")
+            status = 2
+            continue
+        w = WIRING[effect]
+        print(f"{effect}: {', '.join(tool_names(parsed))}; MediaIn1 -> "
+              f"{', '.join(f'{t}.{i}' for t, i in w['in'])}; {w['out']} -> MediaOut1")
+    return status
+
+
+if __name__ == "__main__":
+    cli.script(__name__)

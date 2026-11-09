@@ -1,0 +1,1 @@
+Edit methods: six reusable short-form edit recipes in production/edit-methods with a loader, validator and to_manifest; eight Fusion macros in production/fusion-macros; the MCP tools apply_effect (a macro on [auto] timeline items, built and read back) and edit_methods.

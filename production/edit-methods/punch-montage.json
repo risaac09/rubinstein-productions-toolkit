@@ -1,0 +1,30 @@
+{
+  "edit_method": 1,
+  "id": "punch-montage",
+  "name": "Punch montage",
+  "summary": "A long establishing hold with a push and a punch-in, a word beat, then two accelerating bursts of 4 to 5 frame shots into black.",
+  "fits": ["travel", "outdoor", "people", "night", "motion"],
+  "aspect": "16:9",
+  "fps": 24,
+  "length_s": 13.463,
+  "bpm": [140, 145],
+  "look": "print-teal",
+  "rules": {"reuse": false, "min_shot_s": 0.12, "snap_to_beat": true, "end": "black:0.7"},
+  "slots": [
+    {"role": "establishing", "seconds": 1.71, "query": "wide of a landmark entrance or arch with people below, daylight, slow push", "move": "push-in", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "zoom-push", "scale": null, "text": null},
+    {"role": "establishing-tight", "seconds": 3.337, "query": "the same take continued, tighter, held nearly still, a light or sign that can blink", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": [1.15, 1.15], "text": null},
+    {"role": "title-plate", "seconds": 3.003, "query": "locked-off long-lens view of a building edge against a hazy skyline, empty sky for a word", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "text-word", "scale": null, "text": "word"},
+    {"role": "sign", "seconds": 0.5, "query": "dusk or night exterior of a lit sign with a bold shape, locked off", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "interior", "seconds": 0.21, "query": "busy counter or kitchen interior with a lit sign above, people in the foreground, wide lens", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 0.17, "query": "small lit sign on a stall with an awning, mid shot", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "street", "seconds": 0.2, "query": "street with trees and a vehicle in frame, wide, blue sky, light glide", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "crowd", "seconds": 1.21, "query": "high-angle wide of a packed crowd at an event, foreground figures, handheld drift, high frame rate", "move": "handheld", "speed": 0.7, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "facade", "seconds": 1.422, "query": "slow tilt up a colourful facade with a person walking into the lower frame", "move": "tilt-up", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "flash-plate", "seconds": 0.167, "query": "low-angle wide of a pale building in sun", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "exposure-flash", "scale": null, "text": null},
+    {"role": "burst", "seconds": 0.166, "query": "walking forward along a busy path toward people, gimbal, wide", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "burst", "seconds": 0.209, "query": "moving-vehicle shot down a tree-lined road, wide", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "burst", "seconds": 0.125, "query": "waterfront promenade with people, mid-wide, slight pan", "move": "pan", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "burst", "seconds": 0.167, "query": "fairground ride or other moving object against sky, bold colour", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "burst", "seconds": 0.167, "query": "flag or banner on a post against sky, low angle, slight tilt up", "move": "tilt-up", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null}
+  ]
+}

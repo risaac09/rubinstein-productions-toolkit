@@ -1,0 +1,46 @@
+{
+	Tools = ordered() {
+		ColorCorrector1 = ColorCorrector {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			CtrlWZoom = false,
+			Inputs = {
+				MasterRGBGain = Input {
+					SourceOp = "ColorCorrector1MasterRGBGain",
+					Source = "Value"
+				},
+				HistogramIgnoreTransparent = Input { Value = 1 },
+				ColorRanges = Input {
+					Value = ColorCurves {
+						Curves = {
+							{
+								Points = {
+									{ 0, 1 },
+									{ 0.4, 0.2 },
+									{ 0.6, 0 },
+									{ 1, 0 }
+								}
+							},
+							{
+								Points = {
+									{ 0, 0 },
+									{ 0.4, 0 },
+									{ 0.6, 0.2 },
+									{ 1, 1 }
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		ColorCorrector1MasterRGBGain = BezierSpline {
+			SplineColor = { Green = 243, Blue = 219, Red = 153 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 2, RH = { 4, 2 } },
+				[12] = { 1, LH = { 8, 1 } }
+			},
+			CtrlWZoom = false
+		}
+	}
+}
