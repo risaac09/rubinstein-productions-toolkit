@@ -249,7 +249,8 @@ class TestApplyEffect(Base):
         self.items[1].AddFusionComp = boom
         with self.assertRaisesRegex(RuntimeError, "link dropped") as ctx:
             self.fx(dry_run=False, plan_sha=dry["plan_sha"])
-        self.assertEqual([r["index"] for r in ctx.exception.effects_added], [1])
+        self.assertEqual([(r["index"], r["ok"]) for r in ctx.exception.effects_added],
+                         [(1, True), (2, False)])
         self.assertEqual(self.journal()[-2:], ["started", "finished"])
 
     def test_a_missing_tool_is_named_not_raised(self):

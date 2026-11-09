@@ -383,7 +383,7 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         if names:
             why.append(f"it already has Fusion comp(s) ({', '.join(names)}); a new comp "
                        "would replace the one that renders")
-        if effect in END_ANCHORED and not isinstance(frames, int):
+        if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
             why.append("its length cannot be read, so the fade cannot be put at its end")
         if why:
             refused.append({**row, "reasons": why})
@@ -422,9 +422,12 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         pin.check(pm)
         it = all_items[t["index"] - 1]
         row = {"index": t["index"], "name": t["name"], "item_id": t["item_id"]}
+        # In the results before the comp exists, so an error mid-build still names it.
+        row.update(ok=False, detail="interrupted while building the comp")
+        out["results"].append(row)
         comp = it.AddFusionComp()
         if not comp:
-            out["results"].append({**row, "ok": False, "detail": "AddFusionComp() returned None"})
+            row["detail"] = "AddFusionComp() returned None"
             continue
         # AddFusionComp names the new comp "Composition N" and makes it the item's
         # current one; the new name is the one not in the list before.
@@ -446,7 +449,6 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         row["ok"] = not problems
         row["detail"] = ("comp read back: tools present, wired MediaIn1 to MediaOut1"
                          if not problems else "; ".join(problems))
-        out["results"].append(row)
 
 
 # ---------------------------------------------------------------------------
