@@ -9,7 +9,8 @@ sheet of their midpoints for a pick (edit-methods.md#drafts).
 A plan directory holds manifest.json, what methods.to_manifest returned (the spans,
 `effects` and `method`), and optionally method.json, the method it was made from (else
 the method is loaded by the manifest's method id). For each plan it writes
-DIR/<plan>.mp4 (silent, 720p at the method's rate, the end black included) and
+DIR/<plan>.mp4 (720p at the method's rate, the end black included; silent unless the
+manifest carries `music` {path, in}, which is laid under it and faded out) and
 DIR/<plan>.notes.txt naming everything the draft does not show; then DIR/drafts.json and,
 for two or more drafts, a lettered sheet of their midpoints (rpstills absheet) in
 DIR/sheet with its key sealed beside it in DIR/sheet.key.
@@ -17,7 +18,8 @@ DIR/sheet with its key sealed beside it in DIR/sheet.key.
 Every span is its own ffmpeg job: VideoToolbox decode and h264_videotoolbox encode
 when this ffmpeg has them (--no-hw for software), fill-and-crop to the frame, the
 span's static scale, the effects ffmpeg can approximate (zoom-push, crop-window,
-dip-to-black, exposure-flash, text-word as a box where the word goes), and the look's
+dip-to-black, exposure-flash, text-word as a box where the word goes, scale-window over
+black, retime with its speed and speed_to, reframe-pan as a moving crop), and the look's
 cube through lut3d. The jobs run in parallel lanes: one lane is timed first, then lanes
 are added while throughput rises (--lanes N fixes the count). The spans are joined
 without re-encoding.
@@ -45,7 +47,13 @@ from . import paths as rppaths
 
 LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/lutlab"
 SIZES = {"16:9": (1280, 720), "9:16": (720, 1280)}
-DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-word"}
+DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-word",
+         "scale-window", "retime", "reframe-pan"}
+# Drawn, but only as an approximation: what the sheet's notes say about each.
+APPROX = {"text-word": "the word is a white box",
+          "scale-window": "drawn over black, not over the previous shot's held last frame",
+          "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
+                         "width, not Resolve's Pan arithmetic"}
 TUNE_GAIN = 1.05  # a lane is kept only when it lifts throughput by 5 percent
 HW_BITRATE = "8M"
 
@@ -112,8 +120,27 @@ def media_path(path, proxy_dir=None):
 # Filters
 # ---------------------------------------------------------------------------
 
-def effect_filter(effect, seconds, fps, w, h):
-    """An ffmpeg approximation of a macro over one span, or None when there is none."""
+def effect_filter(effect, seconds, fps, w, h, params=None):
+    """An ffmpeg approximation of a macro over one span, or None when there is none.
+    retime is a setpts to put before the scale (source time is the integral of the
+    speed, so a ramp is its inverse quadratic); reframe-pan is the span's crop, which
+    replaces the centred one."""
+    p = params or {}
+    if effect == "retime":
+        s0 = p.get("speed", 1)
+        s1 = p.get("speed_to", s0)
+        if s1 == s0:
+            return f"setpts=PTS/{s0}"
+        k = (s1 - s0) / (2.0 * seconds)  # source time u = s0*t + k*t*t; solve for t
+        return f"setpts='(sqrt({s0 * s0}+{4 * k}*T)-{s0})/{2 * k}/TB'"
+    if effect == "reframe-pan":
+        a, b = p.get("pan_from", 0.5), p.get("pan_to", 0.5)
+        return f"crop={w}:{h}:x='(iw-{w})*({a}+({b}-{a})*t/{seconds:.4f})':y='(ih-{h})/2'"
+    if effect == "scale-window":  # 0.22 to 0.72 over 36 frames, then full from frame 37
+        z = f"if(lt(t*{fps}\\,37)\\,0.22+0.5*min(t*{fps}\\,36)/36\\,1)"
+        return (f"scale=w='max(2\\,trunc({w}*({z})/2)*2)':h='max(2\\,trunc({h}*({z})/2)*2)':"
+                f"eval=frame,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black:eval=frame")  # per frame, or the
+        # pad keeps the first frame's window and crops the growing picture to it
     if effect == "zoom-push":  # 1.0 to 1.15 over 48 frames, eased
         u = f"min(t*{fps}/48\\,1)"
         z = f"(1+0.15*({u})*({u})*(3-2*({u})))"
@@ -145,8 +172,17 @@ def effect_filter(effect, seconds, fps, w, h):
 
 
 def span_filter(span, effects, w, h, fps, seconds, lut=None):
-    """(vf, not_drawn) for one span."""
-    vf = [f"scale={w}:{h}:force_original_aspect_ratio=increase", f"crop={w}:{h}", "setsar=1"]
+    """(vf, not_drawn) for one span. effects: the span's manifest entries, {effect,
+    params?} (a bare macro id is also taken)."""
+    ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
+    params = {e["effect"]: e.get("params") or {} for e in ents}
+    crop = f"crop={w}:{h}"
+    vf = []
+    if "retime" in params:  # before the scale: it moves timestamps, not pixels
+        vf.append(effect_filter("retime", seconds, fps, w, h, params["retime"]))
+    if "reframe-pan" in params:
+        crop = effect_filter("reframe-pan", seconds, fps, w, h, params["reframe-pan"])
+    vf += [f"scale={w}:{h}:force_original_aspect_ratio=increase", crop, "setsar=1"]
     s = span.get("scale")
     if s and s > 1:
         vf += [f"scale=trunc({w}*{s}/2)*2:trunc({h}*{s}/2)*2", f"crop={w}:{h}"]
@@ -156,14 +192,15 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None):
     if lut:
         vf.append("lut3d=file=look.cube")  # relative: the job runs in the plan's work folder
     missing = []
-    for e in effects:
-        f = effect_filter(e, seconds, fps, w, h)
-        if f:
-            vf.append(f)
+    for e in params:
+        if e not in ("retime", "reframe-pan"):
+            f = effect_filter(e, seconds, fps, w, h, params[e])
+            if f:
+                vf.append(f)
         if e not in DRAWN:
             missing.append(f"{e} (no ffmpeg approximation)")
-        elif e == "text-word":
-            missing.append("text-word: the word is a white box")
+        elif e in APPROX:
+            missing.append(f"{e}: {APPROX[e]}")
     vf += [f"fps={fps}", "format=yuv420p"]
     return ",".join(vf), missing
 
@@ -205,7 +242,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
     srcs = {s["id"]: s["path"] for s in cutlist.sources(man)}
     by_span = {}
     for e in man.get("effects") or []:
-        by_span.setdefault(e["span_index"], []).append(e["effect"])
+        by_span.setdefault(e["span_index"], []).append(e)
     enc = encoder(hw)
     jobs, frames = [], 0
     spans = man["clips"][0]["spans"]
@@ -221,7 +258,8 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         out = os.path.join(work, f"{i:03d}.mp4")
         cmd = (["ffmpeg", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox"] if hw else [])
                + ["-ss", f"{span['in']:.4f}", "-i", src, "-an", "-vf", vf,
-                  "-frames:v", str(n), "-r", str(fps)] + enc + [out])
+                  "-frames:v", str(n), "-r", str(fps)] + enc
+               + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
         jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work})
         frames += n
     black = methods.end_black(m)
@@ -234,7 +272,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
                      "out": out, "seconds": n / fps, "frames": n, "cwd": work})
         frames += n
     for step in (man.get("method") or {}).get("ui_steps") or []:
-        if step["control"] in ("Speed", "Zoom keyframes", "Duration"):
+        if step["control"] in ("Zoom keyframes", "Duration"):  # retimes are manifest effects now, and drawn
             notes.append(f"{step['target']}: {step['control']} {step['value']} not drawn")
     return jobs, {"size": [w, h], "fps": fps, "frames": frames, "lut": lut_src,
                   "notes": notes}
@@ -244,9 +282,9 @@ def frame_count(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
                         "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path],
                        capture_output=True, text=True)
-    try:
-        return int(r.stdout.strip())
-    except ValueError:
+    try:  # the first line: a source with a timecode track makes ffprobe print the count twice
+        return int(r.stdout.split()[0])
+    except (ValueError, IndexError):
         return None
 
 
@@ -303,12 +341,25 @@ def run_lanes(jobs, lanes=None, cap=None, runner=run_job):
 # The farm
 # ---------------------------------------------------------------------------
 
-def _concat(parts, out, work):
+def music_args(music, seconds):
+    """ffmpeg arguments that lay the manifest's music {path, in} under a draft of this
+    length, faded out at its end; [] without music."""
+    if not music:
+        return []
+    fade = min(1.0, seconds / 4)
+    return ["-ss", f"{float(music.get('in') or 0):.4f}", "-t", f"{seconds:.4f}",
+            "-i", music["path"], "-map", "0:v", "-map", "1:a",
+            "-af", f"afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}",
+            "-c:a", "aac", "-b:a", "192k"]
+
+
+def _concat(parts, out, work, music=None, seconds=0):
     lst = os.path.join(work, "concat.txt")
     with open(lst, "w", encoding="utf-8") as f:
         f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
-    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-                        "-c", "copy", "-movflags", "+faststart", out],
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
+                       + music_args(music, seconds)
+                       + ["-c:v" if music else "-c", "copy", "-movflags", "+faststart", out],
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise DraftError(f"joining {os.path.basename(out)} failed: {r.stderr.strip()[-400:]}")
@@ -349,7 +400,14 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
         drafts = []
         for name, p, jobs, info in infos:
             video = os.path.join(out, name + ".mp4")
-            _concat([j["out"] for j in jobs], video, work)
+            music = p["manifest"].get("music")
+            if music and not os.path.isfile(str(music.get("path"))):
+                info["notes"].append("music file not found: the draft is silent")
+                music = None
+            elif music:
+                info["notes"].append(f"music from {float(music.get('in') or 0):.2f} s; "
+                                     "check its licence before anything is posted")
+            _concat([j["out"] for j in jobs], video, work, music, info["frames"] / info["fps"])
             with open(os.path.join(out, name + ".notes.txt"), "w", encoding="utf-8") as f:
                 f.write("".join(n + "\n" for n in info["notes"]) or "everything drawn\n")
             drafts.append({"plan": name, "method": p["method"]["id"], "file": video,

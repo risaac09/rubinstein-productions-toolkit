@@ -14,6 +14,7 @@ One row per destination key in `production/resolve-config.json`, and the config 
 | Web embed | `substack_16x9` | mp4, H.264, 8-bit 4:2:0 | 1920x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | sidecar `.srt` |
 | Social vertical 9:16 | `linkedin_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Social vertical 9:16, TikTok and Instagram | `social_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | burnt in |
+| Social vertical 9:16, music-only montage | `social_9x16_music` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | none |
 | Social square 1:1 | `linkedin_1x1` | mp4, H.264, 8-bit 4:2:0 | 1080x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Archive master | `client_master` | mov, ProRes 422 HQ, 10-bit 4:2:2 | the timeline's | the timeline's | LPCM 24-bit 48 kHz | none, unnormalized | none |
 
@@ -47,6 +48,8 @@ These come from the house rules under `deliver` in the config and are checked on
 - Neither platform's help pages state a loudness target. -14 LUFS is the repo's choice, the same level as the YouTube destinations.
 
 The frame rate stays the timeline's, as on every destination, so a 23.976, 24 or 25 fps timeline renders below Instagram's 30 FPS minimum. The destination carries `min_fps` (30000/1001, so 29.97 passes): `deliver_check` gives a `fps_floor` WARN under it, SKIP on a destination with none, never FAIL, and a `queue_render` dry run adds a warning to its plan and still queues. Neither conforms the rate. Set the timeline to 30 fps or higher before cutting a vertical meant for Instagram; the help page does not say what happens to a lower rate.
+
+**Social vertical 9:16, music-only montage.** The `social_9x16_music` destination is `social_9x16` for a montage with no speech, which is why it carries no captions and no frame rate floor: there is nothing to caption, and a 24 fps timeline is allowed. Use it only for music-only work. Anything with a voice belongs on `social_9x16`, whose burnt-in captions and `min_fps` warning stay as they were. Platforms that prefer 30 fps will resample a 24 fps file on upload; the destination does not conform the rate, and the resampling is the platform's. The timeline rule, the -14 LUFS target and the loudness fix are the same as for `social_9x16`.
 
 **Social square 1:1.** Same rules as vertical. Burnt-in captions run 24 characters per line on up to two lines.
 

@@ -24,8 +24,8 @@ from rpresolve.cmd_effect import WIRING  # noqa: E402
 from rpresolve.mcp import server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 
-IDS = ["beat-burst", "cutout-clones", "punch-montage", "scale-window-stack",
-       "slow-cinematic", "word-burst"]
+IDS = ["beat-burst", "cutout-clones", "matte-title", "punch-montage", "scale-window-stack",
+       "slow-cinematic", "tempo-ladder", "word-burst"]
 
 
 def fills(m, gap=2.0):
@@ -78,6 +78,8 @@ class TestValidate(unittest.TestCase):
             (lambda m: m.update(length_s=20), "length_s"),
             (lambda m: m["slots"][0].update(move="zoom"), "slot 1: move"),
             (lambda m: m["slots"][0].update(effect="glow"), "slot 1: effect"),
+            (lambda m: m["slots"][0].update(role="the runner at the lake"), "slot 1: role must be one of"),
+            (lambda m: m["slots"][0].update(speed=0.5, effect="zoom-push"), "takes no effect"),
             (lambda m: m["slots"][0].update(seconds=0.05), "slot 1: seconds"),
             (lambda m: m["slots"][0].update(transition_out={"type": "cut", "frames": 3}),
              "a cut has 0 frames"),
@@ -109,9 +111,14 @@ class TestToManifest(unittest.TestCase):
             dissolves = sum(1 for s in m["slots"] if s["transition_out"]["type"] == "dissolve")
             self.assertEqual(report["transitions"], dissolves, mid)
             self.assertEqual(text.count("<transition "), dissolves, mid)
-            self.assertEqual(man["effects"],
-                             [{"span_index": i, "effect": s["effect"]}
-                              for i, s in enumerate(m["slots"]) if s["effect"]], mid)
+            want = []
+            for i, s in enumerate(m["slots"]):
+                if s["effect"]:
+                    want.append({"span_index": i, "effect": s["effect"]})
+                if s["speed"] != 1:
+                    want.append({"span_index": i, "effect": "retime",
+                                 "params": {"speed": s["speed"]}})
+            self.assertEqual(man["effects"], want, mid)
 
     def test_timing_scale_and_hand_steps(self):
         m = methods.load("punch-montage")
@@ -122,7 +129,9 @@ class TestToManifest(unittest.TestCase):
         self.assertNotIn("scale", spans[0])
         self.assertEqual(man["method"]["end"], "black:0.7")
         steps = {(x["target"], x["control"]): x for x in man["method"]["ui_steps"]}
-        self.assertEqual(steps[("span 7", "Speed")]["value"], "70 percent, Optical Flow")
+        self.assertNotIn(("span 7", "Speed"), steps)
+        self.assertIn({"span_index": 7, "effect": "retime", "params": {"speed": 0.7}},
+                      man["effects"])
         self.assertEqual(steps[("span 2", "Styled Text")]["page"], "Fusion")
         self.assertEqual(steps[("after span 14", "Color and Duration")]["value"],
                          "black, 0.7 s, after the last item")
@@ -135,6 +144,26 @@ class TestToManifest(unittest.TestCase):
         w = [x for x in wipe["method"]["ui_steps"] if x["target"] == "the cut into span 5"]
         self.assertEqual(w[0]["panel"], "Effects > Video Transitions > Wipe > Edge Wipe")
         self.assertEqual(w[0]["value"], "29 frames, centred on the cut")
+
+    def test_a_named_word_goes_to_the_text_effect_as_a_param(self):
+        m = methods.load("punch-montage")
+        i = next(k for k, s in enumerate(m["slots"]) if s["text"] == "word")
+        self.assertIn(m["slots"][i]["effect"], methods.TEXT_MACROS)
+        f = fills(m)
+        f[i]["text"] = "HOME"
+        man = methods.to_manifest(m, f)
+        self.assertIn({"span_index": i, "effect": m["slots"][i]["effect"],
+                       "params": {"text": "HOME"}}, man["effects"])
+        self.assertFalse([x for x in man["method"]["ui_steps"] if x["control"] == "Styled Text"])
+        f[i]["text"] = " "
+        with self.assertRaisesRegex(ValueError, "non-empty word"):
+            methods.to_manifest(m, f)
+
+    def test_retime_and_reframe_pan_are_not_slot_effects(self):
+        m = methods.load("punch-montage")
+        for e in ("retime", "reframe-pan"):
+            m["slots"][0]["effect"] = e
+            self.assertIn("leave effect null", " | ".join(methods.validate(m)))
 
     def test_braw_sources_get_a_decode_recipe(self):
         m = methods.load("slow-cinematic")

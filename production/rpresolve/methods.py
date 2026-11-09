@@ -22,11 +22,15 @@ import re
 
 from .cmd_effect import WIRING as MACROS
 
+TEXT_MACROS = ("text-word", "person-matte-text")
+SET_ELSEWHERE = ("retime", "reframe-pan")  # a slot's speed and a plan's params set these
+
 METHOD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "edit-methods")
 LOOK_DIR = os.path.join(os.path.dirname(METHOD_DIR), "lutlab-looks")
 FITS = ("travel", "event", "outdoor", "people", "food", "night", "motion", "portrait", "nature")
 ASPECTS = ("16:9", "9:16")
+ROLES = ("establishing", "hero", "figure", "face", "group", "detail", "movement", "place", "closer")
 MOVES = ("push-in", "static", "tilt-up", "pan", "handheld", "forward")
 TRANSITIONS = ("cut", "dissolve", "dip", "wipe")
 ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -118,9 +122,10 @@ def _slot_problems(s, min_shot, last):
         return ["a slot is an object"]
     p = [f"unknown field '{k}'" for k in sorted(set(s) - SLOT)]
     p += [f"missing field '{k}'" for k in sorted(SLOT - set(s))]
-    for k in ("role", "query"):
-        if not isinstance(s.get(k), str) or not s.get(k).strip():
-            p.append(f"{k} must be a non-empty string")
+    if s.get("role") not in ROLES:  # roles any shoot can fill, never one video's subject
+        p.append(f"role must be one of {', '.join(ROLES)}")
+    if not isinstance(s.get("query"), str) or not s.get("query").strip():
+        p.append("query must be a non-empty string")
     if not _num(s.get("seconds")) or s.get("seconds") < min_shot:
         p.append(f"seconds must be a number of at least rules.min_shot_s ({min_shot})")
     if s.get("move") not in MOVES:
@@ -139,8 +144,14 @@ def _slot_problems(s, min_shot, last):
     elif last and t["type"] != "cut":
         p.append("the last slot ends the method, so its transition_out is a cut "
                  "(rules.end says what follows)")
+    if s.get("effect") is not None and _num(s.get("speed")) and s.get("speed") != 1:
+        p.append("a slot with a speed other than 1 takes no effect: its retime is the item's "
+                 "one Fusion comp")
     if s.get("effect") is not None and s.get("effect") not in MACROS:
         p.append(f"effect must be null or a macro id ({', '.join(sorted(MACROS))})")
+    elif s.get("effect") in SET_ELSEWHERE:
+        p.append(f"effect {s['effect']} needs values a slot does not hold (retime comes from "
+                 "speed); leave effect null")
     sc = s.get("scale")
     if sc is not None and not (isinstance(sc, list) and len(sc) == 2 and all(map(_num, sc))
                                and all(0.1 <= x <= 10 for x in sc)):
@@ -200,10 +211,12 @@ def to_manifest(method, fills):
     seconds (the method's timing, not the fill's), so a fill must hold that much. The
     join into a span carries the previous slot's dissolve; a static scale (start equal to
     end) is written as the span's scale. Added beside the manifest's own fields:
-    `effects` [{span_index, effect}] for apply_effect (span_index from 0, the timeline's
-    item number less one), and `method` {id, aspect, look, end, ui_steps}: ui_steps
+    `effects` [{span_index, effect, params?}] for apply_effect (span_index from 0, the
+    timeline's item number less one; a span may have several entries): a slot's effect,
+    with `params.text` when the fill carries a `text` word and the effect is a text macro,
+    and a `retime` entry (`params.speed`) when the slot's speed is not 1. And `method` {id, aspect, look, end, ui_steps}: ui_steps
     are computer-use recipes (ui_step) for what no manifest field or script holds:
-    BRAW decode, dips, wipes, retimes, animated scales, words, mattes, the end black.
+    BRAW decode, dips, wipes, animated scales, words no fill names, mattes, the end black.
     Raises ValueError on a fill that is too short, or on two fills that overlap in one
     source when the method's rules.reuse is false."""
     problems = validate(method)
@@ -223,6 +236,9 @@ def to_manifest(method, fills):
         if fill["in"] < 0 or fill["out"] - fill["in"] < slot["seconds"] - 0.5 / fps:
             raise ValueError(f"{where}: the fill holds {fill['out'] - fill['in']:.3f} s; "
                              f"the slot needs {slot['seconds']} s")
+        if fill.get("text") is not None and not (isinstance(fill["text"], str)
+                                                 and fill["text"].strip()):
+            raise ValueError(f"{where}: a fill's text is a non-empty word")
         path = fill["source_path"]
         if path not in ids:
             ids[path] = f"s{len(ids) + 1}"
@@ -246,11 +262,10 @@ def to_manifest(method, fills):
             steps.append(ui_step(f"span {i}", "Edit", "Inspector > Transform", "Zoom keyframes",
                                  f"{sc[0]} at the first frame, {sc[1]} at the last, ease in "
                                  "and out", "no macro on the span animates the scale"))
-        if slot["speed"] != 1:
-            steps.append(ui_step(f"span {i}", "Edit", "Retime Controls", "Speed",
-                                 f"{slot['speed'] * 100:g} percent, Optical Flow",
-                                 "FCPXML retimes import broken in Resolve 21.2"))
-        if slot["text"] == "word":
+        entry = {"span_index": i, "effect": slot["effect"]} if slot["effect"] else None
+        if slot["text"] == "word" and fill.get("text") and slot["effect"] in TEXT_MACROS:
+            entry["params"] = {"text": fill["text"]}
+        elif slot["text"] == "word":
             steps.append(ui_step(f"span {i}", "Fusion", "comp rp-fx text-word > Text1",
                                  "Styled Text", "the word for this beat",
                                  "the method leaves the word to the edit"))
@@ -268,8 +283,11 @@ def to_manifest(method, fills):
                                      "source, and the method does not reuse footage")
                 span["reuse"] = True
         spans.append(span)
-        if slot["effect"]:
-            effects.append({"span_index": i, "effect": slot["effect"]})
+        if entry:
+            effects.append(entry)
+        if slot["speed"] != 1:  # apply_effect builds it; FCPXML retimes import broken (21.2)
+            effects.append({"span_index": i, "effect": "retime",
+                            "params": {"speed": slot["speed"]}})
     return {"version": 2, "speech": False, "fps": fps, "sources": sources,
             "clips": [{"name": method["id"], "spans": spans}],
             "effects": effects,

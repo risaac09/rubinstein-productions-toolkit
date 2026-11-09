@@ -1,0 +1,33 @@
+{
+  "edit_method": 1,
+  "id": "tempo-ladder",
+  "name": "Tempo ladder",
+  "summary": "Holds that halve on the beat grid, from a four-second opening wide down to quarter-second cuts, then one long breath and black.",
+  "fits": ["event", "travel", "outdoor", "people", "motion"],
+  "aspect": "16:9",
+  "fps": 24,
+  "length_s": 16.5,
+  "bpm": [118, 124],
+  "look": "soft-print",
+  "rules": {"reuse": false, "min_shot_s": 0.25, "snap_to_beat": true, "end": "black:0.5"},
+  "slots": [
+    {"role": "establishing", "seconds": 4.0, "query": "wide of the place with people in it, held still, the strongest single frame of the shoot", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "hero", "seconds": 2.0, "query": "one person doing the thing the shoot is about, whole body in frame", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "group", "seconds": 2.0, "query": "several people together, mid-wide", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "face", "seconds": 1.0, "query": "portrait of a person, the place soft behind", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 1.0, "query": "close on hands at work or an object in use", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "movement", "seconds": 0.5, "query": "people or the camera moving through the place", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "figure", "seconds": 0.5, "query": "one person small in a wide frame", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 0.5, "query": "close on a texture, a tool or food", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "face", "seconds": 0.5, "query": "a second face, a different person", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "movement", "seconds": 0.25, "query": "a body in motion, mid shot", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 0.25, "query": "hands, close", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "face", "seconds": 0.25, "query": "a face in profile", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "group", "seconds": 0.25, "query": "a group from behind or above", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "figure", "seconds": 0.25, "query": "a person in silhouette or backlit", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 0.25, "query": "a lit object, a flame or a sign, close", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "movement", "seconds": 0.25, "query": "feet or legs moving, low angle", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "hero", "seconds": 0.25, "query": "the peak of an action: a jump, a laugh, a strike", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "closer", "seconds": 2.0, "query": "still wide of the place as the light falls, nothing moving", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "dip-to-black", "scale": null, "text": null}
+  ]
+}

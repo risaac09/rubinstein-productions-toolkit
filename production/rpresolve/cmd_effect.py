@@ -7,9 +7,14 @@ apply_effect(), the work behind the MCP tool, adds a Fusion comp to each named i
 an ' [auto]' timeline (TimelineItem.AddFusionComp), pastes the macro's tools into it,
 wires them between the comp's MediaIn1 and MediaOut1, and reads the comp back. The
 comp it adds is new, so nothing that existed before is changed; a timeline whose name
-does not end ' [auto]' is refused, as apply_grade refuses one.
+does not end ' [auto]' is refused, as apply_grade refuses one. A whitelisted `params`
+dict (PARAMS) sets text, size, centre, retime speed and reframe-pan positions; it is
+validated first, part of the plan, and read back. refresh() then toggles pass-through on
+each added tool, because a scripted comp otherwise renders the old picture.
 """
 
+import copy
+import math
 import os
 import re
 
@@ -34,6 +39,8 @@ WIRING = {
     # the text merge and the foreground of the matted merge.
     "person-matte-text": {"in": [("Merge1", "Background"), ("Merge2", "Foreground")],
                           "out": "Merge2"},
+    "reframe-pan": {"in": [("Transform1", "Input")], "out": "Transform1"},
+    "retime": {"in": [("TimeStretcher1", "Input")], "out": "TimeStretcher1"},
     "scale-window": {"in": [("Transform1", "Input")], "out": "Transform1"},
     "text-word": {"in": [("Merge1", "Background")], "out": "Merge1"},
     "zoom-push": {"in": [("Transform1", "Input")], "out": "Transform1"},
@@ -42,6 +49,19 @@ WIRING = {
 # Macros whose animation belongs at the end of an item (an outgoing fade): their keyframes
 # are moved so the last one sits on the item's last frame. The rest start at frame 0.
 END_ANCHORED = {"dip-to-black"}
+
+# The params apply_effect takes, per macro (fusion-macros.md). Anything else is refused.
+PARAMS = {
+    "person-matte-text": {"text", "size"},
+    "reframe-pan": {"pan_from", "pan_to", "pan_base"},
+    "retime": {"speed", "speed_to"},
+    "text-word": {"text", "size", "centre"},
+    "zoom-push": {"centre"},
+}
+REQUIRED = {"reframe-pan": ("pan_from", "pan_to"), "retime": ("speed",)}
+# Macros whose keys depend on the item's length in source frames (Fusion comp time on an
+# item counts source frames, 0 at its first frame).
+NEEDS_LENGTH = {"reframe-pan", "retime"}
 
 COMP_PREFIX = "rp-fx "  # the added comp's name: "rp-fx <id>"
 
@@ -168,17 +188,46 @@ def load_macro(effect):
     return text, parsed
 
 
-def shifted(parsed, offset):
-    """A copy of the parsed macro with every keyframe moved by offset frames."""
-    if not offset:
-        return parsed
+def _move_keys(parsed, move):
+    """A copy of the parsed macro with every keyframe's time, and its handles' times, put
+    through move(). A key lands on a whole frame."""
     tools = {}
     for name, spec in parsed["Tools"].items():
         if isinstance(spec, dict) and isinstance(spec.get("KeyFrames"), dict):
-            spec = {**spec, "KeyFrames": {(f + offset if isinstance(f, int) else f): k
-                                          for f, k in spec["KeyFrames"].items()}}
+            keys = {}
+            for f, key in spec["KeyFrames"].items():
+                if isinstance(f, int):
+                    at = int(round(move(f)))
+                    if isinstance(key, dict):  # a handle keeps its (moved) distance from its key
+                        key = {**key, **{h: {**key[h], 1: at + move(key[h][1]) - move(f)}
+                                         for h in ("LH", "RH")
+                                         if isinstance(key.get(h), dict) and 1 in key[h]}}
+                    f = at
+                keys[f] = key
+            spec = {**spec, "KeyFrames": keys}
         tools[name] = spec
     return {**parsed, "Tools": tools}
+
+
+def shifted(parsed, offset):
+    """A copy of the parsed macro with every keyframe moved by offset frames."""
+    return _move_keys(parsed, lambda f: f + offset) if offset else parsed
+
+
+def scaled(parsed, k):
+    """A copy of the parsed macro with every keyframe time multiplied by k. The macros are
+    keyed in timeline frames and comp time on an item counts source frames (trap 4), so k
+    is the item's source frames over its timeline frames: 1.25 for 30 fps on 24."""
+    return _move_keys(parsed, lambda f: f * k) if k and abs(k - 1) > 1e-9 else parsed
+
+
+def comp_timing(parsed, effect, frames, source_frames):
+    """(key_scale, key_offset) for one item: the scale that puts the macro's keys in the
+    item's comp time, then the move that ends an END_ANCHORED macro on its last frame."""
+    ok = all(isinstance(x, (int, float)) and x > 0 for x in (frames, source_frames))
+    k = round(source_frames / frames, 6) if ok else 1
+    length = source_frames if ok else frames
+    return k, end_offset(scaled(parsed, k), length) if effect in END_ANCHORED else 0
 
 
 def end_offset(parsed, frames):
@@ -190,6 +239,83 @@ def end_offset(parsed, frames):
 
 def tool_names(parsed):
     return [k for k in (parsed.get("Tools") or {}) if k != "__ctor"]
+
+
+def validate_params(effect, params):
+    """The params as a plain dict, or Refused: only the keys this macro accepts, each
+    the right kind and range, and the ones the macro cannot run without."""
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        raise Refused("params is an object of the macro's settings")
+    allowed = PARAMS.get(effect, set())
+    unknown = sorted(set(params) - allowed)
+    if unknown:
+        raise Refused(f"{effect} does not accept param(s) {unknown}; it takes "
+                      f"{sorted(allowed) or 'none'}.")
+    missing = [k for k in REQUIRED.get(effect, ()) if k not in params]
+    if missing:
+        raise Refused(f"{effect} needs param(s) {missing}.")
+    if "speed_to" in params and "speed" not in params:
+        raise Refused("speed_to needs speed.")
+    for k, v in params.items():
+        if k == "text":
+            ok = isinstance(v, str) and v.strip() != "" and len(v) <= 80
+        else:
+            ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+            if ok and k in ("speed", "speed_to", "size"):
+                ok = v > 0
+            elif ok:
+                ok = 0 <= v <= 1  # centre, pan_*: a fraction of the frame
+        if not ok:
+            raise Refused(f"param {k} is {v!r}: " + (
+                "a word of 1 to 80 characters" if k == "text" else
+                "a number above 0" if k in ("speed", "speed_to", "size") else
+                "a number from 0 to 1"))
+    return dict(params)
+
+
+def _hermite(n, v1, d0, d1, v0=0):
+    """Two keys over n frames, 0 at v0 and n at v1, with handles a third of the way along
+    at slopes d0 and d1, written as .setting files store them (absolute; _set_inputs turns
+    them into the offsets SetKeyFrames reads)."""
+    return {0: {1: v0, "RH": {1: n / 3.0, 2: v0 + d0 * n / 3.0}},
+            n: {1: v1, "LH": {1: n - n / 3.0, 2: v1 - d1 * n / 3.0}}}
+
+
+def apply_params(parsed, effect, params, n):
+    """(the macro with params written in, the checks to read back). n is the item's
+    length in source frames. Keys that depend on the item are built here, not in the
+    .setting: retime's SourceTime (source frame = integral of the speed, a linear speed
+    change when speed_to is given) and reframe-pan's X."""
+    macro = copy.deepcopy(parsed)
+    tools, checks = macro["Tools"], []
+
+    def put(tool, key, value, param):
+        tools[tool].setdefault("Inputs", {})[key] = {"Value": value}
+        checks.append({"param": param, "tool": tool, "input": key, "want": value})
+
+    def keys(spline, frames, param):
+        tools[spline]["KeyFrames"] = frames
+        checks.append({"param": param, "tool": spline, "frame": n, "want": frames[n][1]})
+
+    if "text" in params:
+        put("Text1", "StyledText", params["text"], "text")
+    if "size" in params:
+        put("Text1", "Size", params["size"], "size")
+    if "centre" in params:
+        c = {1: params["centre"], 2: 0.5}
+        put("Transform1" if effect == "zoom-push" else "Merge1",
+            "Pivot" if effect == "zoom-push" else "Center", c, "centre")
+    if effect == "retime":
+        s0 = params["speed"]
+        s1 = params.get("speed_to", s0)
+        keys("TimeStretcher1SourceTime", _hermite(n, (s0 + s1) / 2.0 * n, s0, s1), "speed")
+    if effect == "reframe-pan":
+        base = params.get("pan_base", 0.5)
+        a, b = 0.5 + base - params["pan_from"], 0.5 + base - params["pan_to"]
+        keys("XYPath1X", _hermite(n, b, (b - a) / n, (b - a) / n, a), "pan_to")
+    return macro, checks
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +416,59 @@ def _build(comp, parsed):
     return skipped, animated
 
 
+def _tool_list(comp):
+    got = comp.GetToolList(False)
+    return list(got.values()) if isinstance(got, dict) else list(got or [])
+
+
+def _refreshable(tool):
+    """Not MediaIn/MediaOut and not a spline or path modifier."""
+    kind = str(getattr(tool, "ID", "") or "")
+    return not (kind.startswith(("MediaIn", "MediaOut")) or kind in MODIFIERS
+                or str(tool.Name).startswith(("MediaIn", "MediaOut")))
+
+
+def refresh(comp):
+    """Toggle TOOLB_PassThrough on, then off, on every added tool, and return their
+    names. A comp built by script reads back whole and still renders the old picture
+    until this is done (found live, Resolve 21.2, trap 3)."""
+    done = []
+    for tool in _tool_list(comp):
+        if _refreshable(tool):
+            tool.SetAttrs({"TOOLB_PassThrough": True})
+            tool.SetAttrs({"TOOLB_PassThrough": False})
+            done.append(tool.Name)
+    return done
+
+
+def _same(got, want):
+    if isinstance(want, dict):
+        return isinstance(got, dict) and all(
+            _same(got.get(k, got.get(float(k))), w) for k, w in want.items())
+    if isinstance(want, (int, float)):
+        return isinstance(got, (int, float)) and abs(got - want) <= 1e-6 * max(1.0, abs(want))
+    return got == want
+
+
+def _read_params(comp, checks):
+    """({what: value read}, problems) for each param the build wrote."""
+    got, problems = {}, []
+    for c in checks:
+        t = comp.FindTool(c["tool"])
+        if "frame" in c:
+            kf = (t.GetKeyFrames() or {}) if t else {}
+            hit = next((k for f, k in kf.items() if int(round(float(f))) == c["frame"]), None)
+            v = hit.get(1, hit.get(1.0)) if isinstance(hit, dict) else None
+            label = f"{c['tool']}@{c['frame']}"
+        else:
+            v = t.GetInput(c["input"]) if t else None
+            label = f"{c['tool']}.{c['input']}"
+        got[label] = v
+        if not _same(v, c["want"]):
+            problems.append(f"param {c['param']}: {label} reads {v!r}, set {c['want']!r}")
+    return got, problems
+
+
 def _read_back(comp, effect, parsed, animated=()):
     """What the comp holds after the build: each macro tool and modifier present, each
     animated input's keyframes on the macro's frames and its value between two keys
@@ -329,6 +508,8 @@ def _read_back(comp, effect, parsed, animated=()):
     conn = media_out["Input"].GetConnectedOutput()
     if not conn or conn.GetTool().Name != w["out"]:
         problems.append(f"MediaOut1 is not fed by {w['out']}")
+    problems += [f"{t.Name} is still pass-through" for t in _tool_list(comp)
+                 if _refreshable(t) and t.GetAttrs("TOOLB_PassThrough")]
     return problems
 
 
@@ -343,8 +524,15 @@ def _wire(comp, effect):
         media_out.ConnectInput("Input", comp.FindTool(w["out"]))
 
 
+def _source_frames(it):
+    """The item's length in source frames, or None when the item does not say."""
+    a, b = (api._safe_call(it, "GetSourceStartFrame"), api._safe_call(it, "GetSourceEndFrame"))
+    ok = all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (a, b))
+    return int(round(b - a)) if ok and b > a else None
+
+
 def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, dry_run=False,
-                 project_id=None, check_cancel=None, expect_sha=None):
+                 project_id=None, check_cancel=None, expect_sha=None, params=None):
     """Add a Fusion comp named 'rp-fx <effect>' to each item (1-based numbers on one
     video track, default all) of an ' [auto]' timeline, paste the macro's tools into
     it, wire them between MediaIn1 and MediaOut1, and read the comp back. An item that
@@ -353,6 +541,7 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     targets, refused, results, plan_sha, dry_run, exit_status}; exit_status 1 when any
     item failed its read-back."""
     text, parsed = load_macro(effect)
+    params = validate_params(effect, params)  # before anything is read from Resolve
     tools = tool_names(parsed)
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
@@ -375,8 +564,9 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         names = _comp_names(it)
         frames = api._safe_call(it, "GetDuration")
         row = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
-               "comps": names, "frames": frames,
-               "key_offset": end_offset(parsed, frames) if effect in END_ANCHORED else 0}
+               "comps": names, "frames": frames, "source_frames": _source_frames(it)}
+        row["key_scale"], row["key_offset"] = comp_timing(parsed, effect, frames,
+                                                          row["source_frames"])
         why = []
         # AddFusionComp makes the new comp the one that renders, so an item that has
         # a comp already would change: refuse it (this also stops a second run).
@@ -385,6 +575,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                        "would replace the one that renders")
         if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
             why.append("its length cannot be read, so the fade cannot be put at its end")
+        if effect in NEEDS_LENGTH and not row["source_frames"]:
+            why.append("its length in source frames cannot be read, so the keys cannot be built")
         if why:
             refused.append({**row, "reasons": why})
         else:
@@ -393,13 +585,14 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         raise Refused("no item may take the effect: " + "; ".join(
             f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refused))
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
-                   [(t["index"], t["item_id"], t["comps"], t["frames"]) for t in targets])
+                   [(t["index"], t["item_id"], t["comps"], t["frames"], t["source_frames"])
+                    for t in targets], sorted(params.items()))
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
            "effect": {"id": effect, "comp": comp_name, "tools": tools,
                       "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
                                  "out": WIRING[effect]["out"]}},
-           "targets": targets, "refused": refused, "results": [], "plan_sha": sha,
+           "params": params, "targets": targets, "refused": refused, "results": [], "plan_sha": sha,
            "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out
@@ -407,7 +600,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         raise Refused("the plan changed since the dry run (the items, their comps or the "
                       "macro differ); run the dry run again and review it")
     try:
-        _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel)
+        _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel,
+                   params)
     except BaseException as e:
         e.effects_added = list(out["results"])
         raise
@@ -415,7 +609,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     return out
 
 
-def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel):
+def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel,
+               params=None):
     for t in targets:
         if check_cancel:
             check_cancel()
@@ -434,14 +629,22 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         added = [c for c in _comp_names(it) if c not in t["comps"]]
         if len(added) == 1:
             it.RenameFusionCompByName(added[0], comp_name)
-        macro = shifted(parsed, t["key_offset"])
+        macro = shifted(scaled(parsed, t["key_scale"]), t["key_offset"])
+        checks = []
+        if params or effect in NEEDS_LENGTH:
+            macro, checks = apply_params(macro, effect, params or {}, t["source_frames"])
         comp.Lock()
         try:
             skipped, animated = _build(comp, macro)
             _wire(comp, effect)
         finally:
             comp.Unlock()
+        # After Unlock: the toggle has to be evaluated, which a locked comp may defer.
+        refresh(comp)
         problems = _read_back(comp, effect, macro, animated)
+        if checks:
+            row["params"], bad = _read_params(comp, checks)
+            problems += bad
         if comp_name not in _comp_names(it):
             problems.append(f"the comp is not named '{comp_name}'")
         if skipped:

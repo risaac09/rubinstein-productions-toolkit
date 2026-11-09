@@ -1,0 +1,23 @@
+{
+  "edit_method": 1,
+  "id": "matte-title",
+  "name": "Matte title",
+  "summary": "One word held behind the people in an opening wide, hard on and hard off, then holds of one and two seconds and a closing wide into black.",
+  "fits": ["event", "travel", "outdoor", "people", "portrait"],
+  "aspect": "16:9",
+  "fps": 24,
+  "length_s": 15.5,
+  "bpm": [118, 124],
+  "look": "soft-print",
+  "rules": {"reuse": false, "min_shot_s": 1.0, "snap_to_beat": true, "end": "black:0.5"},
+  "slots": [
+    {"role": "establishing", "seconds": 4.0, "query": "wide with one or more people standing in the lower half of frame, clear sky or wall above them for a title, camera still", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "person-matte-text", "scale": null, "text": "word"},
+    {"role": "hero", "seconds": 2.0, "query": "one person doing the thing the shoot is about, whole body in frame", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "face", "seconds": 1.0, "query": "portrait of a person, the place soft behind", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "detail", "seconds": 1.0, "query": "close on hands at work or an object in use", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "group", "seconds": 2.0, "query": "several people together, mid-wide", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "movement", "seconds": 1.0, "query": "people or the camera moving through the place", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "figure", "seconds": 1.0, "query": "one person small in a wide frame", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "closer", "seconds": 3.0, "query": "still wide of the place as the light falls, nothing moving", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "dip-to-black", "scale": null, "text": null}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+	Tools = ordered() {
+		TimeStretcher1 = TimeStretcher {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				InterpolateBetweenFrames = Input { Value = 0 },
+				SourceTime = Input {
+					Source = "Value",
+					SourceOp = "TimeStretcher1SourceTime"
+				}
+			}
+		},
+		TimeStretcher1SourceTime = BezierSpline {
+			SplineColor = { Blue = 225, Green = 0, Red = 225 },
+			CtrlWZoom = false,
+			NameSet = true
+		}
+	}
+}

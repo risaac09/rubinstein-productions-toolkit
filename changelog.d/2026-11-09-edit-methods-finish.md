@@ -1,0 +1,1 @@
+Edit methods: the gate, trim, take-budget and page rules written with their evidence keys; `assemble_timeline` builds manifest dissolves by script (trap T24); scale-window drafts grow per frame; word-burst roles corrected; `vertical_apply` and `assemble_timeline` documented in the tool table.

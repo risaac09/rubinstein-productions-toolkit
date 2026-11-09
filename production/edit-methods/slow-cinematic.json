@@ -11,12 +11,12 @@
   "look": "ice-blue",
   "rules": {"reuse": false, "min_shot_s": 1.0, "snap_to_beat": false, "end": null},
   "slots": [
-    {"role": "intro-close", "seconds": 3.65, "query": "person chest-up on a long lens, soft background, raises hands toward the face at the end", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "exposure-flash", "scale": null, "text": null},
-    {"role": "reveal-wide", "seconds": 2.35, "query": "the same person tiny in a big wide, arms out, others walk in, ends with a run at the lens", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
-    {"role": "backlit", "seconds": 2.4, "query": "backlit ridge or slope with tiny figures, then the person steps into profile", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
-    {"role": "two-shot", "seconds": 2.0, "query": "fog or haze with one person, a second walks in, medium two-shot", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
-    {"role": "silhouette", "seconds": 1.3, "query": "long-lens silhouette of the person against a lit landscape", "move": "static", "speed": 1.0, "transition_out": {"type": "wipe", "frames": 29}, "effect": null, "scale": null, "text": null},
-    {"role": "aerial", "seconds": 2.0, "query": "high wide or drone view of the landscape with the person small on a path", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
-    {"role": "closer", "seconds": 4.34, "query": "locked-off wide of friends resting at a viewpoint as the light falls", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "dip-to-black", "scale": null, "text": null}
+    {"role": "face", "seconds": 3.65, "query": "person chest-up on a long lens, soft background, a hand rises toward the face at the end", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "exposure-flash", "scale": null, "text": null},
+    {"role": "establishing", "seconds": 2.35, "query": "the same person small in a big wide, others walk in", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "figure", "seconds": 2.4, "query": "backlit wide with small figures, then a person steps into profile", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "group", "seconds": 2.0, "query": "one person in haze or soft light, a second walks in, medium two-shot", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "figure", "seconds": 1.3, "query": "long-lens silhouette of a person against a lit background", "move": "static", "speed": 1.0, "transition_out": {"type": "wipe", "frames": 29}, "effect": null, "scale": null, "text": null},
+    {"role": "place", "seconds": 2.0, "query": "the highest or widest view of the place with a person small in it", "move": "forward", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "closer", "seconds": 4.34, "query": "locked-off wide of people resting together as the light falls", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "dip-to-black", "scale": null, "text": null}
   ]
 }

@@ -1,0 +1,44 @@
+# Resolve traps
+
+> **Status:** measured in DaVinci Resolve Studio 21.2 on 2026-11-09, on scripted ` [auto]` timelines in a sandbox project. Each entry says what was seen and what works instead. An entry marked "not tested" is a claim from the scripting docs that nobody here has run.
+
+Other docs cite these by number (`T3`). A number never changes; a corrected trap keeps its number and says what replaced it.
+
+## Timelines and items
+
+- **T1. `AppendToTimeline` clip info.** `endFrame` is exclusive. An item's length is floor((end - start) x timeline fps / source fps). To get n timeline frames, ask for ceil(n x source fps / timeline fps) source frames.
+- **T2. Frame rate.** A scripted timeline takes the project frame rate. `SetSetting("timelineFrameRate")` returns False once the timeline exists.
+- **T8. Stills.** `ExportCurrentFrameAsStill` wants an absolute path and can return the previous frame. Seek a few frames early, seek to the frame, wait two seconds, then export. Wait longer after a timeline switch.
+- **T10. Mixed rates.** `interchange` refuses a manifest whose sources mix 29.97 and 30 fps. It also wants every source at the timeline's rate. A 24 fps timeline from 29.97 or 60 fps sources is built by `assemble_timeline`, which appends each span at its clip's own rate (T1).
+- **T12. Fill on a duplicated timeline.** A duplicated timeline set to 1080x1920 with `timelineInputResMismatchBehavior` = `scaleToCrop` reads the setting back and still renders every clip fitted to width. Set the item property `Scaling` to 3 on each item. Values: 0 project, 1 crop at native pixels, 2 fit, 3 fill, 4 stretch.
+- **T18. Fades are scriptable.** `TimelineItem.SetFades({"FadeIn": n, "FadeOut": n})` returns True on picture and audio items and `GetFades()` reads the frames back. A 12-frame fade-in was confirmed on a still: mean luma 6 at frame 1 against 24 at frame 40. The audio fade was read back and has not been checked by ear. This corrects T11.
+- **T11. Fade by menu (fallback).** Before T18 was measured, the working recipe was: make the timeline current on the Edit page, park the playhead where the fade starts, then Trim, Fade Out to Playhead from the menu bar. With nothing selected it fades only the clips under the playhead, so parking past the last picture frame fades the music alone. A timeline's FCPXML export does not carry fades, so there is no file read-back for either route.
+
+## Fusion on a timeline item
+
+- **T3. Stale render.** A Fusion comp built by script passes its read-back and still renders the old picture. Toggling `TOOLB_PassThrough` on and then off on each added tool makes Resolve render it. `apply_effect` does this and checks it.
+- **T4. Comp time.** Comp time on a timeline item counts source frames, with 0 at the item's first frame. A macro keyed over 48 frames lasts 48 source frames, which is 1.6 s of a 30 fps source on a 24 fps timeline. `apply_effect` scales a macro's key times by source frames over timeline frames. Checked on a still: a `TimeStretcher` keyed to half speed over a 90-source-frame item showed, 66 timeline frames in, the frame the source holds 1.375 s after the item's start.
+- **T5. Retime.** `TimeSpeed` anchors on the clip's source frame 0, so it shows footage from far earlier in the file. A `TimeStretcher` with `SourceTime` keyed from 0 to speed x N does the retime correctly. This is the scripted stand-in for Edit page speed, ramps included.
+- **T9. Deleting a comp.** `DeleteFusionCompByName` returned False on an item's only comp. Empty the comp and reuse it.
+- **T13. Spline handles.** The `RH` and `LH` handles in `SetKeyFrames` are offsets from their key. Absolute values overshoot.
+- **T14. A pan that follows a subject.** A `Transform` on the item, `Center` given an `XYPath` modifier, a `BezierSpline` on its X keyed from 0.5 + c0 - start to 0.5 + c0 - end over the item's source frames. c0 is the crop centre the item's own Pan holds.
+- **T22. Text+ fonts.** The family "Arial Black" set by script renders nothing. "Arial" with the style "Bold" works. Choose the real face in the Inspector.
+- **T23. Gain is linear light.** In a colour-managed project a linear gain ramp from 1 to 0 looks like a late snap. Key a dip in even stops (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0).
+- **T24. Transitions are scriptable.** `TimelineItem.AddTransition({type: 'Cross Dissolve', category: 'simple', position: 'end', alignment: 'center', duration: n})` returns the transition item, or None when the cut has no handles. Read `GetDuration()` back: a short handle would shorten the dissolve without a word. Measured 2026-11-09: three 2-frame Cross Dissolves added on a 48-item timeline, each read back at 2 frames.
+
+## Framing
+
+- **T6. Pan units at 16:9.** Pan is measured on an image normalised to the timeline width: Pan = true shift x timeline width / scaled image width x item zoom.
+- **T7. Pan moves the Fusion output too.** At 16:9 a zoom's pivot and a title's merge centre go on the crop centre: 0.5 + (crop_x - 0.5) x (1 - timeline width / scaled width).
+- **T15. 9:16 with fill.** Pan = (0.5 - crop centre) x 1080 x item zoom. Fusion comp space is the whole source frame, so a zoom pivot and a title centre sit at the crop centre itself. A title sized 0.14 at 16:9 becomes 0.048 at 9:16 for a seven-letter word at about 80 percent of the width. A word that pops from 60 percent to full over five frames must be judged on a late frame.
+- **T16. The face planner picks the face it can track.** That can be a bystander at the frame edge, a child included. Read every crop on a sheet before applying it. On one eight-video run, nine crops of 120 needed a hand-set centre.
+
+## Color and Camera Raw
+
+- **T19. A grade travels as a `.drx`.** `Timeline.GrabStill()`, then `GalleryStillAlbum.ExportStills([still], folder, prefix, "drx")` writes `<prefix>_1.1.1.drx`. `Graph.ApplyGradeFromDRX(path, 0)` on another item returned True and the item's CDL read back identical. The call replaces the item's whole graph. Not tested: whether windows, a tracked mask or noise reduction survive the trip.
+- **T20. BRAW decode.** A BRAW clip's properties expose `ISO`, `White Point (Kelvin)`, `White Balance Tint`, `Input Color Space` and `Input Gamma`. No property names Decode Using. Setting it to Clip stays a computer-use step.
+- **T21. Magic Mask needs a stroke.** `TimelineItem.CreateMagicMask("F")` returned False at once on an item nobody had drawn on. A person matte made outside Resolve ([cutout](reel.md)) needs no click.
+
+## Delivery
+
+- **T17. A music montage has no captions.** The captioned social destinations refuse a timeline with none and prefer 30 fps. Use `social_9x16_music`, or queue a master at 1080x1920 and transcode it: libx264 crf 16 preset slow, yuv420p, AAC 320k, two-pass loudnorm to -14 LUFS (`delivercheck.loudnorm_filter`), `+faststart`. Tag colour with `-x264-params colorprim=bt709:transfer=bt709:colormatrix=bt709`; the `-color_primaries` and `-color_trc` output flags left both unknown.
