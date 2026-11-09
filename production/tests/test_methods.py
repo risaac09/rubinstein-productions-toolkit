@@ -121,14 +121,35 @@ class TestToManifest(unittest.TestCase):
         self.assertEqual(spans[1]["scale"], 1.15)
         self.assertNotIn("scale", spans[0])
         self.assertEqual(man["method"]["end"], "black:0.7")
-        steps = " ".join(man["method"]["hand_steps"])
-        self.assertIn("span 7: retime to 70 percent", steps)
-        self.assertIn("span 2: set the word", steps)
+        steps = {(x["target"], x["control"]): x for x in man["method"]["ui_steps"]}
+        self.assertEqual(steps[("span 7", "Speed")]["value"], "70 percent, Optical Flow")
+        self.assertEqual(steps[("span 2", "Styled Text")]["page"], "Fusion")
+        self.assertEqual(steps[("after span 14", "Color and Duration")]["value"],
+                         "black, 0.7 s, after the last item")
+        for x in man["method"]["ui_steps"]:
+            self.assertEqual(set(x), {"target", "page", "panel", "control", "value", "why"})
         self.assertEqual([s["path"] for s in man["sources"]],
                          ["/nowhere/src0.mov", "/nowhere/src1.mov"])
         wipe = methods.to_manifest(methods.load("slow-cinematic"),
                                    fills(methods.load("slow-cinematic")))
-        self.assertIn("span 5: a 29-frame wipe", " ".join(wipe["method"]["hand_steps"]))
+        w = [x for x in wipe["method"]["ui_steps"] if x["target"] == "the cut into span 5"]
+        self.assertEqual(w[0]["panel"], "Effects > Video Transitions > Wipe > Edge Wipe")
+        self.assertEqual(w[0]["value"], "29 frames, centred on the cut")
+
+    def test_braw_sources_get_a_decode_recipe(self):
+        m = methods.load("slow-cinematic")
+        f = fills(m)
+        for x in f[::2]:
+            x["source_path"] = "/nowhere/A001_C002.BRAW"
+        man = methods.to_manifest(m, f)
+        braw = [x for x in man["method"]["ui_steps"] if x["control"] == "Decode Using"]
+        self.assertEqual(len(braw), 1)
+        self.assertEqual((braw[0]["page"], braw[0]["panel"], braw[0]["value"]),
+                         ("Color", "Camera Raw palette", "Clip"))
+        self.assertIn("never from Project Settings", braw[0]["why"])
+        self.assertTrue(braw[0]["target"].startswith("every item from source s1"))
+        plain = methods.to_manifest(m, fills(m))
+        self.assertFalse(any(x["control"] == "Decode Using" for x in plain["method"]["ui_steps"]))
 
     def test_refusals(self):
         m = methods.load("punch-montage")

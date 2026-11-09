@@ -175,6 +175,25 @@ def list_methods():
             if n.endswith(".json")]
 
 
+def ui_step(target, page, panel, control, value, why):
+    """One step the scripting API cannot do, as a computer-use recipe: the session runs
+    it in Resolve after asking for access (it is never left for the operator)."""
+    return {"target": target, "page": page, "panel": panel, "control": control,
+            "value": value, "why": why}
+
+
+def braw_steps(sources):
+    """A recipe per BRAW source: Camera Raw 'Decode Using: Clip', so each clip decodes
+    with its own metadata. No documented API sets it (Resolve 21.2: no clip property;
+    the only BRAW call is TimelineItem.UpdateSidecar), and the project-level Camera Raw
+    settings are never changed."""
+    return [ui_step(f"every item from source {s['id']} ({os.path.basename(s['path'])})",
+                    "Color", "Camera Raw palette", "Decode Using", "Clip",
+                    "BRAW decodes from the clip, never from Project Settings > Camera RAW, which "
+                    "stay as they are; press Update Sidecar after")
+            for s in sources if s["path"].lower().endswith(".braw")]
+
+
 def to_manifest(method, fills):
     """A version 2 cut manifest (speech false) for one clip named after the method: one
     span per slot, in slot order. Each span starts at its fill's `in` and runs the slot's
@@ -182,8 +201,9 @@ def to_manifest(method, fills):
     join into a span carries the previous slot's dissolve; a static scale (start equal to
     end) is written as the span's scale. Added beside the manifest's own fields:
     `effects` [{span_index, effect}] for apply_effect (span_index from 0, the timeline's
-    item number less one), and `method` {id, end, hand_steps}, the parts no manifest
-    field holds (dips, wipes, speed changes, animated scales, words, the end black).
+    item number less one), and `method` {id, aspect, look, end, ui_steps}: ui_steps
+    are computer-use recipes (ui_step) for what no manifest field or script holds:
+    BRAW decode, dips, wipes, retimes, animated scales, words, mattes, the end black.
     Raises ValueError on a fill that is too short, or on two fills that overlap in one
     source when the method's rules.reuse is false."""
     problems = validate(method)
@@ -213,17 +233,33 @@ def to_manifest(method, fills):
         if prev and prev["type"] == "dissolve":
             span["transition"] = {"type": "dissolve", "frames": prev["frames"]}
         elif prev and prev["type"] != "cut":
-            steps.append(f"span {i}: a {prev['frames']}-frame {prev['type']} into it from span "
-                         f"{i - 1} (cut in the manifest; FCPXML carries dissolves only)")
+            kind = ("Dissolve > Dip To Color Dissolve (black)" if prev["type"] == "dip"
+                    else "Wipe > Edge Wipe")
+            steps.append(ui_step(f"the cut into span {i}", "Edit",
+                                 f"Effects > Video Transitions > {kind}", "Duration",
+                                 f"{prev['frames']} frames, centred on the cut",
+                                 "FCPXML carries dissolves only, so the manifest has a cut"))
         sc = slot["scale"]
         if sc and sc[0] == sc[1] and sc[0] != 1:
             span["scale"] = sc[0]
         elif sc and sc[0] != sc[1] and slot["effect"] not in ("zoom-push", "scale-window"):
-            steps.append(f"span {i}: scale {sc[0]} to {sc[1]} (no macro on the span animates it)")
+            steps.append(ui_step(f"span {i}", "Edit", "Inspector > Transform", "Zoom keyframes",
+                                 f"{sc[0]} at the first frame, {sc[1]} at the last, ease in "
+                                 "and out", "no macro on the span animates the scale"))
         if slot["speed"] != 1:
-            steps.append(f"span {i}: retime to {slot['speed'] * 100:g} percent")
+            steps.append(ui_step(f"span {i}", "Edit", "Retime Controls", "Speed",
+                                 f"{slot['speed'] * 100:g} percent, Optical Flow",
+                                 "FCPXML retimes import broken in Resolve 21.2"))
         if slot["text"] == "word":
-            steps.append(f"span {i}: set the word")
+            steps.append(ui_step(f"span {i}", "Fusion", "comp rp-fx text-word > Text1",
+                                 "Styled Text", "the word for this beat",
+                                 "the method leaves the word to the edit"))
+        if slot["effect"] == "person-matte-text":
+            steps.append(ui_step(f"span {i}", "Fusion",
+                                 "comp rp-fx person-matte-text > SubjectMatte_PLACEHOLDER",
+                                 "replace with a Magic Mask node",
+                                 "click the subject, Track Forward and Reverse, soft edge 2 to 5 px",
+                                 "the macro's matte is a placeholder rectangle"))
         for j, other in enumerate(spans):
             if other["source"] == span["source"] and other["in"] < span["out"] \
                     and span["in"] < other["out"]:
@@ -237,4 +273,15 @@ def to_manifest(method, fills):
     return {"version": 2, "speech": False, "fps": fps, "sources": sources,
             "clips": [{"name": method["id"], "spans": spans}],
             "effects": effects,
-            "method": {"id": method["id"], "end": method["rules"]["end"], "hand_steps": steps}}
+            "method": {"id": method["id"], "aspect": method["aspect"], "look": method["look"],
+                       "end": method["rules"]["end"],
+                       "ui_steps": braw_steps(sources) + steps + _end_steps(method, len(spans))}}
+
+
+def _end_steps(method, n):
+    black = end_black(method)
+    if not black:
+        return []
+    return [ui_step(f"after span {n - 1}", "Edit", "Effects > Generators > Solid Color",
+                    "Color and Duration", f"black, {black:g} s, after the last item",
+                    "the method ends on black; FCPXML from a manifest stops at the last span")]
