@@ -45,7 +45,7 @@ python3 -m rpresolve.mixbuild ab --out <review dir>/mix-01 take1.wav take2.wav -
 python3 resolve_workflow.py gate-packet --out <review dir>/gate-01 --project P-0001 \
   --clip copy1.mp4 copy2.mp4 [--sendable copy1=42.5]        # or: --source SRC.mov --cuts clips.tsv
 python3 resolve_workflow.py review-log --dir <project dir> --project P-0001 --step gate --device desktop \
-  --choice go --key <review dir>/gate-01                    # after his answer: go or hold
+  --choice go --key <review dir>/gate-01                    # after the operator's answer: go or hold
 
 # The approved cut as a timeline file for Resolve
 python3 -m rpresolve.interchange <manifest> --format fcpxml --out <review dir>/cut-v3.fcpxml
