@@ -1321,6 +1321,11 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
         by_path.setdefault(rpingest.norm_path(e["path"]), []).append(e)
     out_size = tuple(fp["out"])
     targets, unchanged, refusals = [], [], []
+    # Pan and Tilt read in the current timeline's pixels (T27); a dry run switches nothing, so
+    # under another timeline the held framing is unknown and every item is a target.
+    here = api._safe_call(api._safe_call(project, "GetCurrentTimeline"), "GetUniqueId") == tl_id
+    held = {n: {k: api._safe_call(all_items[n - 1], "GetProperty", k) if here else None
+                for k in ("ZoomX", "ZoomY", "Pan", "Tilt")} for n in wanted}
     for n in wanted:
         it = all_items[n - 1]
         name, path = it.GetName(), _item_path(it)
@@ -1358,7 +1363,7 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
                  rf.resolve_props(src, out_size, scale, (e["x"], e["y"]), scaling).items()}
         if not rf.TILT_CONFIRMED:
             props.pop("Tilt")
-        now = {k: api._safe_call(it, "GetProperty", k) for k in props}
+        now = {k: held[n].get(k) for k in props}
         if float(e.get("squeeze") or 1.0) != 1.0:
             row["warning"] = (f"squeeze {e['squeeze']:g}: the transform assumes Resolve fits the "
                               "desqueezed picture (the clip's Pixel Aspect Ratio set); no live "
@@ -1391,28 +1396,29 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (items or their framing differ); "
                       "run the dry run again and review it")
-    media = {t["media_id"] for t in targets if t["media_id"]}
-    shared = _shared_items(project, tl_id, media)
-    before = _transforms([it for _, it in shared])
-    idx = {t["index"] for t in targets}
-    untouched = [it for n, it in enumerate(all_items, 1) if n not in idx]
-    untouched_before = _transforms(untouched)
-    for t in targets:
-        if check_cancel:
-            check_cancel()
-        pin.check(pm)
-        it = all_items[t["index"] - 1]
-        try:
-            back = {k: api.set_property_checked(it, k, v) for k, v in t["props"].items()}
-            out["results"].append({"index": t["index"], "name": t["name"], "ok": True,
-                                   "read_back": back})
-        except api.WriteNotApplied as e:
-            out["results"].append({"index": t["index"], "name": t["name"], "ok": False,
-                                   "detail": str(e)})
-    after = _transforms([it for _, it in shared])
-    out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
-    if _transforms(untouched) != untouched_before:
-        out["leaks"].append(f"{tl_name}: an item that was not a target changed")
+    with api.timeline_current(resolve, project, tl):  # Pan is in the current timeline's pixels (T27)
+        media = {t["media_id"] for t in targets if t["media_id"]}
+        shared = _shared_items(project, tl_id, media)
+        before = _transforms([it for _, it in shared])
+        idx = {t["index"] for t in targets}
+        untouched = [it for n, it in enumerate(all_items, 1) if n not in idx]
+        untouched_before = _transforms(untouched)
+        for t in targets:
+            if check_cancel:
+                check_cancel()
+            pin.check(pm)
+            it = all_items[t["index"] - 1]
+            try:
+                back = {k: api.set_property_checked(it, k, v) for k, v in t["props"].items()}
+                out["results"].append({"index": t["index"], "name": t["name"], "ok": True,
+                                       "read_back": back})
+            except api.WriteNotApplied as e:
+                out["results"].append({"index": t["index"], "name": t["name"], "ok": False,
+                                       "detail": str(e)})
+        after = _transforms([it for _, it in shared])
+        out["leaks"] = [label for (label, _), a, b in zip(shared, before, after) if a != b]
+        if _transforms(untouched) != untouched_before:
+            out["leaks"].append(f"{tl_name}: an item that was not a target changed")
     failed = any(not r["ok"] for r in out["results"]) or out["leaks"]
     out["exit_status"] = 1 if failed else (2 if refusals else 0)
     return out

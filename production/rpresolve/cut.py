@@ -427,6 +427,8 @@ def build_aspect(project, wide_tl, clip, src, prefix, aspect="9x16", check=None,
         plans = [dict(plans[0], span=n) for n in range(1, len(items) + 1)]
     elif len(items) != len(plans):
         return left(f"{len(items)} items on V1 of {name}, expected {len(plans)} (one per span)")
+    if not project.SetCurrentTimeline(tl):  # Pan is in the current timeline's pixels (T27)
+        return left(f"could not make {name} current to write its framing")
     try:
         for it, p in zip(items, plans):
             got = {k: api.set_property_checked(it, k, v) for k, v in p["props"].items()}

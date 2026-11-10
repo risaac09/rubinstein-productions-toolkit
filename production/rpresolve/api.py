@@ -25,6 +25,7 @@ Verified against Resolve Studio 21.0.4.5:
     - Unknown resolve.CONSTANT names return None silently; check them.
 """
 
+import contextlib
 import errno
 import fcntl
 import math
@@ -386,6 +387,17 @@ def set_setting_checked(obj, key, value):
             "setting writes while the setter still reports success."
         )
     return got
+
+
+@contextlib.contextmanager
+def timeline_current(resolve, project, tl):
+    """Make `tl` current for the block and put the UI back after. An item's Pan and Tilt are
+    read and written in the current timeline's pixels (trap T27), so framing is written here."""
+    with UISnapshot(resolve, project):
+        if not project.SetCurrentTimeline(tl) or \
+                _safe_call(_safe_call(project, "GetCurrentTimeline"), "GetUniqueId") != tl.GetUniqueId():
+            raise WriteNotApplied(f"could not make '{tl.GetName()}' current to write its framing")
+        yield
 
 
 def _as_number(value):

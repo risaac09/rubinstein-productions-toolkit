@@ -491,11 +491,13 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
             raise Refused(f"the copy has {len(items)} item(s), expected {len(targets)}")
         kept = [_comps(it) for it in items]
     refresh = getattr(cmd_effect, "refresh", None)
-    for t, it, comps in zip(targets, items, kept):
-        if check_cancel:
-            check_cancel()
-        pin.check(pm)
-        out["results"].append(_write_item(t, it, comps, refresh))
+    # under a 3840-wide current timeline every pan would land at 1080/3840 of the shift (T27)
+    with api.timeline_current(resolve, project, tl):
+        for t, it, comps in zip(targets, items, kept):
+            if check_cancel:
+                check_cancel()
+            pin.check(pm)
+            out["results"].append(_write_item(t, it, comps, refresh))
     out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
     return out
 

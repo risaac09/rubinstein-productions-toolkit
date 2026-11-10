@@ -360,6 +360,17 @@ class TestApply(unittest.TestCase):
         self.assertEqual((again["create"], again["exit_status"]), (False, 0))
         self.assertEqual(len([t for t in self.project.timelines if t.name == "Mix 9x16 [auto]"]), 1)
 
+    def test_the_target_is_current_while_its_items_are_written(self):
+        # Pan is in the current timeline's pixels (T27): written under the 3840 source it lands at 1080/3840
+        dry = self.go()
+        seen, write = [], v._write_item
+        with mock.patch.object(v, "_write_item", side_effect=lambda *a: (
+                seen.append(self.project.current.name), write(*a))[1]):
+            self.go(dry_run=False, expect_sha=dry["plan_sha"])
+            self.go(dry_run=False)  # the in-place re-run too
+        self.assertEqual(seen, ["Mix 9x16 [auto]"] * 6)
+        self.assertEqual(self.project.current, self.here)
+
     def test_a_read_back_that_differs_is_a_failure(self):
         self.items[1].ignored = {"Pan"}  # SetProperty says yes and keeps the old value
         _, real = self.real()

@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import detect, reframe, workflows  # noqa: E402
+from rpresolve import api, detect, reframe, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 from test_framing import MASTER, PYXIS, Reader, TestMasterShape, detector  # noqa: E402
@@ -139,6 +139,18 @@ class TestReframeApply(Base):
         self.assertEqual(sorted(u["why"] for u in again["unchanged"]),
                          ["centre fill already keeps the head",
                           "the item already carries this framing"])
+
+    def test_the_timeline_is_current_while_its_items_are_written(self):
+        # Pan and Tilt are in the current timeline's pixels (T27); the UI is put back after
+        self.project.current = self.edit
+        dry = call("reframe_apply", self.args(), self.resolve)
+        seen, write = [], api.set_property_checked
+        with mock.patch.object(api, "set_property_checked", side_effect=lambda *a: (
+                seen.append(self.project.current.name), write(*a))[1]):
+            call("reframe_apply", self.args(dry_run=False, plan_sha=dry["plan_sha"]), self.resolve)
+        self.assertTrue(seen)
+        self.assertEqual(set(seen), {"Look [auto]"})
+        self.assertEqual(self.project.current, self.edit)
 
     def test_a_real_run_needs_the_plan_sha_and_the_same_plan(self):
         with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
