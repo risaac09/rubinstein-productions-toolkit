@@ -511,5 +511,96 @@ class TestParams(Base):
         self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("Transform1"))
 
 
+class TestClipNumbering(Base):
+    """A dissolve is a track item with no media pool clip (T29). Items are clip numbers and
+    spans are manifest indices, as vertical_apply counts; the raw track position is kept."""
+
+    def setUp(self):
+        super().setUp()
+        self.auto = self.make_auto()
+        self.track = self.auto.tracks["video"][0]
+        self.a, self.b, self.c = (rf.Item(n, 86400 + 50 * i, 86450 + 50 * i, self.clip, source=(0, 50))
+                                  for i, n in enumerate(("A", "B", "C")))
+        self.dissolve = rf.Item("Cross Dissolve", 86448, 86452, None, nodes=None, source=(0, 0))
+        self.track[:] = [self.a, self.dissolve, self.b, self.c]
+        for it in self.track:
+            give_fusion(it)
+        rf.CALLS.clear()
+
+    def fx(self, **more):
+        return call("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push", **more},
+                    self.resolve)
+
+    def added(self):
+        return [c for c in rf.CALLS if c[1] == "AddFusionComp"]
+
+    def test_items_count_clips_and_skip_the_dissolve(self):
+        dry = self.fx(items=[3])
+        self.assertEqual([t["name"] for t in dry["targets"]], ["C"])  # the old count gave B
+        self.assertEqual([(t["index"], t["position"]) for t in dry["targets"]], [(3, 4)])
+        _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push",
+                                             "items": [3]}, self.resolve)
+        self.assertEqual([(r["index"], r["position"], r["ok"]) for r in real["results"]],
+                         [(3, 4, True)])
+        self.assertIn("rp-fx zoom-push", self.c.comps)
+        self.assertEqual(self.b.comps, {})
+
+    def test_spans_are_the_manifests_own_indices(self):
+        dry = self.fx(spans=[2])
+        self.assertEqual([t["name"] for t in dry["targets"]], ["C"])
+        self.assertEqual([(t["index"], t["position"]) for t in dry["targets"]], [(3, 4)])
+        self.assertEqual(self.fx(spans=[0])["targets"][0]["name"], "A")
+        _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push",
+                                             "spans": [2]}, self.resolve)
+        self.assertEqual([r["ok"] for r in real["results"]], [True])
+        self.assertIn("rp-fx zoom-push", self.c.comps)
+        self.assertEqual(self.b.comps, {})
+
+    def test_the_default_never_targets_the_transition(self):
+        dry = self.fx()
+        self.assertEqual([t["name"] for t in dry["targets"]], ["A", "B", "C"])
+        self.assertEqual([(t["index"], t["position"]) for t in dry["targets"]],
+                         [(1, 1), (2, 3), (3, 4)])
+        run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push"}, self.resolve)
+        self.assertEqual(len(self.added()), 3)
+        self.assertEqual(self.dissolve.comps, {})
+
+    def test_items_and_spans_together_are_refused(self):
+        with self.assertRaisesRegex(workflows.Refused, "not both"):
+            self.fx(items=[1], spans=[0])
+        self.assertEqual(self.added(), [])
+
+    def test_a_number_past_the_clips_is_refused_in_its_own_terms(self):
+        # four items on the track, three clips: raw position 4 is not a clip number 4
+        with self.assertRaisesRegex(workflows.Refused, "no clip\\(s\\) \\[4\\].*3 clip"):
+            self.fx(items=[4])
+        with self.assertRaisesRegex(workflows.Refused, "no span\\(s\\) \\[3\\]"):
+            self.fx(spans=[3])
+        self.assertEqual(self.added(), [])
+
+    def test_an_empty_spans_list_is_refused(self):
+        with self.assertRaisesRegex(workflows.Refused, "spans is empty"):
+            cmd_effect.apply_effect(self.resolve, "RP Automation Sandbox", "Edit [auto]",
+                                    "zoom-push", spans=[], dry_run=True)
+
+    def test_the_plan_hash_follows_the_numbering(self):
+        by_items, by_spans = self.fx(items=[3]), self.fx(spans=[2])
+        self.assertEqual(by_items["plan_sha"], by_spans["plan_sha"])  # one plan, two spellings
+        self.assertNotEqual(by_items["plan_sha"], self.fx(items=[2])["plan_sha"])
+        # the same clip, number and item, but the dissolve moved: the raw position changed
+        self.track[:] = [self.a, self.b, self.c, self.dissolve]
+        moved = self.fx(items=[3])
+        self.assertEqual(moved["targets"][0]["item_id"], by_items["targets"][0]["item_id"])
+        self.assertEqual(moved["targets"][0]["position"], 3)
+        self.assertNotEqual(moved["plan_sha"], by_items["plan_sha"])
+
+    def test_the_tool_schema_takes_spans_from_zero(self):
+        tool = REG.get("apply_effect")
+        base = {"project": "P", "timeline": "T", "effect": "zoom-push"}
+        self.assertEqual(schema.validate(tool.input_schema, {**base, "spans": [0, 2]}), [])
+        self.assertTrue(schema.validate(tool.input_schema, {**base, "spans": [-1]}))
+        self.assertTrue(schema.validate(tool.input_schema, {**base, "items": [0]}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -305,6 +305,19 @@ def find_timeline(project, ref):
     return found[0]
 
 
+def is_clip(item):
+    """True for a track item that plays a media pool clip. A transition is an item with no
+    media pool clip (resolve-traps.md T29), so it is not one."""
+    return bool(_safe_call(item, "GetMediaPoolItem"))
+
+
+def clip_items(tl, track):
+    """The clip items of one video track, in order, transitions skipped. The numbering the
+    manifest's spans use: clip n is span n - 1. vertical_apply and apply_effect both count this way."""
+    return [it for it in _safe_call(tl, "GetItemListInTrack", "video", track) or []
+            if is_clip(it)]
+
+
 class UISnapshot:
     """Context manager: record the current page, timeline, and playhead
     timecode on entry and put them back on exit. Restoring is best effort

@@ -454,7 +454,7 @@ def apply_effect(args, ctx):
                                     dry_run=args["dry_run"], project_id=args.get("project_id"),
                                     check_cancel=ctx.check_cancel,
                                     expect_sha=args.get("plan_sha"),
-                                    params=args.get("params"))
+                                    params=args.get("params"), spans=args.get("spans"))
         tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
         if r["dry_run"]:
@@ -1042,7 +1042,7 @@ def register(registry):
         "apply_effect",
         "Apply a Fusion macro from production/fusion-macros (effect: its id) to items on one "
         "video track of an ' [auto]' timeline only: add a new Fusion comp named 'rp-fx "
-        "<effect>' to each item, build the macro's tools in it with their keyframes, wire them "
+        "<effect>' to each clip, build the macro's tools in it with their keyframes, wire them "
         "between MediaIn1 and MediaOut1, and read the comp back (tools, keyframes, no handle "
         "overshoot, wiring). Nothing existing changes: the comp is new, and an item that "
         "already has any Fusion comp is refused, since the new comp would become the one "
@@ -1051,7 +1051,11 @@ def register(registry):
         "strength, text-word's font and colour; fusion-macros.md). params sets the macro's "
         "whitelisted values (text, size, centre; gain for exposure-flash; speed, speed_to for "
         "retime; pan_from, pan_to, pan_base for reframe-pan); an unknown key for the macro is refused and each value "
-        "is read back. Dry run first; the real run needs its plan_sha.",
+        "is read back. Clips are counted as vertical_apply counts them: a dissolve is a track "
+        "item with no clip and is not a number, so items are clip numbers from 1 and spans are "
+        "the manifest's span indices from 0 (clip n is span n - 1); give one of them, not both. "
+        "Each target row names the clip number and the raw track position. Dry run first; the "
+        "real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",
@@ -1061,7 +1065,12 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Clip numbers on the track, from 1, transitions not "
+                                     "counted (default: all clips). Not with spans."},
+            "spans": {"type": "array", "minItems": 1,
+                      "items": {"type": "integer", "minimum": 0}, "uniqueItems": True,
+                      "description": "The manifest's span indices, from 0 (an effects entry's "
+                                     "span_index): span i is clip i + 1. Not with items."},
             "params": {"type": "object", "additionalProperties": False, "properties": {
                 "text": {"type": "string", "minLength": 1, "maxLength": 80},
                 "size": {"type": "number"},

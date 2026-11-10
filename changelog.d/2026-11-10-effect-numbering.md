@@ -1,0 +1,1 @@
+apply_effect numbers clips the way vertical_apply does: a dissolve is a track item with no clip (T29) and is no longer counted, so items is a clip number from 1 and the new spans argument takes the manifest's own span indices; giving both is refused, and each target row records the clip number and the raw track position.

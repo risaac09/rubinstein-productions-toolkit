@@ -3,7 +3,7 @@ effect: the Fusion macros in production/fusion-macros/ that the MCP apply_effect
 puts on [auto] timeline items. Offline, the command lists each macro with the tools it
 wires between MediaIn1 and MediaOut1, and checks that every macro parses.
 
-apply_effect(), the work behind the MCP tool, adds a Fusion comp to each named item of
+apply_effect(), the work behind the MCP tool, adds a Fusion comp to each named clip of
 an ' [auto]' timeline (TimelineItem.AddFusionComp), pastes the macro's tools into it,
 wires them between the comp's MediaIn1 and MediaOut1, and reads the comp back. The
 comp it adds is new, so nothing that existed before is changed; a timeline whose name
@@ -549,14 +549,21 @@ def _source_frames(it):
 
 
 def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, dry_run=False,
-                 project_id=None, check_cancel=None, expect_sha=None, params=None):
-    """Add a Fusion comp named 'rp-fx <effect>' to each item (1-based numbers on one
-    video track, default all) of an ' [auto]' timeline, paste the macro's tools into
-    it, wire them between MediaIn1 and MediaOut1, and read the comp back. An item that
-    already has any Fusion comp is refused (the new comp would replace the one that
-    renders). Returns {project, timeline, effect,
-    targets, refused, results, plan_sha, dry_run, exit_status}; exit_status 1 when any
-    item failed its read-back."""
+                 project_id=None, check_cancel=None, expect_sha=None, params=None, spans=None):
+    """Add a Fusion comp named 'rp-fx <effect>' to each clip (items: 1-based clip numbers on
+    one video track; or spans: the manifest's 0-based span indices; default all; not both) of
+    an ' [auto]' timeline, paste the macro's tools into it, wire them between MediaIn1 and
+    MediaOut1, and read the comp back. Clips are numbered as vertical_apply numbers them: a
+    transition is a track item with no media pool clip (T29) and is not counted, so clip n is
+    span n - 1. An item that already has any Fusion comp is refused (the new comp would
+    replace the one that renders). Returns {project, timeline, effect,
+    targets, refused, results, plan_sha, dry_run, exit_status}; each row has the clip number
+    as index and the raw track position; exit_status 1 when any item failed its read-back."""
+    if items is not None and spans is not None:
+        raise Refused("give items (clip numbers, from 1) or spans (manifest span indices, from 0), "
+                      "not both.")
+    if spans is not None and not spans:
+        raise Refused("spans is empty; leave it out to take every clip.")
     text, parsed = load_macro(effect)
     params = validate_params(effect, params)  # before anything is read from Resolve
     tools = tool_names(parsed)
@@ -570,17 +577,22 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     if not 1 <= track <= tracks:
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
-    wanted = _wanted_items(items, len(all_items))
-    bad = [n for n in wanted if not 1 <= n <= len(all_items)]
+    # Clip n sits at raw track position positions[n - 1]; transition items have none.
+    positions = [p for p, it in enumerate(all_items, 1) if api.is_clip(it)]
+    shift = 0 if spans is None else 1  # span i is clip i + 1
+    wanted = _wanted_items(items if spans is None else [s + 1 for s in spans], len(positions))
+    bad = [n - shift for n in wanted if not 1 <= n <= len(positions)]
     if bad:
-        raise Refused(f"no item(s) {bad} on V{track} ({len(all_items)} item(s)).")
+        raise Refused(f"no {'span' if shift else 'clip'}(s) {bad} on V{track} ({len(positions)} "
+                      f"clip(s) in {len(all_items)} item(s); transitions are not counted).")
     comp_name = COMP_PREFIX + effect
     targets, refused = [], []
     for n in wanted:
-        it = all_items[n - 1]
+        it = all_items[positions[n - 1] - 1]
         names = _comp_names(it)
         frames = api._safe_call(it, "GetDuration")
-        row = {"index": n, "name": it.GetName(), "item_id": api._safe_call(it, "GetUniqueId"),
+        row = {"index": n, "position": positions[n - 1], "name": it.GetName(),
+               "item_id": api._safe_call(it, "GetUniqueId"),
                "comps": names, "frames": frames, "source_frames": _source_frames(it)}
         row["key_scale"], row["key_offset"] = comp_timing(parsed, effect, frames,
                                                           row["source_frames"])
@@ -602,8 +614,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         raise Refused("no item may take the effect: " + "; ".join(
             f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refused))
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
-                   [(t["index"], t["item_id"], t["comps"], t["frames"], t["source_frames"])
-                    for t in targets], sorted(params.items()))
+                   [(t["index"], t["position"], t["item_id"], t["comps"], t["frames"],
+                     t["source_frames"]) for t in targets], sorted(params.items()))
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
            "effect": {"id": effect, "comp": comp_name, "tools": tools,
@@ -632,8 +644,9 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         if check_cancel:
             check_cancel()
         pin.check(pm)
-        it = all_items[t["index"] - 1]
-        row = {"index": t["index"], "name": t["name"], "item_id": t["item_id"]}
+        it = all_items[t["position"] - 1]
+        row = {"index": t["index"], "position": t["position"], "name": t["name"],
+               "item_id": t["item_id"]}
         # In the results before the comp exists, so an error mid-build still names it.
         row.update(ok=False, detail="interrupted while building the comp")
         out["results"].append(row)
