@@ -336,10 +336,12 @@ def _sheet_graph(n, layout):
 def preview_filter(row):
     """The ffmpeg filter that cuts the window the review sheet draws (9/16 of the zoomed height
     wide, centred on cx, the zoomed height tall, level with the middle), scales it to the
-    preview and draws the item's number in the corner."""
+    preview and draws the item's number in the corner. A source narrower than 9:16 gives a
+    window as wide as it is; a zoom below 1 is held at 1, since the crop cannot leave the frame."""
     sw, sh = row["source_size"]
-    h = max(2, int(sh / row["zoom"]))
-    w = max(2, int(sh * 9 / 16 / row["zoom"]))
+    w, h = (sw, sw * 16 / 9) if sw * 16 < sh * 9 else (sh * 9 / 16, sh)
+    z = max(row["zoom"], 1.0)
+    w, h = max(2, int(w / z)), max(2, int(h / z))
     x = min(max(int(row["cx"] * sw - w / 2), 0), sw - w)
     return ",".join([f"crop={w}:{h}:{x}:{(sh - h) // 2}", "scale=%d:%d" % PREVIEW_SIZE, "setsar=1",
                      f"fps={PREVIEW_FPS}"] + _digits(row["index"]) + ["format=yuv420p"])

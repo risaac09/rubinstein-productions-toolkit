@@ -203,33 +203,77 @@ class TestPreview(unittest.TestCase):
         self.assertIn(":0:0,", v.preview_filter({**row, "cx": 0.001}))
         self.assertTrue(v.preview_filter({**row, "cx": 0.999}).startswith("crop=1215:2160:2625:0"))
 
-    def test_the_preview_follows_each_items_centre(self):
+    def test_a_source_narrower_than_9x16_gets_a_window_that_fits_inside_it(self):
+        row = {"index": 1, "cx": 0.5, "zoom": 1.0, "source_size": [400, 1000]}
+        self.assertTrue(v.preview_filter(row).startswith("crop=400:711:0:144,"))
+        self.assertTrue(v.preview_filter({**row, "zoom": 2.0}).startswith("crop=200:355:100:322,"))
+        # zoomed out, the window stays inside the frame
+        self.assertTrue(v.preview_filter({**row, "source_size": SRC, "zoom": 0.5})
+                        .startswith("crop=1215:2160:"))
+
+    def test_a_narrow_source_drafts(self):
         ffmpeg = reframe.FFMPEG
         if not os.access(ffmpeg, os.X_OK):
             self.skipTest("ffmpeg missing")
         with tempfile.TemporaryDirectory() as d:
-            clip = os.path.join(d, "split.mp4")  # left half red, right half blue
+            clip = os.path.join(d, "tall.mp4")
             subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i",
-                            "color=c=red:s=320x360:r=24:d=2", "-f", "lavfi", "-i",
-                            "color=c=blue:s=320x360:r=24:d=2", "-filter_complex", "hstack",
-                            "-pix_fmt", "yuv420p", clip], stdin=subprocess.DEVNULL, check=True)
-            crops = v.plan([{"name": "red", "path": clip, "in": 0, "out": 1, "size": [640, 360]},
-                            {"name": "blue", "path": clip, "in": 1.2, "out": 2.0,
-                             "size": [640, 360]}], mode="edge",
-                           overrides={"red": 0.2, "blue": 0.8})
+                            "testsrc2=size=400x1000:rate=24:duration=1", "-pix_fmt", "yuv420p",
+                            clip], stdin=subprocess.DEVNULL, check=True)
+            crops = v.plan([{"name": "tall", "path": clip, "in": 0, "out": 1, "size": [400, 1000]}],
+                           mode="edge")
+            path = v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+            info = ffprobe_json(ffmpeg, path)
+            self.assertEqual([(s["width"], s["height"]) for s in info["streams"]], [(540, 960)])
+
+    def test_the_preview_cuts_each_item_from_its_own_file_and_in_point_at_its_centre(self):
+        ffmpeg = reframe.FFMPEG
+        if not os.access(ffmpeg, os.X_OK):
+            self.skipTest("ffmpeg missing")
+
+        def lavfi(*colours):
+            args = []
+            for c in colours:
+                args += ["-f", "lavfi", "-i", f"color=c={c}:s=320x360:r=24:d=2"]
+            return args
+
+        with tempfile.TemporaryDirectory() as d:
+            a, b = os.path.join(d, "a.mp4"), os.path.join(d, "b.mp4")
+            # a: red|blue for two seconds, then lime|yellow, with a sound track; b: magenta|cyan
+            subprocess.run([ffmpeg, "-v", "error", "-y"] + lavfi("red", "blue", "lime", "yellow")
+                           + ["-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+                              "-filter_complex", "[0][1]hstack[p];[2][3]hstack[q];"
+                              "[p][q]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-map", "4:a",
+                              "-pix_fmt", "yuv420p", a], stdin=subprocess.DEVNULL, check=True)
+            subprocess.run([ffmpeg, "-v", "error", "-y"] + lavfi("magenta", "cyan")
+                           + ["-filter_complex", "hstack", "-pix_fmt", "yuv420p", b],
+                           stdin=subprocess.DEVNULL, check=True)
+            crops = v.plan([{"name": "first", "path": a, "in": 0, "out": 1, "size": [640, 360]},
+                            {"name": "later", "path": a, "in": 2.2, "out": 3.0, "size": [640, 360]},
+                            {"name": "other", "path": b, "in": 0.5, "out": 1.5, "size": [640, 360]}],
+                           mode="edge", overrides={"first": 0.2, "later": 0.8, "other": 0.2})
             out = os.path.join(d, "plan")
             os.makedirs(out)
             path = v.draft_preview(crops, out, ffmpeg=ffmpeg)
             self.assertEqual(path, os.path.join(out, "preview.mp4"))
             self.assertEqual(sorted(os.listdir(out)), ["preview.mp4"])  # no scratch left behind
             info = ffprobe_json(ffmpeg, path)
-            self.assertEqual([(s["codec_type"], s["width"], s["height"]) for s in info["streams"]],
-                             [("video", 540, 960)])  # silent
-            self.assertAlmostEqual(float(info["format"]["duration"]), 1.8, delta=0.15)
-            r, g, b = pixel(ffmpeg, path, 0.5)
-            self.assertTrue(r > 200 and b < 80, (r, g, b))
-            r, g, b = pixel(ffmpeg, path, 1.4)
-            self.assertTrue(b > 200 and r < 80, (r, g, b))
+            self.assertEqual([(s["codec_type"], s.get("width"), s.get("height"))
+                              for s in info["streams"]],
+                             [("video", 540, 960)])  # silent, though the source has sound
+            self.assertAlmostEqual(float(info["format"]["duration"]), 2.8, delta=0.2)
+            # item 1: left of a, before 2 s (red); item 2: right of a, after 2 s (yellow, not
+            # blue); item 3: left of b (magenta, not red)
+            for t, ok in ((0.5, lambda r, g, b_: r > 200 and g < 80 and b_ < 80),
+                          (1.4, lambda r, g, b_: r > 200 and g > 200 and b_ < 80),
+                          (2.3, lambda r, g, b_: r > 200 and g < 80 and b_ > 200)):
+                rgb = pixel(ffmpeg, path, t)
+                self.assertTrue(ok(*rgb), (t, rgb))
+                # the item number is burned in: a white segment in the corner on black
+                r, g, b_ = pixel(ffmpeg, path, t, 16, 10)
+                self.assertTrue(min(r, g, b_) > 200, (t, (r, g, b_)))
+                r, g, b_ = pixel(ffmpeg, path, t, 6, 10)
+                self.assertTrue(max(r, g, b_) < 60, (t, (r, g, b_)))
 
     def test_a_folder_in_a_git_tree_is_refused_and_nothing_is_made(self):
         with tempfile.TemporaryDirectory() as d:
@@ -289,10 +333,13 @@ def comps(word="OUTSIDE"):
 
 
 class FusionItem(rf.Item):
+    on_copy = {}  # item name -> comps its duplicate gains: a copy's comps are its own
+
     def __copy__(self):
         new = rf.Item.__new__(FusionItem)
         new.__dict__.update(self.__dict__)
         new.comps = copy.deepcopy(self.comps)
+        new.comps.update(copy.deepcopy(FusionItem.on_copy.get(self.GetName(), {})))
         return new
 
     def GetFusionCompNameList(self):
@@ -358,9 +405,12 @@ class TestApply(unittest.TestCase):
         self.items[2].comps["rp-fx crop-window"] = FComp({})
         want = [{"index": 1, "name": "i0", "comp": "rp-fx person-matte-text"},
                 {"index": 3, "name": "i2", "comp": "rp-fx crop-window"}]
-        dry, real = self.real()
+        with mock.patch.object(FusionItem, "on_copy", {"i1": {"rp-fx added-in-copy": FComp({})}}):
+            dry, real = self.real()
         self.assertEqual(dry["unmoved_comps"], want)
-        self.assertEqual(real["unmoved_comps"], want)  # read from the copy
+        # the real run lists the copy's own comps, which gained one the source never had
+        self.assertEqual(real["unmoved_comps"], [want[0], {"index": 2, "name": "i1",
+                                                           "comp": "rp-fx added-in-copy"}, want[1]])
         self.assertEqual(real["exit_status"], 0)
         c0 = self.target().tracks["video"][0][0].comps
         self.assertEqual(c0["rp-fx person-matte-text"].tools["Merge1"].values["Center"],
