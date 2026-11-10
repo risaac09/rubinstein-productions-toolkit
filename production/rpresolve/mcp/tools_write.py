@@ -454,7 +454,7 @@ def apply_effect(args, ctx):
                                     dry_run=args["dry_run"], project_id=args.get("project_id"),
                                     check_cancel=ctx.check_cancel,
                                     expect_sha=args.get("plan_sha"),
-                                    params=args.get("params"))
+                                    params=args.get("params"), spans=args.get("spans"))
         tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
         if r["dry_run"]:
@@ -1020,7 +1020,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "lut": {"type": "object", "properties": {
                 "path": {"type": "string",
                          "description": "A .cube, absolute or relative to Resolve's LUT folder."},
@@ -1042,7 +1043,7 @@ def register(registry):
         "apply_effect",
         "Apply a Fusion macro from production/fusion-macros (effect: its id) to items on one "
         "video track of an ' [auto]' timeline only: add a new Fusion comp named 'rp-fx "
-        "<effect>' to each item, build the macro's tools in it with their keyframes, wire them "
+        "<effect>' to each clip, build the macro's tools in it with their keyframes, wire them "
         "between MediaIn1 and MediaOut1, and read the comp back (tools, keyframes, no handle "
         "overshoot, wiring). Nothing existing changes: the comp is new, and an item that "
         "already has any Fusion comp is refused, since the new comp would become the one "
@@ -1051,7 +1052,11 @@ def register(registry):
         "strength, text-word's font and colour; fusion-macros.md). params sets the macro's "
         "whitelisted values (text, size, centre; gain for exposure-flash; speed, speed_to for "
         "retime; pan_from, pan_to, pan_base for reframe-pan); an unknown key for the macro is refused and each value "
-        "is read back. Dry run first; the real run needs its plan_sha.",
+        "is read back. Clips are counted as vertical_apply counts them: a dissolve is a track "
+        "item with no clip and is not a number, so items are clip numbers from 1 and spans are "
+        "the manifest's span indices from 0 (clip n is span n - 1); give one of them, not both. "
+        "Each target row names the clip number and the raw track position. Dry run first; the "
+        "real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",
@@ -1061,7 +1066,12 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Clip numbers on the track, from 1, transitions not "
+                                     "counted (default: all clips). Not with spans."},
+            "spans": {"type": "array", "minItems": 1,
+                      "items": {"type": "integer", "minimum": 0}, "uniqueItems": True,
+                      "description": "The manifest's span indices, from 0 (an effects entry's "
+                                     "span_index): span i is clip i + 1. Not with items."},
             "params": {"type": "object", "additionalProperties": False, "properties": {
                 "text": {"type": "string", "minLength": 1, "maxLength": 80},
                 "size": {"type": "number"},
@@ -1152,7 +1162,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "allow_bars": {"type": "boolean", "default": False,
                            "description": "Allow a scale below the fill scale (black bars)."},
             **DRY_RUN},
@@ -1180,7 +1191,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "max_items": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10,
                           "description": "Stabilize at most this many items per call, the first "
                           "of the selection (default 10, at most 25: one call holds the Resolve "
@@ -1194,7 +1206,9 @@ def register(registry):
         "target_dir); a destination is the only way to queue a render. It never starts a "
         "render: the operator starts renders. A destination sets format, codec, size, frame rate, "
         "audio, colour tags and captions, and names the file by the house rule "
-        "(SW001_Guest_01_example-clip_16x9.mp4, or Client_slug_master.mov); it is refused "
+        "(SW001_Guest_01_example-clip_16x9.mp4, Client_slug_master.mov, or for a music "
+        "montage Client_slug_9x16.mp4); it warns, and still queues, when files in the target "
+        "folder or its destination subfolders carry another client prefix; it is refused "
         "when the folder is missing, on an unmounted share or in a git repository, when the "
         "file or its sidecar exists or a queued job writes it, and when captions are wanted "
         "but the timeline has no subtitle track. The timeline is made current only while "
@@ -1220,10 +1234,10 @@ def register(registry):
                 "slug": {"type": "string", "pattern": f"^{deliver.SLUG}$",
                          "description": "Lowercase words joined by hyphens."},
                 "client": {"type": "string", "pattern": f"^{deliver.WORD}$",
-                           "description": "client_master only."}},
+                           "description": "client_master and montage destinations only."}},
                 "additionalProperties": False,
-                "description": "Show, episode, guest, index and slug; for client_master, "
-                "client and slug."},
+                "description": "Show, episode, guest, index and slug; for client_master and "
+                "the montage destinations (social_9x16_music), client and slug."},
             "target_dir": {"type": "string",
                            "description": "Absolute path of an existing folder outside any "
                            "git repository (default: the destination's target_dir in the "

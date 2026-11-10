@@ -27,6 +27,7 @@ from test_delivercheck import CFG, make, needs_ffmpeg  # noqa: E402
 WORKFLOW = HERE.parent / "resolve_workflow.py"
 CLIP = "SW001_Guest_01_example-clip_16x9.mp4"
 MASTER = "Client_example-slug_master.mov"
+MONTAGE = "Client_example-montage_9x16.mp4"
 SHA = "a" * 64
 ARGS = ["--project", "example-slug", "--approval", "AP-1", "--prepared-by", "A B, producer",
         "--review-copy", "review.mp4", "--review-sha256", SHA, "--delivered", "2026-10-20"]
@@ -164,6 +165,21 @@ class TestManifest(unittest.TestCase):
         # a destination folder the config does not know
         os.rename(f"{self.d}/youtube_16x9", f"{self.d}/nowhere")
         self.assertEqual(run("deliver-manifest", self.d, *ARGS).returncode, 1)
+
+    def test_a_montage_name_ships_in_its_destination_and_a_clip_name_does_not(self):
+        os.makedirs(f"{self.d}/social_9x16_music")
+        make(f"{self.d}/social_9x16_music/{MONTAGE}", seconds=2.0, rate="25")
+        text, sums = mf.build(self.d, CFG, "example-slug", "AP-1", "p", "r.mp4", SHA, "2026-10-20",
+                              loudness=False)
+        self.assertIn(f"| {MONTAGE} | mp4 |", text)
+        self.assertIn(f"social_9x16_music/{MONTAGE}", [rel for rel, _ in sums])
+        # a clip name is not a montage name, so it does not ship from that folder
+        shutil.copy(f"{self.d}/social_9x16_music/{MONTAGE}",
+                    f"{self.d}/social_9x16_music/SW001_Guest_01_example-clip_9x16.mp4")
+        with self.assertRaisesRegex(mf.ManifestError, "clip name, but 'social_9x16_music' takes "
+                                                      "a montage name"):
+            mf.build(self.d, CFG, "example-slug", "AP-1", "p", "r.mp4", SHA, "2026-10-20",
+                     loudness=False)
 
     def test_licence_rows(self):
         text, _ = mf.build(self.d, CFG, "example-slug", "AP-1", "p", "r.mp4", SHA, "2026-10-20",

@@ -910,12 +910,15 @@ def main():
     audio_filter = loudnorm_filter(lufs, args.tp, args.lra)   # validated before any work
     name_parts = {"show": args.show, "episode": args.episode, "guest": args.guest}
     if not args.draft_names:
+        # The destination's rule first: asking for --show on a destination that takes no clip name
+        # would send the user to supply flags that are then refused.
+        if dest.get("naming") != "clip":
+            die("destination '%s' takes a %s name, not a clip name; vertcut writes clip names "
+                "(or --draft-names for a review copy)" % (dest["key"], dest.get("naming")))
         missing = [k for k, v in name_parts.items() if not v]
         if missing:
             die("the house file name needs --%s (or --draft-names for a review copy "
                 "that will not pass deliver_check)" % ", --".join(missing))
-        if dest.get("naming") != "clip":
-            die("destination '%s' takes a %s name, not a clip name" % (dest["key"], dest.get("naming")))
 
     clips = read_manifest(args.manifest, fps)
     for pos, clip in enumerate(clips, 1):

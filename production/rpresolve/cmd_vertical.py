@@ -1,22 +1,26 @@
 """
 vertical: the 9:16 finish step for a montage that was built at 16:9.
 
-`plan` and `review` are the offline half (this command's CLI). `plan` takes the
+`plan`, `draft` and `review` are the offline half (this command's CLI). `plan` takes the
 montage's items (name, source path, in and out in source seconds, zoom, and the
 16:9 crop_x when the build had one), picks one crop centre cx per item (a share
-of the source width), writes crops.json and a numbered review sheet. `review`
-sets crops.json's "reviewed" to true once a person or agent has read the sheet.
+of the source width), writes crops.json and a numbered review sheet. Its --out folder
+must not exist yet; the command makes it. `draft` cuts a silent 540x960 preview, preview.mp4,
+from crops.json: each item from its source at its crop, in order, the item number in the
+corner. The operator watches it before anything is written to Resolve. `review` sets
+crops.json's "reviewed" to true once a person or agent has read the sheet and watched the
+preview.
 
 Centre choice, in this order: a hand override ("<item name>" or "#<item number>"
-in the overrides file) always wins; else the face planner (reframe.plan_items for
-1080x1920 at scaleToCrop) when it passes or falls back, cx = its x / source width;
-else the edge rule, 0.5 + (crop_x - 0.5) * (1 - 2*hw) with a crop_x, 0.5 without.
-hw is half the portrait window's share of the source width, 0.5 * (9/16) /
-(width / height). Every centre is clamped to [hw/zoom, 1 - hw/zoom]. Consecutive
-items cut from one take with touching in and out share the first one's centre, so
-a take does not jump between cuts. The face planner follows the face it can track,
-which may be a bystander at the frame edge, so the sheet exists and apply refuses a
-crops.json that has not been reviewed.
+in the overrides file) always wins; else, only with --centre face, the face planner
+(reframe.plan_items for 1080x1920 at scaleToCrop) when it passes or falls back,
+cx = its x / source width; else the edge rule, 0.5 + (crop_x - 0.5) * (1 - 2*hw) with a
+crop_x, 0.5 without. --centre edge is the default and skips the face planner. hw is half
+the portrait window's share of the source width, 0.5 * (9/16) / (width / height). Every
+centre is clamped to [hw/zoom, 1 - hw/zoom]. Consecutive items cut from one take with
+touching in and out share the first one's centre, so a take does not jump between cuts.
+The face planner follows the face it can track, which may be a bystander at the frame
+edge, so the sheet exists and apply refuses a crops.json that has not been reviewed.
 
 `apply_vertical`, the work behind the MCP tool, is the guarded Resolve write. It
 refuses a timeline whose name does not end ' [auto]'. When the target does not
@@ -28,11 +32,16 @@ timeline's scaleToCrop reads back and still renders fit to width), Pan to
 equal to crops.json's). A Fusion comp named 'rp-fx zoom-push' gets
 Transform1.Pivot = (cx, 0.5); 'rp-fx text-word' gets Merge1.Center = (cx, 0.5) and
 Text1.Size refitted for portrait. Comps are then re-rendered with
-cmd_effect.refresh and everything is read back.
+cmd_effect.refresh and everything is read back. Every other Fusion comp on an item
+(a person-matte-text title among them) is left as it was and named in the result's
+unmoved_comps. A preview is not required by apply_vertical; the draft step is the
+operator's.
 """
 
+import concurrent.futures
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,6 +65,7 @@ TEXT_K = 0.336          # size * letters: 0.048 for seven letters, about 80% of 
 
 SHEET_W, SHEET_H, SHEET_ROWS = 560, 316, 6   # cells 3 across: 1680 x 1896 a sheet (even sizes for JPEG 4:2:0)
 SHEET_MAX_BYTES = 1024 * 1024
+PREVIEW_SIZE, PREVIEW_FPS, PREVIEW_NAME = (540, 960), 30, "preview.mp4"
 
 
 class VerticalError(RuntimeError):
@@ -145,11 +155,12 @@ def _face(rows, group, planner):
     return None, got.get("status") or "no_face", got.get("reason", "")
 
 
-def plan(items, overrides=None, mode="face", planner=None, probe=None):
+def plan(items, overrides=None, mode="edge", planner=None, probe=None):
     """crops.json as a dict: {aspect, reviewed: False, items: [{index, name, path, in, out,
-    cx, how, status, reason, zoom, source_size, shared_with?}]}. mode 'face' tries the face
-    planner (planner(items, aspect=, master_size=, scaling=) -> reframe.plan_items' shape;
-    default reframe.plan_items) and falls back to the edge rule; mode 'edge' skips it."""
+    cx, how, status, reason, zoom, source_size, shared_with?}]}. mode 'edge' (the default)
+    uses the edge rule only; mode 'face' tries the face planner (planner(items, aspect=,
+    master_size=, scaling=) -> reframe.plan_items' shape; default reframe.plan_items) and
+    falls back to the edge rule."""
     if mode not in ("face", "edge"):
         raise VerticalError("mode is 'face' or 'edge'")
     if mode == "face" and planner is None:
@@ -318,6 +329,65 @@ def _sheet_graph(n, layout):
     ins = "".join(f"[{i}:v]" for i in range(n))
     return f"{ins}xstack=inputs={n}:layout={'|'.join(layout)}:fill=black[o]"
 
+# ---------------------------------------------------------------------------
+# the preview (ffmpeg only): the framing, watched before anything is written to Resolve
+# ---------------------------------------------------------------------------
+
+def preview_filter(row):
+    """The ffmpeg filter that cuts the window the review sheet draws (9/16 of the zoomed height
+    wide, centred on cx, the zoomed height tall, level with the middle), scales it to the
+    preview and draws the item's number in the corner. A source narrower than 9:16 gives a
+    window as wide as it is; a zoom below 1 is held at 1, since the crop cannot leave the frame."""
+    sw, sh = row["source_size"]
+    w, h = (sw, sw * 16 / 9) if sw * 16 < sh * 9 else (sh * 9 / 16, sh)
+    z = max(row["zoom"], 1.0)
+    w, h = max(2, int(w / z)), max(2, int(h / z))
+    x = min(max(int(row["cx"] * sw - w / 2), 0), sw - w)
+    return ",".join([f"crop={w}:{h}:{x}:{(sh - h) // 2}", "scale=%d:%d" % PREVIEW_SIZE, "setsar=1",
+                     f"fps={PREVIEW_FPS}"] + _digits(row["index"]) + ["format=yuv420p"])
+
+
+def draft_preview(crops, out_dir, ffmpeg=None):
+    """Write out_dir/preview.mp4 from crops.json (a path or the dict): a silent 540x960 cut of
+    every item from its source (path, in, out) at its crop centre, joined in order. The picture
+    is client media, so a folder inside any git working tree is refused. Returns the path.
+    Nothing here needs crops.json to be reviewed; the preview is what the review is read with."""
+    from rpresolve import reframe
+    c = load_crops(crops)
+    out_dir = os.path.abspath(out_dir)
+    if rppaths.in_any_git_tree(out_dir):
+        raise VerticalError(f"{out_dir} is inside a git working tree. The preview shows client "
+                            "media; write it outside any repository.")
+    ffmpeg = ffmpeg or reframe.FFMPEG
+    hw = _has_hw(ffmpeg)
+    os.makedirs(out_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
+        def cut(row):
+            part = os.path.join(tmp, f"{row['index']:03d}.mp4")
+            for use_hw in ((True, False) if hw else (False,)):
+                code, err = _run([ffmpeg, "-v", "error", "-y"]
+                                 + (["-hwaccel", "videotoolbox"] if use_hw else [])
+                                 + ["-ss", f"{row['in']:.4f}", "-t", f"{row['out'] - row['in']:.4f}",
+                                    "-i", "file:" + row["path"], "-an", "-vf", preview_filter(row),
+                                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                                    "-write_tmcd", "0", part])
+                if code == 0 and os.path.exists(part):
+                    return part
+            raise VerticalError(f"item {row['index']} ({row['name']}): ffmpeg could not cut "
+                                f"{row['in']:.2f}s to {row['out']:.2f}s: {err}")
+        with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 1) as pool:
+            parts = list(pool.map(cut, c["items"]))
+        lst, joined = os.path.join(tmp, "parts.txt"), os.path.join(tmp, PREVIEW_NAME)
+        with open(lst, "w", encoding="utf-8") as f:
+            f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
+        code, err = _run([ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+                          "-c", "copy", "-movflags", "+faststart", joined])
+        if code != 0:
+            raise VerticalError(f"ffmpeg could not join the preview: {err}")
+        path = os.path.join(out_dir, PREVIEW_NAME)
+        os.replace(joined, path)
+    return path
+
 
 # ---------------------------------------------------------------------------
 # apply (the guarded Resolve write)
@@ -366,12 +436,6 @@ def _timeline_named(project, name):
     return None
 
 
-def _clips(tl, track):
-    """The track's clip items: a transition is an item with no media pool clip (T29), skipped."""
-    return [it for it in tl.GetItemListInTrack("video", track) or []
-            if api._safe_call(it, "GetMediaPoolItem")]
-
-
 def _comps(item):
     """The item's rp-fx comps this step moves: [{comp, kind, tool, ...values}]."""
     names = list(api._safe_call(item, "GetFusionCompNameList") or [])
@@ -383,6 +447,15 @@ def _comps(item):
         out.append({"comp": name, "kind": "zoom-push" if name == COMP_ZOOM else "text-word",
                     "object": comp})
     return out
+
+
+def _unmoved(targets, items):
+    """Every Fusion comp this step leaves as it was: the items' comps other than the two it moves.
+    A person-matte-text title is one, and stays at its 16:9 place until moved by hand."""
+    return [{"index": t["index"], "name": t["name"], "comp": name}
+            for t, it in zip(targets, items)
+            for name in api._safe_call(it, "GetFusionCompNameList") or []
+            if name not in (COMP_ZOOM, COMP_TEXT)]
 
 
 def _fusion_plan(c, cx, text_override, text_cap):
@@ -429,8 +502,9 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     centre and size; each comp re-rendered with cmd_effect.refresh; everything read back.
     Refused, writing nothing: a target not ending ' [auto]', crops.json not reviewed, an item
     count, name, file or zoom that differs from crops.json, an existing target of another size.
-    Returns {project, timeline, source_timeline, create, targets, results, plan_sha, dry_run,
-    exit_status}; exit_status 1 when a read-back differs."""
+    Returns {project, timeline, source_timeline, create, targets, unmoved_comps, results,
+    plan_sha, dry_run, exit_status}; exit_status 1 when a read-back differs. unmoved_comps names
+    each item and Fusion comp left as it was (every comp but the two moved), dry run or real."""
     from rpresolve import cmd_effect, workflows
     c = load_crops(crops)
     if not c.get("reviewed"):
@@ -453,7 +527,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     tracks = int(base.GetTrackCount("video") or 0)
     if not 1 <= track <= tracks:
         raise Refused(f"'{base.GetName()}' has {tracks} video track(s).")
-    items = _clips(base, track)
+    items = api.clip_items(base, track)
     if len(items) != len(c["items"]):
         raise Refused(f"'{base.GetName()}' V{track} has {len(items)} item(s), crops.json has "
                       f"{len(c['items'])}")
@@ -470,8 +544,8 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": timeline, "track": track, "size": list(OUT_SIZE)},
            "source_timeline": base.GetName() if tl is None else None, "create": tl is None,
-           "targets": targets, "results": [], "plan_sha": sha, "dry_run": dry_run,
-           "exit_status": 0}
+           "targets": targets, "unmoved_comps": _unmoved(targets, items), "results": [],
+           "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out
     if expect_sha and expect_sha != sha:
@@ -492,10 +566,11 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
             api.set_setting_checked(tl, "timelineResolutionWidth", str(OUT_SIZE[0]))
             api.set_setting_checked(tl, "timelineResolutionHeight", str(OUT_SIZE[1]))
         out["created_size"] = list(_timeline_size(tl))
-        items = _clips(tl, track)
+        items = api.clip_items(tl, track)
         if len(items) != len(targets):
             raise Refused(f"the copy has {len(items)} item(s), expected {len(targets)}")
         kept = [_comps(it) for it in items]
+        out["unmoved_comps"] = _unmoved(targets, items)  # the copy's own comps
     refresh = getattr(cmd_effect, "refresh", None)
     # under a 3840-wide current timeline every pan would land at 1080/3840 of the shift (T27)
     with api.timeline_current(resolve, project, tl):
@@ -570,15 +645,18 @@ def _write_item(t, it, comps, refresh):
 # ---------------------------------------------------------------------------
 
 def add_arguments(p):
-    p.add_argument("action", choices=["plan", "review"],
-                   help="plan: write crops.json and the review sheet; review: mark crops.json "
-                        "reviewed (do it after reading the sheet)")
-    p.add_argument("file", help="plan: the items JSON (a list, or {items: [...]}); review: crops.json")
+    p.add_argument("action", choices=["plan", "draft", "review"],
+                   help="plan: write crops.json and the review sheet; draft: cut the 9:16 preview "
+                        "from crops.json; review: mark crops.json reviewed (do it after reading "
+                        "the sheet and watching the preview)")
+    p.add_argument("file", help="plan: the items JSON (a list, or {items: [...]}); draft and "
+                                "review: crops.json")
     p.add_argument("--overrides", help="plan: JSON {\"<item name>\": cx, \"#<item number>\": cx}")
-    p.add_argument("--out", help="plan: the folder for crops.json and review-NN.jpg (outside any "
-                                 "git tree)")
-    p.add_argument("--centre", choices=["face", "edge"], default="face",
-                   help="plan: try the face planner first (default) or use the edge rule only")
+    p.add_argument("--out", help="plan: the folder for crops.json and review-NN.jpg, which must "
+                                 "not exist yet (outside any git tree); draft: the folder for "
+                                 "preview.mp4 (default: crops.json's folder)")
+    p.add_argument("--centre", choices=["face", "edge"], default="edge",
+                   help="plan: the edge rule only (default) or try the face planner first")
     p.add_argument("--no-sheet", action="store_true", help="plan: write crops.json only")
 
 
@@ -588,35 +666,51 @@ def _load(path):
 
 
 def run(args):
-    """vertical plan ITEMS --out DIR [--overrides FILE] [--centre edge] [--no-sheet]; vertical
-    review DIR/crops.json. Offline. The Resolve write is the MCP vertical_apply tool."""
+    """vertical plan ITEMS --out DIR [--overrides FILE] [--centre face] [--no-sheet]; vertical
+    draft DIR/crops.json [--out DIR]; vertical review DIR/crops.json. Offline. The Resolve
+    write is the MCP vertical_apply tool."""
     try:
         if args.action == "review":
             mark_reviewed(args.file)
             print(f"{args.file}: reviewed")
             return 0
+        if args.action == "draft":
+            path = draft_preview(args.file, args.out or os.path.dirname(os.path.abspath(args.file)))
+            print(f"Wrote {path}. Send it to the operator and ask for the items to move, then: "
+                  f"vertical review {args.file}", file=sys.stderr)
+            return 0
         if not args.out:
             print("ERROR: plan needs --out", file=sys.stderr)
             return 1
-        problem = rppaths.out_problem(os.path.abspath(args.out), any_git_tree=True)
+        out = os.path.abspath(args.out)
+        if os.path.exists(out):
+            print(f"ERROR: --out {args.out} already exists. vertical plan makes the folder "
+                  "itself, so give a path that does not exist yet.", file=sys.stderr)
+            return 1
+        problem = rppaths.out_problem(out, any_git_tree=True)
         if problem:
             print(f"ERROR: {problem}", file=sys.stderr)
             return 1
         items = _load(args.file)
         crops = plan(items["items"] if isinstance(items, dict) else items,
                      overrides=_load(args.overrides) if args.overrides else None, mode=args.centre)
-        os.makedirs(args.out, exist_ok=True)
-        if not args.no_sheet:
-            crops["sheets"] = [os.path.basename(s) for s in review_sheets(crops, args.out)]
-        path = os.path.join(args.out, "crops.json")
-        rppaths.write_private(path, json.dumps(crops, indent=1) + "\n")
+        os.makedirs(out)
+        try:
+            if not args.no_sheet:
+                crops["sheets"] = [os.path.basename(s) for s in review_sheets(crops, out)]
+            path = os.path.join(out, "crops.json")
+            rppaths.write_private(path, json.dumps(crops, indent=1) + "\n")
+        except BaseException:  # the folder is ours and must not exist for a re-run
+            shutil.rmtree(out, ignore_errors=True)
+            raise
     except (VerticalError, OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     for r in crops["items"]:
         print(f"#{r['index']:<3} {r['name']:<24} cx {r['cx']:.4f}  {r['how']:<5} {r['status']}"
               + (f"  | {r['reason']}" if r["reason"] else ""))
-    print(f"Wrote {path}. Read the sheet(s), then: vertical review {path}", file=sys.stderr)
+    print(f"Wrote {path}. Read the sheet(s), then: vertical draft {path}, then vertical review "
+          f"{path}", file=sys.stderr)
     return 0
 
 
