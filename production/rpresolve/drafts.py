@@ -56,6 +56,7 @@ DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-wor
 # effect in DRAWN with no entry here is drawn as its macro does. "dissolve" is no macro: it is
 # the manifest's transition into a span, drawn as a cut.
 WINDOW_DRIFT = "the window stays centred where the macro's centre drifts about 0.05"
+WINDOW_OVER = "over the previous shot's last frame, held; " + WINDOW_DRIFT  # a scale-window after span 0
 APPROX = {"text-word": "the word is a white box",
           "scale-window": "drawn over black (no previous shot to grow over); " + WINDOW_DRIFT,
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
@@ -257,8 +258,7 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
         if e not in DRAWN:
             missing.append(f"{e} (no ffmpeg approximation)")
         elif e == "scale-window" and over:
-            missing.append("scale-window: over the previous shot's last frame, held; "
-                           + WINDOW_DRIFT)
+            missing.append("scale-window: " + WINDOW_OVER)
         elif e in APPROX:
             missing.append(f"{e}: {APPROX[e]}")
     vf += [f"fps={fps}", "format=yuv420p"]
@@ -293,7 +293,9 @@ def has_hw():
 def ledger(manifest):
     """What a draft does with the manifest's effects, by name and span index: {drawn,
     approximated, not_drawn}, each a list of {effect, spans} (approximated also has the
-    note APPROX gives). A dissolve into a span counts as the effect "dissolve"."""
+    note APPROX gives). A dissolve into a span counts as the effect "dissolve". A
+    scale-window is two rows when it is on span 0 (over black) and later (over the previous
+    shot, as plan_jobs draws it), so each span carries the note the draft's own notes give."""
     spans = {}
     for e in manifest.get("effects") or []:
         spans.setdefault(e["effect"], []).append(e["span_index"])
@@ -302,11 +304,20 @@ def ledger(manifest):
             spans.setdefault("dissolve", []).append(i)
     out = {"drawn": [], "approximated": [], "not_drawn": []}
     for name in sorted(spans):
-        row = {"effect": name, "spans": sorted(set(spans[name]))}
-        if name in APPROX:
-            out["approximated"].append({**row, "note": APPROX[name]})
+        idx = sorted(set(spans[name]))
+        if name == "scale-window":
+            parts = [([i for i in idx if not i], APPROX[name]),
+                     ([i for i in idx if i], WINDOW_OVER)]
         else:
-            out["drawn" if name in DRAWN else "not_drawn"].append(row)
+            parts = [(idx, APPROX.get(name))]
+        for sp, note in parts:
+            if not sp:
+                continue
+            row = {"effect": name, "spans": sp}
+            if note:
+                out["approximated"].append({**row, "note": note})
+            else:
+                out["drawn" if name in DRAWN else "not_drawn"].append(row)
     return out
 
 

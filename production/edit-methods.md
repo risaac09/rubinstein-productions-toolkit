@@ -97,7 +97,7 @@ Before anything is built in Resolve, each plan renders as a 720p H.264 proxy (12
   - `exposure-flash`: the fill's `gain` (default 2) falling to 1 over 12 frames, as a multiply of the encoded levels fitted to the macro on one dark frame ([T28](resolve-traps.md)); a bright shot, or a look ahead of the flash, may read differently.
   - `dip-to-black`: the macro's even-stop keys (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0 every 3 frames), black on the last frame, drawn by the same fitted multiply.
   - `crop-window`: the box opens and closes at a constant rate; the macro eases both ends.
-  - `scale-window`: the window stays centred; the macro's centre drifts about 0.05. The notes say what it grows over.
+  - `scale-window`: the window stays centred; the macro's centre drifts about 0.05. It grows over black on the first span and over the previous shot's last frame after it; the notes and the ledger give each span the matching wording.
   - `text-word`: a white box where the word goes. `reframe-pan`: a crop that moves from `pan_from` to `pan_to` as a share of the source width, not Resolve's Pan arithmetic.
   - A dissolve between spans is drawn as a cut.
   - Not drawn: `person-matte-text` and `cross-dissolve-short`, which have no stand-in, and the UI steps (dips and wipes, animated scales, durations). A look with no cube for the camera is not applied, and the notes say so.
