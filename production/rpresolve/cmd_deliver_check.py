@@ -24,6 +24,9 @@ def add_arguments(p):
                    "for the captions and supers on screen; each must sit inside the safe zone")
     p.add_argument("--no-loudness", action="store_true",
                    help="Skip the loudness read (it reads the whole file)")
+    p.add_argument("--expect-fade", action="store_true",
+                   help="Also assert the tail row (the last 100 ms at least 12 dB below the "
+                   "window 3 s to 1.5 s before the end), for a destination without tail_fade")
     p.add_argument("--ledger-row", metavar="PATH",
                    help="Also write a release-ledger row stub (one JSON line, keyed to the house "
                    "file name) to PATH, replacing any file there (one row per file); refused inside any git tree")
@@ -57,7 +60,8 @@ def run(args):
             dc.parse_fps(args.fps)
         boxes = safezone.load_boxes(args.boxes) if getattr(args, "boxes", None) else None
         r = dc.check(args.file, dest, fps=args.fps, size=size, loudness=not args.no_loudness,
-                     folders=deliver.subfolders(config), boxes=boxes)
+                     folders=deliver.subfolders(config), boxes=boxes,
+                     expect_fade=True if getattr(args, "expect_fade", False) else None)
         if args.audio_state:
             dc.add_rows(r, audiostate.compare(audiostate.load(args.audio_state), dest))
         if review_log:

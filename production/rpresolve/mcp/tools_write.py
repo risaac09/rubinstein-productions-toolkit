@@ -495,10 +495,12 @@ def assemble_timeline(args, ctx):
                                         width=args["width"], height=args["height"],
                                         dry_run=args["dry_run"], project_id=args.get("project_id"),
                                         expect_sha=args.get("plan_sha"),
-                                        check_cancel=ctx.check_cancel)
+                                        check_cancel=ctx.check_cancel,
+                                        bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
-                + (", music on A1" if p["music"] else ""))
+                + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
+                   if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
         skipped += _colour_line(r)
         if r["dry_run"]:
@@ -1113,7 +1115,10 @@ def register(registry):
         "timeline (import_timeline reads FCPXML, which holds one rate for both). The clips "
         "it needs are imported into a bin named 'methods [auto]', the new timeline gets its "
         "own size and fill-and-crop scaling, a span's static scale becomes the item's zoom, "
-        "and the music goes on A1 from the first frame through the end black, faded out. "
+        "and the music goes on A1 from the first frame through the end black as a bed that "
+        "ffmpeg cuts first (the in point and a one second fade out baked into a 24-bit 48 kHz "
+        "WAV beside the manifest, or in bed_dir; refused inside a git tree). SetFades is not "
+        "used: it reads back and does not render (T18). "
         "Nothing existing changes. Refused: a name that exists or does not end ' [auto]', a "
         "manifest whose fps is not the project's timeline rate, a missing file. A dissolve is "
         "added with AddTransition (Cross Dissolve, centred on the cut) and its length read "
@@ -1131,6 +1136,9 @@ def register(registry):
             "name": {"type": "string", "description": "The new timeline's name, ending ' [auto]'."},
             "manifest": {"type": "string",
                          "description": "Absolute path of the method manifest JSON."},
+            "bed_dir": {"type": "string",
+                        "description": "Absolute folder for the baked music bed; default the "
+                        "manifest's own folder. Refused inside a git working tree."},
             "width": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[0]},
             "height": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[1]},
             **DRY_RUN},

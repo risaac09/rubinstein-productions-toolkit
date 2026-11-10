@@ -3,7 +3,8 @@ Tests for the assemble command (rpresolve.cmd_assemble): the offline plan (frame
 manifest's rate, a continued take, a dissolve as a Cross Dissolve, the end black) and
 apply_assemble against the shared Resolve fakes: the [auto]-only guard, the frame-rate
 refusal, dry run and plan_sha, clips cut at their own rate onto a 24 fps timeline, the
-static scale, the music with its fade, and the read-back, and the colour handling
+static scale, the music bed (baked by ffmpeg with its fade, the baked file on A1 and the
+original never placed), and the read-back, and the colour handling
 (T30): detect's colour space per source in the dry run, the tag written and read back on a
 new import, a clip already in the pool never written, an unmanaged project left alone.
 
@@ -77,13 +78,28 @@ class Base(unittest.TestCase):
                  "transition": {"type": "dissolve", "frames": 2}}]}],
             "effects": [], "music": {"path": self.song, "in": 8.0},
             "method": {"id": "m", "aspect": "16:9", "look": None, "end": "black:0.5", "ui_steps": []}}
+        # the bed is baked by ffmpeg; here bake() records its call and writes a stub file
+        self.bed_dir = os.path.join(d, "beds")
+        self.baked = []
+        self.bake_error = None
+        patch = mock.patch.object(a.musicbed, "bake", self.fake_bake)
+        patch.start()
+        self.addCleanup(patch.stop)
         self.here = rf.Timeline("Where", "tl-here")
         self.project = rf.Project(timelines=[self.here], current=self.here)
         self.project.settings["timelineFrameRate"] = "24"
         self.resolve = rf.Resolve(self.project, page="cut")
 
+    def fake_bake(self, src, in_s, seconds, fade_s, out):
+        if self.bake_error:
+            raise a.musicbed.BedError(self.bake_error)
+        self.baked.append((src, in_s, seconds, fade_s, out))
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        Path(out).write_bytes(b"x")
+        return seconds
+
     def go(self, **kw):
-        args = {"name": "Shoot m v1 [auto]", "manifest": self.manifest}
+        args = {"name": "Shoot m v1 [auto]", "manifest": self.manifest, "bed_dir": self.bed_dir}
         args.update(kw)
         return a.apply_assemble(self.resolve, self.project.GetName(), args.pop("name"),
                                 args.pop("manifest"), **args)
@@ -165,8 +181,8 @@ class TestApply(Base):
         audio = tl.GetItemListInTrack("audio", 1)
         self.assertEqual(len(audio), 1)
         self.assertEqual((audio[0].GetStart() - tl.GetStartFrame(), audio[0].GetDuration()), (0, 54))
-        self.assertEqual(audio[0].source[0], 8 * 24)  # an audio file with no FPS counts at the timeline's
-        self.assertEqual(r["audio"]["fade_out"], 12)
+        self.assertEqual(audio[0].source, (0, 54))  # the in point is in the bed: it starts at its frame 0
+        self.assertEqual([c for c in rf.CALLS if c[1] == "SetFades"], [])  # T18: baked, not set
         self.assertEqual(r["transitions"], [{"into": 3, "frames": 2, "planned": 2}])
         self.assertEqual([t.GetName() for t in items[1].transitions], ["Cross Dissolve"])
         self.assertEqual([c for c in rf.CALLS if c[1] == "AddTransition"][0][2][1],
@@ -228,6 +244,128 @@ class TestApply(Base):
         self.assertEqual(r["left_behind"], "Shoot m v1 [auto]")
 
 
+class TestBed(Base):
+    """The music is cut and faded by ffmpeg before the Resolve write, and the baked file is what
+    goes on A1 (T18: SetFades reads back and did not render)."""
+
+    def audio_imports(self):
+        return [p for c in rf.CALLS if c[1] == "ImportMedia" for p in c[2][0]
+                if not p.endswith(".mov")]
+
+    def test_the_baked_file_goes_on_a1_and_the_original_does_not(self):
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        (src, in_s, seconds, fade_s, out), = self.baked
+        self.assertEqual((src, in_s), (self.song, 8.0))
+        self.assertEqual(seconds, 2.25)  # 42 picture frames and 12 of black at 24 fps
+        self.assertEqual(fade_s, 0.5625)  # one second, never more than a quarter of the bed
+        self.assertEqual(os.path.dirname(out), self.bed_dir)
+        self.assertEqual(self.audio_imports(), [out])  # the original song is never imported
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        (item,) = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual(item.clip.props["File Path"], out)
+        self.assertEqual(r["audio"]["frames"], 54)
+        self.assertEqual((r["bed"]["path"], r["bed"]["result"]), (out, "baked"))
+
+    def test_the_dry_run_lists_the_bed_and_fade_and_bakes_nothing(self):
+        dry = self.go()
+        self.assertEqual(self.baked, [])
+        self.assertFalse(os.path.exists(self.bed_dir))
+        bed = dry["bed"]
+        self.assertEqual((bed["src"], bed["in"], bed["fade_s"], bed["result"]),
+                         (self.song, 8.0, 0.5625, "would bake"))
+        self.assertTrue(bed["path"].startswith(self.bed_dir) and bed["path"].endswith(".wav"))
+
+    def test_a_long_bed_fades_for_one_second(self):
+        long = {**self.manifest, "clips": [{"name": "m", "spans": [
+            {"source": "s1", "in": 2.0, "out": 12.0}]}]}
+        self.assertEqual(self.go(manifest=long)["bed"]["fade_s"], 1.0)
+
+    def test_the_plan_hash_holds_the_bed(self):
+        base = self.go()["plan_sha"]
+        self.assertEqual(self.go()["plan_sha"], base)
+        self.assertNotEqual(self.go(bed_dir=self.bed_dir + "2")["plan_sha"], base)
+        later = {**self.manifest, "music": {"path": self.song, "in": 9.0}}
+        self.assertNotEqual(self.go(manifest=later)["plan_sha"], base)
+        Path(self.song).write_bytes(b"a different song")  # a changed source is a new bed
+        self.assertNotEqual(self.go()["plan_sha"], base)
+
+    def test_the_bed_sits_beside_the_manifest_file_by_default(self):
+        path = os.path.join(os.path.realpath(self.tmp.name), "m.json")
+        with open(path, "w") as f:
+            json.dump(self.manifest, f)
+        dry = self.go(manifest=path, bed_dir=None)
+        self.assertEqual(os.path.dirname(dry["bed"]["path"]), os.path.dirname(path))
+
+    def test_a_manifest_with_no_path_needs_a_bed_dir(self):
+        with self.assertRaisesRegex(Refused, "give bed_dir"):
+            self.go(bed_dir=None)
+        with self.assertRaisesRegex(Refused, "give bed_dir"):
+            self.go(bed_dir="beds")
+        silent = {**self.manifest, "music": None}
+        self.assertIsNone(self.go(manifest=silent, bed_dir=None)["bed"])  # no music, no bed
+
+    def test_a_bed_dir_inside_a_git_tree_is_refused(self):
+        repo = os.path.join(os.path.realpath(self.tmp.name), "repo")
+        os.makedirs(os.path.join(repo, ".git"))
+        with self.assertRaisesRegex(Refused, "inside a git working tree"):
+            self.go(bed_dir=os.path.join(repo, "beds"))
+        path = os.path.join(repo, "m.json")  # the default folder is the manifest's
+        with open(path, "w") as f:
+            json.dump(self.manifest, f)
+        with self.assertRaisesRegex(Refused, "inside a git working tree"):
+            self.go(manifest=path, bed_dir=None)
+        self.assertEqual(self.baked, [])
+
+    def test_a_bed_that_cannot_be_made_writes_nothing_to_resolve(self):
+        dry = self.go()
+        self.bake_error = "the song holds 1.00 s of music from 8 s, the bed needs 2.25 s"
+        with self.assertRaisesRegex(Refused, "bed was not made.*holds 1.00 s"):
+            self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.project.GetTimelineCount(), 1)
+
+    def test_a_bed_already_there_is_reused_not_baked_again(self):
+        dry = self.go()
+        os.makedirs(self.bed_dir)
+        Path(dry["bed"]["path"]).write_bytes(b"x")
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((self.baked, r["bed"]["result"], r["problems"]), ([], "reused", []))
+
+    def test_a_bed_of_the_wrong_length_on_a1_is_a_problem(self):
+        dry = self.go()
+        real = rf._place
+
+        def short(tl, info):
+            placed = real(tl, info)
+            for it in placed:
+                if info.get("mediaType") == 2:
+                    it.end -= 6
+            return placed
+
+        with mock.patch.object(rf, "_place", short):
+            r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertIn("the music sits at frame 0 for 48 frames, planned 0 for 54", r["problems"])
+        self.assertEqual(r["exit_status"], 1)
+
+    def test_the_mcp_tool_takes_a_bed_dir_and_says_the_fade_is_baked(self):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("assemble_timeline")
+        path = os.path.join(os.path.realpath(self.tmp.name), "m.json")
+        with open(path, "w") as f:
+            json.dump(self.manifest, f)
+        args = {"project": self.project.GetName(), "name": "Shoot m v1 [auto]", "manifest": path,
+                "bed_dir": self.bed_dir}
+        self.assertEqual(schema.validate(tool.input_schema, args), [])
+        with mock.patch.dict(os.environ, {"RPRESOLVE_LOCK": os.path.join(self.tmp.name, "lock")}):
+            dry = tool.handler(schema.with_defaults(tool.input_schema, args),
+                               ToolContext(session=rf.Session(self.resolve)))
+        self.assertIn("music bed on A1 (0.5625 s fade baked in)", dry["summary"])
+        self.assertEqual(os.path.dirname(dry["bed"]["path"]), self.bed_dir)
+
+
 class TestColour(Base):
     """T30: an untagged clip keeps Rec.709, so a log source needs its Input Color Space."""
 
@@ -270,7 +408,7 @@ class TestColour(Base):
         for path in (self.one, self.two):
             self.assertEqual((clips[path].props["Input Color Space"], clips[path].props["Data Level"]),
                              (detect.CS_VLOG, "Full"))
-        self.assertNotIn("Input Color Space", clips[self.song].props)  # the music is not picture
+        self.assertNotIn("Input Color Space", clips[self.baked[0][4]].props)  # the bed is not picture
         self.assertEqual(len(self.writes()), 4)
         for x in r["colour"]["sources"]:
             self.assertEqual((x["result"], x["current"]), ("tagged", detect.CS_VLOG))
