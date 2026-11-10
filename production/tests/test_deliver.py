@@ -23,6 +23,7 @@ sys.path.insert(0, str(PRODUCTION))
 from rpresolve import config as rpconfig, deliver  # noqa: E402
 
 CLIP = dict(show="SW", episode=1, guest="Guest", index=1, slug="example-clip")
+MONTAGE = dict(client="Client", slug="example-montage")
 
 
 def dest(key, **over):
@@ -41,6 +42,8 @@ class TestNames(unittest.TestCase):
                          "AB042_G2_12_a-b-c_9x16.mp4")
         self.assertEqual(deliver.master_name("Client", "example-slug"),
                          "Client_example-slug_master.mov")
+        self.assertEqual(deliver.montage_name("Client", "example-montage", "9x16", "mp4"),
+                         "Client_example-montage_9x16.mp4")
 
     def test_each_part_is_validated(self):
         bad = [dict(show="sw"), dict(show="S1"), dict(show=""), dict(episode=1000),
@@ -63,6 +66,15 @@ class TestNames(unittest.TestCase):
             deliver.master_name("Client Name", "s")
         with self.assertRaisesRegex(deliver.NameRuleError, "mov"):
             deliver.master_name("Client", "s", "mp4")
+        for args, why in ((("Client Name", "s", "9x16", "mp4"), "client"),
+                          (("Client_Name", "s", "9x16", "mp4"), "client"),
+                          (("Client", "Example", "9x16", "mp4"), "slug"),
+                          (("Client", "a" * 61, "9x16", "mp4"), "slug"),
+                          (("Client", "s", "4x5", "mp4"), "aspect"),
+                          (("Client", "s", "9x16", "mkv"), "extension")):
+            with self.subTest(args=args):
+                with self.assertRaisesRegex(deliver.NameRuleError, why):
+                    deliver.montage_name(*args)
 
     def test_parse_round_trips(self):
         name = "SW001_Guest_01_example-clip_16x9.mp4"
@@ -76,6 +88,24 @@ class TestNames(unittest.TestCase):
         self.assertEqual(deliver.parse_name("/any/dir/Client_example-slug_master.mov"),
                          {"kind": "master", "client": "Client", "slug": "example-slug",
                           "ext": "mov"})
+        name = "Client_word-burst-b-example_9x16.mp4"
+        p = deliver.parse_name(name)
+        self.assertEqual(p, {"kind": "montage", "client": "Client",
+                             "slug": "word-burst-b-example", "aspect": "9x16",
+                             "ext": "mp4"})
+        self.assertEqual(deliver.montage_name(p["client"], p["slug"], p["aspect"], p["ext"]), name)
+
+    def test_a_montage_name_is_never_read_as_a_clip_or_a_master(self):
+        # three parts ending in an aspect are a montage, even when the slug says master
+        self.assertEqual(deliver.parse_name("Client_master_9x16.mp4")["kind"], "montage")
+        self.assertEqual(deliver.parse_name("Client_example-slug_master.mov")["kind"], "master")
+        self.assertEqual(deliver.parse_name("SW001_Guest_01_example-clip_9x16.mp4")["kind"], "clip")
+        # the strict clip and master rules are unchanged
+        for name in ("Client_example-slug_9x16", "Client_example-slug_master.mp4",
+                     "SW001_Guest_01_example-clip.mp4"):
+            with self.subTest(name=name):
+                with self.assertRaises(deliver.NameRuleError):
+                    deliver.parse_name(name)
 
     def test_parse_says_what_is_wrong(self):
         cases = {
@@ -92,6 +122,13 @@ class TestNames(unittest.TestCase):
             "Client_example-slug_master.mp4": ".mov",
             "Client Co_example-slug_master.mov": "client",
             "Client_Slug_master.mov": "slug",
+            "Client Co_example-slug_9x16.mp4": "client",
+            "Client_Example-Slug_9x16.mp4": "slug",
+            "Client_example-slug_4x5.mp4": "aspect",
+            "Client_example-slug_final.mp4": "aspect",
+            "Client_example-slug_9x16.mkv": "extension",
+            "Client_example_slug_9x16.mp4": "five parts",
+            f"Client_{'a' * 61}_9x16.mp4": "slug is longer",
             # digits are ASCII 0-9 only: fullwidth and Arabic-Indic digits break the rule
             "SW００１_Guest_０１_example-clip_16x9.mp4": "3-digit episode",
             "SW١٢٣_Guest_01_example-clip_16x9.mp4": "3-digit episode",
@@ -110,6 +147,14 @@ class TestNames(unittest.TestCase):
         self.assertEqual(deliver.name_for(dest("client_master"),
                                           {"client": "Client", "slug": "example-slug"}),
                          "Client_example-slug_master.mov")
+        self.assertEqual(deliver.name_for(dest("social_9x16_music"), MONTAGE),
+                         "Client_example-montage_9x16.mp4")
+        with self.assertRaisesRegex(deliver.NameRuleError, "missing client"):
+            deliver.name_for(dest("social_9x16_music"), {"slug": "example-montage"})
+        with self.assertRaisesRegex(deliver.NameRuleError, "not used: show"):
+            deliver.name_for(dest("social_9x16_music"), {**MONTAGE, "show": "SW"})
+        with self.assertRaisesRegex(deliver.NameRuleError, "missing show"):
+            deliver.name_for(dest("social_9x16_music", naming="clip"), MONTAGE)
         with self.assertRaisesRegex(deliver.NameRuleError, "missing guest"):
             deliver.name_for(dest("youtube_16x9"), {**CLIP, "guest": ""})
         with self.assertRaisesRegex(deliver.NameRuleError, "not used: client"):
@@ -124,6 +169,27 @@ class TestNames(unittest.TestCase):
                       deliver.name_problems("Client_example-slug_master.mov", yt)[0])
         self.assertIn("clip name", deliver.name_problems(
             "SW001_Guest_01_example-clip_16x9.mov", dest("client_master"))[0])
+
+    def test_name_problems_for_a_montage_destination(self):
+        music = dest("social_9x16_music")
+        self.assertEqual(deliver.name_problems("Client_example-montage_9x16.mp4", music), [])
+        # the clip rule that used to name this destination now fails it
+        self.assertIn("clip name, but 'social_9x16_music' takes a montage name",
+                      deliver.name_problems("SW001_Guest_01_example-clip_9x16.mp4", music)[0])
+        self.assertIn("master name", deliver.name_problems("Client_example-montage_master.mov",
+                                                           music)[0])
+        self.assertIn("aspect 16x9, but 'social_9x16_music' is 9x16",
+                      deliver.name_problems("Client_example-montage_16x9.mp4", music)[0])
+        self.assertIn("extension .mov",
+                      deliver.name_problems("Client_example-montage_9x16.mov", music)[0])
+        self.assertIn("montage name", deliver.name_problems(
+            "Client_example-montage_16x9.mp4", dest("youtube_16x9"))[0])
+        self.assertIn("montage name", deliver.name_problems(
+            "Client_example-montage_9x16.mov", dest("client_master"))[0])
+        self.assertIn("five parts", deliver.name_problems("Client_a_b_9x16.mp4", music)[0])
+        self.assertIn("slug is longer", deliver.name_problems(f"Client_{'a' * 60}b_9x16.mp4",
+                                                              music)[0])
+        self.assertEqual(deliver.name_problems(f"Client_{'a' * 60}_9x16.mp4", music), [])
 
 
 class TestConfig(unittest.TestCase):
@@ -180,6 +246,22 @@ class TestConfig(unittest.TestCase):
         self.assertEqual((m["audio"]["codec"], m["audio"]["bit_depth"],
                           m["audio"]["sample_rate"]), ("lpcm", 24, 48000))
         self.assertFalse(deliver.has_loudness_target(m))
+
+    def test_naming_must_be_a_known_rule_and_a_montage_needs_an_aspect(self):
+        d = dest("social_9x16_music")
+        self.assertEqual((d["naming"], deliver.destination_problems(d)), ("montage", []))
+        self.assertEqual(deliver.NAMINGS, ("clip", "master", "montage"))
+        for key in deliver.destination_keys(rpconfig.load_config("/nonexistent/config.json")):
+            self.assertIn(dest(key)["naming"], deliver.NAMINGS, key)
+        self.assertIn("naming must be one of clip, master, montage",
+                      "; ".join(deliver.destination_problems(dest("youtube_16x9",
+                                                                    naming="album"))))
+        self.assertIn("aspect must be one of", "; ".join(deliver.destination_problems(
+            dest("social_9x16_music", aspect=None))))
+        cfg = rpconfig.load_config("/nonexistent/config.json")
+        cfg["destinations"]["social_9x16_music"]["naming"] = "movie"
+        with self.assertRaisesRegex(deliver.DeliverError, "naming must be one of"):
+            deliver.destination(cfg, "social_9x16_music")
 
     def test_the_repo_config_matches_the_built_in_defaults(self):
         with open(PRODUCTION / "resolve-config.json", encoding="utf-8") as f:
@@ -459,6 +541,85 @@ class TestOutputProblems(unittest.TestCase):
         self.assertIn("disabled", deliver.timeline_problems(dest("linkedin_9x16"), [], [2])[0])
         self.assertEqual(deliver.timeline_problems(self.yt, [3], [4]), [])
         self.assertEqual(deliver.timeline_problems(dest("client_master"), [], [4]), [])
+
+
+class TestClientDrift(unittest.TestCase):
+    """client_drift: a master or montage job whose client differs from the files already there."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = os.path.realpath(tmp.name)
+        self.cfg = rpconfig.load_config("/nonexistent/config.json")
+        self.job = "Client_example-montage_9x16.mp4"
+
+    def put(self, *parts):
+        path = os.path.join(self.dir, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").close()
+
+    def drift(self, filename=None):
+        return deliver.client_drift(self.dir, filename or self.job, self.cfg)
+
+    def test_an_empty_folder_or_one_prefix_has_nothing_to_say(self):
+        self.assertEqual(self.drift(), [])
+        self.put("client_master", "Client_other-slug_master.mov")
+        self.put("social_9x16_music", "Client_earlier-montage_9x16.mp4")
+        self.put("Client_in-the-target_master.mov")
+        self.assertEqual(self.drift(), [])
+
+    def test_a_different_prefix_in_a_destination_subfolder_is_named(self):
+        self.put("client_master", "ClientCo_one_master.mov")
+        self.put("client_master", "ClientCo_two_master.mov")
+        self.put("client_master", "Client_same_master.mov")
+        out = self.drift()
+        self.assertEqual(len(out), 1, out)
+        self.assertIn("2 file(s)", out[0])
+        self.assertIn("'ClientCo'", out[0])
+        self.assertIn("this job's is 'Client'", out[0])
+        self.assertIn(os.path.join("client_master", "ClientCo_one_master.mov"), out[0])
+        self.assertNotIn("Client_same_master.mov", out[0])
+
+    def test_the_target_folder_itself_and_a_montage_name_count(self):
+        self.put("ClientCo_one_9x16.mp4")
+        self.assertIn("'ClientCo'", self.drift()[0])
+        # the case differs: still another prefix
+        self.put("client_two_9x16.mp4")
+        self.assertEqual(len(self.drift()), 2)
+
+    def test_a_master_job_is_compared_too(self):
+        self.put("social_9x16_music", "ClientCo_one_9x16.mp4")
+        self.assertIn("'ClientCo'", self.drift("Client_example-slug_master.mov")[0])
+
+    def test_one_warning_per_other_prefix_and_only_a_few_files_listed(self):
+        for n in range(5):
+            self.put("client_master", f"ClientCo_s{n}_master.mov")
+        self.put("client_master", "Other_one_master.mov")
+        out = self.drift()
+        self.assertEqual(len(out), 2)
+        self.assertIn("5 file(s)", out[0])
+        self.assertIn("and more", out[0])
+        # three files are named, the first three in name order
+        self.assertEqual([n for n in range(5) if f"ClientCo_s{n}_master.mov" in out[0]], [0, 1, 2])
+        self.assertNotIn("and more", out[1])
+
+    def test_a_clip_job_has_no_client_and_never_warns(self):
+        self.put("client_master", "ClientCo_one_master.mov")
+        self.assertEqual(self.drift("SW001_Guest_01_example-clip_9x16.mp4"), [])
+        self.assertEqual(self.drift("not a house name.mp4"), [])
+
+    def test_files_that_do_not_follow_the_rule_are_not_compared(self):
+        for name in ("IMG_0001.mov", "notes.txt", "ClientCo_one_master.srt",
+                     "SW001_Guest_01_example-clip_9x16.mp4", "Bad Name_x_master.mov"):
+            self.put("client_master", name)
+        self.put("not_a_destination", "ClientCo_one_master.mov")
+        self.assertEqual(self.drift(), [])
+
+    def test_a_missing_target_or_a_file_in_place_of_a_subfolder_is_no_warning(self):
+        self.put("client_master")  # a file where the destination folder would be
+        self.assertEqual(self.drift(), [])
+        self.assertEqual(deliver.client_drift(os.path.join(self.dir, "gone"), self.job, self.cfg),
+                         [])
 
 
 class TestSubfolders(unittest.TestCase):

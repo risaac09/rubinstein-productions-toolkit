@@ -30,6 +30,7 @@ REG = server.build_registry()
 
 P = "RP Automation Sandbox"
 CLIP = {"show": "SW", "episode": 1, "guest": "Guest", "index": 1, "slug": "example-clip"}
+MONTAGE = {"client": "Client", "slug": "example-montage"}
 
 
 class Base(unittest.TestCase):
@@ -261,7 +262,8 @@ class TestMusicDestination(Base):
                           d["audio"]["bitrate_kbps"]),
                          ({"width": 1080, "height": 1920}, "aac", 48000, 320))
         social = deliver.destination(self.config, "social_9x16")
-        same = {k for k in d if k not in ("name", "captions", "min_fps", "key", "subfolder")}
+        same = {k for k in d if k not in ("name", "naming", "captions", "min_fps", "key",
+                                          "subfolder")}
         self.assertEqual({k: d[k] for k in same}, {k: social[k] for k in same})
 
     def test_the_repo_config_and_the_built_in_default_agree(self):
@@ -270,8 +272,9 @@ class TestMusicDestination(Base):
                          rpconfig.DEFAULT_CONFIG["destinations"]["social_9x16_music"])
 
     def test_a_timeline_with_no_captions_queues_with_no_fps_warning(self):
-        dry, r = self.twice(dest="social_9x16_music", timeline="Music 9x16 [auto]")
+        dry, r = self.twice(dest="social_9x16_music", timeline="Music 9x16 [auto]", parts=MONTAGE)
         self.assertEqual(r["exit_status"], 0, r)
+        self.assertEqual(r["job"]["OutputFilename"], "Client_example-montage_9x16.mp4")
         self.assertEqual(self.project.render_settings["ExportSubtitle"], False)
         self.assertFalse([w for w in r["warnings"] if "fps" in w], r["warnings"])
         self.assertIsNone(r["sidecar"])
@@ -283,12 +286,89 @@ class TestMusicDestination(Base):
     @needs_ffmpeg
     def test_delivercheck_does_not_warn_on_24_fps_or_missing_captions(self):
         with tempfile.TemporaryDirectory() as d:
-            path = make(os.path.join(d, "SW001_Guest_01_example-clip_9x16.mp4"), size="36x64",
+            path = make(os.path.join(d, "Client_example-montage_9x16.mp4"), size="36x64",
                         rate="24", lufs=-14.0)
             r = dc.check(path, tiny("social_9x16_music"), loudness=False)
         s = statuses(r)
         self.assertEqual((s["captions"], s["fps_floor"]), (dc.PASS, dc.SKIP), dc.format_report(r))
-        self.assertEqual(r["status"], "pass", dc.format_report(r))
+        self.assertEqual((s["name"], r["status"]), (dc.PASS, "pass"), dc.format_report(r))
+
+    def test_the_clip_parts_no_longer_name_it(self):
+        with self.assertRaisesRegex(workflows.Refused, "missing client; not used: "
+                                    "episode, guest, index, show"):
+            self.queue(dest="social_9x16_music", timeline="Music 9x16 [auto]", dry_run=True)
+
+    def test_the_aspect_is_not_a_name_part(self):
+        # the aspect comes from the destination, never from the parts (a guard: the old clip rule
+        # refused it too)
+        with self.assertRaisesRegex(workflows.Refused, "not used: aspect"):
+            self.queue(dest="social_9x16_music", timeline="Music 9x16 [auto]",
+                       parts={**MONTAGE, "aspect": "16x9"}, dry_run=True)
+
+
+class TestClientPrefixWarning(Base):
+    """A second spelling of the client in one project's folders is a warning, never a refusal."""
+
+    def setUp(self):
+        super().setUp()
+        clip = rf.Clip("P1.MOV", "clip-1", {"File Path": "/w/P1.MOV"})
+        self.project.add(rf.Timeline("Music 9x16 [auto]", "tl-music", "24", tracks={
+            "video": [[rf.Item("P1.MOV", 86400, 86500, clip)]],
+            "audio": [[rf.Item("P1.MOV", 86400, 86500, clip, nodes=None)]]},
+            settings={"timelineResolutionWidth": "1080", "timelineResolutionHeight": "1920"}))
+
+    def put(self, *parts):
+        path = os.path.join(self.out, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").close()
+
+    def montage(self, **kw):
+        return self.queue(dest="social_9x16_music", timeline="Music 9x16 [auto]", parts=MONTAGE,
+                          **kw)
+
+    def drift(self, r):
+        return [w for w in r["warnings"] if "client prefix" in w]
+
+    def test_a_sibling_destination_folder_with_another_prefix_warns_and_still_queues(self):
+        self.put("client_master", "ClientCo_earlier-slug_master.mov")
+        dry = self.montage(dry_run=True)
+        self.assertEqual(len(self.drift(dry)), 1, dry["warnings"])
+        self.assertIn("'ClientCo'", self.drift(dry)[0])
+        self.assertIn("this job's is 'Client'", self.drift(dry)[0])
+        r = self.montage(expect_sha=dry["plan_sha"])
+        self.assertEqual(r["exit_status"], 0, r)
+        self.assertEqual(len(self.drift(r)), 1, r["warnings"])
+        self.assertEqual(len(self.project.jobs), 1)
+
+    def test_the_warning_does_not_move_the_plan_sha(self):
+        before = self.montage(dry_run=True)["plan_sha"]
+        self.put("client_master", "ClientCo_earlier-slug_master.mov")
+        self.assertEqual(self.montage(dry_run=True)["plan_sha"], before)
+
+    def test_a_master_job_is_warned_by_a_montage_file_and_the_target_folder(self):
+        self.put("social_9x16_music", "ClientCo_one_9x16.mp4")
+        r = self.queue(dest="client_master", timeline="Bare [auto]",
+                       parts={"client": "Client", "slug": "example-slug"}, dry_run=True)
+        self.assertIn("'ClientCo'", self.drift(r)[0])
+
+    def test_one_prefix_clip_jobs_and_stray_files_are_quiet(self):
+        self.put("client_master", "Client_earlier-slug_master.mov")
+        self.put("client_master", "IMG_0001.mov")
+        self.assertEqual(self.drift(self.montage(dry_run=True)), [])
+        self.put("youtube_16x9", "ClientCo_earlier-slug_master.mov")
+        self.assertEqual(self.drift(self.queue(dry_run=True)), [])  # a clip name has no client
+
+    def test_through_the_tool_the_warning_is_in_the_result(self):
+        tool = REG.get("queue_render")
+        self.put("client_master", "ClientCo_earlier-slug_master.mov")
+        args = schema.coerce(tool.input_schema, {
+            "project": P, "timeline": "Music 9x16 [auto]", "destination": "social_9x16_music",
+            "name": dict(MONTAGE), "target_dir": self.out})
+        self.assertEqual(schema.validate(tool.input_schema, args), [])
+        r = tool.handler(schema.with_defaults(tool.input_schema, args),
+                         ToolContext(session=rf.Session(self.resolve)))
+        self.assertEqual(len(self.drift(r)), 1, r["warnings"])
+        self.assertIn("Client_example-montage_9x16.mp4", r["output"])
 
 
 class TestRefusals(Base):

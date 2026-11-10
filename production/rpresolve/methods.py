@@ -10,7 +10,8 @@ manifest's `effects` list says which Fusion macro apply_effect puts on which spa
     load(id_or_path)        a method by id or path, validated (ValueError if not)
     validate(m)             the list of problems ([] when the method is sound)
     list_methods()          every method in production/edit-methods/, by id
-    to_manifest(m, fills)   fills: one {source_path, in, out} per slot, in seconds
+    to_manifest(m, fills)   fills: one {source_path, in, out} per slot, in seconds, plus an
+                            optional text (a word) and gain (an exposure-flash slot's peak)
 
 Stdlib only.
 """
@@ -212,13 +213,15 @@ def to_manifest(method, fills):
     join into a span carries the previous slot's dissolve; a static scale (start equal to
     end) is written as the span's scale. Added beside the manifest's own fields:
     `effects` [{span_index, effect, params?}] for apply_effect (span_index from 0, the
-    timeline's item number less one; a span may have several entries): a slot's effect,
+    timeline's clip number less one, which apply_effect takes as `spans`; a span may have several entries): a slot's effect,
     with `params.text` when the fill carries a `text` word and the effect is a text macro,
+    or `params.gain` (1 to 20) when the fill carries a `gain` and the effect is exposure-flash,
     and a `retime` entry (`params.speed`) when the slot's speed is not 1. And `method` {id, aspect, look, end, ui_steps}: ui_steps
     are computer-use recipes (ui_step) for what no manifest field or script holds:
     BRAW decode, dips, wipes, animated scales, words no fill names, mattes, the end black.
-    Raises ValueError on a fill that is too short, or on two fills that overlap in one
-    source when the method's rules.reuse is false."""
+    Raises ValueError on a fill that is too short, on a gain outside 1 to 20 or on a slot that
+    is not an exposure-flash, or on two fills that overlap in one source when the method's
+    rules.reuse is false."""
     problems = validate(method)
     if problems:
         raise ValueError("the method is not sound: " + "; ".join(problems))
@@ -239,6 +242,12 @@ def to_manifest(method, fills):
         if fill.get("text") is not None and not (isinstance(fill["text"], str)
                                                  and fill["text"].strip()):
             raise ValueError(f"{where}: a fill's text is a non-empty word")
+        gain = fill.get("gain")
+        if gain is not None and slot["effect"] != "exposure-flash":
+            raise ValueError(f"{where}: a fill's gain is for an exposure-flash slot; this one "
+                             f"has {slot['effect'] or 'no effect'}")
+        if gain is not None and not (_num(gain) and 1 <= gain <= 20):
+            raise ValueError(f"{where}: a fill's gain is a number from 1 to 20")
         path = fill["source_path"]
         if path not in ids:
             ids[path] = f"s{len(ids) + 1}"
@@ -269,6 +278,8 @@ def to_manifest(method, fills):
             steps.append(ui_step(f"span {i}", "Fusion", "comp rp-fx text-word > Text1",
                                  "Styled Text", "the word for this beat",
                                  "the method leaves the word to the edit"))
+        if gain is not None:  # the draft draws the same number (drafts.py, trap T28)
+            entry.setdefault("params", {})["gain"] = gain
         if slot["effect"] == "person-matte-text":
             steps.append(ui_step(f"span {i}", "Fusion",
                                  "comp rp-fx person-matte-text > SubjectMatte_PLACEHOLDER",

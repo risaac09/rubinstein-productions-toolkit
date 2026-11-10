@@ -18,6 +18,10 @@ parse_name checks a file name against the rule):
             (16x9, 9x16 or 1x1), extension from the destination.
     master  Client_example-slug_master.mov
             client ([A-Za-z0-9]+), slug as above.
+    montage Client_example-slug_9x16.mp4
+            client and slug as for a master, aspect and extension from the
+            destination. For a montage that has no show, guest or clip index
+            (a music-only edit), which the clip rule cannot name.
 
 Folders: each destination renders into its own subfolder of the target
 folder, named by its "subfolder" (default: the destination key, such as
@@ -53,7 +57,7 @@ CAPTIONS = ("sidecar", "burnin", "none")
 # Extensions of caption files that may sit beside a deliverable.
 CAPTION_EXTS = ("srt", "vtt", "scc", "ttml", "xml")
 FORMATS = ("mp4", "mov")
-NAMINGS = ("clip", "master")
+NAMINGS = ("clip", "master", "montage")
 AUDIO_CODECS = ("aac", "lpcm")
 SUBTITLE_FORMAT = {"sidecar": "SeparateFile", "burnin": "BurnIn"}
 # A destination subfolder: one plain folder name, no path.
@@ -69,9 +73,12 @@ CLIP_RE = re.compile(rf"^(?P<show>{SHOW})(?P<episode>[0-9]{{3}})_(?P<guest>{WORD
                      rf"_(?P<index>[0-9]{{2}})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)"
                      rf"\.(?P<ext>mp4|mov)$")
 MASTER_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_master\.(?P<ext>mov)$")
+MONTAGE_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)"
+                        rf"\.(?P<ext>mp4|mov)$")
 
 CLIP_PARTS = ("show", "episode", "guest", "index", "slug")
 MASTER_PARTS = ("client", "slug")
+MONTAGE_PARTS = MASTER_PARTS
 
 
 class DeliverError(ValueError):
@@ -142,10 +149,19 @@ def master_name(client, slug, ext="mov"):
     return f"{client}_{_slug(slug)}_master.{ext}"
 
 
+def montage_name(client, slug, aspect, ext):
+    """Client_example-slug_9x16.mp4. Raises NameRuleError."""
+    client = _match(client, "client", WORD, "letters and digits only, no spaces or punctuation")
+    if aspect not in ASPECTS:
+        raise NameRuleError(f"aspect {aspect!r} must be one of {', '.join(ASPECTS)}.")
+    return f"{client}_{_slug(slug)}_{aspect}.{_ext(ext)}"
+
+
 def parse_name(filename):
     """The parts of a deliverable file name: {kind: "clip", show, episode,
-    guest, index, slug, aspect, ext} or {kind: "master", client, slug, ext}.
-    Raises NameRuleError saying what is wrong."""
+    guest, index, slug, aspect, ext}, {kind: "master", client, slug, ext} or
+    {kind: "montage", client, slug, aspect, ext}. Raises NameRuleError
+    saying what is wrong."""
     base = os.path.basename(str(filename))
     m = CLIP_RE.match(base)
     if m:
@@ -161,6 +177,11 @@ def parse_name(filename):
         if len(m.group("slug")) > SLUG_MAX:
             raise NameRuleError(f"{base}: slug is longer than {SLUG_MAX} characters.")
         return {"kind": "master", **m.groupdict()}
+    m = MONTAGE_RE.match(base)
+    if m:
+        if len(m.group("slug")) > SLUG_MAX:
+            raise NameRuleError(f"{base}: slug is longer than {SLUG_MAX} characters.")
+        return {"kind": "montage", **m.groupdict()}
     raise NameRuleError(f"{base}: {_why_not(base)}")
 
 
@@ -180,9 +201,17 @@ def _why_not(base):
         if not re.fullmatch(SLUG, fields[1]):
             return f"slug {fields[1]!r} must be lowercase words joined by single hyphens."
         return "a client master is a .mov."
+    if len(fields) == 3:
+        client, slug, aspect = fields
+        if not re.fullmatch(WORD, client):
+            return f"client {client!r} must be letters and digits only."
+        if not re.fullmatch(SLUG, slug):
+            return f"slug {slug!r} must be lowercase words joined by single hyphens."
+        return f"aspect {aspect!r} must be one of {', '.join(ASPECTS)}."
     if len(fields) != 5:
         return ("expected <SHOW><episode>_<Guest>_<index>_<slug>_<aspect>, five parts "
-                f"joined by underscores (found {len(fields)}); or <Client>_<slug>_master.mov.")
+                f"joined by underscores (found {len(fields)}); <Client>_<slug>_<aspect>.mp4; "
+                "or <Client>_<slug>_master.mov.")
     head, guest, index, slug, aspect = fields
     if not re.fullmatch(rf"{SHOW}[0-9]{{3}}", head):
         return f"{head!r} must be the show code in capitals then a 3-digit episode, as SW001."
@@ -199,8 +228,8 @@ def _why_not(base):
 
 def name_for(dest, parts):
     """The file name for a destination from name parts: show, episode,
-    guest, index and slug for a clip; client and slug for a master. The
-    aspect and extension come from the destination."""
+    guest, index and slug for a clip; client and slug for a master or a
+    montage. The aspect and extension come from the destination."""
     parts = dict(parts or {})
     want = CLIP_PARTS if dest["naming"] == "clip" else MASTER_PARTS
     missing = [p for p in want if parts.get(p) in (None, "")]
@@ -213,6 +242,8 @@ def name_for(dest, parts):
     if dest["naming"] == "clip":
         return deliverable_name(parts["show"], parts["episode"], parts["guest"],
                                 parts["index"], parts["slug"], dest["aspect"], dest["format"])
+    if dest["naming"] == "montage":
+        return montage_name(parts["client"], parts["slug"], dest["aspect"], dest["format"])
     return master_name(parts["client"], parts["slug"], dest["format"])
 
 
@@ -228,7 +259,7 @@ def name_problems(filename, dest):
                         f"{dest['naming']} name.")
     if parts["ext"] != dest["format"]:
         problems.append(f"extension .{parts['ext']}, but '{dest['key']}' is .{dest['format']}.")
-    if parts["kind"] == "clip" and dest["naming"] == "clip" and parts["aspect"] != dest["aspect"]:
+    if parts["kind"] == dest["naming"] and "aspect" in parts and parts["aspect"] != dest["aspect"]:
         problems.append(f"aspect {parts['aspect']}, but '{dest['key']}' is {dest['aspect']}.")
     return problems
 
@@ -321,7 +352,7 @@ def destination_problems(dest):
     p = []
     if dest.get("naming") not in NAMINGS:
         p.append(f"naming must be one of {', '.join(NAMINGS)}")
-    if dest.get("naming") == "clip" and dest.get("aspect") not in ASPECTS:
+    if dest.get("naming") in ("clip", "montage") and dest.get("aspect") not in ASPECTS:
         p.append(f"aspect must be one of {', '.join(ASPECTS)}")
     if dest.get("format") not in FORMATS:
         p.append(f"format must be one of {', '.join(FORMATS)}")
@@ -487,6 +518,42 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
         problems.append(f"a job already in the render queue writes {out}" +
                         (f" (as {clash[0]})" if clash[0] != out else "") + ".")
     return problems
+
+
+def client_drift(target_dir, filename, config, limit=3):
+    """Warnings, as a list of text (empty: none), for a master or montage
+    job whose Client prefix differs from the files already there: those
+    named for a client in the target folder and in every destination
+    subfolder of it. One project keeps one prefix; a second spelling
+    (Acme and AcmeCo) splits its files without anything refusing. A clip
+    name has no client, an unreadable folder counts as empty, and only
+    names that follow the rule are compared. One warning per other prefix,
+    naming up to `limit` files."""
+    try:
+        mine = parse_name(filename).get("client")
+    except NameRuleError:
+        return []
+    if not mine:
+        return []
+    real = os.path.realpath(os.path.expanduser(target_dir))
+    seen = {}
+    for sub in [""] + sorted(subfolders(config)):
+        try:
+            names = sorted(os.listdir(os.path.join(real, sub)))
+        except OSError:
+            continue
+        for n in names:
+            try:
+                other = parse_name(n).get("client")
+            except NameRuleError:
+                continue
+            if other and other != mine:
+                seen.setdefault(other, []).append(os.path.join(sub, n))
+    return [f"{len(files)} file(s) in the target folder or its destination subfolders carry the "
+            f"client prefix {other!r}, but this job's is {mine!r}: {', '.join(files[:limit])}"
+            f"{' and more' if len(files) > limit else ''}. One project keeps one prefix; "
+            "check the spelling before this is rendered."
+            for other, files in sorted(seen.items())]
 
 
 def _shape(width, height):

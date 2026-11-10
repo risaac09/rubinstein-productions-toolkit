@@ -375,6 +375,25 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(failed(dc.check(mov, tiny("linkedin_16x9"), loudness=False)),
                          ["container", "name"])
 
+    def test_montage_name_row(self):
+        # social_9x16_music takes the montage name: it passes, and the clip name fails
+        music = tiny("social_9x16_music")
+        good = self.clip(name="Client_example-montage_9x16.mp4", sidecar=None, size="36x64",
+                         rate="24", lufs=-14.0)
+        r = dc.check(good, music, loudness=False)
+        self.assertEqual((statuses(r)["name"], failed(r)), (dc.PASS, []), dc.format_report(r))
+        row = next(x for x in r["checks"] if x["check"] == "name")
+        self.assertEqual(row["expected"], "the montage naming rule, 9x16, .mp4")
+        clip = self.clip(name="SW001_Guest_01_example-clip_9x16.mp4", sidecar=None,
+                         size="36x64", rate="24", lufs=-14.0)
+        r = dc.check(clip, music, loudness=False)
+        self.assertEqual(failed(r), ["name"])
+        self.assertIn("takes a montage name",
+                      next(x for x in r["checks"] if x["check"] == "name")["note"])
+        wrong = self.clip(name="Client_example-montage_16x9.mp4", sidecar=None, size="36x64",
+                          rate="24", lufs=-14.0)
+        self.assertEqual(failed(dc.check(wrong, music, loudness=False)), ["name"])
+
     def test_report_lines(self):
         text = dc.format_report(dc.check(self.clip(), tiny("linkedin_16x9"), loudness=False))
         self.assertIn("PASS  name", text)
