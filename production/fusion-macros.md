@@ -71,11 +71,12 @@ Ask for access to DaVinci Resolve alone, saying what for: to draw and track a Ma
 6. Track Forward and wait for it to finish; then Track Reverse (or a both-ways button, if the node has one). Do not move the playhead or change page while it runs. It has reached both ends when the mask follows the person on the item's first and last frames.
 7. Set the edge softness to 2 to 5 px, starting at 3. If the tool has no such control, judge the edge on a frame in the check below and add a small blur to the matte; do not leave a hard edge.
 8. Wire it: drag from the Magic Mask output to the `EffectMask` input of `Merge2`. That replaces the link from the placeholder. Then select `SubjectMatte_PLACEHOLDER` and delete it. If Fusion refuses the link, or the word does not clip, read the screenshot and use the output the tool offers as a matte; do not guess.
-9. Return to the Edit page, move the playhead off the item and back, and let the viewer settle. Leave nothing queued and nothing saved as a new project.
+9. Read the graph back before judging the picture, as `apply_effect` does for its own writes. Select `Merge2` and screenshot the node area. It passes when: no node is named `SubjectMatte_PLACEHOLDER`; the Magic Mask node is the only line into `Merge2`'s `EffectMask` input; `MediaIn1` feeds `Merge1.Background` and `Merge2.Foreground`, `Merge1` feeds `Merge2.Background`, and `Merge2` feeds `MediaOut1`. If the Fusion console (Workspace > Console, Lua) is open, `print(comp:FindTool("SubjectMatte_PLACEHOLDER"))` should print nil and `print(comp:FindTool("Merge2").EffectMask:GetConnectedOutput():GetTool().Name)` should print the Magic Mask node's name; these two lines are expected, not seen, so if one errors, fall back on the screenshot. A matte wired to nothing can still look right on a still wide, so this step is not optional.
+10. Return to the Edit page, move the playhead off the item and back, and let the viewer settle. Leave nothing queued and nothing saved as a new project.
 
 **Check with `get_image`**
 
-Take the same frames as the "before" pictures, at the same size, then zoom on the word with `roi_x`, `roi_y`, `roi_width` and `roi_height` and `max_dimension` 2048. It passes when all of these hold:
+After the graph read-back passes, take the same frames as the "before" pictures, at the same size, then zoom on the word with `roi_x`, `roi_y`, `roi_width` and `roi_height` and `max_dimension` 2048. It passes when all of these hold:
 
 - Where the subject overlaps the word, no red-orange pixel shows inside the silhouette: the subject is in front.
 - The word is whole everywhere the subject is not, and not cut by a box edge.

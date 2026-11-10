@@ -546,33 +546,89 @@ class TestMotionRender(Base):
         self.assertGreater(sum(corner) / len(corner), 100)  # the grey shot, not black
 
 
+def matte_box(w=1280, h=720, **params):
+    """person-matte-text's drawbox arguments, as ints and the colour string."""
+    f = drafts.effect_filter("person-matte-text", 1.0, 24, w, h, params)
+    assert f.startswith("drawbox="), f
+    kv = dict(x.split("=", 1) for x in f[len("drawbox="):].split(":"))
+    return {k: (int(v) if k in ("x", "y", "w", "h") else v) for k, v in kv.items()}
+
+
+def macro_setting(name):
+    """The numbers of a Fusion macro's Text1 from its .setting file."""
+    text = (HERE.parent / "fusion-macros" / f"{name}.setting").read_text(encoding="utf-8")
+    num = lambda key: float(re.search(rf"\b{key} = Input \{{ Value = ([0-9.]+) \}}", text).group(1))
+    cx, cy = (float(v) for v in re.search(
+        r"Center = Input \{ Value = \{ ([0-9.]+), ([0-9.]+) \}", text).groups())
+    return {"center": (cx, cy), "size": num("Size"), "word": re.search(
+        r'StyledText = Input \{ Value = "([^"]*)"', text).group(1),
+        "rgb": tuple(round(num(k) * 255) for k in ("Red1", "Green1", "Blue1"))}
+
+
 class TestMatteTitleFilter(unittest.TestCase):
     """person-matte-text is drawn as a plain title box in the macro's title position."""
 
     def box(self, w=1280, h=720, **params):
-        f = drafts.effect_filter("person-matte-text", 1.0, 24, w, h, params)
-        self.assertTrue(f.startswith("drawbox="), f)
-        return {k: v for k, v in (kv.split("=", 1) for kv in f[len("drawbox="):].split(":"))}
+        return matte_box(w, h, **params)
 
     def test_the_box_is_centred_where_the_macro_puts_the_word(self):
         b = self.box(text="WILD")
-        x, y, bw, bh = (int(b[k]) for k in "xywh")
+        x, y, bw, bh = (b[k] for k in "xywh")
         self.assertLessEqual(abs(x + bw / 2 - 0.55 * 1280), 1)  # Center 0.55
         self.assertLessEqual(abs(y + bh / 2 - (1 - 0.55) * 720), 1)  # Fusion's y counts from the bottom
         self.assertEqual(bh, int(0.32 * 720 * 0.72))  # Size 0.32 of the frame height
         self.assertEqual(b["color"], "0xD7371F@0.85")  # the macro's red-orange, not text-word's white
 
+    def test_the_numbers_come_from_the_macro_file(self):
+        m = macro_setting("person-matte-text")
+        self.assertEqual((m["size"], m["word"]), (drafts.MATTE_SIZE, drafts.MATTE_WORD))
+        self.assertEqual(drafts.MATTE_COLOUR, "0x%02X%02X%02X" % m["rgb"])
+        b = self.box(1280, 720)  # the stored word at the stored size
+        cx, cy = m["center"]
+        self.assertLessEqual(abs(b["x"] + b["w"] / 2 - cx * 1280), 1)
+        self.assertLessEqual(abs(b["y"] + b["h"] / 2 - (1 - cy) * 720), 1)  # y counts from the bottom
+
     def test_the_box_follows_the_word_and_the_size_and_stays_in_the_frame(self):
         short, long_ = self.box(text="HI"), self.box(text="MOUNTAINEERING")
-        self.assertGreater(int(long_["w"]), int(short["w"]))
+        self.assertGreater(long_["w"], short["w"])
         half = self.box(text="WILD", size=0.16)
-        self.assertLess(int(half["h"]), int(self.box(text="WILD")["h"]))
-        self.assertLess(int(half["w"]), int(self.box(text="WILD")["w"]))
+        self.assertLess(half["h"], self.box(text="WILD")["h"])
+        self.assertLess(half["w"], self.box(text="WILD")["w"])
         for w, h in ((1280, 720), (720, 1280)):
             b = self.box(w, h, text="MOUNTAINEERING")
-            self.assertGreaterEqual(int(b["x"]), 0)
-            self.assertLessEqual(int(b["x"]) + int(b["w"]), w)
+            self.assertGreaterEqual(b["x"], 0)
+            self.assertLessEqual(b["x"] + b["w"], w)
         self.assertEqual(self.box(), self.box(text="WILD"))  # no word: the macro's stored one
+
+    def test_a_tiny_size_is_a_tiny_box_never_a_strip_to_the_frame_edge(self):
+        # drawbox reads a side of 0 as "to the edge of the frame"
+        for params in ({"size": 0.001}, {"size": 0.0005, "text": "a"}):
+            b = self.box(**params)
+            self.assertGreaterEqual(b["w"], 1, params)
+            self.assertGreaterEqual(b["h"], 1, params)
+            self.assertLess(b["w"] * b["h"], 100, params)
+        b = self.box(size=9.0)  # and a huge one stays in the frame
+        self.assertEqual((b["x"], b["w"], b["h"]), (0, 1280, 720))
+        self.assertGreaterEqual(b["y"], 0)
+
+    def test_beat_burst_at_9_16_is_a_full_width_bar_with_the_stored_word(self):
+        m = methods.load("beat-burst")
+        self.assertEqual(m["aspect"], "9:16")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "person-matte-text")
+        self.assertIsNone(m["slots"][i]["text"])
+        man = methods.to_manifest(m, [{"source_path": f"/nowhere/s{k}.mov", "in": 0.0,
+                                       "out": sl["seconds"]} for k, sl in enumerate(m["slots"])])
+        w, h = drafts.SIZES[m["aspect"]]
+        ent = next(e for e in man["effects"] if e["effect"] == "person-matte-text")
+        self.assertNotIn("text", ent.get("params") or {})
+        b = self.box(w, h, **(ent.get("params") or {}))
+        # "WILD" at Size 0.32 of a 1280 high frame is wider than 720, as in the macro: full width
+        self.assertEqual((b["x"], b["y"], b["w"], b["h"]), (0, 429, 720, 294))
+        self.assertLessEqual(abs(b["y"] + b["h"] / 2 - 0.45 * h), 1)
+        led = drafts.ledger(man)
+        self.assertEqual([(e["effect"], e["spans"]) for e in led["approximated"]
+                          if e["effect"] == "person-matte-text"], [("person-matte-text", [i])])
+        self.assertEqual(led["not_drawn"], [])
 
     def test_it_is_drawn_with_a_note_that_the_title_is_in_front_and_the_matte_is_not(self):
         self.assertIn("person-matte-text", drafts.DRAWN)
@@ -628,14 +684,29 @@ class TestMatteTitleRender(Base):
             json.dump(methods.to_manifest(m, fills), f)
         return d
 
-    def test_the_title_box_covers_the_picture_on_its_span_only_and_the_notes_say_so(self):
+    def build_matted(self):
         plans = [self.matte_plan("matted"), self.plan("plain", METHOD, self.src)]
         out = os.path.join(self.dir, "out")
-        doc = drafts.build(plans, out, hw=False, lanes=2)
+        return out, drafts.build(plans, out, hw=False, lanes=2)
+
+    def test_the_title_box_covers_the_picture_on_its_span_only_and_the_notes_say_so(self):
+        out, doc = self.build_matted()
         d = next(x for x in doc["drafts"] if x["plan"] == "matted")
-        cx, cy = int(0.55 * 1280), int(0.45 * 720)
-        r, g, b = rgb_at(d["file"], 30, 1280, cx, cy)  # span 1 starts at frame 24
+        box = matte_box(1280, 720, text="HI")  # the filter the draft ran, span 1 starts at frame 24
+        cx, cy = box["x"] + box["w"] // 2, box["y"] + box["h"] // 2
+        r, g, b = rgb_at(d["file"], 30, 1280, cx, cy)
         self.assertGreater(r - b, 100, (r, g, b))  # red-orange over the grey picture
+        # the box edges: just inside is red-orange, a few pixels outside is the grey picture
+        # (the margin is wider than yuv420p's chroma blur)
+        for name, inside, outside in (
+                ("left", (box["x"] + 6, cy), (box["x"] - 8, cy)),
+                ("right", (box["x"] + box["w"] - 7, cy), (box["x"] + box["w"] + 8, cy)),
+                ("top", (cx, box["y"] + 6), (cx, box["y"] - 8)),
+                ("bottom", (cx, box["y"] + box["h"] - 7), (cx, box["y"] + box["h"] + 8))):
+            r, g, b = rgb_at(d["file"], 30, 1280, *inside)
+            self.assertGreater(r - b, 100, (name, "inside", (r, g, b)))
+            r, g, b = rgb_at(d["file"], 30, 1280, *outside)
+            self.assertLess(abs(r - b), 20, (name, "outside", (r, g, b)))
         r, g, b = rgb_at(d["file"], 30, 1280, 30, 30)
         self.assertLess(abs(r - b), 20, (r, g, b))  # the corner is still the plain picture
         r, g, b = rgb_at(d["file"], 6, 1280, cx, cy)  # span 0 has no title
@@ -647,13 +718,18 @@ class TestMatteTitleRender(Base):
         self.assertEqual(d["effects"]["not_drawn"], [])
         self.assertEqual([(e["effect"], e["spans"]) for e in d["effects"]["approximated"]],
                          [("person-matte-text", [1])])
-        if doc.get("send"):  # lettered copies, when Pillow made a sheet
-            heads = {}
-            for n in os.listdir(os.path.join(out, "send")):
-                if n.endswith(".notes.txt"):
-                    with open(os.path.join(out, "send", n)) as f:
-                        heads[n] = f.read().splitlines()
-            self.assertEqual(sum(want in v for v in heads.values()), 1)
+
+    def test_the_lettered_copy_of_the_draft_carries_the_matte_note(self):
+        out, doc = self.build_matted()
+        if not (doc["sheet"] or {}).get("dir"):
+            self.skipTest("no sheet without Pillow, so no letters")
+        want = "span 1: person-matte-text: " + drafts.APPROX["person-matte-text"]
+        heads = {}
+        for n in os.listdir(os.path.join(out, "send")):
+            if n.endswith(".notes.txt"):
+                with open(os.path.join(out, "send", n)) as f:
+                    heads[n] = f.read().splitlines()
+        self.assertEqual(sum(want in v for v in heads.values()), 1)
 
 
 class TestLanes(unittest.TestCase):

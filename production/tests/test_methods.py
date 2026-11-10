@@ -175,6 +175,19 @@ class TestToManifest(unittest.TestCase):
             self.assertIn(want, step["value"])
         self.assertIn("in front of the subject", step["why"])
 
+    def test_the_word_step_names_the_comp_of_the_slots_own_text_effect(self):
+        m = methods.load("matte-title")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "person-matte-text")
+        man = methods.to_manifest(m, fills(m))  # no word in the fill
+        panels = [x["panel"] for x in man["method"]["ui_steps"] if x["target"] == f"span {i}"]
+        self.assertIn("comp rp-fx person-matte-text > Text1", panels)
+        self.assertNotIn("comp rp-fx text-word > Text1", panels)
+        m = methods.load("cutout-clones")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "text-word")
+        man = methods.to_manifest(m, fills(m))
+        self.assertIn("comp rp-fx text-word > Text1",
+                      [x["panel"] for x in man["method"]["ui_steps"] if x["target"] == f"span {i}"])
+
     def test_a_fill_gain_is_the_flash_params_gain(self):
         m = methods.load("punch-montage")
         i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "exposure-flash")
