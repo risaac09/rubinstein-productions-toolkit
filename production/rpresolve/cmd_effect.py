@@ -8,7 +8,7 @@ an ' [auto]' timeline (TimelineItem.AddFusionComp), pastes the macro's tools int
 wires them between the comp's MediaIn1 and MediaOut1, and reads the comp back. The
 comp it adds is new, so nothing that existed before is changed; a timeline whose name
 does not end ' [auto]' is refused, as apply_grade refuses one. A whitelisted `params`
-dict (PARAMS) sets text, size, centre, retime speed and reframe-pan positions; it is
+dict (PARAMS) sets text, size, centre, exposure-flash gain, retime speed and reframe-pan positions; it is
 validated first, part of the plan, and read back. refresh() then toggles pass-through on
 each added tool, because a scripted comp otherwise renders the old picture.
 """
@@ -52,6 +52,7 @@ END_ANCHORED = {"dip-to-black"}
 
 # The params apply_effect takes, per macro (fusion-macros.md). Anything else is refused.
 PARAMS = {
+    "exposure-flash": {"gain"},
     "person-matte-text": {"text", "size"},
     "reframe-pan": {"pan_from", "pan_to", "pan_base"},
     "retime": {"speed", "speed_to"},
@@ -265,12 +266,15 @@ def validate_params(effect, params):
             ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
             if ok and k in ("speed", "speed_to", "size"):
                 ok = v > 0
+            elif ok and k == "gain":
+                ok = 1 <= v <= 20  # the flash's peak; the macro's own is 2
             elif ok:
                 ok = 0 <= v <= 1  # centre, pan_*: a fraction of the frame
         if not ok:
             raise Refused(f"param {k} is {v!r}: " + (
                 "a word of 1 to 80 characters" if k == "text" else
                 "a number above 0" if k in ("speed", "speed_to", "size") else
+                "a number from 1 to 20" if k == "gain" else
                 "a number from 0 to 1"))
     return dict(params)
 
@@ -307,6 +311,15 @@ def apply_params(parsed, effect, params, n):
         c = {1: params["centre"], 2: 0.5}
         put("Transform1" if effect == "zoom-push" else "Merge1",
             "Pivot" if effect == "zoom-push" else "Center", c, "centre")
+    if "gain" in params:
+        g = params["gain"]
+        spline = tools["ColorCorrector1MasterRGBGain"]
+        first = spline["KeyFrames"][min(f for f in spline["KeyFrames"] if isinstance(f, int))]
+        first[1] = g
+        if isinstance(first.get("RH"), dict):
+            first["RH"][2] = g  # the handle stays level with its key, as in the .setting
+        checks.append({"param": "gain", "tool": "ColorCorrector1MasterRGBGain", "frame": 0,
+                       "want": g})
     if effect == "retime":
         s0 = params["speed"]
         s1 = params.get("speed_to", s0)

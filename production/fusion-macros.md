@@ -30,6 +30,7 @@ The three transitions (`cross-dissolve-short`, `scale-window`, `crop-window`) sh
 | `text` | `text-word`, `person-matte-text` | The word, set on `Text1.StyledText`. |
 | `size` | `text-word`, `person-matte-text` | `Text1.Size`, above 0. |
 | `centre` | `zoom-push`, `text-word` | 0 to 1 across the frame. Sets `Transform1.Pivot` (zoom-push) or `Merge1.Center` (text-word) to this x and 0.5. Use the crop centre, because Fusion comp space is the whole source frame and a vertical crop moves only the picture. |
+| `gain` | `exposure-flash` | The flash's peak, 1 to 20; default 2 (+1 stop). Written into the first key of `ColorCorrector1MasterRGBGain`, which still settles to 1 at the macro's span end. |
 | `speed`, `speed_to` | `retime` | `speed` is required; `speed_to` makes a linear ramp. |
 | `pan_from`, `pan_to`, `pan_base` | `reframe-pan` | `pan_from` and `pan_to` are required. |
 

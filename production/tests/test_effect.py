@@ -466,6 +466,28 @@ class TestParams(Base):
         self.assertAlmostEqual(keys[240]["LH"][2], -1.5 * 240 / 3)
         self.assertAlmostEqual(keys[0]["RH"][1], 80.0)
 
+    def test_exposure_flash_gain_defaults_to_two_and_applies_when_given(self):
+        self.run_fx("exposure-flash", {})
+        keys = self.comp("exposure-flash").FindTool("ColorCorrector1MasterRGBGain").keys
+        self.assertEqual(keys[0][1], 2)
+        _, real = self.run_fx("exposure-flash", {"gain": 10}, items=(2,))
+        self.assertTrue(real["results"][0]["ok"], real["results"])
+        self.assertEqual(real["results"][0]["params"]["ColorCorrector1MasterRGBGain@0"], 10)
+        keys = self.comp("exposure-flash", 1).FindTool("ColorCorrector1MasterRGBGain").keys
+        self.assertEqual(keys[0][1], 10)
+        self.assertEqual(keys[0]["RH"][2], 0)  # level handle, as an offset
+        self.assertEqual(keys[max(keys)][1], 1)
+
+    def test_exposure_flash_gain_is_validated(self):
+        v = cmd_effect.validate_params
+        self.assertEqual(v("exposure-flash", {"gain": 20}), {"gain": 20})
+        for effect, params in [("exposure-flash", {"gain": 0.5}), ("exposure-flash", {"gain": 21}),
+                               ("exposure-flash", {"gain": True}),
+                               ("exposure-flash", {"gain": float("nan")}),
+                               ("zoom-push", {"gain": 3})]:
+            with self.assertRaises(workflows.Refused, msg=(effect, params)):
+                v(effect, params)
+
     def test_retime_needs_a_readable_source_length(self):
         self.items[0].source = (0, None)
         with self.assertRaisesRegex(workflows.Refused, "source frames"):

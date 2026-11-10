@@ -1049,8 +1049,8 @@ def register(registry):
         "that renders. Values are the macro's own; three need "
         "an eye before delivery (person-matte-text's placeholder matte, exposure-flash's "
         "strength, text-word's font and colour; fusion-macros.md). params sets the macro's "
-        "whitelisted values (text, size, centre; speed, speed_to for retime; pan_from, pan_to, "
-        "pan_base for reframe-pan); an unknown key for the macro is refused and each value "
+        "whitelisted values (text, size, centre; gain for exposure-flash; speed, speed_to for "
+        "retime; pan_from, pan_to, pan_base for reframe-pan); an unknown key for the macro is refused and each value "
         "is read back. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
@@ -1066,12 +1066,14 @@ def register(registry):
                 "text": {"type": "string", "minLength": 1, "maxLength": 80},
                 "size": {"type": "number"},
                 "centre": {"type": "number", "minimum": 0, "maximum": 1},
+                "gain": {"type": "number", "minimum": 1, "maximum": 20},
                 "speed": {"type": "number"}, "speed_to": {"type": "number"},
                 "pan_from": {"type": "number", "minimum": 0, "maximum": 1},
                 "pan_to": {"type": "number", "minimum": 0, "maximum": 1},
                 "pan_base": {"type": "number", "minimum": 0, "maximum": 1}},
                 "description": "Macro settings: text, size (text-word, person-matte-text); "
-                               "centre, 0 to 1 across the frame (zoom-push, text-word); speed "
+                               "centre, 0 to 1 across the frame (zoom-push, text-word); gain, 1 to 20, default 2 "
+                               "(exposure-flash); speed "
                                "and optional speed_to (retime); pan_from, pan_to, optional "
                                "pan_base (reframe-pan)."},
             **DRY_RUN},
