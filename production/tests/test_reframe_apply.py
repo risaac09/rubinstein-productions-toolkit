@@ -241,6 +241,32 @@ class TestReframeApply(Base):
 
 # The stills are probed for their size; the stdlib-only CI job has no ffmpeg.
 @unittest.skipUnless(os.access(detect.FFPROBE, os.X_OK), "ffmpeg missing (ffprobe)")
+class TestWindowLayout(Base):
+    """A montage assembled with a scale-window or crop-window is on V2 and V1 holds plates of
+    the same files (cmd_assemble). The track given decides which items are framed."""
+
+    def setUp(self):
+        super().setUp()
+        self.plate = rf.Item("STAND", 86700, 86737, self.stand, props=dict(ZERO), source=(300, 337))
+        self.look.tracks["video"].insert(0, [self.plate])  # V1 the plate, the montage on V2
+
+    def test_track_two_frames_the_montage_and_never_the_plate(self):
+        dry = call("reframe_apply", self.args(track=2), self.resolve)
+        self.assertEqual([(t["index"], t["name"]) for t in dry["targets"]], [(1, "STAND")])
+        self.assertEqual(dry["timeline"]["other_tracks"], {1: 1})
+        self.assertIn("V2 and V1 holds 1", dry["summary"])
+        real = call("reframe_apply", self.args(track=2, dry_run=False, plan_sha=dry["plan_sha"]),
+                    self.resolve)
+        self.assertEqual([r["ok"] for r in real["results"]], [True])
+        self.assertLess(self.items[0].props["Tilt"], 0)
+        self.assertEqual(self.plate.props["Tilt"], 0.0)  # the plate under a window is left
+
+    def test_the_default_track_is_the_plates_and_the_dry_run_says_to_check(self):
+        dry = call("reframe_apply", self.args(), self.resolve)
+        self.assertEqual(dry["timeline"]["other_tracks"], {2: 2})
+        self.assertIn("CHECK THE TRACK: this is V1 and V2 holds 2", dry["summary"])
+
+
 class TestReframePlanItems(unittest.TestCase):
     def test_the_offline_tool_writes_a_framing_plan(self):
         tool = REG.get("reframe_plan")

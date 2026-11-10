@@ -1163,7 +1163,8 @@ def apply_grade(resolve, project_name, timeline, lut=None, drx=None, track=1, it
     sha = plan_sha("grade", pin.unique_id, tl_id, track, shown, contents,
                    [(t["index"], t["name"], t["fingerprint"]) for t in targets], overwrite)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
-           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "other_tracks": api.other_video_tracks(tl, track)},
            "grade": shown, "targets": [{k: v for k, v in t.items() if k != "fingerprint"}
                                        for t in targets],
            "refused": refusals, "results": [], "leaks": [], "plan_sha": sha,
@@ -1382,6 +1383,7 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
                    [(t["index"], t["name"], t["props"]) for t in targets], allow_bars)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "other_tracks": api.other_video_tracks(tl, track),
                         "size": list(size), "input_scaling": scaling},
            "plan": {"aspect": fp.get("aspect"), "out": fp["out"], "scaling": fp.get("scaling")},
            "targets": [{k: v for k, v in t.items() if k != "media_id"} for t in targets],
@@ -1520,7 +1522,8 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
                    [(t["index"], t["item_id"], t["source_start"], t["source_end"])
                     for t in targets])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
-           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "other_tracks": api.other_video_tracks(tl, track)},
            "targets": targets, "planned_total": planned_total, "remaining": remaining,
            "results": [],
            "verified": False, "note": STABILIZE_NOTE, "plan_sha": sha, "dry_run": dry_run,

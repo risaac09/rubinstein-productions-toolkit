@@ -618,7 +618,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                    [(t["index"], t["position"], t["item_id"], t["comps"], t["frames"],
                      t["source_frames"]) for t in targets], sorted(params.items()))
     out = {"project": {"name": pin.name, "id": pin.unique_id},
-           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track},
+           "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
+                        "other_tracks": api.other_video_tracks(tl, track)},
            "effect": {"id": effect, "comp": comp_name, "tools": tools,
                       "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
                                  "out": WIRING[effect]["out"]}},

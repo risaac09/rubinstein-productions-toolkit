@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -325,6 +326,42 @@ class TestNewDraws(unittest.TestCase):
         inputs = [cmd[k + 1] for k, x in enumerate(cmd) if x == "-ss"]
         self.assertEqual(inputs, ["6.0000", "1.5000"])  # its own in point, then the previous out
         self.assertEqual((jobs[0]["cmd"].count("-i"), jobs[1]["cmd"].count("-i")), (1, 2))
+
+    def test_the_plate_goes_through_the_previous_spans_scale_and_look_not_the_windows(self):
+        with tempfile.TemporaryDirectory() as work:
+            cube = os.path.join(work, "src.cube")
+            Path(cube).write_text("")
+            manifest = methods.to_manifest(
+                METHOD, [{"source_path": "/none/a.mp4", "in": 0.5, "out": 1.5},
+                         {"source_path": "/none/a.mp4", "in": 6.0, "out": 6.5},
+                         {"source_path": "/none/a.mp4", "in": 7.0, "out": 7.75}])
+            spans = manifest["clips"][0]["spans"]
+            spans[0]["scale"] = 1.3  # the outgoing shot's; span 1 (the window) carries 1.2
+            self.assertEqual(spans[1]["scale"], 1.2)
+            with mock.patch.object(drafts, "find_lut", lambda *a, **k: cube):
+                jobs, _ = drafts.plan_jobs({"name": "p", "method": METHOD, "manifest": manifest},
+                                           work, False, camera="cam")
+        cmd = jobs[1]["cmd"]
+        mix, plate = cmd[cmd.index("-filter_complex") + 1].split(";")[:2]
+        self.assertTrue(plate.startswith("[1:v]"), plate)
+        self.assertIn("scale=trunc(1280*1.3/2)*2", plate)  # item 1's scale
+        self.assertNotIn("1.2", plate)  # not the window span's own
+        self.assertIn("lut3d=file=look.cube", plate)
+        self.assertIn("scale=trunc(1280*1.2/2)*2", mix)  # the span itself keeps its own
+        self.assertIn("lut3d=file=look.cube", mix)
+
+    def test_the_plate_check_allows_a_half_frame_and_no_more(self):
+        def length(frames):
+            return mock.patch.object(drafts.subprocess, "run", return_value=mock.Mock(
+                stdout=f"{3.0 + frames / 24:.6f}\n"))
+        for frames in (37, 36.6):  # exactly enough; a half frame short is rounding
+            with length(frames):
+                drafts._check_plate("p.mp4", 3.0, 37, 24, "x")
+        for frames in (36, 10):
+            with length(frames), self.assertRaisesRegex(DraftErrorAlias, "x: the previous shot has"):
+                drafts._check_plate("p.mp4", 3.0, 37, 24, "x")
+        with mock.patch.object(drafts.subprocess, "run", return_value=mock.Mock(stdout="")):
+            drafts._check_plate("p.mp4", 3.0, 37, 24, "x")  # a length ffprobe cannot read passes
 
 
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
@@ -780,15 +817,15 @@ class TestMatteTitleRender(Base):
 
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestPlateRender(Base):
-    """A source whose luma climbs 20 levels a second, so every frame of the previous shot
-    differs from the next: a held frame, or the wrong start, cannot pass."""
+    """A source whose luma climbs 40 levels a second (about 2 grey levels a frame in the draft),
+    so a held frame, or a plate that starts a few frames early or late, cannot pass."""
 
     def setUp(self):
         super().setUp()
         self.src = os.path.join(self.dir, "ramp.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
                         "color=c=black:s=1920x1080:r=24:d=10,"
-                        "geq=lum='min(235,16+20*T)':cb=128:cr=128", "-pix_fmt", "yuv420p",
+                        "geq=lum='min(235,16+40*T)':cb=128:cr=128", "-pix_fmt", "yuv420p",
                         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", self.src],
                        check=True)
         m = copy.deepcopy(METHOD)
@@ -819,13 +856,13 @@ class TestPlateRender(Base):
         return sum(r.stdout) / len(r.stdout)
 
     def plate_luma(self, seconds):
-        """The grey the source holds at this time: 16 + 20 s in video range, to full range."""
-        return (20 * seconds) * 255 / 219
+        """The grey the source holds at this time: 16 + 40 s in video range, to full range."""
+        return (40 * seconds) * 255 / 219
 
     def test_scale_window_carries_on_from_the_previous_out_point(self):
         first = 24  # span 1 starts after span 0's 24 frames
         for j in (0, 12, 24, 30):
-            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(1.5 + j / 24), delta=4,
+            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(1.5 + j / 24), delta=2.5,
                                    msg=f"window frame {j}")
         # a held frame would put frame 30 within a level of frame 0
         self.assertGreater(self.corner(first + 30) - self.corner(first), 20)
@@ -835,7 +872,7 @@ class TestPlateRender(Base):
     def test_crop_window_shows_the_previous_shot_playing_on_outside_its_box(self):
         first = 24 + 48 + 12
         for j in (0, 10, 20, 25):
-            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(2.5 + j / 24), delta=4,
+            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(2.5 + j / 24), delta=2.5,
                                    msg=f"window frame {j}")
         self.assertGreater(self.corner(first + 25) - self.corner(first), 15)
         self.assertGreater(self.corner(first + 30), 120)  # open to full frame from frame 26

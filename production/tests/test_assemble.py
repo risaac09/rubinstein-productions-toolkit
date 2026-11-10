@@ -794,6 +794,89 @@ class TestWindows(Base):
         self.assertIn("the plate under item 2 sits at frame 24 for 32 frames, planned 24 for 37; "
                       "the outgoing source may be too short", r["problems"])
 
+    def test_a_plate_that_starts_at_the_wrong_source_frame_is_a_problem(self):
+        # a held frame, or the span's own footage, would still pass on position and length
+        dry = self.go(manifest=self.wm)
+        real = rf._place
+
+        def shift(tl, info):  # Resolve starts the plate somewhere else in the file
+            placed = real(tl, info)
+            for it in placed:
+                if info["trackIndex"] == 1:
+                    it.source = (it.source[0] - 24, it.source[1] - 24)
+            return placed
+
+        with mock.patch.object(rf, "_place", shift):
+            r = self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertIn("the plate under item 2 starts at source frame 48, planned 72 "
+                      "(the outgoing shot's out point)", r["problems"])
+        self.assertIn("the plate under item 4 starts at source frame 336, planned 360 "
+                      "(the outgoing shot's out point)", r["problems"])
+
+    def test_a_plate_cut_from_another_clip_is_a_problem(self):
+        dry = self.go(manifest=self.wm)
+        real = rf._place
+
+        def swap(tl, info):  # the plate under item 2 comes from the window span's own clip
+            placed = real(tl, info)
+            for it in placed:
+                if info["trackIndex"] == 1 and it.clip.props["File Path"] == self.three:
+                    it.clip = rf.Clip("one.mov", "clip-other", {"File Path": self.one})
+            return placed
+
+        with mock.patch.object(rf, "_place", swap):
+            r = self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertTrue(any("the plate under item 2 is " in x and "not the outgoing shot" in x
+                            for x in r["problems"]), r["problems"])
+
+    def test_a_montage_item_that_lands_off_its_frame_on_v2_is_a_problem(self):
+        dry = self.go(manifest=self.wm)
+        real = rf._place
+
+        def late(tl, info):  # the track above V1 does not honour recordFrame
+            placed = real(tl, info)
+            for it in placed:
+                if info["trackIndex"] == 2:
+                    it.start += 3
+                    it.end += 3
+            return placed
+
+        with mock.patch.object(rf, "_place", late):
+            r = self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertIn("item 2 sits at frame 27, planned 24", r["problems"])
+
+    def test_a_dissolve_into_a_window_span_is_added_on_the_montage_not_the_plate(self):
+        spans = [dict(x) for x in self.wm["clips"][0]["spans"]]
+        spans[1]["transition"] = {"type": "dissolve", "frames": 2}
+        both = {**self.wm, "clips": [{"name": "m", "spans": spans}]}
+        dry = self.go(manifest=both)
+        r = self.go(manifest=both, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["transitions"], [{"into": 2, "frames": 2, "planned": 2}])
+        v2, v1 = (self.tl().GetItemListInTrack("video", t) for t in (2, 1))
+        # centred on the cut at the end of item 1; the plate under item 2 has none
+        self.assertEqual(len(v2[0].__dict__.get("transitions", [])), 1)
+        self.assertTrue(all(not i.__dict__.get("transitions") for i in v1 + v2[1:]))
+        self.assertEqual([(i.GetStart() - self.tl().GetStartFrame(), i.GetDuration()) for i in v1],
+                         [(24, 37), (96, 26)])  # whether Resolve lets a plate sit under a dissolve is a live check
+
+    def test_a_window_straight_after_a_window_takes_the_plate_from_that_spans_own_clip(self):
+        adjacent = {**self.wm, "effects": [{"span_index": 1, "effect": "scale-window"},
+                                           {"span_index": 2, "effect": "crop-window"}]}
+        dry = self.go(manifest=adjacent)
+        r = self.go(manifest=adjacent, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        v1 = self.tl().GetItemListInTrack("video", 1)
+        # item 3 is 24 frames long, so its 26 frame plate is cut to 24; item 2's own 30 fps
+        # clip plays on from where item 2 stopped (360), not the plate under item 2
+        self.assertEqual([(i.GetStart() - self.tl().GetStartFrame(), i.GetDuration()) for i in v1],
+                         [(24, 37), (72, 24)])
+        self.assertEqual([i.source for i in v1], [(72, 109), (360, 390)])
+        self.assertEqual([i.clip.props["File Path"] for i in v1], [self.three, self.one])
+
     def test_the_other_tools_number_the_montage_on_its_track_not_the_plates(self):
         from rpresolve import cmd_effect, cmd_vertical
         dry, r = self.built()
@@ -821,6 +904,16 @@ class TestWindows(Base):
             cmd_vertical.apply_vertical(self.resolve, self.project.GetName(),
                                         "Shoot m v1 9x16 [auto]", crops,
                                         source_timeline="Shoot m v1 [auto]", track=1)
+        # apply_grade numbers the same way: V2 holds the four spans, V1 the two plates and a
+        # warning that a montage is above it
+        from rpresolve import workflows
+        lut = os.path.join(os.path.dirname(self.one), "Look.cube")
+        Path(lut).write_bytes(b"")
+        for track, want in ((2, [1, 2, 3, 4]), (1, [1, 2])):
+            g = workflows.apply_grade(self.resolve, self.project.GetName(), "Shoot m v1 [auto]",
+                                      lut={"path": lut}, track=track, dry_run=True)
+            self.assertEqual([t["index"] for t in g["targets"]], want)
+        self.assertEqual(g["timeline"]["other_tracks"], {2: 4})
 
     def test_the_command_and_the_mcp_summary_say_where_the_montage_goes(self):
         from rpresolve.mcp import schema, server
@@ -841,6 +934,44 @@ class TestWindows(Base):
                                ToolContext(session=rf.Session(self.resolve)))
         self.assertIn("montage on V2 over 2 plate(s) on V1", dry["summary"])
         self.assertIn("track 2", dry["summary"])
+
+
+@needs_ffmpeg
+class TestRealHandleProbe(unittest.TestCase):
+    """_video_seconds and plate_handles against a real file: a 3 s picture beside 5 s of sound."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = os.path.realpath(self.tmp.name)
+        self.src = os.path.join(self.dir, "take.mp4")
+        subprocess.run([dc.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=black:s=64x64:r=24:d=3", "-f", "lavfi", "-i", "sine=d=5",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", self.src],
+                       check=True)
+
+    def test_the_length_is_the_picture_not_the_longer_sound(self):
+        self.assertAlmostEqual(a._video_seconds(self.src), 3.0, delta=0.1)
+
+    def test_a_missing_or_unreadable_file_has_no_length(self):
+        junk = os.path.join(self.dir, "junk.mov")
+        Path(junk).write_bytes(b"x")
+        self.assertIsNone(a._video_seconds(os.path.join(self.dir, "nope.mov")))
+        self.assertIsNone(a._video_seconds(junk))
+
+    def test_the_plate_needs_its_frames_after_the_out_point(self):
+        def manifest(out):
+            return {"version": 2, "speech": False, "fps": 24,
+                    "sources": [{"id": "s", "path": self.src}],
+                    "clips": [{"name": "m", "spans": [{"source": "s", "in": 0.0, "out": out},
+                                                      {"source": "s", "in": 0.0, "out": 1.0, "reuse": True}]}],
+                    "effects": [{"span_index": 1, "effect": "scale-window"}], "music": None,
+                    "method": {"id": "m", "aspect": "16:9", "look": None, "end": None,
+                               "ui_steps": []}}
+        rows = a.plate_handles(a.plan(manifest(1.0)))  # 2 s after the out point, 37 frames wanted
+        self.assertAlmostEqual(rows[0]["handle_s"], 2.0, delta=0.1)
+        with self.assertRaisesRegex(Refused, r"take.mp4 has 0\.[45]\d s"):
+            a.plate_handles(a.plan(manifest(2.5)))  # 0.5 s left, 1.54 s wanted
 
 
 if __name__ == "__main__":

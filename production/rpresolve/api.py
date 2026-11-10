@@ -264,6 +264,18 @@ def _safe_call(obj, method, *args):
         return None
 
 
+def other_video_tracks(tl, track):
+    """{track number: item count} for the video tracks other than `track` that hold items.
+    A montage built with a scale-window or crop-window is on V2 and V1 holds only plates, so
+    a default track 1 lands on the plates; a write tool's dry run names the other tracks."""
+    found = {}
+    for t in range(1, int(tl.GetTrackCount("video") or 0) + 1):
+        n = len(tl.GetItemListInTrack("video", t) or []) if t != track else 0
+        if n:
+            found[t] = n
+    return found
+
+
 def _timeline_key(timeline):
     """(unique id, name) for a timeline; either may be None."""
     if not timeline:

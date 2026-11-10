@@ -497,7 +497,7 @@ def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
     got = tl.GetItemListInTrack("video", 1) or []
     if len(got) != len(infos):
         problems.append(f"V1 holds {len(got)} plate(s), the plan {len(infos)}")
-    for row, it in zip(out["plates"], got):
+    for row, it, info in zip(out["plates"], got, infos):
         scale = p["spans"][row["into"] - 2]["scale"]
         row["placed"] = {"name": it.GetName(), "start": it.GetStart() - first,
                          "frames": it.GetDuration(),
@@ -507,6 +507,17 @@ def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
                             f"{row['placed']['start']} for {row['placed']['frames']} frames, "
                             f"planned {row['record']} for {row['frames']}; the outgoing "
                             "source may be too short")
+        # the plate is the outgoing shot counted on from its out point: a plate that starts
+        # anywhere else (a held frame, the span's own footage) is the wrong picture
+        got_src = row["placed"]["source_start"]
+        if got_src is not None and got_src != info["startFrame"]:
+            problems.append(f"the plate under item {row['into']} starts at source frame "
+                            f"{got_src}, planned {info['startFrame']} (the outgoing shot's out point)")
+        clip_of = api._safe_call(it, "GetMediaPoolItem")
+        if clip_of is not None and api._safe_call(clip_of, "GetUniqueId") != \
+                api._safe_call(info["mediaPoolItem"], "GetUniqueId"):
+            problems.append(f"the plate under item {row['into']} is {it.GetName()}, not the "
+                            "outgoing shot")
         if scale:
             for key in ("ZoomX", "ZoomY"):
                 try:
