@@ -9,7 +9,7 @@ The job, per shoot:
 1. `edit_methods` lists the methods. Pick one whose `fits` tags match what was filmed.
 2. Fill each slot with a clip: one `{source_path, in, out}` per slot, in seconds. The slot's `query` says what to look for.
 3. `methods.to_manifest(method, fills)` returns a version 2 cut manifest. Write it to `PLAN_DIR/manifest.json`, outside any git tree.
-4. Drafts first: `python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR` renders each plan as a 720p proxy and one lettered sheet; the pick is the plan that gets built ([Drafts](#drafts)).
+4. Drafts first: `python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR` renders each plan as a 720p proxy, one lettered sheet and the same drafts lettered in `DIR/send`; the pick is the plan that gets built ([Drafts](#drafts)).
 5. The MCP `assemble_timeline` tool builds the manifest as a new ` [auto]` timeline: each span from its clip at the clip's own frame rate, static scales, the dissolves, and the music on A1. When every source is at the timeline's rate, `python3 -m rpresolve.interchange MANIFEST --format fcpxml --out FILE` and `import_timeline` do the same from FCPXML ([interchange.md](interchange.md)).
 6. For each entry in the manifest's `effects`, `apply_effect` with that macro on item `span_index + 1` of V1 ([fusion-macros.md](fusion-macros.md)).
 7. Run the manifest's `method.ui_steps` through computer use, after asking for access ([UI steps](#ui-steps)), then `apply_grade` with the method's `look`, `create_captions` and `queue_render` as usual.
@@ -66,6 +66,7 @@ A slot:
 | `speed` other than 1 | `effects[]` `{span_index, effect: "retime", params: {speed}}`, which `apply_effect` builds as a Fusion comp (FCPXML retimes import broken in Resolve 21.2). An item holds one comp, so the validator refuses a slot with both a speed and an effect |
 | `text: "word"` | `params.text` on the slot's text effect when the fill carries a `text` word; with no word in the fill, a UI step |
 | `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Magic Mask |
+| `effect: exposure-flash`, and the fill carries a `gain` (1 to 20) | `params.gain` on that entry; the draft draws the same number ([T28](resolve-traps.md)). A `gain` on a fill for any other slot is refused |
 | `effect` | `effects[]` `{span_index, effect, params?}`, span_index from 0 |
 | `rules.end` | `method.end`, and a UI step for the black after the last item |
 | a `.braw` source | a UI step: Camera Raw Decode Using Clip on its items ([BRAW](#braw-decodes-from-the-clip)) |
@@ -91,11 +92,20 @@ python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR
 
 Before anything is built in Resolve, each plan renders as a 720p H.264 proxy (1280x720 or 720x1280, the method's rate, the end black included) so several can be compared at once. A plan directory holds `manifest.json` from `to_manifest` and, optionally, `method.json` (else the method is loaded by id). When the manifest carries `music` `{path, in}`, that track is laid under the draft from `in` seconds and faded out at the end, and the notes say to check its licence; without it the draft is silent.
 
-- Every span is its own ffmpeg job: VideoToolbox decode and `h264_videotoolbox` encode where this ffmpeg has them, fill-and-crop, the span's static scale, the look through `lut3d`, and approximations of `zoom-push`, `crop-window`, `dip-to-black`, `exposure-flash`, `text-word` (a white box where the word goes), `scale-window` (grown over the previous span's last frame, held; over black for a first span), `retime` (its speed and `speed_to`) and `reframe-pan` (a moving crop). The spans are joined without re-encoding.
+- Every span is its own ffmpeg job: VideoToolbox decode and `h264_videotoolbox` encode where this ffmpeg has them, fill-and-crop, the span's static scale, the look through `lut3d`, and an ffmpeg stand-in for each effect it can draw. The spans are joined without re-encoding.
+- What the draft draws differently, or not at all. `zoom-push` and `retime` (its speed and `speed_to`) are drawn as the macro does. The rest are stand-ins, and each says so in the notes and the ledger:
+  - `exposure-flash`: the fill's `gain` (default 2) falling to 1 over 12 frames, as a multiply of the encoded levels fitted to the macro on one dark frame ([T28](resolve-traps.md)); a bright shot, or a look ahead of the flash, may read differently.
+  - `dip-to-black`: the macro's even-stop keys (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0 every 3 frames), black on the last frame, drawn by the same fitted multiply.
+  - `crop-window`: the box opens and closes at a constant rate; the macro eases both ends.
+  - `scale-window`: the window stays centred; the macro's centre drifts about 0.05. It grows over black on the first span and over the previous shot's last frame after it; the notes and the ledger give each span the matching wording.
+  - `text-word`: a white box where the word goes. `reframe-pan`: a crop that moves from `pan_from` to `pan_to` as a share of the source width, not Resolve's Pan arithmetic.
+  - A dissolve between spans is drawn as a cut.
+  - Not drawn: `person-matte-text` and `cross-dissolve-short`, which have no stand-in, and the UI steps (dips and wipes, animated scales, durations). A look with no cube for the camera is not applied, and the notes say so.
+- The ledger. `drafts.json` gives each draft an `effects` object built from the manifest: `drawn`, `approximated` (with the note) and `not_drawn`, each a list of `{effect, spans}` with the span indices from 0. Read it before a pick becomes a build: an effect under `not_drawn` was not on the draft the person chose from, so it goes back to them before the build applies it.
 - The look is `<look name> [<camera>].cube` found under `--lut-root` (Resolve's `LUT/lutlab` folder) for `--camera`. Without it the draft is ungraded and says so.
 - BRAW plays from its proxy, `<proxy-dir>/<name>.mov`; a BRAW source with none is refused (ffmpeg cannot decode BRAW).
 - Lanes: one job is timed alone, then each wave of two jobs per lane adds a lane while throughput rises by 5 percent, up to the core count; the best count runs the rest. `--lanes N` fixes it. Short spans make the probe noisy; from 4K HEVC sources on an Apple silicon laptop, three method drafts (44 s of draft) took 25 s at 2 lanes.
-- Output in `DIR`: `<plan>.mp4`, `<plan>.notes.txt` naming everything the draft does not show (an effect with no approximation, a dissolve drawn as a cut, a retime, a missing look), `drafts.json`, and for two or more drafts a lettered `rpstills absheet` sheet of their midpoints in `DIR/sheet` with the key sealed in `DIR/sheet.key`. `DIR` inside a git tree, or not empty, is refused.
+- Output in `DIR`: `<plan>.mp4`, `<plan>.notes.txt` naming everything the draft does not show (an effect with no stand-in, each stand-in and how it differs, a dissolve drawn as a cut, a missing look), `drafts.json` with the ledger, and for two or more drafts a lettered `rpstills absheet` sheet of their midpoints in `DIR/sheet` with the key sealed in `DIR/sheet.key`. `DIR/send` holds the same drafts as `A.mp4`, `B.mp4` ... in the sheet's letters, each with `A.notes.txt`, `B.notes.txt` ... whose first line is its note count (`4 notes`, or `everything drawn`), so nothing is lettered by hand. Send that folder and the sheet. The letter-to-plan mapping is only in the sealed key: `drafts.json` and the printed summary name plans, `send/` has letters, and nothing pairs them, so read the key after the answer comes back. `DIR` inside a git tree, or not empty, is refused.
 
 Each span's length is a whole number of frames, as `interchange` counts it, so a draft can run a frame or two longer than `length_s` when the method's times are not on the frame grid.
 

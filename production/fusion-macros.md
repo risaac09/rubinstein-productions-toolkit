@@ -30,7 +30,7 @@ The three transitions (`cross-dissolve-short`, `scale-window`, `crop-window`) sh
 | `text` | `text-word`, `person-matte-text` | The word, set on `Text1.StyledText`. |
 | `size` | `text-word`, `person-matte-text` | `Text1.Size`, above 0. |
 | `centre` | `zoom-push`, `text-word` | 0 to 1 across the frame. Sets `Transform1.Pivot` (zoom-push) or `Merge1.Center` (text-word) to this x and 0.5. Use the crop centre, because Fusion comp space is the whole source frame and a vertical crop moves only the picture. |
-| `gain` | `exposure-flash` | The flash's peak, 1 to 20; default 2 (+1 stop). Written into the first key of `ColorCorrector1MasterRGBGain`, which still settles to 1 at the macro's span end. |
+| `gain` | `exposure-flash` | The flash's peak, 1 to 20; default 2 (+1 stop). Written into the first key of `ColorCorrector1MasterRGBGain`, which still settles to 1 at the macro's span end. A fill's `gain` reaches it through `to_manifest` as `params.gain`, and the draft draws the same number (T28). |
 | `speed`, `speed_to` | `retime` | `speed` is required; `speed_to` makes a linear ramp. |
 | `pan_from`, `pan_to`, `pan_base` | `reframe-pan` | `pan_from` and `pan_to` are required. |
 
@@ -39,7 +39,7 @@ Each value is read back and reported under `params` in the item's result.
 ## Needs a person's eye
 
 - **`person-matte-text`**: the matte is a placeholder rectangle that fitted one test frame. Replace it with a Magic Mask (Person, Better) tracked on the item, or a Magic Mask node in Fusion, edge softness 2 to 5 px.
-- **`exposure-flash`**: +1 stop may read too weak beside the edits it came from. Try gain 3.0, or a white dip.
+- **`exposure-flash`**: +1 stop may read too weak beside the edits it came from. Try gain 3.0, or a white dip. Choose the value on the draft: put it on the fill as `gain` and the draft draws that peak falling to 1 over 12 frames, and `apply_effect` writes the same number into the macro. The draft's flash is a stand-in fitted on one dark frame (gain 2 draws about 62 where the macro read 65, gain 10 about 120 where it read 117), so it can read differently on a bright shot or after a look; compare one rendered frame of the build before committing ([T28](resolve-traps.md)).
 - **`text-word`** (and the text in `person-matte-text`): Arial Bold stands in for a heavy or extended face (the font family "Arial Black" set by script renders nothing; pick the real face in the Inspector; "Arial" with Style "Bold" works), and the red-orange reads more orange through a colour-managed output transform.
 
 ## How apply_effect builds a comp

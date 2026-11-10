@@ -11,18 +11,21 @@ A plan directory holds manifest.json, what methods.to_manifest returned (the spa
 the method is loaded by the manifest's method id). For each plan it writes
 DIR/<plan>.mp4 (720p at the method's rate, the end black included; silent unless the
 manifest carries `music` {path, in}, which is laid under it and faded out) and
-DIR/<plan>.notes.txt naming everything the draft does not show; then DIR/drafts.json and,
-for two or more drafts, a lettered sheet of their midpoints (rpstills absheet) in
-DIR/sheet with its key sealed beside it in DIR/sheet.key.
+DIR/<plan>.notes.txt naming everything the draft does not show; then DIR/drafts.json, whose
+entry for each draft holds an `effects` ledger (the manifest's effects and dissolves as
+drawn, approximated with a note, or not_drawn, each with its span indices). For two or more
+drafts it also writes a lettered sheet of their midpoints (rpstills absheet) in DIR/sheet
+with its key sealed beside it in DIR/sheet.key, and DIR/send: the drafts copied as A.mp4,
+B.mp4 ... in the sheet's letters, each with a <letter>.notes.txt that opens with its note
+count. The letter-to-plan mapping lives only in the sealed key; nothing here prints or logs
+it, and drafts.json carries no letters.
 
 Every span is its own ffmpeg job: VideoToolbox decode and h264_videotoolbox encode
 when this ffmpeg has them (--no-hw for software), fill-and-crop to the frame, the
-span's static scale, the effects ffmpeg can approximate (zoom-push, crop-window,
-dip-to-black, exposure-flash, text-word as a box where the word goes, scale-window over
-black, retime with its speed and speed_to, reframe-pan as a moving crop), and the look's
-cube through lut3d. The jobs run in parallel lanes: one lane is timed first, then lanes
-are added while throughput rises (--lanes N fixes the count). The spans are joined
-without re-encoding.
+span's static scale, the effects ffmpeg can approximate (DRAWN below; APPROX says how each
+one differs from its macro), and the look's cube through lut3d. The jobs run in parallel
+lanes: one lane is timed first, then lanes are added while throughput rises (--lanes N
+fixes the count). The spans are joined without re-encoding.
 
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
@@ -49,11 +52,40 @@ LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/l
 SIZES = {"16:9": (1280, 720), "9:16": (720, 1280)}
 DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-word",
          "scale-window", "retime", "reframe-pan"}
-# Drawn, but only as an approximation: what the sheet's notes say about each.
+# Drawn, but only as an approximation: what the notes and the ledger say about each. An
+# effect in DRAWN with no entry here is drawn as its macro does. "dissolve" is no macro: it is
+# the manifest's transition into a span, drawn as a cut.
+WINDOW_DRIFT = "the window stays centred where the macro's centre drifts about 0.05"
+WINDOW_OVER = "over the previous shot's last frame, held; " + WINDOW_DRIFT  # a scale-window after span 0
 APPROX = {"text-word": "the word is a white box",
-          "scale-window": "drawn over black (no previous shot to grow over)",
+          "scale-window": "drawn over black (no previous shot to grow over); " + WINDOW_DRIFT,
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
-                         "width, not Resolve's Pan arithmetic"}
+                         "width, not Resolve's Pan arithmetic",
+          "crop-window": "the box opens and closes at a constant rate where the macro "
+                         "eases both ends",
+          "exposure-flash": "a gain falling to 1 over 12 frames, drawn as a display-space "
+                            "multiply fitted on one dark frame (T28); a bright shot may "
+                            "read differently from the macro",
+          "dip-to-black": "the macro's even-stop gain keys, drawn as a display-space "
+                          "multiply fitted on one dark frame (T28)",
+          "dissolve": "drawn as a cut"}
+
+# Gain in the draft (trap T28). The macros multiply by a gain g in linear light; for a power-law
+# display curve that is a multiply by g**(1/GAMMA) on the encoded values, which is what eq
+# does around black (code 16) here. GAMMA is fitted to two measurements of the exposure-flash
+# macro in a colour-managed project, on a flat frame of luma 49: gain 2 read 65 (a gamma of
+# 2.45 fits it alone) and gain 10 read 117 (2.64 fits it alone). One family covers both:
+# 2.55 draws 62 and 120 on that frame, 4.6 and 2.6 percent off (eq rounds its table, so a
+# neighbouring gamma can read a level either way); the test holds it to 10 percent. Only that
+# one dark frame set it: a bright frame, a look before the flash and Resolve's highlight
+# roll-off were not measured.
+GAMMA = 2.55
+FLASH_GAIN = 2        # the macro's own default peak
+FLASH_FRAMES = 12     # the macro keys the gain from the peak at frame 0 to 1 at frame 12
+DIP_FRAMES = 18       # dip-to-black: the gain keys span 18 frames, 3 apart, ending on the last
+DIP_STEP = 3
+DIP_KEYS = (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0)  # even in stops (T23)
+BLACK_CODE = 16 / 255  # eq's contrast pivots at mid-grey; this puts the multiply on video black
 TUNE_GAIN = 1.05  # a lane is kept only when it lifts throughput by 5 percent
 HW_BITRATE = "8M"
 
@@ -120,6 +152,27 @@ def media_path(path, proxy_dir=None):
 # Filters
 # ---------------------------------------------------------------------------
 
+def gain_filter(gain):
+    """An eq filter that draws a linear-light gain, an ffmpeg expression in the output frame
+    number j = round(t*fps), as a display-space multiply (see GAMMA): the video levels around
+    black, and the chroma around grey, times gain**(1/GAMMA), per frame. Chroma is held at 3,
+    eq's limit, which a gain of 20 would pass (3.2); levels clip at white, and the macro's
+    highlight roll-off, if it has one, is not drawn."""
+    k = f"pow(max({gain},0),{1 / GAMMA:.4f})"
+    return (f"eq=contrast='{k}':brightness='({k}-1)*{0.5 - BLACK_CODE:.4f}':"
+            f"saturation='min(3,{k})':eval=frame")
+
+
+def _piecewise(x, ys, step):
+    """An ffmpeg expression for the line through ys at x = 0, step, 2*step ...; ys[0] before
+    0 and ys[-1] after the last key."""
+    e = f"{ys[-1]:g}"
+    for k in range(len(ys) - 2, -1, -1):
+        e = (f"if(lt({x},{(k + 1) * step}),{ys[k]:g}+({ys[k + 1] - ys[k]:g})*({x}-{k * step})/"
+             f"{step},{e})")
+    return e
+
+
 def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
     """An ffmpeg approximation of a macro over one span, or None when there is none.
     retime is a setpts to put before the scale (source time is the integral of the
@@ -159,11 +212,14 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         o = f"gt(abs(X-W/2),W*({fw})/2)+gt(abs(Y-H/2),H*({fh})/2)"
         return (f"format=yuv420p,geq=lum='if({o},0,lum(X,Y))':cb='if({o},128,cb(X,Y))':"
                 f"cr='if({o},128,cr(X,Y))'")
-    if effect == "dip-to-black":  # the last 18 frames to black
-        d = min(18 / fps, seconds)
-        return f"fade=t=out:st={seconds - d:.4f}:d={d:.4f}"
-    if effect == "exposure-flash":  # bright at the first frame, normal by frame 12
-        return f"eq=brightness='0.3*max(0\\,1-t*{fps}/12)':eval=frame"
+    if effect == "dip-to-black":  # the macro's even-stop gain keys, ending black on the last frame
+        n = round(seconds * fps)
+        x = f"max(round(t*{fps})-{n - DIP_FRAMES - 1},0)"
+        return gain_filter(_piecewise(x, DIP_KEYS, DIP_STEP))
+    if effect == "exposure-flash":  # gain g at the first frame, smooth to 1 by frame 12
+        g = float(p.get("gain", FLASH_GAIN))
+        u = f"min(round(t*{fps})/{FLASH_FRAMES},1)"
+        return gain_filter(f"1+({g:g}-1)*(1-({u})*({u})*(3-2*({u})))")
     if effect == "text-word":  # a box where the word goes (drawtext is not in every ffmpeg)
         return (f"drawbox=x={int(w * 0.25)}:y={int(h * 0.34)}:w={int(w * 0.5)}:"
                 f"h={int(h * 0.08)}:color=white@0.75:t=fill")
@@ -202,7 +258,7 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
         if e not in DRAWN:
             missing.append(f"{e} (no ffmpeg approximation)")
         elif e == "scale-window" and over:
-            missing.append("scale-window: over the previous shot's last frame, held")
+            missing.append("scale-window: " + WINDOW_OVER)
         elif e in APPROX:
             missing.append(f"{e}: {APPROX[e]}")
     vf += [f"fps={fps}", "format=yuv420p"]
@@ -232,6 +288,37 @@ def has_hw():
     except (OSError, subprocess.CalledProcessError):
         return False
     return "h264_videotoolbox" in out
+
+
+def ledger(manifest):
+    """What a draft does with the manifest's effects, by name and span index: {drawn,
+    approximated, not_drawn}, each a list of {effect, spans} (approximated also has the
+    note APPROX gives). A dissolve into a span counts as the effect "dissolve". A
+    scale-window is two rows when it is on span 0 (over black) and later (over the previous
+    shot, as plan_jobs draws it), so each span carries the note the draft's own notes give."""
+    spans = {}
+    for e in manifest.get("effects") or []:
+        spans.setdefault(e["effect"], []).append(e["span_index"])
+    for i, sp in enumerate(manifest["clips"][0]["spans"]):
+        if (sp.get("transition") or {}).get("type") == "dissolve":
+            spans.setdefault("dissolve", []).append(i)
+    out = {"drawn": [], "approximated": [], "not_drawn": []}
+    for name in sorted(spans):
+        idx = sorted(set(spans[name]))
+        if name == "scale-window":
+            parts = [([i for i in idx if not i], APPROX[name]),
+                     ([i for i in idx if i], WINDOW_OVER)]
+        else:
+            parts = [(idx, APPROX.get(name))]
+        for sp, note in parts:
+            if not sp:
+                continue
+            row = {"effect": name, "spans": sp}
+            if note:
+                out["approximated"].append({**row, "note": note})
+            else:
+                out["drawn" if name in DRAWN else "not_drawn"].append(row)
+    return out
 
 
 def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
@@ -268,7 +355,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back)
         notes += [f"span {i}: {x}" for x in missing]
         if (span.get("transition") or {}).get("type") == "dissolve":
-            notes.append(f"span {i}: the dissolve into it is drawn as a cut")
+            notes.append(f"span {i}: the dissolve into it is {APPROX['dissolve']}")
         out = os.path.join(work, f"{i:03d}.mp4")
         cmd = (["ffmpeg", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox"] if hw else [])
                + ["-ss", f"{span['in']:.4f}", "-i", src]
@@ -293,7 +380,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         if step["control"] in ("Zoom keyframes", "Duration"):  # retimes are manifest effects now, and drawn
             notes.append(f"{step['target']}: {step['control']} {step['value']} not drawn")
     return jobs, {"size": [w, h], "fps": fps, "frames": frames, "lut": lut_src,
-                  "notes": notes}
+                  "notes": notes, "effects": ledger(man)}
 
 
 def frame_count(path):
@@ -389,6 +476,24 @@ def _midpoint(video, seconds, out):
     return r.returncode == 0 and os.path.isfile(out)
 
 
+def _send(folder, labels, lettered):
+    """DIR/send: each draft copied as <letter>.mp4 in the sheet's letters, with a
+    <letter>.notes.txt that opens with its note count. labels is the sheet key's letter ->
+    {input_index}; lettered the drafts in the order they went onto the sheet. The mapping
+    stays in the sealed key: returns only the file names."""
+    os.makedirs(folder)
+    files = []
+    for letter, label in sorted(labels.items()):
+        d = lettered[label["input_index"]]
+        shutil.copyfile(d["file"], os.path.join(folder, letter + ".mp4"))
+        n = len(d["notes"])
+        head = f"{n} note{'s' * (n != 1)}" if n else "everything drawn"
+        with open(os.path.join(folder, letter + ".notes.txt"), "w", encoding="utf-8") as f:
+            f.write(head + "\n" + "".join(x + "\n" for x in d["notes"]))
+        files += [letter + ".mp4", letter + ".notes.txt"]
+    return {"dir": folder, "files": files}
+
+
 def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=None,
           hw=None, cap=None):
     """Render every plan into out; returns the drafts.json document."""
@@ -432,20 +537,23 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                            "seconds": round(info["frames"] / info["fps"], 3), **info})
         doc = {"drafts": drafts, "encoder": "h264_videotoolbox" if hw else "libx264",
                "lanes": lane["lanes"], "lane_probe": lane["probe"],
-               "seconds": round(time.monotonic() - began, 2), "sheet": None}
-        mids = []
+               "seconds": round(time.monotonic() - began, 2), "sheet": None, "send": None}
+        mids, lettered = [], []
         for d in drafts:
             jpg = os.path.join(work, d["plan"] + ".jpg")
             if _midpoint(d["file"], d["seconds"], jpg):
                 mids.append(jpg)
+                lettered.append(d)
         if len(mids) >= 2:
             try:
                 from rpstills import absheet
                 sheet = absheet.build(mids, os.path.join(out, "sheet"),
                                       title="Drafts: pick a letter")
+                # no absheet.summary: it names each letter's plan, and this file sits beside the folder
                 doc["sheet"] = {"dir": os.path.join(out, "sheet"),
                                 "key": absheet.key_dir(os.path.join(out, "sheet")),
-                                "summary": absheet.summary(sheet)}
+                                "images": len(mids)}
+                doc["send"] = _send(os.path.join(out, "send"), sheet["labels"], lettered)
             except (ImportError, ValueError) as e:  # Pillow missing, more than 9 drafts
                 doc["sheet"] = {"error": f"no sheet: {e}"}
         with open(os.path.join(out, "drafts.json"), "w", encoding="utf-8") as f:
@@ -476,7 +584,8 @@ def run(args):
         print(f"{d['plan']}: {d['seconds']} s, {len(d['notes'])} note(s)")
     print(f"{len(doc['drafts'])} draft(s) in {doc['seconds']} s, {doc['lanes']} lane(s), "
           f"{doc['encoder']}" + (f"; sheet {doc['sheet']['dir']}" if (doc['sheet'] or {}).get('dir')
-                                 else ""))
+                                 else "") + (f"; send {doc['send']['dir']}" if doc.get("send")
+                                             else ""))
     return 0
 
 
