@@ -565,7 +565,7 @@ hand; CI runs the offline tests only.
 
 Last runs: 2026-10-11, PASS on Resolve Studio 21.1.1.10; 2026-11-07, PASS, 24 of
 24, on 21.2.0.6, with `--timeline "MCP_twenty_30 [auto]"`,
-`--lut "RP/aaron-jamie-soft-daylight-60.cube"`,
+`--lut "Looks/soft-daylight-60.cube"`,
 `--bin "A3 ingest/Panasonic DC-GH7"` and a `--render-dir` outside any repo.
 Give `--bin` a bin of video clips: a bin that holds a still fails the
 `timeline_from_clips` check by that tool's own refusal, not Resolve's.

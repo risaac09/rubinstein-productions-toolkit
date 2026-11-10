@@ -1,5 +1,5 @@
 """
-rpresolve.gatepacket: the packet Isaac reads before a long render or a replacement
+rpresolve.gatepacket: the packet the operator reads before a long render or a replacement
 of a file a client can see (the 30-minute rule in production/media-review-loop.md).
 Per clip: one full-frame contact sheet and two 20 s listening excerpts. Offline;
 ffmpeg only; no Resolve, and nothing is sent anywhere.
@@ -16,7 +16,7 @@ Output folder OUT, which must be new or empty and outside any git tree:
                        whole length, and both excerpts are then the same)
     <name>.line.wav    20 s centred on the sendable line when given, else the middle
     packet.json        {"version": 1, "files": [{"file", "sha256"}]}: every sheet and
-                       excerpt, in order. Its sha256 is what Isaac saw.
+                       excerpt, in order. Its sha256 is what the operator saw.
     sealed/key.json    labels "1", "2", ... naming the clips, so review-log can decode
                        the line (the layout of a mixbuild packet)
     gate.json          the summary, shaped as below
