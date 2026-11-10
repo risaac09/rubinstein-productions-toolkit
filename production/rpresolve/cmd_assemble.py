@@ -23,11 +23,12 @@ Everything placed is read back.
 Colour (resolve-traps.md T30). A clip with no Input Color Space tag keeps Rec.709, so a log
 file imported here would render in log. The dry run therefore runs `detect` on every source
 and lists, per file, the input colour space detect found and what the clip reads when it is
-already in the pool. The real run does what `ingest` does for its own imports and no more: a
-file this run imports and detect can pin gets Input Color Space (and Data Level) through the
-checked write, on a colour-managed project only. A clip that was in the pool before the run is
-never written; when detect calls it log and it reads Rec.709 the run reports a problem. A
-file detect cannot pin gets a note and no tag.
+already in the 'methods [auto]' bin. The real run does what `ingest` does for its own imports
+and no more: a clip this run imports (a new clip, even when the same file sits in another bin)
+and detect can pin gets Input Color Space (and Data Level) through the checked write, on a
+colour-managed project only. A clip that was in the pool before the run is never written, by
+clip id; when detect calls it log and it reads Rec.709 the run reports a problem. A file detect
+cannot pin gets a note and no tag.
 """
 
 import json
@@ -117,17 +118,19 @@ def _bin(media_pool, root, make):
     return media_pool.AddSubFolder(root, BIN) if make else None
 
 
-def _pool_clips(root):
-    """Every clip in the media pool by normalised File Path, all bins."""
-    clips, stack = {}, [root]
+def _all_clips(root):
+    """Every clip in the media pool, all bins."""
+    stack = [root]
     while stack:
         folder = stack.pop()
-        for c in folder.GetClipList() or []:
-            path = c.GetClipProperty("File Path")
-            if path:
-                clips.setdefault(rpingest.norm_path(path), c)
+        yield from folder.GetClipList() or []
         stack.extend(folder.GetSubFolderList() or [])
-    return clips
+
+
+def _pool_paths(root):
+    """The normalised File Path of every clip in the media pool, all bins."""
+    return {rpingest.norm_path(p) for p in (c.GetClipProperty("File Path") for c in _all_clips(root))
+            if p}
 
 
 def _wrong(detected, current):
@@ -145,9 +148,12 @@ def colour_plan(project, root, p):
     """Read-only: {managed, science, sources, notes}. One source row per picture file, in
     span order: {path, camera, profile, detected, data_level, in_pool, current, action,
     flag, note}. detected is detect's input colour space ('' when it cannot pin the file),
-    current what a clip already in the pool reads (None when the file is not in the pool).
-    action: 'tag' (a new import detect can pin: the build writes it), 'left' (in the pool
-    before this run: never written) or 'none' (nothing to write; the note says why)."""
+    in_pool whether the file is a clip anywhere in the pool, current what the clip the
+    timeline will use reads (None when this run will import it). The build reuses a clip in
+    the 'methods [auto]' bin and imports any other file as a new clip, so action is 'left'
+    (in that bin before this run: never written), 'tag' (a new import detect can pin: the
+    build writes it, even when the file also sits in another bin) or 'none' (nothing to
+    write; the note says why)."""
     science = str(project.GetSetting("colorScienceMode") or "")
     managed = science.startswith("davinciYRGBColorManaged")
     paths = list(dict.fromkeys(r["path"] for r in p["spans"]))
@@ -157,19 +163,21 @@ def colour_plan(project, root, p):
     except rpdetect.DetectError as e:
         rows, err = [], f"detect did not run: {e}"
         notes.append(err)
-    pool = _pool_clips(root)
+    folder = _bin(None, root, make=False)  # the build's own test: a File Path in this bin is reused
+    in_bin = {c.GetClipProperty("File Path"): c for c in folder.GetClipList() or []} if folder else {}
+    pool = _pool_paths(root)
     det = {rpingest.norm_path(r["path"]): r for r in rows}
     ent = {rpingest.norm_path(e["path"]): e
-           for e in rpingest.plan_ingest(rows, list(pool), parent=BIN)}
+           for e in rpingest.plan_ingest(rows, list(in_bin), parent=BIN)}
     sources = []
     for path in paths:
         key = rpingest.norm_path(path)
-        d, e, clip = det.get(key), ent.get(key), pool.get(key)
+        d, e, clip = det.get(key), ent.get(key), in_bin.get(path)
         row = {"path": path, "camera": (d or {}).get("camera", ""),
                "profile": (d or {}).get("profile", ""),
                "detected": (d or {}).get("input_color_space", ""),
                "data_level": rpingest.DATA_LEVELS.get((d or {}).get("data_level", ""), ""),
-               "in_pool": clip is not None,
+               "in_pool": key in pool,
                "current": str(clip.GetClipProperty("Input Color Space") or "") if clip else None,
                "action": "none", "flag": "", "note": ""}
         if clip is not None:
@@ -181,6 +189,9 @@ def colour_plan(project, root, p):
             row["note"] = "project is not colour managed; nothing is written"
         elif e["action"] == rpingest.TAG:
             row["action"] = "tag"
+            if row["in_pool"]:
+                row["note"] = ("also in another bin; this run imports its own copy and tags "
+                               "that one, the existing clip is not touched")
         else:
             row["note"] = e["reason"] + "; not tagged"
         sources.append(row)
@@ -258,6 +269,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     want = sorted({r["path"] for r in p["spans"]} | ({p["music"]["path"]} if p["music"] else set()))
     new = [x for x in want if x not in have]
     imported = set()
+    before = {c.GetUniqueId() for c in _all_clips(root)} if new else set()
     if new:
         for c in media_pool.ImportMedia(new) or []:
             have[c.GetClipProperty("File Path")] = c
@@ -266,7 +278,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     if gone:
         raise api.WriteNotApplied("not imported: " + ", ".join(gone))
     check()
-    _colour(out, have, imported)
+    _colour(out, have, imported, before)
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
@@ -325,14 +337,16 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         problems.append(f"{type(e).__name__}: {e}")
 
 
-def _colour(out, have, imported):
+def _colour(out, have, imported, before):
     """Before the timeline exists: tag what this run imported and detect pinned, through the
     checked write ingest uses (Input Color Space, then Data Level), and report any clip that
-    was already in the pool. Only a clip ImportMedia returned in this run is ever written."""
+    was already in the pool. A clip is written only when ImportMedia returned it in this run
+    and its id is not in `before`, the ids in the pool ahead of the import; a row planned
+    'tag' whose clip turns out to have been there is read and reported like any other."""
     problems = out["problems"]
     for row in out["colour"]["sources"]:
         clip, base = have[row["path"]], os.path.basename(row["path"])
-        if row["action"] == "tag" and row["path"] in imported:
+        if row["action"] == "tag" and row["path"] in imported and clip.GetUniqueId() not in before:
             try:
                 row["current"] = api.set_clip_property_checked(
                     clip, "Input Color Space", row["detected"])
@@ -342,7 +356,9 @@ def _colour(out, have, imported):
             except api.WriteNotApplied as e:
                 row["result"] = f"FAILED: {e}"
                 problems.append(f"colour: {base}: {e}")
-        elif row["action"] == "left":
+        elif row["action"] in ("tag", "left"):
+            if row["action"] == "tag":
+                row["result"] = "not written: the clip was already in the pool"
             row["current"] = str(clip.GetClipProperty("Input Color Space") or "")
             row["flag"] = _wrong(row["detected"], row["current"]) if out["colour"]["managed"] else ""
             if row["flag"]:

@@ -1109,9 +1109,10 @@ def register(registry):
         "added with AddTransition (Cross Dissolve, centred on the cut) and its length read "
         "back; any other transition is placed as a cut and named in the plan; effects are "
         "apply_effect's work. Colour (T30): detect runs on every source and the result lists, "
-        "per file, the input colour space detect found and what a clip already in the pool "
-        "reads. On a colour-managed project a file this run imports and detect can pin gets "
-        "Input Color Space and Data Level (written and read back); a clip that was in the "
+        "per file, the input colour space detect found and what a clip already in the methods "
+        "[auto] bin reads. On a colour-managed project a clip this run imports and detect can "
+        "pin gets Input Color Space and Data Level (written and read back; a file in another "
+        "bin is imported again as a new clip, which is tagged); a clip that was in the "
         "pool is never written, and one that is log by detect and reads Rec.709 is a "
         "problem; a file detect cannot pin gets a note. An unmanaged project is not tagged. "
         "Every item's length is read back. Dry run first; the real run needs its plan_sha.",
