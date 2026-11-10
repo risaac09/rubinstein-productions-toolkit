@@ -50,6 +50,39 @@ def spec(src, in_s, seconds, bed_dir):
             "path": os.path.join(bed_dir, name)}
 
 
+def _enough(src, got, in_s, seconds):
+    """Raise BedError unless `got` seconds of music from in_s cover the bed."""
+    if got is None or got < seconds - SHORT_S:
+        raise BedError(f"{os.path.basename(src)} holds {got or 0:.2f} s of music from "
+                       f"{in_s:g} s, the bed needs {seconds:.2f} s")
+
+
+def source_seconds(src):
+    """The music's length in seconds (its audio stream, else the container); None when
+    ffprobe reads no length. Raises BedError when ffprobe cannot read src."""
+    try:
+        dc.check_tools(ffmpeg=False)
+        info = dc.probe(src)
+    except (dc.ToolMissing, dc.CheckError) as e:
+        raise BedError(str(e))
+    streams = [s for s in info.get("streams") or [] if s.get("codec_type") == "audio"]
+    for d in [s.get("duration") for s in streams] + [(info.get("format") or {}).get("duration")]:
+        try:
+            if float(d) > 0:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def check_source(src, in_s, seconds):
+    """Raise BedError when src holds less music from in_s than the bed needs, as bake() would
+    find only after the cut. A source whose length ffprobe cannot read passes: bake() checks."""
+    have = source_seconds(src)
+    if have is not None:
+        _enough(src, have - in_s, in_s, seconds)
+
+
 def bake(src, in_s, seconds, fade_s, out_path):
     """Cut `seconds` of src from `in_s`, fade the last `fade_s` seconds out, and write it as
     a 24-bit 48 kHz WAV at out_path (atomically; a failure leaves nothing there). Checks the
@@ -69,9 +102,7 @@ def bake(src, in_s, seconds, fade_s, out_path):
                 raise BedError(f"ffmpeg could not cut the bed from {os.path.basename(src)}: "
                                f"{proc.stderr.strip()[-300:]}")
             got = dc.duration(dc.probe(tmp))
-            if got is None or got < seconds - SHORT_S:
-                raise BedError(f"{os.path.basename(src)} holds {got or 0:.2f} s of music from "
-                               f"{in_s:g} s, the bed needs {seconds:.2f} s")
+            _enough(src, got, in_s, seconds)
     except (dc.ToolMissing, dc.CheckError, OSError) as e:
         raise BedError(str(e))
     return got

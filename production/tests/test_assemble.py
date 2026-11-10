@@ -13,6 +13,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -26,7 +27,12 @@ sys.path.insert(0, str(HERE))
 import resolve_fakes as rf  # noqa: E402
 from rpresolve import cmd_assemble as a  # noqa: E402
 from rpresolve import detect  # noqa: E402
+from rpresolve import delivercheck as dc  # noqa: E402
 from rpresolve.workflows import Refused  # noqa: E402
+
+REAL_BAKE, REAL_SOURCE_SECONDS = a.musicbed.bake, a.musicbed.source_seconds  # before Base stubs them
+needs_ffmpeg = unittest.skipUnless(
+    all(os.access(t, os.X_OK) for t in (dc.FFMPEG, dc.FFPROBE)), "ffmpeg or ffprobe missing")
 
 UNTAGGED = "Rec.709 (Scene)"  # what an import with no tag reads on a colour-managed project
 
@@ -82,9 +88,11 @@ class Base(unittest.TestCase):
         self.bed_dir = os.path.join(d, "beds")
         self.baked = []
         self.bake_error = None
-        patch = mock.patch.object(a.musicbed, "bake", self.fake_bake)
-        patch.start()
-        self.addCleanup(patch.stop)
+        self.song_seconds = 60.0  # what the dry run's ffprobe finds in the stub song
+        for new in (mock.patch.object(a.musicbed, "bake", self.fake_bake),
+                    mock.patch.object(a.musicbed, "source_seconds", lambda src: self.song_seconds)):
+            new.start()
+            self.addCleanup(new.stop)
         self.here = rf.Timeline("Where", "tl-here")
         self.project = rf.Project(timelines=[self.here], current=self.here)
         self.project.settings["timelineFrameRate"] = "24"
@@ -325,6 +333,45 @@ class TestBed(Base):
             self.go(dry_run=False, expect_sha=dry["plan_sha"])
         self.assertEqual(rf.mutating_calls(), [])
         self.assertEqual(self.project.GetTimelineCount(), 1)
+
+    def test_the_dry_run_refuses_a_song_that_runs_out_before_the_bed_does(self):
+        self.song_seconds = 9.0  # 1 s of music from 8 s; the bed needs 2.25 s
+        with self.assertRaisesRegex(Refused, "song.m4a holds 1.00 s of music from 8 s, the bed needs 2.25 s"):
+            self.go()
+        self.assertEqual((self.baked, rf.mutating_calls(), os.path.exists(self.bed_dir)),
+                         ([], [], False))
+        self.song_seconds = 10.25  # exactly enough
+        self.assertEqual(self.go()["bed"]["result"], "would bake")
+
+    def test_a_song_whose_length_ffprobe_cannot_give_is_left_to_bake(self):
+        self.song_seconds = None
+        self.assertEqual(self.go()["bed"]["result"], "would bake")
+
+    def test_a_bed_already_there_is_not_asked_about_the_song_again(self):
+        dry = self.go()
+        os.makedirs(self.bed_dir)
+        Path(dry["bed"]["path"]).write_bytes(b"x")
+        self.song_seconds = 1.0
+        self.assertEqual(self.go()["bed"]["result"], "would reuse")
+
+    @needs_ffmpeg
+    def test_a_real_bake_gives_a_file_as_long_as_the_planned_bed_and_a1_holds_it(self):
+        song = os.path.join(os.path.dirname(self.song), "real.wav")
+        subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-nostdin", "-f", "lavfi", "-i",
+                        "sine=frequency=440:sample_rate=48000:duration=12", song],
+                       stdin=subprocess.DEVNULL, check=True)
+        manifest = {**self.manifest, "music": {"path": song, "in": 8.0}}
+        with mock.patch.object(a.musicbed, "bake", REAL_BAKE), \
+                mock.patch.object(a.musicbed, "source_seconds", REAL_SOURCE_SECONDS):
+            dry = self.go(manifest=manifest)
+            self.assertEqual(dry["bed"]["result"], "would bake")
+            r = self.go(manifest=manifest, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"], r["bed"]["result"]), (0, [], "baked"))
+        info = dc.probe(r["bed"]["path"])
+        self.assertAlmostEqual(dc.duration(info), 54 / 24, delta=0.01)  # picture + end black
+        self.assertEqual(r["audio"]["frames"], 54)
+        self.assertLess(dc.window_level(r["bed"]["path"], 0.1, 0.1)
+                        + 12, dc.window_level(r["bed"]["path"], 1.5, 0.5))  # and it falls at the end
 
     def test_a_bed_already_there_is_reused_not_baked_again(self):
         dry = self.go()

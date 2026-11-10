@@ -212,8 +212,9 @@ def colour_plan(project, root, p):
 
 def bed_plan(p, manifest, bed_dir, tl_fps):
     """The music bed this plan places on A1 (musicbed.spec), or None without music. The bed
-    goes in bed_dir, else beside the manifest file; refused when neither is known, or when
-    the folder sits inside a git working tree (the bed is client audio)."""
+    goes in bed_dir, else beside the manifest file; refused when neither is known, when
+    the folder sits inside a git working tree (the bed is client audio), or when the music
+    runs out before the bed does (ffprobe, so the dry run says it, not only the real run)."""
     if not p["music"]:
         return None
     if bed_dir is None and isinstance(manifest, str):
@@ -225,8 +226,11 @@ def bed_plan(p, manifest, bed_dir, tl_fps):
         raise Refused(f"bed_dir {bed_dir} is inside a git working tree. The bed is cut from "
                       "the client's music; write it outside any repository.")
     try:
-        return musicbed.spec(p["music"]["path"], p["music"]["in"],
-                             round((p["frames"] + p["black_frames"]) / tl_fps, 4), bed_dir)
+        bed = musicbed.spec(p["music"]["path"], p["music"]["in"],
+                            round((p["frames"] + p["black_frames"]) / tl_fps, 4), bed_dir)
+        if not os.path.isfile(bed["path"]):  # a bed already cut was long enough
+            musicbed.check_source(bed["src"], bed["in"], bed["seconds"])
+        return bed
     except musicbed.BedError as e:
         raise Refused(str(e))
 

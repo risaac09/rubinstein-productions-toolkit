@@ -41,7 +41,8 @@ what it expected:
     tail          opt-in (the destination's tail_fade true, or expect_fade): the
                   level of the last 100 ms against the window from 3 s to 1.5 s
                   before the end; FAIL unless the tail is at least TAIL_DROP_DB
-                  lower, with both levels in the row. SKIP with a note when there is
+                  lower, with both levels in the row, or when the sound stops before
+                  the end and the last 100 ms hold none. SKIP with a note when there is
                   no audio, loudness reading is off or the file is under 4 s. No
                   row at all when the destination does not ask for it
 
@@ -165,15 +166,17 @@ def measure_loudness(path, stream=0):
 
 def window_level(path, from_end, length, stream=0):
     """Mean level in dB (ffmpeg volumedetect) of an audio stream over `length` seconds
-    starting `from_end` seconds before the end of the file. Raises CheckError."""
+    starting `from_end` seconds before the end of the file; None when ffmpeg ran and the
+    window holds no audio (the sound ends earlier than the picture: -sseof counts back from
+    the longest stream). Raises CheckError when ffmpeg fails."""
     proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-sseof", f"-{from_end:g}",
                  "-t", f"{length:g}", "-i", _src(path), "-map", f"0:a:{stream}",
                  "-af", "volumedetect", "-f", "null", "-"], READ_TIMEOUT_S)
-    m = re.search(r"mean_volume:\s*(-?(?:inf|\d+(?:\.\d+)?))\s*dB", proc.stderr)
-    if proc.returncode != 0 or not m:
+    if proc.returncode != 0:
         raise CheckError(f"ffmpeg could not read the level of {os.path.basename(path)} "
                          f"{from_end:g} s from its end: {proc.stderr.strip()[-300:]}")
-    return float(m.group(1))
+    m = re.search(r"mean_volume:\s*(-?(?:inf|\d+(?:\.\d+)?))\s*dB", proc.stderr)
+    return float(m.group(1)) if m else None
 
 
 def video_hash(path):
@@ -546,7 +549,12 @@ def _tail_row(path, seconds, has_audio, loudness):
     if why:
         return _row("tail", None, "not measured", expect, why)
     tail = window_level(path, TAIL_S, TAIL_S)
+    if tail is None:  # the bed stops short of the picture: the case this row exists to catch
+        return _row("tail", False, f"no audio in the last {TAIL_S * 1000:g} ms", expect)
     ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR)
+    if ref is None:
+        return _row("tail", False, f"no audio {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
+                    "before the end", expect)
     drop = 0.0 if ref == tail else ref - tail  # two silent windows are equal, not nan
     return _row("tail", drop >= TAIL_DROP_DB - 1e-9,
                 f"last {TAIL_S * 1000:g} ms {tail:g} dB, window {ref:g} dB "
