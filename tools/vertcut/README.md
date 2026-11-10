@@ -22,6 +22,8 @@ the matching line warns `approval`. Three things make that so:
   (the index) and its title (the slug): `SW001_Guest_01_example-clip_9x16.mp4`.
   The three flags are required; `--draft-names` gives the old
   `<id>-<title-slug>.mp4` for a review copy that will not pass the name row.
+  A destination that takes another name (`client_master`, and `social_9x16_music`,
+  which takes a montage name) is refused before the three flags are asked for.
 - The video is tagged bt709 (primaries, transfer and matrix, limited range)
   whatever the source carried.
 - The audio is AAC at the destination's bitrate, sample rate and channel count

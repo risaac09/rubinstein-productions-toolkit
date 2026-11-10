@@ -33,6 +33,30 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+class TestMontageStem(unittest.TestCase):
+    """A montage name has no clip index: its stem is the client and slug, as a clip's is its
+    name without aspect and extension. The first test fails on the old stem rule; the second is a
+    guard that a longer slug stays another cut."""
+
+    def find(self, name, copy):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / name
+            path.write_bytes(b"deliverable")
+            events = [(1, {"choice": "approve", "review_copy": copy,
+                           "review_sha256": sha(b"review copy")})]
+            return dc.find_approval(events, str(path))
+
+    def test_the_review_copy_is_matched_by_the_client_and_slug(self):
+        line, why = self.find("Client_example-montage_9x16.mp4",
+                              "Client_example-montage_review.mp4")
+        self.assertIsNotNone(line, why)
+
+    def test_a_longer_slug_is_another_cut(self):
+        line, why = self.find("Client_example-montage_9x16.mp4",
+                              "Client_example-montage-v2_review.mp4")
+        self.assertIsNone(line)
+
+
 class Case(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
