@@ -1,6 +1,7 @@
 """
-Tests for the vertical command (rpresolve.cmd_vertical): centre choice (face, edge, hand),
-clamping, one centre for a take, the review gate, the review sheet, and apply_vertical against
+Tests for the vertical command (rpresolve.cmd_vertical): centre choice (edge by default, face on
+request, hand), clamping, one centre for a take, the review gate, the review sheet, the 9:16
+preview, the --out folder, and apply_vertical against
 the shared Resolve fakes: the [auto]-only guard, refusals, dry run, plan_sha, Scaling 3, the
 Pan formula, the pivot, centre and size of the two comp kinds, and the read-back.
 
@@ -8,6 +9,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
 import copy
+import io
 import json
 import os
 import subprocess
@@ -42,7 +44,7 @@ class TestPlan(unittest.TestCase):
         self.assertAlmostEqual(HW, 0.5 * 9 / 16 / (16 / 9))
 
     def test_face_centre_is_x_over_source_width(self):
-        c = v.plan([item("a", "/m/a.mov", 0, 4)], planner=face_at(2400))
+        c = v.plan([item("a", "/m/a.mov", 0, 4)], mode="face", planner=face_at(2400))
         r = c["items"][0]
         self.assertEqual((r["cx"], r["how"], r["status"]), (0.625, "face", "pass"))
         self.assertEqual((c["aspect"], c["reviewed"]), ("9x16", False))
@@ -54,16 +56,16 @@ class TestPlan(unittest.TestCase):
         def planner(items, **kw):
             seen.update(kw, items=items)
             return face_at(1920)(items)
-        v.plan([item("a", "/m/a.mov", 1, 4)], planner=planner)
+        v.plan([item("a", "/m/a.mov", 1, 4)], mode="face", planner=planner)
         self.assertEqual((seen["aspect"], seen["master_size"], seen["scaling"]),
                          ("9x16", [1080, 1920], "scaleToCrop"))
         self.assertEqual((seen["items"][0]["in"], seen["items"][0]["out"]), (1.0, 4.0))
 
     def test_a_fallback_passes_other_statuses_use_the_edge(self):
-        c = v.plan([item("a", "/m/a.mov", 0, 4, crop_x=0.3)], planner=face_at(2400, "fallback"))
+        c = v.plan([item("a", "/m/a.mov", 0, 4, crop_x=0.3)], mode="face", planner=face_at(2400, "fallback"))
         self.assertEqual((c["items"][0]["how"], c["items"][0]["status"]), ("face", "fallback"))
         for status in ("manual", "no_face", "bars"):
-            c = v.plan([item("a", "/m/a.mov", 0, 4, crop_x=0.3)], planner=face_at(2400, status))
+            c = v.plan([item("a", "/m/a.mov", 0, 4, crop_x=0.3)], mode="face", planner=face_at(2400, status))
             r = c["items"][0]
             self.assertEqual((r["how"], r["status"]), ("edge", status))
             self.assertAlmostEqual(r["cx"], 0.5 + (0.3 - 0.5) * (1 - 2 * HW), places=4)
@@ -71,9 +73,17 @@ class TestPlan(unittest.TestCase):
     def test_edge_without_a_crop_is_the_middle_and_a_planner_error_is_kept(self):
         def boom(items, **kw):
             raise reframe.ReframeError("no ffmpeg")
-        r = v.plan([item("a", "/m/a.mov", 0, 4)], planner=boom)["items"][0]
+        r = v.plan([item("a", "/m/a.mov", 0, 4)], mode="face", planner=boom)["items"][0]
         self.assertEqual((r["cx"], r["how"], r["status"], r["reason"]),
                          (0.5, "edge", "face_error", "no ffmpeg"))
+
+    def test_edge_is_the_default_and_the_planner_is_not_asked(self):
+        planner = mock.Mock()
+        c = v.plan([item("a", "/m/a.mov", 0, 4, crop_x=0.9)], planner=planner)
+        planner.assert_not_called()
+        self.assertEqual((c["items"][0]["how"], c["items"][0]["status"]), ("edge", "edge"))
+        self.assertEqual(v.plan([item("a", "/m/a.mov", 0, 4)], mode="face",
+                                planner=face_at(2400))["items"][0]["how"], "face")
 
     def test_edge_mode_never_calls_the_planner(self):
         planner = mock.Mock()
@@ -83,15 +93,15 @@ class TestPlan(unittest.TestCase):
 
     def test_a_hand_override_wins_by_name_or_number(self):
         items = [item("a", "/m/a.mov", 0, 4), item("b", "/m/b.mov", 0, 4)]
-        c = v.plan(items, overrides={"a": 0.3, "#2": 0.7}, planner=face_at(2400))
+        c = v.plan(items, overrides={"a": 0.3, "#2": 0.7}, mode="face", planner=face_at(2400))
         self.assertEqual([(r["cx"], r["how"]) for r in c["items"]], [(0.3, "hand"), (0.7, "hand")])
         with self.assertRaisesRegex(v.VerticalError, "0 to 1"):
-            v.plan(items, overrides={"a": 1.5}, planner=face_at(2400))
+            v.plan(items, overrides={"a": 1.5}, mode="face", planner=face_at(2400))
 
     def test_the_centre_is_clamped_to_the_zoomed_window(self):
         for zoom in (1.0, 2.0):
             lo = HW / zoom
-            c = v.plan([item("a", "/m/a.mov", 0, 4, zoom=zoom)], planner=face_at(100))
+            c = v.plan([item("a", "/m/a.mov", 0, 4, zoom=zoom)], mode="face", planner=face_at(100))
             self.assertAlmostEqual(c["items"][0]["cx"], lo, places=4)
             c = v.plan([item("a", "/m/a.mov", 0, 4, zoom=zoom)], overrides={"a": 0.99})
             self.assertAlmostEqual(c["items"][0]["cx"], 1 - lo, places=4)
@@ -103,7 +113,7 @@ class TestPlan(unittest.TestCase):
             calls.append(items[0])
             return face_at(2400)(items)
         c = v.plan([item("a", "/m/a.mov", 0, 2), item("a", "/m/a.mov", 2, 5),
-                    item("b", "/m/a.mov", 9, 11), item("c", "/m/c.mov", 11, 12)], planner=planner)
+                    item("b", "/m/a.mov", 9, 11), item("c", "/m/c.mov", 11, 12)], mode="face", planner=planner)
         cx = [r["cx"] for r in c["items"]]
         self.assertEqual(cx[0], cx[1])
         self.assertEqual(len(calls), 3)  # the take, the gap, the other file
@@ -113,12 +123,12 @@ class TestPlan(unittest.TestCase):
 
     def test_a_hand_override_on_one_cut_of_a_take_stays_on_that_cut(self):
         c = v.plan([item("a", "/m/a.mov", 0, 2), item("a2", "/m/a.mov", 2, 5)],
-                   overrides={"a2": 0.3}, planner=face_at(2400))
+                   overrides={"a2": 0.3}, mode="face", planner=face_at(2400))
         self.assertEqual([r["cx"] for r in c["items"]], [0.625, 0.3])
 
     def test_a_take_shares_the_heads_override(self):
         c = v.plan([item("a", "/m/a.mov", 0, 2), item("a2", "/m/a.mov", 2, 5)],
-                   overrides={"a": 0.3}, planner=face_at(2400))
+                   overrides={"a": 0.3}, mode="face", planner=face_at(2400))
         self.assertEqual([r["cx"] for r in c["items"]], [0.3, 0.3])
 
     def test_bad_items_are_refused(self):
@@ -165,6 +175,83 @@ class TestSheet(unittest.TestCase):
                                        "-show_entries", "stream=width,height", "-of", "csv=p=0", s],
                                       capture_output=True, text=True).stdout.strip().split(",")
                 self.assertLess(max(int(x) for x in size), 2000)
+
+
+def ffprobe_json(ffmpeg, path):
+    out = subprocess.run([ffmpeg.replace("ffmpeg", "ffprobe"), "-v", "error", "-show_entries",
+                          "stream=codec_type,width,height:format=duration", "-of", "json", path],
+                         capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
+    return json.loads(out)
+
+
+def pixel(ffmpeg, video, t, x=270, y=480):
+    out = subprocess.run([ffmpeg, "-v", "error", "-ss", str(t), "-i", video, "-frames:v", "1",
+                          "-vf", f"crop=2:2:{x}:{y}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True, stdin=subprocess.DEVNULL).stdout
+    return tuple(out[:3])
+
+
+class TestPreview(unittest.TestCase):
+    def test_the_filter_cuts_the_window_the_sheet_draws(self):
+        row = {"index": 7, "cx": 0.5, "zoom": 1.0, "source_size": SRC}
+        self.assertTrue(v.preview_filter(row).startswith("crop=1215:2160:1312:0,scale=540:960,"))
+        self.assertIn("fps=30", v.preview_filter(row))
+        # zoomed in 2x: half the window, level with the middle of the frame
+        self.assertTrue(v.preview_filter({**row, "zoom": 2.0}).startswith("crop=607:1080:"))
+        self.assertIn(":540,", v.preview_filter({**row, "zoom": 2.0}))
+        # a centre past the edge never reads outside the source
+        self.assertIn(":0:0,", v.preview_filter({**row, "cx": 0.001}))
+        self.assertTrue(v.preview_filter({**row, "cx": 0.999}).startswith("crop=1215:2160:2625:0"))
+
+    def test_the_preview_follows_each_items_centre(self):
+        ffmpeg = reframe.FFMPEG
+        if not os.access(ffmpeg, os.X_OK):
+            self.skipTest("ffmpeg missing")
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "split.mp4")  # left half red, right half blue
+            subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "color=c=red:s=320x360:r=24:d=2", "-f", "lavfi", "-i",
+                            "color=c=blue:s=320x360:r=24:d=2", "-filter_complex", "hstack",
+                            "-pix_fmt", "yuv420p", clip], stdin=subprocess.DEVNULL, check=True)
+            crops = v.plan([{"name": "red", "path": clip, "in": 0, "out": 1, "size": [640, 360]},
+                            {"name": "blue", "path": clip, "in": 1.2, "out": 2.0,
+                             "size": [640, 360]}], mode="edge",
+                           overrides={"red": 0.2, "blue": 0.8})
+            out = os.path.join(d, "plan")
+            os.makedirs(out)
+            path = v.draft_preview(crops, out, ffmpeg=ffmpeg)
+            self.assertEqual(path, os.path.join(out, "preview.mp4"))
+            self.assertEqual(sorted(os.listdir(out)), ["preview.mp4"])  # no scratch left behind
+            info = ffprobe_json(ffmpeg, path)
+            self.assertEqual([(s["codec_type"], s["width"], s["height"]) for s in info["streams"]],
+                             [("video", 540, 960)])  # silent
+            self.assertAlmostEqual(float(info["format"]["duration"]), 1.8, delta=0.15)
+            r, g, b = pixel(ffmpeg, path, 0.5)
+            self.assertTrue(r > 200 and b < 80, (r, g, b))
+            r, g, b = pixel(ffmpeg, path, 1.4)
+            self.assertTrue(b > 200 and r < 80, (r, g, b))
+
+    def test_a_folder_in_a_git_tree_is_refused_and_nothing_is_made(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "repo", ".git"))
+            crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
+            for out in (os.path.join(d, "repo"), os.path.join(d, "repo", "new")):
+                with mock.patch.object(v, "_run") as run:
+                    with self.assertRaisesRegex(v.VerticalError, "git working tree"):
+                        v.draft_preview(crops, out)
+                run.assert_not_called()
+            self.assertEqual(os.listdir(os.path.join(d, "repo")), [".git"])
+
+    def test_a_cut_that_ffmpeg_cannot_make_names_the_item(self):
+        with tempfile.TemporaryDirectory() as d:
+            crops = v.plan([item("a", os.path.join(d, "missing.mov"), 0, 4)], mode="edge")
+            out = os.path.join(d, "plan")
+            ffmpeg = reframe.FFMPEG
+            if not os.access(ffmpeg, os.X_OK):
+                self.skipTest("ffmpeg missing")
+            with self.assertRaisesRegex(v.VerticalError, r"item 1 \(a\)"):
+                v.draft_preview(crops, out, ffmpeg=ffmpeg)
+            self.assertEqual(os.listdir(out), [])
 
 
 # --- fakes for apply ---------------------------------------------------------
@@ -264,6 +351,24 @@ class TestApply(unittest.TestCase):
         self.assertEqual([t["name"] for t in dry["targets"]], ["i0", "i1", "i2"])
         self.assertEqual(real["exit_status"], 0)
         self.assertEqual(len(real["results"]), 3)
+
+    def test_a_comp_left_as_it_was_is_named_in_the_dry_run_and_the_real_run(self):
+        matte = {"Merge1": {"Center": {1: 0.5, 2: 0.5}}}
+        self.items[0].comps["rp-fx person-matte-text"] = FComp(matte)
+        self.items[2].comps["rp-fx crop-window"] = FComp({})
+        want = [{"index": 1, "name": "i0", "comp": "rp-fx person-matte-text"},
+                {"index": 3, "name": "i2", "comp": "rp-fx crop-window"}]
+        dry, real = self.real()
+        self.assertEqual(dry["unmoved_comps"], want)
+        self.assertEqual(real["unmoved_comps"], want)  # read from the copy
+        self.assertEqual(real["exit_status"], 0)
+        c0 = self.target().tracks["video"][0][0].comps
+        self.assertEqual(c0["rp-fx person-matte-text"].tools["Merge1"].values["Center"],
+                         {1: 0.5, 2: 0.5})  # not moved
+        self.assertEqual(self.refresh.call_count, 4)  # and not refreshed: only the two moved kinds
+
+    def test_nothing_unmoved_is_an_empty_list(self):
+        self.assertEqual(self.go()["unmoved_comps"], [])
 
     def test_pan_formula_is_resolves_pan_for_a_centred_tilt_zero_crop(self):
         for src, zoom, cx in (((3840, 2160), 1.2, 0.3), ((6048, 4032), 1.0, 0.62),
@@ -469,6 +574,66 @@ class TestCommand(unittest.TestCase):
             self.assertFalse(json.load(open(crops, encoding="utf-8"))["reviewed"])
             self.assertEqual(cli.main(["review", crops], module=v), 0)
             self.assertTrue(json.load(open(crops, encoding="utf-8"))["reviewed"])
+
+    def plan_cli(self, d, *extra, out="out"):
+        from rpresolve import cli
+        items = os.path.join(d, "items.json")
+        with open(items, "w") as f:
+            json.dump([item("a", "/m/a.mov", 0, 4, crop_x=0.4)], f)
+        return cli.main(["vertical", "plan", items, "--out", os.path.join(d, out), "--no-sheet"]
+                        + list(extra))
+
+    def test_the_face_planner_runs_only_when_asked_for(self):
+        found = face_at(1920)([])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(reframe, "plan_items", return_value=found) as planner:
+                self.assertEqual(self.plan_cli(d), 0)
+                planner.assert_not_called()
+                self.assertEqual(self.plan_cli(d, "--centre", "face", out="face"), 0)
+                planner.assert_called_once()
+
+    def test_an_existing_folder_is_refused_in_plain_words_and_left_alone(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "out"))
+            open(os.path.join(d, "file"), "w").close()
+            for name in ("out", "file"):
+                err = io.StringIO()
+                with mock.patch("sys.stderr", err):
+                    self.assertEqual(self.plan_cli(d, out=name), 1)
+                self.assertIn("already exists", err.getvalue())
+                self.assertIn("does not exist yet", err.getvalue())
+                self.assertNotIn("give a file path", err.getvalue())
+            self.assertEqual(os.listdir(os.path.join(d, "out")), [])  # nothing written, not removed
+            self.assertTrue(os.path.isfile(os.path.join(d, "file")))
+
+    def test_a_plan_that_fails_leaves_no_folder_to_block_the_re_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            from rpresolve import cli
+            items = os.path.join(d, "items.json")
+            with open(items, "w") as f:
+                json.dump([item("a", "/m/a.mov", 0, 4)], f)
+            args = ["vertical", "plan", items, "--out", os.path.join(d, "out")]
+            with mock.patch.object(v, "review_sheets", side_effect=v.VerticalError("no frame")):
+                self.assertEqual(cli.main(args), 1)
+            self.assertFalse(os.path.exists(os.path.join(d, "out")))
+            with mock.patch.object(v, "review_sheets", return_value=["review-01.jpg"]):
+                self.assertEqual(cli.main(args), 0)
+
+    def test_draft_is_a_command_and_refuses_a_git_tree(self):
+        from rpresolve import cli
+        with tempfile.TemporaryDirectory() as d:
+            crops = os.path.join(d, "crops.json")
+            with open(crops, "w") as f:
+                json.dump(v.plan([item("a", "/m/a.mov", 0, 4)]), f)
+            os.makedirs(os.path.join(d, "repo", ".git"))
+            err = io.StringIO()
+            with mock.patch("sys.stderr", err):
+                self.assertEqual(cli.main(["vertical", "draft", crops, "--out",
+                                           os.path.join(d, "repo")]), 1)
+            self.assertIn("git working tree", err.getvalue())
+            with mock.patch.object(v, "draft_preview", return_value="p") as draft:
+                self.assertEqual(cli.main(["vertical", "draft", crops]), 0)
+            draft.assert_called_once_with(crops, d)  # the plan's own folder by default
 
 
 if __name__ == "__main__":
