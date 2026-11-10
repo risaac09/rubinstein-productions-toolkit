@@ -1,0 +1,1 @@
+assemble_timeline tags the clips it imports from what detect found (Input Color Space and Data Level, read back, colour-managed projects only), lists detect's colour space and the clip's current one per source in the dry run, and reports a log source already in the pool that reads Rec.709; new trap T30

@@ -3,7 +3,9 @@ Tests for the assemble command (rpresolve.cmd_assemble): the offline plan (frame
 manifest's rate, a continued take, a dissolve as a Cross Dissolve, the end black) and
 apply_assemble against the shared Resolve fakes: the [auto]-only guard, the frame-rate
 refusal, dry run and plan_sha, clips cut at their own rate onto a 24 fps timeline, the
-static scale, the music with its fade, and the read-back.
+static scale, the music with its fade, and the read-back, and the colour handling
+(T30): detect's colour space per source in the dry run, the tag written and read back on a
+new import, a clip already in the pool never written, an unmanaged project left alone.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
@@ -22,7 +24,24 @@ sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
 from rpresolve import cmd_assemble as a  # noqa: E402
+from rpresolve import detect  # noqa: E402
 from rpresolve.workflows import Refused  # noqa: E402
+
+UNTAGGED = "Rec.709 (Scene)"  # what an import with no tag reads on a colour-managed project
+
+
+def drow(path, cs=detect.CS_VLOG, profile="V-Log", level="full", note=""):
+    """A detect row, as detect.detect_paths returns it."""
+    return {"path": path, "camera": "Test Cam", "profile": profile, "input_color_space": cs,
+            "data_level": level, "vfr": "no", "confidence": "high" if cs else "low",
+            "rule": "4", "note": note}
+
+
+def set_clip_property(clip, key, value):
+    """The fake clip's SetClipProperty (resolve_fakes.Clip has none): the write lands."""
+    rf._log(clip, "SetClipProperty", key, value)
+    clip.props[key] = value
+    return True
 
 
 class Base(unittest.TestCase):
@@ -34,11 +53,20 @@ class Base(unittest.TestCase):
         self.one, self.two, self.song = (os.path.join(d, n) for n in ("one.mov", "two.mov", "song.m4a"))
         for p in (self.one, self.two, self.song):
             Path(p).write_bytes(b"x")
-        props = {self.one: {"FPS": "30.0"}, self.two: {"FPS": "60.0"},
+        tag = {"Input Color Space": UNTAGGED, "Data Level": "Auto"}
+        props = {self.one: {"FPS": "30.0", **tag}, self.two: {"FPS": "60.0", **tag},
                  self.song: {"FPS": "", "Type": "Audio"}}
         patch = mock.patch.dict(rf.IMPORT_PROPS, props)
         patch.start()
         self.addCleanup(patch.stop)
+        # detect never runs ffprobe here: both files are V-Log from one camera
+        self.detected = {self.one: drow(self.one), self.two: drow(self.two)}
+        for new in (mock.patch.object(
+                        detect, "detect_paths",
+                        lambda paths: ([self.detected[p] for p in paths if p in self.detected], [])),
+                    mock.patch.object(rf.Clip, "SetClipProperty", set_clip_property, create=True)):
+            new.start()
+            self.addCleanup(new.stop)
         self.manifest = {
             "version": 2, "speech": False, "fps": 24,
             "sources": [{"id": "s1", "path": self.one}, {"id": "s2", "path": self.two}],
@@ -198,6 +226,232 @@ class TestApply(Base):
         self.assertEqual(r["exit_status"], 1)
         self.assertIn("item 3 is 5 frames, planned 6", r["problems"])
         self.assertEqual(r["left_behind"], "Shoot m v1 [auto]")
+
+
+class TestColour(Base):
+    """T30: an untagged clip keeps Rec.709, so a log source needs its Input Color Space."""
+
+    def pool_clip(self, path, cs=UNTAGGED, bin_name="methods [auto]"):
+        """A clip that was in the media pool before the run, in the named bin."""
+        clip = rf.Clip(os.path.basename(path), "pre-" + os.path.basename(path),
+                       {"File Path": path, "FPS": "60.0", "Input Color Space": cs,
+                        "Data Level": "Auto"})
+        self.project.pool.root.subs.append(rf.Folder(bin_name, [clip]))
+        return clip
+
+    @staticmethod
+    def writes():
+        return [c for c in rf.CALLS if c[1] == "SetClipProperty"]
+
+    def rows(self, r):
+        return {os.path.basename(x["path"]): x for x in r["colour"]["sources"]}
+
+    def test_the_dry_run_lists_a_colour_row_per_source_and_writes_nothing(self):
+        self.pool_clip(self.two)
+        dry = self.go()
+        rows = self.rows(dry)
+        self.assertEqual(list(rows), ["one.mov", "two.mov"])  # no row for the music
+        self.assertEqual((rows["one.mov"]["detected"], rows["one.mov"]["in_pool"],
+                          rows["one.mov"]["current"], rows["one.mov"]["action"]),
+                         (detect.CS_VLOG, False, None, "tag"))
+        self.assertEqual((rows["two.mov"]["detected"], rows["two.mov"]["in_pool"],
+                          rows["two.mov"]["current"], rows["two.mov"]["action"]),
+                         (detect.CS_VLOG, True, UNTAGGED, "left"))
+        self.assertIn("detect says", rows["two.mov"]["flag"])
+        self.assertEqual(dry["problems"], [])  # the dry run shows it; the real run reports it
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.writes(), [])
+
+    def test_a_new_import_is_tagged_and_read_back(self):
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"], r["left_behind"]), (0, [], None))
+        clips = {c.props["File Path"]: c for c in self.project.pool.root.subs[0].clips}
+        for path in (self.one, self.two):
+            self.assertEqual((clips[path].props["Input Color Space"], clips[path].props["Data Level"]),
+                             (detect.CS_VLOG, "Full"))
+        self.assertNotIn("Input Color Space", clips[self.song].props)  # the music is not picture
+        self.assertEqual(len(self.writes()), 4)
+        for x in r["colour"]["sources"]:
+            self.assertEqual((x["result"], x["current"]), ("tagged", detect.CS_VLOG))
+
+    def test_a_clip_in_the_pool_is_never_written_and_a_mis_tagged_log_one_is_a_problem(self):
+        pre = self.pool_clip(self.two)
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(pre.props["Input Color Space"], UNTAGGED)
+        self.assertEqual(pre.props["Data Level"], "Auto")
+        self.assertEqual(len(self.writes()), 2)  # one.mov alone: Input Color Space, Data Level
+        line = next(x for x in r["problems"] if "two.mov" in x)
+        self.assertIn(detect.CS_VLOG, line)
+        self.assertIn(UNTAGGED, line)
+        self.assertEqual((r["exit_status"], r["left_behind"]), (1, "Shoot m v1 [auto]"))
+        self.assertEqual(self.rows(r)["one.mov"]["result"], "tagged")
+
+    def test_a_file_in_another_bin_gets_its_own_tagged_import(self):
+        # The build reuses only a clip in 'methods [auto]'; any other file is imported again,
+        # and that new clip is the one on the timeline. The dry run and the real run read it.
+        pre = self.pool_clip(self.one, cs=detect.CS_VLOG, bin_name="Source")
+        dry = self.go()
+        row = self.rows(dry)["one.mov"]
+        self.assertEqual((row["action"], row["in_pool"], row["current"], row["flag"]),
+                         ("tag", True, None, ""))
+        self.assertIn("also in another bin", row["note"])
+        self.assertTrue(any("one.mov: also in another bin" in x for x in dry["colour"]["notes"]))
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"], r["left_behind"]), (0, [], None))
+        self.assertEqual((pre.props["Input Color Space"], pre.props["Data Level"]),
+                         (detect.CS_VLOG, "Auto"))  # the existing clip is not touched
+        self.assertEqual(len(self.writes()), 4)
+        new = next(c for c in self.project.pool.root.subs[-1].clips if c.props["File Path"] == self.one)
+        self.assertIsNot(new, pre)
+        self.assertEqual((new.props["Input Color Space"], new.props["Data Level"]),
+                         (detect.CS_VLOG, "Full"))
+        self.assertEqual((self.rows(r)["one.mov"]["result"], self.rows(r)["one.mov"]["current"]),
+                         ("tagged", detect.CS_VLOG))
+
+    def hand_back(self, reads):
+        """A real run where ImportMedia answers the pooled one.mov itself, not a copy; returns
+        the result and that clip. Whether Resolve duplicates a pooled file is not measured."""
+        pre = self.pool_clip(self.one, cs=reads, bin_name="Source")
+        real = rf.Pool.ImportMedia
+
+        def hand_back(pool, paths):
+            return real(pool, [x for x in paths if x != self.one]) + [pre]
+
+        with mock.patch.object(rf.Pool, "ImportMedia", hand_back):
+            r = self.go(dry_run=False)
+        self.assertEqual((pre.props["Input Color Space"], pre.props["Data Level"]), (reads, "Auto"))
+        self.assertEqual(len(self.writes()), 2)  # two.mov alone: the existing clip is never written
+        row = self.rows(r)["one.mov"]
+        self.assertEqual((row["action"], row["current"]), ("tag", reads))
+        self.assertIn("already in the pool", row["result"])
+        return r
+
+    def test_an_import_that_hands_back_a_pooled_clip_reports_it_when_it_reads_rec709(self):
+        r = self.hand_back(UNTAGGED)
+        self.assertEqual(len([x for x in r["problems"] if "one.mov" in x]), 1)
+        self.assertEqual((r["exit_status"], r["left_behind"]), (1, "Shoot m v1 [auto]"))
+
+    def test_an_import_that_hands_back_a_pooled_clip_is_fine_when_it_reads_its_space(self):
+        r = self.hand_back(detect.CS_VLOG)
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+
+    def test_clips_that_reached_the_bin_since_the_plan_are_not_written(self):
+        # colour_plan said 'tag' for both; by the build both are in the bin, so nothing is
+        # imported (no music either, so no pool snapshot is taken) and only 'was it imported?'
+        # stands in the way
+        self.manifest["music"] = None
+        real_plan = a.colour_plan
+        pre = [rf.Clip(os.path.basename(x), "pre-" + os.path.basename(x),
+                       {"File Path": x, "FPS": "60.0", "Input Color Space": UNTAGGED,
+                        "Data Level": "Auto"}) for x in (self.one, self.two)]
+
+        def stale(project, root, p):
+            rows = real_plan(project, root, p)
+            root.subs.append(rf.Folder("methods [auto]", pre))
+            return rows
+
+        with mock.patch.object(a, "colour_plan", stale):
+            r = self.go(dry_run=False)
+        self.assertEqual([c for c in rf.CALLS if c[1] == "ImportMedia"], [])
+        self.assertEqual(self.writes(), [])
+        self.assertEqual([c.props["Input Color Space"] for c in pre], [UNTAGGED, UNTAGGED])
+        self.assertEqual(len([x for x in r["problems"] if x.startswith("colour:")]), 2)
+        for row in self.rows(r).values():
+            self.assertIn("already in the pool", row["result"])
+
+    def test_a_clip_that_reads_its_detected_space_is_fine(self):
+        self.pool_clip(self.two, cs=detect.CS_VLOG)
+        r = self.go(dry_run=False)
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+
+    def test_a_display_source_on_rec709_is_fine(self):
+        self.detected[self.two] = drow(self.two, cs=detect.CS_REC709, profile="SDR")
+        self.pool_clip(self.two)
+        r = self.go(dry_run=False)
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+
+    def test_an_unmanaged_project_writes_nothing_and_says_so(self):
+        self.project.settings["colorScienceMode"] = "davinciYRGB"
+        self.pool_clip(self.two)
+        r = self.go(dry_run=False)
+        self.assertEqual(self.writes(), [])
+        self.assertFalse(r["colour"]["managed"])
+        self.assertTrue(any("not colour" in x or "Color Managed" in x for x in r["colour"]["notes"]))
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))  # the tags would do nothing
+        self.assertEqual({x["action"] for x in r["colour"]["sources"]}, {"none", "left"})
+
+    def test_a_source_detect_cannot_pin_gets_a_note_and_no_tag(self):
+        self.detected[self.one] = drow(self.one, cs="", profile=detect.REVIEW, note="no gamma tag")
+        r = self.go(dry_run=False)
+        row = self.rows(r)["one.mov"]
+        self.assertEqual((row["action"], row["detected"]), ("none", ""))
+        self.assertIn("detect could not pin a profile: no gamma tag", row["note"])
+        self.assertTrue(any("one.mov" in x for x in r["colour"]["notes"]))
+        self.assertEqual(len(self.writes()), 2)  # two.mov alone
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+
+    def test_detect_failing_is_a_note_and_the_build_goes_on(self):
+        def broken(paths):
+            raise detect.ToolMissing("ffprobe not found")
+        with mock.patch.object(detect, "detect_paths", broken):
+            r = self.go(dry_run=False)
+        self.assertEqual(self.writes(), [])
+        self.assertIn("detect did not run: ffprobe not found", r["colour"]["notes"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertIsNotNone(r["created"])
+
+    def test_a_tag_that_does_not_land_is_a_problem(self):
+        def stuck(clip, key, value):
+            rf._log(clip, "SetClipProperty", key, value)
+            return True  # Resolve says yes and the property does not change
+        with mock.patch.object(rf.Clip, "SetClipProperty", stuck):
+            r = self.go(dry_run=False)
+        self.assertTrue(any("colour: one.mov" in x and "read back" in x for x in r["problems"]))
+        self.assertTrue(self.rows(r)["one.mov"]["result"].startswith("FAILED"))
+        self.assertEqual((r["exit_status"], r["left_behind"]), (1, "Shoot m v1 [auto]"))
+
+    def test_sources_of_two_colour_spaces_get_a_note(self):
+        self.detected[self.two] = drow(self.two, cs=detect.CS_HLG, profile="HLG")
+        r = self.go()
+        self.assertTrue(any("more than one input colour space" in x for x in r["colour"]["notes"]))
+
+    def test_the_plan_sha_covers_the_colour_rows(self):
+        dry = self.go()
+        self.pool_clip(self.two)  # tagged by hand between the dry run and the real one
+        with self.assertRaisesRegex(Refused, "plan changed"):
+            self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(rf.mutating_calls(), [])
+
+    def mcp(self, **kw):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("assemble_timeline")
+        path = os.path.join(os.path.realpath(self.tmp.name), "m.json")
+        with open(path, "w") as f:
+            json.dump(self.manifest, f)
+        env = {"RPRESOLVE_MCP_JOURNAL": os.path.join(self.tmp.name, "writes.jsonl"),
+               "RPRESOLVE_LOCK": os.path.join(self.tmp.name, "lock")}
+        args = {"project": self.project.GetName(), "name": "Shoot m v1 [auto]", "manifest": path, **kw}
+        with mock.patch.dict(os.environ, env):
+            return tool.handler(schema.with_defaults(tool.input_schema, args),
+                                ToolContext(session=rf.Session(self.resolve)))
+
+    def test_the_mcp_summary_names_the_colour_work(self):
+        self.pool_clip(self.two)
+        dry = self.mcp()
+        self.assertIn("colour: 1 to tag; in the pool before this run, log by detect and "
+                      "reading Rec.709: two.mov", dry["summary"])
+        real = self.mcp(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertIn("colour: two.mov: detect says", real["summary"])  # a problem is named
+
+    def test_the_mcp_summary_counts_the_tags_a_clean_real_run_wrote(self):
+        dry = self.mcp()
+        self.assertIn("colour: 2 to tag", dry["summary"])
+        real = self.mcp(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertIn("built and read back", real["summary"])
+        self.assertTrue(real["summary"].endswith("; colour: 2 of 2 tagged"))
 
 
 if __name__ == "__main__":

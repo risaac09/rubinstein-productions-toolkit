@@ -19,6 +19,16 @@ TimelineItem.AddTransition (Cross Dissolve, centred on the cut) and read back; a
 transition is listed under not_built (the manifest's `effects` and `ui_steps` are other
 tools' work).
 Everything placed is read back.
+
+Colour (resolve-traps.md T30). A clip with no Input Color Space tag keeps Rec.709, so a log
+file imported here would render in log. The dry run therefore runs `detect` on every source
+and lists, per file, the input colour space detect found and what the clip reads when it is
+already in the 'methods [auto]' bin. The real run does what `ingest` does for its own imports
+and no more: a clip this run imports (a new clip, even when the same file sits in another bin)
+and detect can pin gets Input Color Space (and Data Level) through the checked write, on a
+colour-managed project only. A clip that was in the pool before the run is never written, by
+clip id; when detect calls it log and it reads Rec.709 the run reports a problem. A file detect
+cannot pin gets a note and no tag.
 """
 
 import json
@@ -26,6 +36,8 @@ import math
 import os
 
 from rpresolve import api, cli, cutlist
+from rpresolve import detect as rpdetect
+from rpresolve import ingest as rpingest
 from rpresolve.workflows import AUTO, Refused, _check, plan_sha
 
 NAME = "assemble"
@@ -35,6 +47,8 @@ BIN = "methods [auto]"
 SIZE = (3840, 2160)
 MIN_FADE = 12          # frames of music fade when the method ends without black
 TOUCH_S = 0.02         # two spans of one file this close in time are one continuous take
+# detect's spaces that are display video already; any other pinned space needs its input tag
+DISPLAY_SPACES = {rpdetect.CS_REC709, rpdetect.CS_CAMERA_SDR, rpdetect.CS_SRGB}
 
 
 def _black_frames(manifest, fps):
@@ -104,14 +118,104 @@ def _bin(media_pool, root, make):
     return media_pool.AddSubFolder(root, BIN) if make else None
 
 
+def _all_clips(root):
+    """Every clip in the media pool, all bins."""
+    stack = [root]
+    while stack:
+        folder = stack.pop()
+        yield from folder.GetClipList() or []
+        stack.extend(folder.GetSubFolderList() or [])
+
+
+def _pool_paths(root):
+    """The normalised File Path of every clip in the media pool, all bins."""
+    return {rpingest.norm_path(p) for p in (c.GetClipProperty("File Path") for c in _all_clips(root))
+            if p}
+
+
+def _wrong(detected, current):
+    """A problem line when detect pins a space that is not display video (log, HLG) and the
+    clip reads Rec.709: the picture would render unconverted."""
+    if (detected and detected not in DISPLAY_SPACES and detected != rpdetect.CS_CAMERA_RAW
+            and str(current or "").startswith("Rec.709")):
+        return (f"detect says '{detected}' and the clip reads '{current}'; it was in the pool "
+                f"before this run, so it is left as it is. Set its Input Color Space in "
+                f"Resolve or it renders without its input transform (T30)")
+    return ""
+
+
+def colour_plan(project, root, p):
+    """Read-only: {managed, science, sources, notes}. One source row per picture file, in
+    span order: {path, camera, profile, detected, data_level, in_pool, current, action,
+    flag, note}. detected is detect's input colour space ('' when it cannot pin the file),
+    in_pool whether the file is a clip anywhere in the pool, current what the clip the
+    timeline will use reads (None when this run will import it). The build reuses a clip in
+    the 'methods [auto]' bin and imports any other file as a new clip, so action is 'left'
+    (in that bin before this run: never written), 'tag' (a new import detect can pin: the
+    build writes it, even when the file also sits in another bin) or 'none' (nothing to
+    write; the note says why)."""
+    science = str(project.GetSetting("colorScienceMode") or "")
+    managed = science.startswith("davinciYRGBColorManaged")
+    paths = list(dict.fromkeys(r["path"] for r in p["spans"]))
+    notes, err = [], ""
+    try:
+        rows, _ = rpdetect.detect_paths(paths)
+    except rpdetect.DetectError as e:
+        rows, err = [], f"detect did not run: {e}"
+        notes.append(err)
+    folder = _bin(None, root, make=False)  # the build's own test: a File Path in this bin is reused
+    in_bin = {c.GetClipProperty("File Path"): c for c in folder.GetClipList() or []} if folder else {}
+    pool = _pool_paths(root)
+    det = {rpingest.norm_path(r["path"]): r for r in rows}
+    ent = {rpingest.norm_path(e["path"]): e
+           for e in rpingest.plan_ingest(rows, list(in_bin), parent=BIN)}
+    sources = []
+    for path in paths:
+        key = rpingest.norm_path(path)
+        d, e, clip = det.get(key), ent.get(key), in_bin.get(path)
+        row = {"path": path, "camera": (d or {}).get("camera", ""),
+               "profile": (d or {}).get("profile", ""),
+               "detected": (d or {}).get("input_color_space", ""),
+               "data_level": rpingest.DATA_LEVELS.get((d or {}).get("data_level", ""), ""),
+               "in_pool": key in pool,
+               "current": str(clip.GetClipProperty("Input Color Space") or "") if clip else None,
+               "action": "none", "flag": "", "note": ""}
+        if clip is not None:
+            row["action"] = "left"
+            row["flag"] = _wrong(row["detected"], row["current"]) if managed else ""
+        elif e is None:
+            row["note"] = err or "detect gave no row for this file; not tagged"
+        elif not managed:
+            row["note"] = "project is not colour managed; nothing is written"
+        elif e["action"] == rpingest.TAG:
+            row["action"] = "tag"
+            if row["in_pool"]:
+                row["note"] = ("also in another bin; this run imports its own copy and tags "
+                               "that one, the existing clip is not touched")
+        else:
+            row["note"] = e["reason"] + "; not tagged"
+        sources.append(row)
+    if not managed:
+        notes.append(f"colorScienceMode is '{science}': Input Color Space tags only take effect "
+                     "under DaVinci YRGB Color Managed, so none is written")
+    spaces = sorted({r["detected"] for r in sources if r["detected"]})
+    if len(spaces) > 1:
+        notes.append("the sources carry more than one input colour space ("
+                     + "; ".join(spaces) + "): one edit uses one camera profile")
+    notes.extend(f"{os.path.basename(r['path'])}: {r['note']}" for r in sources
+                 if r["note"] and managed and not err)
+    return {"managed": managed, "science": science, "sources": sources, "notes": notes}
+
+
 def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=SIZE[1],
                    dry_run=True, project_id=None, expect_sha=None, check_cancel=None):
     """Build the manifest as a new timeline `name` (must end ' [auto]'). Refused, writing
     nothing: a name that exists, a manifest whose fps is not the project's timeline rate
     (a scripted timeline takes the project's), a source or music file that is missing.
-    Returns {project, timeline, rate, size, plan, plan_sha, dry_run, created, items,
-    audio, problems, left_behind, ui_restore_problems, exit_status}; exit_status 1 when a
-    read-back differs. A timeline that was made and is not right is left in place and
+    Returns {project, timeline, rate, size, plan, colour, plan_sha, dry_run, created, items,
+    audio, problems, left_behind, ui_restore_problems, exit_status}; colour is colour_plan's
+    rows (shown by the dry run, completed by the real one); exit_status 1 when a read-back
+    differs or a clip that was in the pool is log by detect and reads Rec.709. A timeline that was made and is not right is left in place and
     named under left_behind: nothing is deleted."""
     from rpresolve import deliver
     if not name.endswith(AUTO):
@@ -132,16 +236,19 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     if not tl_fps or abs(tl_fps - p["fps"]) > 0.01:
         raise Refused(f"the manifest runs at {p['fps']:g} fps and the project's timelines at "
                       f"'{rate}'; a scripted timeline takes the project's rate.")
-    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p)
+    colour = colour_plan(project, root, p)
+    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
-           "size": [width, height], "plan": p, "plan_sha": sha, "dry_run": dry_run,
+           "size": [width, height], "plan": p, "colour": colour, "plan_sha": sha,
+           "dry_run": dry_run,
            "created": None, "items": [], "transitions": [], "audio": None, "problems": [], "left_behind": None,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
     if expect_sha and expect_sha != sha:
-        raise Refused("the plan changed since the dry run (the manifest, the name or the "
-                      "project's frame rate differ); run the dry run again and review it")
+        raise Refused("the plan changed since the dry run (the manifest, the name, the "
+                      "project's frame rate or a source's colour differ); run the dry run "
+                      "again and review it")
     snap = api.UISnapshot(resolve, project)
     with snap:
         project = pin.check(pm)
@@ -161,12 +268,17 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     have = {c.GetClipProperty("File Path"): c for c in folder.GetClipList() or []}
     want = sorted({r["path"] for r in p["spans"]} | ({p["music"]["path"]} if p["music"] else set()))
     new = [x for x in want if x not in have]
+    imported = set()
+    before = {c.GetUniqueId() for c in _all_clips(root)} if new else set()
     if new:
         for c in media_pool.ImportMedia(new) or []:
             have[c.GetClipProperty("File Path")] = c
+            imported.add(c.GetClipProperty("File Path"))
     gone = [os.path.basename(x) for x in want if x not in have]
     if gone:
         raise api.WriteNotApplied("not imported: " + ", ".join(gone))
+    check()
+    _colour(out, have, imported, before)
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
@@ -223,6 +335,34 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         problems.append(f"stopped, the open project changed: {e}")
     except api.ResolveAPIError as e:
         problems.append(f"{type(e).__name__}: {e}")
+
+
+def _colour(out, have, imported, before):
+    """Before the timeline exists: tag what this run imported and detect pinned, through the
+    checked write ingest uses (Input Color Space, then Data Level), and report any clip that
+    was already in the pool. A clip is written only when ImportMedia returned it in this run
+    and its id is not in `before`, the ids in the pool ahead of the import; a row planned
+    'tag' whose clip turns out to have been there is read and reported like any other."""
+    problems = out["problems"]
+    for row in out["colour"]["sources"]:
+        clip, base = have[row["path"]], os.path.basename(row["path"])
+        if row["action"] == "tag" and row["path"] in imported and clip.GetUniqueId() not in before:
+            try:
+                row["current"] = api.set_clip_property_checked(
+                    clip, "Input Color Space", row["detected"])
+                if row["data_level"]:
+                    api.set_clip_property_checked(clip, "Data Level", row["data_level"])
+                row["result"] = "tagged"
+            except api.WriteNotApplied as e:
+                row["result"] = f"FAILED: {e}"
+                problems.append(f"colour: {base}: {e}")
+        elif row["action"] in ("tag", "left"):
+            if row["action"] == "tag":
+                row["result"] = "not written: the clip was already in the pool"
+            row["current"] = str(clip.GetClipProperty("Input Color Space") or "")
+            row["flag"] = _wrong(row["detected"], row["current"]) if out["colour"]["managed"] else ""
+            if row["flag"]:
+                problems.append(f"colour: {base}: {row['flag']}")
 
 
 def _music(tl, media_pool, clip, p, tl_fps, problems):
