@@ -214,7 +214,7 @@ def _media(mpi):
     return out
 
 
-def _item_row(item, track_type, track, index, grades):
+def _item_row(item, track_type, track, index, grades, clip=None):
     row = {"track": track, "index": index, "name": _call(item, "GetName"),
            "start": _call(item, "GetStart"), "end": _call(item, "GetEnd"),
            "duration": _call(item, "GetDuration"),
@@ -224,6 +224,7 @@ def _item_row(item, track_type, track, index, grades):
            "enabled": _call(item, "GetClipEnabled"),
            "media": _media(_call(item, "GetMediaPoolItem"))}
     if track_type == "video":
+        row["clip"] = clip  # apply_effect and vertical_apply number this way; None for a transition
         row["transform"] = {k: _call(item, "GetProperty", k) for k in TRANSFORM}
         if grades:
             g = grade.read_grade(item)
@@ -240,12 +241,19 @@ def timeline_items(args, ctx):
         wanted = [args["track"]] if args.get("track") else list(range(1, tracks + 1))
         if args.get("track") and args["track"] > tracks:
             raise ValueError(f"'{tl.GetName()}' has {tracks} {kind} track(s).")
-        entries = [(t, n, item) for t in wanted
-                   for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1)]
+        entries = []
+        for t in wanted:
+            clips = 0
+            for n, item in enumerate(_call(tl, "GetItemListInTrack", kind, t) or [], 1):
+                if api.is_clip(item):  # an item with no media pool clip has no clip number (T29)
+                    clips += 1
+                    entries.append((t, n, item, clips))
+                else:
+                    entries.append((t, n, item, None))
 
         def build(e):
             ctx.check_cancel()
-            return _item_row(e[2], kind, e[0], e[1], args["grades"] and kind == "video")
+            return _item_row(e[2], kind, e[0], e[1], args["grades"] and kind == "video", e[3])
         page = _page_lazy(entries, args, build)
         result = {"project": _project_info(project),
                   "timeline": {"index": index, "name": tl.GetName(),
@@ -258,7 +266,9 @@ def timeline_items(args, ctx):
     result["summary"] = (f"{result['total']} {kind} item(s) on '{result['timeline']['name']}'"
                          f" across {len(wanted)} track(s)")
     result["note"] = ("start/end are timeline frames; source_start/source_end count in the "
-                      "source clip's own frame rate.")
+                      "source clip's own frame rate. index is the raw track position, a dissolve "
+                      "included; on a video track clip is the clip number apply_effect and "
+                      "vertical_apply use (null for an item with no media pool clip).")
     return result
 
 
@@ -393,7 +403,9 @@ def register(registry):
         "timeline_items",
         "The items on one timeline's tracks: timeline and source frames, media file, input "
         "colour space and data level, and for video the transform (zoom, pan, crop) and the "
-        "grade (version, colour group, nodes with labels, LUTs and tools). Reads a timeline "
+        "grade (version, colour group, nodes with labels, LUTs and tools). index is the raw "
+        "track position, a dissolve included; a video row's clip is the clip number "
+        "apply_effect and vertical_apply count by (null for a dissolve). Reads a timeline "
         "without making it current.",
         obj({"timeline": {"type": "string", "description": "Timeline name or unique id."},
              "track_type": {"type": "string", "enum": list(TRACK_TYPES), "default": "video"},

@@ -11,7 +11,7 @@ The job, per shoot:
 3. `methods.to_manifest(method, fills)` returns a version 2 cut manifest. Write it to `PLAN_DIR/manifest.json`, outside any git tree.
 4. Drafts first: `python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR` renders each plan as a 720p proxy, one lettered sheet and the same drafts lettered in `DIR/send`; the pick is the plan that gets built ([Drafts](#drafts)).
 5. The MCP `assemble_timeline` tool builds the manifest as a new ` [auto]` timeline: each span from its clip at the clip's own frame rate, static scales, the dissolves, and the music on A1. When every source is at the timeline's rate, `python3 -m rpresolve.interchange MANIFEST --format fcpxml --out FILE` and `import_timeline` do the same from FCPXML ([interchange.md](interchange.md)).
-6. For each entry in the manifest's `effects`, `apply_effect` with that macro on item `span_index + 1` of V1 ([fusion-macros.md](fusion-macros.md)).
+6. For each entry in the manifest's `effects`, `apply_effect` with that macro on `spans: [span_index]` of V1, or on `items: [span_index + 1]`, the clip number ([fusion-macros.md](fusion-macros.md)). Both count clips, not the dissolves between them (`T29`); give one of the two, not both.
 7. Run the manifest's `method.ui_steps` through computer use, after asking for access ([UI steps](#ui-steps)), then `apply_grade` with the method's `look`, `create_captions` and `queue_render` as usual.
 
 Run from `production/`; stdlib only.

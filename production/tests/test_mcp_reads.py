@@ -132,6 +132,17 @@ class TestTimelineItems(Base):
         self.assertIsNone(r["rows"][2]["media"])  # the title on V2
         self.assertIs(self.project.current, self.project.timelines[1])
 
+    def test_clip_numbers_skip_an_item_with_no_media_pool_clip(self):
+        clip = rf.Clip("c", "id-c")
+        dissolve = rf.Item("Cross Dissolve", 5, 9, None, nodes=None)
+        row = [rf.Item("a", 0, 5, clip), dissolve, rf.Item("b", 9, 20, clip)]
+        self.project.timelines.append(rf.Timeline("dis", "tl-dis", tracks={"video": [row], "audio": [[]]}))
+        r = call("timeline_items", {"timeline": "tl-dis", "grades": False}, self.project)
+        self.assertEqual([(x["index"], x["clip"]) for x in r["rows"]], [(1, 1), (2, None), (3, 2)])
+        self.assertIn("clip number", r["note"])
+        audio = call("timeline_items", {"timeline": "tl-1", "track_type": "audio"}, self.project)
+        self.assertNotIn("clip", audio["rows"][0])
+
     def test_track_and_type_selection(self):
         r = call("timeline_items", {"timeline": "tl-1", "track": 2}, self.project)
         self.assertEqual([x["name"] for x in r["rows"]], ["title"])

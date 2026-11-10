@@ -213,7 +213,7 @@ def to_manifest(method, fills):
     join into a span carries the previous slot's dissolve; a static scale (start equal to
     end) is written as the span's scale. Added beside the manifest's own fields:
     `effects` [{span_index, effect, params?}] for apply_effect (span_index from 0, the
-    timeline's item number less one; a span may have several entries): a slot's effect,
+    timeline's clip number less one, which apply_effect takes as `spans`; a span may have several entries): a slot's effect,
     with `params.text` when the fill carries a `text` word and the effect is a text macro,
     or `params.gain` (1 to 20) when the fill carries a `gain` and the effect is exposure-flash,
     and a `retime` entry (`params.speed`) when the slot's speed is not 1. And `method` {id, aspect, look, end, ui_steps}: ui_steps
