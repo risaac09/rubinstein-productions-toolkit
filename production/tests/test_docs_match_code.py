@@ -22,7 +22,7 @@ PROD = HERE.parent
 ROOT = PROD.parent
 sys.path.insert(0, str(PROD))
 
-from rpresolve import grade, methods, reframe  # noqa: E402
+from rpresolve import cmd_effect, grade, methods, reframe  # noqa: E402
 
 ENV_READS = [re.compile(r"environ(?:\.get)?\s*[(\[]\s*[\"']([A-Z][A-Z0-9_]+)"),
              re.compile(r"getenv\(\s*[\"']([A-Z][A-Z0-9_]+)"),
@@ -120,8 +120,10 @@ class DocsMatchCode(unittest.TestCase):
         t17 = next(x for x in (PROD / "resolve-traps.md").read_text(encoding="utf-8").splitlines()
                    if x.startswith("- **T17."))
         self.assertIn("`min_fps` 30000/1001", t17)
-        self.assertIn(f"{float(Fraction(floors['social_9x16'])):.2f} fps floor", t17)
+        self.assertIn(f"`social_9x16` alone carries a {float(Fraction(floors['social_9x16'])):.2f} fps floor", t17)
         self.assertNotIn("prefer 30 fps", t17)
+        self.assertEqual(cfg["destinations"]["social_9x16_music"]["captions"], "none")
+        self.assertIn("`social_9x16_music` has no captions and no floor", t17)
 
     def test_t6_pan_has_no_separate_zoom_factor(self):
         # T6: Pan = shift x timeline width / fitted picture width, the shift already holding
@@ -141,8 +143,15 @@ class DocsMatchCode(unittest.TestCase):
         self.assertAlmostEqual(p["Pan"], (3840 / 2.0 - 1800.0) * 0.75, places=6)
         traps = (PROD / "resolve-traps.md").read_text(encoding="utf-8")
         t6 = next(x for x in traps.splitlines() if x.startswith("- **T6."))
-        self.assertIn("fitted picture width", t6)
+        # the doc's formula is the one above, with no zoom factor of its own
+        self.assertEqual(re.search(r"Pan = ([^,.]*)", t6).group(1),
+                         "shift x timeline width / fitted picture width")
         self.assertNotIn("scaled image width x item zoom", t6)
+        # Tilt carries the opposite sign: the shift is y down, Resolve's Tilt is y up
+        up = reframe.resolve_props(src, out, fit, (src[0] / 2.0, src[1] * 0.3), reframe.SCALE_TO_CROP)
+        self.assertLess(up["Tilt"], 0)
+        self.assertIn("Tilt is the same on the height with the opposite sign", t6)
+        self.assertIn("y down", t6)
 
     def test_dip_row_names_the_keys_the_setting_holds(self):
         text = (PROD / "fusion-macros" / "dip-to-black.setting").read_text(encoding="utf-8")
@@ -155,6 +164,31 @@ class DocsMatchCode(unittest.TestCase):
         row = next(x for x in doc.splitlines() if x.startswith("| `dip-to-black`"))
         self.assertIn(f"frames {fall[0]} to {fall[-1]}", row)
         self.assertIn("hold at 1.0 on frame 0", row)
+        # the row's list of values and its spacing are the .setting's
+        listed = re.search(r"Gain` 1\.0, then ([\d., ]+) every (\d+) frames", row)
+        self.assertEqual([float(v) for v in listed.group(1).split(",")], [keys[f] for f in fall[1:]])
+        self.assertEqual({b - a for a, b in zip(fall, fall[1:])}, {int(listed.group(2))})
+        # apply_effect moves every key together so the last lands on the item's last frame,
+        # which puts the hold before frame 0 on an item shorter than the macro (T25)
+        _, parsed = cmd_effect.load_macro("dip-to-black")
+
+        def moved(frames, source_frames):
+            k, off = cmd_effect.comp_timing(parsed, "dip-to-black", frames, source_frames)
+            spline = cmd_effect.shifted(cmd_effect.scaled(parsed, k), off)["Tools"][
+                "BrightnessContrast1Gain"]["KeyFrames"]
+            return sorted(f for f in spline if isinstance(f, int))
+        self.assertEqual(moved(112, 112)[-1], 111)
+        self.assertLess(moved(112, 112)[0], 0)
+        self.assertEqual(moved(168, 168)[0], 0)
+        self.assertGreater(moved(200, 200)[0], 0)
+        self.assertIn("shorter than the macro (T25)", row)
+        traps = (PROD / "resolve-traps.md").read_text(encoding="utf-8")
+        t25 = next(x for x in traps.splitlines() if x.startswith("- **T25."))
+        self.assertIn("item shorter than the macro", t25)
+        self.assertNotIn("longer than the macro", t25)
+        # T25's measured item: 90 frames of 112 source frames
+        keys25 = moved(90, 112)
+        self.assertIn(f"[{keys25[0]}, 0, {keys25[1]}, \u2026, {keys25[-1]}]", t25)
 
     def test_a_shipped_slot_holds_one_comp(self):
         # apply_effect refuses an item that already has a comp, so a slot's word needs a
@@ -166,17 +200,21 @@ class DocsMatchCode(unittest.TestCase):
                     self.assertIn(s["effect"], methods.TEXT_MACROS, f"{m['id']} slot {i}")
 
     def test_production_names_no_author(self):
-        # The repo is public: a procedure's actor is the operator (CLAUDE.md).
-        name = re.compile(r"\bIsaac\b")
+        # The repo is public: a procedure's actor is the operator (CLAUDE.md). Any text file
+        # under production/ (tests aside) may name the repo's own URL and nothing else of him.
+        name = re.compile(r"isaac|risaac09", re.I)
+        own_repo = "github.com/risaac09/rubinstein-productions-toolkit"
         hits = []
         for d, dirs, names in os.walk(PROD):
             dirs[:] = [x for x in dirs if not skipped_dir(x)]
             for n in names:
                 p = Path(d) / n
-                if p.suffix not in (".md", ".py", ".sh", ".json", ".mjs", ".js", ".setting"):
-                    continue
-                for k, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-                    if name.search(line):
+                try:
+                    lines = p.read_text(encoding="utf-8").splitlines()
+                except (UnicodeDecodeError, OSError):
+                    continue  # a binary file
+                for k, line in enumerate(lines, 1):
+                    if name.search(line.replace(own_repo, "")):
                         hits.append(f"{p.relative_to(ROOT)}:{k}")
         self.assertEqual(hits, [])
 
