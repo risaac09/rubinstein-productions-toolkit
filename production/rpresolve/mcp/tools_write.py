@@ -471,6 +471,21 @@ def apply_effect(args, ctx):
         return run() if args["dry_run"] else _journalled("apply_effect", args, run)
 
 
+def _colour_line(r):
+    """What the colour rows of an assemble_timeline result say, for its summary."""
+    c, rows = r["colour"], r["colour"]["sources"]
+    tag = [x for x in rows if x["action"] == "tag"]
+    bits = ([f"{len(tag)} to tag" if r["dry_run"] else
+             f"{sum(1 for x in tag if x.get('result') == 'tagged')} of {len(tag)} tagged"]
+            if tag else [])
+    flagged = [os.path.basename(x["path"]) for x in rows if x["flag"]]
+    if flagged:
+        bits.append("in the pool before this run, log by detect and reading Rec.709: "
+                    + ", ".join(flagged))
+    bits.extend(c["notes"])
+    return "; colour: " + "; ".join(bits) if bits else ""
+
+
 def assemble_timeline(args, ctx):
     _require_sha(args)
     manifest = _abs(args["manifest"], "manifest")
@@ -485,6 +500,7 @@ def assemble_timeline(args, ctx):
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
                 + (", music on A1" if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
+        skipped += _colour_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
         elif r["problems"]:
@@ -1089,9 +1105,16 @@ def register(registry):
         "own size and fill-and-crop scaling, a span's static scale becomes the item's zoom, "
         "and the music goes on A1 from the first frame through the end black, faded out. "
         "Nothing existing changes. Refused: a name that exists or does not end ' [auto]', a "
-        "manifest whose fps is not the project's timeline rate, a missing file. Dissolves "
-        "are placed as cuts and named in the plan; effects are apply_effect's work. Every "
-        "item's length is read back. Dry run first; the real run needs its plan_sha.",
+        "manifest whose fps is not the project's timeline rate, a missing file. A dissolve is "
+        "added with AddTransition (Cross Dissolve, centred on the cut) and its length read "
+        "back; any other transition is placed as a cut and named in the plan; effects are "
+        "apply_effect's work. Colour (T30): detect runs on every source and the result lists, "
+        "per file, the input colour space detect found and what a clip already in the pool "
+        "reads. On a colour-managed project a file this run imports and detect can pin gets "
+        "Input Color Space and Data Level (written and read back); a clip that was in the "
+        "pool is never written, and one that is log by detect and reads Rec.709 is a "
+        "problem; a file detect cannot pin gets a note. An unmanaged project is not tagged. "
+        "Every item's length is read back. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "name": {"type": "string", "description": "The new timeline's name, ending ' [auto]'."},
