@@ -25,6 +25,7 @@ Other docs cite these by number (`T3`). A number never changes; a corrected trap
 - **T22. Text+ fonts.** The family "Arial Black" set by script renders nothing. "Arial" with the style "Bold" works. Choose the real face in the Inspector.
 - **T23. Gain is linear light.** In a colour-managed project a linear gain ramp from 1 to 0 looks like a late snap. Key a dip in even stops (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0).
 - **T24. Transitions are scriptable.** `TimelineItem.AddTransition({type: 'Cross Dissolve', category: 'simple', position: 'end', alignment: 'center', duration: n})` returns the transition item, or None when the cut has no handles. Read `GetDuration()` back: a short handle would shorten the dissolve without a word. Measured 2026-11-09: three 2-frame Cross Dissolves added on a 48-item timeline, each read back at 2 frames.
+- **T25. A key before frame 0 gets a twin at 0.** When a spline's first keyframe is set at a negative comp frame (an end-anchored macro on an item longer than the macro), Fusion adds a key at frame 0 with the curve's value there. Harmless to the picture; a read-back that counts keys must allow it. Measured 2026-11-10: `dip-to-black` on a 90-frame item (112 source frames) read keys at [-97, 0, 88, …, 111] for a macro moved to [-97, 88, …, 111]; gain sampled 1.0 through frame 88 and 0.0 at 111.
 
 ## Framing
 

@@ -80,6 +80,10 @@ class FTool:
 
     def SetKeyFrames(self, keys, replace):
         self.keys = dict(keys)
+        if self.keys and min(self.keys) < 0 and 0 not in self.keys:
+            # as Fusion does (T25): a key at frame 0 when the first key sits before it
+            v = self.keys[min(self.keys)][1]
+            self.keys[0] = {1: v, "LH": {1: -1, 2: 0}, "RH": {1: 1, 2: 0}}
 
     def GetKeyFrames(self):
         return {float(f): k for f, k in self.keys.items()}

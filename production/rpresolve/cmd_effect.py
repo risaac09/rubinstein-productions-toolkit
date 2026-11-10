@@ -495,6 +495,10 @@ def _read_back(comp, effect, parsed, animated=()):
             kf = t.GetKeyFrames() or {}  # a spline answers {frame: key}
             got = sorted(int(round(float(f))) for f in kf)
             want = sorted(k for k in spec["KeyFrames"] if isinstance(k, int))
+            if want and want[0] < 0 and 0 in got and 0 not in want:
+                # Fusion adds a key at frame 0 when the first key sits before it (T25); it
+                # is on the curve, so the value check above covers it.
+                got.remove(0)
             if got != want:
                 problems.append(f"{name} keyframes at {got}, the macro has {want}")
     media_in, media_out = comp.FindTool("MediaIn1"), comp.FindTool("MediaOut1")
