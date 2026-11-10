@@ -600,6 +600,43 @@ class TestClipNumbering(Base):
         self.assertEqual(schema.validate(tool.input_schema, {**base, "spans": [0, 2]}), [])
         self.assertTrue(schema.validate(tool.input_schema, {**base, "spans": [-1]}))
         self.assertTrue(schema.validate(tool.input_schema, {**base, "items": [0]}))
+        self.assertTrue(schema.validate(tool.input_schema, {**base, "spans": []}))
+
+    def test_a_refused_clip_after_a_dissolve_keeps_both_numbers(self):
+        self.c.comps["Composition 1"] = FComp()  # the third clip already has a comp
+        dry = self.fx()
+        self.assertEqual([(r["index"], r["position"], r["name"]) for r in dry["refused"]],
+                         [(3, 4, "C")])
+        self.assertEqual([t["name"] for t in dry["targets"]], ["A", "B"])
+        with self.assertRaisesRegex(workflows.Refused, "#3 C: .*would replace"):
+            self.fx(items=[3])
+        self.assertEqual(self.added(), [])
+
+    def test_the_count_is_per_track(self):
+        x, y = (rf.Item(n, 86500 + 50 * i, 86550 + 50 * i, self.clip, source=(0, 50))
+                for i, n in enumerate(("X", "Y")))
+        gap = rf.Item("Cross Dissolve", 86548, 86552, None, nodes=None, source=(0, 0))
+        self.auto.tracks["video"].append([x, gap, y])
+        for it in (x, gap, y):
+            give_fusion(it)
+        dry = self.fx(track=2, items=[2])
+        self.assertEqual([(t["name"], t["index"], t["position"]) for t in dry["targets"]],
+                         [("Y", 2, 3)])
+        self.assertEqual([t["name"] for t in self.fx(track=2, spans=[0])["targets"]], ["X"])
+        self.assertEqual([t["name"] for t in self.fx(track=1, spans=[0])["targets"]], ["A"])
+
+    def test_a_dissolve_at_either_end_of_the_track(self):
+        lead = rf.Item("Lead", 86400, 86404, None, nodes=None, source=(0, 0))
+        tail = rf.Item("Tail", 86550, 86554, None, nodes=None, source=(0, 0))
+        self.track[:] = [lead, self.a, self.dissolve, self.b, self.c, tail]
+        for it in (lead, tail):
+            give_fusion(it)
+        dry = self.fx(items=[3])
+        self.assertEqual([(t["name"], t["index"], t["position"]) for t in dry["targets"]],
+                         [("C", 3, 5)])
+        self.assertEqual([t["name"] for t in self.fx()["targets"]], ["A", "B", "C"])
+        with self.assertRaisesRegex(workflows.Refused, "no clip\\(s\\) \\[4\\]"):
+            self.fx(items=[4])  # position 6 is the trailing dissolve, not a fourth clip
 
 
 if __name__ == "__main__":

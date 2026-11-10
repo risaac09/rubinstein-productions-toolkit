@@ -1020,7 +1020,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "lut": {"type": "object", "properties": {
                 "path": {"type": "string",
                          "description": "A .cube, absolute or relative to Resolve's LUT folder."},
@@ -1161,7 +1162,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "allow_bars": {"type": "boolean", "default": False,
                            "description": "Allow a scale below the fill scale (black bars)."},
             **DRY_RUN},
@@ -1189,7 +1191,8 @@ def register(registry):
             "track": {"type": "integer", "minimum": 1, "default": 1},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
-                      "description": "Item numbers on the track, from 1 (default: all)."},
+                      "description": "Raw item positions on the track, from 1, a dissolve counted "
+                                     "(timeline_items index; default: all)."},
             "max_items": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10,
                           "description": "Stabilize at most this many items per call, the first "
                           "of the selection (default 10, at most 25: one call holds the Resolve "

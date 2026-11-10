@@ -584,7 +584,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     bad = [n - shift for n in wanted if not 1 <= n <= len(positions)]
     if bad:
         raise Refused(f"no {'span' if shift else 'clip'}(s) {bad} on V{track} ({len(positions)} "
-                      f"clip(s) in {len(all_items)} item(s); transitions are not counted).")
+                      f"clip(s) in {len(all_items)} item(s); items with no media pool clip, "
+                      f"transitions first, are not counted).")
     comp_name = COMP_PREFIX + effect
     targets, refused = [], []
     for n in wanted:
