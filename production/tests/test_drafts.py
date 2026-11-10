@@ -113,7 +113,7 @@ class TestRender(Base):
     def two_lettered_plans(self):
         """Two plans out of one source; the second has an effect no draft can show."""
         m = copy.deepcopy(METHOD)
-        m["slots"][1]["effect"] = "person-matte-text"
+        m["slots"][1]["effect"] = "cross-dissolve-short"
         m["slots"][1]["text"] = None
         return [self.plan("plain", METHOD, self.src), self.plan("matted", m, self.src)]
 
@@ -135,7 +135,7 @@ class TestRender(Base):
         self.assertEqual([(e["effect"], e["spans"]) for e in plain["approximated"]],
                          [("crop-window", [1]), ("dissolve", [1]), ("scale-window", [2])])
         self.assertEqual(plain["not_drawn"], [])
-        self.assertEqual(matted["not_drawn"], [{"effect": "person-matte-text", "spans": [1]}])
+        self.assertEqual(matted["not_drawn"], [{"effect": "cross-dissolve-short", "spans": [1]}])
         self.assertNotIn("crop-window", json.dumps(matted))
 
     def test_send_holds_the_drafts_under_the_sheets_letters_without_naming_them(self):
@@ -163,7 +163,7 @@ class TestRender(Base):
             with open(os.path.join(out, plan + ".notes.txt")) as f:
                 self.assertEqual(rest, f.read().splitlines())
             self.assertEqual(head, f"{len(rest)} notes")
-            self.assertEqual(any("person-matte-text (no ffmpeg approximation)" in x for x in rest),
+            self.assertEqual(any("cross-dissolve-short (no ffmpeg approximation)" in x for x in rest),
                              plan == "matted", letter)
         # nothing that is printed or left beside the folder pairs a letter with a plan
         self.assertEqual(sorted(doc["send"]["files"]),
@@ -249,8 +249,7 @@ class TestRefusals(Base):
     def test_every_drawn_effect_has_a_filter(self):
         for e in drafts.DRAWN:
             self.assertTrue(drafts.effect_filter(e, 1.0, 24, 1280, 720), e)
-        for e in ("person-matte-text", "cross-dissolve-short"):
-            self.assertIsNone(drafts.effect_filter(e, 1.0, 24, 1280, 720))
+        self.assertIsNone(drafts.effect_filter("cross-dissolve-short", 1.0, 24, 1280, 720))
 
 
 class TestNewDraws(unittest.TestCase):
@@ -331,12 +330,11 @@ class TestLedger(unittest.TestCase):
                                      dissolve_into=(1, 3)))
         self.assertEqual(led["drawn"], [{"effect": "zoom-push", "spans": [3]}])
         self.assertEqual([(e["effect"], e["spans"]) for e in led["approximated"]],
-                         [("dissolve", [1, 3]), ("exposure-flash", [0, 2])])
+                         [("dissolve", [1, 3]), ("exposure-flash", [0, 2]),
+                          ("person-matte-text", [1])])
         self.assertEqual(led["approximated"][0]["note"], "drawn as a cut")
         self.assertIn("display-space", led["approximated"][1]["note"])
-        self.assertEqual(led["not_drawn"],
-                         [{"effect": "cross-dissolve-short", "spans": [2]},
-                          {"effect": "person-matte-text", "spans": [1]}])
+        self.assertEqual(led["not_drawn"], [{"effect": "cross-dissolve-short", "spans": [2]}])
 
     def test_a_scale_window_is_over_black_on_span_0_and_over_the_previous_shot_after_it(self):
         led = drafts.ledger(self.man([("scale-window", 0), ("scale-window", 2)]))
@@ -371,8 +369,8 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(sorted(drafts.DRAWN - set(drafts.APPROX)), ["retime", "zoom-push"])
 
     def test_the_notes_name_an_effect_the_draft_cannot_draw(self):
-        _, missing = drafts.span_filter({}, ["person-matte-text"], 1280, 720, 24, 1.0)
-        self.assertEqual(missing, ["person-matte-text (no ffmpeg approximation)"])
+        _, missing = drafts.span_filter({}, ["cross-dissolve-short"], 1280, 720, 24, 1.0)
+        self.assertEqual(missing, ["cross-dissolve-short (no ffmpeg approximation)"])
         _, missing = drafts.span_filter({}, ["exposure-flash"], 1280, 720, 24, 1.0)
         self.assertTrue(missing[0].startswith("exposure-flash: a gain falling to 1"))
 
@@ -546,6 +544,192 @@ class TestMotionRender(Base):
         f = gray_frame(self.draft, 48 + 1, 1280, 720)  # span 2 starts at frame 48; frame 1: a small window
         corner = [f[y * 1280 + x] for y in range(0, 100) for x in range(0, 100)]
         self.assertGreater(sum(corner) / len(corner), 100)  # the grey shot, not black
+
+
+def matte_box(w=1280, h=720, **params):
+    """person-matte-text's drawbox arguments, as ints and the colour string."""
+    f = drafts.effect_filter("person-matte-text", 1.0, 24, w, h, params)
+    assert f.startswith("drawbox="), f
+    kv = dict(x.split("=", 1) for x in f[len("drawbox="):].split(":"))
+    return {k: (int(v) if k in ("x", "y", "w", "h") else v) for k, v in kv.items()}
+
+
+def macro_setting(name):
+    """The numbers of a Fusion macro's Text1 from its .setting file."""
+    text = (HERE.parent / "fusion-macros" / f"{name}.setting").read_text(encoding="utf-8")
+    num = lambda key: float(re.search(rf"\b{key} = Input \{{ Value = ([0-9.]+) \}}", text).group(1))
+    cx, cy = (float(v) for v in re.search(
+        r"Center = Input \{ Value = \{ ([0-9.]+), ([0-9.]+) \}", text).groups())
+    return {"center": (cx, cy), "size": num("Size"), "word": re.search(
+        r'StyledText = Input \{ Value = "([^"]*)"', text).group(1),
+        "rgb": tuple(round(num(k) * 255) for k in ("Red1", "Green1", "Blue1"))}
+
+
+class TestMatteTitleFilter(unittest.TestCase):
+    """person-matte-text is drawn as a plain title box in the macro's title position."""
+
+    def box(self, w=1280, h=720, **params):
+        return matte_box(w, h, **params)
+
+    def test_the_box_is_centred_where_the_macro_puts_the_word(self):
+        b = self.box(text="WILD")
+        x, y, bw, bh = (b[k] for k in "xywh")
+        self.assertLessEqual(abs(x + bw / 2 - 0.55 * 1280), 1)  # Center 0.55
+        self.assertLessEqual(abs(y + bh / 2 - (1 - 0.55) * 720), 1)  # Fusion's y counts from the bottom
+        self.assertEqual(bh, int(0.32 * 720 * 0.72))  # Size 0.32 of the frame height
+        self.assertEqual(b["color"], "0xD7371F@0.85")  # the macro's red-orange, not text-word's white
+
+    def test_the_numbers_come_from_the_macro_file(self):
+        m = macro_setting("person-matte-text")
+        self.assertEqual((m["size"], m["word"]), (drafts.MATTE_SIZE, drafts.MATTE_WORD))
+        self.assertEqual(drafts.MATTE_COLOUR, "0x%02X%02X%02X" % m["rgb"])
+        b = self.box(1280, 720)  # the stored word at the stored size
+        cx, cy = m["center"]
+        self.assertLessEqual(abs(b["x"] + b["w"] / 2 - cx * 1280), 1)
+        self.assertLessEqual(abs(b["y"] + b["h"] / 2 - (1 - cy) * 720), 1)  # y counts from the bottom
+
+    def test_the_box_follows_the_word_and_the_size_and_stays_in_the_frame(self):
+        short, long_ = self.box(text="HI"), self.box(text="MOUNTAINEERING")
+        self.assertGreater(long_["w"], short["w"])
+        half = self.box(text="WILD", size=0.16)
+        self.assertLess(half["h"], self.box(text="WILD")["h"])
+        self.assertLess(half["w"], self.box(text="WILD")["w"])
+        for w, h in ((1280, 720), (720, 1280)):
+            b = self.box(w, h, text="MOUNTAINEERING")
+            self.assertGreaterEqual(b["x"], 0)
+            self.assertLessEqual(b["x"] + b["w"], w)
+        self.assertEqual(self.box(), self.box(text="WILD"))  # no word: the macro's stored one
+
+    def test_a_tiny_size_is_a_tiny_box_never_a_strip_to_the_frame_edge(self):
+        # drawbox reads a side of 0 as "to the edge of the frame"
+        for params in ({"size": 0.001}, {"size": 0.0005, "text": "a"}):
+            b = self.box(**params)
+            self.assertGreaterEqual(b["w"], 1, params)
+            self.assertGreaterEqual(b["h"], 1, params)
+            self.assertLess(b["w"] * b["h"], 100, params)
+        b = self.box(size=9.0)  # and a huge one stays in the frame
+        self.assertEqual((b["x"], b["w"], b["h"]), (0, 1280, 720))
+        self.assertGreaterEqual(b["y"], 0)
+
+    def test_beat_burst_at_9_16_is_a_full_width_bar_with_the_stored_word(self):
+        m = methods.load("beat-burst")
+        self.assertEqual(m["aspect"], "9:16")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "person-matte-text")
+        self.assertIsNone(m["slots"][i]["text"])
+        man = methods.to_manifest(m, [{"source_path": f"/nowhere/s{k}.mov", "in": 0.0,
+                                       "out": sl["seconds"]} for k, sl in enumerate(m["slots"])])
+        w, h = drafts.SIZES[m["aspect"]]
+        ent = next(e for e in man["effects"] if e["effect"] == "person-matte-text")
+        self.assertNotIn("text", ent.get("params") or {})
+        b = self.box(w, h, **(ent.get("params") or {}))
+        # "WILD" at Size 0.32 of a 1280 high frame is wider than 720, as in the macro: full width
+        self.assertEqual((b["x"], b["y"], b["w"], b["h"]), (0, 429, 720, 294))
+        self.assertLessEqual(abs(b["y"] + b["h"] / 2 - 0.45 * h), 1)
+        led = drafts.ledger(man)
+        self.assertEqual([(e["effect"], e["spans"]) for e in led["approximated"]
+                          if e["effect"] == "person-matte-text"], [("person-matte-text", [i])])
+        self.assertEqual(led["not_drawn"], [])
+
+    def test_it_is_drawn_with_a_note_that_the_title_is_in_front_and_the_matte_is_not(self):
+        self.assertIn("person-matte-text", drafts.DRAWN)
+        note = drafts.APPROX["person-matte-text"]
+        self.assertIn("IN FRONT of the subject", note)
+        self.assertIn("the matte is not drawn", note)
+        _, missing = drafts.span_filter({}, [{"effect": "person-matte-text",
+                                              "params": {"text": "HI"}}], 1280, 720, 24, 1.0)
+        self.assertEqual(missing, ["person-matte-text: " + note])
+
+    def test_the_ledger_lists_it_as_approximated_never_as_not_drawn(self):
+        man = {"clips": [{"name": "m", "spans": [{"source": "s1", "in": 0, "out": 1}] * 2}],
+               "effects": [{"span_index": 1, "effect": "person-matte-text",
+                            "params": {"text": "HI"}}]}
+        led = drafts.ledger(man)
+        self.assertEqual(led["approximated"], [{"effect": "person-matte-text", "spans": [1],
+                                                "note": drafts.APPROX["person-matte-text"]}])
+        self.assertEqual((led["drawn"], led["not_drawn"]), ([], []))
+
+
+def rgb_at(path, n, w, x, y):
+    """The (r, g, b) of pixel (x, y) in frame n of a draft w pixels wide."""
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf",
+                        f"select=eq(n\\,{n}),format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"],
+                       capture_output=True, check=True)
+    return tuple(r.stdout[(y * w + x) * 3:(y * w + x) * 3 + 3])
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestMatteTitleRender(Base):
+    def setUp(self):
+        super().setUp()
+        self.src = os.path.join(self.dir, "grey.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=0xb0b0b0:s=1920x1080:r=24:d=8", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", self.src], check=True)
+
+    def matte_plan(self, name):
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=2.0)
+        m["rules"]["end"] = None
+        m["slots"] = m["slots"][:2]
+        m["slots"][0].update(effect=None, scale=None, seconds=1.0,
+                             transition_out={"type": "cut", "frames": 0})
+        m["slots"][1].update(effect="person-matte-text", text="word", scale=None, seconds=1.0)
+        d = os.path.join(self.dir, "plans", name)
+        os.makedirs(d)
+        fills = [{"source_path": self.src, "in": 0.5, "out": 1.5},
+                 {"source_path": self.src, "in": 2.5, "out": 3.5, "text": "HI"}]
+        with open(os.path.join(d, "method.json"), "w") as f:
+            json.dump(m, f)
+        with open(os.path.join(d, "manifest.json"), "w") as f:
+            json.dump(methods.to_manifest(m, fills), f)
+        return d
+
+    def build_matted(self):
+        plans = [self.matte_plan("matted"), self.plan("plain", METHOD, self.src)]
+        out = os.path.join(self.dir, "out")
+        return out, drafts.build(plans, out, hw=False, lanes=2)
+
+    def test_the_title_box_covers_the_picture_on_its_span_only_and_the_notes_say_so(self):
+        out, doc = self.build_matted()
+        d = next(x for x in doc["drafts"] if x["plan"] == "matted")
+        box = matte_box(1280, 720, text="HI")  # the filter the draft ran, span 1 starts at frame 24
+        cx, cy = box["x"] + box["w"] // 2, box["y"] + box["h"] // 2
+        r, g, b = rgb_at(d["file"], 30, 1280, cx, cy)
+        self.assertGreater(r - b, 100, (r, g, b))  # red-orange over the grey picture
+        # the box edges: just inside is red-orange, a few pixels outside is the grey picture
+        # (the margin is wider than yuv420p's chroma blur)
+        for name, inside, outside in (
+                ("left", (box["x"] + 6, cy), (box["x"] - 8, cy)),
+                ("right", (box["x"] + box["w"] - 7, cy), (box["x"] + box["w"] + 8, cy)),
+                ("top", (cx, box["y"] + 6), (cx, box["y"] - 8)),
+                ("bottom", (cx, box["y"] + box["h"] - 7), (cx, box["y"] + box["h"] + 8))):
+            r, g, b = rgb_at(d["file"], 30, 1280, *inside)
+            self.assertGreater(r - b, 100, (name, "inside", (r, g, b)))
+            r, g, b = rgb_at(d["file"], 30, 1280, *outside)
+            self.assertLess(abs(r - b), 20, (name, "outside", (r, g, b)))
+        r, g, b = rgb_at(d["file"], 30, 1280, 30, 30)
+        self.assertLess(abs(r - b), 20, (r, g, b))  # the corner is still the plain picture
+        r, g, b = rgb_at(d["file"], 6, 1280, cx, cy)  # span 0 has no title
+        self.assertLess(abs(r - b), 20, (r, g, b))
+        want = "span 1: person-matte-text: " + drafts.APPROX["person-matte-text"]
+        self.assertIn(want, d["notes"])
+        with open(os.path.join(out, "matted.notes.txt")) as f:
+            self.assertIn(want, f.read().splitlines())
+        self.assertEqual(d["effects"]["not_drawn"], [])
+        self.assertEqual([(e["effect"], e["spans"]) for e in d["effects"]["approximated"]],
+                         [("person-matte-text", [1])])
+
+    def test_the_lettered_copy_of_the_draft_carries_the_matte_note(self):
+        out, doc = self.build_matted()
+        if not (doc["sheet"] or {}).get("dir"):
+            self.skipTest("no sheet without Pillow, so no letters")
+        want = "span 1: person-matte-text: " + drafts.APPROX["person-matte-text"]
+        heads = {}
+        for n in os.listdir(os.path.join(out, "send")):
+            if n.endswith(".notes.txt"):
+                with open(os.path.join(out, "send", n)) as f:
+                    heads[n] = f.read().splitlines()
+        self.assertEqual(sum(want in v for v in heads.values()), 1)
 
 
 class TestLanes(unittest.TestCase):

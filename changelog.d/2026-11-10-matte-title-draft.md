@@ -1,0 +1,1 @@
+Draft farm: `person-matte-text` is drawn as a red-orange title box at the macro's position and size, in front of the subject, and the ledger and notes say the matte is not drawn. A Magic Mask computer-use recipe for the matte is in fusion-macros.md (written, never run live; sandbox project first), and the method's UI step now carries its steps.

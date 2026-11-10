@@ -275,7 +275,8 @@ def to_manifest(method, fills):
         if slot["text"] == "word" and fill.get("text") and slot["effect"] in TEXT_MACROS:
             entry["params"] = {"text": fill["text"]}
         elif slot["text"] == "word":
-            steps.append(ui_step(f"span {i}", "Fusion", "comp rp-fx text-word > Text1",
+            comp = slot["effect"] if slot["effect"] in TEXT_MACROS else "text-word"
+            steps.append(ui_step(f"span {i}", "Fusion", f"comp rp-fx {comp} > Text1",
                                  "Styled Text", "the word for this beat",
                                  "the method leaves the word to the edit"))
         if gain is not None:  # the draft draws the same number (drafts.py, trap T28)
@@ -283,9 +284,14 @@ def to_manifest(method, fills):
         if slot["effect"] == "person-matte-text":
             steps.append(ui_step(f"span {i}", "Fusion",
                                  "comp rp-fx person-matte-text > SubjectMatte_PLACEHOLDER",
-                                 "replace with a Magic Mask node",
-                                 "click the subject, Track Forward and Reverse, soft edge 2 to 5 px",
-                                 "the macro's matte is a placeholder rectangle"))
+                                 "replace with a Person Magic Mask (Better)",
+                                 "one stroke down the subject, Track Forward and Reverse, soft "
+                                 "edge 2 to 5 px, its mask to Merge2.EffectMask, delete the "
+                                 "placeholder, read the graph back, then check three frames "
+                                 "with get_image; recipe in production/fusion-macros.md "
+                                 "(untested live: sandbox project first)",
+                                 "the macro's matte is a placeholder rectangle, and the draft "
+                                 "draws the title in front of the subject"))
         for j, other in enumerate(spans):
             if other["source"] == span["source"] and other["in"] < span["out"] \
                     and span["in"] < other["out"]:

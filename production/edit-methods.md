@@ -65,7 +65,7 @@ A slot:
 | `scale` that changes | nothing when the slot's effect is `zoom-push` or `scale-window` (the macro animates it); otherwise a UI step for Zoom keyframes |
 | `speed` other than 1 | `effects[]` `{span_index, effect: "retime", params: {speed}}`, which `apply_effect` builds as a Fusion comp (FCPXML retimes import broken in Resolve 21.2). An item holds one comp, so the validator refuses a slot with both a speed and an effect |
 | `text: "word"` | `params.text` on the slot's text effect when the fill carries a `text` word; with no word in the fill, a UI step |
-| `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Magic Mask |
+| `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Person Magic Mask, by computer use ([recipe](fusion-macros.md#person-matte-the-magic-mask-recipe), untested live) |
 | `effect: exposure-flash`, and the fill carries a `gain` (1 to 20) | `params.gain` on that entry; the draft draws the same number ([T28](resolve-traps.md)). A `gain` on a fill for any other slot is refused |
 | `effect` | `effects[]` `{span_index, effect, params?}`, span_index from 0 |
 | `rules.end` | `method.end`, and a UI step for the black after the last item |
@@ -98,9 +98,9 @@ Before anything is built in Resolve, each plan renders as a 720p H.264 proxy (12
   - `dip-to-black`: the macro's even-stop keys (1, 0.5, 0.25, 0.125, 0.06, 0.02, 0 every 3 frames), black on the last frame, drawn by the same fitted multiply.
   - `crop-window`: the box opens and closes at a constant rate; the macro eases both ends.
   - `scale-window`: the window stays centred; the macro's centre drifts about 0.05. It grows over black on the first span and over the previous shot's last frame after it; the notes and the ledger give each span the matching wording.
-  - `text-word`: a white box where the word goes. `reframe-pan`: a crop that moves from `pan_from` to `pan_to` as a share of the source width, not Resolve's Pan arithmetic.
+  - `text-word`: a white box where the word goes. `person-matte-text`: the same, in the macro's red-orange, at the macro's position and size; it sits in front of the subject and the matte is not drawn, so a pick on `matte-title` or `beat-burst` judges the word's place, never the word going behind anyone. `reframe-pan`: a crop that moves from `pan_from` to `pan_to` as a share of the source width, not Resolve's Pan arithmetic.
   - A dissolve between spans is drawn as a cut.
-  - Not drawn: `person-matte-text` and `cross-dissolve-short`, which have no stand-in, and the UI steps (dips and wipes, animated scales, durations). A look with no cube for the camera is not applied, and the notes say so.
+  - Not drawn: `cross-dissolve-short`, which has no stand-in, and the UI steps (dips and wipes, animated scales, durations). A look with no cube for the camera is not applied, and the notes say so.
 - The ledger. `drafts.json` gives each draft an `effects` object built from the manifest: `drawn`, `approximated` (with the note) and `not_drawn`, each a list of `{effect, spans}` with the span indices from 0. Read it before a pick becomes a build: an effect under `not_drawn` was not on the draft the person chose from, so it goes back to them before the build applies it.
 - The look is `<look name> [<camera>].cube` found under `--lut-root` (Resolve's `LUT/lutlab` folder) for `--camera`. Without it the draft is ungraded and says so.
 - BRAW plays from its proxy, `<proxy-dir>/<name>.mov`; a BRAW source with none is refused (ffmpeg cannot decode BRAW).

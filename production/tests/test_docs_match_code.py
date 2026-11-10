@@ -22,7 +22,7 @@ PROD = HERE.parent
 ROOT = PROD.parent
 sys.path.insert(0, str(PROD))
 
-from rpresolve import cmd_effect, grade, methods, reframe  # noqa: E402
+from rpresolve import cmd_effect, drafts, grade, methods, reframe  # noqa: E402
 
 ENV_READS = [re.compile(r"environ(?:\.get)?\s*[(\[]\s*[\"']([A-Z][A-Z0-9_]+)"),
              re.compile(r"getenv\(\s*[\"']([A-Z][A-Z0-9_]+)"),
@@ -92,6 +92,23 @@ class DocsMatchCode(unittest.TestCase):
         for i in starts:
             self.assertIn("`overwrite` true", text[i:i + 400])
         self.assertNotIn("The only node a script writes", text)
+
+    def test_the_magic_mask_recipe_is_there_and_says_it_is_untested(self):
+        text = " ".join((PROD / "fusion-macros.md").read_text(encoding="utf-8").split())
+        self.assertIn("## Person matte: the Magic Mask recipe", text)  # the anchor two docs link to
+        self.assertIn("Never run live", text)
+        self.assertIn("sandbox project", text)
+        self.assertIn("](#person-matte-the-magic-mask-recipe)", text)  # from "Needs a person's eye"
+        self.assertIn("](fusion-macros.md#person-matte-the-magic-mask-recipe)",
+                      (PROD / "edit-methods.md").read_text(encoding="utf-8"))
+
+    def test_edit_methods_not_drawn_list_is_the_macros_the_draft_cannot_draw(self):
+        text = " ".join((PROD / "edit-methods.md").read_text(encoding="utf-8").split())
+        m = re.search(r"Not drawn: (.*?)(?:, which have no stand-in| and the UI steps)", text)
+        self.assertTrue(m, "edit-methods.md lost its Not drawn sentence")
+        named = set(re.findall(r"`([a-z-]+)`", m.group(1)))
+        macros = {p.stem for p in (PROD / "fusion-macros").glob("*.setting")}
+        self.assertEqual(named, macros - drafts.DRAWN)
 
 
     def test_env_scan_ignores_a_local_virtualenv(self):

@@ -51,13 +51,18 @@ from . import paths as rppaths
 LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/lutlab"
 SIZES = {"16:9": (1280, 720), "9:16": (720, 1280)}
 DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-word",
-         "scale-window", "retime", "reframe-pan"}
+         "person-matte-text", "scale-window", "retime", "reframe-pan"}
 # Drawn, but only as an approximation: what the notes and the ledger say about each. An
 # effect in DRAWN with no entry here is drawn as its macro does. "dissolve" is no macro: it is
 # the manifest's transition into a span, drawn as a cut.
 WINDOW_DRIFT = "the window stays centred where the macro's centre drifts about 0.05"
 WINDOW_OVER = "over the previous shot's last frame, held; " + WINDOW_DRIFT  # a scale-window after span 0
 APPROX = {"text-word": "the word is a white box",
+          "person-matte-text": "the title is a red-orange box IN FRONT of the subject, where the "
+                               "macro puts the word (its width a guess from the letter count of the "
+                               "word, or of the macro's stored WILD when the fill gives none); "
+                               "the matte is not drawn, so the draft cannot show the word go "
+                               "behind anyone",
           "scale-window": "drawn over black (no previous shot to grow over); " + WINDOW_DRIFT,
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
                          "width, not Resolve's Pan arithmetic",
@@ -69,6 +74,9 @@ APPROX = {"text-word": "the word is a white box",
           "dip-to-black": "the macro's even-stop gain keys, drawn as a display-space "
                           "multiply fitted on one dark frame (T28)",
           "dissolve": "drawn as a cut"}
+
+MATTE_SIZE, MATTE_WORD = 0.32, "WILD"  # person-matte-text's Text1 Size and stored word
+MATTE_COLOUR = "0xD7371F"  # its Red1/Green1/Blue1 (0.843, 0.216, 0.122) as 8-bit
 
 # Gain in the draft (trap T28). The macros multiply by a gain g in linear light; for a power-law
 # display curve that is a multiply by g**(1/GAMMA) on the encoded values, which is what eq
@@ -223,6 +231,17 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
     if effect == "text-word":  # a box where the word goes (drawtext is not in every ffmpeg)
         return (f"drawbox=x={int(w * 0.25)}:y={int(h * 0.34)}:w={int(w * 0.5)}:"
                 f"h={int(h * 0.08)}:color=white@0.75:t=fill")
+    if effect == "person-matte-text":  # the macro's title as a box, in front of the picture
+        # Text1: Center 0.55/0.55 (Fusion's y counts from the bottom), Size 0.32 of the frame
+        # height, red-orange. shortcut: cap height and a flat 0.72 em per letter stand in for
+        # Arial Bold's metrics; upgrade when drawtext can be relied on. At 9:16 a four-letter
+        # word is wider than the frame, as the macro's would be, so the box runs full width.
+        # A box side is at least 1: drawbox reads 0 as "to the frame edge".
+        em = float(p.get("size", MATTE_SIZE)) * h
+        bh = min(h, max(1, int(em * 0.72)))
+        bw = min(w, max(1, int(len(str(p.get("text") or MATTE_WORD)) * em * 0.72)))
+        x, y = min(max(0, int(w * 0.55 - bw / 2)), w - bw), max(0, int(h * 0.45 - bh / 2))
+        return f"drawbox=x={x}:y={y}:w={bw}:h={bh}:color={MATTE_COLOUR}@0.85:t=fill"
     return None
 
 
