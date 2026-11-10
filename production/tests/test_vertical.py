@@ -255,6 +255,16 @@ class TestApply(unittest.TestCase):
     def target(self):
         return next(t for t in self.project.timelines if t.name == "Mix 9x16 [auto]")
 
+    def test_a_transition_on_the_track_is_skipped(self):
+        # a dissolve is an item with no media pool clip and no zoom (T29)
+        dissolve = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+        dissolve.comps = {}
+        self.source.tracks["video"][0].insert(2, dissolve)
+        dry, real = self.real()
+        self.assertEqual([t["name"] for t in dry["targets"]], ["i0", "i1", "i2"])
+        self.assertEqual(real["exit_status"], 0)
+        self.assertEqual(len(real["results"]), 3)
+
     def test_pan_formula_is_resolves_pan_for_a_centred_tilt_zero_crop(self):
         for src, zoom, cx in (((3840, 2160), 1.2, 0.3), ((6048, 4032), 1.0, 0.62),
                               ((1920, 1080), 2.0, 0.5)):

@@ -366,6 +366,12 @@ def _timeline_named(project, name):
     return None
 
 
+def _clips(tl, track):
+    """The track's clip items: a transition is an item with no media pool clip (T29), skipped."""
+    return [it for it in tl.GetItemListInTrack("video", track) or []
+            if api._safe_call(it, "GetMediaPoolItem")]
+
+
 def _comps(item):
     """The item's rp-fx comps this step moves: [{comp, kind, tool, ...values}]."""
     names = list(api._safe_call(item, "GetFusionCompNameList") or [])
@@ -447,7 +453,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     tracks = int(base.GetTrackCount("video") or 0)
     if not 1 <= track <= tracks:
         raise Refused(f"'{base.GetName()}' has {tracks} video track(s).")
-    items = base.GetItemListInTrack("video", track) or []
+    items = _clips(base, track)
     if len(items) != len(c["items"]):
         raise Refused(f"'{base.GetName()}' V{track} has {len(items)} item(s), crops.json has "
                       f"{len(c['items'])}")
@@ -486,7 +492,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
             api.set_setting_checked(tl, "timelineResolutionWidth", str(OUT_SIZE[0]))
             api.set_setting_checked(tl, "timelineResolutionHeight", str(OUT_SIZE[1]))
         out["created_size"] = list(_timeline_size(tl))
-        items = tl.GetItemListInTrack("video", track) or []
+        items = _clips(tl, track)
         if len(items) != len(targets):
             raise Refused(f"the copy has {len(items)} item(s), expected {len(targets)}")
         kept = [_comps(it) for it in items]

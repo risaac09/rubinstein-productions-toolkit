@@ -104,7 +104,7 @@ Each span's length is a whole number of frames, as `interchange` counts it, so a
 The three sections below state rules, and every rule cites what it rests on.
 
 - `B1` to `B10` are ten shot-by-shot breakdowns of published short edits, with the line the fact sits on (`B6 L46`). The breakdowns and the key that names them stay private. Every tempo in them is read from cut spacing, since nobody heard the audio.
-- `T1` to `T23` are entries in [resolve-traps.md](resolve-traps.md), each measured in Resolve.
+- `T1` to `T29` are entries in [resolve-traps.md](resolve-traps.md), each measured in Resolve.
 - `R` is a logged answer from the person whose edit it is, in a project's `review/events.jsonl`, cited by date and step. One answer is one answer: a preference becomes a rule after five consistent ones ([media-review-loop.md](media-review-loop.md)).
 - `M` is a number measured on a real shoot during the first runs, 2026-11-09.
 
