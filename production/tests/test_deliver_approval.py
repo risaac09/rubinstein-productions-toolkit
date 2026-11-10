@@ -35,7 +35,8 @@ def sha(data):
 
 class TestMontageStem(unittest.TestCase):
     """A montage name has no clip index: its stem is the client and slug, as a clip's is its
-    name without aspect and extension."""
+    name without aspect and extension. The first test fails on the old stem rule; the second is a
+    guard that a longer slug stays another cut."""
 
     def find(self, name, copy):
         with tempfile.TemporaryDirectory() as d:

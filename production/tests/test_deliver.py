@@ -128,6 +128,7 @@ class TestNames(unittest.TestCase):
             "Client_example-slug_final.mp4": "aspect",
             "Client_example-slug_9x16.mkv": "extension",
             "Client_example_slug_9x16.mp4": "five parts",
+            f"Client_{'a' * 61}_9x16.mp4": "slug is longer",
             # digits are ASCII 0-9 only: fullwidth and Arabic-Indic digits break the rule
             "SW００１_Guest_０１_example-clip_16x9.mp4": "3-digit episode",
             "SW١٢٣_Guest_01_example-clip_16x9.mp4": "3-digit episode",
@@ -186,6 +187,9 @@ class TestNames(unittest.TestCase):
         self.assertIn("montage name", deliver.name_problems(
             "Client_example-montage_9x16.mov", dest("client_master"))[0])
         self.assertIn("five parts", deliver.name_problems("Client_a_b_9x16.mp4", music)[0])
+        self.assertIn("slug is longer", deliver.name_problems(f"Client_{'a' * 60}b_9x16.mp4",
+                                                              music)[0])
+        self.assertEqual(deliver.name_problems(f"Client_{'a' * 60}_9x16.mp4", music), [])
 
 
 class TestConfig(unittest.TestCase):
@@ -595,6 +599,8 @@ class TestClientDrift(unittest.TestCase):
         self.assertEqual(len(out), 2)
         self.assertIn("5 file(s)", out[0])
         self.assertIn("and more", out[0])
+        # three files are named, the first three in name order
+        self.assertEqual([n for n in range(5) if f"ClientCo_s{n}_master.mov" in out[0]], [0, 1, 2])
         self.assertNotIn("and more", out[1])
 
     def test_a_clip_job_has_no_client_and_never_warns(self):

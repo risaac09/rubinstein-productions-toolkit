@@ -154,6 +154,26 @@ class TestEndToEnd(unittest.TestCase):
         self.assertIn("--episode, --guest", p.stderr)
         self.assertFalse(os.path.exists(self.out))
 
+    def test_a_destination_that_takes_no_clip_name_is_refused_before_the_name_flags(self):
+        # social_9x16_music takes a montage name: with or without the clip flags, the answer is the
+        # destination's rule, not a request for --show
+        for flags in ((), self.NAME):
+            with self.subTest(flags=flags):
+                p = subprocess.run([sys.executable, str(CUT), self.src, self.tsv, "-o", self.out,
+                                    "--no-captions", "--destination", "social_9x16_music", *flags],
+                                   capture_output=True, text=True)
+                self.assertEqual(p.returncode, 1)
+                self.assertIn("takes a montage name, not a clip name", p.stderr)
+                self.assertNotIn("needs --show", p.stderr)
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_draft_names_still_work_for_a_montage_destination(self):
+        p = subprocess.run([sys.executable, str(CUT), self.src, self.tsv, "-o", self.out,
+                            "--no-captions", "--destination", "social_9x16_music", "--draft-names"],
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(os.listdir(self.out), ["1-a-test.mp4"])
+
     def test_draft_names_keep_the_old_name(self):
         p = subprocess.run([sys.executable, str(CUT), self.src, self.tsv, "-o", self.out, "--no-captions",
                             "--draft-names"], capture_output=True, text=True)

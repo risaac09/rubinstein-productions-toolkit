@@ -298,8 +298,9 @@ class TestMusicDestination(Base):
                                     "episode, guest, index, show"):
             self.queue(dest="social_9x16_music", timeline="Music 9x16 [auto]", dry_run=True)
 
-    def test_a_montage_file_in_the_wrong_aspect_is_not_queued_as_one(self):
-        # the aspect comes from the destination, never from the parts
+    def test_the_aspect_is_not_a_name_part(self):
+        # the aspect comes from the destination, never from the parts (a guard: the old clip rule
+        # refused it too)
         with self.assertRaisesRegex(workflows.Refused, "not used: aspect"):
             self.queue(dest="social_9x16_music", timeline="Music 9x16 [auto]",
                        parts={**MONTAGE, "aspect": "16x9"}, dry_run=True)
