@@ -24,6 +24,7 @@ Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
 - Project setup: a person makes the project in Resolve; set_color_management then sets its colour science (a fresh, empty project only), and ingest tags the media.
 - Ordered timelines: timeline_from_clips builds a new [auto] timeline from the clips in a bin, or named clips, in name, path or given order; picture only, every item read back.
 - Stabilization: stabilize calls Resolve's Stabilize() on items of an [auto] timeline only; it reports what Stabilize() returned and cannot verify the effect (not visible through GetProperty). Stabilize a sample first (max_items).
+- Edit methods: edit_methods lists the recipes; methods.to_manifest turns one and the clips chosen for its slots into a manifest for interchange and import_timeline; apply_effect then puts each listed Fusion macro on its [auto] timeline item as a new comp, read back. Three macros need a person's eye before delivery (fusion-macros.md).
 - Trim review proposes and deletes nothing: trim_review writes the TSV, trim_review_markers marks an [auto] timeline.
 - Output files never go inside a git repository.
 - Tool results name client media, people and transcripts. Never paste them into commits, pull requests or anything public.

@@ -1,0 +1,39 @@
+{
+	Tools = ordered() {
+		Background1 = Background {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				Height = Input { Value = 3744 },
+				Width = Input { Value = 4992 },
+				GlobalOut = Input { Value = 215 },
+				UseFrameFormatSettings = Input { Value = 1 },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" } },
+				TopLeftAlpha = Input { Value = 0 }
+			}
+		},
+		Merge1 = Merge {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			CtrlWZoom = false,
+			Inputs = {
+				Background = Input {
+					Source = "Output",
+					SourceOp = "Background1"
+				},
+				PerformDepthMerge = Input { Value = 0 },
+				Blend = Input {
+					Source = "Value",
+					SourceOp = "Merge1Blend"
+				}
+			}
+		},
+		Merge1Blend = BezierSpline {
+			SplineColor = { Green = 205, Blue = 205, Red = 205 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0, Flags = { Linear = true }, RH = { 1, 0.333333333333333 } },
+				[3] = { 1, Flags = { Linear = true }, LH = { 2, 0.666666666666667 } }
+			},
+			CtrlWZoom = false
+		}
+	}
+}

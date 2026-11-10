@@ -1,0 +1,22 @@
+{
+  "edit_method": 1,
+  "id": "scale-window-stack",
+  "name": "Scale window stack",
+  "summary": "One long performance hold, a hard cut, then four shots that each grow from a small window and snap to full frame on the beat, ending on a still hold.",
+  "fits": ["travel", "outdoor", "people", "portrait", "nature"],
+  "aspect": "16:9",
+  "fps": 24,
+  "length_s": 28.58,
+  "bpm": [75, 80],
+  "look": "soft-print",
+  "rules": {"reuse": false, "min_shot_s": 1.0, "snap_to_beat": true, "end": null},
+  "slots": [
+    {"role": "performance", "seconds": 11.25, "query": "locked-off medium-wide of a person moving or dancing in silhouette against a sunset", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "journey", "seconds": 1.5, "query": "person from behind walking a trail toward a far view, they leave frame", "move": "handheld", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+    {"role": "window-1", "seconds": 4.05, "query": "person facing camera in an open landscape, a calm gesture, centred", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "scale-window", "scale": null, "text": null},
+    {"role": "window-2", "seconds": 2.15, "query": "group at a table or bench looking out over a valley, wide", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "scale-window", "scale": null, "text": null},
+    {"role": "window-3", "seconds": 3.45, "query": "person moving toward the lens and out of frame, leaving the empty landscape", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "scale-window", "scale": null, "text": null},
+    {"role": "window-4", "seconds": 3.05, "query": "the person in silhouette against a ridge, wide to medium", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": "scale-window", "scale": null, "text": null},
+    {"role": "closer", "seconds": 3.13, "query": "person in profile standing on a high point over layered landscape, holding still", "move": "static", "speed": 1.0, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null}
+  ]
+}
