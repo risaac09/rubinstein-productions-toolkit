@@ -401,7 +401,7 @@ def deliver_check(args, ctx):
         dc.parse_fps(args["fps"])
     ctx.check_cancel()
     r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"],
-                 folders=deliver.subfolders(config))
+                 folders=deliver.subfolders(config), expect_fade=args.get("expect_fade"))
     if args.get("audio_state"):
         from .. import audiostate
         dc.add_rows(r, audiostate.compare(
@@ -931,10 +931,12 @@ def register(registry):
         "offline with ffprobe and ffmpeg: file name rule, container, video codec, size, fps "
         "as an exact rational, pixel format, colour tags and range (limited), audio codec, "
         "channels and sample rate, captions (a sidecar .srt that parses, or none at all), and "
-        "integrated loudness and true peak. Every rule is PASS, FAIL, SKIP or WARN with what was "
+        "integrated loudness and true peak, and for a destination with tail_fade true (or with "
+        "expect_fade) a tail row: the last 100 ms at least 12 dB below the window 3 s to 1.5 s "
+        "before the end. Every rule is PASS, FAIL, SKIP or WARN with what was "
         "found and expected; a WARN row (the frame-rate floor) is advice and never changes the "
         "outcome. Reads the whole file for loudness; set loudness false to skip "
-        "that. Never connects to Resolve.",
+        "that (the tail row is skipped too). Never connects to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
                               "description": "The destination it was rendered for: a key "
@@ -949,6 +951,11 @@ def register(registry):
                        "at the timeline's size."},
               "loudness": {"type": "boolean", "default": True,
                            "description": "Measure loudness (reads the whole file)."},
+              "expect_fade": {"type": "boolean",
+                              "description": "Assert the tail row: the last 100 ms at least "
+                              "12 dB below the window 3 s to 1.5 s before the end. Default: "
+                              "the destination's tail_fade (true for social_9x16_music); "
+                              "true turns it on for another destination, false off."},
               "audio_state": {"type": "string",
                               "description": "Absolute path of an audio-state JSON (the "
                               "audio-state command's -o): also compares the audio codec, "

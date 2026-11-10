@@ -38,6 +38,13 @@ what it expected:
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
+    tail          opt-in (the destination's tail_fade true, or expect_fade): the
+                  level of the last 100 ms against the window from 3 s to 1.5 s
+                  before the end; FAIL unless the tail is at least TAIL_DROP_DB
+                  lower, with both levels in the row, or when the sound stops before
+                  the end and the last 100 ms hold none. SKIP with a note when there is
+                  no audio, loudness reading is off or the file is under 4 s. No
+                  row at all when the destination does not ask for it
 
 approval_row() is opt-in (cmd_deliver_check --review-log): a WARN-only row from
 the review log's approve or go line. It is not part of check(), so qc never
@@ -74,6 +81,13 @@ NTSC = {"23.976": "24000/1001", "23.98": "24000/1001", "29.97": "30000/1001",
 PCM = {16: ("pcm_s16le", "pcm_s16be"), 24: ("pcm_s24le", "pcm_s24be"),
        32: ("pcm_s32le", "pcm_s32be")}
 CAPTION_TAGS = {"c608", "c708", "tx3g", "wvtt", "stpp"}
+# The tail row: the last TAIL_S seconds against the window from TAIL_REF_FAR to TAIL_REF_NEAR
+# seconds before the end. A music bed baked with a one second fade (musicbed.py) drops far
+# more than TAIL_DROP_DB; a file that ends on a hard cut does not drop at all.
+TAIL_S = 0.1
+TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
+TAIL_DROP_DB = 12.0
+TAIL_MIN_S = 4.0
 
 
 class ToolMissing(RuntimeError):
@@ -148,6 +162,21 @@ def measure_loudness(path, stream=0):
         raise CheckError(f"ffmpeg could not measure loudness in {path}: "
                          f"{proc.stderr.strip()[-300:]}")
     return parse_ebur128(proc.stderr)
+
+
+def window_level(path, from_end, length, stream=0):
+    """Mean level in dB (ffmpeg volumedetect) of an audio stream over `length` seconds
+    starting `from_end` seconds before the end of the file; None when ffmpeg ran and the
+    window holds no audio (the sound ends earlier than the picture: -sseof counts back from
+    the longest stream). Raises CheckError when ffmpeg fails."""
+    proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-sseof", f"-{from_end:g}",
+                 "-t", f"{length:g}", "-i", _src(path), "-map", f"0:a:{stream}",
+                 "-af", "volumedetect", "-f", "null", "-"], READ_TIMEOUT_S)
+    if proc.returncode != 0:
+        raise CheckError(f"ffmpeg could not read the level of {os.path.basename(path)} "
+                         f"{from_end:g} s from its end: {proc.stderr.strip()[-300:]}")
+    m = re.search(r"mean_volume:\s*(-?(?:inf|\d+(?:\.\d+)?))\s*dB", proc.stderr)
+    return float(m.group(1)) if m else None
 
 
 def video_hash(path):
@@ -314,7 +343,7 @@ def _one_of(value, want):
 
 
 def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None,
-          boxes=None):
+          boxes=None, expect_fade=None):
     """Check path against the merged destination dest. fps: the timeline's
     frame rate to assert (any form parse_fps reads). size: (width, height)
     to assert when the destination renders at the timeline's size.
@@ -324,9 +353,16 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     in another destination's folder fails. loudness=False
     skips the ffmpeg read. boxes: [(label, (x0, y0, x1, y1))] frame fractions
     of the captions and supers on screen, judged by the safe_zone row.
+    expect_fade: True adds the tail row for a destination that does not ask for it,
+    False drops it, None follows the destination's tail_fade.
     Returns {file, destination, checks, counts,
     status}; raises ToolMissing or CheckError."""
-    need_ffmpeg = loudness and deliver.has_loudness_target(dest)
+    tail = dest.get("tail_fade")
+    if tail is not None and not isinstance(tail, bool):
+        raise CheckError(f"destination '{dest['key']}': tail_fade must be true or false "
+                         f"(got {tail!r}).")
+    want_tail = bool(tail) if expect_fade is None else bool(expect_fade)
+    need_ffmpeg = loudness and (deliver.has_loudness_target(dest) or want_tail)
     check_tools(ffmpeg=need_ffmpeg)
     if not os.path.isfile(path):
         raise CheckError(f"{path} is not a file.")
@@ -491,9 +527,38 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         rows.append(_row("true_peak", tp is not None and tp <= peak_max + 1e-9,
                          f"{tp} dBTP", f"<= {peak_max:g} dBTP"))
 
+    # Tail
+    if want_tail:
+        rows.append(_tail_row(path, duration(info), audio is not None, loudness))
+
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP, WARN)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
+
+
+def _tail_row(path, seconds, has_audio, loudness):
+    """The tail row: the last TAIL_S seconds against the window TAIL_REF_FAR to TAIL_REF_NEAR
+    seconds before the end; PASS when the tail is at least TAIL_DROP_DB lower."""
+    expect = (f"the last {TAIL_S * 1000:g} ms at least {TAIL_DROP_DB:g} dB below the window "
+              f"{TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s before the end")
+    skip = (None if has_audio else "no audio stream",
+            None if loudness else "loudness reading is off",
+            None if seconds is not None and seconds >= TAIL_MIN_S
+            else f"the file is under {TAIL_MIN_S:g} s")
+    why = next((x for x in skip if x), None)
+    if why:
+        return _row("tail", None, "not measured", expect, why)
+    tail = window_level(path, TAIL_S, TAIL_S)
+    if tail is None:  # the bed stops short of the picture: the case this row exists to catch
+        return _row("tail", False, f"no audio in the last {TAIL_S * 1000:g} ms", expect)
+    ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR)
+    if ref is None:
+        return _row("tail", False, f"no audio {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
+                    "before the end", expect)
+    drop = 0.0 if ref == tail else ref - tail  # two silent windows are equal, not nan
+    return _row("tail", drop >= TAIL_DROP_DB - 1e-9,
+                f"last {TAIL_S * 1000:g} ms {tail:g} dB, window {ref:g} dB "
+                f"({drop:.1f} dB lower)", expect)
 
 
 def _bitrate(video, exp):

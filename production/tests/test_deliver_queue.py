@@ -253,7 +253,7 @@ class TestMusicDestination(Base):
             settings={"timelineResolutionWidth": "1080", "timelineResolutionHeight": "1920"})
         self.project.add(self.music)
 
-    def test_it_validates_and_differs_from_social_9x16_only_in_captions_and_floor(self):
+    def test_it_validates_and_differs_from_social_9x16_only_in_captions_floor_and_tail(self):
         d = deliver.destination(self.config, "social_9x16_music")
         self.assertEqual(deliver.destination_problems(d), [])
         self.assertEqual((d["captions"], d.get("min_fps"), d["loudness"]["integrated_lufs"]),
@@ -261,9 +261,10 @@ class TestMusicDestination(Base):
         self.assertEqual((d["resolution"], d["audio"]["codec"], d["audio"]["sample_rate"],
                           d["audio"]["bitrate_kbps"]),
                          ({"width": 1080, "height": 1920}, "aac", 48000, 320))
+        self.assertIs(d["tail_fade"], True)  # its music is baked with a fade (musicbed)
         social = deliver.destination(self.config, "social_9x16")
         same = {k for k in d if k not in ("name", "naming", "captions", "min_fps", "key",
-                                          "subfolder")}
+                                          "subfolder", "tail_fade")}
         self.assertEqual({k: d[k] for k in same}, {k: social[k] for k in same})
 
     def test_the_repo_config_and_the_built_in_default_agree(self):

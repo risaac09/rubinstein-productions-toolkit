@@ -159,6 +159,7 @@
         "bitrate_kbps": 320
       },
       "loudness": { "integrated_lufs": -14.0 },
+      "tail_fade": true,
       "captions": "none",
       "color": { "resolve": { "GammaTag": "Rec.709-A" }, "expect": { "color_transfer": "bt709" } },
       "resolve": { "NetworkOptimization": true },

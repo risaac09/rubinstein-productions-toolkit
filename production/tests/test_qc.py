@@ -159,6 +159,15 @@ class QcTable(unittest.TestCase):
         self.assertEqual(by["loudness"]["status"], qc.FAIL)
         self.assertEqual(by["true_peak"]["status"], qc.PASS)
 
+    def test_the_music_destination_adds_no_tail_row_to_the_table(self):
+        # deliver_check reads loudness off here, so its tail row would only ever say SKIP
+        dest = deliver.destination(CFG, "social_9x16_music")
+        self.assertTrue(dest["tail_fade"])
+        r, by = self.rows("clean", dest=dest)
+        self.assertNotIn("tail", by)
+        self.assertEqual(dc.check(self.f["clean"], dest, loudness=False)["checks"][-1]["check"],
+                         "tail")  # deliver_check does add it, so this is qc's filter at work
+
     def test_true_peak_fails_on_a_full_scale_tone(self):
         _, by = self.rows("loud")
         self.assertEqual(by["true_peak"]["status"], qc.FAIL)
