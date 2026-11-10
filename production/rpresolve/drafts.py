@@ -51,7 +51,7 @@ DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-wor
          "scale-window", "retime", "reframe-pan"}
 # Drawn, but only as an approximation: what the sheet's notes say about each.
 APPROX = {"text-word": "the word is a white box",
-          "scale-window": "drawn over black, not over the previous shot's held last frame",
+          "scale-window": "drawn over black (no previous shot to grow over)",
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
                          "width, not Resolve's Pan arithmetic"}
 TUNE_GAIN = 1.05  # a lane is kept only when it lifts throughput by 5 percent
@@ -120,7 +120,7 @@ def media_path(path, proxy_dir=None):
 # Filters
 # ---------------------------------------------------------------------------
 
-def effect_filter(effect, seconds, fps, w, h, params=None):
+def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
     """An ffmpeg approximation of a macro over one span, or None when there is none.
     retime is a setpts to put before the scale (source time is the integral of the
     speed, so a ramp is its inverse quadratic); reframe-pan is the span's crop, which
@@ -138,8 +138,11 @@ def effect_filter(effect, seconds, fps, w, h, params=None):
         return f"crop={w}:{h}:x='(iw-{w})*({a}+({b}-{a})*t/{seconds:.4f})':y='(ih-{h})/2'"
     if effect == "scale-window":  # 0.22 to 0.72 over 36 frames, then full from frame 37
         z = f"if(lt(t*{fps}\\,37)\\,0.22+0.5*min(t*{fps}\\,36)/36\\,1)"
-        return (f"scale=w='max(2\\,trunc({w}*({z})/2)*2)':h='max(2\\,trunc({h}*({z})/2)*2)':"
-                f"eval=frame,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black:eval=frame")  # per frame, or the
+        sc = (f"scale=w='max(2\\,trunc({w}*({z})/2)*2)':h='max(2\\,trunc({h}*({z})/2)*2)':"
+              f"eval=frame")
+        if over:  # the overlay centres the window on the previous shot
+            return sc
+        return (sc + f",pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black:eval=frame")  # per frame, or the
         # pad keeps the first frame's window and crops the growing picture to it
     if effect == "zoom-push":  # 1.0 to 1.15 over 48 frames, eased
         u = f"min(t*{fps}/48\\,1)"
@@ -148,18 +151,14 @@ def effect_filter(effect, seconds, fps, w, h, params=None):
                 f"crop={w}:{h}")
     if effect == "crop-window":  # width 0 to 0.25 by frame 8, held to 20, full by 26
         a, b, c = 8 / fps, 20 / fps, 26 / fps
-        fw = (f"if(lt(t\\,{a:.4f})\\,0.25*t/{a:.4f}\\,if(lt(t\\,{b:.4f})\\,0.25\\,"
-              f"if(lt(t\\,{c:.4f})\\,0.25+0.75*(t-{b:.4f})/{c - b:.4f}\\,1)))")
-        fh = f"if(lt(t\\,{b:.4f})\\,0.6\\,if(lt(t\\,{c:.4f})\\,0.6+0.4*(t-{b:.4f})/{c - b:.4f}\\,1))"
-        side = f"max(2\\,{w}*(1-{fw})/2)"
-        cap = f"max(2\\,{h}*(1-{fh})/2)"
-        off = f"if(gte({fw}\\,1)\\,-8\\,0)"
-        offh = f"if(gte({fh}\\,1)\\,-8\\,0)"
-        return ",".join([
-            f"drawbox=x='{off}':y=0:w='{side}':h={h}:color=black:t=fill",
-            f"drawbox=x='{w}-{side}-{off}':y=0:w='{side}':h={h}:color=black:t=fill",
-            f"drawbox=x=0:y='{offh}':w={w}:h='{cap}':color=black:t=fill",
-            f"drawbox=x=0:y='{h}-{cap}-{offh}':w={w}:h='{cap}':color=black:t=fill"])
+        fw = (f"if(lt(T,{a:.4f}),0.25*T/{a:.4f},if(lt(T,{b:.4f}),0.25,"
+              f"if(lt(T,{c:.4f}),0.25+0.75*(T-{b:.4f})/{c - b:.4f},1)))")
+        fh = f"if(lt(T,{b:.4f}),0.6,if(lt(T,{c:.4f}),0.6+0.4*(T-{b:.4f})/{c - b:.4f},1))"
+        # drawbox has no time variable (its `t` is the border thickness), so a size built
+        # from t never moved; geq reads the frame time T. Outside the box is black.
+        o = f"gt(abs(X-W/2),W*({fw})/2)+gt(abs(Y-H/2),H*({fh})/2)"
+        return (f"format=yuv420p,geq=lum='if({o},0,lum(X,Y))':cb='if({o},128,cb(X,Y))':"
+                f"cr='if({o},128,cr(X,Y))'")
     if effect == "dip-to-black":  # the last 18 frames to black
         d = min(18 / fps, seconds)
         return f"fade=t=out:st={seconds - d:.4f}:d={d:.4f}"
@@ -171,9 +170,11 @@ def effect_filter(effect, seconds, fps, w, h, params=None):
     return None
 
 
-def span_filter(span, effects, w, h, fps, seconds, lut=None):
+def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
     """(vf, not_drawn) for one span. effects: the span's manifest entries, {effect,
-    params?} (a bare macro id is also taken)."""
+    params?} (a bare macro id is also taken). back: the filter chain of the previous
+    shot's picture, read from input 1; a scale-window then grows over it, and vf is a
+    filter_complex graph (it starts with "[0:v]") instead of a plain chain."""
     ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
     params = {e["effect"]: e.get("params") or {} for e in ents}
     crop = f"crop={w}:{h}"
@@ -192,17 +193,26 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None):
     if lut:
         vf.append("lut3d=file=look.cube")  # relative: the job runs in the plan's work folder
     missing = []
+    over = bool(back) and "scale-window" in params
     for e in params:
         if e not in ("retime", "reframe-pan"):
-            f = effect_filter(e, seconds, fps, w, h, params[e])
+            f = effect_filter(e, seconds, fps, w, h, params[e], over=over)
             if f:
                 vf.append(f)
         if e not in DRAWN:
             missing.append(f"{e} (no ffmpeg approximation)")
+        elif e == "scale-window" and over:
+            missing.append("scale-window: over the previous shot's last frame, held")
         elif e in APPROX:
             missing.append(f"{e}: {APPROX[e]}")
     vf += [f"fps={fps}", "format=yuv420p"]
-    return ",".join(vf), missing
+    if not over:
+        return ",".join(vf), missing
+    i = next(k for k, f in enumerate(vf) if f.startswith("scale=w='max(2"))  # the window
+    plate = f"[1:v]{back},trim=end_frame=1,loop=loop=-1:size=1[bg]"
+    comp = (f"[0:v]{','.join(vf[:i + 1])}[fg];{plate};"
+            f"[bg][fg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:shortest=1")
+    return ",".join([comp] + vf[i + 1:]), missing
 
 
 # ---------------------------------------------------------------------------
@@ -251,13 +261,21 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         src = media_path(srcs[sid], proxy_dir)
         n = cutlist.frame(span["out"], fps) - cutlist.frame(span["in"], fps)
         seconds = n / fps
-        vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut)
+        back = prev = None
+        if i and any(e["effect"] == "scale-window" for e in by_span.get(i, [])):
+            prev = spans[i - 1]  # the window grows over the outgoing shot's last frame
+            back = span_filter(prev, [], w, h, fps, 1 / fps, lut)[0]
+        vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back)
         notes += [f"span {i}: {x}" for x in missing]
         if (span.get("transition") or {}).get("type") == "dissolve":
             notes.append(f"span {i}: the dissolve into it is drawn as a cut")
         out = os.path.join(work, f"{i:03d}.mp4")
         cmd = (["ffmpeg", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox"] if hw else [])
-               + ["-ss", f"{span['in']:.4f}", "-i", src, "-an", "-vf", vf,
+               + ["-ss", f"{span['in']:.4f}", "-i", src]
+               + (["-ss", f"{max(0, cutlist.frame(prev['out'], fps) - 1) / fps:.4f}", "-i",
+                   media_path(srcs[prev.get("source") or next(iter(srcs))], proxy_dir)]
+                  if back else [])
+               + ["-an", "-filter_complex" if back else "-vf", vf,
                   "-frames:v", str(n), "-r", str(fps)] + enc
                + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
         jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work})

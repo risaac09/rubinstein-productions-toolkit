@@ -93,7 +93,7 @@ class TestRender(Base):
             self.assertEqual(st["r_frame_rate"], "24/1")
             self.assertEqual(int(st["nb_read_frames"]), 24 + 12 + 18 + 6)  # spans plus black
             notes = " | ".join(d["notes"])
-            self.assertIn("span 2: scale-window: drawn over black", notes)
+            self.assertIn("span 2: scale-window: over the previous shot's last frame", notes)
             self.assertIn("span 1: the dissolve into it is drawn as a cut", notes)
             self.assertIn("look print-teal not applied", notes)
             self.assertTrue(os.path.isfile(os.path.join(out, d["plan"] + ".notes.txt")))
@@ -222,6 +222,46 @@ class TestNewDrawsRender(Base):
         notes = " | ".join(doc["drafts"][0]["notes"])
         self.assertIn("span 1: reframe-pan:", notes)
         self.assertNotIn("retime", notes)
+
+
+def gray_frame(path, n, w, h):
+    """Frame n of a draft as w*h grey bytes."""
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf",
+                        f"select=eq(n\\,{n}),format=gray", "-frames:v", "1", "-f", "rawvideo", "-"],
+                       capture_output=True, check=True)
+    return r.stdout
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestMotionRender(Base):
+    def setUp(self):
+        super().setUp()
+        self.src = os.path.join(self.dir, "grey.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=0xb0b0b0:s=1920x1080:r=24:d=8", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", self.src], check=True)
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=3.0)
+        m["rules"]["end"] = None
+        for slot, (sec, eff) in zip(m["slots"], [(1.5, "crop-window"), (0.5, None),
+                                                (1.0, "scale-window")]):
+            slot.update(seconds=sec, effect=eff, scale=None, move="static")
+        d = self.plan("motion", m, self.src)
+        self.draft = drafts.build([d], os.path.join(self.dir, "out"), hw=False,
+                                  lanes=1)["drafts"][0]["file"]
+
+    def test_crop_window_box_changes_size_over_the_span(self):
+        def lit_columns(n):  # columns of the middle row that are not black
+            row = gray_frame(self.draft, n, 1280, 720)[360 * 1280:361 * 1280]
+            return sum(1 for v in row if v > 40)
+        early, late = lit_columns(4), lit_columns(20)  # frame 4 is opening, 20 is held
+        self.assertGreater(early, 0)
+        self.assertGreater(late, early + 100)
+
+    def test_scale_window_grows_over_the_previous_shot(self):
+        f = gray_frame(self.draft, 48 + 1, 1280, 720)  # span 2 starts at frame 48; frame 1: a small window
+        corner = [f[y * 1280 + x] for y in range(0, 100) for x in range(0, 100)]
+        self.assertGreater(sum(corner) / len(corner), 100)  # the grey shot, not black
 
 
 class TestLanes(unittest.TestCase):
