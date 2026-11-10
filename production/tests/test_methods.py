@@ -159,6 +159,22 @@ class TestToManifest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-empty word"):
             methods.to_manifest(m, f)
 
+    def test_the_matte_slot_gets_the_magic_mask_recipe_step(self):
+        m = methods.load("matte-title")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "person-matte-text")
+        f = fills(m)
+        f[i]["text"] = "HOME"
+        man = methods.to_manifest(m, f)
+        (step,) = [x for x in man["method"]["ui_steps"] if x["target"] == f"span {i}"]
+        self.assertEqual((step["page"], step["panel"]),
+                         ("Fusion", "comp rp-fx person-matte-text > SubjectMatte_PLACEHOLDER"))
+        self.assertEqual(step["control"], "replace with a Person Magic Mask (Better)")
+        for want in ("Track Forward and Reverse", "2 to 5 px", "Merge2.EffectMask",
+                     "delete the placeholder", "get_image", "fusion-macros.md",
+                     "untested live", "sandbox project first"):
+            self.assertIn(want, step["value"])
+        self.assertIn("in front of the subject", step["why"])
+
     def test_a_fill_gain_is_the_flash_params_gain(self):
         m = methods.load("punch-montage")
         i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "exposure-flash")
