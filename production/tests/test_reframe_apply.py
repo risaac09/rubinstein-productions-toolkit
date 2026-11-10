@@ -267,6 +267,7 @@ class TestWindowLayout(Base):
         self.assertIn("CHECK THE TRACK: this is V1 and V2 holds 2", dry["summary"])
 
 
+@unittest.skipUnless(os.access(detect.FFPROBE, os.X_OK), "ffmpeg missing (ffprobe)")
 class TestReframePlanItems(unittest.TestCase):
     def test_the_offline_tool_writes_a_framing_plan(self):
         tool = REG.get("reframe_plan")
