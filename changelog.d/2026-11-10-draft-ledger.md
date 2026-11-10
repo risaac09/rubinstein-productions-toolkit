@@ -1,0 +1,1 @@
+The draft farm writes an effects ledger per draft in drafts.json (drawn, approximated, not drawn, with span indices) and a lettered DIR/send folder with a note count on each; a fill's gain goes through to_manifest and the draft draws the exposure-flash as that gain, and the dip on the macro's even-stop keys (trap T28).

@@ -159,6 +159,35 @@ class TestToManifest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-empty word"):
             methods.to_manifest(m, f)
 
+    def test_a_fill_gain_is_the_flash_params_gain(self):
+        m = methods.load("punch-montage")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "exposure-flash")
+        f = fills(m)
+        plain = methods.to_manifest(m, f)
+        self.assertIn({"span_index": i, "effect": "exposure-flash"}, plain["effects"])
+        f[i]["gain"] = 10
+        man = methods.to_manifest(m, f)
+        self.assertIn({"span_index": i, "effect": "exposure-flash", "params": {"gain": 10}},
+                      man["effects"])
+        self.assertEqual(len(man["effects"]), len(plain["effects"]))
+        f[i]["gain"] = 1
+        self.assertIn("gain", [e for e in methods.to_manifest(m, f)["effects"]
+                               if e["span_index"] == i][0]["params"])
+
+    def test_a_gain_outside_1_to_20_or_off_a_flash_slot_is_refused(self):
+        m = methods.load("punch-montage")
+        i = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] == "exposure-flash")
+        other = next(k for k, sl in enumerate(m["slots"]) if sl["effect"] != "exposure-flash")
+        for bad in (0.5, 21, "2", True, float("nan")):
+            f = fills(m)
+            f[i]["gain"] = bad
+            with self.assertRaisesRegex(ValueError, "a number from 1 to 20"):
+                methods.to_manifest(m, f)
+        f = fills(m)
+        f[other]["gain"] = 2
+        with self.assertRaisesRegex(ValueError, "gain is for an exposure-flash slot"):
+            methods.to_manifest(m, f)
+
     def test_retime_and_reframe_pan_are_not_slot_effects(self):
         m = methods.load("punch-montage")
         for e in ("retime", "reframe-pan"):
