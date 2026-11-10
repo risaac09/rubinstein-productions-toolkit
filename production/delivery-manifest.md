@@ -13,6 +13,7 @@ The names are the house rule from the [Deliver section](resolve-template-spec.md
 ```
 SW001_Guest_01_example-clip_16x9.mp4      show code, episode, guest, clip, slug, aspect
 Client_example-slug_master.mov            client master
+Client_example-slug_9x16.mp4              music-only montage: client, slug, aspect
 ```
 
 Each destination renders into its own subfolder of the delivery folder, named by the destination key, so one clip delivered to several places keeps one name per aspect and never collides. The sidecar `.srt` of a sidecar destination shares the video's stem and sits beside it.

@@ -1653,8 +1653,11 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     missing, under /Volumes without its share mounted, or inside a git
     working tree; the file or its sidecar already exists, or a queued job
     already writes it; captions are wanted and the timeline has no subtitle
-    track (or only empty ones). A required Deliver setting that Resolve
-    refuses stops the job from being queued. The queued job is read back
+    track (or only empty ones). It warns, and still queues, when files in
+    the target folder or its destination subfolders carry another client
+    prefix than a master or montage job's (deliver.client_drift). A required
+    Deliver setting that Resolve refuses stops the job from being queued.
+    The queued job is read back
     from GetRenderJobList. Returns {project, timeline, destination, output,
     sidecar, settings, plan_sha, dry_run, job, readback_problems,
     unverified, deliver_changed, carried_over, codec, warnings,
@@ -1717,6 +1720,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
            "carried_over": deliver.carried_over(steps),
            "codec": None, "warnings": [], "ui_restore_problems": [], "exit_status": 0,
            "made_folder": None, "render_guard": None}
+    # Warns only; the plan_sha is already fixed, so this never moves it.
+    out["warnings"] += deliver.client_drift(target_dir, filename, config)
     unnamed = render.unreported_jobs(project)
     if unnamed:
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "

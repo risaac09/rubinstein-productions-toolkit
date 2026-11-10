@@ -47,6 +47,11 @@ class TestLedgerRow(unittest.TestCase):
             self.assertEqual(row[k], "")
         self.assertTrue(row["stub"])
 
+    def test_a_montage_name_is_a_house_name_too(self):
+        name = "Client_example-montage_9x16.mp4"
+        row = dc.ledger_row(stub("/x/" + name))
+        self.assertEqual((row["key"], row["key_reason"]), (name, None))
+
     def test_other_name_gets_null_key_and_reason(self):
         row = dc.ledger_row(stub("/x/final_v2.mp4"))
         self.assertIsNone(row["key"])

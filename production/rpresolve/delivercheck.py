@@ -657,7 +657,7 @@ def find_approval(events, path, sha256=None):
     name = os.path.basename(path)
     try:
         parts = deliver.parse_name(name)
-        stem = (name[:-len(parts["aspect"]) - len(parts["ext"]) - 2] if parts["kind"] == "clip"
+        stem = (name[:-len(parts["aspect"]) - len(parts["ext"]) - 2] if "aspect" in parts
                 else name.rsplit(".", 1)[0])
     except deliver.NameRuleError:
         stem = None

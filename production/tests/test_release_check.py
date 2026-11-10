@@ -86,6 +86,11 @@ class TestReleaseCheck(Case):
         self.assertEqual(next(r for r in rows if r["file"] == "Final Cut.mp4")["cells"]["name"][0], "FAIL")
         self.assertEqual(verdict, "BLOCKED")
 
+    def test_a_montage_name_passes_the_name_row(self):
+        name = "Client_example-montage_9x16.mp4"
+        (self.up / name).write_bytes(b"x")
+        self.assertEqual(self.cell(name, "name")[0], "PASS")
+
     def test_title_of_61_characters_fails_and_60_passes(self):
         self.titles[NAMES[0]] = "t" * 61
         self.assertEqual(self.cell(NAMES[0], "title")[0], "FAIL")

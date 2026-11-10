@@ -641,13 +641,19 @@ and the MCP tools; they never carry on with the defaults.
 ```
 SW001_Guest_01_example-clip_16x9.mp4      show code, episode, guest, clip, slug, aspect
 Client_example-slug_master.mov            client master
+Client_example-slug_9x16.mp4              montage (music only): client, slug, aspect
 ```
 
 Show code: 1 to 8 capital letters. Episode: 3 digits. Guest and client:
 letters and digits only. Clip index: 01 to 99. Slug: lowercase letters and
 digits in words joined by single hyphens, up to 60 characters. Aspect:
 `16x9`, `9x16` or `1x1`, taken from the destination, as is the extension.
+Each destination sets its `naming`: `clip`, `master` or `montage`. A montage
+has no show, guest or clip index; `social_9x16_music` takes it.
 Names are validated when a job is queued and again when the file is checked.
+A queue also warns when files already in the target folder (or in any
+destination's subfolder of it) carry a different client prefix, so one
+project keeps one.
 
 ### Folders
 

@@ -1194,7 +1194,9 @@ def register(registry):
         "target_dir); a destination is the only way to queue a render. It never starts a "
         "render: the operator starts renders. A destination sets format, codec, size, frame rate, "
         "audio, colour tags and captions, and names the file by the house rule "
-        "(SW001_Guest_01_example-clip_16x9.mp4, or Client_slug_master.mov); it is refused "
+        "(SW001_Guest_01_example-clip_16x9.mp4, Client_slug_master.mov, or for a music "
+        "montage Client_slug_9x16.mp4); it warns, and still queues, when files in the target "
+        "folder or its destination subfolders carry another client prefix; it is refused "
         "when the folder is missing, on an unmounted share or in a git repository, when the "
         "file or its sidecar exists or a queued job writes it, and when captions are wanted "
         "but the timeline has no subtitle track. The timeline is made current only while "
@@ -1220,10 +1222,10 @@ def register(registry):
                 "slug": {"type": "string", "pattern": f"^{deliver.SLUG}$",
                          "description": "Lowercase words joined by hyphens."},
                 "client": {"type": "string", "pattern": f"^{deliver.WORD}$",
-                           "description": "client_master only."}},
+                           "description": "client_master and montage destinations only."}},
                 "additionalProperties": False,
-                "description": "Show, episode, guest, index and slug; for client_master, "
-                "client and slug."},
+                "description": "Show, episode, guest, index and slug; for client_master and "
+                "the montage destinations (social_9x16_music), client and slug."},
             "target_dir": {"type": "string",
                            "description": "Absolute path of an existing folder outside any "
                            "git repository (default: the destination's target_dir in the "
