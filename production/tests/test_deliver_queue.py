@@ -21,7 +21,8 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import api, config as rpconfig, render, workflows  # noqa: E402
+from test_delivercheck import make, needs_ffmpeg, statuses, tiny  # noqa: E402
+from rpresolve import api, config as rpconfig, deliver, delivercheck as dc, render, workflows  # noqa: E402
 from rpresolve.mcp import schema, server, tools_offline  # noqa: E402
 from rpresolve.mcp.registry import ToolContext  # noqa: E402
 
@@ -237,6 +238,57 @@ class TestQueueDestination(Base):
         with self.assertRaisesRegex(workflows.Refused, "plan changed"):
             self.queue(expect_sha="0" * 64)
         self.assertEqual(self.project.jobs, [])
+
+
+class TestMusicDestination(Base):
+    """social_9x16_music: a music-only montage, no captions, no frame rate floor."""
+
+    def setUp(self):
+        super().setUp()
+        clip = rf.Clip("P1.MOV", "clip-1", {"File Path": "/w/P1.MOV"})
+        self.music = rf.Timeline("Music 9x16 [auto]", "tl-music", "24", tracks={
+            "video": [[rf.Item("P1.MOV", 86400, 86500, clip)]],
+            "audio": [[rf.Item("P1.MOV", 86400, 86500, clip, nodes=None)]]},
+            settings={"timelineResolutionWidth": "1080", "timelineResolutionHeight": "1920"})
+        self.project.add(self.music)
+
+    def test_it_validates_and_differs_from_social_9x16_only_in_captions_and_floor(self):
+        d = deliver.destination(self.config, "social_9x16_music")
+        self.assertEqual(deliver.destination_problems(d), [])
+        self.assertEqual((d["captions"], d.get("min_fps"), d["loudness"]["integrated_lufs"]),
+                         ("none", None, -14.0))
+        self.assertEqual((d["resolution"], d["audio"]["codec"], d["audio"]["sample_rate"],
+                          d["audio"]["bitrate_kbps"]),
+                         ({"width": 1080, "height": 1920}, "aac", 48000, 320))
+        social = deliver.destination(self.config, "social_9x16")
+        same = {k for k in d if k not in ("name", "captions", "min_fps", "key", "subfolder")}
+        self.assertEqual({k: d[k] for k in same}, {k: social[k] for k in same})
+
+    def test_the_repo_config_and_the_built_in_default_agree(self):
+        repo = rpconfig.load_config(rpconfig.CONFIG_PATH_DEFAULT, strict=True)
+        self.assertEqual(repo["destinations"]["social_9x16_music"],
+                         rpconfig.DEFAULT_CONFIG["destinations"]["social_9x16_music"])
+
+    def test_a_timeline_with_no_captions_queues_with_no_fps_warning(self):
+        dry, r = self.twice(dest="social_9x16_music", timeline="Music 9x16 [auto]")
+        self.assertEqual(r["exit_status"], 0, r)
+        self.assertEqual(self.project.render_settings["ExportSubtitle"], False)
+        self.assertFalse([w for w in r["warnings"] if "fps" in w], r["warnings"])
+        self.assertIsNone(r["sidecar"])
+
+    def test_social_9x16_still_wants_captions_on_the_same_timeline(self):
+        with self.assertRaisesRegex(workflows.Refused, "no subtitle track"):
+            self.queue(dest="social_9x16", timeline="Music 9x16 [auto]", dry_run=True)
+
+    @needs_ffmpeg
+    def test_delivercheck_does_not_warn_on_24_fps_or_missing_captions(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = make(os.path.join(d, "SW001_Guest_01_example-clip_9x16.mp4"), size="36x64",
+                        rate="24", lufs=-14.0)
+            r = dc.check(path, tiny("social_9x16_music"), loudness=False)
+        s = statuses(r)
+        self.assertEqual((s["captions"], s["fps_floor"]), (dc.PASS, dc.SKIP), dc.format_report(r))
+        self.assertEqual(r["status"], "pass", dc.format_report(r))
 
 
 class TestRefusals(Base):
@@ -585,7 +637,7 @@ class TestMCP(Base):
 
     def test_the_tool_list(self):
         names = [t.name for t in REG.list()]
-        self.assertEqual(len(names), 40)  # link_proxies, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect and edit_methods
+        self.assertEqual(len(names), 42)  # link_proxies, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect, edit_methods, vertical_apply and assemble_timeline
         for name in ("deliver_check", "deliver_captions", "create_captions", "reframe_plan"):
             self.assertIn(name, names)
         for name in ("deliver_captions", "create_captions"):

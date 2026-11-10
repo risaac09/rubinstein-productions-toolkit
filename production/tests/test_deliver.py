@@ -131,7 +131,8 @@ class TestConfig(unittest.TestCase):
         cfg = rpconfig.load_config("/nonexistent/config.json")
         self.assertEqual(deliver.destination_keys(cfg), sorted([
             "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16",
-            "social_9x16", "substack_16x9", "youtube_16x9", "youtube_16x9_hd"]))
+            "social_9x16", "social_9x16_music", "substack_16x9", "youtube_16x9",
+            "youtube_16x9_hd"]))
         yt = deliver.destination(cfg, "youtube_16x9")
         self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
                          ("mp4", "H265", {"width": 3840, "height": 2160}))

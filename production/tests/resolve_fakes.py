@@ -128,6 +128,17 @@ class Item(Fake):
 
     def GetUniqueId(self): return self.uid
 
+    add_transition_returns = True  # False: AddTransition answers None, as Resolve does without handles
+
+    def AddTransition(self, opts):
+        _log(self, "AddTransition", self.uid, dict(opts))
+        if not self.add_transition_returns:
+            return None
+        n = int(opts.get("duration") or 0)
+        t = Item(opts.get("type", "Cross Dissolve"), self.end - n // 2, self.end - n // 2 + n, nodes=None)
+        self.__dict__.setdefault("transitions", []).append(t)
+        return t
+
     def Stabilize(self):
         _log(self, "Stabilize", self.uid)
         hook = self.__dict__.get("on_stabilize")
@@ -155,6 +166,13 @@ class Item(Fake):
         if key not in self.__dict__.get("ignored", ()):
             self.props[key] = value
         return True
+
+    def SetFades(self, fades):  # Resolve 21.2: True on picture and audio items, read back by GetFades
+        _log(self, "SetFades", dict(fades))
+        self.fades = {**self.GetFades(), **fades}
+        return True
+
+    def GetFades(self): return dict(self.__dict__.get("fades", {"FadeIn": 0, "FadeOut": 0}))
 
     def GetNodeGraph(self): return self.graph
     def GetCurrentVersion(self): return self.version

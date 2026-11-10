@@ -31,13 +31,13 @@ METHOD = {
     "look": "print-teal",
     "rules": {"reuse": False, "min_shot_s": 0.2, "snap_to_beat": False, "end": "black:0.25"},
     "slots": [
-        {"role": "a", "seconds": 1.0, "query": "wide", "move": "push-in", "speed": 1.0,
+        {"role": "establishing", "seconds": 1.0, "query": "wide", "move": "push-in", "speed": 1.0,
          "transition_out": {"type": "dissolve", "frames": 2}, "effect": "zoom-push",
          "scale": None, "text": None},
-        {"role": "b", "seconds": 0.5, "query": "close", "move": "static", "speed": 1.0,
+        {"role": "face", "seconds": 0.5, "query": "close", "move": "static", "speed": 1.0,
          "transition_out": {"type": "cut", "frames": 0}, "effect": "crop-window",
          "scale": [1.2, 1.2], "text": None},
-        {"role": "c", "seconds": 0.75, "query": "end", "move": "static", "speed": 1.0,
+        {"role": "closer", "seconds": 0.75, "query": "end", "move": "static", "speed": 1.0,
          "transition_out": {"type": "cut", "frames": 0}, "effect": "scale-window",
          "scale": None, "text": "word"}]}
 
@@ -93,7 +93,7 @@ class TestRender(Base):
             self.assertEqual(st["r_frame_rate"], "24/1")
             self.assertEqual(int(st["nb_read_frames"]), 24 + 12 + 18 + 6)  # spans plus black
             notes = " | ".join(d["notes"])
-            self.assertIn("span 2: scale-window (no ffmpeg approximation)", notes)
+            self.assertIn("span 2: scale-window: drawn over black", notes)
             self.assertIn("span 1: the dissolve into it is drawn as a cut", notes)
             self.assertIn("look print-teal not applied", notes)
             self.assertTrue(os.path.isfile(os.path.join(out, d["plan"] + ".notes.txt")))
@@ -156,8 +156,72 @@ class TestRefusals(Base):
     def test_every_drawn_effect_has_a_filter(self):
         for e in drafts.DRAWN:
             self.assertTrue(drafts.effect_filter(e, 1.0, 24, 1280, 720), e)
-        for e in ("scale-window", "person-matte-text", "cross-dissolve-short"):
+        for e in ("person-matte-text", "cross-dissolve-short"):
             self.assertIsNone(drafts.effect_filter(e, 1.0, 24, 1280, 720))
+
+
+class TestNewDraws(unittest.TestCase):
+    def vf(self, effects, seconds=1.0):
+        return drafts.span_filter({}, effects, 1280, 720, 24, seconds)
+
+    def test_music_is_cut_to_the_draft_and_faded(self):
+        self.assertEqual(drafts.music_args(None, 10), [])
+        a = drafts.music_args({"path": "/m/song.m4a", "in": 8.24}, 10.0)
+        self.assertEqual(a[:6], ["-ss", "8.2400", "-t", "10.0000", "-i", "/m/song.m4a"])
+        self.assertIn("afade=t=out:st=9.000:d=1.000", a)
+
+    def test_retime_is_a_setpts_before_the_scale(self):
+        vf, missing = self.vf([{"effect": "retime", "params": {"speed": 0.5}}])
+        self.assertTrue(vf.startswith("setpts=PTS/0.5,scale="), vf)
+        self.assertEqual(missing, [])
+        ramp, _ = self.vf([{"effect": "retime", "params": {"speed": 0.5, "speed_to": 1.5}}], 2.0)
+        self.assertTrue(ramp.startswith("setpts='(sqrt(0.25+"), ramp)
+        # u = 0.5 t + 0.25 t^2 over 2 s: 2 s of output consume 2 s of source
+        self.assertIn("-0.5)/0.5/TB'", ramp)
+
+    def test_reframe_pan_replaces_the_centred_crop_and_is_labelled(self):
+        vf, missing = self.vf([{"effect": "reframe-pan",
+                                "params": {"pan_from": 0.6, "pan_to": 0.3}}])
+        self.assertIn("crop=1280:720:x='(iw-1280)*(0.6+(0.3-0.6)*t/1.0000)'", vf)
+        self.assertEqual(vf.count("crop=1280:720"), 1)
+        self.assertTrue(missing[0].startswith("reframe-pan: the crop moves"))
+
+    def test_scale_window_grows_to_full_and_is_labelled(self):
+        vf, missing = self.vf(["scale-window"])
+        self.assertIn("0.22+0.5*min(t*24\\,36)/36", vf)
+        self.assertIn("pad=1280:720", vf)
+        self.assertTrue(missing[0].startswith("scale-window: drawn over black"))
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestNewDrawsRender(Base):
+    def test_retime_ramp_pan_and_window_render_the_planned_frames(self):
+        src = os.path.join(self.dir, "src.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=1920x1080:r=24:d=8", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", src], check=True)
+        m = copy.deepcopy(METHOD)
+        m["rules"]["end"] = None
+        m["length_s"] = 2.25
+        m["slots"][0].update(effect=None, speed=0.5)
+        m["slots"][2].update(effect="scale-window")
+        d = self.plan("new", m, src, aspect="9:16")
+        mp = os.path.join(d, "manifest.json")
+        with open(mp) as f:
+            man = json.load(f)
+        self.assertIn({"span_index": 0, "effect": "retime", "params": {"speed": 0.5}},
+                      man["effects"])
+        man["effects"][0]["params"] = {"speed": 0.5, "speed_to": 1.5}
+        man["effects"].append({"span_index": 1, "effect": "reframe-pan",
+                               "params": {"pan_from": 0.2, "pan_to": 0.8}})
+        with open(mp, "w") as f:
+            json.dump(man, f)
+        doc = drafts.build([d], os.path.join(self.dir, "out"), hw=False, lanes=1)
+        st = probe(doc["drafts"][0]["file"])
+        self.assertEqual(int(st["nb_read_frames"]), 24 + 12 + 18)
+        notes = " | ".join(doc["drafts"][0]["notes"])
+        self.assertIn("span 1: reframe-pan:", notes)
+        self.assertNotIn("retime", notes)
 
 
 class TestLanes(unittest.TestCase):

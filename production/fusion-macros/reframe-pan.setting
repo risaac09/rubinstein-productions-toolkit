@@ -1,0 +1,28 @@
+{
+	Tools = ordered() {
+		Transform1 = Transform {
+			ViewInfo = OperatorInfo { Pos = { 0, 0 } },
+			Inputs = {
+				Center = Input {
+					Source = "Value",
+					SourceOp = "XYPath1"
+				}
+			}
+		},
+		XYPath1 = XYPath {
+			DrawMode = "ModifyOnly",
+			Inputs = {
+				X = Input {
+					Source = "Value",
+					SourceOp = "XYPath1X"
+				},
+				Y = Input { Value = 0.5 }
+			},
+			ShowKeyPoints = false
+		},
+		XYPath1X = BezierSpline {
+			SplineColor = { Blue = 0, Green = 0, Red = 255 },
+			NameSet = true
+		}
+	}
+}

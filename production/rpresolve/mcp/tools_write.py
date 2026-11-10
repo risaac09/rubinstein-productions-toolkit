@@ -23,7 +23,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, cmd_effect, deliver, delivercheck, settingsguard, syncbuild, workflows
+from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
 from .. import proxies as rpproxies, relink as rprelink, trimreview
@@ -453,7 +453,8 @@ def apply_effect(args, ctx):
                                     args["effect"], track=args["track"], items=args.get("items"),
                                     dry_run=args["dry_run"], project_id=args.get("project_id"),
                                     check_cancel=ctx.check_cancel,
-                                    expect_sha=args.get("plan_sha"))
+                                    expect_sha=args.get("plan_sha"),
+                                    params=args.get("params"))
         tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
         if r["dry_run"]:
@@ -468,6 +469,65 @@ def apply_effect(args, ctx):
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("apply_effect", args, run)
+
+
+def assemble_timeline(args, ctx):
+    _require_sha(args)
+    manifest = _abs(args["manifest"], "manifest")
+
+    def run():
+        r = cmd_assemble.apply_assemble(ctx.session.get(), args["project"], args["name"], manifest,
+                                        width=args["width"], height=args["height"],
+                                        dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                        expect_sha=args.get("plan_sha"),
+                                        check_cancel=ctx.check_cancel)
+        p = r["plan"]
+        what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
+                + (", music on A1" if p["music"] else ""))
+        skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
+        if r["dry_run"]:
+            r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
+        elif r["problems"]:
+            r["summary"] = (f"built '{r['timeline']}' with problems, left in place: "
+                            + "; ".join(r["problems"]))
+        else:
+            r["summary"] = f"built and read back '{r['timeline']}': {what}{skipped}"
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("assemble_timeline", args, run)
+
+
+def vertical_apply(args, ctx):
+    _require_sha(args)
+    crops = _abs(args["crops"], "crops")
+
+    def run():
+        r = cmd_vertical.apply_vertical(ctx.session.get(), args["project"], args["timeline"], crops,
+                                        source_timeline=args.get("source_timeline"),
+                                        track=args["track"], dry_run=args["dry_run"],
+                                        project_id=args.get("project_id"),
+                                        expect_sha=args.get("plan_sha"),
+                                        check_cancel=ctx.check_cancel,
+                                        text_size_override=args.get("text_size"))
+        tl, n = r["timeline"]["name"], len(r["targets"])
+        comps = sum(len(t["comps"]) for t in r["targets"])
+        made = (f"duplicate '{r['source_timeline']}' to '{tl}' at 1080x1920, then "
+                if r["create"] else "")
+        if r["dry_run"]:
+            r["summary"] = (f"would {made}set Scaling 3, Pan and Tilt on {n} item(s) on '{tl}' V"
+                            f"{r['timeline']['track']} and move {comps} rp-fx comp(s)" + _how(r))
+        elif r.get("duplicate", {}).get("mismatches"):
+            r["summary"] = f"the copy '{tl}' does not match its source; nothing was framed"
+        else:
+            ok = sum(1 for x in r["results"] if x["ok"])
+            r["applied"] = ok
+            r["summary"] = (f"set and read back the 9:16 framing of {ok} of {len(r['results'])} "
+                            f"item(s) on '{tl}'; export a still of each and look before queueing")
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("vertical_apply", args, run)
 
 
 def queue_render(args, ctx):
@@ -988,8 +1048,10 @@ def register(registry):
         "already has any Fusion comp is refused, since the new comp would become the one "
         "that renders. Values are the macro's own; three need "
         "an eye before delivery (person-matte-text's placeholder matte, exposure-flash's "
-        "strength, text-word's font and colour; fusion-macros.md). Dry run first; the real "
-        "run needs its plan_sha.",
+        "strength, text-word's font and colour; fusion-macros.md). params sets the macro's "
+        "whitelisted values (text, size, centre; speed, speed_to for retime; pan_from, pan_to, "
+        "pan_base for reframe-pan); an unknown key for the macro is refused and each value "
+        "is read back. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",
@@ -1000,9 +1062,73 @@ def register(registry):
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Item numbers on the track, from 1 (default: all)."},
+            "params": {"type": "object", "additionalProperties": False, "properties": {
+                "text": {"type": "string", "minLength": 1, "maxLength": 80},
+                "size": {"type": "number"},
+                "centre": {"type": "number", "minimum": 0, "maximum": 1},
+                "speed": {"type": "number"}, "speed_to": {"type": "number"},
+                "pan_from": {"type": "number", "minimum": 0, "maximum": 1},
+                "pan_to": {"type": "number", "minimum": 0, "maximum": 1},
+                "pan_base": {"type": "number", "minimum": 0, "maximum": 1}},
+                "description": "Macro settings: text, size (text-word, person-matte-text); "
+                               "centre, 0 to 1 across the frame (zoom-push, text-word); speed "
+                               "and optional speed_to (retime); pan_from, pan_to, optional "
+                               "pan_base (reframe-pan)."},
             **DRY_RUN},
          "required": ["project", "timeline", "effect"], "additionalProperties": False},
         apply_effect, title="Apply a Fusion effect", annotations=WRITE))
+    registry.add(Tool(
+        "assemble_timeline",
+        "Build a method manifest (methods.to_manifest, with optional music {path, in}) as a "
+        "new ' [auto]' timeline with MediaPool.AppendToTimeline: every span is cut from its "
+        "clip at the clip's own frame rate, so 30 and 60 fps footage lands on a 24 fps "
+        "timeline (import_timeline reads FCPXML, which holds one rate for both). The clips "
+        "it needs are imported into a bin named 'methods [auto]', the new timeline gets its "
+        "own size and fill-and-crop scaling, a span's static scale becomes the item's zoom, "
+        "and the music goes on A1 from the first frame through the end black, faded out. "
+        "Nothing existing changes. Refused: a name that exists or does not end ' [auto]', a "
+        "manifest whose fps is not the project's timeline rate, a missing file. Dissolves "
+        "are placed as cuts and named in the plan; effects are apply_effect's work. Every "
+        "item's length is read back. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "name": {"type": "string", "description": "The new timeline's name, ending ' [auto]'."},
+            "manifest": {"type": "string",
+                         "description": "Absolute path of the method manifest JSON."},
+            "width": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[0]},
+            "height": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[1]},
+            **DRY_RUN},
+         "required": ["project", "name", "manifest"], "additionalProperties": False},
+        assemble_timeline, title="Assemble a method timeline", annotations=WRITE))
+    registry.add(Tool(
+        "vertical_apply",
+        "Finish a 16:9 ' [auto]' montage as 9:16 from a reviewed crops.json (written offline by "
+        "`resolve_workflow.py vertical plan`, marked by `vertical review` once its sheet has "
+        "been read). When the target timeline does not exist, source_timeline is duplicated to "
+        "it and the copy alone is set to 1080x1920; an existing target must already be "
+        "1080x1920 and is never resized. On each item of one video track it sets the item's "
+        "own Scaling to 3 (fill), Pan to (0.5 - cx) x 1080 x zoom and Tilt to 0, moves the "
+        "pivot of an 'rp-fx zoom-push' comp and the centre and size of an 'rp-fx text-word' "
+        "comp to the crop centre, re-renders those comps and reads everything back. Refused, "
+        "writing nothing: a target not ending ' [auto]', crops.json not reviewed, an item "
+        "count, name, file or zoom that differs from crops.json. Dry run first; the real run "
+        "needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string",
+                         "description": "The 9:16 target's name, ending ' [auto]'."},
+            "crops": {"type": "string",
+                      "description": "Absolute path of the reviewed crops.json."},
+            "source_timeline": {"type": "string",
+                                "description": "The 16:9 timeline to duplicate when the target "
+                                               "does not exist yet (name or unique id)."},
+            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "text_size": {"type": "number", "minimum": 0.001, "maximum": 1,
+                          "description": "Text1.Size for every text-word comp (default: fitted "
+                                         "to each word)."},
+            **DRY_RUN},
+         "required": ["project", "timeline", "crops"], "additionalProperties": False},
+        vertical_apply, title="Finish a montage as 9:16", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "reframe_apply",
         "Set ZoomX, ZoomY, Pan and Tilt on video items of one track of an ' [auto]' timeline "

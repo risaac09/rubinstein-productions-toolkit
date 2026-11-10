@@ -1,6 +1,6 @@
 # Edit methods
 
-> **Status:** draft 2026-11-09. Six methods, the loader and validator, `to_manifest`, the draft farm, the MCP `edit_methods` and `apply_effect` tools, and their tests are in place. No method has yet been built end to end on a real shoot.
+> **Status:** draft 2026-11-09. Eight methods, the loader and validator, `to_manifest`, the draft farm, the MCP `edit_methods`, `apply_effect`, `assemble_timeline` and `vertical_apply` tools, and their tests are in place. Five methods have been planned and drafted on two shoots and `assemble_timeline` has built a 48-cut draft with its dissolves and music on a sandbox timeline. No method has yet been built from a reviewed pick through to a queued render.
 
 An edit method is a reusable short-form edit recipe: a timed list of slots, one per shot, each a role to fill from a new shoot with its move, transition, effect and scale. The methods were written from timing and effect breakdowns of short travel and outdoor edits; they keep the technique and none of the source material.
 
@@ -10,7 +10,7 @@ The job, per shoot:
 2. Fill each slot with a clip: one `{source_path, in, out}` per slot, in seconds. The slot's `query` says what to look for.
 3. `methods.to_manifest(method, fills)` returns a version 2 cut manifest. Write it to `PLAN_DIR/manifest.json`, outside any git tree.
 4. Drafts first: `python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR` renders each plan as a 720p proxy and one lettered sheet; the pick is the plan that gets built ([Drafts](#drafts)).
-5. `python3 -m rpresolve.interchange MANIFEST --format fcpxml --out FILE`, then the MCP `import_timeline` tool lands it as an ` [auto]` timeline with the cuts, dissolves and static scales ([interchange.md](interchange.md)).
+5. The MCP `assemble_timeline` tool builds the manifest as a new ` [auto]` timeline: each span from its clip at the clip's own frame rate, static scales, the dissolves, and the music on A1. When every source is at the timeline's rate, `python3 -m rpresolve.interchange MANIFEST --format fcpxml --out FILE` and `import_timeline` do the same from FCPXML ([interchange.md](interchange.md)).
 6. For each entry in the manifest's `effects`, `apply_effect` with that macro on item `span_index + 1` of V1 ([fusion-macros.md](fusion-macros.md)).
 7. Run the manifest's `method.ui_steps` through computer use, after asking for access ([UI steps](#ui-steps)), then `apply_grade` with the method's `look`, `create_captions` and `queue_render` as usual.
 
@@ -41,9 +41,9 @@ A slot:
 
 | Field | Meaning |
 |---|---|
-| `role` | what the shot does in the edit (`establishing`, `burst`, `word`) |
+| `role` | what the shot does in the edit, in words any shoot can fill: `establishing`, `hero`, `figure`, `face`, `group`, `detail`, `movement`, `place` or `closer` |
 | `seconds` | its length on the timeline |
-| `query` | a search line for the footage: what is in frame, generic, no place names |
+| `query` | a search line for the footage: shot size, who or what is in frame and the light. Generic: no place names, and nothing only the source video had |
 | `move` | `push-in`, `static`, `tilt-up`, `pan`, `handheld` or `forward`: the camera move to look for |
 | `speed` | 1.0 is real time; anything else is a retime |
 | `transition_out` | `{type, frames}`: `cut` (0 frames), `dissolve`, `dip` or `wipe` into the next slot; the last slot's is a cut |
@@ -63,10 +63,10 @@ A slot:
 | `transition_out` dip or wipe | a cut, and a UI step for the transition |
 | `scale` with start equal to end (not 1) | the span's `scale` |
 | `scale` that changes | nothing when the slot's effect is `zoom-push` or `scale-window` (the macro animates it); otherwise a UI step for Zoom keyframes |
-| `speed` other than 1 | a UI step for Retime Controls (FCPXML retimes import broken in Resolve 21.2) |
-| `text: "word"` | a UI step: set the word in the comp |
+| `speed` other than 1 | `effects[]` `{span_index, effect: "retime", params: {speed}}`, which `apply_effect` builds as a Fusion comp (FCPXML retimes import broken in Resolve 21.2). An item holds one comp, so the validator refuses a slot with both a speed and an effect |
+| `text: "word"` | `params.text` on the slot's text effect when the fill carries a `text` word; with no word in the fill, a UI step |
 | `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Magic Mask |
-| `effect` | `effects[]` `{span_index, effect}`, span_index from 0 |
+| `effect` | `effects[]` `{span_index, effect, params?}`, span_index from 0 |
 | `rules.end` | `method.end`, and a UI step for the black after the last item |
 | a `.braw` source | a UI step: Camera Raw Decode Using Clip on its items ([BRAW](#braw-decodes-from-the-clip)) |
 
@@ -89,15 +89,100 @@ python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR
     [--camera Pyxis] [--lut-root DIR] [--proxy-dir DIR] [--lanes N] [--no-hw]
 ```
 
-Before anything is built in Resolve, each plan renders as a 720p H.264 proxy (1280x720 or 720x1280, the method's rate, silent, the end black included) so several can be compared at once. A plan directory holds `manifest.json` from `to_manifest` and, optionally, `method.json` (else the method is loaded by id).
+Before anything is built in Resolve, each plan renders as a 720p H.264 proxy (1280x720 or 720x1280, the method's rate, the end black included) so several can be compared at once. A plan directory holds `manifest.json` from `to_manifest` and, optionally, `method.json` (else the method is loaded by id). When the manifest carries `music` `{path, in}`, that track is laid under the draft from `in` seconds and faded out at the end, and the notes say to check its licence; without it the draft is silent.
 
-- Every span is its own ffmpeg job: VideoToolbox decode and `h264_videotoolbox` encode where this ffmpeg has them, fill-and-crop, the span's static scale, the look through `lut3d`, and approximations of `zoom-push`, `crop-window`, `dip-to-black`, `exposure-flash` and `text-word` (a white box where the word goes). The spans are joined without re-encoding.
+- Every span is its own ffmpeg job: VideoToolbox decode and `h264_videotoolbox` encode where this ffmpeg has them, fill-and-crop, the span's static scale, the look through `lut3d`, and approximations of `zoom-push`, `crop-window`, `dip-to-black`, `exposure-flash`, `text-word` (a white box where the word goes), `scale-window` (over black), `retime` (its speed and `speed_to`) and `reframe-pan` (a moving crop). The spans are joined without re-encoding.
 - The look is `<look name> [<camera>].cube` found under `--lut-root` (Resolve's `LUT/lutlab` folder) for `--camera`. Without it the draft is ungraded and says so.
 - BRAW plays from its proxy, `<proxy-dir>/<name>.mov`; a BRAW source with none is refused (ffmpeg cannot decode BRAW).
 - Lanes: one job is timed alone, then each wave of two jobs per lane adds a lane while throughput rises by 5 percent, up to the core count; the best count runs the rest. `--lanes N` fixes it. Short spans make the probe noisy; from 4K HEVC sources on an Apple silicon laptop, three method drafts (44 s of draft) took 25 s at 2 lanes.
 - Output in `DIR`: `<plan>.mp4`, `<plan>.notes.txt` naming everything the draft does not show (an effect with no approximation, a dissolve drawn as a cut, a retime, a missing look), `drafts.json`, and for two or more drafts a lettered `rpstills absheet` sheet of their midpoints in `DIR/sheet` with the key sealed in `DIR/sheet.key`. `DIR` inside a git tree, or not empty, is refused.
 
 Each span's length is a whole number of frames, as `interchange` counts it, so a draft can run a frame or two longer than `length_s` when the method's times are not on the frame grid.
+
+## Evidence keys
+
+The three sections below state rules, and every rule cites what it rests on.
+
+- `B1` to `B10` are ten shot-by-shot breakdowns of published short edits, with the line the fact sits on (`B6 L46`). The breakdowns and the key that names them stay private. Every tempo in them is read from cut spacing, since nobody heard the audio.
+- `T1` to `T23` are entries in [resolve-traps.md](resolve-traps.md), each measured in Resolve.
+- `R` is a logged answer from the person whose edit it is, in a project's `review/events.jsonl`, cited by date and step. One answer is one answer: a preference becomes a rule after five consistent ones ([media-review-loop.md](media-review-loop.md)).
+- `M` is a number measured on a real shoot during the first runs, 2026-11-09.
+
+## Choosing clips
+
+A method's slots are filled from a footage index. The toolkit ships no index; the rules hold for any index that keeps a keyframe, an image embedding and a motion value per shot.
+
+1. **Gate first, then match.** The nearest match to a slot's query has no quality floor. On the first run it returned out-of-focus frames, smear, black, blank sky, sideways clips and one shot twice (`M`). Every keyframe passes a gate before it can be a candidate. Copies are folded first, so a proxy or a second export cannot move a threshold: on one festival shoot 9,899 indexed keyframes are 2,620 distinct shots and 1,180 pass; on a three-day trip shot on one camera, 245 of 687 pass (`M`).
+2. **The gate.** Thresholds are relative to the shoot, so a dark shoot is judged against itself. Read the pass and reject samples by eye on each new shoot before trusting them.
+
+   | Measure | Passes when |
+   |---|---|
+   | Sharpness: variance of the Laplacian over mean brightness, log, z-scored in the shoot | above the shoot's 35th percentile |
+   | Exposure: mean luma, 0 to 1 | between 0.10 and 0.90 |
+   | Motion: frame-to-frame difference | below the shoot's 92nd percentile |
+   | Keeper: embedding similarity to "a good photograph" minus the highest of four fault probes, z-scored | above -0.3 |
+   | Black area: share of pixels under 0.04 | at most 0.55 |
+   | Sideways: similarity to "rotated 90 degrees", z-scored | below 0.8 |
+
+   The sharpness cut fails 35 percent of every shoot by construction. The sideways probe also fails people lying down and frames with strong vertical lines, and the black-area rule exists because a take shot through a doorway passed every other measure with 60 percent of the frame black (`M`).
+3. **One take, once.** A take has copies: a camera original, a graded export, a low-resolution proxy. Identity is the camera's own take id in the file name, with matching duration and matching keyframe embeddings as the fallback (`M`: the duplicate in the first drafts was two copies of one take in two folders). Reuse is a method's decision, `rules.reuse`, as when an outro returns to opening shots (`B8 L83`, `B2 L28`, `B10 L64`). It is never an accident of the search.
+4. **Slots name roles any shoot can fill.** The first method files carried the source video's subjects in their queries, so they only fit that video (`M`). A slot's role is one of nine words, and the validator refuses any other: `establishing` (a wide with room for a title, `B10 L16`), `hero` (the person doing what the shoot is about, held, `B10 L84`), `figure` (a person as a shape: small in a wide, in silhouette, from behind), `face`, `group`, `detail`, `movement`, `place` (a breather with nobody in it, `B4 L28`, `B1 L24`) and `closer`. A role is scored by image probes for shot size and subject, since captions cover few shots. The role names its probe before the query's words do, and a fill must sit half a standard deviation above the shoot's mean on that probe. Without that floor a themed variant filled a face slot with plates of food (`M`). A `face` slot also wants a detected face whose box covers at least 2 percent of the frame, while such a shot is left: the close-up probe alone passed a torso with a passer-by's face behind it, and the faces it got right measured 2.5 percent and up (`M`).
+5. **Variety is counted.** The edits that hold attention change shot size, pose and place from cut to cut (`B10 L16-L66`, `B2 L31`, `B3 L16-L22`: 14 mm to 135 mm in seven shots). A pick's embedding stays under 0.80 cosine to every earlier pick, and a pick close to the one before it is penalised. The 0.80 rule gives way when it would leave a slot empty: a 48-slot method ran out of unlike shots at slot 47 on a shoot of 1,180 gated shots (`M`). Picks are spread across shot sizes and across the people and places the index can tell apart. Two methods want the opposite, one protagonist throughout (`B8 L10`, `B4 L12`); they say so in their slots. Variety also holds across the videos of one shoot: a take that another method's plans already use counts as used once. Planned apart, two methods' best plans shared five of their seven takes (`M`).
+6. **One colour state per edit.** Every breakdown with a look applies one look over the whole timeline (`B1 L44`, `B10 L77`, `B4 L45`, `B8 L10`). An edit draws on graded finals or on camera originals through one transform, never both, and among originals one camera profile (`M`: the first drafts mixed them).
+7. **Identifiable minors.** A probe ranks picks by how likely a child is in frame. The probe clears nothing: someone reads every pick at full size. An identifiable minor is swapped out and the shot goes on the shoot's exclude list; a take that is mostly children goes on it whole, and an excluded shot takes the take's other copies with it. On a festival shoot the probe ranked a plainly identifiable child fourth of seven picks, so its order only says where to start reading (`M`). Where a shoot has many children, read every gated shot once before planning: a small model reading the thumbnails flagged 425 of 1,180, and a full-size read of the flags it called a face, with one sample from each heavily flagged take, confirmed five shots and left four as a question about one person's age (`M`). A baby in a six-frame slot passed the first draft review (`M`), and a face planner once centred a vertical crop on a child at the frame edge (`T16`). A person whose age cannot be judged is a question for whoever was at the shoot.
+8. **A shoot has a take budget.** Variants of one method must differ in at least half their takes, so N variants of an S-slot method need S × (1 + (N − 1)/2) distinct gated takes, half that when the method reuses. On a trip shot on one camera, 43 takes passed the gate: one 30-slot variant filled, the second stopped at 17 and the third at 16, while a 13-slot reuse method filled all three (`M`). The planner says when the budget is short; the answer is fewer variants, a shorter method or a reuse method, never a looser gate.
+9. **Taste orders, the person picks.** Candidates and drafts are ordered by the taste profile and the review log, and shown without a recommendation. So far the log holds three answers: the long hold with a punch-in over the even burst and the slow seven-shot cut (`R` 2026-11-09 `method-draft`); a slow seven-shot cut answered not with a letter but with six shots named across the three drafts, built as a composite (`R` 2026-11-10 `slow-cinematic-draft`); and a refusal of a window growing out of black (`R` 2026-11-10). Three of five, and the second says the question should also allow a composite.
+
+## Editing inside a clip
+
+1. **The hard cut is the default.** Fifty of 52 cuts in one edit (`B10 L71`), and the majority in seven more (`B2 L21`, `B8 L89`, `B4 L36`, `B6 L33`, `B7 L14`, `B3 L7`, `B5 L50`). One edit is built on windows instead (`B1 L41`). A dissolve of two or three frames, a wipe or a window is an accent a method places on purpose (`B8 L94`, `B7 L24`, `B3 L28`).
+2. **A burst slot centres on the action.** Under half a second there is room for one event, so the slot sits on the peak of the clip's motion: the jump at its top, the hand at the cap (`B3 L16`, `B7 L27-L28`, `B3 L19`). The peak is the subject's, not the camera's: in the first beat-burst drafts five of thirty bursts per variant landed on a whip pan, their centres measuring 0.078 to 0.172 on the motion curve where every readable burst measured 0.073 or less, so a burst takes the highest peak under 0.07 and a window entirely above it takes its stillest frame (`M`).
+3. **A hold opens on a settled frame.** The camera in these edits is locked or close to it and the motion is the subject's (`B1 L20-L26`, `B7 L22-L32`, `B10 L17-L66`, `B8 L22-L39`). A hold starts after any camera move has ended and does not end mid-smear. Its out point is the beat (`B1 L31`).
+4. **Keep away from the ends of a take.** In and out stay 0.2 s inside the take, and a clip must be 0.4 s longer than its slot. The gate reads one keyframe per shot, and the first and last frames of a take are where the camera is still being raised or lowered.
+5. **Shot length follows the method's grid.**
+
+   | Kind | Length | Evidence |
+   |---|---|---|
+   | Burst | 0.1 to 0.3 s, an eighth note at 120 to 150 BPM | `B10 L6`, `B2 L11`, `B6 L47`, `B8 L9` |
+   | Hero hold in a burst | 0.4 to 0.8 s | `B10 L84` |
+   | Hold | the beat times a power of two: 0.5, 1, 2, 4 s at 120 BPM | `B7 L16`, `B4 L7` |
+   | Opening hold | about 2 to 5 s | `B10 L16`, `B6 L13`, `B7 L22`, `B2 L19` |
+   | Breath | 1 to 1.4 s inside a burst | `B10 L59`, `B6 L46` |
+
+   The shape that recurs is hold, burst, breath, end (`B6 L46`, `B10 L84`, `B8 L8`, `B2 L19-L21`, `B7 L22-L23`). With music, a slot is counted in beats of the method's own tempo, to the half beat, and laid on the track's beats from a chosen entry beat. When the track runs nearer double or half the method's tempo, every other beat or the half beats are used. Each cut is then rounded to the frame grid from the edit's first frame, so frames do not drift, and the in point absorbs the difference. Snapping each cut to the nearest quarter beat instead doubled the length of every burst (`M`).
+6. **Speed is real time, with one or two exceptions.** Three edits retime nothing (`B1 L13`, `B2 L21`, `B7 L22-L32`) and three more slow or ramp one to three shots (`B6 L20`, `B3 L31`, `B10 L33`). When a method slows a shot it is to 50 to 80 percent (`B6 L60`, `B10 L33`). In Resolve the retime is the `retime` macro (`T5`); the Edit page's own speed has no script call.
+7. **Reframing is an accent.** A punch-in goes from 1.00 to 1.15 over five frames, eased out, inside one take (`B6 L14`). A push goes to 1.12 over two seconds (`B2 L28`). The pivot sits on the crop centre, never the frame centre (`T7`, `T15`). When the subject crosses the frame in a vertical crop, the crop follows it with a keyed pan (`T14`).
+8. **The opening is one of three forms, named in slot 1.** A word or title on screen inside the first third of a second (`B8 L22`, `B7 L22`). A flash from white that resolves in half a second (`B3 L16`, `B4 L18`). Or a strong image held with no device at all, for 1.7 to 11 s (`B6 L13`, `B1 L20`). The breakdowns do not agree, so each method states which it uses and the person's picks decide between them (`R` 2026-11-09 `method-draft`: the held image with a punch, one of five).
+9. **The ending leaves on black.** Seven of ten end on a fade or a cut to black, from a 0.4 s fade (`B10 L67`) to 3 s (`B4 L30`), or a hard cut with 0.7 to 3 s of black after it (`B6 L27`, `B7 L33`). Two hold the last image (`B1 L26`, `B5 L24`). `rules.end` carries it. The picture and the music fade by script (`T18`).
+
+## Resolve by page
+
+The pick is built at 16:9 first and finished at 9:16 as a second step, on ` [auto]` timelines. Renders are queued and never started.
+
+**Edit page.** `assemble_timeline` builds the manifest by appending each span from its clip, so sources at 24, 29.97, 30 and 60 fps sit on one timeline (`T1`), with static scales, each dissolve added on the outgoing item by `AddTransition` and read back (`T24`), and the music under it, faded out over the end black (`T18`). `import_timeline` lands the same manifest from FCPXML with its dissolves and its layers on V2, and needs every source at the timeline's rate (`T10`). Item fades (`T18`), `Scaling`, Pan, Tilt and Zoom are item properties a script sets and reads back. The Edit page cannot be scripted for speed, speed ramps, Inspector keyframes or Dynamic Zoom rectangles; each has a Fusion equivalent below.
+
+**Fusion page.** Everything animated lives in a Fusion comp on the item, applied by `apply_effect` from a macro ([fusion-macros.md](fusion-macros.md)): the punch and push, the word, the flash, the dip, windows, the retime (`T5`) and the moving pan (`T14`). Comp time counts source frames, so `apply_effect` scales a macro's keys by the item's source frames over its timeline frames (`T4`); handles are offsets (`T13`), and every comp is refreshed after wiring or Resolve renders the old picture (`T3`). A person matte comes from the offline `cutout` tool as a clip with alpha on the track above, so a title sits behind a person with no click in Resolve. Trackers run only from the UI.
+
+**Color page.** A script puts a LUT on a node (`apply_grade`) and sets a CDL. It cannot add a node, a window or a qualifier. A look that needs any of those is graded once by hand, captured as a `.drx`, and applied by script from then on (`T19`). Magic Mask needs a stroke drawn first (`T21`). BRAW Decode Using Clip is a computer-use step (`T20`).
+
+| Step | Script | A `.drx` captured once | Computer use |
+|---|---|---|---|
+| Cuts, dissolves, static scales, music | `assemble_timeline` | | |
+| Layers on V2 | `import_timeline`, sources at the timeline's rate | | |
+| A dip to black or a wipe at a cut | | | Effects > Video Transitions, from the manifest's `ui_steps` |
+| Fades in and out | `SetFades` (`T18`) | | menu fallback (`T11`) |
+| Punch, push, word, flash, dip, windows | `apply_effect` | | |
+| Constant speed and ramps | `retime` macro | | Edit page Retime Curve, if the Fusion retime will not do |
+| Pan that follows a subject | `reframe-pan` macro | | |
+| Title behind a person | `cutout` layer plus `text-word` | | Magic Mask, if the matte is poor |
+| A look from a LUT | `apply_grade` | | |
+| A look with windows or qualifiers | apply the `.drx` | grade it once by hand | drawing the windows |
+| BRAW decode from the clip | | | Camera Raw palette |
+| 9:16 crops | `vertical plan`, then the `vertical_apply` tool | | a crop centre set by hand goes in the overrides file |
+
+**The vertical finish.** A 9:16 version is a copy of the built timeline, never a re-edit. `vertical plan` chooses a crop centre per item: the face planner's, else the 16:9 crop carried over, else a centre set by hand. It draws every crop box on its full frame as one sheet. Someone reads the sheet (`T16`): on the first built pick the face planner passed three of seven items and every one of its centres was wrong for the edit (the post beside a face, a press beside the man, the gap between two dancers, a bystander instead of the bucket), so all seven were set by hand from the sheet and the plan re-run without the face pass (`M`). The planner names a face; the edit names a subject. `vertical_apply` then sets fill on each item (`T12`), the Pan (`T15`), the punch pivot and the title's centre and size, and refreshes the comps, and everything reads back. Pan is written with the 9:16 timeline current, because an item's Pan is in the current timeline's pixels (`T27`): on the second build every pan landed at 1080/3840 of the shift and its read-back still passed. A still cannot prove the result (`T26`); a timeline render through Resolve's own MCP can, and a template match of it inside the source frame found each window within 0.003 of its planned centre. A music montage with no speech goes out through `social_9x16_music` (`T17`).
+
+**What holds attention differs by shape.** At 16:9 the wide carries the edit and a title has room beside or above the subject (`B10 L16`). At 9:16 the crop keeps a third of the width, so the subject must sit inside it for the whole slot, a title shrinks to about a third of its size (`T15`), and a shot whose subject crosses the frame needs the pan or a different clip.
 
 ## The methods
 
@@ -108,15 +193,18 @@ Each span's length is a whole number of frames, as `interchange` counts it, so a
 | `slow-cinematic` | 16:9, 18.04 s, 7 slots | Seven 1.3 to 4.3 s shots of one person: a flash-in close, cuts on matching action, a 29-frame hard-edge wipe between two wides (a UI step), a dip to black on the closing wide. | one breakdown |
 | `scale-window-stack` | 16:9, 28.58 s, 7 slots | An 11 s performance hold, a hard cut, four shots that each grow from a small window and snap full on the beat (about 77 BPM), a still hold to end. | one breakdown |
 | `cutout-clones` | 16:9, 23.54 s, 13 slots | One person through haze and open ground: flash entries, a clone of the person in a locked-off plate, a copy that grows into the next shot, words on the beat, a long fade. | one breakdown |
+| `tempo-ladder` | 16:9, 16.5 s, 18 slots | Holds that halve on the beat grid: one of 4 s, two of 2 s, two of 1 s, four of 0.5 s, eight of 0.25 s, then a 2 s breath that dips to black. Plain cuts throughout. | four breakdowns |
+| `matte-title` | 16:9, 15.5 s, 8 slots | One word held behind the people in a 4 s opening wide, hard on and hard off, then holds of 1 and 2 s and a 3 s closing wide into black. | three breakdowns |
 | `word-burst` | 16:9, 18.67 s, 48 slots | A lyric edit: one word per cut over one person looking out (18 slots), a 23-shot burst of 0.15 to 0.2 s with three 2-frame dissolves, an outro of 7 slots that reuses opening shots, and 1.67 s of black for a last word. | two breakdowns |
 
 ## What a method cannot carry yet
 
-- Dips, wipes, retimes and words are UI steps: FCPXML carries cuts, dissolves, static scales and lanes only. Letterbox moves, typewriter text and the clone in `cutout-clones` (two takes of one locked-off frame, or a `cutout` layer, [reel.md](reel.md)) have no macro and no step yet.
-- `rules.snap_to_beat` is advice: `to_manifest` keeps the method's own times. `reel plan` snaps a talking-head cut to beats; a method has no music yet.
+- A dip or a wipe between two shots is a UI step: FCPXML carries cuts, dissolves, static scales and lanes only. Retimes, words, the punch and the closing dip are `apply_effect` comps. Letterbox moves, typewriter text and the clone in `cutout-clones` (two takes of one locked-off frame, or a `cutout` layer, [reel.md](reel.md)) have no macro and no step yet.
+- An item holds one Fusion comp. A slot takes one effect, a retimed slot takes none, and a 9:16 moving pan cannot go on a slot that already has an effect.
+- `to_manifest` keeps the times of the method it is given. Laying slots on a track's beats is the planner's job: it hands `to_manifest` a copy of the method with each slot's `seconds` re-timed, and records where the music starts.
 - Three macros need a person's eye before delivery: `person-matte-text` (a placeholder matte), `exposure-flash` (its strength) and `text-word` (font and colour). See [fusion-macros.md](fusion-macros.md#needs-a-persons-eye).
-- The transitions that show transparency (`scale-window`, `crop-window`, `cross-dissolve-short`) show black on one track; an imported method timeline is one track, so the incoming item moves to V2 to show the outgoing shot through it.
+- The transitions that show transparency (`scale-window`, `crop-window`, `cross-dissolve-short`) show black on one track; an imported method timeline is one track, so the incoming item moves to V2 to show the outgoing shot through it. The draft farm still draws that black, and the first reviewer refused `scale-window-stack` on sight for it: a window must arise out of the image before it, never out of black (`R` 2026-11-10 `scale-window-stack-draft`, none of three). The method is parked until a draft composites the window over the outgoing shot's frame, as the build does.
 
 ## Checks
 
-`tests/test_methods.py`: every shipped method loads and validates, its file name is its id and its effects are macros; `validate` names each kind of fault; every method's `to_manifest` output validates as a version 2 manifest and writes as FCPXML with the method's frame count, one transition per dissolve and the effects list; short, relative and overlapping fills are refused; `reuse` marks the later span; `edit_methods` lists and checks; no method or macro holds a link, a handle or a home path. `tests/test_effect.py` covers `apply_effect`; `tests/test_drafts.py` renders synthetic plans at both shapes, checks length, rate, notes, the look cube, the sheet, BRAW proxies, the git refusal and the lane tuner.
+`tests/test_methods.py`: every shipped method loads and validates, its file name is its id, its roles are in the vocabulary and its effects are macros; `validate` names each kind of fault; every method's `to_manifest` output validates as a version 2 manifest and writes as FCPXML with the method's frame count, one transition per dissolve and the effects list; short, relative and overlapping fills are refused; `reuse` marks the later span; `edit_methods` lists and checks; no method or macro holds a link, a handle or a home path. `tests/test_effect.py` covers `apply_effect`, its params, the key scaling and the refresh; `tests/test_vertical.py` covers the 9:16 plan, the review gate and `vertical_apply`; `tests/test_assemble.py` covers the span arithmetic at mixed rates, the music and its fade, the read-back and the refusals of `assemble_timeline`; `tests/test_drafts.py` renders synthetic plans at both shapes, checks length, rate, notes, the look cube, the sheet, BRAW proxies, the git refusal and the lane tuner.

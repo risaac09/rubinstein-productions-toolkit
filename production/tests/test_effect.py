@@ -47,10 +47,22 @@ class FTool:
     def __init__(self, comp, ctor, name):
         self.comp, self.ctor, self.Name = comp, ctor, name
         self.values, self.links, self.keys = {}, {}, {}
+        self.attrs, self.toggles = {}, []
+
+    @property
+    def ID(self):
+        return self.ctor
 
     def SetAttrs(self, attrs):
-        self.comp.tools[attrs["TOOLS_Name"]] = self.comp.tools.pop(self.Name)
-        self.Name = attrs["TOOLS_Name"]
+        self.attrs.update(attrs)
+        if "TOOLB_PassThrough" in attrs:
+            self.toggles.append(attrs["TOOLB_PassThrough"])
+        if "TOOLS_Name" in attrs:
+            self.comp.tools[attrs["TOOLS_Name"]] = self.comp.tools.pop(self.Name)
+            self.Name = attrs["TOOLS_Name"]
+
+    def GetAttrs(self, key):
+        return self.attrs.get(key)
 
     def SetInput(self, key, value):
         self.values[key] = value
@@ -68,11 +80,15 @@ class FTool:
 
     def SetKeyFrames(self, keys, replace):
         self.keys = dict(keys)
+        if self.keys and min(self.keys) < 0 and 0 not in self.keys:
+            # as Fusion does (T25): a key at frame 0 when the first key sits before it
+            v = self.keys[min(self.keys)][1]
+            self.keys[0] = {1: v, "LH": {1: -1, 2: 0}, "RH": {1: 1, 2: 0}}
 
     def GetKeyFrames(self):
         return {float(f): k for f, k in self.keys.items()}
 
-    def GetInput(self, key, t):
+    def GetInput(self, key, t=None):
         """A spline-driven input between two keys, with the handles read as offsets
         as Resolve reads them: the midpoint moves by the outgoing handle's value."""
         spline = self.links.get(key)
@@ -100,6 +116,9 @@ class FComp:
 
     def FindTool(self, name):
         return self.tools.get(name)
+
+    def GetToolList(self, selected=False):
+        return dict(enumerate(self.tools.values(), 1))
 
     def Lock(self): pass
     def Unlock(self): pass
@@ -290,6 +309,23 @@ class TestApplyEffect(Base):
         zoom = self.fx(items=[2])
         self.assertEqual(zoom["targets"][0]["key_offset"], 0)
 
+    def test_keys_are_scaled_to_source_frames(self):
+        """Comp time counts source frames: a 30 fps clip on a 24 fps timeline runs the
+        macro's keys 1.25 times as far apart, and the dip still ends on the last frame."""
+        _, parsed = cmd_effect.load_macro("dip-to-black")
+        self.assertEqual(cmd_effect.comp_timing(parsed, "dip-to-black", 72, 90),
+                         (1.25, 90 - 1 - round(167 * 1.25)))
+        self.assertEqual(cmd_effect.comp_timing(parsed, "dip-to-black", 72, None), (1, 72 - 1 - 167))
+        macro = cmd_effect.shifted(cmd_effect.scaled(parsed, 1.25), 89 - 209)
+        keys = macro["Tools"]["BrightnessContrast1Gain"]["KeyFrames"]
+        self.assertEqual(max(keys), 89)
+        fade = sorted(keys)[1:]
+        self.assertEqual(fade[-1] - fade[0], round(167 * 1.25) - round(149 * 1.25))
+        # A handle moves with its key: still one scaled frame before it.
+        self.assertAlmostEqual(keys[89]["LH"][1], 89 - 1.25, places=6)
+        _, zoom = cmd_effect.load_macro("zoom-push")
+        self.assertIs(cmd_effect.scaled(zoom, 1), zoom)
+
     def test_read_back_catches_absolute_handles(self):
         _, parsed = cmd_effect.load_macro("zoom-push")
         comp = FComp()
@@ -299,6 +335,158 @@ class TestApplyEffect(Base):
         comp.FindTool("Transform1Size").keys = parsed["Tools"]["Transform1Size"]["KeyFrames"]
         problems = cmd_effect._read_back(comp, "zoom-push", parsed, animated)
         self.assertTrue(any("outside 1 to 1.15" in p for p in problems), problems)
+
+
+class TestRefresh(unittest.TestCase):
+    def test_every_tool_is_toggled_on_then_off_except_media_and_modifiers(self):
+        comp = FComp()
+        for ctor in ("Transform", "BezierSpline", "XYPath", "PolyPath", "Merge"):
+            comp.AddTool(ctor)
+        done = cmd_effect.refresh(comp)
+        self.assertEqual(done, ["Transform3", "Merge7"])
+        for name in done:
+            self.assertEqual(comp.FindTool(name).toggles, [True, False])
+        for name in ("MediaIn1", "MediaOut1", "BezierSpline4", "XYPath5", "PolyPath6"):
+            self.assertEqual(comp.FindTool(name).toggles, [], name)
+
+    def test_read_back_fails_on_a_stuck_pass_through(self):
+        _, parsed = cmd_effect.load_macro("zoom-push")
+        comp = FComp()
+        _, animated = cmd_effect._build(comp, parsed)
+        cmd_effect._wire(comp, "zoom-push")
+        cmd_effect.refresh(comp)
+        self.assertEqual(cmd_effect._read_back(comp, "zoom-push", parsed, animated), [])
+        comp.FindTool("Transform1").attrs["TOOLB_PassThrough"] = True
+        self.assertIn("Transform1 is still pass-through",
+                      cmd_effect._read_back(comp, "zoom-push", parsed, animated))
+
+
+class TestParams(Base):
+    def setUp(self):
+        super().setUp()
+        self.auto = self.make_auto()
+        self.items = self.auto.tracks["video"][0]
+        for it in self.items + self.origin.tracks["video"][0]:
+            give_fusion(it)
+            it.source = (100, 340)  # 240 source frames
+        rf.CALLS.clear()
+
+    def run_fx(self, effect, params, items=(1,)):
+        return run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": effect,
+                                          "items": list(items), "params": params},
+                         self.resolve)
+
+    def comp(self, effect, i=0):
+        return self.items[i].comps["rp-fx " + effect]
+
+    def test_validation_refuses_before_any_write(self):
+        bad = [("zoom-push", {"text": "x"}), ("retime", {}), ("retime", {"speed": 0}),
+               ("retime", {"speed_to": 2}), ("text-word", {"centre": 1.5}),
+               ("text-word", {"text": ""}), ("reframe-pan", {"pan_from": 0.4}),
+               ("text-word", {"nope": 1}), ("exposure-flash", {"speed": 1})]
+        for effect, params in bad:
+            with self.assertRaises((workflows.Refused, AssertionError), msg=(effect, params)):
+                call("apply_effect", {"timeline": "Edit [auto]", "effect": effect,
+                                      "params": params}, self.resolve)
+        tool = REG.get("apply_effect")
+        self.assertTrue(schema.validate(tool.input_schema, {
+            "project": "P", "timeline": "T", "effect": "retime", "params": {"bogus": 1}}))
+        self.assertEqual(self.added_comps(), 0)
+
+    def added_comps(self):
+        return len([c for c in rf.CALLS if c[1] == "AddFusionComp"])
+
+    def test_validate_params_refuses_by_kind_and_range(self):
+        v = cmd_effect.validate_params
+        self.assertEqual(v("text-word", {"centre": 0.5}), {"centre": 0.5})
+        for effect, params in [("text-word", {"centre": 1.5}), ("zoom-push", {"text": "x"}),
+                               ("retime", {"speed": -1}), ("retime", {"speed": True}),
+                               ("reframe-pan", {"pan_from": 0.1}), ("retime", "fast")]:
+            with self.assertRaises(workflows.Refused, msg=(effect, params)):
+                v(effect, params)
+
+    def test_params_change_the_plan_sha(self):
+        a = call("apply_effect", {"timeline": "Edit [auto]", "effect": "text-word"}, self.resolve)
+        b = call("apply_effect", {"timeline": "Edit [auto]", "effect": "text-word",
+                                  "params": {"text": "HOME"}}, self.resolve)
+        c = call("apply_effect", {"timeline": "Edit [auto]", "effect": "text-word",
+                                  "params": {"text": "AWAY"}}, self.resolve)
+        self.assertEqual(len({a["plan_sha"], b["plan_sha"], c["plan_sha"]}), 3)
+        self.assertEqual(b["params"], {"text": "HOME"})
+
+    def test_text_word_sets_and_reads_back_every_value(self):
+        _, real = self.run_fx("text-word", {"text": "HOME", "size": 0.05, "centre": 0.33})
+        r = real["results"][0]
+        self.assertTrue(r["ok"], r)
+        comp = self.comp("text-word")
+        self.assertEqual(comp.FindTool("Text1").values["StyledText"], "HOME")
+        self.assertEqual(comp.FindTool("Text1").values["Size"], 0.05)
+        self.assertEqual(comp.FindTool("Merge1").values["Center"], {1: 0.33, 2: 0.5})
+        self.assertEqual(r["params"], {"Text1.StyledText": "HOME", "Text1.Size": 0.05,
+                                       "Merge1.Center": {1: 0.33, 2: 0.5}})
+        self.assertEqual(comp.FindTool("Text1").toggles, [True, False])
+
+    def test_zoom_push_centre_sets_the_pivot(self):
+        _, real = self.run_fx("zoom-push", {"centre": 0.4})
+        self.assertTrue(real["results"][0]["ok"])
+        self.assertEqual(self.comp("zoom-push").FindTool("Transform1").values["Pivot"],
+                         {1: 0.4, 2: 0.5})
+
+    def test_a_param_that_does_not_read_back_fails_the_item(self):
+        _, parsed = cmd_effect.load_macro("text-word")
+        macro, checks = cmd_effect.apply_params(parsed, "text-word", {"text": "HOME"}, 240)
+        comp = FComp()
+        _, animated = cmd_effect._build(comp, macro)
+        comp.FindTool("Text1").values["StyledText"] = "OTHER"
+        _, problems = cmd_effect._read_params(comp, checks)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("StyledText", problems[0])
+
+    def test_retime_constant_keys_are_offsets(self):
+        _, real = self.run_fx("retime", {"speed": 0.7})
+        self.assertTrue(real["results"][0]["ok"], real["results"])
+        comp = self.comp("retime")
+        keys = comp.FindTool("TimeStretcher1SourceTime").keys
+        self.assertEqual(sorted(keys), [0, 240])
+        self.assertAlmostEqual(keys[240][1], 168.0)
+        self.assertAlmostEqual(keys[0]["RH"][1], 80.0)
+        self.assertAlmostEqual(keys[0]["RH"][2], 56.0)
+        self.assertAlmostEqual(keys[240]["LH"][1], -80.0)
+        self.assertAlmostEqual(keys[240]["LH"][2], -56.0)
+        self.assertEqual(comp.FindTool("TimeStretcher1").values["InterpolateBetweenFrames"], 0)
+        self.assertIs(comp.FindTool("TimeStretcher1").links["Input"], comp.FindTool("MediaIn1"))
+        self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("TimeStretcher1"))
+        self.assertAlmostEqual(real["results"][0]["params"]["TimeStretcher1SourceTime@240"], 168.0)
+
+    def test_retime_ramp_is_the_hermite_of_a_linear_change(self):
+        self.run_fx("retime", {"speed": 0.5, "speed_to": 1.5})
+        keys = self.comp("retime").FindTool("TimeStretcher1SourceTime").keys
+        self.assertAlmostEqual(keys[240][1], 240.0)  # (0.5 + 1.5) / 2 * 240
+        self.assertAlmostEqual(keys[0]["RH"][2], 0.5 * 240 / 3)
+        self.assertAlmostEqual(keys[240]["LH"][2], -1.5 * 240 / 3)
+        self.assertAlmostEqual(keys[0]["RH"][1], 80.0)
+
+    def test_retime_needs_a_readable_source_length(self):
+        self.items[0].source = (0, None)
+        with self.assertRaisesRegex(workflows.Refused, "source frames"):
+            call("apply_effect", {"timeline": "Edit [auto]", "effect": "retime",
+                                  "items": [1], "params": {"speed": 2}}, self.resolve)
+
+    def test_reframe_pan_keys_run_linearly_from_a_to_b(self):
+        _, real = self.run_fx("reframe-pan", {"pan_from": 0.6, "pan_to": 0.33, "pan_base": 0.45})
+        self.assertTrue(real["results"][0]["ok"], real["results"])
+        comp = self.comp("reframe-pan")
+        keys = comp.FindTool("XYPath1X").keys
+        a, b = 0.5 + 0.45 - 0.6, 0.5 + 0.45 - 0.33
+        self.assertAlmostEqual(keys[0][1], a)
+        self.assertAlmostEqual(keys[240][1], b)
+        self.assertAlmostEqual(keys[0]["RH"][1], 80.0)
+        self.assertAlmostEqual(keys[0]["RH"][2], (b - a) / 3)
+        self.assertAlmostEqual(keys[240]["LH"][1], -80.0)
+        self.assertAlmostEqual(keys[240]["LH"][2], -(b - a) / 3)
+        self.assertEqual(comp.FindTool("XYPath1").values["Y"], 0.5)
+        self.assertIs(comp.FindTool("Transform1").links["Center"], comp.FindTool("XYPath1"))
+        self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("Transform1"))
 
 
 if __name__ == "__main__":
