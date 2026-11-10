@@ -6,7 +6,9 @@ refusal, dry run and plan_sha, clips cut at their own rate onto a 24 fps timelin
 static scale, the music bed (baked by ffmpeg with its fade, the baked file on A1 and the
 original never placed), and the read-back, and the colour handling
 (T30): detect's colour space per source in the dry run, the tag written and read back on a
-new import, a clip already in the pool never written, an unmanaged project left alone.
+new import, a clip already in the pool never written, an unmanaged project left alone,
+and the windows: a scale-window or crop-window span puts the montage on V2 with the shot
+before it playing on as a plate on V1, refused when that source runs out inside the plate.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
@@ -637,6 +639,208 @@ class TestColour(Base):
         real = self.mcp(dry_run=False, plan_sha=dry["plan_sha"])
         self.assertIn("built and read back", real["summary"])
         self.assertTrue(real["summary"].endswith("; colour: 2 of 2 tagged"))
+
+
+class TestWindows(Base):
+    """A scale-window or crop-window span gets a plate: the previous span's clip, counted on from
+    its out point, on V1 under the montage on V2 (windowplate.py, fusion-macros.md)."""
+
+    def setUp(self):
+        super().setUp()
+        self.three = os.path.join(os.path.dirname(self.one), "three.mov")
+        Path(self.three).write_bytes(b"x")
+        tag = {"Input Color Space": UNTAGGED, "Data Level": "Auto"}
+        for new in (mock.patch.dict(rf.IMPORT_PROPS, {self.three: {"FPS": "24.0", **tag}}),
+                    mock.patch.dict(self.detected, {self.three: drow(self.three)})):
+            new.start()
+            self.addCleanup(new.stop)
+        # 24 fps, 30 fps, 60 fps and 30 fps spans: the plate counts source frames at the
+        # outgoing clip's own rate, 37 on 24, then 26 on 60 (65 source frames)
+        self.wm = {**self.manifest,
+                   "sources": [{"id": "a", "path": self.one}, {"id": "b", "path": self.two},
+                               {"id": "c", "path": self.three}],
+                   "clips": [{"name": "m", "spans": [
+                       {"source": "c", "in": 2.0, "out": 3.0, "scale": 1.1},
+                       {"source": "a", "in": 10.0, "out": 12.0},
+                       {"source": "b", "in": 5.0, "out": 6.0},
+                       {"source": "a", "in": 20.0, "out": 21.5}]}],
+                   "effects": [{"span_index": 1, "effect": "scale-window"},
+                               {"span_index": 3, "effect": "crop-window"}]}
+        self.length = {self.one: 100.0, self.two: 100.0, self.three: 100.0}  # what ffprobe finds
+        new = mock.patch.object(a, "_video_seconds", lambda path: self.length[path])
+        new.start()
+        self.addCleanup(new.stop)
+
+    def built(self, **kw):
+        dry = self.go(manifest=self.wm, **kw)
+        return dry, self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"], **kw)
+
+    def tl(self):
+        return next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+
+    def test_the_plan_marks_each_window_span_with_the_frames_it_needs(self):
+        p = a.plan(self.wm)
+        self.assertEqual([(r.get("window"), r.get("plate")) for r in p["spans"]],
+                         [(None, None), ("scale-window", 37), (None, None), ("crop-window", 26)])
+        self.assertEqual((p["track"], p["not_built"]), (2, []))
+        self.assertEqual(a.plan(self.manifest)["track"], 1)  # no window, nothing changes
+        # a span shorter than its window shows only the frames it has
+        short = {**self.wm, "clips": [{"name": "m", "spans": [
+            {"source": "c", "in": 2.0, "out": 3.0}, {"source": "a", "in": 10.0, "out": 10.25}]}],
+            "effects": [{"span_index": 1, "effect": "crop-window"}]}
+        self.assertEqual(a.plan(short)["spans"][1]["plate"], 6)
+
+    def test_a_window_on_the_first_span_has_no_shot_to_open_over_and_says_so(self):
+        first = {**self.wm, "effects": [{"span_index": 0, "effect": "scale-window"}]}
+        p = a.plan(first)
+        self.assertEqual((p["track"], [r.get("plate") for r in p["spans"]]), (1, [None] * 4))
+        self.assertEqual(p["not_built"], ["the scale-window on item 1: no shot before it to "
+                                          "open over, so it opens over black"])
+
+    def test_the_dry_run_lists_each_plate_with_the_handle_the_source_has(self):
+        dry = self.go(manifest=self.wm)
+        self.assertEqual(dry["track"], 2)
+        self.assertEqual([(r["into"], r["window"], r["frames"], r["record"], r["source"])
+                          for r in dry["plates"]],
+                         [(2, "scale-window", 37, 24, "three.mov"),
+                          (4, "crop-window", 26, 96, "two.mov")])
+        self.assertEqual(dry["plates"][0]["handle_s"], 97.0)  # 100 s file, out point at 3 s
+        self.assertEqual(rf.mutating_calls(), [])
+        self.length[self.three] = 50.0  # a different file is a different plan
+        self.assertNotEqual(self.go(manifest=self.wm)["plan_sha"], dry["plan_sha"])
+
+    def test_a_source_that_ends_inside_its_plate_is_refused_before_anything_is_written(self):
+        for path, out_s, want in ((self.three, 3.0, "item 2: the scale-window opens over item 1 "
+                                   "playing on for 37 frames, and three.mov has 0.50 s"),
+                                  (self.two, 6.0, "item 4: the crop-window opens over item 3 "
+                                   "playing on for 26 frames, and two.mov has 0.50 s")):
+            self.length[path] = out_s + 0.5
+            with self.assertRaisesRegex(Refused, want):
+                self.go(manifest=self.wm, dry_run=False)
+            self.length[path] = 100.0
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.project.GetTimelineCount(), 1)
+
+    def test_one_frame_short_is_refused_and_enough_is_not(self):
+        self.length[self.three] = 3.0 + 37 / 24 - 1 / 24  # 36 frames after the out point
+        with self.assertRaisesRegex(Refused, "three.mov has 1.50 s"):
+            self.go(manifest=self.wm)
+        self.length[self.three] = 3.0 + 37 / 24  # exactly 37
+        self.assertEqual(self.go(manifest=self.wm)["plates"][0]["handle_s"], 1.542)
+
+    def test_a_source_ffprobe_cannot_read_is_left_to_the_read_back(self):
+        self.length[self.three] = None  # a BRAW file, say
+        self.assertIsNone(self.go(manifest=self.wm)["plates"][0]["handle_s"])
+
+    def test_the_montage_is_on_v2_and_the_plates_on_v1(self):
+        dry, r = self.built()
+        self.assertEqual((r["exit_status"], r["problems"], r["left_behind"]), (0, [], None))
+        tl = self.tl()
+        self.assertEqual(tl.GetTrackCount("video"), 2)
+        v2, v1 = tl.GetItemListInTrack("video", 2), tl.GetItemListInTrack("video", 1)
+        # every span in its order, at its frame: the numbering a V1 build always had
+        self.assertEqual([i.GetDuration() for i in v2], [24, 48, 24, 36])
+        self.assertEqual([i.GetStart() - tl.GetStartFrame() for i in v2], [0, 24, 72, 96])
+        self.assertEqual([i.source for i in v2], [(48, 72), (300, 360), (300, 360), (600, 645)])
+        self.assertEqual([x["index"] for x in r["items"]], [1, 2, 3, 4])
+        # a plate: the previous clip from where its span stopped, as long as the window needs
+        self.assertEqual([(i.GetStart() - tl.GetStartFrame(), i.GetDuration()) for i in v1],
+                         [(24, 37), (96, 26)])
+        self.assertEqual([i.source for i in v1], [(72, 109), (360, 425)])
+        self.assertEqual([i.clip.props["File Path"] for i in v1], [self.three, self.two])
+        self.assertEqual(v1[0].props["ZoomX"], 1.1)  # item 1's static scale carries onto its plate
+        self.assertNotIn("ZoomX", v1[1].props)
+        self.assertEqual([(x["placed"]["start"], x["placed"]["frames"]) for x in r["plates"]],
+                         [(24, 37), (96, 26)])
+        calls = [c[2][0] for c in rf.CALLS if c[1] == "AppendToTimeline"]
+        self.assertEqual([i.get("trackIndex") for i in calls[0] if i["mediaType"] == 1], [2] * 4)
+        self.assertEqual([i["recordFrame"] - tl.GetStartFrame() for i in calls[0]], [0, 24, 72, 96])
+        self.assertEqual([i["trackIndex"] for i in calls[1]], [1, 1])
+        audio = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual(len(audio), 1)  # the music alone, whatever the picture tracks hold
+        self.assertEqual(audio[0].GetDuration(), 132 + 12)
+
+    def test_a_manifest_without_a_window_is_built_on_v1_alone_as_before(self):
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        tl = self.tl()
+        self.assertEqual((r["track"], r["plates"], tl.GetTrackCount("video")), (1, [], 1))
+        self.assertEqual([c for c in rf.CALLS if c[1] == "AddTrack"], [])
+        self.assertTrue(all("recordFrame" not in i for c in rf.CALLS if c[1] == "AppendToTimeline"
+                            for i in c[2][0] if i["mediaType"] == 1))
+
+    def test_a_track_resolve_will_not_add_stops_the_build_and_is_named(self):
+        dry = self.go(manifest=self.wm)
+        with mock.patch.object(rf.Timeline, "AddTrack", lambda self, kind, *sub: True):  # says yes, adds nothing
+            r = self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertTrue(any("could not add V2" in x for x in r["problems"]))
+        self.assertEqual((r["exit_status"], r["left_behind"]), (1, "Shoot m v1 [auto]"))
+        self.assertEqual(self.tl().GetItemListInTrack("video", 1), [])  # no plates on a track with no montage over it
+
+    def test_a_plate_that_comes_up_short_is_a_problem_and_the_timeline_is_left(self):
+        dry = self.go(manifest=self.wm)
+        real = rf._place
+
+        def clamp(tl, info):  # the source ends early: Resolve clamps the clip
+            placed = real(tl, info)
+            for it in placed:
+                if info["trackIndex"] == 1:
+                    it.end -= 5
+            return placed
+
+        with mock.patch.object(rf, "_place", clamp):
+            r = self.go(manifest=self.wm, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertIn("the plate under item 2 sits at frame 24 for 32 frames, planned 24 for 37; "
+                      "the outgoing source may be too short", r["problems"])
+
+    def test_the_other_tools_number_the_montage_on_its_track_not_the_plates(self):
+        from rpresolve import cmd_effect, cmd_vertical
+        dry, r = self.built()
+        v2, v1 = (self.tl().GetItemListInTrack("video", t) for t in (2, 1))
+        fx = cmd_effect.apply_effect(self.resolve, self.project.GetName(), "Shoot m v1 [auto]",
+                                     "scale-window", track=2, items=[2, 4], dry_run=True)
+        self.assertEqual([(t["index"], t["item_id"]) for t in fx["targets"]],
+                         [(2, v2[1].GetUniqueId()), (4, v2[3].GetUniqueId())])
+        self.assertEqual(fx["timeline"]["track"], 2)
+        on_v1 = cmd_effect.apply_effect(self.resolve, self.project.GetName(), "Shoot m v1 [auto]",
+                                        "scale-window", track=1, dry_run=True)
+        self.assertEqual([t["item_id"] for t in on_v1["targets"]], [i.GetUniqueId() for i in v1])
+        # vertical_apply counts the track it is given against crops.json: V2 holds the four
+        # spans, V1 only the two plates
+        for it in v2:
+            it.props.update(ZoomX=1.0, ZoomY=1.0)
+        crops = {"aspect": "9x16", "reviewed": True, "items": [
+            {"index": n, "name": it.GetName(), "path": it.clip.props["File Path"], "cx": 0.5,
+             "zoom": 1.0} for n, it in enumerate(v2, 1)]}
+        plan = cmd_vertical.apply_vertical(self.resolve, self.project.GetName(),
+                                           "Shoot m v1 9x16 [auto]", crops,
+                                           source_timeline="Shoot m v1 [auto]", track=2)
+        self.assertEqual([t["index"] for t in plan["targets"]], [1, 2, 3, 4])
+        with self.assertRaisesRegex(Refused, r"V1 has 2 item\(s\), crops.json has 4"):
+            cmd_vertical.apply_vertical(self.resolve, self.project.GetName(),
+                                        "Shoot m v1 9x16 [auto]", crops,
+                                        source_timeline="Shoot m v1 [auto]", track=1)
+
+    def test_the_command_and_the_mcp_summary_say_where_the_montage_goes(self):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        path = os.path.join(os.path.realpath(self.tmp.name), "w.json")
+        with open(path, "w") as f:
+            json.dump(self.wm, f)
+        with mock.patch("builtins.print") as out:
+            self.assertEqual(a.run(mock.Mock(manifest=path)), 0)
+        text = "\n".join(str(c.args[0]) for c in out.call_args_list)
+        self.assertIn("scale-window, 37 f of #1 playing on", text)
+        self.assertIn("the montage goes on V2; V1 holds a plate under each window span", text)
+        tool = server.build_registry().get("assemble_timeline")
+        args = {"project": self.project.GetName(), "name": "Shoot m v1 [auto]", "manifest": path,
+                "bed_dir": self.bed_dir}
+        with mock.patch.dict(os.environ, {"RPRESOLVE_LOCK": os.path.join(self.tmp.name, "lock")}):
+            dry = tool.handler(schema.with_defaults(tool.input_schema, args),
+                               ToolContext(session=rf.Session(self.resolve)))
+        self.assertIn("montage on V2 over 2 plate(s) on V1", dry["summary"])
+        self.assertIn("track 2", dry["summary"])
 
 
 if __name__ == "__main__":

@@ -24,7 +24,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from rpresolve import drafts, methods  # noqa: E402
+from rpresolve import drafts, methods, windowplate  # noqa: E402
+
+DraftErrorAlias = drafts.DraftError
 
 FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
 
@@ -96,7 +98,8 @@ class TestRender(Base):
             self.assertEqual(st["r_frame_rate"], "24/1")
             self.assertEqual(int(st["nb_read_frames"]), 24 + 12 + 18 + 6)  # spans plus black
             notes = " | ".join(d["notes"])
-            self.assertIn("span 2: scale-window: over the previous shot's last frame", notes)
+            self.assertIn("span 2: scale-window: over the previous shot playing on", notes)
+            self.assertIn("span 1: crop-window: over the previous shot playing on", notes)
             self.assertIn("span 1: the dissolve into it is drawn as a cut", notes)
             self.assertIn("look print-teal not applied", notes)
             self.assertTrue(os.path.isfile(os.path.join(out, d["plan"] + ".notes.txt")))
@@ -125,12 +128,13 @@ class TestRender(Base):
             saved = json.load(f)["drafts"]
         by_plan = {d["plan"]: d["effects"] for d in saved}
         plain, matted = by_plan["plain"], by_plan["matted"]
-        # the scale-window is on span 2, so it grows over the previous shot: the ledger's note
-        # is the one the draft's own notes give for that span
-        window = next(e for e in plain["approximated"] if e["effect"] == "scale-window")
-        self.assertEqual(window["note"], drafts.WINDOW_OVER)
-        self.assertIn("span 2: scale-window: " + window["note"],
-                      next(d for d in saved if d["plan"] == "plain")["notes"])
+        # both windows follow another span, so each opens over the previous shot playing on: the
+        # ledger's note is the one the draft's own notes give for that span
+        for win, span in (("scale-window", 2), ("crop-window", 1)):
+            window = next(e for e in plain["approximated"] if e["effect"] == win)
+            self.assertEqual(window["note"], drafts.WINDOW_OVER[win])
+            self.assertIn(f"span {span}: {win}: " + window["note"],
+                          next(d for d in saved if d["plan"] == "plain")["notes"])
         self.assertEqual(plain["drawn"], [{"effect": "zoom-push", "spans": [0]}])
         self.assertEqual([(e["effect"], e["spans"]) for e in plain["approximated"]],
                          [("crop-window", [1]), ("dissolve", [1]), ("scale-window", [2])])
@@ -193,9 +197,9 @@ class TestRender(Base):
     def test_a_fill_past_the_source_end_is_refused(self):
         short = os.path.join(self.dir, "short.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                        "testsrc2=s=640x360:r=24:d=2", "-pix_fmt", "yuv420p",
+                        "testsrc2=s=640x360:r=24:d=3.5", "-pix_fmt", "yuv420p",
                         "-c:v", "libx264", "-preset", "ultrafast", short], check=True)
-        a = self.plan("short", METHOD, short)  # the third slot runs to 3.75 s of a 2 s clip
+        a = self.plan("short", METHOD, short)  # the third slot runs to 3.75 s of a 3.5 s clip
         with self.assertRaisesRegex(drafts.DraftError, "past the end of its source"):
             drafts.build([a], os.path.join(self.dir, "out"), hw=False, lanes=1)
 
@@ -284,6 +288,44 @@ class TestNewDraws(unittest.TestCase):
         self.assertIn("pad=1280:720", vf)
         self.assertTrue(missing[0].startswith("scale-window: drawn over black"))
 
+    BACK = "scale=1280:720,fps=24,format=yuv420p"
+
+    def test_a_window_opens_over_the_previous_shot_playing_on_not_a_held_frame(self):
+        vf, missing = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 2.0, back=self.BACK)
+        self.assertTrue(vf.startswith("[0:v]"), vf)
+        self.assertIn("overlay=", vf)
+        self.assertIn(f"[1:v]{self.BACK},trim=end_frame=37,tpad=stop_mode=clone:stop=13[bg]", vf)
+        self.assertNotIn("loop", vf)  # the old plate looped one frame
+        self.assertNotIn("end_frame=1,", vf)
+        self.assertTrue(missing[0].startswith("scale-window: over the previous shot playing on"))
+        vf, missing = drafts.span_filter({}, ["crop-window"], 1280, 720, 24, 2.0, back=self.BACK)
+        self.assertIn("trim=end_frame=26,tpad=stop_mode=clone:stop=24[bg]", vf)
+        self.assertIn("[fg][bg]blend=all_expr='if(gt(abs(X-W/2),W*(", vf)
+        self.assertNotIn("geq", vf)  # outside the box is the plate, not black
+        self.assertTrue(missing[0].startswith("crop-window: over the previous shot playing on"))
+
+    def test_a_span_shorter_than_its_window_gets_only_the_frames_it_shows(self):
+        vf, _ = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 10 / 24, back=self.BACK)
+        self.assertIn("trim=end_frame=10,tpad=stop_mode=clone:stop=2[bg]", vf)
+
+    def test_with_no_previous_shot_a_window_opens_from_black_and_says_so(self):
+        vf, missing = drafts.span_filter({}, ["crop-window"], 1280, 720, 24, 2.0)
+        self.assertIn("geq=", vf)
+        self.assertEqual(missing, ["crop-window: opens from black (no previous shot to show through)"])
+        _, missing = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 2.0)
+        self.assertTrue(missing[0].startswith("scale-window: drawn over black"))
+
+    def test_the_plate_is_read_from_the_previous_out_point_not_its_last_frame(self):
+        plan = {"name": "p", "method": {**METHOD, "look": None}, "manifest": methods.to_manifest(
+            METHOD, [{"source_path": "/none/a.mp4", "in": 0.5, "out": 1.5},
+                     {"source_path": "/none/a.mp4", "in": 6.0, "out": 6.5},
+                     {"source_path": "/none/a.mp4", "in": 7.0, "out": 7.75}])}
+        jobs, _ = drafts.plan_jobs(plan, "/w", False)
+        cmd = jobs[1]["cmd"]  # span 1 is the crop-window
+        inputs = [cmd[k + 1] for k, x in enumerate(cmd) if x == "-ss"]
+        self.assertEqual(inputs, ["6.0000", "1.5000"])  # its own in point, then the previous out
+        self.assertEqual((jobs[0]["cmd"].count("-i"), jobs[1]["cmd"].count("-i")), (1, 2))
+
 
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestNewDrawsRender(Base):
@@ -336,27 +378,31 @@ class TestLedger(unittest.TestCase):
         self.assertIn("display-space", led["approximated"][1]["note"])
         self.assertEqual(led["not_drawn"], [{"effect": "cross-dissolve-short", "spans": [2]}])
 
-    def test_a_scale_window_is_over_black_on_span_0_and_over_the_previous_shot_after_it(self):
-        led = drafts.ledger(self.man([("scale-window", 0), ("scale-window", 2)]))
-        rows = {tuple(e["spans"]): e["note"] for e in led["approximated"]}
-        self.assertEqual(rows, {(0,): drafts.APPROX["scale-window"], (2,): drafts.WINDOW_OVER})
-        self.assertNotEqual(rows[(0,)], rows[(2,)])
-        self.assertIn("over black", rows[(0,)])
-        self.assertIn("previous shot's last frame", rows[(2,)])
-        for note in rows.values():
-            self.assertIn(drafts.WINDOW_DRIFT, note)
-        # a lone window keeps one row, whichever side it is on
-        self.assertEqual([e["spans"] for e in drafts.ledger(
-            self.man([("scale-window", 3)]))["approximated"]], [[3]])
-        self.assertEqual([e["spans"] for e in drafts.ledger(
-            self.man([("scale-window", 0)]))["approximated"]], [[0]])
+    def test_a_window_is_from_black_on_span_0_and_over_the_previous_shot_playing_on_after_it(self):
+        self.assertEqual(set(drafts.WINDOW_OVER), set(windowplate.PLATE_FRAMES))
+        for win, extra in (("scale-window", drafts.WINDOW_DRIFT), ("crop-window", drafts.BOX_RATE)):
+            led = drafts.ledger(self.man([(win, 0), (win, 2)]))
+            rows = {tuple(e["spans"]): e["note"] for e in led["approximated"]}
+            self.assertEqual(rows, {(0,): drafts.APPROX[win], (2,): drafts.WINDOW_OVER[win]})
+            self.assertNotEqual(rows[(0,)], rows[(2,)])
+            self.assertRegex(rows[(0,)], r"over black|from black")
+            self.assertIn("previous shot playing on", rows[(2,)])
+            for note in rows.values():
+                self.assertIn(extra, note)
+                self.assertNotRegex(note, r"held|last frame")
+            # a lone window keeps one row, whichever side it is on
+            self.assertEqual([e["spans"] for e in drafts.ledger(
+                self.man([(win, 3)]))["approximated"]], [[3]])
+            self.assertEqual([e["spans"] for e in drafts.ledger(
+                self.man([(win, 0)]))["approximated"]], [[0]])
 
     def test_the_ledger_note_for_a_window_is_the_note_span_filter_gives(self):
-        _, first = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 1.0)
-        _, later = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 1.0, back="null")
-        led = drafts.ledger(self.man([("scale-window", 0), ("scale-window", 2)]))
-        self.assertEqual(["scale-window: " + e["note"] for e in led["approximated"]],
-                         first + later)
+        for win in windowplate.PLATE_FRAMES:
+            _, first = drafts.span_filter({}, [win], 1280, 720, 24, 1.0)
+            _, later = drafts.span_filter({}, [win], 1280, 720, 24, 1.0, back="null")
+            led = drafts.ledger(self.man([(win, 0), (win, 2)]))
+            self.assertEqual([f"{win}: " + e["note"] for e in led["approximated"]],
+                             first + later)
 
     def test_an_empty_plan_has_an_empty_ledger(self):
         self.assertEqual(drafts.ledger(self.man([])), {"drawn": [], "approximated": [],
@@ -730,6 +776,93 @@ class TestMatteTitleRender(Base):
                 with open(os.path.join(out, "send", n)) as f:
                     heads[n] = f.read().splitlines()
         self.assertEqual(sum(want in v for v in heads.values()), 1)
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestPlateRender(Base):
+    """A source whose luma climbs 20 levels a second, so every frame of the previous shot
+    differs from the next: a held frame, or the wrong start, cannot pass."""
+
+    def setUp(self):
+        super().setUp()
+        self.src = os.path.join(self.dir, "ramp.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=black:s=1920x1080:r=24:d=10,"
+                        "geq=lum='min(235,16+20*T)':cb=128:cr=128", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", self.src],
+                       check=True)
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=5.0)
+        m["rules"]["end"] = None
+        slots = [(1.0, None), (2.0, "scale-window"), (0.5, None), (1.5, "crop-window")]
+        m["slots"] = [{**m["slots"][0], "seconds": sec, "effect": eff, "scale": None,
+                       "move": "static", "transition_out": {"type": "cut", "frames": 0},
+                       "text": None} for sec, eff in slots]
+        # the windows' own shots are far on in the ramp (6 s, bright); the shots they
+        # open over end at 1.5 s and 2.5 s (dark), where the plate carries on from
+        fills = [{"source_path": self.src, "in": a, "out": a + sec}
+                 for (sec, _), a in zip(slots, (0.5, 6.0, 2.0, 8.2))]
+        d = os.path.join(self.dir, "plans", "ramp")
+        os.makedirs(d)
+        with open(os.path.join(d, "method.json"), "w") as f:
+            json.dump(m, f)
+        with open(os.path.join(d, "manifest.json"), "w") as f:
+            json.dump(methods.to_manifest(m, fills), f)
+        self.doc = drafts.build([d], os.path.join(self.dir, "out"), hw=False, lanes=1)["drafts"][0]
+        self.draft = self.doc["file"]
+
+    def corner(self, n):
+        """Mean grey of a 60 px square in the top left corner of frame n (0 to 255, full range)."""
+        r = subprocess.run(["ffmpeg", "-v", "error", "-i", self.draft, "-vf",
+                            f"select=eq(n\\,{n}),crop=60:60:0:0,format=gray", "-frames:v", "1",
+                            "-f", "rawvideo", "-"], capture_output=True, check=True)
+        return sum(r.stdout) / len(r.stdout)
+
+    def plate_luma(self, seconds):
+        """The grey the source holds at this time: 16 + 20 s in video range, to full range."""
+        return (20 * seconds) * 255 / 219
+
+    def test_scale_window_carries_on_from_the_previous_out_point(self):
+        first = 24  # span 1 starts after span 0's 24 frames
+        for j in (0, 12, 24, 30):
+            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(1.5 + j / 24), delta=4,
+                                   msg=f"window frame {j}")
+        # a held frame would put frame 30 within a level of frame 0
+        self.assertGreater(self.corner(first + 30) - self.corner(first), 20)
+        self.assertGreater(self.corner(first + 40), 120)  # full frame from frame 37: its own shot
+        self.assertEqual(int(probe(self.draft)["nb_read_frames"]), 24 + 48 + 12 + 36)
+
+    def test_crop_window_shows_the_previous_shot_playing_on_outside_its_box(self):
+        first = 24 + 48 + 12
+        for j in (0, 10, 20, 25):
+            self.assertAlmostEqual(self.corner(first + j), self.plate_luma(2.5 + j / 24), delta=4,
+                                   msg=f"window frame {j}")
+        self.assertGreater(self.corner(first + 25) - self.corner(first), 15)
+        self.assertGreater(self.corner(first + 30), 120)  # open to full frame from frame 26
+
+    def test_the_notes_name_what_the_plate_leaves_out(self):
+        notes = " | ".join(self.doc["notes"])
+        self.assertIn("span 1: scale-window: over the previous shot playing on", notes)
+        self.assertIn("span 3: crop-window: over the previous shot playing on", notes)
+
+    def test_a_window_with_no_handle_on_the_previous_shot_is_refused(self):
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=2.0)
+        m["rules"]["end"] = None
+        m["slots"] = [{**m["slots"][0], "seconds": 1.0, "effect": None, "scale": None,
+                       "transition_out": {"type": "cut", "frames": 0}, "text": None},
+                      {**m["slots"][0], "seconds": 1.0, "effect": "scale-window", "scale": None,
+                       "transition_out": {"type": "cut", "frames": 0}, "text": None}]
+        fills = [{"source_path": self.src, "in": 8.6, "out": 9.8},  # about 0.4 s of the file is left
+                 {"source_path": self.src, "in": 2.0, "out": 3.0}]
+        d = os.path.join(self.dir, "plans", "short")
+        os.makedirs(d)
+        with open(os.path.join(d, "method.json"), "w") as f:
+            json.dump(m, f)
+        with open(os.path.join(d, "manifest.json"), "w") as f:
+            json.dump(methods.to_manifest(m, fills), f)
+        with self.assertRaisesRegex(DraftErrorAlias, r"short span 1: the previous shot has 0\.4\d s"):
+            drafts.build([d], os.path.join(self.dir, "out2"), hw=False, lanes=1)
 
 
 class TestLanes(unittest.TestCase):

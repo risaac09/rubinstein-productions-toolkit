@@ -499,6 +499,10 @@ def assemble_timeline(args, ctx):
                                         bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
+                + (f", montage on V{p['track']} over {len(r['plates'])} plate(s) on V1 (the shot "
+                   f"before each window playing on): pass track {p['track']} to apply_effect, "
+                   "apply_grade, vertical_apply and reframe_apply, and grade V1 too"
+                   if p["track"] > 1 else "")
                 + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""

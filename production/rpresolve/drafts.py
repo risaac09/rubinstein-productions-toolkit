@@ -23,9 +23,11 @@ it, and drafts.json carries no letters.
 Every span is its own ffmpeg job: VideoToolbox decode and h264_videotoolbox encode
 when this ffmpeg has them (--no-hw for software), fill-and-crop to the frame, the
 span's static scale, the effects ffmpeg can approximate (DRAWN below; APPROX says how each
-one differs from its macro), and the look's cube through lut3d. The jobs run in parallel
-lanes: one lane is timed first, then lanes are added while throughput rises (--lanes N
-fixes the count). The spans are joined without re-encoding.
+one differs from its macro), and the look's cube through lut3d. A scale-window or
+crop-window after the first span opens over the previous shot playing on from its out point
+(windowplate); on the first span it opens from black. The jobs run in parallel lanes: one
+lane is timed first, then lanes are added while throughput rises (--lanes N fixes the
+count). The spans are joined without re-encoding.
 
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
@@ -45,18 +47,24 @@ import sys
 import tempfile
 import time
 
-from . import cutlist, methods
+from . import cutlist, methods, windowplate
 from . import paths as rppaths
 
 LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/lutlab"
 SIZES = {"16:9": (1280, 720), "9:16": (720, 1280)}
 DRAWN = {"zoom-push", "crop-window", "dip-to-black", "exposure-flash", "text-word",
          "person-matte-text", "scale-window", "retime", "reframe-pan"}
+WINDOW_DRIFT = "the window stays centred where the macro's centre drifts about 0.05"
+BOX_RATE = "the box opens and closes at a constant rate where the macro eases both ends"
+# A scale-window or crop-window after span 0 opens over the previous shot playing on from its out
+# point (windowplate), with that shot's own effects not drawn on it. On span 0 there is no
+# previous shot: it opens from black, and APPROX says so.
+PLAYS_ON = "over the previous shot playing on; its own effects are not drawn on it"
+WINDOW_OVER = {"scale-window": PLAYS_ON + "; " + WINDOW_DRIFT,
+               "crop-window": PLAYS_ON + "; " + BOX_RATE}
 # Drawn, but only as an approximation: what the notes and the ledger say about each. An
 # effect in DRAWN with no entry here is drawn as its macro does. "dissolve" is no macro: it is
 # the manifest's transition into a span, drawn as a cut.
-WINDOW_DRIFT = "the window stays centred where the macro's centre drifts about 0.05"
-WINDOW_OVER = "over the previous shot's last frame, held; " + WINDOW_DRIFT  # a scale-window after span 0
 APPROX = {"text-word": "the word is a white box",
           "person-matte-text": "the title is a red-orange box IN FRONT of the subject, where the "
                                "macro puts the word (its width a guess from the letter count of the "
@@ -64,10 +72,9 @@ APPROX = {"text-word": "the word is a white box",
                                "the matte is not drawn, so the draft cannot show the word go "
                                "behind anyone",
           "scale-window": "drawn over black (no previous shot to grow over); " + WINDOW_DRIFT,
+          "crop-window": "opens from black (no previous shot to show through); " + BOX_RATE,
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
                          "width, not Resolve's Pan arithmetic",
-          "crop-window": "the box opens and closes at a constant rate where the macro "
-                         "eases both ends",
           "exposure-flash": "a gain falling to 1 over 12 frames, drawn as a display-space "
                             "multiply fitted on one dark frame (T28); a bright shot may "
                             "read differently from the macro",
@@ -181,6 +188,17 @@ def _piecewise(x, ys, step):
     return e
 
 
+def crop_outside(fps):
+    """The crop-window's test for a pixel outside its box (an ffmpeg expression on X, Y, W,
+    H and T): width 0 to 0.25 by frame 8, held to 20, full by 26; height 0.6 to 1.0 over
+    20 to 26."""
+    a, b, c = 8 / fps, 20 / fps, 26 / fps
+    fw = (f"if(lt(T,{a:.4f}),0.25*T/{a:.4f},if(lt(T,{b:.4f}),0.25,"
+          f"if(lt(T,{c:.4f}),0.25+0.75*(T-{b:.4f})/{c - b:.4f},1)))")
+    fh = f"if(lt(T,{b:.4f}),0.6,if(lt(T,{c:.4f}),0.6+0.4*(T-{b:.4f})/{c - b:.4f},1))"
+    return f"gt(abs(X-W/2),W*({fw})/2)+gt(abs(Y-H/2),H*({fh})/2)"
+
+
 def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
     """An ffmpeg approximation of a macro over one span, or None when there is none.
     retime is a setpts to put before the scale (source time is the integral of the
@@ -210,14 +228,12 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         z = f"(1+0.15*({u})*({u})*(3-2*({u})))"
         return (f"scale=w='trunc({w}*{z}/2)*2':h='trunc({h}*{z}/2)*2':eval=frame,"
                 f"crop={w}:{h}")
-    if effect == "crop-window":  # width 0 to 0.25 by frame 8, held to 20, full by 26
-        a, b, c = 8 / fps, 20 / fps, 26 / fps
-        fw = (f"if(lt(T,{a:.4f}),0.25*T/{a:.4f},if(lt(T,{b:.4f}),0.25,"
-              f"if(lt(T,{c:.4f}),0.25+0.75*(T-{b:.4f})/{c - b:.4f},1)))")
-        fh = f"if(lt(T,{b:.4f}),0.6,if(lt(T,{c:.4f}),0.6+0.4*(T-{b:.4f})/{c - b:.4f},1))"
+    if effect == "crop-window":
+        if over:  # span_filter blends the span onto the previous shot through this box
+            return None
         # drawbox has no time variable (its `t` is the border thickness), so a size built
         # from t never moved; geq reads the frame time T. Outside the box is black.
-        o = f"gt(abs(X-W/2),W*({fw})/2)+gt(abs(Y-H/2),H*({fh})/2)"
+        o = crop_outside(fps)
         return (f"format=yuv420p,geq=lum='if({o},0,lum(X,Y))':cb='if({o},128,cb(X,Y))':"
                 f"cr='if({o},128,cr(X,Y))'")
     if effect == "dip-to-black":  # the macro's even-stop gain keys, ending black on the last frame
@@ -248,8 +264,10 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
 def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
     """(vf, not_drawn) for one span. effects: the span's manifest entries, {effect,
     params?} (a bare macro id is also taken). back: the filter chain of the previous
-    shot's picture, read from input 1; a scale-window then grows over it, and vf is a
-    filter_complex graph (it starts with "[0:v]") instead of a plain chain."""
+    shot's picture, read from input 1 starting at that shot's out point. A scale-window
+    or crop-window then opens over that shot playing on (windowplate: as many frames as
+    the window needs), and vf is a filter_complex graph (it starts with "[0:v]") instead
+    of a plain chain."""
     ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
     params = {e["effect"]: e.get("params") or {} for e in ents}
     crop = f"crop={w}:{h}"
@@ -268,26 +286,41 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
     if lut:
         vf.append("lut3d=file=look.cube")  # relative: the job runs in the plan's work folder
     missing = []
-    over = bool(back) and "scale-window" in params
+    win = next((e for e in windowplate.PLATE_FRAMES if e in params), None)
+    over = bool(back) and win is not None
+    at = 0  # the window's place in vf: vf[:at] is the span's own picture
     for e in params:
         if e not in ("retime", "reframe-pan"):
-            f = effect_filter(e, seconds, fps, w, h, params[e], over=over)
+            f = effect_filter(e, seconds, fps, w, h, params[e], over=over and e == win)
             if f:
                 vf.append(f)
+            if over and e == win:
+                at = len(vf)
         if e not in DRAWN:
             missing.append(f"{e} (no ffmpeg approximation)")
-        elif e == "scale-window" and over:
-            missing.append("scale-window: " + WINDOW_OVER)
+        elif over and e == win:
+            missing.append(f"{e}: {WINDOW_OVER[e]}")
         elif e in APPROX:
             missing.append(f"{e}: {APPROX[e]}")
     vf += [f"fps={fps}", "format=yuv420p"]
     if not over:
         return ",".join(vf), missing
-    i = next(k for k, f in enumerate(vf) if f.startswith("scale=w='max(2"))  # the window
-    plate = f"[1:v]{back},trim=end_frame=1,loop=loop=-1:size=1[bg]"
-    comp = (f"[0:v]{','.join(vf[:i + 1])}[fg];{plate};"
-            f"[bg][fg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:shortest=1")
-    return ",".join([comp] + vf[i + 1:]), missing
+    # The plate: the previous shot from its out point, for as many frames as the window
+    # needs. After that the span is full frame and covers it, so the last frame is padded
+    # on, a little past the span's length and no further (an endless pad never ends when
+    # the span's own input is empty; the mix ends with its shorter input, which would cost
+    # the span its last frame); it is never on screen.
+    total = round(seconds * fps)
+    n = windowplate.plate_frames(win, total)
+    plate = f"[1:v]{back},trim=end_frame={n},tpad=stop_mode=clone:stop={total - n + 2}[bg]"
+    if win == "scale-window":
+        mix = "[bg][fg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:shortest=1"
+        fg = ",".join(vf[:at])  # ends on the growing scale: no format or fps after it, which
+        # would hold the first frame's size
+    else:  # the span where the box is, the plate outside it
+        mix = f"[fg][bg]blend=all_expr='if({crop_outside(fps)},B,A)':shortest=1"
+        fg = ",".join(vf[:at] + ["format=yuv420p"])
+    return ",".join([f"[0:v]{fg}[fg];{plate};{mix}"] + vf[at:]), missing
 
 
 # ---------------------------------------------------------------------------
@@ -313,8 +346,9 @@ def ledger(manifest):
     """What a draft does with the manifest's effects, by name and span index: {drawn,
     approximated, not_drawn}, each a list of {effect, spans} (approximated also has the
     note APPROX gives). A dissolve into a span counts as the effect "dissolve". A
-    scale-window is two rows when it is on span 0 (over black) and later (over the previous
-    shot, as plan_jobs draws it), so each span carries the note the draft's own notes give."""
+    scale-window or crop-window is two rows when it is on span 0 (from black) and later (over
+    the previous shot playing on, as plan_jobs draws it), so each span carries the note the
+    draft's own notes give."""
     spans = {}
     for e in manifest.get("effects") or []:
         spans.setdefault(e["effect"], []).append(e["span_index"])
@@ -324,9 +358,9 @@ def ledger(manifest):
     out = {"drawn": [], "approximated": [], "not_drawn": []}
     for name in sorted(spans):
         idx = sorted(set(spans[name]))
-        if name == "scale-window":
+        if name in WINDOW_OVER:
             parts = [([i for i in idx if not i], APPROX[name]),
-                     ([i for i in idx if i], WINDOW_OVER)]
+                     ([i for i in idx if i], WINDOW_OVER[name])]
         else:
             parts = [(idx, APPROX.get(name))]
         for sp, note in parts:
@@ -338,6 +372,21 @@ def ledger(manifest):
             else:
                 out["drawn" if name in DRAWN else "not_drawn"].append(row)
     return out
+
+
+def _check_plate(path, start_s, frames, fps, where):
+    """Refuse a window whose outgoing shot's file ends inside the plate: ffmpeg would end
+    the span early or pad a frozen frame, and the build refuses the same span. A file whose
+    length ffprobe cannot read passes; run_job's frame count still catches a short span."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", path], capture_output=True, text=True)
+        have = float(r.stdout.split()[0]) - start_s
+    except (OSError, ValueError, IndexError):
+        return
+    if have < frames / fps - 0.5 / fps:
+        raise DraftError(f"{where}: the previous shot has {max(have, 0):.2f} s after its out "
+                         f"point and the window needs {frames / fps:.2f} s of it playing on")
 
 
 def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
@@ -368,17 +417,23 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         n = cutlist.frame(span["out"], fps) - cutlist.frame(span["in"], fps)
         seconds = n / fps
         back = prev = None
-        if i and any(e["effect"] == "scale-window" for e in by_span.get(i, [])):
-            prev = spans[i - 1]  # the window grows over the outgoing shot's last frame
+        win = windowplate.window_effect(man.get("effects"), i)
+        if i and win:
+            prev = spans[i - 1]  # the window opens over the outgoing shot, playing on
             back = span_filter(prev, [], w, h, fps, 1 / fps, lut)[0]
         vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back)
         notes += [f"span {i}: {x}" for x in missing]
+        if back:
+            _check_plate(media_path(srcs[prev.get("source") or next(iter(srcs))], proxy_dir),
+                         cutlist.frame(prev["out"], fps) / fps,
+                         windowplate.plate_frames(win, n), fps,
+                         f"{plan['name']} span {i}")
         if (span.get("transition") or {}).get("type") == "dissolve":
             notes.append(f"span {i}: the dissolve into it is {APPROX['dissolve']}")
         out = os.path.join(work, f"{i:03d}.mp4")
         cmd = (["ffmpeg", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox"] if hw else [])
                + ["-ss", f"{span['in']:.4f}", "-i", src]
-               + (["-ss", f"{max(0, cutlist.frame(prev['out'], fps) - 1) / fps:.4f}", "-i",
+               + (["-ss", f"{cutlist.frame(prev['out'], fps) / fps:.4f}", "-i",
                    media_path(srcs[prev.get("source") or next(iter(srcs))], proxy_dir)]
                   if back else [])
                + ["-an", "-filter_complex" if back else "-vf", vf,
