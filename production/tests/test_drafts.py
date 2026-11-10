@@ -298,11 +298,13 @@ class TestNewDraws(unittest.TestCase):
         self.assertIn(f"[1:v]{self.BACK},trim=end_frame=37,tpad=stop_mode=clone:stop=13[bg]", vf)
         self.assertNotIn("loop", vf)  # the old plate looped one frame
         self.assertNotIn("end_frame=1,", vf)
+        self.assertEqual(missing, ["scale-window: " + drafts.WINDOW_OVER["scale-window"]])
         self.assertTrue(missing[0].startswith("scale-window: over the previous shot playing on"))
         vf, missing = drafts.span_filter({}, ["crop-window"], 1280, 720, 24, 2.0, back=self.BACK)
         self.assertIn("trim=end_frame=26,tpad=stop_mode=clone:stop=24[bg]", vf)
         self.assertIn("[fg][bg]blend=all_expr='if(gt(abs(X-W/2),W*(", vf)
         self.assertNotIn("geq", vf)  # outside the box is the plate, not black
+        self.assertEqual(missing, ["crop-window: " + drafts.WINDOW_OVER["crop-window"]])
         self.assertTrue(missing[0].startswith("crop-window: over the previous shot playing on"))
 
     def test_a_span_shorter_than_its_window_gets_only_the_frames_it_shows(self):
@@ -312,8 +314,10 @@ class TestNewDraws(unittest.TestCase):
     def test_with_no_previous_shot_a_window_opens_from_black_and_says_so(self):
         vf, missing = drafts.span_filter({}, ["crop-window"], 1280, 720, 24, 2.0)
         self.assertIn("geq=", vf)
-        self.assertEqual(missing, ["crop-window: opens from black (no previous shot to show through)"])
+        self.assertEqual(missing, ["crop-window: " + drafts.APPROX["crop-window"]])
+        self.assertTrue(missing[0].startswith("crop-window: opens from black"))
         _, missing = drafts.span_filter({}, ["scale-window"], 1280, 720, 24, 2.0)
+        self.assertEqual(missing, ["scale-window: " + drafts.APPROX["scale-window"]])
         self.assertTrue(missing[0].startswith("scale-window: drawn over black"))
 
     def test_the_plate_is_read_from_the_previous_out_point_not_its_last_frame(self):
@@ -450,6 +454,16 @@ class TestLedger(unittest.TestCase):
             self.assertIn(e, drafts.APPROX)
         self.assertTrue(set(drafts.APPROX) <= drafts.DRAWN | {"dissolve"})
         self.assertEqual(sorted(drafts.DRAWN - set(drafts.APPROX)), ["retime", "zoom-push"])
+
+    def test_approx_has_no_duplicate_keys(self):
+        # a dict literal keeps the last of two equal keys without a word, so one note vanishes
+        import ast
+        tree = ast.parse(Path(drafts.__file__).read_text(encoding="utf-8"))
+        lit = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                   and any(getattr(t, "id", None) == "APPROX" for t in n.targets))
+        keys = [k.value for k in lit.keys]
+        self.assertEqual(sorted(keys), sorted(set(keys)))
+        self.assertEqual(keys.count("crop-window"), 1)
 
     def test_the_notes_name_an_effect_the_draft_cannot_draw(self):
         _, missing = drafts.span_filter({}, ["cross-dissolve-short"], 1280, 720, 24, 1.0)
