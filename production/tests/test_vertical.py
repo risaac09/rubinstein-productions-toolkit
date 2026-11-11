@@ -399,6 +399,93 @@ class TestApply(unittest.TestCase):
         self.assertEqual(real["exit_status"], 0)
         self.assertEqual(len(real["results"]), 3)
 
+    def put_plates(self, dissolve=False):
+        """The montage on V2 over plates on V1: a plate under item 2 playing item 1's file and
+        one under item 3 playing item 2's file, each with its own zoom."""
+        if dissolve:
+            d = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+            d.comps = {}
+            self.items.insert(1, d)
+        zoom = {"ZoomX": 1.1, "ZoomY": 1.1, "Pan": 0, "Tilt": 0, "Scaling": 0}
+        v1 = [FusionItem(f"plate{n}", self.items[n].GetStart() if not dissolve else
+                         [i for i in self.items if i.GetName() == f"i{n}"][0].GetStart(),
+                         86480 + 50 * n, self.clips[PATHS[n - 1]], props=dict(zoom), source=(50, 80))
+              for n in (1, 2)]
+        for it in v1:
+            it.comps = {}
+        self.source.tracks["video"] = [v1, self.items]
+        return v1
+
+    def test_a_plate_takes_the_crop_of_the_item_it_continues(self):
+        self.put_plates()
+        dry, real = self.real(track=2)
+        # plate under item 2 continues item 1 (cx 0.3), plate under item 3 continues item 2
+        self.assertEqual([(x["under"], x["continues"], x["cx"]) for x in dry["plates"]],
+                         [(2, 1, 0.3), (3, 2, 0.3)])
+        self.assertEqual([x["props"]["Pan"] for x in dry["plates"]], [237.6, 237.6])  # own zoom 1.1
+        self.assertEqual(dry["unframed_below"], [])
+        self.assertEqual(real["exit_status"], 0, real["plate_results"])
+        below = self.target().tracks["video"][0]
+        self.assertEqual([(i.props["Scaling"], i.props["Pan"], i.props["Tilt"]) for i in below],
+                         [(3, 237.6, 0), (3, 237.6, 0)])
+        self.assertEqual([r["read_back"]["Pan"] for r in real["plate_results"]], [237.6, 237.6])
+        self.assertEqual([i.props["Pan"] for i in self.source.tracks["video"][0]], [0, 0])
+
+    def test_an_unrelated_item_below_is_left_alone_and_named(self):
+        v1 = self.put_plates()
+        stray = FusionItem("stray", 86460, 86470, self.clips["/m/b.mov"],
+                           props={"ZoomX": 1, "ZoomY": 1, "Pan": 0, "Scaling": 0}, source=(0, 10))
+        stray.comps = {}
+        wrong_file = v1[1]
+        wrong_file.clip = self.clips["/m/b.mov"]  # starts under item 3 but plays item 3's own file
+        v1.append(stray)
+        dry, real = self.real(track=2)
+        self.assertEqual([x["name"] for x in dry["plates"]], ["plate1"])
+        self.assertEqual([(x["name"], x["why"][:14]) for x in dry["unframed_below"]],
+                         [("plate2", "does not play "), ("stray", "starts where n")])
+        self.assertEqual(v._plates_below(self.source, 2, self.items, self.crops["items"])[1][0]["name"],
+                         "plate2")
+        self.assertEqual(real["exit_status"], 0)
+        below = self.target().tracks["video"][0]
+        self.assertEqual([i.props["Scaling"] for i in below], [3, 0, 0])
+
+    def test_plates_are_part_of_the_plan_sha(self):
+        self.source.tracks["video"] = [[], self.items]
+        bare = self.go(track=2)["plan_sha"]
+        self.put_plates()
+        dry = self.go(track=2)
+        self.assertNotEqual(dry["plan_sha"], bare)
+        self.crops["items"][0]["cx"] = 0.31  # the plate follows its item, so the sha moves either way
+        self.assertNotEqual(self.go(track=2)["plan_sha"], dry["plan_sha"])
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            self.go(track=2, dry_run=False, expect_sha=dry["plan_sha"])
+
+    def test_a_plate_that_does_not_read_back_fails_the_run(self):
+        v1 = self.put_plates()
+        v1[0].ignored = {"Pan"}
+        _, real = self.real(track=2)
+        self.assertEqual(real["exit_status"], 1)
+        self.assertEqual([r["ok"] for r in real["results"]], [True] * 3)
+        self.assertEqual([r["ok"] for r in real["plate_results"]], [False, True])
+
+    def test_a_one_track_timeline_has_no_plates(self):
+        dry, real = self.real()
+        self.assertEqual((dry["plates"], dry["unframed_below"], real["plate_results"]), ([], [], []))
+
+    def test_track_1_with_a_montage_on_v2_leaves_v1_alone(self):
+        self.put_plates()
+        self.source.tracks["video"] = [self.source.tracks["video"][1], self.source.tracks["video"][0]]
+        dry = self.go(track=1)
+        self.assertEqual((dry["plates"], dry["unframed_below"]), ([], []))
+
+    def test_a_dissolve_between_montage_items_still_pairs_the_right_plate(self):
+        self.put_plates(dissolve=True)
+        dry, real = self.real(track=2)
+        self.assertEqual([x["name"] for x in dry["targets"]], ["i0", "i1", "i2"])
+        self.assertEqual([(x["name"], x["under"], x["continues"]) for x in dry["plates"]],
+                         [("plate1", 2, 1), ("plate2", 3, 2)])
+        self.assertEqual(real["exit_status"], 0)
+
     def test_a_comp_left_as_it_was_is_named_in_the_dry_run_and_the_real_run(self):
         matte = {"Merge1": {"Center": {1: 0.5, 2: 0.5}}}
         self.items[0].comps["rp-fx person-matte-text"] = FComp(matte)
