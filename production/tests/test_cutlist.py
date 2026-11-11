@@ -354,5 +354,33 @@ class TestCut(unittest.TestCase):
         self.assertIn("no reframe", cut.build_tall(FakeProject(), wide, {"name": "b"}, 1280, "T")["reason"])
 
 
+class TestExcludeMatcher(unittest.TestCase):
+    M = {"version": 2, "fps": 24, "sources": [{"id": "a", "path": "/w/day1/Clip0001.mov"},
+                                              {"id": "b", "path": "/w/day2/Clip0002.mp4"}],
+         "clips": [{"spans": [{"source": "a", "in": 0, "out": 1}, {"source": "b", "in": 0, "out": 1},
+                              {"source": "a", "in": 1, "out": 2}]}]}
+
+    def test_stem_basename_and_suffix_match_ignoring_case(self):
+        hit = lambda t: cutlist.exclude_matches(self.M, [t])
+        self.assertEqual(hit("clip0002"), [(1, "/w/day2/Clip0002.mp4", "clip0002")])
+        self.assertEqual([i for i, _, _ in hit("CLIP0001.MOV")], [0, 2])
+        self.assertEqual([i for i, _, _ in hit("day2/clip0002.mp4")], [1])
+        self.assertEqual([i for i, _, _ in hit("day2/Clip0002")], [1])
+        for miss in ("Clip000", "ip0002", "2/Clip0002.mp4", "Clip0003"):
+            self.assertEqual(hit(miss), [])
+
+    def test_load_refuses_a_file_with_no_takes_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.json")
+            for doc in ('{"shots": []}', '{"takes": [1]}', '[]', 'nope'):
+                Path(p).write_text(doc)
+                with self.assertRaises(cutlist.CutlistError):
+                    cutlist.load_exclude(p)
+            Path(p).write_text('{"takes": ["a"], "shots": ["s"]}')
+            got = cutlist.load_exclude(p)
+            self.assertEqual(got["takes"], ["a"])
+            self.assertIn("not checked here", got["not_checked"])
+
+
 if __name__ == "__main__":
     unittest.main()

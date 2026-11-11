@@ -257,6 +257,50 @@ class TestRefusals(Base):
         self.assertIsNone(drafts.effect_filter("cross-dissolve-short", 1.0, 24, 1280, 720))
 
 
+class TestExclude(Base):
+    def listed(self, doc):
+        p = os.path.join(self.dir, "exclude.json")
+        Path(p).write_text(json.dumps(doc))
+        return p
+
+    def refused(self, take, src="/w/day1/cam-a/Clip0042.mov"):
+        plan = self.plan("p" + str(len(os.listdir(os.path.join(self.dir, "plans")))), METHOD, src)
+        out = os.path.join(self.dir, "out")
+        with mock.patch.object(drafts, "run_lanes", side_effect=AssertionError("ffmpeg ran")):
+            with self.assertRaisesRegex(drafts.DraftError, r"p\d span 0: Clip0042.mov is excluded"):
+                drafts.build([plan], out, hw=False, exclude=self.listed({"takes": [take]}))
+
+    def setUp(self):
+        super().setUp()
+        os.makedirs(os.path.join(self.dir, "plans"))
+
+    def test_a_stem_a_basename_and_a_path_suffix_refuse_before_any_job(self):
+        for take in ("clip0042", "CLIP0042.MOV", "cam-a/Clip0042.mov", "day1/cam-a/clip0042.mov"):
+            self.refused(take)
+
+    def test_a_file_without_takes_is_refused(self):
+        plan = self.plan("p", METHOD, "/w/Clip0042.mov")
+        for doc in ({"shots": ["s1"]}, {"take": ["Clip0042"]}, {"takes": "Clip0042"}, []):
+            with self.assertRaisesRegex(drafts.DraftError, "`takes`"):
+                drafts.build([plan], os.path.join(self.dir, "out"), hw=False,
+                             exclude=self.listed(doc))
+
+    @unittest.skipUnless(FFMPEG, "needs ffmpeg")
+    def test_a_clean_manifest_passes_and_the_notes_say_whether_a_list_was_given(self):
+        src = os.path.join(self.dir, "src.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=24:d=8", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", src], check=True)
+        plan = self.plan("p", METHOD, src)
+        none = drafts.build([plan], os.path.join(self.dir, "a"), hw=False, lanes=1)
+        self.assertIn("no exclude list given", none["drafts"][0]["notes"])
+        ex = self.listed({"takes": ["other-take"], "shots": ["s1"]})
+        some = drafts.build([plan], os.path.join(self.dir, "b"), hw=False, lanes=1, exclude=ex)
+        notes = some["drafts"][0]["notes"]
+        self.assertNotIn("no exclude list given", notes)
+        self.assertIn("not checked here: shot ids belong to the planner's index", notes)
+
+
 class TestNewDraws(unittest.TestCase):
     def vf(self, effects, seconds=1.0):
         return drafts.span_filter({}, effects, 1280, 720, 24, seconds)

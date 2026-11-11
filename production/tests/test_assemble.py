@@ -141,10 +141,54 @@ class TestPlan(Base):
         with open(path, "w") as f:
             json.dump(self.manifest, f)
         with mock.patch("builtins.print") as out:
-            self.assertEqual(a.run(mock.Mock(manifest=path)), 0)
+            self.assertEqual(a.run(mock.Mock(manifest=path, exclude=None)), 0)
         text = "\n".join(str(c.args[0]) for c in out.call_args_list)
         self.assertIn("3 item(s), 42 frames at 24 fps, then 12 of black", text)
         self.assertIn("same take, continued", text)
+
+
+class TestExclude(Base):
+    def listed(self, doc):
+        p = os.path.join(self.tmp.name, "exclude.json")
+        Path(p).write_text(json.dumps(doc))
+        return p
+
+    def test_a_stem_a_basename_and_a_path_suffix_refuse_in_both_runs(self):
+        parent = os.path.basename(os.path.dirname(self.one))
+        for take in ("ONE", "one.mov", f"{parent}/one.mov"):
+            ex = self.listed({"takes": [take]})
+            for dry in (True, False):
+                with self.assertRaisesRegex(Refused, r"span 1 one\.mov"):
+                    self.go(exclude=ex, dry_run=dry)
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+
+    def test_a_clean_manifest_passes_and_carries_the_list(self):
+        ex = self.listed({"takes": ["elsewhere"], "shots": ["s1"]})
+        r = self.go(exclude=ex)
+        self.assertEqual((r["exclude"]["path"], r["exclude"]["takes"], r["exclude"]["matches"]),
+                         (ex, ["elsewhere"], []))
+        self.assertIn("shot ids belong to the planner's index", r["exclude"]["not_checked"])
+        self.assertIsNone(self.go()["exclude"])
+
+    def test_a_file_without_takes_is_refused(self):
+        for doc in ({"shots": ["s1"]}, {"take": ["one"]}):
+            with self.assertRaisesRegex(Refused, "`takes`"):
+                self.go(exclude=self.listed(doc))
+
+    def test_the_plan_sha_follows_the_exclude_file(self):
+        a_sha = self.go(exclude=self.listed({"takes": ["x"]}))["plan_sha"]
+        b_sha = self.go(exclude=self.listed({"takes": ["y"]}))["plan_sha"]
+        self.assertEqual(len({a_sha, b_sha, self.go()["plan_sha"]}), 3)
+        with self.assertRaisesRegex(Refused, "plan changed"):
+            self.go(exclude=self.listed({"takes": ["x"]}), dry_run=False, expect_sha=b_sha)
+
+    def test_the_offline_command_refuses(self):
+        path = os.path.join(self.tmp.name, "m.json")
+        Path(path).write_text(json.dumps(self.manifest))
+        ex = self.listed({"takes": ["two"]})
+        with mock.patch("builtins.print") as out:
+            self.assertEqual(a.run(mock.Mock(manifest=path, exclude=ex)), 2)
+        self.assertIn("span 3 two.mov", str(out.call_args_list[0].args[0]))
 
 
 class TestApply(Base):
@@ -922,7 +966,7 @@ class TestWindows(Base):
         with open(path, "w") as f:
             json.dump(self.wm, f)
         with mock.patch("builtins.print") as out:
-            self.assertEqual(a.run(mock.Mock(manifest=path)), 0)
+            self.assertEqual(a.run(mock.Mock(manifest=path, exclude=None)), 0)
         text = "\n".join(str(c.args[0]) for c in out.call_args_list)
         self.assertIn("scale-window, 37 f of #1 playing on", text)
         self.assertIn("the montage goes on V2; V1 holds a plate under each window span", text)
