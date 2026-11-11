@@ -86,9 +86,10 @@ def plan(manifest, exclude=None):
     `window` (the effect) and `plate` (frames of the outgoing shot it needs); `track` is
     the video track the montage goes on, 2 when any span has a plate, else 1.
     `exclude` (absolute path) is the operator's exclude list; `exclude` in the plan is its
-    path, takes and hash, with `matches` empty (a match is refused).
+    path, takes and hash, with `matches` empty (a match is refused), or None with
+    `exclude_note` saying nothing was checked.
     Raises Refused on a manifest that does not validate or holds more than one clip, or
-    names an excluded take."""
+    names an excluded take (a span's source or the music)."""
     if isinstance(manifest, str):
         try:
             with open(manifest, encoding="utf-8") as f:
@@ -107,12 +108,14 @@ def plan(manifest, exclude=None):
             raise Refused("exclude must be an absolute path")
         try:
             ex = cutlist.load_exclude(exclude)
-            hits = cutlist.exclude_matches(manifest, ex["takes"])
+            hits = [f"span {i + 1} {os.path.basename(src)} ({take})"
+                    for i, src, take in cutlist.exclude_matches(manifest, ex["takes"])]
+            hits += [f"music {os.path.basename(src)} ({take})"
+                     for src, take in cutlist.exclude_music_matches(manifest, ex["takes"])]
         except cutlist.CutlistError as e:
             raise Refused(str(e))
         if hits:
-            raise Refused("excluded take(s) in the manifest: " + "; ".join(
-                f"span {i + 1} {os.path.basename(src)} ({take})" for i, src, take in hits))
+            raise Refused("excluded take(s) in the manifest: " + "; ".join(hits))
         ex = {"path": ex["path"], "takes": ex["takes"], "sha256": ex["sha256"], "matches": [],
               "not_checked": ex["not_checked"]}
     fps = float(manifest["fps"])
@@ -147,7 +150,8 @@ def plan(manifest, exclude=None):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "not_built": not_built, "exclude": ex}
+            "not_built": not_built, "exclude": ex,
+            "exclude_note": None if ex else cutlist.NO_EXCLUDE + ": nothing was checked for excluded takes"}
 
 
 def _clip_fps(clip, fallback):
@@ -385,7 +389,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
                    report)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
-           "plates": plates, "exclude": p["exclude"],
+           "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -636,7 +640,9 @@ def run(args):
         print("not built: " + line)
     if p["exclude"]:
         print(f"exclude list {p['exclude']['path']}: {len(p['exclude']['takes'])} take(s), none in "
-              "the manifest" + (f"; {p['exclude']['not_checked']}" if p["exclude"]["not_checked"] else ""))
+              "the manifest or its music" + (f"; {p['exclude']['not_checked']}" if p["exclude"]["not_checked"] else ""))
+    else:
+        print(p["exclude_note"])
     return 0
 
 

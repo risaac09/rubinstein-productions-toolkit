@@ -369,6 +369,16 @@ class TestExcludeMatcher(unittest.TestCase):
         for miss in ("Clip000", "ip0002", "2/Clip0002.mp4", "Clip0003"):
             self.assertEqual(hit(miss), [])
 
+    def test_music_file_matches_by_the_same_rule(self):
+        m = {**self.M, "music": {"path": "/w/audio/Song-One.m4a", "in": 0}}
+        hit = lambda t: cutlist.exclude_music_matches(m, [t])
+        for take in ("song-one", "SONG-ONE.M4A", "audio/song-one.m4a"):
+            self.assertEqual(hit(take), [("/w/audio/Song-One.m4a", take)])
+        for miss in ("song", "one", "Clip0001"):
+            self.assertEqual(hit(miss), [])
+        self.assertEqual(cutlist.exclude_music_matches(self.M, ["song-one"]), [])
+        self.assertEqual(cutlist.exclude_music_matches({**self.M, "music": None}, ["x"]), [])
+
     def test_load_refuses_a_file_with_no_takes_list(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "x.json")
