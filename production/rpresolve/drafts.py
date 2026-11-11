@@ -569,14 +569,26 @@ def _send(folder, labels, lettered):
 
 
 def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=None,
-          hw=None, cap=None):
-    """Render every plan into out; returns the drafts.json document."""
+          hw=None, cap=None, exclude=None):
+    """Render every plan into out; returns the drafts.json document. `exclude` is the
+    operator's exclude list (cutlist.load_exclude); a plan naming an excluded take is
+    refused before any ffmpeg job runs."""
     if rppaths.in_any_git_tree(out):
         raise DraftError(f"{out} is inside a git working tree. Drafts show client media; "
                          "write them outside any repository.")
     if os.path.isdir(out) and os.listdir(out):
         raise DraftError(f"{out} is not empty; give a new folder")
     plans = [load_plan(d) for d in plan_dirs]
+    ex = None
+    if exclude:
+        try:
+            ex = cutlist.load_exclude(exclude)
+        except cutlist.CutlistError as e:
+            raise DraftError(str(e))
+        hits = [f"{p['name']} span {i}: {os.path.basename(src)} is excluded ({take})"
+                for p in plans for i, src, take in cutlist.exclude_matches(p["manifest"], ex["takes"])]
+        if hits:
+            raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
     names, seen = [], {}
     for p in plans:
         seen[p["name"]] = seen.get(p["name"], 0) + 1
@@ -590,6 +602,10 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             d = os.path.join(work, name)
             os.makedirs(d)
             jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir)
+            if not ex:
+                info["notes"].append("no exclude list given")
+            elif ex["not_checked"]:
+                info["notes"].append(ex["not_checked"])
             all_jobs += jobs
             infos.append((name, p, jobs, info))
         began = time.monotonic()
@@ -645,12 +661,14 @@ def add_arguments(p):
     p.add_argument("--proxy-dir", help="where BRAW proxies are (<name>.mov)")
     p.add_argument("--lanes", type=int, help="parallel ffmpeg jobs (default: tuned)")
     p.add_argument("--no-hw", action="store_true", help="software decode and encode")
+    p.add_argument("--exclude", help="the operator's exclude list (JSON with `takes`); a plan "
+                   "naming an excluded take is refused")
 
 
 def run(args):
     try:
         doc = build(args.plans, args.out, args.camera, args.lut_root, args.proxy_dir,
-                    args.lanes, False if args.no_hw else None)
+                    args.lanes, False if args.no_hw else None, exclude=args.exclude)
     except (DraftError, OSError, ValueError) as e:
         print(f"drafts: {e}", file=sys.stderr)
         return 2

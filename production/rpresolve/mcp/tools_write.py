@@ -509,7 +509,8 @@ def assemble_timeline(args, ctx):
                                         dry_run=args["dry_run"], project_id=args.get("project_id"),
                                         expect_sha=args.get("plan_sha"),
                                         check_cancel=ctx.check_cancel,
-                                        bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"))
+                                        bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"),
+                                        exclude=args.get("exclude") and _abs(args["exclude"], "exclude"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
                 + (f", montage on V{p['track']} over {len(r['plates'])} plate(s) on V1 (the shot "
@@ -1160,12 +1161,18 @@ def register(registry):
         "Refused when that source ends inside its plate. The result's track says where the "
         "montage is: pass it as track to apply_effect, apply_grade, reframe_apply, stabilize "
         "and vertical_apply, and grade V1 too. With no such span the montage is on V1 alone. "
+        "Pass the operator's exclude list as exclude: a manifest naming a take on it is "
+        "refused, and the list's hash is part of the plan_sha. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "name": {"type": "string", "description": "The new timeline's name, ending ' [auto]'."},
             "manifest": {"type": "string",
                          "description": "Absolute path of the method manifest JSON."},
+            "exclude": {"type": "string",
+                        "description": "Absolute path of the operator's exclude list, JSON "
+                        "with `takes`, a list of file stems, names or path suffixes. A "
+                        "manifest naming one is refused."},
             "bed_dir": {"type": "string",
                         "description": "Absolute folder for the baked music bed; default the "
                         "manifest's own folder. Refused inside a git working tree."},

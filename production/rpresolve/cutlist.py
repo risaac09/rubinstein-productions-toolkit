@@ -459,6 +459,40 @@ def source_for(m, span=None):
                        f"{', '.join(s['id'] for s in srcs)}")
 
 
+def load_exclude(path):
+    """The operator's exclude list: {path, takes, sha256, not_checked}. A JSON object whose
+    `takes` is a list of strings; a file with no such list is refused, so a mis-keyed file
+    never passes silently. `shots` is allowed and not checked here (not_checked says so)."""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+        doc = json.loads(raw)
+    except (OSError, ValueError) as e:
+        raise CutlistError(f"cannot read the exclude list {path}: {e}")
+    takes = doc.get("takes") if isinstance(doc, dict) else None
+    if not isinstance(takes, list) or not all(isinstance(t, str) and t.strip() for t in takes):
+        raise CutlistError(f"{path}: an exclude list is a JSON object with `takes`, a list of "
+                           "non-empty strings")
+    return {"path": path, "takes": takes, "sha256": hashlib.sha256(raw).hexdigest(),
+            "not_checked": ("not checked here: shot ids belong to the planner's index"
+                            if "shots" in doc else None)}
+
+
+def exclude_matches(m, takes):
+    """[(span index from 0, source path, take)] for every span of the manifest's first clip
+    whose source a take names: its stem, its basename or a path suffix, ignoring case."""
+    out = []
+    for i, span in enumerate(m["clips"][0]["spans"]):
+        path = source_for(m, span)["path"]
+        full = str(path).replace("\\", "/").lower()
+        base = full.rsplit("/", 1)[-1]
+        for take in takes:
+            t = take.replace("\\", "/").strip().lower()
+            if t in (base.rsplit(".", 1)[0], base) or full == t or full.endswith("/" + t.lstrip("/")):
+                out.append((i, path, take))
+    return out
+
+
 def single_source(m, what="this tool"):
     """The one source of a manifest, or CutlistError saying that what reads
     one source only."""
