@@ -123,7 +123,7 @@ Replace the status paragraph with what was seen: the date, the Resolve build, wh
 
 ## How apply_effect builds a comp
 
-`apply_effect` adds a new Fusion comp to each item (`AddFusionComp`, renamed `rp-fx <id>`), then builds the macro's tools in it with `AddTool` under their macro names, sets each input's value, adds a `BezierSpline` or `XYPath` modifier for each animated input with the macro's keyframes, connects the links, and wires the chain between MediaIn1 and MediaOut1. It reads the comp back: every tool and modifier present, each animated input's keyframes on the macro's frames, its value halfway between two keys within those keys' values, and the wiring.
+`apply_effect` adds a new Fusion comp to each item (`AddFusionComp`, renamed `rp-fx <id>`; an item whose comps are all emptied `rp-fx` comps gets the macro built into one of those instead, loaded with `LoadFusionCompByName`, [T9](resolve-traps.md)), then builds the macro's tools in it with `AddTool` under their macro names, sets each input's value, adds a `BezierSpline` or `XYPath` modifier for each animated input with the macro's keyframes, connects the links, and wires the chain between MediaIn1 and MediaOut1. It reads the comp back: every tool and modifier present, each animated input's keyframes on the macro's frames, its value halfway between two keys within those keys' values, and the wiring.
 
 Two things found live (Resolve 21.2.0.6) shaped that:
 

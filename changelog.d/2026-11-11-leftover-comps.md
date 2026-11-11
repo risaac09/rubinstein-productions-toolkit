@@ -1,0 +1,1 @@
+apply_effect builds into an emptied rp-fx Fusion comp (only MediaIn1 and MediaOut1) instead of refusing the item, so a comp that cannot be deleted no longer blocks its item (T9). A comp with tools, or any comp not named rp-fx, is still refused.
