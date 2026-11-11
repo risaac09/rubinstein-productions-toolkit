@@ -301,6 +301,123 @@ class TestExclude(Base):
         self.assertIn("not checked here: shot ids belong to the planner's index", notes)
 
 
+class TestCrops(Base):
+    """A 9:16 draft cropped at each span's own centre from a crops file. The source is three
+    vertical bands, red | lime | blue, each a third of the width, so the window's centre says
+    which band it was cut from (the middle crop is lime)."""
+
+    def setUp(self):
+        super().setUp()
+        self.src = os.path.join(self.dir, "bands.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=red:s=640x1080:r=24:d=4", "-f", "lavfi", "-i",
+                        "color=c=lime:s=640x1080:r=24:d=4", "-f", "lavfi", "-i",
+                        "color=c=blue:s=640x1080:r=24:d=4", "-filter_complex", "hstack=inputs=3",
+                        "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-crf", "8", self.src], check=True)
+
+    def method(self, *effects):
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=0.5 * len(effects), aspect="9:16")
+        m["rules"]["end"] = None
+        m["slots"] = [{**METHOD["slots"][0], "seconds": 0.5, "effect": e, "scale": None,
+                       "move": "static", "transition_out": {"type": "cut", "frames": 0},
+                       "text": None} for e in effects]
+        return m
+
+    def make(self, name, m, aspect=None):
+        return self.plan(name, m, self.src, aspect)
+
+    def crops(self, cxs, path=None, **kw):
+        doc = {"aspect": "9x16", "reviewed": False,
+               "items": [{"index": n, "name": f"i{n}", "path": path or self.src, "in": 0, "out": 1,
+                          "cx": cx, "zoom": 1.0, "source_size": [1920, 1080]}
+                         for n, cx in enumerate(cxs, 1)]}
+        p = os.path.join(self.dir, "crops.json")
+        Path(p).write_text(json.dumps(doc))
+        return p
+
+    def rgb(self, video, n, x=360, y=640):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-i", video, "-vf",
+                            f"select=eq(n\\,{n}),crop=2:2:{x}:{y},format=rgb24", "-frames:v", "1",
+                            "-f", "rawvideo", "-"], capture_output=True, check=True)
+        return tuple(r.stdout[:3])
+
+    def band(self, video, n, **kw):
+        r, g, b = self.rgb(video, n, **kw)
+        return "red" if r > 200 > g else "lime" if g > 200 > r else "blue" if b > 200 > r else (r, g, b)
+
+    def test_each_span_is_cropped_at_its_own_centre(self):
+        plan = self.make("tall", self.method(None, None, None))
+        none = drafts.build([plan], os.path.join(self.dir, "a"), hw=False, lanes=1)["drafts"][0]
+        self.assertEqual([self.band(none["file"], n) for n in (3, 15, 27)], ["lime"] * 3)
+        self.assertNotIn("crops", none)
+        got = drafts.build([plan], os.path.join(self.dir, "b"), hw=False, lanes=1,
+                           crops=self.crops([0.17, 0.5, 0.83]))["drafts"][0]
+        self.assertEqual([self.band(got["file"], n) for n in (3, 15, 27)], ["red", "lime", "blue"])
+        self.assertEqual(got["crops"], [{"span": 0, "cx": 0.17, "used": True},
+                                        {"span": 1, "cx": 0.5, "used": True},
+                                        {"span": 2, "cx": 0.83, "used": True}])
+        self.assertIn("9:16 crops from the crops file: span 0 at centre 0.1700; "
+                      "span 1 at centre 0.5000; span 2 at centre 0.8300", got["notes"])
+
+    def test_the_notes_group_spans_that_share_a_centre(self):
+        plan = self.make("tall", self.method(None, None, None))
+        got = drafts.build([plan], os.path.join(self.dir, "a"), hw=False, lanes=1,
+                           crops=self.crops([0.17, 0.17, 0.83]))["drafts"][0]
+        self.assertIn("9:16 crops from the crops file: spans 0-1 at centre 0.1700; "
+                      "span 2 at centre 0.8300", got["notes"])
+
+    def test_a_window_plate_is_framed_with_the_crop_of_the_shot_it_continues(self):
+        plan = self.make("tall", self.method(None, "scale-window"))
+        got = drafts.build([plan], os.path.join(self.dir, "a"), hw=False, lanes=1,
+                           crops=self.crops([0.17, 0.83]))["drafts"][0]
+        # span 1 starts at frame 12: its window (blue) is small and centred, and the corner is
+        # the plate, the red shot playing on at span 0's crop, where a centre crop is lime
+        self.assertEqual(self.band(got["file"], 12), "blue")
+        self.assertEqual(self.band(got["file"], 12, x=5, y=5), "red")
+
+    def test_a_reframe_pan_keeps_its_own_crop_and_the_notes_say_so(self):
+        plan = self.make("tall", self.method(None, None))
+        mp = os.path.join(plan, "manifest.json")
+        man = json.loads(Path(mp).read_text())
+        man["effects"] = [{"effect": "reframe-pan", "span_index": 1,
+                           "params": {"pan_from": 0.0, "pan_to": 0.0}}]
+        Path(mp).write_text(json.dumps(man))
+        got = drafts.build([plan], os.path.join(self.dir, "a"), hw=False, lanes=1,
+                           crops=self.crops([0.17, 0.83]))["drafts"][0]
+        self.assertEqual(self.band(got["file"], 15), "red")  # pan_from 0 is the left edge
+        self.assertIn("span 1: reframe-pan sets the crop; the crops file's centre is not used",
+                      got["notes"])
+        self.assertEqual([c["used"] for c in got["crops"]], [True, False])
+
+    def test_a_crops_file_that_does_not_fit_the_plan_is_refused(self):
+        plan = self.make("tall", self.method(None, None, None))
+        out = os.path.join(self.dir, "a")
+        with mock.patch.object(drafts, "run_lanes", side_effect=AssertionError("ffmpeg ran")):
+            with self.assertRaisesRegex(DraftErrorAlias, r"tall: the crops file has 2 item\(s\), "
+                                                         r"the plan 3 span\(s\)"):
+                drafts.build([plan], out, hw=False, crops=self.crops([0.2, 0.8]))
+            with self.assertRaisesRegex(DraftErrorAlias, r"tall span 1: .*item 2 is another file "
+                                                         r"\(other.mp4\)"):
+                crops = self.crops([0.2, 0.5, 0.8])
+                doc = json.loads(Path(crops).read_text())
+                doc["items"][1]["path"] = "/elsewhere/other.mp4"
+                Path(crops).write_text(json.dumps(doc))
+                drafts.build([plan], out, hw=False, crops=crops)
+            bad = os.path.join(self.dir, "bad.json")
+            Path(bad).write_text("{}")
+            with self.assertRaisesRegex(DraftErrorAlias, "9x16 crops.json"):
+                drafts.build([plan], out, hw=False, crops=bad)
+
+    def test_a_16_9_plan_ignores_the_crops_file_and_says_so(self):
+        wide = self.make("wide", self.method(None, None), aspect="16:9")
+        got = drafts.build([wide], os.path.join(self.dir, "a"), hw=False, lanes=1,
+                           crops=self.crops([0.2]))["drafts"][0]  # one item: never counted
+        self.assertIn("the crops file is not used: the method is 16:9", got["notes"])
+        self.assertNotIn("crops", got)
+
+
 class TestNewDraws(unittest.TestCase):
     def vf(self, effects, seconds=1.0):
         return drafts.span_filter({}, effects, 1280, 720, 24, seconds)

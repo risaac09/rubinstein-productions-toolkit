@@ -308,6 +308,96 @@ class TestPreview(unittest.TestCase):
                 r, g, b_ = pixel(ffmpeg, path, t, 6, 10)
                 self.assertTrue(max(r, g, b_) < 60, (t, (r, g, b_)))
 
+    def bands(self, d, seconds=4):
+        """1920x1080, red | lime | blue thirds: a 9:16 window at cx .17 reads red, .5 lime, .83 blue."""
+        ffmpeg = reframe.FFMPEG
+        if not os.access(ffmpeg, os.X_OK):
+            self.skipTest("ffmpeg missing")
+        clip = os.path.join(d, "bands.mp4")
+        args = []
+        for c in ("red", "lime", "blue"):
+            args += ["-f", "lavfi", "-i", f"color=c={c}:s=640x1080:r=24:d={seconds}"]
+        subprocess.run([ffmpeg, "-v", "error", "-y"] + args + ["-filter_complex", "hstack=inputs=3",
+                       "-pix_fmt", "yuv420p", clip], stdin=subprocess.DEVNULL, check=True)
+        return ffmpeg, clip
+
+    def colour(self, ffmpeg, video, t, **kw):
+        r, g, b = pixel(ffmpeg, video, t, **kw)
+        return "red" if r > 200 > g else "lime" if g > 200 > r else "blue" if b > 200 > r else (r, g, b)
+
+    def test_a_window_item_opens_over_the_previous_shot_at_that_items_crop(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg, clip = self.bands(d)
+            size = [1920, 1080]
+            items = [{"name": "a", "path": clip, "in": 0.5, "out": 1.5, "size": size},
+                     {"name": "b", "path": clip, "in": 1.8, "out": 3.8, "size": size,
+                      "window": "scale-window"}]
+            crops = v.plan(items, mode="edge", overrides={"a": 0.17, "b": 0.83})
+            self.assertEqual([r.get("window") for r in crops["items"]], [None, "scale-window"])
+            out = os.path.join(d, "plan")
+            path = v.draft_preview(crops, out, ffmpeg=ffmpeg)
+            info = ffprobe_json(ffmpeg, path)
+            self.assertAlmostEqual(float(info["format"]["duration"]), 3.0, delta=0.2)
+            self.assertEqual(self.colour(ffmpeg, path, 0.5), "red")  # item a, at its crop
+            # b's first frames (a little after 1 s: the join falls within a frame of it): a small blue window in the middle, the plate round it: the
+            # shot a was cut from, carrying on from its out point, still at a's crop (red);
+            # a centre crop of it would be lime
+            self.assertEqual(self.colour(ffmpeg, path, 1.1), "blue")
+            self.assertEqual(self.colour(ffmpeg, path, 1.1, x=100, y=100), "red")
+            self.assertEqual(self.colour(ffmpeg, path, 1.0 + 1.5, x=100, y=100), "blue")  # full frame from frame 37
+            self.assertEqual(self.colour(ffmpeg, path, 1.1, x=270, y=480), "blue")
+
+    def test_a_crop_window_item_shows_the_plate_outside_its_box(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg, clip = self.bands(d)
+            size = [1920, 1080]
+            crops = v.plan([{"name": "a", "path": clip, "in": 0.5, "out": 1.5, "size": size},
+                            {"name": "b", "path": clip, "in": 2.0, "out": 3.0, "size": size,
+                             "window": "crop-window"}],
+                           mode="edge", overrides={"a": 0.17, "b": 0.83})
+            path = v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+            self.assertEqual(self.colour(ffmpeg, path, 1.1, x=100, y=100), "red")
+
+    def test_an_item_with_no_window_is_drawn_as_before(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg, clip = self.bands(d)
+            size = [1920, 1080]
+            crops = v.plan([{"name": "a", "path": clip, "in": 0.5, "out": 1.5, "size": size},
+                            {"name": "b", "path": clip, "in": 2.0, "out": 3.0, "size": size}],
+                           mode="edge", overrides={"a": 0.17, "b": 0.83})
+            path = v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+            self.assertEqual(self.colour(ffmpeg, path, 1.1, x=100, y=100), "blue")
+
+    def test_a_window_on_the_first_item_has_no_plate_and_is_drawn_plain(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg, clip = self.bands(d)
+            crops = v.plan([{"name": "a", "path": clip, "in": 0.5, "out": 1.5, "size": [1920, 1080],
+                             "window": "scale-window"}], mode="edge", overrides={"a": 0.17})
+            path = v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+            self.assertEqual(self.colour(ffmpeg, path, 0.1, x=100, y=100), "red")
+
+    def test_a_window_whose_previous_shot_ends_inside_the_plate_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg, clip = self.bands(d, seconds=2)
+            size = [1920, 1080]
+            crops = v.plan([{"name": "a", "path": clip, "in": 0.2, "out": 1.8, "size": size},
+                            {"name": "b", "path": clip, "in": 0.2, "out": 1.2, "size": size,
+                             "window": "scale-window"}], mode="edge")
+            with self.assertRaisesRegex(v.VerticalError, r"item 2 \(b\).*previous shot has 0\.2"):
+                v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+
+    def test_the_window_is_part_of_the_preview_stamp_and_only_a_known_one_is_taken(self):
+        plain = v.plan([item("a", "/m/a.mov", 0, 4), item("b", "/m/a.mov", 6, 9)], mode="edge")
+        win = v.plan([item("a", "/m/a.mov", 0, 4), item("b", "/m/a.mov", 6, 9,
+                                                         window="crop-window")], mode="edge")
+        self.assertNotIn("window", plain["items"][1])  # no key: an old crops.json hashes as it did
+        self.assertNotEqual(v._items_sha(plain), v._items_sha(win))  # a stale preview is refused
+        with self.assertRaisesRegex(v.VerticalError, "window is one of"):
+            v.plan([item("a", "/m/a.mov", 0, 4, window="wipe")], mode="edge")
+        win["items"][1]["window"] = "wipe"
+        with self.assertRaisesRegex(workflows.Refused, "window is one of"):
+            v.load_crops(win)
+
     def test_a_folder_in_a_git_tree_is_refused_and_nothing_is_made(self):
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "repo", ".git"))
