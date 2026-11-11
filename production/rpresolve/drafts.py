@@ -85,8 +85,9 @@ APPROX = {"text-word": "the word is a white box",
                          "width, not Resolve's Pan arithmetic",
           "exposure-flash": "a gain falling to 1 over 12 frames, drawn as the macro's "
                             "multiply (gamma 2.4, about video black, each channel clipped at "
-                            "white, T28); no colour management or look is drawn, so the "
-                            "absolute levels sit below the build's",
+                            "white, T28), after the look when a cube exists for the camera; "
+                            "colour management is not drawn, so the absolute levels sit "
+                            "below the build's",
           "dip-to-black": "the macro's even-stop gain keys, drawn as a display-space "
                           "multiply fitted on one dark frame (T28)",
           "dissolve": "drawn as a cut"}

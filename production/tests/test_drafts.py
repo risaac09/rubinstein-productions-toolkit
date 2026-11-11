@@ -722,8 +722,8 @@ class TestFlashFilter(unittest.TestCase):
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestGainDraw(unittest.TestCase):
     """Trap T28: the build's flash is a gamma 2.4 multiply about video black that clips each
-    channel at video white. Measured on a dark shot (unflashed video level 64): 81 at gain 2
-    and 141 or 142 at gain 10."""
+    channel at video white. The build read 81 at gain 2 and 141 or 142 at gain 10 on a dark
+    shot (unflashed video level 64); the draft reads 80.4 and 141.4 on a flat frame of that level."""
 
     def flash(self, gain, grey=49):
         return flat_luma(grey, [{"effect": "exposure-flash", "params": {"gain": gain}}])
