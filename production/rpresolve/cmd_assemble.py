@@ -79,13 +79,16 @@ def _black_frames(manifest, fps):
         return 0
 
 
-def plan(manifest):
+def plan(manifest, exclude=None):
     """The plan a manifest (a path or the dict) assembles into: {fps, spans: [{index,
     path, in, frames, scale, continues, window?, plate?}], frames, black_frames, music,
     track, not_built}. A span with a scale-window or crop-window after the first has
     `window` (the effect) and `plate` (frames of the outgoing shot it needs); `track` is
     the video track the montage goes on, 2 when any span has a plate, else 1.
-    Raises Refused on a manifest that does not validate or holds more than one clip."""
+    `exclude` (absolute path) is the operator's exclude list; `exclude` in the plan is its
+    path, takes and hash, with `matches` empty (a match is refused).
+    Raises Refused on a manifest that does not validate or holds more than one clip, or
+    names an excluded take."""
     if isinstance(manifest, str):
         try:
             with open(manifest, encoding="utf-8") as f:
@@ -98,6 +101,20 @@ def plan(manifest):
         raise Refused(str(e))
     if len(manifest["clips"]) != 1:
         raise Refused("a method manifest holds one clip")
+    ex = None
+    if exclude:
+        if not os.path.isabs(exclude):
+            raise Refused("exclude must be an absolute path")
+        try:
+            ex = cutlist.load_exclude(exclude)
+            hits = cutlist.exclude_matches(manifest, ex["takes"])
+        except cutlist.CutlistError as e:
+            raise Refused(str(e))
+        if hits:
+            raise Refused("excluded take(s) in the manifest: " + "; ".join(
+                f"span {i + 1} {os.path.basename(src)} ({take})" for i, src, take in hits))
+        ex = {"path": ex["path"], "takes": ex["takes"], "sha256": ex["sha256"], "matches": [],
+              "not_checked": ex["not_checked"]}
     fps = float(manifest["fps"])
     paths = {s["id"]: s["path"] for s in cutlist.sources(manifest)}
     spans, not_built, prev = [], [], None
@@ -130,7 +147,7 @@ def plan(manifest):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "not_built": not_built}
+            "not_built": not_built, "exclude": ex}
 
 
 def _clip_fps(clip, fallback):
@@ -321,7 +338,7 @@ def _bake(bed):
 
 def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=SIZE[1],
                    dry_run=True, project_id=None, expect_sha=None, check_cancel=None,
-                   bed_dir=None):
+                   bed_dir=None, exclude=None):
     """Build the manifest as a new timeline `name` (must end ' [auto]'). Refused, writing
     nothing: a name that exists, a manifest whose fps is not the project's timeline rate
     (a scripted timeline takes the project's), a source or music file that is missing, a
@@ -339,7 +356,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     from rpresolve import deliver
     if not name.endswith(AUTO):
         raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
-    p = plan(manifest)
+    p = plan(manifest, exclude)
     missing = sorted({r["path"] for r in p["spans"] if not os.path.isfile(r["path"])}
                      | ({p["music"]["path"]} if p["music"]
                         and not os.path.isfile(p["music"]["path"]) else set()))
@@ -361,7 +378,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
-           "plates": plates,
+           "plates": plates, "exclude": p["exclude"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha,
@@ -583,11 +600,14 @@ def _music(tl, media_pool, clip, p, tl_fps, problems):
 
 def add_arguments(p):
     p.add_argument("manifest", help="a method manifest (methods.to_manifest), as JSON")
+    p.add_argument("--exclude", help="the operator's exclude list (JSON with `takes`); a "
+                   "manifest naming an excluded take is refused")
 
 
 def run(args):
     try:
-        p = plan(os.path.abspath(args.manifest))
+        p = plan(os.path.abspath(args.manifest),
+                 args.exclude and os.path.abspath(args.exclude))
     except Refused as e:
         print(f"assemble: {e}")
         return 2
@@ -606,6 +626,9 @@ def run(args):
               if p["music"] else "; no music"))
     for line in p["not_built"]:
         print("not built: " + line)
+    if p["exclude"]:
+        print(f"exclude list {p['exclude']['path']}: {len(p['exclude']['takes'])} take(s), none in "
+              "the manifest" + (f"; {p['exclude']['not_checked']}" if p["exclude"]["not_checked"] else ""))
     return 0
 
 
