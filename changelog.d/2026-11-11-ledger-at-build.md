@@ -1,0 +1,1 @@
+Ledger at build: apply_effect and assemble_timeline take the draft farm's drafts.json (ledger, draft). The dry run flags every effect the draft marked not_drawn; the real run refuses unless override names it. With no ledger the result says none was checked.
