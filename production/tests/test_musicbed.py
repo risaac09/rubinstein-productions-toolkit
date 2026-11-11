@@ -49,12 +49,13 @@ def tone(path, seconds, fade=None, video=True):
     return path
 
 
-def graph_mp4(path, picture_s, audio_graph):
-    """An mp4 of picture_s seconds of black picture and the audio the filter graph makes
-    (ending in [a]), so a test can shape the sound in time."""
+def graph_mp4(path, picture_s, audio_graph, extra=()):
+    """An mp4 (or whatever the extension says) of picture_s seconds of black picture and the
+    audio the filter graph makes (ending in [a]), so a test can shape the sound in time. extra:
+    more output options."""
     run(["-f", "lavfi", "-i", f"color=c=black:s=64x36:r=24:d={picture_s}",
          "-filter_complex", audio_graph, "-map", "0:v", "-map", "[a]",
-         "-c:v", "mpeg4", "-c:a", "aac", "-b:a", "192k", path])
+         "-c:v", "mpeg4", "-c:a", "aac", "-b:a", "192k", *extra, path])
     return path
 
 
@@ -299,6 +300,41 @@ class TestTailRow(unittest.TestCase):
         row = self.row(short)
         self.assertEqual(row["status"], dc.FAIL, row)
         self.assertIn("at least 12 dB below", row["expected"])
+
+    # An .mkv carries no duration on its streams, so the format's (the longest stream's, audio
+    # padding included) is all duration(info) alone can give; the last video packet gives the
+    # picture's end.
+    def test_a_stream_without_a_duration_ends_at_the_last_video_frame_not_the_audio_padding(self):
+        mkv = self.padded("pad.mkv", "sine=frequency=440:sample_rate=48000:duration=8")
+        info = dc.probe(mkv)
+        self.assertIsNone(dc._num(info["streams"][0].get("duration")))
+        self.assertGreater(dc.duration(info), 8.4)  # the format's, with the padding
+        self.assertAlmostEqual(dc.duration(info, mkv), 8.0, delta=0.02)
+
+    def test_an_mkv_hard_cut_over_padding_fails_and_a_one_second_fade_passes(self):
+        hard = self.padded("padhard.mkv", "sine=frequency=440:sample_rate=48000:duration=8")
+        self.assertEqual(self.row(hard)["status"], dc.FAIL, self.row(hard))
+        faded = self.padded("padfade.mkv", "sine=frequency=440:sample_rate=48000:duration=8,"
+                                           "afade=t=out:st=7:d=1")
+        self.assertEqual(self.row(faded)["status"], dc.PASS, self.row(faded))
+
+    def test_a_video_that_starts_after_the_container_is_windowed_at_its_own_end(self):
+        # silent to 7.95 s, then 50 ms of tone to the last frame; -output_ts_offset 1 puts the
+        # video 21 ms after the audio, which the container clock hides
+        graph = ("sine=frequency=440:sample_rate=48000:duration=8,"
+                 "volume=enable='lt(t,7.95)':volume=-60dB[a]")
+        plain = graph_mp4(os.path.join(self.d, "plain.mp4"), 8, graph)
+        late = graph_mp4(os.path.join(self.d, "late.mp4"), 8, graph, ("-output_ts_offset", "1"))
+        info = dc.probe(late)
+        self.assertAlmostEqual(dc.video_offset(info), 0.021, delta=0.01)
+
+        def tail(path):
+            i = dc.probe(path)
+            return dc.window_level(path, 0.1, 0.1, end=dc.duration(i, path) + dc.video_offset(i))
+
+        self.assertAlmostEqual(tail(late), tail(plain), delta=1.0)
+        # anchored on the duration alone, as before, the window ends 21 ms early and reads lower
+        self.assertGreater(tail(late) - dc.window_level(late, 0.1, 0.1, end=dc.duration(info)), 1.5)
 
     def test_the_old_file_end_window_is_still_there_without_end(self):
         faded = self.padded("pad.mp4", "sine=frequency=440:sample_rate=48000:duration=8")
