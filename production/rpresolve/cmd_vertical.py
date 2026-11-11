@@ -36,6 +36,13 @@ cmd_effect.refresh and everything is read back. Every other Fusion comp on an it
 (a person-matte-text title among them) is left as it was and named in the result's
 unmoved_comps. A preview is not required by apply_vertical; the draft step is the
 operator's.
+
+A montage with a window effect sits on V2 over plates on V1 (cmd_assemble). When `track` is
+above 1, an item on the track below that starts where montage item N (N > 1) starts and plays
+the same file as item N - 1 is a plate, and gets item N - 1's crop: Scaling 3, Pan from that
+cx with the plate's own zoom, Tilt 0, so the outgoing shot does not move at the cut. Found
+from the timeline alone; anything else on that track is left alone and named in
+`unframed_below`. The offline `draft` preview does not draw plates.
 """
 
 import concurrent.futures
@@ -492,6 +499,39 @@ def _item_plan(it, crop, n, text_size_override, text_cap):
     return row, comps
 
 
+def _plates_below(base, track, items, crops):
+    """(plates, unframed) for the track under the montage. A plate starts where montage item N
+    (N > 1) starts and plays the file of item N - 1; it takes that item's cx and its own zoom.
+    Anything else on the track is returned in unframed, never guessed at. `slot` is the plate's
+    place among that track's clips (kept for the duplicate, whose items are new objects)."""
+    if track < 2:
+        return [], []
+    from rpresolve.workflows import _item_path
+    from rpresolve import ingest as rpingest
+    start_of = {it.GetStart(): n for n, it in enumerate(items, 1)}
+    plates, unframed = [], []
+    for slot, it in enumerate(api.clip_items(base, track - 1), 1):
+        n, path = start_of.get(it.GetStart()), _item_path(it)
+        zx, zy = (_num(api._safe_call(it, "GetProperty", k)) for k in ("ZoomX", "ZoomY"))
+        if n == 1:
+            why = "sits under montage item 1, which continues nothing"
+        elif n is None:
+            why = "starts where no montage item starts"
+        elif not path or rpingest.norm_path(path) != rpingest.norm_path(_item_path(items[n - 2])):
+            why = f"does not play the file of montage item {n - 1}"
+        elif zx is None or zx <= 0 or abs(zx - zy) > ZOOM_TOLERANCE:
+            why = f"has zoom {zx}/{zy}"
+        else:
+            cx = float(crops[n - 2]["cx"])
+            plates.append({"slot": slot, "name": it.GetName(), "under": n, "continues": n - 1,
+                           "cx": cx, "zoom": zx, "index": n, "comps": [],
+                           "props": {"Scaling": FILL, "Pan": round((0.5 - cx) * OUT_SIZE[0] * zx, 4),
+                                     "Tilt": 0}})
+            continue
+        unframed.append({"slot": slot, "name": it.GetName(), "start": it.GetStart(), "why": why})
+    return plates, unframed
+
+
 def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None, track=1,
                    dry_run=True, project_id=None, expect_sha=None, check_cancel=None,
                    text_size_override=None, text_cap=TEXT_CAP):
@@ -502,8 +542,11 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     centre and size; each comp re-rendered with cmd_effect.refresh; everything read back.
     Refused, writing nothing: a target not ending ' [auto]', crops.json not reviewed, an item
     count, name, file or zoom that differs from crops.json, an existing target of another size.
-    Returns {project, timeline, source_timeline, create, targets, unmoved_comps, results,
-    plan_sha, dry_run, exit_status}; exit_status 1 when a read-back differs. unmoved_comps names
+    On `track` above 1, plates on the track below take the crop of the item they continue
+    (_plates_below): `plates` is the plan, `plate_results` the read-backs, `unframed_below`
+    what on that track is not a plate. Returns {project, timeline, source_timeline, create,
+    targets, plates, unframed_below, unmoved_comps, results, plate_results, plan_sha, dry_run,
+    exit_status}; exit_status 1 when a read-back differs (a plate's included). unmoved_comps names
     each item and Fusion comp left as it was (every comp but the two moved), dry run or real."""
     from rpresolve import cmd_effect, workflows
     c = load_crops(crops)
@@ -539,12 +582,16 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     if refused:
         raise Refused("; ".join(f"#{r['index']} {r['name']} {'; '.join(r['reasons'])}"
                                 for r in refused))
+    plates, unframed = _plates_below(base, track, items, c["items"])
     sha = plan_sha("vertical", pin.unique_id, timeline, base.GetUniqueId(), tl is None, track,
-                   [(t["index"], t["name"], t["props"], t["comps"]) for t in targets])
+                   [(t["index"], t["name"], t["props"], t["comps"]) for t in targets],
+                   *(([(x["slot"], x["name"], x["under"], x["props"]) for x in plates], unframed)
+                     if plates or unframed else ()))
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": timeline, "track": track, "size": list(OUT_SIZE)},
            "source_timeline": base.GetName() if tl is None else None, "create": tl is None,
-           "targets": targets, "unmoved_comps": _unmoved(targets, items), "results": [],
+           "targets": targets, "plates": plates, "unframed_below": unframed,
+           "unmoved_comps": _unmoved(targets, items), "results": [], "plate_results": [],
            "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out
@@ -571,6 +618,12 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
             raise Refused(f"the copy has {len(items)} item(s), expected {len(targets)}")
         kept = [_comps(it) for it in items]
         out["unmoved_comps"] = _unmoved(targets, items)  # the copy's own comps
+        below = api.clip_items(tl, track - 1) if plates else []
+        if plates and [b.GetName() for b in below] != \
+                [b.GetName() for b in api.clip_items(base, track - 1)]:
+            raise Refused(f"the copy has {len(below)} clip(s) on V{track - 1}, the source differs")
+    else:
+        below = api.clip_items(tl, track - 1) if plates else []
     refresh = getattr(cmd_effect, "refresh", None)
     # under a 3840-wide current timeline every pan would land at 1080/3840 of the shift (T27)
     with api.timeline_current(resolve, project, tl):
@@ -579,7 +632,12 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
                 check_cancel()
             pin.check(pm)
             out["results"].append(_write_item(t, it, comps, refresh))
-    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"]) else 0
+        for x in plates:
+            if check_cancel:
+                check_cancel()
+            pin.check(pm)
+            out["plate_results"].append(_write_item(x, below[x["slot"] - 1], [], refresh))
+    out["exit_status"] = 1 if any(not r["ok"] for r in out["results"] + out["plate_results"]) else 0
     return out
 
 

@@ -547,18 +547,26 @@ def vertical_apply(args, ctx):
                                         text_size_override=args.get("text_size"))
         tl, n = r["timeline"]["name"], len(r["targets"])
         comps = sum(len(t["comps"]) for t in r["targets"])
+        plates = len(r["plates"])
         made = (f"duplicate '{r['source_timeline']}' to '{tl}' at 1080x1920, then "
                 if r["create"] else "")
         if r["dry_run"]:
             r["summary"] = (f"would {made}set Scaling 3, Pan and Tilt on {n} item(s) on '{tl}' V"
-                            f"{r['timeline']['track']} and move {comps} rp-fx comp(s)" + _how(r))
+                            f"{r['timeline']['track']} and move {comps} rp-fx comp(s)"
+                            + (f"; frame {plates} plate(s) on V{r['timeline']['track'] - 1} "
+                               "with the crop of the item each continues" if plates else "")
+                            + (f"; leave {len(r['unframed_below'])} other item(s) there as they are"
+                               if r["unframed_below"] else "") + _how(r))
         elif r.get("duplicate", {}).get("mismatches"):
             r["summary"] = f"the copy '{tl}' does not match its source; nothing was framed"
         else:
-            ok = sum(1 for x in r["results"] if x["ok"])
+            both = r["results"] + r["plate_results"]
+            ok = sum(1 for x in both if x["ok"])
             r["applied"] = ok
-            r["summary"] = (f"set and read back the 9:16 framing of {ok} of {len(r['results'])} "
-                            f"item(s) on '{tl}'; export a still of each and look before queueing")
+            r["summary"] = (f"set and read back the 9:16 framing of {ok} of {len(both)} "
+                            f"item(s) on '{tl}'" + (f" ({len(r['plate_results'])} of them plates)"
+                                                    if r["plate_results"] else "")
+                            + "; export a still of each and look before queueing")
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -1185,8 +1193,11 @@ def register(registry):
         "pivot of an 'rp-fx zoom-push' comp and the centre and size of an 'rp-fx text-word' "
         "comp to the crop centre, re-renders those comps and reads everything back. Refused, "
         "writing nothing: a target not ending ' [auto]', crops.json not reviewed, an item "
-        "count, name, file or zoom that differs from crops.json. Dry run first; the real run "
-        "needs its plan_sha.",
+        "count, name, file or zoom that differs from crops.json. On track 2 or above, a plate "
+        "on the track below (an item that starts where montage item N starts and plays the file "
+        "of item N - 1) gets item N - 1's crop, with its own zoom, so the outgoing shot does not "
+        "move at the cut; other items on that track are left alone and named in unframed_below. "
+        "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",

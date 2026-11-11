@@ -1,0 +1,1 @@
+vertical_apply on a montage track above V1 now frames each window plate on the track below with the crop of the montage item it continues, so the outgoing shot no longer jumps sideways at the cut in the 9:16 copy. Plates are found on the timeline, part of the plan hash and read back; other items on that track are named, not touched.
