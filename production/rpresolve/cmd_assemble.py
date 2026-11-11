@@ -52,7 +52,7 @@ import json
 import math
 import os
 
-from rpresolve import api, cli, cutlist
+from rpresolve import api, cli, cutlist, ledgercheck
 from rpresolve import detect as rpdetect
 from rpresolve import ingest as rpingest
 from rpresolve import delivercheck as dc
@@ -338,7 +338,7 @@ def _bake(bed):
 
 def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=SIZE[1],
                    dry_run=True, project_id=None, expect_sha=None, check_cancel=None,
-                   bed_dir=None, exclude=None):
+                   bed_dir=None, exclude=None, ledger=None, draft=None, override=None):
     """Build the manifest as a new timeline `name` (must end ' [auto]'). Refused, writing
     nothing: a name that exists, a manifest whose fps is not the project's timeline rate
     (a scripted timeline takes the project's), a source or music file that is missing, a
@@ -352,11 +352,17 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     the plan hash holds the spec; colour is colour_plan's rows (shown by the dry run,
     completed by the real one); exit_status 1 when a read-back
     differs or a clip that was in the pool is log by detect and reads Rec.709. A timeline that was made and is not right is left in place and
-    named under left_behind: nothing is deleted."""
+    named under left_behind: nothing is deleted. ledger (the absolute path of a drafts.json)
+    and draft (the picked plan) check the manifest's effects against what the draft drew
+    (ledgercheck): the dry run flags each one marked not_drawn, a real run refuses unless
+    override names it, and a ledger that is not this manifest's is refused; `ledger` in the
+    result is the report, and it is part of the plan hash."""
     from rpresolve import deliver
     if not name.endswith(AUTO):
         raise Refused(f"the timeline name must end with '{AUTO}' (got '{name}').")
     p = plan(manifest, exclude)
+    led = ledger and ledgercheck.load(ledger, draft)
+    report = ledgercheck.check(led, ledgercheck.must_match(led, manifest), override)
     missing = sorted({r["path"] for r in p["spans"] if not os.path.isfile(r["path"])}
                      | ({p["music"]["path"]} if p["music"]
                         and not os.path.isfile(p["music"]["path"]) else set()))
@@ -375,18 +381,20 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     colour = colour_plan(project, root, p)
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     plates = plate_handles(p)
-    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates)
+    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
+                   report)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
            "plates": plates, "exclude": p["exclude"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
-           "plan_sha": sha,
+           "plan_sha": sha, "ledger": report,
            "dry_run": dry_run,
            "created": None, "items": [], "transitions": [], "audio": None, "problems": [], "left_behind": None,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
+    ledgercheck.refuse_unless_overridden(report)
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (the manifest, the name, the "
                       "project's frame rate or a source's colour differ); run the dry run "

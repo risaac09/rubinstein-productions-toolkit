@@ -18,7 +18,7 @@ import math
 import os
 import re
 
-from rpresolve import api, cli
+from rpresolve import api, cli, ledgercheck
 from rpresolve.workflows import AUTO, Refused, _wanted_items, plan_sha
 
 NAME = "effect"
@@ -549,7 +549,8 @@ def _source_frames(it):
 
 
 def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, dry_run=False,
-                 project_id=None, check_cancel=None, expect_sha=None, params=None, spans=None):
+                 project_id=None, check_cancel=None, expect_sha=None, params=None, spans=None,
+                 ledger=None, draft=None, override=None):
     """Add a Fusion comp named 'rp-fx <effect>' to each clip (items: 1-based clip numbers on
     one video track; or spans: the manifest's 0-based span indices; default all; not both) of
     an ' [auto]' timeline, paste the macro's tools into it, wire them between MediaIn1 and
@@ -558,12 +559,17 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     span n - 1. An item that already has any Fusion comp is refused (the new comp would
     replace the one that renders). Returns {project, timeline, effect,
     targets, refused, results, plan_sha, dry_run, exit_status}; each row has the clip number
-    as index and the raw track position; exit_status 1 when any item failed its read-back."""
+    as index and the raw track position; exit_status 1 when any item failed its read-back.
+    ledger (the absolute path of a drafts.json) and draft (the picked plan) check the effect
+    against what the draft drew (ledgercheck): the dry run flags a span the draft marked
+    not_drawn, a real run refuses unless override names the effect; `ledger` in the result is
+    the report, and it is part of the plan hash."""
     if items is not None and spans is not None:
         raise Refused("give items (clip numbers, from 1) or spans (manifest span indices, from 0), "
                       "not both.")
     if spans is not None and not spans:
         raise Refused("spans is empty; leave it out to take every clip.")
+    led = ledger and ledgercheck.load(ledger, draft)
     text, parsed = load_macro(effect)
     params = validate_params(effect, params)  # before anything is read from Resolve
     tools = tool_names(parsed)
@@ -614,9 +620,10 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     if not targets:
         raise Refused("no item may take the effect: " + "; ".join(
             f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refused))
+    report = ledgercheck.check(led, [(effect, t["index"] - 1) for t in targets], override)
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
                    [(t["index"], t["position"], t["item_id"], t["comps"], t["frames"],
-                     t["source_frames"]) for t in targets], sorted(params.items()))
+                     t["source_frames"]) for t in targets], sorted(params.items()), report)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
                         "other_tracks": api.other_video_tracks(tl, track)},
@@ -624,9 +631,10 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                       "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
                                  "out": WIRING[effect]["out"]}},
            "params": params, "targets": targets, "refused": refused, "results": [], "plan_sha": sha,
-           "dry_run": dry_run, "exit_status": 0}
+           "ledger": report, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out
+    ledgercheck.refuse_unless_overridden(report)
     if expect_sha and expect_sha != sha:
         raise Refused("the plan changed since the dry run (the items, their comps or the "
                       "macro differ); run the dry run again and review it")
