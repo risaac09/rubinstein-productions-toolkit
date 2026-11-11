@@ -4,14 +4,14 @@
 # Denies reads targeting the closed 05_RELATIONS/partner folder in the vault.
 # Enforces the privacy law in isaac-twin SKILL.md and 06_relational_field.md
 # mechanically: that folder's contents may only be opened when a task
-# explicitly requires it and Isaac has explicitly opened it, and even then
+# explicitly requires it and the operator has explicitly opened it, and even then
 # never beyond what the task requires. No PreToolUse hook watched Read/Grep/
 # Glob before this (only Edit/Write/NotebookEdit did), so a Workflow subagent
 # doing a vault-wide sweep at HIGH/MAX never loaded the twin and had nothing
 # stopping it from reading the closed folder. Confirmed 2026-08-16 (actor-
 # layer adversarial review, F03).
 #
-# Override: set RELATIONS_GUARD_OPEN=1 for a session where Isaac has
+# Override: set RELATIONS_GUARD_OPEN=1 for a session where the operator has
 # explicitly opened the folder for a specific task. Per-session only; never
 # set it in a persistent shell profile or a launchd job's environment.
 #
@@ -51,6 +51,6 @@ jq -nc --arg t "$target" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: ("05_RELATIONS is closed by the privacy law in isaac-twin SKILL.md and 06_relational_field.md: read only what a task explicitly requires and Isaac has explicitly opened. Denied path: " + $t + ". If this task is one of those explicit exceptions, set RELATIONS_GUARD_OPEN=1 for this session and retry.")
+    permissionDecisionReason: ("05_RELATIONS is closed by the privacy law in isaac-twin SKILL.md and 06_relational_field.md: read only what a task explicitly requires and the operator has explicitly opened. Denied path: " + $t + ". If this task is one of those explicit exceptions, set RELATIONS_GUARD_OPEN=1 for this session and retry.")
   }
 }'
