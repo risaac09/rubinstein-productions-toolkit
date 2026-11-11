@@ -588,7 +588,7 @@ class TestLedger(unittest.TestCase):
                          [("dissolve", [1, 3]), ("exposure-flash", [0, 2]),
                           ("person-matte-text", [1])])
         self.assertEqual(led["approximated"][0]["note"], "drawn as a cut")
-        self.assertIn("display-space", led["approximated"][1]["note"])
+        self.assertIn("each channel clipped at white", led["approximated"][1]["note"])
         self.assertEqual(led["not_drawn"], [{"effect": "cross-dissolve-short", "spans": [2]}])
 
     def test_a_window_is_from_black_on_span_0_and_over_the_previous_shot_playing_on_after_it(self):
@@ -657,15 +657,6 @@ def flat_luma(grey, effects, seconds=1.0, fps=24, src_fps=24):
     return [sum(r.stdout[i * size:(i + 1) * size]) / size for i in range(n)]
 
 
-def held_gain_luma(grey, gain):
-    """The level a flat frame of this grey reads through the gain filter held at one gain."""
-    r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                        f"color=c=0x{grey:02x}{grey:02x}{grey:02x}:s=320x180:r=24:d=1",
-                        "-vf", drafts.gain_filter(repr(float(gain))) + ",format=gray",
-                        "-frames:v", "1", "-f", "rawvideo", "-"], capture_output=True, check=True)
-    return sum(r.stdout) / len(r.stdout)
-
-
 def flat_chroma(color, effects, seconds=1.0, fps=24):
     """Mean (U, V) of each output frame of a flat colour run through span_filter."""
     vf, _ = drafts.span_filter({}, effects, 320, 180, fps, seconds)
@@ -695,18 +686,88 @@ def stops(x):
     return ys[k] + (ys[k + 1] - ys[k]) * (x - 3 * k) / 3
 
 
+def flash_level(grey, gain):
+    """The flash's first frame on a level: the macro's gamma 2.4 multiply about video black,
+    clipped at white (trap T28). On full-range levels black is 0, so it is a plain multiply."""
+    return min(255.0, grey * gain ** (1 / 2.4))
+
+
+def flat_rgb(color, effects, n=1):
+    """(R, G, B) of the first frame of a flat colour run through span_filter."""
+    vf, _ = drafts.span_filter({}, effects, 320, 180, 24, 1.0)
+    r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        f"color=c={color}:s=320x180:r=24:d=2",
+                        "-vf", vf + ",format=rgb24", "-frames:v", "1", "-f", "rawvideo", "-"],
+                       capture_output=True, check=True)
+    return tuple(r.stdout[:3])
+
+
+class TestFlashFilter(unittest.TestCase):
+    def test_the_filter_is_a_per_channel_gamma_2_4_multiply_clipped_at_white(self):
+        u = "min(round(T*24)/12,1)"
+        for gain in (2, 10):
+            k = f"pow(1+({gain}-1)*(1-({u})*({u})*(3-2*({u}))),0.416667)"
+            want = ("format=gbrp,geq=" + ":".join(f"{c}='clip({c}(X,Y)*{k}+0.5,0,255)'"
+                                                  for c in "gbr")
+                    + ":enable='lt(round(t*24),12)'")
+            got = drafts.effect_filter("exposure-flash", 1.0, 24, 320, 180, {"gain": gain})
+            self.assertEqual(got, want)
+
+    def test_the_default_gain_is_2_and_the_fall_follows_the_frame_rate(self):
+        self.assertEqual(drafts.effect_filter("exposure-flash", 1.0, 24, 320, 180),
+                         drafts.effect_filter("exposure-flash", 1.0, 24, 320, 180, {"gain": 2}))
+        self.assertIn("round(T*30)/12", drafts.effect_filter("exposure-flash", 1.0, 30, 320, 180))
+
+
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestGainDraw(unittest.TestCase):
-    """Trap T28: the macro's flash on a flat frame of luma 49 read 65 at gain 2 and 117 at
-    gain 10 on its first frame. The old draw added 0.3 brightness and read about 119 for both."""
+    """Trap T28: the build's flash is a gamma 2.4 multiply about video black that clips each
+    channel at video white. Measured on a dark shot (unflashed video level 64): 81 at gain 2
+    and 141 or 142 at gain 10."""
 
     def flash(self, gain, grey=49):
         return flat_luma(grey, [{"effect": "exposure-flash", "params": {"gain": gain}}])
 
-    def test_gain_2_and_10_match_the_measured_macro_within_10_percent(self):
-        for gain, measured in ((2, 65), (10, 117)):
-            first = self.flash(gain)[0]
-            self.assertAlmostEqual(first / measured, 1, delta=0.10, msg=f"gain {gain}: {first}")
+    def test_gain_2_and_10_match_the_measured_build_on_the_dark_shot(self):
+        # a full-range level of 56 is the build's unflashed video level 64 (16 + 56 * 219 / 255)
+        for gain, measured in ((2, 81), (10, 141.5)):
+            video = 16 + self.flash(gain, grey=56)[0] * 219 / 255
+            self.assertAlmostEqual(video, measured, delta=1.5, msg=f"gain {gain}: {video}")
+
+    def test_a_gradient_follows_the_formula_and_clips_at_white(self):
+        # a horizontal ramp, 0 to 255; the input's own 8-bit step (about 1.2 levels) is
+        # multiplied by the gain, so the tolerance grows with it
+        w, h = 320, 180
+        ramp = bytes(min(255, x * 256 // w) for _ in range(h) for x in range(w) for _ in range(3))
+        for gain in (2, 10):
+            vf, _ = drafts.span_filter({}, [{"effect": "exposure-flash", "params": {"gain": gain}}],
+                                       w, h, 24, 1.0)
+            out = {}
+            for name, chain in (("flash", vf), ("plain", "format=yuv420p")):
+                r = subprocess.run(["ffmpeg", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                                    "-s", f"{w}x{h}", "-r", "24", "-i", "-", "-vf",
+                                    chain + ",format=gray", "-frames:v", "1", "-f", "rawvideo", "-"],
+                                   input=ramp * 30, capture_output=True, check=True)
+                out[name] = list(r.stdout[:w])
+            k = gain ** (1 / 2.4)
+            for x in range(w):
+                want = min(255.0, out["plain"][x] * k)
+                self.assertAlmostEqual(out["flash"][x], want, delta=1.2 * k + 1.5,
+                                       msg=f"gain {gain}, x {x}")
+                if want >= 255.5 + 1.2 * k:  # well past white: exactly white, no roll-off
+                    self.assertEqual(out["flash"][x], 255, msg=f"gain {gain}, x {x}")
+            self.assertEqual(out["flash"][-1], 255)
+
+    def test_each_channel_multiplies_and_clips_on_its_own(self):
+        # luma alone would keep the ratio of the three; the build sends red and green to white
+        # and leaves blue at 50 * 10 ** (1 / 2.4)
+        got = flat_rgb("0xC86432", [{"effect": "exposure-flash", "params": {"gain": 10}}])
+        self.assertGreaterEqual(min(got[:2]), 254)  # white, give or take the YCbCr round trip
+        self.assertAlmostEqual(got[2], flash_level(50, 10), delta=3)
+        got = flat_rgb("0xC86432", [{"effect": "exposure-flash", "params": {"gain": 2}}])
+        self.assertGreaterEqual(got[0], 254)
+        for c, v in zip(got[1:], (100, 50)):
+            self.assertAlmostEqual(c, flash_level(v, 2), delta=3)
 
     def test_the_default_is_gain_2_and_gain_1_is_no_flash(self):
         default = flat_luma(49, ["exposure-flash"])
@@ -722,24 +783,22 @@ class TestGainDraw(unittest.TestCase):
         self.assertGreater(frames[6], 49 + 5)
 
     def test_the_flash_falls_on_the_smoothstep_curve_not_a_line(self):
-        # each frame must read as a fixed gain of the macro's smoothstep fall: the same eq filter
-        # held at that gain draws the same level, so the fit of GAMMA does not enter
+        # each frame reads as the formula at the macro's smoothstep gain for that frame
         g, grey = 10, 49
         frames = self.flash(g, grey)
-        for j in (1, 3, 6, 9, 11):
+        for j in (0, 1, 3, 6, 9, 11):
             u = j / 12
             gain = 1 + (g - 1) * (1 - u * u * (3 - 2 * u))
-            self.assertAlmostEqual(frames[j], held_gain_luma(grey, gain), delta=1,
-                                   msg=f"frame {j}")
-        # a straight fall would put frame 9 at gain 3.25, 13 levels above where the macro's is
-        self.assertLess(frames[9], held_gain_luma(grey, 1 + (g - 1) * 0.25) - 5)
+            self.assertAlmostEqual(frames[j], flash_level(grey, gain), delta=1.5, msg=f"frame {j}")
+        # a straight fall would put frame 9 at gain 3.25, 9 levels above where the macro's is
+        self.assertLess(frames[9], flash_level(grey, 1 + (g - 1) * 0.25) - 5)
 
     def test_the_flash_scales_chroma_with_the_levels(self):
         red = "0x602020"
         (_, v0), = flat_chroma(red, [], seconds=1 / 24)
         (_, v1), = flat_chroma(red, [{"effect": "exposure-flash", "params": {"gain": 10}}],
                                seconds=1 / 24)
-        want = 10 ** (1 / drafts.GAMMA)  # below the eq saturation limit of 3
+        want = 10 ** (1 / drafts.FLASH_GAMMA)
         self.assertGreater(v0 - 128, 15)
         self.assertAlmostEqual((v1 - 128) / (v0 - 128), want, delta=0.15 * want)
         # and the chroma is back to the unflashed colour once the flash has settled
