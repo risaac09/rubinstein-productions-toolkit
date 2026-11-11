@@ -3,7 +3,8 @@ vertical: the 9:16 finish step for a montage that was built at 16:9.
 
 `plan`, `draft` and `review` are the offline half (this command's CLI). `plan` takes the
 montage's items (name, source path, in and out in source seconds, zoom, and the
-16:9 crop_x when the build had one), picks one crop centre cx per item (a share
+16:9 crop_x when the build had one, and `window`, scale-window or crop-window, on an item whose
+window opens over the shot before it), picks one crop centre cx per item (a share
 of the source width), writes crops.json and a numbered review sheet. Its --out folder
 must not exist yet; the command makes it. `draft` cuts a silent 540x960 preview, preview.mp4,
 from crops.json: each item from its source at its crop, in order, the item number in the
@@ -46,7 +47,8 @@ above 1, an item on the track below that starts where montage item N (N > 1) sta
 the same file as item N - 1 is a plate, and gets item N - 1's crop: Scaling 3, Pan from that
 cx with the plate's own zoom, Tilt 0, so the outgoing shot does not move at the cut. Found
 from the timeline alone; anything else on that track is left alone and named in
-`unframed_below`. The offline `draft` preview does not draw plates.
+`unframed_below`. The offline `draft` preview draws them where an item's `window` says one opens:
+see draft_preview.
 """
 
 import concurrent.futures
@@ -59,6 +61,7 @@ import tempfile
 
 from rpresolve import api, cli
 from rpresolve import paths as rppaths
+from rpresolve import windowplate
 from rpresolve.workflows import AUTO, Refused, plan_sha
 
 NAME = "vertical"
@@ -120,9 +123,13 @@ def _items(items, probe):
         if not size:
             info = (probe or _probe)(it["path"])
             size = [info["width"], info["height"]]
+        win = it.get("window")
+        if win is not None and win not in windowplate.PLATE_FRAMES:
+            raise VerticalError(f"item {i} ({it['name']}): window is one of "
+                                f"{', '.join(sorted(windowplate.PLATE_FRAMES))}")
         rows.append({"index": i, "name": it["name"], "path": it["path"], "in": float(it["in"]),
                      "out": float(it["out"]), "zoom": zoom, "crop_x": it.get("crop_x"),
-                     "size": [int(size[0]), int(size[1])]})
+                     "size": [int(size[0]), int(size[1])], "window": win})
     return rows
 
 
@@ -203,6 +210,8 @@ def plan(items, overrides=None, mode="edge", planner=None, probe=None):
                    "status": s if n == group[0] or own is not None else "shared",
                    "reason": reason if n == group[0] and own is None else "",
                    "zoom": r["zoom"], "source_size": r["size"]}
+            if r["window"]:
+                row["window"] = r["window"]
             if n != group[0] and own is None:
                 row["shared_with"] = rows[group[0]]["index"]
             out.append(row)
@@ -225,6 +234,9 @@ def load_crops(src):
                 or not 0 < cx < 1 or z <= 0:
             raise Refused(f"item {it.get('index')} ({it.get('name')}): cx must be between 0 and 1 "
                           "and zoom above 0")
+        if it.get("window") is not None and it["window"] not in windowplate.PLATE_FRAMES:
+            raise Refused(f"item {it.get('index')} ({it.get('name')}): window is one of "
+                          f"{', '.join(sorted(windowplate.PLATE_FRAMES))}")
     return src
 
 
@@ -380,12 +392,33 @@ def preview_filter(row):
                      f"fps={PREVIEW_FPS}"] + _digits(row["index"]) + ["format=yuv420p"])
 
 
+def window_filter(row, prev):
+    """The filter_complex for an item with a `window` (an item after the first): the window
+    opens over the previous item's shot playing on from its out point, framed with that item's
+    crop, as the V1 plate is in the build (vertical_apply), by the draft farm's own window draw.
+    The frame counts are the macro's, read at the preview's rate. Input 0 is the item, input 1
+    the previous item's file from its out point."""
+    from rpresolve import drafts
+    w, h = PREVIEW_SIZE
+
+    def zoomed(r):
+        return {"scale": r["zoom"]} if r["zoom"] > 1 else {}
+    back = drafts.span_filter(zoomed(prev), [], w, h, PREVIEW_FPS, 1.0 / PREVIEW_FPS,
+                              cx=prev["cx"])[0]
+    vf = drafts.span_filter(zoomed(row), [{"effect": row["window"]}], w, h, PREVIEW_FPS,
+                            row["out"] - row["in"], back=back, cx=row["cx"])[0]
+    return ",".join([vf] + _digits(row["index"]) + ["format=yuv420p"])
+
+
 def draft_preview(crops, out_dir, ffmpeg=None):
     """Write out_dir/preview.mp4 from crops.json (a path or the dict): a silent 540x960 cut of
-    every item from its source (path, in, out) at its crop centre, joined in order. The picture
-    is client media, so a folder inside any git working tree is refused. Returns the path.
-    Nothing here needs crops.json to be reviewed; the preview is what the review is read with."""
-    from rpresolve import reframe
+    every item from its source (path, in, out) at its crop centre, joined in order. An item with
+    a `window` (scale-window or crop-window) after the first opens over the previous item's
+    shot playing on, framed with that item's crop: the plate the build puts on V1 (window_filter).
+    The picture is client media, so a folder inside any git working tree is refused. Returns the
+    path. Nothing here needs crops.json to be reviewed; the preview is what the review is read
+    with."""
+    from rpresolve import drafts, reframe
     c = load_crops(crops)
     out_dir = os.path.abspath(out_dir)
     if rppaths.in_any_git_tree(out_dir):
@@ -395,21 +428,33 @@ def draft_preview(crops, out_dir, ffmpeg=None):
     hw = _has_hw(ffmpeg)
     os.makedirs(out_dir, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
-        def cut(row):
+        def cut(k_row):
+            k, row = k_row
+            prev = c["items"][k - 1] if k and row.get("window") else None
+            if prev:
+                try:
+                    drafts._check_plate(prev["path"], prev["out"], windowplate.plate_frames(
+                        row["window"], round((row["out"] - row["in"]) * PREVIEW_FPS)),
+                        PREVIEW_FPS, f"item {row['index']} ({row['name']})")
+                except drafts.DraftError as e:
+                    raise VerticalError(str(e))
             part = os.path.join(tmp, f"{row['index']:03d}.mp4")
             for use_hw in ((True, False) if hw else (False,)):
                 code, err = _run([ffmpeg, "-v", "error", "-y"]
                                  + (["-hwaccel", "videotoolbox"] if use_hw else [])
                                  + ["-ss", f"{row['in']:.4f}", "-t", f"{row['out'] - row['in']:.4f}",
-                                    "-i", "file:" + row["path"], "-an", "-vf", preview_filter(row),
-                                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                                    "-i", "file:" + row["path"]]
+                                 + (["-ss", f"{prev['out']:.4f}", "-i", "file:" + prev["path"],
+                                     "-an", "-filter_complex", window_filter(row, prev)] if prev
+                                    else ["-an", "-vf", preview_filter(row)])
+                                 + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                                     "-write_tmcd", "0", part])
                 if code == 0 and os.path.exists(part):
                     return part
             raise VerticalError(f"item {row['index']} ({row['name']}): ffmpeg could not cut "
                                 f"{row['in']:.2f}s to {row['out']:.2f}s: {err}")
         with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 1) as pool:
-            parts = list(pool.map(cut, c["items"]))
+            parts = list(pool.map(cut, enumerate(c["items"])))
         lst, joined = os.path.join(tmp, "parts.txt"), os.path.join(tmp, PREVIEW_NAME)
         with open(lst, "w", encoding="utf-8") as f:
             f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
