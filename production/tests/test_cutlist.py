@@ -365,6 +365,7 @@ class TestExcludeMatcher(unittest.TestCase):
         self.assertEqual(hit("clip0002"), [(1, "/w/day2/Clip0002.mp4", "clip0002")])
         self.assertEqual([i for i, _, _ in hit("CLIP0001.MOV")], [0, 2])
         self.assertEqual([i for i, _, _ in hit("day2/clip0002.mp4")], [1])
+        self.assertEqual([i for i, _, _ in hit("day2/Clip0002")], [1])
         for miss in ("Clip000", "ip0002", "2/Clip0002.mp4", "Clip0003"):
             self.assertEqual(hit(miss), [])
 

@@ -626,6 +626,9 @@ def run(args):
               if p["music"] else "; no music"))
     for line in p["not_built"]:
         print("not built: " + line)
+    if p["exclude"]:
+        print(f"exclude list {p['exclude']['path']}: {len(p['exclude']['takes'])} take(s), none in "
+              "the manifest" + (f"; {p['exclude']['not_checked']}" if p["exclude"]["not_checked"] else ""))
     return 0
 
 

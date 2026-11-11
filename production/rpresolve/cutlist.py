@@ -486,9 +486,10 @@ def exclude_matches(m, takes):
         path = source_for(m, span)["path"]
         full = str(path).replace("\\", "/").lower()
         base = full.rsplit("/", 1)[-1]
+        bare = full.rsplit(".", 1)[0] if "." in base else full  # the path without its extension
         for take in takes:
             t = take.replace("\\", "/").strip().lower()
-            if t in (base.rsplit(".", 1)[0], base) or full == t or full.endswith("/" + t.lstrip("/")):
+            if t in (base.rsplit(".", 1)[0], base) or any(x == t or x.endswith("/" + t.lstrip("/")) for x in (full, bare)):
                 out.append((i, path, take))
     return out
 
