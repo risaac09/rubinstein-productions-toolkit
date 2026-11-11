@@ -303,6 +303,15 @@ class TestApplyEffect(Base):
         del it.comps["Composition 1"]
         self.assertEqual(self.fx()["refused"], [])
 
+    def test_a_comp_whose_tool_list_reads_back_nothing_is_refused(self):
+        # Resolve scripting returns None/False on failure: that must not read as empty.
+        for nothing in (None, {}, False):
+            it = self.items[0]
+            it.comps["rp-fx old"] = FComp()
+            it.comps["rp-fx old"].GetToolList = lambda selected=False, v=nothing: v
+            self.assertEqual([r["index"] for r in self.fx()["refused"]], [1])
+            del it.comps["rp-fx old"]
+
     def test_dip_needs_a_readable_length(self):
         self.items[0].GetDuration = lambda: None
         dry = self.fx(effect="dip-to-black")

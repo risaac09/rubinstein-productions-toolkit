@@ -341,8 +341,12 @@ def _comp_names(item):
 
 
 def _is_empty(comp):
-    """A comp that holds no tool besides MediaIn1 and MediaOut1 (T9's emptied comp)."""
-    return comp is not None and all(t.Name in ("MediaIn1", "MediaOut1") for t in _tool_list(comp))
+    """A comp that holds MediaIn1 and MediaOut1 and nothing else (T9's emptied comp). Fails
+    closed: a GetToolList that gives nothing back is not an empty comp."""
+    if comp is None:
+        return False
+    names = {t.Name for t in _tool_list(comp)}
+    return names == {"MediaIn1", "MediaOut1"}
 
 
 def _reusable(item, names, comp_name):
