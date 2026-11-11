@@ -547,6 +547,27 @@ class TestApply(unittest.TestCase):
                          [(1, "i0"), (2, "i1"), (3, "i2")])
         self.assertEqual(real["exit_status"], 0)
 
+    def test_a_count_mismatch_names_the_skipped_items(self):
+        dissolve = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+        dissolve.comps = {}
+        self.source.tracks["video"][0].insert(2, dissolve)
+        short = {**self.crops, "items": self.crops["items"][:2]}
+        with self.assertRaises(workflows.Refused) as cm:
+            self.go(crops=short)
+        msg = str(cm.exception)
+        self.assertIn("has 3 item(s), crops.json has 2", msg)
+        self.assertIn("V1 #3 Cross Dissolve", msg)
+
+    def test_skipped_and_targets_split_the_raw_track_with_one_read_each(self):
+        dissolve = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+        dissolve.comps = {}
+        self.source.tracks["video"][0].insert(2, dissolve)
+        with mock.patch.object(v.api, "is_clip", wraps=v.api.is_clip) as spy:
+            r = self.go()
+        self.assertEqual(spy.call_count, 4)  # the four raw items, once each
+        self.assertEqual(sorted(x["position"] for x in r["skipped"]), [3])
+        self.assertEqual(len(r["targets"]), 3)
+
     def test_a_track_of_clips_reports_no_skipped_item(self):
         self.assertEqual(self.go()["skipped"], [])
 

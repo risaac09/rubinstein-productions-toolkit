@@ -608,14 +608,15 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         raise Refused(f"'{tl_name}' has {tracks} video track(s).")
     all_items = tl.GetItemListInTrack("video", track) or []
     # Clip n sits at raw track position positions[n - 1]; transition items have none.
-    positions = [p for p, it in enumerate(all_items, 1) if api.is_clip(it)]
+    positions = api.clip_positions(all_items)
+    skipped = api.skipped_items(all_items, track, positions)
     shift = 0 if spans is None else 1  # span i is clip i + 1
     wanted = _wanted_items(items if spans is None else [s + 1 for s in spans], len(positions))
     bad = [n - shift for n in wanted if not 1 <= n <= len(positions)]
     if bad:
         raise Refused(f"no {'span' if shift else 'clip'}(s) {bad} on V{track} ({len(positions)} "
                       f"clip(s) in {len(all_items)} item(s); items with no media pool clip, "
-                      f"transitions first, are not counted).")
+                      f"transitions first, are not counted){api.skipped_text(skipped)}.")
     comp_name = COMP_PREFIX + effect
     targets, refused = [], []
     for n in wanted:
@@ -657,7 +658,7 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                       "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
                                  "out": WIRING[effect]["out"]}},
            "params": params, "targets": targets, "refused": refused,
-           "skipped": api.skipped_items(tl, track), "results": [], "plan_sha": sha,
+           "skipped": skipped, "results": [], "plan_sha": sha,
            "ledger": report, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out

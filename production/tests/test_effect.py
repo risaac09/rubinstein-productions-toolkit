@@ -737,6 +737,26 @@ class TestSkippedItems(Base):
         self.assertIn("2 item(s) skipped", dry["summary"])
         self.assertIn("2 item(s) skipped", real["summary"])
 
+    def test_skipped_and_targets_split_the_raw_track_with_one_read_each(self):
+        from unittest import mock
+        with mock.patch.object(cmd_effect.api, "is_clip", wraps=cmd_effect.api.is_clip) as spy:
+            r = self.fx()
+        self.assertEqual(spy.call_count, len(self.track))  # each item judged once, not twice
+        taken = [t["position"] for t in r["targets"]] + [x["position"] for x in r["skipped"]]
+        self.assertEqual(sorted(taken), list(range(1, len(self.track) + 1)))
+
+    def test_a_refusal_for_a_missing_clip_names_the_skipped_items(self):
+        with self.assertRaises(workflows.Refused) as cm:
+            self.fx(items=[9])
+        msg = str(cm.exception)
+        self.assertIn("4 clip(s) in 6 item(s)", msg)
+        self.assertIn("V1 #2 Cross Dissolve", msg)
+        self.assertIn("V1 #4 Solid Colour", msg)
+        self.track[:] = [self.a, self.b, self.c]  # nothing skipped: nothing to name
+        with self.assertRaises(workflows.Refused) as cm:
+            self.fx(items=[9])
+        self.assertNotIn("skipped items", str(cm.exception))
+
     def test_a_track_of_clips_reports_none(self):
         self.track[:] = [self.a, self.b, self.c]
         r = self.fx()
