@@ -113,6 +113,14 @@ If it still fails, fall back and say so in the build's notes. Make a clip with a
 
 Replace the status paragraph with what was seen: the date, the Resolve build, which labels matched, which steps changed, how many attempts the tracking took. Add what failed to [resolve-traps.md](resolve-traps.md) as a numbered entry.
 
+## At 9:16
+
+`vertical_apply` moves three of these comps for the portrait crop: `zoom-push` (`Transform1.Pivot`), `text-word` (`Merge1.Center`, `Text1.Size`) and `person-matte-text`. Comp space is the whole source frame and the item's Pan then shifts the comp's output, so a position in the comp is a position in the 16:9 picture ([T15](resolve-traps.md)).
+
+- **Text**: `Text1.Center` x goes to the crop centre and its y stays (0.55 as built), and `Text1.Size` is refitted from the word as `text-word`'s is (about 80 percent of the width, at most 0.09). Both are plain inputs and are read back.
+- **Matte**: not moved. The matte covers the subject, and the subject is where it is in the source frame whatever the crop. The stand-in `SubjectMatte_PLACEHOLDER` has a plain `Center` that could be set, but moving it onto the crop centre would take it off the subject unless the two happened to agree. A tracked Magic Mask has no position to set from the script API at all ([T21](resolve-traps.md)): it follows the person by itself, so the comp needs no change for the crop. While the placeholder is still in the comp the dry run says so in that comp's `notes`.
+- Check by eye on a 9:16 frame: the word centred on the subject and behind them, whole inside the frame.
+
 ## How apply_effect builds a comp
 
 `apply_effect` adds a new Fusion comp to each item (`AddFusionComp`, renamed `rp-fx <id>`), then builds the macro's tools in it with `AddTool` under their macro names, sets each input's value, adds a `BezierSpline` or `XYPath` modifier for each animated input with the macro's keyframes, connects the links, and wires the chain between MediaIn1 and MediaOut1. It reads the comp back: every tool and modifier present, each animated input's keyframes on the macro's frames, its value halfway between two keys within those keys' values, and the wiring.
