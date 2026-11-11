@@ -34,9 +34,13 @@ timeline's scaleToCrop reads back and still renders fit to width), Pan to
 equal to crops.json's). A Fusion comp named 'rp-fx zoom-push' gets
 Transform1.Pivot = (cx, 0.5); 'rp-fx text-word' gets Merge1.Center = (cx, 0.5) and
 Text1.Size refitted for portrait. Comps are then re-rendered with
-cmd_effect.refresh and everything is read back. Every other Fusion comp on an item
-(a person-matte-text title among them) is left as it was and named in the result's
-unmoved_comps. apply_vertical does not look for the preview; `review` is where it is required.
+cmd_effect.refresh and everything is read back. An 'rp-fx person-matte-text' comp gets
+Text1.Center x = cx (its y kept) and Text1.Size refitted like text-word's; its matte is NOT
+moved: the matte sits on the subject in the source frame, which the crop does not move, and a
+Magic Mask has no position to set (the stand-in rectangle's Center is plain, but moving it
+would take it off the subject). While the comp still holds SubjectMatte_PLACEHOLDER the plan
+says so in the comp's `notes`. Every other Fusion comp on an item is left as it was and named
+in the result's unmoved_comps. apply_vertical does not look for the preview; `review` is where it is required.
 
 A montage with a window effect sits on V2 over plates on V1 (cmd_assemble). When `track` is
 above 1, an item on the track below that starts where montage item N (N > 1) starts and plays
@@ -69,7 +73,10 @@ TOUCH_S = 0.05          # seconds between one item's out and the next's in that 
 FILL = 3                # Resolve's item Scaling: 0 project, 1 crop, 2 fit, 3 fill, 4 stretch
 ZOOM_TOLERANCE = 0.01
 READ_TOLERANCE = 1e-3
-COMP_ZOOM, COMP_TEXT = "rp-fx zoom-push", "rp-fx text-word"
+COMP_ZOOM, COMP_TEXT, COMP_MATTE = "rp-fx zoom-push", "rp-fx text-word", "rp-fx person-matte-text"
+KINDS = {COMP_ZOOM: "zoom-push", COMP_TEXT: "text-word", COMP_MATTE: "person-matte-text"}
+MATTE_PLACEHOLDER = "SubjectMatte_PLACEHOLDER"
+MATTE_TITLE_Y = 0.55    # Text1.Center y of the macro, kept when the word is moved across
 TEXT_CAP = 0.09         # Text1.Size ceiling at 9:16
 TEXT_K = 0.336          # size * letters: 0.048 for seven letters, about 80% of the frame width
 
@@ -514,33 +521,40 @@ def _comps(item):
     names = list(api._safe_call(item, "GetFusionCompNameList") or [])
     out = []
     for name in names:
-        if name not in (COMP_ZOOM, COMP_TEXT):
+        if name not in KINDS:
             continue
-        comp = item.GetFusionCompByName(name)
-        out.append({"comp": name, "kind": "zoom-push" if name == COMP_ZOOM else "text-word",
-                    "object": comp})
+        out.append({"comp": name, "kind": KINDS[name], "object": item.GetFusionCompByName(name)})
     return out
 
 
 def _unmoved(targets, items):
-    """Every Fusion comp this step leaves as it was: the items' comps other than the two it moves.
-    A person-matte-text title is one, and stays at its 16:9 place until moved by hand."""
+    """Every Fusion comp this step leaves as it was: the items' comps other than the three it
+    moves (zoom-push, text-word, person-matte-text)."""
     return [{"index": t["index"], "name": t["name"], "comp": name}
             for t, it in zip(targets, items)
             for name in api._safe_call(it, "GetFusionCompNameList") or []
-            if name not in (COMP_ZOOM, COMP_TEXT)]
+            if name not in KINDS]
 
 
 def _fusion_plan(c, cx, text_override, text_cap):
+    """(inputs to set, notes) for one comp."""
     comp = c["object"]
     if c["kind"] == "zoom-push":
-        return {"Transform1.Pivot": (cx, 0.5)}
-    word = None
+        return {"Transform1.Pivot": (cx, 0.5)}, []
+    word = y = None
     t1 = comp.FindTool("Text1") if comp else None
     if t1:
         word = t1.GetInput("StyledText")
+        y = _pt(t1.GetInput("Center"))
     size = text_override if text_override is not None else text_size(word, text_cap)
-    return {"Merge1.Center": (cx, 0.5), "Text1.Size": size}
+    if c["kind"] == "text-word":
+        return {"Merge1.Center": (cx, 0.5), "Text1.Size": size}, []
+    notes = []
+    if comp and comp.FindTool(MATTE_PLACEHOLDER):
+        notes.append(f"{MATTE_PLACEHOLDER} is not moved: it sits on the subject in the source frame, "
+                     "which the crop does not move. It is a one-frame stand-in; replace it with the "
+                     "tracked Person Magic Mask (fusion-macros.md) before delivery.")
+    return {"Text1.Center": (cx, y[1] if y else MATTE_TITLE_Y), "Text1.Size": size}, notes
 
 
 def _item_plan(it, crop, n, text_size_override, text_cap):
@@ -560,8 +574,8 @@ def _item_plan(it, crop, n, text_size_override, text_cap):
     comps = _comps(it)
     row = {"index": n, "name": crop["name"], "cx": cx, "zoom": zoom,
            "props": {"Scaling": FILL, "Pan": round((0.5 - cx) * OUT_SIZE[0] * zoom, 4), "Tilt": 0},
-           "comps": [{"comp": c["comp"], "set": _fusion_plan(c, cx, text_size_override, text_cap)}
-                     for c in comps], "reasons": why}
+           "comps": [dict(zip(("set", "notes"), _fusion_plan(c, cx, text_size_override, text_cap)),
+                          comp=c["comp"]) for c in comps], "reasons": why}
     return row, comps
 
 
@@ -613,7 +627,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     what on that track is not a plate. Returns {project, timeline, source_timeline, create,
     targets, plates, unframed_below, unmoved_comps, results, plate_results, plan_sha, dry_run,
     exit_status}; exit_status 1 when a read-back differs (a plate's included). unmoved_comps names
-    each item and Fusion comp left as it was (every comp but the two moved), dry run or real."""
+    each item and Fusion comp left as it was (every comp but the three moved), dry run or real."""
     from rpresolve import cmd_effect, workflows
     c = load_crops(crops)
     if not c.get("reviewed"):
