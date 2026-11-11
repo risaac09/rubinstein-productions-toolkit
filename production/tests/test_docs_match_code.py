@@ -93,10 +93,10 @@ class DocsMatchCode(unittest.TestCase):
             self.assertIn("`overwrite` true", text[i:i + 400])
         self.assertNotIn("The only node a script writes", text)
 
-    def test_the_magic_mask_recipe_is_there_and_says_it_is_untested(self):
+    def test_the_magic_mask_recipe_is_there_and_says_what_ran(self):
         text = " ".join((PROD / "fusion-macros.md").read_text(encoding="utf-8").split())
         self.assertIn("## Person matte: the Magic Mask recipe", text)  # the anchor two docs link to
-        self.assertIn("Never run live", text)
+        self.assertIn("run live 2026-11-11", text)
         self.assertIn("sandbox project", text)
         self.assertIn("](#person-matte-the-magic-mask-recipe)", text)  # from "Needs a person's eye"
         self.assertIn("](fusion-macros.md#person-matte-the-magic-mask-recipe)",
