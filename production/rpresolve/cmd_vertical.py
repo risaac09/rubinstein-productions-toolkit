@@ -519,7 +519,7 @@ def _plates_below(base, track, items, crops):
             why = "starts where no montage item starts"
         elif not path or rpingest.norm_path(path) != rpingest.norm_path(_item_path(items[n - 2])):
             why = f"does not play the file of montage item {n - 1}"
-        elif zx is None or zx <= 0 or abs(zx - zy) > ZOOM_TOLERANCE:
+        elif zx is None or zy is None or zx <= 0 or abs(zx - zy) > ZOOM_TOLERANCE:
             why = f"has zoom {zx}/{zy}"
         else:
             cx = float(crops[n - 2]["cx"])
