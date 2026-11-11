@@ -526,6 +526,7 @@ def assemble_timeline(args, ctx):
                 + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
+        skipped += (f"; {r['exclude_note']}" if r["exclude_note"] else "")
         skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
@@ -1189,7 +1190,8 @@ def register(registry):
         "montage is: pass it as track to apply_effect, apply_grade, reframe_apply, stabilize "
         "and vertical_apply, and grade V1 too. With no such span the montage is on V1 alone. "
         "Pass the operator's exclude list as exclude: a manifest naming a take on it is "
-        "refused, and the list's hash is part of the plan_sha. With ledger (the draft farm's "
+        "refused (a span's source or the music file), and the list's hash is part of the plan_sha. "
+        "Omitted, nothing is checked and the result's exclude_note says so. With ledger (the draft farm's "
         "drafts.json) and draft, each manifest effect the draft marked not_drawn is flagged in "
         "the dry run and refused in the real run unless override names it; a ledger that is "
         "not this manifest's is refused. "

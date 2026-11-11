@@ -278,6 +278,16 @@ class TestExclude(Base):
         for take in ("clip0042", "CLIP0042.MOV", "cam-a/Clip0042.mov", "day1/cam-a/clip0042.mov"):
             self.refused(take)
 
+    def test_the_music_file_is_checked_too(self):
+        plan = self.plan("p", METHOD, "/w/Clip0042.mov")
+        path = os.path.join(plan, "manifest.json")
+        m = json.loads(Path(path).read_text())
+        Path(path).write_text(json.dumps({**m, "music": {"path": "/w/audio/Song.m4a", "in": 1.0}}))
+        with mock.patch.object(drafts, "run_lanes", side_effect=AssertionError("ffmpeg ran")):
+            with self.assertRaisesRegex(drafts.DraftError, r"p music: Song\.m4a is excluded \(audio/song\)"):
+                drafts.build([plan], os.path.join(self.dir, "out"), hw=False,
+                             exclude=self.listed({"takes": ["audio/song"]}))
+
     def test_a_file_without_takes_is_refused(self):
         plan = self.plan("p", METHOD, "/w/Clip0042.mov")
         for doc in ({"shots": ["s1"]}, {"take": ["Clip0042"]}, {"takes": "Clip0042"}, []):
