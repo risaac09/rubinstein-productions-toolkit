@@ -5,6 +5,7 @@ sheet of their midpoints for a pick (edit-methods.md#drafts).
 
     python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR
         [--camera Pyxis] [--lut-root DIR] [--proxy-dir DIR] [--lanes N] [--no-hw]
+        [--exclude FILE] [--crops FILE]
 
 A plan directory holds manifest.json, what methods.to_manifest returned (the spans,
 `effects` and `method`), and optionally method.json, the method it was made from (else
@@ -28,6 +29,13 @@ crop-window after the first span opens over the previous shot playing on from it
 (windowplate); on the first span it opens from black. The jobs run in parallel lanes: one
 lane is timed first, then lanes are added while throughput rises (--lanes N fixes the
 count). The spans are joined without re-encoding.
+
+A 9:16 draft is a centre crop of each span. With --crops FILE (the crops.json `vertical plan`
+writes: one item per span, in order, each with its centre cx as a share of the source width)
+every span is cropped at its own centre instead, a window's plate at the centre of the shot it
+continues (what vertical_apply gives the V1 plate), and the notes and the `crops` entry of
+drafts.json say which span used which centre. A crops file whose item count or files differ
+from the plan's spans is refused; a 16:9 plan ignores it, and says so.
 
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
@@ -261,16 +269,23 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
     return None
 
 
-def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None):
+def centre_crop(w, h, cx):
+    """The crop of a w x h window whose centre is cx (a share of the scaled width), kept
+    inside the frame; the vertical crop is centred."""
+    return f"crop={w}:{h}:x='clip({cx:.4f}*iw-ow/2\\,0\\,iw-ow)':y='(ih-oh)/2'"
+
+
+def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None):
     """(vf, not_drawn) for one span. effects: the span's manifest entries, {effect,
-    params?} (a bare macro id is also taken). back: the filter chain of the previous
+    params?} (a bare macro id is also taken). cx: the crop centre from a crops file (a
+    reframe-pan replaces it). back: the filter chain of the previous
     shot's picture, read from input 1 starting at that shot's out point. A scale-window
     or crop-window then opens over that shot playing on (windowplate: as many frames as
     the window needs), and vf is a filter_complex graph (it starts with "[0:v]") instead
     of a plain chain."""
     ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
     params = {e["effect"]: e.get("params") or {} for e in ents}
-    crop = f"crop={w}:{h}"
+    crop = f"crop={w}:{h}" if cx is None else centre_crop(w, h, cx)
     vf = []
     if "retime" in params:  # before the scale: it moves timestamps, not pixels
         vf.append(effect_filter("retime", seconds, fps, w, h, params["retime"]))
@@ -389,9 +404,29 @@ def _check_plate(path, start_s, frames, fps, where):
                          f"point and the window needs {frames / fps:.2f} s of it playing on")
 
 
-def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
+def crop_notes(centres, by_span):
+    """(notes, rows) for a crops file's centres: one note naming the span runs and their
+    centre, one for each span whose reframe-pan sets the crop instead, and the rows
+    `drafts.json` keeps ({span, cx, used})."""
+    pan = {i for i, es in by_span.items() if any(e["effect"] == "reframe-pan" for e in es)}
+    rows = [{"span": i, "cx": c, "used": i not in pan} for i, c in enumerate(centres)]
+    runs = []
+    for r in rows:
+        if r["used"] and runs and runs[-1][1] == r["cx"] and runs[-1][2] == r["span"] - 1:
+            runs[-1][2] = r["span"]
+        elif r["used"]:
+            runs.append([r["span"], r["cx"], r["span"]])
+    notes = ["9:16 crops from the crops file: " + "; ".join(
+        (f"span {a}" if a == b else f"spans {a}-{b}") + f" at centre {c:.4f}" for a, c, b in runs)]
+    notes += [f"span {i}: reframe-pan sets the crop; the crops file's centre is not used"
+              for i in sorted(pan)]
+    return notes, rows
+
+
+def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, centres=None):
     """(jobs, info) for one plan: a job per span plus one for the end black, each
-    {cmd, out, seconds}; info holds the draft's size, frames, look and notes."""
+    {cmd, out, seconds}; info holds the draft's size, frames, look and notes. centres: a
+    crop centre per span (a share of the source width) for a 9:16 plan, else the middle."""
     man, m = plan["manifest"], plan["method"]
     fps = m["fps"]
     w, h = SIZES[m["aspect"]]
@@ -420,8 +455,10 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
         win = windowplate.window_effect(man.get("effects"), i)
         if i and win:
             prev = spans[i - 1]  # the window opens over the outgoing shot, playing on
-            back = span_filter(prev, [], w, h, fps, 1 / fps, lut)[0]
-        vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back)
+            back = span_filter(prev, [], w, h, fps, 1 / fps, lut,
+                               cx=centres[i - 1] if centres else None)[0]
+        vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back,
+                                  cx=centres[i] if centres else None)
         notes += [f"span {i}: {x}" for x in missing]
         if back:
             _check_plate(media_path(srcs[prev.get("source") or next(iter(srcs))], proxy_dir),
@@ -453,8 +490,12 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None):
     for step in (man.get("method") or {}).get("ui_steps") or []:
         if step["control"] in ("Zoom keyframes", "Duration"):  # retimes are manifest effects now, and drawn
             notes.append(f"{step['target']}: {step['control']} {step['value']} not drawn")
-    return jobs, {"size": [w, h], "fps": fps, "frames": frames, "lut": lut_src,
-                  "notes": notes, "effects": ledger(man)}
+    info = {"size": [w, h], "fps": fps, "frames": frames, "lut": lut_src, "notes": notes,
+            "effects": ledger(man)}
+    if centres:
+        more, info["crops"] = crop_notes(centres, by_span)
+        notes += more
+    return jobs, info
 
 
 def frame_count(path):
@@ -568,11 +609,33 @@ def _send(folder, labels, lettered):
     return {"dir": folder, "files": files}
 
 
+def span_centres(plan, crops):
+    """The crop centre of each span of a 9:16 plan from a crops.json (a loaded dict): item N
+    is span N - 1, so the counts and the files must agree. None for a 16:9 plan."""
+    if plan["method"]["aspect"] != "9:16":
+        return None
+    from . import ingest
+    man = plan["manifest"]
+    srcs = {s["id"]: s["path"] for s in cutlist.sources(man)}
+    spans, items = man["clips"][0]["spans"], crops["items"]
+    if len(items) != len(spans):
+        raise DraftError(f"{plan['name']}: the crops file has {len(items)} item(s), the plan "
+                         f"{len(spans)} span(s)")
+    for i, (sp, it) in enumerate(zip(spans, items)):
+        src = srcs[sp.get("source") or next(iter(srcs))]
+        if it.get("path") and ingest.norm_path(it["path"]) != ingest.norm_path(src):
+            raise DraftError(f"{plan['name']} span {i}: the crops file's item {i + 1} is another "
+                             f"file ({os.path.basename(it['path'])}) than the span's "
+                             f"({os.path.basename(src)})")
+    return [float(it["cx"]) for it in items]
+
+
 def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=None,
-          hw=None, cap=None, exclude=None):
+          hw=None, cap=None, exclude=None, crops=None):
     """Render every plan into out; returns the drafts.json document. `exclude` is the
     operator's exclude list (cutlist.load_exclude); a plan naming an excluded take is
-    refused before any ffmpeg job runs."""
+    refused before any ffmpeg job runs. `crops` is a crops.json (path): each 9:16 plan is
+    cropped span by span at its centres (span_centres) instead of at the middle."""
     if rppaths.in_any_git_tree(out):
         raise DraftError(f"{out} is inside a git working tree. Drafts show client media; "
                          "write them outside any repository.")
@@ -591,6 +654,14 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
+    centres = {}
+    if crops:
+        from . import cmd_vertical
+        try:
+            c = cmd_vertical.load_crops(crops)
+        except cmd_vertical.Refused as e:
+            raise DraftError(str(e))
+        centres = {id(p): span_centres(p, c) for p in plans}
     names, seen = [], {}
     for p in plans:
         seen[p["name"]] = seen.get(p["name"], 0) + 1
@@ -603,7 +674,9 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
         for name, p in zip(names, plans):
             d = os.path.join(work, name)
             os.makedirs(d)
-            jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir)
+            jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir, centres.get(id(p)))
+            if crops and not centres[id(p)]:
+                info["notes"].append("the crops file is not used: the method is 16:9")
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
@@ -665,12 +738,15 @@ def add_arguments(p):
     p.add_argument("--no-hw", action="store_true", help="software decode and encode")
     p.add_argument("--exclude", help="the operator's exclude list (JSON with `takes`); a plan "
                    "naming an excluded take is refused")
+    p.add_argument("--crops", help="a crops.json from `vertical plan`: a 9:16 plan is cropped "
+                   "at each span's centre instead of the middle")
 
 
 def run(args):
     try:
         doc = build(args.plans, args.out, args.camera, args.lut_root, args.proxy_dir,
-                    args.lanes, False if args.no_hw else None, exclude=args.exclude)
+                    args.lanes, False if args.no_hw else None, exclude=args.exclude,
+                    crops=args.crops)
     except (DraftError, OSError, ValueError) as e:
         print(f"drafts: {e}", file=sys.stderr)
         return 2
