@@ -359,6 +359,15 @@ class FComp:
         self.locked -= 1
 
 
+def matte_comp(word="WILD", placeholder=True):
+    """A person-matte-text comp as apply_effect builds it (Text1.Center 0.55/0.55, Size 0.32)."""
+    tools = {"Text1": {"Center": {1: 0.55, 2: 0.55}, "Size": 0.32, "StyledText": word},
+             "Merge1": {}}
+    if placeholder:
+        tools["SubjectMatte_PLACEHOLDER"] = {"Center": {1: 0.623, 2: 0.5}}
+    return FComp(tools)
+
+
 def comps(word="OUTSIDE"):
     return {"rp-fx zoom-push": FComp({"Transform1": {"Pivot": {1: 0.5, 2: 0.5}}}),
             "rp-fx text-word": FComp({"Merge1": {"Center": {1: 0.5, 2: 0.5}},
@@ -520,10 +529,9 @@ class TestApply(unittest.TestCase):
         self.assertEqual(real["exit_status"], 0)
 
     def test_a_comp_left_as_it_was_is_named_in_the_dry_run_and_the_real_run(self):
-        matte = {"Merge1": {"Center": {1: 0.5, 2: 0.5}}}
-        self.items[0].comps["rp-fx person-matte-text"] = FComp(matte)
+        self.items[0].comps["rp-fx exposure-flash"] = FComp({"ColorCorrector1": {}})
         self.items[2].comps["rp-fx crop-window"] = FComp({})
-        want = [{"index": 1, "name": "i0", "comp": "rp-fx person-matte-text"},
+        want = [{"index": 1, "name": "i0", "comp": "rp-fx exposure-flash"},
                 {"index": 3, "name": "i2", "comp": "rp-fx crop-window"}]
         with mock.patch.object(FusionItem, "on_copy", {"i1": {"rp-fx added-in-copy": FComp({})}}):
             dry, real = self.real()
@@ -533,9 +541,38 @@ class TestApply(unittest.TestCase):
                                                            "comp": "rp-fx added-in-copy"}, want[1]])
         self.assertEqual(real["exit_status"], 0)
         c0 = self.target().tracks["video"][0][0].comps
-        self.assertEqual(c0["rp-fx person-matte-text"].tools["Merge1"].values["Center"],
-                         {1: 0.5, 2: 0.5})  # not moved
-        self.assertEqual(self.refresh.call_count, 4)  # and not refreshed: only the two moved kinds
+        self.assertEqual(c0["rp-fx exposure-flash"].tools["ColorCorrector1"].values, {})  # not moved
+        self.assertEqual(self.refresh.call_count, 4)  # and not refreshed: only the moved kinds
+
+    def test_a_person_matte_text_title_is_centred_on_the_crop_and_its_matte_is_left(self):
+        self.items[0].comps["rp-fx person-matte-text"] = matte_comp()
+        dry, real = self.real()
+        plan = dry["targets"][0]["comps"][-1]
+        self.assertEqual(plan["comp"], "rp-fx person-matte-text")
+        self.assertEqual(plan["set"], {"Text1.Center": (0.3, 0.55), "Text1.Size": 0.084})  # y kept
+        self.assertEqual(len(plan["notes"]), 1)
+        self.assertIn("SubjectMatte_PLACEHOLDER is not moved", plan["notes"][0])
+        self.assertEqual(dry["unmoved_comps"], [])
+        self.assertEqual(real["exit_status"], 0, real["results"])
+        tools = self.target().tracks["video"][0][0].comps["rp-fx person-matte-text"].tools
+        self.assertEqual(tools["Text1"].values["Center"], {1: 0.3, 2: 0.55})
+        self.assertEqual(tools["Text1"].values["Size"], 0.084)
+        self.assertEqual(tools["SubjectMatte_PLACEHOLDER"].values["Center"], {1: 0.623, 2: 0.5})
+        read = real["results"][0]["comps"][-1]["read_back"]
+        self.assertEqual((read["Text1.Center"], read["Text1.Size"]), ((0.3, 0.55), 0.084))
+        self.assertIn("Text1", real["results"][0]["comps"][-1]["refreshed"])
+
+    def test_a_tracked_matte_comp_has_no_placeholder_note(self):
+        self.items[0].comps["rp-fx person-matte-text"] = matte_comp(placeholder=False)
+        plan = self.go()["targets"][0]["comps"][-1]
+        self.assertEqual((plan["notes"], plan["set"]["Text1.Center"]), ([], (0.3, 0.55)))
+
+    def test_a_matte_title_that_does_not_read_back_fails_the_run(self):
+        self.items[0].comps["rp-fx person-matte-text"] = matte_comp()
+        with mock.patch.object(FTool, "SetInput", lambda self, k, val: None):
+            _, real = self.real()
+        self.assertEqual(real["exit_status"], 1)
+        self.assertTrue(any("Text1.Center reads" in p for p in real["results"][0]["problems"]))
 
     def test_nothing_unmoved_is_an_empty_list(self):
         self.assertEqual(self.go()["unmoved_comps"], [])
