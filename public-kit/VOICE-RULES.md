@@ -36,7 +36,7 @@ content, public repo docs.
 - The two lists overlap on em-dashes, rule-of-three, promotional verbs, and
   active voice — reconciled above into one canonical statement of each.
   `stack-data`'s "concrete nouns", "short sentences", and "echo his words"
-  are Isaac's own working-voice preferences for talking to Claude, not
+  are the operator's own working-voice preferences for talking to Claude, not
   public-copy rules, so they're deliberately not carried into this public
   kit. If a consuming repo wants that fuller personal-voice register too,
   it stays in that repo's own CLAUDE.md rather than this shared kit.

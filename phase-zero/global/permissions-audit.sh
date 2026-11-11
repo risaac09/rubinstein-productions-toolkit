@@ -4,7 +4,7 @@
 # settings.local.json allow entries evaluate before the auto-mode classifier,
 # so an allow entry is a permanent hole through exactly the commands the
 # classifier's soft/hard-deny rules name. No surface reviewed this file
-# before. This script never edits it; pruning stays Isaac's one-batch human
+# before. This script never edits it; pruning stays the operator's one-batch human
 # act. Actor-layer adversarial review F01, 2026-08-16.
 #
 # Check A: any live entry not in permissions-baseline.json (drift since the

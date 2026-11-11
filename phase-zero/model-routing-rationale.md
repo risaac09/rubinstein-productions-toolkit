@@ -7,21 +7,21 @@ Read it when a routing call is contested or the brief is being edited.
 Since 2026-09-28 the check states and proceeds: one line naming model, effort
 and why, then work. It asks first only when escalating above the anchor, when
 spending Fable, or before a Workflow fan-out (stack-data `docs/DECISIONS.md`,
-"The routing check states and proceeds"). Before that date it asked Isaac to
+"The routing check states and proceeds"). Before that date it asked the operator to
 confirm every substantive task.
 
 ## Route on the task, not on its category
 
 Read the work before naming a model. Task-type labels like "repository
 execution" or "synthesis" are proxies, and they hide the difference between a
-one-line config bump and a branch nobody but Isaac can check. Ask four
+one-line config bump and a branch nobody but the operator can check. Ask four
 questions instead.
 
 **Q1. Who verifies this?** The load-bearing question. Not "is it hard" but "if
 it comes back wrong, what catches it, and what does that catch cost?" A test
 suite, a schema check, CI, the repo's own validator: machine-verified, route
 down, because a cheap model behind a strong checker beats an expensive one
-with no checker. Isaac reading it: human-verified, route up, because his
+with no checker. The operator reading it: human-verified, route up, because their
 attention is the scarce resource and a second review round is the real
 expense. Nobody until a client sees it: route up hard.
 
@@ -34,7 +34,7 @@ the diagnosis lowers required effort. A prompt where the model still has to
 find the problem raises it. This lever stays inside a tier, so sweep it before
 reaching for a bigger model.
 
-**Q4. Does it need Claude's context, continuity, or Isaac's voice?** This picks
+**Q4. Does it need Claude's context, continuity, or the operator's voice?** This picks
 the pool, and it is independent of Q1 through Q3. A hard task with no
 Claude-context dependence goes to a strong Codex model, not to Opus.
 
@@ -60,9 +60,9 @@ to start.
   one and its models stopped fitting, so this work costs subscription quota.
   A narrower lane returned 2026-10-05 (stack-data DECISIONS, "The local lane
   returns as a base-model lane (2026-10-05)"): base Qwen3.6-35B-A3B behind
-  Ollama on 127.0.0.1:11434, on demand and started by Isaac until its launchd
+  Ollama on 127.0.0.1:11434, on demand and started by hand until its launchd
   job is installed, for private drafting that must not leave the machine. A
-  blind probe of thirty of Isaac's prompts found it refused none of the twenty
+  blind probe of thirty of the operator's prompts found it refused none of the twenty
   sensitive ones and was confidently wrong on 1 of 21 honesty slots, against
   6 and 11 for two quants of an abliterated build. No build could name the
   canonical refusal paper: base wrongly said it did not exist, the abliterated
@@ -73,7 +73,7 @@ to start.
 ## Capacity contract, effective 2026-09-13
 
 - Claude runs on Max 20x. ChatGPT Plus is a separate paid pool. Claude carries
-  synthesis, continuity, Isaac-voice work, and Claude-native projects. Work
+  synthesis, continuity, operator-voice work, and Claude-native projects. Work
   that clears Q4 with no Claude-context dependence goes to Codex at a tier set
   by Q1 and Q2, not automatically to Terra at medium.
 - Do not use usage credits or silent API overage on either service. If Claude
@@ -116,6 +116,6 @@ reasoning has already been spent. Importance is not difficulty.
 Model and effort are separate levers. The right setting is often the same model
 at a lower effort: Opus 5 runs the full ladder to max, and its low and medium
 tiers hold up on work that used to need a higher tier. The suggestion is a
-prompt, not a gate. If Isaac says "just go," take the anchor and move.
+prompt, not a gate. If the operator says "just go," take the anchor and move.
 
 Source only; the install scripts do not deploy this file.
