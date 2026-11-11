@@ -22,6 +22,21 @@ transition is listed under not_built (the manifest's `effects` and `ui_steps` ar
 tools' work).
 Everything placed is read back.
 
+Windows over the outgoing shot (fusion-macros.md, "Transitions"). A scale-window or
+crop-window leaves the picture around the window transparent, and on one track that is
+black. The operator's rule is that the outgoing shot keeps playing under the window, so a
+span that carries one of those effects in the manifest's `effects` gets a plate: the previous span's clip, counted on from its out point for as many frames as the
+window needs (windowplate.py: 37 for scale-window, 26 for crop-window, never more than the
+span), placed on V1 at the span's first frame with the previous span's static scale. Higher
+tracks draw on top, so the montage then goes on V2 with every span in the order and
+numbering it always had, and V1 holds only the plates. A manifest without such a span is
+built on V1 alone, as before; the result's `track` says which. A plate needs the outgoing
+source to run on past its out point: the plan refuses when ffprobe finds less, and says
+so in the dry run. The first span has no shot before it; its window opens over black and
+the plan lists that under not_built. apply_effect, apply_grade, vertical_apply and
+reframe_apply all take `track`: pass the result's `track` for the montage, and grade V1
+too, since the plates are picture.
+
 Colour (resolve-traps.md T30). A clip with no Input Color Space tag keeps Rec.709, so a log
 file imported here would render in log. The dry run therefore runs `detect` on every source
 and lists, per file, the input colour space detect found and what the clip reads when it is
@@ -40,8 +55,10 @@ import os
 from rpresolve import api, cli, cutlist
 from rpresolve import detect as rpdetect
 from rpresolve import ingest as rpingest
+from rpresolve import delivercheck as dc
 from rpresolve import musicbed
 from rpresolve import paths as rppaths
+from rpresolve import windowplate
 from rpresolve.workflows import AUTO, Refused, _check, plan_sha
 
 NAME = "assemble"
@@ -64,7 +81,10 @@ def _black_frames(manifest, fps):
 
 def plan(manifest):
     """The plan a manifest (a path or the dict) assembles into: {fps, spans: [{index,
-    path, in, frames, scale, continues}], frames, black_frames, music, not_built}.
+    path, in, frames, scale, continues, window?, plate?}], frames, black_frames, music,
+    track, not_built}. A span with a scale-window or crop-window after the first has
+    `window` (the effect) and `plate` (frames of the outgoing shot it needs); `track` is
+    the video track the montage goes on, 2 when any span has a plate, else 1.
     Raises Refused on a manifest that does not validate or holds more than one clip."""
     if isinstance(manifest, str):
         try:
@@ -89,6 +109,12 @@ def plan(manifest):
         row = {"index": i + 1, "path": path, "in": span["in"], "frames": n,
                "scale": span.get("scale"),
                "continues": bool(prev and prev[0] == path and abs(span["in"] - prev[1]) < TOUCH_S)}
+        win = windowplate.window_effect(manifest.get("effects"), i)
+        if win and i:
+            row["window"], row["plate"] = win, windowplate.plate_frames(win, n)
+        elif win:
+            not_built.append(f"the {win} on item 1: no shot before it to open over, so it "
+                             "opens over black")
         tr = span.get("transition")
         if tr and tr.get("type") == "dissolve" and i and int(tr.get("frames") or 0) > 0:
             row["transition"] = {"type": "Cross Dissolve", "frames": int(tr["frames"])}
@@ -103,6 +129,7 @@ def plan(manifest):
     return {"fps": fps, "spans": spans, "frames": sum(r["frames"] for r in spans),
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
+            "track": 2 if any(r.get("plate") for r in spans) else 1,
             "not_built": not_built}
 
 
@@ -210,6 +237,51 @@ def colour_plan(project, root, p):
     return {"managed": managed, "science": science, "sources": sources, "notes": notes}
 
 
+def _video_seconds(path):
+    """The picture's length in seconds (its video stream, else the container); None when
+    ffprobe is missing or reads no length (a BRAW file, say)."""
+    try:
+        dc.check_tools(ffmpeg=False)
+        info = dc.probe(path)
+    except (dc.ToolMissing, dc.CheckError):
+        return None
+    streams = [x for x in info.get("streams") or [] if x.get("codec_type") == "video"]
+    for d in [x.get("duration") for x in streams] + [(info.get("format") or {}).get("duration")]:
+        try:
+            if float(d) > 0:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def plate_handles(p):
+    """The plates the plan puts on V1, one row each: {into, window, frames, record, source,
+    handle_s}. record is the frame (from the timeline's start) where the span and its plate
+    begin; handle_s the seconds of the outgoing source after its out point, None when
+    ffprobe cannot read the file (the read-back then catches a short plate). Raises Refused
+    when a source ends inside its plate, the way the draft farm does."""
+    rows, record = [], 0
+    for prev, r in zip([None] + p["spans"], p["spans"]):
+        if r.get("plate"):
+            have = _video_seconds(prev["path"])
+            row = {"into": r["index"], "window": r["window"], "frames": r["plate"],
+                   "record": record, "source": os.path.basename(prev["path"]),
+                   "handle_s": None}
+            if have is not None:
+                row["handle_s"] = round(have - (prev["in"] + prev["frames"] / p["fps"]), 3)
+                if row["handle_s"] < r["plate"] / p["fps"] - 0.5 / p["fps"]:
+                    raise Refused(
+                        f"item {r['index']}: the {r['window']} opens over item {prev['index']} "
+                        f"playing on for {r['plate']} frames, and {row['source']} has "
+                        f"{max(row['handle_s'], 0):.2f} s after its out point "
+                        f"({r['plate'] / p['fps']:.2f} s needed). Pick a later out point or "
+                        "a longer take, or another effect.")
+            rows.append(row)
+        record += r["frames"]
+    return rows
+
+
 def bed_plan(p, manifest, bed_dir, tl_fps):
     """The music bed this plan places on A1 (musicbed.spec), or None without music. The bed
     goes in bed_dir, else beside the manifest file; refused when neither is known, when
@@ -253,9 +325,12 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     """Build the manifest as a new timeline `name` (must end ' [auto]'). Refused, writing
     nothing: a name that exists, a manifest whose fps is not the project's timeline rate
     (a scripted timeline takes the project's), a source or music file that is missing, a
-    music bed that cannot be made or has no safe folder (bed_dir, see bed_plan).
-    Returns {project, timeline, rate, size, plan, colour, bed, plan_sha, dry_run, created,
-    items, audio, problems, left_behind, ui_restore_problems, exit_status}; bed is the music
+    music bed that cannot be made or has no safe folder (bed_dir, see bed_plan), a window
+    span whose outgoing source ends inside its plate (plate_handles).
+    Returns {project, timeline, rate, size, track, plan, colour, bed, plates, plan_sha,
+    dry_run, created, items, audio, problems, left_behind, ui_restore_problems,
+    exit_status}; track is the video track the montage is on (2 when plates are on V1),
+    plates the plate rows (plate_handles, each with `placed` after a real run); bed is the music
     bed's spec and its result ('would bake', 'would reuse', then 'baked' or 'reused'), and
     the plan hash holds the spec; colour is colour_plan's rows (shown by the dry run,
     completed by the real one); exit_status 1 when a read-back
@@ -282,9 +357,11 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
                       f"'{rate}'; a scripted timeline takes the project's rate.")
     colour = colour_plan(project, root, p)
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
-    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed)
+    plates = plate_handles(p)
+    sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
-           "size": [width, height], "plan": p, "colour": colour,
+           "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
+           "plates": plates,
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha,
@@ -344,23 +421,35 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
                                 f"wanted '{value}'")
         if not project.SetCurrentTimeline(tl):
             raise api.WriteNotApplied(f"could not make '{name}' current to place clips on it")
-        infos, prev_end = [], None
+        track = p["track"]
+        if track > 1 and not (tl.AddTrack("video")
+                              and int(tl.GetTrackCount("video") or 0) >= track):
+            raise api.WriteNotApplied(f"could not add V{track} to '{name}', which the plates "
+                                      "under the windows need")
+        infos, ends, prev_end, record = [], [], None, int(tl.GetStartFrame())
         for r in p["spans"]:
             sf = _clip_fps(have[r["path"]], tl_fps)
             start = prev_end if r["continues"] and prev_end is not None else int(round(r["in"] * sf))
             prev_end = start + int(math.ceil(r["frames"] * sf / tl_fps - 1e-6))  # T1
             infos.append({"mediaPoolItem": have[r["path"]], "startFrame": start,
-                          "endFrame": prev_end, "mediaType": 1, "trackIndex": 1})
+                          "endFrame": prev_end, "mediaType": 1, "trackIndex": track})
+            if track > 1:  # a track above V1 is placed by frame, not appended
+                infos[-1]["recordFrame"] = record
+            ends.append((prev_end, sf))
+            record += r["frames"]
         check()
         media_pool.AppendToTimeline(infos)
-        items = tl.GetItemListInTrack("video", 1) or []
+        items = tl.GetItemListInTrack("video", track) or []
         if len(items) != len(p["spans"]):
-            problems.append(f"V1 holds {len(items)} item(s), the plan {len(p['spans'])}")
+            problems.append(f"V{track} holds {len(items)} item(s), the plan {len(p['spans'])}")
         for r, it, info in zip(p["spans"], items, infos):
             row = {"index": r["index"], "name": it.GetName(), "frames": it.GetDuration(),
                    "source_start": api._safe_call(it, "GetSourceStartFrame")}
             if row["frames"] != r["frames"]:
                 problems.append(f"item {r['index']} is {row['frames']} frames, planned {r['frames']}")
+            if track > 1 and it.GetStart() != info["recordFrame"]:
+                problems.append(f"item {r['index']} sits at frame {it.GetStart() - tl.GetStartFrame()}, "
+                                f"planned {info['recordFrame'] - tl.GetStartFrame()}")
             if r["scale"]:
                 for k in ("ZoomX", "ZoomY"):
                     try:
@@ -368,6 +457,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
                     except api.WriteNotApplied as e:
                         problems.append(f"item {r['index']}: {e}")
             out["items"].append(row)
+        _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
             if r.get("transition") and len(items) >= r["index"]:
                 want = r["transition"]["frames"]
@@ -386,6 +476,54 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         problems.append(f"stopped, the open project changed: {e}")
     except api.ResolveAPIError as e:
         problems.append(f"{type(e).__name__}: {e}")
+
+
+def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
+    """The plates on V1: each window span's previous clip, from where that span's source
+    stopped, at the window span's first frame, with the previous span's static scale. Read
+    back: how many, where, how long, from which source frame."""
+    problems, first = out["problems"], int(tl.GetStartFrame())
+    infos = []
+    for row in out["plates"]:
+        k = row["into"] - 1
+        prev_end, sf = ends[k - 1]
+        infos.append({"mediaPoolItem": have[p["spans"][k - 1]["path"]], "startFrame": prev_end,
+                      "endFrame": prev_end + int(math.ceil(row["frames"] * sf / tl_fps - 1e-6)),
+                      "mediaType": 1, "trackIndex": 1, "recordFrame": first + row["record"]})
+    if not infos:
+        return
+    check()
+    media_pool.AppendToTimeline(infos)
+    got = tl.GetItemListInTrack("video", 1) or []
+    if len(got) != len(infos):
+        problems.append(f"V1 holds {len(got)} plate(s), the plan {len(infos)}")
+    for row, it, info in zip(out["plates"], got, infos):
+        scale = p["spans"][row["into"] - 2]["scale"]
+        row["placed"] = {"name": it.GetName(), "start": it.GetStart() - first,
+                         "frames": it.GetDuration(),
+                         "source_start": api._safe_call(it, "GetSourceStartFrame")}
+        if (row["placed"]["start"], row["placed"]["frames"]) != (row["record"], row["frames"]):
+            problems.append(f"the plate under item {row['into']} sits at frame "
+                            f"{row['placed']['start']} for {row['placed']['frames']} frames, "
+                            f"planned {row['record']} for {row['frames']}; the outgoing "
+                            "source may be too short")
+        # the plate is the outgoing shot counted on from its out point: a plate that starts
+        # anywhere else (a held frame, the span's own footage) is the wrong picture
+        got_src = row["placed"]["source_start"]
+        if got_src is not None and got_src != info["startFrame"]:
+            problems.append(f"the plate under item {row['into']} starts at source frame "
+                            f"{got_src}, planned {info['startFrame']} (the outgoing shot's out point)")
+        clip_of = api._safe_call(it, "GetMediaPoolItem")
+        if clip_of is not None and api._safe_call(clip_of, "GetUniqueId") != \
+                api._safe_call(info["mediaPoolItem"], "GetUniqueId"):
+            problems.append(f"the plate under item {row['into']} is {it.GetName()}, not the "
+                            "outgoing shot")
+        if scale:
+            for key in ("ZoomX", "ZoomY"):
+                try:
+                    api.set_property_checked(it, key, scale)
+                except api.WriteNotApplied as e:
+                    problems.append(f"the plate under item {row['into']}: {e}")
 
 
 def _colour(out, have, imported, before):
@@ -454,9 +592,13 @@ def run(args):
         print(f"assemble: {e}")
         return 2
     for r in p["spans"]:
+        win = f"  {r['window']}, {r['plate']} f of #{r['index'] - 1} playing on" if r.get("plate") else ""
         print(f"#{r['index']:<3} {r['frames']:>4} f  in {r['in']:9.3f} s"
               f"{'  scale ' + format(r['scale'], 'g') if r['scale'] else ''}"
-              f"{'  (same take, continued)' if r['continues'] else ''}  {os.path.basename(r['path'])}")
+              f"{'  (same take, continued)' if r['continues'] else ''}{win}  "
+              f"{os.path.basename(r['path'])}")
+    if p["track"] > 1:
+        print(f"the montage goes on V{p['track']}; V1 holds a plate under each window span")
     print(f"{len(p['spans'])} item(s), {p['frames']} frames at {p['fps']:g} fps, then "
           f"{p['black_frames']} of black" + (
               f"; music from {p['music']['in']:.2f} s, baked with a "

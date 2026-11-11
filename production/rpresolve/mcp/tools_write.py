@@ -198,8 +198,21 @@ def _refused(names):
 # ---------------------------------------------------------------------------
 
 def _how(r):
-    return ("" if not r["dry_run"] else f". To run it, call again with dry_run false and "
-            f"plan_sha {r['plan_sha']}.")
+    return ("" if not r["dry_run"] else _other_tracks(r) + f". To run it, call again with "
+            f"dry_run false and plan_sha {r['plan_sha']}.")
+
+
+def _other_tracks(r):
+    """A dry run's warning when the timeline has items on video tracks it does not touch: a
+    montage built with a scale-window or crop-window is on V2 and V1 holds only plates."""
+    tl = r.get("timeline")  # a name, for the tools that build a timeline
+    other = tl.get("other_tracks") if isinstance(tl, dict) else None
+    if not other:
+        return ""
+    where = ", ".join(f"V{t} holds {n}" for t, n in sorted(other.items()))
+    return (f"; CHECK THE TRACK: this is V{r['timeline']['track']} and {where} (a montage "
+            "built with a scale-window or crop-window is on V2, V1 holds only its plates; "
+            "pass track 2 for the montage)")
 
 
 def _ui(r):
@@ -499,6 +512,10 @@ def assemble_timeline(args, ctx):
                                         bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
+                + (f", montage on V{p['track']} over {len(r['plates'])} plate(s) on V1 (the shot "
+                   f"before each window playing on): pass track {p['track']} to apply_effect, "
+                   "apply_grade, vertical_apply and reframe_apply, and grade V1 too"
+                   if p["track"] > 1 else "")
                 + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
@@ -1035,7 +1052,9 @@ def register(registry):
             **PROJECT,
             "timeline": {"type": "string",
                          "description": "An ' [auto]' timeline's name or unique id."},
-            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1). A montage assembled with a "
+                      "scale-window or crop-window is on track 2; V1 holds only its plates."},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Raw item positions on the track, from 1, a dissolve counted "
@@ -1081,7 +1100,9 @@ def register(registry):
                          "description": "An ' [auto]' timeline's name or unique id."},
             "effect": {"type": "string", "enum": sorted(cmd_effect.WIRING),
                        "description": "The macro id (fusion-macros.md)."},
-            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1). A montage assembled with a "
+                      "scale-window or crop-window is on track 2; V1 holds only its plates."},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Clip numbers on the track, from 1, transitions not "
@@ -1131,7 +1152,15 @@ def register(registry):
         "bin is imported again as a new clip, which is tagged); a clip that was in the "
         "pool is never written, and one that is log by detect and reads Rec.709 is a "
         "problem; a file detect cannot pin gets a note. An unmanaged project is not tagged. "
-        "Every item's length is read back. Dry run first; the real run needs its plan_sha.",
+        "Every item's length is read back. A scale-window or crop-window on any span after the "
+        "first opens over the shot before it playing on: the montage then goes on V2 (every "
+        "span in its order and at its frame, so item N is still span N) and V1 holds a plate "
+        "under each window span, the previous clip counted on from where its span stopped "
+        "(37 frames for scale-window, 26 for crop-window, or the span's length when shorter). "
+        "Refused when that source ends inside its plate. The result's track says where the "
+        "montage is: pass it as track to apply_effect, apply_grade, reframe_apply, stabilize "
+        "and vertical_apply, and grade V1 too. With no such span the montage is on V1 alone. "
+        "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "name": {"type": "string", "description": "The new timeline's name, ending ' [auto]'."},
@@ -1167,7 +1196,9 @@ def register(registry):
             "source_timeline": {"type": "string",
                                 "description": "The 16:9 timeline to duplicate when the target "
                                                "does not exist yet (name or unique id)."},
-            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1). A montage assembled with a "
+                      "scale-window or crop-window is on track 2; V1 holds only its plates."},
             "text_size": {"type": "number", "minimum": 0.001, "maximum": 1,
                           "description": "Text1.Size for every text-word comp (default: fitted "
                                          "to each word)."},
@@ -1192,7 +1223,9 @@ def register(registry):
                          "description": "An ' [auto]' timeline's name or unique id."},
             "plan": {"type": "string",
                      "description": "Absolute path of the framing plan JSON reframe_plan wrote."},
-            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1). A montage assembled with a "
+                      "scale-window or crop-window is on track 2; V1 holds only its plates."},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Raw item positions on the track, from 1, a dissolve counted "
@@ -1221,7 +1254,9 @@ def register(registry):
             **PROJECT,
             "timeline": {"type": "string",
                          "description": "An ' [auto]' timeline's name or unique id."},
-            "track": {"type": "integer", "minimum": 1, "default": 1},
+            "track": {"type": "integer", "minimum": 1, "default": 1,
+                      "description": "The video track (default V1). A montage assembled with a "
+                      "scale-window or crop-window is on track 2; V1 holds only its plates."},
             "items": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1},
                       "uniqueItems": True,
                       "description": "Raw item positions on the track, from 1, a dissolve counted "

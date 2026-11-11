@@ -19,7 +19,21 @@ Values are normalised Fusion values: positions and sizes are 0 to 1 of the frame
 | `retime` | A speed change for the item, as a Fusion comp, since no script call sets Edit page speed. | `TimeStretcher1.SourceTime` on a `BezierSpline`, `InterpolateBetweenFrames` 0. The keys are built per item from the params: source time 0 at frame 0 and `speed` x N at frame N, N being the item's length in source frames. With `speed_to`, the speed changes linearly and the end value is the mean speed x N. The `.setting` holds the tool and its static input only. Do not use `TimeSpeed`: it anchors on the clip's source frame 0. | MediaIn1 → `TimeStretcher1` → MediaOut1 |
 | `reframe-pan` | A crop that follows a subject across the frame. | `Transform1.Center` on an `XYPath` whose X is a `BezierSpline` keyed linearly from 0.5 + `pan_base` - `pan_from` at frame 0 to 0.5 + `pan_base` - `pan_to` at frame N; Y fixed at 0.5. `pan_base` is the crop centre the item's own Pan already holds (default 0.5). | MediaIn1 → `Transform1` → MediaOut1 |
 
-The three transitions (`cross-dissolve-short`, `scale-window`, `crop-window`) show transparency around or under the incoming clip. On one video track that is black. To see the outgoing shot through it, put the incoming item on V2 over the end of the outgoing one.
+### Transitions: the outgoing shot keeps playing under a window
+
+The three transitions (`cross-dissolve-short`, `scale-window`, `crop-window`) leave the picture transparent around or under the incoming clip. On one video track that is black. The operator's rule for the two windows (2026-11-10): the outgoing shot keeps playing underneath while the window grows or opens, never black and never a frozen frame (Resolve's scripting API has no freeze frame in any case, so a V2 build over a held frame is not on offer). Higher tracks draw on top in Resolve, so the incoming item with the window comp has to sit above the outgoing shot's continuation.
+
+`assemble_timeline` builds that. For each span after the first whose manifest `effects` name a `scale-window` or a `crop-window`, it puts a plate on V1: the previous span's clip, counted on from where that span's source stopped, placed at the window span's first frame, with the previous span's static scale and nothing else of it (no comp, no retime). The plate runs 37 frames for `scale-window` (the window is full frame at frame 37) and 26 for `crop-window` (full at frame 26), or the span's length when the span is shorter. The montage then goes on V2, every span in the order and at the numbering it always had (item N is span N on V2), and V1 holds only the plates. A manifest with no such span is built on V1 alone, as before. The result's `track` says which.
+
+- Pass the montage track (the result's `track`, 2 when there are plates) to `apply_effect`, `apply_grade`, `vertical_apply` and `reframe_apply`. On V1 the items are plates, not spans: `apply_effect` there would number them 1, 2, 3 and put a comp on the wrong clip. The write tools' dry runs name the other video tracks that hold items (a `CHECK THE TRACK` line in the summary) when the track is not the one with the montage.
+- Grade V1 as well (`apply_grade` with track 1): the plates are picture, and the draft farm draws them with the look.
+- A plate needs handle. The outgoing source must run on past its out point for the plate's length; the dry run refuses a span whose source has fewer frames than that (37 or 26), reading the length with ffprobe. A file ffprobe cannot read (BRAW) is not checked in the dry run; the read-back then reports a plate that came out short, and the timeline is left in place.
+- The first span has no shot before it. Its window opens over black, and the plan lists that under `not_built`.
+- `vertical_apply` finishes the track it is given. The plates on V1 keep the centred fill-and-crop of the 16:9 timeline, not the outgoing shot's own crop, so in a 9:16 copy the shot under a window can sit off its subject until a tool reframes the plates. Look at the first window of every 9:16 by eye.
+- The draft farm draws the same plates (the previous shot playing on from its out point, through the same fill-and-crop, static scale and look), and refuses the same missing handle.
+- Not yet run in a sandbox project: `AddTrack("video")`, `AppendToTimeline` with `trackIndex` 2 and `recordFrame`, and the window comps over a plate on V1 are covered by the unit fakes and the ffmpeg drafts only.
+
+`cross-dissolve-short` still needs its incoming item moved to V2 over the end of the outgoing one by hand.
 
 ## Params
 

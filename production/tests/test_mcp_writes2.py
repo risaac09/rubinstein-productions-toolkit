@@ -231,6 +231,47 @@ class TestApplyGrade(Base):
                                  "lut": {"path": self.lut}}, self.resolve)
 
 
+class TestOtherTracks(Base):
+    """A montage assembled with a scale-window or crop-window is on V2 and V1 holds only its
+    plates (cmd_assemble). A write tool that defaults to V1 says so in its dry run, and the
+    track it is given decides which items it numbers and touches."""
+
+    def setUp(self):
+        super().setUp()
+        self.lut = os.path.join(self.dir, "Look.cube")
+        open(self.lut, "w").close()
+        self.auto = self.make_auto()
+        self.v1 = self.auto.tracks["video"][0]
+        self.v2 = [rf.Item("P3.MOV", 86400, 86500, self.clip, source=(100, 200))]
+        self.auto.tracks["video"].append(self.v2)
+
+    def dry(self, tool, **kw):
+        args = {"grade": {"lut": {"path": self.lut}}, "stabilize": {}, "effect": {"effect": "zoom-push"}}
+        name = {"grade": "apply_grade", "stabilize": "stabilize", "effect": "apply_effect"}[tool]
+        return call(name, {"timeline": "Edit [auto]", **args[tool], **kw}, self.resolve)
+
+    def test_the_default_track_says_which_other_tracks_hold_items(self):
+        for tool in ("grade", "stabilize", "effect"):
+            r = self.dry(tool)
+            self.assertEqual((r["timeline"]["track"], r["timeline"]["other_tracks"]), (1, {2: 1}))
+            self.assertEqual([t["name"] for t in r["targets"]], ["P1.MOV", "P2.MOV"])
+            self.assertIn("CHECK THE TRACK: this is V1 and V2 holds 1", r["summary"])
+            self.assertIn("pass track 2 for the montage", r["summary"])
+
+    def test_track_two_numbers_and_targets_the_montage_and_names_the_plates(self):
+        for tool in ("grade", "stabilize", "effect"):
+            r = self.dry(tool, track=2)
+            self.assertEqual((r["timeline"]["track"], r["timeline"]["other_tracks"]), (2, {1: 2}))
+            self.assertEqual([(t["index"], t["name"]) for t in r["targets"]], [(1, "P3.MOV")])
+            self.assertIn("V2 and V1 holds 2", r["summary"])
+
+    def test_a_single_track_timeline_gets_no_warning(self):
+        self.auto.tracks["video"].pop()
+        r = self.dry("grade")
+        self.assertEqual(r["timeline"]["other_tracks"], {})
+        self.assertNotIn("CHECK THE TRACK", r["summary"])
+
+
 class TestStabilize(Base):
     def setUp(self):
         super().setUp()
