@@ -1,0 +1,1 @@
+The operator's exclude list now also covers a manifest's music file in the draft farm and assemble_timeline, and a build with no exclude list says so (assemble_timeline's result, summary and dry run carry exclude_note, as drafts already note it).

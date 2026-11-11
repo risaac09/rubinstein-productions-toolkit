@@ -650,6 +650,8 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             raise DraftError(str(e))
         hits = [f"{p['name']} span {i}: {os.path.basename(src)} is excluded ({take})"
                 for p in plans for i, src, take in cutlist.exclude_matches(p["manifest"], ex["takes"])]
+        hits += [f"{p['name']} music: {os.path.basename(src)} is excluded ({take})"
+                 for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
     centres = {}
@@ -676,7 +678,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             if crops and not centres[id(p)]:
                 info["notes"].append("the crops file is not used: the method is 16:9")
             if not ex:
-                info["notes"].append("no exclude list given")
+                info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
                 info["notes"].append(ex["not_checked"])
             all_jobs += jobs

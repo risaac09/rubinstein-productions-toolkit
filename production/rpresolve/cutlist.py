@@ -478,20 +478,35 @@ def load_exclude(path):
                             if "shots" in doc else None)}
 
 
+NO_EXCLUDE = "no exclude list given"
+
+
+def _named(path, takes):
+    """Takes naming a file: its stem, its basename or a path suffix, ignoring case."""
+    full = str(path).replace("\\", "/").lower()
+    base = full.rsplit("/", 1)[-1]
+    bare = full.rsplit(".", 1)[0] if "." in base else full  # the path without its extension
+    out = []
+    for take in takes:
+        t = take.replace("\\", "/").strip().lower()
+        if t in (base.rsplit(".", 1)[0], base) or any(x == t or x.endswith("/" + t.lstrip("/")) for x in (full, bare)):
+            out.append(take)
+    return out
+
+
 def exclude_matches(m, takes):
     """[(span index from 0, source path, take)] for every span of the manifest's first clip
     whose source a take names: its stem, its basename or a path suffix, ignoring case."""
-    out = []
-    for i, span in enumerate(m["clips"][0]["spans"]):
-        path = source_for(m, span)["path"]
-        full = str(path).replace("\\", "/").lower()
-        base = full.rsplit("/", 1)[-1]
-        bare = full.rsplit(".", 1)[0] if "." in base else full  # the path without its extension
-        for take in takes:
-            t = take.replace("\\", "/").strip().lower()
-            if t in (base.rsplit(".", 1)[0], base) or any(x == t or x.endswith("/" + t.lstrip("/")) for x in (full, bare)):
-                out.append((i, path, take))
-    return out
+    return [(i, path, take) for i, span in enumerate(m["clips"][0]["spans"])
+            for path in [source_for(m, span)["path"]] for take in _named(path, takes)]
+
+
+def exclude_music_matches(m, takes):
+    """[(music path, take)] when the manifest's music file is one a take names (same rule
+    as exclude_matches); empty when there is no music."""
+    music = m.get("music")
+    path = music.get("path") if isinstance(music, dict) else None
+    return [(path, take) for take in _named(path, takes)] if path else []
 
 
 def single_source(m, what="this tool"):

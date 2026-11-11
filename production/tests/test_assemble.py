@@ -145,6 +145,7 @@ class TestPlan(Base):
         text = "\n".join(str(c.args[0]) for c in out.call_args_list)
         self.assertIn("3 item(s), 42 frames at 24 fps, then 12 of black", text)
         self.assertIn("same take, continued", text)
+        self.assertIn("no exclude list given", text)
 
 
 class TestExclude(Base):
@@ -169,6 +170,23 @@ class TestExclude(Base):
                          (ex, ["elsewhere"], []))
         self.assertIn("shot ids belong to the planner's index", r["exclude"]["not_checked"])
         self.assertIsNone(self.go()["exclude"])
+
+    def test_the_music_file_is_checked_too(self):
+        for take in ("SONG", "song.m4a", f"{os.path.basename(os.path.dirname(self.song))}/song.m4a"):
+            for dry in (True, False):
+                with self.assertRaisesRegex(Refused, r"music song\.m4a"):
+                    self.go(exclude=self.listed({"takes": [take]}), dry_run=dry)
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+        self.assertEqual(self.baked, [])
+        self.go(exclude=self.listed({"takes": ["sing"]}))  # a part of a name is not a match
+        a.plan({**self.manifest, "music": None}, self.listed({"takes": ["song"]}))  # no music, no hit
+
+    def test_a_build_without_a_list_says_nothing_was_checked(self):
+        r = self.go()
+        self.assertIsNone(r["exclude"])
+        self.assertIn("no exclude list given", r["exclude_note"])
+        self.assertIn("no exclude list given", r["plan"]["exclude_note"])
+        self.assertIsNone(self.go(exclude=self.listed({"takes": ["x"]}))["exclude_note"])
 
     def test_a_file_without_takes_is_refused(self):
         for doc in ({"shots": ["s1"]}, {"take": ["one"]}):
@@ -266,6 +284,7 @@ class TestApply(Base):
         with mock.patch.dict(os.environ, env):
             dry = call()
             self.assertIn("would build 'Shoot m v1 [auto]' with 3 item(s), 42 frames", dry["summary"])
+            self.assertIn("no exclude list given", dry["summary"])
             self.assertFalse(os.path.exists(env["RPRESOLVE_MCP_JOURNAL"]))
             real = call(dry_run=False, plan_sha=dry["plan_sha"])
             self.assertIn("built and read back", real["summary"])
