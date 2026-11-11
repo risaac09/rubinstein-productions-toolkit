@@ -688,5 +688,72 @@ class TestOnAGeneratedClip(unittest.TestCase):
         self.assertEqual(report["spans"][0]["area"], [0, 45, 320, 135])
 
 
+FACE_FIXTURE = HERE / "fixtures" / "face" / "portrait.jpg"
+
+
+@unittest.skipUnless(os.access(FFMPEG, os.X_OK) and sys.platform == "darwin" and FACE_FIXTURE.is_file(),
+                     "ffmpeg or the macOS Vision helper unavailable")
+class TestOnARealFace(unittest.TestCase):
+    """The face planner through the real Vision helper on a licensed portrait photograph
+    (fixtures/face/README.md), set on a grey 1920x1080 clip. In the picture the face centre
+    sits at 0.525 of the photograph's width, so its x in the clip is known from where the
+    photograph is placed."""
+    FACE_AT = 0.525
+    HALF_WINDOW = 1080 * 9 / 16 / 2  # half the 9:16 window at 1080 rows, in source pixels
+
+    @classmethod
+    def setUpClass(cls):
+        if not vision.vision_binary():
+            raise unittest.SkipTest("macOS Vision helper unavailable")
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.clips = {}
+        for name, rows in (("edge", 540), ("inside", 800)):
+            path = os.path.join(cls.tmp.name, name + ".mov")
+            subprocess.run([FFMPEG, "-v", "error", "-y", "-loop", "1", "-framerate", "25", "-t", "2",
+                            "-i", str(FACE_FIXTURE), "-vf",
+                            f"scale=-2:{rows},pad=1920:1080:0:0:gray,format=yuv420p",
+                            "-c:v", "prores_ks", "-pix_fmt", "yuv422p10le", path], check=True)
+            cls.clips[name] = (path, round(cls.FACE_AT * rows * 512 / 600))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def plan(self, name):
+        path, want_x = self.clips[name]
+        m = {"source_path": path, "clips": [{"name": "c", "spans": [{"in": 0.2, "out": 1.8}]}]}
+        report = reframe.plan(m, aspects=["9x16"], samples=3)
+        return m, report, want_x
+
+    def test_the_crop_centres_on_the_face(self):
+        m, report, want_x = self.plan("inside")
+        row = report["rows"][0]
+        self.assertEqual((row["status"], row["face_samples"]), ("pass", 3), row["reason"])
+        self.assertAlmostEqual(row["face_x"], want_x, delta=20)
+        self.assertGreater(want_x, self.HALF_WINDOW)  # room to centre, so no clamp
+        e = reframe.apply(m, report)["clips"][0]["spans"][0]["reframe"]["9x16"]
+        self.assertAlmostEqual(e["x"], row["face_x"], delta=1.0)
+
+    def test_a_face_near_the_edge_is_clamped_so_the_window_stays_in_the_frame(self):
+        m, report, want_x = self.plan("edge")
+        row = report["rows"][0]
+        self.assertEqual(row["status"], "pass", row["reason"])
+        self.assertAlmostEqual(row["face_x"], want_x, delta=20)
+        self.assertLess(row["face_x"], self.HALF_WINDOW)
+        e = reframe.apply(m, report)["clips"][0]["spans"][0]["reframe"]["9x16"]
+        self.assertAlmostEqual(e["x"], self.HALF_WINDOW, delta=0.1)
+
+    def test_vertical_takes_the_face_centre_as_a_share_of_the_width(self):
+        from rpresolve import cmd_vertical
+        path, want_x = self.clips["inside"]
+        item = {"name": "c", "path": path, "in": 0.2, "out": 1.8, "size": [1920, 1080]}
+        r = cmd_vertical.plan([item], mode="face")["items"][0]
+        self.assertEqual((r["how"], r["status"]), ("face", "pass"), r["reason"])
+        self.assertAlmostEqual(r["cx"], want_x / 1920, delta=20 / 1920)
+        path, _ = self.clips["edge"]
+        r = cmd_vertical.plan([dict(item, path=path)], mode="face")["items"][0]
+        self.assertAlmostEqual(r["cx"], cmd_vertical.half_width([1920, 1080]), places=3)
+
+
 if __name__ == "__main__":
     unittest.main()

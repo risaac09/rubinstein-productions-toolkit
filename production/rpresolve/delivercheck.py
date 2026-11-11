@@ -24,6 +24,9 @@ what it expected:
                   an expected value of null is only reported. color_range:
                   limited ("tv") by default; a yuvj* pix_fmt counts as full
                   range, an unflagged YUV stream as limited
+    log_flat      for a destination that expects bt709 primaries: FAIL when 5 sampled
+                  frames never get near black or white, the look of a log picture
+                  rendered with bt709 tags (resolve-traps T30). Heuristic.
     audio_*       codec, channels, sample rate, bit depth for LPCM
     captions      sidecar: <stem>.srt beside the file parses, has cues,
                   runs in time order, and every cue starts at or after 0
@@ -88,6 +91,14 @@ TAIL_S = 0.1
 TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
 TAIL_DROP_DB = 12.0
 TAIL_MIN_S = 4.0
+# The log_flat row: luma extremes (signalstats YMIN, YMAX) on LOG_FRAMES frames spread over the
+# file, as a fraction of the nominal black-to-white span. A graded Rec.709 picture reaches
+# black (about 0.04 on the files measured) and bright whites (0.8 and over). A log picture
+# rendered unconverted keeps its blacks near 0.15 to 0.22 and tops out near 0.85.
+LOG_FRAMES = 5
+LOG_FLOOR, LOG_CEIL = 0.10, 0.92
+# A transfer tag that names a log, HLG or PQ picture on purpose; a flat look is then expected.
+FLAT_TRANSFERS = {"smpte2084", "arib-std-b67", "log", "log_sqrt", "smpte428"}
 
 
 class ToolMissing(RuntimeError):
@@ -177,6 +188,54 @@ def window_level(path, from_end, length, stream=0):
                          f"{from_end:g} s from its end: {proc.stderr.strip()[-300:]}")
     m = re.search(r"mean_volume:\s*(-?(?:inf|\d+(?:\.\d+)?))\s*dB", proc.stderr)
     return float(m.group(1)) if m else None
+
+
+def luma_extremes(path, seconds, frames=LOG_FRAMES):
+    """(lowest YMIN, highest YMAX) of the first video stream over `frames` frames spread across
+    the file (ffmpeg signalstats), in the stream's own code values. seconds: the duration, or
+    None to read one frame at the start. Raises CheckError when ffmpeg fails or reads nothing."""
+    times = ([0.0] if not seconds else [seconds * (i + 0.5) / frames for i in range(frames)])
+    lows, highs = [], []
+    for t in times:
+        proc = _run([FFMPEG, "-v", "error", "-nostdin", "-ss", f"{t:.3f}", "-i", _src(path),
+                     "-map", "0:v:0", "-frames:v", "1", "-vf", "signalstats,metadata=print:file=-",
+                     "-f", "null", "-"], READ_TIMEOUT_S)
+        if proc.returncode != 0:
+            raise CheckError(f"ffmpeg could not read a frame of {os.path.basename(path)}: "
+                             f"{proc.stderr.strip()[-300:]}")
+        lows += [int(v) for v in re.findall(r"signalstats\.YMIN=(\d+)", proc.stdout)]
+        highs += [int(v) for v in re.findall(r"signalstats\.YMAX=(\d+)", proc.stdout)]
+    if not lows or not highs:
+        raise CheckError(f"ffmpeg read no luma from {os.path.basename(path)}")
+    return min(lows), max(highs)
+
+
+def log_flat_row(path, video, seconds):
+    """The log_flat row: a log picture rendered without a conversion to Rec.709 carries the
+    bt709 tags of the project it came from, and no tag read shows it (resolve-traps T30). FAIL
+    when, across the sampled frames, no pixel gets near black (lowest YMIN above LOG_FLOOR of
+    the span) and none gets near white (highest YMAX under LOG_CEIL). SKIP for a picture whose
+    transfer tag names log, HLG or PQ, for non-YUV, and when the range cannot be told.
+    shortcut: a look that is flat on purpose (haze, a held grey card) also fails; it reads five
+    frames, so a log picture with one clipped highlight or black frame in them passes."""
+    transfer = video.get("color_transfer")
+    chroma, bits = pix_fmt_family(video.get("pix_fmt"))
+    rng, _ = color_range(video)
+    expected = (f"lowest black at or under {LOG_FLOOR:.2f}, or highest white at or over "
+                f"{LOG_CEIL:.2f}, of the span")
+    if transfer in FLAT_TRANSFERS:
+        return _row("log_flat", None, f"transfer {transfer}", expected,
+                    "a log, HLG or PQ transfer tag: a flat picture is expected")
+    if chroma is None or rng is None:
+        return _row("log_flat", None, "not read", expected, "not YUV, or range unknown")
+    lo, hi = luma_extremes(path, seconds)
+    black, white = ((0, (1 << bits) - 1) if rng == "pc"
+                    else (16 << (bits - 8), 235 << (bits - 8)))
+    f_lo, f_hi = (lo - black) / (white - black), (hi - black) / (white - black)
+    flat = f_lo > LOG_FLOOR and f_hi < LOG_CEIL
+    return _row("log_flat", not flat, f"lowest black {f_lo:.2f}, highest white {f_hi:.2f}",
+                expected, "looks like a log picture rendered without a conversion to Rec.709"
+                if flat else None)
 
 
 def video_hash(path):
@@ -362,7 +421,8 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
         raise CheckError(f"destination '{dest['key']}': tail_fade must be true or false "
                          f"(got {tail!r}).")
     want_tail = bool(tail) if expect_fade is None else bool(expect_fade)
-    need_ffmpeg = loudness and (deliver.has_loudness_target(dest) or want_tail)
+    bt709 = ((dest.get("color") or {}).get("expect") or {}).get("color_primaries") == "bt709"
+    need_ffmpeg = bt709 or (loudness and (deliver.has_loudness_target(dest) or want_tail))
     check_tools(ffmpeg=need_ffmpeg)
     if not os.path.isfile(path):
         raise CheckError(f"{path} is not a file.")
@@ -482,6 +542,8 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                          want if want is not None else "not asserted",
                          "range could not be told from the stream" if want is not None and
                          rng is None else None))
+        if bt709:
+            rows.append(log_flat_row(path, video, duration(info)))
 
     # Audio
     a = dest["audio"]

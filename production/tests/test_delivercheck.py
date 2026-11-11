@@ -52,10 +52,14 @@ TAGS = {"bt709": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt7
         "gamma24": "setparams=color_primaries=bt709:colorspace=bt709:range=tv"}
 
 
+FLAT = "lutyuv=y=96+(val-16)*0.45"  # 8-bit luma 16..235 becomes 96..194 (0.37 to 0.81 of the span)
+
+
 def make(path, size="64x36", rate="24000/1001", codec="h264", lufs=-16.0, peaks=False,
-         tags="bt709", seconds=2.5, pix_fmt=None):
+         tags="bt709", seconds=2.5, pix_fmt=None, flat=False):
     """A test clip: testsrc2 picture, stereo 1 kHz sine at `lufs`, and with
-    peaks a short full-scale pulse twice a second (about -0.3 dBTP)."""
+    peaks a short full-scale pulse twice a second (about -0.3 dBTP). flat squeezes luma into
+    the middle of the range, as a log picture looks when it is tagged bt709."""
     expr = f"{10 ** (lufs / 20):.5f}*sin(2*PI*1000*t)"
     if peaks:
         expr += "+0.75*lt(mod(t\\,0.5)\\,0.0002)"
@@ -69,7 +73,8 @@ def make(path, size="64x36", rate="24000/1001", codec="h264", lufs=-16.0, peaks=
     cmd = [dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
            "-i", f"testsrc2=size={size}:rate={rate}:duration={seconds}",
            "-f", "lavfi", "-i", f"aevalsrc=exprs={expr}:c=stereo:s=48000:d={seconds}"]
-    cmd += (["-vf", TAGS[tags]] if tags else []) + video + audio + ["-shortest"]
+    vf = ([FLAT] if flat else []) + ([TAGS[tags]] if tags else [])
+    cmd += (["-vf", ",".join(vf)] if vf else []) + video + audio + ["-shortest"]
     if path.endswith(".mp4"):
         cmd += ["-movflags", "+faststart"]
     subprocess.run(cmd + [path], stdin=subprocess.DEVNULL, check=True)
@@ -320,6 +325,24 @@ class TestCheck(unittest.TestCase):
         strict["color"]["expect"]["color_transfer"] = ["unknown"]
         self.assertEqual(failed(dc.check(self.clip(), strict, loudness=False)),
                          ["color_transfer"])
+
+    def test_log_picture_tagged_bt709_fails(self):
+        # T30: a log render carries the project's bt709 tags; only the picture shows it.
+        for codec, dest in (("h264", "linkedin_16x9"), ("prores", "client_master")):
+            name = NAME16 if codec == "h264" else "Client_example-slug_master.mov"
+            path = self.clip(name=name, sidecar=None, codec=codec, flat=True, lufs=-20.0)
+            r = dc.check(path, tiny(dest), loudness=False)
+            self.assertIn("log_flat", failed(r), dc.format_report(r))
+            good = dc.check(self.clip(name=name, sidecar=None, codec=codec, lufs=-20.0),
+                            tiny(dest), loudness=False)
+            self.assertEqual(statuses(good)["log_flat"], dc.PASS)
+        # a flat look is expected when the file says it is log, HLG or PQ
+        tagged = self.clip(tags="bt709", flat=True)
+        info = dc.probe(tagged)
+        info["streams"][0]["color_transfer"] = "arib-std-b67"
+        with mock.patch.object(dc, "probe", return_value=info):
+            r = dc.check(tagged, tiny("linkedin_16x9"), loudness=False)
+        self.assertEqual(statuses(r)["log_flat"], dc.SKIP)
 
     def test_full_range_fails(self):
         r = dc.check(self.clip(tags="full"), tiny("linkedin_16x9"), loudness=False)

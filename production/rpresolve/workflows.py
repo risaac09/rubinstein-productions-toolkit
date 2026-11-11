@@ -1369,6 +1369,11 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
             row["warning"] = (f"squeeze {e['squeeze']:g}: the transform assumes Resolve fits the "
                               "desqueezed picture (the clip's Pixel Aspect Ratio set); no live "
                               "run has checked that, so look at the frame")
+        if abs(props.get("Pan", 0.0)) > 1e-3 and api._safe_call(it, "GetFusionCompNameList"):
+            # T7: Pan moves a Fusion comp's output too, and nothing here moves its pivot or centre.
+            row["warning"] = "; ".join(filter(None, [row.get("warning"),
+                "a Fusion comp sits on it and does not follow the Pan: set a zoom pivot or title "
+                "centre by hand to 0.5 + (crop_x - 0.5) x (1 - timeline width / scaled width) (T7)"]))
         row.update(move=e.get("move"), props=props, current=now,
                    headroom_px=e.get("headroom_px"), status=e.get("status"))
         same = all(isinstance(now[k], (int, float)) and abs(now[k] - v) <= 1e-3
