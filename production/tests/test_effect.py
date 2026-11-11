@@ -9,8 +9,10 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 
 import contextlib
 import io
+import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -641,3 +643,87 @@ class TestClipNumbering(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLedgerAtBuild(Base):
+    """The build applies only what the draft drew: a drafts.json ledger flags an effect the
+    draft marked not_drawn in the dry run and refuses it in the real run unless overridden."""
+
+    def setUp(self):
+        super().setUp()
+        self.auto = self.make_auto()
+        for it in self.auto.tracks["video"][0] + self.origin.tracks["video"][0]:
+            give_fusion(it)
+        rf.CALLS.clear()
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        led = {"drawn": [{"effect": "zoom-push", "spans": [0]}], "approximated": [],
+               "not_drawn": [{"effect": "cross-dissolve-short", "spans": [1]}]}
+        self.path = self.write("drafts.json", [{"plan": "a", "effects": led}])
+
+    def write(self, name, drafts):
+        path = os.path.join(os.path.realpath(self.dir.name), name)
+        with open(path, "w") as f:
+            json.dump({"drafts": drafts}, f)
+        return path
+
+    def fx(self, **more):
+        args = {"timeline": "Edit [auto]", "effect": "cross-dissolve-short", "items": [2],
+                "ledger": self.path, **more}
+        return call("apply_effect", {k: v for k, v in args.items() if v is not None}, self.resolve)
+
+    def added(self):
+        return [c for c in rf.CALLS if c[1] == "AddFusionComp"]
+
+    def test_no_ledger_says_nothing_was_checked(self):
+        dry = self.fx(ledger=None)
+        self.assertEqual(dry["ledger"]["checked"], False)
+        self.assertIn("no ledger given", dry["summary"])
+
+    def test_the_dry_run_flags_a_span_the_draft_did_not_draw(self):
+        dry = self.fx()
+        self.assertEqual(dry["ledger"]["flagged"],
+                         [{"effect": "cross-dissolve-short", "spans": [1], "overridden": False}])
+        self.assertIn("FLAGGED, the draft did not draw cross-dissolve-short", dry["summary"])
+        self.assertEqual(self.added(), [])
+
+    def test_a_span_the_draft_drew_or_never_listed_is_not_flagged(self):
+        dry = self.fx(items=[1])  # span 0: not in the not_drawn row
+        self.assertEqual(dry["ledger"]["flagged"], [])
+        self.assertIn("drew all of it", dry["summary"])
+
+    def test_the_real_run_refuses_until_the_effect_is_named_in_override(self):
+        dry = self.fx()
+        with self.assertRaisesRegex(workflows.Refused, "did not draw cross-dissolve-short"):
+            self.fx(dry_run=False, plan_sha=dry["plan_sha"])
+        with self.assertRaisesRegex(workflows.Refused, "did not draw cross-dissolve-short"):
+            self.fx(dry_run=False, plan_sha=dry["plan_sha"], override=["zoom-push"])
+        self.assertEqual(self.added(), [])
+        dry = self.fx(override=["cross-dissolve-short"])
+        self.assertEqual(dry["ledger"]["flagged"][0]["overridden"], True)
+        self.assertNotEqual(dry["plan_sha"], self.fx()["plan_sha"])  # the override is in the plan
+        real = self.fx(dry_run=False, plan_sha=dry["plan_sha"], override=["cross-dissolve-short"])
+        self.assertEqual(len(self.added()), 1)
+        self.assertIn("(overridden)", real["summary"])
+
+    def test_the_ledger_is_in_the_plan_hash(self):
+        other = self.write("other.json", [{"plan": "a", "effects": {
+            "drawn": [], "approximated": [], "not_drawn": []}}])
+        self.assertNotEqual(self.fx()["plan_sha"], self.fx(ledger=other)["plan_sha"])
+
+    def test_a_file_of_several_drafts_needs_the_picked_one(self):
+        led = {"drawn": [], "approximated": [], "not_drawn": []}
+        two = self.write("two.json", [{"plan": "a", "effects": led}, {"plan": "b", "effects": led}])
+        with self.assertRaisesRegex(workflows.Refused, "name the picked one"):
+            self.fx(ledger=two)
+        with self.assertRaisesRegex(workflows.Refused, "no draft 'c'"):
+            self.fx(ledger=two, draft="c")
+        self.assertEqual(self.fx(ledger=two, draft="b")["ledger"]["flagged"], [])
+
+    def test_a_bad_ledger_is_refused(self):
+        bad = os.path.join(os.path.realpath(self.dir.name), "bad.json")
+        Path(bad).write_text("{")
+        with self.assertRaisesRegex(workflows.Refused, "cannot read the ledger"):
+            self.fx(ledger=bad)
+        with self.assertRaisesRegex(workflows.Refused, "no effects ledger"):
+            self.fx(ledger=self.write("none.json", [{"plan": "a"}]))

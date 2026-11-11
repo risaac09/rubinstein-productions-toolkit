@@ -23,7 +23,7 @@ plan_sha, and is journalled.
 
 import os
 
-from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, settingsguard, syncbuild, workflows
+from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
 from .. import proxies as rpproxies, relink as rprelink, trimreview
@@ -467,17 +467,21 @@ def apply_effect(args, ctx):
                                     dry_run=args["dry_run"], project_id=args.get("project_id"),
                                     check_cancel=ctx.check_cancel,
                                     expect_sha=args.get("plan_sha"),
-                                    params=args.get("params"), spans=args.get("spans"))
+                                    params=args.get("params"), spans=args.get("spans"),
+                                    ledger=args.get("ledger") and _abs(args["ledger"], "ledger"),
+                                    draft=args.get("draft"), override=args.get("override"))
         tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
         if r["dry_run"]:
             r["summary"] = (f"would add a Fusion comp '{r['effect']['comp']}' with the {e} macro "
-                            f"to {n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}" + _how(r))
+                            f"to {n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}"
+                            + ledgercheck.summary(r["ledger"]) + _how(r))
         else:
             ok = sum(1 for x in r["results"] if x["ok"])
             r["applied"] = ok
             r["summary"] = (f"added and read back the {e} comp on {ok} of {len(r['results'])} "
-                            f"item(s) on '{tl}'{skipped}; look at it on the Fusion page")
+                            f"item(s) on '{tl}'{skipped}{ledgercheck.summary(r['ledger'])}; look at it on the "
+                            "Fusion page")
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -510,7 +514,9 @@ def assemble_timeline(args, ctx):
                                         expect_sha=args.get("plan_sha"),
                                         check_cancel=ctx.check_cancel,
                                         bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"),
-                                        exclude=args.get("exclude") and _abs(args["exclude"], "exclude"))
+                                        exclude=args.get("exclude") and _abs(args["exclude"], "exclude"),
+                                        ledger=args.get("ledger") and _abs(args["ledger"], "ledger"),
+                                        draft=args.get("draft"), override=args.get("override"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
                 + (f", montage on V{p['track']} over {len(r['plates'])} plate(s) on V1 (the shot "
@@ -520,7 +526,7 @@ def assemble_timeline(args, ctx):
                 + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
-        skipped += _colour_line(r)
+        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
         elif r["problems"]:
@@ -1102,7 +1108,9 @@ def register(registry):
         "item with no clip and is not a number, so items are clip numbers from 1 and spans are "
         "the manifest's span indices from 0 (clip n is span n - 1); give one of them, not both. "
         "Each target row names the clip number and the raw track position. Dry run first; the "
-        "real run needs its plan_sha.",
+        "real run needs its plan_sha. With ledger (the draft farm's drafts.json) the effect "
+        "is checked against what the draft drew: a span it marked not_drawn is flagged in the "
+        "dry run and refused in the real run unless override names the effect.",
         {"type": "object", "properties": {
             **PROJECT,
             "timeline": {"type": "string",
@@ -1120,6 +1128,17 @@ def register(registry):
                       "items": {"type": "integer", "minimum": 0}, "uniqueItems": True,
                       "description": "The manifest's span indices, from 0 (an effects entry's "
                                      "span_index): span i is clip i + 1. Not with items."},
+            "ledger": {"type": "string",
+                       "description": "Absolute path of the plan's drafts.json from the draft "
+                       "farm. The build applies only what the draft drew: the dry run flags "
+                       "each effect the draft marked not_drawn, the real run refuses unless "
+                       "override names it. Omitted, nothing is checked and the result says so."},
+            "draft": {"type": "string",
+                      "description": "The picked plan's name in the ledger's drafts; needed "
+                      "when the file holds more than one."},
+            "override": {"type": "array", "items": {"type": "string"}, "uniqueItems": True,
+                         "description": "Effect names to apply although the draft did not draw "
+                         "them. Part of the plan_sha, so name them in the dry run too."},
             "params": {"type": "object", "additionalProperties": False, "properties": {
                 "text": {"type": "string", "minLength": 1, "maxLength": 80},
                 "size": {"type": "number"},
@@ -1170,7 +1189,10 @@ def register(registry):
         "montage is: pass it as track to apply_effect, apply_grade, reframe_apply, stabilize "
         "and vertical_apply, and grade V1 too. With no such span the montage is on V1 alone. "
         "Pass the operator's exclude list as exclude: a manifest naming a take on it is "
-        "refused, and the list's hash is part of the plan_sha. "
+        "refused, and the list's hash is part of the plan_sha. With ledger (the draft farm's "
+        "drafts.json) and draft, each manifest effect the draft marked not_drawn is flagged in "
+        "the dry run and refused in the real run unless override names it; a ledger that is "
+        "not this manifest's is refused. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
@@ -1181,6 +1203,17 @@ def register(registry):
                         "description": "Absolute path of the operator's exclude list, JSON "
                         "with `takes`, a list of file stems, names or path suffixes. A "
                         "manifest naming one is refused."},
+            "ledger": {"type": "string",
+                       "description": "Absolute path of the plan's drafts.json from the draft "
+                       "farm. The build applies only what the draft drew: the dry run flags "
+                       "each effect the draft marked not_drawn, the real run refuses unless "
+                       "override names it. Omitted, nothing is checked and the result says so."},
+            "draft": {"type": "string",
+                      "description": "The picked plan's name in the ledger's drafts; needed "
+                      "when the file holds more than one."},
+            "override": {"type": "array", "items": {"type": "string"}, "uniqueItems": True,
+                         "description": "Effect names to apply although the draft did not draw "
+                         "them. Part of the plan_sha, so name them in the dry run too."},
             "bed_dir": {"type": "string",
                         "description": "Absolute folder for the baked music bed; default the "
                         "manifest's own folder. Refused inside a git working tree."},

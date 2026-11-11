@@ -1020,3 +1020,61 @@ class TestRealHandleProbe(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLedgerAtBuild(Base):
+    """The build applies only what the draft drew: the draft farm's ledger flags a manifest
+    effect marked not_drawn in the dry run and the real run refuses it unless overridden."""
+
+    def setUp(self):
+        super().setUp()
+        from rpresolve import drafts
+        self.man = {**self.manifest,
+                    "effects": [{"span_index": 1, "effect": "cross-dissolve-short"},
+                                {"span_index": 0, "effect": "zoom-push"}]}
+        self.path = os.path.join(os.path.realpath(self.tmp.name), "drafts.json")
+        self.write([{"plan": "a", "effects": drafts.ledger(self.man)}])
+
+    def write(self, drafts):
+        with open(self.path, "w") as f:
+            json.dump({"drafts": drafts}, f)
+
+    def go(self, **kw):
+        return super().go(manifest=self.man, ledger=self.path, **kw)
+
+    def test_no_ledger_says_nothing_was_checked(self):
+        dry = super().go(manifest=self.man)
+        self.assertEqual(dry["ledger"]["checked"], False)
+        self.assertIn("no ledger given", dry["ledger"]["note"])
+
+    def test_the_dry_run_flags_what_the_draft_did_not_draw(self):
+        dry = self.go()
+        self.assertEqual(dry["ledger"]["flagged"],
+                         [{"effect": "cross-dissolve-short", "spans": [1], "overridden": False}])
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+
+    def test_the_real_run_refuses_until_the_effect_is_named_in_override(self):
+        dry = self.go()
+        with self.assertRaisesRegex(Refused, "did not draw cross-dissolve-short"):
+            self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        with self.assertRaisesRegex(Refused, "did not draw cross-dissolve-short"):
+            self.go(dry_run=False, override=["zoom-push"])
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+        dry = self.go(override=["cross-dissolve-short"])
+        self.assertNotEqual(dry["plan_sha"], self.go()["plan_sha"])  # the override is in the plan
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"], override=["cross-dissolve-short"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["ledger"]["flagged"][0]["overridden"], True)
+
+    def test_a_ledger_that_is_not_this_manifests_is_refused(self):
+        self.write([{"plan": "a", "effects": {"drawn": [], "approximated": [], "not_drawn": []}}])
+        with self.assertRaisesRegex(Refused, "not this manifest's"):
+            self.go()
+
+    def test_a_clean_ledger_passes_a_real_run(self):
+        self.man = self.manifest
+        from rpresolve import drafts
+        self.write([{"plan": "a", "effects": drafts.ledger(self.man)}])
+        dry = self.go()
+        self.assertEqual(dry["ledger"]["flagged"], [])
+        self.assertEqual(self.go(dry_run=False, expect_sha=dry["plan_sha"])["exit_status"], 0)
