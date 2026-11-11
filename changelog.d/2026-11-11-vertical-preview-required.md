@@ -1,0 +1,1 @@
+vertical review now refuses to mark a plan reviewed unless preview.mp4 from vertical draft sits beside crops.json and was drawn from its current crops; draft records a hash of the items it drew in preview.json.
