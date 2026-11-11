@@ -233,6 +233,18 @@ class TestReframeApply(Base):
         self.assertTrue(any("squeeze 1.5" in w for w in dry["warnings"]), dry["warnings"])
         self.assertIn("anamorphic transform is unchecked live", dry["summary"])
 
+    def test_a_panned_item_with_a_fusion_comp_warns(self):
+        # T7: reframe_apply writes Pan and leaves every Fusion comp where it was built.
+        plan = framing_plan({"STAND": STANDING, "SEAT": SEATED})
+        plan["items"][0]["entry"]["x"] = 3000.0
+        path = self.write_plan(plan, "pan.json")
+        quiet = call("reframe_apply", self.args(plan=path), self.resolve)
+        self.assertNotEqual(quiet["targets"][0]["props"]["Pan"], 0.0)
+        self.assertFalse(any("(T7)" in w for w in quiet["warnings"]), quiet["warnings"])
+        self.items[0].GetFusionCompNameList = lambda: ["rp-fx zoom-push"]
+        dry = call("reframe_apply", self.args(plan=path), self.resolve)
+        self.assertTrue(any("STAND" in w and "(T7)" in w for w in dry["warnings"]), dry["warnings"])
+
     def test_a_plan_that_is_not_a_framing_plan_is_refused(self):
         path = self.write_plan({"clips": []}, "manifest.json")
         with self.assertRaisesRegex(workflows.Refused, "not a framing plan"):
