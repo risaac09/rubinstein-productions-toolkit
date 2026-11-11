@@ -7,9 +7,10 @@ montage's items (name, source path, in and out in source seconds, zoom, and the
 of the source width), writes crops.json and a numbered review sheet. Its --out folder
 must not exist yet; the command makes it. `draft` cuts a silent 540x960 preview, preview.mp4,
 from crops.json: each item from its source at its crop, in order, the item number in the
-corner. The operator watches it before anything is written to Resolve. `review` sets
-crops.json's "reviewed" to true once a person or agent has read the sheet and watched the
-preview.
+corner, and records beside it (preview.json) a hash of the items it drew. The operator watches
+it before anything is written to Resolve. `review` sets crops.json's "reviewed" to true once a
+person or agent has read the sheet and watched the preview, and refuses when preview.mp4 is
+not beside crops.json or was drawn from other items (a centre changed since): run `draft` again.
 
 Centre choice, in this order: a hand override ("<item name>" or "#<item number>"
 in the overrides file) always wins; else, only with --centre face, the face planner
@@ -34,8 +35,7 @@ Transform1.Pivot = (cx, 0.5); 'rp-fx text-word' gets Merge1.Center = (cx, 0.5) a
 Text1.Size refitted for portrait. Comps are then re-rendered with
 cmd_effect.refresh and everything is read back. Every other Fusion comp on an item
 (a person-matte-text title among them) is left as it was and named in the result's
-unmoved_comps. A preview is not required by apply_vertical; the draft step is the
-operator's.
+unmoved_comps. apply_vertical does not look for the preview; `review` is where it is required.
 
 A montage with a window effect sits on V2 over plates on V1 (cmd_assemble). When `track` is
 above 1, an item on the track below that starts where montage item N (N > 1) starts and plays
@@ -73,6 +73,7 @@ TEXT_K = 0.336          # size * letters: 0.048 for seven letters, about 80% of 
 SHEET_W, SHEET_H, SHEET_ROWS = 560, 316, 6   # cells 3 across: 1680 x 1896 a sheet (even sizes for JPEG 4:2:0)
 SHEET_MAX_BYTES = 1024 * 1024
 PREVIEW_SIZE, PREVIEW_FPS, PREVIEW_NAME = (540, 960), 30, "preview.mp4"
+PREVIEW_STAMP = "preview.json"   # beside the preview: {"items_sha": hash of the items it drew}
 
 
 class VerticalError(RuntimeError):
@@ -220,8 +221,26 @@ def load_crops(src):
     return src
 
 
+def _items_sha(crops):
+    return plan_sha("vertical preview", crops["items"])
+
+
 def mark_reviewed(path):
+    """Set reviewed, but only when preview.mp4 beside the plan was drawn from these items."""
     crops = load_crops(path)
+    folder = os.path.dirname(os.path.abspath(path))
+    try:
+        with open(os.path.join(folder, PREVIEW_STAMP), encoding="utf-8") as f:
+            stamp = json.load(f).get("items_sha")
+    except (OSError, ValueError, AttributeError):
+        stamp = None
+    if not os.path.isfile(os.path.join(folder, PREVIEW_NAME)) or stamp is None:
+        raise VerticalError(f"no {PREVIEW_NAME} from `vertical draft` beside {path}. Run "
+                            f"vertical draft {path}, watch the preview, then review.")
+    if stamp != _items_sha(crops):
+        raise VerticalError(f"{PREVIEW_NAME} beside {path} was drawn from other crops (a centre "
+                            f"or zoom changed since). Run vertical draft {path} again, watch it, "
+                            "then review.")
     crops["reviewed"] = True
     rppaths.write_private(path, json.dumps(crops, indent=1) + "\n")
     return crops
@@ -393,6 +412,8 @@ def draft_preview(crops, out_dir, ffmpeg=None):
             raise VerticalError(f"ffmpeg could not join the preview: {err}")
         path = os.path.join(out_dir, PREVIEW_NAME)
         os.replace(joined, path)
+        rppaths.write_private(os.path.join(out_dir, PREVIEW_STAMP),
+                              json.dumps({"items_sha": _items_sha(c)}) + "\n")
     return path
 
 

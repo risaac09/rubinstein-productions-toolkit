@@ -39,6 +39,16 @@ def face_at(x, status="pass"):
                                            "entry": {"x": x, "src": SRC}}]}
 
 
+def draft_stub(crops, folder):
+    """The real draft_preview with ffmpeg replaced by a stub that touches its output file."""
+    def fake(cmd):
+        Path(cmd[-1]).touch()
+        return 0, ""
+    with mock.patch.object(v, "_run", side_effect=fake), mock.patch.object(v, "_has_hw",
+                                                                         return_value=False):
+        return v.draft_preview(crops, folder, ffmpeg="ffmpeg")
+
+
 class TestPlan(unittest.TestCase):
     def test_hw_is_half_the_portrait_window(self):
         self.assertAlmostEqual(HW, 0.5 * 9 / 16 / (16 / 9))
@@ -143,8 +153,31 @@ class TestPlan(unittest.TestCase):
             with open(path, "w") as f:
                 json.dump(v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge"), f)
             self.assertFalse(v.load_crops(path)["reviewed"])
+            draft_stub(path, d)
             v.mark_reviewed(path)
             self.assertTrue(v.load_crops(path)["reviewed"])
+
+    def test_review_needs_a_preview_drawn_from_the_current_crops(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "crops.json")
+            crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
+            with open(path, "w") as f:
+                json.dump(crops, f)
+            with self.assertRaisesRegex(v.VerticalError, "vertical draft"):  # no preview yet
+                v.mark_reviewed(path)
+            draft_stub(path, d)
+            os.remove(os.path.join(d, "preview.mp4"))  # a stamp without its video
+            with self.assertRaisesRegex(v.VerticalError, "vertical draft"):
+                v.mark_reviewed(path)
+            draft_stub(path, d)
+            crops["items"][0]["cx"] = 0.3  # a centre moved after the preview was drawn
+            with open(path, "w") as f:
+                json.dump(crops, f)
+            with self.assertRaisesRegex(v.VerticalError, "other crops.*draft"):
+                v.mark_reviewed(path)
+            self.assertFalse(v.load_crops(path)["reviewed"])
+            draft_stub(path, d)  # drawn again from the new crops
+            self.assertTrue(v.mark_reviewed(path)["reviewed"])
 
 
 class TestSheet(unittest.TestCase):
@@ -256,7 +289,7 @@ class TestPreview(unittest.TestCase):
             os.makedirs(out)
             path = v.draft_preview(crops, out, ffmpeg=ffmpeg)
             self.assertEqual(path, os.path.join(out, "preview.mp4"))
-            self.assertEqual(sorted(os.listdir(out)), ["preview.mp4"])  # no scratch left behind
+            self.assertEqual(sorted(os.listdir(out)), ["preview.json", "preview.mp4"])  # no scratch
             info = ffprobe_json(ffmpeg, path)
             self.assertEqual([(s["codec_type"], s.get("width"), s.get("height"))
                               for s in info["streams"]],
@@ -709,6 +742,12 @@ class TestCommand(unittest.TestCase):
             self.assertEqual(rc, 0)
             crops = os.path.join(out, "crops.json")
             self.assertFalse(json.load(open(crops, encoding="utf-8"))["reviewed"])
+            err = io.StringIO()
+            with mock.patch("sys.stderr", err):  # no preview yet: refused, still unreviewed
+                self.assertEqual(cli.main(["review", crops], module=v), 1)
+            self.assertIn("vertical draft", err.getvalue())
+            self.assertFalse(json.load(open(crops, encoding="utf-8"))["reviewed"])
+            draft_stub(crops, out)
             self.assertEqual(cli.main(["review", crops], module=v), 0)
             self.assertTrue(json.load(open(crops, encoding="utf-8"))["reviewed"])
 
