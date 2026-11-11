@@ -301,6 +301,7 @@ class TestExclude(Base):
         self.assertIn("not checked here: shot ids belong to the planner's index", notes)
 
 
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestCrops(Base):
     """A 9:16 draft cropped at each span's own centre from a crops file. The source is three
     vertical bands, red | lime | blue, each a third of the width, so the window's centre says
