@@ -581,7 +581,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     replace the one that renders), except one whose comps are all emptied 'rp-fx ...' comps (only
     MediaIn1 and MediaOut1; T9): the macro is built into that comp, loaded as the active one,
     and the plan row says reuse. Returns {project, timeline, effect,
-    targets, refused, results, plan_sha, dry_run, exit_status}; each row has the clip number
+    targets, refused, skipped, results, plan_sha, dry_run, exit_status}; skipped lists each track item
+    that is not a clip (raw position, name, reason), whatever was asked for; each row has the clip number
     as index and the raw track position; exit_status 1 when any item failed its read-back.
     ledger (the absolute path of a drafts.json) and draft (the picked plan) check the effect
     against what the draft drew (ledgercheck): the dry run flags a span the draft marked
@@ -655,7 +656,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
            "effect": {"id": effect, "comp": comp_name, "tools": tools,
                       "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
                                  "out": WIRING[effect]["out"]}},
-           "params": params, "targets": targets, "refused": refused, "results": [], "plan_sha": sha,
+           "params": params, "targets": targets, "refused": refused,
+           "skipped": api.skipped_items(tl, track), "results": [], "plan_sha": sha,
            "ledger": report, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
         return out

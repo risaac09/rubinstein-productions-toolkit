@@ -1,0 +1,1 @@
+apply_effect and vertical_apply now return a skipped list naming every track item they leave out (a dissolve, title, generator or compound clip: raw position, name, reason), and the dry run's summary counts them. Clip numbering is unchanged: a skipped item never shifts the others.

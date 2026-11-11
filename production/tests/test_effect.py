@@ -696,6 +696,54 @@ class TestClipNumbering(Base):
             self.fx(items=[4])  # position 6 is the trailing dissolve, not a fourth clip
 
 
+class TestSkippedItems(Base):
+    """An item with no media pool clip is named in `skipped` (raw position, name, reason), and
+    taking it out of the count never moves the others' numbers."""
+
+    def setUp(self):
+        super().setUp()
+        self.auto = self.make_auto()
+        self.track = self.auto.tracks["video"][0]
+        self.a, self.b, self.c = (rf.Item(n, 86400 + 50 * i, 86450 + 50 * i, self.clip, source=(0, 50))
+                                  for i, n in enumerate(("A", "B", "C")))
+        self.dissolve = rf.Item("Cross Dissolve", 86448, 86452, None, nodes=None, source=(0, 0))
+        self.gen = rf.Item("Solid Colour", 86500, 86504, None, nodes=None, source=(0, 0))
+        self.offline = rf.Item("Gone", 86504, 86550, self.clip, source=(0, 46))
+        # raw: A(1) dissolve(2) B(3) generator(4) offline-but-pooled(5) C(6)
+        self.track[:] = [self.a, self.dissolve, self.b, self.gen, self.offline, self.c]
+        for it in self.track:
+            give_fusion(it)
+
+    def fx(self, **more):
+        return call("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push", **more},
+                    self.resolve)
+
+    def test_skipped_names_every_non_clip_by_raw_position(self):
+        for r in (self.fx(), self.fx(items=[1])):  # whatever was asked for
+            self.assertEqual([(x["position"], x["name"]) for x in r["skipped"]],
+                             [(2, "Cross Dissolve"), (4, "Solid Colour")])
+            self.assertTrue(all("no media pool clip" in x["reason"] for x in r["skipped"]))
+
+    def test_the_others_keep_their_clip_numbers(self):
+        dry = self.fx()
+        self.assertEqual([(t["index"], t["position"], t["name"]) for t in dry["targets"]],
+                         [(1, 1, "A"), (2, 3, "B"), (3, 5, "Gone"), (4, 6, "C")])
+        self.assertEqual(self.fx(spans=[3])["targets"][0]["name"], "C")
+
+    def test_the_real_run_and_the_summary_carry_it(self):
+        dry, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push",
+                                               "items": [2]}, self.resolve)
+        self.assertEqual(len(real["skipped"]), 2)
+        self.assertIn("2 item(s) skipped", dry["summary"])
+        self.assertIn("2 item(s) skipped", real["summary"])
+
+    def test_a_track_of_clips_reports_none(self):
+        self.track[:] = [self.a, self.b, self.c]
+        r = self.fx()
+        self.assertEqual(r["skipped"], [])
+        self.assertNotIn("skipped", r["summary"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -625,7 +625,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     On `track` above 1, plates on the track below take the crop of the item they continue
     (_plates_below): `plates` is the plan, `plate_results` the read-backs, `unframed_below`
     what on that track is not a plate. Returns {project, timeline, source_timeline, create,
-    targets, plates, unframed_below, unmoved_comps, results, plate_results, plan_sha, dry_run,
+    targets, plates, unframed_below, skipped, unmoved_comps, results, plate_results, plan_sha, dry_run,
     exit_status}; exit_status 1 when a read-back differs (a plate's included). unmoved_comps names
     each item and Fusion comp left as it was (every comp but the three moved), dry run or real."""
     from rpresolve import cmd_effect, workflows
@@ -671,6 +671,8 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
            "timeline": {"name": timeline, "track": track, "size": list(OUT_SIZE)},
            "source_timeline": base.GetName() if tl is None else None, "create": tl is None,
            "targets": targets, "plates": plates, "unframed_below": unframed,
+           "skipped": api.skipped_items(base, track) + (api.skipped_items(base, track - 1)
+                                                         if track > 1 else []),
            "unmoved_comps": _unmoved(targets, items), "results": [], "plate_results": [],
            "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
     if dry_run:

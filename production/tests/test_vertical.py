@@ -531,6 +531,40 @@ class TestApply(unittest.TestCase):
         self.assertEqual(real["exit_status"], 0)
         self.assertEqual(len(real["results"]), 3)
 
+    def test_skipped_items_are_named_and_the_others_keep_their_numbers(self):
+        dissolve = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+        gen = FusionItem("Solid Colour", 86500, 86504, None, props={}, source=(0, 0))
+        dissolve.comps, gen.comps = {}, {}
+        track = self.source.tracks["video"][0]
+        track.insert(1, dissolve)  # raw: i0 dissolve i1 i2
+        track.insert(3, gen)       # raw: i0 dissolve i1 gen i2
+        dry, real = self.real()
+        for r in (dry, real):
+            self.assertEqual([(x["track"], x["position"], x["name"]) for x in r["skipped"]],
+                             [(1, 2, "Cross Dissolve"), (1, 4, "Solid Colour")])
+            self.assertTrue(all("no media pool clip" in x["reason"] for x in r["skipped"]))
+        self.assertEqual([(t["index"], t["name"]) for t in dry["targets"]],
+                         [(1, "i0"), (2, "i1"), (3, "i2")])
+        self.assertEqual(real["exit_status"], 0)
+
+    def test_a_track_of_clips_reports_no_skipped_item(self):
+        self.assertEqual(self.go()["skipped"], [])
+
+    def test_the_tool_summary_says_how_many_were_skipped(self):
+        from rpresolve.mcp.tools_write import _skipped_note
+        dissolve = FusionItem("Cross Dissolve", 86448, 86452, None, props={}, source=(0, 0))
+        dissolve.comps = {}
+        self.source.tracks["video"][0].insert(2, dissolve)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "crops.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.crops, f)
+            from test_mcp_writes2 import call
+            dry = call("vertical_apply", {"timeline": "Mix 9x16 [auto]", "crops": path,
+                                          "source_timeline": "Mix 16x9 [auto]"}, self.resolve)
+        self.assertIn("; 1 item(s) skipped", dry["summary"])
+        self.assertEqual(_skipped_note({"skipped": []}), "")
+
     def put_plates(self, dissolve=False):
         """The montage on V2 over plates on V1: a plate under item 2 playing item 1's file and
         one under item 3 playing item 2's file, each with its own zoom."""
