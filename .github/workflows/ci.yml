@@ -236,6 +236,8 @@ jobs:
           set -eu
           export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
           O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=120'
+          # the runner's default azure.archive.ubuntu.com mirror stopped answering on 2026-11-11
+          sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
           sudo -E apt-get $O update
           timeout 240 sudo -E apt-get $O install -y ffmpeg || { rc=$?; ps -eo pid,etime,args | grep -E 'apt|dpkg|needrestart|unattended' | grep -v grep || true; exit $rc; }
       - name: Every module but lutlab, rpstills and vertcut
@@ -295,6 +297,8 @@ jobs:
           set -eu
           export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
           O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=120'
+          # the runner's default azure.archive.ubuntu.com mirror stopped answering on 2026-11-11
+          sudo sed -i 's#azure\.archive\.ubuntu\.com#archive.ubuntu.com#g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
           sudo -E apt-get $O update
           timeout 240 sudo -E apt-get $O install -y ffmpeg || { rc=$?; ps -eo pid,etime,args | grep -E 'apt|dpkg|needrestart|unattended' | grep -v grep || true; exit $rc; }
           ffmpeg -version | sed -n 1p
