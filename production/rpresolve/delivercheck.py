@@ -42,10 +42,12 @@ what it expected:
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
     tail          opt-in (the destination's tail_fade true, or expect_fade): the
-                  level of the last 100 ms against the window from 3 s to 1.5 s
-                  before the end; FAIL unless the tail is at least TAIL_DROP_DB
-                  lower, with both levels in the row, or when the sound stops before
-                  the end and the last 100 ms hold none. SKIP with a note when there is
+                  level of the 100 ms ending at the last video frame against the
+                  window from 3 s to 1.5 s before that frame (not the file's end:
+                  the container's audio runs past the picture by codec padding);
+                  FAIL unless the tail is at least TAIL_DROP_DB lower, with both
+                  levels in the row, or when the sound stops before the picture
+                  ends and those 100 ms hold none. SKIP with a note when there is
                   no audio, loudness reading is off or the file is under 4 s. No
                   row at all when the destination does not ask for it
 
@@ -84,8 +86,8 @@ NTSC = {"23.976": "24000/1001", "23.98": "24000/1001", "29.97": "30000/1001",
 PCM = {16: ("pcm_s16le", "pcm_s16be"), 24: ("pcm_s24le", "pcm_s24be"),
        32: ("pcm_s32le", "pcm_s32be")}
 CAPTION_TAGS = {"c608", "c708", "tx3g", "wvtt", "stpp"}
-# The tail row: the last TAIL_S seconds against the window from TAIL_REF_FAR to TAIL_REF_NEAR
-# seconds before the end. A music bed baked with a one second fade (musicbed.py) drops far
+# The tail row: the TAIL_S seconds ending at the last video frame against the window from
+# TAIL_REF_FAR to TAIL_REF_NEAR seconds before it. A music bed baked with a one second fade (musicbed.py) drops far
 # more than TAIL_DROP_DB; a file that ends on a hard cut does not drop at all.
 TAIL_S = 0.1
 TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
@@ -175,12 +177,15 @@ def measure_loudness(path, stream=0):
     return parse_ebur128(proc.stderr)
 
 
-def window_level(path, from_end, length, stream=0):
+def window_level(path, from_end, length, stream=0, end=None):
     """Mean level in dB (ffmpeg volumedetect) of an audio stream over `length` seconds
-    starting `from_end` seconds before the end of the file; None when ffmpeg ran and the
-    window holds no audio (the sound ends earlier than the picture: -sseof counts back from
-    the longest stream). Raises CheckError when ffmpeg fails."""
-    proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-sseof", f"-{from_end:g}",
+    starting `from_end` seconds before `end`; None when ffmpeg ran and the window holds no
+    audio. end: a time in seconds from the start of the file (the picture's last frame),
+    or None for the end of the file, where -sseof counts back from the longest stream and
+    so includes the audio's codec padding after the picture. Raises CheckError when ffmpeg
+    fails."""
+    seek = ["-sseof", f"-{from_end:g}"] if end is None else ["-ss", f"{max(end - from_end, 0):.3f}"]
+    proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", *seek,
                  "-t", f"{length:g}", "-i", _src(path), "-map", f"0:a:{stream}",
                  "-af", "volumedetect", "-f", "null", "-"], READ_TIMEOUT_S)
     if proc.returncode != 0:
@@ -599,10 +604,16 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
 
 
 def _tail_row(path, seconds, has_audio, loudness):
-    """The tail row: the last TAIL_S seconds against the window TAIL_REF_FAR to TAIL_REF_NEAR
-    seconds before the end; PASS when the tail is at least TAIL_DROP_DB lower."""
-    expect = (f"the last {TAIL_S * 1000:g} ms at least {TAIL_DROP_DB:g} dB below the window "
-              f"{TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s before the end")
+    """The tail row: the TAIL_S seconds ending at the last video frame (`seconds`, the
+    picture's duration) against the window TAIL_REF_FAR to TAIL_REF_NEAR seconds before that
+    frame; PASS when the tail is at least TAIL_DROP_DB lower. The picture's end, not the
+    file's, because the audio stream runs past the last frame by codec padding (AAC priming
+    and whole frames), which reads as silence and would pass a bed that is still loud when the
+    picture ends. Decoded audio length would need a full decode and still counts real sound
+    after the picture, which no viewer sees."""
+    expect = (f"the {TAIL_S * 1000:g} ms ending at the last video frame at least "
+              f"{TAIL_DROP_DB:g} dB below the window {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
+              "before that frame")
     skip = (None if has_audio else "no audio stream",
             None if loudness else "loudness reading is off",
             None if seconds is not None and seconds >= TAIL_MIN_S
@@ -610,17 +621,18 @@ def _tail_row(path, seconds, has_audio, loudness):
     why = next((x for x in skip if x), None)
     if why:
         return _row("tail", None, "not measured", expect, why)
-    tail = window_level(path, TAIL_S, TAIL_S)
+    tail = window_level(path, TAIL_S, TAIL_S, end=seconds)
     if tail is None:  # the bed stops short of the picture: the case this row exists to catch
-        return _row("tail", False, f"no audio in the last {TAIL_S * 1000:g} ms", expect)
-    ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR)
+        return _row("tail", False, f"no audio in the {TAIL_S * 1000:g} ms ending at the last "
+                    "video frame", expect)
+    ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR, end=seconds)
     if ref is None:
         return _row("tail", False, f"no audio {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
-                    "before the end", expect)
+                    "before the last video frame", expect)
     drop = 0.0 if ref == tail else ref - tail  # two silent windows are equal, not nan
     return _row("tail", drop >= TAIL_DROP_DB - 1e-9,
-                f"last {TAIL_S * 1000:g} ms {tail:g} dB, window {ref:g} dB "
-                f"({drop:.1f} dB lower)", expect)
+                f"last {TAIL_S * 1000:g} ms up to the last video frame {tail:g} dB, "
+                f"window {ref:g} dB ({drop:.1f} dB lower)", expect)
 
 
 def _bitrate(video, exp):

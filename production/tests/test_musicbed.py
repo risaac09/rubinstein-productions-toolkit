@@ -3,7 +3,9 @@ Tests for rpresolve.musicbed and the deliver_check tail row, on tones made here 
 
 The bed is the manifest's music cut and faded by ffmpeg into a 24-bit 48 kHz WAV (T18: a
 SetFades call reads back and did not render). The tail row reads the final file: the last
-100 ms against the window from 3 s to 1.5 s before the end, 12 dB lower or it fails.
+100 ms ending at the last video frame against the window from 3 s to 1.5 s before that frame,
+12 dB lower or it fails. The container's audio runs past the picture (codec padding), so the
+window is anchored to the picture's end, not the file's.
 Skipped where ffmpeg or ffprobe is missing.
 
 Run: /usr/bin/python3 -m unittest discover production/tests -v
@@ -209,13 +211,13 @@ class TestTailRow(unittest.TestCase):
     def test_a_faded_tone_passes_and_the_row_holds_both_levels(self):
         row = self.row(tone(os.path.join(self.d, "faded.mp4"), 8, fade=1))
         self.assertEqual(row["status"], dc.PASS, row)
-        self.assertRegex(row["found"], r"last 100 ms -?[\d.]+ dB, window -?[\d.]+ dB \([\d.]+ dB lower\)")
+        self.assertRegex(row["found"], r"last 100 ms up to the last video frame -?[\d.]+ dB, window -?[\d.]+ dB \([\d.]+ dB lower\)")
 
     def test_an_unfaded_tone_fails_with_both_numbers(self):
         row = self.row(tone(os.path.join(self.d, "hard.mp4"), 8))
         self.assertEqual(row["status"], dc.FAIL, row)
-        self.assertRegex(row["found"], r"last 100 ms -?[\d.]+ dB, window -?[\d.]+ dB \(-?[\d.]+ dB lower\)")
-        self.assertIn("at least 12 dB below", row["expected"])
+        self.assertRegex(row["found"], r"last 100 ms up to the last video frame -?[\d.]+ dB, window -?[\d.]+ dB \(-?[\d.]+ dB lower\)")
+        self.assertIn("ending at the last video frame at least 12 dB below", row["expected"])
 
     def test_a_short_file_or_no_audio_or_loudness_off_skips_with_a_note(self):
         short = tone(os.path.join(self.d, "short.mp4"), 3, fade=1)
@@ -259,11 +261,48 @@ class TestTailRow(unittest.TestCase):
         # which is the bed-too-short case this row is for, and not an error that drops the rest
         short = graph_mp4(os.path.join(self.d, "stops.mp4"), 10,
                           "sine=frequency=440:sample_rate=48000:duration=8[a]")
-        self.assertIsNone(dc.window_level(short, 0.1, 0.1))
+        self.assertIsNone(dc.window_level(short, 0.1, 0.1, end=10.0))
         r = dc.check(short, self.dest)
         row = next(x for x in r["checks"] if x["check"] == "tail")
-        self.assertEqual((row["status"], row["found"]), (dc.FAIL, "no audio in the last 100 ms"))
+        self.assertEqual((row["status"], row["found"]),
+                         (dc.FAIL, "no audio in the 100 ms ending at the last video frame"))
         self.assertGreater(len(r["checks"]), 5)  # the other rows were still read
+
+    # Audio that runs past the picture: AAC priming and whole frames put silence after the last
+    # frame (here 0.5 s, more than a real render's 79 ms so the old window sits wholly in it).
+    def padded(self, name, graph):
+        return graph_mp4(os.path.join(self.d, name), 8, graph + ",apad=pad_dur=0.5[a]")
+
+    def test_silence_padding_after_the_picture_does_not_pass_a_bed_that_is_still_loud(self):
+        # music cut hard at the last frame, 0.5 s of silence after it: the file's last 100 ms
+        # are silence, so the old window read a 60 dB drop; the picture's end is still at full level
+        hard = self.padded("padhard.mp4", "sine=frequency=440:sample_rate=48000:duration=8")
+        self.assertLess(dc.window_level(hard, 0.1, 0.1), -60)  # the file's own end: padding
+        self.assertGreater(dc.window_level(hard, 0.1, 0.1, end=8.0), -30)  # the picture's end
+        row = self.row(hard)
+        self.assertEqual(row["status"], dc.FAIL, row)
+        self.assertRegex(row["found"], r"video frame -2\d(\.\d)? dB, window -2\d(\.\d)? dB "
+                                       r"\(-?\d(\.\d)? dB lower\)")
+
+    def test_a_fade_that_reaches_silence_at_the_last_frame_passes_over_padding(self):
+        faded = self.padded("padfade.mp4", "sine=frequency=440:sample_rate=48000:duration=8,"
+                                           "afade=t=out:st=7:d=1")
+        row = self.row(faded)
+        self.assertEqual(row["status"], dc.PASS, row)
+        drop = float(row["found"].split("(")[1].split(" dB")[0])
+        self.assertTrue(20 < drop < 30, row)  # a 1 s linear fade ends about 25 dB down on 100 ms
+
+    def test_a_genuinely_short_fade_fails_over_padding(self):
+        # a 50 ms fade ending at the last frame: half the 100 ms is still full level
+        short = self.padded("padshort.mp4", "sine=frequency=440:sample_rate=48000:duration=8,"
+                                            "afade=t=out:st=7.95:d=0.05")
+        row = self.row(short)
+        self.assertEqual(row["status"], dc.FAIL, row)
+        self.assertIn("at least 12 dB below", row["expected"])
+
+    def test_the_old_file_end_window_is_still_there_without_end(self):
+        faded = self.padded("pad.mp4", "sine=frequency=440:sample_rate=48000:duration=8")
+        self.assertLess(dc.window_level(faded, 0.1, 0.1), -60)  # no end: -sseof, as before
 
     def test_the_mcp_tool_takes_expect_fade(self):
         from rpresolve.mcp import schema, server
