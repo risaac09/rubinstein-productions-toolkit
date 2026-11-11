@@ -142,8 +142,15 @@ def give_fusion(item):
         item.comps[new] = item.comps.pop(old)
         return True
 
+    def load(name):
+        rf.CALLS.append(("Item", "LoadFusionCompByName", (name,)))
+        item.active = name
+        return item.comps.get(name)
+
     item.AddFusionComp = add
     item.RenameFusionCompByName = rename
+    item.GetFusionCompByName = lambda name: item.comps.get(name)
+    item.LoadFusionCompByName = load
     item.GetFusionCompNameList = lambda: list(item.comps)
 
 
@@ -256,6 +263,45 @@ class TestApplyEffect(Base):
         dry = self.fx()
         self.assertEqual([r["index"] for r in dry["refused"]], [1])
         self.assertIn("would replace the one that renders", dry["refused"][0]["reasons"][0])
+
+    def test_an_emptied_rp_fx_comp_is_reused(self):
+        # T9: DeleteFusionCompByName fails on an item's only comp, so an emptied one is
+        # built into again; with the comp kept, a second run on the item would be refused.
+        it = self.items[0]
+        it.comps["rp-fx old"] = FComp()
+        dry = self.fx(items=[1])
+        self.assertEqual(dry["refused"], [])
+        self.assertEqual(dry["targets"][0]["reuse"], "rp-fx old")
+        self.assertIsNone(self.fx(items=[2])["targets"][0]["reuse"])
+        _, real = run_twice("apply_effect", {"timeline": "Edit [auto]", "effect": "zoom-push",
+                                             "items": [1]}, self.resolve)
+        self.assertEqual(self.added(), [])
+        self.assertEqual(list(it.comps), ["rp-fx zoom-push"])
+        self.assertEqual(it.active, "rp-fx old")
+        self.assertTrue(real["results"][0]["ok"] and real["results"][0]["reused"])
+        comp = it.comps["rp-fx zoom-push"]
+        self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("Transform1"))
+        # now it holds tools: refused again
+        with self.assertRaisesRegex(workflows.Refused, "already has Fusion comp"):
+            self.fx(items=[1])
+
+    def test_a_reused_comp_keeps_its_name_when_it_already_fits(self):
+        self.items[0].comps["rp-fx zoom-push"] = FComp()
+        self.assertEqual(self.fx(items=[1])["targets"][0]["reuse"], "rp-fx zoom-push")
+        self.items[0].comps["rp-fx a"] = FComp()
+        self.assertEqual(self.fx(items=[1])["targets"][0]["reuse"], "rp-fx zoom-push")
+
+    def test_other_comps_are_still_refused(self):
+        it = self.items[0]
+        it.comps["rp-fx old"] = FComp()
+        it.comps["rp-fx old"].AddTool("Transform")  # holds a tool
+        dry = self.fx()
+        self.assertEqual([(r["index"], r["reuse"]) for r in dry["refused"]], [(1, None)])
+        it.comps["rp-fx old"] = FComp()
+        it.comps["Composition 1"] = FComp()  # empty, but not an rp-fx comp
+        self.assertEqual([r["index"] for r in self.fx()["refused"]], [1])
+        del it.comps["Composition 1"]
+        self.assertEqual(self.fx()["refused"], [])
 
     def test_dip_needs_a_readable_length(self):
         self.items[0].GetDuration = lambda: None

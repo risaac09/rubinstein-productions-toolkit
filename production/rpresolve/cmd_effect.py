@@ -6,7 +6,8 @@ wires between MediaIn1 and MediaOut1, and checks that every macro parses.
 apply_effect(), the work behind the MCP tool, adds a Fusion comp to each named clip of
 an ' [auto]' timeline (TimelineItem.AddFusionComp), pastes the macro's tools into it,
 wires them between the comp's MediaIn1 and MediaOut1, and reads the comp back. The
-comp it adds is new, so nothing that existed before is changed; a timeline whose name
+comp it adds is new, so nothing that existed before is changed (an item whose only comps are
+emptied 'rp-fx' comps, which T9 says cannot be deleted, is built into again instead); a timeline whose name
 does not end ' [auto]' is refused, as apply_grade refuses one. A whitelisted `params`
 dict (PARAMS) sets text, size, centre, exposure-flash gain, retime speed and reframe-pan positions; it is
 validated first, part of the plan, and read back. refresh() then toggles pass-through on
@@ -339,6 +340,22 @@ def _comp_names(item):
     return list(api._safe_call(item, "GetFusionCompNameList") or [])
 
 
+def _is_empty(comp):
+    """A comp that holds no tool besides MediaIn1 and MediaOut1 (T9's emptied comp)."""
+    return comp is not None and all(t.Name in ("MediaIn1", "MediaOut1") for t in _tool_list(comp))
+
+
+def _reusable(item, names, comp_name):
+    """The name of the comp to build into when the item's comps are all emptied 'rp-fx ...'
+    comps (an item whose only comp cannot be deleted, T9), else None; the one already named
+    comp_name first. The caller refuses an item with comps that this does not take."""
+    if names and all(n.startswith(COMP_PREFIX)
+                     and _is_empty(api._safe_call(item, "GetFusionCompByName", n))
+                     for n in names):
+        return comp_name if comp_name in names else names[0]
+    return None
+
+
 MODIFIERS = ("BezierSpline", "XYPath", "PolyPath")
 
 
@@ -557,7 +574,9 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     MediaOut1, and read the comp back. Clips are numbered as vertical_apply numbers them: a
     transition is a track item with no media pool clip (T29) and is not counted, so clip n is
     span n - 1. An item that already has any Fusion comp is refused (the new comp would
-    replace the one that renders). Returns {project, timeline, effect,
+    replace the one that renders), except one whose comps are all emptied 'rp-fx ...' comps (only
+    MediaIn1 and MediaOut1; T9): the macro is built into that comp, loaded as the active one,
+    and the plan row says reuse. Returns {project, timeline, effect,
     targets, refused, results, plan_sha, dry_run, exit_status}; each row has the clip number
     as index and the raw track position; exit_status 1 when any item failed its read-back.
     ledger (the absolute path of a drafts.json) and draft (the picked plan) check the effect
@@ -600,13 +619,15 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         frames = api._safe_call(it, "GetDuration")
         row = {"index": n, "position": positions[n - 1], "name": it.GetName(),
                "item_id": api._safe_call(it, "GetUniqueId"),
-               "comps": names, "frames": frames, "source_frames": _source_frames(it)}
+               "comps": names, "reuse": _reusable(it, names, comp_name), "frames": frames,
+               "source_frames": _source_frames(it)}
         row["key_scale"], row["key_offset"] = comp_timing(parsed, effect, frames,
                                                           row["source_frames"])
         why = []
         # AddFusionComp makes the new comp the one that renders, so an item that has
-        # a comp already would change: refuse it (this also stops a second run).
-        if names:
+        # a comp already would change: refuse it (this also stops a second run), unless
+        # its comps are all emptied rp-fx ones, which are built into again (T9).
+        if names and not row["reuse"]:
             why.append(f"it already has Fusion comp(s) ({', '.join(names)}); a new comp "
                        "would replace the one that renders")
         if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
@@ -622,8 +643,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
             f"#{r['index']} {r['name']}: {', '.join(r['reasons'])}" for r in refused))
     report = ledgercheck.check(led, [(effect, t["index"] - 1) for t in targets], override)
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
-                   [(t["index"], t["position"], t["item_id"], t["comps"], t["frames"],
-                     t["source_frames"]) for t in targets], sorted(params.items()), report)
+                   [(t["index"], t["position"], t["item_id"], t["comps"], t["reuse"],
+                     t["frames"], t["source_frames"]) for t in targets], sorted(params.items()), report)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
                         "other_tracks": api.other_video_tracks(tl, track)},
@@ -660,15 +681,25 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         # In the results before the comp exists, so an error mid-build still names it.
         row.update(ok=False, detail="interrupted while building the comp")
         out["results"].append(row)
-        comp = it.AddFusionComp()
-        if not comp:
-            row["detail"] = "AddFusionComp() returned None"
-            continue
-        # AddFusionComp names the new comp "Composition N" and makes it the item's
-        # current one; the new name is the one not in the list before.
-        added = [c for c in _comp_names(it) if c not in t["comps"]]
-        if len(added) == 1:
-            it.RenameFusionCompByName(added[0], comp_name)
+        if t["reuse"]:
+            # An emptied comp (T9): make it the active one, then build into it.
+            row["reused"] = True
+            comp = it.LoadFusionCompByName(t["reuse"])
+            if not comp:
+                row["detail"] = f"LoadFusionCompByName({t['reuse']!r}) returned None"
+                continue
+            if t["reuse"] != comp_name:
+                it.RenameFusionCompByName(t["reuse"], comp_name)
+        else:
+            comp = it.AddFusionComp()
+            if not comp:
+                row["detail"] = "AddFusionComp() returned None"
+                continue
+            # AddFusionComp names the new comp "Composition N" and makes it the item's
+            # current one; the new name is the one not in the list before.
+            added = [c for c in _comp_names(it) if c not in t["comps"]]
+            if len(added) == 1:
+                it.RenameFusionCompByName(added[0], comp_name)
         macro = shifted(scaled(parsed, t["key_scale"]), t["key_offset"])
         checks = []
         if params or effect in NEEDS_LENGTH:
