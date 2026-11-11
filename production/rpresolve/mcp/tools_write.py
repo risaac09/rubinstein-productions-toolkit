@@ -549,6 +549,7 @@ def vertical_apply(args, ctx):
         tl, n = r["timeline"]["name"], len(r["targets"])
         comps = sum(len(t["comps"]) for t in r["targets"])
         plates = len(r["plates"])
+        stand_ins = sum(1 for t in r["targets"] for c in t["comps"] if c["notes"])
         made = (f"duplicate '{r['source_timeline']}' to '{tl}' at 1080x1920, then "
                 if r["create"] else "")
         if r["dry_run"]:
@@ -557,7 +558,10 @@ def vertical_apply(args, ctx):
                             + (f"; frame {plates} plate(s) on V{r['timeline']['track'] - 1} "
                                "with the crop of the item each continues" if plates else "")
                             + (f"; leave {len(r['unframed_below'])} other item(s) there as they are"
-                               if r["unframed_below"] else "") + _how(r))
+                               if r["unframed_below"] else "")
+                            + (f"; {stand_ins} person-matte-text comp(s) still hold the stand-in "
+                               "matte, which is not moved (see the comp's notes)" if stand_ins else "")
+                            + _how(r))
         elif r.get("duplicate", {}).get("mismatches"):
             r["summary"] = f"the copy '{tl}' does not match its source; nothing was framed"
         else:
@@ -1197,8 +1201,9 @@ def register(registry):
         "it and the copy alone is set to 1080x1920; an existing target must already be "
         "1080x1920 and is never resized. On each item of one video track it sets the item's "
         "own Scaling to 3 (fill), Pan to (0.5 - cx) x 1080 x zoom and Tilt to 0, moves the "
-        "pivot of an 'rp-fx zoom-push' comp and the centre and size of an 'rp-fx text-word' "
-        "comp to the crop centre, re-renders those comps and reads everything back. Refused, "
+        "pivot of an 'rp-fx zoom-push' comp, the centre and size of an 'rp-fx text-word' "
+        "comp and the word of an 'rp-fx person-matte-text' comp to the crop centre (its matte "
+        "stays on the subject and is not moved), re-renders those comps and reads everything back. Refused, "
         "writing nothing: a target not ending ' [auto]', crops.json not reviewed, an item "
         "count, name, file or zoom that differs from crops.json. On track 2 or above, a plate "
         "on the track below (an item that starts where montage item N starts and plays the file "
