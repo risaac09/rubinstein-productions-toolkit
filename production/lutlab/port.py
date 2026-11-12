@@ -26,6 +26,12 @@ def port_table(lut, src_space, dst_space, size=cube.DEFAULT_SIZE, ev=0.0):
     return cube.sample(lut, to_src(cube.lattice(size))), share
 
 
+def reencode(table, lut_out, out_encoding):
+    """A finished display picture (clipped to 0..1 in lut_out) re-encoded into out_encoding's code values;
+    the same arithmetic as pipeline.make_fn's out_encoding."""
+    return spaces.from_lin709(spaces.to_lin709(np.clip(table, 0, 1), lut_out), out_encoding)
+
+
 def monitor_copy(table, size, resample):
     """The in-camera copy of a table: 33 points, clipped to 0..1. `table` is reused when it is already 33
     points; otherwise resample(33) builds the 33-point one (putting a LUT onto a new lattice, not clipping a

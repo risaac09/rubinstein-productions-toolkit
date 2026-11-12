@@ -124,6 +124,8 @@ def main(argv=None):
     p.add_argument("--camera")
     p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
     p.add_argument("--ev", type=float, default=0.0, help="exposure offset in stops applied before the LUT")
+    p.add_argument("--out-encoding", help="re-encode the LUT's finished picture into this space's code values (--to rcm sets di)")
+    p.add_argument("--lut-out", default="r709", help="the space the LUT's own output is in (default r709)")
     p.add_argument("--monitor", action="store_true", help="also write a 33-point copy clipped to 0..1 for in-camera use")
     p.add_argument("--name")
     p.add_argument("--out")
@@ -210,14 +212,30 @@ def main(argv=None):
         if bool(a.dst) == bool(a.camera):
             ap.error("give --to SPACE or --camera NAME")
         src = spaces.check_space(a.src)
-        dst, label = (spaces.camera(a.camera) if a.camera else (spaces.check_space(a.dst), a.dst))
+        enc = a.out_encoding
+        if a.dst and a.dst.lower() == "rcm":
+            _, label, enc = spaces.RCM
+            dst = "di"
+        else:
+            dst, label = (spaces.camera(a.camera) if a.camera else (spaces.check_space(a.dst), a.dst))
+            if enc:
+                label += f" out {enc}"
+        if enc:
+            spaces.check_space(enc)
+            spaces.check_space(a.lut_out)
+            if a.monitor:
+                ap.error("--monitor is for cameras; rcm is for a Resolve node and no camera loads it")
         lut = cube.read_cube(a.lut)
         # keep a Finder copy's suffix ("Look.CUBE 2" -> "Look 2") so it never collides with "Look.CUBE"
         name = a.name or re.sub(r"\.(cube|dat)( \d+)?$", r"\2", Path(a.lut).name, flags=re.I)
         out = guard.out_dir(a.out, "ported")
         table, share = port.port_table(lut, src, dst, a.size, a.ev)
+        if enc:
+            table = port.reencode(table, a.lut_out, enc)
         path = out / f"{name} [{label}].cube"
         print(cube.write_cube(str(path), table, f"{name} [{label}] from {src}", overwrite=a.overwrite))
+        if enc:
+            print(f"output encoding: {enc} (LUT output read as {a.lut_out})")
         if a.monitor:
             mt = port.monitor_copy(table, a.size, lambda n: port.port_table(lut, src, dst, n, a.ev)[0])
             print(cube.write_cube(str(out / f"{name} [{label} monitor].cube"), mt,

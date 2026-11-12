@@ -1,0 +1,1 @@
+lutlab `port` gains `--to rcm` (and `--out-encoding SPACE` with `--lut-out SPACE`): a camera-log to Rec.709 conversion LUT becomes a DaVinci Intermediate in and out node for a Resolve Color Managed project, written as an `[RCM]` cube; `--monitor` is refused with it.

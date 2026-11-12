@@ -23,6 +23,7 @@ cd production
 ~/.venvs/rp-tools/bin/python -m lutlab fit-pairs --src log.tif --dst graded.tif --in vlog --out-space r709 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab looks BASE/params.json --camera pyxis,s5ii,rcm [--monitor] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab port LUT.cube --from vlog --camera pyxis --size 65 [--monitor] --out DIR
+~/.venvs/rp-tools/bin/python -m lutlab port LUT.cube --from vlog --to rcm --size 65 --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab diff A.cube B.cube --in vlog
 ~/.venvs/rp-tools/bin/python -m lutlab apply A.cube B.cube --frame still.tif [--frame ...] --out DIR
 ~/.venvs/rp-tools/bin/python -m lutlab library [--scan] [--list] [--space vlog] [--dupes]
@@ -52,6 +53,7 @@ camera itself; the Pyxis loads 33-point `.cube`. The S5II's LUT Library takes
 `.cube` (2 to 33 points) or Panasonic's `.vlt`, from the card's root, 10 slots,
 full range, and on a FAT32 (SD/SDHC) card the file name is 8 characters at most
 ([manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5M2/html/DC-S5M2_DVQP2839_eng/0071.html)).
+`--to rcm` ports a camera-log to Rec.709 LUT into a node for a Resolve Color Managed project: DaVinci Intermediate in, and the finished picture re-encoded to DaVinci Intermediate out (`--out-encoding SPACE` does the same for any space; `--lut-out SPACE` names the LUT's own output, default `r709`), written as `[RCM]` like the `looks` set. `--monitor` is refused with it.
 So a 33-point `--monitor` file loads as it is: no `.vlt` writer is needed.
 Copy it to the card under a short name (`RPNEUT.cube`). Check a bought
 pack's license before porting it to a camera it wasn't sold for, and keep

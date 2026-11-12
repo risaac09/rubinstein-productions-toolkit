@@ -336,6 +336,62 @@ class PortTest(unittest.TestCase):
         self.assertGreater(t1[16, 16, 16].mean(), t0[16, 16, 16].mean())
 
 
+class PortRcmTest(unittest.TestCase):
+    """port --to rcm: a camera-log to Rec.709 LUT becomes a DaVinci Intermediate in and out node."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        # a display LUT: V-Log in, Rec.709 (gamma 2.4) out, no look
+        self.lut = {"table": spaces.from_lin709(spaces.to_lin709(cube.lattice(65), "vlog"), "r709"),
+                    "domain_min": np.zeros(3), "domain_max": np.ones(3)}
+        cube.write_cube(str(self.tmp / "disp.cube"), self.lut["table"], "disp")
+
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from lutlab.__main__ import main
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            try:
+                main(["port", str(self.tmp / "disp.cube"), "--from", "vlog", "--size", "65",
+                      "--out", str(self.tmp / "o"), *argv])
+            except SystemExit as e:
+                return e.code, err.getvalue()
+        return 0, err.getvalue()
+
+    def test_round_trip_through_resolve_output_transform(self):
+        from lutlab import port
+        t, _ = port.port_table(self.lut, "vlog", "di", 65)
+        ported = {"table": port.reencode(t, "r709", "di"), "domain_min": np.zeros(3), "domain_max": np.ones(3)}
+        rng = np.random.default_rng(3)
+        # scene colours that stay inside both lattices: 0.01..0.9 linear with up to 20% tint per channel
+        lin = np.exp(rng.uniform(np.log(0.01), np.log(0.75), (500, 1))) * (1 + 0.2 * rng.uniform(-1, 1, (500, 3)))
+        seen = spaces.from_lin709(spaces.to_lin709(cube.sample(ported, spaces.from_lin709(lin, "di")), "di"), "r709")
+        want = cube.sample(self.lut, spaces.from_lin709(lin, "vlog"))
+        # tolerance 0.005 (code values): two trilinear samples of curved transforms on 65-point lattices
+        self.assertLess(np.abs(seen - want).max(), 0.005)  # reached 0.002
+
+    def test_cli_names_the_file_rcm(self):
+        self.assertEqual(self.run_cli("--to", "rcm")[0], 0)
+        self.assertTrue((self.tmp / "o" / "disp [RCM].cube").exists())
+
+    def test_refusals(self):
+        with self.assertRaises(ValueError):
+            self.run_cli("--to", "di", "--out-encoding", "nope")
+        for argv in (("--to", "rcm", "--monitor"), ("--to", "di", "--out-encoding", "di", "--monitor")):
+            code, err = self.run_cli(*argv)
+            self.assertEqual(code, 2)
+            self.assertIn("no camera loads it", err)
+
+    def test_without_new_flags_table_is_unchanged(self):
+        from lutlab import port
+        self.assertEqual(self.run_cli("--to", "di")[0], 0)
+        got = cube.read_cube(str(self.tmp / "o" / "disp [di].cube"))["table"]
+        want, _ = port.port_table(self.lut, "vlog", "di", 65)
+        np.testing.assert_allclose(got, want, atol=1e-5)  # the .cube text holds 5 decimals
+
+
 class DeltaTest(unittest.TestCase):
     def test_empty_delta_and_zero_white_balance_are_identity(self):
         p = synthetic_params("vlog")
