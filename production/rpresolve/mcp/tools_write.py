@@ -1412,8 +1412,9 @@ def register(registry):
         stabilize, title="Stabilize items", annotations=DESTRUCTIVE))
     registry.add(Tool(
         "queue_render",
-        "Queue one render job for a timeline for a delivery destination (with name and "
-        "target_dir); a destination is the only way to queue a render. It never starts a "
+        "Queue one render job for an ' [auto]' timeline for a delivery destination (with name and "
+        "target_dir); a timeline whose name does not end ' [auto]' is refused, even in a dry run "
+        "(duplicate_timeline_auto first); a destination is the only way to queue a render. It never starts a "
         "render: the operator starts renders. A destination sets format, codec, size, frame rate, "
         "audio, colour tags and captions, and names the file by the house rule "
         "(SW001_Guest_01_example-clip_16x9.mp4, Client_slug_master.mov, or for a music "

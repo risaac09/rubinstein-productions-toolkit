@@ -1749,7 +1749,8 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     """Queue one job that renders a timeline for a delivery destination
     (rpresolve.deliver), named from name_parts into target_dir; never start
     it. Refused, with every reason, when: the destination or name parts are
-    invalid; a render is running; the destination has a fixed size and the
+    invalid; the timeline's name does not end ' [auto]' (checked first, dry
+    run too); a render is running; the destination has a fixed size and the
     timeline another shape (or a size that cannot be read), since Resolve
     would scale the picture into the frame with bars; the target folder is
     missing, under /Volumes without its share mounted, or inside a git
@@ -1780,6 +1781,9 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     target_dir = os.path.expanduser(str(target_dir))
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     _, tl = api.find_timeline(project, timeline)
+    if not tl.GetName().endswith(AUTO):
+        raise Refused(f"'{tl.GetName()}' is not an [auto] timeline. Renders are queued only for "
+                      "timelines these tools made; duplicate it first (duplicate_timeline_auto).")
     if project.IsRenderingInProgress():
         raise Refused("a render is running; queue after it finishes.")
     subtitle_counts, subtitle_off, track_state_read = _subtitle_tracks(project, tl)

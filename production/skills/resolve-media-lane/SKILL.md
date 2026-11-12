@@ -49,7 +49,7 @@ Which to reach for:
 1. **Dry run, then `plan_sha`.** Every write defaults to a dry run. Show the plan, then run for real with the `plan_sha` it returned. A changed plan is refused.
 2. **Name the project.** `project` must match the open project exactly, so switching projects mid-run stops the write.
 3. **Additive only.** Nothing that existed is modified. Grades go only onto timelines whose name ends ` [auto]`. Four tools change something in place, each inside a fence: `set_color_management` (a fresh, empty project only), `relink` (an offline clip, to a file that verifies as the same take), and `stabilize` and `reframe_apply` (items on an ` [auto]` timeline only). `resolve-mcp.md` has the details.
-4. **Renders are queued, never started.** A person starts them.
+4. **Renders are queued, never started.** A person starts them. Only an `[auto]` timeline can be queued.
 5. **Outputs never go inside a git repository.** Most tools here refuse such a folder (`media-lane.md` lists which); give every one an output path outside any clone.
 6. **Tool results stay private.** They name media, people and transcripts. Never paste them into a commit, a pull request, an issue or anything public.
 7. **Numbers are not taste.** No tool here is an ear or eye check; hand those decisions to `media-review-loop.md`.
