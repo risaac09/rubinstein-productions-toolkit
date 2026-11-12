@@ -991,7 +991,199 @@ class TestCommand(unittest.TestCase):
             self.assertIn("git working tree", err.getvalue())
             with mock.patch.object(v, "draft_preview", return_value="p") as draft:
                 self.assertEqual(cli.main(["vertical", "draft", crops]), 0)
-            draft.assert_called_once_with(crops, d)  # the plan's own folder by default
+            draft.assert_called_once_with(crops, d, proxy_map=None)  # the plan's own folder by default
+
+
+def make_clip(ffmpeg, path, size="640x360", seconds=4, colours=("red", "lime", "blue", "yellow")):
+    """A clip whose colour changes every second, so a frame says which second of it was drawn."""
+    args = []
+    for c in colours[:seconds]:
+        args += ["-f", "lavfi", "-i", f"color=c={c}:s={size}:r=24:d=1"]
+    subprocess.run([ffmpeg, "-v", "error", "-y"] + args + [
+        "-filter_complex", f"concat=n={min(seconds, len(colours))}:v=1:a=0", "-pix_fmt", "yuv420p",
+        path], stdin=subprocess.DEVNULL, check=True)
+
+
+class TestSpeed(unittest.TestCase):
+    def test_plan_carries_speed_and_defaults_to_one(self):
+        rows = v.plan([item("a", "/m/a.mov", 0, 4), item("b", "/m/b.mov", 0, 4, speed=0.5)],
+                      mode="edge")["items"]
+        self.assertEqual([r["speed"] for r in rows], [1.0, 0.5])
+
+    def test_an_old_crops_file_without_speed_loads_and_reads_as_real_speed(self):
+        crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
+        del crops["items"][0]["speed"]
+        row = v.load_crops(crops)["items"][0]
+        self.assertNotIn("speed", row)  # not filled in: a stamped preview still matches
+        self.assertEqual(v.source_span(row), (0, 4))
+        self.assertNotIn("setpts", v.preview_filter(row))
+
+    def test_a_bad_speed_is_refused_by_plan_and_by_load(self):
+        for bad in (0, -1, "2", True):
+            with self.assertRaisesRegex(v.VerticalError, "speed must be a number above 0"):
+                v.plan([item("a", "/m/a.mov", 0, 4, speed=bad)], mode="edge")
+            crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
+            crops["items"][0]["speed"] = bad
+            with self.assertRaisesRegex(workflows.Refused, "speed must be a number above 0"):
+                v.load_crops(crops)
+        with self.assertRaisesRegex(v.VerticalError, "window item takes no retime"):
+            v.plan([item("a", "/m/a.mov", 0, 4), item("b", "/m/a.mov", 4, 6, speed=2,
+                                                       window="scale-window")], mode="edge")
+
+    def test_the_sheet_reads_the_source_a_retime_plays(self):
+        row = v.plan([item("a", "/m/a.mov", 10, 12, speed=0.5)], mode="edge")["items"][0]
+        self.assertEqual(v.source_span(row), (10, 11))  # 2 s on the timeline, 1 s of the source
+        row["speed"] = 2
+        self.assertEqual(v.source_span(row), (10, 14))
+        self.assertEqual(v.frame_times(row), [10.4, 12.0, 13.6])
+
+    def test_the_draft_reads_speed_times_the_length_and_keeps_the_timeline_length(self):
+        seen = []
+
+        def fake(cmd):
+            seen.append(cmd)
+            Path(cmd[-1]).touch()
+            return 0, ""
+        crops = v.plan([item("a", "/m/a.mov", 1, 3, speed=2), item("b", "/m/b.mov", 0, 2)],
+                       mode="edge")
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(v, "_run", side_effect=fake), \
+                mock.patch.object(v, "_has_hw", return_value=False):
+            v.draft_preview(crops, d, ffmpeg="ffmpeg")
+        a = next(c for c in seen if "file:/m/a.mov" in c)
+        self.assertEqual(a[a.index("-t") + 1], "4.0000")  # 2 s of timeline plays 4 s of source
+        self.assertEqual(a[-3:-1], ["-t", "2.0000"])      # and the part is 2 s long
+        self.assertIn("setpts=PTS/2", a[a.index("-vf") + 1])
+        b = next(c for c in seen if "file:/m/b.mov" in c)
+        self.assertEqual(b.count("-t"), 1)                 # real speed: the command is unchanged
+        self.assertNotIn("setpts", b[b.index("-vf") + 1])
+
+    def test_a_retimed_item_is_drawn_at_its_speed(self):
+        ffmpeg = reframe.FFMPEG
+        if not os.access(ffmpeg, os.X_OK):
+            self.skipTest("ffmpeg missing")
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "c.mp4")
+            make_clip(ffmpeg, clip)   # red, lime, blue, yellow: one second each
+            crops = v.plan([item("fast", clip, 0, 2, speed=2, size=[640, 360]),
+                            item("slow", clip, 2, 3, speed=0.5, size=[640, 360])], mode="edge")
+            path = v.draft_preview(crops, os.path.join(d, "plan"), ffmpeg=ffmpeg)
+            self.assertAlmostEqual(float(ffprobe_json(ffmpeg, path)["format"]["duration"]), 3.0,
+                                   delta=0.15)  # the build's length: 2 s + 1 s
+            def name(t):
+                r, g, b_ = pixel(ffmpeg, path, t)
+                return "yellow" if r > 200 and g > 200 and b_ < 80 else TestPreview.colour(
+                    None, ffmpeg, path, t)
+            names = [name(t) for t in (0.5, 1.5, 2.25, 2.75)]
+            # fast: 0.5 s in is source 1 s (lime), 1.5 s in is source 3 s (yellow); slow: 1 s of
+            # timeline plays 0.5 s of blue, so both samples read blue
+            self.assertEqual(names, ["lime", "yellow", "blue", "blue"])
+
+
+class TestBrawProxy(unittest.TestCase):
+    def setUp(self):
+        self.ffmpeg = reframe.FFMPEG
+        if not os.access(self.ffmpeg, os.X_OK):
+            self.skipTest("ffmpeg missing")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = self.tmp.name
+        self.addCleanup(self.tmp.cleanup)
+        self.braw = os.path.join(self.d, "A001.braw")
+        with open(self.braw, "wb") as f:
+            f.write(b"not a video ffmpeg can open")
+        self.proxy = os.path.join(self.d, "A001.mov")
+        make_clip(self.ffmpeg, self.proxy, size="480x270", seconds=4)  # a smaller proxy, same shape
+
+    def crops(self, **kw):
+        return v.plan([item("b", self.braw, 1, 3, **kw)], mode="edge", overrides={"b": 0.5})
+
+    def test_no_proxy_names_the_two_ways_forward_and_nothing_is_reviewable(self):
+        out = os.path.join(self.d, "plan")
+        with self.assertRaises(v.VerticalError) as cm:
+            v.draft_preview(self.crops(), out, ffmpeg=self.ffmpeg)
+        msg = str(cm.exception)
+        self.assertIn("provide a proxy", msg)
+        self.assertIn("review a Resolve frame of the item by hand", msg)
+        with self.assertRaises(v.VerticalError) as cm:
+            v.review_sheets(self.crops(), os.path.join(self.d, "sheets"), ffmpeg=self.ffmpeg)
+        self.assertIn("provide a proxy", str(cm.exception))
+        path = os.path.join(self.d, "crops.json")
+        with open(path, "w") as f:
+            json.dump(self.crops(), f)
+        with self.assertRaisesRegex(v.VerticalError, "vertical draft"):
+            v.mark_reviewed(path)   # no preview.mp4, so no mark
+
+    def test_a_proxy_on_the_item_or_in_the_map_draws_the_preview_at_the_items_centre(self):
+        for kw, pmap in (({"proxy": self.proxy}, None), ({}, {self.braw: self.proxy})):
+            out = os.path.join(self.d, "plan%d" % bool(pmap))
+            crops = self.crops(**kw)
+            path = v.draft_preview(crops, out, ffmpeg=self.ffmpeg, proxy_map=pmap)
+            info = ffprobe_json(self.ffmpeg, path)
+            self.assertEqual((info["streams"][0]["width"], info["streams"][0]["height"]), (540, 960))
+            self.assertEqual(TestPreview.colour(None, self.ffmpeg, path, 0.5), "lime")  # second 1
+            self.assertEqual(TestPreview.colour(None, self.ffmpeg, path, 1.5), "blue")  # second 2
+            self.assertEqual(crops["items"][0]["path"], self.braw)   # the plan still names the source
+            self.assertEqual("proxy" in crops["items"][0], bool(kw))  # a map never writes into it
+            plan_file = os.path.join(out, "crops.json")
+            with open(plan_file, "w") as f:
+                json.dump(crops, f)
+            self.assertTrue(v.mark_reviewed(plan_file)["reviewed"])  # the preview exists now
+
+    def test_the_sheet_is_drawn_from_the_proxy(self):
+        sheets = v.review_sheets(self.crops(proxy=self.proxy), os.path.join(self.d, "s"),
+                                 ffmpeg=self.ffmpeg)
+        self.assertEqual(len(sheets), 1)
+        self.assertGreater(os.path.getsize(sheets[0]), 1000)
+
+    def test_a_bad_proxy_is_refused(self):
+        def draw(proxy):
+            return v.draft_preview(self.crops(proxy=proxy), os.path.join(self.d, "p"),
+                                   ffmpeg=self.ffmpeg)
+        with self.assertRaisesRegex(v.VerticalError, "is not a file"):
+            draw(os.path.join(self.d, "missing.mov"))
+        junk = os.path.join(self.d, "junk.mov")
+        with open(junk, "wb") as f:
+            f.write(b"junk")
+        with self.assertRaisesRegex(v.VerticalError, "no video stream"):
+            draw(junk)
+        short = os.path.join(self.d, "short.mov")
+        make_clip(self.ffmpeg, short, size="480x270", seconds=2)
+        with self.assertRaisesRegex(v.VerticalError, "reads to"):   # the item reads to 3 s
+            draw(short)
+        wrong = os.path.join(self.d, "wrong.mov")
+        make_clip(self.ffmpeg, wrong, size="270x480", seconds=4)
+        with self.assertRaisesRegex(v.VerticalError, "not the same shape"):
+            draw(wrong)
+
+    def test_the_proxy_must_last_as_long_as_the_source_within_a_frame(self):
+        real = v._media
+
+        def media(path):
+            return (6048, 4032, 5.0, 24.0) if path == self.braw else real(path)
+        with mock.patch.object(v, "_media", side_effect=media):
+            with self.assertRaisesRegex(v.VerticalError, "more than a frame apart"):
+                v.draft_preview(self.crops(proxy=self.proxy), os.path.join(self.d, "p"),
+                                ffmpeg=self.ffmpeg)
+
+    def test_a_proxy_that_is_one_frame_off_passes(self):
+        real = v._media
+
+        def media(path):
+            return (480, 270, 4.0 + 1 / 48, 24.0) if path == self.braw else real(path)
+        with mock.patch.object(v, "_media", side_effect=media):
+            v.draft_preview(self.crops(proxy=self.proxy), os.path.join(self.d, "p"),
+                            ffmpeg=self.ffmpeg)
+
+    def test_the_proxy_map_is_a_command_option(self):
+        from rpresolve import cli
+        crops = os.path.join(self.d, "crops.json")
+        with open(crops, "w") as f:
+            json.dump(self.crops(), f)
+        pmap = os.path.join(self.d, "map.json")
+        with open(pmap, "w") as f:
+            json.dump({self.braw: self.proxy}, f)
+        with mock.patch.object(v, "draft_preview", return_value="p") as draft:
+            self.assertEqual(cli.main(["vertical", "draft", crops, "--proxy-map", pmap]), 0)
+        draft.assert_called_once_with(crops, self.d, proxy_map={self.braw: self.proxy})
 
 
 if __name__ == "__main__":
