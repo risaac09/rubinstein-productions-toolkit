@@ -320,7 +320,7 @@ class TestCrops(Base):
     def setUp(self):
         super().setUp()
         self.src = os.path.join(self.dir, "bands.mp4")
-        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
                         "color=c=red:s=640x1080:r=24:d=4", "-f", "lavfi", "-i",
                         "color=c=lime:s=640x1080:r=24:d=4", "-f", "lavfi", "-i",
                         "color=c=blue:s=640x1080:r=24:d=4", "-filter_complex", "hstack=inputs=3",
@@ -1164,8 +1164,25 @@ def late_by(t, late):
     raise AssertionError("no frame time near %s" % t)
 
 
+class Frames:
+    """Reads a draft's decoded frames (self.raw, self.size, self.W, self.H) by colour."""
+
+    def colour(self, n, x, y):
+        i = n * self.size + (y * self.W + x) * 3
+        r, g, b = self.raw[i:i + 3]
+        for name, hit in (("R", r > 150 and g < 100 and b < 100),
+                          ("G", g > 90 and r < 100 and b < 100),
+                          ("B", b > 150 and r < 100 and g < 100)):
+            if hit:
+                return name
+        return "?"
+
+    def red_width(self, n):
+        return sum(self.colour(n, x, self.H // 2) == "R" for x in range(self.W))
+
+
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
-class TestWindowLayerTiming(Base):
+class TestWindowLayerTiming(Frames, Base):
     """A 29.97 fps source drawn at 24 fps, one colour per shot, so each draft frame says which
     layer is on screen and how big the window is. The window layer must be there from frame
     0 and reach full frame on the macro's frame (37 for a scale-window, 26 for a crop-window),
@@ -1212,19 +1229,6 @@ class TestWindowLayerTiming(Base):
         self.raw = raw
         self.assertEqual(len(raw) // self.size, 24 + 42 + 36 + 36)
 
-    def colour(self, n, x, y):
-        i = n * self.size + (y * self.W + x) * 3
-        r, g, b = self.raw[i:i + 3]
-        for name, hit in (("R", r > 150 and g < 100 and b < 100),
-                          ("G", g > 90 and r < 100 and b < 100),
-                          ("B", b > 150 and r < 100 and g < 100)):
-            if hit:
-                return name
-        return "?"
-
-    def red_width(self, n):
-        return sum(self.colour(n, x, self.H // 2) == "R" for x in range(self.W))
-
     def test_a_scale_window_is_on_screen_from_its_first_frame(self):
         first = self.START[1]
         for j, z in ((0, 0.22), (1, 0.22 + 0.5 / 36), (2, 0.22 + 1.0 / 36), (36, 0.72)):
@@ -1252,6 +1256,57 @@ class TestWindowLayerTiming(Base):
             for j in (26, 27):
                 self.assertEqual(self.colour(first + j, 5, 5), self.colour(first + j, 640, 360),
                                  msg=f"span at {first}, frame {j}")
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestFromBlackWindowTiming(Frames, Base):
+    """A window on the first span (over black, no plate) from a red 29.97 fps source drawn at 24
+    fps, from two in points that land -ss on different parts of a source frame. The window's
+    clock reads the draw rate, so a scale-window is full frame on the macro's frame 37 and a
+    crop-window on frame 26 whichever part of a source frame -ss lands on (T32)."""
+
+    W, H = 1280, 720
+
+    def draft(self, effect, ss):
+        src = os.path.join(self.dir, "red.mp4")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=red:s=640x360:r=30000/1001:d=4", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", src], check=True)
+        m = copy.deepcopy(METHOD)
+        m.update(look=None, length_s=1.75)
+        m["rules"]["end"] = None
+        m["slots"] = [{**m["slots"][0], "seconds": 1.75, "effect": effect, "scale": None,
+                       "move": "static", "transition_out": {"type": "cut", "frames": 0},
+                       "text": None}]
+        d = os.path.join(self.dir, "plans", f"{effect}-{ss}")
+        os.makedirs(d)
+        with open(os.path.join(d, "method.json"), "w") as f:
+            json.dump(m, f)
+        with open(os.path.join(d, "manifest.json"), "w") as f:
+            json.dump(methods.to_manifest(m, [{"source_path": src, "in": ss, "out": ss + 1.75}]), f)
+        doc = drafts.build([d], os.path.join(self.dir, f"out-{effect}-{ss}"), hw=False,
+                           lanes=1)["drafts"][0]
+        self.raw = subprocess.run(["ffmpeg", "-v", "error", "-i", doc["file"], "-f", "rawvideo",
+                                   "-pix_fmt", "rgb24", "-"], capture_output=True,
+                                  check=True).stdout
+        self.size = self.W * self.H * 3
+        self.assertEqual(len(self.raw) // self.size, 42)
+
+    def test_a_scale_window_on_the_first_span_snaps_on_frame_37(self):
+        for ss in (0.0, 0.5):
+            with self.subTest(ss=ss):
+                self.draft("scale-window", ss)
+                self.assertAlmostEqual(self.red_width(36), self.W * 0.72, delta=8)
+                for j in (37, 38):
+                    self.assertGreater(self.red_width(j), self.W - 10, msg=f"frame {j}")
+
+    def test_a_crop_window_on_the_first_span_is_full_frame_on_frame_26(self):
+        for ss in (0.0, 0.01, 0.5):  # 0.01 made it full a frame early before the fix
+            with self.subTest(ss=ss):
+                self.draft("crop-window", ss)
+                self.assertNotEqual(self.colour(25, 5, 5), "R")  # the box has not reached the corner
+                for j in (26, 27):
+                    self.assertEqual(self.colour(j, 5, 5), "R", msg=f"frame {j}")
 
 
 class TestLanes(unittest.TestCase):
