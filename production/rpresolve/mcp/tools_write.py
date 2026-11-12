@@ -514,8 +514,10 @@ def apply_effect(args, ctx):
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
         skipped += _skipped_note(r)
         if r["dry_run"]:
-            r["summary"] = (f"would add a Fusion comp '{r['effect']['comp']}' with the {e} macro "
-                            f"to {n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}"
+            what = (f"set the speed on the item itself (no comp) for" if r["effect"].get("route") == "native"
+                    else f"add a Fusion comp '{r['effect']['comp']}' with the {e} macro to")
+            r["summary"] = (f"would {what} "
+                            f"{n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}"
                             + ledgercheck.summary(r["ledger"]) + _how(r))
         else:
             ok = sum(1 for x in r["results"] if x["ok"])

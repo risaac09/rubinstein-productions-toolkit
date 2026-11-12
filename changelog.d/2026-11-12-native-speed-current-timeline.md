@@ -1,0 +1,1 @@
+A constant `retime` set on the item itself is tried again with its timeline current (then on the Edit page, then with the speed alone) when Resolve refuses the plain call, and the result says which way worked. The first live run returned False with another timeline current.
