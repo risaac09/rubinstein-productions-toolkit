@@ -257,6 +257,27 @@ def duplicate_timeline_auto(args, ctx):
         return run() if args["dry_run"] else _journalled("duplicate_timeline_auto", args, run)
 
 
+def set_current_timeline(args, ctx):
+    _require_sha(args)
+
+    def run():
+        r = workflows.set_current_timeline(ctx.session.get(), args["project"],
+                                           args.get("timeline"), args.get("restore_to"),
+                                           dry_run=args["dry_run"],
+                                           project_id=args.get("project_id"),
+                                           expect_sha=args.get("plan_sha"))
+        was, to = r["current"]["name"], r["target"]["name"]
+        if r["dry_run"]:
+            r["summary"] = f"would make '{to}' current (now '{was}')" + _how(r)
+        else:
+            r["summary"] = (f"made '{r['current']['name']}' current, read back; previous was "
+                            f"'{r['previous']}'. Put it back with restore_to '{r['previous']}'")
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("set_current_timeline", args, run)
+
+
 # ---------------------------------------------------------------------------
 # set_color_management, timeline_from_clips
 # ---------------------------------------------------------------------------
@@ -1000,6 +1021,24 @@ def register(registry):
             **DRY_RUN},
          "required": ["project", "timeline"], "additionalProperties": False},
         duplicate_timeline_auto, title="Duplicate a timeline as [auto]", annotations=WRITE))
+    registry.add(Tool(
+        "set_current_timeline",
+        "Make an ' [auto]' timeline the project's current timeline, so frame-reading tools "
+        "(which render only the current timeline) can look at it, then read the current timeline "
+        "back. Returns {previous, current}; pass the previous name as restore_to to put the "
+        "operator's own timeline back (restore_to accepts any name). Changes nothing else: no "
+        "page switch, no playhead move beyond what Resolve itself does. Give exactly one of "
+        "timeline or restore_to. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "timeline": {"type": "string", "pattern": " \\[auto\\]$",
+                         "description": "Name of the ' [auto]' timeline to make current."},
+            "restore_to": {"type": "string", "minLength": 1,
+                           "description": "Name of the timeline to put back (a `previous` an "
+                           "earlier call returned); any name is accepted."},
+            **DRY_RUN},
+         "required": ["project"], "additionalProperties": False},
+        set_current_timeline, title="Make an [auto] timeline current", annotations=WRITE))
     registry.add(Tool(
         "set_color_management",
         "Set the colour-management Project Settings that `ingest` needs (preset 'managed': "

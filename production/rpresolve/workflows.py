@@ -788,6 +788,45 @@ def duplicate_auto(resolve, project_name, timeline, new_name=None, dry_run=False
     return out
 
 
+def set_current_timeline(resolve, project_name, timeline=None, restore_to=None, dry_run=False,
+                         project_id=None, expect_sha=None):
+    """Make a timeline the project's current one and read it back, so the frame-reading tools
+    (which render only the current timeline) can see it. `timeline` must end ' [auto]';
+    `restore_to` names any timeline, to put the operator's own back (the `previous` an earlier
+    call returned). Nothing else changes: no page switch, no playhead move. Returns {project,
+    current, target, restoring, plan_sha, dry_run, previous, exit_status}."""
+    if bool(timeline) == bool(restore_to):
+        raise Refused("give exactly one of timeline (an [auto] timeline) or restore_to (the "
+                      "previous timeline a call returned).")
+    pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
+    _, tl = api.find_timeline(project, restore_to or timeline)
+    name, uid = tl.GetName(), tl.GetUniqueId()
+    if not restore_to and not name.endswith(AUTO):
+        raise Refused(f"'{name}' does not end with '{AUTO}'; only an [auto] timeline is made "
+                      "current. To put the operator's timeline back, pass restore_to.")
+    cur = project.GetCurrentTimeline()
+    cur_name, cur_id = (cur.GetName(), cur.GetUniqueId()) if cur else (None, None)
+    sha = plan_sha("set_current_timeline", pin.unique_id, cur_id, uid)
+    out = {"project": {"name": pin.name, "id": pin.unique_id},
+           "current": {"name": cur_name, "unique_id": cur_id},
+           "target": {"name": name, "unique_id": uid}, "restoring": bool(restore_to),
+           "plan_sha": sha, "dry_run": dry_run, "previous": None, "exit_status": 0}
+    if dry_run:
+        return out
+    if expect_sha and expect_sha != sha:
+        raise Refused("the plan changed since the dry run (the current timeline or the target "
+                      "differ); run the dry run again and review it")
+    project = pin.check(pm)
+    ok = project.SetCurrentTimeline(tl)
+    now = project.GetCurrentTimeline()
+    got = (now.GetName(), now.GetUniqueId()) if now else (None, None)
+    if not ok or got[1] != uid:
+        raise api.WriteNotApplied(f"SetCurrentTimeline('{name}'): Resolve reports the current "
+                                  f"timeline as '{got[0]}'. Check for a modal dialog in Resolve.")
+    out.update(previous=cur_name, current={"name": got[0], "unique_id": got[1]})
+    return out
+
+
 def set_color_management(resolve, project_name, preset=None, dry_run=False, project_id=None,
                          expect_sha=None, check_cancel=None):
     """Set a colour-management preset (rpresolve.colormgmt) on the open

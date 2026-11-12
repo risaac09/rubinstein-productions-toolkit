@@ -113,6 +113,51 @@ class TestDuplicate(Base):
         self.assertEqual(r["new_name"], "Edit v2 [auto]")
 
 
+class TestSetCurrentTimeline(Base):
+    def test_dry_run_default_then_real_reports_previous(self):
+        auto = self.make_auto()
+        dry = call("set_current_timeline", {"timeline": "Edit [auto]"}, self.resolve)
+        self.assertTrue(dry["dry_run"])
+        self.assertEqual((dry["current"]["name"], dry["target"]["name"]),
+                         ("Where the operator is", "Edit [auto]"))
+        self.assertIs(self.project.current, self.here)
+        page = self.resolve.page
+        real = call("set_current_timeline", {"timeline": "Edit [auto]", "dry_run": False,
+                                             "plan_sha": dry["plan_sha"]}, self.resolve)
+        self.assertEqual((real["previous"], real["current"]["name"]),
+                         ("Where the operator is", "Edit [auto]"))
+        self.assertIs(self.project.current, auto)
+        self.assertEqual(self.resolve.page, page)
+        self.assertEqual(self.journal()[-2:], ["started", "finished"])
+
+    def test_real_run_needs_the_sha(self):
+        self.make_auto()
+        with self.assertRaisesRegex(workflows.Refused, "plan_sha"):
+            call("set_current_timeline", {"timeline": "Edit [auto]", "dry_run": False},
+                 self.resolve)
+        self.assertIs(self.project.current, self.here)
+
+    def test_non_auto_is_refused_but_restore_to_takes_any_name(self):
+        auto = self.make_auto()
+        with self.assertRaises(AssertionError):  # the schema's pattern
+            call("set_current_timeline", {"timeline": "Edit"}, self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "does not end"):
+            workflows.set_current_timeline(self.resolve, P, timeline="Edit", dry_run=True)
+        with self.assertRaisesRegex(workflows.Refused, "exactly one"):
+            call("set_current_timeline", {}, self.resolve)
+        self.project.current = auto
+        _, real = run_twice("set_current_timeline", {"restore_to": "Where the operator is"},
+                            self.resolve)
+        self.assertEqual(real["current"]["name"], "Where the operator is")
+        self.assertIs(self.project.current, self.here)
+
+    def test_a_read_back_that_differs_is_an_error(self):
+        self.make_auto()
+        with mock.patch.object(type(self.project), "SetCurrentTimeline", return_value=True):
+            with self.assertRaises(api.WriteNotApplied):
+                run_twice("set_current_timeline", {"timeline": "Edit [auto]"}, self.resolve)
+
+
 class TestApplyGrade(Base):
     def setUp(self):
         super().setUp()
@@ -546,7 +591,7 @@ class TestQueueRenderIsDestinationOnly(Base):
     def test_the_listed_tool_has_no_preset(self):
         self.h.send({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         tools = {t["name"]: t for t in self.h.recv()["result"]["tools"]}
-        self.assertEqual(len(tools), 42)  # link_proxies, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect, edit_methods, vertical_apply and assemble_timeline
+        self.assertEqual(len(tools), 43)  # link_proxies, 28, plus the seven offline tools of VP-18, plus ograf_template_check, import_timeline, apply_effect, edit_methods, vertical_apply and assemble_timeline
         tool = tools["queue_render"]
         props = tool["inputSchema"]["properties"]
         self.assertEqual(sorted(props), ["destination", "dry_run", "name", "plan_sha", "project",
