@@ -247,6 +247,123 @@ class TestImportTimeline(Base):
         self.assertIn("8 clip(s) were added to the bin 'Master'", str(cm.exception))
 
 
+class TestImportExclude(Base):
+    def listed(self, doc):
+        import json
+        p = os.path.join(self.dir, "exclude.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        return p
+
+    def args(self, **kw):
+        return {"name": self.name, "file": self.file, **kw}
+
+    def test_a_file_a_clip_plays_from_refuses_both_runs_and_imports_nothing(self):
+        parent = os.path.basename(self.dir)
+        for take in ("A", "a.mp4", f"{parent}/a.mp4"):
+            ex = self.listed({"takes": [take]})
+            for extra in ({}, {"dry_run": False, "plan_sha": "0" * 64}):
+                with self.assertRaisesRegex(workflows.Refused,
+                                            r"excluded take\(s\) in the file: a1 at frame 0 a\.mp4"):
+                    call("import_timeline", self.args(exclude=ex, **extra), self.resolve)
+        self.assertNotIn("ImportTimelineFromFile", [c[1] for c in rf.CALLS])
+        self.assertNotIn(self.name, self.tl_names())
+
+    def test_an_audio_clip_and_an_offline_file_are_checked_too(self):
+        for take, who in (("music", "music at frame 0 music.wav"),
+                          ("missing", "cutout at frame 75 missing.mov")):
+            with self.assertRaisesRegex(workflows.Refused, who):
+                call("import_timeline", self.args(exclude=self.listed({"takes": [take]})),
+                     self.resolve)
+
+    def test_a_clean_list_imports_and_is_carried(self):
+        ex = self.listed({"takes": ["elsewhere", "mp"], "shots": ["s1"]})  # a part of a name is no match
+        dry, real = run_twice("import_timeline", self.args(exclude=ex), self.resolve)
+        for r in (dry, real):
+            self.assertEqual((r["exclude"]["path"], r["exclude"]["takes"], r["exclude"]["matches"]),
+                             (ex, ["elsewhere", "mp"], []))
+            self.assertIsNone(r["exclude_note"])
+            self.assertNotIn("no exclude list given", r["summary"])
+        self.assertEqual(real["exit_status"], 0)
+
+    def test_an_import_with_no_list_says_nothing_was_checked(self):
+        dry, real = run_twice("import_timeline", self.args(), self.resolve)
+        for r in (dry, real):
+            self.assertIsNone(r["exclude"])
+            self.assertIn("no exclude list given", r["exclude_note"])
+            self.assertIn("no exclude list given: nothing was checked for excluded takes",
+                          r["summary"])
+
+    def test_the_plan_sha_follows_the_list(self):
+        none = call("import_timeline", self.args(), self.resolve)["plan_sha"]
+        a = call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]})),
+                 self.resolve)["plan_sha"]
+        b = call("import_timeline", self.args(exclude=self.listed({"takes": ["y"]})),
+                 self.resolve)["plan_sha"]
+        self.assertEqual(len({none, a, b}), 3)
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]}),
+                                              dry_run=False, plan_sha=b), self.resolve)
+
+    def test_the_path_must_be_absolute_and_the_file_must_name_takes(self):
+        with self.assertRaisesRegex(ValueError, "exclude must be an absolute path"):
+            call("import_timeline", self.args(exclude="exclude.json"), self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "`takes`"):
+            call("import_timeline", self.args(exclude=self.listed({"take": ["a"]})), self.resolve)
+
+    def test_a_compound_ref_clip_is_reported_unchecked_not_passed(self):
+        text = FCPXML.format(dir=self.dir).replace(
+            '<effect id=', '<media id="r6" name="comp"><sequence format="r1" duration="3s">'
+            '<spine><asset-clip ref="r2" name="inner" offset="0s" duration="3s"/></spine>'
+            '</sequence></media>\n    <effect id=').replace(
+            '<asset-clip ref="r2" name="a3" offset="6s" start="9s" duration="3s"/>',
+            '<ref-clip ref="r6" name="nest" offset="6s" start="0s" duration="3s"/>')
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(text)
+        dry, real = run_twice("import_timeline",
+                              self.args(exclude=self.listed({"takes": ["elsewhere"]})),
+                              self.resolve)
+        for r in (dry, real):
+            self.assertEqual([(u["name"], u["record"]) for u in r["unchecked"]], [("nest", 150)])
+            self.assertIn("not a file asset", r["unchecked"][0]["why"])
+            self.assertIn("1 event(s) could not be matched to a file and were not checked",
+                          r["summary"])
+            self.assertIn("1 event(s) could not be matched to a file and were not checked",
+                          " ".join(r["warnings"]))
+            self.assertIsNone(r["exclude_note"])
+
+    def test_an_asset_with_a_relative_src_is_reported_unchecked(self):
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(FCPXML.format(dir=self.dir).replace(f"file://{self.dir}/music.wav",
+                                                        "music.wav"))
+        ex = self.listed({"takes": ["music"]})  # the list names it, the reader cannot see it
+        dry, real = run_twice("import_timeline", self.args(exclude=ex), self.resolve)
+        for r in (dry, real):
+            self.assertEqual([u["name"] for u in r["unchecked"]], ["music"])
+            self.assertIn("'music.wav' is not an absolute path", r["unchecked"][0]["why"])
+            self.assertIn("1 event(s) could not be matched", r["summary"])
+
+    def test_every_event_matched_leaves_unchecked_empty_and_no_list_has_none(self):
+        clean = call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]})),
+                     self.resolve)
+        self.assertEqual(clean["unchecked"], [])
+        self.assertNotIn("could not be matched", clean["summary"])
+        self.assertEqual(call("import_timeline", self.args(), self.resolve)["unchecked"], [])
+
+    def test_a_failed_real_run_still_carries_the_exclude_sentence(self):
+        v1 = self.pool.import_layout[self.file]["video"][0]
+        v1[2] = ("a2", 76, 75, {"ZoomX": 1.2})
+        _, real = run_twice("import_timeline", self.args(), self.resolve)
+        self.assertIn("import_timeline FAILED", real["summary"])
+        self.assertIn("no exclude list given: nothing was checked for excluded takes",
+                      real["summary"])
+        _, real = run_twice("import_timeline",
+                            self.args(exclude=self.listed({"takes": ["x"]}), name="Reel 02 [auto]"),
+                            self.resolve)
+        self.assertIn("import_timeline FAILED", real["summary"])
+        self.assertNotIn("no exclude list given", real["summary"])
+
+
 class TestReaderWrappers(Base):
     def test_a_clip_wrapper_counts_once_and_its_connected_lane_still_counts(self):
         wrapped = FCPXML.format(dir=self.dir).replace(

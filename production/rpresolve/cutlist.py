@@ -481,7 +481,18 @@ def load_exclude(path):
 NO_EXCLUDE = "no exclude list given"
 
 
-def _named(path, takes):
+def exclude_report(ex):
+    """What a build that found no excluded take carries: the list's path, takes and hash."""
+    return {"path": ex["path"], "takes": ex["takes"], "sha256": ex["sha256"], "matches": [],
+            "not_checked": ex["not_checked"]}
+
+
+def exclude_note(report):
+    """None when a list was checked, else the sentence saying nothing was."""
+    return None if report else NO_EXCLUDE + ": nothing was checked for excluded takes"
+
+
+def named_by(path, takes):
     """Takes naming a file: its stem, its basename or a path suffix, ignoring case."""
     full = str(path).replace("\\", "/").lower()
     base = full.rsplit("/", 1)[-1]
@@ -498,7 +509,7 @@ def exclude_matches(m, takes):
     """[(span index from 0, source path, take)] for every span of the manifest's first clip
     whose source a take names: its stem, its basename or a path suffix, ignoring case."""
     return [(i, path, take) for i, span in enumerate(m["clips"][0]["spans"])
-            for path in [source_for(m, span)["path"]] for take in _named(path, takes)]
+            for path in [source_for(m, span)["path"]] for take in named_by(path, takes)]
 
 
 def exclude_music_matches(m, takes):
@@ -506,7 +517,7 @@ def exclude_music_matches(m, takes):
     as exclude_matches); empty when there is no music."""
     music = m.get("music")
     path = music.get("path") if isinstance(music, dict) else None
-    return [(path, take) for take in _named(path, takes)] if path else []
+    return [(path, take) for take in named_by(path, takes)] if path else []
 
 
 def single_source(m, what="this tool"):

@@ -135,8 +135,10 @@ def cut(args, ctx):
     _require_sha(args)
     manifest = _existing(args["manifest"], "manifest")
     ctx.check_cancel()
+    # offline, before the lock
     gate = workflows.cut_gate(manifest, args.get("clips"), audio=args["audio"],
-                              force=args["force"])  # offline, before the lock
+                              force=args["force"],
+                              exclude=args.get("exclude") and _abs(args["exclude"], "exclude"))
 
     def run():
         r = workflows.cut(ctx.session.get(), args["project"], manifest, prefix=args["prefix"],
@@ -158,6 +160,7 @@ def cut(args, ctx):
                             _unreframed(r["unreframed"]) + _refused(r["refused"]) +
                             (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
                              if bars else "") +
+                            (f"; {r['exclude_note']}" if r["exclude_note"] else "") +
                             f". To run it, call again with dry_run false and plan_sha "
                             f"{r['plan_sha']}.")
         else:
@@ -177,6 +180,7 @@ def cut(args, ctx):
                             (f"; BARS (the picture does not fill the frame) on {', '.join(bars)}"
                              if bars else "") +
                             settingsguard.clause(r.get("settings_drift_rows")) +
+                            (f"; {r['exclude_note']}" if r["exclude_note"] else "") +
                             ("; the UI was not fully restored" if r["ui_restore_problems"]
                              else ""))
         return r
@@ -330,13 +334,17 @@ def import_timeline(args, ctx):
         r = workflows.import_timeline(
             ctx.session.get(), args["project"], args["name"], args["file"],
             dry_run=args["dry_run"], project_id=args.get("project_id"),
-            check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+            check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"),
+            exclude=args.get("exclude") and _abs(args["exclude"], "exclude"))
         n = sum(1 for e in r["events"] if e["kind"] == "video")
         na = len(r["events"]) - n
         nt = len(r["transitions"])
         what = f"{n} video clip(s), {na} audio clip(s) and {nt} transition(s) at {r['rate']} fps"
+        excl = ("; " + r["exclude_note"] if r["exclude_note"] else "") + (
+            f"; {len(r['unchecked'])} event(s) could not be matched to a file and were not "
+            "checked against the exclude list" if r["unchecked"] else "")
         missing = (f"; {len(r['media_missing'])} media file(s) missing" if r["media_missing"]
-                   else "")
+                   else "") + excl
         if r["dry_run"]:
             r["summary"] = (f"would import '{os.path.basename(r['file'])}' as '{r['timeline']}': "
                             f"{what}, source clips into the open bin '{r['lands_in_bin']}'" +
@@ -344,13 +352,14 @@ def import_timeline(args, ctx):
         elif r["problems"]:
             r["summary"] = (f"import_timeline FAILED: '{r['timeline']}' was made but does not "
                             "match the file, and is left in the project for you to check or "
-                            "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
+                            "delete: " + "; ".join(r["problems"][:2]) + excl + _ui(r))
         else:
             kinds = sorted({t["placed_as"] for t in r["transitions"] if t.get("placed_as")})
             r["summary"] = (f"imported '{r['timeline']}': {what}; every video clip read back at "
                             "its record position" +
                             (f", every transition in place (placed as {', '.join(kinds)})"
-                             if nt else "") + _ui(r))
+                             if nt else "") +
+                            excl + _ui(r))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -946,10 +955,18 @@ def register(registry):
         "settings read differently after its custom-settings write is named SETTINGS DRIFT "
         "(settings_drift_rows); it is reported, nothing is set back, and the exit status does "
         "not change. "
+        "Pass the operator's exclude list as exclude: a manifest in which a span of a clip "
+        "asked for plays from a source on it is refused (endcheck or not), and the list's hash "
+        "is part of the plan_sha. Omitted, nothing is checked and the result's exclude_note "
+        "says so. "
         "Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "manifest": {"type": "string", "description": "Absolute path of the manifest JSON."},
+            "exclude": {"type": "string",
+                        "description": "Absolute path of the operator's exclude list, JSON "
+                        "with `takes`, a list of file stems, names or path suffixes. A "
+                        "manifest naming one as a span's source is refused."},
             "prefix": {"type": "string", "pattern": "^[A-Za-z0-9-]{1,24}$", "default": "SW",
                        "description": "Timeline name prefix."},
             "clips": {"type": "array", "items": {"type": "string"},
@@ -1053,8 +1070,10 @@ def register(registry):
         "kind Resolve placed (a Dip to Color imports as a Cross Dissolve). Keyframed "
         "transforms and retimes are not read back. Nothing "
         "existing is modified or removed; a timeline that does not read back is named under "
-        "left_behind. The current timeline, playhead and page are put back. Dry run first; the "
-        "real run needs its plan_sha.",
+        "left_behind. The current timeline, playhead and page are put back. Pass the operator's "
+        "exclude list as exclude: a file with a clip that plays from a file on it is refused, "
+        "and the list's hash is part of the plan_sha. Omitted, nothing is checked and the "
+        "result's exclude_note says so. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
             "name": {"type": "string", "pattern": " \\[auto\\]$", "minLength": 8,
@@ -1062,6 +1081,10 @@ def register(registry):
             "file": {"type": "string", "minLength": 1,
                      "description": "Absolute path of the .fcpxml file (rpresolve.interchange "
                      "or reel write one)."},
+            "exclude": {"type": "string",
+                        "description": "Absolute path of the operator's exclude list, JSON "
+                        "with `takes`, a list of file stems, names or path suffixes. A file "
+                        "with a clip from one is refused."},
             **DRY_RUN,
             **PAGING, "limit": _limit(100, 500)},
          "required": ["project", "name", "file"], "additionalProperties": False},
