@@ -329,6 +329,15 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None)
             missing.append(f"{e}: {WINDOW_OVER[e]}")
         elif e in APPROX:
             missing.append(f"{e}: {APPROX[e]}")
+    # The window layer starts on the draw rate's grid at 0: after -ss it starts a part of a
+    # source frame in (29.97 fps), and the window's clock reads the draw rate, not the source's
+    # (the full-frame snap landed a frame late). A retime's setpts stays first: it moves the
+    # timestamps the fps reads. Over a plate the plate gets the same, below; the fps at the
+    # end stays for the other effects.
+    grid = f"fps={fps}:start_time=0"
+    if win:
+        vf.insert(int("retime" in params), grid)
+        at += 1  # only the over-a-plate branch reads it
     vf += [f"fps={fps}", "format=yuv420p"]
     if not over:
         return ",".join(vf), missing
@@ -339,7 +348,10 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None)
     # the span its last frame); it is never on screen.
     total = round(seconds * fps)
     n = windowplate.plate_frames(win, total)
-    plate = f"[1:v]{back},trim=end_frame={n},tpad=stop_mode=clone:stop={total - n + 2}[bg]"
+    # The overlay or blend pairs frames by timestamp, so a layer that began a grid step late
+    # would leave frame 0 to the other layer alone: the plate is on the grid too.
+    plate = (f"[1:v]{back},{grid},trim=end_frame={n},"
+             f"tpad=stop_mode=clone:stop={total - n + 2}[bg]")
     if win == "scale-window":
         mix = "[bg][fg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:shortest=1"
         fg = ",".join(vf[:at])  # ends on the growing scale: no format or fps after it, which
