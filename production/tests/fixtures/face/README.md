@@ -6,8 +6,12 @@ for `TestOnARealFace` in `production/tests/test_reframe.py`, which sets it on a 
 1920x1080 clip and runs the face planner through the real Vision helper. Those tests skip
 off macOS.
 
-Source: the sample image bundled with matplotlib 3.9.4 (`mpl-data/sample_data`), copied
-unchanged. It is a US Navy photograph, and a work of the US federal government is in the
-public domain. Licence stated from matplotlib's own sample-data provenance and the
-photograph's public-domain status; not re-checked against the original archive when it was
-added. No client or shoot media goes in this folder.
+Source: the sample image bundled with matplotlib 3.9.4 (`mpl-data/sample_data/grace_hopper.jpg`,
+sha256 a8ca6d73...7130), copied unchanged. It is the portrait of Rear Admiral Grace Hopper that
+Wikimedia Commons files as "Commodore Grace M. Hopper, USN (covered).jpg", credited to James S.
+Davis, a US Navy photographer, with the licence "Public domain" (a work of a US federal government
+employee). Checked on 2026-11-12 against the Commons file page's metadata through the Commons API.
+That the matplotlib file is a crop of that photograph is the usual attribution and was not
+matched pixel for pixel; the fixture carries no copyright claim of this repository's own. If the
+chain is ever doubted, replace the file with a portrait generated or photographed for the project.
+No client or shoot media goes in this folder.

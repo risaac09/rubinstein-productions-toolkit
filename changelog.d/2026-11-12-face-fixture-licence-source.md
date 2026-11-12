@@ -1,0 +1,1 @@
+Record the face test fixture's source and licence: a US Navy portrait filed as public domain on Wikimedia Commons, checked against the Commons metadata, with the one unverified link (that matplotlib's copy is a crop of it) stated.
