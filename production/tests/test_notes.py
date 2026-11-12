@@ -115,6 +115,15 @@ class TestCheck(unittest.TestCase):
                     self.assertEqual(cmd_notes.run(p.parse_args(argv)), 0)
                 self.assertEqual(buf.getvalue(), "cuts 4, on a note 3, chance 0.20, notes 3 at floor 1.5\n")
 
+    def test_wrong_shape_notes_file_is_an_error_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as d:
+            nj = Path(d) / "n.json"
+            nj.write_text("[]")
+            p = argparse.ArgumentParser()
+            cmd_notes.add_arguments(p)
+            self.assertEqual(cmd_notes.run(p.parse_args(["check", str(nj), "--cuts", "1,2"])), 0)
+            self.assertEqual(cmd_notes.run(p.parse_args(["snap", str(nj), "--beats", "1", "--first", "1"])), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
