@@ -1,1 +1,1 @@
-Replace the last named-author actor line in tools/vertcut and the author's name in production test fixtures with the operator, and extend the production no-author test to walk tools/ as well.
+Replace the last named-author actor line in tools/vertcut and the author's name in production test fixtures with the operator, and extend the production no-author test to walk tools/ as well. Three older CHANGELOG lines and the clerkwork skeleton fragment no longer name the author or point at a private issue.
