@@ -204,14 +204,19 @@ def compile_list(sl, frames, music_in=None):
     return manifest, method
 
 
-def crops_for(sl, manifest):
+def crops_for(sl, manifest, sizes=None):
     """A 9x16 crops.json (cmd_vertical.load_crops) with each shot's static centre, the
     mean of its cx; None for a 16:9 list."""
     if sl["aspect"] != "9:16":
         return None
     spans = manifest["clips"][0]["spans"]
-    items = [{"index": i + 1, "name": s["name"], "path": s["source"], "in": sp["in"],
+    # name is the file's, as the timeline item is named: vertical_apply refuses another.
+    # sizes: {source path: [width, height]}; vertical draft needs source_size.
+    items = [{"index": i + 1, "name": os.path.basename(s["source"]), "path": s["source"], "in": sp["in"],
               "out": sp["out"], "cx": round(sum(s["cx"]) / 2, 4), "zoom": 1.0,
               "speed": shot_speed(s, sl["fps"]), "how": "shotlist", "status": "hand"}
              for i, (s, sp) in enumerate(zip(sl["shots"], spans))]
+    for it in items:
+        if (sizes or {}).get(it["path"]):
+            it["source_size"] = list(sizes[it["path"]])
     return {"aspect": "9x16", "reviewed": False, "items": items}

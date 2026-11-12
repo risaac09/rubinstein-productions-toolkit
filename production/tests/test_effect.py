@@ -597,6 +597,20 @@ class TestParams(Base):
         self.assertTrue(pan["results"][0]["ok"], pan["results"])
         self.assertEqual(list(it.comps), ["rp-fx reframe-pan"])
 
+    def test_native_speed_is_retried_with_the_timeline_current(self):
+        it = self.items[0]
+        self.give_speed(it)
+        project = self.resolve.GetProjectManager().GetCurrentProject()
+        mine = next(t for t in project.timelines if t.GetName() == "Edit [auto]")
+        project.current = None  # the operator is somewhere else
+        plain = it.SetSpeed
+        it.SetSpeed = lambda o: project.GetCurrentTimeline() is mine and plain(o)
+        _, real = self.run_fx("retime", {"speed": 0.8})
+        r = real["results"][0]
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["native"]["how"], "with its timeline current")
+        self.assertEqual(it.speed, 80.0)  # api.timeline_current puts the UI back (its own tests)
+
     def test_native_read_back_fails_when_the_items_end_frame_moves(self):
         it = self.items[0]
         self.give_speed(it, end_moves=True)

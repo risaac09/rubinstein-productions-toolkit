@@ -37,6 +37,26 @@ def add_arguments(p):
     k.add_argument("--method", help="An edit method id or path: its look and end rule are used")
 
 
+def _sizes(sl):
+    """{source: [width, height]} for the sources ffprobe can read; the 9:16 preview needs
+    them, and a source it cannot read is named in a note."""
+    from rpresolve import delivercheck
+    out = {}
+    for src in sorted({s["source"] for s in sl["shots"]}):
+        if not os.path.isfile(src):  # compiled away from the media: no size, no note
+            continue
+        try:
+            delivercheck.check_tools(ffmpeg=False)
+            v = next(x for x in delivercheck.probe(src).get("streams", [])
+                     if x.get("codec_type") == "video")
+            out[src] = [int(v["width"]), int(v["height"])]
+        except (delivercheck.CheckError, delivercheck.ToolMissing, StopIteration, KeyError,
+                TypeError, ValueError):
+            print(f"note: no source_size for {os.path.basename(src)} (ffprobe could not read it)",
+                  file=sys.stderr)
+    return out
+
+
 def run(args):
     from rpresolve import cutlist, methods, shotlist
     from rpresolve.workflows import Refused, check_exclude
@@ -66,7 +86,7 @@ def run(args):
                for src, take in cutlist.exclude_music_matches(manifest, takes)],
             "the shot list")
         outputs = {"manifest.json": manifest, "method.json": method}
-        crops = shotlist.crops_for(sl, manifest)
+        crops = shotlist.crops_for(sl, manifest, _sizes(sl))
         if crops:
             from rpresolve import cmd_vertical
             try:

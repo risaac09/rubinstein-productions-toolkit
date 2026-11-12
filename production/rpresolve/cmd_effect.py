@@ -719,7 +719,7 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                       "macro differ); run the dry run again and review it")
     try:
         _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel,
-                   params)
+                   params, resolve, tl)
     except BaseException as e:
         e.effects_added = list(out["results"])
         raise
@@ -734,7 +734,30 @@ def _item_frames(it):
         ("source_end", "GetSourceEndFrame"), ("left_offset", "GetLeftOffset"))}
 
 
-def _set_speed(it, row, speed):
+def _try_speed(it, want, resolve, project, tl):
+    """(SetSpeed's answer, how it was called, every way tried). The first live run returned
+    False with the item's timeline not the current one, so after the plain call it is
+    tried again with the timeline current, then also on the Edit page, then with the
+    speed alone; the UI is put back. Which way worked is in the result."""
+    full, tried = {"Percentage": want, "RippleTimeline": False}, ["as called"]
+    if it.SetSpeed(full):
+        return True, tried[-1], tried
+    if not (resolve and project and tl):
+        return False, None, tried
+    with api.timeline_current(resolve, project, tl):
+        for how, page, opts in (("with its timeline current", None, full),
+                                ("with its timeline current, on the Edit page", "edit", full),
+                                ("with its timeline current, on the Edit page, speed alone",
+                                 "edit", {"Percentage": want})):
+            tried.append(how)
+            if page:
+                api._safe_call(resolve, "OpenPage", page)
+            if it.SetSpeed(opts):
+                return True, how, tried
+    return False, None, tried
+
+
+def _set_speed(it, row, speed, resolve=None, project=None, tl=None):
     """SetSpeed on the item (a constant retime, no comp), then read it back strictly: the
     speed within 0.01 percent of the request and the item's timeline start and end where
     they were (RippleTimeline is off, so nothing should move). Returns {want, read,
@@ -743,13 +766,13 @@ def _set_speed(it, row, speed):
     Resolve really does to them."""
     want = speed * 100.0
     before = _item_frames(it)
-    done = it.SetSpeed({"Percentage": want, "RippleTimeline": False})
+    done, how, tried = _try_speed(it, want, resolve, project, tl)
     after = _item_frames(it)
     got = api._safe_call(it, "GetSpeed")
     read = got.get("Percentage") if isinstance(got, dict) else None
     problems = []
     if not done:
-        problems.append(f"SetSpeed returned {done!r}")
+        problems.append("SetSpeed returned False (" + "; ".join(tried) + ")")
     if not (isinstance(read, (int, float)) and not isinstance(read, bool)
             and abs(read - want) <= 0.01):
         problems.append(f"GetSpeed reads {read!r} percent, set {want:g}")
@@ -764,15 +787,15 @@ def _set_speed(it, row, speed):
         raise api.WriteNotApplied(f"SetSpeed on '{row['name']}' (clip {row['index']}) did not "
                                   f"read back: {'; '.join(problems)}. Item frames before -> "
                                   f"after: {seen}.")
-    return {"want": want, "read": read, "before": before, "after": after}
+    return {"want": want, "read": read, "how": how, "before": before, "after": after}
 
 
 def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel,
-               params=None):
+               params=None, resolve=None, tl=None):
     for t in targets:
         if check_cancel:
             check_cancel()
-        pin.check(pm)
+        project = pin.check(pm)
         it = all_items[t["position"] - 1]
         row = {"index": t["index"], "position": t["position"], "name": t["name"],
                "item_id": t["item_id"]}
@@ -781,9 +804,10 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         out["results"].append(row)
         if t["route"] == "native":
             row["detail"] = "interrupted while setting the speed"
-            row["native"] = _set_speed(it, row, params["speed"])
-            row.update(ok=True, detail=f"speed read back as {params['speed'] * 100:g} percent; "
-                                       "the item's start and end frames are unchanged")
+            row["native"] = _set_speed(it, row, params["speed"], resolve, project, tl)
+            row.update(ok=True, detail=f"speed read back as {params['speed'] * 100:g} percent "
+                                       f"(SetSpeed {row['native']['how']}); the item's start "
+                                       "and end frames are unchanged")
             continue
         if t["reuse"]:
             # An emptied comp (T9): make it the active one, then build into it.
