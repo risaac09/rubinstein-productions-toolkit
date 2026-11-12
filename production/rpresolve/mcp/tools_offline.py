@@ -700,6 +700,114 @@ def edit_methods(args, ctx):
 
 
 # ---------------------------------------------------------------------------
+# notes, shotlist and watch: the footage-first commands, called as the CLI is
+# ---------------------------------------------------------------------------
+
+def _command(module, argv):
+    """Run a command module's run() on argv, parsed as its CLI parses it, and return what it
+    printed and its exit status. The module does the work."""
+    import argparse
+    import contextlib
+    import io
+    parser = argparse.ArgumentParser(prog=module.NAME)
+    module.add_arguments(parser)
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            ns = parser.parse_args(argv)
+    except SystemExit:
+        raise ValueError(f"{module.NAME}: {err.getvalue().strip().splitlines()[-1]}")
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        status = module.run(ns) or 0
+    text, errors = out.getvalue().strip(), err.getvalue().strip()
+    first = (text or errors or "no output").splitlines()[0]
+    return {"summary": f"{module.NAME} {argv[0]}: exit {status}; {first}", "exit": status,
+            "ok": status == 0, "output": text, "errors": errors}
+
+
+def _flags(args, names, paths_=()):
+    """--name value for each given argument that is set (underscores become hyphens); a path
+    argument must be absolute."""
+    argv = []
+    for n in names:
+        if args.get(n) is not None:
+            v = _abs(args[n], n) if n in paths_ else args[n]
+            argv += ["--" + n.replace("_", "-"), str(v)]
+    return argv
+
+
+def _need(args, *names):
+    for n in names:
+        if args.get(n) is None:
+            raise ValueError(f"{args['action']} needs {n}.")
+
+
+def _outside_git(path, field):
+    p = _abs(path, field)
+    if paths.in_any_git_tree(p):
+        raise paths.OutputRefused(f"{p} is inside a git working tree. The output names client "
+                                  "media; write it outside any repository.")
+    return p
+
+
+def notes(args, ctx):
+    from .. import cmd_notes
+    a = args["action"]
+    if a == "measure":
+        _need(args, "audio", "out")
+        argv = ["measure", _existing(args["audio"], "audio"), "--out", _outside_git(args["out"], "out")]
+        argv += _flags(args, ("min_bpm", "max_bpm", "lines"), ("lines",))
+    elif a == "snap":
+        _need(args, "notes", "beats", "first")
+        argv = ["snap", _existing(args["notes"], "notes")]
+        argv += _flags(args, ("beats", "first", "fps", "window", "floor", "lead"))
+    else:
+        _need(args, "notes")
+        if bool(args.get("cuts")) == bool(args.get("plan")):
+            raise ValueError("check needs exactly one of cuts or plan.")
+        argv = ["check", _existing(args["notes"], "notes")]
+        argv += _flags(args, ("cuts", "plan", "music_in", "fps", "floor"), ("plan",))
+    ctx.check_cancel()
+    return _command(cmd_notes, argv)
+
+
+def shotlist(args, ctx):
+    from .. import cmd_shotlist
+    _need(args, "list")
+    argv = [args["action"], _existing(args["list"], "list")]
+    if args["action"] == "compile":
+        _need(args, "out")
+        argv += ["--out", _outside_git(args["out"], "out")]
+        argv += _flags(args, ("cuts", "period", "exclude"), ("cuts", "exclude"))
+        if args.get("method"):  # an id, or an absolute path to a method file
+            argv += ["--method", _abs(args["method"], "method") if os.sep in args["method"]
+                     else args["method"]]
+    ctx.check_cancel()
+    return _command(cmd_shotlist, argv)
+
+
+def watch(args, ctx):
+    from .. import cmd_watch
+    a = args["action"]
+    if a == "sheets":
+        _need(args, "video", "cuts", "out")
+        cuts = args["cuts"]
+        if "," not in cuts and not cuts.replace(".", "", 1).isdigit():
+            cuts = _existing(cuts, "cuts")  # a JSON file; otherwise a comma list of seconds
+        argv = ["sheets", _existing(args["video"], "video"), "--cuts", cuts,
+                "--out", _outside_git(args["out"], "out")]
+        argv += _flags(args, ("fps", "per_sheet"))
+    elif a == "ack":
+        _need(args, "dir", "notes")
+        argv = ["ack", _existing(args["dir"], "dir"), "--notes", _existing(args["notes"], "notes")]
+    else:
+        _need(args, "dir")
+        argv = ["status", _existing(args["dir"], "dir")]
+    ctx.check_cancel()
+    return _command(cmd_watch, argv)
+
+
+# ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
 
@@ -1167,6 +1275,86 @@ def register(registry):
               "path": {"type": "string",
                        "description": "Absolute path of a method JSON to check."}}),
         edit_methods, title="List edit methods", annotations=READ))
+
+    registry.add(Tool(
+        "notes",
+        "Cut on the notes a song plays. action measure: the played onsets and beat period of an "
+        "audio file, written to out (notes.json). snap: cut frames on the strongest played note "
+        "near each planned beat (beats per shot, first = seconds of the first beat). check: how "
+        "many cuts land within one frame of a note, against the chance level; a measurement that "
+        "never fails. Returns the command's printed result and exit status. Never connects to "
+        "Resolve. Writes a new file for measure, so it is not read-only.",
+        _obj({"action": {"type": "string", "enum": ["measure", "snap", "check"]},
+              "audio": {"type": "string", "description": "measure: absolute path of the audio file."},
+              "out": {"type": "string", "description": "measure: absolute path of notes.json, "
+                      "outside any git working tree."},
+              "notes": {"type": "string", "description": "snap, check: absolute path of notes.json."},
+              "min_bpm": {"type": "number", "description": "measure: slowest tempo to look for."},
+              "max_bpm": {"type": "number", "description": "measure: fastest tempo to look for."},
+              "lines": {"type": "string", "description": "measure: absolute path of a JSON list of "
+                        "[start, end] seconds, carried in as timestamps."},
+              "beats": {"type": "string", "description": "snap: beats per shot, e.g. 4,2,2."},
+              "first": {"type": "number", "description": "snap: seconds of the first planned beat."},
+              "window": {"type": "number", "description": "snap: seconds either side of a beat."},
+              "lead": {"type": "number", "description": "snap: seconds the music starts before "
+                       "the first planned beat."},
+              "cuts": {"type": "string", "description": "check: cut times in seconds after "
+                       "music_in, comma-separated (or plan)."},
+              "plan": {"type": "string", "description": "check: absolute path of a snap output "
+                       "(cut_times, music_in) (or cuts)."},
+              "music_in": {"type": "number", "description": "check: seconds; default 0, or the plan's."},
+              "fps": {"type": "number", "minimum": 0.001, "description": "snap, check: the "
+                      "timeline's frame rate (default 24)."},
+              "floor": {"type": "number", "description": "snap: z-score a note needs to win over "
+                        "the planned beat; check: only notes at or above this strength count."}},
+             ["action"]),
+        notes, title="Notes in a song", annotations=WRITE))
+    registry.add(Tool(
+        "shotlist",
+        "A shot list written in story order. action check: validate it. compile: write "
+        "manifest.json, method.json and, for a 9:16 list, crops.json into out, for the draft farm "
+        "and assemble_timeline; shot lengths come from cuts (a snap output) or period (seconds "
+        "per shot); exclude refuses a list that uses an excluded take; method copies an edit "
+        "method's look and end rule. Returns the command's printed result and exit status. "
+        "Never connects to Resolve. Writes new files for compile, so it is not read-only.",
+        _obj({"action": {"type": "string", "enum": ["check", "compile"]},
+              "list": {"type": "string", "description": "Absolute path of the shot list JSON."},
+              "out": {"type": "string", "description": "compile: absolute path of the output "
+                      "folder, outside any git working tree."},
+              "cuts": {"type": "string", "description": "compile: absolute path of a cut plan "
+                       "(cut_frames, music_in), as notes snap writes it."},
+              "period": {"type": "number", "minimum": 0.001, "description": "compile: seconds "
+                         "every shot lasts when there is no cuts."},
+              "exclude": {"type": "string", "description": "compile: absolute path of the "
+                          "exclude list."},
+              "method": {"type": "string", "description": "compile: an edit method id, or an "
+                         "absolute path to a method file."}},
+             ["action", "list"]),
+        shotlist, title="Shot list", annotations=WRITE))
+    registry.add(Tool(
+        "watch",
+        "Look at a draft or render before it goes to a reviewer. action sheets: the first, "
+        "middle and last frame of every shot on contact sheets plus watch.json, in out. ack: "
+        "record that the sheets were read, with one non-empty line per shot in a notes file; "
+        "refuses if the video changed. status: acked, or why not (exit 1 when not acked). "
+        "Returns the command's printed result and exit status. Needs ffmpeg, and Pillow for "
+        "sheets. Never connects to Resolve. Writes files, so it is not read-only.",
+        _obj({"action": {"type": "string", "enum": ["sheets", "ack", "status"]},
+              "video": {"type": "string", "description": "sheets: absolute path of the video."},
+              "cuts": {"type": "string", "description": "sheets: absolute path of a JSON with "
+                       "cut_frames or cut_times, or a comma list of cut times in seconds."},
+              "out": {"type": "string", "description": "sheets: absolute path of the folder for "
+                      "the sheets and watch.json, outside any git working tree."},
+              "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
+                      "description": "sheets: frame rate of cut_frames (default the video's own)."},
+              "per_sheet": {"type": "integer", "minimum": 1, "description": "sheets: shots per "
+                            "sheet (default 6)."},
+              "dir": {"type": "string", "description": "ack, status: absolute path of the sheets "
+                      "folder."},
+              "notes": {"type": "string", "description": "ack: absolute path of a text file, one "
+                        "non-empty line per shot."}},
+             ["action"]),
+        watch, title="Watch the shots", annotations=WRITE))
 
     # These write new files (never over an existing one), so none is read-only.
     for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report"):
