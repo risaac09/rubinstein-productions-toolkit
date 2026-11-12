@@ -151,9 +151,8 @@ class TestFarmDraws(unittest.TestCase):
         span = man["clips"][0]["spans"][2]
         vf, missing = drafts.span_filter(span, by[2], 720, 1280, 24, 26 / 24)
         self.assertTrue(vf.startswith("setpts=PTS/0.4,"))
-        self.assertIn("crop=720:1280:x='(iw-720)*(0.43+(0.31-0.43)*t/", vf)
-        self.assertEqual(missing, ["reframe-pan: the crop moves from pan_from to pan_to as a "
-                                   "share of the source width, not Resolve's Pan arithmetic"])
+        self.assertIn("crop=720:1280:x='clip((0.43+(0.31-0.43)*t/", vf)
+        self.assertEqual(missing, [])
 
     def test_plan_jobs_builds_from_the_written_plan_folder(self):
         man, method = compiled()
@@ -167,7 +166,7 @@ class TestFarmDraws(unittest.TestCase):
         self.assertEqual(info["size"], [720, 1280])
         vf = jobs[2]["cmd"][jobs[2]["cmd"].index("-vf") + 1]
         self.assertIn("setpts=PTS/0.4", vf)
-        self.assertIn("(0.43+(0.31-0.43)", vf)
+        self.assertIn("clip((0.43+(0.31-0.43)", vf)
 
 
 class TestCrops(unittest.TestCase):
