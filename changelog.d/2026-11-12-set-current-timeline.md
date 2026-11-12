@@ -1,0 +1,1 @@
+Add the Resolve MCP write tool set_current_timeline: it makes a named [auto] timeline current, read back, so the frame-reading tools can look at a build before its render, and restore_to puts the previous timeline back. It changes nothing else.
