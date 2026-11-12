@@ -46,6 +46,8 @@ def add_arguments(p):
 def run(args):
     from rpresolve import paths
     try:
+        if getattr(args, "fps", 1) <= 0:
+            raise notes.NotesError("--fps must be above 0")
         if args.action == "measure":
             problem = paths.out_problem(args.out, any_git_tree=True)
             if problem:
