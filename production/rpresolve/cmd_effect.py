@@ -79,7 +79,8 @@ def wiring(effect, params=None):
 def native_speed(effect, params):
     """A constant retime is set on the item itself (SetSpeed), not built as a comp, so
     the item's one comp stays free for a reframe-pan; a ramp (speed_to) is still a comp."""
-    return effect == "retime" and "speed_to" not in (params or {})
+    p = params or {}  # no speed given: the macro's own comp, as before
+    return effect == "retime" and "speed" in p and "speed_to" not in p
 
 
 # ---------------------------------------------------------------------------
