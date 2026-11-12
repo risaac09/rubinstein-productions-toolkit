@@ -268,10 +268,15 @@ def set_current_timeline(args, ctx):
                                            expect_sha=args.get("plan_sha"))
         was, to = r["current"]["name"], r["target"]["name"]
         if r["dry_run"]:
-            r["summary"] = f"would make '{to}' current (now '{was}')" + _how(r)
+            r["summary"] = (f"would make '{to}' current (now "
+                            f"{repr(was) if was else 'no current timeline'})" + _how(r))
+        elif r["previous"] is None:
+            r["summary"] = (f"made '{to}' current, read back; there was no current timeline "
+                            "to put back")
         else:
-            r["summary"] = (f"made '{r['current']['name']}' current, read back; previous was "
-                            f"'{r['previous']}'. Put it back with restore_to '{r['previous']}'")
+            r["summary"] = (f"made '{to}' current, read back; previous was '{r['previous']}' "
+                            f"(id {r['previous_unique_id']}). Put it back with restore_to "
+                            "that id, or the name if it is unique")
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -1025,8 +1030,10 @@ def register(registry):
         "set_current_timeline",
         "Make an ' [auto]' timeline the project's current timeline, so frame-reading tools "
         "(which render only the current timeline) can look at it, then read the current timeline "
-        "back. Returns {previous, current}; pass the previous name as restore_to to put the "
-        "operator's own timeline back (restore_to accepts any name). Changes nothing else: no "
+        "back. Returns {previous, previous_unique_id, current}; pass the previous_unique_id (or "
+        "the name, if unique) as restore_to to put the operator's own timeline back. restore_to "
+        "is the one exception to [auto]-only: it accepts any timeline of the project, by name "
+        "or unique id. Changes nothing else: no "
         "page switch, no playhead move beyond what Resolve itself does. Give exactly one of "
         "timeline or restore_to. Dry run first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
@@ -1034,8 +1041,9 @@ def register(registry):
             "timeline": {"type": "string", "pattern": " \\[auto\\]$",
                          "description": "Name of the ' [auto]' timeline to make current."},
             "restore_to": {"type": "string", "minLength": 1,
-                           "description": "Name of the timeline to put back (a `previous` an "
-                           "earlier call returned); any name is accepted."},
+                           "description": "Unique id or name of the timeline to put back (the "
+                           "`previous_unique_id` or `previous` an earlier call returned); "
+                           "any timeline of the project is accepted, [auto] or not."},
             **DRY_RUN},
          "required": ["project"], "additionalProperties": False},
         set_current_timeline, title="Make an [auto] timeline current", annotations=WRITE))

@@ -126,6 +126,8 @@ class TestSetCurrentTimeline(Base):
                                              "plan_sha": dry["plan_sha"]}, self.resolve)
         self.assertEqual((real["previous"], real["current"]["name"]),
                          ("Where the operator is", "Edit [auto]"))
+        self.assertEqual(real["previous_unique_id"], self.here.GetUniqueId())
+        self.assertIn(self.here.GetUniqueId(), real["summary"])
         self.assertIs(self.project.current, auto)
         self.assertEqual(self.resolve.page, page)
         self.assertEqual(self.journal()[-2:], ["started", "finished"])
@@ -150,6 +152,20 @@ class TestSetCurrentTimeline(Base):
                             self.resolve)
         self.assertEqual(real["current"]["name"], "Where the operator is")
         self.assertIs(self.project.current, self.here)
+
+    def test_restore_by_unique_id_and_no_current_timeline(self):
+        auto = self.make_auto()
+        _, real = run_twice("set_current_timeline", {"restore_to": self.here.GetUniqueId()},
+                            self.resolve)
+        self.assertIs(self.project.current, self.here)
+        self.project.current = None
+        dry = call("set_current_timeline", {"timeline": "Edit [auto]"}, self.resolve)
+        self.assertIsNone(dry["current"]["name"])
+        self.assertNotIn("'None'", dry["summary"])
+        _, real = run_twice("set_current_timeline", {"timeline": "Edit [auto]"}, self.resolve)
+        self.assertIsNone(real["previous"])
+        self.assertIs(self.project.current, auto)
+        self.assertNotIn("None", real["summary"])
 
     def test_a_read_back_that_differs_is_an_error(self):
         self.make_auto()

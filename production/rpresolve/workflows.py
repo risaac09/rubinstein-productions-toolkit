@@ -792,8 +792,9 @@ def set_current_timeline(resolve, project_name, timeline=None, restore_to=None, 
                          project_id=None, expect_sha=None):
     """Make a timeline the project's current one and read it back, so the frame-reading tools
     (which render only the current timeline) can see it. `timeline` must end ' [auto]';
-    `restore_to` names any timeline, to put the operator's own back (the `previous` an earlier
-    call returned). Nothing else changes: no page switch, no playhead move. Returns {project,
+    `restore_to` names any timeline, [auto] or not, by name or unique id, to put the operator's
+    own back (the `previous` or `previous_unique_id` an earlier call returned; use the id when
+    two timelines share a name). With no current timeline, previous is None. Nothing else changes: no page switch, no playhead move. Returns {project,
     current, target, restoring, plan_sha, dry_run, previous, exit_status}."""
     if bool(timeline) == bool(restore_to):
         raise Refused("give exactly one of timeline (an [auto] timeline) or restore_to (the "
@@ -810,7 +811,8 @@ def set_current_timeline(resolve, project_name, timeline=None, restore_to=None, 
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "current": {"name": cur_name, "unique_id": cur_id},
            "target": {"name": name, "unique_id": uid}, "restoring": bool(restore_to),
-           "plan_sha": sha, "dry_run": dry_run, "previous": None, "exit_status": 0}
+           "plan_sha": sha, "dry_run": dry_run, "previous": None, "previous_unique_id": None,
+           "exit_status": 0}
     if dry_run:
         return out
     if expect_sha and expect_sha != sha:
@@ -823,7 +825,8 @@ def set_current_timeline(resolve, project_name, timeline=None, restore_to=None, 
     if not ok or got[1] != uid:
         raise api.WriteNotApplied(f"SetCurrentTimeline('{name}'): Resolve reports the current "
                                   f"timeline as '{got[0]}'. Check for a modal dialog in Resolve.")
-    out.update(previous=cur_name, current={"name": got[0], "unique_id": got[1]})
+    out.update(previous=cur_name, previous_unique_id=cur_id,
+               current={"name": got[0], "unique_id": got[1]})
     return out
 
 
