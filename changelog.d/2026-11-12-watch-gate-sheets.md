@@ -1,0 +1,1 @@
+The new `watch` command makes the operator look at the picture before a draft or render goes to a reviewer: `watch sheets` draws the first, middle and last frame of every shot on labelled sheets, `watch ack` records one note line per shot and refuses a changed video, and `watch status` exits 0 only when the sheets were read and the video is unchanged.
