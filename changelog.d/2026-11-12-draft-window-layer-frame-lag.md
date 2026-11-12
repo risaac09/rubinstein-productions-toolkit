@@ -1,0 +1,1 @@
+Draw the draft's scale-window and crop-window from frame 0 and snap them on the macro's frame: the window layer and its plate now share the draw rate's grid, where a 29.97 fps source left the window a frame late and a crop-window after a crop-window could open at full frame (T32).
