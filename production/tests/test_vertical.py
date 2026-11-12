@@ -991,7 +991,7 @@ class TestCommand(unittest.TestCase):
             self.assertIn("git working tree", err.getvalue())
             with mock.patch.object(v, "draft_preview", return_value="p") as draft:
                 self.assertEqual(cli.main(["vertical", "draft", crops]), 0)
-            draft.assert_called_once_with(crops, d, proxy_map=None)  # the plan's own folder by default
+            draft.assert_called_once_with(crops, d, proxy_map=None, notes=[])  # the plan's own folder by default
 
 
 def make_clip(ffmpeg, path, size="640x360", seconds=4, colours=("red", "lime", "blue", "yellow")):
@@ -1019,16 +1019,28 @@ class TestSpeed(unittest.TestCase):
         self.assertNotIn("setpts", v.preview_filter(row))
 
     def test_a_bad_speed_is_refused_by_plan_and_by_load(self):
-        for bad in (0, -1, "2", True):
-            with self.assertRaisesRegex(v.VerticalError, "speed must be a number above 0"):
+        for bad in (0, -1, "2", True, float("nan"), float("inf"), float("-inf")):
+            with self.assertRaisesRegex(v.VerticalError, "speed must be a finite number above 0"):
                 v.plan([item("a", "/m/a.mov", 0, 4, speed=bad)], mode="edge")
             crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
             crops["items"][0]["speed"] = bad
-            with self.assertRaisesRegex(workflows.Refused, "speed must be a number above 0"):
+            with self.assertRaisesRegex(workflows.Refused, "speed must be a finite number above 0"):
                 v.load_crops(crops)
         with self.assertRaisesRegex(v.VerticalError, "window item takes no retime"):
             v.plan([item("a", "/m/a.mov", 0, 4), item("b", "/m/a.mov", 4, 6, speed=2,
                                                        window="scale-window")], mode="edge")
+
+    def test_nan_and_infinity_from_a_json_file_are_refused(self):
+        # json.load parses NaN and Infinity, so a hand-written items or crops file can carry them
+        for text in ("NaN", "Infinity", "-Infinity"):
+            bad = json.loads('{"name": "a", "path": "/m/a.mov", "in": 0, "out": 4, "speed": %s}'
+                             % text)
+            with self.assertRaisesRegex(v.VerticalError, "finite number above 0"):
+                v.plan([bad], mode="edge", probe=lambda p: {"width": 640, "height": 360})
+            crops = v.plan([item("a", "/m/a.mov", 0, 4)], mode="edge")
+            crops["items"][0]["speed"] = bad["speed"]
+            with self.assertRaisesRegex(workflows.Refused, "finite number above 0"):
+                v.load_crops(crops)
 
     def test_the_sheet_reads_the_source_a_retime_plays(self):
         row = v.plan([item("a", "/m/a.mov", 10, 12, speed=0.5)], mode="edge")["items"][0]
@@ -1173,6 +1185,59 @@ class TestBrawProxy(unittest.TestCase):
             v.draft_preview(self.crops(proxy=self.proxy), os.path.join(self.d, "p"),
                             ffmpeg=self.ffmpeg)
 
+    def test_an_unreadable_source_duration_is_a_note_not_silence(self):
+        real = v._media
+
+        def media(path):
+            if path == self.braw:
+                raise v.VerticalError("no video stream")
+            return real(path)
+        notes = []
+        with mock.patch.object(v, "_media", side_effect=media):
+            v.draft_preview(self.crops(proxy=self.proxy), os.path.join(self.d, "p"),
+                            ffmpeg=self.ffmpeg, notes=notes)
+            self.assertEqual(len(notes), 1)
+            self.assertIn("duration could not be read", notes[0])
+            self.assertIn("item 1 (b)", notes[0])
+            self.assertIn("reaches the item's out", notes[0])
+            with self.assertRaisesRegex(v.VerticalError, "reads to"):   # the reach check stays
+                long_item = v.plan([item("b", self.braw, 1, 9, proxy=self.proxy)], mode="edge",
+                                   overrides={"b": 0.5})
+                v.draft_preview(long_item, os.path.join(self.d, "q"), ffmpeg=self.ffmpeg)
+
+    def test_the_note_reaches_the_command_output(self):
+        from rpresolve import cli
+        crops = os.path.join(self.d, "crops.json")
+        with open(crops, "w") as f:
+            json.dump(self.crops(proxy=self.proxy), f)
+
+        def fake(c, out_dir, ffmpeg=None, proxy_map=None, notes=None):
+            notes.append("item 1 (b): a note")
+            return "p"
+        err = io.StringIO()
+        with mock.patch.object(v, "draft_preview", side_effect=fake), \
+                mock.patch("sys.stderr", err):
+            self.assertEqual(cli.main(["vertical", "draft", crops]), 0)
+        self.assertIn("NOTE: item 1 (b): a note", err.getvalue())
+
+    def test_a_malformed_proxy_map_is_refused_with_what_it_should_be(self):
+        from rpresolve import cli
+        for bad in ([self.proxy], "a.mov", {self.braw: 7}, {self.braw: None}, {self.braw: ""}):
+            with self.assertRaisesRegex(v.VerticalError,
+                                        "JSON object of source path to proxy path"):
+                v.draft_preview(self.crops(), os.path.join(self.d, "p"), ffmpeg=self.ffmpeg,
+                                proxy_map=bad)
+        crops = os.path.join(self.d, "crops.json")
+        with open(crops, "w") as f:
+            json.dump(self.crops(), f)
+        pmap = os.path.join(self.d, "map.json")
+        with open(pmap, "w") as f:
+            json.dump([self.proxy], f)
+        err = io.StringIO()
+        with mock.patch("sys.stderr", err):
+            self.assertEqual(cli.main(["vertical", "draft", crops, "--proxy-map", pmap]), 1)
+        self.assertIn("JSON object of source path to proxy path", err.getvalue())
+
     def test_the_proxy_map_is_a_command_option(self):
         from rpresolve import cli
         crops = os.path.join(self.d, "crops.json")
@@ -1183,7 +1248,7 @@ class TestBrawProxy(unittest.TestCase):
             json.dump({self.braw: self.proxy}, f)
         with mock.patch.object(v, "draft_preview", return_value="p") as draft:
             self.assertEqual(cli.main(["vertical", "draft", crops, "--proxy-map", pmap]), 0)
-        draft.assert_called_once_with(crops, self.d, proxy_map={self.braw: self.proxy})
+        draft.assert_called_once_with(crops, self.d, proxy_map={self.braw: self.proxy}, notes=[])
 
 
 if __name__ == "__main__":
