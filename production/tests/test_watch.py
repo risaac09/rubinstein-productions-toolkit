@@ -128,7 +128,8 @@ class AckStatus(unittest.TestCase):
         self.assertIn("watch-01.jpg is missing", err)
 
 
-@unittest.skipUnless(HAVE_FF and HAVE_PIL, "ffmpeg, ffprobe or Pillow missing")
+@unittest.skipUnless(HAVE_FF, "ffmpeg or ffprobe missing")
+@unittest.skipUnless(HAVE_PIL, "Pillow missing")  # its own line: the 3.9 CI job has ffmpeg and no Pillow
 class Sheets(unittest.TestCase):
     def test_sheets_frames_and_dimensions(self):
         with tempfile.TemporaryDirectory() as d:
