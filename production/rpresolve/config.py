@@ -99,7 +99,7 @@ DEFAULT_CONFIG = {
         # A music-only montage: no speech, so no captions, and 24 fps is allowed (no min_fps).
         # It has no show, guest or clip index, so it takes the montage name, not the clip name.
         # tail_fade: its music is baked with a one second fade out (musicbed.py); deliver_check
-        # asserts the last 100 ms sit well below the seconds before.
+        # asserts the 100 ms ending at the last video frame sit well below the seconds before.
         "social_9x16_music": {**_web("Social 9:16, music only (TikTok, Instagram)", "9x16", 1080,
                                      1920, "H264", -14.0, "none"), "naming": "montage",
                               "tail_fade": True},

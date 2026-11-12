@@ -42,10 +42,14 @@ what it expected:
                   tolerance, true peak at or under the maximum; SKIP when the
                   destination has no target
     tail          opt-in (the destination's tail_fade true, or expect_fade): the
-                  level of the last 100 ms against the window from 3 s to 1.5 s
-                  before the end; FAIL unless the tail is at least TAIL_DROP_DB
-                  lower, with both levels in the row, or when the sound stops before
-                  the end and the last 100 ms hold none. SKIP with a note when there is
+                  level of the 100 ms ending at the last video frame against the
+                  window from 3 s to 1.5 s before that frame (not the file's end:
+                  the container's audio runs past the picture by codec padding;
+                  the end is the video stream's start plus duration, else the
+                  last video packet's end, which an .mkv needs);
+                  FAIL unless the tail is at least TAIL_DROP_DB lower, with both
+                  levels in the row, or when the sound stops before the picture
+                  ends and those 100 ms hold none. SKIP with a note when there is
                   no audio, loudness reading is off or the file is under 4 s. No
                   row at all when the destination does not ask for it
 
@@ -84,8 +88,8 @@ NTSC = {"23.976": "24000/1001", "23.98": "24000/1001", "29.97": "30000/1001",
 PCM = {16: ("pcm_s16le", "pcm_s16be"), 24: ("pcm_s24le", "pcm_s24be"),
        32: ("pcm_s32le", "pcm_s32be")}
 CAPTION_TAGS = {"c608", "c708", "tx3g", "wvtt", "stpp"}
-# The tail row: the last TAIL_S seconds against the window from TAIL_REF_FAR to TAIL_REF_NEAR
-# seconds before the end. A music bed baked with a one second fade (musicbed.py) drops far
+# The tail row: the TAIL_S seconds ending at the last video frame against the window from
+# TAIL_REF_FAR to TAIL_REF_NEAR seconds before it. A music bed baked with a one second fade (musicbed.py) drops far
 # more than TAIL_DROP_DB; a file that ends on a hard cut does not drop at all.
 TAIL_S = 0.1
 TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
@@ -175,12 +179,15 @@ def measure_loudness(path, stream=0):
     return parse_ebur128(proc.stderr)
 
 
-def window_level(path, from_end, length, stream=0):
+def window_level(path, from_end, length, stream=0, end=None):
     """Mean level in dB (ffmpeg volumedetect) of an audio stream over `length` seconds
-    starting `from_end` seconds before the end of the file; None when ffmpeg ran and the
-    window holds no audio (the sound ends earlier than the picture: -sseof counts back from
-    the longest stream). Raises CheckError when ffmpeg fails."""
-    proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-sseof", f"-{from_end:g}",
+    starting `from_end` seconds before `end`; None when ffmpeg ran and the window holds no
+    audio. end: a time in seconds from the start of the container (the picture's last frame),
+    or None for the end of the file, where -sseof counts back from the longest stream and
+    so includes the audio's codec padding after the picture. Raises CheckError when ffmpeg
+    fails."""
+    seek = ["-sseof", f"-{from_end:g}"] if end is None else ["-ss", f"{max(end - from_end, 0):.3f}"]
+    proc = _run([FFMPEG, "-hide_banner", "-nostats", "-nostdin", *seek,
                  "-t", f"{length:g}", "-i", _src(path), "-map", f"0:a:{stream}",
                  "-af", "volumedetect", "-f", "null", "-"], READ_TIMEOUT_S)
     if proc.returncode != 0:
@@ -278,24 +285,74 @@ def fmt_rate(f):
                                   else str(f.numerator)) + f" ({float(f):.3f} fps)"
 
 
-def duration(info):
-    """The video's duration in seconds from ffprobe's streams and format:
-    the first video stream's own duration, else the format's; None when
-    neither reads."""
-    for s in info.get("streams") or []:
-        if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic"):
-            try:
-                d = float(s.get("duration"))
-                if d > 0:
-                    return d
-            except (TypeError, ValueError):
-                pass
-            break
+def _num(value):
+    """value as a float, or None when ffprobe gave N/A or nothing."""
     try:
-        d = float((info.get("format") or {}).get("duration"))
-        return d if d > 0 else None
+        return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _video_stream(info):
+    for s in info.get("streams") or []:
+        if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic"):
+            return s
+    return None
+
+
+def video_start(info):
+    """The first video stream's start_time in seconds (0 when ffprobe gives none)."""
+    return _num((_video_stream(info) or {}).get("start_time")) or 0.0
+
+
+def video_offset(info):
+    """Seconds from the container's start (the format's start_time, the earliest stream's) to
+    the first video stream's start: what ffmpeg's input -ss does not count."""
+    return video_start(info) - (_num((info.get("format") or {}).get("start_time")) or 0.0)
+
+
+def last_frame_end(path, info):
+    """The end of the last video frame in seconds on the file's own clock (last packet's
+    pts_time + duration_time, else + one frame at avg_frame_rate), or None when ffprobe reads
+    no packet. Reads only the last 3 s of packets (-read_intervals), so it is cheap on a long
+    file. Raises CheckError when ffprobe fails."""
+    fmt = info.get("format") or {}
+    total = _num(fmt.get("duration"))
+    # shortcut: a file whose format duration is unknown is read from the start, slow when long
+    seek = f"{max((_num(fmt.get('start_time')) or 0.0) + total - 3.0, 0):.3f}%" if total else "0%"
+    proc = _run([FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                 "packet=pts_time,duration_time", "-read_intervals", seek, "-of", "csv=p=0",
+                 _src(path)], READ_TIMEOUT_S)
+    if proc.returncode != 0:
+        raise CheckError(f"ffprobe could not read the packets of {os.path.basename(path)}: "
+                         f"{proc.stderr.strip()[-300:]}")
+    fps = rate((_video_stream(info) or {}).get("avg_frame_rate"))
+    end = None
+    for line in proc.stdout.splitlines():
+        pts, _, dur = line.partition(",")
+        pts, dur = _num(pts), _num(dur.strip(","))
+        if pts is None:
+            continue
+        e = pts + (dur if dur is not None else (float(1 / fps) if fps else 0.0))
+        end = e if end is None else max(end, e)
+    return end
+
+
+def duration(info, path=None):
+    """The video's duration in seconds from ffprobe's streams and format:
+    the first video stream's own duration. Without one (an .mkv, say) the format's duration is
+    the longest stream's and includes the audio's codec padding, so with `path` the last
+    video frame's end (last_frame_end) less the stream's start stands in; without `path`, or
+    when no packet reads, the format's. None when nothing reads."""
+    d = _num((_video_stream(info) or {}).get("duration"))
+    if d and d > 0:
+        return d
+    if path is not None and _video_stream(info) is not None:
+        end = last_frame_end(path, info)
+        if end is not None and end - video_start(info) > 0:
+            return end - video_start(info)
+    d = _num((info.get("format") or {}).get("duration"))
+    return d if d and d > 0 else None
 
 
 def cue_time_problems(cues, duration_s, slack=CAPTION_END_SLACK_S):
@@ -543,7 +600,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                          "range could not be told from the stream" if want is not None and
                          rng is None else None))
         if bt709:
-            rows.append(log_flat_row(path, video, duration(info)))
+            rows.append(log_flat_row(path, video, duration(info, path)))
 
     # Audio
     a = dest["audio"]
@@ -568,7 +625,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                              "only the first audio stream is checked"))
 
     # Captions
-    rows.append(_captions(path, name, dest, streams, duration(info)))
+    rows.append(_captions(path, name, dest, streams, duration(info, path)))
 
     # Loudness
     loud = dest.get("loudness") or {}
@@ -591,18 +648,26 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
 
     # Tail
     if want_tail:
-        rows.append(_tail_row(path, duration(info), audio is not None, loudness))
+        rows.append(_tail_row(path, duration(info, path), audio is not None, loudness,
+                              video_offset(info)))
 
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP, WARN)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
             "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
 
 
-def _tail_row(path, seconds, has_audio, loudness):
-    """The tail row: the last TAIL_S seconds against the window TAIL_REF_FAR to TAIL_REF_NEAR
-    seconds before the end; PASS when the tail is at least TAIL_DROP_DB lower."""
-    expect = (f"the last {TAIL_S * 1000:g} ms at least {TAIL_DROP_DB:g} dB below the window "
-              f"{TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s before the end")
+def _tail_row(path, seconds, has_audio, loudness, offset=0.0):
+    """The tail row: the TAIL_S seconds ending at the last video frame (`seconds`, the
+    picture's duration, offset: seconds the video starts after the container, so the windows
+    are cut from the picture's real end, wherever the stream starts) against the window TAIL_REF_FAR to TAIL_REF_NEAR seconds before that
+    frame; PASS when the tail is at least TAIL_DROP_DB lower. The picture's end, not the
+    file's, because the audio stream runs past the last frame by codec padding (AAC priming
+    and whole frames), which reads as silence and would pass a bed that is still loud when the
+    picture ends. Decoded audio length would need a full decode and still counts real sound
+    after the picture, which no viewer sees."""
+    expect = (f"the {TAIL_S * 1000:g} ms ending at the last video frame at least "
+              f"{TAIL_DROP_DB:g} dB below the window {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
+              "before that frame")
     skip = (None if has_audio else "no audio stream",
             None if loudness else "loudness reading is off",
             None if seconds is not None and seconds >= TAIL_MIN_S
@@ -610,17 +675,18 @@ def _tail_row(path, seconds, has_audio, loudness):
     why = next((x for x in skip if x), None)
     if why:
         return _row("tail", None, "not measured", expect, why)
-    tail = window_level(path, TAIL_S, TAIL_S)
+    tail = window_level(path, TAIL_S, TAIL_S, end=seconds + offset)
     if tail is None:  # the bed stops short of the picture: the case this row exists to catch
-        return _row("tail", False, f"no audio in the last {TAIL_S * 1000:g} ms", expect)
-    ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR)
+        return _row("tail", False, f"no audio in the {TAIL_S * 1000:g} ms ending at the last "
+                    "video frame", expect)
+    ref = window_level(path, TAIL_REF_FAR, TAIL_REF_FAR - TAIL_REF_NEAR, end=seconds + offset)
     if ref is None:
         return _row("tail", False, f"no audio {TAIL_REF_FAR:g} s to {TAIL_REF_NEAR:g} s "
-                    "before the end", expect)
+                    "before the last video frame", expect)
     drop = 0.0 if ref == tail else ref - tail  # two silent windows are equal, not nan
     return _row("tail", drop >= TAIL_DROP_DB - 1e-9,
-                f"last {TAIL_S * 1000:g} ms {tail:g} dB, window {ref:g} dB "
-                f"({drop:.1f} dB lower)", expect)
+                f"last {TAIL_S * 1000:g} ms up to the last video frame {tail:g} dB, "
+                f"window {ref:g} dB ({drop:.1f} dB lower)", expect)
 
 
 def _bitrate(video, exp):

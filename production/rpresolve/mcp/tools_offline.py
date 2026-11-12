@@ -932,8 +932,8 @@ def register(registry):
         "as an exact rational, pixel format, colour tags and range (limited), audio codec, "
         "channels and sample rate, captions (a sidecar .srt that parses, or none at all), and "
         "integrated loudness and true peak, and for a destination with tail_fade true (or with "
-        "expect_fade) a tail row: the last 100 ms at least 12 dB below the window 3 s to 1.5 s "
-        "before the end. Every rule is PASS, FAIL, SKIP or WARN with what was "
+        "expect_fade) a tail row: the 100 ms ending at the last video frame at least 12 dB below the "
+        "window 3 s to 1.5 s before that frame. Every rule is PASS, FAIL, SKIP or WARN with what was "
         "found and expected; a WARN row (the frame-rate floor) is advice and never changes the "
         "outcome. Reads the whole file for loudness; set loudness false to skip "
         "that (the tail row is skipped too). Never connects to Resolve.",
@@ -952,8 +952,9 @@ def register(registry):
               "loudness": {"type": "boolean", "default": True,
                            "description": "Measure loudness (reads the whole file)."},
               "expect_fade": {"type": "boolean",
-                              "description": "Assert the tail row: the last 100 ms at least "
-                              "12 dB below the window 3 s to 1.5 s before the end. Default: "
+                              "description": "Assert the tail row: the 100 ms ending at the last "
+                              "video frame at least 12 dB below the window 3 s to 1.5 s "
+                              "before that frame. Default: "
                               "the destination's tail_fade (true for social_9x16_music); "
                               "true turns it on for another destination, false off."},
               "audio_state": {"type": "string",

@@ -83,9 +83,11 @@ APPROX = {"text-word": "the word is a white box",
           "crop-window": "opens from black (no previous shot to show through); " + BOX_RATE,
           "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
                          "width, not Resolve's Pan arithmetic",
-          "exposure-flash": "a gain falling to 1 over 12 frames, drawn as a display-space "
-                            "multiply fitted on one dark frame (T28); a bright shot may "
-                            "read differently from the macro",
+          "exposure-flash": "a gain falling to 1 over 12 frames, drawn as the macro's "
+                            "multiply (gamma 2.4, about video black, each channel clipped at "
+                            "white, T28), after the look when a cube exists for the camera; "
+                            "colour management is not drawn, so the absolute levels sit "
+                            "below the build's",
           "dip-to-black": "the macro's even-stop gain keys, drawn as a display-space "
                           "multiply fitted on one dark frame (T28)",
           "dissolve": "drawn as a cut"}
@@ -94,14 +96,13 @@ MATTE_SIZE, MATTE_WORD = 0.32, "WILD"  # person-matte-text's Text1 Size and stor
 MATTE_COLOUR = "0xD7371F"  # its Red1/Green1/Blue1 (0.843, 0.216, 0.122) as 8-bit
 
 # Gain in the draft (trap T28). The macros multiply by a gain g in linear light; for a power-law
-# display curve that is a multiply by g**(1/GAMMA) on the encoded values, which is what eq
-# does around black (code 16) here. GAMMA is fitted to two measurements of the exposure-flash
-# macro in a colour-managed project, on a flat frame of luma 49: gain 2 read 65 (a gamma of
-# 2.45 fits it alone) and gain 10 read 117 (2.64 fits it alone). One family covers both:
-# 2.55 draws 62 and 120 on that frame, 4.6 and 2.6 percent off (eq rounds its table, so a
-# neighbouring gamma can read a level either way); the test holds it to 10 percent. Only that
-# one dark frame set it: a bright frame, a look before the flash and Resolve's highlight
-# roll-off were not measured.
+# display curve that is a multiply by g**(1/gamma) on the encoded values. The flash draws the
+# measured one: FLASH_GAMMA 2.4, about video black, each channel (not luma) clipped at video
+# white with no roll-off, as the build's master reads (T28). The dip still uses the older
+# fitted multiply on luma, GAMMA, which eq draws around black (code 16): fitted to two
+# measurements of the flash on one flat dark frame (gain 2 read 65 and gain 10 read 117, 2.55
+# draws 62 and 120), never measured on a dip.
+FLASH_GAMMA = 2.4
 GAMMA = 2.55
 FLASH_GAIN = 2        # the macro's own default peak
 FLASH_FRAMES = 12     # the macro keys the gain from the peak at frame 0 to 1 at frame 12
@@ -186,6 +187,19 @@ def gain_filter(gain):
             f"saturation='min(3,{k})':eval=frame")
 
 
+def flash_filter(g, fps):
+    """The exposure-flash macro's multiply, drawn per channel: gain g at the first frame,
+    smoothstep down to 1 at FLASH_FRAMES, times level**(1/FLASH_GAMMA) about video black, clipped
+    at video white. In planar RGB (full range, so black is 0 and white is 255) that is
+    clip(v*k): geq does it exactly, and only for the frames of the fall (eq cannot clip a
+    channel: it reads the second and third plane as chroma). Rounded to the nearest level; the
+    round trip through RGB moves an untouched level by one at most."""
+    u = f"min(round(T*{fps})/{FLASH_FRAMES},1)"
+    k = f"pow(1+({g:g}-1)*(1-({u})*({u})*(3-2*({u}))),{1 / FLASH_GAMMA:.6f})"
+    ch = ":".join(f"{c}='clip({c}(X,Y)*{k}+0.5,0,255)'" for c in "gbr")
+    return f"format=gbrp,geq={ch}:enable='lt(round(t*{fps}),{FLASH_FRAMES})'"
+
+
 def _piecewise(x, ys, step):
     """An ffmpeg expression for the line through ys at x = 0, step, 2*step ...; ys[0] before
     0 and ys[-1] after the last key."""
@@ -249,9 +263,7 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         x = f"max(round(t*{fps})-{n - DIP_FRAMES - 1},0)"
         return gain_filter(_piecewise(x, DIP_KEYS, DIP_STEP))
     if effect == "exposure-flash":  # gain g at the first frame, smooth to 1 by frame 12
-        g = float(p.get("gain", FLASH_GAIN))
-        u = f"min(round(t*{fps})/{FLASH_FRAMES},1)"
-        return gain_filter(f"1+({g:g}-1)*(1-({u})*({u})*(3-2*({u})))")
+        return flash_filter(float(p.get("gain", FLASH_GAIN)), fps)
     if effect == "text-word":  # a box where the word goes (drawtext is not in every ffmpeg)
         return (f"drawbox=x={int(w * 0.25)}:y={int(h * 0.34)}:w={int(w * 0.5)}:"
                 f"h={int(h * 0.08)}:color=white@0.75:t=fill")
