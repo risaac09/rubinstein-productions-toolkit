@@ -1,0 +1,1 @@
+New `notes` command for cutting on the notes a song plays: `notes measure` finds onset peaks and the beat period, `notes snap` puts each planned cut on the strongest played note near its beat, and `notes check` counts how many cuts land within one frame of a note against the chance level. For songs whose pulse drifts, where a fitted tempo grid misses the notes.
