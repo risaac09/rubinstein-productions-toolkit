@@ -1,0 +1,1 @@
+Add notes, shotlist and watch as offline MCP tools, and rewrite edit-methods.md around a footage-first order of work (sheets, shot list, notes, draft, watch, pick, build), with methods as optional finishing styles.

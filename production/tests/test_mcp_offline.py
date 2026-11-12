@@ -76,7 +76,7 @@ class TestRegistry(unittest.TestCase):
     # but never destructive. Every other offline tool reads and writes nothing.
     WRITES_FILES = {"detect", "survey", "measure", "endcheck", "selects", "reframe_plan",
                     "sync_measure", "trim_review", "shoot_table", "pipeline_proof", "perceive",
-                    "audio_report"}
+                    "audio_report", "notes", "shotlist", "watch"}
     READS_ONLY = {"qc", "deliver_check", "deliver_manifest", "overlay_check",
                   "ograf_template_check"}
 
