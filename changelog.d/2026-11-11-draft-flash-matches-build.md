@@ -1,0 +1,1 @@
+The exposure-flash draft now multiplies each channel by gain^(1/2.4) about video black and clips at white, as the build does, instead of a luma-only multiply that never clipped (trap T28); the dip is unchanged.
