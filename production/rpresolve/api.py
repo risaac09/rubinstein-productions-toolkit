@@ -331,6 +331,32 @@ def clip_items(tl, track):
             if is_clip(it)]
 
 
+def clip_positions(items):
+    """The raw 1-based places on a track (its GetItemListInTrack list) of the items clip_items
+    keeps: clip n sits at clip_positions(items)[n - 1]."""
+    return [p for p, it in enumerate(items, 1) if is_clip(it)]
+
+
+def skipped_items(items, track, kept):
+    """The items of one video track that clip_items leaves out, each {track, position, name,
+    reason}, from the track's item list and the clip positions already taken from it (kept), so
+    the two cannot disagree. position is the raw 1-based place on the track; the clip numbers of
+    the others do not move for it. One reason for all: the item API gives no kind."""
+    keep = set(kept)
+    return [{"track": track, "position": p, "name": _safe_call(it, "GetName"),
+             "reason": "no media pool clip (a transition, title, generator or compound clip)"}
+            for p, it in enumerate(items, 1) if p not in keep]
+
+
+def skipped_text(skipped, limit=8):
+    """'; skipped items (no media pool clip): V1 #2 Cross Dissolve, ...' for a refusal message, or '' when none."""
+    if not skipped:
+        return ""
+    rows = [f"V{x['track']} #{x['position']} {x['name']}" for x in skipped[:limit]]
+    more = f" and {len(skipped) - limit} more" if len(skipped) > limit else ""
+    return "; skipped items (no media pool clip): " + ", ".join(rows) + more
+
+
 class UISnapshot:
     """Context manager: record the current page, timeline, and playhead
     timecode on entry and put them back on exit. Restoring is best effort

@@ -458,6 +458,11 @@ def stabilize(args, ctx):
         return run() if args["dry_run"] else _journalled("stabilize", args, run)
 
 
+def _skipped_note(r):
+    """'; N item(s) skipped' when the track held items that are not clips (apply_effect, vertical_apply)."""
+    return f"; {len(r['skipped'])} item(s) skipped (no media pool clip; see skipped)" if r["skipped"] else ""
+
+
 def apply_effect(args, ctx):
     _require_sha(args)
 
@@ -472,6 +477,7 @@ def apply_effect(args, ctx):
                                     draft=args.get("draft"), override=args.get("override"))
         tl, n, e = r["timeline"]["name"], len(r["targets"]), r["effect"]["id"]
         skipped = f"; {len(r['refused'])} item(s) refused" if r["refused"] else ""
+        skipped += _skipped_note(r)
         if r["dry_run"]:
             r["summary"] = (f"would add a Fusion comp '{r['effect']['comp']}' with the {e} macro "
                             f"to {n} item(s) on '{tl}' V{r['timeline']['track']}{skipped}"
@@ -566,6 +572,7 @@ def vertical_apply(args, ctx):
                                "with the crop of the item each continues" if plates else "")
                             + (f"; leave {len(r['unframed_below'])} other item(s) there as they are"
                                if r["unframed_below"] else "")
+                            + _skipped_note(r)
                             + (f"; {stand_ins} person-matte-text comp(s) still hold the stand-in "
                                "matte, which is not moved (see the comp's notes)" if stand_ins else "")
                             + _how(r))
@@ -578,7 +585,7 @@ def vertical_apply(args, ctx):
             r["summary"] = (f"set and read back the 9:16 framing of {ok} of {len(both)} "
                             f"item(s) on '{tl}'" + (f" ({len(r['plate_results'])} of them plates)"
                                                     if r["plate_results"] else "")
-                            + "; export a still of each and look before queueing")
+                            + _skipped_note(r) + "; export a still of each and look before queueing")
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):

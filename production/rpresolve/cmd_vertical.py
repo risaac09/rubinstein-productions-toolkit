@@ -625,7 +625,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     On `track` above 1, plates on the track below take the crop of the item they continue
     (_plates_below): `plates` is the plan, `plate_results` the read-backs, `unframed_below`
     what on that track is not a plate. Returns {project, timeline, source_timeline, create,
-    targets, plates, unframed_below, unmoved_comps, results, plate_results, plan_sha, dry_run,
+    targets, plates, unframed_below, skipped, unmoved_comps, results, plate_results, plan_sha, dry_run,
     exit_status}; exit_status 1 when a read-back differs (a plate's included). unmoved_comps names
     each item and Fusion comp left as it was (every comp but the three moved), dry run or real."""
     from rpresolve import cmd_effect, workflows
@@ -650,10 +650,16 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
     tracks = int(base.GetTrackCount("video") or 0)
     if not 1 <= track <= tracks:
         raise Refused(f"'{base.GetName()}' has {tracks} video track(s).")
-    items = api.clip_items(base, track)
+    raw = api._safe_call(base, "GetItemListInTrack", "video", track) or []
+    positions = api.clip_positions(raw)
+    items = [raw[p - 1] for p in positions]
+    skipped = api.skipped_items(raw, track, positions)
+    if track > 1:
+        below = api._safe_call(base, "GetItemListInTrack", "video", track - 1) or []
+        skipped += api.skipped_items(below, track - 1, api.clip_positions(below))
     if len(items) != len(c["items"]):
         raise Refused(f"'{base.GetName()}' V{track} has {len(items)} item(s), crops.json has "
-                      f"{len(c['items'])}")
+                      f"{len(c['items'])}{api.skipped_text(skipped)}")
     targets, refused, kept = [], [], []
     for n, (it, crop) in enumerate(zip(items, c["items"]), 1):
         row, comps = _item_plan(it, crop, n, text_size_override, text_cap)
@@ -671,6 +677,7 @@ def apply_vertical(resolve, project_name, timeline, crops, source_timeline=None,
            "timeline": {"name": timeline, "track": track, "size": list(OUT_SIZE)},
            "source_timeline": base.GetName() if tl is None else None, "create": tl is None,
            "targets": targets, "plates": plates, "unframed_below": unframed,
+           "skipped": skipped,
            "unmoved_comps": _unmoved(targets, items), "results": [], "plate_results": [],
            "plan_sha": sha, "dry_run": dry_run, "exit_status": 0}
     if dry_run:
