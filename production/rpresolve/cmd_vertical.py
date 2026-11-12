@@ -13,6 +13,15 @@ it before anything is written to Resolve. `review` sets crops.json's "reviewed" 
 person or agent has read the sheet and watched the preview, and refuses when preview.mp4 is
 not beside crops.json or was drawn from other items (a centre changed since): run `draft` again.
 
+An item's `speed` (default 1; the manifest's retime `params.speed` for that span) is a picture-only
+retime: `in` to `out` is the item's length on the timeline, it plays `speed` times that much of
+the source, and the preview draws it so. ffmpeg cannot decode BRAW, so for a BRAW item the sheet
+and the preview are drawn from a proxy instead: the item's `proxy` in crops.json, or the
+source-path-to-proxy JSON given as --proxy-map. The proxy must decode, match the source's aspect
+and duration (within a frame, when ffprobe can read the source's duration; when it cannot, the
+plan says so and only the reach of the item's out is checked), and reach the item's out. Checked
+offline on generated clips only, not on a real BRAW. There is no way to mark a plan reviewed without the preview.
+
 Centre choice, in this order: a hand override ("<item name>" or "#<item number>"
 in the overrides file) always wins; else, only with --centre face, the face planner
 (reframe.plan_items for 1080x1920 at scaleToCrop) when it passes or falls back,
@@ -57,6 +66,7 @@ see draft_preview.
 
 import concurrent.futures
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -90,6 +100,7 @@ SHEET_W, SHEET_H, SHEET_ROWS = 560, 316, 6   # cells 3 across: 1680 x 1896 a she
 SHEET_MAX_BYTES = 1024 * 1024
 PREVIEW_SIZE, PREVIEW_FPS, PREVIEW_NAME = (540, 960), 30, "preview.mp4"
 PREVIEW_STAMP = "preview.json"   # beside the preview: {"items_sha": hash of the items it drew}
+ASPECT_TOLERANCE = 0.01          # a proxy's width/height may differ from the source's by this share
 
 
 class VerticalError(RuntimeError):
@@ -133,10 +144,28 @@ def _items(items, probe):
         if win is not None and win not in windowplate.PLATE_FRAMES:
             raise VerticalError(f"item {i} ({it['name']}): window is one of "
                                 f"{', '.join(sorted(windowplate.PLATE_FRAMES))}")
+        problem = _extras_problem(it)
+        if problem:
+            raise VerticalError(f"item {i} ({it['name']}): {problem}")
         rows.append({"index": i, "name": it["name"], "path": it["path"], "in": float(it["in"]),
                      "out": float(it["out"]), "zoom": zoom, "crop_x": it.get("crop_x"),
-                     "size": [int(size[0]), int(size[1])], "window": win})
+                     "size": [int(size[0]), int(size[1])], "window": win,
+                     "speed": float(it.get("speed") or 1.0), "proxy": it.get("proxy")})
     return rows
+
+
+def _extras_problem(it):
+    """What is wrong with an item's speed or proxy, or None."""
+    s = it.get("speed")
+    s = 1 if s is None else s
+    if isinstance(s, bool) or not isinstance(s, (int, float)) or not math.isfinite(s) or s <= 0:
+        return "speed must be a finite number above 0"
+    if s != 1 and it.get("window") is not None:
+        return "a window item takes no retime (an item holds one comp), so speed must be 1"
+    p = it.get("proxy")
+    if p is not None and not (isinstance(p, str) and p):
+        return "proxy must be a file path"
+    return None
 
 
 def _probe(path):
@@ -185,7 +214,7 @@ def _face(rows, group, planner):
 
 def plan(items, overrides=None, mode="edge", planner=None, probe=None):
     """crops.json as a dict: {aspect, reviewed: False, items: [{index, name, path, in, out,
-    cx, how, status, reason, zoom, source_size, shared_with?}]}. mode 'edge' (the default)
+    cx, how, status, reason, zoom, speed, source_size, window?, proxy?, shared_with?}]}. mode 'edge' (the default)
     uses the edge rule only; mode 'face' tries the face planner (planner(items, aspect=,
     master_size=, scaling=) -> reframe.plan_items' shape; default reframe.plan_items) and
     falls back to the edge rule."""
@@ -215,9 +244,11 @@ def plan(items, overrides=None, mode="edge", planner=None, probe=None):
                    "out": r["out"], "cx": round(clamp_cx(c, r["size"], r["zoom"]), 4), "how": h,
                    "status": s if n == group[0] or own is not None else "shared",
                    "reason": reason if n == group[0] and own is None else "",
-                   "zoom": r["zoom"], "source_size": r["size"]}
+                   "zoom": r["zoom"], "speed": r["speed"], "source_size": r["size"]}
             if r["window"]:
                 row["window"] = r["window"]
+            if r["proxy"]:
+                row["proxy"] = r["proxy"]
             if n != group[0] and own is None:
                 row["shared_with"] = rows[group[0]]["index"]
             out.append(row)
@@ -243,6 +274,9 @@ def load_crops(src):
         if it.get("window") is not None and it["window"] not in windowplate.PLATE_FRAMES:
             raise Refused(f"item {it.get('index')} ({it.get('name')}): window is one of "
                           f"{', '.join(sorted(windowplate.PLATE_FRAMES))}")
+        problem = _extras_problem(it)
+        if problem:
+            raise Refused(f"item {it.get('index')} ({it.get('name')}): {problem}")
     return src
 
 
@@ -309,8 +343,14 @@ def frame_filter(row, number=None):
     return ",".join(f + (_digits(number) if number else []))
 
 
+def source_span(row):
+    """(in, out) in source seconds: the item's length on the timeline is out - in, and a retime
+    plays speed times that much of the source."""
+    return row["in"], row["in"] + (row["out"] - row["in"]) * row.get("speed", 1)
+
+
 def frame_times(row):
-    a, b = row["in"], row["out"]
+    a, b = source_span(row)
     mid = (a + b) / 2.0
     return [mid] if b - a <= 1.0 else [a + 0.1 * (b - a), mid, a + 0.9 * (b - a)]
 
@@ -330,14 +370,96 @@ def _run(cmd):
     return p.returncode, p.stderr.decode(errors="replace").strip()[-300:]
 
 
-def review_sheets(crops, out_dir, ffmpeg=None):
+NO_PROXY = ("item {i} ({name}): ffmpeg cannot decode BRAW, so there is nothing to draw it from. "
+            "Two ways forward: provide a proxy (a \"proxy\" on the item in crops.json, or "
+            "--proxy-map FILE of source path to proxy path; a proxy made by Resolve or by hand), "
+            "or review a Resolve frame of the item by hand (get_image with source "
+            "media_pool_clip). Either way `vertical review` still needs a preview.mp4.")
+
+
+def _media(path):
+    """(width, height, duration, fps) of a file ffprobe can read, else VerticalError."""
+    from rpresolve import detect
+    try:
+        data, err = detect.run_ffprobe(path)
+    except detect.ToolMissing as e:
+        raise VerticalError(str(e))
+    vs = [s for s in (data or {}).get("streams") or [] if s.get("codec_type") == "video"]
+    if not vs:
+        raise VerticalError(f"{path}: no video stream ({err or 'ffprobe found none'})")
+    num, _, den = str(vs[0].get("avg_frame_rate") or "0/1").partition("/")
+    try:
+        fps = float(num) / float(den or 1)
+        dur = float((data.get("format") or {}).get("duration") or 0)
+    except (ValueError, ZeroDivisionError):
+        fps = dur = 0.0
+    return int(vs[0]["width"]), int(vs[0]["height"]), dur, fps
+
+
+def check_proxy_map(m):
+    """m if it is a dict of source path to proxy path (strings), else VerticalError."""
+    if not isinstance(m, dict) or not all(isinstance(k, str) and isinstance(v, str) and v
+                                          for k, v in m.items()):
+        raise VerticalError("the proxy map is a JSON object of source path to proxy path, "
+                            "for example {\"/media/A001.braw\": \"/proxy/A001.mov\"}")
+    return m
+
+
+def drawn_from(crops, proxy_map=None, ffmpeg=None, notes=None):
+    """The items to draw: each as it is, except that a BRAW item (no decoder in ffmpeg) is drawn
+    from its proxy (the item's `proxy`, else proxy_map[source path]), with path and source_size
+    those of the proxy. The proxy must decode, have the source's aspect, reach the item's out and,
+    when the source's duration can be read, last as long (within a frame); when it cannot, a line
+    is appended to `notes` (a list) and only the reach is checked. No proxy: refused."""
+    from rpresolve import reframe
+    ffmpeg = ffmpeg or reframe.FFMPEG
+    pmap = {os.path.normpath(k): v for k, v in check_proxy_map(proxy_map or {}).items()}
+    out = []
+    for row in crops["items"]:
+        if not row["path"].lower().endswith(".braw"):
+            out.append(row)
+            continue
+        who = f"item {row['index']} ({row['name']})"
+        proxy = row.get("proxy") or pmap.get(os.path.normpath(row["path"]))
+        if not proxy:
+            raise VerticalError(NO_PROXY.format(i=row["index"], name=row["name"]))
+        if not os.path.isfile(proxy):
+            raise VerticalError(f"{who}: the proxy {proxy} is not a file")
+        pw, ph, dur, fps = _media(proxy)
+        sw, sh = row["source_size"]
+        if abs((pw / ph) / (sw / sh) - 1) > ASPECT_TOLERANCE:
+            raise VerticalError(f"{who}: the proxy is {pw}x{ph} and the source {sw}x{sh}, not "
+                                "the same shape")
+        frame = 1.0 / fps if fps else 1.0 / PREVIEW_FPS
+        try:
+            src_dur = _media(row["path"])[2]
+        except VerticalError:
+            src_dur = 0.0
+            if notes is not None:
+                notes.append(f"{who}: the source's duration could not be read, so the proxy was "
+                             "not checked to last as long as it; only that it reaches the item's out")
+        if src_dur and abs(dur - src_dur) > frame:
+            raise VerticalError(f"{who}: the proxy lasts {dur:.3f}s and the source {src_dur:.3f}s "
+                                "(more than a frame apart)")
+        if dur + frame < source_span(row)[1]:
+            raise VerticalError(f"{who}: the proxy lasts {dur:.3f}s and the item reads to "
+                                f"{source_span(row)[1]:.3f}s of the source")
+        code, err = _run([ffmpeg, "-v", "error", "-i", "file:" + proxy, "-frames:v", "1",
+                          "-f", "null", "-"])
+        if code != 0:
+            raise VerticalError(f"{who}: ffmpeg cannot decode the proxy: {err}")
+        out.append({**row, "path": proxy, "source_size": [pw, ph]})
+    return out
+
+
+def review_sheets(crops, out_dir, ffmpeg=None, proxy_map=None, notes=None):
     """Write review-01.jpg ... to out_dir: six items a sheet, each a row of its frames (one for
     an item up to a second long, else near its start, middle and end) with the crop box and
     ruler drawn, the item's number in the corner. Returns the paths."""
     from rpresolve import reframe
     ffmpeg = ffmpeg or reframe.FFMPEG
     hw = _has_hw(ffmpeg)
-    paths, rows = [], crops["items"]
+    paths, rows = [], drawn_from(crops, proxy_map, ffmpeg, notes)
     os.makedirs(out_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         for page, start in enumerate(range(0, len(rows), SHEET_ROWS), 1):
@@ -394,8 +516,11 @@ def preview_filter(row):
     z = max(row["zoom"], 1.0)
     w, h = max(2, int(w / z)), max(2, int(h / z))
     x = min(max(int(row["cx"] * sw - w / 2), 0), sw - w)
-    return ",".join([f"crop={w}:{h}:{x}:{(sh - h) // 2}", "scale=%d:%d" % PREVIEW_SIZE, "setsar=1",
-                     f"fps={PREVIEW_FPS}"] + _digits(row["index"]) + ["format=yuv420p"])
+    speed = row.get("speed", 1)   # picture only: the item's length on the timeline stays out - in
+    return ",".join(([f"setpts=PTS/{speed:.6g}"] if speed != 1 else [])
+                    + [f"crop={w}:{h}:{x}:{(sh - h) // 2}", "scale=%d:%d" % PREVIEW_SIZE,
+                       "setsar=1", f"fps={PREVIEW_FPS}"] + _digits(row["index"])
+                    + ["format=yuv420p"])
 
 
 def window_filter(row, prev):
@@ -416,14 +541,15 @@ def window_filter(row, prev):
     return ",".join([vf] + _digits(row["index"]) + ["format=yuv420p"])
 
 
-def draft_preview(crops, out_dir, ffmpeg=None):
+def draft_preview(crops, out_dir, ffmpeg=None, proxy_map=None, notes=None):
     """Write out_dir/preview.mp4 from crops.json (a path or the dict): a silent 540x960 cut of
     every item from its source (path, in, out) at its crop centre, joined in order. An item with
     a `window` (scale-window or crop-window) after the first opens over the previous item's
     shot playing on, framed with that item's crop: the plate the build puts on V1 (window_filter).
     The picture is client media, so a folder inside any git working tree is refused. Returns the
-    path. Nothing here needs crops.json to be reviewed; the preview is what the review is read
-    with."""
+    path. A retimed item (`speed`) is drawn at that speed over its out - in; a BRAW item is drawn
+    from its proxy (drawn_from). Nothing here needs crops.json to be reviewed; the preview is what
+    the review is read with."""
     from rpresolve import drafts, reframe
     c = load_crops(crops)
     out_dir = os.path.abspath(out_dir)
@@ -432,11 +558,12 @@ def draft_preview(crops, out_dir, ffmpeg=None):
                             "media; write it outside any repository.")
     ffmpeg = ffmpeg or reframe.FFMPEG
     hw = _has_hw(ffmpeg)
+    items = drawn_from(c, proxy_map, ffmpeg, notes)
     os.makedirs(out_dir, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
         def cut(k_row):
             k, row = k_row
-            prev = c["items"][k - 1] if k and row.get("window") else None
+            prev = items[k - 1] if k and row.get("window") else None
             if prev:
                 try:
                     drafts._check_plate(prev["path"], prev["out"], windowplate.plate_frames(
@@ -448,19 +575,22 @@ def draft_preview(crops, out_dir, ffmpeg=None):
             for use_hw in ((True, False) if hw else (False,)):
                 code, err = _run([ffmpeg, "-v", "error", "-y"]
                                  + (["-hwaccel", "videotoolbox"] if use_hw else [])
-                                 + ["-ss", f"{row['in']:.4f}", "-t", f"{row['out'] - row['in']:.4f}",
+                                 + ["-ss", f"{row['in']:.4f}",
+                                    "-t", f"{source_span(row)[1] - row['in']:.4f}",
                                     "-i", "file:" + row["path"]]
                                  + (["-ss", f"{prev['out']:.4f}", "-i", "file:" + prev["path"],
                                      "-an", "-filter_complex", window_filter(row, prev)] if prev
                                     else ["-an", "-vf", preview_filter(row)])
                                  + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                                    "-write_tmcd", "0", part])
+                                    "-write_tmcd", "0"]
+                                 + (["-t", f"{row['out'] - row['in']:.4f}"]
+                                    if row.get("speed", 1) != 1 else []) + [part])
                 if code == 0 and os.path.exists(part):
                     return part
             raise VerticalError(f"item {row['index']} ({row['name']}): ffmpeg could not cut "
                                 f"{row['in']:.2f}s to {row['out']:.2f}s: {err}")
         with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 1) as pool:
-            parts = list(pool.map(cut, enumerate(c["items"])))
+            parts = list(pool.map(cut, enumerate(items)))
         lst, joined = os.path.join(tmp, "parts.txt"), os.path.join(tmp, PREVIEW_NAME)
         with open(lst, "w", encoding="utf-8") as f:
             f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
@@ -813,11 +943,18 @@ def add_arguments(p):
     p.add_argument("--centre", choices=["face", "edge"], default="edge",
                    help="plan: the edge rule only (default) or try the face planner first")
     p.add_argument("--no-sheet", action="store_true", help="plan: write crops.json only")
+    p.add_argument("--proxy-map", help="plan and draft: JSON {\"<source path>\": \"<proxy path>\"}; "
+                                       "a BRAW item is drawn from its proxy (ffmpeg cannot decode "
+                                       "BRAW)")
 
 
 def _load(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _proxy_map(path):
+    return check_proxy_map(_load(path)) if path else None
 
 
 def run(args):
@@ -830,7 +967,11 @@ def run(args):
             print(f"{args.file}: reviewed")
             return 0
         if args.action == "draft":
-            path = draft_preview(args.file, args.out or os.path.dirname(os.path.abspath(args.file)))
+            notes = []
+            path = draft_preview(args.file, args.out or os.path.dirname(os.path.abspath(args.file)),
+                                 proxy_map=_proxy_map(args.proxy_map), notes=notes)
+            for n in notes:
+                print(f"NOTE: {n}", file=sys.stderr)
             print(f"Wrote {path}. Send it to the operator and ask for the items to move, then: "
                   f"vertical review {args.file}", file=sys.stderr)
             return 0
@@ -846,13 +987,15 @@ def run(args):
         if problem:
             print(f"ERROR: {problem}", file=sys.stderr)
             return 1
+        pmap, notes = _proxy_map(args.proxy_map), []
         items = _load(args.file)
         crops = plan(items["items"] if isinstance(items, dict) else items,
                      overrides=_load(args.overrides) if args.overrides else None, mode=args.centre)
         os.makedirs(out)
         try:
             if not args.no_sheet:
-                crops["sheets"] = [os.path.basename(s) for s in review_sheets(crops, out)]
+                crops["sheets"] = [os.path.basename(s) for s in review_sheets(
+                    crops, out, proxy_map=pmap, notes=notes)]
             path = os.path.join(out, "crops.json")
             rppaths.write_private(path, json.dumps(crops, indent=1) + "\n")
         except BaseException:  # the folder is ours and must not exist for a re-run
@@ -861,6 +1004,8 @@ def run(args):
     except (VerticalError, OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
+    for n in notes:
+        print(f"NOTE: {n}", file=sys.stderr)
     for r in crops["items"]:
         print(f"#{r['index']:<3} {r['name']:<24} cx {r['cx']:.4f}  {r['how']:<5} {r['status']}"
               + (f"  | {r['reason']}" if r["reason"] else ""))
