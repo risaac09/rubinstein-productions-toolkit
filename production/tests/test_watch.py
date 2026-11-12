@@ -107,6 +107,14 @@ class AckStatus(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("video changed", out)
 
+    def test_unreadable_watch_json_is_a_refusal(self):
+        (self.out / "watch.json").write_text('{"acked": true}')
+        self.notes.write_text("a\nb\n")
+        self.assertEqual(run("ack", self.out, "--notes", self.notes)[0], 2)
+        code, out, _ = run("status", self.out)
+        self.assertEqual(code, 1)
+        self.assertIn("no readable watch.json", out)
+
     def test_ack_refuses_changed_video_and_missing_sheet(self):
         self.notes.write_text("a\nb\n")
         self.video.write_bytes(b"y" * 5000)
@@ -153,6 +161,23 @@ class Sheets(unittest.TestCase):
                 self.assertEqual(seen[-1], grey(ref), f)
                 os.unlink(png)
             self.assertEqual(len(set(seen)), len(seen))  # the levels tell the frames apart
+
+    def test_no_pillow_is_one_refusal(self):
+        import unittest.mock as m
+        with m.patch.dict(sys.modules, {"PIL": None}):
+            code, _, err = run("sheets", "x.mkv", "--cuts", "0,1", "--out", "/nonexistent/o")
+        self.assertEqual(code, 2)
+        self.assertIn("needs Pillow", err)
+
+    def test_start_time_offset_is_honoured(self):
+        with tempfile.TemporaryDirectory() as d:
+            v = os.path.join(d, "o.mkv")
+            subprocess.run([delivercheck.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                            f"color=c=black:size=160x90:rate={FPS}:duration=2,format=gray,geq=lum='20+3*N',format=gray",
+                            "-output_ts_offset", "10", "-c:v", "ffv1", v], check=True)
+            png = os.path.join(d, "g.png")
+            w.grab(v, 10, FPS, png)
+            self.assertEqual(grey(png), 50)
 
     def test_portrait_six_shots_under_2000(self):
         with tempfile.TemporaryDirectory() as d:

@@ -108,7 +108,10 @@ def grab(video, frame, fps, out):
 
 
 def sheets(args):
-    from PIL import Image, ImageDraw, ImageFont
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        raise WatchError("sheets needs Pillow (pip install Pillow) for this Python")
     from rpresolve import delivercheck, gatepacket
     video, out = os.path.abspath(args.video), os.path.abspath(args.out)
     if args.per_sheet < 1:
@@ -125,6 +128,9 @@ def sheets(args):
     if fps <= 0:
         raise WatchError("--fps must be positive")
     fps = float(fps)
+    if not args.fps:  # shortcut: r_frame_rate is the nominal rate, on a variable-rate file pass --fps
+        print(f"watch: frame rate {vfps} from the file's r_frame_rate; on variable-rate files pass --fps",
+              file=sys.stderr)
     shots = shot_frames(cut_frames(args.cuts, fps))
     os.makedirs(out, exist_ok=True)
     names, tile_h = [], None
@@ -173,8 +179,10 @@ def _save(d, doc):
 def _load(d):
     try:
         with open(os.path.join(d, "watch.json"), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
+            doc = json.load(f)
+        doc["video"], doc["video_sha256_first1mib_and_size"], doc["sheets"], len(doc["shots"])
+        return doc
+    except (OSError, ValueError, KeyError, TypeError):
         raise WatchError(f"{d} has no readable watch.json")
 
 
