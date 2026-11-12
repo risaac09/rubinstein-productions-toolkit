@@ -57,7 +57,7 @@ def run(args):
             m = methods.load(args.method)
             sl = dict(sl, look=m["look"], end=m["rules"]["end"])
         frames = shotlist.shot_frames(sl, cuts, args.period)
-        manifest, method = shotlist.compile_list(sl, frames, (cuts or {}).get("music_in"))
+        manifest, method = shotlist.compile_list(sl, frames, cuts.get("music_in") if cuts else None)
         check_exclude(
             args.exclude,
             lambda takes: [f"span {i + 1} {os.path.basename(src)} ({take})"

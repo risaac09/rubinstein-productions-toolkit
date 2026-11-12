@@ -48,7 +48,7 @@ def load(path):
 
 def conform_speed(fps, source_fps):
     """0.8 / 0.4 for a 30 / 60 fps source on a 24 fps list, else 1."""
-    if fps == 24 and _num(source_fps):
+    if abs(fps - 24) < 0.5 and _num(source_fps):  # 23.976 too
         for rate, speed in ((30, 0.8), (60, 0.4)):
             if abs(source_fps - rate) < 0.5:
                 return speed
@@ -120,7 +120,7 @@ def shot_frames(sl, cuts=None, period=None):
     """Timeline frames per shot, from a cut plan (dict) or a period in seconds."""
     n, fps = len(sl["shots"]), sl["fps"]
     if cuts is not None:
-        cf = cuts.get("cut_frames")
+        cf = cuts.get("cut_frames") if isinstance(cuts, dict) else None
         if not (isinstance(cf, list) and all(isinstance(v, int) and not isinstance(v, bool)
                                              for v in cf)):
             raise ShotlistError("the cut plan has no cut_frames list of whole frames")
