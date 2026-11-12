@@ -228,6 +228,68 @@ class TestCut(Base):
         with self.assertRaises(AssertionError):
             call("cut", {"project": "Sandbox", "manifest": manifest, "prefix": "a b"}, None)
 
+    def listed(self, doc):
+        p = os.path.join(self.dir, "exclude.json")
+        with open(p, "w") as f:
+            json.dump(doc, f)
+        return p
+
+    def test_a_span_source_on_the_exclude_list_refuses_both_runs_and_writes_nothing(self):
+        manifest, src = self.manifest()
+        project = FakeCutProject(FakeCutFolder([FakeCutItem(src)]))
+        for take in ("SOURCE", "source.bin", f"{os.path.basename(self.dir)}/source.bin"):
+            ex = self.listed({"takes": [take]})
+            for extra in ({}, {"dry_run": False, "plan_sha": "0" * 64}):
+                with self.assertRaisesRegex(workflows.Refused,
+                                            r"excluded take\(s\) in the manifest: hi span 1 source\.bin"):
+                    call("cut", {"project": "Sandbox", "manifest": manifest, "prefix": "T",
+                                 "audio": False, "exclude": ex, **extra}, project)
+        self.assertEqual(self.events(), [])
+
+    def test_the_exclude_list_is_checked_before_endcheck(self):
+        manifest, src = self.manifest()
+        project = FakeCutProject(FakeCutFolder([FakeCutItem(src)]))
+        with open(manifest) as f:
+            m = json.load(f)
+        m["clips"][0]["spans"][0]["end_words"] = "not what is said"
+        with open(manifest, "w") as f:
+            json.dump(m, f)
+        with self.assertRaisesRegex(workflows.Refused, "excluded take"):
+            call("cut", {"project": "Sandbox", "manifest": manifest, "audio": False,
+                         "exclude": self.listed({"takes": ["source"]})}, project)
+
+    def test_a_clean_list_is_carried_and_the_plan_sha_follows_it(self):
+        manifest, src = self.manifest()
+        project = FakeCutProject(FakeCutFolder([FakeCutItem(src)]))
+        args = {"project": "Sandbox", "manifest": manifest, "prefix": "T", "audio": False}
+        none = call("cut", args, project)
+        a = call("cut", {**args, "exclude": self.listed({"takes": ["x"]})}, project)
+        b = call("cut", {**args, "exclude": self.listed({"takes": ["y"]})}, project)
+        self.assertEqual((a["exclude"]["takes"], a["exclude"]["matches"], a["exclude_note"]),
+                         (["x"], [], None))
+        self.assertNotIn("no exclude list given", a["summary"])
+        self.assertEqual(len({none["plan_sha"], a["plan_sha"], b["plan_sha"]}), 3)
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            call("cut", {**args, "exclude": self.listed({"takes": ["x"]}), "dry_run": False,
+                         "plan_sha": b["plan_sha"]}, project)
+
+    def test_a_cut_with_no_list_says_nothing_was_checked(self):
+        manifest, src = self.manifest()
+        project = FakeCutProject(FakeCutFolder([FakeCutItem(src)]))
+        r = call("cut", {"project": "Sandbox", "manifest": manifest, "prefix": "T",
+                         "audio": False}, project)
+        self.assertIsNone(r["exclude"])
+        self.assertIn("no exclude list given", r["exclude_note"])
+        self.assertIn("no exclude list given: nothing was checked for excluded takes", r["summary"])
+
+    def test_the_exclude_path_must_be_absolute_and_name_takes(self):
+        manifest, _ = self.manifest()
+        with self.assertRaisesRegex(ValueError, "exclude must be an absolute path"):
+            call("cut", {"project": "Sandbox", "manifest": manifest, "exclude": "ex.json"}, None)
+        with self.assertRaisesRegex(workflows.Refused, "`takes`"):
+            call("cut", {"project": "Sandbox", "manifest": manifest, "audio": False,
+                         "exclude": self.listed({"shots": ["s1"]})}, None)
+
 
 # The write-path guard. api.py's rules put every Resolve write behind one layer, the
 # library (production/rpresolve/) that the MCP server calls: a pinned project, a plan the

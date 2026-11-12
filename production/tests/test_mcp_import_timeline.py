@@ -247,6 +247,71 @@ class TestImportTimeline(Base):
         self.assertIn("8 clip(s) were added to the bin 'Master'", str(cm.exception))
 
 
+class TestImportExclude(Base):
+    def listed(self, doc):
+        import json
+        p = os.path.join(self.dir, "exclude.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        return p
+
+    def args(self, **kw):
+        return {"name": self.name, "file": self.file, **kw}
+
+    def test_a_file_a_clip_plays_from_refuses_both_runs_and_imports_nothing(self):
+        parent = os.path.basename(self.dir)
+        for take in ("A", "a.mp4", f"{parent}/a.mp4"):
+            ex = self.listed({"takes": [take]})
+            for extra in ({}, {"dry_run": False, "plan_sha": "0" * 64}):
+                with self.assertRaisesRegex(workflows.Refused,
+                                            r"excluded take\(s\) in the file: a1 at frame 0 a\.mp4"):
+                    call("import_timeline", self.args(exclude=ex, **extra), self.resolve)
+        self.assertNotIn("ImportTimelineFromFile", [c[1] for c in rf.CALLS])
+        self.assertNotIn(self.name, self.tl_names())
+
+    def test_an_audio_clip_and_an_offline_file_are_checked_too(self):
+        for take, who in (("music", "music at frame 0 music.wav"),
+                          ("missing", "cutout at frame 75 missing.mov")):
+            with self.assertRaisesRegex(workflows.Refused, who):
+                call("import_timeline", self.args(exclude=self.listed({"takes": [take]})),
+                     self.resolve)
+
+    def test_a_clean_list_imports_and_is_carried(self):
+        ex = self.listed({"takes": ["elsewhere", "mp"], "shots": ["s1"]})  # a part of a name is no match
+        dry, real = run_twice("import_timeline", self.args(exclude=ex), self.resolve)
+        for r in (dry, real):
+            self.assertEqual((r["exclude"]["path"], r["exclude"]["takes"], r["exclude"]["matches"]),
+                             (ex, ["elsewhere", "mp"], []))
+            self.assertIsNone(r["exclude_note"])
+            self.assertNotIn("no exclude list given", r["summary"])
+        self.assertEqual(real["exit_status"], 0)
+
+    def test_an_import_with_no_list_says_nothing_was_checked(self):
+        dry, real = run_twice("import_timeline", self.args(), self.resolve)
+        for r in (dry, real):
+            self.assertIsNone(r["exclude"])
+            self.assertIn("no exclude list given", r["exclude_note"])
+            self.assertIn("no exclude list given: nothing was checked for excluded takes",
+                          r["summary"])
+
+    def test_the_plan_sha_follows_the_list(self):
+        none = call("import_timeline", self.args(), self.resolve)["plan_sha"]
+        a = call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]})),
+                 self.resolve)["plan_sha"]
+        b = call("import_timeline", self.args(exclude=self.listed({"takes": ["y"]})),
+                 self.resolve)["plan_sha"]
+        self.assertEqual(len({none, a, b}), 3)
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]}),
+                                              dry_run=False, plan_sha=b), self.resolve)
+
+    def test_the_path_must_be_absolute_and_the_file_must_name_takes(self):
+        with self.assertRaisesRegex(ValueError, "exclude must be an absolute path"):
+            call("import_timeline", self.args(exclude="exclude.json"), self.resolve)
+        with self.assertRaisesRegex(workflows.Refused, "`takes`"):
+            call("import_timeline", self.args(exclude=self.listed({"take": ["a"]})), self.resolve)
+
+
 class TestReaderWrappers(Base):
     def test_a_clip_wrapper_counts_once_and_its_connected_lane_still_counts(self):
         wrapped = FCPXML.format(dir=self.dir).replace(

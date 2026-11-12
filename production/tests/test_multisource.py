@@ -129,6 +129,52 @@ class TestCut(Base):
         self.assertIn("several sources", r["unreframed"][0])
 
 
+class TestCutExclude(Base):
+    def listed(self, takes):
+        p = os.path.join(self.dir, "exclude.json")
+        with open(p, "w") as f:
+            json.dump({"takes": takes}, f)
+        return p
+
+    def test_a_source_any_span_plays_from_refuses_the_gate_and_the_cut(self):
+        for dry in (True, False):
+            with self.assertRaisesRegex(workflows.Refused, r"mix span 1 b\.mp4 \(B\)"):
+                self.cut(exclude=self.listed(["B"]), dry_run=dry)
+        with self.assertRaisesRegex(workflows.Refused, r"excluded take"):
+            workflows.cut_gate(self.path, audio=False, exclude=self.listed(["a.mp4"]))  # not endcheck's refusal
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+
+    def test_only_the_clips_asked_for_are_checked(self):
+        m = {**self.m, "clips": self.m["clips"] + [
+            {"name": "just_a", "spans": [{"source": "a", "in": 0.9, "out": 2.1}]}]}
+        with open(self.path, "w") as f:
+            json.dump(m, f)
+        g = workflows.cut_gate(self.path, ["just_a"], audio=False, force=True,
+                               exclude=self.listed(["b"]))
+        self.assertEqual(g["exclude"]["takes"], ["b"])
+        with self.assertRaisesRegex(workflows.Refused, r"mix span 1 b\.mp4"):
+            workflows.cut_gate(self.path, audio=False, force=True, exclude=self.listed(["b"]))
+
+    def test_a_clean_list_is_carried_and_a_missing_one_is_named(self):
+        r = self.cut(exclude=self.listed(["c"]), dry_run=True)
+        self.assertEqual((r["exclude"]["takes"], r["exclude"]["matches"], r["exclude_note"]),
+                         (["c"], [], None))
+        r = self.cut(dry_run=True)
+        self.assertIsNone(r["exclude"])
+        self.assertIn("no exclude list given", r["exclude_note"])
+
+    def test_the_plan_sha_follows_the_list(self):
+        a = self.cut(exclude=self.listed(["c"]), dry_run=True)["plan_sha"]
+        b = self.cut(exclude=self.listed(["d"]), dry_run=True)["plan_sha"]
+        self.assertEqual(len({a, b, self.cut(dry_run=True)["plan_sha"]}), 3)
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            self.cut(exclude=self.listed(["c"]), expect_sha=b)
+
+    def test_a_relative_path_is_refused(self):
+        with self.assertRaisesRegex(workflows.Refused, "absolute"):
+            self.cut(exclude="exclude.json", dry_run=True)
+
+
 class TestInterchange(unittest.TestCase):
     def setUp(self):
         self.m = {"version": 2, "fps": 25, "sources": [

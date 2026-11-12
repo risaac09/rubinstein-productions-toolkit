@@ -1,0 +1,1 @@
+The Resolve MCP tools cut and import_timeline take the operator's exclude list (exclude) and refuse a cut manifest whose span plays from an excluded source, or an FCPXML file with a clip from an excluded file, in the dry run and the real run; the list's hash is part of the plan_sha, and a run with no list says so in exclude_note and the summary.

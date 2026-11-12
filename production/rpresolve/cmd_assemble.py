@@ -59,7 +59,7 @@ from rpresolve import delivercheck as dc
 from rpresolve import musicbed
 from rpresolve import paths as rppaths
 from rpresolve import windowplate
-from rpresolve.workflows import AUTO, Refused, _check, plan_sha
+from rpresolve.workflows import AUTO, Refused, _check, check_exclude, plan_sha
 
 NAME = "assemble"
 HELP = "Offline: print the timeline a method manifest would be assembled into"
@@ -102,22 +102,13 @@ def plan(manifest, exclude=None):
         raise Refused(str(e))
     if len(manifest["clips"]) != 1:
         raise Refused("a method manifest holds one clip")
-    ex = None
-    if exclude:
-        if not os.path.isabs(exclude):
-            raise Refused("exclude must be an absolute path")
-        try:
-            ex = cutlist.load_exclude(exclude)
-            hits = [f"span {i + 1} {os.path.basename(src)} ({take})"
-                    for i, src, take in cutlist.exclude_matches(manifest, ex["takes"])]
-            hits += [f"music {os.path.basename(src)} ({take})"
-                     for src, take in cutlist.exclude_music_matches(manifest, ex["takes"])]
-        except cutlist.CutlistError as e:
-            raise Refused(str(e))
-        if hits:
-            raise Refused("excluded take(s) in the manifest: " + "; ".join(hits))
-        ex = {"path": ex["path"], "takes": ex["takes"], "sha256": ex["sha256"], "matches": [],
-              "not_checked": ex["not_checked"]}
+    ex = check_exclude(
+        exclude,
+        lambda takes: [f"span {i + 1} {os.path.basename(src)} ({take})"
+                       for i, src, take in cutlist.exclude_matches(manifest, takes)]
+        + [f"music {os.path.basename(src)} ({take})"
+           for src, take in cutlist.exclude_music_matches(manifest, takes)],
+        "the manifest")
     fps = float(manifest["fps"])
     paths = {s["id"]: s["path"] for s in cutlist.sources(manifest)}
     spans, not_built, prev = [], [], None
@@ -151,7 +142,7 @@ def plan(manifest, exclude=None):
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
             "not_built": not_built, "exclude": ex,
-            "exclude_note": None if ex else cutlist.NO_EXCLUDE + ": nothing was checked for excluded takes"}
+            "exclude_note": cutlist.exclude_note(ex)}
 
 
 def _clip_fps(clip, fallback):

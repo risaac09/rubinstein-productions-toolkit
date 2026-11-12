@@ -48,6 +48,25 @@ def plan_sha(*parts):
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def check_exclude(path, hits_of, where):
+    """The operator's exclude list as a report (cutlist.exclude_report) once hits_of(takes)
+    names no take in `where`; None when no list is given. Raises Refused on a relative path,
+    a list that cannot be read, or any hit."""
+    from . import cutlist
+    if not path:
+        return None
+    if not os.path.isabs(path):
+        raise Refused("exclude must be an absolute path")
+    try:
+        ex = cutlist.load_exclude(path)
+        hits = hits_of(ex["takes"])
+    except cutlist.CutlistError as e:
+        raise Refused(str(e))
+    if hits:
+        raise Refused(f"excluded take(s) in {where}: " + "; ".join(hits))
+    return cutlist.exclude_report(ex)
+
+
 def _check(pin, pm, check_cancel):
     def check():
         if check_cancel:
@@ -472,14 +491,23 @@ def _clip_sources(m, clips):
     return [s for s in cutlist.sources(m) if s["id"] in ids]
 
 
-def cut_gate(manifest_path, only=None, audio=True, force=False):
-    """The offline half of cut: load, check the source sha256, run
-    endcheck. Returns {manifest, clips (to build), blocked {clip: [reasons]},
-    forced}. Raises Refused when the source does not match or no clip may
-    be built; CutlistError passes through."""
+def cut_gate(manifest_path, only=None, audio=True, force=False, exclude=None):
+    """The offline half of cut: load, check the exclude list, check the source
+    sha256, run endcheck. Returns {manifest, clips (to build), blocked {clip:
+    [reasons]}, forced, exclude (the checked list's report, or None), exclude_note}.
+    `exclude` (absolute path) is the operator's exclude list: Refused when a
+    span of a clip asked for plays from a source it names, endcheck or not.
+    Raises Refused too when the source does not match or no clip may be built;
+    CutlistError passes through."""
     from . import cut as rpcut, cutlist
     m = cutlist.load_manifest(manifest_path)
     clips = rpcut.plan_clips(m, only)
+    ex = check_exclude(
+        exclude,
+        lambda takes: [f"{c['name']} span {i + 1} {os.path.basename(src)} ({take})"
+                       for c in clips
+                       for i, src, take in cutlist.exclude_matches({**m, "clips": [c]}, takes)],
+        "the manifest")
     for one in _clip_sources(m, clips):
         src = one["path"]
         if not os.path.isfile(src) or cutlist.sha256_file(src) != one["sha256"]:
@@ -491,7 +519,8 @@ def cut_gate(manifest_path, only=None, audio=True, force=False):
         clips = [c for c in clips if c["name"] not in blocked]
     if not clips:
         raise Refused("no clip passed endcheck; nothing to build.")
-    return {"manifest": m, "clips": clips, "blocked": blocked, "forced": bool(force and blocked)}
+    return {"manifest": m, "clips": clips, "blocked": blocked, "forced": bool(force and blocked),
+            "exclude": ex, "exclude_note": cutlist.exclude_note(ex)}
 
 
 def cut_aspects(make_9x16=True, aspects=None):
@@ -513,13 +542,16 @@ def cut_aspects(make_9x16=True, aspects=None):
 
 def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=False, audio=True,
         make_9x16=True, dry_run=False, project_id=None, check_cancel=None, expect_sha=None,
-        gate=None, aspects=None):
+        gate=None, aspects=None, exclude=None):
     """Build [auto] timelines from a manifest in the open project named
     project_name: each clip's 16:9, then its versions in `aspects` (9x16
     and/or 1x1; default 9x16, none with make_9x16 false). Returns {project,
     gate, source_item, aspects, would_create, unreframed, refused,
     reframes, skipped_existing, results, left_behind, ui_restore_problems,
-    plan_sha, exit_status, settings_drift_rows}. A version with no reframe for a span is not
+    plan_sha, exit_status, settings_drift_rows, exclude, exclude_note}. `exclude` (absolute
+    path) is the operator's exclude list, checked by cut_gate (a gate passed in
+    carries its own): the result's `exclude` is its path, takes and hash, or None with
+    `exclude_note` saying nothing was checked. A version with no reframe for a span is not
     built and is named in `unreframed`, and one whose input scaling the
     transform is not known for in `refused` (dry run and real run); a
     version whose picture does not fill the frame is built and named in
@@ -539,7 +571,7 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     from . import cut as rpcut, cutlist
     from . import settingsguard as rpguard
     aspects = cut_aspects(make_9x16, aspects)
-    gate = gate or cut_gate(manifest_path, only, audio, force)
+    gate = gate or cut_gate(manifest_path, only, audio, force, exclude)
     m, clips = gate["manifest"], gate["clips"]
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
@@ -621,11 +653,13 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
     # scaling, so both are part of what the dry run showed.
     sha = plan_sha("cut", pin.unique_id, prefix, [s["sha256"] for s in found_sources], list(aspects),
                    list(src), [srcs_of[c["name"]] for c in clips],
-                   scaling, [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
+                   scaling, gate["exclude"],
+                   [{"name": e["clip"]["name"], "spans": e["clip"]["spans"],
                               "reframe": e["clip"].get("reframe"), "build_wide": e["build_wide"],
                               "aspects": e["aspects"], "base": e["base"]} for e in todo])
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "gate": {"blocked": gate["blocked"], "forced": gate["forced"]},
+           "exclude": gate["exclude"], "exclude_note": gate["exclude_note"],
            "source_items": [{"id": k, "name": v.GetName()} for k, v in found.items()],
            "source_item": {"name": item.GetName(), "file_path": item.GetClipProperty("File Path"),
                            "resolution": list(src)},
@@ -881,7 +915,7 @@ def timeline_from_clips(resolve, project_name, name, bin=None, clips=None, order
 
 
 def import_timeline(resolve, project_name, name, file, dry_run=False, project_id=None,
-                    expect_sha=None, check_cancel=None):
+                    expect_sha=None, check_cancel=None, exclude=None):
     """Import an FCPXML file as a new ' [auto]' timeline through
     MediaPool.ImportTimelineFromFile, its source clips imported into the
     media-pool bin open in Resolve, and read the timeline back against what
@@ -890,8 +924,11 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
     scale, every transition's position and length (as the transition items
     Resolve placed; the kind placed is reported), the item counts per track.
     Keyframed transforms and retimes are not read back. The current timeline,
-    playhead and page are put back. Returns {project, timeline, file,
-    file_sha256, rate, events, transitions, media_missing, warnings,
+    playhead and page are put back. `exclude` (absolute path) is the operator's
+    exclude list: Refused when an event plays from a file it names (dry run and
+    real run); `exclude` in the result is its path, takes and hash, or None with
+    `exclude_note` saying nothing was checked. Returns {project, timeline, file,
+    file_sha256, rate, events, transitions, media_missing, warnings, exclude, exclude_note,
     plan_sha, dry_run, created, clips_added (what the import put in the open
     bin), items, tracks, problems, left_behind, lands_in_bin,
     ui_restore_problems, exit_status}."""
@@ -907,6 +944,12 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
         read = fcpxmlread.read(file)
     except fcpxmlread.FcpxmlError as e:
         raise Refused(str(e))
+    from . import cutlist
+    ex = check_exclude(
+        exclude,
+        lambda takes: [f"{e['name']} at frame {e['record']} {os.path.basename(e['path'])} ({take})"
+                       for e in read["events"] if e["path"] for take in cutlist.named_by(e["path"], takes)],
+        "the file")
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
     count = int(project.GetTimelineCount() or 0)
@@ -916,10 +959,11 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
         file_sha = hashlib.sha256(f.read()).hexdigest()
     rate = f"{read['rate'].numerator}/{read['rate'].denominator}"
     missing = sorted(p for p, ok in read["media"].items() if not ok)
-    sha = plan_sha("import_timeline", pin.unique_id, name, file_sha)
+    sha = plan_sha("import_timeline", pin.unique_id, name, file_sha, ex)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "file": file,
            "file_sha256": file_sha, "rate": rate, "events": read["events"],
            "transitions": read["transitions"], "media_missing": missing,
+           "exclude": ex, "exclude_note": cutlist.exclude_note(ex),
            "warnings": list(read["warnings"]), "plan_sha": sha, "dry_run": dry_run,
            "created": None, "clips_added": [], "items": [], "tracks": {}, "problems": [],
            "left_behind": None,
