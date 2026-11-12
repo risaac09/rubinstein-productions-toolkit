@@ -500,7 +500,7 @@ class TestParams(Base):
         self.assertIn("StyledText", problems[0])
 
     def test_retime_constant_keys_are_offsets(self):
-        _, real = self.run_fx("retime", {"speed": 0.7})
+        _, real = self.run_fx("retime", {"speed": 0.7, "speed_to": 0.7})  # a ramp: the comp
         self.assertTrue(real["results"][0]["ok"], real["results"])
         comp = self.comp("retime")
         keys = comp.FindTool("TimeStretcher1SourceTime").keys
@@ -549,7 +549,8 @@ class TestParams(Base):
         self.items[0].source = (0, None)
         with self.assertRaisesRegex(workflows.Refused, "source frames"):
             call("apply_effect", {"timeline": "Edit [auto]", "effect": "retime",
-                                  "items": [1], "params": {"speed": 2}}, self.resolve)
+                                  "items": [1], "params": {"speed": 2, "speed_to": 3}},
+                 self.resolve)
 
     def test_reframe_pan_keys_run_linearly_from_a_to_b(self):
         _, real = self.run_fx("reframe-pan", {"pan_from": 0.6, "pan_to": 0.33, "pan_base": 0.45})
@@ -566,6 +567,92 @@ class TestParams(Base):
         self.assertEqual(comp.FindTool("XYPath1").values["Y"], 0.5)
         self.assertIs(comp.FindTool("Transform1").links["Center"], comp.FindTool("XYPath1"))
         self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("Transform1"))
+
+    def give_speed(self, it, end_moves=False):
+        """SetSpeed/GetSpeed on a fake item; end_moves: Resolve ripples the item's end."""
+        it.speed = 100.0
+        def set_speed(o):
+            rf.CALLS.append(("Item", "SetSpeed", (it.uid, dict(o))))
+            it.speed = o["Percentage"]
+            if end_moves:
+                it.end += 3
+            return True
+        it.SetSpeed = set_speed
+        it.GetSpeed = lambda: {"Percentage": it.speed}
+
+    def test_constant_retime_is_native_and_leaves_the_item_free_for_a_pan(self):
+        it = self.items[0]
+        self.give_speed(it)
+        dry, real = self.run_fx("retime", {"speed": 0.8})
+        self.assertEqual(dry["targets"][0]["route"], "native")
+        r = real["results"][0]
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(it.speed, 80.0)
+        self.assertIn(("Item", "SetSpeed", (it.uid, {"Percentage": 80.0, "RippleTimeline": False})),
+                      rf.CALLS)
+        self.assertEqual(it.comps, {})
+        self.assertEqual(self.added_comps(), 0)
+        self.assertEqual(r["native"]["before"]["end"], r["native"]["after"]["end"])
+        _, pan = self.run_fx("reframe-pan", {"pan_from": 0.4, "pan_to": 0.5})
+        self.assertTrue(pan["results"][0]["ok"], pan["results"])
+        self.assertEqual(list(it.comps), ["rp-fx reframe-pan"])
+
+    def test_native_read_back_fails_when_the_items_end_frame_moves(self):
+        it = self.items[0]
+        self.give_speed(it, end_moves=True)
+        run_dry = call("apply_effect", {"timeline": "Edit [auto]", "effect": "retime",
+                                        "items": [1], "params": {"speed": 0.8}}, self.resolve)
+        with self.assertRaises(cmd_effect.api.WriteNotApplied) as cm:
+            call("apply_effect", {"timeline": "Edit [auto]", "effect": "retime", "items": [1],
+                                  "params": {"speed": 0.8}, "dry_run": False,
+                                  "plan_sha": run_dry["plan_sha"]}, self.resolve)
+        msg = str(cm.exception)
+        self.assertIn("end 86450 -> 86453", msg)
+        self.assertIn("source_start 100 -> 100", msg)
+
+    def test_native_read_back_fails_when_the_speed_reads_wrong(self):
+        it = self.items[0]
+        self.give_speed(it)
+        it.GetSpeed = lambda: {"Percentage": 100.0}
+        with self.assertRaisesRegex(cmd_effect.api.WriteNotApplied, "GetSpeed reads 100.0"):
+            cmd_effect._set_speed(it, {"name": "x", "index": 1}, 0.8)
+
+    def test_an_item_with_the_old_retime_comp_is_left_alone(self):
+        it = self.items[0]
+        self.give_speed(it)
+        it.comps["rp-fx retime"] = FComp()
+        self.give_speed(self.items[1])
+        dry = call("apply_effect", {"timeline": "Edit [auto]", "effect": "retime",
+                                    "items": [1, 2], "params": {"speed": 0.8}}, self.resolve)
+        self.assertEqual([r["index"] for r in dry["refused"]], [1])
+        self.assertIn("left as it is", dry["refused"][0]["reasons"][0])
+        self.assertEqual([t["index"] for t in dry["targets"]], [2])
+
+    def test_reframe_pan_fade_out_keys_end_on_the_last_frame(self):
+        _, real = self.run_fx("reframe-pan", {"pan_from": 0.5, "pan_to": 0.5, "fade_out": 0.4})
+        self.assertTrue(real["results"][0]["ok"], real["results"])
+        comp = self.comp("reframe-pan")
+        keys = comp.FindTool("BrightnessContrast1Gain").keys
+        # 0.4 s at 25 fps = 10 timeline frames, x 240/50 source per timeline frame = 48
+        self.assertEqual(sorted(keys), [191, 239])
+        self.assertEqual((keys[191][1], keys[239][1]), (1, 0))
+        self.assertIs(comp.FindTool("BrightnessContrast1").links["Input"], comp.FindTool("Transform1"))
+        self.assertIs(comp.FindTool("BrightnessContrast1").links["Gain"],
+                      comp.FindTool("BrightnessContrast1Gain"))
+        self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("BrightnessContrast1"))
+        self.assertIs(comp.FindTool("Transform1").links["Input"], comp.FindTool("MediaIn1"))
+        self.assertEqual(real["results"][0]["params"]["BrightnessContrast1Gain@239"], 0)
+
+    def test_fade_out_is_validated_and_absent_means_no_fade(self):
+        v = cmd_effect.validate_params
+        self.assertEqual(v("reframe-pan", {"pan_from": 0.5, "pan_to": 0.5, "fade_out": 5})["fade_out"], 5)
+        for params in [{"fade_out": 5.5}, {"fade_out": -1}, {"fade_out": True}]:
+            with self.assertRaises(workflows.Refused, msg=params):
+                v("reframe-pan", {"pan_from": 0.5, "pan_to": 0.5, **params})
+        with self.assertRaises(workflows.Refused):
+            v("zoom-push", {"fade_out": 1})
+        self.run_fx("reframe-pan", {"pan_from": 0.4, "pan_to": 0.5})
+        self.assertIsNone(self.comp("reframe-pan").FindTool("BrightnessContrast1"))
 
 
 class TestClipNumbering(Base):
