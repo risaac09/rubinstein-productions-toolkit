@@ -451,9 +451,15 @@ class TestNewDraws(unittest.TestCase):
     def test_reframe_pan_replaces_the_centred_crop_and_is_labelled(self):
         vf, missing = self.vf([{"effect": "reframe-pan",
                                 "params": {"pan_from": 0.6, "pan_to": 0.3}}])
-        self.assertIn("crop=1280:720:x='(iw-1280)*(0.6+(0.3-0.6)*t/1.0000)'", vf)
+        self.assertIn("crop=1280:720:x='clip((0.6+(0.3-0.6)*t/1.0000)*iw-ow/2\\,0\\,iw-ow)'", vf)
         self.assertEqual(vf.count("crop=1280:720"), 1)
-        self.assertTrue(missing[0].startswith("reframe-pan: the crop moves"))
+        self.assertEqual(missing, [])  # the centre follows the macro's, so nothing is approximate
+
+    def test_a_static_pan_crops_where_centre_crop_does(self):
+        vf, _ = self.vf([{"effect": "reframe-pan", "params": {"pan_from": 0.37, "pan_to": 0.37}}])
+        x = vf.split("x='")[1].split("':y=")[0]
+        want = drafts.centre_crop(1280, 720, 0.37).split("x='")[1].split("':y=")[0]
+        self.assertEqual(x.replace("(0.37+(0.37-0.37)*t/1.0000)", "0.3700"), want)
 
     def test_scale_window_grows_to_full_and_is_labelled(self):
         vf, missing = self.vf(["scale-window"])
@@ -569,7 +575,7 @@ class TestNewDrawsRender(Base):
         st = probe(doc["drafts"][0]["file"])
         self.assertEqual(int(st["nb_read_frames"]), 24 + 12 + 18)
         notes = " | ".join(doc["drafts"][0]["notes"])
-        self.assertIn("span 1: reframe-pan:", notes)
+        self.assertNotIn("span 1: reframe-pan:", notes)  # drawn at the macro's centre
         self.assertNotIn("retime", notes)
 
 
@@ -627,7 +633,7 @@ class TestLedger(unittest.TestCase):
         for e in ("exposure-flash", "dip-to-black", "crop-window", "scale-window", "dissolve"):
             self.assertIn(e, drafts.APPROX)
         self.assertTrue(set(drafts.APPROX) <= drafts.DRAWN | {"dissolve"})
-        self.assertEqual(sorted(drafts.DRAWN - set(drafts.APPROX)), ["retime", "zoom-push"])
+        self.assertEqual(sorted(drafts.DRAWN - set(drafts.APPROX)), ["reframe-pan", "retime", "zoom-push"])
 
     def test_approx_has_no_duplicate_keys(self):
         # a dict literal keeps the last of two equal keys without a word, so one note vanishes

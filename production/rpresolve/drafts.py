@@ -81,8 +81,6 @@ APPROX = {"text-word": "the word is a white box",
                                "behind anyone",
           "scale-window": "drawn over black (no previous shot to grow over); " + WINDOW_DRIFT,
           "crop-window": "opens from black (no previous shot to show through); " + BOX_RATE,
-          "reframe-pan": "the crop moves from pan_from to pan_to as a share of the source "
-                         "width, not Resolve's Pan arithmetic",
           "exposure-flash": "a gain falling to 1 over 12 frames, drawn as the macro's "
                             "multiply (gamma 2.4, about video black, each channel clipped at "
                             "white, T28), after the look when a cube exists for the camera; "
@@ -236,7 +234,10 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         return f"setpts='(sqrt({s0 * s0}+{4 * k}*T)-{s0})/{2 * k}/TB'"
     if effect == "reframe-pan":
         a, b = p.get("pan_from", 0.5), p.get("pan_to", 0.5)
-        return f"crop={w}:{h}:x='(iw-{w})*({a}+({b}-{a})*t/{seconds:.4f})':y='(ih-{h})/2'"
+        # the centre moves linearly; clamped inside the frame like centre_crop. pan_base is
+        # the Pan the item already holds (it only offsets the Fusion path), so it is not used.
+        return (f"crop={w}:{h}:x='clip(({a}+({b}-{a})*t/{seconds:.4f})*iw-ow/2\\,0\\,iw-ow)'"
+                f":y='(ih-oh)/2'")
     if effect == "scale-window":  # 0.22 to 0.72 over 36 frames, then full from frame 37
         z = f"if(lt(t*{fps}\\,37)\\,0.22+0.5*min(t*{fps}\\,36)/36\\,1)"
         sc = (f"scale=w='max(2\\,trunc({w}*({z})/2)*2)':h='max(2\\,trunc({h}*({z})/2)*2)':"
