@@ -25,8 +25,9 @@ def add_arguments(p):
     p.add_argument("--no-loudness", action="store_true",
                    help="Skip the loudness read (it reads the whole file)")
     p.add_argument("--expect-fade", action="store_true",
-                   help="Also assert the tail row (the last 100 ms at least 12 dB below the "
-                   "window 3 s to 1.5 s before the end), for a destination without tail_fade")
+                   help="Also assert the tail row (the 100 ms ending at the last video frame at "
+                   "least 12 dB below the window 3 s to 1.5 s before it), for a destination "
+                   "without tail_fade")
     p.add_argument("--ledger-row", metavar="PATH",
                    help="Also write a release-ledger row stub (one JSON line, keyed to the house "
                    "file name) to PATH, replacing any file there (one row per file); refused inside any git tree")
