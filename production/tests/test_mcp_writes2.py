@@ -520,8 +520,12 @@ class TestQueueRender(Base):
     client_master is the one destination that takes the timeline's own size,
     so these timelines need no shape of their own."""
 
+    def setUp(self):
+        super().setUp()
+        self.origin.name = "Edit [auto]"
+
     def args(self, **kw):
-        return {"timeline": "Edit", "destination": "client_master",
+        return {"timeline": "Edit [auto]", "destination": "client_master",
                 "name": {"client": "Acme", "slug": "edit"}, "target_dir": self.dir, **kw}
 
     def out(self, slug="edit"):
@@ -532,7 +536,7 @@ class TestQueueRender(Base):
         dry, real = run_twice("queue_render", self.args(), self.resolve)
         self.assertEqual(dry["output"], self.out())
         self.assertIn("TargetDir", dry["deliver_changed"])
-        self.assertEqual(real["job"]["TimelineName"], "Edit")
+        self.assertEqual(real["job"]["TimelineName"], "Edit [auto]")
         self.assertEqual(real["job"]["VideoFormat"], "mov")
         self.assertEqual(real["readback_problems"], [])
         self.assertIn("NOT started", real["summary"])
@@ -556,6 +560,15 @@ class TestQueueRender(Base):
         self.project.fmt = {"format": "unknown", "codec": ""}
         dry, real = run_twice("queue_render", self.args(), self.resolve)
         self.assertTrue(any("no format set" in w for w in real["warnings"]))
+
+    def test_a_hand_named_timeline_is_refused_dry_or_real_and_nothing_is_written(self):
+        self.origin.name = "Edit"
+        for extra in ({}, {"dry_run": False, "plan_sha": "0" * 64}):
+            with self.assertRaisesRegex(workflows.Refused, r"not an \[auto\] timeline.*duplicate_timeline_auto"):
+                call("queue_render", self.args(timeline="Edit", **extra), self.resolve)
+        self.assertEqual(self.project.jobs, [])
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertNotIn("SetCurrentTimeline", [c[1] for c in rf.CALLS])
 
     def test_refusals(self):
         os.makedirs(os.path.dirname(self.out()))
