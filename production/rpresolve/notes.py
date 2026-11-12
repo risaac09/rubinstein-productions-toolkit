@@ -87,12 +87,12 @@ def snap(notes, beats_planned, first, fps=FPS, window=WINDOW, floor=FLOOR, lead=
             "cut_notes": [g - music_in for g in picked]}
 
 
-def check(notes, cuts, music_in=0.0, fps=FPS):
-    """(cuts, on a note, chance): cuts are seconds after music_in. A cut is on a
+def check(notes, cuts, music_in=0.0, fps=FPS, floor=FLOOR):
+    """(cuts, on a note, chance, notes used): only onsets with strength >= floor count. Cuts are seconds after music_in. A cut is on a
     note within 1/fps of an onset; chance is the share of the cuts' span (first
     to last cut) within 1/fps of any onset."""
     tol = 1.0 / fps + 1e-9
-    on = sorted(notes["onsets"])
+    on = sorted(t for t, z in zip(notes["onsets"], notes["strength"]) if z >= floor)
     absolute = [c + music_in for c in cuts]
     hit = sum(1 for c in absolute if any(abs(c - t) <= tol for t in on))
     lo, hi = min(absolute), max(absolute)
@@ -101,7 +101,7 @@ def check(notes, cuts, music_in=0.0, fps=FPS):
         a, b = max(t - tol, lo, end), min(t + tol, hi)
         if b > a:
             covered, end = covered + (b - a), b
-    return len(absolute), hit, (covered / (hi - lo) if hi > lo else 0.0)
+    return len(absolute), hit, (covered / (hi - lo) if hi > lo else 0.0), len(on)
 
 
 def load(path):

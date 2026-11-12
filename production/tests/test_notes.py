@@ -90,9 +90,16 @@ class TestCheck(unittest.TestCase):
     def test_hand_case(self):
         # fps 10: +-0.1 around each onset. Cuts 1.0, 2.05, 2.5, 3.0 -> 3 on a note.
         # Span 1.0..3.0; covered [1.0,1.1] + [1.9,2.1] + [2.9,3.0] = 0.4 -> 0.2.
-        total, hit, chance = notes.check(HAND, [1.0, 2.05, 2.5, 3.0], 0.0, 10)
-        self.assertEqual((total, hit), (4, 3))
+        total, hit, chance, used = notes.check(HAND, [1.0, 2.05, 2.5, 3.0], 0.0, 10)
+        self.assertEqual((total, hit, used), (4, 3, 3))
         self.assertAlmostEqual(chance, 0.2)
+
+    def test_weak_onset_does_not_count(self):
+        weak = {"onsets": [1.0, 2.0, 2.5, 3.0], "strength": [3.0, 3.0, 0.4, 3.0]}
+        total, hit, chance, used = notes.check(weak, [1.0, 2.05, 2.5, 3.0], 0.0, 10)
+        self.assertEqual((hit, used), (3, 3))
+        self.assertAlmostEqual(chance, 0.2)
+        self.assertEqual(notes.check(weak, [1.0, 2.5], 0.0, 10, floor=0.0)[1], 2)
 
     def test_command_row_and_plan(self):
         with tempfile.TemporaryDirectory() as d:
@@ -106,7 +113,7 @@ class TestCheck(unittest.TestCase):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     self.assertEqual(cmd_notes.run(p.parse_args(argv)), 0)
-                self.assertEqual(buf.getvalue(), "cuts 4, on a note 3, chance 0.20\n")
+                self.assertEqual(buf.getvalue(), "cuts 4, on a note 3, chance 0.20, notes 3 at floor 1.5\n")
 
 
 if __name__ == "__main__":
