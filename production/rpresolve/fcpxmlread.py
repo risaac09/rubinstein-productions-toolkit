@@ -6,7 +6,9 @@ read(path) -> {rate, drop, events, transitions, media, warnings}
   rate: the sequence's frame rate as a Fraction (from the format's frameDuration)
   events: one per clip in record order: {name, kind ('video' or 'audio'),
           lane (0 for the spine, >0 above it, <0 below it), record (frames from
-          the sequence start), frames, path (the asset's file, or None)}
+          the sequence start), frames, path (the asset's file, or None; with None,
+          no_path says why: a compound or other resource that is no file asset,
+          or an asset whose src is not an absolute path or file URL)}
   transitions: [{name, record, frames}] on the spine, in record order
   media: {path: exists} for every asset with a file URL
 Record 0 is the first spine element, whether spine offsets count from the
@@ -58,7 +60,7 @@ def read(path):
         for a in res.findall("asset"):
             rep = a.find("media-rep")
             src = (rep.get("src") if rep is not None else None) or a.get("src")
-            assets[a.get("id")] = {"name": a.get("name"), "path": _file_path(src),
+            assets[a.get("id")] = {"name": a.get("name"), "path": _file_path(src), "src": src,
                                    "video": a.get("hasVideo", "1") != "0",
                                    "audio": a.get("hasAudio", "1") != "0"}
     seq = root.find("./library/event/project/sequence")
@@ -103,6 +105,12 @@ def read(path):
                 kind = "audio" if el.tag == "audio" or (asset and not asset["video"]) else "video"
                 ev = {"name": el.get("name") or asset.get("name") or el.tag, "kind": kind,
                       "lane": lane, "record": record, "frames": length, "path": asset.get("path")}
+                if ev["path"] is None:
+                    ev["no_path"] = (
+                        "its asset has no src" if asset and not asset["src"] else
+                        f"its asset's src '{asset['src']}' is not an absolute path or file URL"
+                        if asset else "it refers to a resource that is not a file asset "
+                        "(a compound clip, or a wrapper around one)")
                 adjust = el.find("adjust-transform")
                 if adjust is not None and adjust.get("scale"):
                     try:

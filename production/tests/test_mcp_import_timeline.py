@@ -311,6 +311,58 @@ class TestImportExclude(Base):
         with self.assertRaisesRegex(workflows.Refused, "`takes`"):
             call("import_timeline", self.args(exclude=self.listed({"take": ["a"]})), self.resolve)
 
+    def test_a_compound_ref_clip_is_reported_unchecked_not_passed(self):
+        text = FCPXML.format(dir=self.dir).replace(
+            '<effect id=', '<media id="r6" name="comp"><sequence format="r1" duration="3s">'
+            '<spine><asset-clip ref="r2" name="inner" offset="0s" duration="3s"/></spine>'
+            '</sequence></media>\n    <effect id=').replace(
+            '<asset-clip ref="r2" name="a3" offset="6s" start="9s" duration="3s"/>',
+            '<ref-clip ref="r6" name="nest" offset="6s" start="0s" duration="3s"/>')
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(text)
+        dry, real = run_twice("import_timeline",
+                              self.args(exclude=self.listed({"takes": ["elsewhere"]})),
+                              self.resolve)
+        for r in (dry, real):
+            self.assertEqual([(u["name"], u["record"]) for u in r["unchecked"]], [("nest", 150)])
+            self.assertIn("not a file asset", r["unchecked"][0]["why"])
+            self.assertIn("1 event(s) could not be matched to a file and were not checked",
+                          r["summary"])
+            self.assertIn("1 event(s) could not be matched to a file and were not checked",
+                          " ".join(r["warnings"]))
+            self.assertIsNone(r["exclude_note"])
+
+    def test_an_asset_with_a_relative_src_is_reported_unchecked(self):
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write(FCPXML.format(dir=self.dir).replace(f"file://{self.dir}/music.wav",
+                                                        "music.wav"))
+        ex = self.listed({"takes": ["music"]})  # the list names it, the reader cannot see it
+        dry, real = run_twice("import_timeline", self.args(exclude=ex), self.resolve)
+        for r in (dry, real):
+            self.assertEqual([u["name"] for u in r["unchecked"]], ["music"])
+            self.assertIn("'music.wav' is not an absolute path", r["unchecked"][0]["why"])
+            self.assertIn("1 event(s) could not be matched", r["summary"])
+
+    def test_every_event_matched_leaves_unchecked_empty_and_no_list_has_none(self):
+        clean = call("import_timeline", self.args(exclude=self.listed({"takes": ["x"]})),
+                     self.resolve)
+        self.assertEqual(clean["unchecked"], [])
+        self.assertNotIn("could not be matched", clean["summary"])
+        self.assertEqual(call("import_timeline", self.args(), self.resolve)["unchecked"], [])
+
+    def test_a_failed_real_run_still_carries_the_exclude_sentence(self):
+        v1 = self.pool.import_layout[self.file]["video"][0]
+        v1[2] = ("a2", 76, 75, {"ZoomX": 1.2})
+        _, real = run_twice("import_timeline", self.args(), self.resolve)
+        self.assertIn("import_timeline FAILED", real["summary"])
+        self.assertIn("no exclude list given: nothing was checked for excluded takes",
+                      real["summary"])
+        _, real = run_twice("import_timeline",
+                            self.args(exclude=self.listed({"takes": ["x"]}), name="Reel 02 [auto]"),
+                            self.resolve)
+        self.assertIn("import_timeline FAILED", real["summary"])
+        self.assertNotIn("no exclude list given", real["summary"])
+
 
 class TestReaderWrappers(Base):
     def test_a_clip_wrapper_counts_once_and_its_connected_lane_still_counts(self):

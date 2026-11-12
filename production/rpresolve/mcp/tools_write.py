@@ -340,8 +340,11 @@ def import_timeline(args, ctx):
         na = len(r["events"]) - n
         nt = len(r["transitions"])
         what = f"{n} video clip(s), {na} audio clip(s) and {nt} transition(s) at {r['rate']} fps"
+        excl = ("; " + r["exclude_note"] if r["exclude_note"] else "") + (
+            f"; {len(r['unchecked'])} event(s) could not be matched to a file and were not "
+            "checked against the exclude list" if r["unchecked"] else "")
         missing = (f"; {len(r['media_missing'])} media file(s) missing" if r["media_missing"]
-                   else "") + (f"; {r['exclude_note']}" if r["exclude_note"] else "")
+                   else "") + excl
         if r["dry_run"]:
             r["summary"] = (f"would import '{os.path.basename(r['file'])}' as '{r['timeline']}': "
                             f"{what}, source clips into the open bin '{r['lands_in_bin']}'" +
@@ -349,14 +352,14 @@ def import_timeline(args, ctx):
         elif r["problems"]:
             r["summary"] = (f"import_timeline FAILED: '{r['timeline']}' was made but does not "
                             "match the file, and is left in the project for you to check or "
-                            "delete: " + "; ".join(r["problems"][:2]) + _ui(r))
+                            "delete: " + "; ".join(r["problems"][:2]) + excl + _ui(r))
         else:
             kinds = sorted({t["placed_as"] for t in r["transitions"] if t.get("placed_as")})
             r["summary"] = (f"imported '{r['timeline']}': {what}; every video clip read back at "
                             "its record position" +
                             (f", every transition in place (placed as {', '.join(kinds)})"
                              if nt else "") +
-                            (f"; {r['exclude_note']}" if r["exclude_note"] else "") + _ui(r))
+                            excl + _ui(r))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):

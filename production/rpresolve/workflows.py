@@ -927,8 +927,10 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
     playhead and page are put back. `exclude` (absolute path) is the operator's
     exclude list: Refused when an event plays from a file it names (dry run and
     real run); `exclude` in the result is its path, takes and hash, or None with
-    `exclude_note` saying nothing was checked. Returns {project, timeline, file,
-    file_sha256, rate, events, transitions, media_missing, warnings, exclude, exclude_note,
+    `exclude_note` saying nothing was checked; `unchecked` lists the events with no
+    file path (a compound clip, a relative src) that the list could not be matched
+    against, {name, record, why}. Returns {project, timeline, file,
+    file_sha256, rate, events, transitions, media_missing, warnings, exclude, exclude_note, unchecked,
     plan_sha, dry_run, created, clips_added (what the import put in the open
     bin), items, tracks, problems, left_behind, lands_in_bin,
     ui_restore_problems, exit_status}."""
@@ -950,6 +952,12 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
         lambda takes: [f"{e['name']} at frame {e['record']} {os.path.basename(e['path'])} ({take})"
                        for e in read["events"] if e["path"] for take in cutlist.named_by(e["path"], takes)],
         "the file")
+    # an event with no file path cannot be matched against the list; say so, never pass it
+    unchecked = [{"name": e["name"], "record": e["record"], "why": e["no_path"]}
+                 for e in read["events"] if ex and not e["path"]]
+    if unchecked:
+        read["warnings"].append(f"{len(unchecked)} event(s) could not be matched to a file and "
+                                "were not checked against the exclude list")
     pm, project, pin = api.pin_for_write(resolve, project_name, project_id)
     media_pool, root = api.media_pool_root(project)
     count = int(project.GetTimelineCount() or 0)
@@ -963,7 +971,7 @@ def import_timeline(resolve, project_name, name, file, dry_run=False, project_id
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "file": file,
            "file_sha256": file_sha, "rate": rate, "events": read["events"],
            "transitions": read["transitions"], "media_missing": missing,
-           "exclude": ex, "exclude_note": cutlist.exclude_note(ex),
+           "exclude": ex, "exclude_note": cutlist.exclude_note(ex), "unchecked": unchecked,
            "warnings": list(read["warnings"]), "plan_sha": sha, "dry_run": dry_run,
            "created": None, "clips_added": [], "items": [], "tracks": {}, "problems": [],
            "left_behind": None,
