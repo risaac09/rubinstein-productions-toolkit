@@ -92,7 +92,7 @@ class Base(unittest.TestCase):
         self.rec = rf.Clip("REC01.WAV", "clip-rec", self.rec_props(self.rec_path))
         self.cam2 = rf.Clip("B001.MOV", "clip-cam2", self.cam_props(self.cam2_path, 1400))
         self.bin = rf.Folder("Day 1", [self.cam, self.rec, self.cam2])
-        self.here = rf.Timeline("Isaac's edit", "tl-here")
+        self.here = rf.Timeline("The operator's edit", "tl-here")
         self.project = rf.Project(timelines=[self.here], current=self.here,
                                   root=rf.Folder("Master", subs=[self.bin]))
         self.resolve = rf.Resolve(self.project, page="edit")
@@ -183,7 +183,7 @@ class TestSyncPool(Base):
         self.assertIs(self.project.current, self.here)
         self.assertEqual(r["ui_restore_problems"], [])
         self.assertEqual([t.GetName() for t in self.project.timelines],
-                         ["Isaac's edit", "A001 sync [auto]"])
+                         ["The operator's edit", "A001 sync [auto]"])
         self.assertFalse(any(c[1].startswith(("Delete", "AutoSync", "Import", "SetClip"))
                              for c in rf.CALLS))
 
@@ -401,7 +401,7 @@ class TestSyncImport(Base):
         self.assertEqual(self.items(tl, "audio", 2), [("ZOOM0001.WAV", 63, 0, 1601)])
         self.assertEqual([x["path"] for x in r["imported"]], [self.new_cam, self.new_rec])
         # The timeline is made in the run's bin (CreateEmptyTimeline adds to the
-        # current folder), and the folder Isaac had open is put back after.
+        # current folder), and the folder the operator had open is put back after.
         order = [(c[1], c[2][-1]) for c in rf.CALLS
                  if c[1] in ("SetCurrentFolder", "CreateEmptyTimeline")]
         self.assertEqual(order, [("SetCurrentFolder", "Sync run"),

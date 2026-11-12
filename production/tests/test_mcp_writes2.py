@@ -63,7 +63,7 @@ class Base(unittest.TestCase):
             "video": [[rf.Item("P1.MOV", 86400, 86450, self.clip, source=(10, 60)),
                        rf.Item("P2.MOV", 86450, 86500, self.other, source=(0, 50))]],
             "audio": [[rf.Item("P1.MOV", 86400, 86450, self.clip, nodes=None)]]})
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.project = rf.Project(timelines=[self.origin, self.here], current=self.here)
         self.resolve = rf.Resolve(self.project, page="cut")
 
@@ -366,7 +366,7 @@ class TestStabilize(Base):
         self.assertEqual(real["ui_restore_problems"], [])
 
     def test_a_restore_problem_is_reported(self):
-        # Where Isaac was vanishes while Resolve works: the restore says so.
+        # Where the operator was vanishes while Resolve works: the restore says so.
         self.items[2].on_stabilize = lambda: self.project.timelines.remove(self.here)
         real = self.stab(dry_run=False, plan_sha=self.stab()["plan_sha"])
         self.assertTrue(real["ui_restore_problems"], real)

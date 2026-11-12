@@ -685,7 +685,7 @@ def frame0_faces(src, start, chain, tmp):
 
 def gate_problem(args, spans, outs, estimate):
     """None when the batch may run; else why it may not. A batch over GATE_MINUTES, or one that replaces
-    an existing output, needs a gate-packet that Isaac answered go in the review log."""
+    an existing output, needs a gate-packet that the operator answered go in the review log."""
     replaced = [o for o in outs if os.path.exists(o)]
     if estimate <= GATE_MINUTES * 60 and not replaced:
         return None

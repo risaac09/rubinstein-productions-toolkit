@@ -59,9 +59,9 @@ class Base(unittest.TestCase):
                        rf.Item("take.wav", 90250, 90400, clip, nodes=None, source=(500, 650))]]})
         self.elsewhere = rf.Timeline("Other [auto]", "tl-other", 25.0, 90000, 90100, tracks={
             "video": [[rf.Item("other.mov", 90000, 90100, other, source=(0, 100))]]})
-        self.human = rf.Timeline("Isaac's edit", "tl-human", 25.0, 90000, 90400,
+        self.human = rf.Timeline("The operator's edit", "tl-human", 25.0, 90000, 90400,
                                  tracks=self.auto.tracks)
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.project = rf.Project(timelines=[self.auto, self.elsewhere, self.human, self.here],
                                   current=self.here)
         self.resolve = rf.Resolve(self.project, page="color")
@@ -129,7 +129,7 @@ class TestPlan(Base):
 
     def test_refusals(self):
         with self.assertRaisesRegex(workflows.Refused, "not an \\[auto\\] timeline"):
-            self.run_it("Isaac's edit", dry_run=True)
+            self.run_it("The operator's edit", dry_run=True)
         with self.assertRaisesRegex(workflows.Refused, "no item on 'Other \\[auto\\]' plays"):
             self.run_it("Other [auto]", dry_run=True)
         with self.assertRaises(api.ProjectChanged):

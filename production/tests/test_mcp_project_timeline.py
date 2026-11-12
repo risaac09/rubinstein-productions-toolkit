@@ -262,7 +262,7 @@ class TestTimelineFromClips(Base):
         self.ladder = rf.Folder("Ladder", clips=[self.p10, self.p2, self.tl_item, self.p1,
                                                  self.audio])
         self.root = rf.Folder("Master", subs=[self.ladder, rf.Folder("Other")])
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.project = rf.Project(timelines=[self.here], current=self.here, root=self.root)
         self.resolve = rf.Resolve(self.project, page="cut")
         self.name = "Ladder [auto]"
@@ -291,7 +291,7 @@ class TestTimelineFromClips(Base):
     def test_a_dry_run_creates_nothing_and_journals_nothing(self):
         dry = call("timeline_from_clips", {"name": self.name, "bin": "Ladder"}, self.resolve)
         self.assertTrue(dry["dry_run"])
-        self.assertEqual(self.tl_names(), ["Where Isaac is"])
+        self.assertEqual(self.tl_names(), ["Where the operator is"])
         self.assertEqual(self.calls("CreateEmptyTimeline"), [])
         self.assertEqual(self.calls("AppendToTimeline"), [])
         self.assertEqual(self.journal(), [])
@@ -379,7 +379,7 @@ class TestTimelineFromClips(Base):
                 with self.assertRaises(workflows.Refused):
                     call("timeline_from_clips", args, self.resolve)
         self.assertEqual(self.calls("CreateEmptyTimeline"), [])
-        self.assertEqual(self.tl_names(), ["Where Isaac is"])
+        self.assertEqual(self.tl_names(), ["Where the operator is"])
 
     def test_the_name_must_end_auto_and_must_be_new(self):
         with self.assertRaises(AssertionError):  # the schema's pattern
@@ -401,7 +401,7 @@ class TestTimelineFromClips(Base):
         with self.assertRaises(workflows.Refused):
             call("timeline_from_clips", {"name": self.name, "bin": "Ladder", "dry_run": False},
                  self.resolve)
-        self.assertEqual(self.tl_names(), ["Where Isaac is"])
+        self.assertEqual(self.tl_names(), ["Where the operator is"])
 
     def test_the_wrong_project_is_refused(self):
         with self.assertRaises(api.ProjectChanged):

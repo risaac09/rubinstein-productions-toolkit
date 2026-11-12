@@ -55,7 +55,7 @@ class Base(unittest.TestCase):
         self.bare = rf.Timeline("Bare [auto]", "tl-bare", 25.0, tracks={
             "video": [[rf.Item("P1.MOV", 86400, 86500, clip)]], "audio": [[]]},
             settings={"timelineResolutionWidth": "1920", "timelineResolutionHeight": "800"})
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.tall = self.shaped("Clip 9x16 [auto]", "tl-tall", 1080, 1920)
         self.square = self.shaped("Clip 1x1 [auto]", "tl-square", 1080, 1080)
         self.project = rf.Project(timelines=[self.wide, self.bare, self.here, self.tall,

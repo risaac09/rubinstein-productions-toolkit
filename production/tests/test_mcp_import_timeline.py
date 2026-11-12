@@ -87,7 +87,7 @@ class Base(unittest.TestCase):
         self.file = os.path.join(self.dir, "reel.fcpxml")
         with open(self.file, "w", encoding="utf-8") as f:
             f.write(FCPXML.format(dir=self.dir))
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.root = rf.Folder("Master", subs=[rf.Folder("Reels")])
         self.project = rf.Project(timelines=[self.here], current=self.here, root=self.root)
         self.resolve = rf.Resolve(self.project, page="edit")
