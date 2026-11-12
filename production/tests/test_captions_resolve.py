@@ -59,8 +59,8 @@ class Base(unittest.TestCase):
         self.square = timeline("Clip 1x1 [auto]", "tl-square", 1080, 1080)
         self.captioned = timeline("Captioned [auto]", "tl-cap", 1920, 1080,
                                   subtitles=[[rf.Item("Sub", 86400, 86410, nodes=None)]])
-        self.human = timeline("Isaac's edit", "tl-human", 1920, 1080)
-        self.here = rf.Timeline("Where Isaac is", "tl-here")
+        self.human = timeline("The operator's edit", "tl-human", 1920, 1080)
+        self.here = rf.Timeline("Where the operator is", "tl-here")
         self.project = rf.Project(timelines=[self.wide, self.tall, self.square, self.captioned,
                                              self.human, self.here], current=self.here)
         self.resolve = rf.Resolve(self.project, page="deliver")
@@ -150,7 +150,7 @@ class TestCreateCaptions(Base):
 
     def test_refusals_write_nothing(self):
         cases = [
-            ("Isaac's edit", {}, "not an \\[auto\\] timeline"),
+            ("The operator's edit", {}, "not an \\[auto\\] timeline"),
             ("Captioned [auto]", {}, "already has 1 subtitle item"),
             ("Clip [auto]", {"language": "fr"}, "resolve.AUTO_CAPTION_FRENCH"),
             ("Clip [auto]", {"language": "xx"}, "unknown caption language"),

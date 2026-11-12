@@ -218,21 +218,22 @@ class DocsMatchCode(unittest.TestCase):
 
     def test_production_names_no_author(self):
         # The repo is public: a procedure's actor is the operator (CLAUDE.md). Any text file
-        # under production/ (tests aside) may name the repo's own URL and nothing else of him.
+        # under production/ or tools/ (tests aside) may name the repo's own URL and nothing else of him.
         name = re.compile(r"isaac|risaac09", re.I)
         own_repo = "github.com/risaac09/rubinstein-productions-toolkit"
         hits = []
-        for d, dirs, names in os.walk(PROD):
-            dirs[:] = [x for x in dirs if not skipped_dir(x)]
-            for n in names:
-                p = Path(d) / n
-                try:
-                    lines = p.read_text(encoding="utf-8").splitlines()
-                except (UnicodeDecodeError, OSError):
-                    continue  # a binary file
-                for k, line in enumerate(lines, 1):
-                    if name.search(line.replace(own_repo, "")):
-                        hits.append(f"{p.relative_to(ROOT)}:{k}")
+        for top in (PROD, ROOT / "tools"):
+            for d, dirs, names in os.walk(top):
+                dirs[:] = [x for x in dirs if not skipped_dir(x)]
+                for n in names:
+                    p = Path(d) / n
+                    try:
+                        lines = p.read_text(encoding="utf-8").splitlines()
+                    except (UnicodeDecodeError, OSError):
+                        continue  # a binary file
+                    for k, line in enumerate(lines, 1):
+                        if name.search(line.replace(own_repo, "")):
+                            hits.append(f"{p.relative_to(ROOT)}:{k}")
         self.assertEqual(hits, [])
 
 

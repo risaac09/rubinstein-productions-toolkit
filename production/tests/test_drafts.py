@@ -185,7 +185,7 @@ class TestRender(Base):
             f.write("LUT_3D_SIZE 2\n" + "".join(f"{r} {g} {b}\n" for b in (0, 1) for g in (0, 1)
                                                 for r in (0, 1)))
         a = self.plan("graded", METHOD, self.src)
-        doc = drafts.build([a], os.path.join(self.dir, "Isaac's out, take: 2"), camera="Cam",
+        doc = drafts.build([a], os.path.join(self.dir, "The operator's out, take: 2"), camera="Cam",
                            lut_root=os.path.dirname(root), hw=False, lanes=1)
         self.assertTrue(doc["drafts"][0]["lut"].endswith("RP Print Teal [Cam].cube"))
         self.assertFalse(any("not applied" in n for n in doc["drafts"][0]["notes"]))
