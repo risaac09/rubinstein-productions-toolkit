@@ -9,7 +9,8 @@ A shot list is JSON:
      "shots": [{"name": "a", "source": "/abs/clip.mov", "in": 3.6, "beats": 4,
                 "cx": [0.46, 0.46], "speed": 0.8, "source_fps": 30}]}
 
-`end`, `music` and `speed` and `source_fps` are optional. cx is the crop centre at the
+`end`, `fade_out` (seconds, 0 to 5: the last shot fades to black over its end), `music`,
+`speed` and `source_fps` are optional. cx is the crop centre at the
 shot's first and last frame as a share of the source width. A shot without `speed` takes
 the conform speed: 0.8 for a source near 30 fps and 0.4 for one near 60 at a 24 fps list
 (a slow-motion conform), else 1.
@@ -78,6 +79,9 @@ def validate(sl):
     end = sl.get("end")
     if end is not None and not (isinstance(end, str) and methods.END.match(end)):
         p.append('end must be "black:S" (seconds of black after the last shot)')
+    fade = sl.get("fade_out")
+    if fade is not None and not (_num(fade) and 0 <= fade <= 5):
+        p.append("fade_out must be seconds from 0 to 5 (the last shot fades to black)")
     music = sl.get("music")
     if music is not None:
         if not (isinstance(music, dict) and isinstance(music.get("path"), str)
@@ -171,9 +175,16 @@ def compile_list(sl, frames, music_in=None):
             span["reuse"] = True
         spans.append(span)
         a, b = s["cx"]
-        if a != b:
-            effects.append({"span_index": i, "effect": "reframe-pan",
-                            "params": {"pan_from": round(a, 4), "pan_to": round(b, 4)}})
+        fade = sl.get("fade_out") if i == len(frames) - 1 else None
+        if a != b or fade:
+            # pan_base is the centre vertical_apply puts in the item's own Pan (crops_for
+            # writes the same rounded mean); the macro's X is 0.5 + pan_base - pan_*, so
+            # the item sits on its crop centre at pan_from and moves to pan_to.
+            pan = {"pan_from": round(a, 4), "pan_to": round(b, 4),
+                   "pan_base": round((a + b) / 2, 4)}
+            if fade:  # the last shot also fades to black; with a == b it is a plain fade
+                pan["fade_out"] = fade
+            effects.append({"span_index": i, "effect": "reframe-pan", "params": pan})
         speed = shot_speed(s, fps)
         if speed != 1:
             effects.append({"span_index": i, "effect": "retime", "params": {"speed": speed}})

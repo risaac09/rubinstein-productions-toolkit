@@ -236,8 +236,10 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         a, b = p.get("pan_from", 0.5), p.get("pan_to", 0.5)
         # the centre moves linearly; clamped inside the frame like centre_crop. pan_base is
         # the Pan the item already holds (it only offsets the Fusion path), so it is not used.
-        return (f"crop={w}:{h}:x='clip(({a}+({b}-{a})*t/{seconds:.4f})*iw-ow/2\\,0\\,iw-ow)'"
+        crop = (f"crop={w}:{h}:x='clip(({a}+({b}-{a})*t/{seconds:.4f})*iw-ow/2\\,0\\,iw-ow)'"
                 f":y='(ih-oh)/2'")
+        d = min(float(p.get("fade_out") or 0), seconds)  # the macro's fade to black at the end
+        return crop + (f",fade=t=out:st={seconds - d:.4f}:d={d:.4f}" if d > 0 else "")
     if effect == "scale-window":  # 0.22 to 0.72 over 36 frames, then full from frame 37
         z = f"if(lt(t*{fps}\\,37)\\,0.22+0.5*min(t*{fps}\\,36)/36\\,1)"
         sc = (f"scale=w='max(2\\,trunc({w}*({z})/2)*2)':h='max(2\\,trunc({h}*({z})/2)*2)':"

@@ -19,7 +19,7 @@ import math
 import os
 import re
 
-from rpresolve import api, cli, ledgercheck
+from rpresolve import api, cli, deliver, ledgercheck
 from rpresolve.workflows import AUTO, Refused, _wanted_items, plan_sha
 
 NAME = "effect"
@@ -55,7 +55,7 @@ END_ANCHORED = {"dip-to-black"}
 PARAMS = {
     "exposure-flash": {"gain"},
     "person-matte-text": {"text", "size"},
-    "reframe-pan": {"pan_from", "pan_to", "pan_base"},
+    "reframe-pan": {"pan_from", "pan_to", "pan_base", "fade_out"},
     "retime": {"speed", "speed_to"},
     "text-word": {"text", "size", "centre"},
     "zoom-push": {"centre"},
@@ -66,6 +66,21 @@ REQUIRED = {"reframe-pan": ("pan_from", "pan_to"), "retime": ("speed",)}
 NEEDS_LENGTH = {"reframe-pan", "retime"}
 
 COMP_PREFIX = "rp-fx "  # the added comp's name: "rp-fx <id>"
+
+
+def wiring(effect, params=None):
+    """WIRING for one run: a reframe-pan with fade_out ends in the BrightnessContrast the
+    fade adds, which Transform1 feeds."""
+    if effect == "reframe-pan" and (params or {}).get("fade_out"):
+        return {"in": WIRING[effect]["in"], "out": "BrightnessContrast1"}
+    return WIRING[effect]
+
+
+def native_speed(effect, params):
+    """A constant retime is set on the item itself (SetSpeed), not built as a comp, so
+    the item's one comp stays free for a reframe-pan; a ramp (speed_to) is still a comp."""
+    p = params or {}  # no speed given: the macro's own comp, as before
+    return effect == "retime" and "speed" in p and "speed_to" not in p
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +284,8 @@ def validate_params(effect, params):
                 ok = v > 0
             elif ok and k == "gain":
                 ok = 1 <= v <= 20  # the flash's peak; the macro's own is 2
+            elif ok and k == "fade_out":
+                ok = 0 <= v <= 5  # seconds
             elif ok:
                 ok = 0 <= v <= 1  # centre, pan_*: a fraction of the frame
         if not ok:
@@ -276,6 +293,7 @@ def validate_params(effect, params):
                 "a word of 1 to 80 characters" if k == "text" else
                 "a number above 0" if k in ("speed", "speed_to", "size") else
                 "a number from 1 to 20" if k == "gain" else
+                "seconds, from 0 to 5" if k == "fade_out" else
                 "a number from 0 to 1"))
     return dict(params)
 
@@ -288,11 +306,13 @@ def _hermite(n, v1, d0, d1, v0=0):
             n: {1: v1, "LH": {1: n - n / 3.0, 2: v1 - d1 * n / 3.0}}}
 
 
-def apply_params(parsed, effect, params, n):
+def apply_params(parsed, effect, params, n, fade_frames=0):
     """(the macro with params written in, the checks to read back). n is the item's
     length in source frames. Keys that depend on the item are built here, not in the
     .setting: retime's SourceTime (source frame = integral of the speed, a linear speed
-    change when speed_to is given) and reframe-pan's X."""
+    change when speed_to is given) and reframe-pan's X, and with fade_frames (comp frames)
+    its fade: dip-to-black's BrightnessContrast, fed by Transform1, gain 1 to 0 linearly
+    over the last fade_frames, black on the item's last frame."""
     macro = copy.deepcopy(parsed)
     tools, checks = macro["Tools"], []
 
@@ -329,6 +349,18 @@ def apply_params(parsed, effect, params, n):
         base = params.get("pan_base", 0.5)
         a, b = 0.5 + base - params["pan_from"], 0.5 + base - params["pan_to"]
         keys("XYPath1X", _hermite(n, b, (b - a) / n, (b - a) / n, a), "pan_to")
+        if fade_frames and n > 1:
+            _, dip = load_macro("dip-to-black")
+            bc, gain = "BrightnessContrast1", "BrightnessContrast1Gain"
+            tools[bc] = copy.deepcopy(dip["Tools"][bc])
+            tools[bc]["Inputs"]["Input"] = {"Source": "Output", "SourceOp": "Transform1"}
+            last = n - 1
+            first = max(0, last - max(1, int(fade_frames)))
+            m, lin = last - first, {"Linear": True}
+            tools[gain] = {**copy.deepcopy(dip["Tools"][gain]), "KeyFrames": {
+                first: {1: 1, "Flags": lin, "RH": {1: first + m / 3.0, 2: 2 / 3.0}},
+                last: {1: 0, "Flags": lin, "LH": {1: last - m / 3.0, 2: 1 / 3.0}}}}
+            checks.append({"param": "fade_out", "tool": gain, "frame": last, "want": 0})
     return macro, checks
 
 
@@ -503,12 +535,12 @@ def _read_params(comp, checks):
     return got, problems
 
 
-def _read_back(comp, effect, parsed, animated=()):
+def _read_back(comp, effect, parsed, animated=(), w=None):
     """What the comp holds after the build: each macro tool and modifier present, each
     animated input's keyframes on the macro's frames and its value between two keys
     within theirs (no handle overshoot), MediaIn1 on the wired inputs, the out tool on
     MediaOut1's input. Returns a list of problems."""
-    w, problems = WIRING[effect], []
+    w, problems = w or WIRING[effect], []
     for tname, key, sname in animated:
         keys = sorted((f, k[1]) for f, k in parsed["Tools"][sname]["KeyFrames"].items()
                       if isinstance(f, int))
@@ -551,8 +583,8 @@ def _read_back(comp, effect, parsed, animated=()):
     return problems
 
 
-def _wire(comp, effect):
-    w = WIRING[effect]
+def _wire(comp, effect, w=None):
+    w = w or WIRING[effect]
     media_in, media_out = comp.FindTool("MediaIn1"), comp.FindTool("MediaOut1")
     for tool, inp in w["in"]:
         t = comp.FindTool(tool)
@@ -618,6 +650,13 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                       f"clip(s) in {len(all_items)} item(s); items with no media pool clip, "
                       f"transitions first, are not counted){api.skipped_text(skipped)}.")
     comp_name = COMP_PREFIX + effect
+    native = native_speed(effect, params)
+    fps = None
+    if params.get("fade_out"):  # the fade's length in frames needs the timeline's rate
+        fps = deliver.exact_fps(api._safe_call(tl, "GetSetting", "timelineFrameRate"))
+        if not fps:
+            raise Refused(f"the frame rate of '{tl_name}' cannot be read, so fade_out cannot "
+                          "be put in frames.")
     targets, refused = [], []
     for n in wanted:
         it = all_items[positions[n - 1] - 1]
@@ -625,21 +664,31 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
         frames = api._safe_call(it, "GetDuration")
         row = {"index": n, "position": positions[n - 1], "name": it.GetName(),
                "item_id": api._safe_call(it, "GetUniqueId"),
-               "comps": names, "reuse": _reusable(it, names, comp_name), "frames": frames,
-               "source_frames": _source_frames(it)}
-        row["key_scale"], row["key_offset"] = comp_timing(parsed, effect, frames,
-                                                          row["source_frames"])
+               "comps": names, "reuse": None if native else _reusable(it, names, comp_name),
+               "frames": frames, "source_frames": _source_frames(it),
+               "route": "native" if native else "comp"}
+        row["key_scale"], row["key_offset"] = (1, 0) if native else comp_timing(
+            parsed, effect, frames, row["source_frames"])
+        if fps:  # comp time counts source frames: the fade's seconds times key_scale
+            row["fade_frames"] = max(1, round(params["fade_out"] * fps * row["key_scale"]))
         why = []
-        # AddFusionComp makes the new comp the one that renders, so an item that has
-        # a comp already would change: refuse it (this also stops a second run), unless
-        # its comps are all emptied rp-fx ones, which are built into again (T9).
-        if names and not row["reuse"]:
-            why.append(f"it already has Fusion comp(s) ({', '.join(names)}); a new comp "
-                       "would replace the one that renders")
-        if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
-            why.append("its length cannot be read, so the fade cannot be put at its end")
-        if effect in NEEDS_LENGTH and not row["source_frames"]:
-            why.append("its length in source frames cannot be read, so the keys cannot be built")
+        if native:
+            # No comp is added, so other comps are fine; the old comp route's own comp is
+            # left as it is: a second speed on top of it would compound.
+            if comp_name in names:
+                why.append(f"it already carries the '{comp_name}' comp; left as it is")
+        else:
+            # AddFusionComp makes the new comp the one that renders, so an item that has
+            # a comp already would change: refuse it (this also stops a second run), unless
+            # its comps are all emptied rp-fx ones, which are built into again (T9).
+            if names and not row["reuse"]:
+                why.append(f"it already has Fusion comp(s) ({', '.join(names)}); a new comp "
+                           "would replace the one that renders")
+            if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
+                why.append("its length cannot be read, so the fade cannot be put at its end")
+            if effect in NEEDS_LENGTH and not row["source_frames"]:
+                why.append("its length in source frames cannot be read, so the keys cannot "
+                           "be built")
         if why:
             refused.append({**row, "reasons": why})
         else:
@@ -650,13 +699,15 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     report = ledgercheck.check(led, [(effect, t["index"] - 1) for t in targets], override)
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
                    [(t["index"], t["position"], t["item_id"], t["comps"], t["reuse"],
-                     t["frames"], t["source_frames"]) for t in targets], sorted(params.items()), report)
+                     t["frames"], t["source_frames"], t["route"], t.get("fade_frames"))
+                    for t in targets], sorted(params.items()), report)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
                         "other_tracks": api.other_video_tracks(tl, track)},
-           "effect": {"id": effect, "comp": comp_name, "tools": tools,
-                      "wiring": {"in": [f"{t}.{i}" for t, i in WIRING[effect]["in"]],
-                                 "out": WIRING[effect]["out"]}},
+           "effect": {"id": effect, "comp": comp_name, "tools": tools, "route":
+                      "native" if native else "comp",
+                      "wiring": {"in": [f"{t}.{i}" for t, i in wiring(effect, params)["in"]],
+                                 "out": wiring(effect, params)["out"]}},
            "params": params, "targets": targets, "refused": refused,
            "skipped": skipped, "results": [], "plan_sha": sha,
            "ledger": report, "dry_run": dry_run, "exit_status": 0}
@@ -676,6 +727,46 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     return out
 
 
+def _item_frames(it):
+    """Where the item sits and what it plays, as Resolve answers now (None where it does not)."""
+    return {k: api._safe_call(it, f) for k, f in (
+        ("start", "GetStart"), ("end", "GetEnd"), ("source_start", "GetSourceStartFrame"),
+        ("source_end", "GetSourceEndFrame"), ("left_offset", "GetLeftOffset"))}
+
+
+def _set_speed(it, row, speed):
+    """SetSpeed on the item (a constant retime, no comp), then read it back strictly: the
+    speed within 0.01 percent of the request and the item's timeline start and end where
+    they were (RippleTimeline is off, so nothing should move). Returns {want, read,
+    before, after}; raises WriteNotApplied naming what differed, with the source frames
+    and left offset before and after, since the first live run is what shows what
+    Resolve really does to them."""
+    want = speed * 100.0
+    before = _item_frames(it)
+    done = it.SetSpeed({"Percentage": want, "RippleTimeline": False})
+    after = _item_frames(it)
+    got = api._safe_call(it, "GetSpeed")
+    read = got.get("Percentage") if isinstance(got, dict) else None
+    problems = []
+    if not done:
+        problems.append(f"SetSpeed returned {done!r}")
+    if not (isinstance(read, (int, float)) and not isinstance(read, bool)
+            and abs(read - want) <= 0.01):
+        problems.append(f"GetSpeed reads {read!r} percent, set {want:g}")
+    moved = [f"{k} {before[k]!r} -> {after[k]!r}" for k in ("start", "end")
+             if before[k] != after[k]]
+    if moved:
+        problems.append("the item's timeline frames changed (" + ", ".join(moved) + ")")
+    if problems:
+        seen = ", ".join(f"{k} {before[k]!r} -> {after[k]!r}" for k in
+                         ("start", "end", "source_start", "source_end", "left_offset"))
+        row["detail"] = "speed not applied: " + "; ".join(problems)
+        raise api.WriteNotApplied(f"SetSpeed on '{row['name']}' (clip {row['index']}) did not "
+                                  f"read back: {'; '.join(problems)}. Item frames before -> "
+                                  f"after: {seen}.")
+    return {"want": want, "read": read, "before": before, "after": after}
+
+
 def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, check_cancel,
                params=None):
     for t in targets:
@@ -688,6 +779,12 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         # In the results before the comp exists, so an error mid-build still names it.
         row.update(ok=False, detail="interrupted while building the comp")
         out["results"].append(row)
+        if t["route"] == "native":
+            row["detail"] = "interrupted while setting the speed"
+            row["native"] = _set_speed(it, row, params["speed"])
+            row.update(ok=True, detail=f"speed read back as {params['speed'] * 100:g} percent; "
+                                       "the item's start and end frames are unchanged")
+            continue
         if t["reuse"]:
             # An emptied comp (T9): make it the active one, then build into it.
             row["reused"] = True
@@ -709,17 +806,19 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
                 it.RenameFusionCompByName(added[0], comp_name)
         macro = shifted(scaled(parsed, t["key_scale"]), t["key_offset"])
         checks = []
+        w = wiring(effect, params)
         if params or effect in NEEDS_LENGTH:
-            macro, checks = apply_params(macro, effect, params or {}, t["source_frames"])
+            macro, checks = apply_params(macro, effect, params or {}, t["source_frames"],
+                                         t.get("fade_frames") or 0)
         comp.Lock()
         try:
             skipped, animated = _build(comp, macro)
-            _wire(comp, effect)
+            _wire(comp, effect, w)
         finally:
             comp.Unlock()
         # After Unlock: the toggle has to be evaluated, which a locked comp may defer.
         refresh(comp)
-        problems = _read_back(comp, effect, macro, animated)
+        problems = _read_back(comp, effect, macro, animated, w)
         if checks:
             row["params"], bad = _read_params(comp, checks)
             problems += bad

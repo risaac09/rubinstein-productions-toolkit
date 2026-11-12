@@ -1186,7 +1186,8 @@ def register(registry):
         "an eye before delivery (person-matte-text's placeholder matte, exposure-flash's "
         "strength, text-word's font and colour; fusion-macros.md). params sets the macro's "
         "whitelisted values (text, size, centre; gain for exposure-flash; speed, speed_to for "
-        "retime; pan_from, pan_to, pan_base for reframe-pan); an unknown key for the macro is refused and each value "
+        "retime, a constant speed set on the item itself with no comp; pan_from, pan_to, pan_base, "
+        "fade_out for reframe-pan); an unknown key for the macro is refused and each value "
         "is read back. Clips are counted as vertical_apply counts them: a dissolve is a track "
         "item with no clip and is not a number, so items are clip numbers from 1 and spans are "
         "the manifest's span indices from 0 (clip n is span n - 1); give one of them, not both. "
@@ -1230,12 +1231,15 @@ def register(registry):
                 "speed": {"type": "number"}, "speed_to": {"type": "number"},
                 "pan_from": {"type": "number", "minimum": 0, "maximum": 1},
                 "pan_to": {"type": "number", "minimum": 0, "maximum": 1},
-                "pan_base": {"type": "number", "minimum": 0, "maximum": 1}},
+                "pan_base": {"type": "number", "minimum": 0, "maximum": 1},
+                "fade_out": {"type": "number", "minimum": 0, "maximum": 5}},
                 "description": "Macro settings: text, size (text-word, person-matte-text); "
                                "centre, 0 to 1 across the frame (zoom-push, text-word); gain, 1 to 20, default 2 "
                                "(exposure-flash); speed "
-                               "and optional speed_to (retime); pan_from, pan_to, optional "
-                               "pan_base (reframe-pan)."},
+                               "and optional speed_to, which makes a ramp comp (retime); "
+                               "pan_from, pan_to, optional pan_base, optional fade_out in "
+                               "seconds, 0 to 5 (reframe-pan: the picture also fades to "
+                               "black over the item's last fade_out seconds)."},
             **DRY_RUN},
          "required": ["project", "timeline", "effect"], "additionalProperties": False},
         apply_effect, title="Apply a Fusion effect", annotations=WRITE))

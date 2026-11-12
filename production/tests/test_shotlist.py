@@ -111,10 +111,35 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(self.man["effects"], [
             {"span_index": 0, "effect": "retime", "params": {"speed": 0.8}},
             {"span_index": 1, "effect": "retime", "params": {"speed": 0.8}},
-            {"span_index": 2, "effect": "reframe-pan", "params": {"pan_from": 0.43, "pan_to": 0.31}},
+            {"span_index": 2, "effect": "reframe-pan", "params": {"pan_from": 0.43, "pan_to": 0.31,
+                                                                  "pan_base": 0.37}},
             {"span_index": 2, "effect": "retime", "params": {"speed": 0.4}},
-            {"span_index": 4, "effect": "reframe-pan", "params": {"pan_from": 0.4, "pan_to": 0.68}},
+            {"span_index": 4, "effect": "reframe-pan", "params": {"pan_from": 0.4, "pan_to": 0.68,
+                                                                  "pan_base": 0.54}},
             {"span_index": 4, "effect": "retime", "params": {"speed": 0.5}}])
+
+    def test_fade_out_goes_on_the_last_shot_with_or_without_a_pan(self):
+        for last_cx, want in (([0.4, 0.68], {"pan_from": 0.4, "pan_to": 0.68, "pan_base": 0.54}),
+                              ([0.6, 0.6], {"pan_from": 0.6, "pan_to": 0.6, "pan_base": 0.6})):
+            sl = copy.deepcopy(LIST)
+            sl["shots"][-1]["cx"] = last_cx
+            sl["fade_out"] = 0.5
+            self.assertEqual(shotlist.validate(sl), [])
+            man, _ = compiled(sl)
+            pans = [e for e in man["effects"] if e["effect"] == "reframe-pan"
+                    and e["span_index"] == 4]
+            self.assertEqual([e["params"] for e in pans], [{**want, "fade_out": 0.5}])
+            self.assertEqual(man["method"]["end"], "black:0.4")
+        sl["fade_out"] = 6
+        self.assertEqual(len(shotlist.validate(sl)), 1)
+
+    def test_the_draft_filter_fades_the_pan_span_out_at_its_end(self):
+        vf, _ = drafts.span_filter({}, [{"effect": "reframe-pan", "params": {
+            "pan_from": 0.6, "pan_to": 0.6, "fade_out": 0.5}}], 720, 1280, 24, 2.0)
+        self.assertIn(",fade=t=out:st=1.5000:d=0.5000", vf)
+        vf, _ = drafts.span_filter({}, [{"effect": "reframe-pan", "params": {
+            "pan_from": 0.6, "pan_to": 0.6}}], 720, 1280, 24, 2.0)
+        self.assertNotIn("fade=", vf)
 
     def test_the_music_start_is_the_lists_own_when_it_has_one(self):
         sl = copy.deepcopy(LIST)
