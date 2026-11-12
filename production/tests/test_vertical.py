@@ -458,6 +458,17 @@ def matte_comp(word="WILD", placeholder=True):
     return FComp(tools)
 
 
+def scale_window():
+    """A scale-window comp as the macro builds it: Pivot and Center plain here, the X spline a bare tool
+    that has no SetKeyFrames, so any key write raises."""
+    return FComp({"Transform1": {"Pivot": {1: 0.5, 2: 0.5}, "Center": {1: 0.5, 2: 0.5}},
+                  "XYPath1X": {}})
+
+
+def crop_window():
+    return FComp({"Rectangle1": {"Center": {1: 0.5, 2: 0.5}}})
+
+
 def comps(word="OUTSIDE"):
     return {"rp-fx zoom-push": FComp({"Transform1": {"Pivot": {1: 0.5, 2: 0.5}}}),
             "rp-fx text-word": FComp({"Merge1": {"Center": {1: 0.5, 2: 0.5}},
@@ -675,9 +686,9 @@ class TestApply(unittest.TestCase):
 
     def test_a_comp_left_as_it_was_is_named_in_the_dry_run_and_the_real_run(self):
         self.items[0].comps["rp-fx exposure-flash"] = FComp({"ColorCorrector1": {}})
-        self.items[2].comps["rp-fx crop-window"] = FComp({})
+        self.items[2].comps["rp-fx retime"] = FComp({})
         want = [{"index": 1, "name": "i0", "comp": "rp-fx exposure-flash"},
-                {"index": 3, "name": "i2", "comp": "rp-fx crop-window"}]
+                {"index": 3, "name": "i2", "comp": "rp-fx retime"}]
         with mock.patch.object(FusionItem, "on_copy", {"i1": {"rp-fx added-in-copy": FComp({})}}):
             dry, real = self.real()
         self.assertEqual(dry["unmoved_comps"], want)
@@ -688,6 +699,78 @@ class TestApply(unittest.TestCase):
         c0 = self.target().tracks["video"][0][0].comps
         self.assertEqual(c0["rp-fx exposure-flash"].tools["ColorCorrector1"].values, {})  # not moved
         self.assertEqual(self.refresh.call_count, 4)  # and not refreshed: only the moved kinds
+
+    def put_windows(self):
+        self.items[0].comps["rp-fx scale-window"] = scale_window()
+        self.items[2].comps["rp-fx crop-window"] = crop_window()
+
+    def test_both_window_comps_are_centred_on_the_crop(self):
+        self.put_windows()
+        dry, real = self.real()
+        self.assertEqual(real["exit_status"], 0, real["results"])
+        new = self.target().tracks["video"][0]
+        scale = new[0].comps["rp-fx scale-window"]
+        self.assertEqual(scale.tools["Transform1"].values["Pivot"], {1: 0.3, 2: 0.5})
+        self.assertEqual(scale.tools["Transform1"].values["Center"], {1: 0.5, 2: 0.5})  # not shifted
+        self.assertEqual(scale.tools["XYPath1X"].values, {})  # no key touched
+        self.assertEqual(new[2].comps["rp-fx crop-window"].tools["Rectangle1"].values["Center"],
+                         {1: 0.62, 2: 0.5})
+        # the origin timeline's comps are untouched
+        self.assertEqual(self.items[0].comps["rp-fx scale-window"].tools["Transform1"]
+                         .values["Pivot"], {1: 0.5, 2: 0.5})
+        read = real["results"][0]["comps"][-1]
+        self.assertEqual((read["comp"], read["read_back"]["Transform1.Pivot"]),
+                         ("rp-fx scale-window", (0.3, 0.5)))
+        self.assertEqual(real["results"][2]["comps"][-1]["read_back"]["Rectangle1.Center"],
+                         (0.62, 0.5))
+        self.assertIn("Transform1", read["refreshed"])
+        self.assertEqual(self.refresh.call_count, 6)
+
+    def test_the_dry_run_shows_the_planned_window_values(self):
+        self.put_windows()
+        dry = self.go()
+        scale = dry["targets"][0]["comps"][-1]
+        self.assertEqual((scale["comp"], scale["set"]), ("rp-fx scale-window",
+                                                         {"Transform1.Pivot": (0.3, 0.5)}))
+        crop = dry["targets"][2]["comps"][-1]
+        self.assertEqual(crop["set"], {"Rectangle1.Center": (0.62, 0.5)})
+        self.assertEqual(dry["unmoved_comps"], [])
+        self.assertEqual(rf.mutating_calls(), [])
+        self.assertEqual(self.items[0].comps["rp-fx scale-window"].tools["Transform1"]
+                         .values["Pivot"], {1: 0.5, 2: 0.5})
+        self.assertEqual(self.items[2].comps["rp-fx crop-window"].tools["Rectangle1"]
+                         .values["Center"], {1: 0.5, 2: 0.5})
+
+    def test_a_centre_of_one_half_changes_no_window_value(self):
+        self.put_windows()
+        for crop in self.crops["items"]:
+            crop["cx"] = 0.5
+        dry, real = self.real()
+        self.assertEqual(real["exit_status"], 0, real["results"])
+        new = self.target().tracks["video"][0]
+        self.assertEqual(new[0].comps["rp-fx scale-window"].tools["Transform1"].values["Pivot"],
+                         {1: 0.5, 2: 0.5})
+        self.assertEqual(new[2].comps["rp-fx crop-window"].tools["Rectangle1"].values["Center"],
+                         {1: 0.5, 2: 0.5})
+
+    def test_a_second_run_changes_nothing_more(self):
+        self.put_windows()
+        self.real()
+        pivot = lambda: dict(self.target().tracks["video"][0][0].comps["rp-fx scale-window"]
+                             .tools["Transform1"].values["Pivot"])
+        first = pivot()
+        again = self.go(dry_run=False)  # in place on the copy, whose comps are already moved
+        self.assertEqual((again["create"], again["exit_status"]), (False, 0), again["results"])
+        self.assertEqual(pivot(), first)
+        self.assertEqual(again["targets"][0]["comps"][-1]["set"], {"Transform1.Pivot": (0.3, 0.5)})
+
+    def test_a_window_centre_that_does_not_take_fails_the_run(self):
+        self.put_windows()
+        with mock.patch.object(FTool, "SetInput", lambda self, k, val: None):
+            _, real = self.real()
+        self.assertEqual(real["exit_status"], 1)
+        self.assertTrue(any("Rectangle1.Center reads" in p for p in real["results"][2]["problems"]))
+        self.assertTrue(any("Transform1.Pivot reads" in p for p in real["results"][0]["problems"]))
 
     def test_a_person_matte_text_title_is_centred_on_the_crop_and_its_matte_is_left(self):
         self.items[0].comps["rp-fx person-matte-text"] = matte_comp()
