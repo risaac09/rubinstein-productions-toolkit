@@ -357,9 +357,16 @@ def apply_params(parsed, effect, params, n, fade_frames=0):
             last = n - 1
             first = max(0, last - max(1, int(fade_frames)))
             m, lin = last - first, {"Linear": True}
-            tools[gain] = {**copy.deepcopy(dip["Tools"][gain]), "KeyFrames": {
+            keyframes = {
                 first: {1: 1, "Flags": lin, "RH": {1: first + m / 3.0, 2: 2 / 3.0}},
-                last: {1: 0, "Flags": lin, "LH": {1: last - m / 3.0, 2: 1 / 3.0}}}}
+                last: {1: 0, "Flags": lin, "LH": {1: last - m / 3.0, 2: 1 / 3.0}}}
+            if first > 0:
+                # Resolve puts a key on frame 0 of this spline by itself (seen live: keys at
+                # 0, first, last; the picture before the fade was unchanged), so it is written
+                # here at gain 1 and the read-back expects it.
+                keyframes[0] = {1: 1, "Flags": lin, "RH": {1: first / 3.0, 2: 1}}
+                keyframes[first]["LH"] = {1: first - first / 3.0, 2: 1}
+            tools[gain] = {**copy.deepcopy(dip["Tools"][gain]), "KeyFrames": keyframes}
             checks.append({"param": "fade_out", "tool": gain, "frame": last, "want": 0})
     return macro, checks
 

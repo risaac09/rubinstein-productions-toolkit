@@ -648,8 +648,8 @@ class TestParams(Base):
         comp = self.comp("reframe-pan")
         keys = comp.FindTool("BrightnessContrast1Gain").keys
         # 0.4 s at 25 fps = 10 timeline frames, x 240/50 source per timeline frame = 48
-        self.assertEqual(sorted(keys), [191, 239])
-        self.assertEqual((keys[191][1], keys[239][1]), (1, 0))
+        self.assertEqual(sorted(keys), [0, 191, 239])  # frame 0 at gain 1: Resolve adds it anyway
+        self.assertEqual((keys[0][1], keys[191][1], keys[239][1]), (1, 1, 0))
         self.assertIs(comp.FindTool("BrightnessContrast1").links["Input"], comp.FindTool("Transform1"))
         self.assertIs(comp.FindTool("BrightnessContrast1").links["Gain"],
                       comp.FindTool("BrightnessContrast1Gain"))
