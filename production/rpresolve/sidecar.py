@@ -11,6 +11,7 @@ Stdlib only; the Resolve MCP server runs it on Python 3.9.
 """
 
 import datetime
+import json
 import os
 import re
 import functools
@@ -28,23 +29,46 @@ def stem(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
+CARD_JSON = ".card.json"
+
+
+def _record_name(folder):
+    """<CAM>-<first 6 of card_id> from the record beside `folder`, or None."""
+    try:
+        with open(folder + CARD_JSON, encoding="utf-8") as f:
+            rec = json.load(f)
+        cam, cid = rec["cam"], rec["card_id"]
+        if re.fullmatch(r"[A-Za-z0-9]+", cam) and re.fullmatch(r"[0-9a-f]{6,}", cid):
+            return f"{cam}-{cid[:6]}"
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
 def _card_dir(path):
-    """(index into the path parts of the card folder, parts), or (None, parts)."""
+    """(index into the path parts of the card folder, parts), or (None, parts).
+    A card folder is one named <CAM>-<id6> or one with a .card.json beside it,
+    whatever its name (old folders keep their names; the record carries the id)."""
     parts = os.path.normpath(path).split(os.sep)
     for i in range(len(parts) - 2, -1, -1):
-        if CARD_DIR.match(parts[i]):
+        here = os.sep.join(parts[:i + 1])
+        if CARD_DIR.match(parts[i]) or (here and os.path.isfile(here + CARD_JSON)):
             return i, parts
     return None, parts
 
 
 def card_key(path):
     """The clip id: <card folder>/<stem>, the card folder being the nearest
-    folder above named <CAM>-<id6>, else the file's own folder. A card keeps
-    its DCIM tree, so the own folder alone (100_PANA) would repeat across
-    cards."""
+    folder above that is a card (see _card_dir), else the file's own folder. A
+    card keeps its DCIM tree, so the own folder alone (100_PANA) would repeat
+    across cards. A card with a record is named from it, <CAM>-<id6>, whatever
+    the folder is called."""
     i, parts = _card_dir(path)
     parent = parts[:-1]
-    card = parts[i] if i is not None else (parent[-1] if parent else "")
+    if i is not None:
+        card = _record_name(os.sep.join(parts[:i + 1])) or parts[i]
+    else:
+        card = parent[-1] if parent else ""
     return f"{card}/{stem(path)}"
 
 
