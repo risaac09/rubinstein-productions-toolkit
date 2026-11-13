@@ -146,6 +146,9 @@ def plan(manifest, exclude=None):
     not_built += [f"{os.path.basename(p)}: recorded as {f:g}x anamorphic; this tool sets neither the "
                   "clip's pixel aspect ratio nor the timeline's shape" for p, f in wide.items()
                   if f and f != 1 and not p.lower().endswith(".braw")]  # Resolve reads a BRAW's own tag
+    sound = manifest.get("camera_sound", False)
+    if not isinstance(sound, bool):
+        raise Refused("camera_sound is true or false")
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")
@@ -153,7 +156,7 @@ def plan(manifest, exclude=None):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "sound": bool(manifest.get("camera_sound")),
+            "sound": sound,
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -496,8 +499,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
             out["items"].append(row)
         if p["sound"]:
             check()
-            out["camera_audio"] = _camera_audio(tl, media_pool, have, p, infos, items, tl_fps,
-                                                problems)
+            out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems)
         _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
             if r.get("transition") and len(items) >= r["index"]:
@@ -596,7 +598,7 @@ def _colour(out, have, imported, before):
                 problems.append(f"colour: {base}: {row['flag']}")
 
 
-def _camera_audio(tl, media_pool, have, p, infos, items, tl_fps, problems):
+def _camera_audio(tl, media_pool, p, infos, items, problems):
     """Each span's own camera sound on A1 under its picture: the same clip, the same source
     frames and the same record frame as the picture item (read from the item, so a montage
     on V2 and a plate-free V1 line up alike). Read back: how many, where, how long. A source
@@ -611,7 +613,8 @@ def _camera_audio(tl, media_pool, have, p, infos, items, tl_fps, problems):
         problems.append(f"A1 holds {len(got)} camera sound item(s), the plan {len(audio)} "
                         "(a source with no audio places none)")
     rows = []
-    for r, it, pic in zip(p["spans"], got, items):
+    # paired by position, so only when every item landed; a short count is already a problem
+    for r, it, pic in zip(p["spans"], got if len(got) == len(audio) else [], items):
         row = {"index": r["index"], "name": it.GetName(), "start": it.GetStart() - first,
                "frames": it.GetDuration()}
         if (it.GetStart(), it.GetDuration()) != (pic.GetStart(), pic.GetDuration()):

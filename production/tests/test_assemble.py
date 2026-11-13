@@ -1198,3 +1198,21 @@ class TestTimelineColourAndCameraSound(Base):
         _, r, tl = self.built()
         self.assertEqual((r["exit_status"], r["problems"]), (0, []))
         self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 3)
+
+
+class TestCameraSoundDetails(Base):
+    def test_camera_sound_must_be_a_boolean(self):
+        self.manifest["camera_sound"] = "false"
+        with self.assertRaisesRegex(Refused, "camera_sound is true or false"):
+            self.go()
+
+    def test_camera_sound_lines_up_with_a_montage_on_v2(self):
+        self.manifest["camera_sound"] = True
+        self.manifest["effects"] = [{"effect": "scale-window", "span_index": 1}]
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        pics = tl.GetItemListInTrack("video", dry["plan"]["track"])
+        snd = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual([(i.start, i.end) for i in snd], [(i.start, i.end) for i in pics])
+        self.assertEqual(r["problems"], [])
