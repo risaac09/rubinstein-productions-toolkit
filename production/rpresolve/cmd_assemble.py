@@ -57,6 +57,7 @@ from rpresolve import detect as rpdetect
 from rpresolve import ingest as rpingest
 from rpresolve import delivercheck as dc
 from rpresolve import musicbed, transitions
+from rpresolve import squeeze as rpsqueeze
 from rpresolve import paths as rppaths
 from rpresolve import windowplate
 from rpresolve.workflows import AUTO, Refused, _check, check_exclude, plan_sha
@@ -137,6 +138,13 @@ def plan(manifest, exclude=None):
     not_built += [f"the {e['effect']} into item {e['span_index'] + 1}: not built by this tool "
                   "(the draft farm draws it)" for e in manifest.get("effects") or []
                   if e.get("effect") in transitions.IDS]
+    try:  # the draft farm desqueezes by this record; say so where the build does not
+        wide = {p: rpsqueeze.factor(p) for p in sorted(set(paths.values()))}
+    except rpsqueeze.SqueezeError as e:
+        raise Refused(str(e))
+    not_built += [f"{os.path.basename(p)}: recorded as {f:g}x anamorphic; this tool sets neither the "
+                  "clip's pixel aspect ratio nor the timeline's shape" for p, f in wide.items()
+                  if f and f != 1]
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")

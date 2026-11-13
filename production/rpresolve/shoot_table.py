@@ -160,6 +160,11 @@ def _size(h, is_braw):
     return f"{w}x{ht}" if w and ht else ""
 
 
+def lens(exif):
+    """The lens a clip's metadata names, or "" for a lens with no contacts."""
+    return str(_exif(exif or {}, *_LENS_TAGS)).strip()
+
+
 def _squeeze(h):
     sar = detect._fraction(str(h.video.get("sample_aspect_ratio", "")).replace(":", "/"))
     if sar and sar != 1:
@@ -307,19 +312,19 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 notes.append("audio audit could not decode")
     fps = _fps(h, is_braw)
-    lens = str(_exif(h.exif, *_LENS_TAGS))
+    lens_name = lens(h.exif)
     recorded = rpsqueeze.factor(path)  # a person's answer beats what the file says
     if recorded is None and rpsqueeze.unanswered(path):
         flags.append("squeeze-unknown")
         notes.append("no squeeze recorded for this card (squeeze set)"
-                     + ("" if lens else "; no lens data: likely a manual lens"))
+                     + ("" if lens_name else "; no lens data: likely a manual lens"))
     return {
         "file": path, "camera": d["camera"],
         "local_start": start.isoformat() if start else "",
         "duration_s": f"{dur:.3f}" if dur is not None else "",
         "fps": f"{fps:.3f}".rstrip("0").rstrip(".") if fps else "",
         "vfr": d["vfr"], "size": _size(h, is_braw), "profile": d["profile"],
-        "squeeze": _squeeze(h) if recorded is None else f"{recorded:g}", "lens": lens,
+        "squeeze": _squeeze(h) if recorded is None else f"{recorded:g}", "lens": lens_name,
         "audio_source": audio, "flags": ";".join(flags), "note": "; ".join(notes),
         **{c: extra.get(c, "") for c in COLUMNS[13:]},
     }

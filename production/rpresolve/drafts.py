@@ -499,14 +499,15 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     enc = encoder(hw)
     jobs, frames = [], 0
     spans = man["clips"][0]["spans"]
-    open_cards = sorted({rpsqueeze.card_root(p) for p in srcs.values() if rpsqueeze.unanswered(p)})
-    if open_cards:  # before any ffmpeg job: a squeezed picture must not be judged as it is
-        raise DraftError(f"{plan['name']}: no squeeze recorded for {', '.join(open_cards)}: say "
-                         "whether the card is anamorphic (squeeze set FOLDER --factor N; 1 is spherical)")
     try:
         sq = {sid: rpsqueeze.factor(p) for sid, p in srcs.items()}
     except rpsqueeze.SqueezeError as e:
         raise DraftError(f"{plan['name']}: {e}")
+    open_cards = sorted({rpsqueeze.card_root(p) for sid, p in srcs.items()
+                         if sq[sid] is None and rpsqueeze.card_root(p)})
+    if open_cards:  # before any ffmpeg job: a squeezed picture must not be judged as it is
+        raise DraftError(f"{plan['name']}: no squeeze recorded for {', '.join(open_cards)}: say "
+                         "whether the card is anamorphic (squeeze set FOLDER --factor N; 1 is spherical)")
     wide = sorted({f for f in sq.values() if f and f != 1})
     if wide:
         notes.append("desqueezed " + ", ".join(

@@ -40,9 +40,7 @@ def add_arguments(p):
                    help="set: the factor goes to clips with no lens data, 1 to the rest")
 
 
-def lens(exif):
-    """The lens a clip's metadata names, or "" for a lens with no contacts."""
-    return str(rpshoot._exif(exif or {}, *rpshoot._LENS_TAGS)).strip()
+lens = rpshoot.lens
 
 
 def rows(files, exif):
@@ -83,17 +81,26 @@ def set_(folder, factor, clips, manual_lens):
         print("ERROR: set wants --factor (1 is spherical)", file=sys.stderr)
         return 1
     factor = int(factor) if float(factor).is_integer() else factor
+    files, _ = rpdetect.collect_files([folder]) if (clips or manual_lens) else ([], [])
+    here = {os.path.basename(f) for f in files}
     named = {os.path.basename(c): factor for c in clips or []}
+    strangers = sorted(set(named) - here)
+    if strangers:  # a mistyped name would be recorded and the real clip left open
+        print(f"ERROR: no such clip in {folder}: {', '.join(strangers)}", file=sys.stderr)
+        return 1
     default = None if (named or manual_lens) else factor
     if manual_lens:
-        files, _ = rpdetect.collect_files([folder])
         exif = _exif_for(files)
-        named.update({os.path.basename(f): factor for f in files if not lens(exif.get(f))})
+        unread = sorted(os.path.basename(f) for f in files if f not in exif)
+        if unread:  # an unread clip has no lens data either: do not answer for it
+            print(f"  [skip] metadata not read, left open: {', '.join(unread)}", file=sys.stderr)
+        named.update({os.path.basename(f): factor for f in files if f in exif and not lens(exif[f])})
         if not named:
-            print("ERROR: every clip in the folder names its lens; nothing to mark", file=sys.stderr)
+            print("ERROR: every clip read in the folder names its lens; nothing to mark", file=sys.stderr)
             return 1
-        if rpsqueeze.factor(os.path.join(folder, "x")) is None:  # the rest have lens data: spherical
-            default = 1
+        own = os.path.abspath(folder).rstrip(os.sep) + rpsqueeze.SUFFIX
+        if not (os.path.isfile(own) and rpsqueeze.load(own)["default"] is not None):
+            default = 1  # the rest name their lens: spherical, unless this card's record says otherwise
     record = rpsqueeze.write(folder, default=default, clips=named)
     doc = rpsqueeze.load(record)
     print(f"Wrote {record}: default {doc['default']}, {len(doc['clips'])} clip(s) named")

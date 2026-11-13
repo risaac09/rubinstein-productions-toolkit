@@ -121,6 +121,27 @@ class TestCommand(Base):
         self.run_cmd("set", self.card, "--factor", "1")
         self.assertEqual(squeeze.factor(self.clips[0]), 1.5)  # a named clip outlives a new default
 
+    def test_a_mistyped_clip_name_and_an_unread_clip_are_not_answered_for(self):
+        self.make_card()
+        status, _, err = self.run_cmd("set", self.card, "--factor", "1.5", "--clip", "A.MOV", "--clip", "Z.MOV")
+        self.assertEqual(status, 1)
+        self.assertIn("no such clip", err)
+        self.assertIsNone(squeeze.factor(self.clips[0]))  # nothing was written
+        exif = {self.clips[1]: self.EXIF["B.MOV"], self.clips[2]: self.EXIF["C.MP4"]}  # A.MOV unread
+        with mock.patch.object(cmd_squeeze, "_exif_for", lambda files: exif), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            import argparse
+            p = argparse.ArgumentParser()
+            cmd_squeeze.add_arguments(p)
+            cmd_squeeze.run(p.parse_args(["set", self.card, "--factor", "1.5", "--manual-lens"]))
+        self.assertIn("left open: A.MOV", err.getvalue())
+        self.assertEqual(json.loads(Path(self.card + squeeze.SUFFIX).read_text())["clips"], {"C.MP4": 1.5})
+
+    def test_a_record_in_a_parent_folder_does_not_stand_in_for_this_cards_default(self):
+        Path(self.dir, squeeze.INSIDE).write_text(json.dumps({"default": 1.33}))
+        self.run_cmd("set", self.card, "--factor", "1.5", "--manual-lens")
+        self.assertEqual([squeeze.factor(c) for c in self.clips], [1.5, 1.0, 1.5])
+
     def test_manual_lens_keeps_a_default_somebody_already_gave(self):
         squeeze.write(self.card, default=1.33)
         self.run_cmd("set", self.card, "--factor", "1.5", "--manual-lens")

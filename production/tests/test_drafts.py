@@ -290,6 +290,12 @@ class TestSqueeze(Base):
         with self.assertRaisesRegex(drafts.DraftError, "no squeeze recorded for .*CAM-abc123.*squeeze set"):
             drafts.plan_jobs(plan, self.dir, False)
 
+    def test_an_unreadable_record_is_one_line_not_a_traceback(self):
+        card, plan = self.card_plan()
+        Path(card + ".squeeze.json").write_text("{not json")
+        with self.assertRaisesRegex(drafts.DraftError, "cannot read the squeeze record"):
+            drafts.plan_jobs(plan, self.dir, False)
+
     def test_a_recorded_factor_is_drawn_and_noted_and_spherical_is_left_alone(self):
         from rpresolve import squeeze
         card, plan = self.card_plan()
