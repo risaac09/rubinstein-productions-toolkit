@@ -147,6 +147,34 @@ class TestCompile(unittest.TestCase):
             sl["shots"][0]["effects"] = bad
             self.assertEqual(len(shotlist.validate(sl)), 1, bad)
 
+    def test_a_transition_compiles_to_a_manifest_entry_and_sits_beside_a_pan_or_an_effect(self):
+        sl = copy.deepcopy(LIST)
+        sl["shots"][1]["transition"] = {"id": "hyper-slide"}
+        sl["shots"][2]["transition"] = {"id": "luma-fade", "frames": 12}  # a panned shot
+        sl["shots"][3]["effects"] = [{"effect": "zoom-push"}]
+        sl["shots"][3]["transition"] = {"id": "smoke-displace", "frames": 8}
+        self.assertEqual(shotlist.validate(sl), [])
+        man, _ = compiled(sl)
+        got = [(e["span_index"], e["effect"], e["params"]) for e in man["effects"]
+               if e["effect"] in ("hyper-slide", "luma-fade", "smoke-displace")]
+        self.assertEqual(got, [(1, "hyper-slide", {}), (2, "luma-fade", {"frames": 12}),
+                               (3, "smoke-displace", {"frames": 8})])
+        self.assertEqual(sum(1 for e in man["effects"] if e["span_index"] == 2
+                             and e["effect"] == "reframe-pan"), 1)
+
+    def test_transition_refusals(self):
+        for shot_no, tr, msg in [(0, {"id": "luma-fade"}, "first shot has no shot before it"),
+                                 (1, {"id": "wipe"}, "transition id 'wipe' is not one of"),
+                                 (1, {"id": "luma-fade", "frames": 7}, "transition frames must be"),
+                                 (1, {"id": "luma-fade", "frames": 50}, "from 4 to 48"),
+                                 (1, {"id": "luma-fade", "speed": 2}, "transition is {id, frames}"),
+                                 (1, "luma-fade", "transition is {id, frames}")]:
+            sl = copy.deepcopy(LIST)
+            sl["shots"][shot_no]["transition"] = tr
+            got = shotlist.validate(sl)
+            self.assertEqual(len(got), 1, tr)
+            self.assertIn(msg, got[0])
+
     def test_fade_out_goes_on_the_last_shot_with_or_without_a_pan(self):
         for last_cx, want in (([0.4, 0.68], {"pan_from": 0.4, "pan_to": 0.68, "pan_base": 0.54}),
                               ([0.6, 0.6], {"pan_from": 0.6, "pan_to": 0.6, "pan_base": 0.6})):

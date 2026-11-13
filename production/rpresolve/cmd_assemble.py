@@ -56,7 +56,7 @@ from rpresolve import api, cli, cutlist, ledgercheck
 from rpresolve import detect as rpdetect
 from rpresolve import ingest as rpingest
 from rpresolve import delivercheck as dc
-from rpresolve import musicbed
+from rpresolve import musicbed, transitions
 from rpresolve import paths as rppaths
 from rpresolve import windowplate
 from rpresolve.workflows import AUTO, Refused, _check, check_exclude, plan_sha
@@ -134,6 +134,9 @@ def plan(manifest, exclude=None):
                              f"({tr.get('frames')} frames): placed as a cut")
         spans.append(row)
         prev = (path, span["out"])
+    not_built += [f"the {e['effect']} into item {e['span_index'] + 1}: not built by this tool "
+                  "(the draft farm draws it)" for e in manifest.get("effects") or []
+                  if e.get("effect") in transitions.IDS]
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")

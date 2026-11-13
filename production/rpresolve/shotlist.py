@@ -20,6 +20,14 @@ shot's first and last frame as a share of the source width. A shot without `spee
 the conform speed: 0.8 for a source near 30 fps and 0.4 for one near 60 at a 24 fps list
 (a slow-motion conform), else 1.
 
+A shot may carry `"transition": {"id": "hyper-slide" | "smoke-displace" | "luma-fade",
+"frames": N}`, the transition INTO that shot, centred on the cut before it (`frames` optional,
+even, 4 to 48; the first shot has nothing before it). compile_list writes it as a manifest
+effect on that span; the draft farm draws it as its own picture math on the finished draft
+(a shot too short to hold half the window is refused there), and the Resolve build is a
+separate change. It does not use the shot's Fusion comp, so it may sit on a panned shot or
+one with an effect.
+
 A cut plan gives each shot its timeline frames: `cut_frames` (one more than the shots, as
 `notes snap` writes it) or one `period` in seconds for every shot. A span runs from `in`
 for the shot's timeline length, as methods.to_manifest writes it, and the retime entry
@@ -31,7 +39,7 @@ import json
 import math
 import os
 
-from . import methods
+from . import methods, transitions
 
 ID_MAIN = "shotlist"
 
@@ -83,6 +91,21 @@ def _effect_problems(who, effects):
             p.append(f"{who}: {eid} params must be an object")
         elif set(params or {}) - PARAMS[eid]:
             p.append(f"{who}: {eid} takes {sorted(PARAMS[eid])}, not {sorted(set(params) - PARAMS[eid])}")
+    return p
+
+
+def _transition_problems(who, i, tr):
+    if tr is None:
+        return []
+    if not isinstance(tr, dict) or set(tr) - {"id", "frames"}:
+        return [f"{who}: transition is {{id, frames}}"]
+    p = []
+    if tr.get("id") not in transitions.IDS:
+        p.append(f"{who}: transition id {tr.get('id')!r} is not one of {', '.join(transitions.IDS)}")
+    if i == 1:
+        p.append(f"{who}: the first shot has no shot before it for a transition")
+    if tr.get("frames") is not None and transitions.frames_problem(tr["frames"]):
+        p.append(f"{who}: transition {transitions.frames_problem(tr['frames'])}")
     return p
 
 
@@ -143,6 +166,7 @@ def validate(sl):
         if s.get("source_fps") is not None and not (_num(s["source_fps"]) and s["source_fps"] > 0):
             p.append(f"{who}: source_fps must be a number above 0")
         p.extend(_effect_problems(who, s.get("effects")))
+        p.extend(_transition_problems(who, i, s.get("transition")))
         fx = s.get("effects")
         if isinstance(fx, list) and fx and (len(fx) > 1 or (
                 isinstance(cx, list) and len(cx) == 2 and cx[0] != cx[1])):
@@ -221,6 +245,10 @@ def compile_list(sl, frames, music_in=None):
             effects.append({"span_index": i, "effect": "retime", "params": {"speed": speed}})
         effects.extend({"span_index": i, "effect": e["effect"], "params": dict(e.get("params") or {})}
                        for e in s.get("effects") or [])
+        tr = s.get("transition")
+        if tr:
+            effects.append({"span_index": i, "effect": tr["id"],
+                            "params": {"frames": tr["frames"]} if tr.get("frames") else {}})
     method = method_for(sl, frames)
     problems = methods.validate(method)
     if problems:

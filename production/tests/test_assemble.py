@@ -1090,6 +1090,19 @@ class TestLedgerAtBuild(Base):
         with self.assertRaisesRegex(Refused, "not this manifest's"):
             self.go()
 
+    def test_a_draft_transition_is_not_flagged_and_the_plan_says_the_build_does_not_make_it(self):
+        from rpresolve import drafts
+        self.man = {**self.manifest, "effects": [{"span_index": 1, "effect": "luma-fade",
+                                                  "params": {"frames": 8}}]}
+        led = drafts.ledger(self.man)
+        self.assertIn("luma-fade", [e["effect"] for e in led["approximated"]])
+        self.write([{"plan": "a", "effects": led}])
+        dry = self.go()
+        self.assertEqual(dry["ledger"]["flagged"], [])
+        self.assertIn("the luma-fade into item 2: not built by this tool (the draft farm draws it)",
+                      dry["plan"]["not_built"])
+        self.assertEqual(self.go(dry_run=False, expect_sha=dry["plan_sha"])["exit_status"], 0)
+
     def test_a_clean_ledger_passes_a_real_run(self):
         self.man = self.manifest
         from rpresolve import drafts

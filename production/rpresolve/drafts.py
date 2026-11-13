@@ -37,6 +37,11 @@ continues (what vertical_apply gives the V1 plate), and the notes and the `crops
 drafts.json say which span used which centre. A crops file whose item count or files differ
 from the plan's spans is refused; a 16:9 plan ignores it, and says so.
 
+The three transitions (transitions.py: hyper-slide, smoke-displace, luma-fade; a manifest effect
+on span i is the transition into it) are in no span's job: after the spans are joined they are
+drawn on the finished draft as picture math, the frames around each cut rewritten and the video
+re-encoded, audio kept. The ledger lists them under `approximated`.
+
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
 the draft is ungraded and its notes say so. --lut FILE (an absolute .cube path, not with
@@ -57,7 +62,7 @@ import sys
 import tempfile
 import time
 
-from . import cutlist, methods, windowplate
+from . import cutlist, methods, transitions, windowplate
 from . import paths as rppaths
 
 LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/lutlab"
@@ -91,6 +96,9 @@ APPROX = {"text-word": "the word is a white box",
           "dip-to-black": "the macro's even-stop gain keys, drawn as a display-space "
                           "multiply fitted on one dark frame (T28)",
           "dissolve": "drawn as a cut"}
+# The three transitions (transitions.py) are no macros: the post-pass draws them on the finished
+# draft, so they are approximated by definition, and not in DRAWN (no per-span filter).
+APPROX.update({t: transitions.LEDGER_NOTE for t in transitions.IDS})
 
 MATTE_SIZE, MATTE_WORD = 0.32, "WILD"  # person-matte-text's Text1 Size and stored word
 MATTE_COLOUR = "0xD7371F"  # its Red1/Green1/Blue1 (0.843, 0.216, 0.122) as 8-bit
@@ -476,7 +484,8 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     srcs = {s["id"]: s["path"] for s in cutlist.sources(man)}
     by_span = {}
     for e in man.get("effects") or []:
-        by_span.setdefault(e["span_index"], []).append(e)
+        if e["effect"] not in transitions.IDS:  # drawn by the post-pass, not in the span's job
+            by_span.setdefault(e["span_index"], []).append(e)
     enc = encoder(hw)
     jobs, frames = [], 0
     spans = man["clips"][0]["spans"]
@@ -512,6 +521,16 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
                + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
         jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work})
         frames += n
+    try:  # before any ffmpeg job: a window the shots cannot hold is refused here
+        planned = transitions.plan(man.get("effects"), [j["frames"] for j in jobs])
+    except transitions.TransitionError as e:
+        raise DraftError(f"{plan['name']} {e}")
+    if planned:
+        try:
+            import numpy  # noqa: F401  the post-pass needs it; say so before any ffmpeg job
+        except ImportError:
+            raise DraftError(f"{plan['name']}: a transition needs numpy, which this Python lacks")
+    notes += [transitions.note(t) for t in planned]
     black = methods.end_black(m)
     if black:
         n = int(round(black * fps))
@@ -525,7 +544,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
         if step["control"] in ("Zoom keyframes", "Duration"):  # retimes are manifest effects now, and drawn
             notes.append(f"{step['target']}: {step['control']} {step['value']} not drawn")
     info = {"size": [w, h], "fps": fps, "frames": frames, "lut": lut_src, "notes": notes,
-            "effects": ledger(man)}
+            "effects": ledger(man), "transitions": planned}
     if centres:
         more, info["crops"] = crop_notes(centres, by_span)
         notes += more
@@ -739,7 +758,16 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             elif music:
                 info["notes"].append(f"music from {float(music.get('in') or 0):.2f} s; "
                                      "check its licence before anything is posted")
-            _concat([j["out"] for j in jobs], video, work, music, info["frames"] / info["fps"])
+            if info["transitions"]:
+                joined = os.path.join(work, name + ".joined.mp4")
+                _concat([j["out"] for j in jobs], joined, work, music, info["frames"] / info["fps"])
+                try:
+                    transitions.apply(joined, video, info["size"], info["fps"],
+                                      info["transitions"], info["frames"])
+                except transitions.TransitionError as e:
+                    raise DraftError(f"{name}: {e}")
+            else:
+                _concat([j["out"] for j in jobs], video, work, music, info["frames"] / info["fps"])
             with open(os.path.join(out, name + ".notes.txt"), "w", encoding="utf-8") as f:
                 f.write("".join(n + "\n" for n in info["notes"]) or "everything drawn\n")
             drafts.append({"plan": name, "method": p["method"]["id"], "file": video,

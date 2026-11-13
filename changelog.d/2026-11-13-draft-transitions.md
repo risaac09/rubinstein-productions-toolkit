@@ -1,0 +1,1 @@
+The draft farm draws three transitions between two shots (hyper-slide, smoke-displace, luma-fade) as a post-pass on the finished draft, from a manifest effect or a shot list shot's transition, so they can be judged before anything is built in Resolve; the Resolve build is a later change.

@@ -25,11 +25,16 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from rpresolve import drafts, methods, windowplate  # noqa: E402
+from rpresolve import drafts, methods, transitions, windowplate  # noqa: E402
 
 DraftErrorAlias = drafts.DraftError
 
 FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
+try:
+    import numpy as np
+except ImportError:  # the stdlib-only 3.9 CI job
+    np = None
+needs_numpy = unittest.skipIf(np is None, "numpy not installed")
 
 METHOD = {
     "edit_method": 1, "id": "test-draft", "name": "Test draft", "summary": "three slots",
@@ -255,6 +260,165 @@ class TestRefusals(Base):
         for e in drafts.DRAWN:
             self.assertTrue(drafts.effect_filter(e, 1.0, 24, 1280, 720), e)
         self.assertIsNone(drafts.effect_filter("cross-dissolve-short", 1.0, 24, 1280, 720))
+
+
+PLAIN = copy.deepcopy(METHOD)
+for _slot in PLAIN["slots"]:
+    _slot.update({"effect": None, "text": None, "scale": None})
+    _slot["transition_out"] = {"type": "cut", "frames": 0}
+
+
+class TestTransitionPlan(unittest.TestCase):
+    def fx(self, *rows):
+        return [{"span_index": i, "effect": e, "params": p} for i, e, p in rows]
+
+    def test_a_transition_is_planned_around_its_cut_with_the_default_length(self):
+        got = transitions.plan(self.fx((2, "luma-fade", {}), (1, "hyper-slide", {"frames": 8}),
+                                       (3, "smoke-displace", {})),
+                               [24, 12, 18, 20])
+        self.assertEqual([(t["span"], t["id"], t["frames"], t["cut"], t["start"], t["end"])
+                          for t in got],
+                         [(1, "hyper-slide", 8, 24, 0, 36), (2, "luma-fade", 16, 36, 24, 54),
+                          (3, "smoke-displace", 14, 54, 36, 74)])
+        self.assertEqual(transitions.plan(self.fx((1, "zoom-push", {})), [20, 20]), [])
+
+    def test_each_refusal_names_the_span(self):
+        for rows, spans, msg in [
+                ((0, "luma-fade", {}), [20, 20], "span 0: luma-fade needs a shot before it"),
+                ((1, "luma-fade", {"frames": 7}), [20, 20], "span 1: luma-fade frames must be"),
+                ((1, "luma-fade", {"frames": 50}), [60, 60], "even whole number from 4 to 48"),
+                ((1, "luma-fade", {"frames": 2}), [20, 20], "from 4 to 48"),
+                ((1, "luma-fade", {"speed": 1}), [20, 20], "takes only frames"),
+                ((1, "smoke-displace", {}), [20, 6], "needs 7 frames of the shot after the cut "
+                                                     "and span 1 has 6"),
+                ((1, "hyper-slide", {}), [4, 20], "before the cut and span 0 has 4")]:
+            with self.assertRaisesRegex(transitions.TransitionError, msg):
+                transitions.plan(self.fx(rows), spans)
+        with self.assertRaisesRegex(transitions.TransitionError, "span 5: no such span"):
+            transitions.plan(self.fx((5, "luma-fade", {})), [20, 20])
+        with self.assertRaisesRegex(transitions.TransitionError, "one transition into a span"):
+            transitions.plan(self.fx((1, "luma-fade", {}), (1, "hyper-slide", {})), [20, 20])
+        with self.assertRaisesRegex(transitions.TransitionError, "span 2: its hyper-slide overlaps"):
+            transitions.plan(self.fx((1, "luma-fade", {}), (2, "hyper-slide", {})), [20, 12, 20])
+
+
+@needs_numpy
+class TestTransitionMath(unittest.TestCase):
+    W, H = 72, 128  # a tenth of 720 wide: the pixel constants scale with the width
+
+    def pair(self, w=None, h=None):
+        w, h = w or self.W, h or self.H
+        ramp = np.tile(np.linspace(0, 30, w, dtype=np.float32), (h, 1))
+        a = np.stack([ramp + 20, ramp + 30, ramp + 40], -1).astype(np.uint8)
+        b = np.stack([235 - ramp, 225 - ramp, 215 - ramp], -1).astype(np.uint8)
+        return a, b
+
+    def window(self, tid, n, w=None, h=None):
+        w, h = w or self.W, h or self.H
+        a, b = self.pair(w, h)
+        grids = transitions.smoke_grids(np.random.default_rng(11), h, w)
+        if tid == "smoke-displace":
+            return [transitions.displace(a, b, k, n, grids) for k in range(n)]
+        return [transitions.lumafade(a, b, k, n) for k in range(n)]
+
+    def mad(self, x, y):
+        return float(np.abs(x.astype(np.float32) - y.astype(np.float32)).mean())
+
+    def test_a_window_runs_from_shot_a_to_shot_b_and_repeats_exactly(self):
+        for w, h in ((72, 128), (128, 72)):  # both draft shapes, scaled down
+            a, b = self.pair(w, h)
+            for tid, n in (("smoke-displace", 14), ("luma-fade", 16)):
+                win = self.window(tid, n, w, h)
+                self.assertEqual((len(win), win[0].shape, win[0].dtype), (n, (h, w, 3), np.uint8))
+                self.assertLess(self.mad(win[0], a), self.mad(win[0], b), tid)
+                self.assertLess(self.mad(win[-1], b), self.mad(win[-1], a), tid)
+                again = self.window(tid, n, w, h)
+                self.assertTrue(all(np.array_equal(x, y) for x, y in zip(win, again)), tid)
+
+    def test_hyper_slide_picks_lie_outside_the_window_and_pair_up(self):
+        import random
+        picks = transitions.slide_picks(random.Random(7), 10, 0, 30, 50)
+        self.assertEqual(len(picks), 10)
+        self.assertTrue(all(0 <= p < 25 or 35 <= p < 50 for p in picks))
+        self.assertTrue(all(picks[k] == picks[k + 1] for k in range(0, 10, 2)))
+        self.assertEqual(picks, transitions.slide_picks(random.Random(7), 10, 0, 30, 50))
+        # shots exactly half a window long leave no outside frame: the shots' own are used
+        self.assertTrue(all(0 <= p < 10 for p in transitions.slide_picks(random.Random(7), 10, 0, 5, 10)))
+
+    def test_hyper_slide_blurs_and_mirrors_and_leaves_a_flat_picture_flat(self):
+        a, _ = self.pair()
+        flat = np.full((self.H, self.W, 3), 90, np.uint8)
+        for k in range(10):
+            f = transitions.slide(flat, k, 10)
+            self.assertEqual((f.shape, int(f.min()), int(f.max())), (flat.shape, 90, 90))
+        s = transitions.slide(a, 5, 10)
+        self.assertEqual(s.shape, a.shape)
+        self.assertFalse(np.array_equal(s, a))
+        self.assertTrue(np.array_equal(s, transitions.slide(a, 5, 10)))
+
+
+@needs_numpy
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestTransitionDraft(Base):
+    def setUp(self):
+        super().setUp()
+        self.src = os.path.join(self.dir, "src.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=24:d=8", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", self.src], check=True)
+
+    def frames(self, path):
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt",
+                              "rgb24", "-"], capture_output=True, check=True).stdout
+        return np.frombuffer(raw, np.uint8).reshape(-1, 720, 1280, 3)
+
+    def with_effects(self, name, effects):
+        d = self.plan(name, PLAIN, self.src)
+        path = os.path.join(d, "manifest.json")
+        with open(path) as f:
+            man = json.load(f)
+        man["effects"] = effects
+        with open(path, "w") as f:
+            json.dump(man, f)
+        return d
+
+    def test_only_the_window_changes_and_the_notes_and_ledger_say_so(self):
+        plain = drafts.build([self.with_effects("plain", [])], os.path.join(self.dir, "p"),
+                             hw=False, lanes=1)["drafts"][0]
+        fx = [{"span_index": 1, "effect": "luma-fade", "params": {"frames": 8}},
+              {"span_index": 2, "effect": "hyper-slide", "params": {}}]
+        doc = drafts.build([self.with_effects("moved", fx)], os.path.join(self.dir, "m"),
+                           hw=False, lanes=1)["drafts"][0]
+        self.assertEqual(int(probe(doc["file"])["nb_read_frames"]),
+                         int(probe(plain["file"])["nb_read_frames"]))
+        a, b = self.frames(plain["file"]), self.frames(doc["file"])
+        self.assertEqual(a.shape, b.shape)
+        diff = np.abs(a.astype(np.int16) - b.astype(np.int16)).mean(axis=(1, 2, 3))
+        inside = set(range(20, 28)) | set(range(31, 41))  # cuts at 24 and 36, windows 8 and 10
+        self.assertLess(max(d for i, d in enumerate(diff) if i not in inside), 3)
+        self.assertGreater(max(diff[i] for i in range(20, 28)), 8)
+        self.assertGreater(max(diff[i] for i in range(31, 41)), 8)
+        notes = "\n".join(doc["notes"])
+        self.assertIn("span 1: the luma-fade into it (8 frames, centred on the cut) is drawn as "
+                      "the draft's own picture math", notes)
+        self.assertIn("span 2: the hyper-slide into it (10 frames", notes)
+        self.assertNotIn("no ffmpeg approximation", notes)
+        led = doc["effects"]
+        self.assertEqual(sorted((e["effect"], e["spans"]) for e in led["approximated"]),
+                         [("hyper-slide", [2]), ("luma-fade", [1])])
+        self.assertTrue(all(e["note"] == transitions.LEDGER_NOTE for e in led["approximated"]))
+        self.assertEqual((led["drawn"], led["not_drawn"]), ([], []))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.dir, "m"))),
+                         ["drafts.json", "moved.mp4", "moved.notes.txt"])
+
+    def test_a_shot_too_short_for_the_window_is_refused_before_any_drawing(self):
+        out = os.path.join(self.dir, "o")
+        d = self.with_effects("short", [{"span_index": 1, "effect": "smoke-displace",
+                                         "params": {"frames": 30}}])  # span 1 is 12 frames
+        with self.assertRaisesRegex(drafts.DraftError, "short span 1: the smoke-displace needs "
+                                    "15 frames"):
+            drafts.build([d], out, hw=False, lanes=1)
+        self.assertEqual([f for f in os.listdir(out) if f.endswith(".mp4")], [])
 
 
 class TestLutFile(Base):
@@ -671,7 +835,7 @@ class TestLedger(unittest.TestCase):
     def test_every_difference_from_a_macro_is_in_approx(self):
         for e in ("exposure-flash", "dip-to-black", "crop-window", "scale-window", "dissolve"):
             self.assertIn(e, drafts.APPROX)
-        self.assertTrue(set(drafts.APPROX) <= drafts.DRAWN | {"dissolve"})
+        self.assertTrue(set(drafts.APPROX) <= drafts.DRAWN | {"dissolve"} | set(transitions.IDS))
         self.assertEqual(sorted(drafts.DRAWN - set(drafts.APPROX)), ["reframe-pan", "retime", "zoom-push"])
 
     def test_approx_has_no_duplicate_keys(self):
