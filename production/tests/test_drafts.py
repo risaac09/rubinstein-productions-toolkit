@@ -257,6 +257,45 @@ class TestRefusals(Base):
         self.assertIsNone(drafts.effect_filter("cross-dissolve-short", 1.0, 24, 1280, 720))
 
 
+class TestLutFile(Base):
+    def cube(self, name="Log to 709.cube"):
+        p = os.path.join(self.dir, name)
+        Path(p).write_text("LUT_3D_SIZE 2\n")
+        return p
+
+    def jobs(self, **kw):
+        m = copy.deepcopy(METHOD)
+        manifest = methods.to_manifest(m, [{"source_path": "/none/a.mp4", "in": 0.5, "out": 1.5},
+                                           {"source_path": "/none/a.mp4", "in": 6.0, "out": 6.5},
+                                           {"source_path": "/none/a.mp4", "in": 7.0, "out": 7.75}])
+        work = os.path.join(self.dir, "work")
+        os.makedirs(work, exist_ok=True)
+        return drafts.plan_jobs({"name": "p", "method": m, "manifest": manifest}, work, False, **kw)
+
+    def test_the_cube_is_drawn_and_noted(self):
+        cube = self.cube()
+        jobs, info = self.jobs(lut_file=cube)
+        self.assertTrue(all("lut3d=file=look.cube" in " ".join(j["cmd"]) for j in jobs[:3]))
+        self.assertEqual(info["lut"], cube)
+        line = [n for n in info["notes"] if "Log to 709.cube" in n]
+        self.assertEqual(len(line), 1)
+        self.assertIn("the build must apply its own look", line[0])
+        self.assertNotIn(self.dir, line[0])
+        self.assertFalse(any("not applied" in n for n in info["notes"]))
+
+    def test_refusals(self):
+        cube = self.cube()
+        txt = os.path.join(self.dir, "x.txt")
+        Path(txt).write_text("")
+        for kw, msg in [({"lut": "rel.cube"}, "not an absolute"),
+                        ({"lut": os.path.join(self.dir, "none.cube")}, "does not exist"),
+                        ({"lut": txt}, "does not end .cube"),
+                        ({"lut": cube, "camera": "Cam"}, "give one")]:
+            with self.assertRaisesRegex(drafts.DraftError, msg):
+                drafts.build([], os.path.join(self.dir, "out"), **kw)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "out")))
+
+
 class TestExclude(Base):
     def listed(self, doc):
         p = os.path.join(self.dir, "exclude.json")
