@@ -268,6 +268,68 @@ for _slot in PLAIN["slots"]:
     _slot["transition_out"] = {"type": "cut", "frames": 0}
 
 
+class TestSqueeze(Base):
+    """A recorded anamorphic squeeze is drawn; a copied card with no answer is refused."""
+
+    def card_plan(self):
+        card = os.path.join(self.dir, "CAM-abc123")
+        os.makedirs(card)
+        Path(card + ".card.json").write_text("{}")
+        src = os.path.join(card, "P1.MOV")
+        Path(src).write_text("")
+        return card, drafts.load_plan(self.plan("wide", PLAIN, src))
+
+    def test_the_stretch_comes_before_the_scale_and_one_is_no_stretch(self):
+        vf, _ = drafts.span_filter({}, [], 1280, 720, 24, 1.0, squeeze=1.5)
+        self.assertLess(vf.index("scale=trunc(iw*1.5/2)*2:ih"), vf.index("scale=1280:720"))
+        for f in (None, 1, 1.0):
+            self.assertNotIn("iw*", drafts.span_filter({}, [], 1280, 720, 24, 1.0, squeeze=f)[0])
+
+    def test_a_card_with_no_answer_is_refused_before_any_job(self):
+        card, plan = self.card_plan()
+        with self.assertRaisesRegex(drafts.DraftError, "no squeeze recorded for .*CAM-abc123.*squeeze set"):
+            drafts.plan_jobs(plan, self.dir, False)
+
+    def test_a_proxy_that_is_already_desqueezed_is_not_stretched_again(self):
+        from rpresolve import squeeze
+        card = os.path.join(self.dir, "CAM-abc123")
+        os.makedirs(card)
+        Path(card + ".card.json").write_text("{}")
+        src = os.path.join(card, "A001.braw")
+        Path(src).write_text("")
+        proxies = os.path.join(self.dir, "proxies")
+        os.makedirs(proxies)
+        Path(proxies, "A001.mov").write_text("")
+        plan = drafts.load_plan(self.plan("wide", PLAIN, src))
+        aspects = {src: 1.5, os.path.join(proxies, "A001.mov"): 2.25}
+        with mock.patch.object(squeeze, "file_tag", lambda p, ffprobe="ffprobe": 1.5), \
+                mock.patch.object(squeeze, "picture_aspect", lambda p, ffprobe="ffprobe": aspects[p]):
+            jobs, info = drafts.plan_jobs(plan, self.dir, False, proxy_dir=proxies)
+            self.assertFalse(any("iw*" in " ".join(j["cmd"]) for j in jobs))
+            self.assertTrue(any("already desqueezed: A001.braw" in n for n in info["notes"]))
+            aspects[os.path.join(proxies, "A001.mov")] = 1.5  # a proxy made squeezed
+            jobs, info = drafts.plan_jobs(plan, self.dir, False, proxy_dir=proxies)
+            self.assertTrue(all("scale=trunc(iw*1.5/2)*2:ih" in " ".join(j["cmd"]) for j in jobs[:3]))
+
+    def test_an_unreadable_record_is_one_line_not_a_traceback(self):
+        card, plan = self.card_plan()
+        Path(card + ".squeeze.json").write_text("{not json")
+        with self.assertRaisesRegex(drafts.DraftError, "cannot read the squeeze record"):
+            drafts.plan_jobs(plan, self.dir, False)
+
+    def test_a_recorded_factor_is_drawn_and_noted_and_spherical_is_left_alone(self):
+        from rpresolve import squeeze
+        card, plan = self.card_plan()
+        squeeze.write(card, default=1.5)
+        jobs, info = drafts.plan_jobs(plan, self.dir, False)
+        self.assertTrue(all("scale=trunc(iw*1.5/2)*2:ih" in " ".join(j["cmd"]) for j in jobs[:3]))
+        self.assertTrue(any(n.startswith("desqueezed 1.5x: span(s) 0, 1, 2") for n in info["notes"]))
+        squeeze.write(card, default=1)
+        jobs, info = drafts.plan_jobs(plan, self.dir, False)
+        self.assertFalse(any("iw*" in " ".join(j["cmd"]) for j in jobs))
+        self.assertFalse(any("desqueezed" in n for n in info["notes"]))
+
+
 class TestTransitionPlan(unittest.TestCase):
     def fx(self, *rows):
         return [{"span_index": i, "effect": e, "params": p} for i, e, p in rows]

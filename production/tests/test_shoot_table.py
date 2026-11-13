@@ -102,6 +102,24 @@ class TestShootTable(unittest.TestCase):
         self.assertEqual((r["local_start"], r["lens"], r["flags"]), ("2026-10-16T10:00:00", "Test 24mm", ""))
         self.assertTrue(r["audio_source"].startswith("embedded pcm_s16le 1ch"))
 
+    def test_a_card_with_no_squeeze_record_is_flagged_and_a_record_fills_the_column(self):
+        from rpresolve import squeeze
+        card, record = self.dir + squeeze.CARD_SUFFIX, self.dir + squeeze.SUFFIX
+        try:
+            with open(card, "w") as f:
+                f.write("{}")
+            r = self.rows()["a_normal.mov"]
+            self.assertIn("squeeze-unknown", r["flags"].split(";"))
+            self.assertIn("no squeeze recorded for this card", r["note"])
+            squeeze.write(self.dir, default=1, clips={"a_normal.mov": 1.5})
+            rows = self.rows()
+            self.assertEqual((rows["a_normal.mov"]["squeeze"], rows["e_noaudio.mov"]["squeeze"]), ("1.5", "1"))
+            self.assertNotIn("squeeze-unknown", rows["a_normal.mov"]["flags"])
+        finally:
+            for p in (card, record):
+                if os.path.exists(p):
+                    os.remove(p)
+
     def test_flags(self):
         rows = self.rows()
         self.assertTrue({"weak-audio", "silent-audio"} <= set(rows["b_silent.mov"]["flags"].split(";")))

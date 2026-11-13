@@ -5,13 +5,14 @@ read-only; nothing here imports Resolve.
 
 Camera and profile come from detect.classify, never re-derived here. The
 rest is ffprobe (duration, fps, size, sample aspect, audio stream),
-exiftool (start time, lens, squeeze) and one ffmpeg volumedetect pass over
+exiftool (start time, lens, squeeze; a recorded squeeze wins) and one ffmpeg volumedetect pass over
 the audio of a non-BRAW clip. A BRAW file is never handed to ffmpeg: ffprobe
 reads its headers, as detect does, and its audio is reported as not measured.
 
 Columns are COLUMNS. `camera` and `profile` are detect's names; `size` is
 WxH; `vfr` is detect's value, off-speed included; `flags` is a semicolon list
-of: long-take, vfr, off-speed, no-audio, weak-audio, unexpected (detect did
+of: long-take, vfr, off-speed, no-audio, weak-audio, squeeze-unknown (a clip of a
+copied card with no recorded squeeze: rpresolve/squeeze.py), unexpected (detect did
 not pin the row: review, corrupt, derived, proxy or unknown camera, or a
 capture-audit flag below).
 
@@ -49,6 +50,7 @@ import re
 import subprocess
 
 from . import detect
+from . import squeeze as rpsqueeze
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 
@@ -156,6 +158,11 @@ def _size(h, is_braw):
     if not (w and ht) and is_braw:
         w, ht = _exif(h.exif, "ImageWidth"), _exif(h.exif, "ImageHeight")
     return f"{w}x{ht}" if w and ht else ""
+
+
+def lens(exif):
+    """The lens a clip's metadata names, or "" for a lens with no contacts."""
+    return str(_exif(exif or {}, *_LENS_TAGS)).strip()
 
 
 def _squeeze(h):
@@ -305,13 +312,19 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 notes.append("audio audit could not decode")
     fps = _fps(h, is_braw)
+    lens_name = lens(h.exif)
+    recorded = rpsqueeze.answer(path)[0]  # a person's answer, else a BRAW file's own tag
+    if recorded is None and rpsqueeze.card_root(path):
+        flags.append("squeeze-unknown")
+        notes.append("no squeeze recorded for this card (squeeze set)"
+                     + ("" if lens_name else "; no lens data: likely a manual lens"))
     return {
         "file": path, "camera": d["camera"],
         "local_start": start.isoformat() if start else "",
         "duration_s": f"{dur:.3f}" if dur is not None else "",
         "fps": f"{fps:.3f}".rstrip("0").rstrip(".") if fps else "",
         "vfr": d["vfr"], "size": _size(h, is_braw), "profile": d["profile"],
-        "squeeze": _squeeze(h), "lens": str(_exif(h.exif, *_LENS_TAGS)),
+        "squeeze": _squeeze(h) if recorded is None else f"{recorded:g}", "lens": lens_name,
         "audio_source": audio, "flags": ";".join(flags), "note": "; ".join(notes),
         **{c: extra.get(c, "") for c in COLUMNS[13:]},
     }

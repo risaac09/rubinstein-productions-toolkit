@@ -116,6 +116,16 @@ class Base(unittest.TestCase):
 
 
 class TestPlan(Base):
+    def test_a_recorded_squeeze_is_named_as_not_built_and_a_bad_record_is_refused(self):
+        record = Path(os.path.dirname(self.one), "squeeze.json")
+        record.write_text(json.dumps({"default": 1, "clips": {"two.mov": 1.5}}))
+        self.assertEqual(a.plan(self.manifest)["not_built"],
+                         ["two.mov: recorded as 1.5x anamorphic; this tool sets neither the clip's "
+                          "pixel aspect ratio nor the timeline's shape"])
+        record.write_text("{not json")
+        with self.assertRaisesRegex(a.Refused, "cannot read the squeeze record"):
+            a.plan(self.manifest)
+
     def test_frames_a_continued_take_the_black_and_what_is_not_built(self):
         p = a.plan(self.manifest)
         self.assertEqual([r["frames"] for r in p["spans"]], [24, 12, 6])
