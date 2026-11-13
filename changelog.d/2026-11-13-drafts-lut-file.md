@@ -1,0 +1,1 @@
+The draft farm takes `--lut FILE`, an absolute .cube drawn over every span in place of the look lookup, for footage-first plans with look none and log sources. The notes name the cube and say the build must apply its own look; a relative path, a missing file, a name not ending .cube, or `--camera` with it is refused before any ffmpeg work.

@@ -4,7 +4,7 @@ ffmpeg, fast, before anything is built in Resolve; the drafts go out as one lett
 sheet of their midpoints for a pick (edit-methods.md#drafts).
 
     python3 -m rpresolve.drafts PLAN_DIR [PLAN_DIR ...] --out DIR
-        [--camera Pyxis] [--lut-root DIR] [--proxy-dir DIR] [--lanes N] [--no-hw]
+        [--camera Pyxis | --lut FILE.cube] [--lut-root DIR] [--proxy-dir DIR] [--lanes N] [--no-hw]
         [--exclude FILE] [--crops FILE]
 
 A plan directory holds manifest.json, what methods.to_manifest returned (the spans,
@@ -39,7 +39,9 @@ from the plan's spans is refused; a 16:9 plan ignores it, and says so.
 
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
-the draft is ungraded and its notes say so. ffmpeg cannot decode BRAW: a .braw source
+the draft is ungraded and its notes say so. --lut FILE (an absolute .cube path, not with
+--camera) draws every span through that one cube instead, skips the lookup, and the notes
+add that the build must apply its own look. ffmpeg cannot decode BRAW: a .braw source
 plays from its proxy, <proxy-dir>/<name>.mov (link_proxies' folder), and is refused
 without one. Output names client media, so DIR inside any git working tree is refused,
 as is a DIR that is not empty.
@@ -450,16 +452,21 @@ def crop_notes(centres, by_span):
     return notes, rows
 
 
-def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, centres=None):
+def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, centres=None,
+              lut_file=None):
     """(jobs, info) for one plan: a job per span plus one for the end black, each
     {cmd, out, seconds}; info holds the draft's size, frames, look and notes. centres: a
     crop centre per span (a share of the source width) for a 9:16 plan, else the middle."""
     man, m = plan["manifest"], plan["method"]
     fps = m["fps"]
     w, h = SIZES[m["aspect"]]
-    lut_src = find_lut(m["look"], camera, lut_root)
+    lut_src = lut_file or find_lut(m["look"], camera, lut_root)
     notes = []
-    if m["look"] and not lut_src:
+    if lut_file:
+        notes.append(f"drawn through {os.path.basename(lut_file)}, a conversion cube given "
+                     "with --lut; the build must apply its own look"
+                     + (f" (the method's look {m['look']} is not drawn)" if m["look"] else ""))
+    elif m["look"] and not lut_src:
         notes.append(f"look {m['look']} not applied (no cube for camera "
                      f"{camera or '(none given)'})")
     lut = None
@@ -658,11 +665,21 @@ def span_centres(plan, crops):
 
 
 def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=None,
-          hw=None, cap=None, exclude=None, crops=None):
+          hw=None, cap=None, exclude=None, crops=None, lut=None):
     """Render every plan into out; returns the drafts.json document. `exclude` is the
     operator's exclude list (cutlist.load_exclude); a plan naming an excluded take is
     refused before any ffmpeg job runs. `crops` is a crops.json (path): each 9:16 plan is
-    cropped span by span at its centres (span_centres) instead of at the middle."""
+    cropped span by span at its centres (span_centres) instead of at the middle. `lut` is
+    one absolute .cube path drawn over every span in place of the look lookup."""
+    if lut:
+        if camera:
+            raise DraftError("--lut and --camera both name a look; give one")
+        if not os.path.isabs(lut):
+            raise DraftError(f"--lut {lut} is not an absolute path")
+        if not lut.lower().endswith(".cube"):
+            raise DraftError(f"--lut {os.path.basename(lut)} does not end .cube")
+        if not os.path.isfile(lut):
+            raise DraftError(f"--lut {lut} does not exist")
     if rppaths.in_any_git_tree(out):
         raise DraftError(f"{out} is inside a git working tree. Drafts show client media; "
                          "write them outside any repository.")
@@ -701,7 +718,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
         for name, p in zip(names, plans):
             d = os.path.join(work, name)
             os.makedirs(d)
-            jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir, centres.get(id(p)))
+            jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir, centres.get(id(p)), lut)
             if crops and not centres[id(p)]:
                 info["notes"].append("the crops file is not used: the method is 16:9")
             if not ex:
@@ -759,6 +776,8 @@ def add_arguments(p):
     p.add_argument("plans", nargs="+", metavar="PLAN_DIR")
     p.add_argument("--out", required=True)
     p.add_argument("--camera", help="the camera whose look cube to use (Pyxis, S5II, RCM)")
+    p.add_argument("--lut", help="one absolute .cube path drawn over every span instead of "
+                   "the look lookup (not with --camera); the build applies its own look")
     p.add_argument("--lut-root", default=LUT_ROOT)
     p.add_argument("--proxy-dir", help="where BRAW proxies are (<name>.mov)")
     p.add_argument("--lanes", type=int, help="parallel ffmpeg jobs (default: tuned)")
@@ -773,7 +792,7 @@ def run(args):
     try:
         doc = build(args.plans, args.out, args.camera, args.lut_root, args.proxy_dir,
                     args.lanes, False if args.no_hw else None, exclude=args.exclude,
-                    crops=args.crops)
+                    crops=args.crops, lut=args.lut)
     except (DraftError, OSError, ValueError) as e:
         print(f"drafts: {e}", file=sys.stderr)
         return 2
