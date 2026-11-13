@@ -9,8 +9,12 @@ A shot list is JSON:
      "shots": [{"name": "a", "source": "/abs/clip.mov", "in": 3.6, "beats": 4,
                 "cx": [0.46, 0.46], "speed": 0.8, "source_fps": 30}]}
 
+`beats` is any number above 0 (0.5 is a half beat, a quarter second at 120 BPM).
+
 `end`, `fade_out` (seconds, 0 to 5: the last shot fades to black over its end), `music`,
-`speed` and `source_fps` are optional. cx is the crop centre at the
+`speed`, `source_fps` and `effects` are optional. `effects` is a list of
+`{"effect": "<macro id>", "params": {...}}` that compile_list appends to the manifest after the
+retime and the pan; the compiler writes `retime` and `reframe-pan` itself, so those are refused. cx is the crop centre at the
 shot's first and last frame as a share of the source width. A shot without `speed` takes
 the conform speed: 0.8 for a source near 30 fps and 0.4 for one near 60 at a 24 fps list
 (a slow-motion conform), else 1.
@@ -61,6 +65,26 @@ def shot_speed(shot, fps):
         else conform_speed(fps, shot.get("source_fps"))
 
 
+def _effect_problems(who, effects):
+    if effects is None:
+        return []
+    if not isinstance(effects, list) or not all(isinstance(e, dict) for e in effects):
+        return [f"{who}: effects must be a list of {{effect, params}} objects"]
+    from .cmd_effect import PARAMS  # the macros apply_effect accepts, and the keys each takes
+    p = []
+    for e in effects:
+        eid, params = e.get("effect"), e.get("params")
+        if eid in ("retime", "reframe-pan"):
+            p.append(f"{who}: {eid} is written from speed and cx, not from effects")
+        elif eid not in PARAMS:
+            p.append(f"{who}: effect {eid!r} is not one of {', '.join(sorted(set(PARAMS) - {'retime', 'reframe-pan'}))}")
+        elif params is not None and not isinstance(params, dict):
+            p.append(f"{who}: {eid} params must be an object")
+        elif set(params or {}) - PARAMS[eid]:
+            p.append(f"{who}: {eid} takes {sorted(PARAMS[eid])}, not {sorted(set(params) - PARAMS[eid])}")
+    return p
+
+
 def validate(sl):
     """Every problem with a shot list as one line each; [] when it is sound."""
     if not isinstance(sl, dict):
@@ -108,8 +132,8 @@ def validate(sl):
         if not _num(s.get("in")) or s["in"] < 0:
             p.append(f"{who}: in must be seconds, 0 or more")
         b = s.get("beats")
-        if not isinstance(b, int) or isinstance(b, bool) or b <= 0:
-            p.append(f"{who}: beats must be a whole number above 0")
+        if not _num(b) or b <= 0:
+            p.append(f"{who}: beats must be a number above 0 (0.5 is a half beat)")
         cx = s.get("cx")
         if not (isinstance(cx, list) and len(cx) == 2 and all(_num(v) and 0 <= v <= 1 for v in cx)):
             p.append(f"{who}: cx must be [start, end], each a share of the width from 0 to 1")
@@ -117,6 +141,7 @@ def validate(sl):
             p.append(f"{who}: speed must be a number above 0")
         if s.get("source_fps") is not None and not (_num(s["source_fps"]) and s["source_fps"] > 0):
             p.append(f"{who}: source_fps must be a number above 0")
+        p.extend(_effect_problems(who, s.get("effects")))
     return p
 
 
@@ -188,6 +213,8 @@ def compile_list(sl, frames, music_in=None):
         speed = shot_speed(s, fps)
         if speed != 1:
             effects.append({"span_index": i, "effect": "retime", "params": {"speed": speed}})
+        effects.extend({"span_index": i, "effect": e["effect"], "params": dict(e.get("params") or {})}
+                       for e in s.get("effects") or [])
     method = method_for(sl, frames)
     problems = methods.validate(method)
     if problems:

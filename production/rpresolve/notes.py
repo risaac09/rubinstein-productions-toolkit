@@ -83,6 +83,8 @@ def snap(notes, beats_planned, first, fps=FPS, window=WINDOW, floor=FLOOR, lead=
         c = on[best] if best is not None and st[best] >= floor else p
         picked.append(c)
         frames.append(round((c - music_in) * fps))
+        if frames[-1] <= frames[-2]:
+            raise NotesError(f"cut {len(frames) - 1} lands on or before the one ahead of it: pass a smaller --window")
     return {"music_in": music_in, "cut_frames": frames, "cut_times": [f / fps for f in frames],
             "cut_notes": [g - music_in for g in picked]}
 

@@ -86,6 +86,16 @@ class TestSnap(unittest.TestCase):
         self.assertEqual(out["cut_frames"][1], round((4.5 - 3.96) * 24))
 
 
+    def test_half_beats_snap_and_a_collapsing_plan_is_refused(self):
+        n = {"period": 0.5, "onsets": [], "strength": []}
+        self.assertEqual(notes.snap(n, [4, 0.5, 0.5], first=4.0, fps=24, lead=0.04)["cut_frames"],
+                         [0] + [round((t - 3.96) * 24) for t in (6.0, 6.25, 6.5)])
+        # onsets pulled toward one note by the window put two cuts on the same frame
+        n = {"period": 0.1, "onsets": [4.1], "strength": [5.0]}
+        with self.assertRaisesRegex(notes.NotesError, "smaller --window"):
+            notes.snap(n, [1, 1], first=4.0, fps=24, lead=0.04)
+
+
 class TestCheck(unittest.TestCase):
     def test_hand_case(self):
         # fps 10: +-0.1 around each onset. Cuts 1.0, 2.05, 2.5, 3.0 -> 3 on a note.

@@ -1,0 +1,1 @@
+A shot's beats may be any number above 0 (notes snap --beats 4,0.5,0.5,1 takes half beats, and refuses a plan whose cuts collide with a hint to pass a smaller --window), and a shot may carry optional effects, macros that shotlist compile appends to the manifest after its own retime and pan.

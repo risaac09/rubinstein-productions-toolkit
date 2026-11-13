@@ -118,6 +118,29 @@ class TestCompile(unittest.TestCase):
                                                                   "pan_base": 0.54}},
             {"span_index": 4, "effect": "retime", "params": {"speed": 0.5}}])
 
+    def test_a_half_beat_shot_compiles_and_an_effect_lands_after_the_pan_and_retime(self):
+        sl = copy.deepcopy(LIST)
+        sl["shots"][1]["beats"] = 0.5
+        sl["shots"][2]["effects"] = [{"effect": "exposure-flash", "params": {"gain": 5}},
+                                     {"effect": "zoom-push"}]
+        self.assertEqual(shotlist.validate(sl), [])
+        sl["shots"][0]["beats"] = True
+        self.assertEqual(len(shotlist.validate(sl)), 1)
+        sl["shots"][0]["beats"] = 4
+        man, _ = compiled(sl, {"music_in": 4.07, "cut_frames": [0, 47, 53, 97, 117, 166]})
+        sp = man["clips"][0]["spans"][1]
+        self.assertAlmostEqual(sp["out"] - sp["in"], 0.25)
+        self.assertEqual([e for e in man["effects"] if e["span_index"] == 2][-2:], [
+            {"span_index": 2, "effect": "exposure-flash", "params": {"gain": 5}},
+            {"span_index": 2, "effect": "zoom-push", "params": {}}])
+
+    def test_effects_refusals(self):
+        for bad in ("flash", [3], [{"effect": "retime"}], [{"effect": "reframe-pan"}],
+                    [{"effect": "nope"}], [{"effect": "zoom-push", "params": {"gain": 1}}]):
+            sl = copy.deepcopy(LIST)
+            sl["shots"][0]["effects"] = bad
+            self.assertEqual(len(shotlist.validate(sl)), 1, bad)
+
     def test_fade_out_goes_on_the_last_shot_with_or_without_a_pan(self):
         for last_cx, want in (([0.4, 0.68], {"pan_from": 0.4, "pan_to": 0.68, "pan_base": 0.54}),
                               ([0.6, 0.6], {"pan_from": 0.6, "pan_to": 0.6, "pan_base": 0.6})):
@@ -234,7 +257,7 @@ class TestCommand(unittest.TestCase):
         bad["shots"][2]["beats"] = 0
         status, _, err = self.cmd("check", self.write("bad.json", bad))
         self.assertEqual(status, 1)
-        self.assertEqual(err.strip(), "ERROR: shot 3 (c): beats must be a whole number above 0")
+        self.assertEqual(err.strip(), "ERROR: shot 3 (c): beats must be a number above 0 (0.5 is a half beat)")
 
     def test_compile_writes_the_three_files(self):
         out = os.path.join(self.dir, "out")
