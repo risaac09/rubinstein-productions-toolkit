@@ -1,0 +1,1 @@
+A card's anamorphic squeeze is recorded once beside the card copy (`squeeze set`, `squeeze show`): the draft farm desqueezes by it and refuses a copied card with no answer, and `shoot-table` shows the factor and flags `squeeze-unknown`.

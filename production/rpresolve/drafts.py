@@ -42,6 +42,11 @@ on span i is the transition into it) are in no span's job: after the spans are j
 drawn on the finished draft as picture math, the frames around each cut rewritten and the video
 re-encoded, audio kept. The ledger lists them under `approximated`.
 
+A source with a recorded anamorphic squeeze (rpresolve/squeeze.py: a person's answer kept
+beside the card copy) is stretched to its real shape before it is scaled and cropped, and the
+notes say which spans. A plan that draws from a copied card with no recorded answer is refused:
+nobody should pick a cut from a squeezed picture.
+
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
 the draft is ungraded and its notes say so. --lut FILE (an absolute .cube path, not with
@@ -63,6 +68,7 @@ import tempfile
 import time
 
 from . import cutlist, methods, transitions, windowplate
+from . import squeeze as rpsqueeze
 from . import paths as rppaths
 
 LUT_ROOT = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/lutlab"
@@ -300,14 +306,16 @@ def centre_crop(w, h, cx):
     return f"crop={w}:{h}:x='clip({cx:.4f}*iw-ow/2\\,0\\,iw-ow)':y='(ih-oh)/2'"
 
 
-def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None):
+def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None, squeeze=None):
     """(vf, not_drawn) for one span. effects: the span's manifest entries, {effect,
     params?} (a bare macro id is also taken). cx: the crop centre from a crops file (a
     reframe-pan replaces it). back: the filter chain of the previous
     shot's picture, read from input 1 starting at that shot's out point. A scale-window
     or crop-window then opens over that shot playing on (windowplate: as many frames as
     the window needs), and vf is a filter_complex graph (it starts with "[0:v]") instead
-    of a plain chain."""
+    of a plain chain. squeeze: the source's anamorphic factor; the picture is stretched
+    to its real shape before anything is scaled or cropped, so cx and a pan stay shares
+    of the desqueezed width."""
     ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
     params = {e["effect"]: e.get("params") or {} for e in ents}
     crop = f"crop={w}:{h}" if cx is None else centre_crop(w, h, cx)
@@ -316,6 +324,8 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None)
         vf.append(effect_filter("retime", seconds, fps, w, h, params["retime"]))
     if "reframe-pan" in params:
         crop = effect_filter("reframe-pan", seconds, fps, w, h, params["reframe-pan"])
+    if squeeze and squeeze != 1:
+        vf.append(f"scale=trunc(iw*{squeeze:g}/2)*2:ih")
     vf += [f"scale={w}:{h}:force_original_aspect_ratio=increase", crop, "setsar=1"]
     s = span.get("scale")
     if s and s > 1:
@@ -489,6 +499,20 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     enc = encoder(hw)
     jobs, frames = [], 0
     spans = man["clips"][0]["spans"]
+    open_cards = sorted({rpsqueeze.card_root(p) for p in srcs.values() if rpsqueeze.unanswered(p)})
+    if open_cards:  # before any ffmpeg job: a squeezed picture must not be judged as it is
+        raise DraftError(f"{plan['name']}: no squeeze recorded for {', '.join(open_cards)}: say "
+                         "whether the card is anamorphic (squeeze set FOLDER --factor N; 1 is spherical)")
+    try:
+        sq = {sid: rpsqueeze.factor(p) for sid, p in srcs.items()}
+    except rpsqueeze.SqueezeError as e:
+        raise DraftError(f"{plan['name']}: {e}")
+    wide = sorted({f for f in sq.values() if f and f != 1})
+    if wide:
+        notes.append("desqueezed " + ", ".join(
+            f"{f:g}x: span(s) " + ", ".join(str(i) for i, sp in enumerate(spans)
+                                              if sq.get(sp.get("source") or next(iter(srcs))) == f)
+            for f in wide) + " (the squeeze record beside the card)")
     for i, span in enumerate(spans):
         sid = span.get("source") or next(iter(srcs))
         src = media_path(srcs[sid], proxy_dir)
@@ -499,9 +523,10 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
         if i and win:
             prev = spans[i - 1]  # the window opens over the outgoing shot, playing on
             back = span_filter(prev, [], w, h, fps, 1 / fps, lut,
-                               cx=centres[i - 1] if centres else None)[0]
+                               cx=centres[i - 1] if centres else None,
+                               squeeze=sq.get(prev.get("source") or next(iter(srcs))))[0]
         vf, missing = span_filter(span, by_span.get(i, []), w, h, fps, seconds, lut, back,
-                                  cx=centres[i] if centres else None)
+                                  cx=centres[i] if centres else None, squeeze=sq.get(sid))
         notes += [f"span {i}: {x}" for x in missing]
         if back:
             _check_plate(media_path(srcs[prev.get("source") or next(iter(srcs))], proxy_dir),
