@@ -54,8 +54,10 @@ under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no suc
 the draft is ungraded and its notes say so. --lut FILE (an absolute .cube path, not with
 --camera) draws every span through that one cube instead, skips the lookup, and the notes
 add that the build must apply its own look. ffmpeg cannot decode BRAW: a .braw source
-plays from its proxy, <proxy-dir>/<name>.mov (link_proxies' folder), and is refused
-without one. Output names client media, so DIR inside any git working tree is refused,
+plays from its proxy, <proxy-dir>/<name>.mov or .mp4 (link_proxies' folder), or from the
+camera's own `Proxy` folder beside the clip or at the top of its card copy, and is refused
+without one. A job that fails with hardware decode is drawn again in software, once, and the
+draft's notes say so. Output names client media, so DIR inside any git working tree is refused,
 as is a DIR that is not empty.
 """
 
@@ -176,15 +178,39 @@ def find_lut(look, camera, root=LUT_ROOT):
     return None
 
 
+def _proxy_in(folder, stem):
+    """<stem>.mov or <stem>.mp4 (any case of the extension) in a folder, or None."""
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    for ext in (".mov", ".mp4"):
+        for n in sorted(names):
+            if n.lower() == (stem + ext).lower() and os.path.isfile(os.path.join(folder, n)):
+                return os.path.join(folder, n)
+    return None
+
+
+def proxy_for(path, proxy_dir=None):
+    """A BRAW source's proxy: <stem>.mov or <stem>.mp4 in proxy_dir, else in a `Proxy` folder
+    the camera made (beside the clip, or at the top of its card copy); None when there is none."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    here = os.path.dirname(os.path.abspath(path))
+    folders = [proxy_dir] if proxy_dir else []
+    root = rpsqueeze.card_root(path)
+    folders += [os.path.join(here, "Proxy")] + ([os.path.join(root, "Proxy")] if root else [])
+    return next(filter(None, (_proxy_in(f, stem) for f in folders)), None)
+
+
 def media_path(path, proxy_dir=None):
     """The file ffmpeg reads for a source: the source, or a BRAW source's proxy."""
     if not path.lower().endswith(".braw"):
         return path
-    stem = os.path.splitext(os.path.basename(path))[0]
-    proxy = os.path.join(proxy_dir, stem + ".mov") if proxy_dir else None
-    if not proxy or not os.path.isfile(proxy):
+    proxy = proxy_for(path, proxy_dir)
+    if not proxy:
+        stem = os.path.splitext(os.path.basename(path))[0]
         raise DraftError(f"{path}: ffmpeg cannot decode BRAW, and there is no proxy "
-                         f"{proxy or '(give --proxy-dir)'}")
+                         f"{os.path.join(proxy_dir, stem + '.mov') if proxy_dir else '(give --proxy-dir)'}")
     return proxy
 
 
@@ -397,6 +423,18 @@ def encoder(hw):
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
 
 
+def numpy_python():
+    """The path of an interpreter that can import numpy, or None."""
+    for exe in dict.fromkeys(filter(None, ["/usr/bin/python3", "/opt/homebrew/bin/python3",
+                                            shutil.which("python3")])):
+        try:
+            if subprocess.run([exe, "-c", "import numpy"], capture_output=True).returncode == 0:
+                return exe
+        except OSError:
+            pass
+    return None
+
+
 def has_hw():
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True,
@@ -567,7 +605,9 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
         try:
             import numpy  # noqa: F401  the post-pass needs it; say so before any ffmpeg job
         except ImportError:
-            raise DraftError(f"{plan['name']}: a transition needs numpy, which this Python lacks")
+            has = numpy_python()
+            raise DraftError(f"{plan['name']}: a transition needs numpy, which this Python lacks"
+                             + (f"; run it with {has}" if has else ""))
     notes += [transitions.note(t) for t in planned]
     black = methods.end_black(m)
     if black:
@@ -601,6 +641,11 @@ def frame_count(path):
 
 def run_job(job):
     r = subprocess.run(job["cmd"], capture_output=True, text=True, cwd=job.get("cwd"))
+    if r.returncode != 0 and "-hwaccel" in job["cmd"]:  # a decoder the hardware lacks: once, in software
+        i = job["cmd"].index("-hwaccel")
+        job["cmd"] = job["cmd"][:i] + job["cmd"][i + 2:]
+        job["software_retry"] = r.stderr.strip()[-200:]
+        r = subprocess.run(job["cmd"], capture_output=True, text=True, cwd=job.get("cwd"))
     if r.returncode != 0 or not os.path.isfile(job["out"]):
         raise DraftError(f"ffmpeg failed on {os.path.basename(job['out'])}: "
                          f"{r.stderr.strip()[-400:]}")
@@ -786,6 +831,11 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             infos.append((name, p, jobs, info))
         began = time.monotonic()
         lane = run_lanes(all_jobs, lanes, cap)
+        for name, p, jobs, info in infos:
+            for j in jobs:
+                if j.get("software_retry") is not None:
+                    info["notes"].append(f"{os.path.basename(j['out'])}: hardware decode failed, "
+                                         "drawn again in software")
         drafts = []
         for name, p, jobs, info in infos:
             video = os.path.join(out, name + ".mp4")
@@ -845,7 +895,7 @@ def add_arguments(p):
     p.add_argument("--lut", help="one absolute .cube path drawn over every span instead of "
                    "the look lookup (not with --camera); the build applies its own look")
     p.add_argument("--lut-root", default=LUT_ROOT)
-    p.add_argument("--proxy-dir", help="where BRAW proxies are (<name>.mov)")
+    p.add_argument("--proxy-dir", help="where BRAW proxies are (<name>.mov or <name>.mp4)")
     p.add_argument("--lanes", type=int, help="parallel ffmpeg jobs (default: tuned)")
     p.add_argument("--no-hw", action="store_true", help="software decode and encode")
     p.add_argument("--exclude", help="the operator's exclude list (JSON with `takes`); a plan "
