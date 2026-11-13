@@ -525,6 +525,11 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
         planned = transitions.plan(man.get("effects"), [j["frames"] for j in jobs])
     except transitions.TransitionError as e:
         raise DraftError(f"{plan['name']} {e}")
+    if planned:
+        try:
+            import numpy  # noqa: F401  the post-pass needs it; say so before any ffmpeg job
+        except ImportError:
+            raise DraftError(f"{plan['name']}: a transition needs numpy, which this Python lacks")
     notes += [transitions.note(t) for t in planned]
     black = methods.end_black(m)
     if black:
