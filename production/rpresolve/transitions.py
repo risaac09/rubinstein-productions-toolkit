@@ -60,6 +60,8 @@ def plan(effects, span_frames):
         i, tid, params = e["span_index"], e["effect"], e.get("params") or {}
         if i == 0:
             raise TransitionError(f"span 0: {tid} needs a shot before it")
+        if not isinstance(i, int) or not 0 < i < len(span_frames):
+            raise TransitionError(f"span {i}: no such span for the {tid}")
         if i in seen:
             raise TransitionError(f"span {i}: one transition into a span")
         seen.add(i)
@@ -288,6 +290,8 @@ def apply(src, dst, size, fps, items, total):
     try:
         for i, buf in enumerate(_decode(src, w, h)):
             enc.stdin.write(drawn.get(i, buf))
+    except BrokenPipeError:  # the encoder quit; its exit status below says so in one line
+        pass
     finally:
         enc.stdin.close()
     if enc.wait() != 0:

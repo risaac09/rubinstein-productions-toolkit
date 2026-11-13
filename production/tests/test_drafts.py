@@ -294,6 +294,8 @@ class TestTransitionPlan(unittest.TestCase):
                 ((1, "hyper-slide", {}), [4, 20], "before the cut and span 0 has 4")]:
             with self.assertRaisesRegex(transitions.TransitionError, msg):
                 transitions.plan(self.fx(rows), spans)
+        with self.assertRaisesRegex(transitions.TransitionError, "span 5: no such span"):
+            transitions.plan(self.fx((5, "luma-fade", {})), [20, 20])
         with self.assertRaisesRegex(transitions.TransitionError, "one transition into a span"):
             transitions.plan(self.fx((1, "luma-fade", {}), (1, "hyper-slide", {})), [20, 20])
         with self.assertRaisesRegex(transitions.TransitionError, "span 2: its hyper-slide overlaps"):
