@@ -464,7 +464,8 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     notes = []
     if lut_file:
         notes.append(f"drawn through {os.path.basename(lut_file)}, a conversion cube given "
-                     "with --lut; the build must apply its own look")
+                     "with --lut; the build must apply its own look"
+                     + (f" (the method's look {m['look']} is not drawn)" if m["look"] else ""))
     elif m["look"] and not lut_src:
         notes.append(f"look {m['look']} not applied (no cube for camera "
                      f"{camera or '(none given)'})")
@@ -675,7 +676,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             raise DraftError("--lut and --camera both name a look; give one")
         if not os.path.isabs(lut):
             raise DraftError(f"--lut {lut} is not an absolute path")
-        if not lut.endswith(".cube"):
+        if not lut.lower().endswith(".cube"):
             raise DraftError(f"--lut {os.path.basename(lut)} does not end .cube")
         if not os.path.isfile(lut):
             raise DraftError(f"--lut {lut} does not exist")
