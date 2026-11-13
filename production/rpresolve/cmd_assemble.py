@@ -53,6 +53,7 @@ import math
 import os
 
 from rpresolve import api, cli, cutlist, ledgercheck
+from rpresolve import colormgmt as cm
 from rpresolve import detect as rpdetect
 from rpresolve import ingest as rpingest
 from rpresolve import delivercheck as dc
@@ -152,6 +153,7 @@ def plan(manifest, exclude=None):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
+            "sound": bool(manifest.get("camera_sound")),
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -385,18 +387,19 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
         raise Refused(f"the manifest runs at {p['fps']:g} fps and the project's timelines at "
                       f"'{rate}'; a scripted timeline takes the project's rate.")
     colour = colour_plan(project, root, p)
+    tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report)
+                   report, tl_colour)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
-           "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "timeline_colour": tl_colour, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
            "dry_run": dry_run,
-           "created": None, "items": [], "transitions": [], "audio": None, "problems": [], "left_behind": None,
+           "created": None, "items": [], "transitions": [], "audio": None, "camera_audio": [], "problems": [], "left_behind": None,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
@@ -444,9 +447,12 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     out["created"] = {"name": name, "unique_id": api._safe_call(tl, "GetUniqueId")}
     problems = out["problems"]
     try:
+        # a timeline with custom settings holds its own colour spaces, so the project's are
+        # copied across; a project that reads none of them has nothing to copy
+        colour = [(k, v) for k, v in out["timeline_colour"].items() if v]
         for key, value in (("useCustomSettings", "1"), ("timelineResolutionWidth", str(width)),
                            ("timelineResolutionHeight", str(height)),
-                           ("timelineInputResMismatchBehavior", "scaleToCrop")):
+                           ("timelineInputResMismatchBehavior", "scaleToCrop"), *colour):
             if not tl.SetSetting(key, value) or str(tl.GetSetting(key)) != value:
                 problems.append(f"timeline setting {key} reads '{tl.GetSetting(key)}', "
                                 f"wanted '{value}'")
@@ -488,6 +494,10 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
                     except api.WriteNotApplied as e:
                         problems.append(f"item {r['index']}: {e}")
             out["items"].append(row)
+        if p["sound"]:
+            check()
+            out["camera_audio"] = _camera_audio(tl, media_pool, have, p, infos, items, tl_fps,
+                                                problems)
         _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
             if r.get("transition") and len(items) >= r["index"]:
@@ -502,7 +512,8 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
                                     f"{'failed (no handles?)' if t is None else f'made {got} frames, planned {want}'}")
         if p["music"]:
             check()
-            out["audio"] = _music(tl, media_pool, have[music], p, tl_fps, problems)
+            out["audio"] = _music(tl, media_pool, have[music], p, tl_fps, problems,
+                                  track=2 if p["sound"] else 1)
     except api.ProjectChanged as e:
         problems.append(f"stopped, the open project changed: {e}")
     except api.ResolveAPIError as e:
@@ -585,19 +596,49 @@ def _colour(out, have, imported, before):
                 problems.append(f"colour: {base}: {row['flag']}")
 
 
-def _music(tl, media_pool, clip, p, tl_fps, problems):
-    """The baked bed on A1 from the first frame, as long as the picture plus the end black.
+def _camera_audio(tl, media_pool, have, p, infos, items, tl_fps, problems):
+    """Each span's own camera sound on A1 under its picture: the same clip, the same source
+    frames and the same record frame as the picture item (read from the item, so a montage
+    on V2 and a plate-free V1 line up alike). Read back: how many, where, how long. A source
+    with no audio places nothing and the count says so."""
+    first = int(tl.GetStartFrame())
+    audio = [{"mediaPoolItem": i["mediaPoolItem"], "startFrame": i["startFrame"],
+              "endFrame": i["endFrame"], "mediaType": 2, "trackIndex": 1,
+              "recordFrame": it.GetStart()} for i, it in zip(infos, items)]
+    media_pool.AppendToTimeline(audio)
+    got = tl.GetItemListInTrack("audio", 1) or []
+    if len(got) != len(audio):
+        problems.append(f"A1 holds {len(got)} camera sound item(s), the plan {len(audio)} "
+                        "(a source with no audio places none)")
+    rows = []
+    for r, it, pic in zip(p["spans"], got, items):
+        row = {"index": r["index"], "name": it.GetName(), "start": it.GetStart() - first,
+               "frames": it.GetDuration()}
+        if (it.GetStart(), it.GetDuration()) != (pic.GetStart(), pic.GetDuration()):
+            problems.append(f"camera sound {r['index']} sits at frame {row['start']} for "
+                            f"{row['frames']} frames, its picture at {pic.GetStart() - first} "
+                            f"for {pic.GetDuration()}")
+        rows.append(row)
+    return rows
+
+
+def _music(tl, media_pool, clip, p, tl_fps, problems, track=1):
+    """The baked bed on A<track> (A1, or A2 under camera sound) from the first frame, as long
+    as the picture plus the end black.
     Its in point and fade are in the file, so there is no SetFades here (T18)."""
     total = p["frames"] + p["black_frames"]
     af = _clip_fps(clip, tl_fps)
     af = af if 20 < af < 70 else tl_fps  # an audio file's FPS property is often empty
+    if track > 1 and not (tl.AddTrack("audio") and int(tl.GetTrackCount("audio") or 0) >= track):
+        problems.append(f"could not add A{track} for the music under the camera sound")
+        return None
     media_pool.AppendToTimeline([{"mediaPoolItem": clip, "startFrame": 0,
                                   "endFrame": int(math.ceil(total * af / tl_fps - 1e-6)),
-                                  "mediaType": 2, "trackIndex": 1,
+                                  "mediaType": 2, "trackIndex": track,
                                   "recordFrame": tl.GetStartFrame()}])
-    items = tl.GetItemListInTrack("audio", 1) or []
+    items = tl.GetItemListInTrack("audio", track) or []
     if len(items) != 1:
-        problems.append(f"A1 holds {len(items)} item(s), expected the music alone")
+        problems.append(f"A{track} holds {len(items)} item(s), expected the music alone")
         return None
     it = items[0]
     row = {"name": it.GetName(), "start": it.GetStart() - tl.GetStartFrame(),

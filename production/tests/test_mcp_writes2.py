@@ -352,6 +352,25 @@ class TestStabilize(Base):
     def stabilized(self):
         return [c[2][0] for c in rf.CALLS if c[1] == "Stabilize"]
 
+    def test_a_quick_return_is_reported_as_no_new_analysis_and_the_mode_as_unreadable(self):
+        dry = self.stab()
+        self.assertIn("whatever the Color page holds", dry["mode"])
+        self.assertIn("in-memory", dry["guard"])
+        self.assertIn("in this server's memory only", dry["summary"])
+        real = self.stab(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertTrue(all(r["no_new_analysis"] for r in real["results"]))  # the fake is instant
+        self.assertIn("no new analysis on item(s) 1, 2, 3", real["summary"])
+        self.assertIn("cannot be read", real["summary"])
+        self.assertIn("no new analysis", real["results"][0]["detail"])
+
+    def test_a_slow_return_is_an_analysis(self):
+        ticks = iter(range(0, 100, 2))  # each Stabilize() reads as 2 s
+        with mock.patch.object(workflows.time, "monotonic", lambda: next(ticks)):
+            dry = self.stab()
+            real = self.stab(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertFalse(any(r["no_new_analysis"] for r in real["results"]))
+        self.assertNotIn("no new analysis", real["summary"])
+
     def test_only_auto_timelines(self):
         with self.assertRaisesRegex(workflows.Refused, "not an \\[auto\\]"):
             self.stab(timeline="Edit")

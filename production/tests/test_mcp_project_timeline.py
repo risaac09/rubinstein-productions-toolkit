@@ -519,3 +519,26 @@ class TestClipline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestManagedDwgPreset(Base):
+    def test_the_preset_also_sets_the_timeline_and_output_spaces_with_read_back(self):
+        project = rf.Project(root=rf.Folder("Master", subs=[rf.Folder("Source")]))
+        project.settings["colorScienceMode"] = "davinciYRGB"
+        resolve = rf.Resolve(project, page="media")
+        dry = call("set_color_management", {"preset": "managed-dwg"}, resolve)
+        self.assertEqual(dry["would_change"], ["colorScienceMode", "colorSpaceTimeline",
+                                               "colorSpaceOutput"])
+        real = call("set_color_management", {"preset": "managed-dwg", "dry_run": False,
+                                             "plan_sha": dry["plan_sha"]}, resolve)
+        self.assertEqual((real["exit_status"], real["drift"]), (0, []))
+        self.assertEqual(project.settings["colorSpaceTimeline"], "DaVinci WG/Intermediate")
+        self.assertEqual(project.settings["colorSpaceOutput"], "Rec.709 Gamma 2.4")
+
+    def test_a_project_with_work_is_still_refused(self):
+        project = rf.Project(root=rf.Folder("Master", subs=[rf.Folder("Source")]))
+        project.settings["colorScienceMode"] = "davinciYRGBColorManagedv2"
+        project.add(rf.Timeline("Edit", "tl-1"))
+        resolve = rf.Resolve(project, page="media")
+        with self.assertRaisesRegex(Exception, "not a fresh project"):
+            call("set_color_management", {"preset": "managed-dwg"}, resolve)
