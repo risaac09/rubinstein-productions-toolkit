@@ -290,6 +290,27 @@ class TestSqueeze(Base):
         with self.assertRaisesRegex(drafts.DraftError, "no squeeze recorded for .*CAM-abc123.*squeeze set"):
             drafts.plan_jobs(plan, self.dir, False)
 
+    def test_a_proxy_that_is_already_desqueezed_is_not_stretched_again(self):
+        from rpresolve import squeeze
+        card = os.path.join(self.dir, "CAM-abc123")
+        os.makedirs(card)
+        Path(card + ".card.json").write_text("{}")
+        src = os.path.join(card, "A001.braw")
+        Path(src).write_text("")
+        proxies = os.path.join(self.dir, "proxies")
+        os.makedirs(proxies)
+        Path(proxies, "A001.mov").write_text("")
+        plan = drafts.load_plan(self.plan("wide", PLAIN, src))
+        aspects = {src: 1.5, os.path.join(proxies, "A001.mov"): 2.25}
+        with mock.patch.object(squeeze, "file_tag", lambda p, ffprobe="ffprobe": 1.5), \
+                mock.patch.object(squeeze, "picture_aspect", lambda p, ffprobe="ffprobe": aspects[p]):
+            jobs, info = drafts.plan_jobs(plan, self.dir, False, proxy_dir=proxies)
+            self.assertFalse(any("iw*" in " ".join(j["cmd"]) for j in jobs))
+            self.assertTrue(any("already desqueezed: A001.braw" in n for n in info["notes"]))
+            aspects[os.path.join(proxies, "A001.mov")] = 1.5  # a proxy made squeezed
+            jobs, info = drafts.plan_jobs(plan, self.dir, False, proxy_dir=proxies)
+            self.assertTrue(all("scale=trunc(iw*1.5/2)*2:ih" in " ".join(j["cmd"]) for j in jobs[:3]))
+
     def test_an_unreadable_record_is_one_line_not_a_traceback(self):
         card, plan = self.card_plan()
         Path(card + ".squeeze.json").write_text("{not json")

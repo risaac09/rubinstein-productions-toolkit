@@ -82,6 +82,55 @@ class TestRecord(Base):
             squeeze.factor(self.clips[0])
 
 
+FAKE_FFPROBE = """#!/bin/sh
+# stands in for ffprobe: a BRAW tag for *tagged*.braw, a cropped 16:9 frame for *wide*
+case "$*" in
+  *format_tags=anamorphic*) case "$*" in *tagged*) echo "1.5x";; *junk*) echo "wide";; *) echo "";; esac;;
+  *) case "$*" in
+       *wide*) echo '{"streams":[{"width":1920,"height":1080,"side_data_list":[{"crop_top":113,"crop_bottom":114,"crop_left":0,"crop_right":0}]}]}';;
+       *broken*) echo 'not json';;
+       *) echo '{"streams":[{"width":6064,"height":4048}]}';;
+     esac;;
+esac
+"""
+
+
+class TestFileTagAndProxies(Base):
+    def setUp(self):
+        super().setUp()
+        self.ffprobe = os.path.join(self.dir, "ffprobe")
+        Path(self.ffprobe).write_text(FAKE_FFPROBE)
+        os.chmod(self.ffprobe, 0o755)
+        self.braw = {n: os.path.join(self.card, n + ".braw") for n in ("tagged", "plain", "junk")}
+
+    def test_a_braw_states_its_own_squeeze_and_an_empty_or_odd_tag_is_no_answer(self):
+        self.assertEqual(squeeze.file_tag(self.braw["tagged"], self.ffprobe), 1.5)
+        self.assertIsNone(squeeze.file_tag(self.braw["plain"], self.ffprobe))
+        self.assertIsNone(squeeze.file_tag(self.braw["junk"], self.ffprobe))
+        self.assertIsNone(squeeze.file_tag(self.clips[0], self.ffprobe))  # not BRAW: never probed
+        self.assertIsNone(squeeze.file_tag(self.braw["tagged"], os.path.join(self.dir, "no-ffprobe")))
+
+    def test_a_record_beats_the_tag_and_a_tagged_clip_is_not_an_open_question(self):
+        self.make_card()
+        self.assertEqual(squeeze.answer(self.braw["tagged"], self.ffprobe), (1.5, "file tag"))
+        self.assertFalse(squeeze.unanswered(self.braw["tagged"], self.ffprobe))
+        self.assertTrue(squeeze.unanswered(self.braw["plain"], self.ffprobe))
+        squeeze.write(self.card, clips={"tagged.braw": 1})
+        self.assertEqual(squeeze.answer(self.braw["tagged"], self.ffprobe), (1.0, "record"))
+
+    def test_the_decoded_picture_and_what_a_desqueezed_proxy_still_owes(self):
+        src = squeeze.picture_aspect(self.braw["tagged"], self.ffprobe)
+        proxy = squeeze.picture_aspect(os.path.join(self.dir, "wide.mov"), self.ffprobe)
+        self.assertAlmostEqual(src, 6064 / 4048)
+        self.assertAlmostEqual(proxy, 1920 / 853)  # the frame cropping is applied
+        self.assertIsNone(squeeze.picture_aspect(os.path.join(self.dir, "broken.mov"), self.ffprobe))
+        self.assertIsNone(squeeze.remaining(1.5, src, proxy))      # already desqueezed
+        self.assertAlmostEqual(squeeze.remaining(1.5, src, src), 1.5)  # a squeezed proxy
+        self.assertEqual(squeeze.remaining(1.5, None, None), 1.5)  # the source itself is drawn
+        for f in (None, 1, 1.0):
+            self.assertIsNone(squeeze.remaining(f, src, src))
+
+
 class TestCommand(Base):
     EXIF = {"A.MOV": {}, "B.MOV": {"Panasonic:LensType": "24-70mm"}, "C.MP4": {"ExifIFD:LensModel": ""}}
 

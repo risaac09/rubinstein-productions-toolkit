@@ -139,12 +139,12 @@ def plan(manifest, exclude=None):
                   "(the draft farm draws it)" for e in manifest.get("effects") or []
                   if e.get("effect") in transitions.IDS]
     try:  # the draft farm desqueezes by this record; say so where the build does not
-        wide = {p: rpsqueeze.factor(p) for p in sorted(set(paths.values()))}
+        wide = {p: rpsqueeze.answer(p)[0] for p in sorted(set(paths.values()))}
     except rpsqueeze.SqueezeError as e:
         raise Refused(str(e))
     not_built += [f"{os.path.basename(p)}: recorded as {f:g}x anamorphic; this tool sets neither the "
                   "clip's pixel aspect ratio nor the timeline's shape" for p, f in wide.items()
-                  if f and f != 1]
+                  if f and f != 1 and not p.lower().endswith(".braw")]  # Resolve reads a BRAW's own tag
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")

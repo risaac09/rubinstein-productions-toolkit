@@ -44,12 +44,12 @@ lens = rpshoot.lens
 
 
 def rows(files, exif):
-    """[{file, factor, source, lens}] for media files. source: record, unanswered (a
-    card clip nobody has answered for) or none (not on a card, no record)."""
+    """[{file, factor, source, lens}] for media files. source: record, file tag (a BRAW
+    file's own), unanswered (a card clip with no answer) or none (not on a card)."""
     out = []
     for f in files:
-        fac = rpsqueeze.factor(f)
-        source = "record" if fac is not None else ("unanswered" if rpsqueeze.unanswered(f) else "none")
+        fac, where = rpsqueeze.answer(f)
+        source = where or ("unanswered" if rpsqueeze.card_root(f) else "none")
         out.append({"file": f, "factor": fac, "source": source, "lens": lens(exif.get(f))})
     return out
 

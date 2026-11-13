@@ -313,8 +313,8 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
                 notes.append("audio audit could not decode")
     fps = _fps(h, is_braw)
     lens_name = lens(h.exif)
-    recorded = rpsqueeze.factor(path)  # a person's answer beats what the file says
-    if recorded is None and rpsqueeze.unanswered(path):
+    recorded = rpsqueeze.answer(path)[0]  # a person's answer, else a BRAW file's own tag
+    if recorded is None and rpsqueeze.card_root(path):
         flags.append("squeeze-unknown")
         notes.append("no squeeze recorded for this card (squeeze set)"
                      + ("" if lens_name else "; no lens data: likely a manual lens"))

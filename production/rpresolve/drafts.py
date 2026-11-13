@@ -42,10 +42,12 @@ on span i is the transition into it) are in no span's job: after the spans are j
 drawn on the finished draft as picture math, the frames around each cut rewritten and the video
 re-encoded, audio kept. The ledger lists them under `approximated`.
 
-A source with a recorded anamorphic squeeze (rpresolve/squeeze.py: a person's answer kept
-beside the card copy) is stretched to its real shape before it is scaled and cropped, and the
-notes say which spans. A plan that draws from a copied card with no recorded answer is refused:
-nobody should pick a cut from a squeezed picture.
+A source with a known anamorphic squeeze (rpresolve/squeeze.py: a person's answer kept beside
+the card copy, or the tag a Blackmagic RAW file carries) is stretched to its real shape before
+it is scaled and cropped, and the notes say which spans. A BRAW source plays from its proxy:
+the proxy's shape is compared with the source's, and one that was made desqueezed is drawn as
+it is. A plan that draws from a copied card with no answer is refused: nobody should pick a cut
+from a squeezed picture.
 
 The look is the method's lutlab look for one camera: `<look name> [<camera>].cube`
 under --lut-root (Resolve's LUT/lutlab folder). Without --camera, or with no such cube,
@@ -500,20 +502,30 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     jobs, frames = [], 0
     spans = man["clips"][0]["spans"]
     try:
-        sq = {sid: rpsqueeze.factor(p) for sid, p in srcs.items()}
+        said = {sid: rpsqueeze.answer(p)[0] for sid, p in srcs.items()}
     except rpsqueeze.SqueezeError as e:
         raise DraftError(f"{plan['name']}: {e}")
     open_cards = sorted({rpsqueeze.card_root(p) for sid, p in srcs.items()
-                         if sq[sid] is None and rpsqueeze.card_root(p)})
+                         if said[sid] is None and rpsqueeze.card_root(p)})
     if open_cards:  # before any ffmpeg job: a squeezed picture must not be judged as it is
         raise DraftError(f"{plan['name']}: no squeeze recorded for {', '.join(open_cards)}: say "
                          "whether the card is anamorphic (squeeze set FOLDER --factor N; 1 is spherical)")
-    wide = sorted({f for f in sq.values() if f and f != 1})
+    sq, ready = {}, []
+    for sid, p in srcs.items():  # a proxy made desqueezed already has the real shape
+        f, drawn = said[sid], media_path(p, proxy_dir) if said[sid] not in (None, 1) else p
+        sq[sid] = rpsqueeze.remaining(f, *((rpsqueeze.picture_aspect(p), rpsqueeze.picture_aspect(drawn))
+                                          if drawn != p else (None, None)))
+        if f not in (None, 1) and sq[sid] is None:
+            ready.append(os.path.basename(p))
+    wide = sorted({round(f, 3) for f in sq.values() if f})
     if wide:
         notes.append("desqueezed " + ", ".join(
-            f"{f:g}x: span(s) " + ", ".join(str(i) for i, sp in enumerate(spans)
-                                              if sq.get(sp.get("source") or next(iter(srcs))) == f)
-            for f in wide) + " (the squeeze record beside the card)")
+            f"{f:g}x: span(s) " + ", ".join(
+                str(i) for i, sp in enumerate(spans)
+                if round(sq.get(sp.get("source") or next(iter(srcs))) or 0, 3) == f)
+            for f in wide) + " (the card's squeeze record, or the file's own tag)")
+    if ready:
+        notes.append("anamorphic, drawn from a proxy that is already desqueezed: " + ", ".join(sorted(ready)))
     for i, span in enumerate(spans):
         sid = span.get("source") or next(iter(srcs))
         src = media_path(srcs[sid], proxy_dir)
