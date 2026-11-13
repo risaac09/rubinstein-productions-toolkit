@@ -54,4 +54,6 @@ from rpresolve import sidecar
 problems = sidecar.validate(json.load(open("report.json")))  # [] when sound
 ```
 
+A folder with a `.card.json` beside it is a card folder whatever its name, and its id prefix comes from that record (`production/card-record.md`).
+
 Each tool moves onto the envelope in its own change; until then its output may predate it.

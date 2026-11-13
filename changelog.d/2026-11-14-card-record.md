@@ -1,0 +1,1 @@
+The card record has one loader and one validator: `rpresolve.card` reads schema 1 and schema 2 records and a legacy squeeze.json, `sidecar.card_key` names a folder with a card.json beside it from the record whatever the folder is called, and the new `card` command shows, checks (S1 to S5, one line per card), retrofits, answers and moves a card; spec in production/card-record.md.
