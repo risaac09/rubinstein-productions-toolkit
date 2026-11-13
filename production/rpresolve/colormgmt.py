@@ -32,7 +32,18 @@ from . import syncbuild as sb
 
 PRESETS = {
     "managed": (("colorScienceMode", "davinciYRGBColorManagedv2"),),
+    # The keys were found by reading a project set up by hand (colorSpaceTimeline,
+    # colorSpaceOutput; colorSpaceOutputGamma then reads 'Rec.709'). The grade cubes
+    # lutlab writes for [RCM] looks are DaVinci Intermediate in and out, so they are right
+    # only under this pair, not under the Rec.709 (Scene) default.
+    "managed-dwg": (("colorScienceMode", "davinciYRGBColorManagedv2"),
+                    ("colorSpaceTimeline", "DaVinci WG/Intermediate"),
+                    ("colorSpaceOutput", "Rec.709 Gamma 2.4")),
 }
+
+# The colour keys a timeline with its own settings (useCustomSettings) holds itself, so a
+# project value does not reach it: assemble_timeline copies these across.
+TIMELINE_COLOUR_KEYS = ("colorSpaceTimeline", "colorSpaceOutput")
 DEFAULT_PRESET = "managed"
 
 

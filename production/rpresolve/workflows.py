@@ -1535,7 +1535,13 @@ STABILIZE_NOTE = (
     "GetProperty (a 2026-09-26 spike found SmartReframe's result invisible there, and the "
     "same is assumed here until a live run shows otherwise), so nothing was read back and "
     "the effect is not verified. Stabilize() uses each item's current stabilizer settings "
-    "(mode, strength, smooth, zoom) from the Color page, which the API cannot set.")
+    "(mode, strength, smooth, zoom) from the Color page, which the API can neither set nor "
+    "read: the mode is whatever the Color page holds (Perspective, Similarity or Translation), "
+    "so look at a frame. The re-run guard (a plan_sha already used is stale) lives in this "
+    "server process's memory only: a restart forgets it, and it cannot see a run made by hand.")
+# An item that returns this fast did not analyse: a re-run of a stabilized item returned in
+# 0.3 s against 0.5 to 2 s for a first run (2026-11-13).
+STABILIZE_NO_ANALYSIS_S = 0.2
 
 
 def _frames_to_timecode(frame, fps, drop=False):
@@ -1625,7 +1631,9 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
                         "other_tracks": api.other_video_tracks(tl, track)},
            "targets": targets, "planned_total": planned_total, "remaining": remaining,
            "results": [],
-           "verified": False, "note": STABILIZE_NOTE, "plan_sha": sha, "dry_run": dry_run,
+           "verified": False, "mode": "whatever the Color page holds; the API cannot read it",
+           "guard": "in-memory, this server process only", "note": STABILIZE_NOTE,
+           "plan_sha": sha, "dry_run": dry_run,
            "ui_restore_problems": [], "exit_status": 0}
     if dry_run:
         return out
@@ -1675,6 +1683,11 @@ def stabilize(resolve, project_name, timeline, track=1, items=None, max_items=No
                     row["ok"] = False
                     row["detail"] = f"Stabilize() raised {type(e).__name__}: {e}"
                 row["elapsed_s"] = round(time.monotonic() - began, 3)
+                row["no_new_analysis"] = bool(row["ok"] and row["elapsed_s"] < STABILIZE_NO_ANALYSIS_S)
+                if row["no_new_analysis"]:
+                    row["detail"] = (f"Stabilize() returned True in {row['elapsed_s']} s: no new "
+                                     "analysis (a first run takes longer; the item was likely "
+                                     "stabilized already)")
                 if not at_item:
                     row["detail"] += "; the playhead could not be put at the item's start"
                 out["results"].append(row)

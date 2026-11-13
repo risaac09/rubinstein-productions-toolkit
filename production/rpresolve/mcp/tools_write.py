@@ -480,13 +480,19 @@ def stabilize(args, ctx):
         if r["dry_run"]:
             r["summary"] = (f"would call Stabilize() on {n} item(s) on '{tl}' V"
                             f"{r['timeline']['track']}{sample}; it can take a long time on large "
-                            "items, and the effect cannot be read back" + _how(r))
+                            "items, and the effect cannot be read back; the mode is whatever the Color page "
+                            "holds, and the re-run guard is in this server's memory only" + _how(r))
         else:
             ok = sum(1 for x in r["results"] if x["ok"])
             secs = sum(x["elapsed_s"] for x in r["results"])
+            quick = [str(x["index"]) for x in r["results"] if x.get("no_new_analysis")]
             r["summary"] = (f"Stabilize() returned True for {ok} of {len(r['results'])} item(s) "
                             f"on '{tl}' in {secs:.1f} s{sample}; the effect is NOT verified "
-                            "(stabilization is not visible through GetProperty)" + _ui(r))
+                            "(stabilization is not visible through GetProperty); the mode is "
+                            "whatever the Color page holds and cannot be read"
+                            + (f"; no new analysis on item(s) {', '.join(quick)} (returned in "
+                               f"under {workflows.STABILIZE_NO_ANALYSIS_S} s)" if quick else "")
+                            + _ui(r))
         return r
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
@@ -566,7 +572,8 @@ def assemble_timeline(args, ctx):
                    f"before each window playing on): pass track {p['track']} to apply_effect, "
                    "apply_grade, vertical_apply and reframe_apply, and grade V1 too"
                    if p["track"] > 1 else "")
-                + (f", music bed on A1 ({r['bed']['fade_s']:g} s fade baked in)"
+                + (", each shot's camera sound on A1" if p["sound"] else "")
+                + (f", music bed on A{2 if p['sound'] else 1} ({r['bed']['fade_s']:g} s fade baked in)"
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
         skipped += (f"; {r['exclude_note']}" if r["exclude_note"] else "")
@@ -1052,7 +1059,9 @@ def register(registry):
     registry.add(Tool(
         "set_color_management",
         "Set the colour-management Project Settings that `ingest` needs (preset 'managed': "
-        "colorScienceMode davinciYRGBColorManagedv2) on the open project, each value read "
+        "colorScienceMode davinciYRGBColorManagedv2; preset 'managed-dwg' also sets the timeline "
+        "colour space DaVinci WG/Intermediate and the output Rec.709 Gamma 2.4, which the "
+        "[RCM] look cubes assume) on the open project, each value read "
         "back, then every key read again to catch one Resolve reset. Refuses unless the "
         "project is fresh: no timelines and no clips in the media pool, because changing "
         "colour science under existing work changes how it looks. Never creates, loads or "
@@ -1060,7 +1069,7 @@ def register(registry):
         "first; the real run needs its plan_sha.",
         {"type": "object", "properties": {
             **PROJECT,
-            "preset": {"type": "string", "enum": ["managed"], "default": "managed",
+            "preset": {"type": "string", "enum": ["managed", "managed-dwg"], "default": "managed",
                        "description": "The settings to apply (rpresolve.colormgmt.PRESETS)."},
             **DRY_RUN},
          "required": ["project"], "additionalProperties": False},
@@ -1253,10 +1262,14 @@ def register(registry):
         "timeline (import_timeline reads FCPXML, which holds one rate for both). The clips "
         "it needs are imported into a bin named 'methods [auto]', the new timeline gets its "
         "own size and fill-and-crop scaling, a span's static scale becomes the item's zoom, "
-        "and the music goes on A1 from the first frame through the end black as a bed that "
+        "and the music goes on A1 (A2 when the manifest sets camera_sound) from the first frame through the end black as a bed that "
         "ffmpeg cuts first (the in point and a one second fade out baked into a 24-bit 48 kHz "
         "WAV beside the manifest, or in bed_dir; refused inside a git tree). SetFades is not "
         "used: it reads back and does not render (T18). "
+        "The new timeline uses its own settings, so the project's timeline and output colour "
+        "spaces (colorSpaceTimeline, colorSpaceOutput) are copied onto it and read back. A "
+        "manifest with camera_sound true also places each span's own camera audio on A1 under "
+        "its picture (same source frames, same record frame, read back) and the music moves to A2. "
         "Nothing existing changes. Refused: a name that exists or does not end ' [auto]', a "
         "manifest whose fps is not the project's timeline rate, a missing file, a song that "
         "runs out before the bed does. A dissolve is "

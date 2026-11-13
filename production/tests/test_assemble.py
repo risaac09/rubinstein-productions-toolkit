@@ -1120,3 +1120,99 @@ class TestLedgerAtBuild(Base):
         dry = self.go()
         self.assertEqual(dry["ledger"]["flagged"], [])
         self.assertEqual(self.go(dry_run=False, expect_sha=dry["plan_sha"])["exit_status"], 0)
+
+
+class TestTimelineColourAndCameraSound(Base):
+    """The new timeline uses custom settings, so project colour spaces are copied onto it;
+    camera_sound places each shot's own audio on A1 and moves the music to A2."""
+
+    def setUp(self):
+        super().setUp()
+        self.project.settings.update(colorSpaceTimeline="DaVinci WG/Intermediate",
+                                     colorSpaceOutput="Rec.709 Gamma 2.4")
+
+    def built(self, **kw):
+        dry = self.go(**kw)
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"], **kw)
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        return dry, r, tl
+
+    def test_the_projects_colour_spaces_land_on_the_timeline_and_are_read_back(self):
+        dry, r, tl = self.built()
+        self.assertEqual(dry["timeline_colour"], {"colorSpaceTimeline": "DaVinci WG/Intermediate",
+                                                  "colorSpaceOutput": "Rec.709 Gamma 2.4"})
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(tl.settings["colorSpaceTimeline"], "DaVinci WG/Intermediate")
+        self.assertEqual(tl.settings["colorSpaceOutput"], "Rec.709 Gamma 2.4")
+        self.assertEqual((tl.settings["timelineResolutionWidth"],
+                          tl.settings["timelineResolutionHeight"]), ("3840", "2160"))
+
+    def test_the_colour_spaces_are_part_of_the_plan_hash(self):
+        before = self.go()["plan_sha"]
+        self.project.settings["colorSpaceOutput"] = "Rec.709 (Scene)"
+        self.assertNotEqual(before, self.go()["plan_sha"])
+
+    def test_a_colour_space_that_does_not_land_is_a_problem(self):
+        orig = rf.Timeline.SetSetting
+
+        def refuse(tl, key, value):
+            return False if key == "colorSpaceOutput" else orig(tl, key, value)
+        with mock.patch.object(rf.Timeline, "SetSetting", refuse):
+            _, r, _ = self.built()
+        self.assertTrue(any("colorSpaceOutput" in x for x in r["problems"]), r["problems"])
+
+    def test_without_camera_sound_a1_holds_the_music_alone(self):
+        dry, r, tl = self.built()
+        self.assertFalse(dry["plan"]["sound"])
+        self.assertEqual(r["camera_audio"], [])
+        self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 1)
+
+    def test_camera_sound_goes_under_each_picture_on_a1_and_the_music_moves_to_a2(self):
+        self.manifest["camera_sound"] = True
+        dry, r, tl = self.built()
+        self.assertTrue(dry["plan"]["sound"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        pics = tl.GetItemListInTrack("video", 1)
+        snd = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual([(i.start, i.end) for i in snd], [(i.start, i.end) for i in pics])
+        self.assertEqual([i.source for i in snd], [i.source for i in pics])
+        self.assertEqual([x["index"] for x in r["camera_audio"]], [1, 2, 3])
+        (bed,) = tl.GetItemListInTrack("audio", 2)
+        self.assertEqual(bed.clip.props["File Path"], r["bed"]["path"])
+        self.assertEqual(r["audio"]["frames"], 54)
+
+    def test_camera_sound_is_part_of_the_plan_hash(self):
+        before = self.go()["plan_sha"]
+        self.manifest["camera_sound"] = True
+        self.assertNotEqual(before, self.go()["plan_sha"])
+
+    def test_a_source_with_no_audio_is_a_problem(self):
+        self.manifest["camera_sound"] = True
+        with mock.patch.dict(rf.IMPORT_PROPS[self.two], {"Type": "Video"}):
+            _, r, _ = self.built()
+        self.assertTrue(any("camera sound" in x for x in r["problems"]), r["problems"])
+
+    def test_camera_sound_without_music_still_lands_on_a1(self):
+        self.manifest["camera_sound"] = True
+        self.manifest["music"] = None
+        _, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 3)
+
+
+class TestCameraSoundDetails(Base):
+    def test_camera_sound_must_be_a_boolean(self):
+        self.manifest["camera_sound"] = "false"
+        with self.assertRaisesRegex(Refused, "camera_sound is true or false"):
+            self.go()
+
+    def test_camera_sound_lines_up_with_a_montage_on_v2(self):
+        self.manifest["camera_sound"] = True
+        self.manifest["effects"] = [{"effect": "scale-window", "span_index": 1}]
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        pics = tl.GetItemListInTrack("video", dry["plan"]["track"])
+        snd = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual([(i.start, i.end) for i in snd], [(i.start, i.end) for i in pics])
+        self.assertEqual(r["problems"], [])
