@@ -22,7 +22,6 @@ sys.path.insert(0, str(HERE.parent))
 
 from rpresolve import cmd_sheets, drafts  # noqa: E402
 
-FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
 try:
     import PIL  # noqa: F401
 except ImportError:
@@ -85,7 +84,7 @@ class SoftwareRetry(Tmp):
         self.assertEqual(run.call_count, 1)
 
 
-@unittest.skipUnless(FFMPEG and PIL, "needs ffmpeg and Pillow")
+@unittest.skipUnless(PIL, "Pillow not installed")
 class Sheets(Tmp):
     def draw(self, folder, **kw):
         out = os.path.join(self.dir, "out")
