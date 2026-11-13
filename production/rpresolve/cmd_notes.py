@@ -58,7 +58,10 @@ def run(args):
                 json.dump(rep, f, indent=1)
             print(f"notes: {rep['bpm']:g} BPM, {len(rep['onsets'])} onset(s). Wrote {args.out}")
         elif args.action == "snap":
-            out = notes.snap(notes.load(args.notes), [float(x) for x in args.beats.split(",")],
+            beats = [float(x) for x in args.beats.split(",")]
+            if not all(0 < b < float("inf") for b in beats):  # nan fails both comparisons
+                raise notes.NotesError("--beats values must be numbers above 0")
+            out = notes.snap(notes.load(args.notes), beats,
                              args.first, args.fps, args.window, args.floor, args.lead)
             print(json.dumps(out, indent=1))
         else:

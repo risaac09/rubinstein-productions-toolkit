@@ -1293,7 +1293,7 @@ def register(registry):
               "max_bpm": {"type": "number", "description": "measure: fastest tempo to look for."},
               "lines": {"type": "string", "description": "measure: absolute path of a JSON list of "
                         "[start, end] seconds, carried in as timestamps."},
-              "beats": {"type": "string", "description": "snap: beats per shot, e.g. 4,2,2."},
+              "beats": {"type": "string", "description": "snap: beats per shot, e.g. 4,2,2; half beats as 0.5."},
               "first": {"type": "number", "description": "snap: seconds of the first planned beat."},
               "window": {"type": "number", "description": "snap: seconds either side of a beat."},
               "lead": {"type": "number", "description": "snap: seconds the music starts before "

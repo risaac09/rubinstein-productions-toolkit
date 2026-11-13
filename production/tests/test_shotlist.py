@@ -121,18 +121,24 @@ class TestCompile(unittest.TestCase):
     def test_a_half_beat_shot_compiles_and_an_effect_lands_after_the_pan_and_retime(self):
         sl = copy.deepcopy(LIST)
         sl["shots"][1]["beats"] = 0.5
-        sl["shots"][2]["effects"] = [{"effect": "exposure-flash", "params": {"gain": 5}},
-                                     {"effect": "zoom-push"}]
+        sl["shots"][3]["effects"] = [{"effect": "exposure-flash", "params": {"gain": 5}}]
         self.assertEqual(shotlist.validate(sl), [])
+        for i, fx in ((2, [{"effect": "zoom-push"}]),                       # its cx moves
+                      (3, [{"effect": "zoom-push"}, {"effect": "exposure-flash"}])):
+            bad = copy.deepcopy(sl)
+            bad["shots"][i]["effects"] = fx
+            self.assertIn("one Fusion comp", " ".join(shotlist.validate(bad)))
+        bad = copy.deepcopy(sl)
+        bad["shots"][3]["effects"] = [{"effect": ["zoom-push"]}]
+        self.assertEqual(len(shotlist.validate(bad)), 1)
         sl["shots"][0]["beats"] = True
         self.assertEqual(len(shotlist.validate(sl)), 1)
         sl["shots"][0]["beats"] = 4
         man, _ = compiled(sl, {"music_in": 4.07, "cut_frames": [0, 47, 53, 97, 117, 166]})
         sp = man["clips"][0]["spans"][1]
         self.assertAlmostEqual(sp["out"] - sp["in"], 0.25)
-        self.assertEqual([e for e in man["effects"] if e["span_index"] == 2][-2:], [
-            {"span_index": 2, "effect": "exposure-flash", "params": {"gain": 5}},
-            {"span_index": 2, "effect": "zoom-push", "params": {}}])
+        self.assertEqual([e for e in man["effects"] if e["span_index"] == 3][-1],
+                         {"span_index": 3, "effect": "exposure-flash", "params": {"gain": 5}})
 
     def test_effects_refusals(self):
         for bad in ("flash", [3], [{"effect": "retime"}], [{"effect": "reframe-pan"}],

@@ -14,7 +14,8 @@ A shot list is JSON:
 `end`, `fade_out` (seconds, 0 to 5: the last shot fades to black over its end), `music`,
 `speed`, `source_fps` and `effects` are optional. `effects` is a list of
 `{"effect": "<macro id>", "params": {...}}` that compile_list appends to the manifest after the
-retime and the pan; the compiler writes `retime` and `reframe-pan` itself, so those are refused. cx is the crop centre at the
+retime and the pan; the compiler writes `retime` and `reframe-pan` itself, so those are refused. A shot takes
+one effect, and none when its cx moves: an item holds one Fusion comp. cx is the crop centre at the
 shot's first and last frame as a share of the source width. A shot without `speed` takes
 the conform speed: 0.8 for a source near 30 fps and 0.4 for one near 60 at a 24 fps list
 (a slow-motion conform), else 1.
@@ -76,7 +77,7 @@ def _effect_problems(who, effects):
         eid, params = e.get("effect"), e.get("params")
         if eid in ("retime", "reframe-pan"):
             p.append(f"{who}: {eid} is written from speed and cx, not from effects")
-        elif eid not in PARAMS:
+        elif not isinstance(eid, str) or eid not in PARAMS:
             p.append(f"{who}: effect {eid!r} is not one of {', '.join(sorted(set(PARAMS) - {'retime', 'reframe-pan'}))}")
         elif params is not None and not isinstance(params, dict):
             p.append(f"{who}: {eid} params must be an object")
@@ -142,6 +143,11 @@ def validate(sl):
         if s.get("source_fps") is not None and not (_num(s["source_fps"]) and s["source_fps"] > 0):
             p.append(f"{who}: source_fps must be a number above 0")
         p.extend(_effect_problems(who, s.get("effects")))
+        fx = s.get("effects")
+        if isinstance(fx, list) and fx and (len(fx) > 1 or (
+                isinstance(cx, list) and len(cx) == 2 and cx[0] != cx[1])):
+            p.append(f"{who}: an item holds one Fusion comp, so a shot takes one effect, "
+                     "and none when its cx moves (the pan takes the comp)")
     return p
 
 
