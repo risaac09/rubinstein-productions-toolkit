@@ -336,7 +336,14 @@ TEST_DIR = "tests"
 # The one exception to "no Delete* anywhere" (Isaac, 2026-11-14): assemble_timeline removes the
 # audio items Resolve spills onto A2 and up when a source has several streams (T36), and the
 # tracks they empty. They are items its own run just appended to the timeline it just created.
-ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": {"DeleteClips", "DeleteTrack"}}
+ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": {"DeleteClips", "DeleteTrack"},
+                   # contract-probe's --sandbox-checks half (off unless config names a sandbox
+                   # project): creates, deletes and starts nothing but rp-probe- objects, and
+                   # names these calls to test the walls. Never run yet; Isaac to confirm.
+                   "rpresolve/cmd_contract_probe.py": {
+                       "CloseProject", "CreateProject", "DeleteProject", "LoadProject",
+                       "SaveProject", "StartRendering", "DeleteEffects",
+                       "DeleteFusionCompByName", "DeleteTimelines"}}
 
 
 def _names(path):
