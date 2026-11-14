@@ -40,10 +40,12 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 
 import numpy as np
 
 from . import color
+from .detect import cropped_size  # noqa: F401  (stdlib home, shared with reframe)
 # The Vision helper lives in vision.py (stdlib only); these names stay here too.
 from .vision import CACHE_DIR, SWIFTC, VISION_SOURCE, face_boxes, vision_binary  # noqa: F401
 
@@ -101,7 +103,7 @@ def probe(path):
     first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
            "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration,format_name",
+           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate:format=duration,format_name",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -118,7 +120,7 @@ def probe(path):
         duration = 0.0
     if "image2" in (fmt.get("format_name") or "").split(","):
         duration = 0.0  # ffmpeg gives a JPEG one frame's 0.04s, and any seek then loses its only frame
-    width, height = int(s["width"]), int(s["height"])
+    width, height = cropped_size(s)
     # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
     if rotation(s) % 180 == 90:
         width, height = height, width
@@ -207,6 +209,152 @@ def legal_range(path, t, bit_depth):
     """(YMIN, YMAX) from ffmpeg signalstats at time t, in 8-bit code values."""
     frames = signal_frames(path, bit_depth, t)
     return (frames[0]["ymin"], frames[0]["ymax"]) if frames else None
+
+
+# ---------------------------------------------------------------------------
+# One pass over every frame at a low rate: luma shares for the colour row
+# ---------------------------------------------------------------------------
+
+LEGAL_WHITE_Y = 235    # 8-bit code of legal white; a luma above this is over legal
+HARD_HIGH_Y = 252      # at or above this a pixel is at hard clipping
+HARD_LOW_Y = 4         # at or under this a pixel is crushed past legal black
+LEGAL_BLACK_Y = 16
+BAR_Y_MAX = 24         # a letterbox or pillarbox bar is dark ...
+BAR_SPREAD = 3         # ... and flat to within this many codes in every frame read
+BAR_PROBES = 12        # frames read to find the bars before the pass
+PASS_TIMEOUT_S = 3600  # one decode of a long file, over a slow mount, still ends
+
+
+def _luma_cmd(path, vf, seek=None, frames=None):
+    """ffmpeg reading the Y plane as 8-bit gray, the code values of the file
+    (a 10-bit source is shifted down, not rescaled: gray to gray keeps the range).
+    The decoder applies Frame Cropping and rotation, as probe() reports."""
+    return [FFMPEG, "-v", "error", "-nostdin", *(["-ss", f"{seek:.3f}"] if seek else []),
+            "-i", "file:" + path, *(["-frames:v", str(frames)] if frames else []),
+            "-vf", vf + ("," if vf else "") + "extractplanes=y,format=gray", "-f", "rawvideo", "-"]
+
+
+def read_luma(path, t, width, height):
+    """One frame's Y plane at time t as uint8 codes, shape (h, w)."""
+    proc = _run(_luma_cmd(path, "", seek=t, frames=1))
+    if proc.returncode != 0 or len(proc.stdout) < width * height:
+        raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
+                           f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
+    return np.frombuffer(proc.stdout[:width * height], dtype=np.uint8).reshape(height, width)
+
+
+def luma_stream(path, width, height, fps):
+    """Yield every frame's Y plane at fps from one ffmpeg decode, one at a
+    time (a long 4K file is never held whole). Raises MeasureError when the
+    decode fails or ends mid-frame, which a wrong size would also look like."""
+    size = width * height
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(_luma_cmd(path, f"fps={fps:g}"), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=err)
+        timer = threading.Timer(PASS_TIMEOUT_S, proc.kill)
+        timer.start()
+        try:
+            while True:
+                buf = bytearray(size)
+                got = proc.stdout.readinto(buf)
+                if not got:
+                    break
+                while got < size:
+                    more = proc.stdout.readinto(memoryview(buf)[got:])
+                    if not more:
+                        raise MeasureError(f"ffmpeg ended mid-frame ({got} of {size} bytes): "
+                                           "the picture is not the size ffprobe reported")
+                    got += more
+                yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width)
+            rc = proc.wait()
+        finally:
+            timer.cancel()
+            proc.stdout.close()
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+        if rc != 0:
+            err.seek(0)
+            raise MeasureError(f"ffmpeg failed reading {os.path.basename(path)} (exit {rc}): "
+                               + err.read().decode(errors="replace").strip()[-200:])
+
+
+def edge_bars(frames):
+    """(top, bottom, left, right): how many edge rows and columns are a bar
+    in every frame given: dark (at most BAR_Y_MAX) and flat to within
+    BAR_SPREAD codes across all of them. Never the whole picture: a file
+    that is black throughout has no bars to mask."""
+    lo_r = hi_r = lo_c = hi_c = None
+    for y in frames:
+        rmin, rmax = y.min(axis=1).astype(np.int16), y.max(axis=1).astype(np.int16)
+        cmin, cmax = y.min(axis=0).astype(np.int16), y.max(axis=0).astype(np.int16)
+        if lo_r is None:
+            lo_r, hi_r, lo_c, hi_c = rmin, rmax, cmin, cmax
+        else:
+            lo_r, hi_r = np.minimum(lo_r, rmin), np.maximum(hi_r, rmax)
+            lo_c, hi_c = np.minimum(lo_c, cmin), np.maximum(hi_c, cmax)
+    if lo_r is None:
+        return 0, 0, 0, 0
+    row_bar = (hi_r <= BAR_Y_MAX) & (hi_r - lo_r <= BAR_SPREAD)
+    col_bar = (hi_c <= BAR_Y_MAX) & (hi_c - lo_c <= BAR_SPREAD)
+
+    def run(flags):  # leading True count
+        n = int(np.argmin(flags)) if not flags.all() else len(flags)
+        return n
+
+    top, bottom = run(row_bar), run(row_bar[::-1])
+    left, right = run(col_bar), run(col_bar[::-1])
+    if top + bottom >= len(row_bar) or left + right >= len(col_bar):
+        return 0, 0, 0, 0
+    return top, bottom, left, right
+
+
+def luma_shares(y, bars=(0, 0, 0, 0)):
+    """Percent of the active picture (the frame less its bars) above legal
+    white, at hard clipping, crushed to or under HARD_LOW_Y, and under legal
+    black; its luma min and max; and how many bar pixels sit over legal
+    white (a bar that held a picture after all). One histogram of the
+    active picture gives all of it."""
+    top, bottom, left, right = bars
+    h, w = y.shape
+    act = y[top:h - bottom, left:w - right]
+    hist = np.bincount(act.ravel(), minlength=256)
+    n = int(hist.sum())
+    pct = lambda c: 100.0 * int(c) / n  # noqa: E731
+    outside = int(np.count_nonzero(y > LEGAL_WHITE_Y)) - int(hist[LEGAL_WHITE_Y + 1:].sum()) if any(bars) else 0
+    present = np.flatnonzero(hist)
+    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
+            "hard_low_pct": pct(hist[:HARD_LOW_Y + 1].sum()), "under_16_pct": pct(hist[:LEGAL_BLACK_Y].sum()),
+            "ymin": int(present[0]), "ymax": int(present[-1]), "bar_hot_px": outside}
+
+
+def luma_pass(path, fps=1.5, check_cancel=None):
+    """The colour row's numbers: every frame of the file at fps (one decode),
+    each read as luma shares of the active picture with constant dark bars
+    masked. Returns {frames, fps, bars, size, worst: {...}, per_frame: [...]};
+    raises MeasureError. The Y code values are the file's own (limited range
+    assumed: the caller skips full-range and RGB files)."""
+    info = probe(path)
+    w, h = info["width"], info["height"]
+    dur = info["duration"]
+    probes = [read_luma(path, t, w, h) for t in sample_times(dur, BAR_PROBES)] if dur > 0 \
+        else [read_luma(path, 0.0, w, h)]
+    bars = edge_bars(probes)
+    del probes
+    per = []
+    for i, y in enumerate(luma_stream(path, w, h, fps)):
+        if check_cancel:
+            check_cancel()
+        d = luma_shares(y, bars)
+        d["t"] = round(i / fps, 3)
+        per.append(d)
+    if not per:
+        raise MeasureError("ffmpeg returned no frames")
+    keys = ("over_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
+    worst = {k: max(d[k] for d in per) for k in keys}
+    worst["ymin"], worst["ymax"] = min(d["ymin"] for d in per), max(d["ymax"] for d in per)
+    return {"frames": len(per), "fps": fps, "size": [w, h], "bars": list(bars), "worst": worst,
+            "per_frame": per, "tags": info["tags"]}
 
 
 RGB_PIX_FMTS = ("rgb", "bgr", "gbr", "argb", "rgba", "abgr", "bgra", "gray", "pal8")

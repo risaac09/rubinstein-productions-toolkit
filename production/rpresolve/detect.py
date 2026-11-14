@@ -152,6 +152,21 @@ def _ffprobe_arg(path):
     return "file:" + path
 
 
+def cropped_size(stream):
+    """(width, height) a decoder returns: the stream's size less its Frame
+    Cropping side data, which ffprobe leaves in the stream's own size."""
+    w, h = int(stream["width"]), int(stream["height"])
+    for sd in stream.get("side_data_list") or []:
+        if "crop_top" in sd:
+            try:
+                crop = [int(sd.get(k, 0)) for k in ("crop_left", "crop_right", "crop_top", "crop_bottom")]
+            except (TypeError, ValueError):
+                break
+            if min(crop) >= 0 and crop[0] + crop[1] < w and crop[2] + crop[3] < h:
+                return w - crop[0] - crop[1], h - crop[2] - crop[3]
+    return w, h
+
+
 def run_ffprobe(path, ffprobe=None, timeout=120):
     """Return (parsed JSON or None, stderr text)."""
     cmd = [ffprobe or FFPROBE, "-v", "error", "-show_format", "-show_streams",
