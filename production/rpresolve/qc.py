@@ -117,7 +117,10 @@ drops the table:
                        colour_fail_pct of the picture at hard clipping (Y 252
                        and up, or 4 and under) in any frame; WARN over
                        colour_warn_pct above legal white (Y 235) in any
-                       frame. The low side is reported, never warned (a night
+                       frame. The share sitting exactly at Y 235 (highlights a
+                       grade clamps at legal white) is reported in `found`,
+                       advisory, never warned: no threshold is calibrated.
+                       The low side is reported, never warned (a night
                        scene sits near Y 16). `found` counts the frames read.
                        SKIP for an RGB or full-range file
     stabiliser         with stabiliser (--stabiliser), ADVISORY and never a
@@ -779,7 +782,8 @@ def _colour_row(path, colour, th, has_video):
         return _srow("colour", WARN, "not read", expected, str(e))
     w = m["worst"]
     over = [d for d in m["per_frame"] if d["over_235_pct"] > th["colour_warn_pct"]]
-    found = (f"worst frame {w['over_235_pct']:.2f}% over Y 235, hard clip {w['hard_high_pct']:.2f}% high "
+    found = (f"worst frame {w['over_235_pct']:.2f}% over Y 235, {w['at_235_pct']:.2f}% exactly at Y 235, "
+             f"hard clip {w['hard_high_pct']:.2f}% high "
              f"and {w['hard_low_pct']:.2f}% low; {m['frames']} frames read"
              + (f"; {w['bar_hot_px']} px over Y 235 inside the masked bars" if w["bar_hot_px"] else ""))
     note = (f"{m['frames']} frames at {m['fps']:g} a second, one pass; {len(over)} over {th['colour_warn_pct']:g}%"

@@ -316,7 +316,7 @@ def edge_bars(frames):
 
 def luma_shares(y, bars=(0, 0, 0, 0)):
     """Percent of the active picture (the frame less its bars) above legal
-    white, at hard clipping, crushed to or under HARD_LOW_Y, and under legal
+    white, exactly at it (a grade's clamp), at hard clipping, crushed to or under HARD_LOW_Y, and under legal
     black; its luma min and max; and how many bar pixels sit over legal
     white (a bar that held a picture after all). One histogram of the
     active picture gives all of it."""
@@ -328,7 +328,7 @@ def luma_shares(y, bars=(0, 0, 0, 0)):
     pct = lambda c: 100.0 * int(c) / n  # noqa: E731
     outside = int(np.count_nonzero(y > LEGAL_WHITE_Y)) - int(hist[LEGAL_WHITE_Y + 1:].sum()) if any(bars) else 0
     present = np.flatnonzero(hist)
-    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
+    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "at_235_pct": pct(hist[LEGAL_WHITE_Y]), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
             "hard_low_pct": pct(hist[:HARD_LOW_Y + 1].sum()), "under_16_pct": pct(hist[:LEGAL_BLACK_Y].sum()),
             "ymin": int(present[0]), "ymax": int(present[-1]), "bar_hot_px": outside}
 
@@ -360,7 +360,7 @@ def luma_pass(path, fps=1.5, check_cancel=None):
     due = int(dur * fps)
     if dur > 0 and len(per) < due - 2:
         raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {dur:g} s: the file ends early")
-    keys = ("over_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
+    keys = ("over_235_pct", "at_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
     worst = {k: max(d[k] for d in per) for k in keys}
     worst["ymin"], worst["ymax"] = min(d["ymin"] for d in per), max(d["ymax"] for d in per)
     return {"frames": len(per), "fps": fps, "size": [w, h], "bars": list(bars), "worst": worst,

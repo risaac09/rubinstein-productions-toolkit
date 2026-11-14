@@ -91,9 +91,11 @@ class Vp20Rows(unittest.TestCase):
         cls.gray = os.path.join(t, "gray.mp4")
         cls.black = os.path.join(t, "black.mp4")
         cls.hot = os.path.join(t, "hot.mp4")
+        cls.clamped = os.path.join(t, "clamped.mp4")
         _video(cls.gray, "color=c=gray:s=108x192:r=25:d=3[v]")
         _video(cls.black, "color=c=black:s=108x192:r=25:d=3[v]")
         _video(cls.hot, "color=c=gray:s=108x192:r=25:d=3,format=yuv420p,lutyuv=y=250[v]")
+        _video(cls.clamped, "color=c=gray:s=108x192:r=25:d=3,format=yuv420p,lutyuv=y=235[v]")
         # a static textured picture (testsrc2 carries moving parts, which a sub-pixel read sees)
         pat = os.path.join(t, "pat.png")
         _ff("-f", "lavfi", "-i", "nullsrc=s=270x480", "-vf",
@@ -207,6 +209,12 @@ class Vp20Rows(unittest.TestCase):
     def test_colour_passes_mid_grey(self):
         row = _row(qc.run(self.gray, colour=True), "colour")
         self.assertEqual(row["status"], qc.PASS, row)
+
+    def test_colour_reports_the_share_clamped_at_legal_white_and_stays_advisory(self):
+        row = _row(qc.run(self.clamped, colour=True), "colour")  # Y 235 everywhere
+        self.assertEqual(row["status"], qc.PASS, row)
+        self.assertIn("100.00% exactly at Y 235", row["found"])
+        self.assertIn("0.00% over Y 235", row["found"])
 
     def test_colour_reports_the_low_side_without_warning(self):
         row = _row(qc.run(self.black, colour=True), "colour")  # legal black, Y 16

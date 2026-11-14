@@ -216,6 +216,8 @@ class TestLumaShares(unittest.TestCase):
         d = measure.luma_shares(y, (12, 12, 0, 0))
         self.assertAlmostEqual(d["over_235_pct"], 100 * 1000 / (76 * 200), places=3)
         self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (0.0, 0.0, 0.0))
+        y[40:42, :100] = 235  # a grade's clamp: at legal white, not over it
+        self.assertAlmostEqual(measure.luma_shares(y, (12, 12, 0, 0))["at_235_pct"], 100 * 200 / (76 * 200), places=3)
         y[0, 0] = 255  # a hot pixel inside a bar is counted apart, not hidden
         self.assertEqual(measure.luma_shares(y, (12, 12, 0, 0))["bar_hot_px"], 1)
         self.assertEqual(measure.luma_shares(y)["under_16_pct"], 0.0)
