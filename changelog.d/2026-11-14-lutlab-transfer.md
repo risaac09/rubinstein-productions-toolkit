@@ -1,0 +1,1 @@
+lutlab transfer: propose a .cube that carries a source still toward a reference still's colour, in staged Reinhard, Monge-Kantorovich and sliced optimal-transport steps, each optional and reported, with the grey-ramp, bound and refusal guards
