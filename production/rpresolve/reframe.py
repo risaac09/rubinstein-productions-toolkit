@@ -751,7 +751,7 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     sc = composition.summarise(scene, src) if scene else None
     hint = (sc["centre"]["x"], sc["centre"]["y"]) if sc else None
     pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer, hint)
-    if pick is None and sc and area is not None:
+    if pick is None and sc and area is not None and not ignored:
         return _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
                            min_checked, master_size, scaling, ignored)
     if area is None or pick is None:
@@ -837,8 +837,11 @@ def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_
                unchecked=[t for t, _ in samples if t not in {t for t, _ in boxes}])
     out["review"].append("no face in any sampled frame: the crop is placed on the saliency "
                          "centre, which is weaker evidence than a face; look before use")
+    pts = [(t, (_centre(b)[0] - 1, _centre(b)[1] - 1, _centre(b)[0] + 1, _centre(b)[1] + 1))
+           for t, b in boxes]  # the box's centre as a 2 px box
     for a in aspects:
-        out["aspects"][a] = plan_aspect(boxes, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
+        # the attention box is wide; test its centre, so a good saliency crop can pass
+        out["aspects"][a] = plan_aspect(pts, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
                                         scale, margin, allow_bars, samples=len(samples),
                                         min_checked=min_checked, out=size_of(a, master_size),
                                         anchor=anchor_of(a), head_above=0.0, headroom=0.0,
@@ -1178,6 +1181,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 done += 1
                 if progress:
                     progress(done, total)
+    if read_scene and not report.get("scene"):
+        report["scene"] = False  # asked for, never read (the helper is unavailable, or no read had a subject)
     report["rows"] = rows(report)
     report["counts"] = counts(report["rows"])
     return report
@@ -1316,7 +1321,8 @@ def summary(report):
             ("; squeeze not read (no manifest value, argument or file tag): planned as 1.0, "
              "so give squeeze for an anamorphic source" if report.get("squeeze_from") == "assumed"
              else f"; squeeze {report['squeeze']:g} ({report['squeeze_from']})"
-             if report.get("squeeze_from") else ""))
+             if report.get("squeeze_from") else "") +
+            ("; scene reads unavailable" if report.get("scene") is False else ""))
 
 
 def line(r):
@@ -1372,6 +1378,8 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
              "clips": [{"name": name, "spans": [{"in": a, "out": b}]}]}
         rep = plan(m, aspects=[aspect], reader=reader, master_size=master_size, scaling=scaling,
                    **kw)
+        if rep.get("scene"):
+            plan_["scene"] = True
         sp = rep["spans"][0]
         p = sp["aspects"][aspect]
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
@@ -1385,6 +1393,8 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                                "review": sp["review"], "move": p.get("move"), "entry": e,
                                "row": row})
         plan_["rows"].append(row)
+    if kw.get("scene") and not plan_.get("scene"):
+        plan_["scene"] = False
     plan_["counts"] = counts(plan_["rows"])
     plan_["counts"]["none"] = sum(1 for i in plan_["items"] if i["move"] == "none")
     return plan_

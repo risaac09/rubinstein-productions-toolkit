@@ -310,7 +310,8 @@ def _framing_plan(args, ctx):
                           f"{p['out'][0]}x{p['out'][1]}: {n['none']} need nothing, "
                           f"{n[reframe.PASS] - n['none']} pass with a move, "
                           f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
-                          f"{n[reframe.NO_FACE]} no face"),
+                          f"{n[reframe.NO_FACE]} no face"
+                          + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,
               "tsv": stem + ".tsv"}
     result.update(_page(p["rows"], args))
@@ -1198,7 +1199,7 @@ def register(registry):
               "review_log": {"type": "string",
                              "description": "Absolute path of the review log (review/events.jsonl): "
                              "the ear_check row passes only on a logged approve or go "
-                             "(step sound, question ear_check) naming this file."}},
+                             "(step sound, question ear_check) whose review_sha256 is this file's own sha256."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
     registry.add(Tool(
