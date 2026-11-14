@@ -113,6 +113,20 @@ class Chain(unittest.TestCase):
         self.assertIn("next: write the shot list", text)
         self.assertIn("no, no offsite.txt names it", text)
 
+    def test_a_second_squeeze_answer_is_refused_unless_replace(self):
+        self.go(apply=True)
+        quiet = lambda m: None  # noqa: E731
+        self.assertEqual(project.answer(self.cfg, "demo", True, 1.0, (), False, say=quiet), 0)
+        for clips in ((), ("A001.mov",)):
+            with self.assertRaisesRegex(project.ProjectError, r"already answered for \d clip\(s\).*--replace"):
+                project.answer(self.cfg, "demo", False, 1.5, clips, False, say=quiet)
+        self.assertEqual(project.answer(self.cfg, "demo", True, 1.5, ("A001.mov",), False, say=quiet,
+                                        replace=True), 0)
+        self.assertEqual(list(self.record()["answers"]["squeeze"]["clips"].values()), [1.5])
+        project.answer(self.cfg, "demo", True, 1.5, ("A002.mov",), False, say=quiet, replace=True)
+        with self.assertRaisesRegex(project.ProjectError, "already answered for 2 clip"):  # each has its own
+            project.answer(self.cfg, "demo", False, 2.0, (), False, say=quiet)
+
     def test_without_an_indexer_or_sheets_root_the_steps_are_skipped(self):
         self.cfg.update(indexer=None, sheets_root=None)
         subprocess.run([sys.executable, "-m", "rpresolve.cmd_card", "set", self.card, "--squeeze", "1",
@@ -224,6 +238,10 @@ class Build(unittest.TestCase):
             {"span_index": 3, "effect": "zoom-push", "params": {"x": 1}}]}))
         self.calls, self.exist = [], False
         self.addCleanup(mock.patch.stopall)
+        # the destination's render folder, as queue_render reads it: an overlay outside the repo
+        overlay = os.path.join(self.dir, "overlay.json")
+        Path(overlay).write_text(json.dumps({"destinations": {"client_master": {"target_dir": self.dir}}}))
+        mock.patch.dict(os.environ, {"RPRESOLVE_CONFIG": overlay}).start()
         mock.patch.object(project, "CALL", self.fake).start()
         mock.patch.object(project, "OPEN_NAME", lambda: "Demo Project").start()
         mock.patch.object(project, "_SESSION", object()).start()
@@ -251,10 +269,84 @@ class Build(unittest.TestCase):
         self.answer(look="/luts/look.cube")
         self.answer(destination="client_master", name_parts=["client=Acme", "slug=demo-cut"])
 
-    def build(self, apply=False):
+    def build(self, apply=False, manifest="given", piece=None):
         self.out.clear()
-        project.build(self.cfg, "demo", self.manifest, apply=apply, say=self.out.append)
+        project.build(self.cfg, "demo", self.manifest if manifest == "given" else manifest, apply=apply,
+                      say=self.out.append, piece=piece)
         return "\n".join(self.out)
+
+    def status(self):
+        out = []
+        project.status(self.cfg, "demo", say=out.append)
+        return "\n".join(out)
+
+    def test_a_destination_with_no_render_folder_is_refused_before_anything(self):
+        self.answers()
+        os.environ.pop("RPRESOLVE_CONFIG")
+        with self.assertRaisesRegex(project.ProjectError, "nothing was built.*no target folder for 'client_master'"):
+            self.build()
+        self.assertEqual(self.calls, [])
+        self.assertIn("open: render folder: no target folder for 'client_master'", self.status())
+
+    def picked(self):
+        ledger, exclude = os.path.join(self.dir, "drafts.json"), os.path.join(self.dir, "exclude.json")
+        Path(ledger).write_text("{}")
+        Path(exclude).write_text("{}")
+        self.answer(pick=(self.manifest, ledger, exclude, "plan-b"))
+        return ledger, exclude
+
+    def test_the_build_reads_the_pick_with_its_ledger_and_exclude_list(self):
+        self.answers()
+        with self.assertRaisesRegex(project.ProjectError, "--pick MANIFEST"):
+            self.build(manifest=None)
+        with self.assertRaisesRegex(project.ProjectError, "go with --pick"):
+            self.answer(pick=(None, self.manifest, None, None))
+        ledger, exclude = self.picked()
+        self.build(manifest=None)
+        sent = self.calls[0][1]
+        self.assertEqual((sent["manifest"], sent["ledger"], sent["draft"], sent["exclude"]),
+                         (self.manifest, ledger, "plan-b", exclude))
+        other = os.path.join(self.dir, "other.json")
+        Path(other).write_text(json.dumps({"effects": []}))
+        self.calls.clear()
+        self.build(manifest=other)  # another manifest: the exclude list holds, the pick's ledger does not
+        self.assertEqual(self.calls[0][1]["exclude"], exclude)
+        self.assertNotIn("ledger", self.calls[0][1])
+        with self.assertRaisesRegex(project.ProjectError, "already recorded"):
+            self.answer(pick=(other, None, None, None))
+
+    def test_a_second_piece_records_only_what_differs(self):
+        self.answers()
+        self.answer(piece="second-cut", destination="client_master", name_parts=["client=Acme", "slug=second-cut"])
+        with self.assertRaisesRegex(project.ProjectError, "already recorded"):
+            self.answer(piece="second-cut", destination="client_master", name_parts=["client=Acme"])
+        self.build(apply=True, piece="second-cut")
+        real = [(t, a) for t, a in self.calls if not a["dry_run"]]
+        self.assertEqual(real[0][1]["width"], 3840)  # the project's shape
+        self.assertEqual(real[0][1]["name"], "second-cut [auto]")
+        self.assertEqual(real[-1][1]["name"], {"client": "Acme", "slug": "second-cut"})
+        self.assertIn("recorded for piece second-cut: destination", self.status())
+        with self.assertRaisesRegex(project.ProjectError, "no answers recorded for piece 'third'"):
+            self.build(piece="third")
+
+    def test_status_shows_answers_as_recorded_and_stops_asking_for_them(self):
+        pk, root = self.packet()
+        Path(root, "library.json").write_text("{}")
+        self.answer(shape="3840x1608")
+        self.assertIn("project answer SLUG", self.status())
+        self.assertIn("music (optional)", self.status())
+        self.answer(look="/luts/look.cube")
+        self.answer(destination="client_master", name_parts=["client=Acme", "slug=demo-cut"])
+        self.answer(music=(pk, "B", None))
+        text = self.status()
+        self.assertIn('recorded: shape: {"width": 3840, "height": 1608}', text)
+        self.assertNotIn("open: ", text)
+        self.assertNotIn("project answer SLUG", text)  # step 8 now names only the build
+        self.assertIn("next: project build SLUG", text)
+        self.assertNotIn("music (optional)", text)
+        self.assertIn("next: write the shot list", text)
+        self.answer(pick=(self.manifest, None, None, None))
+        self.assertNotIn("next: write the shot list", self.status())  # the pick ends step 7's hand work
 
     def test_refuses_naming_what_is_missing(self):
         self.answer(shape="3840x1608")

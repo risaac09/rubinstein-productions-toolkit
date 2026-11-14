@@ -38,13 +38,14 @@ STEPS = (("copy", "copy and verify"), ("identify", "identify camera, profile, le
          ("shotlist", "shot list, cut times, drafts, watch, pick"),
          ("build", "build the timeline"), ("deliver", "queue, deliver check, offsite"))
 
+BUILD_NEXT = "project build SLUG [--piece NAME] [--manifest MANIFEST] [--name NAME] --apply"
 # edit-methods.md, "The job, footage first": the command each hand step runs next.
 NEXT = {
     "shotlist": "write the shot list, then: notes measure AUDIO --out notes.json; notes snap; "
                 "shotlist compile LIST --cuts plan.json --out PLAN_DIR; drafts PLAN_DIR --out DIR; "
                 "watch sheets DRAFT --cuts plan.json --out SHEETS",
-    "build": "project answer SLUG --shape WxH --look LUT --destination KEY --name-part k=v ... "
-             "--apply (once), then project build SLUG --manifest MANIFEST [--name NAME] --apply",
+    "build": "project answer SLUG [--piece NAME] --shape WxH --look LUT --destination KEY --name-part k=v ... "
+             "--pick MANIFEST [--ledger DRAFTS] [--exclude LIST] --apply (once), then " + BUILD_NEXT,
     "deliver": "a person starts the render, then deliver_check on it, then offload.sh safe CARD REMOTE",
 }
 ANSWERS = (("shape", "delivery shape", "--shape WxH"), ("look", "look", "--look LUT"),
@@ -407,15 +408,65 @@ def _name_parts(pairs):
     return out
 
 
-def _record(ch, key, value, say):
-    """Record an answer once, with who and when; a second one is refused, not overwritten."""
-    held = ch.st.setdefault("answers", {}).get(key)
+def _record(ch, key, value, say, where):
+    """Record an answer once in `where` (the project's answers or one piece's), with who and
+    when; a second one is refused, not overwritten."""
+    held = where.get(key)
     if held:
         raise ProjectError(f"{key} is already recorded by {held['by']} at {held['at']}; "
                            f"edit {ch.path} by hand to change it")
-    ch.st["answers"][key] = {**value, "by": getpass.getuser(), "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    where[key] = {**value, "by": getpass.getuser(), "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     ch.save()
     say(f"{key}: recorded" + ("" if ch.apply else " (dry run: not written)"))
+
+
+def _answers(st, piece=None):
+    """The answers a build of `piece` uses: the project's, with the piece's own over them."""
+    return {**st.get("answers", {}), **st.get("pieces", {}).get(piece, {})} if piece else st.get("answers", {})
+
+
+def _pick(manifest, ledger, exclude, draft):
+    """The picked manifest with its draft farm ledger and the exclude list, as absolute paths."""
+    if not manifest:
+        raise ProjectError("--ledger, --draft and --exclude go with --pick MANIFEST")
+    out = {}
+    for k, v in (("manifest", manifest), ("ledger", ledger), ("exclude", exclude)):
+        if v:
+            out[k] = os.path.abspath(os.path.expanduser(v))
+            if not os.path.isfile(out[k]):
+                raise ProjectError(f"--{'pick' if k == 'manifest' else k} {out[k]}: no such file")
+    if draft:
+        if not ledger:
+            raise ProjectError("--draft names a plan in --ledger DRAFTS")
+        out["draft"] = draft
+    return out
+
+
+def render_folder_problem(key):
+    """Why queue_render would refuse the destination `key` for want of a folder, read as it
+    reads it (the resolve config with the $RPRESOLVE_CONFIG overlay), or None."""
+    from . import deliver
+    from .mcp.tools_offline import deliver_config
+    try:
+        dest = deliver.destination(deliver_config(), key)
+    except ValueError as e:  # DeliverError is one
+        return str(e)
+    if not dest.get("target_dir"):
+        return (f"no target folder for '{key}': set target_dir for it in a resolve config overlay "
+                "($RPRESOLVE_CONFIG) kept outside this repository")
+    return None
+
+
+def _squeeze_held(card, clips):
+    """Clip ids of a loaded card whose squeeze answer a `card set --squeeze` would replace:
+    those named by id or file name, or with no --clip every clip without an answer of its own
+    (all of them when each has its own: a default then changes nothing and is a second answer)."""
+    own = ((card["answers"].get("squeeze") or {}).get("clips") or {})
+    if clips:
+        hit = [c for c in card["clips"] if c["clip_id"] in clips or os.path.basename(c["relpath"]) in clips]
+    else:
+        hit = [c for c in card["clips"] if c["clip_id"] not in own] or card["clips"]
+    return [c["clip_id"] for c in hit if rpcard.squeeze_answer(card, c)[0] is not None]
 
 
 def _music_pick(cfg, key_dir, letter, start=None):
@@ -438,15 +489,20 @@ def _music_pick(cfg, key_dir, letter, start=None):
 
 
 def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
-           shape=None, look=None, destination=None, name_parts=(), music=None):
+           shape=None, look=None, destination=None, name_parts=(), music=None, pick=None, piece=None,
+           replace=False):
     """Record an answer through `card set`, that the Resolve project is set up, or one of the
-    build answers (shape, look, destination) in the project state."""
+    build answers (shape, look, destination, music, the picked manifest) in the project state:
+    the project's, or with `piece` that piece's own, which a build of it reads over the project's."""
     ch = Chain(cfg, slug, apply, say)
-    held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination), ("music", music))
-            if v and k in ch.st.get("answers", {})]
+    if piece and not SLUG.match(piece):
+        raise ProjectError(f"--piece {piece!r}: a piece is a slug (lower-case words joined by hyphens)")
+    where = ch.st.setdefault("pieces", {}).setdefault(piece, {}) if piece else ch.st.setdefault("answers", {})
+    held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination), ("music", music),
+                           ("pick", pick)) if v and k in where]
     if held:  # refuse before writing any of them
-        raise ProjectError(f"{held[0]} is already recorded by {ch.st['answers'][held[0]]['by']} at "
-                           f"{ch.st['answers'][held[0]]['at']}; edit {ch.path} by hand to change it")
+        raise ProjectError(f"{held[0]} is already recorded by {where[held[0]]['by']} at "
+                           f"{where[held[0]]['at']}; edit {ch.path} by hand to change it")
     todo = []  # every answer checked before any is written, so a bad one leaves none half-recorded
     if shape:
         m = re.fullmatch(r"(\d+)x(\d+)", shape)
@@ -459,16 +515,26 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
         todo.append(("destination", {"key": destination, "name": _name_parts(name_parts)}))
     if music:
         todo.append(("music", _music_pick(cfg, *music)))
+    if pick:
+        todo.append(("pick", _pick(*pick)))
     for key, value in todo:
-        _record(ch, key, value, say)
-    if shape or look or destination or music:
+        _record(ch, key, value, say, where)
+    if todo:
         return 0
+    if piece:
+        raise ProjectError("--piece goes with the build answers (shape, look, destination, music, pick)")
     if not ch.st["cards"]:
         raise ProjectError(f"{slug}: no card in {ch.path}; run project start first")
     if resolved:
         ch.mark("resolve", "done", "project created and colour set by a person")
         say("resolve: recorded" + ("" if apply else " (dry run: not written)"))
     if squeeze is not None:
+        for card in ch.st["cards"] if not replace else ():
+            held = _squeeze_held(rpcard.load(card), set(clips))
+            if held:
+                raise ProjectError(f"{os.path.basename(card)}: squeeze is already answered for {len(held)} clip(s) "
+                                   f"({', '.join(held[:3])}{' ...' if len(held) > 3 else ''}); "
+                                   "give --replace to change it")
         args = ["--squeeze", f"{squeeze:g}"] + [a for c in clips for a in ("--clip", c)]
         for card in ch.st["cards"]:
             rc, out, err = RUN(module("card", "set", card, *args, *(["--apply"] if apply else [])))
@@ -479,21 +545,38 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
 
 
 def status(cfg, slug, say=print):
-    """The nine steps with their state; for 7 to 9 the next command; whether the card may be
-    formatted (true only when an offsite.txt names it)."""
+    """The nine steps with their state; for 7 to 9 the next command (none for 7 once a pick is
+    recorded, only the build for 8 once its answers are); each answer as recorded and those still
+    open; a recorded destination with no render folder; whether the card may be formatted (true
+    only when an offsite.txt names it)."""
     ch = Chain(cfg, slug, False, say)
     if not os.path.isfile(ch.path):
         raise ProjectError(f"{slug}: no {ch.path}; run project start first")
+    ans, pieces = ch.st.get("answers", {}), ch.st.get("pieces", {})
+    levels = [ans] + [_answers(ch.st, p) for p in pieces]
+    ready = any(all(k in a for k, _, _ in ANSWERS) for a in levels)
     for i, (key, title) in enumerate(STEPS, 1):
         s = ch.st["steps"][key]
         say(f"{i}. {title}: {s['status']}" + (f" ({s['note']})" if s["note"] else ""))
-        if key in NEXT and s["status"] != "done":
-            say(f"   next: {NEXT[key]}")
+        if key in NEXT and s["status"] != "done" and not (key == "shotlist" and any("pick" in a for a in levels)):
+            say(f"   next: {BUILD_NEXT if key == 'build' and ready else NEXT[key]}")
     for o in ch.st.get("open", []):
         say(f"open: {o}")
-    for key, title, how in ANSWERS:
-        if key not in ch.st.get("answers", {}):
+
+    def shown(v):
+        return json.dumps({k: x for k, x in v.items() if k not in ("by", "at")}) + f" ({v['by']}, {v['at']})"
+    for key, v in ans.items():
+        say(f"recorded: {key}: {shown(v)}")
+    for p, held in sorted(pieces.items()):
+        for key, v in held.items():
+            say(f"recorded for piece {p}: {key}: {shown(v)}")
+    for key, title, how in ANSWERS:  # open unless the project holds it or every piece does
+        if key not in ans and not (pieces and all(key in held for held in pieces.values())):
             say(f"open: {title}: project answer {slug} {how} --apply")
+    for key in sorted({a["destination"]["key"] for a in levels if "destination" in a}):
+        problem = render_folder_problem(key)
+        if problem:
+            say(f"open: render folder: {problem}")
     ok = False
     for card in ch.st["cards"]:
         try:
@@ -502,7 +585,8 @@ def status(cfg, slug, say=print):
             ok = False
     say("may the card be formatted: " + ("yes, an offsite.txt names it" if ok
         else "no, no offsite.txt names it (card check shows S4)"))
-    if cfg.get("music_root") and os.path.isfile(os.path.join(cfg["music_root"], "library.json")):
+    if not any("music" in a for a in levels) and cfg.get("music_root") \
+            and os.path.isfile(os.path.join(cfg["music_root"], "library.json")):
         say(f"music (optional): python3 resolve_workflow.py music candidates {cfg['music_root']} --manifest M --out DIR; "
             f"then project answer {slug} --music-key DIR --music-pick LETTER --apply")
     return 0
@@ -538,18 +622,34 @@ CALL = call_tool
 OPEN_NAME = open_project_name
 
 
-def build(cfg, slug, manifest, name=None, apply=False, say=print):
+def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=None):
     """assemble_timeline, each of the manifest's effects, apply_grade with the recorded look,
     queue_render for the recorded destination: the tools' own handlers, in order, the first
-    failure stops. A dry run prints every step's dry run (a step after the assemble that needs
-    the timeline to exist says so); --apply runs each for real with the plan_sha of its own dry run."""
+    failure stops. The manifest is `manifest` or the recorded pick, whose ledger and exclude
+    list go to the assemble; with `piece`, that piece's answers over the project's. Before
+    anything, it refuses a destination queue_render would refuse for want of a folder. A dry
+    run prints every step's dry run (a step after the assemble that needs the timeline to exist
+    says so); --apply runs each for real with the plan_sha of its own dry run."""
     global _SESSION
     ch = Chain(cfg, slug, apply, say)
-    ans = ch.st.get("answers", {})
-    missing = [f"{t}: project answer {slug} {h} --apply" for k, t, h in ANSWERS if k not in ans]
+    if piece and piece not in ch.st.get("pieces", {}):
+        raise ProjectError(f"no answers recorded for piece {piece!r}: project answer {slug} --piece {piece} ... --apply")
+    ans = _answers(ch.st, piece)
+    piece_flag = f" --piece {piece}" if piece else ""
+    missing = [f"{t}: project answer {slug}{piece_flag} {h} --apply" for k, t, h in ANSWERS if k not in ans]
     if missing:
         raise ProjectError("not recorded, so nothing was built: " + "; ".join(missing))
+    problem = render_folder_problem(ans["destination"]["key"])
+    if problem:
+        raise ProjectError(f"nothing was built: queue_render would refuse at the end: {problem}")
+    pick = ans.get("pick") or {}
+    manifest = manifest or pick.get("manifest")
+    if not manifest:
+        raise ProjectError(f"build needs --manifest PATH, or project answer {slug}{piece_flag} --pick MANIFEST --apply")
     manifest = os.path.abspath(os.path.expanduser(manifest))
+    checks = {"exclude": pick["exclude"]} if pick.get("exclude") else {}
+    if pick.get("ledger") and manifest == pick["manifest"]:  # a ledger belongs to its own manifest
+        checks.update(ledger=pick["ledger"], **({"draft": pick["draft"]} if pick.get("draft") else {}))
     try:
         with open(manifest, encoding="utf-8") as f:
             doc = json.load(f)
@@ -568,7 +668,7 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
             write_state(manifest, doc)
             say(f"music: the recorded pick goes in as {manifest}")
     try:
-        tl = name or slug
+        tl = name or piece or slug
         tl = tl if tl.endswith(" [auto]") else tl + " [auto]"
         _SESSION = _SESSION or _session()
         base = {"project": OPEN_NAME()}
@@ -598,7 +698,8 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
             return r
 
         sh = ans["shape"]
-        r = step("assemble_timeline", {"manifest": manifest, "name": tl, "width": sh["width"], "height": sh["height"]})
+        r = step("assemble_timeline", {"manifest": manifest, "name": tl, "width": sh["width"], "height": sh["height"],
+                                       **checks})
         tl = r["timeline"] if isinstance(r.get("timeline"), str) else tl
         track = r["plan"]["track"]
         if apply:
