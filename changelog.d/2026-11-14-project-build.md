@@ -1,0 +1,1 @@
+`project build SLUG --manifest PATH` takes a picked manifest to a queued render in one command (assemble, each effect, the grade, the render queue), and `project answer` records the delivery shape, the look and the destination once each; `project status` lists the ones still open.

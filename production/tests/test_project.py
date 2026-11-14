@@ -98,7 +98,7 @@ class Chain(unittest.TestCase):
         project.answer(self.cfg, "demo", True, resolved=True, say=lambda m: None)
         rc, out = self.go(apply=True)
         self.assertEqual(rc, 0)
-        self.assertIn("steps 7 to 9 are by hand", out)
+        self.assertIn("the shot list is by hand; then project build", out)
         lines = []
         project.status(self.cfg, "demo", say=lines.append)
         text = "\n".join(lines)
@@ -204,6 +204,111 @@ class Chain(unittest.TestCase):
     def test_the_example_config_loads(self):
         cfg = project.load_config(str(HERE.parent / "project.example.json"))
         self.assertTrue(cfg["work_root"])
+
+
+class Build(unittest.TestCase):
+    """The last stretch: three recorded answers, then one build that calls each tool in order."""
+
+    def setUp(self):
+        self.dir = os.path.realpath(tempfile.mkdtemp(prefix="project-build-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.cfg = project.load_config(None, {"work_root": self.dir})
+        self.manifest = os.path.join(self.dir, "m.json")
+        Path(self.manifest).write_text(json.dumps({"effects": [
+            {"span_index": 3, "effect": "zoom-push", "params": {"x": 1}}]}))
+        self.calls, self.exist = [], False
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(project, "CALL", self.fake).start()
+        mock.patch.object(project, "OPEN_NAME", lambda: "Demo Project").start()
+        mock.patch.object(project, "_SESSION", object()).start()
+        self.out = []
+
+    def fake(self, tool, args):
+        self.calls.append((tool, args))
+        if tool != "assemble_timeline" and not (self.exist or any(c[0] == "assemble_timeline" and not c[1]["dry_run"]
+                                                                   for c in self.calls)):
+            raise ValueError("no such timeline")
+        if args["dry_run"] is False and args.get("plan_sha") != "sha-" + tool:
+            raise AssertionError("real run without its own plan_sha")
+        r = {"summary": f"{tool} summary", "plan_sha": "sha-" + tool, "results": [{"ok": True}]}
+        if tool == "assemble_timeline":
+            r.update(timeline=args["name"], plan={"track": 2}, problems=[])
+        if tool == "queue_render":
+            r.update(job={"JobId": "j1"}, exit_status=0)
+        return r
+
+    def answer(self, **kw):
+        project.answer(self.cfg, "demo", True, say=self.out.append, **kw)
+
+    def answers(self):
+        self.answer(shape="3840x1608")
+        self.answer(look="/luts/look.cube")
+        self.answer(destination="client_master", name_parts=["client=Acme", "slug=demo-cut"])
+
+    def build(self, apply=False):
+        self.out.clear()
+        project.build(self.cfg, "demo", self.manifest, apply=apply, say=self.out.append)
+        return "\n".join(self.out)
+
+    def test_refuses_naming_what_is_missing(self):
+        self.answer(shape="3840x1608")
+        with self.assertRaisesRegex(project.ProjectError, "look.*destination"):
+            self.build()
+        self.assertEqual(self.calls, [])
+
+    def test_an_answer_is_recorded_once_with_who_and_when(self):
+        self.answers()
+        st = json.load(open(os.path.join(self.dir, "demo", "project.json")))
+        self.assertEqual(st["answers"]["shape"]["width"], 3840)
+        self.assertEqual(st["answers"]["destination"]["name"], {"client": "Acme", "slug": "demo-cut"})
+        self.assertTrue(st["answers"]["look"]["by"] and st["answers"]["look"]["at"])
+        with self.assertRaisesRegex(project.ProjectError, "already recorded"):
+            self.answer(shape="1920x1080")
+
+    def test_status_lists_open_answers(self):
+        self.answer(shape="3840x1608")
+        out = []
+        project.status(self.cfg, "demo", say=out.append)
+        text = "\n".join(out)
+        self.assertIn("open: look", text)
+        self.assertIn("open: destination", text)
+        self.assertNotIn("open: delivery shape", text)
+
+    def test_dry_run_prints_one_plan_and_writes_nothing(self):
+        self.answers()
+        before = open(os.path.join(self.dir, "demo", "project.json")).read()
+        text = self.build()
+        self.assertIn("assemble_timeline summary", text)
+        self.assertIn("not checkable until 'demo [auto]' is built", text)
+        self.assertTrue(all(c[1]["dry_run"] for c in self.calls))
+        self.assertEqual(open(os.path.join(self.dir, "demo", "project.json")).read(), before)
+
+    def test_apply_runs_in_order_each_with_its_own_sha_and_records_the_job(self):
+        self.answers()
+        self.build(apply=True)
+        real = [(t, a) for t, a in self.calls if not a["dry_run"]]
+        self.assertEqual([t for t, _ in real], ["assemble_timeline", "apply_effect", "apply_grade",
+                                                "apply_grade", "queue_render"])
+        self.assertEqual(real[0][1]["width"], 3840)
+        self.assertEqual(real[1][1]["spans"], [3])
+        self.assertEqual([a["track"] for t, a in real if t == "apply_grade"], [1, 2])
+        self.assertEqual(real[-1][1]["name"], {"client": "Acme", "slug": "demo-cut"})
+        out = []
+        project.status(self.cfg, "demo", say=out.append)
+        self.assertTrue(any(l.startswith("9. ") and "queued" in l and "waiting for a person" in l for l in out))
+
+    def test_first_failure_stops(self):
+        self.answers()
+        orig = self.fake
+
+        def boom(tool, args):
+            if tool == "apply_effect":
+                raise ValueError("refused")
+            return orig(tool, args)
+        mock.patch.object(project, "CALL", boom).start()
+        with self.assertRaisesRegex(project.ProjectError, "apply_effect: refused"):
+            self.build(apply=True)
+        self.assertNotIn("queue_render", [c[0] for c in self.calls])
 
 
 if __name__ == "__main__":
