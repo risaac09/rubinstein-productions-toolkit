@@ -9,6 +9,7 @@ read-only commands and says what the rest would do. The chain stops at the first
 needs a person and says what it needs in one line; running it again resumes.
 """
 
+import getpass
 import json
 import os
 import re
@@ -41,10 +42,12 @@ NEXT = {
     "shotlist": "write the shot list, then: notes measure AUDIO --out notes.json; notes snap; "
                 "shotlist compile LIST --cuts plan.json --out PLAN_DIR; drafts PLAN_DIR --out DIR; "
                 "watch sheets DRAFT --cuts plan.json --out SHEETS",
-    "build": "assemble_timeline on the picked manifest, apply_effect, set_current_timeline, "
-             "then get_image to read the build",
-    "deliver": "queue_render, then deliver_check on the render, then offload.sh safe CARD REMOTE",
+    "build": "project answer SLUG --shape WxH --look LUT --destination KEY --name-part k=v ... "
+             "--apply (once), then project build SLUG --manifest MANIFEST [--name NAME] --apply",
+    "deliver": "a person starts the render, then deliver_check on it, then offload.sh safe CARD REMOTE",
 }
+ANSWERS = (("shape", "delivery shape", "--shape WxH"), ("look", "look", "--look LUT"),
+           ("destination", "destination", "--destination KEY --name-part client=X --name-part slug=Y"))
 
 
 class ProjectError(ValueError):
@@ -385,16 +388,56 @@ def start(cfg, target, slug, cam=None, apply=False, say=print, new_project=False
             else:
                 {"identify": step_identify, "ask": step_ask, "index": step_index,
                  "sheets": step_sheets, "resolve": lambda c, _card: step_resolve(c)}[key](ch, card)
-        say("steps 7 to 9 are by hand: project status " + slug)
+        say("steps 7 and 8: the shot list is by hand; then project build (project status " + slug + ")")
         return 0
     except Stop as s:
         say(f"stopped: {s}")
         return 2
 
 
-def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print):
-    """Record an answer through `card set`, or that the Resolve project is set up."""
+def _name_parts(pairs):
+    """{"client": "X", "episode": 3} from ["client=X", "episode=3"]: episode and index are numbers."""
+    out = {}
+    for p in pairs:
+        k, eq, v = p.partition("=")
+        if not eq or not k or not v:
+            raise ProjectError(f"--name-part {p!r}: use KEY=VALUE")
+        out[k] = int(v) if k in ("episode", "index") and v.isdigit() else v
+    return out
+
+
+def _record(ch, key, value, say):
+    """Record an answer once, with who and when; a second one is refused, not overwritten."""
+    held = ch.st.setdefault("answers", {}).get(key)
+    if held:
+        raise ProjectError(f"{key} is already recorded by {held['by']} at {held['at']}; "
+                           f"edit {ch.path} by hand to change it")
+    ch.st["answers"][key] = {**value, "by": getpass.getuser(), "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    ch.save()
+    say(f"{key}: recorded" + ("" if ch.apply else " (dry run: not written)"))
+
+
+def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
+           shape=None, look=None, destination=None, name_parts=()):
+    """Record an answer through `card set`, that the Resolve project is set up, or one of the
+    build answers (shape, look, destination) in the project state."""
     ch = Chain(cfg, slug, apply, say)
+    held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination))
+            if v and k in ch.st.get("answers", {})]
+    if held:  # refuse before writing any of them
+        raise ProjectError(f"{held[0]} is already recorded by {ch.st['answers'][held[0]]['by']} at "
+                           f"{ch.st['answers'][held[0]]['at']}; edit {ch.path} by hand to change it")
+    if shape:
+        m = re.fullmatch(r"(\d+)x(\d+)", shape)
+        if not m:
+            raise ProjectError(f"--shape {shape!r}: use WIDTHxHEIGHT, such as 1920x1080")
+        _record(ch, "shape", {"width": int(m[1]), "height": int(m[2])}, say)
+    if look:
+        _record(ch, "look", {"lut": look}, say)
+    if destination:
+        _record(ch, "destination", {"key": destination, "name": _name_parts(name_parts)}, say)
+    if shape or look or destination:
+        return 0
     if not ch.st["cards"]:
         raise ProjectError(f"{slug}: no card in {ch.path}; run project start first")
     if resolved:
@@ -423,6 +466,9 @@ def status(cfg, slug, say=print):
             say(f"   next: {NEXT[key]}")
     for o in ch.st.get("open", []):
         say(f"open: {o}")
+    for key, title, how in ANSWERS:
+        if key not in ch.st.get("answers", {}):
+            say(f"open: {title}: project answer {slug} {how} --apply")
     ok = False
     for card in ch.st["cards"]:
         try:
@@ -435,3 +481,109 @@ def status(cfg, slug, say=print):
         say(f"music: python3 resolve_workflow.py music suggest {cfg['music_root']} --method <id> "
             "(tracks by tempo range, a suggestion)")
     return 0
+
+
+# ---- the last stretch: a picked draft to a queued render --------------------
+
+def call_tool(name, args):
+    """Run one MCP tool's own handler in this process, args checked against its schema."""
+    from .mcp import schema, server
+    from .mcp.registry import ToolContext
+    from .mcp.session import ResolveSession
+    tool = server.build_registry().get(name)
+    args = schema.with_defaults(tool.input_schema, args)
+    problems = schema.validate(tool.input_schema, args)
+    if problems:
+        raise ProjectError(f"{name}: {'; '.join(problems)}")
+    return tool.handler(args, ToolContext(session=_SESSION))
+
+
+def open_project_name():
+    from . import api
+    return api.current_project(_SESSION.get())[1].GetName()
+
+
+def _session():
+    from .mcp.session import ResolveSession
+    return ResolveSession()
+
+
+_SESSION = None
+CALL = call_tool
+OPEN_NAME = open_project_name
+
+
+def build(cfg, slug, manifest, name=None, apply=False, say=print):
+    """assemble_timeline, each of the manifest's effects, apply_grade with the recorded look,
+    queue_render for the recorded destination: the tools' own handlers, in order, the first
+    failure stops. A dry run prints every step's dry run (a step after the assemble that needs
+    the timeline to exist says so); --apply runs each for real with the plan_sha of its own dry run."""
+    global _SESSION
+    ch = Chain(cfg, slug, apply, say)
+    ans = ch.st.get("answers", {})
+    missing = [f"{t}: project answer {slug} {h} --apply" for k, t, h in ANSWERS if k not in ans]
+    if missing:
+        raise ProjectError("not recorded, so nothing was built: " + "; ".join(missing))
+    manifest = os.path.abspath(os.path.expanduser(manifest))
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            effects = json.load(f).get("effects") or []
+    except (OSError, ValueError) as e:
+        raise ProjectError(f"{manifest}: cannot read the manifest ({e})")
+    tl = name or slug
+    tl = tl if tl.endswith(" [auto]") else tl + " [auto]"
+    _SESSION = _SESSION or _session()
+    base = {"project": OPEN_NAME()}
+    say(f"build {slug} ({'apply' if apply else 'dry run'}): '{tl}' in Resolve project '{base['project']}'")
+
+    def step(tool, args, after=False):
+        try:
+            r = CALL(tool, {**base, **args, "dry_run": True})
+        except Exception as e:
+            if after and not apply:
+                say(f"  {tool}: not checkable until '{tl}' is built ({e}); would run with {json.dumps(args)}")
+                return None
+            raise ProjectError(f"{tool}: {e}")
+        say(f"  {tool}: {r['summary']}")
+        if not apply:
+            return r
+        try:
+            r = CALL(tool, {**base, **args, "dry_run": False, "plan_sha": r["plan_sha"]})
+        except Exception as e:
+            raise ProjectError(f"{tool}: {e}")
+        say(f"  {tool}: {r['summary']}")
+        bad = [x for x in r.get("results", []) if not x.get("ok", True)]
+        if r.get("problems") or r.get("leaks") or bad or r.get("exit_status", 0):
+            raise ProjectError(f"{tool}: the run did not come out clean; stopped before the next step")
+        return r
+
+    sh = ans["shape"]
+    r = step("assemble_timeline", {"manifest": manifest, "name": tl, "width": sh["width"], "height": sh["height"]})
+    tl = r["timeline"] if isinstance(r.get("timeline"), str) else tl
+    track = r["plan"]["track"]
+    if apply:
+        ch.st["built"] = {"timeline": tl}
+        ch.mark("build", "done", f"built '{tl}'")
+    try:
+        _rest(step, ch, ans, effects, tl, track, apply, say)
+    except ProjectError as e:
+        if apply:
+            raise ProjectError(f"{e}; '{tl}' is built and stays in Resolve: finish the remaining steps by "
+                               "hand or build again with a new --name")
+        raise
+    return 0
+
+
+def _rest(step, ch, ans, effects, tl, track, apply, say):
+    for e in effects:
+        step("apply_effect", {"timeline": tl, "effect": e["effect"], "track": track, "spans": [e["span_index"]],
+                              **({"params": e["params"]} if e.get("params") else {})}, after=True)
+    for t in sorted({1, track}):
+        step("apply_grade", {"timeline": tl, "track": t, "lut": {"path": ans["look"]["lut"]}}, after=True)
+    d = ans["destination"]
+    r = step("queue_render", {"timeline": tl, "destination": d["key"], "name": d["name"]}, after=True)
+    if apply:
+        job = (r.get("job") or {}).get("JobId")
+        ch.st["built"]["job"] = job
+        ch.mark("deliver", "queued", f"job {job}, waiting for a person to start the render")
+        say("queued, not started: a person starts the render")

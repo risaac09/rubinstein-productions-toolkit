@@ -8,6 +8,13 @@ project: start a project from a camera card, resumable (production/project-start
     project answer SLUG [--squeeze F [--clip ID]...] [--resolved] [--apply]
                                   record a squeeze answer through `card set`, or that a person made the
                                   Resolve project and set its colour
+    project answer SLUG [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
+                                  record the delivery shape, the look, the destination once each
+                                  (who and when), in the project state
+    project build SLUG --manifest PATH [--name NAME] [--apply]
+                                  assemble_timeline at the recorded shape, each manifest effect,
+                                  apply_grade with the recorded look, queue_render for the recorded
+                                  destination; a dry run prints one plan; connects to Resolve
     project status SLUG           the nine steps, the next command for steps 7 to 9, and whether the
                                   card may be formatted
 
@@ -15,7 +22,7 @@ State is <work root>/<slug>/project.json. Paths come from the JSON file named by
 $RP_PIPELINE_CONFIG (landing_root, work_root, indexer, offsite_remote, sheets_root;
 project.example.json); each can be given on the command line instead. Every step that writes is
 a dry run until --apply. A card inside <work root>/X/ belongs to project X; a different --project
-is refused unless --new-project. Progress goes to stderr. Never connects to Resolve. Exit 0 done, 2 stopped for a person, 1 refused.
+is refused unless --new-project. Progress goes to stderr. Only build connects to Resolve (the open project is pinned by name by each tool). Exit 0 done, 2 stopped for a person, 1 refused.
 """
 
 import sys
@@ -28,8 +35,8 @@ HELP = "Offline: start a project from a camera card, resumable; answer its quest
 
 
 def add_arguments(p):
-    p.add_argument("action", choices=("start", "answer", "status"))
-    p.add_argument("target", help="start: a card volume or a card folder with its record; answer, status: the project slug")
+    p.add_argument("action", choices=("start", "answer", "status", "build"))
+    p.add_argument("target", help="start: a card volume or a card folder with its record; answer, status, build: the project slug")
     p.add_argument("--project", help="start: the project slug")
     p.add_argument("--new-project", action="store_true",
                    help="start: --project may differ from the work folder the card is in")
@@ -38,6 +45,13 @@ def add_arguments(p):
     p.add_argument("--squeeze", type=float, metavar="FACTOR", help="answer: the squeeze factor; 1 is spherical")
     p.add_argument("--clip", action="append", metavar="ID", help="answer: only this clip (repeatable)")
     p.add_argument("--resolved", action="store_true", help="answer: a person created the Resolve project and set its colour")
+    p.add_argument("--shape", metavar="WxH", help="answer: the delivery shape, such as 3840x1608")
+    p.add_argument("--look", metavar="LUT", help="answer: the look, a LUT path as apply_grade takes it")
+    p.add_argument("--destination", metavar="KEY", help="answer: the delivery destination key")
+    p.add_argument("--name-part", action="append", metavar="K=V",
+                   help="answer: a naming field of the destination (client, slug, show, episode, guest, index); repeatable")
+    p.add_argument("--manifest", help="build: the picked manifest (absolute path)")
+    p.add_argument("--name", help="build: the new timeline's name (default the slug; ' [auto]' is added)")
     p.add_argument("--config", help="the pipeline config (default $RP_PIPELINE_CONFIG)")
     p.add_argument("--landing", help="where a copied card lands")
     p.add_argument("--work-root", help="where project folders live")
@@ -55,7 +69,13 @@ def run(args):
             return rpproject.start(cfg, args.target, args.project, args.cam, args.apply,
                                    say=lambda m: print(m, flush=True), new_project=args.new_project)
         if args.action == "answer":
-            return rpproject.answer(cfg, args.target, args.apply, args.squeeze, args.clip or (), args.resolved)
+            return rpproject.answer(cfg, args.target, args.apply, args.squeeze, args.clip or (), args.resolved,
+                                    shape=args.shape, look=args.look, destination=args.destination,
+                                    name_parts=args.name_part or ())
+        if args.action == "build":
+            if not args.manifest:
+                raise rpproject.ProjectError("build needs --manifest PATH")
+            return rpproject.build(cfg, args.target, args.manifest, args.name, args.apply)
         return rpproject.status(cfg, args.target)
     except (rpproject.ProjectError, rpproject.rpcard.CardError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
