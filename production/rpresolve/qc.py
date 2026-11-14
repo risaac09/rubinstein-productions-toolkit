@@ -35,6 +35,11 @@ and set with --set; none is a standard. They are numbers, not listening:
                         (words joined across gaps under speech_join_s, then
                         padded speech_pad_s) against the rest; WARN when the
                         rest is louder than speech minus speech_rest_margin_lu
+    voice_vs_bed        with --words, each speech span's momentary loudness
+                        against the louder of the gaps beside it (the bed);
+                        WARN names each span under bed + voice_bed_margin_lu.
+                        Needs numpy; a bed that ducks under voice reads
+                        louder in the gaps than it is
     phone_proxy         the mix folded to mono and high-passed at
                         phone_hp_hz: its loudest short-term loudness against
                         the full mix's; WARN when it drops more than
@@ -138,6 +143,8 @@ THRESHOLDS = {
     "speech_pad_s": 0.2,            # padding on each speech span
     "speech_join_s": 0.5,           # word gaps under this join into one span
     "speech_rest_margin_lu": 6.0,   # warn when rest > speech - this
+    "voice_bed_margin_lu": 6.0,     # warn when a speech span is under its bed + this
+    "voice_bed_min_s": 0.7,         # shorter spans and gaps have no clean momentary reading
     "phone_hp_hz": 300.0,           # phone proxy high-pass
     "phone_drop_lu": 8.0,           # warn when the proxy's short-term max drops more than this
     "stems_lu_tol": 0.1,            # stems sum vs mix, integrated
@@ -476,6 +483,46 @@ def _sound_speech_vs_rest(path, words, th):
                  f"words joined across gaps under {th['speech_join_s']:g}s, padded {th['speech_pad_s']:g}s")
 
 
+def _sound_voice_vs_bed(frames, words, th):
+    """PRI-22: per speech span, the voice against the bed beside it. The
+    momentary loudness (400 ms) of each span is its median over the frames
+    wholly inside it; the bed is the median of the gap before and the gap
+    after, the louder of the two. WARN names every span under the margin.
+    shortcut: a mix has no bed track, so the bed is read in the gaps; a bed
+    that ducks under the voice reads louder there than it is (a stricter
+    row, never a looser one). Stems would give the bed itself."""
+    margin = th["voice_bed_margin_lu"]
+    expected = f"each speech span >= its bed + {margin:g} LU{WD}"
+    if words is None:
+        return _srow("voice_vs_bed", SKIP, "no word file", "a word JSON (--words)")
+    floor, need = _ar().NO_READING_LUFS, th["voice_bed_min_s"]
+
+    def level(a, b):  # median M of the frames whose 400 ms window lies in [a, b]
+        v = sorted(m for t, m, _ in frames if a + 0.4 <= t <= b and m > floor)
+        return v[len(v) // 2] if len(v) >= max(3, int(need * 10) - 4) else None
+
+    spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
+    edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]  # gap k lies before span k
+    bad, read = [], 0
+    for k, (a, b) in enumerate(spans):
+        voice = level(a, b)
+        beds = [x for x in (level(*gaps[k]), level(*gaps[k + 1])) if x is not None]
+        if voice is None or not beds:
+            continue
+        read += 1
+        gap = round(voice - max(beds), 1)
+        if gap < margin - 1e-9:
+            bad.append(f"{_at(a)} to {_at(b)} voice {gap:+g} LU over its bed")
+    if not read:
+        return _srow("voice_vs_bed", SKIP, f"0 of {len(spans)} spans readable", expected,
+                     f"each span and a neighbouring gap need {need:g}s of clean frames")
+    return _srow("voice_vs_bed", WARN if bad else PASS,
+                 "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
+                 if bad else f"{read} spans clear of their bed", expected,
+                 f"{read} of {len(spans)} spans read, bed taken from the gaps beside each span")
+
+
 def _sound_phone_proxy(path, full_frames, th):
     full = _max_short_term(full_frames)
     expected = f"drop <= {th['phone_drop_lu']:g} LU{WD}"
@@ -530,11 +577,12 @@ def _sound_rows(path, m, frames, th, cuts, cuts_from, words, stems, ceiling, fps
     rows = [_sound_lra(m)]
     if np is None:  # audioreport, which these rows read, imports numpy
         return rows + [_srow(n, SKIP, "needs numpy", "numpy installed") for n in
-                       ("true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "phone_proxy",
-                        "stems_sum")]
+                       ("true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "voice_vs_bed",
+                        "phone_proxy", "stems_sum")]
     rows.append(_sound_true_peak_per_cut(path, cuts, dur, ceiling, cuts_from))
     rows.append(_sound_silence_at_cut(np, path, cuts, th, fps))
     rows.append(_sound_speech_vs_rest(path, words, th))
+    rows.append(_sound_voice_vs_bed(frames, words, th))
     rows.append(_sound_phone_proxy(path, frames, th))
     rows.append(_sound_stems_sum(np, path, stems, m["integrated_lufs"], th))
     return rows
@@ -953,8 +1001,8 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
                             float(fr) if fr else 24.0, dur or 0.0)
     else:
         for n in ("loudness", "true_peak", "astats_peak", "astats_dc", "silencedetect", "lra",
-                  "true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "phone_proxy",
-                  "stems_sum"):
+                  "true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "voice_vs_bed",
+                  "phone_proxy", "stems_sum"):
             rows.append(_row(n, None, "no audio stream", "-"))
 
     rows.append(_social_fps(streams, dest, th))

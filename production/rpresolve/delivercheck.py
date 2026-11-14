@@ -971,6 +971,35 @@ def approval_row(path, review_log, sha256=None):
     return {"check": "approval", "status": WARN, "found": why, "expected": expected}, None
 
 
+EAR_STEP, EAR_QUESTION = "sound", "ear_check"
+
+
+def ear_check_row(path, review_log=None, sha256=None):
+    """The "ear check: Isaac" row (PRI-22). A named hand step: no code path
+    here listens, so it never passes by machine. It reads WARN (owed) until a
+    person has logged an approve or go line with step sound and question
+    ear_check for this file (media-review-loop: review-log --step sound
+    --question ear_check --review-copy FILE --choice approve); then it PASSes
+    on that answer alone. A later hold withdraws it, as for the approval row.
+    WARN, never FAIL, so it never changes the exit code."""
+    expected = "Isaac's ear check, logged: step sound, question ear_check, choice approve or go"
+    owed = "owed: Isaac has not logged an ear check for this file"
+    if not review_log:
+        return {"check": "ear_check: Isaac", "status": WARN, "found": owed, "expected": expected,
+                "note": "hand step; give --review-log PATH to read the answer"}
+    from rpresolve import tastedistill
+    try:
+        events = [(n, e) for n, e in tastedistill.read_events(review_log)[0]
+                  if e.get("step") == EAR_STEP and e.get("question") == EAR_QUESTION]
+        line, why = find_approval(events, path, sha256)
+    except OSError as e:
+        line, why = None, f"log unreadable ({e.strerror})"
+    if line:
+        return _row("ear_check: Isaac", True, f"{line['choice']} {line.get('ts', '')}", expected)
+    return {"check": "ear_check: Isaac", "status": WARN, "found": f"{owed} ({why})",
+            "expected": expected}
+
+
 # ---------------------------------------------------------------------------
 # Loudness fix
 # ---------------------------------------------------------------------------
@@ -1048,7 +1077,8 @@ def move_to_trash(path, trash_root, stamp, label="deliver-loudfix"):
     return dest
 
 
-def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None, now=None):
+def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None, now=None,
+                 dry_run=False):
     """Two-pass loudnorm of the first audio stream to the destination's
     target, everything else copied. Writes <stem>.loudfix<ext> beside the
     original, checks it as if it had the original's name, and confirms the
@@ -1056,7 +1086,9 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
     passed, the original goes to <trash_root>/deliver-loudfix-<timestamp>/
     and the fixed file takes its name. Returns {original, fixed, measured,
     result_loudnorm, check, video_identical, replaced, trashed, warnings,
-    status}; raises ToolMissing or CheckError."""
+    status}; raises ToolMissing or CheckError. dry_run runs every refusal
+    and stops before any measuring or writing: {original, fixed, warnings,
+    dry_run: True} (the MCP tool's plan)."""
     check_tools(ffmpeg=True)
     if not deliver.has_loudness_target(dest):
         raise CheckError(f"'{dest['key']}' has no loudness target (it is delivered "
@@ -1091,6 +1123,9 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
         warnings.append("data streams (such as a timecode track) are not copied into an mp4; "
                         "ffmpeg writes the timecode track again from the video stream's tag.")
 
+    if dry_run:
+        return {"original": os.path.abspath(path), "fixed": os.path.abspath(out),
+                "warnings": warnings, "dry_run": True}
     loud = dest["loudness"]
     target = float(loud["integrated_lufs"])
     tp = float(loud["true_peak_max_dbtp"]) - float(loud.get("fix_true_peak_margin_db") or 0)

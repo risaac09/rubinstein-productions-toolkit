@@ -28,7 +28,7 @@ PROJECT_RE = re.compile(r"^[A-Z]+-[0-9]+$")
 # fields in story-options.md; a key outside this list is logged with a WARN.
 QUESTIONS = ("warmth", "skin", "contrast", "pace", "music_level",
              "reel_option", "opening", "hook_text", "crop_x", "caption_style", "ending", "tempo",
-             "speed", "transform", "exposure", "stabilizer", "squeeze")
+             "speed", "transform", "exposure", "stabilizer", "squeeze", "ear_check")
 
 
 class Refused(ValueError):
