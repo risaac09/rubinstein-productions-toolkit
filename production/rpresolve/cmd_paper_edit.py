@@ -294,6 +294,23 @@ def manifest(rows, srcs, fps, name):
     return cutlist.validate_manifest(m, allow_no_speech=not speech)
 
 
+def out_clash(out, srcs, rows, inputs):
+    """Why --manifest-out must not be written, or None: an input, a used source or its
+    transcript, or an existing file that is not a manifest (media, a TSV, anything else)."""
+    used = [srcs[r["source"]] for r in rows if r["source"] in srcs]
+    paths = list(inputs) + [p for s in used for p in (s.get("path"), s.get("words")) if p]
+    problem = rppaths.source_problem([out], paths)
+    if problem or not os.path.exists(out):
+        return problem
+    try:
+        with open(out, encoding="utf-8") as f:
+            old = json.load(f)
+        ok = isinstance(old, dict) and "clips" in old and "sources" in old
+    except (OSError, ValueError):
+        ok = False
+    return None if ok else f"{out} exists and is not a manifest; it is never written over"
+
+
 def run(args):
     from rpresolve import cutlist
     problem = rppaths.out_problem(args.manifest_out, any_git_tree=True) if args.manifest_out else None
@@ -327,6 +344,10 @@ def run(args):
     if fails:
         return 1
     if args.manifest_out:
+        problem = out_clash(args.manifest_out, srcs, rows, [args.paper_edit, args.sources])
+        if problem:
+            print(f"ERROR: manifest not written: {problem}", file=sys.stderr)
+            return 1
         try:
             m = manifest(rows, srcs, fps, args.name)
         except (ValueError, KeyError, OSError, cutlist.CutlistError) as e:
