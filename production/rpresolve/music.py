@@ -242,9 +242,12 @@ def suggest(lib, method=None, bpm=None, feel=None, n=10, steady=True):
 def cut_need(manifest_path):
     """(seconds the cut runs, the tempo range of its method or None) for a cut manifest."""
     from . import cmd_assemble
-    with open(manifest_path, encoding="utf-8") as f:
-        raw = json.load(f)
-    p = cmd_assemble.plan(manifest_path)
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        p = cmd_assemble.plan(manifest_path)
+    except Exception as e:  # cmd_assemble's Refused is not a ValueError
+        raise MusicError(f"{manifest_path}: not a cut manifest ({e})")
     mid = (raw.get("method") or {}).get("id")
     return (p["frames"] + (p.get("black_frames") or 0)) / p["fps"], (methods.load(mid).get("bpm") if mid else None)
 
@@ -278,25 +281,26 @@ def excerpts(root, tracks, out, start=0.0, seconds=25.0, seed=None):
                            capture_output=True, text=True, errors="replace")
         if r.returncode:
             raise MusicError(f"{src}: ffmpeg failed: {r.stderr.strip()[-200:]}")
-    flat, lufs = {}, {}
-    for i, t in enumerate(order):
-        letter = chr(65 + i)
-        src = os.path.join(root, t["path"])
-        flat[letter] = os.path.join(out, letter + ".flat.m4a")
-        cut(src, flat[letter], 0)
-        lufs[letter] = loudness(flat[letter])
-        if lufs[letter] is None:
-            raise MusicError(f"{t['path']}: no loudness for the excerpt (too short or silent)")
-    target = min(lufs.values())
-    key = {"seed": seed, "span": f"{start:g}s to {start + seconds:g}s of each track", "matched_to_lufs": target,
-           "options": {}}
-    for i, t in enumerate(order):
-        letter = chr(65 + i)
-        gain = round(target - lufs[letter], 1)
-        cut(os.path.join(root, t["path"]), os.path.join(out, letter + ".m4a"), gain)
-        os.remove(flat[letter])
-        key["options"][letter] = {"path": t["path"], "excerpt_lufs": lufs[letter], "gain_db": gain}
-    key["in"] = start
+    flat, lufs, key = {}, {}, {"seed": seed, "span": f"{start:g}s to {start + seconds:g}s of each track",
+                              "in": start, "options": {}}
+    try:
+        for i, t in enumerate(order):
+            letter = chr(65 + i)
+            flat[letter] = os.path.join(out, letter + ".flat.m4a")
+            cut(os.path.join(root, t["path"]), flat[letter], 0)
+            lufs[letter] = loudness(flat[letter])
+            if lufs[letter] is None:
+                raise MusicError(f"{t['path']}: no loudness for the excerpt (too short or silent)")
+        key["matched_to_lufs"] = target = min(lufs.values())
+        for i, t in enumerate(order):
+            letter = chr(65 + i)
+            gain = round(target - lufs[letter], 1)
+            cut(os.path.join(root, t["path"]), os.path.join(out, letter + ".m4a"), gain)
+            key["options"][letter] = {"path": t["path"], "excerpt_lufs": lufs[letter], "gain_db": gain}
+    finally:
+        for f in flat.values():
+            if os.path.exists(f):
+                os.remove(f)
     tmp = os.path.join(out, "key.json.part")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(key, f, indent=1)

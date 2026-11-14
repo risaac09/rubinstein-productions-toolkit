@@ -420,6 +420,8 @@ def _record(ch, key, value, say):
 def _music_pick(cfg, key_dir, letter, start=None):
     """The pick of a `music candidates` packet: the key.json beside its excerpts says which
     track the letter stood for, relative to the music root; the answer holds its absolute path."""
+    if not key_dir or not letter:
+        raise ProjectError("a music pick needs both --music-key PACKET and --music-pick LETTER")
     try:
         with open(os.path.join(os.path.abspath(os.path.expanduser(key_dir)), "key.json"), encoding="utf-8") as f:
             key = json.load(f)
@@ -555,8 +557,10 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
             say("music: the manifest has its own; the recorded pick is not used")
         else:  # the picked manifest is never edited: build from a copy that holds the pick
             doc["music"] = {"path": ans["music"]["path"], "in": ans["music"]["in"]}
-            manifest = os.path.join(os.path.dirname(ch.path), "build-manifest.json")
-            write_state(manifest, doc)  # a derived file in the project folder, written on a dry run too
+            # beside the state on --apply; a dry run needs a real file for the tool's dry run, so a temp one
+            manifest = os.path.join(os.path.dirname(ch.path) if apply else tempfile.mkdtemp(prefix="build-"),
+                                    "build-manifest.json")
+            write_state(manifest, doc)
             say(f"music: the recorded pick goes in as {manifest}")
     tl = name or slug
     tl = tl if tl.endswith(" [auto]") else tl + " [auto]"

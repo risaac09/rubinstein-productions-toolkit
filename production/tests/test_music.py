@@ -110,6 +110,20 @@ class Pure(unittest.TestCase):
         self.assertEqual([t["path"] for t in got], ["b.wav", "a.wav", "d.wav"])
         self.assertEqual(len(music.candidates(lib, [118, 124], None, 60, 1)), 1)
 
+    def test_cut_need_reads_the_length_and_tempo_of_a_method_manifest(self):
+        from rpresolve import methods
+        m = methods.load("tempo-ladder")
+        fills = [{"source_path": "/none/a.mp4", "in": 10.0 * i, "out": 10.0 * i + s["seconds"]}
+                 for i, s in enumerate(m["slots"])]
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        p = os.path.join(d, "m.json")
+        json.dump(methods.to_manifest(m, fills), open(p, "w"))
+        self.assertEqual(music.cut_need(p), (16.5, m["bpm"]))
+        json.dump({"nope": 1}, open(p, "w"))
+        with self.assertRaisesRegex(music.MusicError, "not a cut manifest"):
+            music.cut_need(p)
+
     def test_playlists_by_band_and_feel(self):
         lib = {"tracks": {"h": {"path": "x/p.wav", "bpm": 120, "feel": ["calm"]}}}
         self.assertEqual(sorted(music.playlists(lib)), ["feel-calm", "tempo-110-125"])

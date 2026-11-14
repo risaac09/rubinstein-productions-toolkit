@@ -317,7 +317,7 @@ class Build(unittest.TestCase):
         self.assertEqual(st["answers"]["music"]["in"], 4.0)
         with self.assertRaisesRegex(project.ProjectError, "already recorded"):
             self.answer(music=(pk, "B", None))
-        text = self.build()
+        text = self.build(apply=True)
         sent = self.calls[0][1]["manifest"]
         self.assertEqual(sent, os.path.join(self.dir, "demo", "build-manifest.json"))
         self.assertEqual(json.load(open(sent))["music"], {"path": os.path.join(root, "a", "tone one.wav"), "in": 4.0})
@@ -332,6 +332,19 @@ class Build(unittest.TestCase):
         text = self.build()
         self.assertEqual(self.calls[0][1]["manifest"], self.manifest)
         self.assertIn("has its own", text)
+
+    def test_a_music_key_without_a_letter_is_refused(self):
+        pk, _ = self.packet()
+        with self.assertRaisesRegex(project.ProjectError, "needs both"):
+            self.answer(music=(pk, None, None))
+
+    def test_a_dry_run_build_leaves_no_file_beside_the_state(self):
+        self.answers()
+        pk, _ = self.packet()
+        self.answer(music=(pk, "B", None))
+        self.build()
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "demo", "build-manifest.json")))
+        self.assertTrue(os.path.isfile(self.calls[0][1]["manifest"]))
 
     def test_a_letter_the_packet_does_not_hold_is_refused(self):
         pk, _ = self.packet()
