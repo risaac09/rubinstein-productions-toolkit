@@ -105,7 +105,7 @@ def _utc(t):
 
 
 def append(project_dir, project, step, device, choice=None, reason=None, key=None, question=None,
-           noise_type=None, repeat_of=None, warn=None, review_copy=None, inline_options=None):
+           noise_type=None, repeat_of=None, warn=None, review_copy=None, inline_options=None, log_path=None):
     """Validate and append one line; returns the line (a dict). Raises Refused.
     inline_options: {label: text} for a lettered question no key was sealed for.
     review_copy: the review-copy file an approve, go or hold line is about; the
@@ -133,7 +133,7 @@ def append(project_dir, project, step, device, choice=None, reason=None, key=Non
                           f"one of {', '.join(NON_LABEL)}" + ("" if options else ", or a rating 1 to 5"))
     if question and question not in QUESTIONS:
         warn(f"question {question!r} is outside the vocabulary ({', '.join(QUESTIONS)})")
-    log = os.path.join(os.path.abspath(project_dir), "review", "events.jsonl")
+    log = log_path or os.path.join(os.path.abspath(project_dir), "review", "events.jsonl")
     problem = paths.out_problem(log)
     if problem:
         raise Refused(problem)
