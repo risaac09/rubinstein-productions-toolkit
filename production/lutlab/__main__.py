@@ -180,6 +180,8 @@ def main(argv=None):
     balance.add_arguments(sub.add_parser("balance", help="per-shot exposure and white balance, a CDL out"))
     a = ap.parse_args(argv)
     name = a.name if a.cmd in ("port", "decompose", "shot-match", "transfer") else None   # these name files out/NAME...
+    if name and any(c in name for c in "\r\n\0"):   # a line break would write a second header line into the .cube
+        ap.error(f"--name {name!r} holds a line break or NUL")
     if name and (Path(name).name != name or name in (".", "..")):   # a path there would leave the checked --out
         ap.error(f"--name {name!r} is a file name, not a path")
 
