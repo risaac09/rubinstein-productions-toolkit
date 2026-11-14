@@ -333,6 +333,12 @@ WRITE_LAYER = "rpresolve"
 TEST_DIR = "tests"
 
 
+# The one exception to "no Delete* anywhere" (Isaac, 2026-11-14): assemble_timeline removes the
+# audio items Resolve spills onto A2 and up when a source has several streams (T36), and the
+# tracks they empty. They are items its own run just appended to the timeline it just created.
+ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": {"DeleteClips", "DeleteTrack"}}
+
+
 def _names(path):
     """(line, name) for every attribute, name or string constant in the file."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=str(path))
@@ -374,7 +380,8 @@ def scan_production(root):
     found = {}
     for f in production_files(root):
         rel = f.relative_to(root)
-        hits = forbidden_uses(f)
+        ok = ALLOWED_DELETES.get(rel.as_posix(), ())
+        hits = [h for h in forbidden_uses(f) if h[1] not in ok]
         if rel.parts[0] != WRITE_LAYER:
             hits += write_uses(f)
         if hits:
