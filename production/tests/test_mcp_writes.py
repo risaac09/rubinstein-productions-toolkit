@@ -336,14 +336,24 @@ TEST_DIR = "tests"
 # The one exception to "no Delete* anywhere" (Isaac, 2026-11-14): assemble_timeline removes the
 # audio items Resolve spills onto A2 and up when a source has several streams (T36), and the
 # tracks they empty. They are items its own run just appended to the timeline it just created.
-ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": {"DeleteClips", "DeleteTrack"},
+# The exemption holds inside the named functions only, so a delete anywhere else in the file (a
+# MediaPool.DeleteClips, a delete on a person's timeline) still fails the guard.
+ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": (("_spill",), {"DeleteClips", "DeleteTrack"}),
                    # contract-probe's --sandbox-checks half (off unless config names a sandbox
                    # project): creates, deletes and starts nothing but rp-probe- objects, and
                    # names these calls to test the walls. Never run yet; Isaac to confirm.
-                   "rpresolve/cmd_contract_probe.py": {
-                       "CloseProject", "CreateProject", "DeleteProject", "LoadProject",
-                       "SaveProject", "StartRendering", "DeleteEffects",
-                       "DeleteFusionCompByName", "DeleteTimelines"}}
+                   "rpresolve/cmd_contract_probe.py": (
+                       ("q1", "q9", "q12", "_scratch_timeline", "s_q1", "s_q12"),
+                       {"CloseProject", "CreateProject", "DeleteProject", "LoadProject",
+                        "SaveProject", "StartRendering", "DeleteEffects",
+                        "DeleteFusionCompByName", "DeleteTimelines"})}
+
+
+def allowed_lines(path, funcs):
+    """The line numbers of the top-level functions `funcs` in the file (none when absent)."""
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=str(path))
+    return {n for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in funcs
+            for n in range(node.lineno, node.end_lineno + 1)}
 
 
 def _names(path):
@@ -387,8 +397,9 @@ def scan_production(root):
     found = {}
     for f in production_files(root):
         rel = f.relative_to(root)
-        ok = ALLOWED_DELETES.get(rel.as_posix(), ())
-        hits = [h for h in forbidden_uses(f) if h[1] not in ok]
+        funcs, ok = ALLOWED_DELETES.get(rel.as_posix(), ((), ()))
+        lines = allowed_lines(f, funcs) if funcs else set()
+        hits = [h for h in forbidden_uses(f) if not (h[1] in ok and h[0] in lines)]
         if rel.parts[0] != WRITE_LAYER:
             hits += write_uses(f)
         if hits:
@@ -424,6 +435,19 @@ class TestForbiddenCalls(unittest.TestCase):
         self.assertEqual([n for _, n in sorted(forbidden_uses(f.name))],
                          ["LoadProject", "DeleteClips", "StartRendering", "eval",
                           "ExportProject", "CloseProject"])
+
+    def test_the_assemble_delete_exemption_holds_inside_spill_only(self):
+        # The spill removal is the one delete allowed; the same names anywhere else in
+        # cmd_assemble.py (a pool delete, a delete on another timeline) still fail.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "rpresolve").mkdir()
+            (root / "rpresolve" / "cmd_assemble.py").write_text(
+                "def _spill(tl):\n    _safe_call(tl, 'DeleteClips', [], False)\n"
+                "    _safe_call(tl, 'DeleteTrack', 'audio', 2)\n\n\n"
+                "def other(media_pool):\n    media_pool.DeleteClips([])\n", encoding="utf-8")
+            found = scan_production(root)
+        self.assertEqual(found, {"rpresolve/cmd_assemble.py": [(7, "DeleteClips")]})
 
     def test_the_guard_fails_a_write_in_any_script_and_names_it(self):
         # A scratch tree shaped like production/: a write call in the legacy script, in the

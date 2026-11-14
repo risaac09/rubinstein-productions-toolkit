@@ -249,7 +249,11 @@ def cut_need(manifest_path):
     except Exception as e:  # cmd_assemble's Refused is not a ValueError
         raise MusicError(f"{manifest_path}: not a cut manifest ({e})")
     mid = (raw.get("method") or {}).get("id")
-    return (p["frames"] + (p.get("black_frames") or 0)) / p["fps"], (methods.load(mid).get("bpm") if mid else None)
+    try:  # a shot-list cut names method "shotlist", which has no tempo range: --bpm gives one
+        bpm = methods.load(mid).get("bpm") if mid else None
+    except ValueError:
+        bpm = None
+    return (p["frames"] + (p.get("black_frames") or 0)) / p["fps"], bpm
 
 
 def candidates(lib, bpm, feel, need_s, n=3):
@@ -269,6 +273,9 @@ def excerpts(root, tracks, out, start=0.0, seconds=25.0, seed=None):
     if len(tracks) > 26:
         raise MusicError("at most 26 excerpts")
     os.makedirs(out, exist_ok=True)
+    for f in os.listdir(out):  # a rerun with fewer tracks must not leave old letters in the packet
+        if re.fullmatch(r"[A-Z](\.flat)?\.m4a|key\.json", f):
+            os.remove(os.path.join(out, f))
     seed = random.SystemRandom().randrange(1 << 16) if seed is None else seed
     order = list(tracks)
     random.Random(seed).shuffle(order)
