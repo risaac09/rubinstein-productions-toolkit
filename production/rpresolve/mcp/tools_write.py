@@ -548,8 +548,9 @@ def _colour_line(r):
     flagged = [os.path.basename(x["path"]) for x in rows if x["flag"]]
     if flagged:
         bits.append("in the pool before this run, log by detect and reading Rec.709: "
-                    + ", ".join(flagged))
-    bits.extend(c["notes"])
+                    + (", ".join(flagged) if len(flagged) <= 3 else f"{len(flagged)} sources"))
+    names = [os.path.basename(x["path"]) for x in rows]
+    bits.extend(cmd_assemble.once(c["notes"], names))
     return "; colour: " + "; ".join(bits) if bits else ""
 
 
@@ -562,8 +563,19 @@ def _squeeze_line(r):
     elif r["desqueeze"] and not r["dry_run"]:
         bits.append(f"Pixel Aspect Ratio set on {sum(1 for x in r['desqueeze'] if x.get('result') == 'set')} "
                     f"of {len(r['desqueeze'])} clip(s), read back")
-    bits += [x["note"] for x in r["shape"] if x["note"]]
+    bits += cmd_assemble.once([x["note"] for x in r["shape"] if x["note"]], [])
     return "; squeeze: " + "; ".join(bits) if bits else ""
+
+
+def _level_line(r):
+    """The camera sound level an assemble_timeline result reports, for its summary."""
+    lv = r["camera_level"]
+    if not lv:
+        return ""
+    verb = "would set" if r["dry_run"] else f"set on {lv['applied']} item(s),"
+    return (f"; camera sound measures {lv['measured_lufs']:g} LUFS (true peak "
+            f"{lv['true_peak_before']:g} dBTP): {verb} {lv['gain_db']:+g} dB for {lv['target']:g} LUFS "
+            f"(peak {lv['true_peak_after']:g} dBTP)")
 
 
 def assemble_timeline(args, ctx):
@@ -591,15 +603,17 @@ def assemble_timeline(args, ctx):
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
         skipped += (f"; {r['exclude_note']}" if r["exclude_note"] else "")
-        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r) + _squeeze_line(r)
+        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r) + _squeeze_line(r) + _level_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
+            return cmd_assemble.compact(r)
         elif r["problems"]:
+            names = [os.path.basename(x["path"]) for x in r["colour"]["sources"]]
             r["summary"] = (f"built '{r['timeline']}' with problems, left in place: "
-                            + "; ".join(r["problems"]))
+                            + "; ".join(cmd_assemble.once(r["problems"], names)))
         else:
             r["summary"] = f"built and read back '{r['timeline']}': {what}{skipped}"
-        return r
+        return cmd_assemble.compact(r)
 
     with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
         return run() if args["dry_run"] else _journalled("assemble_timeline", args, run)
@@ -1339,6 +1353,10 @@ def register(registry):
         "spaces (colorSpaceTimeline, colorSpaceOutput) are copied onto it and read back. A "
         "manifest with camera_sound true also places each span's own camera audio on A1 under "
         "its picture (same source frames, same record frame, read back) and the music moves to A2. "
+        "camera_sound_lufs (a number, with camera_sound) sets one AudioVolume gain on every "
+        "camera item so the A1 bed measures that level (ebur128 over the source ranges used); "
+        "refused when it would put the true peak above -1 dBTP. The result's per-file lists "
+        "are grouped: identical rows merge with a count and the file names. "
         "Nothing existing changes. Refused: a name that exists or does not end ' [auto]', a "
         "manifest whose fps is not the project's timeline rate, a missing file, a song that "
         "runs out before the bed does. A dissolve is "

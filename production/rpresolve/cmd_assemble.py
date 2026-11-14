@@ -151,6 +151,12 @@ def plan(manifest, exclude=None):
     sound = manifest.get("camera_sound", False)
     if not isinstance(sound, bool):
         raise Refused("camera_sound is true or false")
+    lufs = manifest.get("camera_sound_lufs")
+    if lufs is not None:
+        if not sound:
+            raise Refused("camera_sound_lufs is the level of the camera sound bed: set camera_sound true")
+        if isinstance(lufs, bool) or not isinstance(lufs, (int, float)) or not -70 <= lufs <= 0:
+            raise Refused("camera_sound_lufs is a number from -70 to 0 (LUFS)")
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")
@@ -158,7 +164,7 @@ def plan(manifest, exclude=None):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "sound": sound, "squeeze": squeeze,
+            "sound": sound, "sound_lufs": lufs, "squeeze": squeeze,
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -394,14 +400,16 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     colour = colour_plan(project, root, p)
     desqueeze = desqueeze_plan(root, p)
     shape = shape_plan(p, width, height)
+    level = sound_level(p)
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report, tl_colour, desqueeze)
+                   report, tl_colour, desqueeze, level)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
-           "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape,
+           "camera_level": level, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -505,6 +513,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         if p["sound"]:
             check()
             out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems)
+            _camera_level(out, tl, p, problems)
         _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
             if r.get("transition") and len(items) >= r["index"]:
@@ -713,6 +722,120 @@ def _camera_audio(tl, media_pool, p, infos, items, problems):
                             f"for {pic.GetDuration()}")
         rows.append(row)
     return rows
+
+
+PEAK_CEILING_DBTP = -1.0  # the camera bed, after its gain, stays under this true peak
+
+
+def measure_bed(p):
+    """{integrated_lufs, true_peak_dbtp} of the camera sound exactly as placed: each span's
+    source range (its in point, its frames at the timeline's rate) joined in order, read
+    by ffmpeg's ebur128. Raises Refused when ffmpeg cannot read a span's audio."""
+    ins, chains = [], []
+    for i, r in enumerate(p["spans"]):
+        ins += ["-ss", f"{r['in']:.6f}", "-t", f"{r['frames'] / p['fps']:.6f}", "-i",
+                dc._src(r["path"])]
+        chains.append(f"[{i}:a:0]aresample=48000,aformat=channel_layouts=stereo[a{i}]")
+    n = len(p["spans"])
+    graph = (";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(n))
+             + f"concat=n={n}:v=0:a=1,ebur128=peak=true:framelog=quiet")
+    try:
+        dc.check_tools()
+        proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", *ins,
+                        "-filter_complex", graph, "-f", "null", "-"], dc.READ_TIMEOUT_S)
+        if proc.returncode != 0:
+            raise dc.CheckError(proc.stderr.strip()[-300:])
+        return dc.parse_ebur128(proc.stderr)
+    except (dc.ToolMissing, dc.CheckError) as e:
+        raise Refused(f"camera_sound_lufs: the camera sound could not be measured: {e}")
+
+
+def sound_level(p):
+    """The one gain that puts the camera sound bed on the manifest's camera_sound_lufs, or
+    None without one: {target, measured_lufs, gain_db, true_peak_before, true_peak_after,
+    ceiling}. Refused when the gain would put the true peak above PEAK_CEILING_DBTP (a
+    bed that would clip) or the sound is silent."""
+    if p["sound_lufs"] is None:
+        return None
+    m = measure_bed(p)
+    i, tp = m["integrated_lufs"], m["true_peak_dbtp"]
+    if i is None or i == float("-inf") or tp is None:
+        raise Refused("camera_sound_lufs: the camera sound is silent over the spans used")
+    gain = round(float(p["sound_lufs"]) - i, 2)
+    after = round(tp + gain, 2)
+    if after > PEAK_CEILING_DBTP:
+        raise Refused(f"camera_sound_lufs {p['sound_lufs']:g}: the bed measures {i:g} LUFS with a "
+                      f"true peak of {tp:g} dBTP, so {gain:+g} dB would put the peak at {after:g} "
+                      f"dBTP, above the {PEAK_CEILING_DBTP:g} dBTP ceiling. Lower the target or "
+                      "limit the loudest shot.")
+    return {"target": p["sound_lufs"], "measured_lufs": i, "gain_db": gain,
+            "true_peak_before": tp, "true_peak_after": after, "ceiling": PEAK_CEILING_DBTP,
+            "applied": 0}
+
+
+def _camera_level(out, tl, p, problems):
+    """One AudioVolume (dB) on every camera item of A1, read back. An item that does not take
+    it is a problem and the gain is named in not_built for a person to set."""
+    level = out["camera_level"]
+    if not level:
+        return
+    items = tl.GetItemListInTrack("audio", 1) or []
+    if len(items) != len(p["spans"]):
+        problems.append("camera sound level not set: A1 does not hold one item per span")
+        return
+    failed = []
+    for it in items:
+        try:
+            api.set_property_checked(it, "AudioVolume", level["gain_db"])
+        except api.WriteNotApplied as e:
+            failed.append(str(e))
+    level["applied"] = len(items) - len(failed)
+    if failed:
+        problems.append(f"camera sound level: {len(failed)} of {len(items)} item(s) did not take "
+                        f"AudioVolume {level['gain_db']:+g} dB ({failed[0]})")
+        p["not_built"].append(f"the camera sound level: set {level['gain_db']:+g} dB on A1 by hand "
+                              f"(measured {level['measured_lufs']:g} LUFS, target {level['target']:g})")
+
+
+def _group(rows):
+    """Rows identical but for their path (or source name) as one row with `count` and
+    `files`; a row that differs from every other stays a full row."""
+    groups = {}
+    for row in rows:
+        key = json.dumps({k: v for k, v in row.items() if k not in ("path", "source")},
+                         sort_keys=True, default=str)
+        groups.setdefault(key, []).append(row)
+    out = []
+    for same in groups.values():
+        if len(same) == 1:
+            out.append(same[0])
+            continue
+        names = [os.path.basename(r.get("path") or r.get("source")) for r in same]
+        out.append({**{k: v for k, v in same[0].items() if k not in ("path", "source")},
+                    "count": len(same), "files": names})
+    return out
+
+
+def compact(r):
+    """A shorter copy of an apply_assemble result for a tool to return: the per-file lists
+    (colour sources, desqueeze, plan squeeze, shape) grouped by _group. Every key stays;
+    only identical rows merge. The plan_sha is computed from the full rows."""
+    return {**r, "colour": {**r["colour"], "sources": _group(r["colour"]["sources"])},
+            "desqueeze": _group(r["desqueeze"]), "shape": _group(r["shape"]),
+            "plan": {**r["plan"], "squeeze": _group(r["plan"]["squeeze"])}}
+
+
+def once(lines, names):
+    """Each distinct line once, with a count: lines that differ only by a file name in
+    `names` ('14 sources: ...' with the name read as 'each'). Order of first sight."""
+    seen = {}
+    for line in lines:
+        key = line
+        for n in sorted(names, key=len, reverse=True):
+            key = key.replace(n, "<file>")
+        seen.setdefault(key, [line, 0])[1] += 1
+    return [line if n == 1 else f"{n} sources: {key.replace('<file>', 'each')}"
+            for key, (line, n) in seen.items()]
 
 
 def _music(tl, media_pool, clip, p, tl_fps, problems, track=1):
