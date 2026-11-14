@@ -52,6 +52,12 @@ in, time_s, time or cut_s; the first shot's start is not a cut), else from
 the scdet cuts of the file itself. WARN does not fail the table.
 
 Offline rows (VP-23a, VP-20). Thresholds are working defaults, printed in the row:
+    privacy            always on: the container and stream tags, WARN on a
+                       location or GPS tag, a serial, an artist, author,
+                       creator, owner or comment field, or a value holding a
+                       home-folder path or an email address. Names the tags,
+                       never the values. Metadata only; the frame pass at one
+                       frame per second is a look, not this row
     blackdetect        black that starts within black_lead_start_s of the head
                        and lasts under black_lead_max_s is a fade-in: WARN
                        (decision 30). Longer leading black, or black anywhere
@@ -714,6 +720,35 @@ def _colour_row(path, colour, th, has_video):
                  f"{m['frames_sampled']} frames, read as display Rec.709")
 
 
+PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment", re.I)
+PRIVATE_VALUE = re.compile(r"(?:/Users/|/home/|/Volumes/|[A-Za-z]:\\Users\\)|[\w.+-]+@[\w-]+\.[\w.-]+")
+
+
+def _privacy_row(info):
+    """The metadata half of the privacy pass (VP-20). Reads the container and
+    stream tags ffprobe already gave: a location or GPS tag, a serial number,
+    an artist, author, creator, owner or comment field, or any tag whose value
+    holds a home-folder path or an email address. Names the tags, never their
+    values, so the report itself carries nothing private. WARN, never FAIL: a
+    credit may be wanted. The frame pass at one frame per second is a look, not
+    this row."""
+    expected = "no location, serial, personal-name, path or email tag (working default list)"
+    where = [("format", (info.get("format") or {}).get("tags") or {})]
+    where += [(f"{s.get('codec_type', 'stream')} {s.get('index', '')}".strip(), s.get("tags") or {})
+              for s in info.get("streams") or []]
+    hits, read = [], 0
+    for place, tags in where:
+        for k, v in tags.items():
+            read += 1
+            if str(v).strip() and (PRIVATE_KEY.search(k) or PRIVATE_VALUE.search(str(v))):
+                hits.append(f"{place}: {k}")
+    return _srow("privacy", WARN if hits else PASS,
+                 "; ".join(hits[:6]) + (f"; +{len(hits) - 6} more" if len(hits) > 6 else "")
+                 if hits else f"{read} tags read, none private", expected,
+                 "metadata only (ffprobe tags, values not printed); the one-frame-per-second look "
+                 "at the picture stays a person's")
+
+
 def _shift(np, a, b):
     """(dx, dy) whole-pixel translation of b against a, by phase correlation."""
     f = np.fft.fft2(a - a.mean()) * np.conj(np.fft.fft2(b - b.mean()))
@@ -1006,6 +1041,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
             rows.append(_row(n, None, "no audio stream", "-"))
 
     rows.append(_social_fps(streams, dest, th))
+    rows.append(_privacy_row(info))
     rows.append(_sha256_row(path, sha256))
     rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
     rows.append(_sync_row(path, sync_ref, th, has_audio))

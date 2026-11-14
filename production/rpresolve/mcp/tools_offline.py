@@ -555,7 +555,9 @@ def qc(args, ctx):
                  shots=rpqc.shot_count(shots) if shots else None,
                  shot_cut_times=rpqc.shot_cuts(shots) if shots else None,
                  words=rpqc.load_words(words) if words else None, stems=stems,
-                 sha256=args.get("sha256"))
+                 sha256=args.get("sha256"),
+                 sync_ref=_existing(args["sync_ref"], "sync_ref") if args.get("sync_ref") else None,
+                 colour=bool(args.get("colour")), stabiliser=bool(args.get("stabiliser")))
     r["summary"] = rpqc.format_report(r).strip().splitlines()[-1]
     return r
 
@@ -1212,8 +1214,9 @@ def register(registry):
         "One FAIL-first QC table for a rendered file: ffmpeg blackdetect, freezedetect, scdet, "
         "ebur128, astats and silencedetect rows, plus deliver_check's rows when a destination "
         "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
-        "speech_vs_rest with words, stems_sum with stems), sha256, and for a social "
-        "destination social_fps and safe_zone. WARN rows never fail the table. Never connects "
+        "speech_vs_rest and voice_vs_bed with words, stems_sum with stems), sha256, privacy "
+        "(metadata tags: location, serial, name, path, email), and for a social "
+        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref), colour, stabiliser. WARN rows never fail the table. Never connects "
         "to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1234,6 +1237,15 @@ def register(registry):
                         "description": "Absolute paths of stem files: adds stems_sum."},
               "sha256": {"type": "string", "pattern": r"^[0-9a-fA-F]{64}$",
                          "description": "Expected sha256 of the file."},
+              "sync_ref": {"type": "string", "description": "Absolute path of the reference "
+                           "(the camera or recorder file the sound should line up with): adds "
+                           "the sync row, offset and drift against it (needs numpy)."},
+              "colour": {"type": "boolean", "default": False,
+                         "description": "Adds the colour row: luma legal range (FAIL outside "
+                         "16-235) and clipped pixels (WARN)."},
+              "stabiliser": {"type": "boolean", "default": False,
+                             "description": "Adds the stabiliser row: residual frame-to-frame "
+                             "shake of the render (WARN; judges the picture, not the setting)."},
               "set": {"type": "array", "items": {"type": "string"},
                       "description": "KEY=VALUE threshold overrides (keys are in "
                       "rpresolve/qc.py THRESHOLDS)."}}, ["file"]),
