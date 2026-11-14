@@ -240,6 +240,10 @@ class TestFrameCropping(unittest.TestCase):
                         "testsrc2=s=640x360:r=25:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                         "-y", plain], check=True)
         add_clap(plain, out, top, bottom, left, right)
+        listed = subprocess.run([measure.FFPROBE, "-v", "error", "-show_streams", out],
+                                capture_output=True, text=True).stdout
+        if "Frame Cropping" not in listed:
+            self.skipTest("this build does not read Frame Cropping from a clap box")
         return out
 
     def test_probe_reports_the_decoded_size(self):
