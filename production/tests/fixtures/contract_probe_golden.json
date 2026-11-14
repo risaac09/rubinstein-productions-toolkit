@@ -1,4 +1,37 @@
 {
+  "I0:MediaPool.ImportTimelineFromFile": {
+    "present": true
+  },
+  "I0:Timeline.Export": {
+    "present": true
+  },
+  "I0:Timeline.ImportIntoTimeline": {
+    "present": true
+  },
+  "M0:Resolve.Fusion": {
+    "present": true
+  },
+  "M0:Timeline.InsertFusionTitleIntoTimeline": {
+    "present": true
+  },
+  "M0:Timeline.InsertGeneratorIntoTimeline": {
+    "present": true
+  },
+  "M0:Timeline.InsertTitleIntoTimeline": {
+    "present": true
+  },
+  "M0:TimelineItem.ExportFusionComp": {
+    "present": true
+  },
+  "M0:TimelineItem.ImportFusionComp": {
+    "present": true
+  },
+  "M0:TimelineItem.LoadFusionCompByName": {
+    "present": true
+  },
+  "M0:TimelineItem.RenameFusionCompByName": {
+    "present": true
+  },
   "Q0:Resolve.GetProductName": {
     "present": true,
     "type": "str"
@@ -201,5 +234,91 @@
   "Q9:TimelineItem.GetFusionCompCount": {
     "present": true,
     "type": "int"
+  },
+  "R0:Graph.ApplyGradeFromDRX": {
+    "present": true
+  },
+  "R0:Graph.GetLUT[1]": {
+    "present": true,
+    "type": "str"
+  },
+  "R0:Graph.GetNodeEnabled[1]": {
+    "present": true,
+    "type": "bool"
+  },
+  "R0:Graph.GetNodeLabel[1]": {
+    "present": true,
+    "type": "str"
+  },
+  "R0:Graph.GetNumNodes": {
+    "present": true,
+    "type": "int"
+  },
+  "R0:Graph.GetToolsInNode[1]": {
+    "present": true,
+    "type": "list"
+  },
+  "R0:Graph.ResetAllGrades": {
+    "present": true
+  },
+  "R0:Graph.SetLUT": {
+    "present": true
+  },
+  "R0:Graph.SetNodeLabel": {
+    "present": true
+  },
+  "R0:Project.GetSetting[colorScienceMode]": {
+    "present": true,
+    "type": "str"
+  },
+  "R0:TimelineItem.GetCDL[1]": {
+    "present": true,
+    "type": "dict"
+  },
+  "R0:TimelineItem.GetNodeGraph": {
+    "present": true,
+    "type": "object"
+  },
+  "R10:Project.GetSetting[all]": {
+    "present": true,
+    "type": "dict"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Data Level]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Input Color Space]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Input Gamma]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.SetClipProperty": {
+    "present": true
+  },
+  "R9:MediaPoolItem.GetClipProperty[all]": {
+    "present": true,
+    "type": "dict"
+  },
+  "S4:Resolve.GetEffectsList[audio]": {
+    "present": true,
+    "type": "list"
+  },
+  "S4:TimelineItem.AddEffect": {
+    "present": true
+  },
+  "S4:TimelineItem.GetEffects[audio]": {
+    "present": true,
+    "type": "list"
+  },
+  "S9:Project.GetAudioRenderCodecs": {
+    "present": true,
+    "type": "dict"
+  },
+  "S9:Project.GetAudioRenderFormats": {
+    "present": true,
+    "type": "dict"
   }
 }

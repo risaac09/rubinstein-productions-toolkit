@@ -335,6 +335,73 @@ def q12(ctx, t):
     ctx.look("MediaPool.DeleteTimelines", t["pool"], "DeleteTimelines")
 
 
+def r0(ctx, t):
+    """Grade surface: nodes, LUT, label, tools, CDL on the first video item (reads only)."""
+    v = t["video_item"]
+    g = ctx.call("TimelineItem.GetNodeGraph", v, "GetNodeGraph")
+    n = ctx.call("Graph.GetNumNodes", g, "GetNumNodes") if g is not None else None
+    if isinstance(n, int) and n > 0:
+        for m in ("GetLUT", "GetNodeLabel", "GetToolsInNode", "GetNodeEnabled"):
+            ctx.call(f"Graph.{m}[1]", g, m, 1)
+        ctx.call("TimelineItem.GetCDL[1]", v, "GetCDL", 1)
+    for m in ("SetLUT", "SetNodeLabel", "ApplyGradeFromDRX", "ResetAllGrades"):
+        ctx.look(f"Graph.{m}", g, m)  # looked up, never called
+    ctx.call("Project.GetSetting[colorScienceMode]", t["project"], "GetSetting", "colorScienceMode")
+
+
+def r5(ctx, t):
+    """Input colour state of a pool clip."""
+    for k in ("Input Color Space", "Input Gamma", "Data Level"):
+        ctx.call(f"MediaPoolItem.GetClipProperty[{k}]", t["clip"], "GetClipProperty", k)
+    ctx.look("MediaPoolItem.SetClipProperty", t["clip"], "SetClipProperty")
+
+
+def r9(ctx, t):
+    """Every clip property key (a key listing)."""
+    ctx.call("MediaPoolItem.GetClipProperty[all]", t["clip"], "GetClipProperty")
+
+
+def r10(ctx, t):
+    """Every project setting key, and whether any names Camera Raw."""
+    got = ctx.call("Project.GetSetting[all]", t["project"], "GetSetting")
+    if isinstance(got, dict):
+        hits = sorted(k for k in got if "raw" in str(k).lower())
+        ctx.note("Project.GetSetting.raw_keys", f"{len(hits)} key(s) mention raw")
+
+
+def s4(ctx, t):
+    ctx.call("Resolve.GetEffectsList[audio]", t["resolve"], "GetEffectsList", "audio")
+    ctx.call("TimelineItem.GetEffects[audio]", t["audio_item"], "GetEffects", "audio")
+    ctx.look("TimelineItem.AddEffect", t["audio_item"], "AddEffect")
+
+
+def s9(ctx, t):
+    fmts = ctx.call("Project.GetAudioRenderFormats", t["project"], "GetAudioRenderFormats")
+    if isinstance(fmts, dict) and fmts:
+        ctx.call("Project.GetAudioRenderCodecs", t["project"], "GetAudioRenderCodecs", str(next(iter(fmts.values()))))
+
+
+def m0(ctx, t):
+    ctx.look("Resolve.Fusion", t["resolve"], "Fusion")
+    for m in ("ExportFusionComp", "ImportFusionComp", "LoadFusionCompByName", "RenameFusionCompByName"):
+        ctx.look(f"TimelineItem.{m}", t["video_item"], m)
+    for m in ("InsertTitleIntoTimeline", "InsertFusionTitleIntoTimeline", "InsertGeneratorIntoTimeline"):
+        ctx.look(f"Timeline.{m}", t["timeline"], m)
+
+
+EXPORT_NAMES = ("EXPORT_AAF", "EXPORT_DRT", "EXPORT_EDL", "EXPORT_FCP_7_XML", "EXPORT_FCPXML_1_10",
+                "EXPORT_OTIO", "EXPORT_ALE_CDL", "EXPORT_AAF_NEW", "EXPORT_CDL", "EXPORT_NONE")
+
+
+def i0(ctx, t):
+    ctx.look("MediaPool.ImportTimelineFromFile", t["pool"], "ImportTimelineFromFile")
+    ctx.look("Timeline.Export", t["timeline"], "Export")
+    ctx.look("Timeline.ImportIntoTimeline", t["timeline"], "ImportIntoTimeline")
+    r = ctx.raw(t["resolve"])
+    missing = [n for n in EXPORT_NAMES if getattr(r, n, None) is None]
+    ctx.note("Resolve.export_constants", "all present" if not missing else "absent: " + ", ".join(missing))
+
+
 READ_CHECKS = [
     ("Q0", "Build and product stamp", q0),
     ("Q1", "Project create and settings presets: calls present, reads", q1),
@@ -349,6 +416,14 @@ READ_CHECKS = [
     ("Q10", "Fairlight presets and track format reads", q10),
     ("Q11", "Level calls: modes list, calls present", q11),
     ("Q12", "Render start and import: calls present, rendering flag", q12),
+    ("R0", "Grade surface: node graph, LUT, label, tools, CDL, colour science mode", r0),
+    ("R5", "Input colour space, gamma and data level of a pool clip", r5),
+    ("R9", "Every clip property key", r9),
+    ("R10", "Every project setting key; any that names raw", r10),
+    ("S4", "Audio effects list and an item's audio effects", s4),
+    ("S9", "Audio render formats and codecs", s9),
+    ("M0", "Fusion, comp export and import, title insert calls present", m0),
+    ("I0", "Timeline import and export calls and export constants present", i0),
 ]
 
 
@@ -533,6 +608,116 @@ def s_q12(ctx, t):
     ctx.note("Project.StartRendering", "never called by this probe; start a render by hand and read the job status")
 
 
+def _tmpdir(ctx):
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix="rp-probe-")
+    ctx.cleanups.append(lambda: shutil.rmtree(d, ignore_errors=True))
+    return d
+
+
+def s_r3(ctx, t):
+    tl, items = _scratch_timeline(ctx, t, "r3")
+    if tl is None or not items:
+        return
+    item = items[0]
+    ctx.call("TimelineItem.SetCDL", item, "SetCDL", {"NodeIndex": 1, "Slope": "1.1 1.1 1.1",
+                                                     "Offset": "0 0 0", "Power": "1 1 1", "Saturation": 0.9})
+    got = ctx.call("TimelineItem.GetCDL.after", item, "GetCDL", 1)
+    slope = str((got or {}).get("Slope", "")).split() if isinstance(got, dict) else []
+    ok = len(slope) == 3 and all(abs(float(x) - 1.1) < 1e-3 for x in slope if x.replace(".", "", 1).isdigit())
+    ctx.note("TimelineItem.GetCDL.read_back", "same as set" if ok else "differs from set or not read")
+
+
+def s_r7(ctx, t):
+    tl, items = _scratch_timeline(ctx, t, "r7")
+    if tl is None or not items:
+        return
+    project = t["project"]
+    group = ctx.call("Project.AddColorGroup", project, "AddColorGroup", PREFIX + "look")
+    if group is None:
+        return
+    raw = ctx.raw(group)
+    ctx.cleanups.append(lambda: project.DeleteColorGroup(raw))
+    ctx.call("TimelineItem.AssignToColorGroup", items[0], "AssignToColorGroup", raw)
+    back = items[0].GetColorGroup()
+    ctx.note("TimelineItem.GetColorGroup.read_back",
+             "the group assigned" if back is not None and back.GetName() == PREFIX + "look" else "not the group assigned")
+    post = raw.GetPostClipNodeGraph()
+    ctx.note("ColorGroup.GetPostClipNodeGraph", "present" if post is not None else "None")
+
+
+def s_s2(ctx, t):
+    tl, items = _scratch_timeline(ctx, t, "s2")
+    if tl is None:
+        return
+    for sub in ("mono", "stereo", "5.1", "adaptive"):  # the scratch timeline is deleted at cleanup
+        before = tl.GetTrackCount("audio") or 0
+        ctx.call(f"Timeline.AddTrack[{sub}]", tl, "AddTrack", "audio", sub)
+        after = tl.GetTrackCount("audio") or 0
+        ctx.note(f"Timeline.GetTrackSubType[{sub}]",
+                 str(tl.GetTrackSubType("audio", after)) if after > before else "no track made")
+
+
+def s_s7(ctx, t):
+    tl, items = _scratch_timeline(ctx, t, "s7")
+    if tl is None:
+        return
+    audio = (tl.GetItemListInTrack("audio", 1) or [None])[0]
+    modes = [m for m in (tl.GetNormalizeAudioModes() or []) if "peak" not in m.lower()]
+    if audio is None or not modes:
+        ctx.note("setup", "no audio item or no loudness mode on the scratch timeline")
+        return
+    ctx.call("TimelineItem.AnalyzeAudioLevels.before", audio, "AnalyzeAudioLevels", modes[0])
+    ctx.call("Timeline.NormalizeAudioLevel", tl, "NormalizeAudioLevel", [audio],
+             {"normalizationMode": modes[0], "targetLoudness": -23.0})
+    ctx.call("TimelineItem.AnalyzeAudioLevels.after", audio, "AnalyzeAudioLevels", modes[0])
+
+
+def s_m1(ctx, t):
+    import os
+    tl, items = _scratch_timeline(ctx, t, "m1")
+    if tl is None or not items:
+        return
+    item = items[0]
+    comp = ctx.call("TimelineItem.AddFusionComp", item, "AddFusionComp")
+    if comp is None:
+        return
+    ctx.call("FusionComp.AddTool[TextPlus]", comp, "AddTool", "TextPlus")
+    path = os.path.join(_tmpdir(ctx), "comp.comp")
+    ctx.call("TimelineItem.ExportFusionComp", item, "ExportFusionComp", path, 1)
+    ctx.note("TimelineItem.ExportFusionComp.file", f"{os.path.getsize(path)} byte(s)" if os.path.exists(path) else "no file")
+
+
+def s_m3(ctx, t):
+    tl, items = _scratch_timeline(ctx, t, "m3")
+    if tl is None:
+        return
+    titled = ctx.call("Timeline.InsertTitleIntoTimeline", tl, "InsertTitleIntoTimeline", "Text")
+    if titled is not None:
+        ctx.call("TimelineItem.GetFusionCompCount", titled, "GetFusionCompCount")
+
+
+def s_i1(ctx, t):
+    import os
+    tl, items = _scratch_timeline(ctx, t, "i1")
+    if tl is None:
+        return
+    r = ctx.raw(t["resolve"])
+    d = _tmpdir(ctx)
+    none = getattr(r, "EXPORT_NONE", None)
+    for name, ext in (("EXPORT_FCPXML_1_10", "fcpxml"), ("EXPORT_FCP_7_XML", "xml"), ("EXPORT_OTIO", "otio"),
+                      ("EXPORT_EDL", "edl"), ("EXPORT_AAF", "aaf")):
+        const = getattr(r, name, None)
+        if const is None:
+            ctx.note(f"Timeline.Export[{name}]", "constant absent")
+            continue
+        sub = getattr(r, "EXPORT_AAF_NEW", none) if name == "EXPORT_AAF" else none
+        path = os.path.join(d, "t." + ext)
+        ctx.call(f"Timeline.Export[{name}]", tl, "Export", path, const, sub)
+        ctx.note(f"Timeline.Export[{name}].file", f"{os.path.getsize(path)} byte(s)" if os.path.exists(path) else "no file")
+
+
 SANDBOX_CHECKS = [
     ("Q2", "Remap a clip to one stereo track, append audio-only, count tracks, restore", s_q2),
     ("Q3", "SetFades and audio AddTransition on a scratch timeline", s_q3),
@@ -545,6 +730,13 @@ SANDBOX_CHECKS = [
     ("Q10", "Fairlight preset names (nothing applied)", s_q10),
     ("Q11", "AudioVolume set, read back, restored", s_q11),
     ("Q12", "Render start is not called", s_q12),
+    ("R3", "SetCDL on a scratch item and read it back", s_r3),
+    ("R7", "A colour group: add, assign, read back", s_r7),
+    ("S2", "AddTrack for each audio track format and the subtype it reads back", s_s2),
+    ("S7", "Analyse, normalise to a loudness, analyse again", s_s7),
+    ("M1", "A Fusion comp with a Text+ tool, exported to a file", s_m1),
+    ("M3", "Insert a standard title on a scratch timeline", s_m3),
+    ("I1", "Export a scratch timeline in five formats", s_i1),
     # Last: it switches the open project, which stales every object taken from it.
     ("Q1", "Create a project, see whether it becomes current, switch back, delete it", s_q1),
 ]

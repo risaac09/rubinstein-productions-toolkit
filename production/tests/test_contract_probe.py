@@ -14,6 +14,11 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "contract_probe_gol
 CALLS = []
 
 
+def _w(path, text):
+    with open(path, "w") as f:
+        f.write(text)
+
+
 class Obj:
     """A fake scripting object: only the methods a subclass defines exist."""
 
@@ -34,7 +39,15 @@ class Item(Obj):
     def GetSpeed(self): return {"Percentage": 100.0}
     def SetSpeed(self, o): self._log("SetSpeed", o); return True
     def GetFusionCompCount(self): return 0
-    def AddFusionComp(self): self._log("AddFusionComp"); return None
+    def AddFusionComp(self): self._log("AddFusionComp"); return Comp(self)
+    def ExportFusionComp(self, path, i): _w(path, "comp"); return True
+    def ImportFusionComp(self, path): return None
+    def LoadFusionCompByName(self, n): return None
+    def RenameFusionCompByName(self, a, b): return True
+    def GetNodeGraph(self, layer=None): return Graph()
+    def GetColorGroup(self): return getattr(self, "group", None)
+    def AssignToColorGroup(self, g): self.group = g; return True
+    def GetEffects(self, c): return []
     def CreateMagicMask(self, m): self._log("CreateMagicMask", m); return False
     def GetSourceAudioChannelMapping(self): return "{}"
     def SetSourceAudioChannelMapping(self, m): return True
@@ -42,16 +55,39 @@ class Item(Obj):
     def DeleteEffects(self, e): return True
     def DeleteFusionCompByName(self, n): return False
     def ExportLUT(self, t, p): return True
-    def SetCDL(self, c): return True
-    def GetCDL(self, n): return {}
-    def AnalyzeAudioLevels(self, s): return {}
+    def SetCDL(self, c): self.cdl = {k: c[k] for k in ("Slope", "Offset", "Power")}; return True
+    def GetCDL(self, n): return getattr(self, "cdl", {})
+    def AnalyzeAudioLevels(self, s): return {"Integrated": -30.0, "TruePeak": -5.0}
+
+
+class Graph(Obj):
+    def GetNumNodes(self): return 1
+    def GetLUT(self, n): return ""
+    def GetNodeLabel(self, n): return ""
+    def GetToolsInNode(self, n): return []
+    def GetNodeEnabled(self, n): return True
+    def SetLUT(self, n, p): self._log("SetLUT"); return True
+    def SetNodeLabel(self, n, l): return True
+    def ApplyGradeFromDRX(self, p, m): return True
+    def ResetAllGrades(self): self._log("ResetAllGrades"); return True
+
+
+class Comp(Obj):
+    def __init__(self, item): self.item = item
+    def AddTool(self, i, *a): self._log("AddTool", i); return Obj()
+
+
+class Group(Obj):
+    def GetName(self): return "rp-probe-look"
+    def GetPostClipNodeGraph(self): return Graph()
 
 
 class Clip(Obj):
     mapping = "{}"
     def GetAudioMapping(self): return self.mapping
     def SetAudioMapping(self, m): self._log("SetAudioMapping", m); self.mapping = m; return True
-    def GetClipProperty(self, k=None): return "2"
+    def GetClipProperty(self, k=None): return "2" if k else {"Input Color Space": "Rec.709", "File Name": "x"}
+    def SetClipProperty(self, k, v): self._log("SetClipProperty", k); return True
 
 
 class Folder(Obj):
@@ -64,7 +100,13 @@ class Timeline(Obj):
     def GetItemListInTrack(self, k, i): return [Item()] if i <= self.tracks else []
     def GetTrackSubType(self, k, i): return "stereo"
     def GetNormalizeAudioModes(self): return ["Sample Peak Program"]
-    def NormalizeAudioLevel(self, items, o): return True
+    def NormalizeAudioLevel(self, items, o): self._log("NormalizeAudioLevel"); return True
+    def AddTrack(self, kind, sub=None): self._log("AddTrack", sub); self.tracks += 1; return True
+    def InsertTitleIntoTimeline(self, n): self._log("InsertTitleIntoTimeline", n); return Item()
+    def InsertFusionTitleIntoTimeline(self, n): return Item()
+    def InsertGeneratorIntoTimeline(self, n): return Item()
+    def Export(self, path, kind, sub): self._log("Export", kind); _w(path, "x"); return True
+    def ImportIntoTimeline(self, p, o=None): return True
 
 
 class Pool(Obj):
@@ -78,6 +120,7 @@ class Pool(Obj):
         self.tl.tracks = 2 if self.SPILL == "always" or (self.SPILL and not remapped) else 1
         return [Item()]
     def DeleteTimelines(self, t): self._log("DeleteTimelines"); return True
+    def ImportTimelineFromFile(self, p, o=None): return None
     def CreateEmptyTimeline(self, n): self._log("CreateEmptyTimeline", n); self.tl = Timeline(); return self.tl
 
 
@@ -89,6 +132,10 @@ class Project(Obj):
     def SetCurrentTimeline(self, t): self._log("SetCurrentTimeline"); return True
     def GetProjectSettingsPresetList(self): return []
     def GetSettings(self): return {"colorScienceMode": "davinciYRGB"}
+    def GetSetting(self, k=None): return "davinciYRGB" if k else {"colorScienceMode": "davinciYRGB", "timelineFrameRate": "24"}
+    def AddColorGroup(self, n): self._log("AddColorGroup", n); return Group()
+    def DeleteColorGroup(self, g): self._log("DeleteColorGroup"); return True
+    def GetAudioRenderCodecs(self, e): return {"Linear PCM": "lpcm"}
     def SaveCurrentProjectSettingsAsNewPreset(self, n): return True
     def SetProjectSettingsPreset(self, n): return True
     def ExportProjectSettingsPreset(self, n, p): return True
@@ -96,7 +143,7 @@ class Project(Obj):
     def SetRenderSettings(self, s): self._log("SetRenderSettings", s); return True
     def GetRenderJobList(self): return []
     def GetRenderFormats(self): return {}
-    def GetAudioRenderFormats(self): return {}
+    def GetAudioRenderFormats(self): return {"WAV": "wav"}
     def RefreshLUTList(self): return True
     def ApplyFairlightPresetToCurrentTimeline(self, n): return True
     def StartRendering(self, ids, i=False): self._log("StartRendering"); return True
@@ -120,6 +167,8 @@ class Resolve(Obj):
     def GetVersionString(self): return "21.2.0.6"
     def GetProductName(self): return "DaVinci Resolve Studio"
     def IsStudio(self): return True
+    EXPORT_AAF = EXPORT_DRT = EXPORT_EDL = EXPORT_FCP_7_XML = EXPORT_FCPXML_1_10 = 1
+    EXPORT_OTIO = EXPORT_ALE_CDL = EXPORT_AAF_NEW = EXPORT_CDL = EXPORT_NONE = 2
     def GetEffectsList(self, m=None): return [{"name": "Cross Dissolve"}]
     def GetFairlightPresets(self): return ["p1"]
     def ValidateDCTL(self, s): self._log("ValidateDCTL"); return None
@@ -252,6 +301,35 @@ class Sandbox(unittest.TestCase):
         self._q2(False)
         sets = [c[2][0] for c in CALLS if c[1] == "SetAudioMapping"]
         self.assertEqual(sets[-1], "{}")
+
+    def _sb(self, only):
+        doc = run("box", sandbox_checks=True, config=self.CONFIG, only=only)
+        return {r["call"]: r for c in doc["checks"] if c["mode"] == "sandbox-only" for r in c["rows"]}
+
+    def test_cdl_read_back_is_compared(self):
+        self.assertEqual(self._sb("R3")["TimelineItem.GetCDL.read_back"]["note"], "same as set")
+
+    def test_each_track_format_reports_its_subtype(self):
+        rows = self._sb("S2")
+        self.assertEqual(sorted(k for k in rows if k.startswith("Timeline.GetTrackSubType[")),
+                         ["Timeline.GetTrackSubType[5.1]", "Timeline.GetTrackSubType[adaptive]",
+                          "Timeline.GetTrackSubType[mono]", "Timeline.GetTrackSubType[stereo]"])
+
+    def test_timeline_exports_write_five_files_that_are_then_removed(self):
+        rows = self._sb("I1")
+        files = [r["note"] for k, r in rows.items() if k.endswith(".file")]
+        self.assertEqual(len(files), 5)
+        self.assertTrue(all("byte" in n for n in files), files)
+        import glob, tempfile
+        self.assertEqual(glob.glob(os.path.join(tempfile.gettempdir(), "rp-probe-*")), [])
+
+    def test_color_group_is_removed_at_cleanup(self):
+        self._sb("R7")
+        self.assertIn("DeleteColorGroup", [c[1] for c in CALLS])
+
+    def test_no_forbidden_grade_call_is_made_by_the_read_checks(self):
+        run("box")
+        self.assertEqual([c for c in CALLS if c[1] in ("SetLUT", "ResetAllGrades")], [])
 
     def test_flag_missing_skips_even_in_the_sandbox(self):
         doc = run("box", config=self.CONFIG)

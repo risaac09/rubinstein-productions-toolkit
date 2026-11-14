@@ -343,7 +343,7 @@ ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": {"DeleteClips", "DeleteTrack"},
                    "rpresolve/cmd_contract_probe.py": {
                        "CloseProject", "CreateProject", "DeleteProject", "LoadProject",
                        "SaveProject", "StartRendering", "DeleteEffects",
-                       "DeleteFusionCompByName", "DeleteTimelines"}}
+                       "DeleteFusionCompByName", "DeleteTimelines", "DeleteColorGroup"}}
 
 
 def _names(path):
