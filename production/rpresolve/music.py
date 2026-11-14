@@ -9,10 +9,22 @@ changes; genre, feel and anything marked "person" survive a re-run.
 
 Tempo is rpresolve.beats' tracker (its prior settles half and double time);
 rpresolve.notes.measure over TEMPO_RANGE (wider than notes' default fold) is
-kept as bpm_notes, and onset counts come from it. A steady pulse is rpresolve.beats' tracked beats, with STEADY_SHARE of
-the gaps within STEADY_TOL of the median gap. Loudness is ffmpeg ebur128.
+kept as bpm_notes, and onset counts come from it. A steady pulse is
+rpresolve.beats' tracked beats, with STEADY_SHARE of the gaps within
+STEADY_TOL of the median gap. Loudness is ffmpeg ebur128.
 Everything is measured, nothing is heard: genre and feel from a model are
 drafts until a person checks them.
+
+The file: {"tracks": {<sha256>: row}, "playlists": [names written]}. tracks is
+an object keyed by hash, not a list. A row has path (relative to the folder),
+dupes (other paths with the same bytes), artist, title, tag_genre (the file's
+own tag), duration_s, bpm, bpm_notes, steady (true or false), steady_share (the
+share of beat gaps within tolerance; the only pulse measure besides steady),
+lufs, onsets_per_s, genre and feel (a list), each with a *_source of model or
+person, and suits (edit method ids whose tempo range holds the track).
+Paths are relative, so the file belongs beside the folder it indexes and a
+copy of the folder carries a copy of the file; the copies drift apart unless
+`music index` is run on each.
 """
 
 import hashlib
