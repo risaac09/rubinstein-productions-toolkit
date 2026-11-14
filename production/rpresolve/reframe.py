@@ -837,8 +837,11 @@ def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_
                unchecked=[t for t, _ in samples if t not in {t for t, _ in boxes}])
     out["review"].append("no face in any sampled frame: the crop is placed on the saliency "
                          "centre, which is weaker evidence than a face; look before use")
+    pts = [(t, (_centre(b)[0] - 1, _centre(b)[1] - 1, _centre(b)[0] + 1, _centre(b)[1] + 1))
+           for t, b in boxes]  # the box's centre as a 2 px box
     for a in aspects:
-        out["aspects"][a] = plan_aspect(boxes, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
+        # the attention box is wide; test its centre, so a good saliency crop can pass
+        out["aspects"][a] = plan_aspect(pts, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
                                         scale, margin, allow_bars, samples=len(samples),
                                         min_checked=min_checked, out=size_of(a, master_size),
                                         anchor=anchor_of(a), head_above=0.0, headroom=0.0,

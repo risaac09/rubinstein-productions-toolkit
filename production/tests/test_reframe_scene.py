@@ -64,6 +64,13 @@ class TestSceneSpan(unittest.TestCase):
         self.assertEqual(sp["ignored"], 8)
         self.assertNotIn("scene", sp)
 
+    def test_a_wide_attention_box_with_a_good_centre_passes_for_review(self):
+        # a box 1000 px wide cannot sit inside a 9x16 crop; its centre does
+        sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"],
+                               scene=reads([(1000, 540)] * 8, w=1000, h=900))
+        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.PASS)
+        self.assertTrue(sp["review"])  # weaker than a face: a person looks
+
     def test_a_face_still_wins(self):
         sp = reframe.plan_span(faces([[(500, 540, 200, 220)]] * 8), HD, full(HD), ["9x16"],
                                scene=reads([(1400, 540)] * 8))
