@@ -112,7 +112,7 @@ import tempfile
 
 from . import composition, cutlist, vision
 from . import scene as scenemod
-from .detect import DetectError, run_ffprobe
+from .detect import DetectError, cropped_size, run_ffprobe
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 TIMEOUT_S = 120  # per ffmpeg frame grab
@@ -886,7 +886,7 @@ def probe(path):
     if not streams:
         raise ReframeError(f"no video stream in {path}: {err or 'ffprobe found none'}")
     s = streams[0]
-    w, h = int(s["width"]), int(s["height"])
+    w, h = cropped_size(s)
     if _rotation(s) % 180 == 90:
         w, h = h, w
     try:

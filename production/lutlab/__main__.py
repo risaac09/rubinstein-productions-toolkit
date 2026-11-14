@@ -180,6 +180,8 @@ def main(argv=None):
     balance.add_arguments(sub.add_parser("balance", help="per-shot exposure and white balance, a CDL out"))
     a = ap.parse_args(argv)
     name = a.name if a.cmd in ("port", "decompose", "shot-match", "transfer") else None   # these name files out/NAME...
+    if name and any(c in name for c in "\r\n\0"):   # a line break would write a second header line into the .cube
+        ap.error(f"--name {name!r} holds a line break or NUL")
     if name and (Path(name).name != name or name in (".", "..")):   # a path there would leave the checked --out
         ap.error(f"--name {name!r} is a file name, not a path")
 
@@ -320,7 +322,12 @@ def main(argv=None):
         except (transfer.Refused, ValueError) as e:
             print(f"transfer: refused: {e}", file=sys.stderr)
             return 2
-        for f in transfer.write(res, out, a.name, a.src, a.ref, a.overwrite):
+        try:
+            written = transfer.write(res, out, a.name, a.src, a.ref, a.overwrite)
+        except FileExistsError as e:
+            print(f"transfer: refused: {e} already exists (--overwrite replaces it)", file=sys.stderr)
+            return 2
+        for f in written:
             print(f)
         first, last = res["rows"][0]["held_out"], [r for r in res["rows"] if r["applied"]][-1]["held_out"]
         print(f"held-out sliced W2 {first['sliced_w2']} -> {last['sliced_w2']} Lab units "
