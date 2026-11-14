@@ -751,7 +751,7 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     sc = composition.summarise(scene, src) if scene else None
     hint = (sc["centre"]["x"], sc["centre"]["y"]) if sc else None
     pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer, hint)
-    if pick is None and sc and area is not None:
+    if pick is None and sc and area is not None and not ignored:
         return _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
                            min_checked, master_size, scaling, ignored)
     if area is None or pick is None:

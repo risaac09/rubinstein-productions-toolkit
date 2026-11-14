@@ -56,6 +56,14 @@ class TestSceneSpan(unittest.TestCase):
         self.assertIn("saliency", sp["review"][0])  # weaker than a face: a person looks
         self.assertIn("x", reframe.entry(p, HD, full(HD), sp["face"], sp["review"]))
 
+    def test_filtered_faces_stay_no_face_with_a_scene_read(self):
+        # the faces sit outside the subject region; saliency lands on those same faces
+        sp = reframe.plan_span(faces([[(1500, 540, 200, 220)]] * 8), HD, full(HD), ["9x16"],
+                               subject_region=(0, 0, 900, 1080), scene=reads([(1500, 540)] * 8))
+        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.NO_FACE)
+        self.assertEqual(sp["ignored"], 8)
+        self.assertNotIn("scene", sp)
+
     def test_a_face_still_wins(self):
         sp = reframe.plan_span(faces([[(500, 540, 200, 220)]] * 8), HD, full(HD), ["9x16"],
                                scene=reads([(1400, 540)] * 8))
