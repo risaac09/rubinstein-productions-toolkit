@@ -27,6 +27,7 @@ OFFLOAD = os.path.join(PRODUCTION, "offload.sh")
 STATE = "project.json"
 CONFIG_ENV = "RP_PIPELINE_CONFIG"
 CONFIG_KEYS = ("landing_root", "work_root", "indexer", "offsite_remote", "sheets_root")
+READ_ELSEWHERE = ("footage_index",)  # the indexer's own block; project does not use it but must not refuse it
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 STEPS = (("copy", "copy and verify"), ("identify", "identify camera, profile, lens"),
@@ -77,7 +78,7 @@ def load_config(path=None, overrides=None):
             raise ProjectError(f"{path}: cannot read the pipeline config ({e})")
         if not isinstance(cfg, dict):
             raise ProjectError(f"{path}: a pipeline config is a JSON object")
-        strangers = sorted(k for k in cfg if k not in CONFIG_KEYS and not k.startswith("_"))
+        strangers = sorted(k for k in cfg if k not in CONFIG_KEYS + READ_ELSEWHERE and not k.startswith("_"))
         if strangers:
             raise ProjectError(f"{path}: unknown key(s) {', '.join(strangers)} (known: {', '.join(CONFIG_KEYS)})")
     out = {k: cfg.get(k) for k in CONFIG_KEYS}
