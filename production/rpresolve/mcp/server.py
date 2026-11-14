@@ -10,6 +10,7 @@ from . import tools_offline, tools_read, tools_write
 
 INSTRUCTIONS = """\
 Tools for DaVinci Resolve through the Rubinstein Productions toolkit.
+- card_show, card_check, sheets and card_set (which writes only a card's record: squeeze answers and the project) never connect to Resolve; paths must be absolute.
 - detect, survey, measure, endcheck, selects, reframe_plan, deliver_check, deliver_captions, sync_measure, trim_review, shoot_table, qc, pipeline_proof, deliver_manifest, perceive, audio_report, overlay_check, ograf_template_check, notes, shotlist and watch never connect to Resolve; paths must be absolute.
 - Footage-first edits go: sheets, shot list, notes, draft, watch, pick, build.
 - Before any Resolve tool, call resolve_status. Resolve is edited live by a person: never assume which project is open.

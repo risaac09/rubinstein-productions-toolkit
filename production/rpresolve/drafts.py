@@ -72,6 +72,7 @@ import tempfile
 import time
 
 from . import cutlist, methods, transitions, windowplate
+from . import card as rpcard
 from . import squeeze as rpsqueeze
 from . import paths as rppaths
 
@@ -192,11 +193,15 @@ def _proxy_in(folder, stem):
 
 
 def proxy_for(path, proxy_dir=None):
-    """A BRAW source's proxy: <stem>.mov or <stem>.mp4 in proxy_dir, else in a `Proxy` folder
-    the camera made (beside the clip, or at the top of its card copy); None when there is none."""
+    """A BRAW source's proxy: <stem>.mov or <stem>.mp4 in proxy_dir, else the proxy its card's
+    record names for the clip, else in a `Proxy` folder the camera made (beside the clip, or at
+    the top of its card copy); None when there is none."""
     stem = os.path.splitext(os.path.basename(path))[0]
     here = os.path.dirname(os.path.abspath(path))
     folders = [proxy_dir] if proxy_dir else []
+    named = None if (proxy_dir and _proxy_in(proxy_dir, stem)) else rpcard.proxy_of(path)
+    if named:
+        return named
     root = rpsqueeze.card_root(path)
     folders += [os.path.join(here, "Proxy")] + ([os.path.join(root, "Proxy")] if root else [])
     return next(filter(None, (_proxy_in(f, stem) for f in folders)), None)
