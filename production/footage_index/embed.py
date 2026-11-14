@@ -12,7 +12,7 @@ def _load():
     if not _m:
         from transformers import AutoModel, AutoProcessor
         dev = config.get("siglip_device") or ("mps" if torch.backends.mps.is_available() else "cpu")
-        _m["model"] = AutoModel.from_pretrained(MODEL).to(dev).eval()
+        _m["model"] = AutoModel.from_pretrained(MODEL).to(dev).train(False)
         _m["proc"] = AutoProcessor.from_pretrained(MODEL)
         _m["dev"] = dev
     return _m["model"], _m["proc"], _m["dev"]
