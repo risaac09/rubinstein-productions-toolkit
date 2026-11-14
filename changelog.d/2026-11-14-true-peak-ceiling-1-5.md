@@ -1,0 +1,1 @@
+Proposal: one true-peak ceiling of -1.5 dBTP. The assemble mix refusal and the camera-bed gain refusal move from -1.0 to -1.5, as do the deliver check, qc and audio-report defaults and the platform specs; the loudness fix, which aims 0.5 dB under the deliver ceiling, now aims at -2.0 dBTP.

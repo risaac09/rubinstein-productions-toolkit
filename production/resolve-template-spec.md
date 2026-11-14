@@ -616,7 +616,7 @@ rules under `deliver`. `queue_render` takes a destination and nothing else.
 Each destination sets its own frame size.
 
 House rules, all in the config: integrated loudness within +/-0.5 LU of the
-target, true peak at or under -1.0 dBTP, frame rate equal to the timeline's,
+target, true peak at or under -1.5 dBTP, frame rate equal to the timeline's,
 colour tags Rec.709 primaries and matrix, with the transfer tagged per
 destination: web files use `GammaTag` "Rec.709-A", which writes the
 transfer as bt709 (asserted by the check), and the client master keeps

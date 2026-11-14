@@ -138,7 +138,7 @@ THRESHOLDS = {
     "freeze_noise_db": -60.0,       # freezedetect n=
     "scdet_threshold": 10.0,        # scdet t=; a frame scoring this or more is a cut
     "scdet_tolerance": 0,           # cuts allowed either side of the shot list
-    "true_peak_max_dbtp": -1.0,     # when the destination has no maximum
+    "true_peak_max_dbtp": -1.5,     # when the destination has no maximum
     "astats_peak_max_db": -0.1,     # overall sample peak; above it is clipping
     "astats_dc_max": 0.01,          # |DC offset|, full scale = 1.0
     "silence_min_s": 0.5,           # silencedetect d=

@@ -99,7 +99,7 @@ CLICK_NEIGHBOUR_S = 0.003    # neighbours are 2 samples to this far either side
 DIGITAL_SILENCE_DB = -120.0
 OCTAVES_HZ = (31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 DEFAULTS = {"silence_db": -50.0, "silence_min_s": 0.5, "dc_max": 0.01, "clip_runs_min": 3,
-            "true_peak_max_dbtp": -1.0, "tolerance_lu": 0.5, "dead_gap_db": 30.0,
+            "true_peak_max_dbtp": -1.5, "tolerance_lu": 0.5, "dead_gap_db": 30.0,
             "dual_mono_corr": 0.999, "phase_corr": -0.3,
             "wind_rise_db": 12.0, "wind_min_s": 0.5, "hum_line_db": 10.0, "hum_min_s": 3.0,
             "music_partials": 4, "music_min_s": 2.0, "stereo_min_s": 2.0}
