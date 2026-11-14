@@ -25,7 +25,7 @@ A folder with a `.card.json` or `.SHA256SUMS` beside it is a card whatever it is
 | `card_id`, `listing_hash`, `volume_uuid`, `cam`, `files`, `bytes`, `offloaded_utc` | as offload.sh writes them | `card_id` is 12 hex, `listing_hash` 64 hex, `volume_uuid` a string or null |
 | `schema` | `{name, version}` | exactly `{"name": "card.record", "version": 2}` |
 | `origin` | string | `offload` or `retrofit`. A retrofit has `volume_uuid` null and its id from the listing hash (`card_id` is the first 12 hex of `listing_hash`) |
-| `shoot` | `{first_utc, last_utc, days, cameras}` | file write times, UTC days; `cameras` is filled from exif by the index, empty from `init` |
+| `shoot` | `{first_utc, last_utc, days, cameras, source}` | `first_utc`, `last_utc` and `days` are each original clip's own capture time, as the camera wrote it: the key names say UTC, but the zone is the camera's clock, with none applied. `cameras` is the sorted distinct `Make Model` strings. `source` is `capture`, or `file-times` when no clip yields a capture time and file write times (the copy time on a copied card) stand in; it is optional, so records written before it still validate. See below for where the capture time comes from |
 | `project` | slug or null | `a-z`, `0-9`, hyphens |
 | `answers` | object | only what a person said. `answers.squeeze` is `{default, clips, by, at}`: `default` covers clips `clips` does not name, `clips` maps a clip id to a factor (1 is spherical). A BRAW file's own tag still answers for itself and is never copied in |
 | `clips` | list of `{clip_id, relpath, proxy}` | originals only. An in-card camera proxy (a video under any folder named `Proxy`, any case, anywhere in the card, whose stem equals that of an original outside every `Proxy` folder) is the `proxy` of that original, never a clip of its own; when several originals share the stem, the one beside the `Proxy` folder wins. A proxy with no such original stays out of `clips`, and `card check` and `card show` report it as a note, which fails nothing. `clip_id` is `<cam>-<id6>/<stem>`, unique in the card |
@@ -34,6 +34,10 @@ A folder with a `.card.json` or `.SHA256SUMS` beside it is a card whatever it is
 An optional `note` string is allowed (two early retrofits carry one). Any other top-level key fails validation. A reader of a record whose `schema.version` is above 2 reports it and judges nothing else.
 
 Schema 1 loads as is: its clips are derived from SHA256SUMS (or the folder), its answers are empty or the legacy `squeeze.json` folded in (file names turned into clip ids), and `card set` or `card mv` upgrade it to schema 2 in place.
+
+### Where `shoot` comes from
+
+Per clip, the first of: exiftool's `CreationDate` (QuickTime keys, local time with its zone, which is dropped), `DateTimeOriginal` (stills and Panasonic and Sony video), `CreateDate`, `MediaCreateDate`, `TrackCreateDate`; else ffprobe's `creation_time`. exiftool is used when it is installed (`RPRESOLVE_EXIFTOOL` or on `PATH`), ffprobe is the fallback, and a missing tool contributes nothing. The camera string is exiftool's `Make` and `Model`. These are the tags `detect` and `shoot-table` already read. `card set PATH --refresh-shoot [--apply]` recomputes `shoot` for a record written earlier and changes no other key.
 
 ## The standards
 
