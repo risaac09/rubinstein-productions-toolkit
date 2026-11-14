@@ -132,6 +132,21 @@ class TestEarCheckRow(Case):
         self.assertEqual(code, 0)
         self.assertIn("ear_check", out)
 
+    def test_the_mcp_tool_carries_the_owed_row_too(self):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("deliver_check")
+        self.assertIn("review_log", tool.input_schema["properties"])
+        args = {"file": str(self.f), "destination": "youtube_16x9", "loudness": False}
+        with mock.patch.object(dc, "check", side_effect=lambda *a, **k: stub(self.f)):
+            r = tool.handler(schema.with_defaults(tool.input_schema, args), ToolContext())
+            self.assertEqual([c["status"] for c in r["checks"] if c["check"] == "ear_check"], ["WARN"])
+            self.assertIn("ear_check is owed", r["summary"])
+            self.logline(copy=COPY)
+            r = tool.handler(schema.with_defaults(tool.input_schema, {**args, "review_log": str(self.log)}),
+                             ToolContext())
+        self.assertEqual([c["status"] for c in r["checks"] if c["check"] == "ear_check"], ["PASS"])
+
     def test_ear_check_is_a_review_log_question(self):
         self.assertIn("ear_check", reviewlog.QUESTIONS)
 

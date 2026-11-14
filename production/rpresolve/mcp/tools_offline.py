@@ -408,14 +408,19 @@ def deliver_check(args, ctx):
         from .. import audiostate
         dc.add_rows(r, audiostate.compare(
             audiostate.load(_existing(args["audio_state"], "audio_state")), dest))
-    c = r["counts"]
+    log = _existing(args["review_log"], "review_log") if args.get("review_log") else None
+    dc.add_rows(r, [dc.ear_check_row(path, log)])  # a hand step: owed until the reviewer logs it
+    c = dict(r["counts"])
+    owed = any(x["check"] == "ear_check" and x["status"] == dc.WARN for x in r["checks"])
+    c[dc.WARN] = c.get(dc.WARN, 0) - owed  # the owed hand step is not advice about the file
     bad = [x["check"] for x in r["checks"] if x["status"] == dc.FAIL]
     r["summary"] = (f"deliver_check {os.path.basename(path)} as {dest['key']}: "
                     f"{c[dc.PASS]} pass, {c[dc.FAIL]} fail, {c[dc.SKIP]} skipped" +
                     (f", {c[dc.WARN]} warn" if c.get(dc.WARN) else "") +
                     (f"; FAILED: {', '.join(bad)}" if bad else
                      "; no failures, WARN rows are advice" if c.get(dc.WARN) else
-                     "; every asserted rule passes"))
+                     "; every asserted rule passes") +
+                    ("; ear_check is owed (a hand step)" if owed else ""))
     return r
 
 
@@ -1150,7 +1155,8 @@ def register(registry):
         "expect_fade) a tail row: the 100 ms ending at the last video frame at least 12 dB below the "
         "window 3 s to 1.5 s before that frame. Every rule is PASS, FAIL, SKIP or WARN with what was "
         "found and expected; a WARN row (the frame-rate floor) is advice and never changes the "
-        "outcome. Reads the whole file for loudness; set loudness false to skip "
+        "outcome. An ear_check row is always added: a hand step, WARN (owed) until a person logs "
+        "their ear check in the review log; it never passes by machine. Reads the whole file for loudness; set loudness false to skip "
         "that (the tail row is skipped too). Never connects to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1182,7 +1188,11 @@ def register(registry):
                               "description": "Absolute path of an audio-state JSON (the "
                               "audio-state command's -o): also compares the audio codec, "
                               "sample rate and bit depth the queued Resolve jobs report with "
-                              "the destination. Never connects to Resolve."}},
+                              "the destination. Never connects to Resolve."},
+              "review_log": {"type": "string",
+                             "description": "Absolute path of the review log (review/events.jsonl): "
+                             "the ear_check row passes only on a logged approve or go "
+                             "(step sound, question ear_check) naming this file."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
     registry.add(Tool(
