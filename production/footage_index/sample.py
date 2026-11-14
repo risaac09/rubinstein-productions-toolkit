@@ -134,6 +134,47 @@ def small_grey(img_path):
     return np.asarray(Image.open(img_path).convert("L").resize((160, 90)), np.float32) / 255.0
 
 
+def braw_size(path):
+    """(width, height) of a BRAW file from braw2ppm's header line, or (None, None); the index stores none for BRAW."""
+    try:
+        err = subprocess.run([BRAW2PPM, path, "0", "1", "/dev/null"], capture_output=True, text=True, timeout=120).stderr
+        w, h = next(l for l in err.splitlines() if l.startswith("header ")).split()[1].split("x")
+        return int(w), int(h)
+    except (OSError, subprocess.SubprocessError, StopIteration, ValueError):
+        return None, None
+
+
+def file_tag_factor(path):
+    """The squeeze a BRAW file states for itself (above 1), else None."""
+    try:
+        from rpresolve import squeeze
+        f = squeeze.file_tag(path)
+    except Exception:
+        return None
+    return f if f and f > 1 else None
+
+
+def vf_for(path, profile, factor):
+    """The thumbnail filter: log to Rec.709, then stretch width by the squeeze factor (above 1), then 384 px wide."""
+    space = next((v for k, v in LOG_SPACES.items() if k in (profile or "")), None) or \
+        ("bmdfilm5" if path.lower().endswith(".braw") else None)
+    return cst_chain(space) + (f"scale=trunc(iw*{factor}/2)*2:ih," if factor and factor > 1 else "") + "scale=384:-2"
+
+
+def redraw(path, shots, profile, fps, factor):
+    """Redraw each shot's thumbnail in place (same file, same keyframe) as the squeeze factor says; returns the shot ids drawn.
+    shots: [(id, t, thumb)]. A frame that cannot be drawn keeps its old thumbnail."""
+    vf, state, done = vf_for(path, profile, factor), {}, []
+    for sid, t, thumb in shots:
+        tmp = thumb + ".new.jpg"
+        if grab(path, t, tmp, vf, fps, None, state):
+            os.replace(tmp, thumb)
+            done.append(sid)
+        elif os.path.exists(tmp):
+            os.remove(tmp)
+    return done
+
+
 def process(root, relpath, cid):
     """Everything for one clip, no db access: returns (meta, shots) or raises."""
     path = os.path.join(root, relpath)
@@ -142,10 +183,7 @@ def process(root, relpath, cid):
     meta = probe(path) if not path.lower().endswith(".braw") else {"codec": "braw", "width": None, "height": None,
                                                                    "fps": None, "duration": None}
     profile = d.get("profile") or ""
-    space = next((v for k, v in LOG_SPACES.items() if k in profile), None) or \
-        ("bmdfilm5" if path.lower().endswith(".braw") else None)
-    f = desqueeze_factor(path)  # stretch width by the factor first, so thumbnails and embeddings see the picture as shot
-    vf = cst_chain(space) + (f"scale=trunc(iw*{f}/2)*2:ih," if f else "") + "scale=384:-2"
+    vf = vf_for(path, profile, desqueeze_factor(path))  # stretch width by the factor first, so thumbnails and embeddings see the picture as shot
     if meta["duration"] is None and path.lower().endswith(".braw"):
         info = subprocess.run([BRAW2PPM, path, "0", "1", "/dev/null"], capture_output=True, text=True).stderr
         for line in info.splitlines():  # "rate <fps> ... frames <n> ..."

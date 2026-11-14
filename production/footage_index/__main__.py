@@ -315,6 +315,95 @@ def cmd_rekey(a):
     print(f"rekey: {len(plan)} clip key(s) updated, counts equal")
 
 
+def _stretch(thumb, width, height):
+    """How much wider than the coded picture a stored thumbnail is drawn (1.0 plain, 1.5 desqueezed 1.5x), or None."""
+    from PIL import Image
+    try:
+        with Image.open(thumb) as im:
+            tw, th = im.size
+    except OSError:
+        return None
+    return (tw / th) * height / width if width and height and th else None
+
+
+def cmd_refresh_squeeze(a):
+    """Redraw thumbnails (and re-embed those shots) whose desqueeze no longer matches the card record's answer, and the
+    reverse (a record of 1 over thumbnails drawn from a file tag). Keeps clips, shots, times and captions. Dry run unless
+    --apply; --apply backs the db up to --backup first and restores it if the clip, shot or caption counts move."""
+    from concurrent.futures import ThreadPoolExecutor
+    from . import sample
+    c = store.connect(readonly=not a.apply)
+    clips = c.execute("SELECT id, relpath, profile, fps, width, height FROM clips WHERE status='done'").fetchall()
+    thumbs = {r["clip_id"]: r["thumb"] for r in c.execute("SELECT clip_id, thumb FROM shots GROUP BY clip_id")}
+
+    def look(r):
+        p = _abspath_of(r["relpath"])
+        if p is None or not os.path.exists(p):
+            return r, "unreadable", None, None
+        target = sample.desqueeze_factor(p) or 1.0
+        w, h = (r["width"], r["height"]) if r["width"] else sample.braw_size(p) if p.lower().endswith(".braw") else (None, None)
+        have = _stretch(thumbs.get(r["id"], ""), w, h)
+        if have is None or not 0.9 <= have <= 2.3:  # no thumbnail, or a rotated source whose coded aspect says nothing
+            return r, "skipped", target, have
+        if abs(have / target - 1) <= 0.03:
+            return r, "ok", target, have
+        if target <= 1:  # redraw plain only what a file tag explains (thumbnails drawn at the tag): other stretch is not ours to touch
+            tag = sample.file_tag_factor(p)
+            return r, ("redraw" if tag and abs(have / tag - 1) <= 0.03 else "unexplained"), target, have
+        return r, "redraw", target, have
+    with ThreadPoolExecutor(8) as pool:
+        seen = list(pool.map(look, clips))
+    todo = [(r, t, h) for r, s, t, h in seen if s == "redraw"]
+    tally = {}
+    for _r, s, _t, _h in seen:
+        tally[s] = tally.get(s, 0) + 1
+    shots = {r["id"]: c.execute("SELECT id, t, thumb FROM shots WHERE clip_id=? ORDER BY t", (r["id"],)).fetchall() for r, _t, _h in todo}
+    summary = {"clips_examined": len(seen), **tally,
+               "to_desqueezed": sum(t > 1 for _r, t, _h in todo), "to_plain": sum(t <= 1 for _r, t, _h in todo),
+               "shots_to_redraw": sum(len(v) for v in shots.values()),
+               "examples": [{"relpath": r["relpath"], "target": t, "stored": round(h, 2)} for r, t, h in todo[:6]]}
+    print(json.dumps(summary, indent=1))
+    if not a.apply:
+        print("dry run: nothing written; --apply to write")
+        return
+    if os.path.exists(a.backup):
+        sys.exit(f"{a.backup} exists; move it aside first")
+    count = lambda: {t: c.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("clips", "shots", "vec_shots", "captions")}
+    before = count()
+    dst = sqlite3.connect(a.backup)
+    sqlite3.connect(store.DB).backup(dst)
+    dst.close()
+    print(f"backup {a.backup}\nbefore {before}")
+    from . import embed
+    redrawn_clips = redrawn_shots = 0
+    try:
+        def draw(item):
+            r, t, _h = item
+            p = _abspath_of(r["relpath"])
+            return r, sample.redraw(p, [(s["id"], s["t"], s["thumb"]) for s in shots[r["id"]]], r["profile"], r["fps"], t if t > 1 else None)
+        with ThreadPoolExecutor(a.lanes) as pool:
+            for r, ids in pool.map(draw, todo):
+                paths = {s["id"]: s["thumb"] for s in shots[r["id"]]}
+                for i in range(0, len(ids), 32):
+                    chunk = ids[i:i + 32]
+                    for sid, v in zip(chunk, embed.images([paths[x] for x in chunk])):
+                        store.set_vector(c, sid, v)
+                c.commit()
+                redrawn_clips += bool(ids)
+                redrawn_shots += len(ids)
+        after = count()
+    except Exception:
+        c.close()
+        _restore(a.backup, store.DB)
+        raise
+    print(f"redrawn {redrawn_clips} clip(s), {redrawn_shots} shot(s); after {after}")
+    if {k: after[k] for k in ("clips", "shots", "captions")} != {k: before[k] for k in ("clips", "shots", "captions")}:
+        c.close()
+        _restore(a.backup, store.DB)
+        sys.exit(f"counts moved, restored {a.backup}")
+    print("refresh-squeeze: counts equal")
+
+
 def cmd_cameras(a):
     """JSON: per card folder, the distinct camera strings (exif Make and Model, as detect read them) the index holds for its
     clips. Writes nothing. A card folder is the one with a record beside it, else a <CAM>-<id6> folder name."""
@@ -597,6 +686,8 @@ def main(argv=None):
     sub.add_parser("stats")
     sub.add_parser("recaption-fts")
     sub.add_parser("cameras")
+    s = sub.add_parser("refresh-squeeze"); s.add_argument("--apply", action="store_true"); s.add_argument("--lanes", type=int, default=4)
+    s.add_argument("--backup", default=store.DB + ".bak-refresh-squeeze")
     s = sub.add_parser("rekey"); s.add_argument("--apply", action="store_true"); s.add_argument("--date", default=datetime.date.today().isoformat())
     s = sub.add_parser("migrate"); s.add_argument("--date", default=datetime.date.today().isoformat())
     s = sub.add_parser("shoot"); s.add_argument("prefix"); s.add_argument("--refresh", action="store_true"); s.add_argument("--json", action="store_true")
@@ -630,7 +721,7 @@ def main(argv=None):
         print(json.dumps(store.stats(store.connect()), indent=1))
     else:
         try:
-            {"index": cmd_index, "embed": cmd_embed, "caption": cmd_caption, "recaption-fts": cmd_recaption_fts, "migrate": cmd_migrate, "rekey": cmd_rekey, "cameras": cmd_cameras, "find": cmd_find,
+            {"index": cmd_index, "embed": cmd_embed, "caption": cmd_caption, "recaption-fts": cmd_recaption_fts, "migrate": cmd_migrate, "rekey": cmd_rekey, "refresh-squeeze": cmd_refresh_squeeze, "cameras": cmd_cameras, "find": cmd_find,
              "shoot": cmd_shoot, "methods": cmd_methods, "plan": cmd_plan, "gate": cmd_gate, "check": cmd_check, "sheet": cmd_sheet,
              "slots-sheet": cmd_slots_sheet, "compose": cmd_compose}[a.cmd](a)
         except ValueError as e:

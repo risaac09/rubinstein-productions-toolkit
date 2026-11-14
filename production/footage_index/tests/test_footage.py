@@ -1760,3 +1760,44 @@ def test_cameras_lists_distinct_strings_per_card(idx, capsys):
     got = json.loads(capsys.readouterr().out)
     assert got == {"cards": {"Old Shoot": ["Maker CAM-A", "Maker CAM-AX"], "CAMB-abcdef": ["Maker CAM-B"]}, "clips_not_in_a_card": 1}
     assert snap() == before  # writes nothing
+
+
+def test_refresh_squeeze_redraws_and_reembeds_without_touching_captions(idx, monkeypatch, capsys):
+    from PIL import Image
+    from footage_index import __main__ as cli
+    mount, db, run = idx
+    make_clip(str(mount / "a.mp4"))
+    c = store.connect()
+    cid = c.execute("INSERT INTO clips(relpath,key,clip_key,status,width,height,fps,duration) VALUES ('a.mp4','k','file:1:a.mp4','done',640,360,24,9)").lastrowid
+    thumb = os.path.join(TMP, "refresh-a.jpg")
+    Image.new("RGB", (384, 216)).save(thumb)  # plain 16:9
+    sid = store.add_shot(c, cid, 1.5, 0, 3, thumb, luma=0.5)
+    store.set_vector(c, sid, [0.0] * 768)
+    store.set_caption(c, sid, {"subject": "kept"}, "m")
+    c.commit(); c.close()
+    from footage_index import embed
+    monkeypatch.setattr(embed, "images", lambda paths: [[1.0] + [0.0] * 767 for _ in paths])
+    monkeypatch.setattr(sample, "desqueeze_factor", lambda p: 1.5)
+    cli.main(["refresh-squeeze"])
+    out = capsys.readouterr().out
+    assert '"redraw": 1' in out and '"to_desqueezed": 1' in out and "dry run" in out
+    assert Image.open(thumb).size == (384, 216)  # dry run wrote nothing
+    before = _counts(db)
+    cli.main(["refresh-squeeze", "--apply", "--backup", db + ".bak-d"])
+    assert "counts equal" in capsys.readouterr().out and os.path.exists(db + ".bak-d")
+    w, h = Image.open(thumb).size
+    assert abs(w / h - 640 * 1.5 / 360) < 0.05  # drawn desqueezed 1.5x
+    assert _counts(db) == before
+    c = store.connect()
+    assert c.execute("SELECT data FROM captions").fetchone()[0] == '{"subject": "kept", "tags": []}'
+    assert c.execute("SELECT count(*) FROM vec_shots WHERE shot_id=?", (sid,)).fetchone()[0] == 1
+    # the reverse: a record of 1 over thumbnails drawn at a 1.5x file tag redraws plain; unexplained stretch is left alone
+    monkeypatch.setattr(sample, "desqueeze_factor", lambda p: None)
+    monkeypatch.setattr(sample, "file_tag_factor", lambda p: 1.5)
+    cli.main(["refresh-squeeze", "--apply", "--backup", db + ".bak-e"])
+    assert abs(Image.open(thumb).size[0] / Image.open(thumb).size[1] - 640 / 360) < 0.05
+    monkeypatch.setattr(sample, "file_tag_factor", lambda p: None)
+    Image.new("RGB", (384, 190)).save(thumb)  # 1.14x, no tag explains it
+    capsys.readouterr()
+    cli.main(["refresh-squeeze"])
+    assert '"unexplained": 1' in capsys.readouterr().out
