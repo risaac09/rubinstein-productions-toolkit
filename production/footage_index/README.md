@@ -13,6 +13,8 @@ Under `data_dir` (default `~/.local/share/footage-index`; nothing is written ins
 - **vec_shots:** a SigLIP 2 image embedding per keyframe (`google/siglip2-base-patch16-384`, Apache-2.0; sqlite-vec, 768-d).
 - **captions / fts_captions:** a JSON caption on every 3rd keyframe from Qwen2.5-VL 7B through Ollama on loopback (Apache-2.0): subject, setting, action, shot size, time of day, light, tags (deduped, capped at 12). Frames darker than a mean luma of 0.03 get no caption. FTS5 indexes the fields except "unknown" ones. `recaption-fts` re-stores every caption under the current rules without the model.
 
+- **speech / fts_speech:** the kept segments of the screened transcripts `vertcut transcribe` writes (`speech FOLDER` reads them; withheld text is a label and is never stored), searched by `say "words"`, which takes `--no-client` like `find`.
+
 Search fuses SigLIP text-to-image similarity with FTS over captions (reciprocal rank), then filters.
 
 ## Install

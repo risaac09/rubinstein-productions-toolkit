@@ -1860,3 +1860,23 @@ def test_refresh_squeeze_ctrl_c_restores_the_backup_and_leaves_no_temp(idx, monk
     assert c.execute("SELECT count(*) FROM vec_shots WHERE embedding = ?",
                      (store.sqlite_vec.serialize_float32([0.0] * 768),)).fetchone()[0] == 2  # the backup came back
     assert not any(f.endswith(".new.jpg") for f in os.listdir(TMP))
+
+
+def test_speech_ingest_and_say(tmp_path):
+    from footage_index import speech
+    c = store.connect(str(tmp_path / "s.db"))
+    cid, _ = store.upsert_clip(c, "Shoots/day/a1.mov", "k", 1, 1)
+    d = tmp_path / "t" / "pool" / "Shoots" / "day"
+    d.mkdir(parents=True)
+    segs = [{"start": 1.0, "end": 2.5, "text": " the heron's lands softly"}, {"start": 3.0, "end": 4.0, "text": "[singing]"},
+            {"start": 5.0, "end": 6.0, "text": "lyrics", "redacted": True}]
+    (d / "a1.json").write_text(json.dumps({"segments": segs}))
+    (d / "a1.raw.json").write_text(json.dumps({"segments": [{"start": 0, "end": 1, "text": "never read"}]}))
+    (d / "gone.json").write_text(json.dumps({"segments": segs}))
+    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1)
+    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1)  # a second read replaces, not adds
+    assert [(r["relpath"], r["t_in"]) for r in speech.say(c, "Heron, lands")] == [("Shoots/day/a1.mov", 1.0)]
+    assert speech.say(c, "heron's lands")[0]["t_in"] == 1.0 and speech.say(c, "heron", client=False)
+    assert speech.say(c, "lyrics") == speech.say(c, "never read") == speech.say(c, "") == []
+    store.prune(c, set())
+    assert c.execute("SELECT count(*) FROM speech").fetchone()[0] == 0

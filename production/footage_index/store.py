@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS shots(
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_shots USING vec0(shot_id INTEGER PRIMARY KEY, embedding float[{DIM}]);
 CREATE TABLE IF NOT EXISTS captions(shot_id INTEGER PRIMARY KEY, data TEXT NOT NULL, model TEXT NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_captions USING fts5(text, tags);
+CREATE TABLE IF NOT EXISTS speech(
+  id INTEGER PRIMARY KEY, clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  t_in REAL NOT NULL, t_out REAL NOT NULL, text TEXT NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_speech USING fts5(text);
 """
 
 
@@ -149,6 +153,7 @@ def upsert_clip(c, relpath, key, bytes_, mtime, abspath=None, **meta):
         return row["id"], False
     if row:
         drop_shots(c, row["id"])
+        drop_speech(c, row["id"])
         c.execute("UPDATE clips SET key=?, clip_key=?, bytes=?, mtime=?, status='new', error=NULL WHERE id=?",
                   (key, clip_key(relpath, bytes_, abspath), bytes_, mtime, row["id"]))
         cid = row["id"]
@@ -176,11 +181,17 @@ def drop_shots(c, cid):
     c.execute("DELETE FROM shots WHERE clip_id=?", (cid,))
 
 
+def drop_speech(c, cid):
+    c.execute("DELETE FROM fts_speech WHERE rowid IN (SELECT id FROM speech WHERE clip_id=?)", (cid,))
+    c.execute("DELETE FROM speech WHERE clip_id=?", (cid,))
+
+
 def prune(c, keep_relpaths):
     """Drop clips no longer under a root (moved or deleted), with their shots and thumbnails."""
     gone = [r for r in c.execute("SELECT id, relpath FROM clips") if r["relpath"] not in keep_relpaths]
     for r in gone:
         drop_shots(c, r["id"])
+        drop_speech(c, r["id"])
         c.execute("DELETE FROM clips WHERE id=?", (r["id"],))
     return len(gone)
 
