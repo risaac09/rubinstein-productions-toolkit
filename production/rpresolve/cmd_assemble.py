@@ -401,6 +401,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     desqueeze = desqueeze_plan(root, p)
     shape = shape_plan(p, width, height)
     level = sound_level(p)
+    streams = camera_streams(p) if p["sound"] else []
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     plates = plate_handles(p)
@@ -409,7 +410,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
            "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape,
-           "camera_level": level, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "camera_level": level, "camera_streams": streams, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -512,7 +513,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
             out["items"].append(row)
         if p["sound"]:
             check()
-            out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems)
+            out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems, out)
             _camera_level(out, tl, p, problems)
         _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
@@ -697,7 +698,45 @@ def _colour(out, have, imported, before):
                 problems.append(f"colour: {base}: {row['flag']}")
 
 
-def _camera_audio(tl, media_pool, p, infos, items, problems):
+def camera_streams(p):
+    """One row per source file under camera sound: {source, streams_found, streams_used}. The
+    build uses the first audio stream only (T36): Resolve spreads a source with several over
+    as many tracks and the rest are removed after the append. None found = ffprobe could not
+    read the file."""
+    rows = {}
+    for r in p["spans"]:
+        if r["path"] in rows:
+            continue
+        try:
+            dc.check_tools(ffmpeg=False)
+            n = sum(1 for x in dc.probe(r["path"]).get("streams") or []
+                    if x.get("codec_type") == "audio")
+        except (dc.ToolMissing, dc.CheckError):
+            n = None
+        rows[r["path"]] = {"source": os.path.basename(r["path"]), "streams_found": n,
+                           "streams_used": None if n is None else min(n, 1)}
+    return _group(list(rows.values()))
+
+
+def _spill(tl, out, problems):
+    """Resolve puts a source's second and later audio streams on A2, A3 ...; camera sound is
+    A1 alone (T36), so those items go, then the tracks they emptied."""
+    top = int(tl.GetTrackCount("audio") or 0)
+    gone = out["camera_audio_extra_removed"] = 0
+    for t in range(top, 1, -1):
+        items = tl.GetItemListInTrack("audio", t) or []
+        if items:
+            if not api._safe_call(tl, "DeleteClips", items, False):
+                problems.append(f"A{t} holds {len(items)} extra audio stream item(s) of the camera "
+                                "sound and DeleteClips did not remove them")
+                return
+            gone += len(items)
+            out["camera_audio_extra_removed"] = gone
+        if not tl.GetItemListInTrack("audio", t):
+            api._safe_call(tl, "DeleteTrack", "audio", t)
+
+
+def _camera_audio(tl, media_pool, p, infos, items, problems, out):
     """Each span's own camera sound on A1 under its picture: the same clip, the same source
     frames and the same record frame as the picture item (read from the item, so a montage
     on V2 and a plate-free V1 line up alike). Read back: how many, where, how long. A source
@@ -707,6 +746,7 @@ def _camera_audio(tl, media_pool, p, infos, items, problems):
               "endFrame": i["endFrame"], "mediaType": 2, "trackIndex": 1,
               "recordFrame": it.GetStart()} for i, it in zip(infos, items)]
     media_pool.AppendToTimeline(audio)
+    _spill(tl, out, problems)
     got = tl.GetItemListInTrack("audio", 1) or []
     if len(got) != len(audio):
         problems.append(f"A1 holds {len(got)} camera sound item(s), the plan {len(audio)} "
@@ -735,8 +775,7 @@ def measure_bed(p):
     for i, r in enumerate(p["spans"]):
         ins += ["-ss", f"{r['in']:.6f}", "-t", f"{r['frames'] / p['fps']:.6f}", "-i",
                 dc._src(r["path"])]
-        # shortcut: the first audio stream mixed to stereo, as ffmpeg downmixes it; Resolve may
-        # place a multichannel clip's channels differently, so check the level on a live read
+        # the first audio stream, the one the build keeps on A1 (T36): the others are removed
         chains.append(f"[{i}:a:0]aresample=48000,aformat=channel_layouts=stereo[a{i}]")
     n = len(p["spans"])
     graph = (";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(n))

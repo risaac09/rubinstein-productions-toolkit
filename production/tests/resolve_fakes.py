@@ -99,6 +99,7 @@ class Clip(Fake):
     def __init__(self, name, uid, props=None):
         self.name, self.uid, self.props = name, uid, dict(props or {})
         self.linked = None  # (audio clip, offset in timeline frames) after AutoSyncAudio
+        self.audio_streams = 1  # Resolve spreads a source's streams over this many audio tracks
 
     def has(self, kind):
         """Whether the clip carries picture ('video') or sound ('audio'), from
@@ -263,6 +264,20 @@ class Timeline(Fake):
         if kind == "audio":  # mono when no type is given, as the README says
             self.subtypes[(kind, len(self.tracks[kind]))] = (sub[0] if sub and isinstance(
                 sub[0], str) else "mono")
+        return True
+
+    def DeleteClips(self, items, ripple=False):
+        _log(self, "DeleteClips", [i.name for i in items], ripple)
+        for track in self.tracks.get("audio", []) + self.tracks.get("video", []):
+            track[:] = [i for i in track if i not in items]
+        return True
+
+    def DeleteTrack(self, kind, index):
+        _log(self, "DeleteTrack", kind, index)
+        tracks = self.tracks.get(kind, [])
+        if not (1 <= index <= len(tracks)) or tracks[index - 1]:
+            return False
+        del tracks[index - 1]
         return True
 
     def GetTrackSubType(self, kind, index):
@@ -472,6 +487,12 @@ def _place(tl, info):
         tracks[track - 1].append(it)
         placed.append(it)
         tl.end = max(tl.end, it.end)
+        for k in range(1, clip.audio_streams if kind == "audio" else 1):  # the spill
+            while len(tracks) <= track - 1 + k:
+                tracks.append([])
+            extra = Item(clip.name, rec, rec + length, clip, nodes=None, source=(s0, s1))
+            tracks[track - 1 + k].append(extra)
+            placed.append(extra)
     pool = tl.project.pool if getattr(tl, "project", None) is not None else None
     if clip.linked and "audio" in kinds and pool is not None and pool.autosync_separate:
         audio, offset = clip.linked

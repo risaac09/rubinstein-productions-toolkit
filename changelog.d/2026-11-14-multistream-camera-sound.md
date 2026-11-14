@@ -1,0 +1,1 @@
+assemble_timeline: a source with several audio streams puts its first stream on A1 and no camera item on any other track (the spill is removed), the music lands on A2, the dry run lists streams found and used per source, and camera_sound_lufs measures what is placed (trap T36).

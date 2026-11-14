@@ -1169,6 +1169,33 @@ class TestTimelineColourAndCameraSound(Base):
         self.assertEqual(r["camera_audio"], [])
         self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 1)
 
+    def test_a_source_with_several_audio_streams_keeps_only_the_first_on_a1(self):
+        """Resolve spreads a four-stream source over A1 to A4; the spill goes (T36)."""
+        orig = rf.Clip.__init__
+
+        def four(self, *args, **kw):
+            orig(self, *args, **kw)
+            self.audio_streams = 1 if str(self.name).endswith(".wav") else 4
+        with mock.patch.object(rf.Clip, "__init__", four):
+            self.setUp()
+            self.manifest["camera_sound"] = True
+            dry, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 3)
+        self.assertEqual(r["camera_audio_extra_removed"], 9)
+        (bed,) = tl.GetItemListInTrack("audio", 2)
+        self.assertEqual(bed.clip.props["File Path"], r["bed"]["path"])
+        self.assertEqual(tl.GetTrackCount("audio"), 2)
+
+    def test_the_dry_run_names_the_streams_found_and_used_per_source(self):
+        self.manifest["camera_sound"] = True
+        probe = {"streams": [{"codec_type": "video"}] + [{"codec_type": "audio"}] * 4}
+        with mock.patch.object(dc, "probe", lambda path: probe), \
+                mock.patch.object(dc, "check_tools", lambda **k: None):
+            dry = self.go()
+        self.assertTrue(all(x["streams_found"] == 4 and x["streams_used"] == 1
+                            for x in dry["camera_streams"]), dry["camera_streams"])
+
     def test_camera_sound_goes_under_each_picture_on_a1_and_the_music_moves_to_a2(self):
         self.manifest["camera_sound"] = True
         dry, r, tl = self.built()
