@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     import numpy as np
-    from rpresolve import measure, overlay
+    from rpresolve import measure, overlay, sidecar
 except ImportError:  # numpy missing on this interpreter
     np = None
 
@@ -236,7 +236,11 @@ class TestFiles(unittest.TestCase):
         bad = subprocess.run(base + [self.files["premult"], "--json"], env=env,
                              capture_output=True, text=True)
         self.assertEqual(bad.returncode, 1, bad.stderr)
-        self.assertEqual(json.loads(bad.stdout)["status"], "fail")
+        doc = json.loads(bad.stdout)
+        self.assertEqual(sidecar.validate(doc), [])
+        self.assertEqual((doc["schema"]["name"], doc["cine"]["status"]), ("cine.overlay-check", "fail"))
+        self.assertEqual(doc["source"]["path"], os.path.abspath(self.files["premult"]))
+        self.assertEqual(doc["transfer"]["tag"], doc["cine"]["probe"]["tags"]["color_transfer"] or "untagged")
         missing = subprocess.run(base + [self.files["straight"]], capture_output=True, text=True,
                                  env=dict(env, RPRESOLVE_FFPROBE="/nonexistent/ffprobe"))
         self.assertEqual(missing.returncode, 2, missing.stderr)

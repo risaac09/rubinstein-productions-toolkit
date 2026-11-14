@@ -9,7 +9,8 @@ true_peak_per_cut and silence_at_cut; speech_vs_rest with --words; stems_sum wit
 Offline rows (VP-23a, VP-20, working defaults, see qc.py): blackdetect warns on
 leading black under 2 s (a fade-in; other black stays FAIL), social_fps warns
 under 30 fps on a social destination, sha256 is reported (--sha256 HEX asserts
-it), safe_zone warns on persistent edges in the 9:16 margins.
+it), safe_zone warns on persistent edges in the 9:16 margins. Opt-in rows (VP-20):
+sync (--sync-ref), colour (--colour) and stabiliser (--stabiliser); see qc.py.
 """
 
 import json
@@ -47,6 +48,15 @@ def add_arguments(p):
     p.add_argument("--sha256", metavar="HEX",
                    help="Expected sha256 of the file: adds a FAIL when it differs (the row "
                    "always reports the hash)")
+    p.add_argument("--sync-ref", metavar="FILE",
+                   help="The recording this file's sound came from: adds sync (offset and drift "
+                   "against it; FAIL over 40 ms, a working default)")
+    p.add_argument("--colour", action="store_true",
+                   help="Adds colour: luma legal range (FAIL outside 16-235) and clipped pixels "
+                   "(WARN over 1 percent), on 6 sampled frames")
+    p.add_argument("--stabiliser", action="store_true",
+                   help="Adds stabiliser: residual frame-to-frame shake of the render (WARN over "
+                   "a working default); judges the picture, not the stabiliser's settings")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help="Override a threshold (repeatable); keys are in rpresolve/qc.py THRESHOLDS")
     p.add_argument("--json", action="store_true", help="Print the result as JSON")
@@ -73,7 +83,8 @@ def run(args):
                    shots=qc.shot_count(args.shots) if args.shots else None, thresholds=th,
                    shot_cut_times=qc.shot_cuts(args.shots) if args.shots else None,
                    words=qc.load_words(args.words) if args.words else None,
-                   stems=args.stems, sha256=args.sha256)
+                   stems=args.stems, sha256=args.sha256, sync_ref=args.sync_ref,
+                   colour=args.colour, stabiliser=args.stabiliser)
     except dc.ToolMissing as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2

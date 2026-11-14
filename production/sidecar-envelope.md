@@ -2,7 +2,7 @@
 
 **Status:** operational.
 
-The JSON sidecars of `perceive` (`cine.perceive`) and the packet assembler (`story.packet`) carry one header, so one validator checks them and a later step can join them on one key. `audio-report` and `overlay-check` have not moved onto it yet. Code: `production/rpresolve/sidecar.py` (`header`, `validate`, `card_key`, `source_sha256`). Stdlib only.
+The JSON sidecars of `perceive` (`cine.perceive`), the packet assembler (`story.packet`), `audio-report` (`sound.audio-report`, file `audio-report.json`) and `overlay-check` (`cine.overlay-check`, its `--json` output) carry one header, so one validator checks them and a later step can join them on one key. The MCP `overlay_check` reply is a tool result, not a sidecar, and stays flat. Code: `production/rpresolve/sidecar.py` (`header`, `validate`, `card_key`, `source_sha256`). Stdlib only.
 
 ## Header
 

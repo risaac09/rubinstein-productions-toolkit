@@ -1,0 +1,1 @@
+Sidecar envelope: audio-report (sound.audio-report) and overlay-check (cine.overlay-check) carry the shared header. qc gains opt-in sync (--sync-ref), colour (--colour) and stabiliser (--stabiliser) rows, WARN or FAIL by working-default thresholds.

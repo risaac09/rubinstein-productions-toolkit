@@ -82,7 +82,7 @@ import tempfile
 
 import numpy as np
 
-from . import delivercheck as dc
+from . import delivercheck as dc, sidecar
 from .paths import OutputRefused, in_any_git_tree
 
 WINDOW_S = 0.1
@@ -808,9 +808,19 @@ def report(path, out_dir, stream=0, start=None, end=None, reference=None, ref_st
     out["hop_s"], out["rms_db"] = WINDOW_S, [round(v, 1) for v in r["window_db"]]
     out["images"] = {"loudness": os.path.join(out_dir, "loudness.png"),
                      "spectrogram": os.path.join(out_dir, "spectrogram.png")}
+    if start is not None or end is not None:  # a range report names its range (sidecar-envelope.md)
+        out["start_s"], out["end_s"] = out["range_s"]
     with open(os.path.join(out_dir, "audio-report.json"), "w", encoding="utf-8") as f:
-        json.dump(out, f, indent=1)
+        json.dump(envelope(out), f, indent=1)
     return out
+
+
+def envelope(r):
+    """The report inside the shared sidecar header (sound.audio-report, schema v2).
+    A picture-free tool: transfer and primaries are null."""
+    doc = sidecar.header("sound.audio-report", 2, r["file"], tool="rpresolve.audioreport")
+    doc["sound"] = r
+    return doc
 
 
 def format_summary(r):

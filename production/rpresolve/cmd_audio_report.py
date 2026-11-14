@@ -58,7 +58,7 @@ def run(args):
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(r, indent=1))
+        print(json.dumps(ar.envelope(r), indent=1))
     else:
         sys.stdout.write(ar.format_summary(r))
     return 0

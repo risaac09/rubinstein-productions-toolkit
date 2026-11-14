@@ -33,9 +33,9 @@ import re
 
 import numpy as np
 
-from . import color, safezone
+from . import color, safezone, sidecar
 from .delivercheck import parse_fps
-from .measure import FFMPEG, MeasureError, _run, bit_depth, decode_filter, probe as _probe
+from .measure import FFMPEG, READ_AS, MeasureError, _run, bit_depth, decode_filter, probe as _probe
 
 CODE_MAX = 1023          # fringe numbers are in 10-bit code values
 FULL = 1 - 0.5 / 1023    # alpha at full scale
@@ -322,6 +322,17 @@ def check(path, expect=(), fps=None, clear_at=(0.0,), hold=None, alpha_mode="str
     rows.sort(key=lambda r: order[r["status"]])
     status = "fail" if any(r["status"] == "FAIL" for r in rows) else "pass"
     return {"file": path, "status": status, "rows": rows, "probe": p}
+
+
+def envelope(report):
+    """The check result inside the shared sidecar header (cine.overlay-check,
+    schema v2). Transfer and primaries are the file's tags, read as Rec.709."""
+    tags = report["probe"]["tags"]
+    tp = lambda k: {"tag": tags.get(k) or "untagged", "read_as": READ_AS}  # noqa: E731
+    doc = sidecar.header("cine.overlay-check", 2, report["file"], transfer=tp("color_transfer"),
+                         primaries=tp("color_primaries"), tool="rpresolve.overlay")
+    doc["cine"] = report
+    return doc
 
 
 def format_report(report):
