@@ -12,6 +12,7 @@ Stdlib only. Run: /usr/bin/python3 -m unittest discover production/tests -v
 import json
 import os
 import re
+import subprocess
 import sys
 import unittest
 from fractions import Fraction
@@ -221,19 +222,21 @@ class DocsMatchCode(unittest.TestCase):
         # under production/ or tools/ (tests aside) may name the repo's own URL and nothing else of him.
         name = re.compile(r"isaac|risaac09", re.I)
         own_repo = "github.com/risaac09/rubinstein-productions-toolkit"
+        # Tracked files only: an ignored leftover on one machine is not the public repo.
+        tracked = subprocess.run(["git", "ls-files", "-z", "--", "production", "tools"], cwd=ROOT,
+                                 capture_output=True, text=True, check=True).stdout.split("\0")
         hits = []
-        for top in (PROD, ROOT / "tools"):
-            for d, dirs, names in os.walk(top):
-                dirs[:] = [x for x in dirs if not skipped_dir(x)]
-                for n in names:
-                    p = Path(d) / n
-                    try:
-                        lines = p.read_text(encoding="utf-8").splitlines()
-                    except (UnicodeDecodeError, OSError):
-                        continue  # a binary file
-                    for k, line in enumerate(lines, 1):
-                        if name.search(line.replace(own_repo, "")):
-                            hits.append(f"{p.relative_to(ROOT)}:{k}")
+        for rel in filter(None, tracked):
+            p = ROOT / rel
+            if any(skipped_dir(x) for x in p.relative_to(ROOT).parts[:-1]):
+                continue
+            try:
+                lines = p.read_text(encoding="utf-8").splitlines()
+            except (UnicodeDecodeError, OSError):
+                continue  # a binary file, or a tracked file deleted in the working tree
+            for k, line in enumerate(lines, 1):
+                if name.search(line.replace(own_repo, "")):
+                    hits.append(f"{rel}:{k}")
         self.assertEqual(hits, [])
 
 

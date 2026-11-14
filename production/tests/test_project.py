@@ -29,6 +29,12 @@ class Chain(unittest.TestCase):
     def setUp(self):
         self.dir = os.path.realpath(tempfile.mkdtemp(prefix="project-test-"))
         self.addCleanup(shutil.rmtree, self.dir, True)
+        # load_config(None, ...) reads $RP_PIPELINE_CONFIG: a machine that has one set (work_root,
+        # indexer) must not change what these tests see.
+        env = mock.patch.dict(os.environ)
+        env.start()
+        os.environ.pop(project.CONFIG_ENV, None)
+        self.addCleanup(env.stop)
         self.card = os.path.join(self.dir, "land", "CAMA-000000")
         os.makedirs(os.path.join(self.card, "DCIM"))
         for n in ("A001.mov", "A002.mov"):

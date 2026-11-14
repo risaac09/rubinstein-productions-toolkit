@@ -161,6 +161,52 @@ class Vp20Rows(unittest.TestCase):
         self.assertEqual(r["status"], "pass")
 
     # the command
+    # privacy (always on) and the MCP flags
+    def tagged(self, name, *tags):
+        out = os.path.join(self._tmp.name, name)
+        meta = [x for t in tags for x in ("-metadata", t)]
+        _ff("-i", self.gray, "-c", "copy", *meta, out)
+        return out
+
+    def test_privacy_passes_a_clean_file_and_names_no_value(self):
+        r = _row(qc.run(self.gray), "privacy")
+        self.assertEqual(r["status"], qc.PASS, r)
+
+    def test_privacy_warns_on_each_planted_tag_and_prints_keys_only(self):
+        for tag in ("location=+41.0000-071.0000/", "serial_number=SN123456", "artist=Some Person",
+                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org"):
+            r = _row(qc.run(self.tagged("t.mkv", tag)), "privacy")
+            self.assertEqual(r["status"], qc.WARN, (tag, r))
+            self.assertNotIn(tag.split("=", 1)[1], r["found"] + str(r.get("note")))
+            self.assertIn(tag.split("=")[0], r["found"].lower())
+
+    def test_privacy_ignores_a_plain_title_and_never_fails(self):
+        r = qc.run(self.tagged("ok.mkv", "title=Example clip"))
+        self.assertEqual(_row(r, "privacy")["status"], qc.PASS)
+        planted = qc.run(self.tagged("p.mkv", "location=+41.0000-071.0000/"))
+        self.assertEqual({c["status"] for c in planted["checks"] if c["check"] == "privacy"}, {qc.WARN})
+        self.assertEqual(r["status"], planted["status"])  # a WARN never changes the outcome
+
+    def test_mcp_qc_exposes_sync_colour_and_stabiliser(self):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("qc")
+        props = tool.input_schema["properties"]
+        for k in ("sync_ref", "colour", "stabiliser"):
+            self.assertIn(k, props)
+        args = {"file": self.gray, "colour": True, "stabiliser": True, "sync_ref": self.ref}
+        self.assertEqual(schema.validate(tool.input_schema, args), [])
+        r = tool.handler(schema.with_defaults(tool.input_schema, args), ToolContext())
+        rows = {c["check"]: c for c in r["checks"]}
+        self.assertNotIn("not run", rows["colour"]["found"])
+        self.assertNotIn("not run", rows["stabiliser"]["found"])
+        self.assertNotEqual(rows["sync"]["found"], "no reference")
+        plain = tool.handler(schema.with_defaults(tool.input_schema, {"file": self.gray}), ToolContext())
+        self.assertEqual({c["check"]: c for c in plain["checks"]}["colour"]["found"], "not run")
+        with self.assertRaises(Exception):
+            tool.handler(schema.with_defaults(tool.input_schema, {"file": self.gray, "sync_ref": "rel.wav"}),
+                         ToolContext())
+
     def test_cli_flags_add_the_rows(self):
         p = subprocess.run([sys.executable, str(WORKFLOW), "qc", self.gray, "--colour", "--stabiliser",
                             "--sync-ref", self.ref], capture_output=True, text=True,

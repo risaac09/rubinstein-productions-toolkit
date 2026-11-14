@@ -408,14 +408,19 @@ def deliver_check(args, ctx):
         from .. import audiostate
         dc.add_rows(r, audiostate.compare(
             audiostate.load(_existing(args["audio_state"], "audio_state")), dest))
-    c = r["counts"]
+    log = _existing(args["review_log"], "review_log") if args.get("review_log") else None
+    dc.add_rows(r, [dc.ear_check_row(path, log)])  # a hand step: owed until the reviewer logs it
+    c = dict(r["counts"])
+    owed = any(x["check"] == "ear_check" and x["status"] == dc.WARN for x in r["checks"])
+    c[dc.WARN] = c.get(dc.WARN, 0) - owed  # the owed hand step is not advice about the file
     bad = [x["check"] for x in r["checks"] if x["status"] == dc.FAIL]
     r["summary"] = (f"deliver_check {os.path.basename(path)} as {dest['key']}: "
                     f"{c[dc.PASS]} pass, {c[dc.FAIL]} fail, {c[dc.SKIP]} skipped" +
                     (f", {c[dc.WARN]} warn" if c.get(dc.WARN) else "") +
                     (f"; FAILED: {', '.join(bad)}" if bad else
                      "; no failures, WARN rows are advice" if c.get(dc.WARN) else
-                     "; every asserted rule passes"))
+                     "; every asserted rule passes") +
+                    ("; ear_check is owed (a hand step)" if owed else ""))
     return r
 
 
@@ -555,7 +560,9 @@ def qc(args, ctx):
                  shots=rpqc.shot_count(shots) if shots else None,
                  shot_cut_times=rpqc.shot_cuts(shots) if shots else None,
                  words=rpqc.load_words(words) if words else None, stems=stems,
-                 sha256=args.get("sha256"))
+                 sha256=args.get("sha256"),
+                 sync_ref=_existing(args["sync_ref"], "sync_ref") if args.get("sync_ref") else None,
+                 colour=bool(args.get("colour")), stabiliser=bool(args.get("stabiliser")))
     r["summary"] = rpqc.format_report(r).strip().splitlines()[-1]
     return r
 
@@ -1154,7 +1161,8 @@ def register(registry):
         "expect_fade) a tail row: the 100 ms ending at the last video frame at least 12 dB below the "
         "window 3 s to 1.5 s before that frame. Every rule is PASS, FAIL, SKIP or WARN with what was "
         "found and expected; a WARN row (the frame-rate floor) is advice and never changes the "
-        "outcome. Reads the whole file for loudness; set loudness false to skip "
+        "outcome. An ear_check row is always added: a hand step, WARN (owed) until a person logs "
+        "their ear check in the review log; it never passes by machine. Reads the whole file for loudness; set loudness false to skip "
         "that (the tail row is skipped too). Never connects to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1186,7 +1194,11 @@ def register(registry):
                               "description": "Absolute path of an audio-state JSON (the "
                               "audio-state command's -o): also compares the audio codec, "
                               "sample rate and bit depth the queued Resolve jobs report with "
-                              "the destination. Never connects to Resolve."}},
+                              "the destination. Never connects to Resolve."},
+              "review_log": {"type": "string",
+                             "description": "Absolute path of the review log (review/events.jsonl): "
+                             "the ear_check row passes only on a logged approve or go "
+                             "(step sound, question ear_check) naming this file."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
     registry.add(Tool(
@@ -1218,8 +1230,9 @@ def register(registry):
         "One FAIL-first QC table for a rendered file: ffmpeg blackdetect, freezedetect, scdet, "
         "ebur128, astats and silencedetect rows, plus deliver_check's rows when a destination "
         "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
-        "speech_vs_rest with words, stems_sum with stems), sha256, and for a social "
-        "destination social_fps and safe_zone. WARN rows never fail the table. Never connects "
+        "speech_vs_rest and voice_vs_bed with words, stems_sum with stems), sha256, privacy "
+        "(metadata tags: location, serial, name, path, email), and for a social "
+        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref), colour, stabiliser. WARN rows never fail the table. Never connects "
         "to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1240,6 +1253,15 @@ def register(registry):
                         "description": "Absolute paths of stem files: adds stems_sum."},
               "sha256": {"type": "string", "pattern": r"^[0-9a-fA-F]{64}$",
                          "description": "Expected sha256 of the file."},
+              "sync_ref": {"type": "string", "description": "Absolute path of the reference "
+                           "(the camera or recorder file the sound should line up with): adds "
+                           "the sync row, offset and drift against it (needs numpy)."},
+              "colour": {"type": "boolean", "default": False,
+                         "description": "Adds the colour row: luma legal range (FAIL outside "
+                         "16-235) and clipped pixels (WARN)."},
+              "stabiliser": {"type": "boolean", "default": False,
+                             "description": "Adds the stabiliser row: residual frame-to-frame "
+                             "shake of the render (WARN; judges the picture, not the setting)."},
               "set": {"type": "array", "items": {"type": "string"},
                       "description": "KEY=VALUE threshold overrides (keys are in "
                       "rpresolve/qc.py THRESHOLDS)."}}, ["file"]),

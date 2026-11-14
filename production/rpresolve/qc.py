@@ -35,6 +35,11 @@ and set with --set; none is a standard. They are numbers, not listening:
                         (words joined across gaps under speech_join_s, then
                         padded speech_pad_s) against the rest; WARN when the
                         rest is louder than speech minus speech_rest_margin_lu
+    voice_vs_bed        with --words, each speech span's momentary loudness
+                        against the louder of the gaps beside it (the bed);
+                        WARN names each span under bed + voice_bed_margin_lu.
+                        Needs numpy; a bed that ducks under voice reads
+                        louder in the gaps than it is
     phone_proxy         the mix folded to mono and high-passed at
                         phone_hp_hz: its loudest short-term loudness against
                         the full mix's; WARN when it drops more than
@@ -47,6 +52,12 @@ in, time_s, time or cut_s; the first shot's start is not a cut), else from
 the scdet cuts of the file itself. WARN does not fail the table.
 
 Offline rows (VP-23a, VP-20). Thresholds are working defaults, printed in the row:
+    privacy            always on: the container and stream tags, WARN on a
+                       location or GPS tag, a serial, an artist, author,
+                       creator, owner or comment field, or a value holding a
+                       home-folder path or an email address. Names the tags,
+                       never the values. Metadata only; the frame pass at one
+                       frame per second is a look, not this row
     blackdetect        black that starts within black_lead_start_s of the head
                        and lasts under black_lead_max_s is a fade-in: WARN
                        (decision 30). Longer leading black, or black anywhere
@@ -138,6 +149,8 @@ THRESHOLDS = {
     "speech_pad_s": 0.2,            # padding on each speech span
     "speech_join_s": 0.5,           # word gaps under this join into one span
     "speech_rest_margin_lu": 6.0,   # warn when rest > speech - this
+    "voice_bed_margin_lu": 6.0,     # warn when a speech span is under its bed + this
+    "voice_bed_min_s": 0.7,         # shorter spans and gaps have no clean momentary reading
     "phone_hp_hz": 300.0,           # phone proxy high-pass
     "phone_drop_lu": 8.0,           # warn when the proxy's short-term max drops more than this
     "stems_lu_tol": 0.1,            # stems sum vs mix, integrated
@@ -476,6 +489,46 @@ def _sound_speech_vs_rest(path, words, th):
                  f"words joined across gaps under {th['speech_join_s']:g}s, padded {th['speech_pad_s']:g}s")
 
 
+def _sound_voice_vs_bed(frames, words, th):
+    """PRI-22: per speech span, the voice against the bed beside it. The
+    momentary loudness (400 ms) of each span is its median over the frames
+    wholly inside it; the bed is the median of the gap before and the gap
+    after, the louder of the two. WARN names every span under the margin.
+    shortcut: a mix has no bed track, so the bed is read in the gaps; a bed
+    that ducks under the voice reads louder there than it is (a stricter
+    row, never a looser one). Stems would give the bed itself."""
+    margin = th["voice_bed_margin_lu"]
+    expected = f"each speech span >= its bed + {margin:g} LU{WD}"
+    if words is None:
+        return _srow("voice_vs_bed", SKIP, "no word file", "a word JSON (--words)")
+    floor, need = _ar().NO_READING_LUFS, th["voice_bed_min_s"]
+
+    def level(a, b):  # median M of the frames whose 400 ms window lies in [a, b]
+        v = sorted(m for t, m, _ in frames if a + 0.4 <= t <= b and m > floor)
+        return v[len(v) // 2] if len(v) >= max(3, int(need * 10) - 4) else None
+
+    spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
+    edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]  # gap k lies before span k
+    bad, read = [], 0
+    for k, (a, b) in enumerate(spans):
+        voice = level(a, b)
+        beds = [x for x in (level(*gaps[k]), level(*gaps[k + 1])) if x is not None]
+        if voice is None or not beds:
+            continue
+        read += 1
+        gap = round(voice - max(beds), 1)
+        if gap < margin - 1e-9:
+            bad.append(f"{_at(a)} to {_at(b)} voice {gap:+g} LU over its bed")
+    if not read:
+        return _srow("voice_vs_bed", SKIP, f"0 of {len(spans)} spans readable", expected,
+                     f"each span and a neighbouring gap need {need:g}s of clean frames")
+    return _srow("voice_vs_bed", WARN if bad else PASS,
+                 "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
+                 if bad else f"{read} spans clear of their bed", expected,
+                 f"{read} of {len(spans)} spans read, bed taken from the gaps beside each span")
+
+
 def _sound_phone_proxy(path, full_frames, th):
     full = _max_short_term(full_frames)
     expected = f"drop <= {th['phone_drop_lu']:g} LU{WD}"
@@ -530,11 +583,12 @@ def _sound_rows(path, m, frames, th, cuts, cuts_from, words, stems, ceiling, fps
     rows = [_sound_lra(m)]
     if np is None:  # audioreport, which these rows read, imports numpy
         return rows + [_srow(n, SKIP, "needs numpy", "numpy installed") for n in
-                       ("true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "phone_proxy",
-                        "stems_sum")]
+                       ("true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "voice_vs_bed",
+                        "phone_proxy", "stems_sum")]
     rows.append(_sound_true_peak_per_cut(path, cuts, dur, ceiling, cuts_from))
     rows.append(_sound_silence_at_cut(np, path, cuts, th, fps))
     rows.append(_sound_speech_vs_rest(path, words, th))
+    rows.append(_sound_voice_vs_bed(frames, words, th))
     rows.append(_sound_phone_proxy(path, frames, th))
     rows.append(_sound_stems_sum(np, path, stems, m["integrated_lufs"], th))
     return rows
@@ -664,6 +718,35 @@ def _colour_row(path, colour, th, has_video):
     over = max(clip["high_pct"], clip["low_pct"]) > th["colour_clip_pct"]
     return _srow("colour", WARN if over else PASS, found, expected,
                  f"{m['frames_sampled']} frames, read as display Rec.709")
+
+
+PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment", re.I)
+PRIVATE_VALUE = re.compile(r"(?:/Users/|/home/|/Volumes/|[A-Za-z]:\\Users\\)|[\w.+-]+@[\w-]+\.[\w.-]+")
+
+
+def _privacy_row(info):
+    """The metadata half of the privacy pass (VP-20). Reads the container and
+    stream tags ffprobe already gave: a location or GPS tag, a serial number,
+    an artist, author, creator, owner or comment field, or any tag whose value
+    holds a home-folder path or an email address. Names the tags, never their
+    values, so the report itself carries nothing private. WARN, never FAIL: a
+    credit may be wanted. The frame pass at one frame per second is a look, not
+    this row."""
+    expected = "no location, serial, personal-name, path or email tag (working default list)"
+    where = [("format", (info.get("format") or {}).get("tags") or {})]
+    where += [(f"{s.get('codec_type', 'stream')} {s.get('index', '')}".strip(), s.get("tags") or {})
+              for s in info.get("streams") or []]
+    hits, read = [], 0
+    for place, tags in where:
+        for k, v in tags.items():
+            read += 1
+            if str(v).strip() and (PRIVATE_KEY.search(k) or PRIVATE_VALUE.search(str(v))):
+                hits.append(f"{place}: {k}")
+    return _srow("privacy", WARN if hits else PASS,
+                 "; ".join(hits[:6]) + (f"; +{len(hits) - 6} more" if len(hits) > 6 else "")
+                 if hits else f"{read} tags read, none private", expected,
+                 "metadata only (ffprobe tags, values not printed); the one-frame-per-second look "
+                 "at the picture stays a person's")
 
 
 def _shift(np, a, b):
@@ -953,11 +1036,12 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
                             float(fr) if fr else 24.0, dur or 0.0)
     else:
         for n in ("loudness", "true_peak", "astats_peak", "astats_dc", "silencedetect", "lra",
-                  "true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "phone_proxy",
-                  "stems_sum"):
+                  "true_peak_per_cut", "silence_at_cut", "speech_vs_rest", "voice_vs_bed",
+                  "phone_proxy", "stems_sum"):
             rows.append(_row(n, None, "no audio stream", "-"))
 
     rows.append(_social_fps(streams, dest, th))
+    rows.append(_privacy_row(info))
     rows.append(_sha256_row(path, sha256))
     rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
     rows.append(_sync_row(path, sync_ref, th, has_audio))

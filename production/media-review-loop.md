@@ -179,6 +179,7 @@ The optional `question` key names what was asked, so the taste profile counts li
 | `ending` | how the reel ends |
 | `tempo` | cutting pace |
 | `music_level` | music level under speech |
+| `ear_check` | the ear check on a rendered file (step `sound`, choice `approve` or `go`, with `--review-copy`); `deliver-check --review-log` reads it, and the row stays owed without it |
 
 Still-image decisions use `warmth`, `skin` and `contrast`, and cutting or mix decisions `pace`, the same way. Source-footage decisions use `speed` (a retime), `transform` (the input transform or LUT), `exposure`, `stabilizer` and `squeeze` (the desqueeze).
 

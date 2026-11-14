@@ -91,6 +91,66 @@ class Case(unittest.TestCase):
         return dc.approval_row(str(self.f), str(self.log), sha(b"deliverable"))[0]
 
 
+class TestEarCheckRow(Case):
+    """PRI-22: the ear check is a hand step. Nothing a machine writes passes it."""
+
+    def ear(self, log=True, **kw):
+        return dc.ear_check_row(str(self.f), str(self.log) if log else None, sha(b"deliverable"))
+
+    def logline(self, step="sound", question="ear_check", choice="approve", copy=COPY, ts="2026-11-14T10:00:00Z"):
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.log, "a") as fh:
+            fh.write(json.dumps({"ts": ts, "project": "P-0001", "step": step, "question": question,
+                                 "options": {}, "choice": choice, "device": "desktop",
+                                 "review_copy": copy, "review_sha256": sha(b"review copy")}) + "\n")
+
+    def test_owed_without_a_log(self):
+        r = self.ear(log=False)
+        self.assertEqual(r["status"], "WARN")
+        self.assertIn("owed", r["found"])
+
+    def test_owed_when_the_log_has_no_ear_line(self):
+        self.line()                                # a gate approval is not an ear check
+        self.logline(question="pace")              # nor is another sound answer
+        self.assertEqual(self.ear()["status"], "WARN")
+
+    def test_passes_only_on_a_logged_approve_for_the_file(self):
+        self.logline()
+        self.assertEqual(self.ear()["status"], "PASS")
+
+    def test_a_later_hold_withdraws_it(self):
+        self.logline()
+        self.logline(choice="hold", ts="2026-11-14T11:00:00Z")
+        self.assertEqual(self.ear()["status"], "WARN")
+
+    def test_another_files_ear_check_does_not_count(self):
+        self.logline(copy="SW999_Test_02_other_review.mp4")
+        self.assertEqual(self.ear()["status"], "WARN")
+
+    def test_the_command_always_carries_the_row_and_stays_green(self):
+        code, out = self.run_cmd()
+        self.assertEqual(code, 0)
+        self.assertIn("ear_check", out)
+
+    def test_the_mcp_tool_carries_the_owed_row_too(self):
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        tool = server.build_registry().get("deliver_check")
+        self.assertIn("review_log", tool.input_schema["properties"])
+        args = {"file": str(self.f), "destination": "youtube_16x9", "loudness": False}
+        with mock.patch.object(dc, "check", side_effect=lambda *a, **k: stub(self.f)):
+            r = tool.handler(schema.with_defaults(tool.input_schema, args), ToolContext())
+            self.assertEqual([c["status"] for c in r["checks"] if c["check"] == "ear_check"], ["WARN"])
+            self.assertIn("ear_check is owed", r["summary"])
+            self.logline(copy=COPY)
+            r = tool.handler(schema.with_defaults(tool.input_schema, {**args, "review_log": str(self.log)}),
+                             ToolContext())
+        self.assertEqual([c["status"] for c in r["checks"] if c["check"] == "ear_check"], ["PASS"])
+
+    def test_ear_check_is_a_review_log_question(self):
+        self.assertIn("ear_check", reviewlog.QUESTIONS)
+
+
 class TestApprovalRow(Case):
     def test_matching_line_passes(self):
         self.line()

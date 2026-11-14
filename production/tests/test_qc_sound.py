@@ -90,6 +90,12 @@ class SoundRows(unittest.TestCase):
         cls.clear = p("clear.wav")
         _wav(cls.clear, f"0.02*(2*random(0)-1)+0.6*{TONE}*between(t,1,3)", 6)
         cls.words = _words(p("words.json"), [(1.0, 1.5), (1.6, 3.0)])
+        # PRI-22: a steady bed with two speech spans; the second is buried (planted fault)
+        cls.bed_ok = p("bed_ok.wav")
+        _wav(cls.bed_ok, f"0.05*(2*random(0)-1)+0.6*{TONE}*(between(t,1,2.5)+between(t,3.5,5))", 7)
+        cls.bed_bad = p("bed_bad.wav")
+        _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,1,2.5)+0.03*between(t,3.5,5))", 7)
+        cls.bed_words = _words(p("bed_words.json"), [(1.0, 2.5), (3.5, 5.0)])
         cls.low = p("low.wav")        # energy only at 100 Hz
         _wav(cls.low, "0.5*sin(2*PI*100*t)", 6)
 
@@ -136,6 +142,20 @@ class SoundRows(unittest.TestCase):
         row = self.by(self.buried, words=words)["speech_vs_rest"]
         self.assertEqual(row["status"], qc.WARN, row)
         self.assertEqual(self.by(self.clear, words=words)["speech_vs_rest"]["status"], qc.PASS)
+
+    def test_voice_vs_bed_names_the_buried_span_only(self):
+        words = qc.load_words(self.bed_words)
+        bad = self.by(self.bed_bad, words=words)["voice_vs_bed"]
+        self.assertEqual(bad["status"], qc.WARN, bad)
+        self.assertIn("3.30s to 5.20s", bad["found"])
+        self.assertNotIn("0.80s", bad["found"])
+        self.assertIn("working default", bad["expected"])
+        self.assertEqual(self.by(self.bed_ok, words=words)["voice_vs_bed"]["status"], qc.PASS)
+
+    def test_voice_vs_bed_skips_without_words_or_readable_spans(self):
+        self.assertEqual(self.by(self.bed_ok)["voice_vs_bed"]["status"], qc.SKIP)
+        short = qc.load_words(_words(os.path.join(self.t, "short.json"), [(1.0, 1.2)]))
+        self.assertEqual(self.by(self.bed_ok, words=short)["voice_vs_bed"]["status"], qc.SKIP)
 
     def test_speech_vs_rest_skips_without_words(self):
         self.assertEqual(self.by(self.buried)["speech_vs_rest"]["status"], qc.SKIP)

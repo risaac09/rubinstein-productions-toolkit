@@ -461,6 +461,41 @@ class TestFixLoudness(unittest.TestCase):
         with self.assertRaisesRegex(dc.CheckError, "already exists"):
             dc.fix_loudness(self.path, self.dest)
 
+    def test_the_mcp_tool_plans_then_writes_beside_and_never_replaces(self):
+        import json
+        from unittest import mock
+        from rpresolve.mcp import schema, server
+        from rpresolve.mcp.registry import ToolContext
+        overlay = os.path.join(self.dir, "overlay.json")
+        with open(overlay, "w", encoding="utf-8") as f:
+            json.dump({"destinations": {"youtube_16x9": {"resolution": {"width": 64, "height": 36}}}}, f)
+        env = {"RPRESOLVE_CONFIG": overlay, "RPRESOLVE_MCP_JOURNAL": os.path.join(self.dir, "j.jsonl")}
+        tool = server.build_registry().get("deliver_fix_loudness")
+        self.assertNotIn("replace", tool.input_schema["properties"])
+
+        def call(args):
+            self.assertEqual(schema.validate(tool.input_schema, args), [])
+            with mock.patch.dict(os.environ, env):
+                return tool.handler(schema.with_defaults(tool.input_schema, args), ToolContext())
+
+        base = {"file": self.path, "destination": "youtube_16x9", "fps": "23.976"}
+        dry = call(base)
+        self.assertTrue(dry["dry_run"])
+        self.assertIn(dry["plan_sha"], dry["summary"])
+        self.assertFalse(os.path.exists(dc.fixed_path(self.path)))
+        with self.assertRaisesRegex(Exception, "plan_sha"):
+            call({**base, "dry_run": False})
+        with self.assertRaisesRegex(Exception, "does not match"):
+            call({**base, "dry_run": False, "plan_sha": "0" * 64})
+        before = self.streamhash(self.path)
+        r = call({**base, "dry_run": False, "plan_sha": dry["plan_sha"]})
+        self.assertEqual(r["status"], "pass", r["summary"])
+        self.assertTrue(os.path.isfile(dc.fixed_path(self.path)))
+        self.assertFalse(r["replaced"])
+        self.assertEqual(self.streamhash(self.path), before)
+        with self.assertRaisesRegex(Exception, "already exists"):
+            call(base)  # the refusal runs in the dry run too
+
     def test_replace_moves_the_original_to_the_trash_first(self):
         before = self.streamhash(self.path)
         trash = os.path.join(self.dir, "Trash")

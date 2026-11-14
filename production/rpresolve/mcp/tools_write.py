@@ -24,6 +24,7 @@ plan_sha, and is journalled.
 import os
 
 from .. import card as rpcard
+from .. import cli
 from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
@@ -785,6 +786,44 @@ def deliver_captions(args, ctx):
         return r
 
     return run() if args["dry_run"] else _journalled("deliver_captions", args, run)
+
+
+def deliver_fix_loudness(args, ctx):
+    """The loudness fix beside its CLI command: <stem>.loudfix<ext> next to the
+    render, never replacing it (replace stays a CLI choice, it moves a file
+    to the Trash). Never connects to Resolve."""
+    from .. import delivercheck as dc
+    _require_sha(args)
+    path = _existing(args["file"], "file")
+    dest = deliver.destination(deliver_config(), args["destination"])
+    size = cli.size(args["size"]) if args.get("size") else None
+    if args.get("fps"):
+        dc.parse_fps(args["fps"])
+    ctx.check_cancel()
+    plan = dc.fix_loudness(path, dest, fps=args.get("fps"), size=size, dry_run=True)
+    st = os.stat(path)
+    sha = workflows.plan_sha("deliver_fix_loudness", plan["original"], st.st_size, st.st_mtime_ns,
+                             dest["key"], plan["fixed"], args.get("fps"), args.get("size"))
+
+    def run():
+        if args["dry_run"]:
+            return {**plan, "plan_sha": sha, "exit_status": 0, "summary": (
+                f"would write {plan['fixed']} from {os.path.basename(path)} at {dest['key']}'s "
+                f"loudness target; the original stays untouched. To run it, call again with "
+                f"dry_run false and plan_sha {sha}.")}
+        if args["plan_sha"] != sha:
+            raise workflows.Refused("plan_sha does not match this file, destination and size "
+                                    "as they are now; run a dry run again.")
+        r = dc.fix_loudness(path, dest, fps=args.get("fps"), size=size)
+        r["plan_sha"], r["exit_status"] = sha, 0 if r["status"] == "pass" else 2
+        r["summary"] = (f"wrote {r['fixed']}: loudnorm {r['result_loudnorm'].get('normalization_type')} "
+                        f"mode, output {r['result_loudnorm'].get('output_i')} LUFS; its deliver_check "
+                        f"is {r['check']['status'].upper()}, video stream "
+                        f"{'identical' if r['video_identical'] else 'DIFFERENT'}. The original is "
+                        "untouched. Listen before delivering: the ear check is the reviewer's.")
+        return r
+
+    return run() if args["dry_run"] else _journalled("deliver_fix_loudness", args, run)
 
 
 # ---------------------------------------------------------------------------
@@ -1744,3 +1783,26 @@ def register(registry):
             **DRY_RUN},
          "required": ["file", "destination"], "additionalProperties": False},
         deliver_captions, title="Captions sidecar to .srt", annotations=WRITE))
+    registry.add(Tool(
+        "deliver_fix_loudness",
+        "Offline, never Resolve: the loudness fix of the deliver loop. A two-pass loudnorm of the "
+        "render's first audio stream to the destination's target, video copied untouched, written "
+        "as '<stem>.loudfix<ext>' beside the render, then checked as deliver_check checks the "
+        "original. Additive only: it never overwrites or replaces (the CLI's --replace, which "
+        "moves the original to the Trash, stays a CLI choice). Refused for a destination with no "
+        "loudness target, when the .loudfix file exists, and when Resolve's caption sidecar has "
+        "no .srt yet. It reads the whole file twice, so it plans first like the write tools: dry "
+        "run, then the real run with its plan_sha. The result is numbers: the ear check is a "
+        "person's.",
+        {"type": "object", "properties": {
+            "file": {"type": "string", "description": "Absolute path of the rendered file."},
+            "destination": {"type": "string", "minLength": 1,
+                            "description": "The destination it was rendered for (at start: " +
+                            ", ".join(destination_keys()) + ")."},
+            "fps": {"type": "string", "pattern": r"^\d+(\.\d+)?(/\d+)?$",
+                    "description": "The timeline's frame rate to assert in the check."},
+            "size": {"type": "string", "pattern": r"^\d+x\d+$",
+                     "description": "WIDTHxHEIGHT to assert for a timeline-size destination."},
+            **DRY_RUN},
+         "required": ["file", "destination"], "additionalProperties": False},
+        deliver_fix_loudness, title="Fix a render's loudness", annotations=WRITE))
