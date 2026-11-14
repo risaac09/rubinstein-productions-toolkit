@@ -1198,7 +1198,7 @@ def register(registry):
               "review_log": {"type": "string",
                              "description": "Absolute path of the review log (review/events.jsonl): "
                              "the ear_check row passes only on a logged approve or go "
-                             "(step sound, question ear_check) naming this file."}},
+                             "(step sound, question ear_check) whose review_sha256 is this file's own sha256."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
     registry.add(Tool(

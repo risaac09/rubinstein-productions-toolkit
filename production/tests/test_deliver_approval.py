@@ -97,12 +97,13 @@ class TestEarCheckRow(Case):
     def ear(self, log=True, **kw):
         return dc.ear_check_row(str(self.f), str(self.log) if log else None, sha(b"deliverable"))
 
-    def logline(self, step="sound", question="ear_check", choice="approve", copy=COPY, ts="2026-11-14T10:00:00Z"):
+    def logline(self, step="sound", question="ear_check", choice="approve", copy=COPY, ts="2026-11-14T10:00:00Z", heard=None):
+        heard = heard or sha(b"deliverable")
         self.log.parent.mkdir(parents=True, exist_ok=True)
         with open(self.log, "a") as fh:
             fh.write(json.dumps({"ts": ts, "project": "P-0001", "step": step, "question": question,
                                  "options": {}, "choice": choice, "device": "desktop",
-                                 "review_copy": copy, "review_sha256": sha(b"review copy")}) + "\n")
+                                 "review_copy": copy, "review_sha256": heard}) + "\n")
 
     def test_owed_without_a_log(self):
         r = self.ear(log=False)
@@ -124,8 +125,21 @@ class TestEarCheckRow(Case):
         self.assertEqual(self.ear()["status"], "WARN")
 
     def test_another_files_ear_check_does_not_count(self):
-        self.logline(copy="SW999_Test_02_other_review.mp4")
+        self.logline(copy="SW999_Test_02_other_review.mp4", heard=sha(b"another file"))
         self.assertEqual(self.ear()["status"], "WARN")
+
+    def test_a_sibling_aspect_was_not_heard(self):
+        self.logline(heard=sha(b"the 16x9 render"))   # same house stem, other bytes
+        r = self.ear()
+        self.assertEqual(r["status"], "WARN")
+        self.assertIn("owed", r["found"])
+
+    def test_a_rewritten_deliverable_is_owed_again(self):
+        self.logline()
+        self.assertEqual(self.ear()["status"], "PASS")
+        self.f.write_bytes(b"re-rendered with a new mix")
+        r = dc.ear_check_row(str(self.f), str(self.log))  # sha read from the file itself
+        self.assertEqual(r["status"], "WARN")
 
     def test_the_command_always_carries_the_row_and_stays_green(self):
         code, out = self.run_cmd()
