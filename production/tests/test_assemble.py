@@ -33,6 +33,7 @@ from rpresolve import delivercheck as dc  # noqa: E402
 from rpresolve.workflows import Refused  # noqa: E402
 
 REAL_BAKE, REAL_SOURCE_SECONDS = a.musicbed.bake, a.musicbed.source_seconds  # before Base stubs them
+REAL_MEASURE = a.measure_bed
 needs_ffmpeg = unittest.skipUnless(
     all(os.access(t, os.X_OK) for t in (dc.FFMPEG, dc.FFPROBE)), "ffmpeg or ffprobe missing")
 
@@ -1320,3 +1321,158 @@ class TestDesqueeze(Base):
         with mock.patch.object(a.dc, "video_dims", lambda path: None):
             (row,) = self.go()["shape"]
         self.assertIn("not judged", row["note"])
+
+
+class TestCompactResult(Base):
+    """The tool's result groups per-file rows that differ only by path and says each distinct
+    note once with a count; the plan_sha and the full result are unchanged."""
+
+    def many(self, n=12):
+        d = os.path.dirname(self.one)
+        spans, sources = [], []
+        for i in range(n):
+            p = os.path.join(d, f"cam{i:02d}.mov")
+            Path(p).write_bytes(b"x")
+            rf.IMPORT_PROPS[p] = {"FPS": "30.0", "Input Color Space": UNTAGGED, "Data Level": "Auto",
+                                  "PAR": "Square"}
+            self.detected[p] = drow(p)
+            sources.append({"id": f"c{i}", "path": p})
+            spans.append({"source": f"c{i}", "in": 1.0, "out": 1.5})
+        self.addCleanup(lambda: [rf.IMPORT_PROPS.pop(s["path"], None) for s in sources])
+        Path(d, "squeeze.json").write_text(json.dumps({"default": 1.5}))
+        self.manifest.update(sources=sources, music=None)
+        self.manifest["clips"][0]["spans"] = spans
+        mock.patch.object(a.dc, "video_dims", lambda p: (5952, 3968)).start()
+        self.addCleanup(mock.patch.stopall)
+
+    def tool(self, **more):
+        from rpresolve.mcp import tools_write
+        from rpresolve.mcp.registry import Registry
+        reg = Registry()
+        tools_write.register(reg)
+        return reg
+
+    def test_identical_rows_merge_with_a_count_and_the_file_names(self):
+        self.many(12)
+        full = self.go(width=3840, height=1608)
+        c = a.compact(full)
+        self.assertEqual(len(full["desqueeze"]), 12)
+        (row,) = c["desqueeze"]
+        self.assertEqual((row["count"], len(row["files"]), row["par"]), (12, 12, "1.5"))
+        (srow,) = c["shape"]
+        self.assertEqual(srow["count"], 12)
+        self.assertEqual(len(c["colour"]["sources"]), 1)
+        self.assertEqual(c["plan_sha"], full["plan_sha"])
+        self.assertLess(len(json.dumps(c, default=str)), 0.7 * len(json.dumps(full, default=str)))
+
+    def test_a_row_that_differs_stays_a_full_row(self):
+        self.many(4)
+        clip_path = self.manifest["sources"][2]["path"]
+        full = self.go()
+        full["desqueeze"][2] = {**full["desqueeze"][2], "action": "left", "current": "2"}
+        c = a.compact(full)
+        paths = [r.get("path") for r in c["desqueeze"]]
+        self.assertIn(clip_path, paths)
+        self.assertEqual(sorted(r.get("count", 1) for r in c["desqueeze"]), [1, 3])
+
+    def test_once_says_each_distinct_line_one_time_with_a_count(self):
+        lines = ["colour: a.mov: odd", "colour: b.mov: odd", "colour: c.mov: other"]
+        self.assertEqual(a.once(lines, ["a.mov", "b.mov", "c.mov"]),
+                         ["2 sources: colour: each: odd", "colour: c.mov: other"])
+
+    def test_the_mcp_summary_names_the_shape_note_once(self):
+        from rpresolve.mcp import tools_write
+        self.many(12)
+        r = self.go(width=3840, height=1608)
+        line = tools_write._squeeze_line(r)
+        self.assertEqual(line.count("keeps all of it"), 1)
+        self.assertIn("12 sources: ", line)
+
+
+class TestCameraLevel(Base):
+    """camera_sound_lufs: one gain for the whole camera bed, measured over the spans used."""
+
+    def setUp(self):
+        super().setUp()
+        self.manifest["camera_sound"] = True
+        self.manifest["camera_sound_lufs"] = -27
+        self.measured = {"integrated_lufs": -53.0, "true_peak_dbtp": -30.0}
+        patch = mock.patch.object(a, "measure_bed", lambda p: self.measured)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def built(self):
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        return dry, r, tl
+
+    def test_the_gain_is_planned_and_applied_to_every_camera_item_with_read_back(self):
+        dry, r, tl = self.built()
+        self.assertEqual((dry["camera_level"]["gain_db"], dry["camera_level"]["true_peak_after"]),
+                         (26.0, -4.0))
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["camera_level"]["applied"], 3)
+        for it in tl.GetItemListInTrack("audio", 1):
+            self.assertEqual(it.GetProperty("AudioVolume"), 26.0)
+
+    def test_a_gain_that_would_clip_is_refused_in_the_dry_run(self):
+        self.measured = {"integrated_lufs": -53.0, "true_peak_dbtp": -20.0}
+        with self.assertRaisesRegex(Refused, "above the -1 dBTP ceiling"):
+            self.go()
+
+    def test_a_silent_bed_is_refused(self):
+        self.measured = {"integrated_lufs": float("-inf"), "true_peak_dbtp": -90.0}
+        with self.assertRaisesRegex(Refused, "silent"):
+            self.go()
+
+    def test_the_target_needs_camera_sound_and_a_sane_number(self):
+        self.manifest["camera_sound"] = False
+        with self.assertRaisesRegex(Refused, "set camera_sound true"):
+            self.go()
+        self.manifest["camera_sound"] = True
+        self.manifest["camera_sound_lufs"] = "loud"
+        with self.assertRaisesRegex(Refused, "number from -70 to 0"):
+            self.go()
+
+    def test_the_level_is_part_of_the_plan_hash(self):
+        before = self.go()["plan_sha"]
+        self.measured = {"integrated_lufs": -50.0, "true_peak_dbtp": -30.0}
+        self.assertNotEqual(before, self.go()["plan_sha"])
+
+    def test_items_that_refuse_the_volume_are_a_problem_with_the_gain_named(self):
+        orig = rf.Item.SetProperty
+
+        def refuse(it, key, value):
+            return False if key == "AudioVolume" else orig(it, key, value)
+        with mock.patch.object(rf.Item, "SetProperty", refuse):
+            _, r, _ = self.built()
+        self.assertTrue(any("did not take AudioVolume +26 dB" in x for x in r["problems"]), r["problems"])
+        self.assertTrue(any("set +26 dB on A1 by hand" in x for x in r["plan"]["not_built"]))
+        self.assertEqual(r["camera_level"]["applied"], 0)
+
+    def test_without_the_key_nothing_is_measured_or_set(self):
+        del self.manifest["camera_sound_lufs"]
+        with mock.patch.object(a, "measure_bed", side_effect=AssertionError("measured")):
+            dry, r, tl = self.built()
+        self.assertIsNone(r["camera_level"])
+
+    def test_the_summary_reports_the_measure_and_the_gain(self):
+        from rpresolve.mcp import tools_write
+        self.assertIn("measures -53 LUFS (true peak -30 dBTP): would set +26 dB for -27 LUFS",
+                      tools_write._level_line(self.go()))
+
+    @needs_ffmpeg
+    def test_measure_bed_reads_exactly_the_spans_used(self):
+        # a 1 s tone at a known level then a quiet second; only the loud second is used
+        src = os.path.join(os.path.dirname(self.one), "tone.wav")
+        subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=1000:d=1",
+                        "-f", "lavfi", "-i", "sine=f=1000:d=1", "-filter_complex",
+                        "[0:a]volume=0.1[a];[1:a]volume=0.001[b];[a][b]concat=n=2:v=0:a=1",
+                        src], check=False, stdin=subprocess.DEVNULL)
+        if not os.path.isfile(src):
+            self.skipTest("could not make the test tone")
+        real = REAL_MEASURE(
+            {"fps": 24, "spans": [{"path": src, "in": 0.0, "frames": 24}]})
+        loud = REAL_MEASURE({"fps": 24, "spans": [{"path": src, "in": 1.0, "frames": 24}]})
+        self.assertGreater(real["integrated_lufs"], loud["integrated_lufs"] + 20)
