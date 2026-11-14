@@ -39,8 +39,16 @@ what it expected:
                   any case, dangling links too) and no subtitle stream
                   (burnt-in text is not read from pixels)
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
-                  tolerance, true peak at or under the maximum; SKIP when the
-                  destination has no target
+                  tolerance; SKIP when the destination has no target
+    true_peak     the same read: true peak at or under the destination's
+                  maximum, TRUE_PEAK_DEFAULT_DBTP (-1) when it names none. Runs
+                  for every destination whenever loudness is read, a
+                  client_master included (its loudness stays unasserted)
+    clipping      runs whenever loudness is read: FAIL when the first audio
+                  stream holds a run of CLIP_RUN or more identical samples at
+                  CLIP_LEVEL of full scale or above (a flat top). Counted on the
+                  decoded float samples, so a lossy file's overshoot, which the
+                  decoder does not flatten, is the true_peak row's to catch
     tail          opt-in (the destination's tail_fade true, or expect_fade): the
                   level of the 100 ms ending at the last video frame against the
                   window from 3 s to 1.5 s before that frame (not the file's end:
@@ -51,7 +59,9 @@ what it expected:
                   levels in the row, or when the sound stops before the picture
                   ends and those 100 ms hold none. SKIP with a note when there is
                   no audio, loudness reading is off or the file is under 4 s. No
-                  row at all when the destination does not ask for it
+                  row at all when the destination does not ask for it; the
+                  report then says the tail was not asserted (result key
+                  tail_asserted), so a reader knows the ending was not checked
 
 approval_row() is opt-in (cmd_deliver_check --review-log): a WARN-only row from
 the review log's approve or go line. It is not part of check(), so qc never
@@ -68,6 +78,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from fractions import Fraction
 
@@ -95,6 +106,17 @@ TAIL_S = 0.1
 TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
 TAIL_DROP_DB = 12.0
 TAIL_MIN_S = 4.0
+# The true_peak row's ceiling for a destination that names none (config.py's default too).
+TRUE_PEAK_DEFAULT_DBTP = -1.0
+# The clipping row: CLIP_RUN or more consecutive identical samples at CLIP_LEVEL of full scale
+# or above. A clipped signal repeats its ceiling value exactly; a clean sine never does
+# (neighbours at the crest differ by far more than a bit, down to about 30 Hz at 24 bit),
+# so a full-scale sine passes and a flat-topped one fails. Two repeats can occur by chance
+# at a crest, three do not. shortcut: a clean sine below about 30 Hz at 16 bit can repeat
+# a value three times at the crest; upgrade to a slope test if such material appears.
+CLIP_LEVEL = 0.999
+CLIP_RUN = 3
+CLIP_CHUNK_FRAMES = 1 << 18
 # The log_flat row: luma extremes (signalstats YMIN, YMAX) on LOG_FRAMES frames spread over the
 # file, as a fraction of the nominal black-to-white span. A graded Rec.709 picture reaches
 # black (about 0.04 on the files measured) and bright whites (0.8 and over). A log picture
@@ -177,6 +199,84 @@ def measure_loudness(path, stream=0):
         raise CheckError(f"ffmpeg could not measure loudness in {path}: "
                          f"{proc.stderr.strip()[-300:]}")
     return parse_ebur128(proc.stderr)
+
+
+def flat_runs(chunks, sample_rate):
+    """Count the flat tops in float sample chunks (arrays of shape (frames, channels)):
+    runs of CLIP_RUN or more identical samples whose magnitude is CLIP_LEVEL or more, per
+    channel, runs carried across chunk edges. Returns {runs, samples, first_s, longest}
+    (first_s the time of the first run's first sample, None without one)."""
+    import numpy as np
+    out = {"runs": 0, "samples": 0, "first_s": None, "longest": 0}
+    carry = {}      # channel -> [value, length, global start frame] of the open run
+    base = 0
+
+    def close(val, length, start):
+        if length >= CLIP_RUN and abs(val) >= CLIP_LEVEL:
+            out["runs"] += 1
+            out["samples"] += length
+            out["longest"] = max(out["longest"], length)
+            t = start / sample_rate
+            out["first_s"] = t if out["first_s"] is None else min(out["first_s"], t)
+
+    for a in chunks:
+        for c in range(a.shape[1]):
+            x = a[:, c]
+            if not len(x):
+                continue
+            starts = np.concatenate(([0], np.flatnonzero(x[1:] != x[:-1]) + 1))
+            lens = np.diff(np.concatenate((starts, [len(x)])))
+            runs = [[float(x[i]), int(n), base + int(i)] for i, n in zip(starts, lens)]
+            if c in carry and carry[c][0] == runs[0][0]:
+                runs[0] = [runs[0][0], runs[0][1] + carry[c][1], carry[c][2]]
+            elif c in carry:
+                close(*carry[c])
+            for r in runs[:-1]:
+                close(*r)
+            carry[c] = runs[-1]
+        base += a.shape[0]
+    for r in carry.values():
+        close(*r)
+    return out
+
+
+def measure_clipping(path, channels, sample_rate, stream=0):
+    """flat_runs of an audio stream, decoded to float by ffmpeg and read in chunks."""
+    import numpy as np
+    channels = max(int(channels or 0), 1)
+    cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", _src(path),
+           "-map", f"0:a:{stream}", "-f", "f32le", "-acodec", "pcm_f32le", "-"]
+    step = CLIP_CHUNK_FRAMES * channels * 4
+
+    def chunks(proc):
+        pending = b""
+        while True:
+            buf = proc.stdout.read(step)
+            if not buf:
+                break
+            pending += buf
+            n = len(pending) // (channels * 4) * (channels * 4)
+            if n:
+                yield np.frombuffer(pending[:n], dtype="<f4").reshape(-1, channels)
+                pending = pending[n:]
+    errfile = tempfile.TemporaryFile()  # a pipe could fill and stall ffmpeg while stdout is read
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errfile)
+    try:
+        out = flat_runs(chunks(proc), sample_rate)
+        proc.wait(timeout=READ_TIMEOUT_S)
+        errfile.seek(0)
+        err = errfile.read().decode("utf-8", "replace")
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        raise
+    finally:
+        proc.stdout.close()
+        errfile.close()
+    if proc.returncode != 0:
+        raise CheckError(f"ffmpeg could not decode {os.path.basename(path)} for the clipping "
+                         f"read: {err.strip()[-300:]}")
+    return out
 
 
 def window_level(path, from_end, length, stream=0, end=None):
@@ -562,7 +662,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
                          f"(got {tail!r}).")
     want_tail = bool(tail) if expect_fade is None else bool(expect_fade)
     bt709 = ((dest.get("color") or {}).get("expect") or {}).get("color_primaries") == "bt709"
-    need_ffmpeg = bt709 or (loudness and (deliver.has_loudness_target(dest) or want_tail))
+    need_ffmpeg = bt709 or loudness
     check_tools(ffmpeg=need_ffmpeg)
     if not os.path.isfile(path):
         raise CheckError(f"{path} is not a file.")
@@ -711,9 +811,15 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     # Captions
     rows.append(_captions(path, name, dest, streams, duration(info, path)))
 
-    # Loudness
+    # Loudness, true peak and clipping: the peak and the flat-top rows run for every
+    # destination whenever the file is read, a client master included.
     loud = dest.get("loudness") or {}
-    if not deliver.has_loudness_target(dest):
+    peak_max = float(loud.get("true_peak_max_dbtp", TRUE_PEAK_DEFAULT_DBTP))
+    has_target = deliver.has_loudness_target(dest)
+    m = None
+    if audio is not None and loudness:
+        m = measure_loudness(path)
+    if not has_target:
         rows.append(_row("loudness", None, "not measured", "no target (unnormalized)"))
     elif not loudness:
         rows.append(_row("loudness", None, "not measured", f"{loud['integrated_lufs']} LUFS",
@@ -721,14 +827,21 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     elif audio is None:
         rows.append(_row("loudness", False, "no audio stream", f"{loud['integrated_lufs']} LUFS"))
     else:
-        m = measure_loudness(path)
         target, tol = float(loud["integrated_lufs"]), float(loud["tolerance_lu"])
-        i, tp = m["integrated_lufs"], m["true_peak_dbtp"]
+        i = m["integrated_lufs"]
         rows.append(_row("loudness", i is not None and abs(i - target) <= tol + 1e-9,
                          f"{i} LUFS", f"{target:g} LUFS +/- {tol:g} LU"))
-        peak_max = float(loud["true_peak_max_dbtp"])
+    if m is not None:
+        tp = m["true_peak_dbtp"]
         rows.append(_row("true_peak", tp is not None and tp <= peak_max + 1e-9,
                          f"{tp} dBTP", f"<= {peak_max:g} dBTP"))
+        rows.append(_clipping_row(path, audio))
+    elif has_target and loudness:
+        pass  # no audio stream: the loudness row above already fails
+    else:
+        why = "no audio stream" if audio is None and loudness else "skipped on request"
+        for name_ in ("true_peak", "clipping"):
+            rows.append(_row(name_, None, "not measured", "see the loudness read", why))
 
     # Tail
     if want_tail:
@@ -737,7 +850,23 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
 
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in (PASS, FAIL, SKIP, WARN)}
     return {"file": os.path.abspath(path), "destination": dest["key"], "checks": rows,
-            "counts": counts, "status": "fail" if counts[FAIL] else "pass"}
+            "counts": counts, "status": "fail" if counts[FAIL] else "pass",
+            "tail_asserted": want_tail}
+
+
+def _clipping_row(path, audio):
+    """The clipping row (see CLIP_RUN): FAIL on any flat top in the first audio stream."""
+    expect = (f"no run of {CLIP_RUN} or more identical samples at {CLIP_LEVEL * 100:g}% of "
+              "full scale or above")
+    try:
+        r = measure_clipping(path, audio.get("channels"), int(audio.get("sample_rate") or 0) or 48000)
+    except ImportError:
+        return _row("clipping", None, "not measured", expect, "numpy is not installed")
+    if not r["runs"]:
+        return _row("clipping", True, "no flat tops", expect)
+    return _row("clipping", False,
+                f"{r['runs']} flat run(s), {r['samples']} samples, longest {r['longest']}, "
+                f"first at {r['first_s']:.2f} s", expect)
 
 
 def _tail_row(path, seconds, has_audio, loudness, offset=0.0):
@@ -868,6 +997,9 @@ def format_report(result):
                      f"(expected {r['expected']})" + (f"  [{r['note']}]" if r.get("note") else ""))
     c = result["counts"]
     warn = f", {c[WARN]} warn" if c.get(WARN) else ""
+    if result.get("tail_asserted") is False:  # above the summary, which stays the last line
+        lines.append("tail not asserted: the ending was not checked "
+                     "(--expect-fade, or tail_fade on the destination)")
     lines.append(f"deliver-check: {c[PASS]} pass, {c[FAIL]} fail{warn}, {c[SKIP]} skipped: "
                  f"{result['status'].upper()}")
     return "\n".join(lines) + "\n"
