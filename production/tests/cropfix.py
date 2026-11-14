@@ -3,10 +3,11 @@ another, as a file carrying Frame Cropping side data does (a 'clap' box in the
 sample entry, which ffprobe lists as stream side data and ffmpeg applies)."""
 
 import struct
+from pathlib import Path
 
 
 def add_clap(src, dst, top, bottom, left=0, right=0):
-    data = bytearray(open(src, "rb").read())
+    data = bytearray(Path(src).read_bytes())
 
     def find(box, start, end):
         i = start
@@ -30,4 +31,4 @@ def add_clap(src, dst, top, bottom, left=0, right=0):
     data[end:end] = clap
     for p in path + [entry]:
         data[p:p + 4] = struct.pack(">I", struct.unpack(">I", data[p:p + 4])[0] + len(clap))
-    open(dst, "wb").write(data)
+    Path(dst).write_bytes(data)

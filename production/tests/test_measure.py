@@ -191,6 +191,42 @@ class TestOnAGeneratedClip(unittest.TestCase):
         self.assertAlmostEqual(float((rows > 0.9).mean()), 0.5, delta=0.02)
 
 
+@needs_numpy
+class TestLumaShares(unittest.TestCase):
+    def frame(self):
+        y = np.full((100, 200), 120, np.uint8)
+        y[:12], y[-12:] = 16, 16  # letterbox
+        return y
+
+    def test_edge_bars_finds_flat_dark_bars_only(self):
+        self.assertEqual(measure.edge_bars([self.frame(), self.frame()]), (12, 12, 0, 0))
+        busy = self.frame()
+        busy[:12, 50] = 200  # the top rows held a picture in one frame: not a bar
+        self.assertEqual(measure.edge_bars([self.frame(), busy]), (0, 12, 0, 0))
+
+    def test_edge_bars_ignores_a_bright_flat_edge_and_a_black_frame(self):
+        white_top = self.frame()
+        white_top[:12] = 240  # a blown sky is not a bar
+        self.assertEqual(measure.edge_bars([white_top])[0], 0)
+        self.assertEqual(measure.edge_bars([np.full((100, 200), 16, np.uint8)]), (0, 0, 0, 0))
+
+    def test_shares_are_of_the_active_picture(self):
+        y = self.frame()
+        y[40:50, :100] = 240  # 1000 px of the 17600 active
+        d = measure.luma_shares(y, (12, 12, 0, 0))
+        self.assertAlmostEqual(d["over_235_pct"], 100 * 1000 / (76 * 200), places=3)
+        self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (0.0, 0.0, 0.0))
+        y[0, 0] = 255  # a hot pixel inside a bar is counted apart, not hidden
+        self.assertEqual(measure.luma_shares(y, (12, 12, 0, 0))["bar_hot_px"], 1)
+        self.assertEqual(measure.luma_shares(y)["under_16_pct"], 0.0)
+
+    def test_hard_clipping_lines(self):
+        y = np.full((10, 10), 120, np.uint8)
+        y[0, :5], y[1, :3] = 252, 4
+        d = measure.luma_shares(y)
+        self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (5.0, 3.0, 3.0))
+
+
 @unittest.skipUnless(os.access(measure.FFMPEG if np is not None else "", os.X_OK), "ffmpeg missing")
 class TestFrameCropping(unittest.TestCase):
     """A stream that says 640x360 but carries Frame Cropping side data decodes
