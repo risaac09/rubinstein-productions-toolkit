@@ -35,6 +35,7 @@ from rpresolve.workflows import Refused  # noqa: E402
 REAL_BAKE, REAL_SOURCE_SECONDS = a.musicbed.bake, a.musicbed.source_seconds  # before Base stubs them
 REAL_MEASURE = a.measure_bed
 REAL_MIX = a.mix_peak
+REAL_BED_PEAK = a.bed_peak
 needs_ffmpeg = unittest.skipUnless(
     all(os.access(t, os.X_OK) for t in (dc.FFMPEG, dc.FFPROBE)), "ffmpeg or ffprobe missing")
 
@@ -92,9 +93,10 @@ class Base(unittest.TestCase):
         self.bed_dir = os.path.join(d, "beds")
         self.baked, self.bake_kw = [], []
         self.mix = {"integrated_lufs": -20.0, "true_peak_dbtp": -6.0, "ceiling": -1.0}
-        patch = mock.patch.object(a, "mix_peak", lambda *args: self.mix)
-        patch.start()
-        self.addCleanup(patch.stop)
+        for patch in (mock.patch.object(a, "mix_peak", lambda *args: self.mix),
+                      mock.patch.object(a, "bed_peak", lambda *args: self.mix)):
+            patch.start()
+            self.addCleanup(patch.stop)
         self.bake_error = None
         self.song_seconds = 60.0  # what the dry run's ffprobe finds in the stub song
         for new in (mock.patch.object(a.musicbed, "bake", self.fake_bake),
@@ -1246,6 +1248,12 @@ class TestTimelineColourAndCameraSound(Base):
                             for i in snd[:-1]))
         self.assertEqual(len(tl.GetItemListInTrack("audio", 2)), 1)
 
+    def test_a_music_only_boost_is_peak_checked_and_a_cut_is_not(self):
+        self.manifest["music_gain_db"] = 3
+        self.assertEqual(self.go()["mix"], self.mix)
+        self.manifest["music_gain_db"] = -3
+        self.assertIsNone(self.go()["mix"])
+
     def test_the_mix_is_in_the_dry_run_and_the_plan_hash(self):
         self.manifest["camera_sound"] = True
         before = self.go()
@@ -1612,3 +1620,16 @@ class TestMixPeak(unittest.TestCase):
             bed["gain_db"] = 18.0
             with self.assertRaisesRegex(Refused, "ceiling"):
                 REAL_MIX(p, bed, {"gain_db": 18.0}, None)
+
+
+    @needs_ffmpeg
+    def test_a_music_bed_boosted_past_the_ceiling_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "song.wav")  # a 440 Hz tone at about -2.5 dBFS
+            subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "sine=f=440:d=5:sample_rate=48000", "-af", "volume=6", f], check=True)
+            bed = {"src": f, "in": 0.0, "seconds": 4.0, "fade_s": 1.0, "gain_db": 0.5}
+            self.assertLess(REAL_BED_PEAK(bed)["true_peak_dbtp"], -1.0)
+            bed["gain_db"] = 6.0
+            with self.assertRaisesRegex(Refused, "baked clipped"):
+                REAL_BED_PEAK(bed)

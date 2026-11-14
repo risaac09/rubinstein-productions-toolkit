@@ -13,6 +13,7 @@ import getpass
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -446,17 +447,20 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
     if held:  # refuse before writing any of them
         raise ProjectError(f"{held[0]} is already recorded by {ch.st['answers'][held[0]]['by']} at "
                            f"{ch.st['answers'][held[0]]['at']}; edit {ch.path} by hand to change it")
+    todo = []  # every answer checked before any is written, so a bad one leaves none half-recorded
     if shape:
         m = re.fullmatch(r"(\d+)x(\d+)", shape)
         if not m:
             raise ProjectError(f"--shape {shape!r}: use WIDTHxHEIGHT, such as 1920x1080")
-        _record(ch, "shape", {"width": int(m[1]), "height": int(m[2])}, say)
+        todo.append(("shape", {"width": int(m[1]), "height": int(m[2])}))
     if look:
-        _record(ch, "look", {"lut": look}, say)
+        todo.append(("look", {"lut": look}))
     if destination:
-        _record(ch, "destination", {"key": destination, "name": _name_parts(name_parts)}, say)
+        todo.append(("destination", {"key": destination, "name": _name_parts(name_parts)}))
     if music:
-        _record(ch, "music", _music_pick(cfg, *music), say)
+        todo.append(("music", _music_pick(cfg, *music)))
+    for key, value in todo:
+        _record(ch, key, value, say)
     if shape or look or destination or music:
         return 0
     if not ch.st["cards"]:
@@ -552,58 +556,63 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
         effects = doc.get("effects") or []
     except (OSError, ValueError) as e:
         raise ProjectError(f"{manifest}: cannot read the manifest ({e})")
+    scratch = None
     if ans.get("music"):
         if doc.get("music"):
             say("music: the manifest has its own; the recorded pick is not used")
         else:  # the picked manifest is never edited: build from a copy that holds the pick
             doc["music"] = {"path": ans["music"]["path"], "in": ans["music"]["in"]}
             # beside the state on --apply; a dry run needs a real file for the tool's dry run, so a temp one
-            manifest = os.path.join(os.path.dirname(ch.path) if apply else tempfile.mkdtemp(prefix="build-"),
-                                    "build-manifest.json")
+            scratch = None if apply else tempfile.mkdtemp(prefix="build-")
+            manifest = os.path.join(scratch or os.path.dirname(ch.path), "build-manifest.json")
             write_state(manifest, doc)
             say(f"music: the recorded pick goes in as {manifest}")
-    tl = name or slug
-    tl = tl if tl.endswith(" [auto]") else tl + " [auto]"
-    _SESSION = _SESSION or _session()
-    base = {"project": OPEN_NAME()}
-    say(f"build {slug} ({'apply' if apply else 'dry run'}): '{tl}' in Resolve project '{base['project']}'")
-
-    def step(tool, args, after=False):
-        try:
-            r = CALL(tool, {**base, **args, "dry_run": True})
-        except Exception as e:
-            if after and not apply:
-                say(f"  {tool}: not checkable until '{tl}' is built ({e}); would run with {json.dumps(args)}")
-                return None
-            raise ProjectError(f"{tool}: {e}")
-        say(f"  {tool}: {r['summary']}")
-        if not apply:
-            return r
-        try:
-            r = CALL(tool, {**base, **args, "dry_run": False, "plan_sha": r["plan_sha"]})
-        except Exception as e:
-            raise ProjectError(f"{tool}: {e}")
-        say(f"  {tool}: {r['summary']}")
-        bad = [x for x in r.get("results", []) if not x.get("ok", True)]
-        if r.get("problems") or r.get("leaks") or bad or r.get("exit_status", 0):
-            raise ProjectError(f"{tool}: the run did not come out clean; stopped before the next step")
-        return r
-
-    sh = ans["shape"]
-    r = step("assemble_timeline", {"manifest": manifest, "name": tl, "width": sh["width"], "height": sh["height"]})
-    tl = r["timeline"] if isinstance(r.get("timeline"), str) else tl
-    track = r["plan"]["track"]
-    if apply:
-        ch.st["built"] = {"timeline": tl}
-        ch.mark("build", "done", f"built '{tl}'")
     try:
-        _rest(step, ch, ans, effects, tl, track, apply, say)
-    except ProjectError as e:
+        tl = name or slug
+        tl = tl if tl.endswith(" [auto]") else tl + " [auto]"
+        _SESSION = _SESSION or _session()
+        base = {"project": OPEN_NAME()}
+        say(f"build {slug} ({'apply' if apply else 'dry run'}): '{tl}' in Resolve project '{base['project']}'")
+
+        def step(tool, args, after=False):
+            try:
+                r = CALL(tool, {**base, **args, "dry_run": True})
+            except Exception as e:
+                if after and not apply:
+                    say(f"  {tool}: not checkable until '{tl}' is built ({e}); would run with {json.dumps(args)}")
+                    return None
+                raise ProjectError(f"{tool}: {e}")
+            say(f"  {tool}: {r['summary']}")
+            if not apply:
+                return r
+            try:
+                r = CALL(tool, {**base, **args, "dry_run": False, "plan_sha": r["plan_sha"]})
+            except Exception as e:
+                raise ProjectError(f"{tool}: {e}")
+            say(f"  {tool}: {r['summary']}")
+            bad = [x for x in r.get("results", []) if not x.get("ok", True)]
+            if r.get("problems") or r.get("leaks") or bad or r.get("exit_status", 0):
+                raise ProjectError(f"{tool}: the run did not come out clean; stopped before the next step")
+            return r
+
+        sh = ans["shape"]
+        r = step("assemble_timeline", {"manifest": manifest, "name": tl, "width": sh["width"], "height": sh["height"]})
+        tl = r["timeline"] if isinstance(r.get("timeline"), str) else tl
+        track = r["plan"]["track"]
         if apply:
-            raise ProjectError(f"{e}; '{tl}' is built and stays in Resolve: finish the remaining steps by "
-                               "hand or build again with a new --name")
-        raise
-    return 0
+            ch.st["built"] = {"timeline": tl}
+            ch.mark("build", "done", f"built '{tl}'")
+        try:
+            _rest(step, ch, ans, effects, tl, track, apply, say)
+        except ProjectError as e:
+            if apply:
+                raise ProjectError(f"{e}; '{tl}' is built and stays in Resolve: finish the remaining steps by "
+                                   "hand or build again with a new --name")
+            raise
+        return 0
+    finally:
+        if scratch:  # the dry run's copy holds a client's music path; nothing else is in it
+            shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _rest(step, ch, ans, effects, tl, track, apply, say):
