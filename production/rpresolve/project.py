@@ -109,6 +109,13 @@ def state_path(cfg, slug):
     return os.path.join(cfg["work_root"], slug, STATE)
 
 
+def review_log_path(cfg, slug):
+    """The one review log of a project: <work root>/<slug>/review/events.jsonl, beside project.json."""
+    if not SLUG.match(slug):
+        raise ProjectError(f"{slug!r} is not a slug (lower-case words joined by hyphens)")
+    return os.path.join(os.path.dirname(state_path(cfg, slug)), "review", "events.jsonl")
+
+
 def new_state(slug):
     return {"schema": 1, "slug": slug, "cards": [], "open": [],
             "steps": {k: {"status": "pending", "note": ""} for k, _ in STEPS}}

@@ -168,6 +168,24 @@ class ReviewLogTests(unittest.TestCase):
 REEL_FIELDS = ("frame_0_image", "text_hook", "why_line", "sendable_line", "sendable_time", "ending", "tempo")
 
 
+class SlugPathTests(unittest.TestCase):
+    def test_slug_writes_under_the_configured_work_root_beside_project_json(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        work = os.path.join(os.path.realpath(tmp.name), "work")
+        cfg = os.path.join(tmp.name, "config.json")
+        Path(cfg).write_text(json.dumps({"work_root": work}))
+        os.environ["RP_PIPELINE_CONFIG"] = cfg
+        self.addCleanup(os.environ.pop, "RP_PIPELINE_CONFIG")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cli.main(["review-log", "--slug", "shoot-one", "--project", "P-0001", "--step", "gate",
+                             "--device", "desktop", "--choice", "go"])
+        self.assertEqual(code, 0)
+        log = os.path.join(work, "shoot-one", "review", "events.jsonl")
+        self.assertEqual(json.loads(Path(log).read_text().splitlines()[0]), json.loads(out.getvalue()))
+
+
 class VocabularyDocTests(unittest.TestCase):
     PROD = HERE.parent
 

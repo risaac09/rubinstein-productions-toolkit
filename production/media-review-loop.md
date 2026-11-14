@@ -138,7 +138,7 @@ Measured with a 10 s 720p H.264 test clip (3.6 MB): `curl -H 'Range: bytes=0-99'
 
 ## Recording the answers
 
-Every answer becomes one line of JSON in an append-only log beside the project's media, at `<project>/review/events.jsonl` (decided 2026-10-22). The log never sits inside a git working tree and never goes into this repository. Claude writes the line right after the answer, with a JSON encoder rather than hand-built quoting; `serve` has no write path on purpose.
+Every answer becomes one line of JSON in an append-only log beside the project's media, at `<project>/review/events.jsonl` (decided 2026-10-22). That is the one path: `<work root>/<slug>/review/events.jsonl`, beside the `project.json` that [project start](project-start.md) writes, and `review-log --slug SLUG` resolves it from `work_root` in the pipeline config (or `--work-root`). `--dir` still names a folder directly, which is how a log made before the move stays readable and appendable where it is; `taste-profile` and `--review-log` take any path. The log never sits inside a git working tree and never goes into this repository. Claude writes the line right after the answer, with a JSON encoder rather than hand-built quoting; `serve` has no write path on purpose.
 
 | Key | What |
 |---|---|

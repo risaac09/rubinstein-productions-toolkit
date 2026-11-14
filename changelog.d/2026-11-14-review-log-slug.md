@@ -1,0 +1,1 @@
+review-log gains --slug, which writes the project's one log at <work_root>/SLUG/review/events.jsonl (work_root from the pipeline config or --work-root), beside the project.json that project start keeps. --dir and old logs work as before.

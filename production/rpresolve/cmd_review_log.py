@@ -20,7 +20,11 @@ HELP = "Append one decoded answer to review/events.jsonl"
 
 
 def add_arguments(p):
-    p.add_argument("--dir", required=True, help="the project folder; the log is DIR/review/events.jsonl")
+    where = p.add_mutually_exclusive_group(required=True)
+    where.add_argument("--dir", help="the project folder; the log is DIR/review/events.jsonl (old logs stay readable here)")
+    where.add_argument("--slug", help="the project's folder name under the work root; the log is "
+                       "<work_root>/SLUG/review/events.jsonl, the work root from --work-root or the pipeline config")
+    p.add_argument("--work-root", help="with --slug; overrides work_root in $RP_PIPELINE_CONFIG")
     p.add_argument("--project", required=True, help="project id like P-0001, never a name")
     p.add_argument("--step", required=True, help="triage, look, grade, edit, sound or gate")
     p.add_argument("--device", required=True, help="where the reviewer looked: desktop, phone, ipad, "
@@ -38,13 +42,14 @@ def add_arguments(p):
 
 
 def run(args):
-    from rpresolve import reviewlog
+    from rpresolve import project, reviewlog
     try:
+        log = project.review_log_path(project.load_config(overrides={"work_root": args.work_root}), args.slug) if args.slug else None
         line = reviewlog.append(args.dir, args.project, args.step, args.device, args.choice, args.reason,
                                 args.key, args.question, args.noise_type, args.repeat_of,
-                                review_copy=args.review_copy,
+                                review_copy=args.review_copy, log_path=log,
                                 inline_options=reviewlog.parse_options(args.option or []))
-    except (reviewlog.Refused, OSError) as e:
+    except (reviewlog.Refused, project.ProjectError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
     print(json.dumps(line, ensure_ascii=False))
