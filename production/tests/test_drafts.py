@@ -365,6 +365,30 @@ class TestTransitionPlan(unittest.TestCase):
 
 
 @needs_numpy
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestTransitionEncoderFailure(unittest.TestCase):
+    def test_an_encoder_that_quits_is_one_line_and_leaves_no_decoder_running(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "in.mp4")
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "testsrc=s=144x80:r=24:d=3", "-pix_fmt", "yuv420p", src], check=True)
+            items = transitions.plan([{"span_index": 1, "effect": "luma-fade", "params": {}}],
+                                     [36, 36])
+            procs, real = [], subprocess.Popen
+
+            def spy(*a, **k):
+                procs.append(real(*a, **k))
+                return procs[-1]
+            with mock.patch.object(transitions.subprocess, "Popen", spy):
+                with self.assertRaises(transitions.TransitionError) as cm:
+                    transitions.apply(src, os.path.join(d, "no", "such", "out.mp4"), (144, 80),
+                                      24, items, 72)
+            self.assertIn("could not write", str(cm.exception))
+            self.assertEqual(len(procs), 3)  # two decodes and the encoder
+            self.assertTrue(all(p.poll() is not None for p in procs))
+
+
+@needs_numpy
 class TestTransitionMath(unittest.TestCase):
     W, H = 72, 128  # a tenth of 720 wide: the pixel constants scale with the width
 
