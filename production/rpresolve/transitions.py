@@ -16,6 +16,7 @@ even, 4 to 48. The ids, defaults, planning and refusals need no numpy; the pictu
 it when a draft is drawn. Pixel constants are for a 720-wide frame and scale by width / 720.
 """
 
+import contextlib
 import random
 import subprocess
 
@@ -231,16 +232,23 @@ def lumafade(a, b, k, n):
 # ---------------------------------------------------------------------------
 
 def _decode(src, w, h):
+    """Frames of src as raw rgb24 buffers. Closing the generator early kills the decoder."""
     p = subprocess.Popen(["ffmpeg", "-v", "error", "-i", src, "-f", "rawvideo",
                           "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
-    size = w * h * 3
-    while True:
-        buf = p.stdout.read(size)
-        if len(buf) < size:
-            break
-        yield buf
-    p.stdout.close()
-    if p.wait() != 0:
+    size, done = w * h * 3, False
+    try:
+        while True:
+            buf = p.stdout.read(size)
+            if len(buf) < size:
+                break
+            yield buf
+        done = True
+    finally:
+        p.stdout.close()
+        if not done:
+            p.kill()
+        status = p.wait()
+    if status != 0:
         raise TransitionError(f"ffmpeg could not decode {src}")
 
 
@@ -288,8 +296,9 @@ def apply(src, dst, size, fps, items, total):
          "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", dst],
         stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
-        for i, buf in enumerate(_decode(src, w, h)):
-            enc.stdin.write(drawn.get(i, buf))
+        with contextlib.closing(_decode(src, w, h)) as frames_in:
+            for i, buf in enumerate(frames_in):
+                enc.stdin.write(drawn.get(i, buf))
     except BrokenPipeError:  # the encoder quit; its exit status below says so in one line
         pass
     finally:
