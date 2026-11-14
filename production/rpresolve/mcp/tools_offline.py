@@ -402,7 +402,8 @@ def deliver_check(args, ctx):
         dc.parse_fps(args["fps"])
     ctx.check_cancel()
     r = dc.check(path, dest, fps=args.get("fps"), size=size, loudness=args["loudness"],
-                 folders=deliver.subfolders(config), expect_fade=args.get("expect_fade"))
+                 folders=deliver.subfolders(config), expect_fade=args.get("expect_fade"),
+                 manifest=args.get("manifest") and _existing(args["manifest"], "manifest"))
     if args.get("audio_state"):
         from .. import audiostate
         dc.add_rows(r, audiostate.compare(
@@ -1168,6 +1169,12 @@ def register(registry):
                               "before that frame. Default: "
                               "the destination's tail_fade (true for social_9x16_music); "
                               "true turns it on for another destination, false off."},
+              "manifest": {"type": "string",
+                           "description": "Absolute path of the method manifest the file was "
+                           "built from: adds a shape row (the file's display aspect against "
+                           "size, else the manifest's aspect) and, when a source is recorded "
+                           "anamorphic, a squeeze row that FAILS a file whose aspect is the "
+                           "squeezed sensor aspect."},
               "audio_state": {"type": "string",
                               "description": "Absolute path of an audio-state JSON (the "
                               "audio-state command's -o): also compares the audio codec, "

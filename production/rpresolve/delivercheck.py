@@ -447,6 +447,17 @@ def parse_srt(text):
 # The check
 # ---------------------------------------------------------------------------
 
+def video_dims(path):
+    """(width, height) of a file's first video stream, or None when ffprobe cannot read it
+    (missing file, a BRAW file, no ffprobe)."""
+    try:
+        check_tools(ffmpeg=False)
+        v = _video_stream(probe(path))
+        return (int(v["width"]), int(v["height"])) if v else None
+    except (ToolMissing, CheckError, KeyError, TypeError, ValueError):
+        return None
+
+
 def _row(name, ok, found, expected, note=None):
     status = SKIP if ok is None else (PASS if ok else FAIL)
     return {"check": name, "status": status, "found": found, "expected": expected,
@@ -458,8 +469,78 @@ def _one_of(value, want):
     return value in want if isinstance(want, (list, tuple)) else value == want
 
 
+SHAPE_TOL = 0.01  # a file's display aspect within 1% of the shape it was built for
+
+
+def _aspect_of(text):
+    """'16:9' or '2.39:1' or '1.85' as a number; None when it is none of those."""
+    try:
+        a, _, b = str(text).partition(":")
+        return float(a) / float(b or 1)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def display_aspect(video):
+    """A video stream's display aspect: width x sample aspect over height; None when the
+    stream has no size."""
+    w, h = video.get("width"), video.get("height")
+    if not w or not h:
+        return None
+    sar = _aspect_of((video.get("sample_aspect_ratio") or "1:1").replace("N/A", "1:1")) or 1.0
+    return w * sar / h
+
+
+def shape_rows(video, size, manifest):
+    """The shape row and, when the manifest's sources are anamorphic, the squeeze row.
+    shape: the file's display aspect against the shape it was built for (`size`, else the
+    manifest's method aspect); SKIP when neither is given. squeeze: FAIL when the file's
+    aspect is the squeezed sensor aspect of an anamorphic source, the picture rendered
+    without its desqueeze; SKIP when a source's size cannot be read."""
+    got = display_aspect(video)
+    found = f"{got:.3f}:1" if got else "unknown"
+    want = (size[0] / size[1]) if size else None
+    doc = None
+    if manifest:
+        try:
+            with open(manifest, encoding="utf-8") as f:
+                doc = json.load(f)
+        except (OSError, ValueError) as e:
+            raise CheckError(f"cannot read the manifest {manifest}: {e}")
+        if want is None:
+            want = _aspect_of((doc.get("method") or {}).get("aspect"))
+    rows = [_row("shape", None if want is None or got is None else abs(got / want - 1) <= SHAPE_TOL,
+                 found, f"{want:.3f}:1" if want else "no shape given (pass size or a manifest)")]
+    if doc is None:
+        return rows
+    from . import cutlist, squeeze as rpsqueeze
+    sensors = {}
+    try:
+        for src in cutlist.sources(doc):
+            f, _ = rpsqueeze.answer(src["path"])
+            if f and f > 1:
+                dims = video_dims(src["path"])
+                sensors[os.path.basename(src["path"])] = dims and dims[0] / dims[1]
+    except (rpsqueeze.SqueezeError, cutlist.CutlistError) as e:
+        raise CheckError(str(e))
+    if not sensors:
+        return rows
+    known = {n: a for n, a in sensors.items() if a}
+    hit = [n for n, a in known.items() if got and abs(got / a - 1) <= SHAPE_TOL]
+    if hit:
+        rows.append(_row("squeeze", False, found, "not the squeezed sensor aspect",
+                         f"the file is {known[hit[0]]:.3f}:1, the sensor shape of "
+                         f"{hit[0]}, which is recorded anamorphic: it was rendered squeezed"))
+    elif len(known) < len(sensors):
+        rows.append(_row("squeeze", None, found, "not the squeezed sensor aspect",
+                         "a source's size could not be read (offline or BRAW); not judged"))
+    else:
+        rows.append(_row("squeeze", True, found, "not the squeezed sensor aspect"))
+    return rows
+
+
 def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=None,
-          boxes=None, expect_fade=None):
+          boxes=None, expect_fade=None, manifest=None):
     """Check path against the merged destination dest. fps: the timeline's
     frame rate to assert (any form parse_fps reads). size: (width, height)
     to assert when the destination renders at the timeline's size.
@@ -469,7 +550,9 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     in another destination's folder fails. loudness=False
     skips the ffmpeg read. boxes: [(label, (x0, y0, x1, y1))] frame fractions
     of the captions and supers on screen, judged by the safe_zone row.
-    expect_fade: True adds the tail row for a destination that does not ask for it,
+    manifest: the absolute path of the method manifest the file was built from; adds the
+    shape row (display aspect against `size`, else the manifest's aspect) and, for anamorphic
+    sources, the squeeze row (shape_rows). expect_fade: True adds the tail row for a destination that does not ask for it,
     False drops it, None follows the destination's tail_fade.
     Returns {file, destination, checks, counts,
     status}; raises ToolMissing or CheckError."""
@@ -583,6 +666,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
 
         rows.append(_bitrate(video, exp))
         rows.append(_safe_zone(w, h, boxes))
+        rows.extend(shape_rows(video, size, manifest) if (size or manifest) else [])
 
         cexp = (dest.get("color") or {}).get("expect") or {}
         for key in ("color_primaries", "color_transfer", "color_space"):
