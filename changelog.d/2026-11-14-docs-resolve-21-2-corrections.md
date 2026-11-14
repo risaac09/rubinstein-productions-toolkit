@@ -1,1 +1,1 @@
-Corrects four Resolve doc lines to match Blackmagic's 21.2 scripting stub and changelog: constant speed has a call, project create and export are documented calls kept as a person's step by policy, and a picture fade has a measured call.
+Corrects seven Resolve doc lines to match Blackmagic's 21.2 scripting stub and changelog: constant speed has a call, project create and export are documented calls kept as a person's step by policy, a picture fade has a measured call, a freeze frame is documented as speed 0, and a multicam clip has a documented call.

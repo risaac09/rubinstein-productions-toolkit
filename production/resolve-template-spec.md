@@ -947,7 +947,7 @@ a script.
 Dual-system sound: a camera clip plus a separately recorded audio file, or
 two cameras in one room. Two steps: measure offline, then stack the pair
 on a new `[auto]` timeline. Making a multicam clip from it stays a hand
-step (the API has no multicam call).
+step by policy (the stub documents `MediaPool.CreateMulticamClip(clips, multicamOptions)`, `TimelineItem.PerformMulticamSmartSwitch` and `FlattenMulticam`; none has been run here).
 
 ### Measure
 

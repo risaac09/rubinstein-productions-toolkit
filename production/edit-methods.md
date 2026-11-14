@@ -214,7 +214,7 @@ The pick is built at 16:9 first and finished at 9:16 as a second step, on ` [aut
 | Music fade out | `assemble_timeline`, baked into the bed (`T18`); [how to check it](#music-bed-check) | | |
 | Picture fade in and out | no tool yet; `SetFades` on a picture item read back and showed in a still (`T18`) | | menu fallback (`T11`) |
 | Punch, push, word, flash, dip, windows | `apply_effect` | | |
-| Constant speed and ramps | `retime` macro | | Edit page Retime Curve, if the Fusion retime will not do |
+| Constant speed and ramps | `retime` macro; a constant speed also has `SetSpeed` (not run here) | | Edit page Retime Curve, if the Fusion retime will not do |
 | Pan that follows a subject | `reframe-pan` macro | | |
 | Title behind a person | `cutout` layer plus `text-word` | | Magic Mask, if the matte is poor |
 | A look from a LUT | `apply_grade` | | |
