@@ -235,6 +235,21 @@ class Vp20Rows(unittest.TestCase):
         self.assertEqual(row["status"], qc.WARN, row)
         self.assertIn("inside the masked bars", row["found"])
 
+    def test_a_partly_read_file_does_not_pass_the_colour_row(self):
+        from unittest import mock
+        from rpresolve import measure
+        real = measure.luma_stream
+
+        def short(*a, **kw):  # ffmpeg exits 0 on a file cut short: the stream just ends early
+            for i, y in enumerate(real(*a, **kw)):
+                if i >= 14:
+                    return
+                yield y
+        with mock.patch.object(measure, "luma_stream", short):
+            row = _row(qc.run(self.flash, colour=True), "colour")  # 12 s at 1.5 a second is 18 frames
+        self.assertEqual((row["status"], row["found"]), (qc.WARN, "not read"), row)
+        self.assertIn("ends early", row["note"])
+
     def test_colour_sees_a_short_blown_patch_that_six_samples_missed(self):
         row = _row(qc.run(self.flash, colour=True), "colour")  # 600 of 20736 px, 0.5 s of 12 s
         self.assertEqual(row["status"], qc.WARN, row)

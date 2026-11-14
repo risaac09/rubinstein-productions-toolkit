@@ -350,6 +350,10 @@ def luma_pass(path, fps=1.5, check_cancel=None):
         per.append(d)
     if not per:
         raise MeasureError("ffmpeg returned no frames")
+    # ffmpeg exits 0 on a truncated file; the container's duration says how many frames are due
+    due = int(dur * fps)
+    if dur > 0 and len(per) < due - 2:
+        raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {dur:g} s: the file ends early")
     keys = ("over_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
     worst = {k: max(d[k] for d in per) for k in keys}
     worst["ymin"], worst["ymax"] = min(d["ymin"] for d in per), max(d["ymax"] for d in per)
