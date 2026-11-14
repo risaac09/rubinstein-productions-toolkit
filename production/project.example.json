@@ -1,0 +1,7 @@
+{
+  "landing_root": "/Volumes/Archive",
+  "work_root": "/Volumes/Work/Active",
+  "indexer": {"argv": ["python3", "-m", "footage_index"], "env": {"PYTHONPATH": "/path/to/indexer"}},
+  "offsite_remote": "offsite:footage",
+  "sheets_root": "~/Pictures/contact-sheets"
+}
