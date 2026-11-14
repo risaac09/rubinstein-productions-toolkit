@@ -44,7 +44,7 @@ def run(root, feels, out, limit=None):
     import torch
     from transformers import ClapModel, ClapProcessor
     import os
-    proc, model = ClapProcessor.from_pretrained(MODEL), ClapModel.from_pretrained(MODEL).eval()
+    proc, model = ClapProcessor.from_pretrained(MODEL), ClapModel.from_pretrained(MODEL).train(False)
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     model.to(dev)
 

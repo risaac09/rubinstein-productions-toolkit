@@ -68,7 +68,7 @@ class Pure(unittest.TestCase):
         self.assertEqual([t["path"] for t in music.suggest(lib, bpm=[118, 124], feel=["calm"])], ["a.wav", "b.wav"])
 
     def test_import_never_overwrites_a_person(self):
-        lib = {"tracks": {"h": {"path": "p.wav", "genre": "house", "genre_source": "isaac"}}}
+        lib = {"tracks": {"h": {"path": "p.wav", "genre": "house", "genre_source": "person"}}}
         n = music.import_tags(lib, {"p.wav": {"genre": "techno", "feel": ["calm"]}})
         self.assertEqual(n, 1)
         self.assertEqual(lib["tracks"]["h"]["genre"], "house")
@@ -136,7 +136,7 @@ class Index(unittest.TestCase):
         music.save_library(self.d, lib)
         lib2 = music.index(self.d, workers=2)
         self.assertEqual(lib2["tracks"][key]["genre"], "house")
-        self.assertEqual(lib2["tracks"][key]["feel_source"], "isaac")
+        self.assertEqual(lib2["tracks"][key]["feel_source"], "person")
         self.assertEqual(music.counts(lib2)["with_genre"], 1)
         after = {p: hashlib.sha256(open(p, "rb").read()).hexdigest() for p in before}
         self.assertEqual(before, after)

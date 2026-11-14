@@ -5,7 +5,7 @@ track keyed by the file's sha256: tags, duration, tempo, whether the pulse is
 steady, loudness, onset density, and the fields a person or a tagger fills
 (genre, feel) with where each came from. Playlists (.m3u, relative paths) are
 written to playlists/ beside it. Measured fields are redone when the file
-changes; genre, feel and anything marked "isaac" survive a re-run.
+changes; genre, feel and anything marked "person" survive a re-run.
 
 Tempo is rpresolve.beats' tracker (its prior settles half and double time);
 rpresolve.notes.measure over TEMPO_RANGE (wider than notes' default fold) is
@@ -231,13 +231,13 @@ def suits(lib):
     on rows a person has not set."""
     ms = [m for m in methods.list_methods() if m.get("bpm")]
     for t in lib["tracks"].values():
-        if t.get("suits_source") == "isaac":
+        if t.get("suits_source") == "person":
             continue
         t["suits"] = [m["id"] for m in ms if t.get("bpm") and tempo_gap(t["bpm"], m["bpm"]) == 0]
         t["suits_source"] = "tempo"
 
 
-def set_fields(lib, key, genre=None, feel=None, source="isaac"):
+def set_fields(lib, key, genre=None, feel=None, source="person"):
     """Set genre/feel on the track whose sha256 starts with key (or whose path is key)."""
     hit = [h for h, t in lib["tracks"].items() if h.startswith(key) or t.get("path") == key]
     if len(hit) != 1:
@@ -252,7 +252,7 @@ def set_fields(lib, key, genre=None, feel=None, source="isaac"):
 
 def import_tags(lib, rows, source="model"):
     """rows: {sha or path: {"genre": ..., "feel": [...]}} from a tagger. A field a person
-    set (source isaac) is never overwritten. Returns how many tracks changed."""
+    set (source person) is never overwritten. Returns how many tracks changed."""
     n = 0
     for key, v in rows.items():
         hit = [h for h, t in lib["tracks"].items() if h == key or t.get("path") == key]
@@ -260,7 +260,7 @@ def import_tags(lib, rows, source="model"):
             continue
         t = lib["tracks"][hit[0]]
         for k in ("genre", "feel"):
-            if k in v and t.get(k + "_source") != "isaac":
+            if k in v and t.get(k + "_source") != "person":
                 t[k], t[k + "_source"] = v[k], source
                 n += 1
     return n
