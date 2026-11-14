@@ -1,0 +1,6 @@
+{"edit_method": 1, "id": "hike-test", "name": "Hike test", "summary": "Fixture: two landscape shots.",
+ "fits": ["nature", "outdoor"], "aspect": "9:16", "fps": 30, "length_s": 5, "bpm": [100, 120], "look": null,
+ "rules": {"reuse": false, "min_shot_s": 0.5, "snap_to_beat": true, "end": "black:0.7"},
+ "slots": [
+  {"role": "wide", "seconds": 3, "query": "a mountain landscape", "move": "static", "speed": 1, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+  {"role": "close", "seconds": 2, "query": "a mountain landscape", "move": "static", "speed": 1, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null}]}

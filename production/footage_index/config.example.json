@@ -1,0 +1,25 @@
+{
+  "footage_index": {
+    "data_dir": "~/.local/share/footage-index",
+    "roots": [
+      {"name": "Footage", "mount": "/Volumes/Footage", "catalog": "~/footage-catalog.tsv"},
+      {"name": "Scratch", "mount": "/Volumes/Scratch", "include": ["Current/"], "skip_dirs": "render|cache|proxy"}
+    ],
+    "skip_prefixes": ["#recycle/", "_Archive-old/"],
+    "staging_prefix": "_Incoming/",
+    "restricted_prefix": "Restricted/",
+    "required_folder": "Shoots",
+    "edits_dir": "~/footage-edits",
+    "review_log": "~/footage-reviews/events.jsonl",
+    "taste_profile": "~/footage-reviews/taste-profile.md",
+    "methods_dir": "~/footage-methods",
+    "tools_python": "~/.venvs/tools/bin/python",
+    "cache_dir": "~/.cache/footage-index",
+    "log_file": "~/.local/share/footage-index/footage-index.log",
+    "ollama_url": "http://127.0.0.1:11434",
+    "vlm": "qwen2.5vl:7b",
+    "siglip": "google/siglip2-base-patch16-384",
+    "siglip_device": "",
+    "slot_floor": 0.10
+  }
+}

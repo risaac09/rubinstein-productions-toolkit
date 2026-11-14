@@ -252,6 +252,36 @@ jobs:
             exit 1
           fi
 
+  # The footage indexer (production/footage_index) runs against synthetic clips. torch and the
+  # SigLIP and Ollama models are not installed here: tests/conftest.py stands in for torch, and the
+  # tests patch embed.text and stub the caption call, as they do on a Mac without a GPU. Tests that
+  # need the Swift face probe skip themselves on Linux.
+  footage-index-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the pinned packages the indexer imports
+        run: |
+          python -m pip install "$(grep -E '^numpy==.*python_version >= "3.10"' requirements.txt | sed 's/;.*//')" \
+            "$(grep -E '^Pillow==' requirements.txt)" sqlite-vec==0.1.9 pytest
+      - name: Install ffmpeg
+        timeout-minutes: 6
+        run: |
+          set -eu
+          O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
+          sudo apt-get $O update -qq
+          sudo apt-get $O install -y -qq ffmpeg
+      - name: Footage indexer tests
+        run: |
+          set -euo pipefail
+          RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
+          export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
+          cd production
+          python -m pytest -q footage_index/tests
+
   # Every pull request adds a changelog.d/ fragment and never edits
   # CHANGELOG.md under Unreleased, so parallel pull requests cannot conflict
   # there. Kit-export pull requests are exempt (see changelog.d/README.md).

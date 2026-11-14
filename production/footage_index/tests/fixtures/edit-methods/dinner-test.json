@@ -1,0 +1,7 @@
+{"edit_method": 1, "id": "dinner-test", "name": "Dinner test", "summary": "Fixture: three food shots, the last at half speed.",
+ "fits": ["food", "people"], "aspect": "9:16", "fps": 30, "length_s": 6.5, "bpm": null, "look": null,
+ "rules": {"reuse": false, "min_shot_s": 0.5, "snap_to_beat": false, "end": null},
+ "slots": [
+  {"role": "open", "seconds": 2, "query": "a plate of food", "move": "push", "speed": 1, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+  {"role": "middle", "seconds": 3, "query": "a plate of food", "move": "static", "speed": 1, "transition_out": {"type": "cut", "frames": 0}, "effect": null, "scale": null, "text": null},
+  {"role": "slow", "seconds": 1.5, "query": "a plate of food", "move": "static", "speed": 0.5, "transition_out": {"type": "dissolve", "frames": 6}, "effect": null, "scale": [1.0, 1.1], "text": null}]}

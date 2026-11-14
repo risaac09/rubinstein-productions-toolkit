@@ -80,6 +80,12 @@
 #   OFFLOAD_FAST_HOST            production/offload.sh             10.10.10.2                                the wired NAS address differs.
 #   OFFLOAD_ROUTE_OVERRIDE       production/offload.sh             unset                                     take a slow route on purpose (--route-override sets it).
 #   RESOLVE_WORKFLOW             tools/ograf-render/test.mjs       production/resolve_workflow.py            tests: another copy of the workflow script.
+#   RP_PIPELINE_CONFIG           footage_index                     none (every setting at its default)       you keep settings in a JSON file: its footage_index section; footage_index/config.example.json lists them.
+#   FOOTAGE_<KEY>                footage_index                     the setting's default                     one setting needs another value than the file's (key in capitals, e.g. FOOTAGE_DB).
+#   FOOTAGE_ROOT                 footage_index                     none (needs --root or roots in the file)  you index one folder with no config file.
+#   FOOTAGE_PYTHON               footage_index/run-weekly.sh       python3 from PATH                         the interpreter with the indexer's packages is another one.
+#   FOOTAGE_LOG                  footage_index/run-weekly.sh       ~/.local/share/footage-index/footage-index.log   the scheduled run logs elsewhere.
+#   OLLAMA_HOST_URL              footage_index captions            http://127.0.0.1:11434                    Ollama listens elsewhere.
 #
 # The tools do not find ffmpeg the same way. rpresolve reads RPRESOLVE_FFMPEG and RPRESOLVE_FFPROBE and
 # otherwise uses the Homebrew paths. lutlab and tools/vertcut call bare ffmpeg and ffprobe from PATH, so
