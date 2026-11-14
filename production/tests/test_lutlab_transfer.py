@@ -218,6 +218,18 @@ class TestTransfer(unittest.TestCase):
         with self.assertRaises(FileExistsError), redirect_stdout(StringIO()):
             main(args)
 
+    def test_size_outside_2_to_129_is_refused(self):
+        for size in (1, 0, -3, 130):
+            with self.assertRaises(ValueError):
+                transfer.transfer(self.src, self.src, size=size)
+        err = StringIO()
+        with redirect_stderr(err), redirect_stdout(StringIO()):
+            rc = main(["transfer", "--ref", str(self.src), "--src", str(self.src), "--size", "1",
+                       "--out", str(self.d / "out3"), "--name", "t"])
+        self.assertEqual(rc, 2)
+        self.assertIn("refused", err.getvalue())
+
+
     def test_cli_refusal_writes_nothing_and_exits_2(self):
         out = self.d / "out2"
         small = self.d / "small.png"
