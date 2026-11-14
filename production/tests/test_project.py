@@ -156,15 +156,15 @@ class Chain(unittest.TestCase):
         return card
 
     def test_the_work_folder_is_the_project(self):
-        card = self.card_in_work("oslo-first-snow")
+        card = self.card_in_work("sample-shoot")
         rc, out = self.go(card=card, slug=None)
-        self.assertIn("project oslo-first-snow (dry run)", out)
+        self.assertIn("project sample-shoot (dry run)", out)
         with self.assertRaisesRegex(project.ProjectError,
-                                    r"in the work folder 'oslo-first-snow' but --project is 'other'"):
+                                    r"in the work folder 'sample-shoot' but --project is 'other'"):
             self.go(card=card, slug="other")
         rc, out = self.go(card=card, slug="other", new_project=True)
         self.assertIn("project other (dry run)", out)
-        self.go(card=card, slug="oslo-first-snow")  # the same slug is fine
+        self.go(card=card, slug="sample-shoot")  # the same slug is fine
         self.assertEqual(project.inside_work_root(self.cfg, self.card), None)  # the landing root is not
         self.assertEqual(project.inside_work_root(self.cfg, self.cfg["work_root"]), None)
 
