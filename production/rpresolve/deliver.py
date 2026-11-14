@@ -15,7 +15,7 @@ parse_name checks a file name against the rule):
             show code (1 to 8 capital letters), episode (3 ASCII digits),
             guest ([A-Za-z0-9]+), index (2 digits, 01 to 99), slug (lowercase
             letters and digits in words joined by single hyphens), aspect
-            (16x9, 9x16 or 1x1), extension from the destination.
+            (16x9, 9x16, 1x1 or 4x5), extension from the destination.
     master  Client_example-slug_master.mov
             client ([A-Za-z0-9]+), slug as above.
     montage Client_example-slug_9x16.mp4
@@ -48,8 +48,8 @@ import re
 
 from . import paths, refs
 
-ASPECTS = ("16x9", "9x16", "1x1")
-ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0}
+ASPECTS = ("16x9", "9x16", "1x1", "4x5")
+ASPECT_RATIO = {"16x9": 16 / 9, "9x16": 9 / 16, "1x1": 1.0, "4x5": 4 / 5}
 # How far two width:height ratios may sit apart and still count as one
 # shape. 1920x1088 counts as 16:9; DCI 4096x2160, 6.7% wider, falls outside.
 ASPECT_TOLERANCE = 0.01
@@ -70,10 +70,10 @@ SLUG_MAX = 60
 # Digits are written [0-9]: in a str pattern \d also matches fullwidth and
 # other Unicode digits, which the rule does not allow.
 CLIP_RE = re.compile(rf"^(?P<show>{SHOW})(?P<episode>[0-9]{{3}})_(?P<guest>{WORD})"
-                     rf"_(?P<index>[0-9]{{2}})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)"
+                     rf"_(?P<index>[0-9]{{2}})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1|4x5)"
                      rf"\.(?P<ext>mp4|mov)$")
 MASTER_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_master\.(?P<ext>mov)$")
-MONTAGE_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1)"
+MONTAGE_RE = re.compile(rf"^(?P<client>{WORD})_(?P<slug>{SLUG})_(?P<aspect>16x9|9x16|1x1|4x5)"
                         rf"\.(?P<ext>mp4|mov)$")
 
 CLIP_PARTS = ("show", "episode", "guest", "index", "slug")

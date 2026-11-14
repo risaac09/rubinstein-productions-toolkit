@@ -59,7 +59,7 @@ class TestNames(unittest.TestCase):
                     deliver.deliverable_name(p["show"], p["episode"], p["guest"], p["index"],
                                              p["slug"], "16x9", "mp4")
         with self.assertRaisesRegex(deliver.NameRuleError, "aspect"):
-            deliver.deliverable_name("SW", 1, "G", 1, "s", "4x5", "mp4")
+            deliver.deliverable_name("SW", 1, "G", 1, "s", "3x2", "mp4")
         with self.assertRaisesRegex(deliver.NameRuleError, "extension"):
             deliver.deliverable_name("SW", 1, "G", 1, "s", "16x9", "mkv")
         with self.assertRaisesRegex(deliver.NameRuleError, "client"):
@@ -70,7 +70,7 @@ class TestNames(unittest.TestCase):
                           (("Client_Name", "s", "9x16", "mp4"), "client"),
                           (("Client", "Example", "9x16", "mp4"), "slug"),
                           (("Client", "a" * 61, "9x16", "mp4"), "slug"),
-                          (("Client", "s", "4x5", "mp4"), "aspect"),
+                          (("Client", "s", "3x2", "mp4"), "aspect"),
                           (("Client", "s", "9x16", "mkv"), "extension")):
             with self.subTest(args=args):
                 with self.assertRaisesRegex(deliver.NameRuleError, why):
@@ -117,14 +117,14 @@ class TestNames(unittest.TestCase):
             "SW001_Guest_1_example-clip_16x9.mp4": "index",
             "SW001_Guest_00_example-clip_16x9.mp4": "01 to 99",
             "SW001_Guest_01_Example-Clip_16x9.mp4": "slug",
-            "SW001_Guest_01_example-clip_4x5.mp4": "aspect",
+            "SW001_Guest_01_example-clip_3x2.mp4": "aspect",
             "SW001_Guest_01_example_clip_16x9.mp4": "five parts",
             "Client_example-slug_master.mp4": ".mov",
             "Client Co_example-slug_master.mov": "client",
             "Client_Slug_master.mov": "slug",
             "Client Co_example-slug_9x16.mp4": "client",
             "Client_Example-Slug_9x16.mp4": "slug",
-            "Client_example-slug_4x5.mp4": "aspect",
+            "Client_example-slug_3x2.mp4": "aspect",
             "Client_example-slug_final.mp4": "aspect",
             "Client_example-slug_9x16.mkv": "extension",
             "Client_example_slug_9x16.mp4": "five parts",
@@ -196,7 +196,7 @@ class TestConfig(unittest.TestCase):
     def test_defaults_cover_every_destination(self):
         cfg = rpconfig.load_config("/nonexistent/config.json")
         self.assertEqual(deliver.destination_keys(cfg), sorted([
-            "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16",
+            "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16", "social_4x5",
             "social_9x16", "social_9x16_music", "substack_16x9", "youtube_16x9",
             "youtube_16x9_hd"]))
         yt = deliver.destination(cfg, "youtube_16x9")
@@ -218,7 +218,7 @@ class TestConfig(unittest.TestCase):
                                                  "color_transfer": "bt709",
                                                  "color_range": "tv"})
         # every web destination carries the tag; the client master keeps the house Gamma 2.4
-        for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "linkedin_9x16",
+        for key in ("youtube_16x9", "youtube_16x9_hd", "linkedin_16x9", "linkedin_9x16", "social_4x5",
                     "linkedin_1x1", "social_9x16", "substack_16x9"):
             d = dest(key)
             self.assertEqual((d["color"]["resolve"]["GammaTag"],
