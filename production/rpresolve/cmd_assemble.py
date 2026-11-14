@@ -735,6 +735,8 @@ def measure_bed(p):
     for i, r in enumerate(p["spans"]):
         ins += ["-ss", f"{r['in']:.6f}", "-t", f"{r['frames'] / p['fps']:.6f}", "-i",
                 dc._src(r["path"])]
+        # shortcut: the first audio stream mixed to stereo, as ffmpeg downmixes it; Resolve may
+        # place a multichannel clip's channels differently, so check the level on a live read
         chains.append(f"[{i}:a:0]aresample=48000,aformat=channel_layouts=stereo[a{i}]")
     n = len(p["spans"])
     graph = (";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(n))
