@@ -174,7 +174,7 @@ class SlugPathTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         work = os.path.join(os.path.realpath(tmp.name), "work")
         cfg = os.path.join(tmp.name, "config.json")
-        Path(cfg).write_text(json.dumps({"work_root": work}))
+        Path(cfg).write_text(json.dumps({"work_root": work, "footage_index": {"db": "x"}}))
         os.environ["RP_PIPELINE_CONFIG"] = cfg
         self.addCleanup(os.environ.pop, "RP_PIPELINE_CONFIG")
         out = io.StringIO()
