@@ -15,7 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import numpy as np  # noqa: E402
+try:
+    import numpy as np
+except ImportError:  # the stdlib-only CI job
+    np = None
 
 from rpresolve import deliver, delivercheck as dc  # noqa: E402
 from test_delivercheck import CFG, needs_ffmpeg, statuses, tiny  # noqa: E402
@@ -39,6 +42,7 @@ def sine(amp, hz=997):
     return f"{amp}*sin(2*PI*{hz}*t)"
 
 
+@unittest.skipUnless(np, "needs numpy")
 class TestFlatRuns(unittest.TestCase):
     def test_a_clean_full_scale_sine_has_no_flat_run_and_a_clipped_one_does(self):
         t = np.arange(SR) / SR
@@ -64,6 +68,7 @@ class TestFlatRuns(unittest.TestCase):
         self.assertEqual(dc.flat_runs([x], SR)["runs"], 0)
 
 
+@unittest.skipUnless(np, "needs numpy")
 @needs_ffmpeg
 class TestPeakAndClippingRows(unittest.TestCase):
     @classmethod
