@@ -128,6 +128,20 @@ class TestManifest(Case):
         self.assertEqual(len(plan["spans"]), 2)
         self.assertEqual(plan["frames"], 93)                 # 43 + 50 frames at 25 fps
 
+    def test_manifest_out_never_overwrites_a_source_or_other_file(self):
+        tsv = os.path.join(self.tmp, "edit.tsv")
+        other = os.path.join(self.tmp, "other.mov")
+        Path(other).write_bytes(b"not a manifest")
+        for target in (self.src["a"]["path"], other, os.path.join(self.tmp, "src.json"), tsv):
+            before = Path(target).read_bytes() if os.path.exists(target) else None
+            code, _, err = self.go(extra=["--manifest-out", target])
+            self.assertEqual(code, 1, target + err)
+            if before is not None:
+                self.assertEqual(Path(target).read_bytes(), before)
+        m = os.path.join(self.tmp, "m.json")                 # a second run over its own manifest still works
+        self.assertEqual(self.go(extra=["--manifest-out", m])[0], 0)
+        self.assertEqual(self.go(extra=["--manifest-out", m])[0], 0)
+
     def test_no_manifest_on_failure(self):
         m = os.path.join(self.tmp, "m.json")
         code, _, _ = self.go(length="9", extra=["--manifest-out", m])

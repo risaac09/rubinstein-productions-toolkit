@@ -56,6 +56,21 @@ class TestSceneSpan(unittest.TestCase):
         self.assertIn("saliency", sp["review"][0])  # weaker than a face: a person looks
         self.assertIn("x", reframe.entry(p, HD, full(HD), sp["face"], sp["review"]))
 
+    def test_filtered_faces_stay_no_face_with_a_scene_read(self):
+        # the faces sit outside the subject region; saliency lands on those same faces
+        sp = reframe.plan_span(faces([[(1500, 540, 200, 220)]] * 8), HD, full(HD), ["9x16"],
+                               subject_region=(0, 0, 900, 1080), scene=reads([(1500, 540)] * 8))
+        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.NO_FACE)
+        self.assertEqual(sp["ignored"], 8)
+        self.assertNotIn("scene", sp)
+
+    def test_a_wide_attention_box_with_a_good_centre_passes_for_review(self):
+        # a box 1000 px wide cannot sit inside a 9x16 crop; its centre does
+        sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"],
+                               scene=reads([(1000, 540)] * 8, w=1000, h=900))
+        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.PASS)
+        self.assertTrue(sp["review"])  # weaker than a face: a person looks
+
     def test_a_face_still_wins(self):
         sp = reframe.plan_span(faces([[(500, 540, 200, 220)]] * 8), HD, full(HD), ["9x16"],
                                scene=reads([(1400, 540)] * 8))
@@ -182,9 +197,19 @@ class TestPlanWithScene(unittest.TestCase):
         a = reframe.plan(self.m, reader=FakeReader(), detect=fake_detect)
         b = reframe.plan(self.m, reader=FakeReader(), detect=fake_detect, scene=lambda i, p: None)
         self.assertNotIn("scene", a)
+        self.assertIs(b.pop("scene"), False)  # asked for and unavailable: the report says so
         self.assertEqual(json.dumps(a, sort_keys=True), json.dumps(b, sort_keys=True))
+        self.assertIn("scene reads unavailable", reframe.summary({**a, "scene": False}))
+        self.assertNotIn("scene reads unavailable", reframe.summary(a))
         self.assertEqual(reframe.tsv(a["rows"]).splitlines()[0].split("\t"), list(reframe.COLUMNS))
         self.assertNotIn("scene", reframe.apply(self.m, a)["reframe_plan"])
+
+    def test_framing_plan_says_when_scene_reads_are_unavailable(self):
+        item = [{"name": "a", "path": "/x/a.mov", "in": 0.0, "out": 10.0}]
+        kw = dict(aspect="9x16", reader_for=lambda _: FakeReader(), detect=fake_detect)
+        self.assertIs(reframe.plan_items(item, scene=lambda i, p: None, **kw)["scene"], False)
+        self.assertTrue(reframe.plan_items(item, scene=self.scene, **kw)["scene"])
+        self.assertNotIn("scene", reframe.plan_items(item, **kw))
 
 
 if __name__ == "__main__":

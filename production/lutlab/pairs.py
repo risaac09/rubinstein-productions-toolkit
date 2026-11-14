@@ -55,6 +55,8 @@ def read_image(path):
     a = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if a is None:
         raise ValueError(f"cannot read {path}")
+    if a.ndim == 2:   # a grey file has no channel axis
+        a = np.stack([a] * 3, -1)
     scale = {np.dtype("uint8"): 255, np.dtype("uint16"): 65535}.get(a.dtype, 1)
     return a[..., 2::-1].astype(np.float64) / scale
 

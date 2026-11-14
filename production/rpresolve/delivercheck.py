@@ -1121,8 +1121,10 @@ def ear_check_row(path, review_log=None, sha256=None):
                 "note": "hand step; give --review-log PATH to read the answer"}
     from rpresolve import tastedistill
     try:
+        sha256 = sha256 or file_sha256(path)
         events = [(n, e) for n, e in tastedistill.read_events(review_log)[0]
-                  if e.get("step") == EAR_STEP and e.get("question") == EAR_QUESTION]
+                  if e.get("step") == EAR_STEP and e.get("question") == EAR_QUESTION
+                  and e.get("review_sha256") == sha256]  # the exact bytes heard, not a sibling or an older render
         line, why = find_approval(events, path, sha256)
     except OSError as e:
         line, why = None, f"log unreadable ({e.strerror})"

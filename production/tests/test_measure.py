@@ -192,6 +192,78 @@ class TestOnAGeneratedClip(unittest.TestCase):
 
 
 @needs_numpy
+class TestLumaShares(unittest.TestCase):
+    def frame(self):
+        y = np.full((100, 200), 120, np.uint8)
+        y[:12], y[-12:] = 16, 16  # letterbox
+        return y
+
+    def test_edge_bars_finds_flat_dark_bars_only(self):
+        self.assertEqual(measure.edge_bars([self.frame(), self.frame()]), (12, 12, 0, 0))
+        busy = self.frame()
+        busy[:12, 50] = 200  # the top rows held a picture in one frame: not a bar
+        self.assertEqual(measure.edge_bars([self.frame(), busy]), (0, 12, 0, 0))
+
+    def test_edge_bars_ignores_a_bright_flat_edge_and_a_black_frame(self):
+        white_top = self.frame()
+        white_top[:12] = 240  # a blown sky is not a bar
+        self.assertEqual(measure.edge_bars([white_top])[0], 0)
+        self.assertEqual(measure.edge_bars([np.full((100, 200), 16, np.uint8)]), (0, 0, 0, 0))
+
+    def test_shares_are_of_the_active_picture(self):
+        y = self.frame()
+        y[40:50, :100] = 240  # 1000 px of the 17600 active
+        d = measure.luma_shares(y, (12, 12, 0, 0))
+        self.assertAlmostEqual(d["over_235_pct"], 100 * 1000 / (76 * 200), places=3)
+        self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (0.0, 0.0, 0.0))
+        y[0, 0] = 255  # a hot pixel inside a bar is counted apart, not hidden
+        self.assertEqual(measure.luma_shares(y, (12, 12, 0, 0))["bar_hot_px"], 1)
+        self.assertEqual(measure.luma_shares(y)["under_16_pct"], 0.0)
+
+    def test_hard_clipping_lines(self):
+        y = np.full((10, 10), 120, np.uint8)
+        y[0, :5], y[1, :3] = 252, 4
+        d = measure.luma_shares(y)
+        self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (5.0, 3.0, 3.0))
+
+
+@unittest.skipUnless(os.access(measure.FFMPEG if np is not None else "", os.X_OK), "ffmpeg missing")
+class TestFrameCropping(unittest.TestCase):
+    """A stream that says 640x360 but carries Frame Cropping side data decodes
+    to the cropped picture; probe must report the size a reader gets."""
+
+    def make(self, tmp, top, bottom, left=0, right=0):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from cropfix import add_clap
+        plain, out = os.path.join(tmp, "plain.mp4"), os.path.join(tmp, "cropped.mp4")
+        subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=25:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        "-y", plain], check=True)
+        add_clap(plain, out, top, bottom, left, right)
+        listed = subprocess.run([measure.FFPROBE, "-v", "error", "-show_streams", out],
+                                capture_output=True, text=True).stdout
+        if "Frame Cropping" not in listed:
+            self.skipTest("this build does not read Frame Cropping from a clap box")
+        return out
+
+    def test_probe_reports_the_decoded_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = self.make(tmp, 60, 60)
+            info = measure.probe(clip)
+            self.assertEqual((info["width"], info["height"]), (640, 240))
+            rgb = measure.read_frame(clip, 0.5, info["width"], info["height"])
+        self.assertEqual(rgb.shape, (240, 640, 3))
+
+    def test_probe_applies_left_and_right_crops_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            info = measure.probe(self.make(tmp, 0, 0, 100, 120))
+        self.assertEqual((info["width"], info["height"]), (420, 360))
+
+    def test_crop_size_helper_ignores_a_stream_without_side_data(self):
+        self.assertEqual(measure.cropped_size({"width": 1920, "height": 1080}), (1920, 1080))
+
+
+@needs_numpy
 @unittest.skipUnless(os.path.exists(measure.FFMPEG if np else ""), "ffmpeg not found")
 class TestStills(unittest.TestCase):
     def jpeg(self, tmp):
