@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     import numpy as np
     from rpresolve import audioreport as ar
-    from rpresolve import delivercheck as dc
+    from rpresolve import delivercheck as dc, sidecar as sc
     from rpresolve.paths import OutputRefused
     HAVE_NUMPY = True
 except ImportError:
@@ -455,9 +455,21 @@ class TestReports(unittest.TestCase):
         self.assertNotIn("rms_db", ar.report(self.fx, self.out("ref"), reference=self.quiet)
                          ["reference"]["numbers"])
         with open(self.out("whole/audio-report.json"), encoding="utf-8") as f:
-            self.assertEqual(json.load(f), r)
+            doc = json.load(f)
+        self.assertEqual(sc.validate(doc), [])
+        self.assertEqual((doc["schema"]["name"], doc["transfer"], doc["primaries"]),
+                         ("sound.audio-report", None, None))
+        self.assertEqual(doc["clip_id"], sc.card_key(self.fx))
+        self.assertEqual(doc["sound"], r)
+        self.assertNotIn("start_s", r)
         self.assertEqual(png_size(r["images"]["loudness"]), (ar.PLOT_W, ar.PLOT_H))
         png_size(r["images"]["spectrogram"])
+
+    def test_a_range_report_names_its_range(self):
+        r = ar.report(self.fx, self.out("range"), start=1.0, end=3.0)
+        self.assertEqual((r["start_s"], r["end_s"]), tuple(r["range_s"]))
+        with open(self.out("range/audio-report.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["sound"]["start_s"], 1.0)
 
     def test_every_planted_fault_is_flagged_at_its_time(self):
         r = ar.report(self.faults, self.out("faults"))
@@ -522,7 +534,7 @@ class TestReports(unittest.TestCase):
         self.assertIn("FLAG       integrated", p.stdout)  # a sine at -21 LUFS against -14
         p = self.cli(self.fx, "-o", self.out("cli-json"), "--json", "--target", "-21")
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual(json.loads(p.stdout)["thresholds"]["target_lufs"], -21.0)
+        self.assertEqual(json.loads(p.stdout)["sound"]["thresholds"]["target_lufs"], -21.0)
         p = self.cli(self.fx, "-o", self.out("cli-bad"), "--start", "x")
         self.assertEqual((p.returncode, p.stdout), (1, ""))
         self.assertIn("not a time", p.stderr)

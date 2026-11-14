@@ -72,7 +72,7 @@ def run(args):
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(r, indent=1))
+        print(json.dumps(overlay.envelope(r), indent=1))
     else:
         sys.stdout.write(overlay.format_report(r))
     code = 0 if r["status"] == "pass" else 1
