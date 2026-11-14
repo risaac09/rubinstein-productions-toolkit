@@ -444,7 +444,8 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     tail = tail_plan(p, bed_folder(manifest, bed_dir), tl_fps) if p["sound_fade_s"] else None
-    mix = mix_peak(p, bed, level, tail) if bed and p["sound"] else None
+    mix = (mix_peak(p, bed, level, tail) if bed and p["sound"]
+           else bed_peak(bed) if bed and p["music_gain_db"] > 0 else None)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
                    report, tl_colour, desqueeze, level, tail, mix)
@@ -856,6 +857,28 @@ def mix_peak(p, bed, level, tail=None):
                       f"{PEAK_CEILING_DBTP:g} dBTP ceiling (integrated {m['integrated_lufs']} "
                       "LUFS). Lower music_gain_db and the camera sound by the same amount "
                       "(camera_sound_lufs) to keep the balance.")
+    return {"integrated_lufs": m["integrated_lufs"], "true_peak_dbtp": tp,
+            "ceiling": PEAK_CEILING_DBTP}
+
+
+def bed_peak(bed):
+    """mix_peak for a bed alone: a music bed with a gain above 0 dB and no camera sound. The
+    bed is a 24-bit PCM file, so a boost past full scale would be baked in as clipping."""
+    try:
+        dc.check_tools()
+        proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{bed['in']:.4f}",
+                        "-t", f"{bed['seconds']:.4f}", "-i", dc._src(bed["src"]), "-af",
+                        musicbed.fade_filter(bed["seconds"], bed["fade_s"], bed["gain_db"])
+                        + ",ebur128=peak=true:framelog=quiet", "-f", "null", "-"], dc.READ_TIMEOUT_S)
+        if proc.returncode != 0:
+            raise dc.CheckError(proc.stderr.strip()[-300:])
+        m = dc.parse_ebur128(proc.stderr)
+    except (dc.ToolMissing, dc.CheckError) as e:
+        raise Refused(f"the music bed could not be measured: {e}")
+    tp = m["true_peak_dbtp"]
+    if tp is None or tp > PEAK_CEILING_DBTP:
+        raise Refused(f"music_gain_db {bed['gain_db']:+g}: the bed peaks at {tp} dBTP, above the "
+                      f"{PEAK_CEILING_DBTP:g} dBTP ceiling, and would be baked clipped. Lower it.")
     return {"integrated_lufs": m["integrated_lufs"], "true_peak_dbtp": tp,
             "ceiling": PEAK_CEILING_DBTP}
 

@@ -120,6 +120,10 @@ class Pure(unittest.TestCase):
         p = os.path.join(d, "m.json")
         json.dump(methods.to_manifest(m, fills), open(p, "w"))
         self.assertEqual(music.cut_need(p), (16.5, m["bpm"]))
+        shot = methods.to_manifest(m, fills)  # a shot-list cut: no edit method, so no tempo range
+        shot["method"] = {"id": "shotlist"}
+        json.dump(shot, open(p, "w"))
+        self.assertIsNone(music.cut_need(p)[1])
         json.dump({"nope": 1}, open(p, "w"))
         with self.assertRaisesRegex(music.MusicError, "not a cut manifest"):
             music.cut_need(p)
@@ -198,6 +202,8 @@ class Excerpts(unittest.TestCase):
         self.assertEqual(gains["quiet tone.wav"], 0.0)
         self.assertLess(gains["loud tone.wav"], -10)
         self.assertEqual(json.load(open(os.path.join(out, "key.json")))["matched_to_lufs"], key["matched_to_lufs"])
+        music.excerpts(d, tracks[:1], out, 1.0, 5.0, seed=1)  # a rerun with fewer leaves no old letter
+        self.assertEqual(sorted(os.listdir(out)), ["A.m4a", "key.json"])
 
 
 if __name__ == "__main__":
