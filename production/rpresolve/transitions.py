@@ -302,6 +302,9 @@ def apply(src, dst, size, fps, items, total):
     except BrokenPipeError:  # the encoder quit; its exit status below says so in one line
         pass
     finally:
-        enc.stdin.close()
+        try:
+            enc.stdin.close()  # flushes, so it raises too when the encoder is gone
+        except BrokenPipeError:
+            pass
     if enc.wait() != 0:
         raise TransitionError(f"ffmpeg could not write {dst}")
