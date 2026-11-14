@@ -30,6 +30,7 @@ copy of the folder carries a copy of the file; the copies drift apart unless
 import hashlib
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -236,6 +237,71 @@ def suggest(lib, method=None, bpm=None, feel=None, n=10, steady=True):
         out.append((gap, h, t))
     out.sort(key=lambda x: (x[0], x[2].get("path", "")))
     return [dict(t, sha=h, tempo_gap=round(g, 1)) for g, h, t in out[:n]]
+
+
+def cut_need(manifest_path):
+    """(seconds the cut runs, the tempo range of its method or None) for a cut manifest."""
+    from . import cmd_assemble
+    with open(manifest_path, encoding="utf-8") as f:
+        raw = json.load(f)
+    p = cmd_assemble.plan(manifest_path)
+    mid = (raw.get("method") or {}).get("id")
+    return (p["frames"] + (p.get("black_frames") or 0)) / p["fps"], (methods.load(mid).get("bpm") if mid else None)
+
+
+def candidates(lib, bpm, feel, need_s, n=3):
+    """Up to n tracks for a cut that runs need_s seconds: those inside the tempo range first
+    (half and double time count), steady pulse before the rest, then nearest; none shorter
+    than the cut. It suggests; a person picks."""
+    got = [t for t in suggest(lib, bpm=bpm, feel=feel, n=10 ** 6, steady=False)
+           if (t.get("duration_s") or 0) >= need_s]
+    got.sort(key=lambda t: (t["tempo_gap"] > 0, not t.get("steady"), t["tempo_gap"], t["path"]))
+    return got[:n]
+
+
+def excerpts(root, tracks, out, start=0.0, seconds=25.0, seed=None):
+    """Lettered, level-matched m4a excerpts of the tracks, in a shuffled order (a blind
+    packet, like rpstills absheet), and key.json beside them: each letter's path, excerpt
+    loudness and gain. Every excerpt is brought down to the quietest one; nothing is boosted."""
+    if len(tracks) > 26:
+        raise MusicError("at most 26 excerpts")
+    os.makedirs(out, exist_ok=True)
+    seed = random.SystemRandom().randrange(1 << 16) if seed is None else seed
+    order = list(tracks)
+    random.Random(seed).shuffle(order)
+
+    def cut(src, dst, gain):
+        af = [f"volume={gain:.2f}dB"] if gain else []
+        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}",
+                            "-i", "file:" + src, "-vn", "-ac", "2", "-ar", "48000"]
+                           + (["-af", ",".join(af)] if af else []) + ["-c:a", "aac", "-b:a", "192k", dst],
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode:
+            raise MusicError(f"{src}: ffmpeg failed: {r.stderr.strip()[-200:]}")
+    flat, lufs = {}, {}
+    for i, t in enumerate(order):
+        letter = chr(65 + i)
+        src = os.path.join(root, t["path"])
+        flat[letter] = os.path.join(out, letter + ".flat.m4a")
+        cut(src, flat[letter], 0)
+        lufs[letter] = loudness(flat[letter])
+        if lufs[letter] is None:
+            raise MusicError(f"{t['path']}: no loudness for the excerpt (too short or silent)")
+    target = min(lufs.values())
+    key = {"seed": seed, "span": f"{start:g}s to {start + seconds:g}s of each track", "matched_to_lufs": target,
+           "options": {}}
+    for i, t in enumerate(order):
+        letter = chr(65 + i)
+        gain = round(target - lufs[letter], 1)
+        cut(os.path.join(root, t["path"]), os.path.join(out, letter + ".m4a"), gain)
+        os.remove(flat[letter])
+        key["options"][letter] = {"path": t["path"], "excerpt_lufs": lufs[letter], "gain_db": gain}
+    key["in"] = start
+    tmp = os.path.join(out, "key.json.part")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(key, f, indent=1)
+    os.replace(tmp, os.path.join(out, "key.json"))
+    return key
 
 
 def suits(lib):
