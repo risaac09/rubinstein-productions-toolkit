@@ -17,6 +17,6 @@ if importlib.util.find_spec("torch") is None:
 
 @pytest.fixture
 def real_toolkit():
-    """For a test that needs ffmpeg, ffprobe and the Swift face probe through rpresolve (macOS with swiftc)."""
-    if not (shutil.which("ffprobe") and shutil.which("ffmpeg") and shutil.which("swiftc")):
-        pytest.skip("needs ffmpeg, ffprobe and swiftc (the face probe); CI has no swiftc")
+    """For a test that needs ffmpeg, ffprobe, exiftool and the Swift face probe through rpresolve (macOS with swiftc)."""
+    if not (shutil.which("ffprobe") and shutil.which("ffmpeg") and shutil.which("exiftool") and shutil.which("swiftc")):
+        pytest.skip("needs ffmpeg, ffprobe, exiftool and swiftc (the face probe); CI has no exiftool")
