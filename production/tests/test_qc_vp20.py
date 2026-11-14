@@ -113,6 +113,10 @@ class Vp20Rows(unittest.TestCase):
         cls.clipped = os.path.join(t, "clipped.mp4")
         _video(cls.boxed, "color=c=gray:s=192x108:r=25:d=3,drawbox=x=0:y=0:w=192:h=14:color=black:t=fill,"
                           "drawbox=x=0:y=94:w=192:h=14:color=black:t=fill[v]")
+        cls.barhot = os.path.join(t, "barhot.mp4")  # blown text in the bottom bar for 0.4 s, between two bar probes
+        _video(cls.barhot, "color=c=gray:s=192x108:r=25:d=12,drawbox=x=0:y=0:w=192:h=14:color=black:t=fill,"
+                           "drawbox=x=0:y=94:w=192:h=14:color=black:t=fill,format=yuv420p,"
+                           "drawbox=x=20:y=98:w=100:h=6:color=white:t=fill:enable='between(t,0.9,1.3)'[v]")
         _video(cls.flash, "color=c=gray:s=108x192:r=25:d=12[a];color=c=gray:s=30x20:r=25:d=12,format=yuv420p,"
                           "lutyuv=y=240[b];[a][b]overlay=x=10:y=10:enable='between(t,6.0,6.5)'[v]")
         _video(cls.crushed, "color=c=gray:s=108x192:r=25:d=3,format=yuv420p,lutyuv=y=2[v]")
@@ -225,6 +229,26 @@ class Vp20Rows(unittest.TestCase):
         self.assertEqual(row["status"], qc.PASS, row)
         self.assertIn("bars masked", row["note"])
         self.assertIn("0.00% low", row["found"])
+
+    def test_colour_warns_when_hot_pixels_sit_inside_the_masked_bars(self):
+        row = _row(qc.run(self.barhot, colour=True), "colour")
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("inside the masked bars", row["found"])
+
+    def test_a_partly_read_file_does_not_pass_the_colour_row(self):
+        from unittest import mock
+        from rpresolve import measure
+        real = measure.luma_stream
+
+        def short(*a, **kw):  # ffmpeg exits 0 on a file cut short: the stream just ends early
+            for i, y in enumerate(real(*a, **kw)):
+                if i >= 14:
+                    return
+                yield y
+        with mock.patch.object(measure, "luma_stream", short):
+            row = _row(qc.run(self.flash, colour=True), "colour")  # 12 s at 1.5 a second is 18 frames
+        self.assertEqual((row["status"], row["found"]), (qc.WARN, "not read"), row)
+        self.assertIn("ends early", row["note"])
 
     def test_colour_sees_a_short_blown_patch_that_six_samples_missed(self):
         row = _row(qc.run(self.flash, colour=True), "colour")  # 600 of 20736 px, 0.5 s of 12 s

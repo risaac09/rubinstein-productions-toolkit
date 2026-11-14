@@ -259,6 +259,14 @@ class TestFrameCropping(unittest.TestCase):
             info = measure.probe(self.make(tmp, 0, 0, 100, 120))
         self.assertEqual((info["width"], info["height"]), (420, 360))
 
+    def test_an_odd_crop_total_gives_the_even_size_a_decoder_returns(self):
+        st = lambda pf, **c: {"width": 640, "height": 360, "pix_fmt": pf,  # noqa: E731
+                              "side_data_list": [{"crop_top": 0, **{"crop_" + k: v for k, v in c.items()}}]}
+        self.assertEqual(measure.cropped_size(st("yuv420p", left=3)), (636, 360))
+        self.assertEqual(measure.cropped_size(st("yuv420p", bottom=3)), (640, 356))
+        self.assertEqual(measure.cropped_size(st("yuv422p", bottom=3)), (640, 357))
+        self.assertEqual(measure.cropped_size(st("yuv420p", left=7, right=1)), (632, 360))
+
     def test_crop_size_helper_ignores_a_stream_without_side_data(self):
         self.assertEqual(measure.cropped_size({"width": 1920, "height": 1080}), (1920, 1080))
 

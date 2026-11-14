@@ -39,6 +39,7 @@ never on 1, outside any git tree.
 
 import csv
 import json
+import math
 import os
 import sys
 from fractions import Fraction
@@ -73,6 +74,9 @@ def parse_fps(text):
         raise ValueError(f"not a frame rate: {text!r}")
     if f <= 0:
         raise ValueError(f"not a frame rate: {text!r}")
+    for ntsc in (Fraction(24000, 1001), Fraction(30000, 1001), Fraction(60000, 1001)):
+        if abs(float(f) - float(ntsc)) < 0.01:  # 29.97 means 30000/1001, as cutlist counts timecode
+            return ntsc
     return f
 
 
@@ -106,6 +110,9 @@ def read_sources(path):
     data = data.get("sources") if isinstance(data, dict) else data
     if not isinstance(data, list) or not all(isinstance(s, dict) and s.get("id") for s in data):
         raise ValueError("--sources must be a list of objects, each with an id")
+    ids = [s["id"] for s in data]
+    if len(set(ids)) != len(ids):
+        raise ValueError("--sources repeats an id: " + ", ".join(sorted({i for i in ids if ids.count(i) > 1})))
     return {s["id"]: s for s in data}
 
 
@@ -146,6 +153,8 @@ def check_sources(rows, srcs):
         s = srcs[sid]
         if not s.get("path") or not os.path.isfile(s["path"]):
             bad.append(f"source {sid}: file not found")
+        elif s.get("words") and not os.path.isfile(s["words"]):
+            bad.append(f"source {sid}: transcript not found")
         elif s.get("sha256") and cutlist.sha256_file(s["path"]) != s["sha256"]:
             bad.append(f"source {sid}: sha256 does not match the file")
     return ("fail" if bad else "pass"), f"{len(rows)} span(s)", bad
@@ -157,6 +166,8 @@ def check_bounds(rows, srcs):
         if r["t_in"] is None:
             continue
         d = (srcs.get(r["source"]) or {}).get("duration")
+        if isinstance(d, (int, float)) and not math.isfinite(d):
+            d = None  # NaN passes every comparison; read it as missing
         if r["t_in"] < 0 or r["t_out"] <= r["t_in"]:
             bad.append(f"span {i}: {r['in']} to {r['out']} is not a forward span from 0 or later")
         elif d is not None and r["t_out"] > float(d) + 1e-6:
