@@ -15,6 +15,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 
 from . import card as rpcard
 from . import paths as rppaths
@@ -138,13 +140,53 @@ def write_state(path, st):
 
 # ---- the chain ---------------------------------------------------------------
 
+BATCH = 10      # clips a detect run reads before a count line
+HEARTBEAT = 30  # seconds between "still working" lines
+
+
+def progress(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+class Ticker:
+    """A line to `tick` every HEARTBEAT seconds while a long command runs, with `what` and the
+    seconds so far (and `count()` when it gives one)."""
+
+    def __init__(self, tick, what, count=None, every=None):
+        self.tick, self.what, self.count, self.every = tick, what, count, every or HEARTBEAT
+        self.began, self.stop = time.monotonic(), threading.Event()
+        self.thread = threading.Thread(target=self.beat, daemon=True)
+
+    def beat(self):
+        while not self.stop.wait(self.every):
+            n = f", {self.count()}" if self.count else ""
+            self.tick(f"  {self.what}: still working, {time.monotonic() - self.began:.0f} s{n}")
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop.set()
+
+
+def inside_work_root(cfg, target):
+    """X when `target` lies inside <work root>/X/ and X is a slug, else None."""
+    root = cfg.get("work_root")
+    if not root:
+        return None
+    rel = os.path.relpath(target, root)
+    top = rel.split(os.sep)[0]
+    return top if not rel.startswith("..") and rel != "." and os.sep in rel and SLUG.match(top) else None
+
+
 class Stop(Exception):
     """The chain stops here; the message says what it needs."""
 
 
 class Chain:
-    def __init__(self, cfg, slug, apply, say=print):
-        self.cfg, self.slug, self.apply, self.say = cfg, slug, apply, say
+    def __init__(self, cfg, slug, apply, say=print, tick=progress):
+        self.cfg, self.slug, self.apply, self.say, self.tick = cfg, slug, apply, say, tick
         self.path = state_path(cfg, slug)
         self.st = read_state(self.path, slug)
 
@@ -165,7 +207,8 @@ class Chain:
         if writes and not self.apply:
             self.say(f"  would run: {text}")
             return None
-        rc, out, err = RUN(argv, **kw)
+        with Ticker(self.tick, argv[2] if argv[1:2] == ["-m"] else os.path.basename(argv[0])):
+            rc, out, err = RUN(argv, **kw)
         return rc, out, err
 
 
@@ -207,18 +250,27 @@ def step_copy(ch, target, cam):
 
 
 def step_identify(ch, card):
-    res = ch.cmd(module("card", "set", card, "--project", ch.slug, *(["--apply"] if ch.apply else [])))
-    rc, out, err = res
-    if rc != 0:
-        raise Stop(f"card set --project failed: {(err or out).strip()[-200:]}")
-    ch.say("  " + (out.strip().replace("\n", "\n  ") or "project already recorded"))
-    rc, out, err = RUN(module("detect", card, "--json"))
-    if rc == 1:
-        raise Stop(f"detect failed: {(err or out).strip()[-200:]}")
-    try:
-        rows = json.loads(out)
-    except ValueError:
-        raise Stop("detect printed no JSON")
+    c = rpcard.load(card)
+    if (c["record"] or {}).get("project") == ch.slug:
+        ch.say("  project already recorded")
+    else:
+        rc, out, err = ch.cmd(module("card", "set", card, "--project", ch.slug, *(["--apply"] if ch.apply else [])))
+        if rc != 0:
+            raise Stop(f"card set --project failed: {(err or out).strip()[-200:]}")
+        ch.say("  " + out.strip().replace("\n", "\n  "))
+    files = [os.path.join(card, k["relpath"]) for k in c["clips"]] or [card]
+    rows, done = [], 0
+    with Ticker(ch.tick, "detect", lambda: f"{done} of {len(files)} clips"):
+        for i in range(0, len(files), BATCH):
+            rc, out, err = RUN(module("detect", *files[i:i + BATCH], "--json"))
+            if rc == 1:
+                raise Stop(f"detect failed: {(err or out).strip()[-200:]}")
+            try:
+                rows += json.loads(out)
+            except ValueError:
+                raise Stop("detect printed no JSON")
+            done = min(i + BATCH, len(files))
+            ch.tick(f"  detect: {done} of {len(files)} clips")
     review = sorted(r["path"] for r in rows if r.get("profile") in ("review", "corrupt"))
     ch.st["detect_review"] = review
     ch.say(f"  detect: {len(rows)} clip(s), {len(review)} for review")
@@ -292,19 +344,26 @@ def step_resolve(ch):
                f"project answer {ch.slug} --resolved --apply records it")
 
 
-def start(cfg, target, slug, cam=None, apply=False, say=print):
+def start(cfg, target, slug, cam=None, apply=False, say=print, new_project=False, tick=progress):
     """Run the chain from `target` (a card volume, or a card folder with its record).
-    Returns 0 when it reached the hand steps, 2 when it stopped for a person."""
+    The project is the folder `target` sits in under the work root, when it does: a different
+    `slug` is refused unless new_project. Returns 0 when it reached the hand steps, 2 when it
+    stopped for a person."""
     target = os.path.abspath(target).rstrip(os.sep)
     if not os.path.isdir(target):
         raise ProjectError(f"{target}: not a folder")
+    here = inside_work_root(cfg, target)
+    if here and slug and slug != here and not new_project:
+        raise ProjectError(f"the card is in the work folder '{here}' but --project is '{slug}'; "
+                           f"use --project {here}, or --new-project for a second project")
+    slug = slug or here
     if not slug and os.path.isfile(target + rpcard.RECORD):
         slug = (rpcard.load(target)["record"] or {}).get("project")
     if not slug:
         raise ProjectError("needs a project slug: --project SLUG")
     if not SLUG.match(slug):
         raise ProjectError("a project is a slug: a-z, 0-9 and hyphens")
-    ch = Chain(cfg, slug, apply, say)
+    ch = Chain(cfg, slug, apply, say, tick)
     say(f"project {slug} ({'apply' if apply else 'dry run'}), state {ch.path}")
     try:
         card = None

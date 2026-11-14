@@ -36,7 +36,7 @@ class Chain(unittest.TestCase):
         real = project.run_cmd
         real([sys.executable, "-m", "rpresolve.cmd_card", "init", "--retrofit", self.card,
               "--cam", "CAMA", "--apply"])
-        self.calls = []
+        self.calls, self.ticks = [], []
         self.cfg = project.load_config(None, {
             "work_root": os.path.join(self.dir, "work"), "sheets_root": os.path.join(self.dir, "sheets"),
             "indexer": "indexer-bin --flag"})
@@ -61,7 +61,8 @@ class Chain(unittest.TestCase):
 
     def go(self, *a, **kw):
         out = []
-        rc = project.start(self.cfg, self.card, kw.pop("slug", "demo"), say=out.append, **kw)
+        rc = project.start(self.cfg, kw.pop("card", self.card), kw.pop("slug", "demo"), say=out.append,
+                           tick=self.ticks.append, **kw)
         return rc, "\n".join(out)
 
     def ran(self, name):
@@ -139,6 +140,50 @@ class Chain(unittest.TestCase):
             project.start(self.cfg, self.card, "Bad Slug", say=print)
         with self.assertRaisesRegex(project.ProjectError, "no work root"):
             project.start(project.load_config(None, {}), self.card, "demo", say=print)
+
+    def card_in_work(self, folder):
+        card = os.path.join(self.cfg["work_root"], folder, "CAMA-000000")
+        os.makedirs(os.path.join(card, "DCIM"))
+        Path(card, "DCIM", "B001.mov").write_bytes(b"y" * 10)
+        project.run_cmd([sys.executable, "-m", "rpresolve.cmd_card", "init", "--retrofit", card,
+                         "--cam", "CAMA", "--apply"])
+        return card
+
+    def test_the_work_folder_is_the_project(self):
+        card = self.card_in_work("oslo-first-snow")
+        rc, out = self.go(card=card, slug=None)
+        self.assertIn("project oslo-first-snow (dry run)", out)
+        with self.assertRaisesRegex(project.ProjectError,
+                                    r"in the work folder 'oslo-first-snow' but --project is 'other'"):
+            self.go(card=card, slug="other")
+        rc, out = self.go(card=card, slug="other", new_project=True)
+        self.assertIn("project other (dry run)", out)
+        self.go(card=card, slug="oslo-first-snow")  # the same slug is fine
+        self.assertEqual(project.inside_work_root(self.cfg, self.card), None)  # the landing root is not
+        self.assertEqual(project.inside_work_root(self.cfg, self.cfg["work_root"]), None)
+
+    def test_a_card_outside_the_work_root_still_needs_the_slug(self):
+        with self.assertRaisesRegex(project.ProjectError, "needs a project slug"):
+            self.go(slug=None)
+
+    def test_progress_lines_count_clips_and_beat_while_a_command_runs(self):
+        with mock.patch.object(project, "BATCH", 1):
+            self.go()
+        self.assertIn("  detect: 1 of 2 clips", self.ticks)
+        self.assertIn("  detect: 2 of 2 clips", self.ticks)
+        slow = mock.Mock(side_effect=lambda argv, **kw: (__import__("time").sleep(0.35), (0, "", ""))[1])
+        with mock.patch.object(project, "RUN", slow), mock.patch.object(project, "HEARTBEAT", 0.1):
+            ch = project.Chain(self.cfg, "demo", True, tick=self.ticks.append)
+            ch.cmd(["x", "-m", "rpresolve.cmd_sheets"], writes=True)
+        self.assertTrue(any("cmd_sheets: still working" in t for t in self.ticks))
+
+    def test_a_second_start_does_not_repeat_card_set_or_detect(self):
+        self.go(apply=True)
+        sets = len(self.ran("rpresolve.cmd_card"))
+        detects = len(self.ran("rpresolve.cmd_detect"))
+        self.go(apply=True)
+        self.assertEqual((len(self.ran("rpresolve.cmd_card")), len(self.ran("rpresolve.cmd_detect"))),
+                         (sets, detects))
 
     def test_status_of_an_unknown_project_is_refused(self):
         with self.assertRaisesRegex(project.ProjectError, "run project start first"):
