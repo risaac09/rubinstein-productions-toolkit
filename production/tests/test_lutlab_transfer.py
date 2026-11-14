@@ -215,8 +215,28 @@ class TestTransfer(unittest.TestCase):
         report = (out / "t.report.md").read_text()
         for word in ("reinhard", "mkl", "ot", "sliced W2", "applies nothing"):
             self.assertIn(word, report)
-        with self.assertRaises(FileExistsError), redirect_stdout(StringIO()):
-            main(args)
+        err = StringIO()
+        with redirect_stderr(err), redirect_stdout(StringIO()):
+            self.assertEqual(main(args), 2)   # a plain refusal, not a traceback
+        self.assertIn("already exists", err.getvalue())
+
+    def test_size_outside_2_to_129_is_refused(self):
+        for size in (1, 0, -3, 130):
+            with self.assertRaises(ValueError):
+                transfer.transfer(self.src, self.src, size=size)
+        err = StringIO()
+        with redirect_stderr(err), redirect_stdout(StringIO()):
+            rc = main(["transfer", "--ref", str(self.src), "--src", str(self.src), "--size", "1",
+                       "--out", str(self.d / "out3"), "--name", "t"])
+        self.assertEqual(rc, 2)
+        self.assertIn("refused", err.getvalue())
+
+    def test_a_name_with_a_line_break_is_refused(self):
+        for bad in ("x\nLUT_3D_SIZE 2", "x\r", "x\0"):
+            with self.assertRaises(SystemExit), redirect_stderr(StringIO()):
+                main(["transfer", "--ref", str(self.src), "--src", str(self.src),
+                      "--out", str(self.d / "out4"), "--name", bad])
+        self.assertFalse((self.d / "out4").exists())
 
     def test_a_grey_image_reads_as_three_equal_channels(self):
         from lutlab import pairs
@@ -225,7 +245,6 @@ class TestTransfer(unittest.TestCase):
         a = pairs.read_image(grey)
         self.assertEqual(a.shape, (30, 40, 3))
         self.assertTrue((a[..., 0] == a[..., 2]).all())
-
 
     def test_cli_refusal_writes_nothing_and_exits_2(self):
         out = self.d / "out2"
