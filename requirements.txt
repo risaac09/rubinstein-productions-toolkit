@@ -43,6 +43,7 @@
 #   BRAW_PROXY_LANES             lutlab braw-proxy.sh              2                                         you want more or fewer clips at once.
 #   RPRESOLVE_CONFIG             Resolve MCP deliver_check         none (resolve-config.json alone)          you keep a local overlay of the config.
 #   RPRESOLVE_LOCK               rpresolve ResolveLock             ~/Library/Caches/rpresolve/resolve.lock   the lock file needs another place.
+#   RP_PIPELINE_CONFIG           rpresolve project                 none (paths on the command line)         you keep the landing, work, sheets and indexer settings in a JSON file.
 #   RPRESOLVE_MCP_OUT            Resolve MCP server                ~/Library/Caches/rpresolve/mcp            tool output needs another folder.
 #   RPRESOLVE_MCP_JOURNAL        Resolve MCP server                ~/Library/Logs/rpresolve-mcp/writes.jsonl the write journal needs another file.
 #   RPRESOLVE_MCP_NO_RESOLVE     Resolve MCP session               unset                                     tests: 1 makes every Resolve connect fail.
