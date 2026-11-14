@@ -40,6 +40,7 @@
         a*, b* onto the target, skin hue left alone; balance.json (rows and a set table), balance.md, and per shot
         NAME.cc (ASC CDL in the camera's code values) and NAME.cube
   shot-match --ref REF --src SRC [--space srgb] [--min-corr 0.8] [--size 65|33] [--out DIR] [--name NAME] [--overwrite]
+  transfer --ref REF --src SRC [--space srgb] [--stages reinhard,mkl,ot] [--size 65|33] [--out DIR] [--name NAME] [--overwrite]
         match SRC to REF, two frames of the same content: NAME.cc (ASC CDL), NAME.cube (CDL + 17-point residual),
         NAME-residual.cube, NAME.report.md with Delta E 2000 before and after. A pair that is not the same content is refused
 
@@ -108,6 +109,15 @@ def main(argv=None):
     p.add_argument("--out")
     p.add_argument("--name", default="shot-match")
     p.add_argument("--overwrite", action="store_true")
+    p = sub.add_parser("transfer")
+    p.add_argument("--ref", required=True)
+    p.add_argument("--src", required=True)
+    p.add_argument("--space", default="srgb")
+    p.add_argument("--stages", default="reinhard,mkl,ot")
+    p.add_argument("--size", type=int, default=cst.DEFAULT_SIZE)
+    p.add_argument("--out")
+    p.add_argument("--name", default="transfer")
+    p.add_argument("--overwrite", action="store_true")
     p = sub.add_parser("looks")
     p.add_argument("base")
     p.add_argument("--deltas", nargs="+", default=[str(LOOKS_DIR)])
@@ -169,7 +179,7 @@ def main(argv=None):
     pack.add_arguments(sub.add_parser("pack", help="zip of LUTs for Resolve, iPad too"))
     balance.add_arguments(sub.add_parser("balance", help="per-shot exposure and white balance, a CDL out"))
     a = ap.parse_args(argv)
-    name = a.name if a.cmd in ("port", "decompose", "shot-match") else None   # these name files out/NAME...
+    name = a.name if a.cmd in ("port", "decompose", "shot-match", "transfer") else None   # these name files out/NAME...
     if name and (Path(name).name != name or name in (".", "..")):   # a path there would leave the checked --out
         ap.error(f"--name {name!r} is a file name, not a path")
 
@@ -300,6 +310,21 @@ def main(argv=None):
         e = m["errors"]
         print(f"held-out dE2000 median {e['before']['held-out']['median']} -> {e['match']['held-out']['median']} "
               f"(CDL alone {e['cdl']['held-out']['median']})")
+    elif a.cmd == "transfer":
+        from . import transfer
+        if a.out:
+            transfer.refuse_resolve(a.out)
+        out = guard.out_dir(a.out, a.name)
+        try:
+            res = transfer.transfer(a.src, a.ref, a.space, [t for t in a.stages.split(",") if t], a.size)
+        except (transfer.Refused, ValueError) as e:
+            print(f"transfer: refused: {e}", file=sys.stderr)
+            return 2
+        for f in transfer.write(res, out, a.name, a.src, a.ref, a.overwrite):
+            print(f)
+        first, last = res["rows"][0]["held_out"], [r for r in res["rows"] if r["applied"]][-1]["held_out"]
+        print(f"held-out sliced W2 {first['sliced_w2']} -> {last['sliced_w2']} Lab units "
+              f"({', '.join(r['stage'] + (' kept' if r['applied'] else ' skipped') for r in res['rows'][1:])})")
     elif a.cmd == "fit-pairs":
         from . import pairs
         out = guard.out_dir(a.out, a.name)
