@@ -45,7 +45,7 @@ import threading
 import numpy as np
 
 from . import color
-from .detect import cropped_size  # noqa: F401  (stdlib home, shared with reframe)
+from .detect import cropped_size, fit_frame  # noqa: F401  (stdlib home, shared with reframe)
 # The Vision helper lives in vision.py (stdlib only); these names stay here too.
 from .vision import CACHE_DIR, SWIFTC, VISION_SOURCE, face_boxes, vision_binary  # noqa: F401
 
@@ -178,6 +178,9 @@ def read_frame(path, t, width, height, vf=None):
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-"]
     proc = _run(cmd)
     want = width * height * 6
+    if proc.returncode == 0 and len(proc.stdout) != want:  # trust the decoded frame over a probe a pixel off
+        width, height = fit_frame(len(proc.stdout), width, height, 6) or (width, height)
+        want = width * height * 6
     if proc.returncode != 0 or len(proc.stdout) < want:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
@@ -237,6 +240,8 @@ def _luma_cmd(path, vf, seek=None, frames=None):
 def read_luma(path, t, width, height):
     """One frame's Y plane at time t as uint8 codes, shape (h, w)."""
     proc = _run(_luma_cmd(path, "", seek=t, frames=1))
+    if proc.returncode == 0 and len(proc.stdout) != width * height:  # trust the decoded frame over a probe a pixel off
+        width, height = fit_frame(len(proc.stdout), width, height) or (width, height)
     if proc.returncode != 0 or len(proc.stdout) < width * height:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
@@ -340,6 +345,7 @@ def luma_pass(path, fps=1.5, check_cancel=None):
     probes = [read_luma(path, t, w, h) for t in sample_times(dur, BAR_PROBES)] if dur > 0 \
         else [read_luma(path, 0.0, w, h)]
     bars = edge_bars(probes)
+    h, w = probes[0].shape  # the decoded size, which a probe can miss by a pixel
     del probes
     per = []
     for i, y in enumerate(luma_stream(path, w, h, fps)):

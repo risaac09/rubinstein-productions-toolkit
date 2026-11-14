@@ -112,7 +112,7 @@ import tempfile
 
 from . import composition, cutlist, vision
 from . import scene as scenemod
-from .detect import DetectError, cropped_size, run_ffprobe
+from .detect import DetectError, cropped_size, fit_frame, run_ffprobe
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 TIMEOUT_S = 120  # per ffmpeg frame grab
@@ -935,7 +935,10 @@ class SourceReader:
                 raise ReframeError(f"ffmpeg timed out reading the frame at {t:.3f}s")
             except OSError as e:
                 raise ReframeError(f"cannot run ffmpeg: {e}")
-            want = self.size[0] * self.size[1]
+            if proc.returncode == 0 and len(proc.stdout) != self.luma_size[0] * self.luma_size[1]:
+                # trust the decoded frame over a probe a pixel off
+                self.luma_size = fit_frame(len(proc.stdout), *self.luma_size) or self.luma_size
+            want = self.luma_size[0] * self.luma_size[1]
             if proc.returncode != 0 or len(proc.stdout) < want or not os.path.exists(png):
                 raise ReframeError(f"ffmpeg could not read the frame at {t:.3f}s: "
                                    f"{proc.stderr.decode(errors='replace').strip()[-200:]}")

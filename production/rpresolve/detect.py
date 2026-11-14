@@ -154,7 +154,10 @@ def _ffprobe_arg(path):
 
 def cropped_size(stream):
     """(width, height) a decoder returns: the stream's size less its Frame
-    Cropping side data, which ffprobe leaves in the stream's own size."""
+    Cropping side data, which ffprobe leaves in the stream's own size. A
+    chroma-subsampled picture decodes at an even size, so an odd result
+    rounds down (113 rows off the top and 114 off the bottom of 1080 leave
+    852, not 853)."""
     w, h = int(stream["width"]), int(stream["height"])
     for sd in stream.get("side_data_list") or []:
         if "crop_top" in sd:
@@ -171,6 +174,17 @@ def cropped_size(stream):
                     ch -= ch % 2
                 return cw, ch
     return w, h
+
+
+def fit_frame(nbytes, width, height, bytes_per_px=1):
+    """(width, height) of a decoded frame of nbytes when the probe's size
+    is off by a pixel or two in either direction, or None. The probe's own
+    size wins when it fits."""
+    for dw, dh in sorted(((a, b) for a in range(-2, 3) for b in range(-2, 3)), key=lambda d: abs(d[0]) + abs(d[1])):
+        w, h = width + dw, height + dh
+        if w > 0 and h > 0 and w * h * bytes_per_px == nbytes:
+            return w, h
+    return None
 
 
 def run_ffprobe(path, ffprobe=None, timeout=120):
