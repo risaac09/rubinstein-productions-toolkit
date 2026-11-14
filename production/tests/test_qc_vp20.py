@@ -216,6 +216,16 @@ class Vp20Rows(unittest.TestCase):
         self.assertIn("100.00% exactly at Y 235", row["found"])
         self.assertIn("0.00% over Y 235", row["found"])
 
+    def test_colour_reads_a_picture_that_audio_outruns_and_a_one_second_clip(self):
+        long_audio = os.path.join(self._tmp.name, "long_audio.mkv")
+        _ff("-f", "lavfi", "-i", "color=c=gray:s=108x192:r=5:d=60", "-f", "lavfi", "-i", "sine=d=62",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", long_audio)
+        short = os.path.join(self._tmp.name, "one_second.mp4")
+        _ff("-f", "lavfi", "-i", "color=c=gray:s=108x192:r=25:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", short)
+        for clip in (long_audio, short):
+            row = _row(qc.run(clip, colour=True), "colour")
+            self.assertEqual(row["status"], qc.PASS, (clip, row))
+
     def test_colour_reports_the_low_side_without_warning(self):
         row = _row(qc.run(self.black, colour=True), "colour")  # legal black, Y 16
         self.assertEqual(row["status"], qc.PASS, row)

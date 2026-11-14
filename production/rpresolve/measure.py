@@ -102,8 +102,8 @@ def probe(path):
     """{width, height, duration, fps, codec, profile, color tags} of the
     first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-           "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate:format=duration,format_name",
+           "stream=duration,codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
+           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate,DURATION:format=duration,format_name",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -124,7 +124,15 @@ def probe(path):
     # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
     if rotation(s) % 180 == 90:
         width, height = height, width
-    return {"width": width, "height": height, "duration": duration,
+    stream_duration = 0.0  # 0 when the container keeps none (Matroska, without its DURATION tag)
+    try:
+        stream_duration = float(s.get("duration") or 0)
+        if not stream_duration and (s.get("tags") or {}).get("DURATION"):
+            h, m, sec = (s["tags"]["DURATION"].split(":") + ["0", "0"])[:3]
+            stream_duration = int(h) * 3600 + int(m) * 60 + float(sec)
+    except ValueError:
+        pass
+    return {"width": width, "height": height, "duration": duration, "stream_duration": stream_duration,
             "fps": s.get("avg_frame_rate", ""), "codec": s.get("codec_name", ""),
             "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
@@ -356,10 +364,12 @@ def luma_pass(path, fps=1.5, check_cancel=None):
         per.append(d)
     if not per:
         raise MeasureError("ffmpeg returned no frames")
-    # ffmpeg exits 0 on a truncated file; the container's duration says how many frames are due
-    due = int(dur * fps)
-    if dur > 0 and len(per) < due - 2:
-        raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {dur:g} s: the file ends early")
+    # ffmpeg exits 0 on a truncated file; the picture's own duration (not the container's, which
+    # audio can outrun) says how many frames are due. A clip too short for two is not judged.
+    vdur = info["stream_duration"]  # none known: no check, the container's duration would count audio
+    due = int(vdur * fps)
+    if vdur > 0 and len(per) < due - 2:
+        raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {vdur:g} s: the file ends early")
     keys = ("over_235_pct", "at_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
     worst = {k: max(d[k] for d in per) for k in keys}
     worst["ymin"], worst["ymax"] = min(d["ymin"] for d in per), max(d["ymax"] for d in per)
