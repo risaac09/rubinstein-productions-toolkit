@@ -82,8 +82,12 @@ class Group(Obj):
     def GetPostClipNodeGraph(self): return Graph()
 
 
+TWO_STREAMS = json.dumps({"track_mapping": {"1": {"channel_idx": [1], "type": "mono"},
+                                              "2": {"channel_idx": [2], "type": "mono"}}})
+
+
 class Clip(Obj):
-    mapping = "{}"
+    mapping = TWO_STREAMS
     def GetAudioMapping(self): return self.mapping
     def SetAudioMapping(self, m): self._log("SetAudioMapping", m); self.mapping = m; return True
     def GetClipProperty(self, k=None): return "2" if k else {"Input Color Space": "Rec.709", "File Name": "x"}
@@ -116,7 +120,7 @@ class Pool(Obj):
                       # "always" models a remap that changes nothing
     def AppendToTimeline(self, c):
         self._log("AppendToTimeline")
-        remapped = c[0]["mediaPoolItem"].mapping != "{}"
+        remapped = c[0]["mediaPoolItem"].mapping != TWO_STREAMS
         self.tl.tracks = 2 if self.SPILL == "always" or (self.SPILL and not remapped) else 1
         return [Item()]
     def DeleteTimelines(self, t): self._log("DeleteTimelines"); return True
@@ -300,7 +304,7 @@ class Sandbox(unittest.TestCase):
     def test_audio_mapping_is_put_back_at_cleanup(self):
         self._q2(False)
         sets = [c[2][0] for c in CALLS if c[1] == "SetAudioMapping"]
-        self.assertEqual(sets[-1], "{}")
+        self.assertEqual(sets[-1], TWO_STREAMS)
 
     def _sb(self, only):
         doc = run("box", sandbox_checks=True, config=self.CONFIG, only=only)
@@ -312,7 +316,7 @@ class Sandbox(unittest.TestCase):
     def test_each_track_format_reports_its_subtype(self):
         rows = self._sb("S2")
         self.assertEqual(sorted(k for k in rows if k.startswith("Timeline.GetTrackSubType[")),
-                         ["Timeline.GetTrackSubType[5.1]", "Timeline.GetTrackSubType[adaptive]",
+                         ["Timeline.GetTrackSubType[5.1]", "Timeline.GetTrackSubType[adaptive1]",
                           "Timeline.GetTrackSubType[mono]", "Timeline.GetTrackSubType[stereo]"])
 
     def test_timeline_exports_write_five_files_that_are_then_removed(self):
@@ -330,6 +334,46 @@ class Sandbox(unittest.TestCase):
     def test_no_forbidden_grade_call_is_made_by_the_read_checks(self):
         run("box")
         self.assertEqual([c for c in CALLS if c[1] in ("SetLUT", "ResetAllGrades")], [])
+
+    def test_a_single_stream_clip_is_not_testable_and_is_left_alone(self):
+        one = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "type": "stereo"}}})
+        Clip.mapping = one
+        try:
+            rows = self._sb("Q2")
+        finally:
+            Clip.mapping = TWO_STREAMS
+        self.assertTrue(rows["verdict.remap_before_append"]["note"].startswith("not testable"))
+        self.assertNotIn("SetAudioMapping", [c[1] for c in CALLS])
+
+    def test_a_remap_that_does_not_read_back_is_not_a_verdict(self):
+        orig = Clip.SetAudioMapping
+        Clip.SetAudioMapping = lambda self, m: False
+        try:
+            rows = self._sb("Q2")
+        finally:
+            Clip.SetAudioMapping = orig
+        self.assertTrue(rows["verdict.remap_before_append"]["note"].startswith("not testable"))
+
+    def test_a_project_that_already_exists_is_never_created_saved_or_deleted(self):
+        orig = PM.GetProjectListInCurrentFolder
+        PM.GetProjectListInCurrentFolder = lambda self: ["rp-probe-q1"]
+        try:
+            rows = self._sb("Q1")
+        finally:
+            PM.GetProjectListInCurrentFolder = orig
+        names = [c[1] for c in CALLS]
+        self.assertNotIn("CreateProject", names)
+        self.assertNotIn("DeleteProject", names)
+        self.assertTrue(rows["setup"]["note"].startswith("refused"))
+
+    def test_nothing_is_deleted_when_create_returns_none(self):
+        orig = PM.CreateProject
+        PM.CreateProject = lambda self, n, p=None: None
+        try:
+            self._sb("Q1")
+        finally:
+            PM.CreateProject = orig
+        self.assertNotIn("DeleteProject", [c[1] for c in CALLS])
 
     def test_flag_missing_skips_even_in_the_sandbox(self):
         doc = run("box", config=self.CONFIG)

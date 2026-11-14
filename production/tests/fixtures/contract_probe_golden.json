@@ -267,9 +267,9 @@
   "R0:Graph.SetNodeLabel": {
     "present": true
   },
-  "R0:Project.GetSetting[colorScienceMode]": {
+  "R0:Project.GetSettings": {
     "present": true,
-    "type": "str"
+    "type": "dict"
   },
   "R0:TimelineItem.GetCDL[1]": {
     "present": true,
@@ -279,7 +279,7 @@
     "present": true,
     "type": "object"
   },
-  "R10:Project.GetSetting[all]": {
+  "R10:Project.GetSettings[all]": {
     "present": true,
     "type": "dict"
   },

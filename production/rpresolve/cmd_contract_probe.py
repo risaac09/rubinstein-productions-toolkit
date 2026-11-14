@@ -17,7 +17,7 @@ Every check is read-only or sandbox-only.
                 --sandbox-checks is given AND the open project's name equals the
                 sandbox named in the config (key "probe", field "sandbox_project",
                 set in an overlay file passed with --config; the shipped config
-                leaves it null, so a sandbox check refuses by default). It never
+                has no "probe" key, so a sandbox check refuses by default). It never
                 starts a render, never deletes anything it did not create, and
                 names what it creates "rp-probe-...".
 
@@ -346,7 +346,9 @@ def r0(ctx, t):
         ctx.call("TimelineItem.GetCDL[1]", v, "GetCDL", 1)
     for m in ("SetLUT", "SetNodeLabel", "ApplyGradeFromDRX", "ResetAllGrades"):
         ctx.look(f"Graph.{m}", g, m)  # looked up, never called
-    ctx.call("Project.GetSetting[colorScienceMode]", t["project"], "GetSetting", "colorScienceMode")
+    got = ctx.call("Project.GetSettings", t["project"], "GetSettings")
+    if isinstance(got, dict):
+        ctx.note("Project.GetSettings.colorScienceMode", str(got.get("colorScienceMode")))
 
 
 def r5(ctx, t):
@@ -363,10 +365,10 @@ def r9(ctx, t):
 
 def r10(ctx, t):
     """Every project setting key, and whether any names Camera Raw."""
-    got = ctx.call("Project.GetSetting[all]", t["project"], "GetSetting")
+    got = ctx.call("Project.GetSettings[all]", t["project"], "GetSettings")
     if isinstance(got, dict):
         hits = sorted(k for k in got if "raw" in str(k).lower())
-        ctx.note("Project.GetSetting.raw_keys", f"{len(hits)} key(s) mention raw")
+        ctx.note("Project.GetSettings.raw_keys", f"{len(hits)} key(s) mention raw")
 
 
 def s4(ctx, t):
@@ -419,7 +421,7 @@ READ_CHECKS = [
     ("R0", "Grade surface: node graph, LUT, label, tools, CDL, colour science mode", r0),
     ("R5", "Input colour space, gamma and data level of a pool clip", r5),
     ("R9", "Every clip property key", r9),
-    ("R10", "Every project setting key; any that names raw", r10),
+    ("R10", "Every project setting key (GetSettings); any that names raw", r10),
     ("S4", "Audio effects list and an item's audio effects", s4),
     ("S9", "Audio render formats and codecs", s9),
     ("M0", "Fusion, comp export and import, title insert calls present", m0),
@@ -453,45 +455,71 @@ def _scratch_timeline(ctx, t, tag):
     return tl, items
 
 
-def _drop(t, tl):
-    """Scratch timelines are deleted by the cleanup stack that run_probe always runs."""
-
 
 def s_q1(ctx, t):
-    pm, original = t["pm"], t["project"].GetName()
-    made = pm.CreateProject(PREFIX + "q1")
-    ctx.note("ProjectManager.CreateProject", "returned a project" if made is not None else "returned None")
+    """Create a project, see whether it becomes current, switch back, delete only what this run made."""
+    pm, original, name = t["pm"], t["project"].GetName(), PREFIX + "q1"
+    if name in (pm.GetProjectListInCurrentFolder() or []):
+        ctx.note("setup", f"refused: a project named {name} already exists; this check never deletes one it did not make")
+        return
+    made = pm.CreateProject(name)
+    if made is None:
+        ctx.note("ProjectManager.CreateProject", "returned None; nothing made, nothing saved, nothing deleted")
+        return
+    ctx.note("ProjectManager.CreateProject", "returned a project")
     now = pm.GetCurrentProject()
     ctx.note("ProjectManager.CreateProject.becomes_current",
-             "yes" if now is not None and now.GetName() == PREFIX + "q1" else "no")
+             "yes" if now is not None and now.GetName() == name else "no")
     pm.SaveProject()
     pm.LoadProject(original)
-    ctx.call("ProjectManager.DeleteProject", pm, "DeleteProject", PREFIX + "q1")
+    back = pm.GetCurrentProject()
+    if back is None or back.GetName() != original:
+        ctx.note("setup", f"the sandbox is not current again; {name} was left in place, remove it by hand")
+        return
+    ctx.call("ProjectManager.DeleteProject", pm, "DeleteProject", name)
+
+
+def _mapping_tracks(text):
+    try:
+        data = json.loads(text) if isinstance(text, str) else text
+        return len((data or {}).get("track_mapping") or {})
+    except (ValueError, AttributeError, TypeError):
+        return 0
 
 
 def s_q2(ctx, t):
     """The T36 route: remap a multi-stream source BEFORE the append, read the mapping back, then
-    append and count audio tracks. One run confirms or kills it: see the verdict note."""
+    append and count audio tracks. The verdict needs a clip whose mapping lists more than one
+    track, and a remap that was accepted and read back; otherwise it says "not testable"."""
     clip = t["clip"]
     if clip is None:
         ctx.note("setup", "the sandbox media pool has no clip at its root; import one first")
         return
     before = clip.GetAudioMapping()
-    if before:
-        ctx.cleanups.append(lambda: clip.SetAudioMapping(before))
+    streams = _mapping_tracks(before)
+    if streams < 2:
+        ctx.note("verdict.remap_before_append",
+                 f"not testable: the first pool clip's mapping lists {streams} track(s); use a clip with several streams")
+        return
+    ctx.cleanups.append(lambda: clip.SetAudioMapping(before))
     mapping = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "mute": False, "type": "stereo"}}})
-    ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
+    accepted = ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
     after = ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
-    ctx.note("MediaPoolItem.GetAudioMapping.read_back",
-             "differs from what was set" if _norm(after) != _norm(mapping) else "same as what was set")
+    same = _norm(after) == _norm(mapping)
+    ctx.note("MediaPoolItem.GetAudioMapping.read_back", "same as what was set" if same else "differs from what was set")
     tl, items = _scratch_timeline(ctx, t, "q2")
     if tl is None:
         return
     per = [len(tl.GetItemListInTrack("audio", n) or []) for n in range(1, (tl.GetTrackCount("audio") or 0) + 1)]
     ctx.note("Timeline.audio_tracks_after_append",
              f"{len(per)} audio track(s), " + ", ".join(map(str, per)) + " item(s) per track")
-    ctx.note("verdict.remap_before_append", "no spill: confirmed" if len(per) == 1 else
-             "spill remains: killed (needs the clip to have more than one stream to mean anything)")
+    if accepted is not True or not same:
+        verdict = "not testable: the remap was not accepted or did not read back"
+    elif len(per) == 1:
+        verdict = "no spill: confirmed"
+    else:
+        verdict = "spill remains: killed"
+    ctx.note("verdict.remap_before_append", verdict)
 
 
 def _norm(v):
@@ -504,7 +532,6 @@ def _norm(v):
 def s_q3(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q3")
     if tl is None or not items:
-        _drop(t, tl)
         return
     item = items[0]
     ctx.call("TimelineItem.SetFades", item, "SetFades", {"FadeIn": 0, "FadeOut": 12})
@@ -512,7 +539,6 @@ def s_q3(ctx, t):
     ctx.call("TimelineItem.AddTransition.audio", item, "AddTransition",
              {"type": "Cross Fade +3 dB", "category": "audio", "position": "end",
               "alignment": "left", "duration": 12})
-    _drop(t, tl)
 
 
 def s_q4(ctx, t):
@@ -529,32 +555,27 @@ def s_q4(ctx, t):
 def s_q5(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q5")
     if tl is None or not items:
-        _drop(t, tl)
         return
     item = items[0]
     before = item.GetProperties()
     ctx.call("TimelineItem.Stabilize", item, "Stabilize")
     after = item.GetProperties()
     ctx.note("TimelineItem.Stabilize.properties_changed", "yes" if before != after else "no")
-    _drop(t, tl)
 
 
 def s_q6(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q6")
     if tl is None or not items:
-        _drop(t, tl)
         return
     item = items[0]
     ctx.call("TimelineItem.SetSpeed[50]", item, "SetSpeed", {"Percentage": 50.0})
     ctx.call("TimelineItem.GetSpeed.after", item, "GetSpeed")
     item.SetSpeed({"Percentage": 100.0})
-    _drop(t, tl)
 
 
 def s_q7(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q7")
     if tl is None or not items:
-        _drop(t, tl)
         return
     for name in ("Cross Dissolve", "Dip to Color Dissolve"):
         got = ctx.call(f"TimelineItem.AddTransition[{name}]", items[0], "AddTransition",
@@ -563,7 +584,6 @@ def s_q7(ctx, t):
         if got is not None:
             ctx.note(f"TimelineItem.AddTransition[{name}].type_read_back",
                      str((got.GetProperties() or {}).get("TransitionType")))
-    _drop(t, tl)
 
 
 def s_q8(ctx, t):
@@ -577,13 +597,11 @@ def s_q8(ctx, t):
 def s_q9(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q9")
     if tl is None or not items:
-        _drop(t, tl)
         return
     item = items[0]
     ctx.call("TimelineItem.AddFusionComp", item, "AddFusionComp")
     ctx.call("TimelineItem.GetFusionCompCount.after", item, "GetFusionCompCount")
     ctx.call("TimelineItem.CreateMagicMask[F]", item, "CreateMagicMask", "F")
-    _drop(t, tl)
 
 
 def s_q10(ctx, t):
@@ -594,14 +612,12 @@ def s_q10(ctx, t):
 def s_q11(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "q11")
     if tl is None or not items:
-        _drop(t, tl)
         return
     item = items[0]
     ctx.call("TimelineItem.SetProperties[AudioVolume]", item, "SetProperties", {"AudioVolume": -6.0})
     props = item.GetProperties() or {}
     ctx.note("TimelineItem.AudioVolume.read_back", str(props.get("AudioVolume")))
     item.SetProperties({"AudioVolume": 0.0})
-    _drop(t, tl)
 
 
 def s_q12(ctx, t):
@@ -625,7 +641,10 @@ def s_r3(ctx, t):
                                                      "Offset": "0 0 0", "Power": "1 1 1", "Saturation": 0.9})
     got = ctx.call("TimelineItem.GetCDL.after", item, "GetCDL", 1)
     slope = str((got or {}).get("Slope", "")).split() if isinstance(got, dict) else []
-    ok = len(slope) == 3 and all(abs(float(x) - 1.1) < 1e-3 for x in slope if x.replace(".", "", 1).isdigit())
+    try:
+        ok = len(slope) == 3 and all(abs(float(x) - 1.1) < 1e-3 for x in slope)
+    except ValueError:
+        ok = False
     ctx.note("TimelineItem.GetCDL.read_back", "same as set" if ok else "differs from set or not read")
 
 
@@ -651,7 +670,7 @@ def s_s2(ctx, t):
     tl, items = _scratch_timeline(ctx, t, "s2")
     if tl is None:
         return
-    for sub in ("mono", "stereo", "5.1", "adaptive"):  # the scratch timeline is deleted at cleanup
+    for sub in ("mono", "stereo", "5.1", "adaptive1"):  # the scratch timeline is deleted at cleanup
         before = tl.GetTrackCount("audio") or 0
         ctx.call(f"Timeline.AddTrack[{sub}]", tl, "AddTrack", "audio", sub)
         after = tl.GetTrackCount("audio") or 0
@@ -675,7 +694,6 @@ def s_s7(ctx, t):
 
 
 def s_m1(ctx, t):
-    import os
     tl, items = _scratch_timeline(ctx, t, "m1")
     if tl is None or not items:
         return
@@ -699,7 +717,6 @@ def s_m3(ctx, t):
 
 
 def s_i1(ctx, t):
-    import os
     tl, items = _scratch_timeline(ctx, t, "i1")
     if tl is None:
         return

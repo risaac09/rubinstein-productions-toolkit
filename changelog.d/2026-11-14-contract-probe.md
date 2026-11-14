@@ -1,1 +1,1 @@
-Add the contract-probe command: read-only checks, plus sandbox-only checks behind a named sandbox project, that report which scripting calls the running Resolve has as one JSON document graded against a golden file; add traps T37 to T43, the limits Blackmagic's own scripting docs state.
+Add the contract-probe command: read-only checks, plus sandbox-only checks behind a named sandbox project, that report which scripting calls the running Resolve has as one JSON document graded against a golden file; add traps T37 to T44, the limits Blackmagic's own scripting docs state.

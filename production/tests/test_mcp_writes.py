@@ -341,7 +341,7 @@ TEST_DIR = "tests"
 ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": (("_spill",), {"DeleteClips", "DeleteTrack"}),
                    # contract-probe's --sandbox-checks half (off unless config names a sandbox
                    # project): creates, deletes and starts nothing but rp-probe- objects, and
-                   # names these calls to test the walls. Never run yet; Isaac to confirm.
+                   # names these calls to test the walls. Never run yet; needs the repo owner's explicit yes.
                    "rpresolve/cmd_contract_probe.py": (
                        ("q1", "q9", "q12", "_scratch_timeline", "s_q1", "s_q12", "s_r7"),
                        {"CloseProject", "CreateProject", "DeleteProject", "LoadProject",
