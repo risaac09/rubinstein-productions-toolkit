@@ -116,12 +116,13 @@ class Base(unittest.TestCase):
 
 
 class TestPlan(Base):
-    def test_a_recorded_squeeze_is_named_as_not_built_and_a_bad_record_is_refused(self):
+    def test_a_recorded_squeeze_is_planned_for_the_pixel_aspect_ratio_and_a_bad_record_is_refused(self):
         record = Path(os.path.dirname(self.one), "squeeze.json")
         record.write_text(json.dumps({"default": 1, "clips": {"two.mov": 1.5}}))
-        self.assertEqual(a.plan(self.manifest)["not_built"],
-                         ["two.mov: recorded as 1.5x anamorphic; this tool sets neither the clip's "
-                          "pixel aspect ratio nor the timeline's shape"])
+        p = a.plan(self.manifest)
+        self.assertEqual(p["not_built"], [])  # the line is gone: this tool now handles it
+        self.assertEqual(p["squeeze"], [{"path": self.two, "factor": 1.5, "where": "record",
+                                         "set": True}])
         record.write_text("{not json")
         with self.assertRaisesRegex(a.Refused, "cannot read the squeeze record"):
             a.plan(self.manifest)
@@ -1216,3 +1217,106 @@ class TestCameraSoundDetails(Base):
         snd = tl.GetItemListInTrack("audio", 1)
         self.assertEqual([(i.start, i.end) for i in snd], [(i.start, i.end) for i in pics])
         self.assertEqual(r["problems"], [])
+
+
+class TestDesqueeze(Base):
+    """A source a person recorded as anamorphic gets its pool clip's PAR set before items are
+    placed; the shape the timeline takes is judged against the desqueezed picture."""
+
+    def setUp(self):
+        super().setUp()
+        Path(os.path.dirname(self.one), "squeeze.json").write_text(
+            json.dumps({"default": 1, "clips": {"two.mov": 1.5}}))
+        for p in (self.one, self.two):
+            rf.IMPORT_PROPS[p]["PAR"] = "Square"
+        self.addCleanup(lambda: [rf.IMPORT_PROPS[p].pop("PAR", None) for p in (self.one, self.two)])
+        dims = mock.patch.object(a.dc, "video_dims", lambda path: (5952, 3968))
+        dims.start()
+        self.addCleanup(dims.stop)
+
+    def clip(self, path):
+        return next(c for c in a._all_clips(self.project.pool.root) if c.props["File Path"] == path)
+
+    def test_the_dry_run_lists_the_clip_and_sets_nothing(self):
+        dry = self.go()
+        self.assertEqual([(r["par"], r["current"], r["action"]) for r in dry["desqueeze"]],
+                         [("1.5", None, "set")])
+        self.assertIn("would set Pixel Aspect Ratio on 1 clip(s)", self.summary(dry))
+        self.assertFalse([c for c in rf.CALLS if c[1] == "SetClipProperty" and c[2][0] == "PAR"])
+
+    def summary(self, r):
+        from rpresolve.mcp import tools_write
+        return tools_write._squeeze_line(r)
+
+    def test_the_real_run_sets_par_and_reads_it_back_only_on_the_squeezed_clip(self):
+        dry = self.go()
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["desqueeze"][0]["result"], "set")
+        self.assertEqual(self.clip(self.two).props["PAR"], "1.5")
+        self.assertEqual(self.clip(self.one).props["PAR"], "Square")  # spherical: untouched
+
+    def test_a_clip_holding_another_non_square_value_is_reported_and_left(self):
+        first = self.go(dry_run=False, expect_sha=self.go()["plan_sha"])
+        self.assertEqual(first["problems"], [])
+        self.clip(self.two).props["PAR"] = "2"
+        self.project.timelines.pop()  # build again under a new name
+        r = self.go(name="Again [auto]", dry_run=False,
+                    expect_sha=self.go(name="Again [auto]")["plan_sha"])
+        self.assertEqual(r["desqueeze"][0]["action"], "left")
+        self.assertEqual(self.clip(self.two).props["PAR"], "2")
+        self.assertTrue(any("pixel aspect ratio" in x for x in r["problems"]), r["problems"])
+
+    def test_a_clip_that_already_holds_the_factor_is_not_written(self):
+        self.go(dry_run=False, expect_sha=self.go()["plan_sha"])
+        rf.CALLS.clear()
+        again = self.go(name="Again [auto]")
+        self.assertEqual(again["desqueeze"][0]["action"], "already")
+        self.go(name="Again [auto]", dry_run=False, expect_sha=again["plan_sha"])
+        self.assertFalse([c for c in rf.CALLS if c[1] == "SetClipProperty" and c[2][0] == "PAR"])
+
+    def test_a_par_that_does_not_land_is_a_problem(self):
+        with mock.patch.object(rf.Clip, "SetClipProperty", lambda c, k, v: True, create=True):
+            r = self.go(dry_run=False, expect_sha=self.go()["plan_sha"])
+        self.assertTrue(any("PAR" in x for x in r["problems"]), r["problems"])
+
+    def test_a_braw_file_is_never_written(self):
+        braw = os.path.join(os.path.dirname(self.one), "three.braw")
+        Path(braw).write_bytes(b"x")
+        self.manifest["sources"].append({"id": "s3", "path": braw})
+        self.manifest["clips"][0]["spans"].append({"source": "s3", "in": 1.0, "out": 1.5})
+        Path(os.path.dirname(self.one), "squeeze.json").write_text(
+            json.dumps({"clips": {"two.mov": 1.5}}))  # no default: the BRAW file answers for itself
+        with mock.patch.object(a.rpsqueeze, "file_tag", lambda p, ff="ffprobe": 1.5):
+            p = a.plan(self.manifest)
+        row = next(r for r in p["squeeze"] if r["path"] == braw)
+        self.assertEqual((row["where"], row["set"]), ("file tag", False))
+
+    def test_the_plan_hash_follows_the_pixel_aspect_ratio_rows(self):
+        before = self.go()["plan_sha"]
+        Path(os.path.dirname(self.one), "squeeze.json").write_text(
+            json.dumps({"default": 1, "clips": {"two.mov": 2.0}}))
+        self.assertNotEqual(before, self.go()["plan_sha"])
+
+    def test_a_shape_that_crops_more_than_five_percent_says_so_and_names_the_fit(self):
+        r = self.go(width=3840, height=1608)  # 2.39:1 over a 2.25:1 picture
+        (row,) = r["shape"]
+        self.assertEqual(row["crop"], {"axis": "height", "percent": 5.8})
+        self.assertEqual(row["fits"], "3840x1708")
+        self.assertIn("crops 5.8% of the desqueezed picture's height", row["note"])
+        self.assertIn("3840x1708 keeps all of it", self.summary(r))
+        self.assertEqual(r["size"], [3840, 1608])  # it does not choose a shape
+
+    def test_a_wide_picture_in_a_narrow_shape_crops_its_width(self):
+        (row,) = self.go(width=1920, height=1080)["shape"]
+        self.assertEqual(row["crop"]["axis"], "width")
+        self.assertGreater(row["crop"]["percent"], 20)
+
+    def test_a_shape_within_five_percent_is_quiet(self):
+        (row,) = self.go(width=3840, height=1708)["shape"]
+        self.assertEqual((row["note"], row["fits"]), ("", None))
+
+    def test_a_source_whose_size_cannot_be_read_is_not_judged(self):
+        with mock.patch.object(a.dc, "video_dims", lambda path: None):
+            (row,) = self.go()["shape"]
+        self.assertIn("not judged", row["note"])

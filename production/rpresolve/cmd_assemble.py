@@ -139,13 +139,15 @@ def plan(manifest, exclude=None):
     not_built += [f"the {e['effect']} into item {e['span_index'] + 1}: not built by this tool "
                   "(the draft farm draws it)" for e in manifest.get("effects") or []
                   if e.get("effect") in transitions.IDS]
-    try:  # the draft farm desqueezes by this record; say so where the build does not
-        wide = {p: rpsqueeze.answer(p)[0] for p in sorted(set(paths.values()))}
+    try:
+        wide = {p: rpsqueeze.answer(p) for p in sorted(set(paths.values()))}
     except rpsqueeze.SqueezeError as e:
         raise Refused(str(e))
-    not_built += [f"{os.path.basename(p)}: recorded as {f:g}x anamorphic; this tool sets neither the "
-                  "clip's pixel aspect ratio nor the timeline's shape" for p, f in wide.items()
-                  if f and f != 1 and not p.lower().endswith(".braw")]  # Resolve reads a BRAW's own tag
+    # Every anamorphic source; `set` is whether this tool writes its pixel aspect ratio: only
+    # from a person's record, and never on a BRAW file, which Resolve desqueezes by its own tag.
+    squeeze = [{"path": p, "factor": f, "where": where,
+                "set": where == "record" and not p.lower().endswith(".braw")}
+               for p, (f, where) in wide.items() if f and f > 1]
     sound = manifest.get("camera_sound", False)
     if not isinstance(sound, bool):
         raise Refused("camera_sound is true or false")
@@ -156,7 +158,7 @@ def plan(manifest, exclude=None):
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "sound": sound,
+            "sound": sound, "squeeze": squeeze,
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -390,14 +392,16 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
         raise Refused(f"the manifest runs at {p['fps']:g} fps and the project's timelines at "
                       f"'{rate}'; a scripted timeline takes the project's rate.")
     colour = colour_plan(project, root, p)
+    desqueeze = desqueeze_plan(root, p)
+    shape = shape_plan(p, width, height)
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report, tl_colour)
+                   report, tl_colour, desqueeze)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
-           "timeline_colour": tl_colour, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -444,6 +448,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         raise api.WriteNotApplied("not imported: " + ", ".join(gone))
     check()
     _colour(out, have, imported, before)
+    _desqueeze(out, have)
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
@@ -568,6 +573,91 @@ def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
                     api.set_property_checked(it, key, scale)
                 except api.WriteNotApplied as e:
                     problems.append(f"the plate under item {row['into']}: {e}")
+
+
+PAR = "PAR"  # the clip property Clip Attributes' Pixel Aspect Ratio reads and writes
+SQUARE = "Square"
+CROP_NOTE = 0.05  # the share of the desqueezed picture a shape may crop before the dry run says so
+
+
+def par_text(factor):
+    """The value the PAR clip property takes for a squeeze factor ('1.5'); read from a live
+    Resolve 21.2 (sandbox), where 'Square' and a number as text are accepted."""
+    return f"{factor:g}"
+
+
+def desqueeze_plan(root, p):
+    """One row per source this run sets a pixel aspect ratio on: {path, factor, par, current,
+    action}. current is what the clip in the 'methods [auto]' bin reads now (None when the
+    run will import it); action 'set' (square, or not imported yet), 'already' (holds the
+    wanted value) or 'left' (holds another non-square value: reported, never changed)."""
+    folder = _bin(None, root, make=False)
+    in_bin = {c.GetClipProperty("File Path"): c for c in folder.GetClipList() or []} if folder else {}
+    rows = []
+    for r in p["squeeze"]:
+        if not r["set"]:
+            continue
+        clip = in_bin.get(r["path"])
+        now = str(clip.GetClipProperty(PAR) or "") if clip else None
+        want = par_text(r["factor"])
+        rows.append({"path": r["path"], "factor": r["factor"], "par": want, "current": now,
+                     "action": "already" if now == want else
+                     "set" if now in (None, "", SQUARE) else "left"})
+    return rows
+
+
+def _desqueeze(out, have):
+    """Before the timeline exists: set each planned clip's PAR through the checked write. A
+    clip already holding another non-square value is a problem and is not written."""
+    for row in out["desqueeze"]:
+        clip, base = have[row["path"]], os.path.basename(row["path"])
+        now = str(clip.GetClipProperty(PAR) or "")  # the plan may be older than the pool
+        row["current"] = now
+        if now == row["par"]:
+            row["result"] = "already"
+        elif now not in ("", SQUARE):
+            row["result"] = f"left: reads '{now}'"
+            out["problems"].append(f"pixel aspect ratio: {base} reads '{now}', the card record "
+                                   f"says {row['par']}x; left as it is, set it in Clip Attributes")
+        else:
+            try:
+                row["current"] = api.set_clip_property_checked(clip, PAR, row["par"])
+                row["result"] = "set"
+            except api.WriteNotApplied as e:
+                row["result"] = f"FAILED: {e}"
+                out["problems"].append(f"pixel aspect ratio: {base}: {e}")
+
+
+def shape_plan(p, width, height):
+    """Read-only: for each anamorphic source (a record's or a BRAW file's own tag), the
+    desqueezed picture's aspect and what the timeline's shape crops of it (the build fills
+    and crops). A row for each source: {source, picture, crop, fits, note}; crop is
+    {axis, percent} when more than CROP_NOTE of the picture's width or height goes, and fits
+    names the shape at the timeline's width that keeps all of it. A source whose size
+    cannot be read gets a note and no judgement. Never chooses a shape."""
+    rows = []
+    for r in p["squeeze"]:
+        base = os.path.basename(r["path"])
+        dims = dc.video_dims(r["path"])
+        if not dims:
+            rows.append({"source": base, "picture": None, "crop": None, "fits": None,
+                         "note": "size not read (ffprobe), shape not judged"})
+            continue
+        pic = dims[0] * r["factor"] / dims[1]
+        shape = width / height
+        row = {"source": base, "picture": f"{dims[0]}x{dims[1]} at {r['factor']:g}x = {pic:.2f}:1",
+               "crop": None, "fits": None, "note": ""}
+        if shape > pic * (1 + 1e-9):
+            row["crop"] = {"axis": "height", "percent": round(100 * (1 - pic / shape), 1)}
+        elif shape < pic / (1 + 1e-9):
+            row["crop"] = {"axis": "width", "percent": round(100 * (1 - shape / pic), 1)}
+        if row["crop"] and row["crop"]["percent"] > 100 * CROP_NOTE:
+            row["fits"] = f"{width}x{math.ceil(width / pic / 2 - 1e-9) * 2}"
+            row["note"] = (f"the {width}x{height} shape ({shape:.2f}:1) crops "
+                           f"{row['crop']['percent']:g}% of the desqueezed picture's "
+                           f"{row['crop']['axis']}; {row['fits']} keeps all of it")
+        rows.append(row)
+    return rows
 
 
 def _colour(out, have, imported, before):

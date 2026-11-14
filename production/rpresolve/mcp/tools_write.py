@@ -553,6 +553,19 @@ def _colour_line(r):
     return "; colour: " + "; ".join(bits) if bits else ""
 
 
+def _squeeze_line(r):
+    """What the pixel aspect ratio and shape rows of an assemble_timeline result say."""
+    bits = []
+    todo = [x for x in r["desqueeze"] if x["action"] == "set"]
+    if r["dry_run"] and todo:
+        bits.append(f"would set Pixel Aspect Ratio on {len(todo)} clip(s) from the card record")
+    elif r["desqueeze"] and not r["dry_run"]:
+        bits.append(f"Pixel Aspect Ratio set on {sum(1 for x in r['desqueeze'] if x.get('result') == 'set')} "
+                    f"of {len(r['desqueeze'])} clip(s), read back")
+    bits += [x["note"] for x in r["shape"] if x["note"]]
+    return "; squeeze: " + "; ".join(bits) if bits else ""
+
+
 def assemble_timeline(args, ctx):
     _require_sha(args)
     manifest = _abs(args["manifest"], "manifest")
@@ -578,7 +591,7 @@ def assemble_timeline(args, ctx):
                    if p["music"] else ""))
         skipped = f"; not built: {'; '.join(p['not_built'])}" if p["not_built"] else ""
         skipped += (f"; {r['exclude_note']}" if r["exclude_note"] else "")
-        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r)
+        skipped += ledgercheck.summary(r["ledger"]) + _colour_line(r) + _squeeze_line(r)
         if r["dry_run"]:
             r["summary"] = f"would build '{r['timeline']}' with {what}{skipped}" + _how(r)
         elif r["problems"]:

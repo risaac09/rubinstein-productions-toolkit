@@ -17,6 +17,9 @@ def add_arguments(p):
     cli.deliver_arguments(p)
     p.add_argument("--fps", help="The timeline's frame rate to assert (23.976, 25, 24000/1001)")
     p.add_argument("--size", help="WIDTHxHEIGHT to assert for a timeline-size destination")
+    p.add_argument("--manifest", help="The method manifest the file was built from: adds a shape "
+                   "row and, for anamorphic sources, a squeeze row (FAIL when the file is the "
+                   "squeezed sensor aspect)")
     p.add_argument("--audio-state", help="An audio-state JSON (audio-state -o): also compare the "
                    "audio codec, sample rate and bit depth the queued Resolve jobs report "
                    "with the destination")
@@ -62,7 +65,8 @@ def run(args):
         boxes = safezone.load_boxes(args.boxes) if getattr(args, "boxes", None) else None
         r = dc.check(args.file, dest, fps=args.fps, size=size, loudness=not args.no_loudness,
                      folders=deliver.subfolders(config), boxes=boxes,
-                     expect_fade=True if getattr(args, "expect_fade", False) else None)
+                     expect_fade=True if getattr(args, "expect_fade", False) else None,
+                     manifest=getattr(args, "manifest", None))
         if args.audio_state:
             dc.add_rows(r, audiostate.compare(audiostate.load(args.audio_state), dest))
         if review_log:

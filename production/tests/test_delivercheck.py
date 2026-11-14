@@ -14,6 +14,7 @@ levels below are exact without a calibration pass.
 Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -557,3 +558,57 @@ class TestMCPDeliverCheck(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestShapeRows(unittest.TestCase):
+    """deliver_check's shape row, and the squeeze row for a manifest of anamorphic sources."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        d = os.path.realpath(self.tmp.name)
+        self.src = os.path.join(d, "wide.mov")
+        Path(self.src).write_bytes(b"x")
+        Path(d, "squeeze.json").write_text(json.dumps({"default": 1.5}))
+        self.manifest = os.path.join(d, "m.json")
+        Path(self.manifest).write_text(json.dumps({
+            "version": 2, "fps": 24, "sources": [{"id": "s1", "path": self.src}],
+            "clips": [{"name": "m", "spans": [{"source": "s1", "in": 0, "out": 1}]}],
+            "method": {"aspect": "16:9"}}))
+        patch = mock.patch.object(dc, "video_dims", lambda p: (5952, 3968))  # 1.5:1 sensor
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def rows(self, w, h, size=None, sar="1:1", manifest=True):
+        video = {"width": w, "height": h, "sample_aspect_ratio": sar}
+        return {r["check"]: r for r in dc.shape_rows(video, size, self.manifest if manifest else None)}
+
+    def test_a_file_at_the_built_shape_passes_both_rows(self):
+        rows = self.rows(3840, 1608, size=(3840, 1608))
+        self.assertEqual((rows["shape"]["status"], rows["squeeze"]["status"]), (dc.PASS, dc.PASS))
+
+    def test_a_file_at_the_squeezed_sensor_aspect_fails_the_squeeze_row(self):
+        rows = self.rows(3840, 2560, size=(3840, 1608))
+        self.assertEqual((rows["shape"]["status"], rows["squeeze"]["status"]), (dc.FAIL, dc.FAIL))
+        self.assertIn("rendered squeezed", rows["squeeze"]["note"])
+
+    def test_a_sample_aspect_ratio_counts_toward_the_display_aspect(self):
+        rows = self.rows(2560, 1608, size=(3840, 1608), sar="3:2")
+        self.assertEqual(rows["shape"]["status"], dc.PASS)
+
+    def test_the_manifests_aspect_is_the_shape_when_no_size_is_given(self):
+        self.assertEqual(self.rows(1920, 1080)["shape"]["status"], dc.PASS)
+        self.assertEqual(self.rows(1920, 800)["shape"]["status"], dc.FAIL)
+
+    def test_no_shape_given_is_a_skip_and_no_squeeze_row(self):
+        rows = {r["check"]: r for r in dc.shape_rows({"width": 64, "height": 36}, None, None)}
+        self.assertEqual((rows["shape"]["status"], "squeeze" in rows), (dc.SKIP, False))
+
+    def test_a_source_that_is_not_anamorphic_adds_no_squeeze_row(self):
+        Path(os.path.dirname(self.src), "squeeze.json").write_text(json.dumps({"default": 1}))
+        self.assertNotIn("squeeze", self.rows(3840, 1608, size=(3840, 1608)))
+
+    def test_an_unreadable_source_size_is_not_judged(self):
+        with mock.patch.object(dc, "video_dims", lambda p: None):
+            rows = self.rows(3840, 2560, size=(3840, 1608))
+        self.assertEqual(rows["squeeze"]["status"], dc.SKIP)
