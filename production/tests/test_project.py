@@ -156,15 +156,15 @@ class Chain(unittest.TestCase):
         return card
 
     def test_the_work_folder_is_the_project(self):
-        card = self.card_in_work("oslo-first-snow")
+        card = self.card_in_work("sample-shoot")
         rc, out = self.go(card=card, slug=None)
-        self.assertIn("project oslo-first-snow (dry run)", out)
+        self.assertIn("project sample-shoot (dry run)", out)
         with self.assertRaisesRegex(project.ProjectError,
-                                    r"in the work folder 'oslo-first-snow' but --project is 'other'"):
+                                    r"in the work folder 'sample-shoot' but --project is 'other'"):
             self.go(card=card, slug="other")
         rc, out = self.go(card=card, slug="other", new_project=True)
         self.assertIn("project other (dry run)", out)
-        self.go(card=card, slug="oslo-first-snow")  # the same slug is fine
+        self.go(card=card, slug="sample-shoot")  # the same slug is fine
         self.assertEqual(project.inside_work_root(self.cfg, self.card), None)  # the landing root is not
         self.assertEqual(project.inside_work_root(self.cfg, self.cfg["work_root"]), None)
 
@@ -271,6 +271,13 @@ class Build(unittest.TestCase):
         with self.assertRaisesRegex(project.ProjectError, "already recorded"):
             self.answer(shape="1920x1080")
 
+    def test_a_bad_answer_records_none_of_the_others(self):
+        with self.assertRaisesRegex(project.ProjectError, "KEY=VALUE"):
+            self.answer(shape="3840x1608", destination="client_master", name_parts=["client"])
+        state = os.path.join(self.dir, "demo", "project.json")
+        self.assertFalse(os.path.exists(state) and "answers" in json.load(open(state)))
+        self.answer(shape="3840x1608", destination="client_master", name_parts=["client=Acme"])
+
     def test_status_lists_open_answers(self):
         self.answer(shape="3840x1608")
         out = []
@@ -350,12 +357,24 @@ class Build(unittest.TestCase):
         self.answer(music=(pk, "B", None))
         self.build()
         self.assertFalse(os.path.exists(os.path.join(self.dir, "demo", "build-manifest.json")))
-        self.assertTrue(os.path.isfile(self.calls[0][1]["manifest"]))
+        self.assertFalse(os.path.exists(os.path.dirname(self.calls[0][1]["manifest"])))  # temp copy removed
 
     def test_a_letter_the_packet_does_not_hold_is_refused(self):
         pk, _ = self.packet()
         with self.assertRaisesRegex(project.ProjectError, "no key.json with letter C"):
             self.answer(music=(pk, "C", None))
+
+    def test_a_dry_run_refusal_other_than_the_missing_timeline_is_reported(self):
+        self.answers()
+        orig = self.fake
+
+        def no_folder(tool, args):
+            if tool == "queue_render":
+                raise ValueError("no target folder: give one")
+            return orig(tool, args)
+        mock.patch.object(project, "CALL", no_folder).start()
+        with self.assertRaisesRegex(project.ProjectError, "queue_render: no target folder"):
+            self.build()
 
     def test_first_failure_stops(self):
         self.answers()

@@ -50,6 +50,15 @@ def prefix_vectors(c, prefix):
     return out
 
 
+def text_weight(n_cap, n_shot):
+    """The text match's weight in the rank fusion: the share of shots that have a caption. Only a
+    captioned shot can gain from the text match, so its edge over an uncaptioned shot that looks
+    as good is held to the chance a shot has a caption at all: at full coverage text counts as
+    much as vision, at a third of the shots it counts a third (VP-206; the old weight,
+    min(1, 3 * share), was already 1.0 at a third and let any caption outrank equal pictures)."""
+    return n_cap / max(n_shot, 1)
+
+
 def find(c, query, limit=10, client=True, fps_min=None, camera=None, project=None, faces=None,
          moving=None, max_per_clip=2, vector=None, exclude=(), prefix=None, exclude_clips=()):
     """exclude drops shot ids; exclude_clips drops clips by relpath. prefix scores every shot under that relpath
@@ -73,9 +82,8 @@ def find(c, query, limit=10, client=True, fps_min=None, camera=None, project=Non
         sims[sid] = float(sim)
     fq = _fts_query(query)
     if fq:
-        # captions cover every 3rd keyframe at most; weight text by that coverage so a sparse caption set can't outrank vision
         n_cap, n_shot = c.execute("SELECT (SELECT count(*) FROM captions), (SELECT count(*) FROM shots)").fetchone()
-        w = min(1.0, 3 * n_cap / max(n_shot, 1))
+        w = text_weight(n_cap, n_shot)
         for i, r in enumerate(c.execute("SELECT rowid FROM fts_captions WHERE fts_captions MATCH ? ORDER BY rank LIMIT ?",
                                         (fq, pool))):
             ranks[r[0]] = ranks.get(r[0], 0) + w / (RRF_K + i)
