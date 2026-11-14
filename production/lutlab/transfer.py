@@ -252,7 +252,7 @@ def report_md(res, name, src, ref):
         f"# {name}: reference transfer", "",
         f"Source `{Path(src).name}` carried toward reference `{Path(ref).name}`, in `{res['space']}` code values; "
         "statistics and distances in CIELAB of the decoded linear Rec.709.", "",
-        "A proposal: this applies nothing. Whether the look is right is Isaac's call by eye.", "",
+        "A proposal: this applies nothing. Whether the look is right is a call by eye.", "",
         "## Stages", "",
         "Distances are on the held-out half of the sampled pixels (the stages were fitted on the other half). "
         "Mean shift is the Lab distance between the two means. Std ratio is source over reference for L, a, b; "
