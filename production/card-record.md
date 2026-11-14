@@ -12,6 +12,8 @@ A copied camera card is a folder with its proofs and answers beside it. One load
 <parent>/<folder>.squeeze.json  legacy squeeze answers, read as answers.squeeze
 ```
 
+A SHA256SUMS is read as it is and never rewritten: a leading `./` on a path (repeated too) and a `*` binary-mode mark before it are ignored, so older files that `shasum -c` accepts verify here too.
+
 A folder with a `.card.json` or `.SHA256SUMS` beside it is a card whatever it is called. Old folders keep their names and the record carries the id; `sidecar.card_key` names their clips `<cam>-<first 6 of card_id>/<stem>`.
 
 ## Schema 2
@@ -26,7 +28,7 @@ A folder with a `.card.json` or `.SHA256SUMS` beside it is a card whatever it is
 | `shoot` | `{first_utc, last_utc, days, cameras}` | file write times, UTC days; `cameras` is filled from exif by the index, empty from `init` |
 | `project` | slug or null | `a-z`, `0-9`, hyphens |
 | `answers` | object | only what a person said. `answers.squeeze` is `{default, clips, by, at}`: `default` covers clips `clips` does not name, `clips` maps a clip id to a factor (1 is spherical). A BRAW file's own tag still answers for itself and is never copied in |
-| `clips` | list of `{clip_id, relpath, proxy}` | originals only. An in-card camera proxy (a video in a `Proxy` folder beside its original, same stem) is the `proxy` of that original. `clip_id` is `<cam>-<id6>/<stem>`, unique in the card |
+| `clips` | list of `{clip_id, relpath, proxy}` | originals only. An in-card camera proxy (a video under any folder named `Proxy`, any case, anywhere in the card, whose stem equals that of an original outside every `Proxy` folder) is the `proxy` of that original, never a clip of its own; when several originals share the stem, the one beside the `Proxy` folder wins. A proxy with no such original stays out of `clips`, and `card check` and `card show` report it as a note, which fails nothing. `clip_id` is `<cam>-<id6>/<stem>`, unique in the card |
 | `history` | list of `{at, event, ...}` | `card mv` appends `{event: "moved", from, to}` |
 
 An optional `note` string is allowed (two early retrofits carry one). Any other top-level key fails validation. A reader of a record whose `schema.version` is above 2 reports it and judges nothing else.

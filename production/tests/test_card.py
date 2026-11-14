@@ -113,12 +113,57 @@ class Loader(Base):
         files = {"X/clip1.braw": b"a", "X/Proxy/clip1.mp4": b"b", "X/Proxy/lone.mp4": b"c", "X/notes.txt": b"d"}
         clips = card.derive_clips("P-abcdef", sorted(files))
         self.assertEqual([(c["clip_id"], c["proxy"]) for c in clips],
-                         [("P-abcdef/lone", None), ("P-abcdef/clip1", "X/Proxy/clip1.mp4")])
+                         [("P-abcdef/clip1", "X/Proxy/clip1.mp4")])
+        self.assertEqual(card.split_clips("P-abcdef", sorted(files))[1], ["X/Proxy/lone.mp4"])
+
+    def test_a_proxy_folder_far_from_its_originals_and_a_mixed_card(self):
+        files = {"Rolls/a/A001_C001.braw": b"1", "Rolls/b/A001_C002.braw": b"2", "Proxy/A001_C001.mp4": b"p",
+                 "Proxy/a001_c002.MP4": b"q", "Proxy/NOPE.mp4": b"r", "DCIM/100/P0001.MOV": b"m",
+                 "DCIM/100/proxy/P0001.mp4": b"x"}
+        clips, orphans = card.split_clips("Z-000000", sorted(files))
+        self.assertEqual([(c["clip_id"], c["proxy"]) for c in clips],
+                         [("Z-000000/P0001", "DCIM/100/proxy/P0001.mp4"),
+                          ("Z-000000/A001_C001", "Proxy/A001_C001.mp4"), ("Z-000000/A001_C002", None)])  # stems match exactly
+        self.assertEqual(orphans, ["Proxy/NOPE.mp4", "Proxy/a001_c002.MP4"])
 
     def test_no_record_is_an_s1_failure(self):
         make_card(self.tmp, record=False)
         self.assertEqual(card.check(card.load(os.path.join(self.tmp, "CAMA-012345")))["S1"],
                          ["no card.json beside the folder"])
+
+
+class SumsPaths(Base):
+    def test_dot_slash_repeated_dot_slash_and_binary_mark_verify(self):
+        root = make_card(self.tmp, offsite=True, schema2=True)
+        sums = Path(self.tmp, "CAMA-012345.SHA256SUMS")
+        lines = sums.read_text().splitlines()
+        h1, _, n1 = lines[0].partition("  ")
+        h2, _, n2 = lines[1].partition("  ")
+        text = f"{h1}  ./{n1}\n{h2} *././{n2}\n"
+        sums.write_text(text)
+        c = card.load(str(root))
+        self.assertEqual(sorted(c["sums"]["files"]), sorted([n1, n2]))
+        self.assertEqual(c["sums"]["bad"], [])
+        self.assertEqual(card.check(c)["S2"], [])
+        self.assertEqual(sidecar.source_sha256(str(root / n1)), h1)
+        self.assertEqual(sums.read_text(), text)  # never rewritten
+
+    def test_retrofit_accepts_a_dot_slash_file_and_still_refuses_a_bad_one(self):
+        root = make_card(self.tmp, record=False)
+        sums = Path(self.tmp, "CAMA-012345.SHA256SUMS")
+        sums.write_text("".join(f"{h}  ./{n}\n" for h, _, n in (l.partition("  ") for l in sums.read_text().splitlines())))
+        self.assertEqual(run_cmd("init", "--retrofit", "--cam", "RETRO", str(root), "--apply")[0], 0)
+        self.assertEqual(card.validate(json.loads(Path(str(root) + ".card.json").read_text())), [])
+        self.assertTrue(sums.read_text().startswith(sums.read_text()[:64] + "  ./"))
+
+    def test_an_orphan_proxy_is_a_note_not_a_failure(self):
+        files = {"A/c1.MOV": b"1", "Proxy/c1.mp4": b"p", "Proxy/lost.mp4": b"l"}
+        root = make_card(self.tmp, files=files, schema2=True, offsite=True)
+        Path(self.tmp, "CAMA-012345.squeeze.json").write_text(json.dumps({"default": 1}))
+        rc, out, _ = run_cmd("check", str(root))
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "PASS  " + str(root) + "  S1 S2 S3 S4 S5  (note: 1 proxy file(s) with no original)")
+        self.assertIn("note      proxy with no original: Proxy/lost.mp4", run_cmd("show", str(root))[1])
 
 
 class CardKey(Base):

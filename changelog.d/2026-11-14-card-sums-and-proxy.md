@@ -1,0 +1,1 @@
+The card loader reads SHA256SUMS paths written with a leading `./` or a `*` binary-mode mark, and a camera proxy under any `Proxy` folder in the card is the proxy of the original with the same stem, wherever that original sits; a proxy with no original stays out of the clips and `card check` and `card show` report it as a note, not a failure.
