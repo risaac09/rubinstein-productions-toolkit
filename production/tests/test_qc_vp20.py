@@ -352,11 +352,17 @@ class Vp20Rows(unittest.TestCase):
 
     def test_privacy_warns_on_each_planted_tag_and_prints_keys_only(self):
         for tag in ("location=+41.0000-071.0000/", "serial_number=SN123456", "artist=Some Person",
-                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org"):
+                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org",
+                    "com.example.cameraName=Some Person", "com.example.cameraUniqueID=0123456789abcdef",
+                    "camera_id=0123456789abcdef"):
             r = _row(qc.run(self.tagged("t.mkv", tag)), "privacy")
             self.assertEqual(r["status"], qc.WARN, (tag, r))
             self.assertNotIn(tag.split("=", 1)[1], r["found"] + str(r.get("note")))
-            self.assertIn(tag.split("=")[0], r["found"].lower())
+            self.assertIn(tag.split("=")[0].lower(), r["found"].lower())
+
+    def test_privacy_ignores_a_camera_label_and_a_clip_id(self):
+        r = qc.run(self.tagged("lab.mkv", "com.example.cameraName=A", "clip_id=0123456789abcdef"))
+        self.assertEqual(_row(r, "privacy")["status"], qc.PASS)
 
     def test_privacy_ignores_a_plain_title_and_never_fails(self):
         r = qc.run(self.tagged("ok.mkv", "title=Example clip"))
