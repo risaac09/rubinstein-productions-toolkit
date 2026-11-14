@@ -314,7 +314,7 @@ def _row(path, h, d, is_braw, long_min, weak_db, offs, ffmpeg, audio_seconds=AUD
     fps = _fps(h, is_braw)
     lens_name = lens(h.exif)
     recorded = rpsqueeze.answer(path)[0]  # a person's answer, else a BRAW file's own tag
-    if recorded is None and rpsqueeze.card_root(path):
+    if recorded is None and rpsqueeze.asks_about(path):
         flags.append("squeeze-unknown")
         notes.append("no squeeze recorded for this card (squeeze set)"
                      + ("" if lens_name else "; no lens data: likely a manual lens"))

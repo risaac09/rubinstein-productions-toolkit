@@ -16,11 +16,16 @@ farm desqueezes by it and refuses a card with no answer.
 A clip with no lens data was shot on a lens with no contacts, which is how most anamorphic
 lenses mount; it is a hint, never proof, so `show` marks it and a person decides. Exit status
 of show: 0 when every clip is answered, 2 when a clip of a copied card is not.
+
+A card with a record (`card.json` beside it, see `card`) keeps the answer in the record, by clip
+id; `set` is then a dry run until --apply. A folder with no record gets `<folder>.squeeze.json`
+as before. `show` reads the record, then that file, then a BRAW file's own tag.
 """
 
 import os
 import sys
 
+from rpresolve import card as rpcard
 from rpresolve import cli
 from rpresolve import detect as rpdetect
 from rpresolve import shoot_table as rpshoot
@@ -36,6 +41,8 @@ def add_arguments(p):
     p.add_argument("--factor", type=float, help="set: the squeeze factor; 1 is spherical")
     p.add_argument("--clip", action="append", metavar="NAME",
                    help="set: only this clip, by file name (repeatable)")
+    p.add_argument("--apply", action="store_true",
+                   help="set: write the card's record (a card with a record is a dry run without it)")
     p.add_argument("--manual-lens", action="store_true",
                    help="set: the factor goes to clips with no lens data, 1 to the rest")
 
@@ -49,7 +56,7 @@ def rows(files, exif):
     out = []
     for f in files:
         fac, where = rpsqueeze.answer(f)
-        source = where or ("unanswered" if rpsqueeze.card_root(f) else "none")
+        source = where or ("unanswered" if rpsqueeze.asks_about(f) else "none")
         out.append({"file": f, "factor": fac, "source": source, "lens": lens(exif.get(f))})
     return out
 
@@ -76,11 +83,24 @@ def show(paths):
     return 2 if open_ else 0
 
 
-def set_(folder, factor, clips, manual_lens):
+def _sound_record(folder):
+    """True when a card.json beside the folder is a sound record; an unsound one is said, and
+    `set` falls back to squeeze.json (card check says what is wrong with the record)."""
+    if not os.path.isfile(os.path.abspath(folder).rstrip(os.sep) + rpcard.RECORD):
+        return False
+    problems = rpcard.load(folder)["problems"]
+    if problems:
+        print(f"  [note] the card record is not sound ({problems[0]}); writing squeeze.json instead",
+              file=sys.stderr)
+    return not problems
+
+
+def set_(folder, factor, clips, manual_lens, apply=False):
     if factor is None:
         print("ERROR: set wants --factor (1 is spherical)", file=sys.stderr)
         return 1
     factor = int(factor) if float(factor).is_integer() else factor
+    has_record = _sound_record(folder)
     files, _ = rpdetect.collect_files([folder]) if (clips or manual_lens) else ([], [])
     here = {os.path.basename(f) for f in files}
     named = {os.path.basename(c): factor for c in clips or []}
@@ -99,8 +119,20 @@ def set_(folder, factor, clips, manual_lens):
             print("ERROR: every clip read in the folder names its lens; nothing to mark", file=sys.stderr)
             return 1
         own = os.path.abspath(folder).rstrip(os.sep) + rpsqueeze.SUFFIX
-        if not (os.path.isfile(own) and rpsqueeze.load(own)["default"] is not None):
+        said = (rpcard.load(folder)["answers"].get("squeeze") or {}).get("default") if has_record \
+            else (rpsqueeze.load(own)["default"] if os.path.isfile(own) else None)
+        if said is None:
             default = 1  # the rest name their lens: spherical, unless this card's record says otherwise
+    if has_record:  # the card's record is the one place the answer lives
+        card = rpcard.load(folder)
+        rec = rpcard.plan_set(card, default=default, clips=named)
+        print(("" if apply else "would: ") + f"replace {card['root'] + rpcard.RECORD}: squeeze default "
+              f"{rec['answers']['squeeze']['default']}, {len(rec['answers']['squeeze']['clips'])} clip(s) named")
+        if not apply:
+            print("dry run: nothing written; pass --apply")
+        else:
+            rpcard.write_record(card["root"], rec)
+        return 0
     record = rpsqueeze.write(folder, default=default, clips=named)
     doc = rpsqueeze.load(record)
     print(f"Wrote {record}: default {doc['default']}, {len(doc['clips'])} clip(s) named")
@@ -116,8 +148,8 @@ def run(args):
         if len(args.paths) != 1:
             print("ERROR: set takes one folder", file=sys.stderr)
             return 1
-        return set_(args.paths[0], args.factor, args.clip, args.manual_lens)
-    except (rpsqueeze.SqueezeError, rpdetect.ToolMissing) as e:
+        return set_(args.paths[0], args.factor, args.clip, args.manual_lens, args.apply)
+    except (rpsqueeze.SqueezeError, rpcard.CardError, rpdetect.ToolMissing) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 

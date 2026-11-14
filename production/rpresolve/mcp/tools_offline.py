@@ -27,6 +27,7 @@ import os
 import tempfile
 import time
 
+from .. import card as rpcard
 from .. import cli, cutlist, paths, workflows
 from .. import detect as rpdetect
 from .. import shoot_table as rpshoot
@@ -811,12 +812,114 @@ def watch(args, ctx):
 # registration
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# card_show, card_check, sheets
+# ---------------------------------------------------------------------------
+
+def card_show(args, ctx):
+    c = rpcard.load(_existing(args["path"], "path"))
+    sums, r = c["sums"], c["record"] or {}
+    return {"summary": f"{c['name']}: schema {c['version'] or 'none'}, {len(c['clips'])} clip(s), "
+                       f"{len([o for o in c['open'] if o.startswith('squeeze ')])} without a squeeze answer, "
+                       f"{len(c['problems'])} problem(s)",
+            "root": c["root"], "name": c["name"], "version": c["version"], "record": c["record"],
+            "problems": c["problems"], "clips": c["clips"], "answers": c["answers"],
+            "legacy_squeeze": c["legacy"], "open": c["open"], "offsite": c["offsite"],
+            "sums": {"present": sums["present"], "files": len(sums["files"]), "bad_lines": sums["bad"]},
+            "shoot": r.get("shoot"), "project": r.get("project")}
+
+
+def card_check(args, ctx):
+    path = _existing(args["path"], "path")
+    try:
+        folders = [rpcard.find(path)]
+    except rpcard.CardError:
+        folders = rpcard.cards(path, args["depth"])
+        if not folders:
+            raise ValueError(f"no card copies under {path}.")
+    rows = []
+    for f in folders:
+        ctx.check_cancel()
+        res = rpcard.check(rpcard.load(f), full=not args["quick"])
+        rows.append({"card": f, "pass": not any(res.values()),
+                     "failing": {s: res[s] for s in rpcard.STANDARDS if res[s]}})
+    bad = [r for r in rows if not r["pass"]]
+    result = {"summary": f"{len(rows)} card(s), {len(bad)} fail"
+                         + (" (file sets and counts only; quick skips the hashing)" if args["quick"] else ""),
+              "quick": args["quick"], "standards": "S1 record, S2 checksums, S3 squeeze, S4 offsite, S5 name"}
+    result.update(_page(rows, args))
+    return result
+
+
+def sheets(args, ctx):
+    from .. import cmd_sheets
+    try:
+        import PIL  # noqa: F401
+    except ImportError as e:
+        raise RuntimeError(f"sheets needs Pillow ({e}); run the server on /opt/homebrew/bin/python3.")
+    folder = _existing(args["folder"], "folder")
+    if not os.path.isdir(folder):
+        raise ValueError(f"folder {folder} is not a folder.")
+    out = _abs(args["out"], "out")
+    if os.path.realpath(out).startswith("/Volumes/") or out.startswith("/Volumes/"):
+        raise ValueError("out is on a mounted volume; sheets write only to a local folder outside any git tree.")
+    problem = paths.out_problem(out, any_git_tree=True)
+    if problem:
+        raise paths.OutputRefused(problem)
+    ctx.check_cancel()
+    r = cmd_sheets.make(folder, out, args["per_clip"], args["cols"], args["rows"], args.get("proxy_dir"))
+    r["summary"] = f"{r['cells']} cell(s) from {r['clips']} clip(s) on {len(r['sheets'])} sheet(s) in {out}"
+    return r
+
+
 def _obj(props, required=()):
     return {"type": "object", "properties": props, "required": list(required),
             "additionalProperties": False}
 
 
 def register(registry):
+    registry.add(Tool(
+        "card_show",
+        "Read a copied camera card's record from any path in or beside the copy: the record (schema "
+        "1 or 2), its problems, the clips (originals, each with its in-card proxy), the answers a "
+        "person gave (a legacy squeeze.json folded in), the SHA256SUMS and offsite.txt state, and "
+        "what is still open. Reads only. Never connects to Resolve.",
+        _obj({"path": {"type": "string", "description": "Absolute path of a card copy, a file in it, "
+                       "or one of its sidecars."}}, ["path"]),
+        card_show, title="Show a card's record", annotations=READ))
+    registry.add(Tool(
+        "card_check",
+        "Check a card copy, or every card under a folder, against the five standards: S1 a sound "
+        "record, S2 a SHA256SUMS that verifies the folder, S3 a squeeze answer for every clip (a "
+        "record, or a BRAW file's own tag), S4 an offsite.txt for this card, S5 the folder named "
+        "<CAM>-<id6>. One row per card naming each failing standard. quick (the default) compares "
+        "the file set and the record's counts and skips the hashing, which reads every byte; pass "
+        "quick false to verify by hash. Reads only. Never connects to Resolve.",
+        _obj({"path": {"type": "string", "description": "Absolute path of one card, or of a folder "
+                       "holding cards."},
+              "quick": {"type": "boolean", "default": True,
+                        "description": "Skip hashing; false hashes every file."},
+              "depth": {"type": "integer", "minimum": 0, "maximum": 12, "default": 6,
+                        "description": "How deep under a folder to look for cards."},
+              **PAGING, "limit": _limit(50, 200)}, ["path"]),
+        card_check, title="Check cards against the standard", annotations=READ))
+    registry.add(Tool(
+        "sheets",
+        "Tile frames of every video under a folder (a card copy or any folder, searched "
+        "recursively) onto labelled contact sheets, desqueezed by the card's record, so a person "
+        "can answer what the squeeze is. A BRAW source is read through its proxy. Writes "
+        "sheet-NN.jpg and sheets.json into `out`, a folder outside any git tree and outside any "
+        "mounted volume. Never connects to Resolve, never writes beside the footage.",
+        _obj({"folder": {"type": "string", "description": "Absolute path of the folder of clips."},
+              "out": {"type": "string", "description": "Absolute path of the folder to write "
+                      "(made if its parent exists); not in a git tree, not under /Volumes."},
+              "per_clip": {"type": "integer", "minimum": 1, "maximum": 24, "default": 6,
+                           "description": "Frames per clip, spread over it."},
+              "cols": {"type": "integer", "minimum": 1, "maximum": 12, "default": 6},
+              "rows": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
+              "proxy_dir": {"type": "string", "description": "Absolute folder of BRAW proxies "
+                            "(<name>.mov or .mp4), when the card names none."}}, ["folder", "out"]),
+        sheets, title="Contact sheets of a folder", annotations=WRITE))
     registry.add(Tool(
         "detect",
         "Classify media files by camera and picture profile from their headers (ffprobe, "
@@ -1357,7 +1460,7 @@ def register(registry):
         watch, title="Watch the shots", annotations=WRITE))
 
     # These write new files (never over an existing one), so none is read-only.
-    for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report"):
+    for name in ("survey", "measure", "reframe_plan", "trim_review", "perceive", "audio_report", "sheets"):
         registry.get(name).description += " Always writes new files, so it is not read-only."
     for name, when in (("detect", "out is given or the reply is paged"),
                        ("endcheck", "out is given or the reply is paged"),

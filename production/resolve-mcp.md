@@ -51,8 +51,9 @@ they return as private.
 ## Tools
 
 Start with `resolve_status`: it says which project is open, and every write
-tool must name that project. There are 46 tools: 5 reads, 22 offline tools
-(one of them, `deliver_captions`, writes a file beside a render) and 19
+tool must name that project. There are 50 tools: 5 reads, 26 offline tools
+(`deliver_captions` writes a file beside a render, `card_set` rewrites a card's
+record, and `sheets` writes contact sheets to a local folder) and 19
 writes.
 
 | Tool | Kind | What it does |
@@ -72,6 +73,10 @@ writes.
 | `deliver_captions` | offline, writes a file | Resolve's caption sidecar beside a render (`<stem>_<track>.ttml`, timed from the timeline's timecode) to the zero-based `<stem>.srt` a platform reads: the file's start timecode taken off, every cue checked against the video's length, the `.srt` read back, the TTML moved to the Trash. Dry run first. |
 | `sync_measure` | offline | Where one recording sits against another from the sound both heard (a camera and a recorder, or two cameras): the offset in seconds and in frames with the half-frame residual of frame placement, clock drift (ms per minute, ppm, over the overlap, and the retime that would cancel it), and each window's normalized correlation and peak ratio. A weak or inconsistent result is not called a match. |
 | `trim_review` | offline | Long silences from the source audio, fillers, repeats and Whisper loops from the word JSON, as proposals (keep, tighten, cut-candidate) in a TSV. Over a cut manifest the times run along each clip. Nothing is cut. |
+| `card_show` | offline | A copied card's record from any path in or beside the copy ([card-record.md](card-record.md)): schema 1 or 2, problems, clips with their in-card proxies, the squeeze answers (a legacy `squeeze.json` folded in), the SHA256SUMS and `offsite.txt` state, and what is still open. |
+| `card_check` | offline | One card, or every card under a folder, against S1 to S5 (record, checksums, squeeze answer, offsite, folder name); one row per card naming each failing standard. `quick` (the default) skips the hashing. |
+| `card_set` | offline, writes a file | Squeeze answers (whole card or named clips, by clip id or file name) and the project slug, written into a card's record. Dry run with a `plan_sha` first; the real run replaces `card.json` atomically (every key kept, schema 1 upgraded), reads it back through the loader, and is journalled. Refused inside a git tree. It touches no footage and no other sidecar. |
+| `sheets` | offline, writes files | Contact sheets of every video under a folder, desqueezed by the card's record, written to `out` (a local folder, not in a git tree, not under `/Volumes`). A BRAW source is read through its proxy. |
 | `shoot_table` | offline | One CSV row per clip of a shoot: camera, start, duration, fps, size, profile, lens and audio, with long-take, VFR, off-speed, weak-audio and unexpected-camera flags, a `clock_base` per row, a per-camera `camera_offset` for a clock set wrong, and a capture-audio audit (streams, noise floor, clipping, dead channel, dual mono, room tone). |
 | `qc` | offline | One FAIL-first QC table for a rendered file: black, freeze, scene cuts, loudness range, silence, phone-speaker proxy, sha256, and with `destination` deliver_check's rows (plus social fps and safe zone for a social one). With `words`, `stems` or `shots`, speech against the rest, stems summed against the mix, and true peak and silence at each cut. WARN rows never fail the table. |
 | `pipeline_proof` | offline | A test render against a reference render: luma and chroma shift, range, level shift, PSNR, SSIM and VMAF (where ffmpeg has libvmaf), PASS or FAIL per row. Needs numpy. |

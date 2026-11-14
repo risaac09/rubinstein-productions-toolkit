@@ -16,6 +16,10 @@ of 1 is a spherical lens: recording it is the answer "not anamorphic", which is 
 the question for a card. A `squeeze.json` inside any folder works the same way for footage
 that is not a card copy.
 
+When a card has a record (`<CAM>-<id6>.card.json`, see rpresolve/card.py and production/card-record.md)
+the answers are read from it by clip id, with a legacy squeeze.json folded in; this module's own
+reading of squeeze.json stays for footage that is not a card copy.
+
 A Blackmagic RAW file is the exception: the camera writes its anamorphic setting into the
 file (`anamorphic` = "1.5x"), so a tagged clip answers for itself and `answer` reads it when
 nobody has recorded anything. An empty tag is no answer: a lens the camera was not told about
@@ -116,20 +120,50 @@ def file_tag(path, ffprobe="ffprobe"):
     return f if f is not None and not factor_problem(f) else None
 
 
+def record_factor(path):
+    """The squeeze the card record gives a clip of a copied card (answers.squeeze by clip id,
+    a legacy squeeze.json folded in; a clip's in-card proxy takes its original's answer), or
+    None: no record, or no answer."""
+    root = card_root(path)
+    if not root:
+        return None
+    from . import card  # lazy: card imports this module
+    c = card.loaded(root)
+    sq = c["answers"].get("squeeze") or {}
+    clip, _ = card.clip_for(c, path)
+    f = (sq.get("clips") or {}).get(clip["clip_id"], sq.get("default")) if clip else sq.get("default")
+    if f is not None and factor_problem(f):
+        raise SqueezeError(f"{root}: {factor_problem(f)}")
+    return None if f is None else float(f)
+
+
 def answer(path, ffprobe="ffprobe"):
-    """(factor, where) for a media file: a person's record first ("record"), else the
-    file's own tag ("file tag"), else (None, None)."""
-    f = factor(path)
+    """(factor, where) for a media file: a person's record first ("record": the card record,
+    else a squeeze.json beside or above the file), else the file's own tag ("file tag"),
+    else (None, None)."""
+    f = record_factor(path)
+    if f is None:
+        f = factor(path)
     if f is not None:
         return f, "record"
     f = file_tag(path, ffprobe)
     return (f, "file tag") if f is not None else (None, None)
 
 
+def asks_about(path):
+    """True for a clip of a copied card the squeeze question is asked about: not loose
+    footage, and not an in-card camera proxy (its original is asked)."""
+    root = card_root(path)
+    if root is None:
+        return False
+    from . import card
+    return not card.clip_for(card.loaded(root), path)[1]
+
+
 def unanswered(path, ffprobe="ffprobe"):
     """True for a clip of a copied card with no answer, recorded or in the file: the
     question "is this anamorphic?" is still open for it."""
-    return card_root(path) is not None and answer(path, ffprobe)[0] is None
+    return asks_about(path) and answer(path, ffprobe)[0] is None
 
 
 def picture_aspect(path, ffprobe="ffprobe"):

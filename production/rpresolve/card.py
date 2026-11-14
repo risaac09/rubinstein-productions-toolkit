@@ -318,7 +318,7 @@ def _fold_legacy(root, clips):
             "by": "person", "at": _utc(os.path.getmtime(p))}
 
 
-def load(path):
+def load(path, check_open=True):
     """Everything known about the card at `path` (in or beside the copy):
 
     root, name         the folder and its name
@@ -329,6 +329,7 @@ def load(path):
     answers            the record's answers, with a legacy squeeze.json folded in as squeeze
     sums, offsite      the proofs (see read_sums, read_offsite)
     open               what is still open: "squeeze <clip_id>", "offsite", "project"
+                       (check_open=False leaves it empty: it asks ffprobe about every BRAW clip)
     """
     root = find(path)
     out = {"root": root, "name": os.path.basename(root), "record": None, "version": None,
@@ -363,8 +364,45 @@ def load(path):
     if legacy:
         answers["squeeze"], out["legacy"] = legacy, root + LEGACY_SQUEEZE
     out["answers"] = answers
-    out["open"] = _open(out)
+    out["open"] = _open(out) if check_open else []
     return out
+
+
+_CACHE = {}
+
+
+def loaded(root):
+    """load(root, check_open=False), reused while the card's sidecars are unchanged: a plan
+    asks about every clip of a card in turn."""
+    key = tuple((os.stat(root + s).st_mtime_ns, os.stat(root + s).st_size) if os.path.exists(root + s) else None
+                for s in (RECORD, SUMS, LEGACY_SQUEEZE))
+    hit = _CACHE.get(root)
+    if not hit or hit[0] != key:
+        _CACHE[root] = hit = (key, load(root, check_open=False))
+    return hit[1]
+
+
+def clip_for(card, path):
+    """The clip of a loaded card that `path` is, or that it is the proxy of; None for any
+    other file. Second item: True when `path` is the proxy."""
+    rel = os.path.relpath(os.path.abspath(path), card["root"]).replace(os.sep, "/")
+    for c in card["clips"]:
+        if rel == c["relpath"]:
+            return c, False
+        if rel == c.get("proxy"):
+            return c, True
+    return None, False
+
+
+def proxy_of(path):
+    """The in-card camera proxy the record names for a clip, as an absolute path that exists,
+    or None (no record, no proxy, or the file is gone)."""
+    root = squeeze.card_root(path)
+    if not root:
+        return None
+    clip, _ = clip_for(loaded(root), path)
+    full = clip and clip.get("proxy") and os.path.join(root, clip["proxy"])
+    return full if full and os.path.isfile(full) else None
 
 
 def squeeze_answer(card, clip):
@@ -453,3 +491,37 @@ def write_new(path, text):
             f.write(text)
     except FileExistsError:
         raise CardError(f"{path} exists; a sidecar is never overwritten")
+
+
+def plan_set(card, default=None, clips=None, project=None):
+    """The schema 2 record that results from answering for a loaded card: `default` is the
+    squeeze factor for clips not named, `clips` maps a clip id or file name to a factor,
+    `project` a slug. Nothing is written. Raises CardError."""
+    if card["version"] is None:
+        raise CardError(f"{card['name']}: no readable record ({card['problems'][0]}); run init --retrofit first")
+    rec = upgrade(card)
+    if default is not None or clips:
+        # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
+        sq = dict(card["answers"].get("squeeze") or {"default": None, "clips": {}})
+        sq["clips"] = dict(sq.get("clips") or {})
+        ids = {c["clip_id"] for c in rec["clips"]}
+        names = {os.path.basename(c["relpath"]): c["clip_id"] for c in rec["clips"]}
+        strangers = [c for c in clips or {} if c not in ids and c not in names]
+        if strangers:
+            raise CardError(f"no such clip in {card['name']}: {', '.join(sorted(strangers))}")
+        for who, f in [("default", default)] * (default is not None) + sorted((clips or {}).items()):
+            if squeeze.factor_problem(f):
+                raise CardError(f"{who}: {squeeze.factor_problem(f)}")
+        if default is not None:
+            sq["default"] = default
+        sq["clips"].update({(c if c in ids else names[c]): f for c, f in (clips or {}).items()})
+        sq.update(by="person", at=now())
+        rec["answers"]["squeeze"] = sq
+    if project is not None:
+        if not SLUG.match(project):
+            raise CardError("a project is a slug: a-z, 0-9 and hyphens")
+        rec["project"] = project
+    bad = validate(rec)
+    if bad:
+        raise CardError("the record would not validate: " + "; ".join(bad))
+    return rec

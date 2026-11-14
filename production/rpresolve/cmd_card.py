@@ -157,39 +157,14 @@ def set_(args):
     if args.squeeze is None and not args.project:
         return _fail("set wants --squeeze FACTOR or --project SLUG")
     card = rpcard.load(args.paths[0])
-    if card["version"] is None:
-        return _fail(f"{card['name']}: no readable record ({card['problems'][0]}); run init --retrofit first")
-    rec = rpcard.upgrade(card)
+    f = None if args.squeeze is None else (int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze)
+    rec = rpcard.plan_set(card, default=None if args.clip else f,
+                          clips={c: f for c in args.clip or []} if f is not None else None, project=args.project)
     lines = []
-    if args.squeeze is not None:
-        f = int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze
-        if rpsqueeze.factor_problem(f):
-            return _fail(rpsqueeze.factor_problem(f))
-        # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
-        sq = dict(card["answers"].get("squeeze") or {"default": None, "clips": {}})
-        sq["clips"] = dict(sq.get("clips") or {})
-        if args.clip:
-            ids = {c["clip_id"]: c["clip_id"] for c in rec["clips"]}
-            names = {os.path.basename(c["relpath"]): c["clip_id"] for c in rec["clips"]}
-            strangers = [c for c in args.clip if c not in ids and c not in names]
-            if strangers:
-                return _fail(f"no such clip in {card['name']}: {', '.join(strangers)}")
-            for c in args.clip:
-                sq["clips"][ids.get(c) or names[c]] = f
-            lines.append(f"squeeze {f:g} for {len(args.clip)} clip(s)")
-        else:
-            sq["default"] = f
-            lines.append(f"squeeze default {f:g}")
-        sq.update(by="person", at=rpcard.now())
-        rec["answers"]["squeeze"] = sq
+    if f is not None:
+        lines.append(f"squeeze {f:g} for {len(args.clip)} clip(s)" if args.clip else f"squeeze default {f:g}")
     if args.project:
-        if not rpcard.SLUG.match(args.project):
-            return _fail("a project is a slug: a-z, 0-9 and hyphens")
-        rec["project"] = args.project
         lines.append(f"project {args.project}")
-    bad = rpcard.validate(rec)
-    if bad:
-        return _fail("the record would not validate: " + "; ".join(bad))
     if card["version"] == 1:
         lines.append("upgrade the record from schema 1 to 2")
     _dry(args, [f"replace {card['root'] + rpcard.RECORD}: " + ", ".join(lines)])

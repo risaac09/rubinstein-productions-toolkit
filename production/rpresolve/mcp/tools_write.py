@@ -23,6 +23,7 @@ plan_sha, and is journalled.
 
 import os
 
+from .. import card as rpcard
 from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
@@ -755,6 +756,61 @@ def deliver_captions(args, ctx):
         return r
 
     return run() if args["dry_run"] else _journalled("deliver_captions", args, run)
+
+
+# ---------------------------------------------------------------------------
+# card_set
+# ---------------------------------------------------------------------------
+
+def card_set(args, ctx):
+    """Record squeeze answers and the project in a card's record. Never connects to Resolve."""
+    _require_sha(args)
+    path = _existing(args["path"], "path")
+    if args.get("squeeze") is None and not args.get("project_slug"):
+        raise ValueError("card_set wants squeeze and/or project_slug.")
+    clips = args.get("clips") or []
+    if clips and args.get("squeeze") is None:
+        raise ValueError("clips name the clips a squeeze answer is for; give squeeze too.")
+    f = args.get("squeeze")
+    f = int(f) if f is not None and float(f).is_integer() else f
+    card = rpcard.load(path)
+    try:
+        rpcard.refuse_git(card["root"])
+        rec = rpcard.plan_set(card, default=None if clips else f, clips={c: f for c in clips} or None,
+                              project=args.get("project_slug"))
+    except rpcard.CardError as e:
+        raise workflows.Refused(str(e))
+    with open(card["root"] + rpcard.RECORD, encoding="utf-8") as fh:
+        old = fh.read()
+    sq = (rec["answers"].get("squeeze") or {}).get("at")
+    if sq:  # the answer's time is when the real run happens, not part of the plan
+        rec["answers"]["squeeze"]["at"] = None
+    sha = workflows.plan_sha("card_set", card["root"], old, rpcard.dumps(rec))
+    if sq:
+        rec["answers"]["squeeze"]["at"] = sq
+    if not args["dry_run"] and args["plan_sha"] != sha:
+        raise workflows.Refused("the plan has changed since the dry run (the record or the call "
+                                "differs); run it with dry_run true again and review it.")
+    what = ", ".join(x for x in (
+        (f"squeeze {f:g} for {len(clips)} clip(s)" if clips else f"squeeze default {f:g}") if f is not None else "",
+        f"project {args['project_slug']}" if args.get("project_slug") else "",
+        "upgrade the record from schema 1 to 2" if card["version"] == 1 else "") if x)
+    r = {"card": card["root"], "record": card["root"] + rpcard.RECORD, "plan_sha": sha,
+         "dry_run": args["dry_run"], "changes": what, "exit_status": 0}
+    if args["dry_run"]:
+        r["summary"] = f"would replace {r['record']}: {what}" + _how(r)
+        return r
+
+    def run():
+        rpcard.write_record(card["root"], rec)
+        back = rpcard.load(card["root"])  # read it back through the loader
+        ok = back["version"] == 2 and not back["problems"] and back["record"] == rec
+        r["summary"] = (f"replaced {r['record']}: {what}; read back and matching" if ok
+                        else f"wrote {r['record']} but the read-back differs: {back['problems']}")
+        r["exit_status"] = 0 if ok else 1
+        return r
+
+    return _journalled("card_set", args, run)
 
 
 # ---------------------------------------------------------------------------
@@ -1603,6 +1659,29 @@ def register(registry):
             **DRY_RUN},
          "required": ["project"], "additionalProperties": False},
         link_proxies, title="Link BRAW proxies", annotations=DESTRUCTIVE))
+    registry.add(Tool(
+        "card_set",
+        "Offline, never Resolve: record what a person said about a copied camera card, in its "
+        "record (<CAM>-<id6>.card.json): the squeeze answer (1 is spherical; for the whole card, or "
+        "for the clips named by clip id or file name) and the project slug. Nothing else is "
+        "writable here. It replaces the record atomically, keeping every key it had and "
+        "upgrading a schema 1 record to 2; it never touches the footage, SHA256SUMS, offsite.txt "
+        "or a squeeze.json, and refuses inside a git working tree. It plans first like the write "
+        "tools: dry run, then the real run with its plan_sha; the record is read back through "
+        "the loader and journalled.",
+        {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Absolute path of a card copy, a file in it, "
+                     "or one of its sidecars."},
+            "squeeze": {"type": "number", "minimum": 1, "maximum": 2.5,
+                        "description": "The squeeze factor; 1 is spherical."},
+            "clips": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 500,
+                      "description": "Clip ids (<CAM>-<id6>/<stem>) or file names the squeeze is "
+                      "for. Omit it to answer for every clip not named."},
+            "project_slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$",
+                             "description": "The project this card belongs to."},
+            **DRY_RUN},
+         "required": ["path"], "additionalProperties": False},
+        card_set, title="Record a card's answers", annotations=WRITE))
     registry.add(Tool(
         "deliver_captions",
         "Offline, never Resolve: turn the caption sidecar Resolve renders beside a file for a "
