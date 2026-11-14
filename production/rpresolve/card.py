@@ -450,6 +450,15 @@ def _open(card):
     return out
 
 
+def _record_newer(root, checked_utc):
+    # shortcut: mtime, so a copy that resets mtimes false-alarms; upgrade to a record sha256 in offsite.txt.
+    try:
+        at = datetime.datetime.strptime(checked_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+        return os.stat(root + RECORD).st_mtime > at.timestamp()
+    except (ValueError, TypeError, OSError):
+        return False
+
+
 def check(card, full=True):
     """{S1..S5: [problems]} for a loaded card; an empty list is a pass."""
     rec = card["record"] or {}
@@ -460,6 +469,8 @@ def check(card, full=True):
                  ["no offsite.txt for this card (run offload.sh safe)" if not card["offsite"]["present"]
                   else "offsite.txt does not name this card, a remote and a time"],
            "S5": []}
+    if card["offsite"]["ok"] and _record_newer(card["root"], card["offsite"]["checked_utc"]):
+        res["S4"].append("offsite copy of the record is stale; re-run offload.sh safe")
     if isinstance(rec.get("cam"), str) and isinstance(rec.get("card_id"), str):
         want = f"{rec['cam']}-{rec['card_id'][:6]}"
         if card["name"] != want:

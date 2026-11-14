@@ -56,6 +56,8 @@ def make_card(parent, name="CAMA-012345", cam="CAMA", files=None, record=True, s
     if offsite:
         (Path(parent) / (name + ".offsite.txt")).write_text(
             f"card_id {CARD_ID}\nremote b2:bucket\nchecked_utc 2026-01-03T00:00:00Z\n")
+        if record:
+            os.utime(Path(parent) / (name + ".card.json"), (1767312000, 1767312000))  # 2026-01-02, before the check
     return root
 
 
@@ -351,6 +353,12 @@ class Standards(Base):
         root = make_card(self.tmp, offsite=True)
         Path(self.tmp, "CAMA-012345.offsite.txt").write_text("card_id ffffffffffff\nremote b2:x\nchecked_utc t\n")
         self.assertEqual(len(card.check(card.load(str(root)))["S4"]), 1)
+
+    def test_s4_flags_a_record_changed_after_the_offsite_check(self):
+        root = make_card(self.tmp, schema2=True, offsite=True)
+        self.assertEqual(card.check(card.load(str(root)))["S4"], [])
+        os.utime(Path(self.tmp, "CAMA-012345.card.json"), (1767484800, 1767484800))  # 2026-01-04
+        self.assertEqual(card.check(card.load(str(root)))["S4"], ["offsite copy of the record is stale; re-run offload.sh safe"])
 
     def test_s5_old_name_fails_but_loads(self):
         res = card.check(card.load(str(make_card(self.tmp, name="OLD-NAME"))))
