@@ -1,7 +1,7 @@
 """
 project: start a project from a camera card, resumable (production/project-start.md).
 
-    project start CARD [--project SLUG] [--cam CAM] [--apply]
+    project start CARD [--project SLUG] [--new-project] [--cam CAM] [--apply]
                                   copy and verify (a card volume), record the project, identify,
                                   list open questions, index, contact sheets, then the Resolve colour
                                   step; stops at the first step that needs a person; run it again to resume
@@ -14,7 +14,8 @@ project: start a project from a camera card, resumable (production/project-start
 State is <work root>/<slug>/project.json. Paths come from the JSON file named by
 $RP_PIPELINE_CONFIG (landing_root, work_root, indexer, offsite_remote, sheets_root;
 project.example.json); each can be given on the command line instead. Every step that writes is
-a dry run until --apply. Never connects to Resolve. Exit 0 done, 2 stopped for a person, 1 refused.
+a dry run until --apply. A card inside <work root>/X/ belongs to project X; a different --project
+is refused unless --new-project. Progress goes to stderr. Never connects to Resolve. Exit 0 done, 2 stopped for a person, 1 refused.
 """
 
 import sys
@@ -30,6 +31,8 @@ def add_arguments(p):
     p.add_argument("action", choices=("start", "answer", "status"))
     p.add_argument("target", help="start: a card volume or a card folder with its record; answer, status: the project slug")
     p.add_argument("--project", help="start: the project slug")
+    p.add_argument("--new-project", action="store_true",
+                   help="start: --project may differ from the work folder the card is in")
     p.add_argument("--cam", help="start: camera code for a card volume (2 to 12 of A-Z 0-9)")
     p.add_argument("--apply", action="store_true", help="write; without it the steps that write only say what they would do")
     p.add_argument("--squeeze", type=float, metavar="FACTOR", help="answer: the squeeze factor; 1 is spherical")
@@ -49,7 +52,8 @@ def run(args):
                                                    "sheets_root": args.sheets_root, "indexer": args.indexer,
                                                    "offsite_remote": args.remote})
         if args.action == "start":
-            return rpproject.start(cfg, args.target, args.project, args.cam, args.apply)
+            return rpproject.start(cfg, args.target, args.project, args.cam, args.apply,
+                                   say=lambda m: print(m, flush=True), new_project=args.new_project)
         if args.action == "answer":
             return rpproject.answer(cfg, args.target, args.apply, args.squeeze, args.clip or (), args.resolved)
         return rpproject.status(cfg, args.target)

@@ -5,12 +5,12 @@
 `project start` takes a camera card and runs the footage-first chain as far as it can without a person, then says what it needs. Each step is an existing command; this one only orders them and keeps the state.
 
 ```
-project start CARD [--project SLUG] [--cam CAM] [--apply]
+project start CARD [--project SLUG] [--new-project] [--cam CAM] [--apply]
 project answer SLUG [--squeeze F [--clip ID]...] [--resolved] [--apply]
 project status SLUG
 ```
 
-`CARD` is a card volume (copied with `offload.sh copy`, which needs `--cam`) or a card folder that already has its record (not copied again). Every step that writes is a dry run until `--apply`: a dry run runs the read-only commands and prints what the rest would do. Nothing is deleted.
+`CARD` is a card volume (copied with `offload.sh copy`, which needs `--cam`) or a card folder that already has its record (not copied again). The project is the folder a card sits in under the work root: a card in `<work root>/X/` belongs to project `X` (a slug), `--project` may be left out, and a different `--project` is refused unless `--new-project` is given, so the state never lands in a second folder. A card elsewhere (the landing root) needs `--project`. Every step that writes is a dry run until `--apply`: a dry run runs the read-only commands and prints what the rest would do. Nothing is deleted.
 
 ## The nine steps
 
@@ -24,7 +24,7 @@ project status SLUG
 | 6 | Resolve colour | prints the `set_color_management` call with preset `managed-dwg` | always, until a person creates the empty project (the API cannot) and runs it; then `project answer SLUG --resolved --apply` |
 | 7 to 9 | shot list to deliver | nothing; `project status` prints the next command from [edit-methods.md](edit-methods.md) | by hand |
 
-`project start` again resumes: finished steps are not repeated, the questions are asked afresh from the record.
+`project start` again resumes: a finished step, `card set` and `detect` among them, is not repeated; the questions are asked afresh from the record. Each step prints a line when it starts; `detect` prints a count every 10 clips, and any long command a line every 30 seconds, to stderr.
 
 ## State and config
 
