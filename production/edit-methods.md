@@ -212,7 +212,7 @@ The pick is built at 16:9 first and finished at 9:16 as a second step, on ` [aut
 | Layers on V2 | `import_timeline`, sources at the timeline's rate | | |
 | A dip to black or a wipe at a cut | | | Effects > Video Transitions, from the manifest's `ui_steps` |
 | Music fade out | `assemble_timeline`, baked into the bed (`T18`); [how to check it](#music-bed-check) | | |
-| Picture fade in and out | `SetFades` on the item (`T18`, measured on a picture item) | | menu fallback (`T11`) if a render shows no fade |
+| Picture fade in and out | no tool yet; `SetFades` on a picture item read back and showed in a still (`T18`) | | menu fallback (`T11`) |
 | Punch, push, word, flash, dip, windows | `apply_effect` | | |
 | Constant speed and ramps | `retime` macro | | Edit page Retime Curve, if the Fusion retime will not do |
 | Pan that follows a subject | `reframe-pan` macro | | |
