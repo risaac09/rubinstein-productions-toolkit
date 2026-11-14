@@ -93,25 +93,45 @@ Tall (9:16) renders add two more WARN-only rows:
                     detect pass (silence_noise_db)
 
 Opt-in rows (VP-20), each SKIP until its input is given, all offline, all
-working defaults:
+working defaults calibrated on 2026-11-14 against 39 renders and proxies (none
+9:16, no handheld clip, no real two-recording pair). A read that fails in the
+colour or stabiliser row is a WARN row that says why, never an error that
+drops the table:
     sync               with sync_ref (--sync-ref FILE, the recording this
                        file's sound came from), rpresolve.sync's offset and
-                       drift of this file against it; FAIL when the offset is
-                       over sync_tol_ms or the drift exceeds half a frame,
-                       WARN when the sound does not match the reference
-    colour             with colour (--colour), rpresolve.measure on
-                       colour_samples frames, no faces: luma legal range
-                       (16-235, FAIL outside it) and clipped pixels (WARN
-                       over colour_clip_pct); SKIP for an RGB or full-range file
-    stabiliser         with stabiliser (--stabiliser), residual shake: global
-                       translation between consecutive frames of stab_bursts
-                       short bursts (phase correlation on a small grey
-                       picture), its frame-to-frame jerk in pixels of a
-                       stab_width-wide picture; WARN over stab_jerk_px. A
+                       drift of this file against it over several windows
+                       (a tenth of the file each, 4 to 30 s). The offset is
+                       the one gate-ready number of the three rows (exact to
+                       0.1 ms on real speech): FAIL over sync_fail_frames (one
+                       frame at the file's rate), WARN over sync_warn_frames
+                       (half a frame). Drift is reported as its own value
+                       and ADVISORY: it WARNs when the file drifts more than
+                       half a frame end to end and never fails; WARN too when
+                       the sound does not match the reference
+    colour             with colour (--colour), ADVISORY: one ffmpeg decode
+                       of every frame at colour_fps (1.5 a second), the Y
+                       plane of the active picture with constant dark
+                       letterbox and pillarbox bars masked out. FAIL over
+                       colour_fail_pct of the picture at hard clipping (Y 252
+                       and up, or 4 and under) in any frame; WARN over
+                       colour_warn_pct above legal white (Y 235) in any
+                       frame. The low side is reported, never warned (a night
+                       scene sits near Y 16). `found` counts the frames read.
+                       SKIP for an RGB or full-range file
+    stabiliser         with stabiliser (--stabiliser), ADVISORY and never a
+                       gate: residual shake. Global translation between
+                       consecutive frames of stab_bursts (12) short bursts,
+                       read to a fraction of a pixel by phase correlation on
+                       a small grey picture of the decoded picture's own
+                       aspect; the jerk is frame-to-frame change of that
+                       shift in pixels of a stab_width-wide picture. The row
+                       is the worst burst's median jerk, WARN over
+                       stab_jerk_px (0.3, about 1.8 px at 1080p). A
                        locked-off or panning shot reads smooth; a hand-held
-                       shot the stabiliser missed reads high. Resolve's own
-                       stabiliser settings cannot be read, so this judges
-                       the render, not the setting
+                       shot the stabiliser missed reads high, but no
+                       handheld set has been run. Resolve's own stabiliser
+                       settings cannot be read, so this judges the render,
+                       not the setting
 
 A row is {check, status, found, expected, source[, note]}; status is PASS,
 FAIL, WARN or SKIP. WARN sorts after FAIL, counts on its own and never
@@ -171,13 +191,15 @@ THRESHOLDS = {
     "tail_s": 0.7,                  # portrait: the last this-many seconds frozen or silent
     "hook_caption_s": 1.5,          # portrait: the first sidecar cue should start by here
     "speech_onset_s": 1.0,          # tall: first speech by here, or a hook covers frame 0
-    "sync_tol_ms": 40.0,            # sync: offset against the reference allowed (one frame at 25 fps)
-    "colour_samples": 6.0,          # colour: frames measured
-    "colour_clip_pct": 1.0,         # colour: WARN when this share of pixels is clipped high or low
-    "stab_bursts": 3.0,             # stabiliser: bursts of consecutive frames sampled
+    "sync_fail_frames": 1.0,        # sync: FAIL when the offset is over this many frames at the file's rate
+    "sync_warn_frames": 0.5,        # sync: WARN over this many frames of offset, or of drift over the file
+    "colour_fps": 1.5,              # colour: frames read a second, over the whole file
+    "colour_warn_pct": 1.0,         # colour: WARN when this share of the active picture is over Y 235 in any frame
+    "colour_fail_pct": 0.1,         # colour: FAIL when this share is at Y 252 and up, or 4 and under, in any frame
+    "stab_bursts": 12.0,            # stabiliser: bursts of consecutive frames sampled
     "stab_burst_frames": 12.0,      # stabiliser: frames per burst
     "stab_width": 320.0,            # stabiliser: width of the grey picture the shift is read on
-    "stab_jerk_px": 0.6,            # stabiliser: WARN over this median jerk, px of stab_width
+    "stab_jerk_px": 0.3,            # stabiliser: WARN over the worst burst's median jerk, px of stab_width
 }
 
 
@@ -282,6 +304,8 @@ START_COLUMNS = ("start_s", "start", "in_s", "in", "time_s", "time", "cut_s")
 ENV_WIN_S = 0.01      # the silence_at_cut envelope: 10 ms RMS, finer than audio-report's 100 ms
 ENV_HALF_S = 0.5      # audio read either side of a cut
 WD = " (working default)"
+SYNC_SLACK_MS = 0.01  # sync reads whole samples (0.125 ms at 8 kHz); a frame-exact offset is not over its frame
+CALIBRATED = "calibrated 2026-11-14 on 39 renders and proxies"
 STEMS_PAD_SAMPLES = 2048   # a stem or mix this much longer than the others is codec padding
 
 
@@ -671,8 +695,23 @@ def _safe_zone(np, path, dest, th, dur, streams):
                  f"sides {th['safe_side']:g}; working defaults wider than the pages' 150/400 or 90/330 px, VP-114 measures on a device" + (f"; over in {', '.join(over)}" if over else ""))
 
 
-def _sync_row(path, sync_ref, th, has_audio):
-    expected = f"offset <= {th['sync_tol_ms']:g} ms, drift within half a frame{WD}"
+def _frame_rate(streams):
+    """The first video stream's frame rate, or 25 when it has none."""
+    from fractions import Fraction
+    v = next((x for x in streams if x.get("codec_type") == "video"), {})
+    try:
+        r = float(Fraction(v.get("avg_frame_rate") or v.get("r_frame_rate") or "0"))
+    except (ValueError, ZeroDivisionError):
+        r = 0.0
+    return r if r > 0 else 25.0
+
+
+def _sync_row(path, sync_ref, th, has_audio, streams=(), dur=None):
+    fps = _frame_rate(streams)
+    frame_ms = 1000.0 / fps
+    expected = (f"offset within {th['sync_fail_frames']:g} frame ({th['sync_fail_frames'] * frame_ms:.1f} ms at "
+                f"{fps:g} fps), WARN over {th['sync_warn_frames']:g}; drift over the file WARN over "
+                f"{th['sync_warn_frames']:g} frame{WD}")
     if sync_ref is None:
         return _srow("sync", SKIP, "no reference", expected, "give --sync-ref FILE")
     if not has_audio:
@@ -680,23 +719,39 @@ def _sync_row(path, sync_ref, th, has_audio):
     if _np() is None:
         return _srow("sync", SKIP, "needs numpy", expected)
     from . import sync as rpsync
+    # windows a tenth of the file long (4 to 30 s) give a head, a tail and at least two between
+    window_s = min(rpsync.WINDOW_S, max(4.0, (dur or 0) / 10.0))
     try:
-        r = rpsync.measure(sync_ref, path)
-    except rpsync.SyncError as e:  # a bad reference must not hide every other row
+        r = rpsync.measure(sync_ref, path, fps=fps, window_s=window_s)
+    except (rpsync.SyncError, OSError, ValueError) as e:  # a bad reference must not hide every other row
         return _srow("sync", WARN, "not measured", expected, str(e))
     if not r["match"]:
         return _srow("sync", WARN, "no match", expected,
                      "; ".join(r["reasons"][:2]) or "the sound does not line up with the reference")
     ms = r["offset_s"] * 1000
-    drift = (r.get("drift") or {})
-    bad = abs(ms) > th["sync_tol_ms"] + 1e-9 or bool(drift.get("exceeds"))
-    return _srow("sync", FAIL if bad else PASS, f"{ms:+.1f} ms", expected,
-                 f"{len(r['windows'])} windows"
-                 + (f"; drift {drift['worst_ms']} ms worst" if drift.get("worst_ms") is not None else ""))
+    drift = r.get("drift") or {}
+    found = f"{ms:+.1f} ms ({ms / frame_ms:+.2f} frames)"
+    if drift:
+        found += f", drift {drift['over_overlap_ms']:+.1f} ms over {drift['span_s']:g} s"
+    else:
+        found += ", drift not measured"
+    drifted = abs(drift.get("over_overlap_frames") or 0) > th["sync_warn_frames"] or bool(drift.get("exceeds"))
+    note = (f"{len(r['windows'])} windows of {window_s:g} s; offset is gate-ready (exact to 0.1 ms on real "
+            f"speech, {CALIBRATED}); drift is advisory, never fails, and needs a real two-recording pair "
+            "to settle" + ("" if drift else f"; {r.get('drift_note', 'one window only')}"))
+    if abs(ms) > th["sync_fail_frames"] * frame_ms + SYNC_SLACK_MS:
+        status = FAIL
+    elif abs(ms) > th["sync_warn_frames"] * frame_ms + SYNC_SLACK_MS or drifted:
+        status = WARN
+    else:
+        status = PASS
+    return _srow("sync", status, found, expected, note)
 
 
 def _colour_row(path, colour, th, has_video):
-    expected = f"luma 16-235, clipped <= {th['colour_clip_pct']:g}%{WD}"
+    expected = (f"under {th['colour_fail_pct']:g}% of the active picture at hard clipping (Y 252 and up, "
+                f"or 4 and under) in any frame, under {th['colour_warn_pct']:g}% above legal white "
+                f"(Y 235){WD}")
     if not colour:
         return _srow("colour", SKIP, "not run", expected, "give --colour")
     if not has_video:
@@ -705,19 +760,27 @@ def _colour_row(path, colour, th, has_video):
         return _srow("colour", SKIP, "needs numpy", expected)
     from . import measure as rpmeasure
     try:
-        m = rpmeasure.measure(path, samples=int(th["colour_samples"]), faces=False)
-    except (rpmeasure.MeasureError, OSError) as e:
-        raise dc.CheckError(str(e))
-    legal, clip = m["legal_8bit"], m["clipping"]
-    found = f"clipped high {clip['high_pct']}%, low {clip['low_pct']}%"
-    if not isinstance(legal, dict):
-        return _srow("colour", SKIP, found, expected, f"legal range: {legal or 'unreadable'}")
-    found = f"Y {legal['ymin']}-{legal['ymax']}, " + found
-    if not legal["within_16_235"]:
-        return _srow("colour", FAIL, found, expected, "luma outside legal range")
-    over = max(clip["high_pct"], clip["low_pct"]) > th["colour_clip_pct"]
-    return _srow("colour", WARN if over else PASS, found, expected,
-                 f"{m['frames_sampled']} frames, read as display Rec.709")
+        tags = rpmeasure.probe(path)["tags"]
+        if rpmeasure.is_rgb_source(tags.get("pix_fmt")) or tags.get("color_range") == "pc":
+            return _srow("colour", SKIP, "legal range not applicable", expected,
+                         "an RGB or full-range file has no 16-235 range to judge")
+        m = rpmeasure.luma_pass(path, fps=th["colour_fps"])
+    except (rpmeasure.MeasureError, OSError, ValueError, KeyError) as e:
+        # a bad read must not discard the table: say why this row did not run
+        return _srow("colour", WARN, "not read", expected, str(e))
+    w = m["worst"]
+    over = [d for d in m["per_frame"] if d["over_235_pct"] > th["colour_warn_pct"]]
+    found = (f"worst frame {w['over_235_pct']:.2f}% over Y 235, hard clip {w['hard_high_pct']:.2f}% high "
+             f"and {w['hard_low_pct']:.2f}% low; {m['frames']} frames read")
+    note = (f"{m['frames']} frames at {m['fps']:g} a second, one pass; {len(over)} over {th['colour_warn_pct']:g}%"
+            f"{', first at ' + _at(over[0]['t']) if over else ''}; low side reported, not warned: "
+            f"worst frame {w['under_16_pct']:.1f}% under Y 16, Y {w['ymin']} to {w['ymax']}; "
+            + (f"bars masked (top {m['bars'][0]}, bottom {m['bars'][1]}, left {m['bars'][2]}, "
+               f"right {m['bars'][3]} px); " if any(m["bars"]) else "")
+            + (f"{w['bar_hot_px']} px over Y 235 sit inside the masked bars; " if w["bar_hot_px"] else "")
+            + f"advisory, {CALIBRATED}")
+    bad = max(w["hard_high_pct"], w["hard_low_pct"]) > th["colour_fail_pct"]
+    return _srow("colour", FAIL if bad else WARN if over else PASS, found, expected, note)
 
 
 PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment", re.I)
@@ -749,17 +812,34 @@ def _privacy_row(info):
                  "at the picture stays a person's")
 
 
+def _parabola(lo, mid, hi):
+    """Where a parabola through three neighbouring samples peaks, as an
+    offset from the middle one (-0.5..0.5); 0 on a flat or upward fit."""
+    d = lo - 2 * mid + hi
+    return 0.5 * (lo - hi) / d if d < -1e-12 else 0.0
+
+
 def _shift(np, a, b):
-    """(dx, dy) whole-pixel translation of b against a, by phase correlation."""
-    f = np.fft.fft2(a - a.mean()) * np.conj(np.fft.fft2(b - b.mean()))
-    c = np.fft.ifft2(f / (np.abs(f) + 1e-9)).real
+    """(dx, dy) translation of b against a in pixels, to a fraction of one:
+    phase correlation on Hann-windowed pictures, the spectrum low-passed
+    (sigma 0.05 cycles a pixel) so noise does not flatten the peak, and a
+    parabola through the peak and its neighbours. Within 0.02 px on
+    synthetic shifts up to 3 px."""
+    h, w = a.shape
+    win = np.outer(np.hanning(h), np.hanning(w))
+    f = np.fft.fft2((a - a.mean()) * win) * np.conj(np.fft.fft2((b - b.mean()) * win))
+    f = f / (np.abs(f) + 1e-9)
+    f = f * np.exp(-(np.fft.fftfreq(w)[None, :] ** 2 + np.fft.fftfreq(h)[:, None] ** 2) / (2 * 0.05 ** 2))
+    c = np.fft.ifft2(f).real
     y, x = np.unravel_index(int(c.argmax()), c.shape)
-    h, w = c.shape
-    return (x - w if x > w // 2 else x, y - h if y > h // 2 else y)
+    dx = _parabola(c[y, (x - 1) % w], c[y, x], c[y, (x + 1) % w])
+    dy = _parabola(c[(y - 1) % h, x], c[y, x], c[(y + 1) % h, x])
+    return (x - w if x > w // 2 else x) + dx, (y - h if y > h // 2 else y) + dy
 
 
 def _stab_row(np, path, stabiliser, th, dur, streams):
-    expected = f"median jerk <= {th['stab_jerk_px']:g} px of {th['stab_width']:g}{WD}"
+    expected = (f"worst burst's median jerk <= {th['stab_jerk_px']:g} px of {th['stab_width']:g} "
+                f"(about {th['stab_jerk_px'] * 1920 / th['stab_width']:.1f} px at 1080p), advisory{WD}")
     if not stabiliser:
         return _srow("stabiliser", SKIP, "not run", expected, "give --stabiliser")
     v = next((x for x in streams if x.get("codec_type") == "video"), None)
@@ -767,31 +847,39 @@ def _stab_row(np, path, stabiliser, th, dur, streams):
         return _srow("stabiliser", SKIP, "no video", expected)
     if np is None:
         return _srow("stabiliser", SKIP, "needs numpy", expected)
-    w = int(th["stab_width"])
-    h = max(2, int(round(w * v["height"] / v["width"] / 2)) * 2)
-    bursts, n = int(th["stab_bursts"]), int(th["stab_burst_frames"])
-    jerks = []
-    for i in range(bursts):
-        t = max(0.0, (dur - 1.0) * (i + 0.5) / bursts)
-        proc = subprocess.run(
-            [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-noautorotate", "-ss", f"{t:.3f}",
-             "-i", dc._src(path), "-map", "0:v:0", "-vf", f"scale={w}:{h}:flags=area,format=gray", "-frames:v", str(n),
-             "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, timeout=dc.READ_TIMEOUT_S)
-        if proc.returncode != 0:
-            raise dc.CheckError("ffmpeg could not sample frames: "
-                                + proc.stderr.decode(errors="replace").strip()[-300:])
-        fr = np.frombuffer(proc.stdout, dtype=np.uint8)
-        fr = fr[:len(fr) // (w * h) * w * h].reshape(-1, h, w).astype(np.float64)
-        if len(fr) < 4 or float(fr.std(axis=(1, 2)).min()) < 2.0:  # too short or flat to read
-            continue
-        shifts = np.array([_shift(np, a, b) for a, b in zip(fr[:-1], fr[1:])])
-        jerks.append(float(np.median(np.hypot(*np.diff(shifts, axis=0).T))))
+    from . import measure as rpmeasure
+    try:
+        pic = rpmeasure.probe(path)  # the decoded picture, Frame Cropping and rotation applied
+        w = int(th["stab_width"])
+        h = max(16, int(round(w * pic["height"] / pic["width"] / 2)) * 2)  # its aspect, not the stream's
+        bursts, n = int(th["stab_bursts"]), int(th["stab_burst_frames"])
+        jerks = []
+        for i in range(bursts):
+            t = max(0.0, (dur - 1.0) * (i + 0.5) / bursts)
+            proc = subprocess.run(
+                [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-ss", f"{t:.3f}",
+                 "-i", dc._src(path), "-map", "0:v:0", "-vf", f"scale={w}:{h}:flags=area,format=gray",
+                 "-frames:v", str(n), "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=dc.READ_TIMEOUT_S)
+            if proc.returncode != 0:
+                raise dc.CheckError("ffmpeg could not sample frames: "
+                                    + proc.stderr.decode(errors="replace").strip()[-300:])
+            fr = np.frombuffer(proc.stdout, dtype=np.uint8)
+            fr = fr[:len(fr) // (w * h) * w * h].reshape(-1, h, w).astype(np.float64)
+            if len(fr) < 4 or float(fr.std(axis=(1, 2)).min()) < 2.0:  # too short or flat to read
+                continue
+            shifts = np.array([_shift(np, a, b) for a, b in zip(fr[:-1], fr[1:])])
+            jerks.append(float(np.median(np.hypot(*np.diff(shifts, axis=0).T))))
+    except (rpmeasure.MeasureError, dc.CheckError, subprocess.SubprocessError, OSError, ValueError, KeyError) as e:
+        return _srow("stabiliser", WARN, "not read", expected, str(e))  # a bad read keeps the table
     if not jerks:
         return _srow("stabiliser", SKIP, "no usable burst", expected, "frames too few or flat")
-    jerk = float(np.median(jerks))
+    jerk = max(jerks)
+    over = sum(1 for j in jerks if j > th["stab_jerk_px"])
     return _srow("stabiliser", WARN if jerk > th["stab_jerk_px"] else PASS, f"{jerk:.2f} px", expected,
-                 f"{len(jerks)} bursts of {n} frames; judges the render, not the stabiliser's settings")
+                 f"{len(jerks)} bursts of {n} frames, {over} over; sub-pixel shifts on a {w}x{h} grey picture; "
+                 f"advisory, never gates ({CALIBRATED}: 0.3 px flagged 8 of 39 files; no handheld set was run, so its "
+                 "false-WARN rate on handheld shots is unmeasured); judges the render, not the stabiliser's settings")
 
 
 # ---------------------------------------------------------------------------
@@ -1044,7 +1132,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
     rows.append(_privacy_row(info))
     rows.append(_sha256_row(path, sha256))
     rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
-    rows.append(_sync_row(path, sync_ref, th, has_audio))
+    rows.append(_sync_row(path, sync_ref, th, has_audio, streams, dur))
     rows.append(_colour_row(path, colour, th, has_video))
     rows.append(_stab_row(_np(), path, stabiliser, th, dur, streams))
     if portrait:

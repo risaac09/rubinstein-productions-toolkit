@@ -1233,7 +1233,7 @@ def register(registry):
         "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
         "speech_vs_rest and voice_vs_bed with words, stems_sum with stems), sha256, privacy "
         "(metadata tags: location, serial, name, path, email), and for a social "
-        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref), colour, stabiliser. WARN rows never fail the table. Never connects "
+        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref; the offset is gate-ready, its drift is advisory), colour and stabiliser (both advisory; thresholds calibrated 2026-11-14 on 39 renders and proxies; a failed read is a WARN row). WARN rows never fail the table. Never connects "
         "to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1256,13 +1256,16 @@ def register(registry):
                          "description": "Expected sha256 of the file."},
               "sync_ref": {"type": "string", "description": "Absolute path of the reference "
                            "(the camera or recorder file the sound should line up with): adds "
-                           "the sync row, offset and drift against it (needs numpy)."},
+                           "the sync row: offset (FAIL over one frame at the file's rate, WARN over half) and "
+                           "drift over several windows (advisory; needs numpy)."},
               "colour": {"type": "boolean", "default": False,
-                         "description": "Adds the colour row: luma legal range (FAIL outside "
-                         "16-235) and clipped pixels (WARN)."},
+                         "description": "Adds the colour row (advisory): every frame at 1.5 a "
+                         "second, bars masked; FAIL over 0.1 percent of the picture at hard "
+                         "clipping, WARN over 1 percent above Y 235; the low side is reported."},
               "stabiliser": {"type": "boolean", "default": False,
-                             "description": "Adds the stabiliser row: residual frame-to-frame "
-                             "shake of the render (WARN; judges the picture, not the setting)."},
+                             "description": "Adds the stabiliser row (advisory, never a gate): the "
+                             "worst of 12 bursts' frame-to-frame shake, sub-pixel (WARN; judges "
+                             "the picture, not the setting)."},
               "set": {"type": "array", "items": {"type": "string"},
                       "description": "KEY=VALUE threshold overrides (keys are in "
                       "rpresolve/qc.py THRESHOLDS)."}}, ["file"]),
