@@ -354,11 +354,13 @@ class Standards(Base):
         Path(self.tmp, "CAMA-012345.offsite.txt").write_text("card_id ffffffffffff\nremote b2:x\nchecked_utc t\n")
         self.assertEqual(len(card.check(card.load(str(root)))["S4"]), 1)
 
-    def test_s4_flags_a_record_changed_after_the_offsite_check(self):
+    def test_a_record_changed_after_the_offsite_check_is_open_not_s4(self):
         root = make_card(self.tmp, schema2=True, offsite=True)
-        self.assertEqual(card.check(card.load(str(root)))["S4"], [])
-        os.utime(Path(self.tmp, "CAMA-012345.card.json"), (1767484800, 1767484800))  # 2026-01-04
-        self.assertEqual(card.check(card.load(str(root)))["S4"], ["offsite copy of the record is stale; re-run offload.sh safe"])
+        self.assertFalse(any(o.startswith("offsite") for o in card.load(str(root))["open"]))
+        os.utime(Path(self.tmp, "CAMA-012345.card.json"), (1767484800, 1767484800))  # 2026-01-04, after the check
+        c = card.load(str(root))
+        self.assertEqual(card.check(c)["S4"], [])  # the media's offsite check still holds: safe to format
+        self.assertTrue(any(o.startswith("offsite record") for o in c["open"]))
 
     def test_s5_old_name_fails_but_loads(self):
         res = card.check(card.load(str(make_card(self.tmp, name="OLD-NAME"))))
