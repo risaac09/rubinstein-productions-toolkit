@@ -834,7 +834,10 @@ def mix_peak(p, bed, level, tail=None):
     ins += ["-ss", f"{bed['in']:.4f}", "-t", f"{bed['seconds']:.4f}", "-i", dc._src(bed["src"])]
     graph = (";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(n))
              + f"concat=n={n}:v=0:a=1,volume={gain:g}dB[cam];"
-             f"[{n}:a:0]aresample=48000,aformat=channel_layouts=stereo,"
+             # A2 is a mono track (AddTrack without a type): Resolve folds the stereo bed to mono
+             # and pans it at -3 dB. The v4 master read -14.4 LUFS against -14.1 from this chain
+             f"[{n}:a:0]aresample=48000,pan=mono|c0=0.5*c0+0.5*c1,volume=-3.0103dB,"
+             "pan=stereo|c0=c0|c1=c0,"
              f"{musicbed.fade_filter(bed['seconds'], bed['fade_s'], bed['gain_db'])}[mus];"
              "[cam][mus]amix=inputs=2:duration=longest:normalize=0,"
              "ebur128=peak=true:framelog=quiet")
