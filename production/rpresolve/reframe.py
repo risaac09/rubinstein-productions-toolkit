@@ -76,6 +76,10 @@ For each span of each clip:
      gets no centre; nothing is guessed.
      allow_bars keeps the default scale when it holds the face but leaves
      bars (the Ep 002 look); such a crop is status "bars" and named as such.
+  7. Cuts: a span is one crop, so a hard cut inside it (ffmpeg scdet at qc's
+     threshold, more than CUT_EDGE_S from either edge) is named in the
+     span's review note and its "cuts" list. Report only: the crop is not
+     changed, and the span needs a person's look at each shot.
 
 The transform, for Resolve's input scalings scaleToFit and scaleToCrop: the
 source is fit into the timeline by fit = min(W/sw, H/sh) (scaleToCrop:
@@ -912,6 +916,27 @@ def squeeze_tag(data):
     return None
 
 
+CUT_EDGE_S = 0.1  # a cut this close to a span's edge is the edit's own, not one inside it
+
+
+def span_cuts(path, a, b):
+    """Source times of the hard cuts (ffmpeg scdet, at qc's threshold) strictly
+    inside the span [a, b], or None when ffmpeg could not scan it."""
+    from . import qc
+    cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}",
+           "-i", "file:" + path, "-map", "0:v:0", "-vf", f"scdet=t={qc.THRESHOLDS['scdet_threshold']}",
+           "-f", "null", "-"]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              errors="replace", timeout=TIMEOUT_S * 5)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [round(a + t, 3) for t in qc.parse_scdet(proc.stderr, qc.THRESHOLDS["scdet_threshold"])
+            if CUT_EDGE_S < t < b - a - CUT_EDGE_S]
+
+
 class SourceReader:
     """Frames of one source: read(times, folder) -> [(t, png path, luma)],
     luma being width*height bytes of 8-bit grey, one ffmpeg call a frame."""
@@ -1061,7 +1086,7 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
          speaker_x=None, only=None, allow_bars=False, reader=None, detect=None, check_cancel=None,
          progress=None, min_checked=MIN_CHECKED_SHARE, subject_region=None, min_face_height=None,
          speaker_y=None, prefer=PREFER_PRESENT, master_size=None, scaling=SCALE_TO_FIT,
-         squeeze=None, scene=None):
+         squeeze=None, scene=None, cuts=span_cuts):
     """Plan every span of the manifest's clips (or only those named).
     reader: a SourceReader (default: the manifest's source); detect:
     images -> {path: [Vision box]} or None (default: vision.face_boxes).
@@ -1079,6 +1104,9 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     callable (image, previous image or None) -> a scene.read() dict or None,
     run on each sampled frame; the report then has scene: true (when any read
     came back) and each span composition numbers and a move type (see plan_span). Default None: off.
+    cuts: (path, in, out) -> source times of hard cuts inside a span, or None
+    (default span_cuts, run on a reader that has a path); a span with a cut
+    gets a review note and a "cuts" list. Report only: the crop is not changed.
     Returns the report: {source, size, aspects, samples, per_second,
     speaker_x, speaker_y, rule, margin, min_checked, subject_region,
     min_face_height, prefer, spans: [...], rows: [...], counts}."""
@@ -1171,6 +1199,15 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 else:
                     sp = no_crop(0, aspects, f"the span lies past the source's end ({end:g} s): "
                                  "no frame to read")
+                hi = min(s["out"], end) if end else s["out"]
+                found = cuts(reader.path, s["in"], hi) if cuts and getattr(reader, "path", None) \
+                    and hi > s["in"] else None
+                if found:
+                    sp["cuts"] = found
+                    sp["review"].append(f"{len(found)} cut(s) inside the span, at "
+                                        + ", ".join(f"{t:.2f} s" for t in found[:4])
+                                        + (" and more" if len(found) > 4 else "")
+                                        + ": one crop holds for every shot, so look at each")
                 if past:
                     sp["review"].append(f"the span runs past the source's end ({end:g} s): "
                                         f"{len(past)} of {len(past) + len(times)} sample times "
