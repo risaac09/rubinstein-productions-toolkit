@@ -116,6 +116,37 @@ class TestChecks(Case):
         self.fault("order", "FAIL", 1, rows=[("2",) + GOOD[0][1:], ("1",) + GOOD[1][1:]])
 
 
+class TestInputGaps(Case):
+    def test_decimal_ntsc_rate_is_the_ntsc_rate(self):
+        from rpresolve import cmd_paper_edit as pe
+        from fractions import Fraction
+        self.assertEqual(pe.parse_fps("29.97"), Fraction(30000, 1001))
+        self.assertEqual(pe.parse_fps("23.976"), Fraction(24000, 1001))
+        self.assertEqual(pe.parse_fps("25"), 25)
+
+    def test_nan_duration_is_not_a_pass(self):
+        self.src["a"]["duration"] = float("nan")
+        code, out, _ = self.go(rows=[("1", "a", "0", "9", "", "", "", "")], length=None)
+        self.assertNotEqual(self.status(out, "bounds"), "PASS")
+
+    def test_missing_transcript_fails_sources(self):
+        os.remove(self.src["a"]["words"])
+        code, out, _ = self.go()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.status(out, "sources"), "FAIL")
+
+    def test_repeated_source_id_fails(self):
+        sj = os.path.join(self.tmp, "src.json")
+        code, out, err = self.go()
+        Path(sj).write_text(json.dumps(list(self.src.values()) + [dict(self.src["a"])]))
+        tsv = os.path.join(self.tmp, "edit.tsv")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = cli.main(["paper-edit", tsv, "--sources", sj, "--fps", "25"])
+        self.assertEqual(code, 1)
+        self.assertIn("repeats an id", buf.getvalue())
+
+
 class TestManifest(Case):
     def test_round_trip(self):
         m = os.path.join(self.tmp, "m.json")
