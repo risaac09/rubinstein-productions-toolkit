@@ -1,0 +1,1 @@
+music: index a music folder without moving files, by tempo, steady pulse, loudness, genre and feel, write playlists, suggest tracks for an edit method's tempo range; project status points to it when music_root is set

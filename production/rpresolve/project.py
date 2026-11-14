@@ -26,7 +26,7 @@ PRODUCTION = os.path.dirname(HERE)
 OFFLOAD = os.path.join(PRODUCTION, "offload.sh")
 STATE = "project.json"
 CONFIG_ENV = "RP_PIPELINE_CONFIG"
-CONFIG_KEYS = ("landing_root", "work_root", "indexer", "offsite_remote", "sheets_root")
+CONFIG_KEYS = ("landing_root", "work_root", "indexer", "offsite_remote", "sheets_root", "music_root")
 READ_ELSEWHERE = ("footage_index",)  # the indexer's own block; project does not use it but must not refuse it
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
@@ -83,7 +83,7 @@ def load_config(path=None, overrides=None):
             raise ProjectError(f"{path}: unknown key(s) {', '.join(strangers)} (known: {', '.join(CONFIG_KEYS)})")
     out = {k: cfg.get(k) for k in CONFIG_KEYS}
     out.update({k: v for k, v in (overrides or {}).items() if v})
-    for k in ("landing_root", "work_root", "sheets_root"):
+    for k in ("landing_root", "work_root", "sheets_root", "music_root"):
         if out[k]:
             out[k] = os.path.abspath(os.path.expanduser(out[k]))
     return out
@@ -431,4 +431,7 @@ def status(cfg, slug, say=print):
             ok = False
     say("may the card be formatted: " + ("yes, an offsite.txt names it" if ok
         else "no, no offsite.txt names it (card check shows S4)"))
+    if cfg.get("music_root") and os.path.isfile(os.path.join(cfg["music_root"], "library.json")):
+        say(f"music: python3 resolve_workflow.py music suggest {cfg['music_root']} --method <id> "
+            "(tracks by tempo range, a suggestion)")
     return 0
