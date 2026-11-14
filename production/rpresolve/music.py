@@ -49,7 +49,7 @@ def sha256(path):
 def tags(path):
     """(artist, title, genre, duration) from ffprobe; missing tags are None."""
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:format_tags",
-                          "-of", "json", "file:" + path], capture_output=True, text=True)
+                          "-of", "json", "file:" + path], capture_output=True, text=True, errors="replace")
     fmt = (json.loads(out.stdout or "{}").get("format") or {}) if out.returncode == 0 else {}
     t = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
     dur = float(fmt["duration"]) if fmt.get("duration") else None
@@ -60,7 +60,7 @@ def tags(path):
 def loudness(path):
     """Integrated loudness in LUFS (ffmpeg ebur128), or None."""
     r = subprocess.run(["ffmpeg", "-nostats", "-i", "file:" + path, "-af", "ebur128", "-f", "null", "-"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, errors="replace")
     m = re.findall(r"I:\s+(-?[\d.]+) LUFS", r.stderr)
     return float(m[-1]) if m else None
 
@@ -102,7 +102,7 @@ def _work(args):
     try:
         st = os.stat(p)
         if old and old.get("size") == st.st_size and old.get("mtime") == int(st.st_mtime) and not old.get("error"):
-            return old["sha"], dict({k: v for k, v in old.items() if k != "sha"}, path=rel)
+            return old["sha"], dict({k: v for k, v in old.items() if k not in ("sha", "dupes")}, path=rel)
         row = measure(p)
         row.update(path=rel, size=st.st_size, mtime=int(st.st_mtime))
         return sha256(p), row

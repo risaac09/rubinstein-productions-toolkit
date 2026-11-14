@@ -144,6 +144,8 @@ class Index(unittest.TestCase):
         lib3 = music.index(self.d, workers=2)
         self.assertEqual(len(lib3["tracks"]), 2)
         self.assertEqual(len(lib3["tracks"][key].get("dupes", [])) + 1, 2)
+        lib4 = music.index(self.d, workers=2)  # a re-run does not pile up the same duplicate
+        self.assertEqual(lib4["tracks"][key]["dupes"], lib3["tracks"][key]["dupes"])
         self.assertTrue(os.path.isfile(self.steady))
 
 
