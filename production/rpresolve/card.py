@@ -37,8 +37,11 @@ OPTIONAL = ("note",)  # written by hand on two early retrofits
 SCHEMA = {"name": "card.record", "version": 2}
 STANDARDS = ("S1", "S2", "S3", "S4", "S5")
 
+STILLS = {".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff", ".dng", ".arw", ".cr2", ".cr3",
+          ".nef", ".raf", ".rw2", ".orf"}
 VIDEO = {".mov", ".mp4", ".m4v", ".mxf", ".braw", ".mts", ".m2ts", ".avi", ".r3d"}
 PROXY_DIRS = {"proxy", "proxies"}
+TRASH_DIRS = {"#recycle", "@Recycle", "\uff20Recycle", ".Trashes", ".Trash"}  # NAS and OS bins hold old copies of sidecars
 JUNK_DIRS = {".Spotlight-V100", ".fseventsd", ".Trashes", ".TemporaryItems", "System Volume Information"}
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _AT, _DAY, _HEX = sidecar._AT, re.compile(r"^\d{4}-\d{2}-\d{2}$"), re.compile(r"^[0-9a-f]+$")
@@ -77,14 +80,16 @@ def find(path):
 
 
 def cards(root, depth=6):
-    """Every card folder under `root` (or `root` itself when it is one), sorted."""
+    """Every card folder under `root` (or `root` itself when it is one), sorted. NAS and OS
+    trash folders (#recycle, @Recycle, .Trashes, .Trash-*) are not walked: a replaced sidecar
+    waits there under the same relative path and would count as a second card."""
     root = os.path.abspath(root)
     found = []
     for d, dirs, files in os.walk(root):
         here = {f[:-len(s)] for f in files for s in (RECORD, SUMS) if f.endswith(s)}
         mine = sorted(n for n in here if n in dirs)
         found += [os.path.join(d, n) for n in mine]
-        dirs[:] = sorted(n for n in dirs if n not in mine)
+        dirs[:] = sorted(n for n in dirs if n not in mine and n not in TRASH_DIRS and not n.startswith(".Trash-"))
         if d[len(root):].count(os.sep) >= depth:
             dirs[:] = []
     return found
@@ -343,6 +348,7 @@ def load(path, check_open=True):
     clips              the originals: the record's list, else derived from SHA256SUMS or the folder
     answers            the record's answers, with a legacy squeeze.json folded in as squeeze
     sums, offsite      the proofs (see read_sums, read_offsite)
+    media              every original media file's relpath: the clips' and the stills
     notes              things to know that fail nothing: a proxy with no original
     open               what is still open: "squeeze <clip_id>", "offsite", "project"
                        (check_open=False leaves it empty: it asks ffprobe about every BRAW clip)
@@ -369,8 +375,10 @@ def load(path, check_open=True):
     prefix = f"{rec['cam']}-{rec['card_id'][:6]}" if rec and isinstance(rec.get("cam"), str) \
         and isinstance(rec.get("card_id"), str) else out["name"]
     stored = rec.get("clips") if rec else None
-    derived, orphans = split_clips(prefix, sorted(out["sums"]["files"]) or [r for r, _ in listing(root)])
+    rels = sorted(out["sums"]["files"]) or [r for r, _ in listing(root)]
+    derived, orphans = split_clips(prefix, rels)
     out["clips"] = stored if isinstance(stored, list) and out["version"] == 2 else derived
+    out["media"] = media_files(out["clips"], rels)
     out["notes"] = [f"proxy with no original: {r}" for r in orphans]
     answers = dict(rec.get("answers") or {}) if rec and isinstance(rec.get("answers"), dict) else {}
     try:
@@ -469,6 +477,11 @@ def refuse_git(*paths):
             raise CardError(f"{p} is inside a git working tree; card sidecars are written outside any repository")
 
 
+def media_files(clips, relpaths):
+    """Relpaths of every original media file: the clips (never their proxies) and the stills."""
+    return sorted({c["relpath"] for c in clips} | {r for r in relpaths if os.path.splitext(r)[1].lower() in STILLS})
+
+
 def read_capture(paths):
     """{path: (naive datetime or None, "Make Model" or "")} for media files: the capture time
     the file itself says (exiftool's CreationDate, DateTimeOriginal, CreateDate,
@@ -487,7 +500,7 @@ def read_capture(paths):
     for p in paths:
         e = exif.get(p) or {}
         t = next(filter(None, (shoot_table.parse_start(shoot_table._exif(e, n)) for n in shoot_table._START_TAGS)), None)
-        if t is None:
+        if t is None and os.path.splitext(p)[1].lower() in VIDEO:  # ffprobe has no date to give a still
             try:
                 data, _ = detect.run_ffprobe(p)
             except detect.DetectError:
@@ -498,13 +511,14 @@ def read_capture(paths):
     return out
 
 
-def shoot_from(root, clips):
-    """The shoot block for a card's clips (dicts with a relpath). first_utc, last_utc and days
-    are each original clip's own capture time, as the camera wrote it (the zone is the camera's,
-    not UTC; the key names are kept from schema 2), and cameras the sorted distinct make and
-    model strings; source is "capture". Only when no clip yields a capture time do file write
-    times stand in (the copy time, on a copied card), with source "file-times"."""
-    paths = [os.path.join(root, c["relpath"]) for c in clips]
+def shoot_from(root, relpaths):
+    """The shoot block for a card's original media files (relpaths: the clips and the stills).
+    first_utc, last_utc and days are each file's own capture time, as the camera wrote it (the
+    zone is the camera's, not UTC; the key names are kept from schema 2), and cameras the sorted
+    distinct make and model strings; source is "capture". Only when no file yields a capture
+    time do file write times stand in (the copy time, on a copied card), with source
+    "file-times"."""
+    paths = [os.path.join(root, r) for r in relpaths]
     got = read_capture(paths) if paths else {}
     times = sorted(t for t, _ in got.values() if t)
     cameras = sorted({m for _, m in got.values() if m})
@@ -518,12 +532,21 @@ def shoot_from(root, clips):
 
 
 def refresh_shoot(card):
-    """The card's record with `shoot` recomputed from its clips' own capture times and every
-    other key as it was. A schema 1 record comes back upgraded to schema 2, as `set` does."""
+    """(record, how): the card's record with `shoot` recomputed from its media files' own capture
+    times and every other key as it was. how is "capture", "file-times", or "kept" when nothing
+    gave a capture time and the record already holds a shoot that is not itself file-times (or
+    the card has no media): a refresh never swaps a real shoot for file times or for nothing.
+    A schema 1 record comes back upgraded to schema 2, as `set` does."""
     rec = upgrade(card)
-    if card["version"] == 2:
-        rec["shoot"] = shoot_from(card["root"], card["clips"])
-    return rec
+    if card["version"] == 1:
+        return rec, rec["shoot"]["source"]
+    new, old = shoot_from(card["root"], card["media"]), rec.get("shoot") or {}
+    has_old = bool(old.get("first_utc") or old.get("days"))
+    empty = not (new["first_utc"] or new["days"])
+    if has_old and (empty or (new["source"] == "file-times" and old.get("source") != "file-times")):
+        return rec, "kept"
+    rec["shoot"] = new
+    return rec, new["source"]
 
 
 def upgrade(card):
@@ -533,7 +556,7 @@ def upgrade(card):
     if card["version"] == 2:
         return rec
     rec.update(schema=dict(SCHEMA), origin="retrofit" if "note" in rec else "offload",
-               shoot=shoot_from(card["root"], card["clips"]), project=None,
+               shoot=shoot_from(card["root"], card["media"]), project=None,
                answers={k: v for k, v in card["answers"].items()}, clips=card["clips"], history=[])
     return rec
 
@@ -556,13 +579,19 @@ def write_new(path, text):
         raise CardError(f"{path} exists; a sidecar is never overwritten")
 
 
-def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False):
+def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False, info=None):
     """The schema 2 record that results from answering for a loaded card: `default` is the
     squeeze factor for clips not named, `clips` maps a clip id or file name to a factor,
-    `project` a slug, `refresh_shoot_` recomputes `shoot` from the clips' capture times. Nothing is written. Raises CardError."""
+    `project` a slug, `refresh_shoot_` recomputes `shoot` from the media files' capture times (`info`, a dict, gets
+    info['shoot'] = how, see refresh_shoot). Nothing is written. Raises CardError."""
     if card["version"] is None:
         raise CardError(f"{card['name']}: no readable record ({card['problems'][0]}); run init --retrofit first")
-    rec = refresh_shoot(card) if refresh_shoot_ else upgrade(card)
+    if refresh_shoot_:
+        rec, how = refresh_shoot(card)
+        if info is not None:
+            info["shoot"] = how
+    else:
+        rec = upgrade(card)
     if default is not None or clips:
         # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
         sq = dict(card["answers"].get("squeeze") or {"default": None, "clips": {}})

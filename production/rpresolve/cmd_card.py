@@ -135,7 +135,7 @@ def init(args):
            "schema": dict(rpcard.SCHEMA), "origin": "retrofit",
            "project": None, "answers": {}, "history": []}
     rec["clips"] = rpcard.derive_clips(f"{args.cam}-{lhash[:6]}", [r for r, _ in lst])
-    rec["shoot"] = rpcard.shoot_from(root, rec["clips"])
+    rec["shoot"] = rpcard.shoot_from(root, rpcard.media_files(rec["clips"], [r for r, _ in lst]))
     bad = rpcard.validate(rec)
     if bad:
         return _fail("; ".join(bad))
@@ -166,10 +166,11 @@ def set_(args):
     if args.squeeze is None and not args.project and not args.refresh_shoot:
         return _fail("set wants --squeeze FACTOR, --project SLUG or --refresh-shoot")
     card = rpcard.load(args.paths[0])
+    info = {}
     f = None if args.squeeze is None else (int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze)
     rec = rpcard.plan_set(card, default=None if args.clip else f,
                           clips={c: f for c in args.clip or []} if f is not None else None, project=args.project,
-                          refresh_shoot_=args.refresh_shoot)
+                          refresh_shoot_=args.refresh_shoot, info=info)
     lines = []
     if f is not None:
         lines.append(f"squeeze {f:g} for {len(args.clip)} clip(s)" if args.clip else f"squeeze default {f:g}")
@@ -177,8 +178,10 @@ def set_(args):
         lines.append(f"project {args.project}")
     if args.refresh_shoot:
         sh = rec["shoot"]
-        lines.append(f"shoot from {sh.get('source')}: {sh['first_utc']} to {sh['last_utc']}, "
-                     f"{len(sh['days'])} day(s), {len(sh['cameras'])} camera(s)")
+        span = f"{sh['first_utc']} to {sh['last_utc']}, {len(sh['days'])} day(s), {len(sh['cameras'])} camera(s)"
+        lines.append(f"shoot kept as it is ({span}): no capture time found in any media file, and the "
+                     "record's shoot is not file-times" if info.get("shoot") == "kept"
+                     else f"shoot from {info.get('shoot')}: {span}")
     if card["version"] == 1:
         lines.append("upgrade the record from schema 1 to 2")
     _dry(args, [f"replace {card['root'] + rpcard.RECORD}: " + ", ".join(lines)])
