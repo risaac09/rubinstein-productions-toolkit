@@ -1801,3 +1801,35 @@ def test_refresh_squeeze_redraws_and_reembeds_without_touching_captions(idx, mon
     capsys.readouterr()
     cli.main(["refresh-squeeze"])
     assert '"unexplained": 1' in capsys.readouterr().out
+
+
+def test_refresh_squeeze_ctrl_c_restores_the_backup_and_leaves_no_temp(idx, monkeypatch):
+    from PIL import Image
+    from footage_index import __main__ as cli, embed
+    mount, db, run = idx
+    c = store.connect()
+    sids = []
+    for name in ("a", "b"):
+        make_clip(str(mount / f"{name}.mp4"))
+        cid = c.execute("INSERT INTO clips(relpath,key,clip_key,status,width,height,fps,duration) VALUES (?,?,?,'done',640,360,24,9)",
+                        (f"{name}.mp4", name, f"file:1:{name}.mp4")).lastrowid
+        thumb = os.path.join(TMP, f"refresh-int-{name}.jpg")
+        Image.new("RGB", (384, 216)).save(thumb)
+        sids.append(store.add_shot(c, cid, 1.5, 0, 3, thumb, luma=0.5))
+        store.set_vector(c, sids[-1], [0.0] * 768)
+    c.commit(); c.close()
+    calls = []
+
+    def images(paths):  # the first clip embeds and commits, the second is interrupted
+        calls.append(paths)
+        if len(calls) > 1:
+            raise KeyboardInterrupt
+        return [[1.0] + [0.0] * 767 for _ in paths]
+    monkeypatch.setattr(embed, "images", images)
+    monkeypatch.setattr(sample, "desqueeze_factor", lambda p: 1.5)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(["refresh-squeeze", "--apply", "--lanes", "1", "--backup", db + ".bak-int"])
+    c = store.connect()
+    assert c.execute("SELECT count(*) FROM vec_shots WHERE embedding = ?",
+                     (store.sqlite_vec.serialize_float32([0.0] * 768),)).fetchone()[0] == 2  # the backup came back
+    assert not any(f.endswith(".new.jpg") for f in os.listdir(TMP))

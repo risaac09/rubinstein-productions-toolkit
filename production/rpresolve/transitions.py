@@ -244,9 +244,9 @@ def _decode(src, w, h):
             yield buf
         done = True
     finally:
-        p.stdout.close()
         if not done:
-            p.kill()
+            p.kill()  # before the close, or the decoder logs its broken pipe to the terminal
+        p.stdout.close()
         status = p.wait()
     if status != 0:
         raise TransitionError(f"ffmpeg could not decode {src}")

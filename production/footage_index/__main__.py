@@ -25,6 +25,7 @@
   python -m footage_index slots-sheet|compose|plan --swap ... [--variant v2 | --plan-dir PATH]   # act on a variants plan
 """
 import argparse
+import contextlib
 import datetime
 import json
 import os
@@ -296,7 +297,8 @@ def cmd_rekey(a):
     count = lambda: {t: c.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("clips", "shots", "vec_shots", "captions")}
     before = count()
     dst = sqlite3.connect(bak)
-    sqlite3.connect(store.DB).backup(dst)
+    with contextlib.closing(sqlite3.connect(store.DB)) as src:  # closed now: left to gc, it checkpoints its WAL onto a restore
+        src.backup(dst)
     dst.close()
     print(f"backup {bak}\nbefore {before}")
     try:
@@ -371,7 +373,8 @@ def cmd_refresh_squeeze(a):
     count = lambda: {t: c.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("clips", "shots", "vec_shots", "captions")}
     before = count()
     dst = sqlite3.connect(a.backup)
-    sqlite3.connect(store.DB).backup(dst)
+    with contextlib.closing(sqlite3.connect(store.DB)) as src:  # closed now: left to gc, it checkpoints its WAL onto a restore
+        src.backup(dst)
     dst.close()
     print(f"backup {a.backup}\nbefore {before}")
     from . import embed
@@ -392,7 +395,7 @@ def cmd_refresh_squeeze(a):
                 redrawn_clips += bool(ids)
                 redrawn_shots += len(ids)
         after = count()
-    except Exception:
+    except BaseException:  # Ctrl-C too: a half-applied run goes back to the backup
         c.close()
         _restore(a.backup, store.DB)
         raise

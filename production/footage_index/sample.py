@@ -167,11 +167,13 @@ def redraw(path, shots, profile, fps, factor):
     vf, state, done = vf_for(path, profile, factor), {}, []
     for sid, t, thumb in shots:
         tmp = thumb + ".new.jpg"
-        if grab(path, t, tmp, vf, fps, None, state):
-            os.replace(tmp, thumb)
-            done.append(sid)
-        elif os.path.exists(tmp):
-            os.remove(tmp)
+        try:
+            if grab(path, t, tmp, vf, fps, None, state):
+                os.replace(tmp, thumb)
+                done.append(sid)
+        finally:  # a failed or interrupted grab leaves no stray .new.jpg
+            if os.path.exists(tmp):
+                os.remove(tmp)
     return done
 
 
