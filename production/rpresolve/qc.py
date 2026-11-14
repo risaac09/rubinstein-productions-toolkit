@@ -771,7 +771,8 @@ def _colour_row(path, colour, th, has_video):
     w = m["worst"]
     over = [d for d in m["per_frame"] if d["over_235_pct"] > th["colour_warn_pct"]]
     found = (f"worst frame {w['over_235_pct']:.2f}% over Y 235, hard clip {w['hard_high_pct']:.2f}% high "
-             f"and {w['hard_low_pct']:.2f}% low; {m['frames']} frames read")
+             f"and {w['hard_low_pct']:.2f}% low; {m['frames']} frames read"
+             + (f"; {w['bar_hot_px']} px over Y 235 inside the masked bars" if w["bar_hot_px"] else ""))
     note = (f"{m['frames']} frames at {m['fps']:g} a second, one pass; {len(over)} over {th['colour_warn_pct']:g}%"
             f"{', first at ' + _at(over[0]['t']) if over else ''}; low side reported, not warned: "
             f"worst frame {w['under_16_pct']:.1f}% under Y 16, Y {w['ymin']} to {w['ymax']}; "
@@ -780,7 +781,8 @@ def _colour_row(path, colour, th, has_video):
             + (f"{w['bar_hot_px']} px over Y 235 sit inside the masked bars; " if w["bar_hot_px"] else "")
             + f"advisory, {CALIBRATED}")
     bad = max(w["hard_high_pct"], w["hard_low_pct"]) > th["colour_fail_pct"]
-    return _srow("colour", FAIL if bad else WARN if over else PASS, found, expected, note)
+    # a hot pixel hidden in a masked bar (subtitles at code 255) is never a clean pass
+    return _srow("colour", FAIL if bad else WARN if over or w["bar_hot_px"] else PASS, found, expected, note)
 
 
 PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment", re.I)
