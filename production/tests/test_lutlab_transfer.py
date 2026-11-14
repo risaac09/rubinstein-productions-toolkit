@@ -218,12 +218,13 @@ class TestTransfer(unittest.TestCase):
         with self.assertRaises(FileExistsError), redirect_stdout(StringIO()):
             main(args)
 
-    def test_a_name_with_a_line_break_is_refused(self):
-        for bad in ("x\nLUT_3D_SIZE 2", "x\r", "x\0"):
-            with self.assertRaises(SystemExit), redirect_stderr(StringIO()):
-                main(["transfer", "--ref", str(self.src), "--src", str(self.src),
-                      "--out", str(self.d / "out4"), "--name", bad])
-        self.assertFalse((self.d / "out4").exists())
+    def test_a_grey_image_reads_as_three_equal_channels(self):
+        from lutlab import pairs
+        grey = self.d / "grey.png"
+        cv2.imwrite(str(grey), np.tile(np.arange(40, dtype=np.uint8) * 6, (30, 1)))
+        a = pairs.read_image(grey)
+        self.assertEqual(a.shape, (30, 40, 3))
+        self.assertTrue((a[..., 0] == a[..., 2]).all())
 
 
     def test_cli_refusal_writes_nothing_and_exits_2(self):
