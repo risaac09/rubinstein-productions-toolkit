@@ -110,6 +110,53 @@ class Sheets(Tmp):
         self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 1), ("a 2.0s", ""))
         self.assertEqual((idx[0]["sheet"], idx[0]["row"], idx[0]["col"]), (1, 1, 1))
 
+    def test_log_clips_are_converted_or_labelled_and_probed_once(self):
+        folder = os.path.join(self.dir, "shoot")
+        for n in ("a", "b", "c", "d"):
+            clip(os.path.join(folder, n + ".mp4"), secs=2)
+        rows = {"a": ("V-Log", "vlog"), "b": ("Apple Log", None), "c": ("Rec.709", None),
+                "d": ("V-Log", "vlog")}
+        probed, chains = [], {}
+
+        def detect_paths(paths):
+            probed.extend(paths)
+            n = os.path.basename(paths[0])[0]
+            return [{"path": paths[0], "profile": rows[n][0], "input_color_space": rows[n][0]}], []
+
+        class Sample:
+            LOG_SPACES = {"V-Log": "vlog"}
+
+            @staticmethod
+            def cst_chain(space):
+                return f"lut3d=file='{space}.cube',"
+
+        real_png = cmd_sheets._png
+
+        def png(before, src, chain="", hw=False):
+            chains[os.path.basename(src)[0]] = chain
+            return real_png(before, src, "", hw)
+
+        def go(**kw):
+            with mock.patch.object(cmd_sheets.rpdetect, "detect_paths", detect_paths), \
+                    mock.patch.object(cmd_sheets, "_sample", lambda: Sample), \
+                    mock.patch.object(cmd_sheets, "_png", png):
+                return self.draw(folder, per_clip=1, **kw)
+
+        r, idx = go()
+        by = {os.path.basename(c["path"])[0]: c for c in idx}
+        self.assertEqual(sorted(probed), sorted(c["path"] for c in idx))  # each clip probed once
+        self.assertEqual(chains["a"], "lut3d=file='vlog.cube',")
+        self.assertEqual(chains["c"], "")
+        self.assertEqual((by["a"]["log"], by["a"]["converted"]), (False, True))
+        self.assertEqual((by["b"]["log"], by["b"]["converted"]), (True, False))  # no conversion known
+        self.assertEqual((by["c"]["log"], by["c"]["converted"]), (False, False))
+        probed.clear()
+        r, idx = go(convert=False)
+        self.assertTrue(all(c["log"] for c in idx if c["path"][-5] in "abd"))
+        self.assertEqual(chains["a"], "")
+        self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 1.5, True), ("a 2.0s", "1.5x log"))
+        self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 1, True), ("a 2.0s", "log"))
+
     def test_refuses_output_in_a_git_tree(self):
         subprocess.run(["git", "init", "-q", os.path.join(self.dir, "repo")], check=True)
         args = mock.Mock(folder=self.dir, out=os.path.join(self.dir, "repo", "o"),
