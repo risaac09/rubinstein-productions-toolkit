@@ -14,12 +14,15 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 PROD = HERE.parent
 sys.path.insert(0, str(PROD))
 
 from rpresolve import card, cmd_card, sidecar  # noqa: E402
+
+REAL_READ_CAPTURE = card.read_capture  # Base stubs card.read_capture; these tests want the real one
 
 CARD_ID = "0123456789ab"
 LHASH = "f" * 64
@@ -69,6 +72,10 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="cardtest-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # no exiftool or ffprobe on the synthetic bytes: shoot falls back to file times
+        patch = mock.patch.object(card, "read_capture", lambda paths: {p: (None, "") for p in paths})
+        patch.start()
+        self.addCleanup(patch.stop)
 
 
 class Loader(Base):
@@ -164,6 +171,89 @@ class SumsPaths(Base):
         self.assertEqual(rc, 0)
         self.assertEqual(out.strip(), "PASS  " + str(root) + "  S1 S2 S3 S4 S5  (note: 1 proxy file(s) with no original)")
         self.assertIn("note      proxy with no original: Proxy/lost.mp4", run_cmd("show", str(root))[1])
+
+
+def capture_of(table):
+    """A read_capture stand-in: {file name: (datetime, camera)} for the clips of a test card."""
+    return lambda paths: {p: table.get(os.path.basename(p), (None, "")) for p in paths}
+
+
+class ShootFromCapture(Base):
+    FILES = {"DCIM/100/AAA0001.MOV": b"1", "DCIM/100/AAA0002.MOV": b"2", "DCIM/101/AAA0003.MOV": b"3"}
+
+    def card(self, **kw):
+        root = make_card(self.tmp, files=self.FILES, schema2=True, **kw)
+        for r in self.FILES:  # every file was copied on the same day, long after the shoot
+            os.utime(root / r, (1893456000, 1893456000))  # 2030-01-01
+        return root
+
+    def test_capture_times_beat_file_times_and_cameras_are_sorted(self):
+        import datetime as dt
+        root = self.card()
+        table = {"AAA0001.MOV": (dt.datetime(2026, 11, 7, 9, 30), "Maker Zed"),
+                 "AAA0002.MOV": (dt.datetime(2026, 11, 5, 23, 59, 58), "Maker Alpha"),
+                 "AAA0003.MOV": (dt.datetime(2026, 11, 7, 18, 0), "Maker Zed")}
+        with mock.patch.object(card, "read_capture", capture_of(table)):
+            sh = card.shoot_from(str(root), card.load(str(root))["clips"])
+        self.assertEqual(sh, {"first_utc": "2026-11-05T23:59:58Z", "last_utc": "2026-11-07T18:00:00Z",
+                              "days": ["2026-11-05", "2026-11-07"], "cameras": ["Maker Alpha", "Maker Zed"],
+                              "source": "capture"})
+        self.assertEqual(card._shoot_problems(sh), [])
+
+    def test_file_times_only_when_no_clip_has_a_capture_time(self):
+        root = self.card()
+        sh = card.shoot_from(str(root), card.load(str(root))["clips"])
+        self.assertEqual((sh["source"], sh["days"], sh["cameras"]), ("file-times", ["2030-01-01"], []))
+        self.assertEqual(card._shoot_problems(sh), [])
+        self.assertEqual(card._shoot_problems({k: v for k, v in sh.items() if k != "source"}), [])  # older records
+        self.assertEqual(card._shoot_problems(dict(sh, source="guess")), ["shoot.source must be capture or file-times"])
+
+    def test_refresh_changes_only_the_shoot_and_set_applies_it(self):
+        import datetime as dt
+        root = self.card()
+        before = json.loads(Path(str(root) + ".card.json").read_text())
+        table = {"AAA0001.MOV": (dt.datetime(2026, 1, 2, 3, 4, 5), "Maker Q")}
+        with mock.patch.object(card, "read_capture", capture_of(table)):
+            rec = card.refresh_shoot(card.load(str(root)))
+            self.assertEqual({k: v for k, v in rec.items() if k != "shoot"},
+                             {k: v for k, v in before.items() if k != "shoot"})
+            self.assertEqual(rec["shoot"]["days"], ["2026-01-02"])
+            rc, out, _ = run_cmd("set", str(root), "--refresh-shoot")
+            self.assertEqual((rc, json.loads(Path(str(root) + ".card.json").read_text())), (0, before))
+            self.assertIn("shoot from capture", out)
+            self.assertEqual(run_cmd("set", str(root), "--refresh-shoot", "--apply")[0], 0)
+        after = json.loads(Path(str(root) + ".card.json").read_text())
+        self.assertEqual(after["shoot"]["source"], "capture")
+        self.assertEqual(card.validate(after), [])
+
+    def test_read_capture_prefers_exiftool_tags_in_order_then_ffprobe(self):
+        import datetime as dt
+        from rpresolve import detect
+        a, b, c, d = (os.path.join(self.tmp, n) for n in ("a.mov", "b.mov", "c.mov", "d.mov"))
+        exif = {a: {"QuickTime:CreateDate": "2026:03:01 01:00:00", "QuickTime:CreationDate": "2026:03:02 08:00:00-05:00",
+                    "IFD0:Make": "Maker", "IFD0:Model": "Maker X1"},
+                b: {"IFD0:Model": "Plain"}}
+        probe = {c: {"format": {"tags": {"creation_time": "2026-04-05T06:07:08.000000Z"}}}}
+        with mock.patch.object(detect, "EXIFTOOL", "/bin/sh"), \
+                mock.patch.object(detect, "run_exiftool", lambda paths, exiftool=None: exif), \
+                mock.patch.object(detect, "run_ffprobe", lambda p: (probe.get(p), "")):
+            got = REAL_READ_CAPTURE([a, b, c, d])
+        self.assertEqual(got, {a: (dt.datetime(2026, 3, 2, 8, 0), "Maker X1"),  # CreationDate wins; no doubled make
+                               b: (None, "Plain"), c: (dt.datetime(2026, 4, 5, 6, 7, 8), ""), d: (None, "")})
+
+    def test_read_capture_real_ffprobe_over_a_clip_whose_file_time_disagrees(self):
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            self.skipTest("needs ffmpeg")
+        from rpresolve import detect
+        clip = os.path.join(self.tmp, "t.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=1:r=10",
+                        "-metadata", "creation_time=2025-03-04T05:06:07Z", clip], check=True)
+        os.utime(clip, (1893456000, 1893456000))
+        with mock.patch.object(detect, "EXIFTOOL", "/nonexistent/exiftool"), \
+                mock.patch.object(detect, "FFPROBE", shutil.which("ffprobe")), \
+                mock.patch("shutil.which", lambda n: None if n == "exiftool" else "/usr/bin/" + n):
+            got = REAL_READ_CAPTURE([clip])
+        self.assertEqual(got[clip][0].isoformat(), "2025-03-04T05:06:07")
 
 
 class CardKey(Base):

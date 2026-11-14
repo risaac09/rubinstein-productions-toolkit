@@ -1,0 +1,1 @@
+A card record's `shoot` now comes from each original clip's own capture time (exiftool's capture dates, else ffprobe's creation_time) instead of file write times, which on a copied card are the copy time; it names the cameras, carries `source` (`capture` or `file-times`), and `card set PATH --refresh-shoot` recomputes it for an existing record without touching any other key.

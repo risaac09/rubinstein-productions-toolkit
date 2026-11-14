@@ -6,7 +6,8 @@ card: read, check and keep the record of a copied camera card (production/card-r
                                        failure; a root checks every card under it; --quick skips hashing
     card init --retrofit FOLDER --cam CAM
                                        a folder with no record: write its SHA256SUMS and a schema 2 record
-    card set PATH --squeeze F [--clip ID]   record the squeeze answer (1 is spherical); --project SLUG
+    card set PATH --squeeze F [--clip ID]   record the squeeze answer (1 is spherical); --project SLUG;
+                                       --refresh-shoot recomputes the shoot from the clips' capture times
     card mv PATH DEST_PARENT           move a card folder and its sidecars on the same volume, verify
                                        by hash, and append the move to the record's history
 
@@ -39,6 +40,8 @@ def add_arguments(p):
     p.add_argument("--squeeze", type=float, metavar="FACTOR", help="set: the squeeze factor; 1 is spherical")
     p.add_argument("--clip", action="append", metavar="ID", help="set: only this clip (clip id or file name; repeatable)")
     p.add_argument("--project", help="set: the project slug")
+    p.add_argument("--refresh-shoot", action="store_true",
+                   help="set: recompute shoot (days, times, cameras) from the clips' own capture times")
 
 
 def _fail(msg):
@@ -130,8 +133,9 @@ def init(args):
     rec = {"card_id": lhash[:12], "listing_hash": lhash, "volume_uuid": None, "cam": args.cam,
            "files": len(lst), "bytes": sum(s for _, s in lst), "offloaded_utc": rpcard.now(),
            "schema": dict(rpcard.SCHEMA), "origin": "retrofit",
-           "shoot": rpcard.shoot_from(root, [r for r, _ in lst]), "project": None, "answers": {},
-           "clips": rpcard.derive_clips(f"{args.cam}-{lhash[:6]}", [r for r, _ in lst]), "history": []}
+           "project": None, "answers": {}, "history": []}
+    rec["clips"] = rpcard.derive_clips(f"{args.cam}-{lhash[:6]}", [r for r, _ in lst])
+    rec["shoot"] = rpcard.shoot_from(root, rec["clips"])
     bad = rpcard.validate(rec)
     if bad:
         return _fail("; ".join(bad))
@@ -159,17 +163,22 @@ def init(args):
 def set_(args):
     if len(args.paths) != 1:
         return _fail("set takes one path")
-    if args.squeeze is None and not args.project:
-        return _fail("set wants --squeeze FACTOR or --project SLUG")
+    if args.squeeze is None and not args.project and not args.refresh_shoot:
+        return _fail("set wants --squeeze FACTOR, --project SLUG or --refresh-shoot")
     card = rpcard.load(args.paths[0])
     f = None if args.squeeze is None else (int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze)
     rec = rpcard.plan_set(card, default=None if args.clip else f,
-                          clips={c: f for c in args.clip or []} if f is not None else None, project=args.project)
+                          clips={c: f for c in args.clip or []} if f is not None else None, project=args.project,
+                          refresh_shoot_=args.refresh_shoot)
     lines = []
     if f is not None:
         lines.append(f"squeeze {f:g} for {len(args.clip)} clip(s)" if args.clip else f"squeeze default {f:g}")
     if args.project:
         lines.append(f"project {args.project}")
+    if args.refresh_shoot:
+        sh = rec["shoot"]
+        lines.append(f"shoot from {sh.get('source')}: {sh['first_utc']} to {sh['last_utc']}, "
+                     f"{len(sh['days'])} day(s), {len(sh['cameras'])} camera(s)")
     if card["version"] == 1:
         lines.append("upgrade the record from schema 1 to 2")
     _dry(args, [f"replace {card['root'] + rpcard.RECORD}: " + ", ".join(lines)])

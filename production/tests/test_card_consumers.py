@@ -31,6 +31,10 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="cardcons-"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # no exiftool or ffprobe on the synthetic bytes: shoot falls back to file times
+        patch = mock.patch.object(card, "read_capture", lambda paths: {p: (None, "") for p in paths})
+        patch.start()
+        self.addCleanup(patch.stop)
         self.root = str(make_card(self.tmp, files=FILES, schema2=True))
         self.a1 = os.path.join(self.root, "DCIM/100/AAA0001.MOV")
         self.px = os.path.join(self.root, "DCIM/100/Proxy/AAA0001.mp4")

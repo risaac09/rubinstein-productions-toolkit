@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 
 from . import paths as rppaths
 from . import sidecar, squeeze
@@ -281,9 +282,11 @@ def validate(rec):
 
 
 def _shoot_problems(s):
-    if not isinstance(s, dict) or set(s) != {"first_utc", "last_utc", "days", "cameras"}:
-        return ["shoot must be {first_utc, last_utc, days, cameras}"]
-    bad = [f"shoot.{k} must be YYYY-MM-DDTHH:MM:SSZ or null" for k in ("first_utc", "last_utc")
+    if not isinstance(s, dict) or not {"first_utc", "last_utc", "days", "cameras"} <= set(s) \
+            <= {"first_utc", "last_utc", "days", "cameras", "source"}:
+        return ["shoot must be {first_utc, last_utc, days, cameras} and may add source"]
+    bad = [] if s.get("source", "capture") in ("capture", "file-times") else ["shoot.source must be capture or file-times"]
+    bad += [f"shoot.{k} must be YYYY-MM-DDTHH:MM:SSZ or null" for k in ("first_utc", "last_utc")
            if not (s[k] is None or (isinstance(s[k], str) and _AT.match(s[k])))]
     if not (isinstance(s["days"], list) and all(isinstance(d, str) and _DAY.match(d) for d in s["days"])):
         bad.append("shoot.days must be a list of YYYY-MM-DD")
@@ -466,14 +469,61 @@ def refuse_git(*paths):
             raise CardError(f"{p} is inside a git working tree; card sidecars are written outside any repository")
 
 
-def shoot_from(root, relpaths):
-    """The shoot block from file times: first and last write, and the UTC days between.
-    Cameras are left empty; reading exif is the index's job."""
-    times = sorted(os.path.getmtime(os.path.join(root, r)) for r in relpaths)
-    if not times:
-        return {"first_utc": None, "last_utc": None, "days": [], "cameras": []}
-    return {"first_utc": _utc(times[0]), "last_utc": _utc(times[-1]),
-            "days": sorted({_utc(t)[:10] for t in times}), "cameras": []}
+def read_capture(paths):
+    """{path: (naive datetime or None, "Make Model" or "")} for media files: the capture time
+    the file itself says (exiftool's CreationDate, DateTimeOriginal, CreateDate,
+    MediaCreateDate, TrackCreateDate in that order, else ffprobe's creation_time), as the
+    camera wrote it, with no zone applied. exiftool is used when it is installed, ffprobe when
+    it can be run; a tool that is missing just contributes nothing."""
+    from . import detect, shoot_table
+    exif = {}
+    if os.access(detect.EXIFTOOL, os.X_OK) or shutil.which("exiftool"):
+        try:
+            exif = detect.run_exiftool(list(paths), exiftool=detect.EXIFTOOL if os.access(detect.EXIFTOOL, os.X_OK)
+                                       else shutil.which("exiftool"))
+        except detect.DetectError:
+            exif = {}
+    out = {}
+    for p in paths:
+        e = exif.get(p) or {}
+        t = next(filter(None, (shoot_table.parse_start(shoot_table._exif(e, n)) for n in shoot_table._START_TAGS)), None)
+        if t is None:
+            try:
+                data, _ = detect.run_ffprobe(p)
+            except detect.DetectError:
+                data = None
+            t = shoot_table.parse_start(((data or {}).get("format") or {}).get("tags", {}).get("creation_time", ""))
+        make, model = (str(shoot_table._exif(e, n)).strip() for n in ("Make", "Model"))
+        out[p] = (t, model if model.lower().startswith(make.lower()) else f"{make} {model}".strip())
+    return out
+
+
+def shoot_from(root, clips):
+    """The shoot block for a card's clips (dicts with a relpath). first_utc, last_utc and days
+    are each original clip's own capture time, as the camera wrote it (the zone is the camera's,
+    not UTC; the key names are kept from schema 2), and cameras the sorted distinct make and
+    model strings; source is "capture". Only when no clip yields a capture time do file write
+    times stand in (the copy time, on a copied card), with source "file-times"."""
+    paths = [os.path.join(root, c["relpath"]) for c in clips]
+    got = read_capture(paths) if paths else {}
+    times = sorted(t for t, _ in got.values() if t)
+    cameras = sorted({m for _, m in got.values() if m})
+    if times:
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        return {"first_utc": times[0].strftime(fmt), "last_utc": times[-1].strftime(fmt),
+                "days": sorted({t.strftime("%Y-%m-%d") for t in times}), "cameras": cameras, "source": "capture"}
+    stamps = sorted(os.path.getmtime(p) for p in paths if os.path.exists(p))
+    return {"first_utc": _utc(stamps[0]) if stamps else None, "last_utc": _utc(stamps[-1]) if stamps else None,
+            "days": sorted({_utc(t)[:10] for t in stamps}), "cameras": cameras, "source": "file-times"}
+
+
+def refresh_shoot(card):
+    """The card's record with `shoot` recomputed from its clips' own capture times and every
+    other key as it was. A schema 1 record comes back upgraded to schema 2, as `set` does."""
+    rec = upgrade(card)
+    if card["version"] == 2:
+        rec["shoot"] = shoot_from(card["root"], card["clips"])
+    return rec
 
 
 def upgrade(card):
@@ -482,9 +532,8 @@ def upgrade(card):
     rec = dict(card["record"])
     if card["version"] == 2:
         return rec
-    rels = [r for r, _ in listing(card["root"])]
     rec.update(schema=dict(SCHEMA), origin="retrofit" if "note" in rec else "offload",
-               shoot=shoot_from(card["root"], rels), project=None,
+               shoot=shoot_from(card["root"], card["clips"]), project=None,
                answers={k: v for k, v in card["answers"].items()}, clips=card["clips"], history=[])
     return rec
 
@@ -507,13 +556,13 @@ def write_new(path, text):
         raise CardError(f"{path} exists; a sidecar is never overwritten")
 
 
-def plan_set(card, default=None, clips=None, project=None):
+def plan_set(card, default=None, clips=None, project=None, refresh_shoot_=False):
     """The schema 2 record that results from answering for a loaded card: `default` is the
     squeeze factor for clips not named, `clips` maps a clip id or file name to a factor,
-    `project` a slug. Nothing is written. Raises CardError."""
+    `project` a slug, `refresh_shoot_` recomputes `shoot` from the clips' capture times. Nothing is written. Raises CardError."""
     if card["version"] is None:
         raise CardError(f"{card['name']}: no readable record ({card['problems'][0]}); run init --retrofit first")
-    rec = upgrade(card)
+    rec = refresh_shoot(card) if refresh_shoot_ else upgrade(card)
     if default is not None or clips:
         # card["answers"] holds a legacy squeeze.json folded in, which a stored answers.squeeze would hide
         sq = dict(card["answers"].get("squeeze") or {"default": None, "clips": {}})
