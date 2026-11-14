@@ -73,7 +73,7 @@ def run(args):
             sha = dc.file_sha256(args.file)  # read once; the ledger row reuses it
             row, approval = dc.approval_row(args.file, review_log, sha)
             dc.add_rows(r, [row])
-        dc.add_rows(r, [dc.ear_check_row(args.file, review_log, sha)])  # always: owed until Isaac logs it
+        dc.add_rows(r, [dc.ear_check_row(args.file, review_log, sha)])  # always: owed until the reviewer logs it
     except dc.ToolMissing as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2

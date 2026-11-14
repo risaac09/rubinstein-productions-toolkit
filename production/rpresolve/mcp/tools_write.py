@@ -820,7 +820,7 @@ def deliver_fix_loudness(args, ctx):
                         f"mode, output {r['result_loudnorm'].get('output_i')} LUFS; its deliver_check "
                         f"is {r['check']['status'].upper()}, video stream "
                         f"{'identical' if r['video_identical'] else 'DIFFERENT'}. The original is "
-                        "untouched. Listen before delivering: the ear check is Isaac's.")
+                        "untouched. Listen before delivering: the ear check is the reviewer's.")
         return r
 
     return run() if args["dry_run"] else _journalled("deliver_fix_loudness", args, run)

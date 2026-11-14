@@ -130,7 +130,7 @@ class TestEarCheckRow(Case):
     def test_the_command_always_carries_the_row_and_stays_green(self):
         code, out = self.run_cmd()
         self.assertEqual(code, 0)
-        self.assertIn("ear_check: Isaac", out)
+        self.assertIn("ear_check", out)
 
     def test_ear_check_is_a_review_log_question(self):
         self.assertIn("ear_check", reviewlog.QUESTIONS)

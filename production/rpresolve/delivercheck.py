@@ -975,17 +975,17 @@ EAR_STEP, EAR_QUESTION = "sound", "ear_check"
 
 
 def ear_check_row(path, review_log=None, sha256=None):
-    """The "ear check: Isaac" row (PRI-22). A named hand step: no code path
+    """The "ear_check" row (PRI-22). A named hand step: no code path
     here listens, so it never passes by machine. It reads WARN (owed) until a
     person has logged an approve or go line with step sound and question
     ear_check for this file (media-review-loop: review-log --step sound
     --question ear_check --review-copy FILE --choice approve); then it PASSes
     on that answer alone. A later hold withdraws it, as for the approval row.
     WARN, never FAIL, so it never changes the exit code."""
-    expected = "Isaac's ear check, logged: step sound, question ear_check, choice approve or go"
-    owed = "owed: Isaac has not logged an ear check for this file"
+    expected = "the reviewer's ear check, logged: step sound, question ear_check, choice approve or go"
+    owed = "owed: the reviewer has not logged an ear check for this file"
     if not review_log:
-        return {"check": "ear_check: Isaac", "status": WARN, "found": owed, "expected": expected,
+        return {"check": "ear_check", "status": WARN, "found": owed, "expected": expected,
                 "note": "hand step; give --review-log PATH to read the answer"}
     from rpresolve import tastedistill
     try:
@@ -995,8 +995,8 @@ def ear_check_row(path, review_log=None, sha256=None):
     except OSError as e:
         line, why = None, f"log unreadable ({e.strerror})"
     if line:
-        return _row("ear_check: Isaac", True, f"{line['choice']} {line.get('ts', '')}", expected)
-    return {"check": "ear_check: Isaac", "status": WARN, "found": f"{owed} ({why})",
+        return _row("ear_check", True, f"{line['choice']} {line.get('ts', '')}", expected)
+    return {"check": "ear_check", "status": WARN, "found": f"{owed} ({why})",
             "expected": expected}
 
 
