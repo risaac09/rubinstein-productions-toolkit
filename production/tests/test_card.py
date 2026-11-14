@@ -194,7 +194,7 @@ class ShootFromCapture(Base):
                  "AAA0002.MOV": (dt.datetime(2026, 11, 5, 23, 59, 58), "Maker Alpha"),
                  "AAA0003.MOV": (dt.datetime(2026, 11, 7, 18, 0), "Maker Zed")}
         with mock.patch.object(card, "read_capture", capture_of(table)):
-            sh = card.shoot_from(str(root), card.load(str(root))["clips"])
+            sh = card.shoot_from(str(root), card.load(str(root))["media"])
         self.assertEqual(sh, {"first_utc": "2026-11-05T23:59:58Z", "last_utc": "2026-11-07T18:00:00Z",
                               "days": ["2026-11-05", "2026-11-07"], "cameras": ["Maker Alpha", "Maker Zed"],
                               "source": "capture"})
@@ -202,7 +202,7 @@ class ShootFromCapture(Base):
 
     def test_file_times_only_when_no_clip_has_a_capture_time(self):
         root = self.card()
-        sh = card.shoot_from(str(root), card.load(str(root))["clips"])
+        sh = card.shoot_from(str(root), card.load(str(root))["media"])
         self.assertEqual((sh["source"], sh["days"], sh["cameras"]), ("file-times", ["2030-01-01"], []))
         self.assertEqual(card._shoot_problems(sh), [])
         self.assertEqual(card._shoot_problems({k: v for k, v in sh.items() if k != "source"}), [])  # older records
@@ -214,7 +214,8 @@ class ShootFromCapture(Base):
         before = json.loads(Path(str(root) + ".card.json").read_text())
         table = {"AAA0001.MOV": (dt.datetime(2026, 1, 2, 3, 4, 5), "Maker Q")}
         with mock.patch.object(card, "read_capture", capture_of(table)):
-            rec = card.refresh_shoot(card.load(str(root)))
+            rec, how = card.refresh_shoot(card.load(str(root)))
+            self.assertEqual(how, "capture")
             self.assertEqual({k: v for k, v in rec.items() if k != "shoot"},
                              {k: v for k, v in before.items() if k != "shoot"})
             self.assertEqual(rec["shoot"]["days"], ["2026-01-02"])
@@ -225,6 +226,60 @@ class ShootFromCapture(Base):
         after = json.loads(Path(str(root) + ".card.json").read_text())
         self.assertEqual(after["shoot"]["source"], "capture")
         self.assertEqual(card.validate(after), [])
+
+    def stills_card(self, with_video=False):
+        files = {"DCIM/100/IMG_0001.JPG": b"1", "DCIM/100/IMG_0002.dng": b"2", "DCIM/100/Proxy/x.jpg": b"p"}
+        if with_video:
+            files["DCIM/101/AAA0001.MOV"] = b"v"
+        shutil.rmtree(self.tmp); os.mkdir(self.tmp)
+        root = make_card(self.tmp, files=files, schema2=True)
+        for r in files:
+            os.utime(root / r, (1893456000, 1893456000))
+        return root
+
+    def test_a_stills_only_card_reads_its_photos_and_names_the_camera(self):
+        import datetime as dt
+        root = self.stills_card()
+        c = card.load(str(root))
+        self.assertEqual((c["clips"], c["media"]), ([], ["DCIM/100/IMG_0001.JPG", "DCIM/100/IMG_0002.dng", "DCIM/100/Proxy/x.jpg"]))
+        table = {"IMG_0001.JPG": (dt.datetime(2026, 6, 1, 7, 0), "Maker S1"), "IMG_0002.dng": (dt.datetime(2026, 6, 3, 8, 0), "Maker S1")}
+        with mock.patch.object(card, "read_capture", capture_of(table)):
+            rec, how = card.refresh_shoot(c)
+        self.assertEqual((how, rec["shoot"]["days"], rec["shoot"]["cameras"]), ("capture", ["2026-06-01", "2026-06-03"], ["Maker S1"]))
+
+    def test_a_mixed_card_takes_the_videos_and_the_stills(self):
+        import datetime as dt
+        root = self.stills_card(with_video=True)
+        table = {"IMG_0001.JPG": (dt.datetime(2026, 6, 1, 7, 0), "Maker S1"), "AAA0001.MOV": (dt.datetime(2026, 5, 30, 9, 0), "Maker V2")}
+        with mock.patch.object(card, "read_capture", capture_of(table)):
+            sh = card.shoot_from(str(root), card.load(str(root))["media"])
+        self.assertEqual((sh["first_utc"], sh["days"], sh["cameras"]), ("2026-05-30T09:00:00Z", ["2026-05-30", "2026-06-01"], ["Maker S1", "Maker V2"]))
+
+    def test_a_refresh_never_swaps_a_real_shoot_for_file_times_or_nothing(self):
+        root = self.stills_card()
+        real = {"first_utc": "2026-06-01T07:00:00Z", "last_utc": "2026-06-03T08:00:00Z",
+                "days": ["2026-06-01", "2026-06-03"], "cameras": ["Maker S1"], "source": "capture"}
+        rec_path = str(root) + ".card.json"
+        rec = json.loads(Path(rec_path).read_text())
+        Path(rec_path).write_text(json.dumps(dict(rec, shoot=real)))
+        c = card.load(str(root))
+        new, how = card.refresh_shoot(c)  # no capture times anywhere (the stub): kept
+        self.assertEqual((how, new["shoot"]), ("kept", real))
+        rc, out, _ = run_cmd("set", str(root), "--refresh-shoot")
+        self.assertIn("shoot kept as it is", out)
+        self.assertEqual(run_cmd("set", str(root), "--refresh-shoot", "--apply")[0], 0)
+        self.assertEqual(json.loads(Path(rec_path).read_text())["shoot"], real)
+        # a file-times shoot is replaced by fresh file times; so is an empty one
+        for old in (dict(real, source="file-times"), dict(real, first_utc=None, last_utc=None, days=[], cameras=[])):
+            Path(rec_path).write_text(json.dumps(dict(rec, shoot=old)))
+            new, how = card.refresh_shoot(card.load(str(root)))
+            self.assertEqual((how, new["shoot"]["source"], new["shoot"]["days"]), ("file-times", "file-times", ["2030-01-01"]))
+        # a card with no media at all keeps what it has
+        Path(rec_path).write_text(json.dumps(dict(rec, shoot=real)))
+        for r in ("DCIM/100/IMG_0001.JPG", "DCIM/100/IMG_0002.dng", "DCIM/100/Proxy/x.jpg"):
+            os.remove(root / r)
+        Path(str(root) + ".SHA256SUMS").write_text("")
+        self.assertEqual(card.refresh_shoot(card.load(str(root)))[1], "kept")
 
     def test_read_capture_prefers_exiftool_tags_in_order_then_ffprobe(self):
         import datetime as dt
@@ -316,6 +371,16 @@ class Command(Base):
         self.assertEqual(len(lines), 2)
         self.assertIn("2 card(s), 1 fail", err)
         self.assertEqual(run_cmd("check", str(Path(self.tmp, "CAMA-012345")))[0], 0)
+
+    def test_a_root_walk_skips_trash_folders_at_any_depth(self):
+        make_card(self.tmp, name="CAMA-012345", schema2=True, offsite=True)
+        for trash in ("#recycle", "sub/\uff20Recycle", ".Trashes", ".Trash-1000", "deep/er/@Recycle"):
+            d = os.path.join(self.tmp, trash)
+            os.makedirs(d)
+            make_card(d, name="CAMA-012345", schema2=True)  # the replaced sidecars a NAS keeps
+        self.assertEqual(card.cards(self.tmp), [os.path.join(self.tmp, "CAMA-012345")])
+        rc, out, err = run_cmd("check", self.tmp)
+        self.assertIn("1 card(s)", err)
 
     def test_show_names_what_is_open(self):
         make_card(self.tmp)
