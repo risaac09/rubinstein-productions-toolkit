@@ -92,10 +92,15 @@ class SoundRows(unittest.TestCase):
         cls.words = _words(p("words.json"), [(1.0, 1.5), (1.6, 3.0)])
         # PRI-22: a steady bed with two speech spans; the second is buried (planted fault)
         cls.bed_ok = p("bed_ok.wav")
-        _wav(cls.bed_ok, f"0.05*(2*random(0)-1)+0.6*{TONE}*(between(t,1,2.5)+between(t,3.5,5))", 7)
+        _wav(cls.bed_ok, f"0.05*(2*random(0)-1)+0.6*{TONE}*(between(t,2,3.5)+between(t,6,7.5))", 10)
         cls.bed_bad = p("bed_bad.wav")
-        _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,1,2.5)+0.03*between(t,3.5,5))", 7)
-        cls.bed_words = _words(p("bed_words.json"), [(1.0, 2.5), (3.5, 5.0)])
+        _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,2,3.5)+0.03*between(t,6,7.5))", 10)
+        cls.bed_words = _words(p("bed_words.json"), [(2.0, 3.5), (6.0, 7.5)])
+        # room tone, then a voice's loud tail filling the short gap beside the first span
+        cls.bed_tail = p("bed_tail.wav")
+        _wav(cls.bed_tail, f"0.02*(2*random(0)-1)+{TONE}*(0.3*between(t,2,3.5)+0.2*between(t,3.7,4.8)+0.3*between(t,5.0,6.6))", 9)
+        cls.bed_tail_words = _words(p("bed_tail_words.json"), [(2.0, 3.5), (5.0, 6.6)])
+        cls.bed_short_words = _words(p("bed_short_words.json"), [(0.5, 4.5), (5.0, 9.5)])
         cls.low = p("low.wav")        # energy only at 100 Hz
         _wav(cls.low, "0.5*sin(2*PI*100*t)", 6)
 
@@ -147,10 +152,19 @@ class SoundRows(unittest.TestCase):
         words = qc.load_words(self.bed_words)
         bad = self.by(self.bed_bad, words=words)["voice_vs_bed"]
         self.assertEqual(bad["status"], qc.WARN, bad)
-        self.assertIn("3.30s to 5.20s", bad["found"])
-        self.assertNotIn("0.80s", bad["found"])
+        self.assertIn("5.80s to 7.70s", bad["found"])
+        self.assertNotIn("1.80s", bad["found"])
         self.assertIn("working default", bad["expected"])
         self.assertEqual(self.by(self.bed_ok, words=words)["voice_vs_bed"]["status"], qc.PASS)
+
+    def test_voice_vs_bed_reads_the_bed_from_long_gaps_only(self):
+        row = self.by(self.bed_tail, words=qc.load_words(self.bed_tail_words))["voice_vs_bed"]
+        self.assertEqual(row["status"], qc.PASS, row)
+
+    def test_voice_vs_bed_is_not_measurable_without_a_long_gap(self):
+        row = self.by(self.bed_ok, words=qc.load_words(self.bed_short_words))["voice_vs_bed"]
+        self.assertEqual(row["status"], qc.SKIP, row)
+        self.assertIn("not measurable", row["found"])
 
     def test_voice_vs_bed_skips_without_words_or_readable_spans(self):
         self.assertEqual(self.by(self.bed_ok)["voice_vs_bed"]["status"], qc.SKIP)
