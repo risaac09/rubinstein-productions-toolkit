@@ -578,7 +578,9 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
             try:
                 r = CALL(tool, {**base, **args, "dry_run": True})
             except Exception as e:
-                if after and not apply:
+                # only the missing timeline waits for the build; any other refusal (a render
+                # destination with no folder) would stop --apply after the assemble, so say it now
+                if after and not apply and re.search(r"no (such )?timeline", str(e)):
                     say(f"  {tool}: not checkable until '{tl}' is built ({e}); would run with {json.dumps(args)}")
                     return None
                 raise ProjectError(f"{tool}: {e}")

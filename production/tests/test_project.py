@@ -358,6 +358,18 @@ class Build(unittest.TestCase):
         with self.assertRaisesRegex(project.ProjectError, "no key.json with letter C"):
             self.answer(music=(pk, "C", None))
 
+    def test_a_dry_run_refusal_other_than_the_missing_timeline_is_reported(self):
+        self.answers()
+        orig = self.fake
+
+        def no_folder(tool, args):
+            if tool == "queue_render":
+                raise ValueError("no target folder: give one")
+            return orig(tool, args)
+        mock.patch.object(project, "CALL", no_folder).start()
+        with self.assertRaisesRegex(project.ProjectError, "queue_render: no target folder"):
+            self.build()
+
     def test_first_failure_stops(self):
         self.answers()
         orig = self.fake
