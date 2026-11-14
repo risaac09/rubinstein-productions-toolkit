@@ -190,9 +190,19 @@ class TestPlanWithScene(unittest.TestCase):
         a = reframe.plan(self.m, reader=FakeReader(), detect=fake_detect)
         b = reframe.plan(self.m, reader=FakeReader(), detect=fake_detect, scene=lambda i, p: None)
         self.assertNotIn("scene", a)
+        self.assertIs(b.pop("scene"), False)  # asked for and unavailable: the report says so
         self.assertEqual(json.dumps(a, sort_keys=True), json.dumps(b, sort_keys=True))
+        self.assertIn("scene reads unavailable", reframe.summary({**a, "scene": False}))
+        self.assertNotIn("scene reads unavailable", reframe.summary(a))
         self.assertEqual(reframe.tsv(a["rows"]).splitlines()[0].split("\t"), list(reframe.COLUMNS))
         self.assertNotIn("scene", reframe.apply(self.m, a)["reframe_plan"])
+
+    def test_framing_plan_says_when_scene_reads_are_unavailable(self):
+        item = [{"name": "a", "path": "/x/a.mov", "in": 0.0, "out": 10.0}]
+        kw = dict(aspect="9x16", reader_for=lambda _: FakeReader(), detect=fake_detect)
+        self.assertIs(reframe.plan_items(item, scene=lambda i, p: None, **kw)["scene"], False)
+        self.assertTrue(reframe.plan_items(item, scene=self.scene, **kw)["scene"])
+        self.assertNotIn("scene", reframe.plan_items(item, **kw))
 
 
 if __name__ == "__main__":

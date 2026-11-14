@@ -1178,6 +1178,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 done += 1
                 if progress:
                     progress(done, total)
+    if read_scene and not report.get("scene"):
+        report["scene"] = False  # asked for, never read (the helper is unavailable, or no read had a subject)
     report["rows"] = rows(report)
     report["counts"] = counts(report["rows"])
     return report
@@ -1316,7 +1318,8 @@ def summary(report):
             ("; squeeze not read (no manifest value, argument or file tag): planned as 1.0, "
              "so give squeeze for an anamorphic source" if report.get("squeeze_from") == "assumed"
              else f"; squeeze {report['squeeze']:g} ({report['squeeze_from']})"
-             if report.get("squeeze_from") else ""))
+             if report.get("squeeze_from") else "") +
+            ("; scene reads unavailable" if report.get("scene") is False else ""))
 
 
 def line(r):
@@ -1372,6 +1375,8 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
              "clips": [{"name": name, "spans": [{"in": a, "out": b}]}]}
         rep = plan(m, aspects=[aspect], reader=reader, master_size=master_size, scaling=scaling,
                    **kw)
+        if rep.get("scene"):
+            plan_["scene"] = True
         sp = rep["spans"][0]
         p = sp["aspects"][aspect]
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
@@ -1385,6 +1390,8 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                                "review": sp["review"], "move": p.get("move"), "entry": e,
                                "row": row})
         plan_["rows"].append(row)
+    if kw.get("scene") and not plan_.get("scene"):
+        plan_["scene"] = False
     plan_["counts"] = counts(plan_["rows"])
     plan_["counts"]["none"] = sum(1 for i in plan_["items"] if i["move"] == "none")
     return plan_

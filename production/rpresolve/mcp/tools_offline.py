@@ -310,7 +310,8 @@ def _framing_plan(args, ctx):
                           f"{p['out'][0]}x{p['out'][1]}: {n['none']} need nothing, "
                           f"{n[reframe.PASS] - n['none']} pass with a move, "
                           f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
-                          f"{n[reframe.NO_FACE]} no face"),
+                          f"{n[reframe.NO_FACE]} no face"
+                          + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,
               "tsv": stem + ".tsv"}
     result.update(_page(p["rows"], args))
