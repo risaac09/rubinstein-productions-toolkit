@@ -39,6 +39,7 @@ or a freeze shorter than freeze_min_s is not counted in a share.
 Exit 0 when no row fails, 1 on a FAIL or an error.
 """
 
+import bisect
 import json
 import math
 import os
@@ -62,6 +63,7 @@ THRESHOLDS = {
     "repeat_min_s": 1.0,         # benchmark: footage shown more than once, over this
     "repeat_min_gap_s": 3.0,     # a repeat is this far or farther from the first showing
     "repeat_fps": 2.0,           # thumbnails sampled per second
+    "repeat_max_s": 3600.0,      # longer renders skip the row: the comparison grows with the square of the length
     "repeat_match": 4.0,         # mean grey difference (0-255) under this is the same picture
     "repeat_peak": 48.0,         # and no pixel differs by more than this (a small inset on black differs locally)
     "repeat_motion": 6.0,        # a run must change this much between samples, else it is a held shot
@@ -108,7 +110,7 @@ def _covered(segs, dur):
 def parse_channel_rms(text):
     """[RMS level dB] per channel from astats' per-channel blocks, in channel order."""
     levels = []
-    for m in re.finditer(r"Channel: \d+\s*\n.*?RMS level dB: (-?(?:inf|\d+(?:\.\d+)?))", text):
+    for m in re.finditer(r"Channel: \d+\n(?:(?!Channel: ).)*?RMS level dB: (-?(?:inf|\d+(?:\.\d+)?))", text, re.S):
         levels.append(float("-inf") if m.group(1).endswith("inf") else float(m.group(1)))
     return levels
 
@@ -179,12 +181,26 @@ def repeat_runs(np, thumbs, fps, th):
                 prev = i
                 continue
             length = prev - start + 1
-            moving = steps[start:prev].mean() if prev > start else 0.0
+            seg = steps[start:prev + 1]
+            moving = seg.mean() if len(seg) else 0.0
             if length >= need and moving > th["repeat_motion"]:
                 runs.append((start / fps, (start + off) / fps, length / fps))
             if i is not None:
                 start = prev = i
     return sorted(runs)
+
+
+def _union_s(spans):
+    """Seconds covered by a list of (start, end), overlaps counted once."""
+    total, end = 0.0, None
+    for a, b in sorted(spans):
+        if end is None or a > end:
+            total += b - a
+            end = b
+        elif b > end:
+            total += b - end
+            end = b
+    return total
 
 
 def _thumbs(np, path, fps):
@@ -203,16 +219,19 @@ def _thumbs(np, path, fps):
     return raw[:len(raw) // 1024 * 1024].reshape(-1, 1024).astype(np.float32)
 
 
-def repeated_row(path, th):
+def repeated_row(path, th, dur=None):
     np = qc._np()
     if np is None:
         return _row("repeated_footage", qc.SKIP, "needs numpy", "numpy")
+    if dur is not None and dur > th["repeat_max_s"]:
+        return _row("repeated_footage", qc.SKIP, f"{dur:.0f}s long", f"under {th['repeat_max_s']:g}s",
+                    "raise repeat_max_s with --set to run it anyway")
     fps = th["repeat_fps"]
     thumbs = _thumbs(np, path, fps)
     if len(thumbs) < 2:
         return _row("repeated_footage", qc.SKIP, "under two samples", "a render of a few seconds")
     runs = repeat_runs(np, thumbs, fps, th)
-    total = sum(r[2] for r in runs)
+    total = _union_s([(b, b + r) for _, b, r in runs])
     shown = "; ".join(f"{_at(a)} again at {_at(b)} for {r:g}s" for a, b, r in runs[:3])
     if len(runs) > 3:
         shown += f"; {len(runs) - 3} more"
@@ -222,31 +241,34 @@ def repeated_row(path, th):
                f"samples {fps:g}/s, 32x32 grey; a held shot is not counted{WD}")
 
 
-def word_rows(cuts, words, th):
+def word_rows(cuts, words, th, source="the file's scene cuts"):
     """The cut_in_word row. words: [{start, end, word}] sorted by start."""
+    if not cuts:
+        return _row("cut_in_word", qc.SKIP, "no cuts found", "at least one cut",
+                    f"cuts from {source}")
+    edge_s = th["word_edge_s"]
+    starts = [w["start"] for w in words]
     inside, near = [], []
     for c in cuts:
-        for w in words:
-            if w["start"] - th["word_edge_s"] > c:
-                break
-            if w["start"] + th["word_inside_tol_s"] < c < w["end"] - th["word_inside_tol_s"]:
+        hi = bisect.bisect_right(starts, c + edge_s)
+        for w in words[max(0, hi - 3):hi]:
+            margin = min(th["word_inside_tol_s"], (w["end"] - w["start"]) / 4)
+            if w["start"] + margin < c < w["end"] - margin:
                 inside.append((c, w))
                 break
-            edge = min(abs(c - w["start"]), abs(c - w["end"]))
-            if edge < th["word_edge_s"] and w["start"] - th["word_edge_s"] <= c <= w["end"] + th["word_edge_s"]:
+            if min(abs(c - w["start"]), abs(c - w["end"])) < edge_s:
                 near.append((c, w))
                 break
-    name = "cut_in_word"
+    note = f"cuts from {source}"
     if inside:
         shown = ", ".join(f"{_at(c)} in '{w['word']}'" for c, w in inside[:3])
-        return _ok(name, False, f"{len(inside)} of {len(cuts)} cuts inside a word: {shown}",
-                   "no cut inside a word")
+        return _row("cut_in_word", qc.FAIL, f"{len(inside)} of {len(cuts)} cuts inside a word: {shown}",
+                    "no cut inside a word", note)
     if near:
         shown = ", ".join(f"{_at(c)} by '{w['word']}'" for c, w in near[:3])
-        r = _row(name, qc.WARN, f"{len(near)} of {len(cuts)} cuts within {th['word_edge_s'] * 1000:.0f} ms "
-                 f"of a word edge: {shown}", "no cut on a word edge", f"pad 30 to 200 ms{WD}")
-        return r
-    return _ok(name, True, f"{len(cuts)} cuts, none in a word", "no cut inside a word", WD.strip())
+        return _row("cut_in_word", qc.WARN, f"{len(near)} of {len(cuts)} cuts within {edge_s * 1000:.0f} ms "
+                    f"of a word edge: {shown}", "no cut on a word edge", f"{note}; pad 30 to 200 ms{WD}")
+    return _row("cut_in_word", qc.PASS, f"{len(cuts)} cuts, none in a word", "no cut inside a word", note)
 
 
 def face_row(path, dur, th):
@@ -294,14 +316,19 @@ def run_checks(path, th, words=None, shots=None, faces=True):
     if aud is not None:
         rows.append(channel_row(_channel_levels(path), int(aud.get("channels") or 0), th))
     if vid is not None:
-        rows.append(repeated_row(path, th))
-        cuts = qc.shot_cuts(shots) if shots else None
-        if cuts is None:
+        rows.append(repeated_row(path, th, dur))
+        cuts, source = None, "the file's scene cuts"
+        if shots:
+            cuts = qc.shot_cuts(shots)
+            if cuts is None:
+                raise dc.CheckError(f"{shots} has no start column ({', '.join(qc.START_COLUMNS)}).")
+            source = "the shot list"
+        else:
             cuts = qc.parse_scdet(log, th["scdet_threshold"])
         if words is None:
             rows.append(_row("cut_in_word", qc.SKIP, "no word file", "a word JSON (--words)"))
         else:
-            rows.append(word_rows(cuts, words, th))
+            rows.append(word_rows(cuts, words, th, source))
         if faces:
             rows.append(face_row(path, dur, th))
     rank = {qc.FAIL: 0, qc.WARN: 1, qc.PASS: 2, qc.SKIP: 3}
@@ -310,6 +337,19 @@ def run_checks(path, th, words=None, shots=None, faces=True):
     return {"file": os.path.basename(path), "destination": None, "checks": rows, "counts": counts,
             "status": qc.FAIL if counts[qc.FAIL] else qc.PASS,
             "thresholds": {k: th[k] for k in THRESHOLDS}}
+
+
+def format_report(result):
+    """The table as aligned text lines, FAIL rows first."""
+    lines = [result["file"]]
+    for r in result["checks"]:
+        lines.append(f"  {r['status']:<4}  {r['check']:<17} found {r['found']}  (expected {r['expected']})"
+                     + (f"  [{r['note']}]" if r.get("note") else ""))
+    c = result["counts"]
+    warn = f", {c[qc.WARN]} warn" if c.get(qc.WARN) else ""
+    lines.append(f"content-check: {c[qc.PASS]} pass, {c[qc.FAIL]} fail{warn}, {c[qc.SKIP]} skipped: "
+                 f"{result['status'].upper()}")
+    return "\n".join(lines) + "\n"
 
 
 def run(args):
@@ -326,8 +366,7 @@ def run(args):
     if args.json:
         print(json.dumps(result, indent=1))
     else:
-        print(qc.format_report(result).replace("\nqc: ", "\ncontent-check: ")
-              .replace(f"{result['file']}  ->  (no destination)", result["file"]), end="")
+        print(format_report(result), end="")
     return 1 if result["status"] == qc.FAIL else 0
 
 

@@ -13,6 +13,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+import io
+import json
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -92,6 +95,97 @@ class CutInWord(unittest.TestCase):
 
     def test_inside_beats_edge(self):
         self.assertEqual(cc.word_rows([1.01, 1.9], self.WORDS, TH)["status"], qc.FAIL)
+
+
+class CutInWordEdges(unittest.TestCase):
+    def test_short_word_split_in_half_is_inside(self):
+        words = _words((1.0, 1.07, "a"), (1.2, 1.6, "word"))
+        self.assertEqual(cc.word_rows([1.035], words, TH)["status"], qc.FAIL)
+
+    def test_no_cuts_is_skipped_not_passed(self):
+        self.assertEqual(cc.word_rows([], _words((1.0, 1.5, "a")), TH)["status"], qc.SKIP)
+
+    def test_row_names_the_source_of_the_cuts(self):
+        r = cc.word_rows([9.0], _words((1.0, 1.5, "a")), TH, source="the shot list")
+        self.assertIn("the shot list", r["note"])
+
+
+class RepeatRuns(unittest.TestCase):
+    @unittest.skipUnless(numpy, "needs numpy")
+    def test_run_found_and_held_shot_ignored(self):
+        rng = numpy.random.RandomState(1)
+        scene = rng.uniform(0, 255, (8, 1024)).astype("float32")      # 4 s of changing picture at 2/s
+        other = rng.uniform(0, 255, (8, 1024)).astype("float32")
+        thumbs = numpy.vstack([scene, other, scene])                  # the scene again 8 s later
+        runs = cc.repeat_runs(numpy, thumbs, 2.0, TH)
+        self.assertTrue(runs)
+        self.assertEqual(runs[0][0], 0.0)
+        self.assertEqual(runs[0][1], 8.0)
+        held = numpy.tile(scene[:1], (24, 1))                         # one frame held: no motion
+        self.assertEqual(cc.repeat_runs(numpy, held, 2.0, TH), [])
+
+    @unittest.skipUnless(numpy, "needs numpy")
+    def test_one_sample_run_counts_when_the_floor_is_lowered(self):
+        rng = numpy.random.RandomState(2)
+        a, b = rng.uniform(0, 255, (3, 1024)).astype("float32"), rng.uniform(0, 255, (6, 1024)).astype("float32")
+        th = dict(TH, repeat_min_s=0.5)
+        self.assertTrue(cc.repeat_runs(numpy, numpy.vstack([a[:1], b, a[:1], b[:1]]), 2.0, th))
+
+    def test_union_counts_overlap_once(self):
+        self.assertEqual(cc._union_s([(0, 2), (1, 3), (5, 6)]), 4.0)
+
+
+class Command(unittest.TestCase):
+    def _run(self, *argv):
+        p = __import__("argparse").ArgumentParser()
+        cc.add_arguments(p)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cc.run(p.parse_args(list(argv)))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_missing_file_is_an_error_line_and_exit_1(self):
+        code, _, err = self._run("/nonexistent/render.mp4")
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR", err)
+
+    def test_unknown_threshold_is_refused(self):
+        self.assertEqual(self._run("/nonexistent/render.mp4", "--set", "nope=1")[0], 1)
+
+
+@unittest.skipUnless(_have_ffmpeg(), "ffmpeg missing")
+class CommandOnMedia(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.clean = os.path.join(cls._tmp.name, "clean.mp4")
+        cls.silent = os.path.join(cls._tmp.name, "silent.mp4")
+        _video(cls.clean, "mandelbrot=s=160x90:r=10:end_scale=0.05")
+        _video(cls.silent, "mandelbrot=s=160x90:r=10:end_scale=0.05",
+               audio="sine=f=440:r=48000:d={d},volume=0")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    _run = Command._run
+
+    def test_json_output_and_exit_codes(self):
+        code, out, _ = self._run(self.clean, "--no-faces", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["status"], qc.PASS)
+        self.assertEqual(self._run(self.silent, "--no-faces")[0], 1)
+
+    def test_set_overrides_a_threshold(self):
+        self.assertEqual(self._run(self.silent, "--no-faces", "--set", "silent_share_max=1.5")[0], 0)
+
+    def test_shot_list_without_a_start_column_is_refused(self):
+        csv_path = os.path.join(self._tmp.name, "bad.csv")
+        with open(csv_path, "w") as f:
+            f.write("name\nx\n")
+        code, _, err = self._run(self.clean, "--no-faces", "--shots", csv_path)
+        self.assertEqual(code, 1)
+        self.assertIn("start column", err)
 
 
 class FaceRow(unittest.TestCase):
