@@ -7,6 +7,7 @@ card: read, check and keep the record of a copied camera card (production/card-r
     card init --retrofit FOLDER --cam CAM
                                        a folder with no record: write its SHA256SUMS and a schema 2 record
     card set PATH --squeeze F [--clip ID]   record the squeeze answer (1 is spherical); --project SLUG;
+                                       --upgrade turns a schema 1 record into schema 2 with no answer;
                                        --refresh-shoot recomputes the shoot from the clips' capture times
     card mv PATH DEST_PARENT           move a card folder and its sidecars on the same volume, verify
                                        by hash, and append the move to the record's history
@@ -40,6 +41,7 @@ def add_arguments(p):
     p.add_argument("--squeeze", type=float, metavar="FACTOR", help="set: the squeeze factor; 1 is spherical")
     p.add_argument("--clip", action="append", metavar="ID", help="set: only this clip (clip id or file name; repeatable)")
     p.add_argument("--project", help="set: the project slug")
+    p.add_argument("--upgrade", action="store_true", help="set: upgrade a schema 1 record to schema 2, answering nothing")
     p.add_argument("--refresh-shoot", action="store_true",
                    help="set: recompute shoot (days, times, cameras) from the clips' own capture times")
 
@@ -163,9 +165,11 @@ def init(args):
 def set_(args):
     if len(args.paths) != 1:
         return _fail("set takes one path")
-    if args.squeeze is None and not args.project and not args.refresh_shoot:
-        return _fail("set wants --squeeze FACTOR, --project SLUG or --refresh-shoot")
+    if args.squeeze is None and not args.project and not args.refresh_shoot and not args.upgrade:
+        return _fail("set wants --squeeze FACTOR, --project SLUG, --refresh-shoot or --upgrade")
     card = rpcard.load(args.paths[0])
+    if args.upgrade and card["version"] == 2:
+        return _fail(f"{card['name']} is already schema 2")
     info = {}
     f = None if args.squeeze is None else (int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze)
     rec = rpcard.plan_set(card, default=None if args.clip else f,

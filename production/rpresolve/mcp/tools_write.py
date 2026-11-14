@@ -690,6 +690,8 @@ def queue_render(args, ctx):
                                  f"{floor:.2f} fps floor; it is queued as it is, the frame "
                                  "rate stays the timeline's.")
         side = f" with sidecar {os.path.basename(r['sidecar'])}" if r["sidecar"] else ""
+        sub = deliver.destination(config, args["destination"]).get("subfolder")
+        side += f" (the destination's subfolder '{sub}' is added under the target folder)" if sub else ""
         if r["dry_run"]:
             r["summary"] = (f"would queue '{tl}' for {d} as {r['output']}{side} (not started); "
                             f"this sets the Deliver page's {', '.join(r['deliver_changed'])}; "

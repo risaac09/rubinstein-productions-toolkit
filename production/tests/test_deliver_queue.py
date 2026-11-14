@@ -585,6 +585,7 @@ class TestMCP(Base):
         self.assertIn("would queue 'Clip [auto]' for LinkedIn 16:9", dry["summary"])
         self.assertIn("sidecar SW001_Guest_01_example-clip_16x9.srt", dry["summary"])
         self.assertIn(dry["plan_sha"], dry["summary"])
+        self.assertIn("subfolder 'linkedin_16x9' is added under the target folder", dry["summary"])
         self.assertIn("render mode Single clip (put back)", dry["summary"])
         self.assertIn("VideoQuality", dry["summary"].split("as it stands:")[1])
         self.assertEqual((self.project.jobs, self.journal()), ([], []))
