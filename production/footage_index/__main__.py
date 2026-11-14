@@ -510,9 +510,10 @@ def cmd_find(a):
 def cmd_speech(a):
     from . import speech
     c = store.connect()
-    clips, segs, orphans = speech.ingest(c, a.folder)
+    clips, segs, orphans, unscreened = speech.ingest(c, a.folder)
     c.commit()
-    log(f"speech: {segs} segment(s) from {clips} clip(s); {orphans} transcript(s) match no indexed clip")
+    log(f"speech: {segs} segment(s) from {clips} clip(s); {orphans} transcript(s) match no indexed clip; "
+        f"{unscreened} not screened, skipped")
 
 
 def cmd_say(a):

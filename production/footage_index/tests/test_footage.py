@@ -1870,13 +1870,16 @@ def test_speech_ingest_and_say(tmp_path):
     d.mkdir(parents=True)
     segs = [{"start": 1.0, "end": 2.5, "text": " the heron's lands softly"}, {"start": 3.0, "end": 4.0, "text": "[singing]"},
             {"start": 5.0, "end": 6.0, "text": "lyrics", "redacted": True}]
-    (d / "a1.json").write_text(json.dumps({"segments": segs}))
+    (d / "a1.json").write_text(json.dumps({"safety": {"version": 1}, "segments": segs}))
+    (d / "b1.json").write_text(json.dumps({"segments": [{"start": 0, "end": 1, "text": "unscreened words"}]}))
+    cid_b, _ = store.upsert_clip(c, "Shoots/day/b1.mov", "kb", 1, 1)
     (d / "a1.raw.json").write_text(json.dumps({"segments": [{"start": 0, "end": 1, "text": "never read"}]}))
     (d / "gone.json").write_text(json.dumps({"segments": segs}))
-    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1)
-    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1)  # a second read replaces, not adds
+    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1, 1)
+    assert speech.ingest(c, str(tmp_path / "t")) == (1, 1, 1, 1)  # a second read replaces, not adds
     assert [(r["relpath"], r["t_in"]) for r in speech.say(c, "Heron, lands")] == [("Shoots/day/a1.mov", 1.0)]
     assert speech.say(c, "heron's lands")[0]["t_in"] == 1.0 and speech.say(c, "heron", client=False)
     assert speech.say(c, "lyrics") == speech.say(c, "never read") == speech.say(c, "") == []
+    assert speech.say(c, "unscreened words") == []  # a transcript with no screening block is never stored
     store.prune(c, set())
     assert c.execute("SELECT count(*) FROM speech").fetchone()[0] == 0
