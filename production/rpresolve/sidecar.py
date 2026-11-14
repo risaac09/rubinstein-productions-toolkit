@@ -80,6 +80,18 @@ def shared_ids(paths):
     return {k: v for k, v in by.items() if len(v) > 1}
 
 
+_SUMS_LINE = re.compile(r"^([0-9a-f]{64}) [ *](.+)$")
+
+
+def sums_line(line):
+    """(sha256, path relative to the card folder) from one SHA256SUMS line, or None. Older
+    tools wrote './DCIM/...' and a '*' binary-mode mark before the path; both are read as
+    the bare path, which is what the file on disk is called. The file is never rewritten."""
+    m = _SUMS_LINE.match(line.rstrip("\n"))
+    name = re.sub(r"^(\./+)+", "", m.group(2)) if m else ""
+    return (m.group(1), name) if name else None
+
+
 def source_sha256(path):
     """The sha256 offload.sh recorded for this file in <CAM>-<id6>.SHA256SUMS
     beside the card folder (lines are '<hash>  <path relative to the card
@@ -93,9 +105,9 @@ def source_sha256(path):
     try:
         with open(sums, encoding="utf-8") as f:
             for line in f:
-                h, sep, name = line.rstrip("\n").partition("  ")
-                if sep and name == rel:
-                    return h
+                got = sums_line(line)
+                if got and got[1] == rel:
+                    return got[0]
     except OSError:
         pass
     return None

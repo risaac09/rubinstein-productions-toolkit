@@ -118,28 +118,40 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def derive_clips(prefix, relpaths):
-    """[{clip_id, relpath, proxy}] for the video originals among `relpaths`. A video in a
-    Proxy folder is the proxy of the original beside that folder with the same stem; a
-    proxy with no original is listed as a clip of its own."""
+def split_clips(prefix, relpaths):
+    """([{clip_id, relpath, proxy}], [orphan proxies]) for the videos among `relpaths`. A video
+    under any folder named Proxy (any case) is a camera proxy, never a clip: it is the `proxy` of
+    the original outside every Proxy folder with the same stem (the one beside the Proxy folder
+    when several share it). A proxy with no such original is an orphan, left out of the clips."""
     vids = [r for r in relpaths if os.path.splitext(r)[1].lower() in VIDEO]
-    def is_proxy(r):
+
+    def in_proxy(r):
         return any(c.lower() in PROXY_DIRS for c in r.split("/")[:-1])
-    originals = {(os.path.dirname(r), sidecar.stem(r)): r for r in vids if not is_proxy(r)}
+    by_stem = {}
+    for r in vids:
+        if not in_proxy(r):
+            by_stem.setdefault(sidecar.stem(r), []).append(r)
     proxy_of, orphans = {}, []
     for r in vids:
-        if not is_proxy(r):
+        if not in_proxy(r):
             continue
         d = os.path.dirname(r)
         while d and os.path.basename(d).lower() not in PROXY_DIRS:
             d = os.path.dirname(d)
-        orig = originals.get((os.path.dirname(d), sidecar.stem(r)))
+        near = [o for o in sorted(by_stem.get(sidecar.stem(r), ())) if os.path.dirname(o) == os.path.dirname(d)]
+        orig = (near or sorted(by_stem.get(sidecar.stem(r), ())) or [None])[0]
         if orig:
             proxy_of.setdefault(orig, r)
         else:
             orphans.append(r)
-    keep = sorted([r for r in vids if not is_proxy(r)] + orphans)
-    return [{"clip_id": f"{prefix}/{sidecar.stem(r)}", "relpath": r, "proxy": proxy_of.get(r)} for r in keep]
+    keep = sorted(r for r in vids if not in_proxy(r))
+    return ([{"clip_id": f"{prefix}/{sidecar.stem(r)}", "relpath": r, "proxy": proxy_of.get(r)} for r in keep],
+            orphans)
+
+
+def derive_clips(prefix, relpaths):
+    """The clips of split_clips: the originals, each with its in-card camera proxy."""
+    return split_clips(prefix, relpaths)[0]
 
 
 # ---- the proofs --------------------------------------------------------------
@@ -150,9 +162,9 @@ def read_sums(folder):
     if out["present"]:
         with open(out["path"], encoding="utf-8", errors="replace") as f:
             for n, line in enumerate(f, 1):
-                h, sep, name = line.rstrip("\n").partition("  ")
-                if sep and re.fullmatch(r"[0-9a-f]{64}", h) and name and name not in out["files"]:
-                    out["files"][name] = h
+                got = sidecar.sums_line(line)
+                if got and got[1] not in out["files"]:
+                    out["files"][got[1]] = got[0]
                 else:
                     out["bad"].append(n)
     return out
@@ -328,6 +340,7 @@ def load(path, check_open=True):
     clips              the originals: the record's list, else derived from SHA256SUMS or the folder
     answers            the record's answers, with a legacy squeeze.json folded in as squeeze
     sums, offsite      the proofs (see read_sums, read_offsite)
+    notes              things to know that fail nothing: a proxy with no original
     open               what is still open: "squeeze <clip_id>", "offsite", "project"
                        (check_open=False leaves it empty: it asks ffprobe about every BRAW clip)
     """
@@ -353,8 +366,9 @@ def load(path, check_open=True):
     prefix = f"{rec['cam']}-{rec['card_id'][:6]}" if rec and isinstance(rec.get("cam"), str) \
         and isinstance(rec.get("card_id"), str) else out["name"]
     stored = rec.get("clips") if rec else None
-    out["clips"] = stored if isinstance(stored, list) and out["version"] == 2 \
-        else derive_clips(prefix, sorted(out["sums"]["files"]) or [r for r, _ in listing(root)])
+    derived, orphans = split_clips(prefix, sorted(out["sums"]["files"]) or [r for r, _ in listing(root)])
+    out["clips"] = stored if isinstance(stored, list) and out["version"] == 2 else derived
+    out["notes"] = [f"proxy with no original: {r}" for r in orphans]
     answers = dict(rec.get("answers") or {}) if rec and isinstance(rec.get("answers"), dict) else {}
     try:
         legacy = _fold_legacy(root, out["clips"]) if "squeeze" not in answers else None

@@ -824,7 +824,7 @@ def card_show(args, ctx):
                        f"{len([o for o in c['open'] if o.startswith('squeeze ')])} without a squeeze answer, "
                        f"{len(c['problems'])} problem(s)",
             "root": c["root"], "name": c["name"], "version": c["version"], "record": c["record"],
-            "problems": c["problems"], "clips": c["clips"], "answers": c["answers"],
+            "problems": c["problems"], "notes": c["notes"], "clips": c["clips"], "answers": c["answers"],
             "legacy_squeeze": c["legacy"], "open": c["open"], "offsite": c["offsite"],
             "sums": {"present": sums["present"], "files": len(sums["files"]), "bad_lines": sums["bad"]},
             "shoot": r.get("shoot"), "project": r.get("project")}
@@ -841,8 +841,9 @@ def card_check(args, ctx):
     rows = []
     for f in folders:
         ctx.check_cancel()
-        res = rpcard.check(rpcard.load(f), full=not args["quick"])
-        rows.append({"card": f, "pass": not any(res.values()),
+        loaded = rpcard.load(f)
+        res = rpcard.check(loaded, full=not args["quick"])
+        rows.append({"card": f, "pass": not any(res.values()), "notes": loaded["notes"],
                      "failing": {s: res[s] for s in rpcard.STANDARDS if res[s]}})
     bad = [r for r in rows if not r["pass"]]
     result = {"summary": f"{len(rows)} card(s), {len(bad)} fail"

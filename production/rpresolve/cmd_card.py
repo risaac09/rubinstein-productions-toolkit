@@ -65,6 +65,8 @@ def show(path, as_json):
     print(f"  offsite   {off['remote']} at {off['checked_utc']}" if off["ok"] else "  offsite   none")
     for p in c["problems"]:
         print(f"  problem   {p}")
+    for n in c["notes"]:
+        print(f"  note      {n}")
     for o in c["open"]:
         print(f"  open      {o}")
     return 0
@@ -85,17 +87,20 @@ def check(paths, quick, depth):
     bad = 0
     for f, root in folders:
         label = os.path.relpath(f, root) if root else f
+        notes = []
         try:
-            res = rpcard.check(rpcard.load(f), full=not quick)
+            loaded = rpcard.load(f)
+            notes, res = loaded["notes"], rpcard.check(loaded, full=not quick)
         except (OSError, rpcard.CardError) as e:
             res = {s: [str(e)] if s == "S1" else [] for s in rpcard.STANDARDS}
         failing = [s for s in rpcard.STANDARDS if res[s]]
+        tail = f"  (note: {len(notes)} proxy file(s) with no original)" if notes else ""
         if not failing:
-            print(f"PASS  {label}  S1 S2 S3 S4 S5")
+            print(f"PASS  {label}  S1 S2 S3 S4 S5{tail}")
             continue
         bad += 1
         why = "; ".join(f"{s} {res[s][0]}" + (f" (+{len(res[s]) - 1} more)" if len(res[s]) > 1 else "") for s in failing)
-        print(f"FAIL  {label}  {' '.join(failing)}: {why}")
+        print(f"FAIL  {label}  {' '.join(failing)}: {why}{tail}")
     print(f"card check: {len(folders)} card(s), {bad} fail", file=sys.stderr)
     return 1 if bad else 0
 
