@@ -160,11 +160,26 @@ def plan(manifest, exclude=None):
     music = manifest.get("music")
     if music is not None and not (isinstance(music, dict) and os.path.isabs(str(music.get("path")))):
         raise Refused("music is {path (absolute), in}")
+    gain = manifest.get("music_gain_db")
+    if gain is not None:
+        if not music:
+            raise Refused("music_gain_db is the level of the music bed: set music")
+        if isinstance(gain, bool) or not isinstance(gain, (int, float)) or not -40 <= gain <= 12:
+            raise Refused("music_gain_db is a number from -40 to 12 (dB)")
+    fade = manifest.get("camera_sound_fade_s")
+    if fade is not None:
+        if not sound:
+            raise Refused("camera_sound_fade_s fades the camera sound out: set camera_sound true")
+        if (isinstance(fade, bool) or not isinstance(fade, (int, float)) or not 0 < fade <= 5
+                or fade > spans[-1]["frames"] / fps / 2):
+            raise Refused("camera_sound_fade_s is a number above 0 and at most 5 seconds, and at "
+                          "most half the last shot")
     return {"fps": fps, "spans": spans, "frames": sum(r["frames"] for r in spans),
             "black_frames": _black_frames(manifest, fps),
             "music": {"path": music["path"], "in": float(music.get("in") or 0)} if music else None,
             "track": 2 if any(r.get("plate") for r in spans) else 1,
-            "sound": sound, "sound_lufs": lufs, "squeeze": squeeze,
+            "sound": sound, "sound_lufs": lufs, "music_gain_db": float(gain or 0),
+            "sound_fade_s": fade, "squeeze": squeeze,
             "not_built": not_built, "exclude": ex,
             "exclude_note": cutlist.exclude_note(ex)}
 
@@ -318,13 +333,9 @@ def plate_handles(p):
     return rows
 
 
-def bed_plan(p, manifest, bed_dir, tl_fps):
-    """The music bed this plan places on A1 (musicbed.spec), or None without music. The bed
-    goes in bed_dir, else beside the manifest file; refused when neither is known, when
-    the folder sits inside a git working tree (the bed is client audio), or when the music
-    runs out before the bed does (ffprobe, so the dry run says it, not only the real run)."""
-    if not p["music"]:
-        return None
+def bed_folder(manifest, bed_dir):
+    """The absolute folder baked audio goes in: bed_dir, else beside the manifest file; refused
+    when neither is known or the folder sits inside a git working tree (client audio)."""
     if bed_dir is None and isinstance(manifest, str):
         bed_dir = os.path.dirname(os.path.abspath(manifest))
     if not bed_dir or not os.path.isabs(bed_dir):
@@ -333,9 +344,21 @@ def bed_plan(p, manifest, bed_dir, tl_fps):
     if rppaths.in_any_git_tree(bed_dir):
         raise Refused(f"bed_dir {bed_dir} is inside a git working tree. The bed is cut from "
                       "the client's music; write it outside any repository.")
+    return bed_dir
+
+
+def bed_plan(p, manifest, bed_dir, tl_fps):
+    """The music bed this plan places on A1 (musicbed.spec), or None without music. The bed
+    goes in bed_dir, else beside the manifest file; refused when neither is known, when
+    the folder sits inside a git working tree (the bed is client audio), or when the music
+    runs out before the bed does (ffprobe, so the dry run says it, not only the real run)."""
+    if not p["music"]:
+        return None
+    bed_dir = bed_folder(manifest, bed_dir)
     try:
         bed = musicbed.spec(p["music"]["path"], p["music"]["in"],
-                            round((p["frames"] + p["black_frames"]) / tl_fps, 4), bed_dir)
+                            round((p["frames"] + p["black_frames"]) / tl_fps, 4), bed_dir,
+                            gain_db=p["music_gain_db"])
         if not os.path.isfile(bed["path"]):  # a bed already cut was long enough
             musicbed.check_source(bed["src"], bed["in"], bed["seconds"])
         return bed
@@ -343,13 +366,29 @@ def bed_plan(p, manifest, bed_dir, tl_fps):
         raise Refused(str(e))
 
 
-def _bake(bed):
+def tail_plan(p, bed_dir, tl_fps):
+    """The last shot's camera sound baked with its fade out (musicbed.spec), or None without
+    camera_sound_fade_s. SetFades does not render (T18), so the fade is in a file that takes
+    the last shot's place on A1: the first audio stream, the span's own range."""
+    if not p["sound_fade_s"]:
+        return None
+    last = p["spans"][-1]
+    try:
+        return musicbed.spec(last["path"], last["in"], round(last["frames"] / tl_fps, 4),
+                             bed_dir, fade=p["sound_fade_s"], tag="camtail")
+    except musicbed.BedError as e:
+        raise Refused(str(e))
+
+
+def _bake(bed, camera=False):
     """Make the bed file unless the same one (same name) is already there; 'baked' or
     'reused'. A failure is a refusal: nothing has gone into Resolve yet."""
     if os.path.isfile(bed["path"]):
         return "reused"
     try:
-        musicbed.bake(bed["src"], bed["in"], bed["seconds"], bed["fade_s"], bed["path"])
+        musicbed.bake(bed["src"], bed["in"], bed["seconds"], bed["fade_s"], bed["path"],
+                      gain_db=bed["gain_db"], max_frac=0.5 if camera else 0.25,
+                      first_stream=camera)
     except musicbed.BedError as e:
         raise Refused(f"the music bed was not made, nothing was written to Resolve: {e}")
     return "baked"
@@ -404,13 +443,15 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     streams = camera_streams(p) if p["sound"] else []
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
+    tail = tail_plan(p, bed_folder(manifest, bed_dir), tl_fps) if p["sound_fade_s"] else None
+    mix = mix_peak(p, bed, level, tail) if bed and p["sound"] else None
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report, tl_colour, desqueeze, level)
+                   report, tl_colour, desqueeze, level, tail, mix)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
            "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape,
-           "camera_level": level, "camera_streams": streams, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
+           "camera_level": level, "camera_streams": streams, "camera_tail": tail, "mix": mix, "plates": plates, "exclude": p["exclude"], "exclude_note": p["exclude_note"],
            "bed": bed and {**bed, "result": "would reuse" if os.path.isfile(bed["path"])
                            else "would bake"},
            "plan_sha": sha, "ledger": report,
@@ -426,6 +467,8 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
                       "again and review it")
     if bed:
         out["bed"]["result"] = _bake(bed)
+    if tail:
+        out["camera_tail"]["result"] = _bake(tail, camera=True)
     snap = api.UISnapshot(resolve, project)
     with snap:
         project = pin.check(pm)
@@ -444,7 +487,9 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         raise api.WriteNotApplied(f"could not open the bin '{BIN}'")
     have = {c.GetClipProperty("File Path"): c for c in folder.GetClipList() or []}
     music = out["bed"]["path"] if p["music"] else None  # the baked bed, never the original
-    want = sorted({r["path"] for r in p["spans"]} | ({music} if music else set()))
+    tail = out["camera_tail"]["path"] if out["camera_tail"] else None
+    want = sorted({r["path"] for r in p["spans"]} | ({music} if music else set())
+                  | ({tail} if tail else set()))
     new = [x for x in want if x not in have]
     imported = set()
     before = {c.GetUniqueId() for c in _all_clips(root)} if new else set()
@@ -513,7 +558,8 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
             out["items"].append(row)
         if p["sound"]:
             check()
-            out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems, out)
+            out["camera_audio"] = _camera_audio(tl, media_pool, p, infos, items, problems, out,
+                                                have.get(tail), tl_fps)
             _camera_level(out, tl, p, problems)
         _plates(out, tl, media_pool, have, p, ends, tl_fps, check)
         for r in p["spans"]:  # centred on the cut, so it needs handles either side
@@ -736,7 +782,7 @@ def _spill(tl, out, problems):
             api._safe_call(tl, "DeleteTrack", "audio", t)
 
 
-def _camera_audio(tl, media_pool, p, infos, items, problems, out):
+def _camera_audio(tl, media_pool, p, infos, items, problems, out, tail=None, tl_fps=None):
     """Each span's own camera sound on A1 under its picture: the same clip, the same source
     frames and the same record frame as the picture item (read from the item, so a montage
     on V2 and a plate-free V1 line up alike). Read back: how many, where, how long. A source
@@ -745,6 +791,11 @@ def _camera_audio(tl, media_pool, p, infos, items, problems, out):
     audio = [{"mediaPoolItem": i["mediaPoolItem"], "startFrame": i["startFrame"],
               "endFrame": i["endFrame"], "mediaType": 2, "trackIndex": 1,
               "recordFrame": it.GetStart()} for i, it in zip(infos, items)]
+    if tail is not None:  # the last shot's baked sound, its fade in the file (T18)
+        af = _clip_fps(tail, tl_fps)
+        af = af if 20 < af < 70 else tl_fps
+        audio[-1] = {**audio[-1], "mediaPoolItem": tail, "startFrame": 0,
+                     "endFrame": int(math.ceil(p["spans"][-1]["frames"] * af / tl_fps - 1e-6))}
     media_pool.AppendToTimeline(audio)
     _spill(tl, out, problems)
     got = tl.GetItemListInTrack("audio", 1) or []
@@ -762,6 +813,51 @@ def _camera_audio(tl, media_pool, p, infos, items, problems, out):
                             f"for {pic.GetDuration()}")
         rows.append(row)
     return rows
+
+
+def mix_peak(p, bed, level, tail=None):
+    """{integrated_lufs, true_peak_dbtp, ceiling}: the camera sound ranges (first stream, the
+    camera gain, the last shot's fade) summed with the bed (its in point, gain and fade), read
+    by ffmpeg's ebur128 offline, as the two will be placed. Refused above PEAK_CEILING_DBTP,
+    the rule the camera bed alone meets. Raises Refused when ffmpeg cannot read a file."""
+    ins, chains = [], []
+    for i, r in enumerate(p["spans"]):
+        ins += ["-ss", f"{r['in']:.6f}", "-t", f"{r['frames'] / p['fps']:.6f}", "-i",
+                dc._src(r["path"])]
+        fade = ""
+        if tail and i == len(p["spans"]) - 1:
+            n = r["frames"] / p["fps"]
+            fade = f",afade=t=out:st={n - tail['fade_s']:.4f}:d={tail['fade_s']:.4f}"
+        chains.append(f"[{i}:a:0]aresample=48000,aformat=channel_layouts=stereo{fade}[a{i}]")
+    n = len(p["spans"])
+    gain = level["gain_db"] if level else 0.0
+    ins += ["-ss", f"{bed['in']:.4f}", "-t", f"{bed['seconds']:.4f}", "-i", dc._src(bed["src"])]
+    graph = (";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(n))
+             + f"concat=n={n}:v=0:a=1,volume={gain:g}dB[cam];"
+             # A2 is a mono track (AddTrack without a type): Resolve folds the stereo bed to mono
+             # and pans it at -3 dB. The v4 master read -14.4 LUFS against -14.1 from this chain
+             f"[{n}:a:0]aresample=48000,pan=mono|c0=0.5*c0+0.5*c1,volume=-3.0103dB,"
+             "pan=stereo|c0=c0|c1=c0,"
+             f"{musicbed.fade_filter(bed['seconds'], bed['fade_s'], bed['gain_db'])}[mus];"
+             "[cam][mus]amix=inputs=2:duration=longest:normalize=0,"
+             "ebur128=peak=true:framelog=quiet")
+    try:
+        dc.check_tools()
+        proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", *ins,
+                        "-filter_complex", graph, "-f", "null", "-"], dc.READ_TIMEOUT_S)
+        if proc.returncode != 0:
+            raise dc.CheckError(proc.stderr.strip()[-300:])
+        m = dc.parse_ebur128(proc.stderr)
+    except (dc.ToolMissing, dc.CheckError) as e:
+        raise Refused(f"the mix could not be measured: {e}")
+    tp = m["true_peak_dbtp"]
+    if tp is None or tp > PEAK_CEILING_DBTP:
+        raise Refused(f"the camera sound and the music bed together peak at {tp} dBTP, above the "
+                      f"{PEAK_CEILING_DBTP:g} dBTP ceiling (integrated {m['integrated_lufs']} "
+                      "LUFS). Lower music_gain_db and the camera sound by the same amount "
+                      "(camera_sound_lufs) to keep the balance.")
+    return {"integrated_lufs": m["integrated_lufs"], "true_peak_dbtp": tp,
+            "ceiling": PEAK_CEILING_DBTP}
 
 
 PEAK_CEILING_DBTP = -1.0  # the camera bed, after its gain, stays under this true peak

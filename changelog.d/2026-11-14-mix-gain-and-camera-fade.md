@@ -1,0 +1,1 @@
+assemble_timeline: manifest keys music_gain_db (a gain baked into the music bed) and camera_sound_fade_s (the last shot's camera sound baked with a fade out and placed on A1); with music and camera sound the dry run reports the true peak of the mix as placed and refuses above -1 dBTP.
