@@ -42,6 +42,11 @@ def add_arguments(p):
                         "samples (default) or the largest of those present in at least half as "
                         "many")
     p.add_argument("--only", nargs="+", metavar="CLIP", help="Only these clips")
+    p.add_argument("--scene", action="store_true",
+                   help="Read each sampled frame's scene (saliency, sharpness, motion; macOS): a "
+                        "span with no face is cropped on the saliency centre and flagged, a tie "
+                        "between faces goes to it, and each span records composition numbers and "
+                        "a move type (hold, pan or track)")
     p.add_argument("--allow-bars", action="store_true",
                    help="Try the Ep 002 punch-in (2.25) first when a clip names no scale, and "
                         "keep it when it holds the face though the picture does not fill the "
@@ -81,6 +86,7 @@ def run(args):
                               subject_region=getattr(args, "subject_region", None),
                               min_face_height=getattr(args, "min_face_height", None),
                               prefer=getattr(args, "prefer", reframe.PREFER_PRESENT),
+                              scene=bool(getattr(args, "scene", False)),
                               progress=lambda d, n: print(f"  span {d} of {n}", file=sys.stderr))
     except (cutlist.CutlistError, reframe.ReframeError, OSError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

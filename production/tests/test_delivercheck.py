@@ -86,7 +86,7 @@ def tiny(key, size=None):
     """A default destination at a test-sized frame."""
     d = deliver.destination(CFG, key)
     if d["resolution"] != "timeline":
-        w, h = size or {"16x9": (64, 36), "9x16": (36, 64), "1x1": (48, 48)}[d["aspect"]]
+        w, h = size or {"16x9": (64, 36), "9x16": (36, 64), "1x1": (48, 48), "4x5": (48, 60)}[d["aspect"]]
         d["resolution"] = {"width": w, "height": h}
     return d
 

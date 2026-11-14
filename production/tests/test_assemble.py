@@ -34,6 +34,7 @@ from rpresolve.workflows import Refused  # noqa: E402
 
 REAL_BAKE, REAL_SOURCE_SECONDS = a.musicbed.bake, a.musicbed.source_seconds  # before Base stubs them
 REAL_MEASURE = a.measure_bed
+REAL_MIX = a.mix_peak
 needs_ffmpeg = unittest.skipUnless(
     all(os.access(t, os.X_OK) for t in (dc.FFMPEG, dc.FFPROBE)), "ffmpeg or ffprobe missing")
 
@@ -89,7 +90,11 @@ class Base(unittest.TestCase):
             "method": {"id": "m", "aspect": "16:9", "look": None, "end": "black:0.5", "ui_steps": []}}
         # the bed is baked by ffmpeg; here bake() records its call and writes a stub file
         self.bed_dir = os.path.join(d, "beds")
-        self.baked = []
+        self.baked, self.bake_kw = [], []
+        self.mix = {"integrated_lufs": -20.0, "true_peak_dbtp": -6.0, "ceiling": -1.0}
+        patch = mock.patch.object(a, "mix_peak", lambda *args: self.mix)
+        patch.start()
+        self.addCleanup(patch.stop)
         self.bake_error = None
         self.song_seconds = 60.0  # what the dry run's ffprobe finds in the stub song
         for new in (mock.patch.object(a.musicbed, "bake", self.fake_bake),
@@ -101,10 +106,11 @@ class Base(unittest.TestCase):
         self.project.settings["timelineFrameRate"] = "24"
         self.resolve = rf.Resolve(self.project, page="cut")
 
-    def fake_bake(self, src, in_s, seconds, fade_s, out):
+    def fake_bake(self, src, in_s, seconds, fade_s, out, **kw):
         if self.bake_error:
             raise a.musicbed.BedError(self.bake_error)
         self.baked.append((src, in_s, seconds, fade_s, out))
+        self.bake_kw.append(kw)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         Path(out).write_bytes(b"x")
         return seconds
@@ -1196,6 +1202,57 @@ class TestTimelineColourAndCameraSound(Base):
         self.assertTrue(all(x["streams_found"] == 4 and x["streams_used"] == 1
                             for x in dry["camera_streams"]), dry["camera_streams"])
 
+    def test_music_gain_and_camera_fade_keys_are_checked(self):
+        for key, value, msg in (("music_gain_db", -6, "set music"),):
+            self.manifest.pop("music")
+            self.manifest[key] = value
+            with self.assertRaisesRegex(Refused, msg):
+                self.go()
+            self.manifest.pop(key)
+            self.manifest["music"] = {"path": self.song, "in": 8.0}
+        self.manifest["music_gain_db"] = "quiet"
+        with self.assertRaisesRegex(Refused, "music_gain_db is a number"):
+            self.go()
+        del self.manifest["music_gain_db"]
+        self.manifest["camera_sound_fade_s"] = 0.2
+        with self.assertRaisesRegex(Refused, "set camera_sound true"):
+            self.go()
+        self.manifest["camera_sound"] = True
+        self.manifest["camera_sound_fade_s"] = 0.5  # the last shot is 0.25 s
+        with self.assertRaisesRegex(Refused, "half the last shot"):
+            self.go()
+
+    def test_music_gain_is_baked_into_the_bed_and_names_it(self):
+        plain = self.go()["bed"]["path"]
+        self.manifest["music_gain_db"] = -6
+        dry, r, tl = self.built()
+        self.assertNotEqual(dry["bed"]["path"], plain)
+        self.assertEqual(self.bake_kw[-1]["gain_db"], -6.0)
+        self.assertEqual(r["bed"]["gain_db"], -6.0)
+
+    def test_the_last_shots_camera_sound_is_baked_with_its_fade_and_placed_on_a1(self):
+        self.manifest["camera_sound"] = True
+        self.manifest["camera_sound_fade_s"] = 0.1
+        dry, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(dry["camera_tail"]["fade_s"], 0.1)
+        self.assertIn("camtail", dry["camera_tail"]["path"])
+        tail_kw = next(k for k in self.bake_kw if k.get("first_stream"))
+        self.assertEqual(tail_kw["max_frac"], 0.5)
+        snd = tl.GetItemListInTrack("audio", 1)
+        self.assertEqual(len(snd), 3)
+        self.assertEqual(snd[-1].clip.props["File Path"], dry["camera_tail"]["path"])
+        self.assertTrue(all(i.clip.props["File Path"] != dry["camera_tail"]["path"]
+                            for i in snd[:-1]))
+        self.assertEqual(len(tl.GetItemListInTrack("audio", 2)), 1)
+
+    def test_the_mix_is_in_the_dry_run_and_the_plan_hash(self):
+        self.manifest["camera_sound"] = True
+        before = self.go()
+        self.assertEqual(before["mix"]["true_peak_dbtp"], -6.0)
+        self.mix = {**self.mix, "true_peak_dbtp": -5.0}
+        self.assertNotEqual(before["plan_sha"], self.go()["plan_sha"])
+
     def test_camera_sound_goes_under_each_picture_on_a1_and_the_music_moves_to_a2(self):
         self.manifest["camera_sound"] = True
         dry, r, tl = self.built()
@@ -1503,3 +1560,55 @@ class TestCameraLevel(Base):
             {"fps": 24, "spans": [{"path": src, "in": 0.0, "frames": 24}]})
         loud = REAL_MEASURE({"fps": 24, "spans": [{"path": src, "in": 1.0, "frames": 24}]})
         self.assertGreater(real["integrated_lufs"], loud["integrated_lufs"] + 20)
+
+
+class TestMixPeak(unittest.TestCase):
+    """mix_peak sums the camera sound and the bed offline and refuses above -1 dBTP."""
+
+    def run_mix(self, tp, gain=-3.0, fade=True):
+        p = {"fps": 24, "spans": [{"path": "/x/one.mov", "in": 1.0, "frames": 48},
+                                  {"path": "/x/two.mov", "in": 2.0, "frames": 48}]}
+        bed = {"src": "/x/song.m4a", "in": 8.0, "seconds": 4.0, "fade_s": 1.0, "gain_db": -4.0}
+        seen = {}
+
+        def fake_run(cmd, timeout):
+            seen["graph"] = cmd[cmd.index("-filter_complex") + 1]
+            return mock.Mock(returncode=0, stderr=f"I:         -15.0 LUFS\n    Peak:       {tp} dBFS\n")
+        with mock.patch.object(a.dc, "_run", fake_run), \
+                mock.patch.object(a.dc, "check_tools", lambda **k: None), \
+                mock.patch.object(a.dc, "parse_ebur128",
+                                  lambda t: {"integrated_lufs": -15.0, "true_peak_dbtp": tp}):
+            tail = {"fade_s": 1.5} if fade else None
+            out = REAL_MIX(p, bed, {"gain_db": gain}, tail)
+        return out, seen["graph"]
+
+    def test_the_graph_carries_the_gain_the_fade_and_the_bed(self):
+        out, graph = self.run_mix(-2.0)
+        self.assertIn("volume=-3dB", graph)
+        self.assertIn("volume=-4dB,afade=t=out:st=3.0000:d=1.0000", graph)
+        self.assertIn("afade=t=out:st=0.5000:d=1.5000[a1]", graph)  # the last shot's own fade
+        self.assertNotIn("afade=t=out:st=0.5000:d=1.5000[a0]", graph)
+        self.assertIn("amix=inputs=2:duration=longest:normalize=0", graph)
+        self.assertEqual(out["true_peak_dbtp"], -2.0)
+
+    def test_a_mix_above_the_ceiling_is_refused(self):
+        with self.assertRaisesRegex(Refused, "above the -1 dBTP ceiling"):
+            self.run_mix(0.3)
+
+    @needs_ffmpeg
+    def test_the_real_graph_runs_and_a_loud_mix_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            files = []
+            for n, hz in (("one", 220), ("two", 330), ("song", 440)):
+                f = os.path.join(d, n + ".wav")
+                subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                                f"sine=f={hz}:d=5:sample_rate=48000", f], check=True)
+                files.append(f)
+            p = {"fps": 24, "spans": [{"path": files[0], "in": 0.5, "frames": 48},
+                                      {"path": files[1], "in": 0.5, "frames": 48}]}
+            bed = {"src": files[2], "in": 0.0, "seconds": 4.0, "fade_s": 1.0, "gain_db": -12.0}
+            out = REAL_MIX(p, bed, {"gain_db": -12.0}, {"fade_s": 0.5})
+            self.assertLess(out["true_peak_dbtp"], -1.0)
+            bed["gain_db"] = 18.0
+            with self.assertRaisesRegex(Refused, "ceiling"):
+                REAL_MIX(p, bed, {"gain_db": 18.0}, None)

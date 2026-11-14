@@ -1,0 +1,1 @@
+reframe_plan can read each frame's scene: a span with no face is cropped on the saliency centre, a tie between faces goes to it, and each span records composition numbers and a hold, pan or track move type (off by default; the crop stays static)

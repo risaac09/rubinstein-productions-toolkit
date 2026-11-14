@@ -103,6 +103,8 @@ DEFAULT_CONFIG = {
         "social_9x16_music": {**_web("Social 9:16, music only (TikTok, Instagram)", "9x16", 1080,
                                      1920, "H264", -14.0, "none"), "naming": "montage",
                               "tail_fade": True},
+        "social_4x5": _web("Social 4:5 (TikTok, Instagram)", "4x5", 1080, 1350, "H264", -14.0,
+                           "burnin"),
         "linkedin_1x1": _web("LinkedIn 1:1", "1x1", 1080, 1080, "H264", -16.0, "burnin"),
         "substack_16x9": _web("Substack 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "client_master": {

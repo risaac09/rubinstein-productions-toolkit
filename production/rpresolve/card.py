@@ -350,7 +350,7 @@ def load(path, check_open=True):
     sums, offsite      the proofs (see read_sums, read_offsite)
     media              every original media file's relpath: the clips' and the stills
     notes              things to know that fail nothing: a proxy with no original
-    open               what is still open: "squeeze <clip_id>", "offsite", "project"
+    open               what is still open: "squeeze <clip_id>", "offsite", "offsite record (...)", "project"
                        (check_open=False leaves it empty: it asks ffprobe about every BRAW clip)
     """
     root = find(path)
@@ -441,15 +441,6 @@ def squeeze_answer(card, clip):
     return (tag, "file tag") if tag is not None else (None, None)
 
 
-def _open(card):
-    out = [f"squeeze {c['clip_id']}" for c in card["clips"] if squeeze_answer(card, c)[0] is None]
-    if not card["offsite"]["ok"]:
-        out.append("offsite")
-    if not (card["record"] or {}).get("project"):
-        out.append("project")
-    return out
-
-
 def _record_newer(root, checked_utc):
     # shortcut: mtime, so a copy that resets mtimes false-alarms; upgrade to a record sha256 in offsite.txt.
     try:
@@ -457,6 +448,18 @@ def _record_newer(root, checked_utc):
         return os.stat(root + RECORD).st_mtime > at.timestamp()
     except (ValueError, TypeError, OSError):
         return False
+
+
+def _open(card):
+    out = [f"squeeze {c['clip_id']}" for c in card["clips"] if squeeze_answer(card, c)[0] is None]
+    if not card["offsite"]["ok"]:
+        out.append("offsite")
+    elif _record_newer(card["root"], card["offsite"]["checked_utc"]):
+        # not S4: `offload.sh safe` verifies the media folder only, so a record changed later (a squeeze answer) is no format risk
+        out.append("offsite record (card.json changed after the offsite check; copy it offsite again)")
+    if not (card["record"] or {}).get("project"):
+        out.append("project")
+    return out
 
 
 def check(card, full=True):
@@ -469,8 +472,6 @@ def check(card, full=True):
                  ["no offsite.txt for this card (run offload.sh safe)" if not card["offsite"]["present"]
                   else "offsite.txt does not name this card, a remote and a time"],
            "S5": []}
-    if card["offsite"]["ok"] and _record_newer(card["root"], card["offsite"]["checked_utc"]):
-        res["S4"].append("offsite copy of the record is stale; re-run offload.sh safe")
     if isinstance(rec.get("cam"), str) and isinstance(rec.get("card_id"), str):
         want = f"{rec['cam']}-{rec['card_id'][:6]}"
         if card["name"] != want:

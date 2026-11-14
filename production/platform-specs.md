@@ -15,6 +15,7 @@ One row per destination key in `production/resolve-config.json`, and the config 
 | Social vertical 9:16 | `linkedin_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Social vertical 9:16, TikTok and Instagram | `social_9x16` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | burnt in |
 | Social vertical 9:16, music-only montage | `social_9x16_music` | mp4, H.264, 8-bit 4:2:0 | 1080x1920 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | none |
+| Social 4:5, TikTok and Instagram | `social_4x5` | mp4, H.264, 8-bit 4:2:0 | 1080x1350 | the timeline's | AAC 48 kHz stereo, 320 kbps | -14 LUFS | burnt in |
 | Social square 1:1 | `linkedin_1x1` | mp4, H.264, 8-bit 4:2:0 | 1080x1080 | the timeline's | AAC 48 kHz stereo, 320 kbps | -16 LUFS | burnt in |
 | Archive master | `client_master` | mov, ProRes 422 HQ, 10-bit 4:2:2 | the timeline's | the timeline's | LPCM 24-bit 48 kHz | none, unnormalized | none |
 
@@ -39,7 +40,7 @@ These come from the house rules under `deliver` in the config and are checked on
 
 **Web embed.** The row is the Substack destination, used here for a page that plays an mp4 inline. A client's own site may take a different player and a different container; check the host's current spec before a first delivery. H.264 at 8-bit 4:2:0 is the repo's choice for every web destination; whether a given host plays it is for the host's current spec to say. `NetworkOptimization` is on, so the file starts playing before it finishes loading.
 
-**Social vertical 9:16.** Built from the timeline's 9:16 copy. `queue_render` refuses a 16:9 timeline for a 9:16 destination, because Resolve would scale it into the frame with bars and every check would still pass. The 9:16 copy comes from `reframe_plan` and `cut`, or `reframe_apply` for a planned timeline, which keep the subject's whole head with room above it. Captions are burnt in at 16 characters per line on up to two lines, because 42 characters overflows a 1080-wide frame. The 4:5 shape is planned by `reframe_plan` but has no destination, and none is added until a client asks.
+**Social vertical 9:16.** Built from the timeline's 9:16 copy. `queue_render` refuses a 16:9 timeline for a 9:16 destination, because Resolve would scale it into the frame with bars and every check would still pass. The 9:16 copy comes from `reframe_plan` and `cut`, or `reframe_apply` for a planned timeline, which keep the subject's whole head with room above it. Captions are burnt in at 16 characters per line on up to two lines, because 42 characters overflows a 1080-wide frame. The 4:5 shape has its own destination, `social_4x5` (1080x1350, -14 LUFS, burnt-in captions at the portrait line length), added for VP-46; it needs a 4:5 timeline, which `reframe_plan` plans.
 
 **Social vertical 9:16, TikTok and Instagram.** The `social_9x16` destination: the same file shape as `linkedin_9x16` at -14 LUFS, true peak at or under -1.0 dBTP, so `deliver-fix-loudness --dest social_9x16` normalises to -14. Same timeline rule: it needs a 9:16 timeline, and captions burn in at 16 characters per line. What the platforms' own help pages state, read on 2026-10-20 (specs change; read them again before a first delivery):
 

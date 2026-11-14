@@ -110,7 +110,8 @@ import statistics
 import subprocess
 import tempfile
 
-from . import cutlist, vision
+from . import composition, cutlist, vision
+from . import scene as scenemod
 from .detect import DetectError, run_ffprobe
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
@@ -395,13 +396,15 @@ def eligible(tracks):
     return [i for i, t in enumerate(tracks) if 2 * len(t) >= most]
 
 
-def choose(tracks, speaker_x=None, speaker_y=None, prefer=PREFER_PRESENT):
+def choose(tracks, speaker_x=None, speaker_y=None, prefer=PREFER_PRESENT, hint=None):
     """(index of the primary track, the rule used, a review note or '').
     Without a hint the primary is the face present in the most samples, a
     tie going to the larger; prefer=PREFER_LARGEST ranks the eligible faces
     (see eligible()) by median area first, for footage where the subject is
     nearest the camera and the audience is not. speaker_x, with speaker_y
-    when given, names a point: the eligible face nearest it."""
+    when given, names a point: the eligible face nearest it. hint (x, y), the
+    scene's saliency centre, breaks the tie the note below flags (faces of
+    like size): the face nearest it is chosen and the note says so."""
     if not tracks:
         return None, "", ""
     stats = [track_stats(t) for t in tracks]
@@ -429,11 +432,22 @@ def choose(tracks, speaker_x=None, speaker_y=None, prefer=PREFER_PRESENT):
     rule = RULE if prefer == PREFER_PRESENT else RULE_LARGEST
     for i in order[1:]:
         if i in ok and stats[i]["area"] >= AMBIGUOUS_AREA * stats[pick]["area"]:
+            by_scene, other = "", i
+            if hint is not None:
+                rivals = [j for j in order if j in ok and
+                          stats[j]["area"] >= AMBIGUOUS_AREA * stats[pick]["area"]]
+                first = pick
+                pick = min(rivals, key=lambda j: math.hypot(stats[j]["x"] - hint[0],
+                                                            stats[j]["y"] - hint[1]))
+                other = first if pick != first else i
+                by_scene = (f"; the scene's saliency centre (x {hint[0]:.0f}) put the choice at "
+                            f"x {stats[pick]['x']:.0f}")
             return pick, rule, (
                 f"two faces: the chosen one at x {stats[pick]['x']:.0f} (in "
-                f"{stats[pick]['samples']} samples) and another at x {stats[i]['x']:.0f} (in "
-                f"{stats[i]['samples']}, at {stats[i]['area'] / stats[pick]['area']:.0%} of its "
-                "size); name the speaker with speaker_x, or the subject with subject_region")
+                f"{stats[pick]['samples']} samples) and another at x {stats[other]['x']:.0f} (in "
+                f"{stats[other]['samples']}, at {stats[other]['area'] / stats[pick]['area']:.0%} of its "
+                "size); name the speaker with speaker_x, or the subject with subject_region"
+                + by_scene)
     return pick, rule, ""
 
 
@@ -708,7 +722,7 @@ def no_crop(samples, aspects, reason, area=None):
 def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, margin=MARGIN,
               allow_bars=False, min_checked=MIN_CHECKED_SHARE, subject_region=None,
               min_face_height=None, speaker_y=None, prefer=PREFER_PRESENT, master_size=None,
-              scaling=SCALE_TO_FIT):
+              scaling=SCALE_TO_FIT, scene=None):
     """samples: [(t, [Vision box])] for one span; area: the picture area or
     None (every sample black). Returns {samples, face_samples, area, face,
     rule, review, tracks, ignored, track, off_track, unchecked, aspects:
@@ -717,7 +731,11 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     the sample is unchecked; either of the last two flags the span.
     subject_region, min_face_height, speaker_y and prefer steer which face is
     the subject (see the module docstring); `ignored` counts the boxes they
-    left out. scale may be AUTO."""
+    left out. scale may be AUTO. scene: [(t, scene.read() dict or None)], one per
+    sample, or None: with it, a span with no face is cropped on the saliency
+    centre, a tie between faces is broken toward it, and the span and each
+    crop record composition numbers and a move type (composition.py);
+    without it nothing changes."""
     ignored = 0
     kept = []
     for t, faces in samples:
@@ -730,7 +748,12 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
                 ignored += 1
         kept.append((t, boxes_t))
     tracks = link(kept)
-    pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer)
+    sc = composition.summarise(scene, src) if scene else None
+    hint = (sc["centre"]["x"], sc["centre"]["y"]) if sc else None
+    pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer, hint)
+    if pick is None and sc and area is not None:
+        return _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
+                           min_checked, master_size, scaling, ignored)
     if area is None or pick is None:
         why = ("every sampled frame is black" if area is None else
                f"no face in any of the {len(samples)} sampled frames" if not ignored else
@@ -776,6 +799,51 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
                                         allow_bars, samples=len(samples), min_checked=min_checked,
                                         out=size_of(a, master_size), anchor=anchor_of(a),
                                         scaling=scaling)
+    if sc:
+        heads = [(t, (b[0], b[1] - HEAD_ABOVE * (b[3] - b[1]), b[2], b[3])) for t, b in boxes]
+        _record_scene(out, sc, "face", heads, src, [_centre(b) for _, b in boxes])
+    return out
+
+
+def _record_scene(out, sc, subject, boxes, src, path):
+    """Set out['scene'] and, on every crop that holds, its move type and
+    composition numbers (composition.py), from the subject boxes."""
+    move = composition.move_type(path, src, sc["motion"])
+    out["scene"] = {"subject": subject, "centre": sc["centre"], "spread": sc["spread"],
+                    "sharpness": sc["sharpness"], "motion": sc["motion"], "depth": sc["depth"],
+                    "move_type": move, "reads": len(sc["boxes"])}
+    for p in out["aspects"].values():
+        if p["status"] in (PASS, BARS, FALLBACK):
+            p["move_type"] = move
+            p["composition"] = composition.compose(boxes, p["out"], p["scale"], (p["x"], p["y"]),
+                                                   src, move)
+
+
+def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_checked,
+                master_size, scaling, ignored):
+    """plan_span's result for a span with no face but a scene read: the crop is
+    placed on the saliency boxes with the same fit, check and fallbacks as a
+    face (no head to keep: head_above and headroom are 0). A crop from this is
+    flagged for review: saliency is weaker evidence than a face."""
+    boxes = sc["boxes"]
+    out = no_crop(len(samples), (), "", area)
+    ws = [b[2] - b[0] for _, b in boxes]
+    hs = [b[3] - b[1] for _, b in boxes]
+    out.update(ignored=ignored, face_samples=0, subject="saliency",
+               rule="no face found: the saliency centre of the scene read",
+               face={"x": sc["centre"]["x"], "y": sc["centre"]["y"],
+                     "w": round(statistics.median(ws), 1), "h": round(statistics.median(hs), 1)},
+               track=[[t] + [round(v, 1) for v in b] for t, b in boxes],
+               unchecked=[t for t, _ in samples if t not in {t for t, _ in boxes}])
+    out["review"].append("no face in any sampled frame: the crop is placed on the saliency "
+                         "centre, which is weaker evidence than a face; look before use")
+    for a in aspects:
+        out["aspects"][a] = plan_aspect(boxes, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
+                                        scale, margin, allow_bars, samples=len(samples),
+                                        min_checked=min_checked, out=size_of(a, master_size),
+                                        anchor=anchor_of(a), head_above=0.0, headroom=0.0,
+                                        scaling=scaling)
+    _record_scene(out, sc, "saliency", boxes, src, [_centre(b) for _, b in boxes])
     return out
 
 
@@ -987,7 +1055,7 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
          speaker_x=None, only=None, allow_bars=False, reader=None, detect=None, check_cancel=None,
          progress=None, min_checked=MIN_CHECKED_SHARE, subject_region=None, min_face_height=None,
          speaker_y=None, prefer=PREFER_PRESENT, master_size=None, scaling=SCALE_TO_FIT,
-         squeeze=None):
+         squeeze=None, scene=None):
     """Plan every span of the manifest's clips (or only those named).
     reader: a SourceReader (default: the manifest's source); detect:
     images -> {path: [Vision box]} or None (default: vision.face_boxes).
@@ -1001,7 +1069,10 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     for the timeline they write). squeeze: the source's anamorphic squeeze;
     the manifest's "squeeze" wins, then this, then the file's own tag, else
     1.0 and the report says it was assumed. Planning runs on the
-    desqueezed picture (width times squeeze).
+    desqueezed picture (width times squeeze). scene: True (scene.read) or a
+    callable (image, previous image or None) -> a scene.read() dict or None,
+    run on each sampled frame; the report then has scene: true (when any read
+    came back) and each span composition numbers and a move type (see plan_span). Default None: off.
     Returns the report: {source, size, aspects, samples, per_second,
     speaker_x, speaker_y, rule, margin, min_checked, subject_region,
     min_face_height, prefer, spans: [...], rows: [...], counts}."""
@@ -1055,6 +1126,7 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
               "allow_bars": bool(allow_bars), "min_checked": min_checked,
               "subject_region": list(subject_region) if subject_region else None,
               "min_face_height": min_face_height, "prefer": prefer, "spans": []}
+    read_scene = scenemod.read if scene is True else scene
     done = 0
     with tempfile.TemporaryDirectory(prefix="rpresolve-reframe-") as tmp:
         for clip in clips:
@@ -1078,11 +1150,18 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                     if area is not None and luma_size != src:
                         kx, ky = src[0] / float(luma_size[0]), src[1] / float(luma_size[1])
                         area = (area[0] * kx, area[1] * ky, area[2] * kx, area[3] * ky)
+                    reads, prev = [], None
+                    for t, png, _ in frames if read_scene else ():
+                        reads.append((t, read_scene(png, prev)))
+                        prev = None if isinstance(reader, StillsReader) else png
                     sp = plan_span([(t, boxes.get(png, [])) for t, png, _ in frames], src, area,
                                    aspects, scale, speaker_x, allow_bars=allow_bars,
                                    min_checked=min_checked, subject_region=subject_region,
                                    min_face_height=min_face_height, speaker_y=speaker_y,
-                                   prefer=prefer, master_size=master_size, scaling=scaling)
+                                   prefer=prefer, master_size=master_size, scaling=scaling,
+                                   scene=reads if any(r for _, r in reads) else None)
+                    if sp.get("scene"):
+                        report["scene"] = True
                 else:
                     sp = no_crop(0, aspects, f"the span lies past the source's end ({end:g} s): "
                                  "no frame to read")
@@ -1115,6 +1194,9 @@ def entry(aspect_plan, src, area, face, review):
          "face_x": face["x"], "face_y": face["y"], "centre": p["centre"], "status": p["status"],
          "inside": [p["check"]["inside"], p["check"]["total"]], "move": p.get("move"),
          "headroom_px": p.get("headroom_px")}
+    for k in ("move_type", "composition"):
+        if k in p:
+            e[k] = p[k]
     if p.get("out"):
         e["out"] = list(p["out"])
     if p.get("reason"):
@@ -1148,6 +1230,8 @@ def apply(manifest, report):
                                                     "speaker_x", "speaker_y", "rule", "margin",
                                                     "allow_bars", "min_checked", "subject_region",
                                                     "min_face_height", "prefer")}
+    if report.get("scene"):
+        m["reframe_plan"]["scene"] = True
     return m
 
 
@@ -1156,6 +1240,8 @@ COLUMNS = ("clip", "span", "in", "out", "aspect", "status", "review", "samples",
            "move", "head_top", "headroom_px", "fills", "inside", "unchecked", "share", "worst_t",
            "worst_px", "reason")
 
+
+SCENE_COLUMNS = ("move_type", "lead_px", "negative_space", "safe")  # after COLUMNS when a plan used scene reads
 
 TILT_NOTE = ("Tilt {tilt:g} assumes Resolve's y axis points up, which no render has confirmed "
              "yet: check a still before trusting this crop")
@@ -1189,6 +1275,9 @@ def rows(report):
                         "inside": c.get("inside"), "unchecked": c.get("unchecked"),
                         "share": c.get("share"), "worst_t": c.get("worst_t"),
                         "worst_px": c.get("worst_px"), "reason": reason})
+            if "move_type" in p:
+                out[-1].update(move_type=p["move_type"], **{k: p["composition"][k]
+                                                              for k in SCENE_COLUMNS[1:]})
     return out
 
 
@@ -1211,8 +1300,9 @@ def needs_person(rows):
 def tsv(rows_):
     def cell(v):
         return "" if v is None else " ".join(str(v).split())
-    return "\n".join(["\t".join(COLUMNS)] +
-                     ["\t".join(cell(r[k]) for k in COLUMNS) for r in rows_]) + "\n"
+    cols = COLUMNS + (SCENE_COLUMNS if any("move_type" in r for r in rows_) else ())
+    return "\n".join(["\t".join(cols)] +
+                     ["\t".join(cell(r.get(k)) for k in cols) for r in rows_]) + "\n"
 
 
 def summary(report):
