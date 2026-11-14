@@ -48,7 +48,7 @@ Per original media file (every video that is not a proxy, and every still: JPEG,
 | S1 | a record beside the folder | none, unreadable, or `validate` finds a problem |
 | S2 | a SHA256SUMS that verifies | missing, a file differs, is missing or is not listed, or the record's `files` or `bytes` disagree (`--quick` skips the hashing) |
 | S3 | a squeeze answer for every clip | a clip has no recorded answer and is not a BRAW file with its own tag |
-| S4 | an `offsite.txt` | missing, or it does not name this card, a remote and a time |
+| S4 | an `offsite.txt` | missing, it does not name this card, a remote and a time, or `card.json` is newer than its `checked_utc` (the offsite copy of the record is stale) |
 | S5 | the folder named `<CAM>-<id6>` | the name differs from the record's `cam` and `card_id` |
 
 ```
