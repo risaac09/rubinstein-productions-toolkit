@@ -297,7 +297,7 @@ def _framing_plan(args, ctx):
                                subject_region=args.get("subject_region"),
                                min_face_height=args.get("min_face_height"),
                                prefer=args["prefer"], allow_bars=args["allow_bars"],
-                               check_cancel=ctx.check_cancel)
+                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel)
     except BaseException:
         _drop_empty(None if args.get("out") else out)
         raise
@@ -345,7 +345,7 @@ def reframe_plan(args, ctx):
                               min_face_height=args.get("min_face_height"),
                               prefer=args["prefer"], master_size=args.get("master_size"),
                               scaling=args["input_scaling"], squeeze=args.get("squeeze"),
-                              check_cancel=ctx.check_cancel,
+                              scene=bool(args.get("scene")), check_cancel=ctx.check_cancel,
                               progress=ctx.progress)
     except BaseException:
         _drop_empty(None if args.get("out") else out)
@@ -1088,6 +1088,12 @@ def register(registry):
                          "least half as many."},
               "clips": {"type": "array", "items": {"type": "string"},
                         "description": "Only these clip names."},
+              "scene": {"type": "boolean", "default": False,
+                        "description": "Also read each sampled frame's scene (saliency, sharpness, "
+                        "motion; macOS): a span with no face is cropped on the saliency centre "
+                        "and flagged, a tie between faces goes to it, and each span records "
+                        "composition numbers and a move type (hold, pan or track). Off: the "
+                        "plan is unchanged."},
               "allow_bars": {"type": "boolean", "default": False,
                              "description": "Try the Ep 002 punch-in (2.25) first when the clip "
                              "names no scale, and keep it when it holds the face but leaves "
