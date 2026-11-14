@@ -101,7 +101,7 @@ def probe(path):
     first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
            "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:stream_side_data=rotation:stream_tags=rotate:format=duration,format_name",
+           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate:format=duration,format_name",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -118,7 +118,7 @@ def probe(path):
         duration = 0.0
     if "image2" in (fmt.get("format_name") or "").split(","):
         duration = 0.0  # ffmpeg gives a JPEG one frame's 0.04s, and any seek then loses its only frame
-    width, height = int(s["width"]), int(s["height"])
+    width, height = cropped_size(s)
     # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
     if rotation(s) % 180 == 90:
         width, height = height, width
@@ -127,6 +127,21 @@ def probe(path):
             "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
                                                "color_transfer", "color_primaries")}}
+
+
+def cropped_size(stream):
+    """(width, height) a decoder returns: the stream's size less its Frame
+    Cropping side data, which ffprobe leaves in the stream's own size."""
+    w, h = int(stream["width"]), int(stream["height"])
+    for sd in stream.get("side_data_list") or []:
+        if "crop_top" in sd:
+            try:
+                crop = [int(sd.get(k, 0)) for k in ("crop_left", "crop_right", "crop_top", "crop_bottom")]
+            except (TypeError, ValueError):
+                break
+            if min(crop) >= 0 and crop[0] + crop[1] < w and crop[2] + crop[3] < h:
+                return w - crop[0] - crop[1], h - crop[2] - crop[3]
+    return w, h
 
 
 def rotation(stream):

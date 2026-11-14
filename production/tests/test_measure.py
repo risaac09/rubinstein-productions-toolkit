@@ -191,6 +191,38 @@ class TestOnAGeneratedClip(unittest.TestCase):
         self.assertAlmostEqual(float((rows > 0.9).mean()), 0.5, delta=0.02)
 
 
+@unittest.skipUnless(os.access(measure.FFMPEG if np is not None else "", os.X_OK), "ffmpeg missing")
+class TestFrameCropping(unittest.TestCase):
+    """A stream that says 640x360 but carries Frame Cropping side data decodes
+    to the cropped picture; probe must report the size a reader gets."""
+
+    def make(self, tmp, top, bottom, left=0, right=0):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from cropfix import add_clap
+        plain, out = os.path.join(tmp, "plain.mp4"), os.path.join(tmp, "cropped.mp4")
+        subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=25:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        "-y", plain], check=True)
+        add_clap(plain, out, top, bottom, left, right)
+        return out
+
+    def test_probe_reports_the_decoded_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = self.make(tmp, 60, 60)
+            info = measure.probe(clip)
+            self.assertEqual((info["width"], info["height"]), (640, 240))
+            rgb = measure.read_frame(clip, 0.5, info["width"], info["height"])
+        self.assertEqual(rgb.shape, (240, 640, 3))
+
+    def test_probe_applies_left_and_right_crops_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            info = measure.probe(self.make(tmp, 0, 0, 100, 120))
+        self.assertEqual((info["width"], info["height"]), (420, 360))
+
+    def test_crop_size_helper_ignores_a_stream_without_side_data(self):
+        self.assertEqual(measure.cropped_size({"width": 1920, "height": 1080}), (1920, 1080))
+
+
 @needs_numpy
 @unittest.skipUnless(os.path.exists(measure.FFMPEG if np else ""), "ffmpeg not found")
 class TestStills(unittest.TestCase):
