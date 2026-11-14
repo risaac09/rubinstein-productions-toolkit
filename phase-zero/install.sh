@@ -53,9 +53,9 @@
 #
 # PUBLIC_CONSUMERS is not a hand list. It is read at runtime from the private
 # stack-data repo registry (data/repos.json: visibility PUBLIC, not archived,
-# not gone, not a fork), the same source and read order the pre-push privacy
-# hook uses. Forks are excluded: they are other people's code, not ours to
-# deploy a kit into. The one hand-kept input is the short named list
+# not gone, not a fork, not category external), the same source and read order
+# the pre-push privacy hook uses. Forks and vendor clones (category external)
+# are excluded: they are other people's code, not ours to deploy a kit into. The one hand-kept input is the short named list
 # PUBLIC_KIT_EXCLUDE below, for public repos deliberately left out.
 # A hand list here drifted: by 2026-10-01 it named a repo gone private and an
 # archived one, and missed five public repos. Without the registry or jq, the
@@ -191,9 +191,10 @@ load_public_consumers() {
     ($excl | split(" ")) as $out
     | (if type=="array" then . else .repos end)[]
     | select(.visibility=="PUBLIC" and .isArchived==false and .isFork==false
-        and (.gone // false)==false and (.name | IN($out[]) | not))
+        and (.gone // false)==false and (.category // "") != "external"
+        and (.name | IN($out[]) | not))
     | .name')" || registry_fail "data/repos.json did not parse"
-  [ -n "$PUBLIC_CONSUMERS" ] || registry_fail "the registry lists no eligible PUBLIC repos (public, not archived, not gone, not a fork, not in PUBLIC_KIT_EXCLUDE)"
+  [ -n "$PUBLIC_CONSUMERS" ] || registry_fail "the registry lists no eligible PUBLIC repos (public, not archived, not gone, not a fork, not external, not in PUBLIC_KIT_EXCLUDE)"
 }
 
 # Per-repo-type default for which LICENSE template a public-kit install
