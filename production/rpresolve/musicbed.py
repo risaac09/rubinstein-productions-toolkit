@@ -35,19 +35,22 @@ def fade_for(seconds):
     return min(FADE_S, seconds / 4)
 
 
-def spec(src, in_s, seconds, bed_dir):
-    """What bake() will make: {src, in, seconds, fade_s, path}. Reads src's size and date for
-    the name only; raises BedError when src cannot be read."""
+def spec(src, in_s, seconds, bed_dir, gain_db=0.0, fade=None, tag="bed"):
+    """What bake() will make: {src, in, seconds, fade_s, gain_db, path}. Reads src's size and
+    date for the name only; raises BedError when src cannot be read. gain_db is baked into the
+    file; fade (default fade_for) is the fade out in seconds; tag names the kind of file."""
     try:
         st = os.stat(src)
     except OSError as e:
         raise BedError(f"cannot read the music {src}: {e}")
-    fade = fade_for(seconds)
+    fade = fade_for(seconds) if fade is None else fade
     key = f"{src}|{st.st_size}|{st.st_mtime_ns}|{in_s:.4f}|{seconds:.4f}|{fade:.4f}"
+    if gain_db:  # a bed without a gain keeps its old name
+        key += f"|{gain_db:.4f}"
     stem = os.path.splitext(os.path.basename(src))[0][:60]
-    name = f"{stem}.bed-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:10]}.wav"
+    name = f"{stem}.{tag}-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:10]}.wav"
     return {"src": src, "in": float(in_s), "seconds": seconds, "fade_s": fade,
-            "path": os.path.join(bed_dir, name)}
+            "gain_db": float(gain_db), "path": os.path.join(bed_dir, name)}
 
 
 def _enough(src, got, in_s, seconds):
@@ -83,12 +86,19 @@ def check_source(src, in_s, seconds):
         _enough(src, have - in_s, in_s, seconds)
 
 
-def bake(src, in_s, seconds, fade_s, out_path):
-    """Cut `seconds` of src from `in_s`, fade the last `fade_s` seconds out, and write it as
-    a 24-bit 48 kHz WAV at out_path (atomically; a failure leaves nothing there). Checks the
+def fade_filter(seconds, fade_s, gain_db=0.0):
+    """The filter chain bake() runs: the gain (when set), then the fade out."""
+    gain = f"volume={gain_db:g}dB," if gain_db else ""
+    return f"{gain}afade=t=out:st={seconds - fade_s:.4f}:d={fade_s:.4f}"
+
+
+def bake(src, in_s, seconds, fade_s, out_path, gain_db=0.0, max_frac=0.25, first_stream=False):
+    """Cut `seconds` of src from `in_s`, apply gain_db, fade the last `fade_s` seconds out, and
+    write it as a 24-bit 48 kHz WAV at out_path (atomically; a failure leaves nothing there).
+    first_stream maps the first audio stream alone (a camera file with several). Checks the
     result runs as long as asked. Returns the length it read. Raises BedError."""
-    if not (0 < fade_s <= seconds / 4 + 1e-9):
-        raise BedError(f"the fade ({fade_s:g} s) must be above 0 and at most a quarter of the "
+    if not (0 < fade_s <= seconds * max_frac + 1e-9):
+        raise BedError(f"the fade ({fade_s:g} s) must be above 0 and at most {max_frac:g} of the "
                        f"bed ({seconds:g} s)")
     try:
         dc.check_tools()
@@ -96,7 +106,8 @@ def bake(src, in_s, seconds, fade_s, out_path):
         with paths.atomic_path(out_path) as tmp:
             proc = dc._run([dc.FFMPEG, "-v", "error", "-nostdin", "-y", "-ss", f"{in_s:.4f}",
                             "-t", f"{seconds:.4f}", "-i", dc._src(src), "-vn",
-                            "-af", f"afade=t=out:st={seconds - fade_s:.4f}:d={fade_s:.4f}",
+                            *(["-map", "0:a:0"] if first_stream else []),
+                            "-af", fade_filter(seconds, fade_s, gain_db),
                             "-c:a", CODEC, "-ar", str(RATE), "-f", "wav", tmp], TIMEOUT_S)
             if proc.returncode != 0:
                 raise BedError(f"ffmpeg could not cut the bed from {os.path.basename(src)}: "
