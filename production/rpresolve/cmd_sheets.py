@@ -41,6 +41,7 @@ def add_arguments(p):
     p.add_argument("--cols", type=int, default=6)
     p.add_argument("--rows", type=int, default=4)
     p.add_argument("--proxy-dir", help="where BRAW proxies are (<name>.mov or .mp4)")
+    p.add_argument("--only", action="append", metavar="FILE", help="only this clip (repeatable)")
 
 
 def find_clips(folder):
@@ -108,11 +109,11 @@ def label(path, second, factor):
     return f"{stem[:30]} {second:.1f}s", note
 
 
-def make(folder, out, per_clip=6, cols=6, rows=4, proxy_dir=None):
+def make(folder, out, per_clip=6, cols=6, rows=4, proxy_dir=None, only=None):
     """Write sheet-NN.jpg and sheets.json into out; returns {"sheets": [paths], "clips": n, "cells": n}."""
     import tempfile
     from PIL import Image, ImageDraw, ImageFont
-    clips = find_clips(folder)
+    clips = [c for c in find_clips(folder) if not only or c in {os.path.abspath(o) for o in only}]
     font = ImageFont.load_default(size=13)
     cells, skipped = [], []
     with tempfile.TemporaryDirectory() as tmp:
@@ -182,7 +183,7 @@ def run(args):
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
         return 1
-    r = make(args.folder, args.out, args.per_clip, args.cols, args.rows, args.proxy_dir)
+    r = make(args.folder, args.out, args.per_clip, args.cols, args.rows, args.proxy_dir, args.only)
     for s in r["skipped"]:
         print(f"skipped (no duration, or no proxy for BRAW): {s}", file=sys.stderr)
     print(f"{r['cells']} cell(s) from {r['clips']} clip(s) on {len(r['sheets'])} sheet(s) in {args.out}")
