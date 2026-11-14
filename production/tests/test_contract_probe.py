@@ -48,8 +48,9 @@ class Item(Obj):
 
 
 class Clip(Obj):
-    def GetAudioMapping(self): return "{}"
-    def SetAudioMapping(self, m): self._log("SetAudioMapping", m); return True
+    mapping = "{}"
+    def GetAudioMapping(self): return self.mapping
+    def SetAudioMapping(self, m): self._log("SetAudioMapping", m); self.mapping = m; return True
     def GetClipProperty(self, k=None): return "2"
 
 
@@ -58,8 +59,9 @@ class Folder(Obj):
 
 
 class Timeline(Obj):
-    def GetTrackCount(self, k): return 1
-    def GetItemListInTrack(self, k, i): return [Item()]
+    tracks = 1
+    def GetTrackCount(self, k): return self.tracks
+    def GetItemListInTrack(self, k, i): return [Item()] if i <= self.tracks else []
     def GetTrackSubType(self, k, i): return "stereo"
     def GetNormalizeAudioModes(self): return ["Sample Peak Program"]
     def NormalizeAudioLevel(self, items, o): return True
@@ -68,9 +70,15 @@ class Timeline(Obj):
 class Pool(Obj):
     def GetRootFolder(self): return Folder()
     def ImportMedia(self, c): self._log("ImportMedia"); return []
-    def AppendToTimeline(self, c): self._log("AppendToTimeline"); return [Item()]
+    SPILL = True      # a multi-stream source spills onto A2 and up unless it was remapped first;
+                      # "always" models a remap that changes nothing
+    def AppendToTimeline(self, c):
+        self._log("AppendToTimeline")
+        remapped = c[0]["mediaPoolItem"].mapping != "{}"
+        self.tl.tracks = 2 if self.SPILL == "always" or (self.SPILL and not remapped) else 1
+        return [Item()]
     def DeleteTimelines(self, t): self._log("DeleteTimelines"); return True
-    def CreateEmptyTimeline(self, n): self._log("CreateEmptyTimeline", n); return Timeline()
+    def CreateEmptyTimeline(self, n): self._log("CreateEmptyTimeline", n); self.tl = Timeline(); return self.tl
 
 
 class Project(Obj):
@@ -216,6 +224,34 @@ class Sandbox(unittest.TestCase):
         run("box", sandbox_checks=True, config=self.CONFIG, only="Q6")
         names = [c[1] for c in CALLS]
         self.assertLess(names.index("SetCurrentTimeline"), names.index("AppendToTimeline"))
+
+    def _q2(self, spill):
+        # The audio-mapping route: remap, read back, append, count tracks.
+        Pool.SPILL = spill
+        try:
+            doc = run("box", sandbox_checks=True, config=self.CONFIG, only="Q2")
+        finally:
+            Pool.SPILL = True
+        return doc, {r["call"]: r for c in doc["checks"] if c["mode"] == "sandbox-only" for r in c["rows"]}
+
+    def test_audio_mapping_is_set_before_the_append_and_read_back(self):
+        doc, rows = self._q2(True)
+        names = [c[1] for c in CALLS]
+        self.assertLess(names.index("SetAudioMapping"), names.index("AppendToTimeline"))
+        self.assertEqual(rows["MediaPoolItem.GetAudioMapping.read_back"]["note"], "same as what was set")
+
+    def test_audio_mapping_verdict_confirms_when_the_spill_is_gone(self):
+        doc, rows = self._q2(True)
+        self.assertEqual(rows["verdict.remap_before_append"]["note"], "no spill: confirmed")
+
+    def test_audio_mapping_verdict_kills_when_the_spill_remains(self):
+        doc, rows = self._q2("always")
+        self.assertTrue(rows["verdict.remap_before_append"]["note"].startswith("spill remains: killed"))
+
+    def test_audio_mapping_is_put_back_at_cleanup(self):
+        self._q2(False)
+        sets = [c[2][0] for c in CALLS if c[1] == "SetAudioMapping"]
+        self.assertEqual(sets[-1], "{}")
 
     def test_flag_missing_skips_even_in_the_sandbox(self):
         doc = run("box", config=self.CONFIG)

@@ -395,20 +395,35 @@ def s_q1(ctx, t):
 
 
 def s_q2(ctx, t):
+    """The T36 route: remap a multi-stream source BEFORE the append, read the mapping back, then
+    append and count audio tracks. One run confirms or kills it: see the verdict note."""
     clip = t["clip"]
-    tl, items = _scratch_timeline(ctx, t, "q2")
-    if tl is None:
+    if clip is None:
+        ctx.note("setup", "the sandbox media pool has no clip at its root; import one first")
         return
     before = clip.GetAudioMapping()
     if before:
         ctx.cleanups.append(lambda: clip.SetAudioMapping(before))
     mapping = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "mute": False, "type": "stereo"}}})
     ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
-    ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
-    ctx.note("Timeline.audio_tracks_after_append", f"{tl.GetTrackCount('audio')} audio track(s), "
-             + ", ".join(str(len(tl.GetItemListInTrack('audio', n) or []))
-                         for n in range(1, (tl.GetTrackCount('audio') or 0) + 1)) + " item(s) per track")
-    _drop(t, tl)
+    after = ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
+    ctx.note("MediaPoolItem.GetAudioMapping.read_back",
+             "differs from what was set" if _norm(after) != _norm(mapping) else "same as what was set")
+    tl, items = _scratch_timeline(ctx, t, "q2")
+    if tl is None:
+        return
+    per = [len(tl.GetItemListInTrack("audio", n) or []) for n in range(1, (tl.GetTrackCount("audio") or 0) + 1)]
+    ctx.note("Timeline.audio_tracks_after_append",
+             f"{len(per)} audio track(s), " + ", ".join(map(str, per)) + " item(s) per track")
+    ctx.note("verdict.remap_before_append", "no spill: confirmed" if len(per) == 1 else
+             "spill remains: killed (needs the clip to have more than one stream to mean anything)")
+
+
+def _norm(v):
+    try:
+        return json.loads(v) if isinstance(v, str) else v
+    except ValueError:
+        return v
 
 
 def s_q3(ctx, t):
