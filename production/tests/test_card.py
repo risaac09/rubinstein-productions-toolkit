@@ -405,6 +405,19 @@ class Command(Base):
         self.assertEqual(card.validate(after), [])
         self.assertEqual(run_cmd("set", self.tmp + "/CAMA-012345", "--squeeze", "3", "--apply")[0], 1)
 
+    def test_set_upgrade_alone_is_a_dry_run_then_keeps_every_key(self):
+        make_card(self.tmp)
+        rec_path = Path(self.tmp, "CAMA-012345.card.json")
+        before = json.loads(rec_path.read_text())
+        rc, out, _ = run_cmd("set", self.tmp + "/CAMA-012345", "--upgrade")
+        self.assertEqual((rc, json.loads(rec_path.read_text())), (0, before))
+        self.assertIn("upgrade the record from schema 1 to 2", out)
+        self.assertEqual(run_cmd("set", self.tmp + "/CAMA-012345", "--upgrade", "--apply")[0], 0)
+        after = json.loads(rec_path.read_text())
+        self.assertTrue(all(after[k] == before[k] for k in before if k != "schema"))
+        self.assertEqual((after["schema"], after["answers"]), (card.SCHEMA, {}))
+        self.assertEqual(run_cmd("set", self.tmp + "/CAMA-012345", "--upgrade", "--apply")[0], 1)  # already 2
+
     def test_set_on_schema2_keeps_the_legacy_answers(self):
         make_card(self.tmp, schema2=True)
         Path(self.tmp, "CAMA-012345.squeeze.json").write_text(json.dumps({"default": None, "clips": {"AAA0001.MOV": 1.5}}))
