@@ -124,6 +124,11 @@ class TestEarCheckRow(Case):
         self.logline(choice="hold", ts="2026-11-14T11:00:00Z")
         self.assertEqual(self.ear()["status"], "WARN")
 
+    def test_a_later_hold_on_a_sibling_aspect_withdraws_it(self):
+        self.logline()
+        self.logline(choice="hold", ts="2026-11-14T11:00:00Z", heard=sha(b"the 9x16 render"))
+        self.assertEqual(self.ear()["status"], "WARN")
+
     def test_another_files_ear_check_does_not_count(self):
         self.logline(copy="SW999_Test_02_other_review.mp4", heard=sha(b"another file"))
         self.assertEqual(self.ear()["status"], "WARN")
