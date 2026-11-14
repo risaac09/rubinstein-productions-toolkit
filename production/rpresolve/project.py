@@ -417,12 +417,31 @@ def _record(ch, key, value, say):
     say(f"{key}: recorded" + ("" if ch.apply else " (dry run: not written)"))
 
 
+def _music_pick(cfg, key_dir, letter, start=None):
+    """The pick of a `music candidates` packet: the key.json beside its excerpts says which
+    track the letter stood for, relative to the music root; the answer holds its absolute path."""
+    if not key_dir or not letter:
+        raise ProjectError("a music pick needs both --music-key PACKET and --music-pick LETTER")
+    try:
+        with open(os.path.join(os.path.abspath(os.path.expanduser(key_dir)), "key.json"), encoding="utf-8") as f:
+            key = json.load(f)
+        o = key["options"][letter.upper()]
+    except (OSError, ValueError, KeyError) as e:
+        raise ProjectError(f"{key_dir}: no key.json with letter {letter} ({e})")
+    if not cfg.get("music_root"):
+        raise ProjectError("no music root: give music_root in the pipeline config")
+    path = os.path.join(cfg["music_root"], o["path"])
+    if not os.path.isfile(path):
+        raise ProjectError(f"{path}: the picked track is not there")
+    return {"path": path, "in": float(key.get("in", 0) if start is None else start), "letter": letter.upper()}
+
+
 def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
-           shape=None, look=None, destination=None, name_parts=()):
+           shape=None, look=None, destination=None, name_parts=(), music=None):
     """Record an answer through `card set`, that the Resolve project is set up, or one of the
     build answers (shape, look, destination) in the project state."""
     ch = Chain(cfg, slug, apply, say)
-    held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination))
+    held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination), ("music", music))
             if v and k in ch.st.get("answers", {})]
     if held:  # refuse before writing any of them
         raise ProjectError(f"{held[0]} is already recorded by {ch.st['answers'][held[0]]['by']} at "
@@ -436,7 +455,9 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
         _record(ch, "look", {"lut": look}, say)
     if destination:
         _record(ch, "destination", {"key": destination, "name": _name_parts(name_parts)}, say)
-    if shape or look or destination:
+    if music:
+        _record(ch, "music", _music_pick(cfg, *music), say)
+    if shape or look or destination or music:
         return 0
     if not ch.st["cards"]:
         raise ProjectError(f"{slug}: no card in {ch.path}; run project start first")
@@ -478,8 +499,8 @@ def status(cfg, slug, say=print):
     say("may the card be formatted: " + ("yes, an offsite.txt names it" if ok
         else "no, no offsite.txt names it (card check shows S4)"))
     if cfg.get("music_root") and os.path.isfile(os.path.join(cfg["music_root"], "library.json")):
-        say(f"music: python3 resolve_workflow.py music suggest {cfg['music_root']} --method <id> "
-            "(tracks by tempo range, a suggestion)")
+        say(f"music (optional): python3 resolve_workflow.py music candidates {cfg['music_root']} --manifest M --out DIR; "
+            f"then project answer {slug} --music-key DIR --music-pick LETTER --apply")
     return 0
 
 
@@ -527,9 +548,20 @@ def build(cfg, slug, manifest, name=None, apply=False, say=print):
     manifest = os.path.abspath(os.path.expanduser(manifest))
     try:
         with open(manifest, encoding="utf-8") as f:
-            effects = json.load(f).get("effects") or []
+            doc = json.load(f)
+        effects = doc.get("effects") or []
     except (OSError, ValueError) as e:
         raise ProjectError(f"{manifest}: cannot read the manifest ({e})")
+    if ans.get("music"):
+        if doc.get("music"):
+            say("music: the manifest has its own; the recorded pick is not used")
+        else:  # the picked manifest is never edited: build from a copy that holds the pick
+            doc["music"] = {"path": ans["music"]["path"], "in": ans["music"]["in"]}
+            # beside the state on --apply; a dry run needs a real file for the tool's dry run, so a temp one
+            manifest = os.path.join(os.path.dirname(ch.path) if apply else tempfile.mkdtemp(prefix="build-"),
+                                    "build-manifest.json")
+            write_state(manifest, doc)
+            say(f"music: the recorded pick goes in as {manifest}")
     tl = name or slug
     tl = tl if tl.endswith(" [auto]") else tl + " [auto]"
     _SESSION = _SESSION or _session()

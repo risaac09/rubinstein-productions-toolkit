@@ -297,6 +297,60 @@ class Build(unittest.TestCase):
         project.status(self.cfg, "demo", say=out.append)
         self.assertTrue(any(l.startswith("9. ") and "queued" in l and "waiting for a person" in l for l in out))
 
+    def packet(self, letter="B"):
+        """A music root with one track and a candidates packet whose letter B stands for it."""
+        root = os.path.join(self.dir, "lib")
+        os.makedirs(os.path.join(root, "a"))
+        Path(root, "a", "tone one.wav").write_bytes(b"x")
+        pk = os.path.join(self.dir, "pk")
+        os.makedirs(pk)
+        Path(pk, "key.json").write_text(json.dumps({"in": 4, "options": {"B": {"path": "a/tone one.wav"}}}))
+        self.cfg["music_root"] = root
+        return pk, root
+
+    def test_a_music_pick_goes_into_a_copy_of_the_manifest(self):
+        self.answers()
+        pk, root = self.packet()
+        self.answer(music=(pk, "b", None))
+        st = json.load(open(os.path.join(self.dir, "demo", "project.json")))
+        self.assertEqual(st["answers"]["music"]["path"], os.path.join(root, "a", "tone one.wav"))
+        self.assertEqual(st["answers"]["music"]["in"], 4.0)
+        with self.assertRaisesRegex(project.ProjectError, "already recorded"):
+            self.answer(music=(pk, "B", None))
+        text = self.build(apply=True)
+        sent = self.calls[0][1]["manifest"]
+        self.assertEqual(sent, os.path.join(self.dir, "demo", "build-manifest.json"))
+        self.assertEqual(json.load(open(sent))["music"], {"path": os.path.join(root, "a", "tone one.wav"), "in": 4.0})
+        self.assertNotIn("music", json.load(open(self.manifest)))  # the picked manifest is untouched
+        self.assertIn("music:", text)
+
+    def test_a_manifest_with_its_own_music_keeps_it(self):
+        self.answers()
+        pk, _ = self.packet()
+        self.answer(music=(pk, "B", None))
+        Path(self.manifest).write_text(json.dumps({"music": {"path": "/m/own.wav", "in": 0}}))
+        text = self.build()
+        self.assertEqual(self.calls[0][1]["manifest"], self.manifest)
+        self.assertIn("has its own", text)
+
+    def test_a_music_key_without_a_letter_is_refused(self):
+        pk, _ = self.packet()
+        with self.assertRaisesRegex(project.ProjectError, "needs both"):
+            self.answer(music=(pk, None, None))
+
+    def test_a_dry_run_build_leaves_no_file_beside_the_state(self):
+        self.answers()
+        pk, _ = self.packet()
+        self.answer(music=(pk, "B", None))
+        self.build()
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "demo", "build-manifest.json")))
+        self.assertTrue(os.path.isfile(self.calls[0][1]["manifest"]))
+
+    def test_a_letter_the_packet_does_not_hold_is_refused(self):
+        pk, _ = self.packet()
+        with self.assertRaisesRegex(project.ProjectError, "no key.json with letter C"):
+            self.answer(music=(pk, "C", None))
+
     def test_first_failure_stops(self):
         self.answers()
         orig = self.fake

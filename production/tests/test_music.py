@@ -100,6 +100,30 @@ class Pure(unittest.TestCase):
                           "b": {"path": "b.wav", "bpm": 121, "steady": True, "feel": ["dark"]}}}
         self.assertEqual([t["path"] for t in music.suggest(lib, method="tempo-ladder", feel=["dark", "x"])], ["b.wav"])
 
+    def test_candidates_are_steady_first_long_enough_and_not_repeated(self):
+        lib = {"tracks": {
+            "a": {"path": "a.wav", "bpm": 121, "steady": False, "duration_s": 200},
+            "b": {"path": "b.wav", "bpm": 119, "steady": True, "duration_s": 200},
+            "c": {"path": "c.wav", "bpm": 120, "steady": True, "duration_s": 30},
+            "d": {"path": "d.wav", "bpm": 90, "steady": True, "duration_s": 200}}}
+        got = music.candidates(lib, [118, 124], None, 60, 5)
+        self.assertEqual([t["path"] for t in got], ["b.wav", "a.wav", "d.wav"])
+        self.assertEqual(len(music.candidates(lib, [118, 124], None, 60, 1)), 1)
+
+    def test_cut_need_reads_the_length_and_tempo_of_a_method_manifest(self):
+        from rpresolve import methods
+        m = methods.load("tempo-ladder")
+        fills = [{"source_path": "/none/a.mp4", "in": 10.0 * i, "out": 10.0 * i + s["seconds"]}
+                 for i, s in enumerate(m["slots"])]
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        p = os.path.join(d, "m.json")
+        json.dump(methods.to_manifest(m, fills), open(p, "w"))
+        self.assertEqual(music.cut_need(p), (16.5, m["bpm"]))
+        json.dump({"nope": 1}, open(p, "w"))
+        with self.assertRaisesRegex(music.MusicError, "not a cut manifest"):
+            music.cut_need(p)
+
     def test_playlists_by_band_and_feel(self):
         lib = {"tracks": {"h": {"path": "x/p.wav", "bpm": 120, "feel": ["calm"]}}}
         self.assertEqual(sorted(music.playlists(lib)), ["feel-calm", "tempo-110-125"])
@@ -147,6 +171,33 @@ class Index(unittest.TestCase):
         lib4 = music.index(self.d, workers=2)  # a re-run does not pile up the same duplicate
         self.assertEqual(lib4["tracks"][key]["dupes"], lib3["tracks"][key]["dupes"])
         self.assertTrue(os.path.isfile(self.steady))
+
+
+@needs_audio
+class Excerpts(unittest.TestCase):
+    def test_excerpts_are_lettered_and_brought_to_the_quietest(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        tracks = []
+        for name, amp in (("loud tone", 0.8), ("quiet tone", 0.1)):
+            y = amp * np.sin(2 * np.pi * 220 * np.arange(SR * 8) / SR)
+            with wave.open(os.path.join(d, name + ".wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(SR)
+                w.writeframes((y * 32767).astype("<i2").tobytes())
+            tracks.append({"path": name + ".wav", "sha": name})
+        out = os.path.join(d, "pk")
+        key = music.excerpts(d, tracks, out, 1.0, 5.0, seed=1)
+        self.assertEqual(sorted(key["options"]), ["A", "B"])
+        self.assertTrue(all(os.path.isfile(os.path.join(out, c + ".m4a")) for c in "AB"))
+        self.assertFalse([f for f in os.listdir(out) if "flat" in f])
+        got = [music.loudness(os.path.join(out, c + ".m4a")) for c in "AB"]
+        self.assertAlmostEqual(got[0], got[1], delta=0.6)
+        gains = {o["path"]: o["gain_db"] for o in key["options"].values()}
+        self.assertEqual(gains["quiet tone.wav"], 0.0)
+        self.assertLess(gains["loud tone.wav"], -10)
+        self.assertEqual(json.load(open(os.path.join(out, "key.json")))["matched_to_lufs"], key["matched_to_lufs"])
 
 
 if __name__ == "__main__":
