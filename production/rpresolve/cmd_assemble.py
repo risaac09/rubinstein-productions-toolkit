@@ -652,7 +652,7 @@ def shape_plan(p, width, height):
         elif shape < pic / (1 + 1e-9):
             row["crop"] = {"axis": "width", "percent": round(100 * (1 - shape / pic), 1)}
         if row["crop"] and row["crop"]["percent"] > 100 * CROP_NOTE:
-            row["fits"] = f"{width}x{int(round(width / pic / 2)) * 2}"
+            row["fits"] = f"{width}x{math.ceil(width / pic / 2 - 1e-9) * 2}"
             row["note"] = (f"the {width}x{height} shape ({shape:.2f}:1) crops "
                            f"{row['crop']['percent']:g}% of the desqueezed picture's "
                            f"{row['crop']['axis']}; {row['fits']} keeps all of it")

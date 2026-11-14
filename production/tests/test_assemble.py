@@ -1302,9 +1302,9 @@ class TestDesqueeze(Base):
         r = self.go(width=3840, height=1608)  # 2.39:1 over a 2.25:1 picture
         (row,) = r["shape"]
         self.assertEqual(row["crop"], {"axis": "height", "percent": 5.8})
-        self.assertEqual(row["fits"], "3840x1706")
+        self.assertEqual(row["fits"], "3840x1708")
         self.assertIn("crops 5.8% of the desqueezed picture's height", row["note"])
-        self.assertIn("3840x1706 keeps all of it", self.summary(r))
+        self.assertIn("3840x1708 keeps all of it", self.summary(r))
         self.assertEqual(r["size"], [3840, 1608])  # it does not choose a shape
 
     def test_a_wide_picture_in_a_narrow_shape_crops_its_width(self):
@@ -1313,7 +1313,7 @@ class TestDesqueeze(Base):
         self.assertGreater(row["crop"]["percent"], 20)
 
     def test_a_shape_within_five_percent_is_quiet(self):
-        (row,) = self.go(width=3840, height=1706)["shape"]
+        (row,) = self.go(width=3840, height=1708)["shape"]
         self.assertEqual((row["note"], row["fits"]), ("", None))
 
     def test_a_source_whose_size_cannot_be_read_is_not_judged(self):
