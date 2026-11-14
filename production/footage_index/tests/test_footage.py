@@ -52,6 +52,33 @@ def test_store_search_cascade():
     store_search_cascade(os.path.join(TMP, "cascade.db"), {"duration": 9.0}, shots)
 
 
+def test_text_weight_is_the_caption_share():
+    assert search.text_weight(0, 0) == 0.0
+    assert abs(search.text_weight(36, 100) - 0.36) < 1e-9  # the old weight was already 1.0 here
+    assert search.text_weight(100, 100) == 1.0
+
+
+def test_a_caption_does_not_outrank_a_better_picture_at_low_coverage():
+    # 60 shots, a third captioned. Shot 0 is the nearest picture with no caption; shot 50 is far down
+    # the vision ranking but its caption matches the words. At a third coverage the old weight (1.0)
+    # put shot 50 first; the share (1/3) keeps the best picture first.
+    c = store.connect(os.path.join(TMP, "vp206.db"))
+    cid, _ = store.upsert_clip(c, "Misc/w.mp4", "k1", 1, 1, client=0, project="Misc", duration=180.0)
+    ids = [store.add_shot(c, cid, 1.5 + 3 * i, 3.0 * i, 3.0 * (i + 1), f"/nonexistent-{i}.jpg") for i in range(60)]
+    basis = np.eye(store.DIM, dtype=np.float32)
+    for i, sid in enumerate(ids):
+        a = 1 - 0.01 * i
+        store.set_vector(c, sid, a * basis[0] + np.sqrt(1 - a * a) * basis[i + 1])
+    for i in range(30, 50):  # the other captions say something else
+        store.set_caption(c, ids[i], {"subject": "kettle", "setting": "kitchen", "tags": ["kettle"]}, "test")
+    store.set_caption(c, ids[50], {"subject": "runner", "setting": "track", "tags": ["runner"]}, "test")
+    c.commit()
+    hits = search.find(c, "runner on a track", vector=basis[0], limit=3, max_per_clip=60)
+    assert hits[0]["id"] == ids[0]
+    assert ids[50] in [h["id"] for h in search.find(c, "runner on a track", vector=basis[0], limit=10, max_per_clip=60)]
+    c.close()
+
+
 def store_search_cascade(db, meta, shots):
     c = store.connect(db)
     cid, changed = store.upsert_clip(c, "Misc/rgb.mp4", "k1", 1, 1, client=0, project="Misc", **meta)
