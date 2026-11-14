@@ -163,7 +163,13 @@ def cropped_size(stream):
             except (TypeError, ValueError):
                 break
             if min(crop) >= 0 and crop[0] + crop[1] < w and crop[2] + crop[3] < h:
-                return w - crop[0] - crop[1], h - crop[2] - crop[3]
+                cw, ch = w - crop[0] - crop[1], h - crop[2] - crop[3]
+                pf = stream.get("pix_fmt") or ""
+                if re.match(r"yuvj?4(20|22)p", pf) or pf.startswith(("nv12", "nv21", "p010", "p016")):
+                    cw -= cw % 2  # a decoder returns even sizes for subsampled chroma
+                if re.match(r"yuvj?420p", pf) or pf.startswith(("nv12", "nv21", "p010", "p016")):
+                    ch -= ch % 2
+                return cw, ch
     return w, h
 
 
