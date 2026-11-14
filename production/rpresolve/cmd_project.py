@@ -11,6 +11,9 @@ project: start a project from a camera card, resumable (production/project-start
     project answer SLUG [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
                                   record the delivery shape, the look, the destination once each
                                   (who and when), in the project state
+    project answer SLUG --music-key DIR --music-pick LETTER [--music-in SEC] [--apply]
+                                  record the picked track of a `music candidates` packet; optional;
+                                  build puts it in the manifest's music when the manifest has none
     project build SLUG --manifest PATH [--name NAME] [--apply]
                                   assemble_timeline at the recorded shape, each manifest effect,
                                   apply_grade with the recorded look, queue_render for the recorded
@@ -50,6 +53,9 @@ def add_arguments(p):
     p.add_argument("--destination", metavar="KEY", help="answer: the delivery destination key")
     p.add_argument("--name-part", action="append", metavar="K=V",
                    help="answer: a naming field of the destination (client, slug, show, episode, guest, index); repeatable")
+    p.add_argument("--music-key", metavar="DIR", help="answer: the folder of a `music candidates` packet (its key.json)")
+    p.add_argument("--music-pick", metavar="LETTER", help="answer: the letter the person picked")
+    p.add_argument("--music-in", type=float, metavar="SEC", help="answer: where in the track the music starts (default the packet's start)")
     p.add_argument("--manifest", help="build: the picked manifest (absolute path)")
     p.add_argument("--name", help="build: the new timeline's name (default the slug; ' [auto]' is added)")
     p.add_argument("--config", help="the pipeline config (default $RP_PIPELINE_CONFIG)")
@@ -71,7 +77,8 @@ def run(args):
         if args.action == "answer":
             return rpproject.answer(cfg, args.target, args.apply, args.squeeze, args.clip or (), args.resolved,
                                     shape=args.shape, look=args.look, destination=args.destination,
-                                    name_parts=args.name_part or ())
+                                    name_parts=args.name_part or (),
+                                    music=(args.music_key, args.music_pick, args.music_in) if args.music_key or args.music_pick else None)
         if args.action == "build":
             if not args.manifest:
                 raise rpproject.ProjectError("build needs --manifest PATH")
