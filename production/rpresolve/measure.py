@@ -45,6 +45,7 @@ import threading
 import numpy as np
 
 from . import color
+from .detect import cropped_size  # noqa: F401  (stdlib home, shared with reframe)
 # The Vision helper lives in vision.py (stdlib only); these names stay here too.
 from .vision import CACHE_DIR, SWIFTC, VISION_SOURCE, face_boxes, vision_binary  # noqa: F401
 
@@ -128,21 +129,6 @@ def probe(path):
             "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
                                                "color_transfer", "color_primaries")}}
-
-
-def cropped_size(stream):
-    """(width, height) a decoder returns: the stream's size less its Frame
-    Cropping side data, which ffprobe leaves in the stream's own size."""
-    w, h = int(stream["width"]), int(stream["height"])
-    for sd in stream.get("side_data_list") or []:
-        if "crop_top" in sd:
-            try:
-                crop = [int(sd.get(k, 0)) for k in ("crop_left", "crop_right", "crop_top", "crop_bottom")]
-            except (TypeError, ValueError):
-                break
-            if min(crop) >= 0 and crop[0] + crop[1] < w and crop[2] + crop[3] < h:
-                return w - crop[0] - crop[1], h - crop[2] - crop[3]
-    return w, h
 
 
 def rotation(stream):
