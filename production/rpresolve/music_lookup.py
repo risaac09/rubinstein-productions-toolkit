@@ -26,13 +26,16 @@ SPLIT = re.compile(r"\s*(?:,|&|\bx\b|\bft\.?\b|\bfeat\.?\b|\bfeaturing\b|\bwith\
 DELAY = 1.2
 
 
-def artist_of(row):
-    """The artist to look up: left of ' - ' in the title, else the artist tag; the first of
-    a list ('A, B', 'A ft. B', 'A & B')."""
+def artists_of(row):
+    """Names to try, in order: left of ' - ' in the title, else the artist tag, whole (a band
+    name may hold a comma or an ampersand), then its first of a list ('A, B', 'A ft. B')."""
     title, tag = row.get("title") or "", row.get("artist") or ""
-    name = title.split(" - ", 1)[0] if " - " in title else tag
-    first = SPLIT.split(name.strip(), 1)[0].strip()
-    return first or None
+    name = (title.split(" - ", 1)[0] if " - " in title else tag).strip()
+    out = []
+    for n in (name, SPLIT.split(name, 1)[0].strip()):
+        if n and n not in out:
+            out.append(n)
+    return out
 
 
 def match_id(artist, results):
@@ -72,17 +75,18 @@ def run(root, out, log=lambda s: None):
     lib = music.load_library(root)
     cache, res = {}, {}
     for n, (h, t) in enumerate(sorted(lib["tracks"].items()), 1):
-        a = artist_of(t)
-        if not a or t.get("error"):
+        if t.get("error"):
             continue
-        if a not in cache:
-            try:
-                cache[a] = fetch(a)
-            except (music.MusicError, OSError) as e:  # one refused or failed artist is skipped, the run goes on
-                log(f"music_lookup: {a}: {e}")
-                cache[a] = None
-        if cache[a]:
-            res[h] = {"genre": cache[a]}
+        for a in artists_of(t):
+            if a not in cache:
+                try:
+                    cache[a] = fetch(a)
+                except (music.MusicError, OSError) as e:  # one refused or failed artist is skipped
+                    log(f"music_lookup: {a}: {e}")
+                    cache[a] = None
+            if cache[a]:
+                res[h] = {"genre": cache[a]}
+                break
         if n % 25 == 0:
             log(f"music_lookup: {n}/{len(lib['tracks'])}")
     with open(out, "w", encoding="utf-8") as f:
