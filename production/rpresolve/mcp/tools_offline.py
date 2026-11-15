@@ -1233,7 +1233,7 @@ def register(registry):
         "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
         "speech_vs_rest and voice_vs_bed with words, stems_sum with stems), sha256, privacy "
         "(metadata tags: location, serial, name, path, email), and for a social "
-        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref; the offset is gate-ready, its drift is advisory), colour and stabiliser (both advisory; thresholds calibrated 2026-11-14 on 39 renders and proxies; a failed read is a WARN row). WARN rows never fail the table. Never connects "
+        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref; the offset is gate-ready, its drift is advisory), colour and stabiliser (both advisory; thresholds calibrated 2026-11-14 on 39 renders and proxies; a failed read is a WARN row). WARN rows never fail the table. The privacy row warns on a camera id or name only with a destination (a delivery); a camera original or proxy keeps its own, so pass a destination to check a master. Never connects "
         "to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,

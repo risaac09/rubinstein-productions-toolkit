@@ -304,18 +304,17 @@ def render(music, dialogue, out_dir, music_stream=0, stream=0, depth_db=DEPTH_DB
     rate = info["sample_rate"]
     key_wav = os.path.join(out_dir, "duck-key.wav")
     write_plan(p, out_dir)
-    # aformat pins the music's channels: ffmpeg 6.0 otherwise folds them to the mono key's
+    x, _ = dxm.decode(music, music_stream)
     # sidechaincompress drops the music's last frames when the music ends while the key is
-    # still in flight (seen under load: up to 0.6 s of a 7 s stem), so the music is padded
-    # past its end and the stem cut back to its length, which keeps every frame.
-    keep = info["duration_s"]
-    tail, cut = (",apad=pad_dur=1", f",atrim=end_sample={int(round(keep * rate))}") if keep else ("", "")
+    # still in flight (up to 0.6 s of a 7 s stem), so the music is padded past its end and the
+    # stem cut back to the decoded length, which a container may not report.
+    # aformat pins the music's channels: ffmpeg 6.0 otherwise folds them to the mono key's
     graph = (f"[1:a]aresample={rate},apad[k];[0:a:{music_stream}]aformat=sample_fmts=dbl:"
-             f"channel_layouts={info['channels']}c{tail}[m];[m][k]{p['sidechain']}{cut}[out]")
+             f"channel_layouts={info['channels']}c,apad=pad_dur=1[m];"
+             f"[m][k]{p['sidechain']},atrim=end_sample={len(x)}[out]")
     _ffmpeg_write([dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
                    "-i", dc._src(music), "-i", dc._src(key_wav), "-filter_complex", graph,
                    "-map", "[out]", "-map_metadata", "-1", "-c:a", "pcm_s24le", "-f", "wav"], out)
-    x, _ = dxm.decode(music, music_stream)
     y, _ = dxm.decode(out)
     n = min(len(x), len(y))
     kk = np.interp(np.arange(n) / rate, np.arange(len(p["_key"])) * p["_hop"], p["_key"],

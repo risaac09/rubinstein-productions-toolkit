@@ -379,6 +379,9 @@ class Vp20Rows(unittest.TestCase):
         for v in ("Back", "front"):
             self.assertEqual(qc._privacy_row(info("com.apple.quicktime.camera.identifier", v),
                                              delivery=True)["status"], qc.PASS)
+        self.assertIn("pass --dest", qc._privacy_row(info("camera_id", "0123456789abcdef"))["note"])
+        self.assertNotIn("0123456789abcdef", qc._privacy_row(info("camera_id", "0123456789abcdef"))["note"])
+        self.assertNotIn("pass --dest", qc._privacy_row(info("camera_id", "x"), delivery=True)["note"])
         # the other private tags still warn without a destination
         self.assertEqual(qc._privacy_row(info("serial_number", "SN1"))["status"], qc.WARN)
 

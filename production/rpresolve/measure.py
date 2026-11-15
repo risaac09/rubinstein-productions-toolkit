@@ -339,19 +339,22 @@ def luma_shares(y, bars=(0, 0, 0, 0), bits=8):
     white (a bar that held a picture after all). One histogram of the
     active picture gives all of it. y holds codes at `bits`; the thresholds
     are the 8-bit ones scaled up (legal white 235 is 940 at 10 bits) and
-    ymin and ymax come back as 8-bit codes."""
+    ymin and ymax come back as 8-bit codes. Each 8-bit value owns the band of
+    codes that floor to it (235 is 940 to 943 at 10 bits), so "over 235" starts
+    at 944 and a clamp's ringing at 941 to 943 stays at legal white."""
     sh = bits - 8
-    white, high, low, black = LEGAL_WHITE_Y << sh, HARD_HIGH_Y << sh, HARD_LOW_Y << sh, LEGAL_BLACK_Y << sh
+    white, high, low, black = LEGAL_WHITE_Y << sh, HARD_HIGH_Y << sh, (HARD_LOW_Y + 1) << sh, LEGAL_BLACK_Y << sh
+    over = (LEGAL_WHITE_Y + 1) << sh
     top, bottom, left, right = bars
     h, w = y.shape
     act = y[top:h - bottom, left:w - right]
     hist = np.bincount(act.ravel(), minlength=1 << bits)
     n = int(hist.sum())
     pct = lambda c: 100.0 * int(c) / n  # noqa: E731
-    outside = int(np.count_nonzero(y > white)) - int(hist[white + 1:].sum()) if any(bars) else 0
+    outside = int(np.count_nonzero(y >= over)) - int(hist[over:].sum()) if any(bars) else 0
     present = np.flatnonzero(hist)
-    return {"over_235_pct": pct(hist[white + 1:].sum()), "at_235_pct": pct(hist[white]), "hard_high_pct": pct(hist[high:].sum()),
-            "hard_low_pct": pct(hist[:low + 1].sum()), "under_16_pct": pct(hist[:black].sum()),
+    return {"over_235_pct": pct(hist[over:].sum()), "at_235_pct": pct(hist[white:over].sum()), "hard_high_pct": pct(hist[high:].sum()),
+            "hard_low_pct": pct(hist[:low].sum()), "under_16_pct": pct(hist[:black].sum()),
             "ymin": int(present[0]) >> sh, "ymax": int(present[-1]) >> sh, "bar_hot_px": outside}
 
 

@@ -96,9 +96,9 @@ class SoundRows(unittest.TestCase):
         cls.bed_bad = p("bed_bad.wav")
         _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,2,3.5)+0.03*between(t,6,7.5))", 10)
         cls.bed_words = _words(p("bed_words.json"), [(2.0, 3.5), (6.0, 7.5)])
-        # room tone, then a voice's loud tail filling the short gap beside the first span
+        # room tone, then a voice's loud, decaying tail in the short gap beside the first span
         cls.bed_tail = p("bed_tail.wav")
-        _wav(cls.bed_tail, f"0.02*(2*random(0)-1)+{TONE}*(0.3*between(t,2,3.5)+0.2*between(t,3.7,4.8)+0.3*between(t,5.0,6.6))", 9)
+        _wav(cls.bed_tail, f"0.02*(2*random(0)-1)+{TONE}*(0.3*between(t,2,3.5)+0.2*exp(-6*(t-3.5))*between(t,3.7,4.8)+0.3*between(t,5.0,6.6))", 9)
         cls.bed_tail_words = _words(p("bed_tail_words.json"), [(2.0, 3.5), (5.0, 6.6)])
         cls.bed_short_words = _words(p("bed_short_words.json"), [(0.5, 4.5), (5.0, 9.5)])
         cls.low = p("low.wav")        # energy only at 100 Hz
@@ -254,37 +254,67 @@ class SoundCli(unittest.TestCase):
             self.assertEqual(bad.returncode, 1)
 
 
+@unittest.skipUnless(np, "needs numpy")
 class VoiceVsBedLocalBed(unittest.TestCase):
-    """The bed is read per span from the nearest long gaps, on synthetic frames."""
+    """The bed is read per span from the gaps beside it, on synthetic frames
+    (no audio: one momentary frame per 0.1 s)."""
 
-    @staticmethod
-    def _run(words, regions, end):
-        # regions: [(a, b, level)]; one momentary frame per 0.1 s
-        frames = []
-        for i in range(int(end * 10)):
-            t = i / 10
-            lvl = next(m for a, b, m in regions if a <= t < b)
-            frames.append((t, lvl, lvl))
+    PAD = 0.2
+
+    def _run(self, words, level, end, tail_s=0.0):
+        """level(t, in_gap_start) -> LUFS; the speech pad is the row's own."""
+        frames = [(i / 10, level(i / 10), 0) for i in range(int(end * 10))]
         ws = [{"word": "w", "start": a, "end": b} for a, b in words]
         return qc._sound_voice_vs_bed(frames, ws, qc.THRESHOLDS)
 
+    @staticmethod
+    def _levels(spans, gaps, voice=-22.0, quiet=-50.0):
+        # spans: padded (a, b); gaps: {(a, b): LUFS}; everything else is quiet
+        def f(t):
+            if any(a <= t < b for a, b in spans):
+                return voice
+            return next((v for (a, b), v in gaps.items() if a <= t < b), quiet)
+        return f
+
+    WORDS = [(5, 9), (10.3, 14.3), (15.6, 19.6), (20.9, 24.9)]
+    PADDED = [(4.8, 9.2), (10.1, 14.5), (15.4, 19.8), (20.7, 25.1)]
+
     def test_voice_over_a_local_music_bed_warns(self):
         words = [(5, 9), (15, 19), (25, 29)]
-        regions = [(0, 5, -50), (5, 9, -22), (9, 15, -24), (15, 19, -22), (19, 25, -50),
-                   (25, 29, -22), (29, 35, -50)]
-        row = self._run(words, regions, 35)
+        padded = [(4.8, 9.2), (14.8, 19.2), (24.8, 29.2)]
+        f = self._levels(padded, {(9.2, 14.8): -24.0})
+        row = self._run(words, f, 35)
         self.assertEqual(row["status"], qc.WARN, row)
         self.assertIn("4.80s to 9.20s", row["found"])
         self.assertIn("14.80s to 19.20s", row["found"])
         self.assertNotIn("24.80s", row["found"])
 
-    def test_one_loud_gap_does_not_flag_every_span(self):
-        words = [(5, 9), (10, 14)]  # the 1 s gap between them is not a long gap
-        regions = [(0, 5, -50), (5, 9, -22), (9, 10, -50), (10, 14, -22), (14, 20, -24)]
-        row = self._run(words, regions, 20)
+    def test_music_in_short_gaps_warns_on_the_spans_beside_them(self):
+        f = self._levels(self.PADDED, {(9.2, 10.1): -24.0, (14.5, 15.4): -24.0})
+        row = self._run(self.WORDS, f, 35)
         self.assertEqual(row["status"], qc.WARN, row)
-        self.assertIn("9.80s to 14.20s", row["found"])
+        for a in ("4.80s", "10.10s", "15.40s"):
+            self.assertIn(a, row["found"])
+        self.assertNotIn("20.70s", row["found"])
+
+    def test_two_long_gaps_with_one_loud_flag_only_the_spans_beside_it(self):
+        words = [(5, 9), (10.3, 14.3), (15.6, 19.6)]
+        padded = [(4.8, 9.2), (10.1, 14.5), (15.4, 19.8)]
+        f = self._levels(padded, {(19.8, 30.0): -24.0})
+        row = self._run(words, f, 30)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("15.40s", row["found"])
         self.assertNotIn("4.80s", row["found"])
+        self.assertNotIn("10.10s", row["found"])
+
+    def test_a_voice_tail_in_short_gaps_is_not_a_bed(self):
+        base = self._levels(self.PADDED, {})
+
+        def f(t):  # the momentary window still holds the voice for 0.5 s into each gap
+            if any(a <= t < a + 0.5 for _, a in self.PADDED):
+                return -28.0
+            return base(t)
+        self.assertEqual(self._run(self.WORDS, f, 35)["status"], qc.PASS)
 
 
 if __name__ == "__main__":
