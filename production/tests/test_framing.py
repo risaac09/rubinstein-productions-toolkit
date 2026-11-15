@@ -138,7 +138,7 @@ class TestHandFraming(unittest.TestCase):
                                   reader_for=lambda it: Reader(PYXIS), detect=detect, **kw)["items"][0]
 
     def test_a_span_with_no_face_is_framed_at_the_hand_centre(self):
-        it = self.plan({1: (0.2, None)}, self.NOBODY)
+        it = self.plan({1: (0.2, None, 1.0)}, self.NOBODY)
         e = it["entry"]
         self.assertEqual((it["status"], it["source"], e["status"]), (reframe.HAND, "hand", "hand"))
         self.assertAlmostEqual(e["x"], 0.2 * PYXIS[0], places=1)
@@ -148,20 +148,20 @@ class TestHandFraming(unittest.TestCase):
         self.assertEqual(it["row"]["status"], reframe.HAND)
 
     def test_the_centre_is_clamped_to_the_picture_like_a_face(self):
-        it = self.plan({1: (0.0, 0.0)}, self.NOBODY)
+        it = self.plan({1: (0.0, 0.0, 1.0)}, self.NOBODY)
         half = 1080 / (2.0 * it["entry"]["scale"])
         self.assertAlmostEqual(it["entry"]["x"], half, places=1)
 
     def test_a_manual_span_takes_the_hand_centre_too(self):
         one = detector(TestMasterShape.STANDING, PYXIS)
         once = lambda paths: one(sorted(paths)[:1]) | {p: [] for p in sorted(paths)[1:]}  # noqa: E731
-        it = self.plan({1: (0.7, 0.5)}, once)  # a face in one frame of eight is manual
+        it = self.plan({1: (0.7, 0.5, 1.0)}, once)  # a face in one frame of eight is manual
         self.assertEqual(it["row"]["status"], reframe.HAND)
         self.assertEqual(it["status"], reframe.HAND)
 
     def test_a_span_with_a_face_keeps_its_face_crop_and_gets_a_review_line(self):
         face = self.plan(None, detector(TestMasterShape.STANDING, PYXIS))
-        it = self.plan({1: (0.9, None)}, detector(TestMasterShape.STANDING, PYXIS))
+        it = self.plan({1: (0.9, None, 1.0)}, detector(TestMasterShape.STANDING, PYXIS))
         self.assertNotEqual(it["status"], reframe.HAND)
         self.assertEqual((it["entry"]["x"], it["entry"]["y"]), (face["entry"]["x"], face["entry"]["y"]))
         self.assertEqual(it["row"]["hand_face_x"], round(0.9 * PYXIS[0], 1))
@@ -172,15 +172,15 @@ class TestHandFraming(unittest.TestCase):
         def boom(paths):
             raise AssertionError("no frame should be read")
         with self.assertRaisesRegex(reframe.ReframeError, "item 2 does not exist"):
-            self.plan({2: (0.5, None)}, boom)
+            self.plan({2: (0.5, None, 1.0)}, boom)
         with tempfile.TemporaryDirectory() as d:
             def load(text, count=1):
                 path = os.path.join(d, "hand.json")
                 with open(path, "w") as f:
                     f.write(text)
                 return reframe.load_hand(path, count)
-            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}, "1": 0.5}'), {1: (0.5, None)})
-            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}}'), {1: (0.25, 1.0)})
+            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}, "1": 0.5}'), {1: (0.5, None, 1.0)})
+            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}}'), {1: (0.25, 1.0, 1.0)})
             for bad, why in (('{"1": 1.5}', "share from 0 to 1"), ('{"1": -0.1}', "share from 0 to 1"),
                              ('{"1": {"x": 0.5, "y": 2}}', "y 2"), ('{"1": {"y": 0.5}}', "x None"),
                              ('{"3": 0.5}', "does not exist"), ('{"0": 0.5}', "does not exist"),
@@ -188,6 +188,53 @@ class TestHandFraming(unittest.TestCase):
                              ('{"1": true}', "share from 0 to 1"), ("nope", "hand file")):
                 with self.assertRaisesRegex(reframe.ReframeError, why):
                     load(bad)
+
+
+class TestHandZoom(unittest.TestCase):
+    ITEM, plan = TestHandFraming.ITEM, TestHandFraming.plan
+    NOBODY = staticmethod(lambda paths: {p: [] for p in paths})
+
+    def test_zoom_multiplies_the_fill_scale_and_the_pan_follows(self):
+        base = self.plan({1: (0.5, None, 1.0)}, self.NOBODY)
+        it = self.plan({1: (0.5, None, 1.15)}, self.NOBODY)
+        self.assertAlmostEqual(it["entry"]["scale"], round(base["entry"]["scale"] * 1.15, 4))
+        self.assertAlmostEqual(it["row"]["zoom"], base["row"]["zoom"] * 1.15, places=3)
+        off = self.plan({1: (0.3, None, 1.15)}, self.NOBODY)
+        self.assertAlmostEqual(off["entry"]["x"], 0.3 * PYXIS[0], places=1)
+        self.assertGreater(off["row"]["pan"], 0)  # the centre sits left of the middle
+        self.assertGreater(off["row"]["pan"], base["row"]["pan"])
+
+    def test_the_centre_clamps_for_the_zoomed_width(self):
+        a = self.plan({1: (0.0, None, 1.0)}, self.NOBODY)
+        b = self.plan({1: (0.0, None, 2.0)}, self.NOBODY)
+        self.assertAlmostEqual(b["entry"]["x"], 1080 / (2.0 * b["entry"]["scale"]), places=1)
+        self.assertLess(b["entry"]["x"], a["entry"]["x"])
+
+    def test_zoom_out_of_range_duplicates_and_skipped_entries(self):
+        with tempfile.TemporaryDirectory() as d:
+            def load(text, count=2):
+                path = os.path.join(d, "hand.json")
+                with open(path, "w") as f:
+                    f.write(text)
+                return reframe.load_hand(path, count)
+            self.assertEqual(load('{"1": {"x": 0.5, "zoom": 1.15}}')[1], (0.5, None, 1.15))
+            for bad in ('{"1": {"x": 0.5, "zoom": 0.9}}', '{"1": {"x": 0.5, "zoom": 4.5}}',
+                        '{"1": {"x": 0.5, "zoom": "2"}}'):
+                with self.assertRaisesRegex(reframe.ReframeError, "zoom"):
+                    load(bad)
+            with self.assertRaisesRegex(reframe.ReframeError, "given twice"):
+                load('{"1": 0.5, "01": 0.6}')
+        # a black picture has no area: the entry is not used, and the item says so
+        black = reframe.plan_items([dict(self.ITEM)], aspect="9x16", hand={1: (0.5, None, 1.0)},
+                                   reader_for=lambda it: BlackReader(PYXIS), detect=self.NOBODY)
+        it = black["items"][0]
+        self.assertNotEqual(it["status"], reframe.HAND)
+        self.assertTrue(any("hand entry not used" in r for r in it["review"]), it["review"])
+
+
+class BlackReader(Reader):
+    def read(self, times, folder):
+        return [(t, p, bytes(len(g))) for t, p, g in super().read(times, folder)]
 
 
 class TestPlanItems(unittest.TestCase):

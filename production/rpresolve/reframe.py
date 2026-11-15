@@ -1394,9 +1394,11 @@ def line(r):
 
 
 def load_hand(path, count):
-    """A hand-framing file: JSON {"<item number from 1>": x or {"x": x, "y": y}}, x and y shares
-    0 to 1 of the displayed (desqueezed) source width and height. Returns {n: (x, y or None)};
-    ReframeError for a file that is not that, an item past `count` or a share outside 0..1."""
+    """A hand-framing file: JSON {"<item number from 1>": x or {"x": x, "y": y, "zoom": z}}, x
+    and y shares 0 to 1 of the displayed (desqueezed) source width and height, zoom a multiplier
+    on the fill scale (1 to 4, default 1). Returns {n: (x, y or None, zoom)}; ReframeError for a
+    file that is not that, an item past `count`, two keys for one item, a share outside 0..1 or
+    a zoom outside 1..4."""
     try:
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
@@ -1409,6 +1411,12 @@ def load_hand(path, count):
         if not str(k).isdigit() or not 1 <= int(k) <= count:
             raise ReframeError(f"hand: item {k} does not exist (1 to {count})")
         x, y = (v.get("x"), v.get("y")) if isinstance(v, dict) else (v, None)
+        zoom = v.get("zoom", 1.0) if isinstance(v, dict) else 1.0
+        if int(k) in hand:
+            raise ReframeError(f"hand: item {int(k)} is given twice ({k!r})")
+        if isinstance(zoom, bool) or not isinstance(zoom, (int, float)) or not 1.0 <= zoom <= 4.0:
+            raise ReframeError(f"hand: item {k} zoom {zoom!r} must be from 1 to 4 (a multiplier "
+                               "on the fill scale)")
         for name, share in (("x", x), ("y", y)):
             if share is None and name == "y":
                 continue
@@ -1416,19 +1424,20 @@ def load_hand(path, count):
                     or not 0.0 <= share <= 1.0:
                 raise ReframeError(f"hand: item {k} {name} {share!r} must be a share from 0 to 1 "
                                    "of the displayed source")
-        hand[int(k)] = (float(x), None if y is None else float(y))
+        hand[int(k)] = (float(x), None if y is None else float(y), float(zoom))
     return hand
 
 
 def _hand_aspect(hand, src, area, out, scaling):
     """The aspect plan for a crop centred where a person said: the widest scale that fills the
     frame, the centre clamped to the picture as for a face. No head, so no headroom check."""
-    scale = fill_scale(out, area)
+    scale = round(fill_scale(out, area) * hand[2], 4)  # window narrows with the zoom; place() clamps
     point = (hand[0] * src[0], (0.5 if hand[1] is None else hand[1]) * src[1])
     x, y = (round(v, 1) for v in place(point, out, scale, area))
     return {"status": HAND, "centre": "hand", "scale": scale, "x": x, "y": y, "fills": True,
             "bars": "", "check": {}, "out": list(out),
-            "reason": f"framed by hand at x {hand[0]:g} of the source width",
+            "reason": f"framed by hand at x {hand[0]:g} of the source width" +
+            (f", zoom {hand[2]:g} on the fill scale" if hand[2] != 1.0 else ""),
             "source": "hand", "move": move_of(src, out, scale, (x, y), scaling),
             "props": {k: round(v, 4) for k, v in
                       resolve_props(src, out, scale, (x, y), scaling).items()}}
@@ -1442,7 +1451,7 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
     cannot read, with src the source's own size). Each item is planned as
     one span for `aspect` (MASTER needs master_size) with plan(); kw goes
     to plan(). reader_for(item) may supply the reader (tests).
-    hand: {item number from 1: (x, y or None)} (load_hand): for an item with
+    hand: {item number from 1: (x, y or None, zoom)} (load_hand): for an item with
     no usable face (no_face, manual) a crop centred there, status HAND, no
     head check; an item with a face keeps its face crop and gets a review
     line with the difference.
@@ -1484,13 +1493,18 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                                                          scaling)
                 sp["review"].append("framed by hand: no head, so the headroom and whole-head "
                                     "check does not apply; look at the frame")
-            elif sp["face"]:
+            elif sp["face"] and sp.get("subject") != "saliency":
                 px = hand[n][0] * rep["size"][0]
                 sp["hand_face_x"] = round(px, 1)
                 sp["review"].append(
                     f"hand framing x {hand[n][0]:g} ({px:.0f} px) differs from the face crop's "
                     f"face x {sp['face']['x']:.0f} px by {sp['face']['x'] - px:+.0f} px; the face "
                     "crop is kept")
+            else:
+                sp["review"].append(
+                    "hand entry not used: " + ("no picture area (every sampled frame is black)"
+                                               if not sp["area"] else
+                                               "the item already has a crop from the scene read"))
             rep["rows"] = rows(rep)
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
             {"status": p["status"], "reason": p["reason"]}

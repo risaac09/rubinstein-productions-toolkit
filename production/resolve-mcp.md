@@ -591,17 +591,23 @@ version, keeps the subject's whole head. The rules, in `rpresolve/reframe.py`:
 Hand framing. Framing goes through `reframe_plan` and `reframe_apply` even for
 a shot with no face. `reframe_plan` with `items` takes `hand`: the absolute
 path of a JSON file mapping an item number (1-based, in the order of `items`)
-to a crop centre, `{"1": {"x": 0.4, "y": 0.5}, "3": 0.62}`. `x` is a share 0
+to a crop centre, `{"1": {"x": 0.4, "y": 0.5, "zoom": 1.15}, "3": 0.62}`. `x` is a share 0
 to 1 of the displayed (desqueezed) source width, `y` an optional share of its
-height (default the middle); a bare number is `x`. An item whose status would
+height (default the middle), `zoom` an optional multiplier on the fill scale
+(1 to 4, default 1; give an item's current Zoom here, or `reframe_apply`
+writes the fill scale over it, and the crop centre clamps for the zoomed
+width); a bare number is `x`. Two keys for one item (`"1"` and `"01"`) are
+refused. An item whose status would
 be `no_face` or `manual` and that has an entry gets a crop at that centre, at
 the widest scale that fills the frame, clamped to the picture exactly as a
 face centre is: status `hand`, `source` `hand`, and a review line saying that
 there is no head, so the headroom and whole-head check does not apply. `hand`
 counts like `pass` for `reframe_apply`. An item with a face keeps its face
 crop; its review line gives the difference from the hand centre. A share
-outside 0 to 1, or an item number that does not exist, is refused before any
-frame is read. Not run against a real Resolve.
+outside 0 to 1, a zoom outside 1 to 4, an item number that does not exist, or
+`hand` without `items`, is refused before any frame is read. An entry that
+cannot be used (an item that already has a crop from the scene read, or a
+picture with no area) is not dropped: the item's review list says so. Not run against a real Resolve.
 
 The order on a live project: `reframe_plan` with `items` (offline) writes
 the framing plan, `duplicate_timeline_auto` makes the ` [auto]` copy, then

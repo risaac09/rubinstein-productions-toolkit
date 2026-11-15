@@ -325,6 +325,8 @@ def _framing_plan(args, ctx):
 
 def reframe_plan(args, ctx):
     from .. import reframe
+    if args.get("hand") and not args.get("items"):
+        raise ValueError("hand frames the items of a framing plan: give items with it")
     if args.get("items") or not args.get("manifest"):
         return _framing_plan(args, ctx)
     args = dict(args, aspects=args.get("aspects") or ["9x16", "1x1"])
@@ -1060,9 +1062,11 @@ def register(registry):
                   "description": "A timeline's clips, for a framing plan (one aspect)."},
               "hand": {"type": "string",
                        "description": "With items: absolute path of a JSON file of hand "
-                       "framing, {\"<item number from 1>\": {\"x\": 0.4, \"y\": 0.5}} (y "
-                       "optional; a bare number is x). x and y are shares 0 to 1 of the "
-                       "displayed (desqueezed) source. An item with no face (no_face or "
+                       "framing, {\"<item number from 1>\": {\"x\": 0.4, \"y\": 0.5, \"zoom\": "
+                       "1.15}} (y and zoom optional; a bare number is x). x and y are shares 0 "
+                       "to 1 of the displayed (desqueezed) source; zoom multiplies the fill "
+                       "scale (1 to 4, default 1; give the item's current Zoom so "
+                       "reframe_apply keeps it) and the centre clamps for the zoomed width. An item with no face (no_face or "
                        "manual) is cropped there at the widest filled scale and named hand, "
                        "with no head check; an item with a face keeps its face crop and "
                        "gets a review line with the difference. A share outside 0 to 1, or "
