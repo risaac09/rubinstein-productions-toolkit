@@ -254,5 +254,38 @@ class SoundCli(unittest.TestCase):
             self.assertEqual(bad.returncode, 1)
 
 
+class VoiceVsBedLocalBed(unittest.TestCase):
+    """The bed is read per span from the nearest long gaps, on synthetic frames."""
+
+    @staticmethod
+    def _run(words, regions, end):
+        # regions: [(a, b, level)]; one momentary frame per 0.1 s
+        frames = []
+        for i in range(int(end * 10)):
+            t = i / 10
+            lvl = next(m for a, b, m in regions if a <= t < b)
+            frames.append((t, lvl, lvl))
+        ws = [{"word": "w", "start": a, "end": b} for a, b in words]
+        return qc._sound_voice_vs_bed(frames, ws, qc.THRESHOLDS)
+
+    def test_voice_over_a_local_music_bed_warns(self):
+        words = [(5, 9), (15, 19), (25, 29)]
+        regions = [(0, 5, -50), (5, 9, -22), (9, 15, -24), (15, 19, -22), (19, 25, -50),
+                   (25, 29, -22), (29, 35, -50)]
+        row = self._run(words, regions, 35)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("4.80s to 9.20s", row["found"])
+        self.assertIn("14.80s to 19.20s", row["found"])
+        self.assertNotIn("24.80s", row["found"])
+
+    def test_one_loud_gap_does_not_flag_every_span(self):
+        words = [(5, 9), (10, 14)]  # the 1 s gap between them is not a long gap
+        regions = [(0, 5, -50), (5, 9, -22), (9, 10, -50), (10, 14, -22), (14, 20, -24)]
+        row = self._run(words, regions, 20)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("9.80s to 14.20s", row["found"])
+        self.assertNotIn("4.80s", row["found"])
+
+
 if __name__ == "__main__":
     unittest.main()

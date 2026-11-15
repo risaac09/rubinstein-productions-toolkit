@@ -305,8 +305,13 @@ def render(music, dialogue, out_dir, music_stream=0, stream=0, depth_db=DEPTH_DB
     key_wav = os.path.join(out_dir, "duck-key.wav")
     write_plan(p, out_dir)
     # aformat pins the music's channels: ffmpeg 6.0 otherwise folds them to the mono key's
+    # sidechaincompress drops the music's last frames when the music ends while the key is
+    # still in flight (seen under load: up to 0.6 s of a 7 s stem), so the music is padded
+    # past its end and the stem cut back to its length, which keeps every frame.
+    keep = info["duration_s"]
+    tail, cut = (",apad=pad_dur=1", f",atrim=end_sample={int(round(keep * rate))}") if keep else ("", "")
     graph = (f"[1:a]aresample={rate},apad[k];[0:a:{music_stream}]aformat=sample_fmts=dbl:"
-             f"channel_layouts={info['channels']}c[m];[m][k]{p['sidechain']}[out]")
+             f"channel_layouts={info['channels']}c{tail}[m];[m][k]{p['sidechain']}{cut}[out]")
     _ffmpeg_write([dc.FFMPEG, "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
                    "-i", dc._src(music), "-i", dc._src(key_wav), "-filter_complex", graph,
                    "-map", "[out]", "-map_metadata", "-1", "-c:a", "pcm_s24le", "-f", "wav"], out)

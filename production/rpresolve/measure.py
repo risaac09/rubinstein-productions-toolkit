@@ -236,33 +236,43 @@ BAR_PROBES = 12        # frames read to find the bars before the pass
 PASS_TIMEOUT_S = 3600  # one decode of a long file, over a slow mount, still ends
 
 
-def _luma_cmd(path, vf, seek=None, frames=None):
-    """ffmpeg reading the Y plane as 8-bit gray, the code values of the file
-    (a 10-bit source is shifted down, not rescaled: gray to gray keeps the range).
+def luma_bits(pix_fmt):
+    """Bit depth to read luma at: the file's own above 8 bits (10 for yuv422p10le),
+    else 8. Converting a deep source to 8-bit gray rescales and rounds, so a
+    clamp at 10-bit 940 lands on 234, not 235."""
+    m = re.search(r"(\d+)(?:le|be)$", pix_fmt or "")
+    return int(m.group(1)) if m and 8 < int(m.group(1)) <= 16 else 8
+
+
+def _luma_cmd(path, vf, seek=None, frames=None, bits=8):
+    """ffmpeg reading the Y plane as gray at `bits` (little-endian 16-bit words
+    above 8), the code values of the file, never rescaled.
     The decoder applies Frame Cropping and rotation, as probe() reports."""
     return [FFMPEG, "-v", "error", "-nostdin", *(["-ss", f"{seek:.3f}"] if seek else []),
             "-i", "file:" + path, *(["-frames:v", str(frames)] if frames else []),
-            "-vf", vf + ("," if vf else "") + "extractplanes=y,format=gray", "-f", "rawvideo", "-"]
+            "-vf", vf + ("," if vf else "") + "extractplanes=y,format=" + ("gray" if bits == 8 else f"gray{bits}le"), "-f", "rawvideo", "-"]
 
 
-def read_luma(path, t, width, height):
-    """One frame's Y plane at time t as uint8 codes, shape (h, w)."""
-    proc = _run(_luma_cmd(path, "", seek=t, frames=1))
-    if proc.returncode == 0 and len(proc.stdout) != width * height:  # trust the decoded frame over a probe a pixel off
-        width, height = fit_frame(len(proc.stdout), width, height) or (width, height)
-    if proc.returncode != 0 or len(proc.stdout) < width * height:
+def read_luma(path, t, width, height, bits=8):
+    """One frame's Y plane at time t as codes (uint8, or uint16 above 8 bits), shape (h, w)."""
+    item = 1 if bits == 8 else 2
+    proc = _run(_luma_cmd(path, "", seek=t, frames=1, bits=bits))
+    if proc.returncode == 0 and len(proc.stdout) != width * height * item:  # trust the decoded frame over a probe a pixel off
+        width, height = fit_frame(len(proc.stdout) // item, width, height) or (width, height)
+    if proc.returncode != 0 or len(proc.stdout) < width * height * item:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
-    return np.frombuffer(proc.stdout[:width * height], dtype=np.uint8).reshape(height, width)
+    return np.frombuffer(proc.stdout[:width * height * item],
+                         dtype=np.uint8 if item == 1 else "<u2").reshape(height, width)
 
 
-def luma_stream(path, width, height, fps):
+def luma_stream(path, width, height, fps, bits=8):
     """Yield every frame's Y plane at fps from one ffmpeg decode, one at a
     time (a long 4K file is never held whole). Raises MeasureError when the
     decode fails or ends mid-frame, which a wrong size would also look like."""
-    size = width * height
+    size = width * height * (1 if bits == 8 else 2)
     with tempfile.TemporaryFile() as err:
-        proc = subprocess.Popen(_luma_cmd(path, f"fps={fps:g}"), stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(_luma_cmd(path, f"fps={fps:g}", bits=bits), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=err)
         timer = threading.Timer(PASS_TIMEOUT_S, proc.kill)
         timer.start()
@@ -278,7 +288,7 @@ def luma_stream(path, width, height, fps):
                         raise MeasureError(f"ffmpeg ended mid-frame ({got} of {size} bytes): "
                                            "the picture is not the size ffprobe reported")
                     got += more
-                yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width)
+                yield np.frombuffer(buf, dtype=np.uint8 if bits == 8 else "<u2").reshape(height, width)
             rc = proc.wait()
         finally:
             timer.cancel()
@@ -322,23 +332,27 @@ def edge_bars(frames):
     return top, bottom, left, right
 
 
-def luma_shares(y, bars=(0, 0, 0, 0)):
+def luma_shares(y, bars=(0, 0, 0, 0), bits=8):
     """Percent of the active picture (the frame less its bars) above legal
     white, exactly at it (a grade's clamp), at hard clipping, crushed to or under HARD_LOW_Y, and under legal
     black; its luma min and max; and how many bar pixels sit over legal
     white (a bar that held a picture after all). One histogram of the
-    active picture gives all of it."""
+    active picture gives all of it. y holds codes at `bits`; the thresholds
+    are the 8-bit ones scaled up (legal white 235 is 940 at 10 bits) and
+    ymin and ymax come back as 8-bit codes."""
+    sh = bits - 8
+    white, high, low, black = LEGAL_WHITE_Y << sh, HARD_HIGH_Y << sh, HARD_LOW_Y << sh, LEGAL_BLACK_Y << sh
     top, bottom, left, right = bars
     h, w = y.shape
     act = y[top:h - bottom, left:w - right]
-    hist = np.bincount(act.ravel(), minlength=256)
+    hist = np.bincount(act.ravel(), minlength=1 << bits)
     n = int(hist.sum())
     pct = lambda c: 100.0 * int(c) / n  # noqa: E731
-    outside = int(np.count_nonzero(y > LEGAL_WHITE_Y)) - int(hist[LEGAL_WHITE_Y + 1:].sum()) if any(bars) else 0
+    outside = int(np.count_nonzero(y > white)) - int(hist[white + 1:].sum()) if any(bars) else 0
     present = np.flatnonzero(hist)
-    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "at_235_pct": pct(hist[LEGAL_WHITE_Y]), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
-            "hard_low_pct": pct(hist[:HARD_LOW_Y + 1].sum()), "under_16_pct": pct(hist[:LEGAL_BLACK_Y].sum()),
-            "ymin": int(present[0]), "ymax": int(present[-1]), "bar_hot_px": outside}
+    return {"over_235_pct": pct(hist[white + 1:].sum()), "at_235_pct": pct(hist[white]), "hard_high_pct": pct(hist[high:].sum()),
+            "hard_low_pct": pct(hist[:low + 1].sum()), "under_16_pct": pct(hist[:black].sum()),
+            "ymin": int(present[0]) >> sh, "ymax": int(present[-1]) >> sh, "bar_hot_px": outside}
 
 
 def luma_pass(path, fps=1.5, check_cancel=None):
@@ -350,16 +364,18 @@ def luma_pass(path, fps=1.5, check_cancel=None):
     info = probe(path)
     w, h = info["width"], info["height"]
     dur = info["duration"]
-    probes = [read_luma(path, t, w, h) for t in sample_times(dur, BAR_PROBES)] if dur > 0 \
-        else [read_luma(path, 0.0, w, h)]
-    bars = edge_bars(probes)
+    pic = info.get("stream_duration") or dur  # the picture's own length; audio may outlast it
+    bits = luma_bits(info["tags"]["pix_fmt"])
+    probes = [read_luma(path, t, w, h, bits) for t in sample_times(pic, BAR_PROBES)] if dur > 0 \
+        else [read_luma(path, 0.0, w, h, bits)]
+    bars = edge_bars([p >> (bits - 8) for p in probes])  # bar limits are 8-bit codes
     h, w = probes[0].shape  # the decoded size, which a probe can miss by a pixel
     del probes
     per = []
-    for i, y in enumerate(luma_stream(path, w, h, fps)):
+    for i, y in enumerate(luma_stream(path, w, h, fps, bits)):
         if check_cancel:
             check_cancel()
-        d = luma_shares(y, bars)
+        d = luma_shares(y, bars, bits)
         d["t"] = round(i / fps, 3)
         per.append(d)
     if not per:
