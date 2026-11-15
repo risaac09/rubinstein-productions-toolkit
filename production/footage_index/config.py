@@ -24,6 +24,7 @@ DEFAULTS = {
     "roots": [],                    # [] = one root, from --root or FOOTAGE_ROOT; see roots.py for the entry shape
     "skip_prefixes": ["#recycle/"],  # relpath prefixes never indexed
     "staging_prefix": "",           # a folder whose copies lose to the same take elsewhere ("" = none)
+    "film_prefixes": [],            # relpath prefixes of scanned film (home movies): captioned with a film hint
     "restricted_prefix": "",        # relpaths under this prefix are flagged and left out of searches that pass --no-client ("" = none)
     "required_folder": "",          # a folder every root must contain, or the index run refuses (guards against a wrong mount; "" = no check)
     "review_log": "",               # a JSON-lines log of picks from past reviews ("" = none)
