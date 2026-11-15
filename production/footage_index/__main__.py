@@ -4,7 +4,7 @@
   python -m footage_index rekey   [--apply]        # clip keys from the card records; dry run unless --apply
   python -m footage_index cameras                  # JSON: camera strings per card folder, writes nothing
   python -m footage_index embed   [--batch 32]
-  python -m footage_index caption [--limit N]
+  python -m footage_index caption [--limit N] [--prefix PREFIX [--redo]]   # --redo replaces the captions under PREFIX: back the db up first
   python -m footage_index recaption-fts   # re-store captions (tag dedupe, FTS fields); no model
   python -m footage_index find "slow push-in on hands chopping herbs" [--no-client] [--fps-min 50]
                                   [--camera A7] [--project Outings] [--faces|--no-faces] [--limit 10] [--sheet DIR]
@@ -41,6 +41,7 @@ from . import config, roots as roots_mod, store
 VIDEO = (".mov", ".mp4", ".m4v", ".mts", ".mxf", ".braw", ".avi", ".insv", ".mkv")
 SKIP = tuple(config.get("skip_prefixes"))
 STAGING = config.get("staging_prefix")
+FILM = tuple(config.get("film_prefixes"))
 MIN_BYTES = 5_000_000
 BLACK_LUMA = 0.03  # mean luma under this: no caption (the model gave black frames a shot size and mood tags)
 LOG = config.get("log_file")
@@ -453,17 +454,21 @@ def cmd_caption(a):
     from . import caption
     c = store.connect()
     # every 3rd keyframe of a clip (about one per 12 s): Qwen-VL runs ~3-4 s a shot here, SigLIP covers the rest
-    pre = getattr(a, "prefix", None)
-    q = ("SELECT id, thumb FROM (SELECT *, row_number() OVER (PARTITION BY clip_id ORDER BY t) - 1 AS n FROM shots)"
-         f" WHERE n % {int(a.every)} = 0 AND id NOT IN (SELECT shot_id FROM captions)"
+    pre, redo = getattr(a, "prefix", None), getattr(a, "redo", False)
+    if redo and not pre:
+        sys.exit("caption --redo needs --prefix: it replaces every caption under that prefix")
+    q = ("SELECT id, thumb, (SELECT relpath FROM clips WHERE clips.id = clip_id) AS relpath"
+         " FROM (SELECT *, row_number() OVER (PARTITION BY clip_id ORDER BY t) - 1 AS n FROM shots)"
+         f" WHERE n % {int(a.every)} = 0"
          f" AND (luma IS NULL OR luma >= {BLACK_LUMA})"  # a black frame gets no caption and no model call
+         + ("" if redo else " AND id NOT IN (SELECT shot_id FROM captions)")
          + (" AND clip_id IN (SELECT id FROM clips WHERE substr(relpath, 1, ?) = ?)" if pre else "") + " ORDER BY clip_id, t")
     rows = c.execute(q + (f" LIMIT {int(a.limit)}" if a.limit else ""), (len(pre), pre) if pre else ()).fetchall()
     log(f"caption: {len(rows)} shot(s) with {caption.MODEL}")
     t0, errs = time.time(), 0
     for n, r in enumerate(rows, 1):
         try:
-            store.set_caption(c, r["id"], caption.caption(r["thumb"]), caption.MODEL)
+            store.set_caption(c, r["id"], caption.caption(r["thumb"], film=r["relpath"].startswith(FILM)), caption.MODEL)
         except Exception as e:
             errs += 1
             log(f"caption: shot {r['id']} failed: {type(e).__name__}: {e}"[:300])
@@ -681,6 +686,7 @@ def main(argv=None):
     s = sub.add_parser("index"); s.add_argument("--limit", type=int); s.add_argument("--only"); s.add_argument("--lanes", type=int, default=6); s.add_argument("--retry-errors", action="store_true"); s.add_argument("--card", metavar="PATH")
     s = sub.add_parser("embed"); s.add_argument("--batch", type=int, default=32)
     s = sub.add_parser("caption"); s.add_argument("--limit", type=int); s.add_argument("--every", type=int, default=3)
+    s.add_argument("--prefix", metavar="PREFIX"); s.add_argument("--redo", action="store_true")
     s = sub.add_parser("find"); s.add_argument("query"); s.add_argument("--limit", type=int, default=10)
     s.add_argument("--no-client", dest="client", action="store_false", default=True); s.add_argument("--fps-min", type=float); s.add_argument("--camera")
     s.add_argument("--project"); s.add_argument("--sheet"); s.add_argument("--json", action="store_true")
