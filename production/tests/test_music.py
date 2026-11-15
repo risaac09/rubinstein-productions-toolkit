@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import music, music_tag  # noqa: E402
+from rpresolve import music, music_lookup, music_tag  # noqa: E402
 
 try:
     import numpy as np
@@ -127,6 +127,25 @@ class Pure(unittest.TestCase):
         json.dump({"nope": 1}, open(p, "w"))
         with self.assertRaisesRegex(music.MusicError, "not a cut manifest"):
             music.cut_need(p)
+
+    def test_the_artist_to_look_up(self):
+        a = music_lookup.artist_of
+        self.assertEqual(a({"artist": "Some Channel", "title": "Ana Voss - Slow Lake (Official Video)"}), "Ana Voss")
+        self.assertEqual(a({"artist": "Ana Voss", "title": "Slow Lake"}), "Ana Voss")
+        self.assertEqual(a({"artist": "x", "title": "Ana Voss ft. Bo Lin - Slow Lake"}), "Ana Voss")
+        self.assertEqual(a({"artist": "Ana Voss, Bo Lin", "title": "Slow Lake"}), "Ana Voss")
+        self.assertIsNone(a({"artist": "", "title": "Slow Lake"}))
+
+    def test_a_match_needs_the_same_name_and_a_confident_score(self):
+        r = [{"name": "Ana Voss Band", "score": 100, "id": "x"}, {"name": "ana voss", "score": 95, "id": "y"}]
+        self.assertEqual(music_lookup.match_id("Ana Voss", r), "y")
+        self.assertIsNone(music_lookup.match_id("Bo Lin", r))
+        self.assertIsNone(music_lookup.match_id("Ana Voss", [dict(r[1], score=60)]))
+
+    def test_top_genre_is_the_most_voted(self):
+        d = {"genres": [{"name": "folk", "count": 2}, {"name": "pop", "count": 5}]}
+        self.assertEqual(music_lookup.top_genre(d), "pop")
+        self.assertIsNone(music_lookup.top_genre({"genres": []}))
 
     def test_playlists_by_band_and_feel(self):
         lib = {"tracks": {"h": {"path": "x/p.wav", "bpm": 120, "feel": ["calm"]}}}
