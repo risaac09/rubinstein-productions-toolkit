@@ -304,10 +304,34 @@ class Build(unittest.TestCase):
         self.assertNotIn("target_dir", self.calls[-1][1])
         self.assertFalse(os.path.exists(self.renders()))
 
-    def test_no_target_dir_and_no_work_root_is_refused(self):
+    def test_bad_name_parts_are_refused_before_any_step(self):
+        self.answer(shape="3840x1608")
+        self.answer(look="/luts/look.cube")
+        self.answer(destination="client_master", name_parts=["client=Acme"])
+        os.environ.pop("RPRESOLVE_CONFIG")  # the default folder skips queue_render in a dry run
+        for apply in (False, True):
+            with self.assertRaisesRegex(project.ProjectError, "nothing was built.*missing slug"):
+                self.build(apply=apply)
+        self.assertEqual(self.calls, [])
+
+    def test_the_render_folder_is_made_before_the_assemble_and_a_file_in_its_way_stops_it(self):
+        self.answers()
         os.environ.pop("RPRESOLVE_CONFIG")
-        _, _, problem = project.render_folder({"work_root": None}, "demo", "client_master")
-        self.assertIn("no target folder for 'client_master'", problem)
+        self.build(apply=True)
+        self.assertTrue(os.path.isdir(self.renders()))
+        self.calls.clear()
+        shutil.rmtree(self.renders())
+        Path(self.renders()).write_text("a file")
+        with self.assertRaisesRegex(project.ProjectError, "nothing was built: cannot make the render folder"):
+            self.build(apply=True)
+        self.assertEqual(self.calls, [])
+
+    def test_two_pieces_that_render_to_one_file_are_refused(self):
+        self.answers()
+        self.answer(piece="second-cut", destination="client_master", name_parts=["client=Acme", "slug=demo-cut"])
+        with self.assertRaisesRegex(project.ProjectError, "piece 'second-cut' renders to the same file"):
+            self.build()
+        self.assertEqual(self.calls, [])
 
     def picked(self):
         ledger, exclude = os.path.join(self.dir, "drafts.json"), os.path.join(self.dir, "exclude.json")
@@ -464,6 +488,38 @@ class Build(unittest.TestCase):
         self.assertNotIn("music", json.load(open(os.path.join(self.dir, "demo", "project.json")))["answers"])
         self.build()
         self.assertEqual(self.calls[0][1]["manifest"], self.manifest)  # the manifest's own music stands
+
+    def test_a_piece_clears_the_projects_pick_for_itself_only(self):
+        self.answers()
+        pk, _ = self.packet()
+        self.answer(music=(pk, "B", None))
+        self.answer(piece="second-cut", destination="client_master", name_parts=["client=Acme", "slug=second-cut"])
+        Path(self.manifest).write_text(json.dumps({"music": {"path": "/m/own.wav", "in": 0}}))
+        with self.assertRaisesRegex(project.ProjectError, r"project answer demo --piece second-cut --clear-music"):
+            self.build(piece="second-cut")
+        self.answer(piece="second-cut", clear_music=True)
+        self.build(piece="second-cut")  # the manifest's own music stands for the piece
+        self.assertEqual(self.calls[0][1]["manifest"], self.manifest)
+        st = json.load(open(os.path.join(self.dir, "demo", "project.json")))
+        self.assertIn("music", st["answers"])  # the project's pick is untouched
+
+    def test_a_manifest_whose_music_is_the_pick_goes_ahead(self):
+        self.answers()
+        pk, root = self.packet()
+        self.answer(music=(pk, "B", None))
+        Path(self.manifest).write_text(json.dumps({"music": {"path": os.path.join(root, "a", "tone one.wav"), "in": 4}}))
+        text = self.build()
+        self.assertEqual(self.calls[0][1]["manifest"], self.manifest)
+        self.assertNotIn("recorded pick goes in", text)
+
+    def test_a_pieces_own_pick_keeps_the_projects_exclude_list(self):
+        self.answers()
+        ledger, exclude = self.picked()
+        self.answer(piece="second-cut", destination="client_master", name_parts=["client=Acme", "slug=second-cut"])
+        self.answer(piece="second-cut", pick=(self.manifest, None, None, None))
+        self.build(piece="second-cut")
+        self.assertEqual(self.calls[0][1]["exclude"], exclude)
+        self.assertNotIn("ledger", self.calls[0][1])
 
     def test_clearing_a_pick_that_is_not_recorded_is_refused(self):
         with self.assertRaisesRegex(project.ProjectError, "no music pick"):

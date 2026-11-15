@@ -25,9 +25,9 @@ project: start a project from a camera card, resumable (production/project-start
                                   assemble_timeline at the recorded shape (the recorded pick unless
                                   --manifest), each manifest effect, apply_grade with the recorded
                                   look, queue_render for the recorded destination; refused first when
-                                  the destination has no target_dir and there is no work root (with a
-                                  work root it renders to <work root>/<slug>/renders), or when the
-                                  manifest has music and a pick is recorded; a dry run prints one plan;
+                                  a name part is missing, another piece renders to the same file, or the
+                                  manifest has music other than the recorded pick (a destination with no
+                                  target_dir renders to <work root>/<slug>/renders); a dry run prints one plan;
                                   connects to Resolve
     project status SLUG           the nine steps, the next command for steps 7 to 9, the answers as
                                   recorded, a destination with no render folder, and whether the card
