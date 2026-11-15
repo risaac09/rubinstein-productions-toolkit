@@ -5,21 +5,33 @@ project: start a project from a camera card, resumable (production/project-start
                                   copy and verify (a card volume), record the project, identify,
                                   list open questions, index, contact sheets, then the Resolve colour
                                   step; stops at the first step that needs a person; run it again to resume
-    project answer SLUG [--squeeze F [--clip ID]...] [--resolved] [--apply]
-                                  record a squeeze answer through `card set`, or that a person made the
-                                  Resolve project and set its colour
-    project answer SLUG [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
+    project answer SLUG [--squeeze F [--clip ID]... [--replace]] [--resolved] [--apply]
+                                  record a squeeze answer through `card set` (a clip that holds one
+                                  is refused without --replace), or that a person made the Resolve
+                                  project and set its colour
+    project answer SLUG [--piece NAME] [--shape WxH] [--look LUT] [--destination KEY --name-part K=V ...] [--apply]
                                   record the delivery shape, the look, the destination once each
-                                  (who and when), in the project state
+                                  (who and when), in the project state; with --piece, for that piece
+                                  only, over the project's (a second piece records what differs)
+    project answer SLUG [--piece NAME] --pick MANIFEST [--ledger DRAFTS --draft PLAN] [--exclude LIST] [--apply]
+                                  record the picked manifest once, with the draft farm's ledger and
+                                  the exclude list that build passes to assemble_timeline
     project answer SLUG --music-key DIR --music-pick LETTER [--music-in SEC] [--apply]
                                   record the picked track of a `music candidates` packet; optional;
                                   build puts it in the manifest's music when the manifest has none
-    project build SLUG --manifest PATH [--name NAME] [--apply]
-                                  assemble_timeline at the recorded shape, each manifest effect,
-                                  apply_grade with the recorded look, queue_render for the recorded
-                                  destination; a dry run prints one plan; connects to Resolve
-    project status SLUG           the nine steps, the next command for steps 7 to 9, and whether the
-                                  card may be formatted
+    project answer SLUG [--piece NAME] --clear-music [--apply]
+                                  forget the recorded music pick, so a manifest's own music can stand
+    project build SLUG [--piece NAME] [--manifest PATH] [--name NAME] [--apply]
+                                  assemble_timeline at the recorded shape (the recorded pick unless
+                                  --manifest), each manifest effect, apply_grade with the recorded
+                                  look, queue_render for the recorded destination; refused first when
+                                  a name part is missing, another piece renders to the same file, or the
+                                  manifest has music other than the recorded pick (a destination with no
+                                  target_dir renders to <work root>/<slug>/renders); a dry run prints one plan;
+                                  connects to Resolve
+    project status SLUG           the nine steps, the next command for steps 7 to 9, the answers as
+                                  recorded, a destination with no render folder, and whether the card
+                                  may be formatted
 
 State is <work root>/<slug>/project.json. Paths come from the JSON file named by
 $RP_PIPELINE_CONFIG (landing_root, work_root, indexer, offsite_remote, sheets_root;
@@ -56,7 +68,14 @@ def add_arguments(p):
     p.add_argument("--music-key", metavar="DIR", help="answer: the folder of a `music candidates` packet (its key.json)")
     p.add_argument("--music-pick", metavar="LETTER", help="answer: the letter the person picked")
     p.add_argument("--music-in", type=float, metavar="SEC", help="answer: where in the track the music starts (default the packet's start)")
-    p.add_argument("--manifest", help="build: the picked manifest (absolute path)")
+    p.add_argument("--clear-music", action="store_true", help="answer: forget the recorded music pick")
+    p.add_argument("--replace", action="store_true", help="answer: --squeeze may replace a clip's answer")
+    p.add_argument("--piece", help="answer, build: the piece (a slug) whose own answers lie over the project's")
+    p.add_argument("--pick", metavar="MANIFEST", help="answer: the picked manifest")
+    p.add_argument("--ledger", metavar="DRAFTS", help="answer: with --pick, the draft farm's drafts.json for it")
+    p.add_argument("--draft", metavar="PLAN", help="answer: with --ledger, the picked plan when it holds several")
+    p.add_argument("--exclude", metavar="LIST", help="answer: with --pick, the exclude list (JSON with takes)")
+    p.add_argument("--manifest", help="build: the manifest (default the recorded pick)")
     p.add_argument("--name", help="build: the new timeline's name (default the slug; ' [auto]' is added)")
     p.add_argument("--config", help="the pipeline config (default $RP_PIPELINE_CONFIG)")
     p.add_argument("--landing", help="where a copied card lands")
@@ -78,11 +97,12 @@ def run(args):
             return rpproject.answer(cfg, args.target, args.apply, args.squeeze, args.clip or (), args.resolved,
                                     shape=args.shape, look=args.look, destination=args.destination,
                                     name_parts=args.name_part or (),
-                                    music=(args.music_key, args.music_pick, args.music_in) if args.music_key or args.music_pick else None)
+                                    music=(args.music_key, args.music_pick, args.music_in) if args.music_key or args.music_pick else None,
+                                    pick=(args.pick, args.ledger, args.exclude, args.draft)
+                                    if args.pick or args.ledger or args.exclude or args.draft else None,
+                                    piece=args.piece, replace=args.replace, clear_music=args.clear_music)
         if args.action == "build":
-            if not args.manifest:
-                raise rpproject.ProjectError("build needs --manifest PATH")
-            return rpproject.build(cfg, args.target, args.manifest, args.name, args.apply)
+            return rpproject.build(cfg, args.target, args.manifest, args.name, args.apply, piece=args.piece)
         return rpproject.status(cfg, args.target)
     except (rpproject.ProjectError, rpproject.rpcard.CardError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
