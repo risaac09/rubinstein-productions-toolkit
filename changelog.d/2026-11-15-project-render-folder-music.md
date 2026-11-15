@@ -1,0 +1,1 @@
+project: a destination with no `target_dir` renders to `<work root>/<slug>/renders` (made on `--apply`; a configured `target_dir` still wins), and `build` and `status` name the folder; `build` refuses a manifest with its own music when a music pick is recorded, naming both tracks; `project answer SLUG --clear-music --apply` forgets the pick.
