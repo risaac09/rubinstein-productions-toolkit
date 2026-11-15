@@ -36,12 +36,17 @@ and set with --set; none is a standard. They are numbers, not listening:
                         padded speech_pad_s) against the rest; WARN when the
                         rest is louder than speech minus speech_rest_margin_lu
     voice_vs_bed        with --words, each speech span's momentary loudness
-                        against the bed, the median over the gaps of at least
-                        voice_bed_gap_s (shorter gaps still hold a voice's
-                        tail); WARN names each span under bed +
+                        against the louder bed of the gaps that touch it: a
+                        gap of at least voice_bed_gap_s read whole, a shorter
+                        one by its interior median (0.1 s after the last
+                        voice to 0.3 s before the next, 0.4 s or more left);
+                        a gap too short to read counts as no gap, the other
+                        side stands in, then the file's median over the long
+                        gaps. WARN names each span under bed +
                         voice_bed_margin_lu. SKIP (not measurable) when no
                         gap is that long. Needs numpy; a bed that ducks under
-                        voice reads louder in the gaps than it is
+                        voice reads louder in the gaps than it is, and music
+                        living only in gaps too short to read passes
     phone_proxy         the mix folded to mono and high-passed at
                         phone_hp_hz: its loudest short-term loudness against
                         the full mix's; WARN when it drops more than
@@ -56,11 +61,13 @@ the scdet cuts of the file itself. WARN does not fail the table.
 Offline rows (VP-23a, VP-20). Thresholds are working defaults, printed in the row:
     privacy            always on: the container and stream tags, WARN on a
                        location or GPS tag, a serial, an artist, author,
-                       creator, owner or comment field, a camera's unique id
-                       tag or a camera-name tag (a label of one or two
-                       characters passes), or a value holding a
+                       creator, owner or comment field, or a value holding a
                        home-folder path or an email address. Names the tags,
-                       never the values. Metadata only; the frame pass at one
+                       never the values. With --dest (a delivery) it also WARNs on a
+                       camera's unique id tag or a camera-name tag (a label of
+                       one or two characters, or a phone's Back or Front,
+                       passes); a camera original or proxy keeps its own.
+                       Metadata only; the frame pass at one
                        frame per second is a look, not this row
     blackdetect        black that starts within black_lead_start_s of the head
                        and lasts under black_lead_max_s is a fade-in: WARN
@@ -521,16 +528,27 @@ def _sound_speech_vs_rest(path, words, th):
                  f"words joined across gaps under {th['speech_join_s']:g}s, padded {th['speech_pad_s']:g}s")
 
 
+VOICE_TAIL_S = 0.1  # a short gap is read from this long after the previous voice (its padding already holds 0.2 s)
+ONSET_S = 0.3       # ... to this long before the next voice (a breath or onset comes ahead of its word)
+
+
 def _sound_voice_vs_bed(frames, words, th):
     """PRI-22: per speech span, the voice against the room's bed. The
     momentary loudness (400 ms) of each span is its median over the frames
-    wholly inside it; the bed is the median, over every gap of at least
-    voice_bed_gap_s, of that gap's own median. WARN names every span under
-    the margin; SKIP when no gap is long enough to read.
-    shortcut: a mix has no bed track, so the bed is read in the gaps and held
-    to one level for the file; a bed that ducks under the voice reads louder
-    there than it is (a stricter row, never a looser one). Stems would give
-    the bed itself."""
+    wholly inside it. The bed is read on each side of the span from the gap
+    that touches it, and only that gap: a gap of at least voice_bed_gap_s is
+    read whole (its median); a shorter one by the median of its interior,
+    from VOICE_TAIL_S after the previous voice to ONSET_S before the next,
+    when 0.4 s or more remains. A side whose gap cannot be read has no bed;
+    the span takes the louder bed of the sides that have one, the other side's
+    alone when one has none, and the file's lower median over the long gaps
+    when neither does. WARN names every span under the margin; SKIP when no
+    gap is long enough to read.
+    shortcut: a mix has no bed track, so a bed that ducks under the voice
+    reads louder in the gaps than it is. Looser than the rule before this
+    one in one case: music that lives only in gaps too short to read (under
+    about 1.1 s with the speech padding), whose spans then take the other
+    side's bed or the file median. Stems would give the bed itself."""
     margin = th["voice_bed_margin_lu"]
     expected = f"each speech span >= its bed + {margin:g} LU{WD}"
     if words is None:
@@ -543,18 +561,30 @@ def _sound_voice_vs_bed(frames, words, th):
 
     spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
     edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
-    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]
-    beds = sorted(x for x in (level(a, b) for a, b in gaps if b - a >= gap_min) if x is not None)
+    gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]  # gap i precedes span i
+    long_bed = [level(a, b) if b - a >= gap_min else None for a, b in gaps]
+    beds = sorted(x for x in long_bed if x is not None)
     if not beds:
         return _srow("voice_vs_bed", SKIP, f"not measurable: no gap of {gap_min:g}s or more", expected,
                      f"the bed is read in gaps of at least {gap_min:g}s; a mix with no such room tone has none to read")
-    bed = beds[len(beds) // 2]
+    median = beds[(len(beds) - 1) // 2]
+
+    def side(j):  # the bed from gap j, the one that touches the span; None when it cannot be read
+        if long_bed[j] is not None:
+            return long_bed[j]
+        a, b = gaps[j]
+        if b - a - VOICE_TAIL_S - ONSET_S >= 0.4:
+            return level(a + VOICE_TAIL_S, b - ONSET_S)
+        return None
+
     bad, read = [], 0
-    for a, b in spans:
+    for i, (a, b) in enumerate(spans):
         voice = level(a, b)
         if voice is None:
             continue
         read += 1
+        near = [x for x in (side(i), side(i + 1)) if x is not None]
+        bed = max(near) if near else median
         gap = round(voice - bed, 1)
         if gap < margin - 1e-9:
             bad.append(f"{_at(a)} to {_at(b)} voice {gap:+g} LU over its bed")
@@ -564,7 +594,8 @@ def _sound_voice_vs_bed(frames, words, th):
     return _srow("voice_vs_bed", WARN if bad else PASS,
                  "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
                  if bad else f"{read} spans clear of their bed", expected,
-                 f"{read} of {len(spans)} spans read, bed {bed:g} LUFS from {len(beds)} gap(s) of {gap_min:g}s or more")
+                 f"{read} of {len(spans)} spans read, each against the louder bed of the gaps beside it "
+                 f"(file median {median:g} LUFS from {len(beds)} gap(s) of {gap_min:g}s or more)")
 
 
 def _sound_phone_proxy(path, full_frames, th):
@@ -800,19 +831,23 @@ def _colour_row(path, colour, th, has_video):
     return _srow("colour", FAIL if bad else WARN if over or w["bar_hot_px"] else PASS, found, expected, note)
 
 
-PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment"
-                         r"|camera[\w. -]*(unique|uuid|uid|ident)|camera[ _.-]?id(?![a-z])", re.I)
+PRIVATE_KEY = re.compile(r"location|gps|iso6709|serial|artist|author|creator|owner|comment", re.I)
+# A camera's id is the body's, shared by every original and proxy it wrote: only a delivery should not hold it.
+CAMERA_ID_KEY = re.compile(r"camera[\w. -]*(unique|uuid|uid|ident)|camera[ _.-]?id(?![a-z])", re.I)
 CAMERA_NAME_KEY = re.compile(r"camera[ _.-]?name", re.I)  # a person's name goes here; a one-letter label (A, B) does not
+LENS_FACING = {"back", "front"}  # a phone's camera.identifier names the lens, not the body
 PRIVATE_VALUE = re.compile(r"(?:/Users/|/home/|/Volumes/|[A-Za-z]:\\Users\\)|[\w.+-]+@[\w-]+\.[\w.-]+")
 
 
-def _privacy_row(info):
+def _privacy_row(info, delivery=False):
     """The metadata half of the privacy pass (VP-20). Reads the container and
     stream tags ffprobe already gave: a location or GPS tag, a serial number,
     an artist, author, creator, owner or comment field, a camera's unique id
     or its name (unless a label of one or two characters), or any tag whose value
     holds a home-folder path or an email address. Names the tags, never their
-    values, so the report itself carries nothing private. WARN, never FAIL: a
+    values, so the report itself carries nothing private. The camera id and
+    name rules apply to a delivery only (delivery: a destination was given); a
+    camera original or proxy carries its body's id by design. WARN, never FAIL: a
     credit may be wanted. The frame pass at one frame per second is a look, not
     this row."""
     expected = "no location, serial, personal-name, path or email tag (working default list)"
@@ -824,14 +859,16 @@ def _privacy_row(info):
         for k, v in tags.items():
             read += 1
             v = str(v).strip()
-            if v and (PRIVATE_KEY.search(k) or PRIVATE_VALUE.search(v)
-                      or CAMERA_NAME_KEY.search(k) and len(v) > 2):
+            cam = delivery and (CAMERA_ID_KEY.search(k) and v.lower() not in LENS_FACING
+                                or CAMERA_NAME_KEY.search(k) and len(v) > 2)
+            if v and (PRIVATE_KEY.search(k) or PRIVATE_VALUE.search(v) or cam):
                 hits.append(f"{place}: {k}")
     return _srow("privacy", WARN if hits else PASS,
                  "; ".join(hits[:6]) + (f"; +{len(hits) - 6} more" if len(hits) > 6 else "")
                  if hits else f"{read} tags read, none private", expected,
                  "metadata only (ffprobe tags, values not printed); the one-frame-per-second look "
-                 "at the picture stays a person's")
+                 "at the picture stays a person's"
+                 + ("" if delivery else "; camera id and name rules apply to deliveries: pass --dest to check them"))
 
 
 def _parabola(lo, mid, hi):
@@ -1151,7 +1188,7 @@ def run(path, dest=None, config_folders=None, fps=None, size=None, expected_dura
             rows.append(_row(n, None, "no audio stream", "-"))
 
     rows.append(_social_fps(streams, dest, th))
-    rows.append(_privacy_row(info))
+    rows.append(_privacy_row(info, delivery=dest is not None))
     rows.append(_sha256_row(path, sha256))
     rows.append(_safe_zone(_np(), path, dest, th, dur, streams))
     rows.append(_sync_row(path, sync_ref, th, has_audio, streams, dur))

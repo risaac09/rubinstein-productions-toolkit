@@ -362,13 +362,32 @@ class Vp20Rows(unittest.TestCase):
 
     def test_privacy_warns_on_each_planted_tag_and_prints_keys_only(self):
         for tag in ("location=+41.0000-071.0000/", "serial_number=SN123456", "artist=Some Person",
-                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org",
-                    "com.example.cameraName=Some Person", "com.example.cameraUniqueID=0123456789abcdef",
-                    "camera_id=0123456789abcdef"):
+                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org"):
             r = _row(qc.run(self.tagged("t.mkv", tag)), "privacy")
             self.assertEqual(r["status"], qc.WARN, (tag, r))
             self.assertNotIn(tag.split("=", 1)[1], r["found"] + str(r.get("note")))
             self.assertIn(tag.split("=")[0].lower(), r["found"].lower())
+
+    def test_camera_id_and_name_warn_on_a_delivery_only(self):
+        def info(k, v):
+            return {"format": {"tags": {k: v}}, "streams": []}
+        for k, v in (("com.example.cameraName", "Some Person"),
+                     ("com.example.cameraUniqueID", "0123456789abcdef"), ("camera_id", "0123456789abcdef")):
+            self.assertEqual(qc._privacy_row(info(k, v), delivery=True)["status"], qc.WARN, k)
+            self.assertEqual(qc._privacy_row(info(k, v))["status"], qc.PASS, k)  # an original or proxy
+            self.assertNotIn(v, qc._privacy_row(info(k, v), delivery=True)["found"])
+        for v in ("Back", "front"):
+            self.assertEqual(qc._privacy_row(info("com.apple.quicktime.camera.identifier", v),
+                                             delivery=True)["status"], qc.PASS)
+        self.assertIn("pass --dest", qc._privacy_row(info("camera_id", "0123456789abcdef"))["note"])
+        self.assertNotIn("0123456789abcdef", qc._privacy_row(info("camera_id", "0123456789abcdef"))["note"])
+        self.assertNotIn("pass --dest", qc._privacy_row(info("camera_id", "x"), delivery=True)["note"])
+        # the other private tags still warn without a destination
+        self.assertEqual(qc._privacy_row(info("serial_number", "SN1"))["status"], qc.WARN)
+
+    def test_a_camera_id_alone_on_a_file_without_a_destination_passes(self):
+        r = qc.run(self.tagged("cam.mkv", "com.example.cameraUniqueID=0123456789abcdef"))
+        self.assertEqual(_row(r, "privacy")["status"], qc.PASS)
 
     def test_privacy_ignores_a_camera_label_and_a_clip_id(self):
         r = qc.run(self.tagged("lab.mkv", "com.example.cameraName=A", "clip_id=0123456789abcdef"))

@@ -538,6 +538,8 @@ def delay_samples(filt, rate):
         raise MixError(f"could not measure the delay of {filt}: "
                        + proc.stderr.decode(errors="replace").strip()[-300:])
     y = y[:n]
+    if not np.isfinite(y).all() or not np.linalg.norm(y) > 0:  # a crashed run's NaN or silence is not a delay of 0
+        raise MixError(f"{filt} at {rate} Hz: ffmpeg wrote NaN or silence, no delay to measure")
     m = 1 << (2 * n - 1).bit_length()
     c = np.fft.irfft(np.fft.rfft(y, m) * np.conj(np.fft.rfft(x, m)), m)[:int(MAX_DELAY_S * rate)]
     lag = int(np.argmax(c))

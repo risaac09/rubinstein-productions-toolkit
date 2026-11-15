@@ -1131,7 +1131,6 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     reader = reader or SourceReader(one["path"])
     detect = detect or vision.face_boxes
     stored = tuple(reader.size)
-    luma_size = tuple(getattr(reader, "luma_size", None) or stored)
     for value, source in ((manifest.get("squeeze"), "manifest"), (squeeze, "argument"),
                           (getattr(reader, "squeeze", None), "file tag")):
         if value is not None:
@@ -1175,6 +1174,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 past = [t for t in times if end and t >= end]
                 times = [t for t in times if t not in past]
                 frames = reader.read(times, folder) if times else []
+                # read after the read: its decoded-size guard may have refit the size
+                luma_size = tuple(getattr(reader, "luma_size", None) or stored)
                 if frames:
                     boxes = detect([png for _, png, _ in frames])
                     if boxes is None:

@@ -209,6 +209,17 @@ class TestRender(unittest.TestCase):
         self.assertEqual((p["floor_dbfs"], p["gate_from"]), (None, "digital silence"))
         self.check(p, 12.0)
 
+    def test_music_without_a_reported_duration_keeps_every_sample(self):
+        mkv = self.out("piped.mkv")  # Matroska written to a pipe carries no duration
+        with open(mkv, "wb") as fh:
+            subprocess.run([dp.dc.FFMPEG, "-v", "error", "-y", "-i", self.mx, "-c:a", "flac", "-f", "matroska", "-"],
+                           stdout=fh, stdin=subprocess.DEVNULL, check=True)
+        self.assertIsNone(dp.ar.audio_stream(mkv)["duration_s"])
+        want = len(dxm.decode(mkv)[0])
+        for i in range(4):
+            p = dp.render(mkv, self.dx, self.out(f"nodur{i}"))
+            self.assertEqual(len(dxm.decode(p["out"])[0]), want)
+
     def test_no_speech_is_refused_and_nothing_written(self):
         room = write_wav(self.out("room.wav"), 0.001 * np.random.default_rng(3).standard_normal(
             5 * RATE))
