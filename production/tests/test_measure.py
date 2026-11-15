@@ -216,6 +216,8 @@ class TestLumaShares(unittest.TestCase):
         d = measure.luma_shares(y, (12, 12, 0, 0))
         self.assertAlmostEqual(d["over_235_pct"], 100 * 1000 / (76 * 200), places=3)
         self.assertEqual((d["hard_high_pct"], d["hard_low_pct"], d["under_16_pct"]), (0.0, 0.0, 0.0))
+        y[40:42, :100] = 235  # a grade's clamp: at legal white, not over it
+        self.assertAlmostEqual(measure.luma_shares(y, (12, 12, 0, 0))["at_235_pct"], 100 * 200 / (76 * 200), places=3)
         y[0, 0] = 255  # a hot pixel inside a bar is counted apart, not hidden
         self.assertEqual(measure.luma_shares(y, (12, 12, 0, 0))["bar_hot_px"], 1)
         self.assertEqual(measure.luma_shares(y)["under_16_pct"], 0.0)
@@ -232,12 +234,12 @@ class TestFrameCropping(unittest.TestCase):
     """A stream that says 640x360 but carries Frame Cropping side data decodes
     to the cropped picture; probe must report the size a reader gets."""
 
-    def make(self, tmp, top, bottom, left=0, right=0):
+    def make(self, tmp, top, bottom, left=0, right=0, size="640x360"):
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from cropfix import add_clap
         plain, out = os.path.join(tmp, "plain.mp4"), os.path.join(tmp, "cropped.mp4")
         subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i",
-                        "testsrc2=s=640x360:r=25:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        f"testsrc2=s={size}:r=25:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                         "-y", plain], check=True)
         add_clap(plain, out, top, bottom, left, right)
         listed = subprocess.run([measure.FFPROBE, "-v", "error", "-show_streams", out],
@@ -266,6 +268,27 @@ class TestFrameCropping(unittest.TestCase):
         self.assertEqual(measure.cropped_size(st("yuv420p", bottom=3)), (640, 356))
         self.assertEqual(measure.cropped_size(st("yuv422p", bottom=3)), (640, 357))
         self.assertEqual(measure.cropped_size(st("yuv420p", left=7, right=1)), (632, 360))
+
+    def test_odd_crop_reports_the_even_size_the_decoder_returns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = self.make(tmp, 113, 114, size="1920x1080")
+            info = measure.probe(clip)
+            self.assertEqual((info["width"], info["height"]), (1920, 852))
+            self.assertEqual(measure.read_luma(clip, 0.2, 1920, 852).shape, (852, 1920))
+            odd_w = self.make(tmp, 0, 0, 3, 0, size="1920x1080")
+            self.assertEqual(measure.probe(odd_w)["width"], 1916)
+
+    def test_a_probe_a_pixel_off_trusts_the_decoded_frame(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = self.make(tmp, 113, 114, size="1920x1080")
+            self.assertEqual(measure.read_luma(clip, 0.2, 1920, 853).shape, (852, 1920))
+            self.assertEqual(measure.read_frame(clip, 0.2, 1920, 853).shape, (852, 1920, 3))
+            self.assertEqual(measure.luma_pass(clip, fps=2)["size"], [1920, 852])
+
+    def test_fit_frame(self):
+        self.assertEqual(measure.fit_frame(1920 * 852, 1920, 853), (1920, 852))
+        self.assertEqual(measure.fit_frame(1920 * 853, 1920, 853), (1920, 853))
+        self.assertIsNone(measure.fit_frame(1000, 1920, 853))
 
     def test_crop_size_helper_ignores_a_stream_without_side_data(self):
         self.assertEqual(measure.cropped_size({"width": 1920, "height": 1080}), (1920, 1080))

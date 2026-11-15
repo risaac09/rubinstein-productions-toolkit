@@ -45,7 +45,7 @@ import threading
 import numpy as np
 
 from . import color
-from .detect import cropped_size  # noqa: F401  (stdlib home, shared with reframe)
+from .detect import cropped_size, fit_frame  # noqa: F401  (stdlib home, shared with reframe)
 # The Vision helper lives in vision.py (stdlib only); these names stay here too.
 from .vision import CACHE_DIR, SWIFTC, VISION_SOURCE, face_boxes, vision_binary  # noqa: F401
 
@@ -102,8 +102,8 @@ def probe(path):
     """{width, height, duration, fps, codec, profile, color tags} of the
     first video stream."""
     cmd = [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-           "stream=codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
-           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate:format=duration,format_name",
+           "stream=duration,codec_name,profile,width,height,avg_frame_rate,color_range,color_space,color_transfer,"
+           "color_primaries,pix_fmt:stream_side_data=rotation,crop_top,crop_bottom,crop_left,crop_right:stream_tags=rotate,DURATION:format=duration,format_name",
            "-of", "json", "file:" + path]
     proc = _run(cmd, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -124,7 +124,15 @@ def probe(path):
     # ffmpeg auto-rotates on decode, so a quarter-turn swaps the frame's size.
     if rotation(s) % 180 == 90:
         width, height = height, width
-    return {"width": width, "height": height, "duration": duration,
+    stream_duration = 0.0  # 0 when the container keeps none (Matroska, without its DURATION tag)
+    try:
+        stream_duration = float(s.get("duration") or 0)
+        if not stream_duration and (s.get("tags") or {}).get("DURATION"):
+            h, m, sec = (s["tags"]["DURATION"].split(":") + ["0", "0"])[:3]
+            stream_duration = int(h) * 3600 + int(m) * 60 + float(sec)
+    except ValueError:
+        pass
+    return {"width": width, "height": height, "duration": duration, "stream_duration": stream_duration,
             "fps": s.get("avg_frame_rate", ""), "codec": s.get("codec_name", ""),
             "profile": s.get("profile", ""),
             "tags": {k: s.get(k, "") for k in ("pix_fmt", "color_range", "color_space",
@@ -178,6 +186,9 @@ def read_frame(path, t, width, height, vf=None):
     cmd += ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-"]
     proc = _run(cmd)
     want = width * height * 6
+    if proc.returncode == 0 and len(proc.stdout) != want:  # trust the decoded frame over a probe a pixel off
+        width, height = fit_frame(len(proc.stdout), width, height, 6) or (width, height)
+        want = width * height * 6
     if proc.returncode != 0 or len(proc.stdout) < want:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
@@ -237,6 +248,8 @@ def _luma_cmd(path, vf, seek=None, frames=None):
 def read_luma(path, t, width, height):
     """One frame's Y plane at time t as uint8 codes, shape (h, w)."""
     proc = _run(_luma_cmd(path, "", seek=t, frames=1))
+    if proc.returncode == 0 and len(proc.stdout) != width * height:  # trust the decoded frame over a probe a pixel off
+        width, height = fit_frame(len(proc.stdout), width, height) or (width, height)
     if proc.returncode != 0 or len(proc.stdout) < width * height:
         raise MeasureError(f"ffmpeg could not read a frame at {t:.3f}s: "
                            f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
@@ -311,7 +324,7 @@ def edge_bars(frames):
 
 def luma_shares(y, bars=(0, 0, 0, 0)):
     """Percent of the active picture (the frame less its bars) above legal
-    white, at hard clipping, crushed to or under HARD_LOW_Y, and under legal
+    white, exactly at it (a grade's clamp), at hard clipping, crushed to or under HARD_LOW_Y, and under legal
     black; its luma min and max; and how many bar pixels sit over legal
     white (a bar that held a picture after all). One histogram of the
     active picture gives all of it."""
@@ -323,7 +336,7 @@ def luma_shares(y, bars=(0, 0, 0, 0)):
     pct = lambda c: 100.0 * int(c) / n  # noqa: E731
     outside = int(np.count_nonzero(y > LEGAL_WHITE_Y)) - int(hist[LEGAL_WHITE_Y + 1:].sum()) if any(bars) else 0
     present = np.flatnonzero(hist)
-    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
+    return {"over_235_pct": pct(hist[LEGAL_WHITE_Y + 1:].sum()), "at_235_pct": pct(hist[LEGAL_WHITE_Y]), "hard_high_pct": pct(hist[HARD_HIGH_Y:].sum()),
             "hard_low_pct": pct(hist[:HARD_LOW_Y + 1].sum()), "under_16_pct": pct(hist[:LEGAL_BLACK_Y].sum()),
             "ymin": int(present[0]), "ymax": int(present[-1]), "bar_hot_px": outside}
 
@@ -340,6 +353,7 @@ def luma_pass(path, fps=1.5, check_cancel=None):
     probes = [read_luma(path, t, w, h) for t in sample_times(dur, BAR_PROBES)] if dur > 0 \
         else [read_luma(path, 0.0, w, h)]
     bars = edge_bars(probes)
+    h, w = probes[0].shape  # the decoded size, which a probe can miss by a pixel
     del probes
     per = []
     for i, y in enumerate(luma_stream(path, w, h, fps)):
@@ -350,11 +364,13 @@ def luma_pass(path, fps=1.5, check_cancel=None):
         per.append(d)
     if not per:
         raise MeasureError("ffmpeg returned no frames")
-    # ffmpeg exits 0 on a truncated file; the container's duration says how many frames are due
-    due = int(dur * fps)
-    if dur > 0 and len(per) < due - 2:
-        raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {dur:g} s: the file ends early")
-    keys = ("over_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
+    # ffmpeg exits 0 on a truncated file; the picture's own duration (not the container's, which
+    # audio can outrun) says how many frames are due. A clip too short for two is not judged.
+    vdur = info["stream_duration"]  # none known: no check, the container's duration would count audio
+    due = int(vdur * fps)
+    if vdur > 0 and len(per) < due - 2:
+        raise MeasureError(f"read {len(per)} frames, {due} due at {fps:g} a second over {vdur:g} s: the file ends early")
+    keys = ("over_235_pct", "at_235_pct", "hard_high_pct", "hard_low_pct", "under_16_pct", "bar_hot_px")
     worst = {k: max(d[k] for d in per) for k in keys}
     worst["ymin"], worst["ymax"] = min(d["ymin"] for d in per), max(d["ymax"] for d in per)
     return {"frames": len(per), "fps": fps, "size": [w, h], "bars": list(bars), "worst": worst,

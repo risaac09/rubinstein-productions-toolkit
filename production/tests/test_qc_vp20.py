@@ -91,9 +91,11 @@ class Vp20Rows(unittest.TestCase):
         cls.gray = os.path.join(t, "gray.mp4")
         cls.black = os.path.join(t, "black.mp4")
         cls.hot = os.path.join(t, "hot.mp4")
+        cls.clamped = os.path.join(t, "clamped.mp4")
         _video(cls.gray, "color=c=gray:s=108x192:r=25:d=3[v]")
         _video(cls.black, "color=c=black:s=108x192:r=25:d=3[v]")
         _video(cls.hot, "color=c=gray:s=108x192:r=25:d=3,format=yuv420p,lutyuv=y=250[v]")
+        _video(cls.clamped, "color=c=gray:s=108x192:r=25:d=3,format=yuv420p,lutyuv=y=235[v]")
         # a static textured picture (testsrc2 carries moving parts, which a sub-pixel read sees)
         pat = os.path.join(t, "pat.png")
         _ff("-f", "lavfi", "-i", "nullsrc=s=270x480", "-vf",
@@ -207,6 +209,22 @@ class Vp20Rows(unittest.TestCase):
     def test_colour_passes_mid_grey(self):
         row = _row(qc.run(self.gray, colour=True), "colour")
         self.assertEqual(row["status"], qc.PASS, row)
+
+    def test_colour_reports_the_share_clamped_at_legal_white_and_stays_advisory(self):
+        row = _row(qc.run(self.clamped, colour=True), "colour")  # Y 235 everywhere
+        self.assertEqual(row["status"], qc.PASS, row)
+        self.assertIn("100.00% exactly at Y 235", row["found"])
+        self.assertIn("0.00% over Y 235", row["found"])
+
+    def test_colour_reads_a_picture_that_audio_outruns_and_a_one_second_clip(self):
+        long_audio = os.path.join(self._tmp.name, "long_audio.mkv")
+        _ff("-f", "lavfi", "-i", "color=c=gray:s=108x192:r=5:d=60", "-f", "lavfi", "-i", "sine=d=62",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", long_audio)
+        short = os.path.join(self._tmp.name, "one_second.mp4")
+        _ff("-f", "lavfi", "-i", "color=c=gray:s=108x192:r=25:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", short)
+        for clip in (long_audio, short):
+            row = _row(qc.run(clip, colour=True), "colour")
+            self.assertEqual(row["status"], qc.PASS, (clip, row))
 
     def test_colour_reports_the_low_side_without_warning(self):
         row = _row(qc.run(self.black, colour=True), "colour")  # legal black, Y 16
@@ -344,11 +362,17 @@ class Vp20Rows(unittest.TestCase):
 
     def test_privacy_warns_on_each_planted_tag_and_prints_keys_only(self):
         for tag in ("location=+41.0000-071.0000/", "serial_number=SN123456", "artist=Some Person",
-                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org"):
+                    "comment=exported from /Users/someone/clip.mov", "title=write me at a@example.org",
+                    "com.example.cameraName=Some Person", "com.example.cameraUniqueID=0123456789abcdef",
+                    "camera_id=0123456789abcdef"):
             r = _row(qc.run(self.tagged("t.mkv", tag)), "privacy")
             self.assertEqual(r["status"], qc.WARN, (tag, r))
             self.assertNotIn(tag.split("=", 1)[1], r["found"] + str(r.get("note")))
-            self.assertIn(tag.split("=")[0], r["found"].lower())
+            self.assertIn(tag.split("=")[0].lower(), r["found"].lower())
+
+    def test_privacy_ignores_a_camera_label_and_a_clip_id(self):
+        r = qc.run(self.tagged("lab.mkv", "com.example.cameraName=A", "clip_id=0123456789abcdef"))
+        self.assertEqual(_row(r, "privacy")["status"], qc.PASS)
 
     def test_privacy_ignores_a_plain_title_and_never_fails(self):
         r = qc.run(self.tagged("ok.mkv", "title=Example clip"))
