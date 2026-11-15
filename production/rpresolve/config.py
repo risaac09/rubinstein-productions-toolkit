@@ -61,7 +61,7 @@ DEFAULT_CONFIG = {
     # House delivery rules every destination starts from (rpresolve.deliver).
     # A destination's own "loudness" and "color" override these field by field.
     "deliver": {
-        "loudness": {"tolerance_lu": 0.5, "true_peak_max_dbtp": -1.0,
+        "loudness": {"tolerance_lu": 0.5, "true_peak_max_dbtp": -1.5,
                      "fix_true_peak_margin_db": 0.5},
         # Resolve's tag strings go to SetRenderSettings; "expect" is what
         # ffprobe should read back. Which transfer Resolve writes for

@@ -883,7 +883,7 @@ def bed_peak(bed):
             "ceiling": PEAK_CEILING_DBTP}
 
 
-PEAK_CEILING_DBTP = -1.0  # the camera bed, after its gain, stays under this true peak
+PEAK_CEILING_DBTP = -1.5  # the camera bed, after its gain, stays under this true peak
 
 
 def measure_bed(p):

@@ -41,7 +41,7 @@ what it expected:
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
                   tolerance; SKIP when the destination has no target
     true_peak     the same read: true peak at or under the destination's
-                  maximum, TRUE_PEAK_DEFAULT_DBTP (-1) when it names none. Runs
+                  maximum, TRUE_PEAK_DEFAULT_DBTP (-1.5) when it names none. Runs
                   for every destination whenever loudness is read, a
                   client_master included (its loudness stays unasserted)
     clipping      runs whenever loudness is read: FAIL when the first audio
@@ -107,7 +107,7 @@ TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
 TAIL_DROP_DB = 12.0
 TAIL_MIN_S = 4.0
 # The true_peak row's ceiling for a destination that names none (config.py's default too).
-TRUE_PEAK_DEFAULT_DBTP = -1.0
+TRUE_PEAK_DEFAULT_DBTP = -1.5
 # The clipping row: CLIP_RUN or more consecutive identical samples at CLIP_LEVEL of full scale
 # or above. A clipped signal repeats its ceiling value exactly; a clean sine never does
 # (neighbours at the crest differ by far more than a bit, down to about 30 Hz at 24 bit),
