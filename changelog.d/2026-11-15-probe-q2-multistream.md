@@ -1,0 +1,1 @@
+contract-probe: the audio-remap check (Q2) finds a multi-stream clip anywhere at the pool root, appends that clip, and compares only the track mapping Resolve reads back, since Resolve adds two keys of its own.
