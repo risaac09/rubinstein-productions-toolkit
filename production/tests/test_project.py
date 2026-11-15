@@ -280,13 +280,34 @@ class Build(unittest.TestCase):
         project.status(self.cfg, "demo", say=out.append)
         return "\n".join(out)
 
-    def test_a_destination_with_no_render_folder_is_refused_before_anything(self):
+    def renders(self):
+        return os.path.join(self.dir, "demo", "renders")
+
+    def test_a_destination_with_no_target_dir_renders_under_the_work_root(self):
         self.answers()
         os.environ.pop("RPRESOLVE_CONFIG")
-        with self.assertRaisesRegex(project.ProjectError, "nothing was built.*no target folder for 'client_master'"):
-            self.build()
-        self.assertEqual(self.calls, [])
-        self.assertIn("open: render folder: no target folder for 'client_master'", self.status())
+        text = self.build()
+        want = self.renders()
+        self.assertIn(f"render folder: {os.path.join(want, 'client_master')}", text)
+        self.assertFalse(os.path.exists(want))  # a dry run makes nothing
+        self.assertIn(f"{os.path.join(want, 'client_master')}", self.status())
+        self.assertEqual([t for t, _ in self.calls], ["assemble_timeline", "apply_effect", "apply_grade", "apply_grade"])
+        self.assertIn("not checkable until", text)
+        self.build(apply=True)
+        self.assertTrue(os.path.isdir(want))
+        self.assertEqual(self.calls[-1][1]["target_dir"], want)
+
+    def test_a_configured_target_dir_wins(self):
+        self.answers()
+        text = self.build(apply=True)
+        self.assertIn(f"render folder: {os.path.join(self.dir, 'client_master')}", text)
+        self.assertNotIn("target_dir", self.calls[-1][1])
+        self.assertFalse(os.path.exists(self.renders()))
+
+    def test_no_target_dir_and_no_work_root_is_refused(self):
+        os.environ.pop("RPRESOLVE_CONFIG")
+        _, _, problem = project.render_folder({"work_root": None}, "demo", "client_master")
+        self.assertIn("no target folder for 'client_master'", problem)
 
     def picked(self):
         ledger, exclude = os.path.join(self.dir, "drafts.json"), os.path.join(self.dir, "exclude.json")
@@ -429,14 +450,24 @@ class Build(unittest.TestCase):
         self.assertNotIn("music", json.load(open(self.manifest)))  # the picked manifest is untouched
         self.assertIn("music:", text)
 
-    def test_a_manifest_with_its_own_music_keeps_it(self):
+    def test_a_manifest_with_its_own_music_and_a_pick_is_refused(self):
         self.answers()
         pk, _ = self.packet()
         self.answer(music=(pk, "B", None))
         Path(self.manifest).write_text(json.dumps({"music": {"path": "/m/own.wav", "in": 0}}))
-        text = self.build()
-        self.assertEqual(self.calls[0][1]["manifest"], self.manifest)
-        self.assertIn("has its own", text)
+        for apply in (False, True):
+            with self.assertRaisesRegex(project.ProjectError, r"own\.wav.*tone one\.wav.*--clear-music"):
+                self.build(apply=apply)
+        self.assertEqual(self.calls, [])
+        self.answer(clear_music=True)
+        self.assertEqual(self.calls, [])
+        self.assertNotIn("music", json.load(open(os.path.join(self.dir, "demo", "project.json")))["answers"])
+        self.build()
+        self.assertEqual(self.calls[0][1]["manifest"], self.manifest)  # the manifest's own music stands
+
+    def test_clearing_a_pick_that_is_not_recorded_is_refused(self):
+        with self.assertRaisesRegex(project.ProjectError, "no music pick"):
+            self.answer(clear_music=True)
 
     def test_a_music_key_without_a_letter_is_refused(self):
         pk, _ = self.packet()

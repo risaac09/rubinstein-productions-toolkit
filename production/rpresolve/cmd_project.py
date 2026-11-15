@@ -19,11 +19,15 @@ project: start a project from a camera card, resumable (production/project-start
     project answer SLUG --music-key DIR --music-pick LETTER [--music-in SEC] [--apply]
                                   record the picked track of a `music candidates` packet; optional;
                                   build puts it in the manifest's music when the manifest has none
+    project answer SLUG [--piece NAME] --clear-music [--apply]
+                                  forget the recorded music pick, so a manifest's own music can stand
     project build SLUG [--piece NAME] [--manifest PATH] [--name NAME] [--apply]
                                   assemble_timeline at the recorded shape (the recorded pick unless
                                   --manifest), each manifest effect, apply_grade with the recorded
                                   look, queue_render for the recorded destination; refused first when
-                                  the destination has no target_dir; a dry run prints one plan;
+                                  the destination has no target_dir and there is no work root (with a
+                                  work root it renders to <work root>/<slug>/renders), or when the
+                                  manifest has music and a pick is recorded; a dry run prints one plan;
                                   connects to Resolve
     project status SLUG           the nine steps, the next command for steps 7 to 9, the answers as
                                   recorded, a destination with no render folder, and whether the card
@@ -64,6 +68,7 @@ def add_arguments(p):
     p.add_argument("--music-key", metavar="DIR", help="answer: the folder of a `music candidates` packet (its key.json)")
     p.add_argument("--music-pick", metavar="LETTER", help="answer: the letter the person picked")
     p.add_argument("--music-in", type=float, metavar="SEC", help="answer: where in the track the music starts (default the packet's start)")
+    p.add_argument("--clear-music", action="store_true", help="answer: forget the recorded music pick")
     p.add_argument("--replace", action="store_true", help="answer: --squeeze may replace a clip's answer")
     p.add_argument("--piece", help="answer, build: the piece (a slug) whose own answers lie over the project's")
     p.add_argument("--pick", metavar="MANIFEST", help="answer: the picked manifest")
@@ -95,7 +100,7 @@ def run(args):
                                     music=(args.music_key, args.music_pick, args.music_in) if args.music_key or args.music_pick else None,
                                     pick=(args.pick, args.ledger, args.exclude, args.draft)
                                     if args.pick or args.ledger or args.exclude or args.draft else None,
-                                    piece=args.piece, replace=args.replace)
+                                    piece=args.piece, replace=args.replace, clear_music=args.clear_music)
         if args.action == "build":
             return rpproject.build(cfg, args.target, args.manifest, args.name, args.apply, piece=args.piece)
         return rpproject.status(cfg, args.target)

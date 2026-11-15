@@ -442,19 +442,24 @@ def _pick(manifest, ledger, exclude, draft):
     return out
 
 
-def render_folder_problem(key):
-    """Why queue_render would refuse the destination `key` for want of a folder, read as it
-    reads it (the resolve config with the $RPRESOLVE_CONFIG overlay), or None."""
+def render_folder(cfg, slug, key):
+    """Where the render of destination `key` goes, read as queue_render reads it (the resolve
+    config with the $RPRESOLVE_CONFIG overlay): (target_dir to pass it or None when the
+    destination's own is used, the folder the file lands in, why it would refuse or None). A
+    destination with no target_dir takes <work root>/<slug>/renders."""
     from . import deliver
     from .mcp.tools_offline import deliver_config
     try:
         dest = deliver.destination(deliver_config(), key)
     except ValueError as e:  # DeliverError is one
-        return str(e)
-    if not dest.get("target_dir"):
-        return (f"no target folder for '{key}': set target_dir for it in a resolve config overlay "
-                "($RPRESOLVE_CONFIG) kept outside this repository")
-    return None
+        return None, None, str(e)
+    if dest.get("target_dir"):
+        return None, deliver.output_folder(dest["target_dir"], dest), None
+    if cfg.get("work_root"):
+        target = os.path.join(os.path.abspath(cfg["work_root"]), slug, "renders")
+        return target, deliver.output_folder(target, dest), None
+    return None, None, (f"no target folder for '{key}': set target_dir for it in a resolve config overlay "
+                        "($RPRESOLVE_CONFIG) kept outside this repository, or give a work root")
 
 
 def _squeeze_held(card, clips):
@@ -490,7 +495,7 @@ def _music_pick(cfg, key_dir, letter, start=None):
 
 def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
            shape=None, look=None, destination=None, name_parts=(), music=None, pick=None, piece=None,
-           replace=False):
+           replace=False, clear_music=False):
     """Record an answer through `card set`, that the Resolve project is set up, or one of the
     build answers (shape, look, destination, music, the picked manifest) in the project state:
     the project's, or with `piece` that piece's own, which a build of it reads over the project's."""
@@ -498,6 +503,13 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
     if piece and not SLUG.match(piece):
         raise ProjectError(f"--piece {piece!r}: a piece is a slug (lower-case words joined by hyphens)")
     where = ch.st.setdefault("pieces", {}).setdefault(piece, {}) if piece else ch.st.setdefault("answers", {})
+    if clear_music:
+        if "music" not in where:
+            raise ProjectError("no music pick is recorded" + (f" for piece {piece!r}" if piece else ""))
+        del where["music"]
+        ch.save()
+        say("music: pick cleared" + ("" if apply else " (dry run: not written)"))
+        return 0
     held = [k for k, v in (("shape", shape), ("look", look), ("destination", destination), ("music", music),
                            ("pick", pick)) if v and k in where]
     if held:  # refuse before writing any of them
@@ -574,9 +586,8 @@ def status(cfg, slug, say=print):
         if key not in ans and not (pieces and all(key in held for held in pieces.values())):
             say(f"open: {title}: project answer {slug} {how} --apply")
     for key in sorted({a["destination"]["key"] for a in levels if "destination" in a}):
-        problem = render_folder_problem(key)
-        if problem:
-            say(f"open: render folder: {problem}")
+        _, folder, problem = render_folder(cfg, slug, key)
+        say(f"open: render folder: {problem}" if problem else f"render folder for '{key}': {folder}")
     ok = False
     for card in ch.st["cards"]:
         try:
@@ -627,7 +638,9 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
     queue_render for the recorded destination: the tools' own handlers, in order, the first
     failure stops. The manifest is `manifest` or the recorded pick, whose ledger and exclude
     list go to the assemble; with `piece`, that piece's answers over the project's. Before
-    anything, it refuses a destination queue_render would refuse for want of a folder. A dry
+    anything, it refuses a destination queue_render would refuse for want of a folder (one with no
+    target_dir takes <work root>/<slug>/renders, made on --apply), and a manifest with its own
+    music when a music pick is recorded. A dry
     run prints every step's dry run (a step after the assemble that needs the timeline to exist
     says so); --apply runs each for real with the plan_sha of its own dry run."""
     global _SESSION
@@ -639,7 +652,7 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
     missing = [f"{t}: project answer {slug}{piece_flag} {h} --apply" for k, t, h in ANSWERS if k not in ans]
     if missing:
         raise ProjectError("not recorded, so nothing was built: " + "; ".join(missing))
-    problem = render_folder_problem(ans["destination"]["key"])
+    target, folder, problem = render_folder(cfg, slug, ans["destination"]["key"])
     if problem:
         raise ProjectError(f"nothing was built: queue_render would refuse at the end: {problem}")
     pick = ans.get("pick") or {}
@@ -659,7 +672,11 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
     scratch = None
     if ans.get("music"):
         if doc.get("music"):
-            say("music: the manifest has its own; the recorded pick is not used")
+            raise ProjectError(
+                f"nothing was built: the manifest has its own music ({os.path.basename(str(doc['music'].get('path')))}) "
+                f"and a pick is recorded ({os.path.basename(ans['music']['path'])}); settle it once: remove the music "
+                f"from the manifest (then the pick goes in), or clear the pick with "
+                f"project answer {slug}{piece_flag} --clear-music --apply")
         else:  # the picked manifest is never edited: build from a copy that holds the pick
             doc["music"] = {"path": ans["music"]["path"], "in": ans["music"]["in"]}
             # beside the state on --apply; a dry run needs a real file for the tool's dry run, so a temp one
@@ -673,6 +690,7 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
         _SESSION = _SESSION or _session()
         base = {"project": OPEN_NAME()}
         say(f"build {slug} ({'apply' if apply else 'dry run'}): '{tl}' in Resolve project '{base['project']}'")
+        say(f"render folder: {folder}")
 
         def step(tool, args, after=False):
             try:
@@ -706,7 +724,7 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
             ch.st["built"] = {"timeline": tl}
             ch.mark("build", "done", f"built '{tl}'")
         try:
-            _rest(step, ch, ans, effects, tl, track, apply, say)
+            _rest(step, ch, ans, effects, tl, track, apply, say, target)
         except ProjectError as e:
             if apply:
                 raise ProjectError(f"{e}; '{tl}' is built and stays in Resolve: finish the remaining steps by "
@@ -718,14 +736,20 @@ def build(cfg, slug, manifest=None, name=None, apply=False, say=print, piece=Non
             shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _rest(step, ch, ans, effects, tl, track, apply, say):
+def _rest(step, ch, ans, effects, tl, track, apply, say, target=None):
     for e in effects:
         step("apply_effect", {"timeline": tl, "effect": e["effect"], "track": track, "spans": [e["span_index"]],
                               **({"params": e["params"]} if e.get("params") else {})}, after=True)
     for t in sorted({1, track}):
         step("apply_grade", {"timeline": tl, "track": t, "lut": {"path": ans["look"]["lut"]}}, after=True)
     d = ans["destination"]
-    r = step("queue_render", {"timeline": tl, "destination": d["key"], "name": d["name"]}, after=True)
+    args = {"timeline": tl, "destination": d["key"], "name": d["name"], **({"target_dir": target} if target else {})}
+    if target and apply:
+        os.makedirs(target, exist_ok=True)
+    elif target and not os.path.isdir(target):  # queue_render wants the folder to exist; a dry run makes none
+        say(f"  queue_render: not checkable until {target} is made on --apply; would run with {json.dumps(args)}")
+        return
+    r = step("queue_render", args, after=True)
     if apply:
         job = (r.get("job") or {}).get("JobId")
         ch.st["built"]["job"] = job
