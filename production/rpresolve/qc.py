@@ -36,15 +36,17 @@ and set with --set; none is a standard. They are numbers, not listening:
                         padded speech_pad_s) against the rest; WARN when the
                         rest is louder than speech minus speech_rest_margin_lu
     voice_vs_bed        with --words, each speech span's momentary loudness
-                        against the louder bed beside it: the adjacent gap
-                        if at least voice_bed_gap_s, else a short gap's
-                        interior (0.4 s or more, its quietest frame, past
-                        the voice's tail), else
-                        the nearest long gap; the file's median only where
-                        neither side has one. WARN names each span under bed
-                        + voice_bed_margin_lu. SKIP (not measurable) when no
+                        against the louder bed of the gaps that touch it: a
+                        gap of at least voice_bed_gap_s read whole, a shorter
+                        one by its interior median (0.1 s after the last
+                        voice to 0.3 s before the next, 0.4 s or more left);
+                        a gap too short to read counts as no gap, the other
+                        side stands in, then the file's median over the long
+                        gaps. WARN names each span under bed +
+                        voice_bed_margin_lu. SKIP (not measurable) when no
                         gap is that long. Needs numpy; a bed that ducks under
-                        voice reads louder in the gaps than it is
+                        voice reads louder in the gaps than it is, and music
+                        living only in gaps too short to read passes
     phone_proxy         the mix folded to mono and high-passed at
                         phone_hp_hz: its loudest short-term loudness against
                         the full mix's; WARN when it drops more than
@@ -526,34 +528,36 @@ def _sound_speech_vs_rest(path, words, th):
                  f"words joined across gaps under {th['speech_join_s']:g}s, padded {th['speech_pad_s']:g}s")
 
 
-VOICE_TAIL_S = 0.1  # a short gap is read this far in from each voice (its padding already holds 0.2 s)
+VOICE_TAIL_S = 0.1  # a short gap is read from this long after the previous voice (its padding already holds 0.2 s)
+ONSET_S = 0.3       # ... to this long before the next voice (a breath or onset comes ahead of its word)
 
 
 def _sound_voice_vs_bed(frames, words, th):
     """PRI-22: per speech span, the voice against the room's bed. The
     momentary loudness (400 ms) of each span is its median over the frames
-    wholly inside it. The bed is read on each side of the span: the adjacent
-    gap if it is at least voice_bed_gap_s (its own median); else the adjacent
-    short gap's interior (trimmed VOICE_TAIL_S at each end and at least 0.4 s
-    long; its quietest frame, since a voice's tail decays and a bed holds); else the nearest long gap on that
-    side. The bed is the louder side, the other side's alone when one has
-    nothing, the file's lower median over the long gaps when neither does.
-    WARN names every span under the margin; SKIP when no gap is long enough.
+    wholly inside it. The bed is read on each side of the span from the gap
+    that touches it, and only that gap: a gap of at least voice_bed_gap_s is
+    read whole (its median); a shorter one by the median of its interior,
+    from VOICE_TAIL_S after the previous voice to ONSET_S before the next,
+    when 0.4 s or more remains. A side whose gap cannot be read has no bed;
+    the span takes the louder bed of the sides that have one, the other side's
+    alone when one has none, and the file's lower median over the long gaps
+    when neither does. WARN names every span under the margin; SKIP when no
+    gap is long enough to read.
     shortcut: a mix has no bed track, so a bed that ducks under the voice
-    reads louder in the gaps than it is. Stricter than reading the file's
-    median, but not strictly never looser than the rule before this one,
-    which read every gap holding 0.3 s of clean frames: a music bed that
-    lives only in gaps whose interior is under 0.4 s, with the nearest long
-    gaps on both sides quiet, passes here. Stems would give the bed itself."""
+    reads louder in the gaps than it is. Looser than the rule before this
+    one in one case: music that lives only in gaps too short to read (under
+    about 1.1 s with the speech padding), whose spans then take the other
+    side's bed or the file median. Stems would give the bed itself."""
     margin = th["voice_bed_margin_lu"]
     expected = f"each speech span >= its bed + {margin:g} LU{WD}"
     if words is None:
         return _srow("voice_vs_bed", SKIP, "no word file", "a word JSON (--words)")
     floor, need, gap_min = _ar().NO_READING_LUFS, th["voice_bed_min_s"], th["voice_bed_gap_s"]
 
-    def level(a, b, low=False):  # median M of the frames whose 400 ms window lies in [a, b]; low: the least
+    def level(a, b):  # median M of the frames whose 400 ms window lies in [a, b]
         v = sorted(m for t, m, _ in frames if a + 0.4 <= t <= b and m > floor)
-        return (v[0] if low else v[len(v) // 2]) if len(v) >= max(3, int(need * 10) - 4) else None
+        return v[len(v) // 2] if len(v) >= max(3, int(need * 10) - 4) else None
 
     spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
     edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
@@ -565,18 +569,12 @@ def _sound_voice_vs_bed(frames, words, th):
                      f"the bed is read in gaps of at least {gap_min:g}s; a mix with no such room tone has none to read")
     median = beds[(len(beds) - 1) // 2]
 
-    def side(j, step):  # the bed on one side of a span, gap j being the adjacent one
+    def side(j):  # the bed from gap j, the one that touches the span; None when it cannot be read
         if long_bed[j] is not None:
             return long_bed[j]
         a, b = gaps[j]
-        if b - a - 2 * VOICE_TAIL_S >= 0.4:
-            inner = level(a + VOICE_TAIL_S, b - VOICE_TAIL_S, low=True)  # a tail decays, a bed holds
-            if inner is not None:
-                return inner
-        while 0 <= j < len(gaps):
-            if long_bed[j] is not None:
-                return long_bed[j]
-            j += step
+        if b - a - VOICE_TAIL_S - ONSET_S >= 0.4:
+            return level(a + VOICE_TAIL_S, b - ONSET_S)
         return None
 
     bad, read = [], 0
@@ -585,7 +583,7 @@ def _sound_voice_vs_bed(frames, words, th):
         if voice is None:
             continue
         read += 1
-        near = [x for x in (side(i, -1), side(i + 1, 1)) if x is not None]
+        near = [x for x in (side(i), side(i + 1)) if x is not None]
         bed = max(near) if near else median
         gap = round(voice - bed, 1)
         if gap < margin - 1e-9:
@@ -596,7 +594,7 @@ def _sound_voice_vs_bed(frames, words, th):
     return _srow("voice_vs_bed", WARN if bad else PASS,
                  "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
                  if bad else f"{read} spans clear of their bed", expected,
-                 f"{read} of {len(spans)} spans read, each against the louder bed beside it "
+                 f"{read} of {len(spans)} spans read, each against the louder bed of the gaps beside it "
                  f"(file median {median:g} LUFS from {len(beds)} gap(s) of {gap_min:g}s or more)")
 
 

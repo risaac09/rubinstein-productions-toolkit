@@ -482,12 +482,12 @@ class TestLumaPassSources(unittest.TestCase):
     def test_ten_bit_codes_over_the_clamp_count_as_over(self):
         y = np.full((10, 10), 940, np.uint16)
         y[0, :3] = 944
-        y[1, :2] = 943  # clamp ringing rounds to 235: not over
+        y[1, :2] = 943  # clamp ringing floors to 235: not over
         y[2, :1] = 941
         d = measure.luma_shares(y, bits=10)
         self.assertEqual((d["at_235_pct"], d["over_235_pct"]), (97.0, 3.0))
         low = np.full((10, 10), 500, np.uint16)
-        low[0, :2], low[1, :3] = 19, 20  # 19 rounds to 4 (crushed), 20 to 5
+        low[0, :2], low[1, :3] = 19, 20  # 19 floors to 4 (crushed), 20 to 5
         self.assertEqual(measure.luma_shares(low, bits=10)["hard_low_pct"], 2.0)
 
 
