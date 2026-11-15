@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -125,6 +126,68 @@ class TestMasterShape(unittest.TestCase):
         fit = MASTER[1] / PYXIS[1]
         move_px = (PYXIS[1] / 2.0 - e["y"]) * e["scale"]
         self.assertAlmostEqual(row["tilt"], -move_px * MASTER[1] / (PYXIS[1] * fit), places=1)
+
+
+class TestHandFraming(unittest.TestCase):
+    """Hand framing: a crop centre a person gives for an item with no usable face."""
+    ITEM = {"name": "c", "path": "/media/c.braw", "in": 0.0, "out": 8.0}
+    NOBODY = staticmethod(lambda paths: {p: [] for p in paths})
+
+    def plan(self, hand, detect, aspect="9x16", **kw):
+        return reframe.plan_items([dict(self.ITEM)], aspect=aspect, hand=hand,
+                                  reader_for=lambda it: Reader(PYXIS), detect=detect, **kw)["items"][0]
+
+    def test_a_span_with_no_face_is_framed_at_the_hand_centre(self):
+        it = self.plan({1: (0.2, None)}, self.NOBODY)
+        e = it["entry"]
+        self.assertEqual((it["status"], it["source"], e["status"]), (reframe.HAND, "hand", "hand"))
+        self.assertAlmostEqual(e["x"], 0.2 * PYXIS[0], places=1)
+        self.assertEqual(e["y"], PYXIS[1] / 2.0)
+        self.assertAlmostEqual(e["scale"], reframe.fill_scale((1080, 1920), tuple(e["area"])))
+        self.assertTrue(any("no head" in r for r in it["review"]))
+        self.assertEqual(it["row"]["status"], reframe.HAND)
+
+    def test_the_centre_is_clamped_to_the_picture_like_a_face(self):
+        it = self.plan({1: (0.0, 0.0)}, self.NOBODY)
+        half = 1080 / (2.0 * it["entry"]["scale"])
+        self.assertAlmostEqual(it["entry"]["x"], half, places=1)
+
+    def test_a_manual_span_takes_the_hand_centre_too(self):
+        one = detector(TestMasterShape.STANDING, PYXIS)
+        once = lambda paths: one(sorted(paths)[:1]) | {p: [] for p in sorted(paths)[1:]}  # noqa: E731
+        it = self.plan({1: (0.7, 0.5)}, once)  # a face in one frame of eight is manual
+        self.assertEqual(it["row"]["status"], reframe.HAND)
+        self.assertEqual(it["status"], reframe.HAND)
+
+    def test_a_span_with_a_face_keeps_its_face_crop_and_gets_a_review_line(self):
+        face = self.plan(None, detector(TestMasterShape.STANDING, PYXIS))
+        it = self.plan({1: (0.9, None)}, detector(TestMasterShape.STANDING, PYXIS))
+        self.assertNotEqual(it["status"], reframe.HAND)
+        self.assertEqual((it["entry"]["x"], it["entry"]["y"]), (face["entry"]["x"], face["entry"]["y"]))
+        self.assertEqual(it["row"]["hand_face_x"], round(0.9 * PYXIS[0], 1))
+        self.assertTrue(any("hand framing x 0.9" in r and "face crop is kept" in r
+                            for r in it["review"]), it["review"])
+
+    def test_bad_entries_are_refused_before_any_work(self):
+        def boom(paths):
+            raise AssertionError("no frame should be read")
+        with self.assertRaisesRegex(reframe.ReframeError, "item 2 does not exist"):
+            self.plan({2: (0.5, None)}, boom)
+        with tempfile.TemporaryDirectory() as d:
+            def load(text, count=1):
+                path = os.path.join(d, "hand.json")
+                with open(path, "w") as f:
+                    f.write(text)
+                return reframe.load_hand(path, count)
+            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}, "1": 0.5}'), {1: (0.5, None)})
+            self.assertEqual(load('{"1": {"x": 0.25, "y": 1}}'), {1: (0.25, 1.0)})
+            for bad, why in (('{"1": 1.5}', "share from 0 to 1"), ('{"1": -0.1}', "share from 0 to 1"),
+                             ('{"1": {"x": 0.5, "y": 2}}', "y 2"), ('{"1": {"y": 0.5}}', "x None"),
+                             ('{"3": 0.5}', "does not exist"), ('{"0": 0.5}', "does not exist"),
+                             ('{"a": 0.5}', "does not exist"), ('[1]', "JSON object"),
+                             ('{"1": true}', "share from 0 to 1"), ("nope", "hand file")):
+                with self.assertRaisesRegex(reframe.ReframeError, why):
+                    load(bad)
 
 
 class TestPlanItems(unittest.TestCase):

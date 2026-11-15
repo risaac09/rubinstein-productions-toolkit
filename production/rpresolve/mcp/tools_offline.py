@@ -275,6 +275,8 @@ def _framing_plan(args, ctx):
     aspects = args.get("aspects") or [reframe.MASTER]
     if len(aspects) != 1:
         raise ValueError("a framing plan for items is for one shape; give one aspect")
+    hand = reframe.load_hand(_existing(args["hand"], "hand"), len(args["items"])) \
+        if args.get("hand") else None
     items = []
     for it in args["items"]:
         it = dict(it)
@@ -297,7 +299,8 @@ def _framing_plan(args, ctx):
                                subject_region=args.get("subject_region"),
                                min_face_height=args.get("min_face_height"),
                                prefer=args["prefer"], allow_bars=args["allow_bars"],
-                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel)
+                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel,
+                               hand=hand)
     except BaseException:
         _drop_empty(None if args.get("out") else out)
         raise
@@ -311,6 +314,7 @@ def _framing_plan(args, ctx):
                           f"{n[reframe.PASS] - n['none']} pass with a move, "
                           f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
                           f"{n[reframe.NO_FACE]} no face"
+                          + (f", {n[reframe.HAND]} by hand" if n[reframe.HAND] else "")
                           + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,
               "tsv": stem + ".tsv"}
@@ -1022,7 +1026,7 @@ def register(registry):
         "pass. Where the footage has an audience, name the subject with subject_region or "
         "min_face_height. Footage with no speech needs a manifest with \"speech\": false and "
         "only source_path and clips (no words, approved text or hash); cut still needs a "
-        "speech manifest. A span with no face gets no crop. Writes a copy of the manifest "
+        "speech manifest. A span with no face gets no crop (with items, unless hand names a centre for it). Writes a copy of the manifest "
         "with per-span reframes (cut reads them) and a TSV and JSON report beside it. "
         "Heads: the face box stops at the brows, so the head's top is taken 0.6 face heights "
         "above it; the crop moves up, never down, to keep the whole head and 0.65 face "
@@ -1054,6 +1058,15 @@ def register(registry):
                               "it (6048x4032 for the Pyxis)."}},
                   "required": ["path"], "additionalProperties": False},
                   "description": "A timeline's clips, for a framing plan (one aspect)."},
+              "hand": {"type": "string",
+                       "description": "With items: absolute path of a JSON file of hand "
+                       "framing, {\"<item number from 1>\": {\"x\": 0.4, \"y\": 0.5}} (y "
+                       "optional; a bare number is x). x and y are shares 0 to 1 of the "
+                       "displayed (desqueezed) source. An item with no face (no_face or "
+                       "manual) is cropped there at the widest filled scale and named hand, "
+                       "with no head check; an item with a face keeps its face crop and "
+                       "gets a review line with the difference. A share outside 0 to 1, or "
+                       "an item that does not exist, is refused before any work."},
               "master_size": {"type": "array", "items": {"type": "integer", "minimum": 1},
                               "minItems": 2, "maxItems": 2,
                               "description": "The master timeline's width and height."},
