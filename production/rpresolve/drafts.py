@@ -10,8 +10,8 @@ sheet of their midpoints for a pick (edit-methods.md#drafts).
 A plan directory holds manifest.json, what methods.to_manifest returned (the spans,
 `effects` and `method`), and optionally method.json, the method it was made from (else
 the method is loaded by the manifest's method id). For each plan it writes
-DIR/<plan>.mp4 (720p at the method's rate, the end black included; silent unless the
-manifest carries `music` {path, in}, which is laid under it and faded out) and
+DIR/<plan>.mp4 (720p at the method's rate, the end black included; the spans' own
+camera sound, or the manifest's `music` {path, in} laid under it and faded out when it has one) and
 DIR/<plan>.notes.txt naming everything the draft does not show; then DIR/drafts.json, whose
 entry for each draft holds an `effects` ledger (the manifest's effects and dissolves as
 drawn, approximated with a note, or not_drawn, each with its span indices). For two or more
@@ -35,7 +35,8 @@ writes: one item per span, in order, each with its centre cx as a share of the s
 every span is cropped at its own centre instead, a window's plate at the centre of the shot it
 continues (what vertical_apply gives the V1 plate), and the notes and the `crops` entry of
 drafts.json say which span used which centre. A crops file whose item count or files differ
-from the plan's spans is refused; a 16:9 plan ignores it, and says so.
+from the plan's spans is refused; a 16:9 plan ignores it, and says so. Without --crops, a 9:16
+plan uses its own PLAN_DIR/crops.json when that file exists (`shotlist compile` writes one).
 
 The three transitions (transitions.py: hyper-slide, smoke-displace, luma-fade; a manifest effect
 on span i is the transition into it) are in no span's job: after the spans are joined they are
@@ -163,7 +164,7 @@ def load_plan(plan_dir):
     except ValueError as e:
         raise DraftError(str(e))
     return {"name": os.path.basename(os.path.normpath(plan_dir)), "manifest": manifest,
-            "method": method}
+            "method": method, "dir": plan_dir}
 
 
 def find_lut(look, camera, root=LUT_ROOT):
@@ -600,7 +601,8 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
                + ["-an", "-filter_complex" if back else "-vf", vf,
                   "-frames:v", str(n), "-r", str(fps)] + enc
                + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
-        jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work})
+        jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work,
+                     "audio": (src, span["in"])})
         frames += n
     try:  # before any ffmpeg job: a window the shots cannot hold is refused here
         planned = transitions.plan(man.get("effects"), [j["frames"] for j in jobs])
@@ -621,7 +623,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
         jobs.append({"cmd": ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
                              f"color=black:s={w}x{h}:r={fps}", "-frames:v", str(n),
                              "-pix_fmt", "yuv420p"] + enc + [out],
-                     "out": out, "seconds": n / fps, "frames": n, "cwd": work})
+                     "out": out, "seconds": n / fps, "frames": n, "cwd": work, "audio": None})
         frames += n
     for step in (man.get("method") or {}).get("ui_steps") or []:
         if step["control"] in ("Zoom keyframes", "Duration"):  # retimes are manifest effects now, and drawn
@@ -714,13 +716,49 @@ def music_args(music, seconds):
             "-c:a", "aac", "-b:a", "192k"]
 
 
-def _concat(parts, out, work, music=None, seconds=0):
+def has_audio(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                        "stream=index", "-of", "csv=p=0", path], capture_output=True, text=True)
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
+def camera_sound(jobs, out):
+    """Write the spans' own audio, each cut to its span's frames, joined, as 48 kHz stereo
+    WAV at `out`; a source with no audio stream (and the end black) gets silence for its
+    length so the track stays the picture's length. Returns the names of the sources with
+    none."""
+    cmd, parts, silent = ["ffmpeg", "-v", "error", "-y"], [], []
+    for k, j in enumerate(jobs):
+        d = f"{j['seconds']:.6f}"
+        if j["audio"] and has_audio(j["audio"][0]):
+            cmd += ["-ss", f"{j['audio'][1]:.4f}", "-t", d, "-i", j["audio"][0]]
+            parts.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,"
+                         f"apad=whole_dur={d},atrim=0:{d}[a{k}]")
+        else:
+            if j["audio"]:
+                silent.append(os.path.basename(j["audio"][0]))
+            cmd += ["-f", "lavfi", "-t", d, "-i", "anullsrc=r=48000:cl=stereo"]
+            parts.append(f"[{k}:a]atrim=0:{d}[a{k}]")
+    fc = ";".join(parts) + ";" + "".join(f"[a{k}]" for k in range(len(jobs))) \
+        + f"concat=n={len(jobs)}:v=0:a=1[a]"
+    r = subprocess.run(cmd + ["-filter_complex", fc, "-map", "[a]", "-c:a", "pcm_s16le", out],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise DraftError(f"camera sound for {os.path.basename(out)} failed: {r.stderr.strip()[-400:]}")
+    return sorted(set(silent))
+
+
+def _concat(parts, out, work, music=None, seconds=0, sound=None):
+    """Join the parts without re-encoding the picture. Audio: the music if given, else the
+    `sound` file (re-encoded as AAC only), else none."""
     lst = os.path.join(work, "concat.txt")
     with open(lst, "w", encoding="utf-8") as f:
         f.writelines("file '" + p.replace("'", "'\\''") + "'\n" for p in parts)
+    extra = music_args(music, seconds) if music else (
+        ["-i", sound, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if sound else [])
     r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
-                       + music_args(music, seconds)
-                       + ["-c:v" if music else "-c", "copy", "-movflags", "+faststart", out],
+                       + extra
+                       + ["-c:v" if extra else "-c", "copy", "-movflags", "+faststart", out],
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise DraftError(f"joining {os.path.basename(out)} failed: {r.stderr.strip()[-400:]}")
@@ -805,14 +843,20 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
-    centres = {}
-    if crops:
-        from . import cmd_vertical
-        try:
+    centres, own_crops = {}, set()
+    from . import cmd_vertical
+    try:
+        if crops:
             c = cmd_vertical.load_crops(crops)
-        except cmd_vertical.Refused as e:
-            raise DraftError(str(e))
-        centres = {id(p): span_centres(p, c) for p in plans}
+            centres = {id(p): span_centres(p, c) for p in plans}
+        else:  # no --crops: a 9:16 plan uses the crops.json `shotlist compile` wrote beside it
+            for p in plans:
+                f = os.path.join(p["dir"], "crops.json")
+                if p["method"]["aspect"] == "9:16" and os.path.isfile(f):
+                    centres[id(p)] = span_centres(p, cmd_vertical.load_crops(f))
+                    own_crops.add(id(p))
+    except cmd_vertical.Refused as e:
+        raise DraftError(str(e))
     names, seen = [], {}
     for p in plans:
         seen[p["name"]] = seen.get(p["name"], 0) + 1
@@ -828,6 +872,8 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             jobs, info = plan_jobs(p, d, hw, camera, lut_root, proxy_dir, centres.get(id(p)), lut)
             if crops and not centres[id(p)]:
                 info["notes"].append("the crops file is not used: the method is 16:9")
+            if id(p) in own_crops:
+                info["notes"].append("9:16 crops read from this plan's own crops.json")
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
@@ -846,21 +892,27 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             video = os.path.join(out, name + ".mp4")
             music = p["manifest"].get("music")
             if music and not os.path.isfile(str(music.get("path"))):
-                info["notes"].append("music file not found: the draft is silent")
+                info["notes"].append("music file not found: camera sound kept instead")
                 music = None
             elif music:
-                info["notes"].append(f"music from {float(music.get('in') or 0):.2f} s; "
+                info["notes"].append(f"music replaces camera sound, from {float(music.get('in') or 0):.2f} s; "
                                      "check its licence before anything is posted")
+            sound = None
+            if not music:
+                sound = os.path.join(work, name + ".sound.wav")
+                none = camera_sound(jobs, sound)
+                info["notes"].append("camera sound kept" + (
+                    f"; silent where the source has no audio: {', '.join(none)}" if none else ""))
             if info["transitions"]:
                 joined = os.path.join(work, name + ".joined.mp4")
-                _concat([j["out"] for j in jobs], joined, work, music, info["frames"] / info["fps"])
+                _concat([j["out"] for j in jobs], joined, work, music, info["frames"] / info["fps"], sound)
                 try:
                     transitions.apply(joined, video, info["size"], info["fps"],
                                       info["transitions"], info["frames"])
                 except transitions.TransitionError as e:
                     raise DraftError(f"{name}: {e}")
             else:
-                _concat([j["out"] for j in jobs], video, work, music, info["frames"] / info["fps"])
+                _concat([j["out"] for j in jobs], video, work, music, info["frames"] / info["fps"], sound)
             with open(os.path.join(out, name + ".notes.txt"), "w", encoding="utf-8") as f:
                 f.write("".join(n + "\n" for n in info["notes"]) or "everything drawn\n")
             drafts.append({"plan": name, "method": p["method"]["id"], "file": video,

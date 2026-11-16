@@ -717,6 +717,63 @@ class TestCrops(Base):
         self.assertIn("the crops file is not used: the method is 16:9", got["notes"])
         self.assertNotIn("crops", got)
 
+    def test_each_plan_uses_its_own_crops_json_when_no_crops_option_is_given(self):
+        a = self.make("a", self.method(None, None))
+        b = self.make("b", self.method(None, None, None))
+        c = self.make("c", self.method(None))  # no crops.json: centre crop
+        for d, cxs in ((a, [0.17, 0.83]), (b, [0.83, 0.17, 0.5])):
+            Path(self.crops(cxs)).replace(os.path.join(d, "crops.json"))
+        got = {d["plan"]: d for d in drafts.build([a, b, c], os.path.join(self.dir, "o"),
+                                                  hw=False, lanes=1)["drafts"]}
+        self.assertEqual([x["cx"] for x in got["a"]["crops"]], [0.17, 0.83])
+        self.assertEqual([x["cx"] for x in got["b"]["crops"]], [0.83, 0.17, 0.5])
+        self.assertNotIn("crops", got["c"])
+        self.assertIn("9:16 crops read from this plan's own crops.json", got["a"]["notes"])
+        self.assertEqual(self.band(got["b"]["file"], 0), "blue")
+        self.assertEqual(self.band(got["b"]["file"], 12), "red")
+
+    def test_an_explicit_crops_option_still_serves_every_plan(self):
+        a = self.make("a", self.method(None, None))
+        Path(self.crops([0.9, 0.9, 0.9])).replace(os.path.join(a, "crops.json"))  # would be refused
+        got = drafts.build([a], os.path.join(self.dir, "o"), hw=False, lanes=1,
+                           crops=self.crops([0.17, 0.83]))["drafts"][0]
+        self.assertEqual([x["cx"] for x in got["crops"]], [0.17, 0.83])
+        self.assertNotIn("9:16 crops read from this plan's own crops.json", got["notes"])
+
+
+@unittest.skipUnless(FFMPEG, "needs ffmpeg")
+class TestCameraSound(Base):
+    """With no music a draft keeps each span's own audio, the picture's length; a source with
+    no audio stream gets silence for its spans."""
+
+    def make_src(self, name, audio):
+        p = os.path.join(self.dir, name)
+        a = ["-f", "lavfi", "-i", "sine=f=440:r=44100:d=8", "-c:a", "aac", "-ac", "1"] if audio else []
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "testsrc2=s=640x360:r=24:d=8"] + a + ["-pix_fmt", "yuv420p", "-c:v", "libx264",
+                        "-preset", "ultrafast", p], check=True)
+        return p
+
+    def streams(self, path):
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                              "stream=codec_type,duration", "-of", "json", path],
+                             capture_output=True, text=True, check=True)
+        return {s["codec_type"]: float(s["duration"]) for s in json.loads(out.stdout)["streams"]}
+
+    def test_camera_sound_matches_the_picture(self):
+        plan = self.plan("snd", METHOD, self.make_src("a.mp4", True))
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+        self.assertIn("camera sound kept", got["notes"])
+
+    def test_a_source_with_no_audio_still_gives_a_synced_draft(self):
+        plan = self.plan("mute", METHOD, self.make_src("m.mp4", False))
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+        self.assertIn("camera sound kept; silent where the source has no audio: m.mp4", got["notes"])
+
 
 class TestNewDraws(unittest.TestCase):
     def vf(self, effects, seconds=1.0):
