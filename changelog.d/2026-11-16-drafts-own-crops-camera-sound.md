@@ -1,0 +1,1 @@
+Without --crops, a 9:16 draft-farm plan now uses its own crops.json beside its manifest (the one shotlist compile writes); a missing, stale or unreadable file falls back to the centre crop for that plan alone, with a note. A plan with no music keeps each span's camera sound under its picture, retimed with the span; the audio probe runs once per source. (#490)
