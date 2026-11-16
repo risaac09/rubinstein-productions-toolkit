@@ -799,6 +799,38 @@ class TestCameraSound(Base):
         self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
         self.assertIn("span 0: camera sound fitted to the retime at its mean speed 0.5", got["notes"])
 
+    def test_a_source_whose_audio_starts_late_keeps_the_sound_as_long_as_the_picture(self):
+        p = os.path.join(self.dir, "late.mp4")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=24:d=8",
+                        "-itsoffset", "1.2", "-f", "lavfi", "-i", "sine=f=440:r=44100:d=8",
+                        "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "ultrafast", p], check=True)
+        plan = self.plan("late", METHOD, p)
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+
+    def test_a_source_with_two_audio_streams_says_only_the_first_is_used(self):
+        p = os.path.join(self.dir, "two.mov")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=24:d=8",
+                        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:d=8",
+                        "-f", "lavfi", "-i", "sine=f=440:r=48000:d=8",
+                        "-map", "0:v", "-map", "1:a", "-map", "2:a", "-c:a", "pcm_s16le", "-t", "8",
+                        "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", p], check=True)
+        plan = self.plan("two", METHOD, p)
+        notes = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]["notes"]
+        self.assertIn("camera sound from the first audio stream only of: two.mov", notes)
+        self.assertTrue(any(n.startswith("camera sound is near silent") for n in notes))
+
+    def test_a_retime_speed_that_is_not_a_number_is_refused(self):
+        plan = self.plan("word", METHOD, self.make_src("a.mp4", True))
+        mp = os.path.join(plan, "manifest.json")
+        man = json.loads(Path(mp).read_text())
+        man["effects"] = [{"span_index": 0, "effect": "retime", "params": {"speed": "fast"}}]
+        Path(mp).write_text(json.dumps(man))
+        with self.assertRaisesRegex(drafts.DraftError, "must be a number above 0"):
+            drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)
+
     def test_a_retime_whose_mean_speed_is_not_above_zero_is_refused(self):
         plan = self.plan("stall", METHOD, self.make_src("a.mp4", True))
         mp = os.path.join(plan, "manifest.json")

@@ -67,6 +67,7 @@ import concurrent.futures
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -607,8 +608,10 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
             if e["effect"] == "retime":
                 s0 = (e.get("params") or {}).get("speed", 1)
                 s1 = (e.get("params") or {}).get("speed_to", s0)
+                if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (s0, s1)):
+                    raise DraftError(f"span {i}: retime speed must be a number above 0")
                 speed, ramp = (s0 + s1) / 2, s1 != s0
-        if not (isinstance(speed, (int, float)) and speed > 0):
+        if not speed > 0:
             raise DraftError(f"span {i}: retime speed must be above 0")
         if speed != 1.0:
             notes.append(f"span {i}: camera sound fitted to the retime at its mean speed {speed:g}"
@@ -730,21 +733,36 @@ def music_args(music, seconds):
 
 
 @functools.lru_cache(maxsize=None)
-def has_audio(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+def audio_streams(path):
+    """How many audio streams the file holds (0 when ffprobe cannot read it)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
                         "stream=index", "-of", "csv=p=0", path], capture_output=True, text=True)
-    return r.returncode == 0 and bool(r.stdout.strip())
+    return len(r.stdout.split()) if r.returncode == 0 else 0
+
+
+def max_volume(path):
+    """The file's peak sample level in dB (volumedetect), or None when it cannot be read."""
+    r = subprocess.run(["ffmpeg", "-v", "info", "-nostats", "-i", path, "-af", "volumedetect",
+                        "-f", "null", "-"], capture_output=True, text=True)
+    m = re.search(r"max_volume:\s*(-?[0-9.]+|-inf) dB", r.stderr)
+    return None if not m else float(m.group(1))
+
+
+QUIET_DB = -45.0  # a camera track peaking below this is as good as silent
 
 
 def camera_sound(jobs, out):
     """Write the spans' own audio, each cut to its span's frames, joined, as 48 kHz stereo
     WAV at `out`; a source with no audio stream (and the end black) gets silence for its
-    length so the track stays the picture's length. Returns the names of the sources with
-    none."""
-    cmd, parts, silent = ["ffmpeg", "-v", "error", "-y"], [], []
+    length so the track stays the picture's length. Only a source's first audio stream is
+    used. Returns (names of the sources with no audio, names of those with more than one
+    audio stream)."""
+    cmd, parts, silent, multi = ["ffmpeg", "-v", "error", "-y"], [], [], []
     for k, j in enumerate(jobs):
         d = f"{j['seconds']:.6f}"
-        if j["audio"] and has_audio(j["audio"][0]):
+        if j["audio"] and audio_streams(j["audio"][0]):
+            if audio_streams(j["audio"][0]) > 1:
+                multi.append(os.path.basename(j["audio"][0]))
             sp, tempo = j["audio"][2], []
             while sp > 2 or sp < 0.5:  # atempo takes 0.5 to 2 a step
                 step = 2.0 if sp > 2 else 0.5
@@ -753,7 +771,9 @@ def camera_sound(jobs, out):
             tempo.append(sp)
             cmd += ["-ss", f"{j['audio'][1]:.4f}", "-t", f"{j['seconds'] * j['audio'][2]:.6f}",
                     "-i", j["audio"][0]]
-            parts.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,"
+            # async pads a source whose audio starts after its picture: atrim cuts on
+            # timestamps but apad counts samples, so without it the span runs short
+            parts.append(f"[{k}:a:0]aresample=48000:async=1:first_pts=0,aformat=channel_layouts=stereo,"
                          + "".join(f"atempo={t:.6f}," for t in tempo if abs(t - 1) > 1e-9)
                          + f"apad=whole_dur={d},atrim=0:{d}[a{k}]")
         else:
@@ -767,7 +787,7 @@ def camera_sound(jobs, out):
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise DraftError(f"camera sound for {os.path.basename(out)} failed: {r.stderr.strip()[-400:]}")
-    return sorted(set(silent))
+    return sorted(set(silent)), sorted(set(multi))
 
 
 def _concat(parts, out, work, music=None, seconds=0, sound=None):
@@ -865,7 +885,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
-    has_audio.cache_clear()  # a file swapped since the last build is probed again
+    audio_streams.cache_clear()  # a file swapped since the last build is probed again
     centres, own_crops = {}, {}
     from . import cmd_vertical
     try:
@@ -926,9 +946,16 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             sound = None
             if not music:
                 sound = os.path.join(work, name + ".sound.wav")
-                none = camera_sound(jobs, sound)
+                none, multi = camera_sound(jobs, sound)
                 info["notes"].append("camera sound kept" + (
                     f"; silent where the source has no audio: {', '.join(none)}" if none else ""))
+                if multi:
+                    info["notes"].append("camera sound from the first audio stream only of: "
+                                         + ", ".join(multi))
+                peak = max_volume(sound) if len(none) < len({os.path.basename(j["audio"][0]) for j in jobs if j["audio"]}) else None
+                if peak is not None and peak < QUIET_DB:  # some source has audio, yet the sound is near silent
+                    info["notes"].append(f"camera sound is near silent (peak {peak:g} dB)"
+                                         + (": the mic may be on another stream" if multi else ""))
             if info["transitions"]:
                 joined = os.path.join(work, name + ".joined.mp4")
                 _concat([j["out"] for j in jobs], joined, work, music, info["frames"] / info["fps"], sound)
