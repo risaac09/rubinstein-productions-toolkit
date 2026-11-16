@@ -154,7 +154,9 @@ RULE = "the face present in the most samples, a tie going to the larger median b
 RULE_LARGEST = "the largest face among those present in at least half as many samples as the most present"
 
 PASS, BARS, FALLBACK, MANUAL, NO_FACE = "pass", "bars", "fallback", "manual", "no_face"
-STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE)
+HAND = "hand"  # a crop from a person's centre (plan_items hand=), for a span with no usable face
+STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE, HAND)
+APPLIED = (PASS, BARS, FALLBACK, HAND)  # statuses that carry a crop
 
 
 class ReframeError(RuntimeError):
@@ -1234,13 +1236,16 @@ def entry(aspect_plan, src, area, face, review):
     cannot hold the face carries its status and reason and no centre, so
     cut refuses that version; nothing is guessed."""
     p = aspect_plan
-    if p["status"] not in (PASS, BARS, FALLBACK):
+    if p["status"] not in APPLIED:
         return {"status": p["status"], "reason": p["reason"]}
+    face = face or {}  # a HAND crop has no face
     e = {"x": p["x"], "y": p["y"], "scale": p["scale"], "src": list(src), "area": list(area),
-         "face_x": face["x"], "face_y": face["y"], "centre": p["centre"], "status": p["status"],
-         "inside": [p["check"]["inside"], p["check"]["total"]], "move": p.get("move"),
+         "face_x": face.get("x"), "face_y": face.get("y"), "centre": p["centre"],
+         "status": p["status"],
+         "inside": [p["check"]["inside"], p["check"]["total"]] if p["check"] else None,
+         "move": p.get("move"),
          "headroom_px": p.get("headroom_px")}
-    for k in ("move_type", "composition"):
+    for k in ("move_type", "composition", "source"):
         if k in p:
             e[k] = p[k]
     if p.get("out"):
@@ -1305,7 +1310,7 @@ def rows(report):
             dx = (round(face["x"] - sp["hand_face_x"], 1)
                   if face and sp.get("hand_face_x") is not None else None)
             reason = p.get("reason", "")
-            if (not TILT_CONFIRMED and p["status"] in (PASS, BARS, FALLBACK)
+            if (not TILT_CONFIRMED and p["status"] in APPLIED
                     and abs(props.get("Tilt") or 0.0) > TILT_NEGLIGIBLE_PX):
                 reason = "; ".join(x for x in (reason, TILT_NOTE.format(tilt=props["Tilt"])) if x)
             out.append({"clip": sp["clip"], "span": sp["span"], "in": sp["in"], "out": sp["out"],
@@ -1332,7 +1337,7 @@ def counts(rows):
     for r in rows:
         n[r["status"]] += 1
     n["review"] = sum(1 for r in rows if r["review"])
-    n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in (PASS, BARS, FALLBACK)
+    n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in APPLIED
                                              and abs(r["tilt"] or 0.0) > TILT_NEGLIGIBLE_PX)
     return n
 
@@ -1356,6 +1361,7 @@ def summary(report):
     return (f"reframe-plan: {len(report['rows'])} crop(s) over {len(report['spans'])} span(s): "
             f"{n[PASS]} pass, {n[FALLBACK]} fallback (widest filled scale), {n[MANUAL]} manual, "
             f"{n[NO_FACE]} no face" + (f", {n[BARS]} kept with bars" if n[BARS] else "") +
+            (f", {n[HAND]} by hand" if n[HAND] else "") +
             (f"; {n['review']} flagged for review" if n["review"] else "") +
             (f"; {n['tilt']} set a Tilt, whose sign no render has confirmed yet (check a still)"
              if n.get("tilt") else "") +
@@ -1372,7 +1378,7 @@ def line(r):
     if r["face_x"] is not None:
         parts.append(f"face x {r['face_x']:.0f}" +
                      (f" (hand {r['hand_face_x']:g}, {r['dx']:+.0f})" if r["dx"] is not None else ""))
-    if r["scale"] is not None and r["status"] in (PASS, BARS, FALLBACK):
+    if r["scale"] is not None and r["status"] in APPLIED:
         parts.append(f"scale {r['scale']:g} zoom {r['zoom']:g} pan {r['pan']:g} tilt {r['tilt']:g}"
                      + (f" move {r['move']}" if r.get("move") else ""))
     if r["inside"] is not None:
@@ -1387,21 +1393,79 @@ def line(r):
     return text
 
 
+def load_hand(path, count):
+    """A hand-framing file: JSON {"<item number from 1>": x or {"x": x, "y": y, "zoom": z}}, x
+    and y shares 0 to 1 of the displayed (desqueezed) source width and height, zoom a multiplier
+    on the fill scale (1 to 4, default 1). Returns {n: (x, y or None, zoom)}; ReframeError for a
+    file that is not that, an item past `count`, two keys for one item, a share outside 0..1 or
+    a zoom outside 1..4."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ReframeError(f"hand file {path}: {e}")
+    if not isinstance(raw, dict) or not raw:
+        raise ReframeError(f"hand file {path}: a JSON object of item number to crop centre")
+    hand = {}
+    for k, v in raw.items():
+        if not str(k).isdigit() or not 1 <= int(k) <= count:
+            raise ReframeError(f"hand: item {k} does not exist (1 to {count})")
+        x, y = (v.get("x"), v.get("y")) if isinstance(v, dict) else (v, None)
+        zoom = v.get("zoom", 1.0) if isinstance(v, dict) else 1.0
+        if int(k) in hand:
+            raise ReframeError(f"hand: item {int(k)} is given twice ({k!r})")
+        if isinstance(zoom, bool) or not isinstance(zoom, (int, float)) or not 1.0 <= zoom <= 4.0:
+            raise ReframeError(f"hand: item {k} zoom {zoom!r} must be from 1 to 4 (a multiplier "
+                               "on the fill scale)")
+        for name, share in (("x", x), ("y", y)):
+            if share is None and name == "y":
+                continue
+            if isinstance(share, bool) or not isinstance(share, (int, float)) \
+                    or not 0.0 <= share <= 1.0:
+                raise ReframeError(f"hand: item {k} {name} {share!r} must be a share from 0 to 1 "
+                                   "of the displayed source")
+        hand[int(k)] = (float(x), None if y is None else float(y), float(zoom))
+    return hand
+
+
+def _hand_aspect(hand, src, area, out, scaling):
+    """The aspect plan for a crop centred where a person said: the widest scale that fills the
+    frame, the centre clamped to the picture as for a face. No head, so no headroom check."""
+    scale = round(fill_scale(out, area) * hand[2], 4)  # window narrows with the zoom; place() clamps
+    point = (hand[0] * src[0], (0.5 if hand[1] is None else hand[1]) * src[1])
+    x, y = (round(v, 1) for v in place(point, out, scale, area))
+    return {"status": HAND, "centre": "hand", "scale": scale, "x": x, "y": y, "fills": True,
+            "bars": "", "check": {}, "out": list(out),
+            "reason": f"framed by hand at x {hand[0]:g} of the source width" +
+            (f", zoom {hand[2]:g} on the fill scale" if hand[2] != 1.0 else ""),
+            "source": "hand", "move": move_of(src, out, scale, (x, y), scaling),
+            "props": {k: round(v, 4) for k, v in
+                      resolve_props(src, out, scale, (x, y), scaling).items()}}
+
+
 def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, reader_for=None,
-               **kw):
+               hand=None, **kw):
     """A framing plan for items of a timeline, each its own source: [{name,
     path, in, out, squeeze?, stills?, src?}] (in and out in source seconds;
     stills: images to judge in place of the file, for a source ffmpeg
     cannot read, with src the source's own size). Each item is planned as
     one span for `aspect` (MASTER needs master_size) with plan(); kw goes
     to plan(). reader_for(item) may supply the reader (tests).
+    hand: {item number from 1: (x, y or None, zoom)} (load_hand): for an item with
+    no usable face (no_face, manual) a crop centred there, status HAND, no
+    head check; an item with a face keeps its face crop and gets a review
+    line with the difference.
     Returns {kind, aspect, out, scaling, items: [{name, path, in, out,
     size, stored_size, squeeze, squeeze_from, status, reason, review, move,
     entry, row}], rows, counts}; entry is what reframe_apply writes from."""
     out = size_of(aspect, master_size)
+    hand = hand or {}
+    late = [n for n in hand if not 1 <= n <= len(items)]
+    if late:
+        raise ReframeError(f"hand: item {late[0]} does not exist (1 to {len(items)})")
     plan_ = {"kind": "framing", "aspect": aspect, "out": list(out), "scaling": scaling,
              "items": [], "rows": []}
-    for it in items:
+    for n, it in enumerate(items, 1):
         name, path = it.get("name") or os.path.basename(it["path"]), it["path"]
         if not it.get("stills") and (it.get("in") is None or it.get("out") is None):
             raise ReframeError(f"{name}: give in and out (source seconds) for a file; only "
@@ -1423,6 +1487,25 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
             plan_["scene"] = True
         sp = rep["spans"][0]
         p = sp["aspects"][aspect]
+        if n in hand:
+            if p["status"] in (NO_FACE, MANUAL) and sp["area"]:
+                p = sp["aspects"][aspect] = _hand_aspect(hand[n], rep["size"], sp["area"], out,
+                                                         scaling)
+                sp["review"].append("framed by hand: no head, so the headroom and whole-head "
+                                    "check does not apply; look at the frame")
+            elif sp["face"] and sp.get("subject") != "saliency":
+                px = hand[n][0] * rep["size"][0]
+                sp["hand_face_x"] = round(px, 1)
+                sp["review"].append(
+                    f"hand framing x {hand[n][0]:g} ({px:.0f} px) differs from the face crop's "
+                    f"face x {sp['face']['x']:.0f} px by {sp['face']['x'] - px:+.0f} px; the face "
+                    "crop is kept")
+            else:
+                sp["review"].append(
+                    "hand entry not used: " + ("no picture area (every sampled frame is black)"
+                                               if not sp["area"] else
+                                               "the item already has a crop from the scene read"))
+            rep["rows"] = rows(rep)
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
             {"status": p["status"], "reason": p["reason"]}
         e.update(squeeze=rep["squeeze"], stored=rep["stored_size"])
@@ -1431,7 +1514,7 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                                "size": rep["size"], "stored_size": rep["stored_size"],
                                "squeeze": rep["squeeze"], "squeeze_from": rep["squeeze_from"],
                                "status": p["status"], "reason": p.get("reason", ""),
-                               "review": sp["review"], "move": p.get("move"), "entry": e,
+                               "source": p.get("source"), "review": sp["review"], "move": p.get("move"), "entry": e,
                                "row": row})
         plan_["rows"].append(row)
     if kw.get("scene") and not plan_.get("scene"):

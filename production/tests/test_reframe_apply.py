@@ -105,6 +105,27 @@ class Base(unittest.TestCase):
 
 
 class TestReframeApply(Base):
+    def test_a_hand_framed_item_is_applied_like_a_pass(self):
+        plan = framing_plan({"STAND": STANDING, "SEAT": SEATED})
+        hand = reframe.plan_items([{"name": "STAND", "path": "/media/STAND.braw", "in": 0.0,
+                                    "out": 10.0}], aspect=reframe.MASTER, master_size=MASTER,
+                                  scaling=reframe.SCALE_TO_CROP, hand={1: (0.5, 0.0, 1.15)},
+                                  reader_for=lambda _: Reader(PYXIS),
+                                  detect=lambda paths: {p: [] for p in paths})["items"][0]
+        self.assertEqual(hand["status"], reframe.HAND)
+        plan["items"][0] = hand
+        path = self.write_plan(plan, "hand.json")
+        dry = call("reframe_apply", self.args(plan=path), self.resolve)
+        self.assertEqual([t["name"] for t in dry["targets"]], ["STAND"])
+        self.assertEqual(dry["refused"], [])
+        self.assertLess(dry["targets"][0]["props"]["Tilt"], 0)
+        self.assertAlmostEqual(dry["targets"][0]["props"]["ZoomX"], hand["row"]["zoom"], places=3)
+        self.assertGreater(hand["row"]["zoom"], 1.1)  # the 1.15 survives, not the fill scale
+        real = call("reframe_apply", self.args(plan=path, dry_run=False,
+                                               plan_sha=dry["plan_sha"]), self.resolve)
+        self.assertEqual([r["ok"] for r in real["results"]], [True])
+        self.assertEqual(self.items[0].props["Tilt"], dry["targets"][0]["props"]["Tilt"])
+
     def test_dry_run_writes_nothing_and_names_what_it_would_set(self):
         dry = call("reframe_apply", self.args(), self.resolve)
         self.assertTrue(dry["dry_run"])
@@ -308,6 +329,25 @@ class TestReframePlanItems(unittest.TestCase):
             self.assertTrue(os.path.exists(r["tsv"]))
             for p in stills:
                 self.assertTrue(os.path.exists(p))
+            handfile = os.path.join(d, "hand.json")
+            with open(handfile, "w") as f:
+                json.dump({"1": {"x": 0.5, "y": 0.0}}, f)
+            with mock.patch.object(reframe.vision, "face_boxes",
+                                   lambda paths: {p: [] for p in paths}):
+                r = tool.handler(schema.with_defaults(tool.input_schema, dict(
+                    args, hand=handfile, out=os.path.join(d, "out", "hand-plan.json"))),
+                    ToolContext())
+            self.assertIn("1 by hand", r["summary"])
+            with open(handfile, "w") as f:
+                json.dump({"2": 0.5}, f)
+            with self.assertRaisesRegex(reframe.ReframeError, "item 2 does not exist"):
+                tool.handler(schema.with_defaults(tool.input_schema, dict(args, hand=handfile)),
+                             ToolContext())
+            noitems = {k: v for k, v in args.items() if k != "items"}
+            with self.assertRaisesRegex(ValueError, "give items"):
+                tool.handler(schema.with_defaults(tool.input_schema,
+                                                  dict(noitems, hand=handfile, manifest=out)),
+                             ToolContext())
             with self.assertRaisesRegex(ValueError, "not both"):
                 tool.handler(schema.with_defaults(tool.input_schema,
                                                   dict(args, manifest=out)), ToolContext())
