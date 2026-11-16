@@ -1028,7 +1028,7 @@ def register(registry):
         "pass. Where the footage has an audience, name the subject with subject_region or "
         "min_face_height. Footage with no speech needs a manifest with \"speech\": false and "
         "only source_path and clips (no words, approved text or hash); cut still needs a "
-        "speech manifest. A span with no face gets no crop (with items, unless hand names a centre for it). Writes a copy of the manifest "
+        "speech manifest. A span with no face gets no crop (with items, unless hand names a centre for it; a hand entry also replaces a face crop). Writes a copy of the manifest "
         "with per-span reframes (cut reads them) and a TSV and JSON report beside it. "
         "Heads: the face box stops at the brows, so the head's top is taken 0.6 face heights "
         "above it; the crop moves up, never down, to keep the whole head and 0.65 face "
@@ -1066,10 +1066,11 @@ def register(registry):
                        "1.15}} (y and zoom optional; a bare number is x). x and y are shares 0 "
                        "to 1 of the displayed (desqueezed) source; zoom multiplies the fill "
                        "scale (1 to 4, default 1; give the item's current Zoom so "
-                       "reframe_apply keeps it) and the centre clamps for the zoomed width. An item with no face (no_face or "
-                       "manual) is cropped there at the widest filled scale and named hand, "
-                       "with no head check; an item with a face keeps its face crop and "
-                       "gets a review line with the difference. A share outside 0 to 1, or "
+                       "reframe_apply keeps it) and the centre clamps for the zoomed width. An item with an entry is cropped "
+                       "there at the widest filled scale (times zoom) and named hand, whatever "
+                       "the face result (pass, fallback, bars, manual, no_face): the hand "
+                       "entry wins, with no head check, and a face crop it replaces is named in "
+                       "the item's review list. An item with no entry is unchanged. A share outside 0 to 1, or "
                        "an item that does not exist, is refused before any work."},
               "master_size": {"type": "array", "items": {"type": "integer", "minimum": 1},
                               "minItems": 2, "maxItems": 2,

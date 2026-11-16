@@ -154,7 +154,7 @@ RULE = "the face present in the most samples, a tie going to the larger median b
 RULE_LARGEST = "the largest face among those present in at least half as many samples as the most present"
 
 PASS, BARS, FALLBACK, MANUAL, NO_FACE = "pass", "bars", "fallback", "manual", "no_face"
-HAND = "hand"  # a crop from a person's centre (plan_items hand=), for a span with no usable face
+HAND = "hand"  # a crop from a person's centre (plan_items hand=), for an item with a hand entry
 STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE, HAND)
 APPLIED = (PASS, BARS, FALLBACK, HAND)  # statuses that carry a crop
 
@@ -1452,9 +1452,9 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
     one span for `aspect` (MASTER needs master_size) with plan(); kw goes
     to plan(). reader_for(item) may supply the reader (tests).
     hand: {item number from 1: (x, y or None, zoom)} (load_hand): for an item with
-    no usable face (no_face, manual) a crop centred there, status HAND, no
-    head check; an item with a face keeps its face crop and gets a review
-    line with the difference.
+    a picture area, whatever the face result, a crop centred there, status
+    HAND, no head check; a face or scene crop it replaces is named in the
+    item's review list.
     Returns {kind, aspect, out, scaling, items: [{name, path, in, out,
     size, stored_size, squeeze, squeeze_from, status, reason, review, move,
     entry, row}], rows, counts}; entry is what reframe_apply writes from."""
@@ -1488,23 +1488,21 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
         sp = rep["spans"][0]
         p = sp["aspects"][aspect]
         if n in hand:
-            if p["status"] in (NO_FACE, MANUAL) and sp["area"]:
+            if sp["area"]:
+                was = p
                 p = sp["aspects"][aspect] = _hand_aspect(hand[n], rep["size"], sp["area"], out,
                                                          scaling)
-                sp["review"].append("framed by hand: no head, so the headroom and whole-head "
-                                    "check does not apply; look at the frame")
-            elif sp["face"] and sp.get("subject") != "saliency":
-                px = hand[n][0] * rep["size"][0]
-                sp["hand_face_x"] = round(px, 1)
-                sp["review"].append(
-                    f"hand framing x {hand[n][0]:g} ({px:.0f} px) differs from the face crop's "
-                    f"face x {sp['face']['x']:.0f} px by {sp['face']['x'] - px:+.0f} px; the face "
-                    "crop is kept")
+                if was.get("x") is not None:  # the hand entry wins over any crop
+                    what = "scene crop" if sp.get("subject") == "saliency" else "face crop"
+                    sp["review"].append(f"{what} at x={was['x']:g} ({was['status']}) replaced by "
+                                        "the hand entry")
+                if sp["face"] and sp.get("subject") != "saliency":
+                    sp["hand_face_x"] = round(hand[n][0] * rep["size"][0], 1)
+                sp["review"].append("framed by hand: no head check (headroom and whole head do "
+                                    "not apply); look at the frame")
             else:
-                sp["review"].append(
-                    "hand entry not used: " + ("no picture area (every sampled frame is black)"
-                                               if not sp["area"] else
-                                               "the item already has a crop from the scene read"))
+                sp["review"].append("hand entry not used: no picture area (every sampled frame "
+                                    "is black)")
             rep["rows"] = rows(rep)
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
             {"status": p["status"], "reason": p["reason"]}

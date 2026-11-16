@@ -597,17 +597,19 @@ height (default the middle), `zoom` an optional multiplier on the fill scale
 (1 to 4, default 1; give an item's current Zoom here, or `reframe_apply`
 writes the fill scale over it, and the crop centre clamps for the zoomed
 width); a bare number is `x`. Two keys for one item (`"1"` and `"01"`) are
-refused. An item whose status would
-be `no_face` or `manual` and that has an entry gets a crop at that centre, at
-the widest scale that fills the frame, clamped to the picture exactly as a
-face centre is: status `hand`, `source` `hand`, and a review line saying that
-there is no head, so the headroom and whole-head check does not apply. `hand`
-counts like `pass` for `reframe_apply`. An item with a face keeps its face
-crop; its review line gives the difference from the hand centre. A share
+refused. A hand entry wins: an item
+with an entry gets a crop at that centre whatever the face result (pass,
+fallback, bars, manual, no_face), at the widest scale that fills the frame
+(times `zoom`), clamped to the picture exactly as a face centre is: status
+`hand`, `source` `hand`, a review line saying that there is no head, so the
+headroom and whole-head check does not apply, and, when a face crop was
+replaced, a line naming it (`face crop at x=... replaced by the hand
+entry`). `hand` counts like `pass` for `reframe_apply`. An item with no entry
+is unchanged. A share
 outside 0 to 1, a zoom outside 1 to 4, an item number that does not exist, or
 `hand` without `items`, is refused before any frame is read. An entry that
-cannot be used (an item that already has a crop from the scene read, or a
-picture with no area) is not dropped: the item's review list says so. Not run against a real Resolve.
+cannot be used (a picture with no area) is not dropped: the item's review
+list says so. Not run against a real Resolve.
 
 The order on a live project: `reframe_plan` with `items` (offline) writes
 the framing plan, `duplicate_timeline_auto` makes the ` [auto]` copy, then
