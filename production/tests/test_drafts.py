@@ -799,6 +799,15 @@ class TestCameraSound(Base):
         self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
         self.assertIn("span 0: camera sound fitted to the retime at its mean speed 0.5", got["notes"])
 
+    def test_a_retime_whose_mean_speed_is_not_above_zero_is_refused(self):
+        plan = self.plan("stall", METHOD, self.make_src("a.mp4", True))
+        mp = os.path.join(plan, "manifest.json")
+        man = json.loads(Path(mp).read_text())
+        man["effects"] = [{"span_index": 0, "effect": "retime", "params": {"speed": 1, "speed_to": -1}}]
+        Path(mp).write_text(json.dumps(man))
+        with self.assertRaisesRegex(drafts.DraftError, "retime speed must be above 0"):
+            drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)
+
     def test_a_missing_music_file_falls_back_to_camera_sound_and_says_so(self):
         plan = self.plan("lost", METHOD, self.make_src("a.mp4", True))
         mp = os.path.join(plan, "manifest.json")

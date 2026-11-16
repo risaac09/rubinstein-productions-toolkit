@@ -602,13 +602,18 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
                + ["-an", "-filter_complex" if back else "-vf", vf,
                   "-frames:v", str(n), "-r", str(fps)] + enc
                + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
-        speed = 1.0  # the picture covers seconds * (mean speed) of source; the sound must too
+        speed, ramp = 1.0, False  # the picture covers seconds * (mean speed) of source; so must the sound
         for e in by_span.get(i, []):
             if e["effect"] == "retime":
                 s0 = (e.get("params") or {}).get("speed", 1)
-                speed = (s0 + (e.get("params") or {}).get("speed_to", s0)) / 2
+                s1 = (e.get("params") or {}).get("speed_to", s0)
+                speed, ramp = (s0 + s1) / 2, s1 != s0
+        if not (isinstance(speed, (int, float)) and speed > 0):
+            raise DraftError(f"span {i}: retime speed must be above 0")
         if speed != 1.0:
-            notes.append(f"span {i}: camera sound fitted to the retime at its mean speed {speed:g}")
+            notes.append(f"span {i}: camera sound fitted to the retime at its mean speed {speed:g}"
+                         + (" (a ramp's sound plays at that constant speed, so it drifts mid-span)"
+                            if ramp else ""))
         jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work,
                      "audio": (src, span["in"], speed)})
         frames += n
@@ -860,6 +865,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
+    has_audio.cache_clear()  # a file swapped since the last build is probed again
     centres, own_crops = {}, {}
     from . import cmd_vertical
     try:
