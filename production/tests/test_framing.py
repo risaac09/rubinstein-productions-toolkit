@@ -159,14 +159,30 @@ class TestHandFraming(unittest.TestCase):
         self.assertEqual(it["row"]["status"], reframe.HAND)
         self.assertEqual(it["status"], reframe.HAND)
 
-    def test_a_span_with_a_face_keeps_its_face_crop_and_gets_a_review_line(self):
-        face = self.plan(None, detector(TestMasterShape.STANDING, PYXIS))
-        it = self.plan({1: (0.9, None, 1.0)}, detector(TestMasterShape.STANDING, PYXIS))
-        self.assertNotEqual(it["status"], reframe.HAND)
-        self.assertEqual((it["entry"]["x"], it["entry"]["y"]), (face["entry"]["x"], face["entry"]["y"]))
+    def test_a_hand_entry_wins_over_a_face_crop_and_the_review_names_it(self):
+        det = detector(TestMasterShape.STANDING, PYXIS)
+        face = self.plan(None, det)
+        self.assertEqual(face["status"], reframe.PASS)
+        it = self.plan({1: (0.9, None, 1.0)}, det)
+        self.assertEqual((it["status"], it["source"]), (reframe.HAND, "hand"))
+        self.assertNotEqual(it["entry"]["x"], face["entry"]["x"])
+        self.assertAlmostEqual(it["entry"]["x"], min(0.9 * PYXIS[0], PYXIS[0] - 1080 / (2.0 * it["entry"]["scale"])), places=1)
         self.assertEqual(it["row"]["hand_face_x"], round(0.9 * PYXIS[0], 1))
-        self.assertTrue(any("hand framing x 0.9" in r and "face crop is kept" in r
-                            for r in it["review"]), it["review"])
+        self.assertTrue(any(r == f"face crop at x={face['entry']['x']:g} (pass) replaced by the "
+                            "hand entry" for r in it["review"]), it["review"])
+
+    def test_an_item_with_no_hand_entry_is_unchanged(self):
+        det = detector(TestMasterShape.STANDING, PYXIS)
+        items = [dict(self.ITEM, name="a"), dict(self.ITEM, name="b")]
+        p = reframe.plan_items(items, aspect=reframe.MASTER, master_size=MASTER,
+                               scaling=reframe.SCALE_TO_CROP, hand={1: (0.5, 0.0, 1.0)},
+                               reader_for=lambda it: Reader(PYXIS), detect=det)["items"]
+        plain = reframe.plan_items(items[1:], aspect=reframe.MASTER, master_size=MASTER,
+                                   scaling=reframe.SCALE_TO_CROP,
+                                   reader_for=lambda it: Reader(PYXIS), detect=det)["items"][0]
+        self.assertEqual(p[0]["status"], reframe.HAND)
+        self.assertEqual((p[1]["status"], p[1]["entry"], p[1]["review"]),
+                         (plain["status"], plain["entry"], plain["review"]))
 
     def test_bad_entries_are_refused_before_any_work(self):
         def boom(paths):
