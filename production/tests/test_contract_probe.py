@@ -396,3 +396,13 @@ class Golden(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TrackMappingTest(unittest.TestCase):
+    def test_extra_keys_resolve_adds_do_not_count_as_a_difference(self):
+        from rpresolve import cmd_contract_probe as cp
+        sent = '{"track_mapping": {"1": {"channel_idx": [1, 2], "mute": false, "type": "stereo"}}}'
+        back = ('{"embedded_audio_channels":4,"linked_audio":{},'
+                '"track_mapping":{"1":{"channel_idx":[1,2],"mute":false,"type":"stereo"}}}')
+        self.assertEqual(cp._track_mapping(sent), cp._track_mapping(back))
+        self.assertIsNone(cp._track_mapping("not json"))

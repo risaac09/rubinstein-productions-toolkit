@@ -203,7 +203,7 @@ class Context:
 
 def targets(ctx, resolve):
     t = {"resolve": resolve, "pm": None, "project": None, "pool": None, "timeline": None,
-         "audio_item": None, "video_item": None, "clip": None}
+         "audio_item": None, "video_item": None, "clip": None, "multi_clip": None}
     t["pm"] = resolve.GetProjectManager()
     if t["pm"] is not None:
         t["project"] = t["pm"].GetCurrentProject()
@@ -215,6 +215,8 @@ def targets(ctx, resolve):
         folder = t["pool"].GetRootFolder()
         clips = folder.GetClipList() if folder is not None else []
         t["clip"] = clips[0] if clips else None
+        # Q2 needs a source with several audio streams; take the first such clip at the root.
+        t["multi_clip"] = next((c for c in clips if _mapping_tracks(c.GetAudioMapping()) >= 2), None)
     tl = t["timeline"]
     if tl is not None:
         for kind, key in (("audio", "audio_item"), ("video", "video_item")):
@@ -479,6 +481,14 @@ def s_q1(ctx, t):
     ctx.call("ProjectManager.DeleteProject", pm, "DeleteProject", name)
 
 
+def _track_mapping(text):
+    try:
+        data = json.loads(text) if isinstance(text, str) else text
+        return (data or {}).get("track_mapping")
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
 def _mapping_tracks(text):
     try:
         data = json.loads(text) if isinstance(text, str) else text
@@ -491,7 +501,7 @@ def s_q2(ctx, t):
     """The T36 route: remap a multi-stream source BEFORE the append, read the mapping back, then
     append and count audio tracks. The verdict needs a clip whose mapping lists more than one
     track, and a remap that was accepted and read back; otherwise it says "not testable"."""
-    clip = t["clip"]
+    clip = t.get("multi_clip") or t["clip"]
     if clip is None:
         ctx.note("setup", "the sandbox media pool has no clip at its root; import one first")
         return
@@ -499,15 +509,15 @@ def s_q2(ctx, t):
     streams = _mapping_tracks(before)
     if streams < 2:
         ctx.note("verdict.remap_before_append",
-                 f"not testable: the first pool clip's mapping lists {streams} track(s); use a clip with several streams")
+                 f"not testable: no clip at the pool root lists several tracks; the first lists {streams} track(s); use a clip with several streams")
         return
     ctx.cleanups.append(lambda: clip.SetAudioMapping(before))
     mapping = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "mute": False, "type": "stereo"}}})
     accepted = ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
     after = ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
-    same = _norm(after) == _norm(mapping)
-    ctx.note("MediaPoolItem.GetAudioMapping.read_back", "same as what was set" if same else "differs from what was set")
-    tl, items = _scratch_timeline(ctx, t, "q2")
+    same = _track_mapping(after) == _track_mapping(mapping)  # Resolve adds embedded_audio_channels and linked_audio
+    ctx.note("MediaPoolItem.GetAudioMapping.read_back", "same as what was set" if same else f"differs from what was set: {after}")
+    tl, items = _scratch_timeline(ctx, dict(t, clip=clip), "q2")  # append the remapped clip, not the first one
     if tl is None:
         return
     per = [len(tl.GetItemListInTrack("audio", n) or []) for n in range(1, (tl.GetTrackCount("audio") or 0) + 1)]
