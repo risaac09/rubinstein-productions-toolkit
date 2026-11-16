@@ -740,6 +740,19 @@ class TestCrops(Base):
         self.assertEqual([x["cx"] for x in got["crops"]], [0.17, 0.83])
         self.assertNotIn("9:16 crops read from this plan's own crops.json", got["notes"])
 
+    def test_a_plan_whose_own_crops_json_does_not_fit_falls_back_to_centre_and_says_so(self):
+        good = self.make("good", self.method(None, None))
+        bad = self.make("bad", self.method(None, None, None))
+        Path(self.crops([0.17, 0.83])).replace(os.path.join(good, "crops.json"))
+        Path(self.crops([0.2, 0.8])).replace(os.path.join(bad, "crops.json"))  # 2 items, 3 spans
+        got = {d["plan"]: d for d in drafts.build([good, bad], os.path.join(self.dir, "o"),
+                                                  hw=False, lanes=1)["drafts"]}
+        self.assertEqual([x["cx"] for x in got["good"]["crops"]], [0.17, 0.83])
+        self.assertNotIn("crops", got["bad"])
+        self.assertTrue(any("bad: the crops file has 2 item(s), the plan 3 span(s)" in n
+                            and "centre crop" in n for n in got["bad"]["notes"]))
+        self.assertEqual(self.band(got["bad"]["file"], 0), "lime")
+
 
 @unittest.skipUnless(FFMPEG, "needs ffmpeg")
 class TestCameraSound(Base):
@@ -769,6 +782,43 @@ class TestCameraSound(Base):
 
     def test_a_source_with_no_audio_still_gives_a_synced_draft(self):
         plan = self.plan("mute", METHOD, self.make_src("m.mp4", False))
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+        self.assertIn("camera sound kept; silent where the source has no audio: m.mp4", got["notes"])
+
+    def test_a_retimed_span_fits_the_sound_to_the_picture_and_the_note_says_so(self):
+        m = copy.deepcopy(METHOD)
+        m["rules"]["end"] = None
+        m["length_s"] = 1.0
+        m["slots"] = [{**m["slots"][0], "effect": None, "speed": 0.5,
+                         "transition_out": {"type": "cut", "frames": 0}}]
+        plan = self.plan("slow", m, self.make_src("a.mp4", True))
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+        self.assertIn("span 0: camera sound fitted to the retime at its mean speed 0.5", got["notes"])
+
+    def test_a_missing_music_file_falls_back_to_camera_sound_and_says_so(self):
+        plan = self.plan("lost", METHOD, self.make_src("a.mp4", True))
+        mp = os.path.join(plan, "manifest.json")
+        man = json.loads(Path(mp).read_text())
+        man["music"] = {"path": os.path.join(self.dir, "gone.m4a"), "in": 0}
+        Path(mp).write_text(json.dumps(man))
+        got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
+        self.assertIn("music file not found: camera sound kept instead", got["notes"])
+        self.assertIn("camera sound kept", got["notes"])
+        self.assertIn("audio", self.streams(got["file"]))
+
+    def test_one_source_with_audio_and_one_without_stay_in_step(self):
+        loud, mute = self.make_src("l.mp4", True), self.make_src("m.mp4", False)
+        plan = self.plan("mix", METHOD, loud)
+        mp = os.path.join(plan, "manifest.json")
+        man = json.loads(Path(mp).read_text())
+        fills = []
+        for k, s in enumerate(METHOD["slots"]):
+            fills.append({"source_path": mute if k == 1 else loud, "in": 0.5 + k, "out": 0.5 + k + s["seconds"]})
+        Path(mp).write_text(json.dumps(methods.to_manifest(METHOD, fills)))
         got = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]
         s = self.streams(got["file"])
         self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)

@@ -64,6 +64,7 @@ as is a DIR that is not empty.
 
 import argparse
 import concurrent.futures
+import functools
 import json
 import os
 import shutil
@@ -601,8 +602,15 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
                + ["-an", "-filter_complex" if back else "-vf", vf,
                   "-frames:v", str(n), "-r", str(fps)] + enc
                + ["-write_tmcd", "0", out])  # no timecode track: every part joins alike
+        speed = 1.0  # the picture covers seconds * (mean speed) of source; the sound must too
+        for e in by_span.get(i, []):
+            if e["effect"] == "retime":
+                s0 = (e.get("params") or {}).get("speed", 1)
+                speed = (s0 + (e.get("params") or {}).get("speed_to", s0)) / 2
+        if speed != 1.0:
+            notes.append(f"span {i}: camera sound fitted to the retime at its mean speed {speed:g}")
         jobs.append({"cmd": cmd, "out": out, "seconds": seconds, "frames": n, "cwd": work,
-                     "audio": (src, span["in"])})
+                     "audio": (src, span["in"], speed)})
         frames += n
     try:  # before any ffmpeg job: a window the shots cannot hold is refused here
         planned = transitions.plan(man.get("effects"), [j["frames"] for j in jobs])
@@ -716,6 +724,7 @@ def music_args(music, seconds):
             "-c:a", "aac", "-b:a", "192k"]
 
 
+@functools.lru_cache(maxsize=None)
 def has_audio(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
                         "stream=index", "-of", "csv=p=0", path], capture_output=True, text=True)
@@ -731,9 +740,17 @@ def camera_sound(jobs, out):
     for k, j in enumerate(jobs):
         d = f"{j['seconds']:.6f}"
         if j["audio"] and has_audio(j["audio"][0]):
-            cmd += ["-ss", f"{j['audio'][1]:.4f}", "-t", d, "-i", j["audio"][0]]
+            sp, tempo = j["audio"][2], []
+            while sp > 2 or sp < 0.5:  # atempo takes 0.5 to 2 a step
+                step = 2.0 if sp > 2 else 0.5
+                tempo.append(step)
+                sp /= step
+            tempo.append(sp)
+            cmd += ["-ss", f"{j['audio'][1]:.4f}", "-t", f"{j['seconds'] * j['audio'][2]:.6f}",
+                    "-i", j["audio"][0]]
             parts.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,"
-                         f"apad=whole_dur={d},atrim=0:{d}[a{k}]")
+                         + "".join(f"atempo={t:.6f}," for t in tempo if abs(t - 1) > 1e-9)
+                         + f"apad=whole_dur={d},atrim=0:{d}[a{k}]")
         else:
             if j["audio"]:
                 silent.append(os.path.basename(j["audio"][0]))
@@ -843,7 +860,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
-    centres, own_crops = {}, set()
+    centres, own_crops = {}, {}
     from . import cmd_vertical
     try:
         if crops:
@@ -853,8 +870,11 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             for p in plans:
                 f = os.path.join(p["dir"], "crops.json")
                 if p["method"]["aspect"] == "9:16" and os.path.isfile(f):
-                    centres[id(p)] = span_centres(p, cmd_vertical.load_crops(f))
-                    own_crops.add(id(p))
+                    try:  # its own file that does not fit refuses nobody else's draft
+                        centres[id(p)] = span_centres(p, cmd_vertical.load_crops(f))
+                        own_crops[id(p)] = "9:16 crops read from this plan's own crops.json"
+                    except (DraftError, cmd_vertical.Refused) as e:
+                        own_crops[id(p)] = f"this plan's own crops.json is not used (centre crop): {e}"
     except cmd_vertical.Refused as e:
         raise DraftError(str(e))
     names, seen = [], {}
@@ -873,7 +893,7 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             if crops and not centres[id(p)]:
                 info["notes"].append("the crops file is not used: the method is 16:9")
             if id(p) in own_crops:
-                info["notes"].append("9:16 crops read from this plan's own crops.json")
+                info["notes"].append(own_crops[id(p)])
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
