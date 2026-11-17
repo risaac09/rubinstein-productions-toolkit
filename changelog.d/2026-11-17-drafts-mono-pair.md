@@ -1,0 +1,1 @@
+The draft farm joins a source's first two audio streams as one stereo pair when both are mono and the second is not near silent, as a camera that writes its stereo mic as two mono streams does; before, only the first was used and the right channel was lost. The notes name the sources paired and those of which only the first stream was used.

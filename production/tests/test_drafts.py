@@ -810,17 +810,41 @@ class TestCameraSound(Base):
         s = self.streams(got["file"])
         self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
 
-    def test_a_source_with_two_audio_streams_says_only_the_first_is_used(self):
-        p = os.path.join(self.dir, "two.mov")
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=24:d=8",
-                        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:d=8",
-                        "-f", "lavfi", "-i", "sine=f=440:r=48000:d=8",
-                        "-map", "0:v", "-map", "1:a", "-map", "2:a", "-c:a", "pcm_s16le", "-t", "8",
-                        "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", p], check=True)
-        plan = self.plan("two", METHOD, p)
-        notes = drafts.build([plan], os.path.join(self.dir, "o"), hw=False, lanes=1)["drafts"][0]["notes"]
-        self.assertIn("camera sound from the first audio stream only of: two.mov", notes)
-        self.assertTrue(any(n.startswith("camera sound is near silent") for n in notes))
+    def mono_streams(self, name, *sources):
+        p = os.path.join(self.dir, name)
+        cmd = ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=24:d=8"]
+        for src in sources:
+            cmd += ["-f", "lavfi", "-i", src]
+        cmd += ["-map", "0:v"] + [a for i in range(len(sources)) for a in ("-map", f"{i + 1}:a")]
+        subprocess.run(cmd + ["-c:a", "pcm_s16le", "-t", "8", "-pix_fmt", "yuv420p", "-c:v", "libx264",
+                              "-preset", "ultrafast", p], check=True)
+        return p
+
+    def peak(self, path, pan):
+        out = subprocess.run(["ffmpeg", "-nostats", "-i", path, "-af", f"pan=mono|c0={pan},volumedetect",
+                              "-f", "null", "-"], capture_output=True, text=True).stderr
+        return float(re.search(r"max_volume:\s*(-?[0-9.]+|-inf) dB", out).group(1))
+
+    def test_two_mono_streams_are_joined_as_left_and_right(self):
+        p = self.mono_streams("pair.mov", "sine=f=440:r=48000:d=8", "sine=f=660:r=48000:d=8")
+        got = drafts.build([self.plan("pair", METHOD, p)], os.path.join(self.dir, "o"), hw=False,
+                           lanes=1)["drafts"][0]
+        self.assertIn("camera sound from audio streams 1 and 2 as a stereo pair of: pair.mov", got["notes"])
+        self.assertFalse(any("first audio stream only" in n for n in got["notes"]))
+        self.assertGreater(self.peak(got["file"], "c1"), -30)  # the right channel carries stream 2
+        self.assertGreater(self.peak(got["file"], "c0-c1"), -30)  # and is not a copy of the left
+        s = self.streams(got["file"])
+        self.assertAlmostEqual(s["audio"], s["video"], delta=0.1)
+
+    def test_a_silent_second_stream_is_not_paired_and_the_note_says_first_only(self):
+        p = self.mono_streams("three.mov", "anullsrc=r=48000:cl=mono:d=8", "anullsrc=r=48000:cl=mono:d=8",
+                              "sine=f=440:r=48000:d=8")
+        notes = drafts.build([self.plan("three", METHOD, p)], os.path.join(self.dir, "o"), hw=False,
+                             lanes=1)["drafts"][0]["notes"]
+        self.assertIn("camera sound from the first audio stream only of: three.mov", notes)
+        self.assertFalse(any("stereo pair" in n for n in notes))
+        self.assertTrue(any(n.startswith("camera sound is near silent") and "another stream" in n
+                            for n in notes))
 
     def test_a_retime_speed_that_is_not_a_number_is_refused(self):
         plan = self.plan("word", METHOD, self.make_src("a.mp4", True))
