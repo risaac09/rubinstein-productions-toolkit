@@ -733,17 +733,25 @@ def music_args(music, seconds):
 
 
 @functools.lru_cache(maxsize=None)
+def audio_layout(path):
+    """The channel count of each audio stream in the file, in order ([] when there is
+    none or ffprobe cannot read it)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                        "stream=channels", "-of", "csv=p=0", path], capture_output=True, text=True)
+    return [int(c) for c in r.stdout.split() if c.isdigit()] if r.returncode == 0 else []
+
+
 def audio_streams(path):
     """How many audio streams the file holds (0 when ffprobe cannot read it)."""
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
-                        "stream=index", "-of", "csv=p=0", path], capture_output=True, text=True)
-    return len(r.stdout.split()) if r.returncode == 0 else 0
+    return len(audio_layout(path))
 
 
-def max_volume(path):
-    """The file's peak sample level in dB (volumedetect), or None when it cannot be read."""
-    r = subprocess.run(["ffmpeg", "-v", "info", "-nostats", "-i", path, "-af", "volumedetect",
-                        "-f", "null", "-"], capture_output=True, text=True)
+def max_volume(path, stream=None):
+    """The peak sample level in dB (volumedetect) of the file, or of its audio stream
+    `stream`, or None when it cannot be read."""
+    pick = ["-map", f"0:a:{stream}"] if stream is not None else []
+    r = subprocess.run(["ffmpeg", "-v", "info", "-nostats", "-i", path] + pick
+                       + ["-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
     m = re.search(r"max_volume:\s*(-?[0-9.]+|-inf) dB", r.stderr)
     return None if not m else float(m.group(1))
 
@@ -751,17 +759,31 @@ def max_volume(path):
 QUIET_DB = -45.0  # a camera track peaking below this is as good as silent
 
 
+@functools.lru_cache(maxsize=None)
+def mono_pair(path):
+    """True when the first two audio streams are mono and the second is not near silent:
+    a camera that writes its stereo mic as two mono streams (left, then right)."""
+    if audio_layout(path)[:2] != [1, 1]:
+        return False
+    peak = max_volume(path, 1)
+    return peak is not None and peak >= QUIET_DB
+
+
 def camera_sound(jobs, out):
     """Write the spans' own audio, each cut to its span's frames, joined, as 48 kHz stereo
     WAV at `out`; a source with no audio stream (and the end black) gets silence for its
-    length so the track stays the picture's length. Only a source's first audio stream is
-    used. Returns (names of the sources with no audio, names of those with more than one
-    audio stream)."""
-    cmd, parts, silent, multi = ["ffmpeg", "-v", "error", "-y"], [], [], []
+    length so the track stays the picture's length. A source's first audio stream is used,
+    or its first two joined as a stereo pair when mono_pair says they are one. Returns
+    (names of the sources with no audio, names of those with more than one audio stream
+    of which only the first was used, names of those whose first two were paired)."""
+    cmd, parts, silent, multi, paired = ["ffmpeg", "-v", "error", "-y"], [], [], [], []
     for k, j in enumerate(jobs):
         d = f"{j['seconds']:.6f}"
         if j["audio"] and audio_streams(j["audio"][0]):
-            if audio_streams(j["audio"][0]) > 1:
+            pair = mono_pair(j["audio"][0])
+            if pair:
+                paired.append(os.path.basename(j["audio"][0]))
+            elif audio_streams(j["audio"][0]) > 1:
                 multi.append(os.path.basename(j["audio"][0]))
             sp, tempo = j["audio"][2], []
             while sp > 2 or sp < 0.5:  # atempo takes 0.5 to 2 a step
@@ -773,7 +795,8 @@ def camera_sound(jobs, out):
                     "-i", j["audio"][0]]
             # async pads a source whose audio starts after its picture: atrim cuts on
             # timestamps but apad counts samples, so without it the span runs short
-            parts.append(f"[{k}:a:0]aresample=48000:async=1:first_pts=0,aformat=channel_layouts=stereo,"
+            parts.append((f"[{k}:a:0][{k}:a:1]amerge=inputs=2," if pair else f"[{k}:a:0]")
+                         + "aresample=48000:async=1:first_pts=0,aformat=channel_layouts=stereo,"
                          + "".join(f"atempo={t:.6f}," for t in tempo if abs(t - 1) > 1e-9)
                          + f"apad=whole_dur={d},atrim=0:{d}[a{k}]")
         else:
@@ -787,7 +810,7 @@ def camera_sound(jobs, out):
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise DraftError(f"camera sound for {os.path.basename(out)} failed: {r.stderr.strip()[-400:]}")
-    return sorted(set(silent)), sorted(set(multi))
+    return sorted(set(silent)), sorted(set(multi)), sorted(set(paired))
 
 
 def _concat(parts, out, work, music=None, seconds=0, sound=None):
@@ -885,7 +908,8 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                  for p in plans for src, take in cutlist.exclude_music_matches(p["manifest"], ex["takes"])]
         if hits:
             raise DraftError("excluded take(s) in the plan: " + "; ".join(hits))
-    audio_streams.cache_clear()  # a file swapped since the last build is probed again
+    audio_layout.cache_clear()
+    mono_pair.cache_clear()  # a file swapped since the last build is probed again
     centres, own_crops = {}, {}
     from . import cmd_vertical
     try:
@@ -946,9 +970,12 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
             sound = None
             if not music:
                 sound = os.path.join(work, name + ".sound.wav")
-                none, multi = camera_sound(jobs, sound)
+                none, multi, paired = camera_sound(jobs, sound)
                 info["notes"].append("camera sound kept" + (
                     f"; silent where the source has no audio: {', '.join(none)}" if none else ""))
+                if paired:
+                    info["notes"].append("camera sound from audio streams 1 and 2 as a stereo "
+                                         "pair of: " + ", ".join(paired))
                 if multi:
                     info["notes"].append("camera sound from the first audio stream only of: "
                                          + ", ".join(multi))
