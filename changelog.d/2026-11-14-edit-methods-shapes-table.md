@@ -1,0 +1,1 @@
+Docs: edit-methods.md burst-grid wording now matches its arithmetic, the 9:16 width claim is stated for each source shape, and a table gives what each delivery shape crops from 1.5x anamorphic windows.
