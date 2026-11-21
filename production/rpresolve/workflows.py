@@ -672,7 +672,10 @@ def cut(resolve, project_name, manifest_path, prefix="SW", only=None, force=Fals
                            "resolution": list(src)},
            "aspects": list(aspects), "input_scaling": scaling, "would_create": would,
            "unreframed": unreframed, "refused": refused, "reframes": reframes,
-           "not_built": cutlist.unbuilt_lines(m, "cut", CUT_IGNORED_TOP, CUT_IGNORED_SPAN, clips),
+           "not_built": (cutlist.unbuilt_lines(m, "cut", CUT_IGNORED_TOP, CUT_IGNORED_SPAN, clips)
+                         + cutlist.silent_sound_line(m, "cut")
+                         + (["method.end: not built by cut"]
+                            if (m.get("method") or {}).get("end") else [])),
            "skipped_existing": skipped, "results": [], "left_behind": [],
            "ui_restore_problems": [], "plan_sha": sha, "dry_run": dry_run, "exit_status": 0,
            "settings_drift_rows": []}

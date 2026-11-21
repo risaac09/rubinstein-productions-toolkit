@@ -948,6 +948,12 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 p["manifest"], "the draft renderer",
                 ("music_gain_db", "camera_sound_lufs", "camera_sound_fade_s", "squeeze"),
                 ("audio_lead", "audio_tail", "layer", "cutout"))
+            if not p["manifest"].get("music"):
+                info["notes"] += cutlist.silent_sound_line(p["manifest"], "the draft renderer")
+            mfps = p["manifest"].get("fps")
+            if mfps is not None and mfps != p["method"]["fps"]:
+                info["notes"].append(f"fps: the manifest says {mfps}, drawn at the method's "
+                                     f"{p['method']['fps']}")
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
@@ -969,9 +975,6 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 info["notes"].append("music file not found: camera sound kept instead")
                 music = None
             elif music:
-                if p["manifest"].get("camera_sound"):
-                    info["notes"].append("camera_sound: not built by the draft renderer "
-                                         "(music replaces camera sound)")
                 info["notes"].append(f"music replaces camera sound, from {float(music.get('in') or 0):.2f} s; "
                                      "check its licence before anything is posted")
             sound = None

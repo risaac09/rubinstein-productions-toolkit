@@ -103,6 +103,26 @@ class TestNotBuilt(Base):
     def test_a_manifest_without_them_names_nothing(self):
         self.assertEqual(self.cut(self.manifest(), dry_run=True)["not_built"], [])
 
+    def edited_top(self, **top):
+        path = self.manifest()
+        with open(path) as f:
+            m = json.load(f)
+        m.update(top)
+        with open(path, "w") as f:
+            json.dump(m, f)
+        return path
+
+    def test_silent_camera_sound_and_an_end_black_are_named(self):
+        got = self.cut(self.edited_top(camera_sound=False, method={"id": "x", "end": "black:2"}),
+                       dry_run=True)["not_built"]
+        self.assertEqual(got, ["camera_sound: false not built by cut (camera sound is kept)",
+                               "method.end: not built by cut"])
+
+    def test_camera_sound_true_and_a_zero_value_are_judged_by_what_cut_does(self):
+        self.assertEqual(self.cut(self.edited_top(camera_sound=True), dry_run=True)["not_built"], [])
+        self.assertEqual(self.cut(self.edited_top(music_gain_db=0), dry_run=True)["not_built"],
+                         ["music_gain_db: not built by cut"])
+
 
 class TestPerSpan(Base):
     def test_each_span_gets_its_own_transform_read_back(self):

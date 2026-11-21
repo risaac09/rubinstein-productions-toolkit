@@ -656,14 +656,24 @@ def to_v2(m):
 def unbuilt_lines(m, tool, top=(), span=(), clips=None):
     """One line per manifest field a tool was given and does not honour: the top-level `top`
     fields first, then each clip span's `span` fields (numbered from 1 within its clip; the
-    clip is named when the manifest has several). A field that is absent or empty is not named."""
-    out = [f"{f}: not built by {tool}" for f in top if m.get(f)]
+    clip is named when the manifest has several). A field is named when it is present and not
+    empty, whatever its value: 0 and false are settings too. A field a tool half-honours
+    (camera_sound, method.end, fps) is judged by the caller against what it does."""
+    out = [f"{f}: not built by {tool}" for f in top if m.get(f) not in (None, "", [], {})]
     clips = m["clips"] if clips is None else clips
     for c in clips:
         where = f" of {c['name']}" if len(m["clips"]) > 1 else ""
         for i, s in enumerate(c["spans"], 1):
-            out += [f"{f} on span {i}{where}: not built by {tool}" for f in span if s.get(f)]
+            out += [f"{f} on span {i}{where}: not built by {tool}"
+                    for f in span if s.get(f) not in (None, "", [], {})]
     return out
+
+
+def silent_sound_line(m, tool):
+    """The line for camera_sound: false at a tool that keeps the camera sound; [] when the
+    manifest leaves it unset or true (assemble_timeline builds the bed only for true)."""
+    return ([f"camera_sound: false not built by {tool} (camera sound is kept)"]
+            if m.get("camera_sound") is False else [])
 
 
 def frame(t, fps):
