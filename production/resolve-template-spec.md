@@ -609,6 +609,7 @@ rules under `deliver`. `queue_render` takes a destination and nothing else.
 | `linkedin_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `linkedin_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `social_9x16` | mp4, H.264 | 1080x1920 | AAC 48 kHz stereo | -14 LUFS | burnt in |
+| `social_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -14 LUFS | burnt in |
 | `linkedin_1x1` | mp4, H.264 | 1080x1080 | AAC 48 kHz stereo | -16 LUFS | burnt in |
 | `substack_16x9` | mp4, H.264 | 1920x1080 | AAC 48 kHz stereo | -16 LUFS | sidecar .srt |
 | `client_master` | mov, ProRes 422 HQ | the timeline's | LPCM 24-bit 48 kHz | none (unnormalized) | none |

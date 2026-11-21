@@ -109,7 +109,7 @@ class TestMusicMap(unittest.TestCase):
         r = decon.compare(self.report, self.report, self.on, self.on)
         self.assertEqual(r["score"], 100.0)
         self.assertEqual(r["parts"]["beats"], 1.0)
-        self.assertEqual(len(r["parts"]), 7)
+        self.assertEqual(len(r["parts"]), 8)  # main's seven plus beats
 
     def test_compare_off_beat_rebuild_loses_on_the_beats_part(self):
         rb = shots.build(self.off, dissolves=False)

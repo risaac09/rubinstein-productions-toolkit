@@ -21,6 +21,16 @@
 # so phase zero and the routing brief never print twice.
 
 set -euo pipefail
+
+# Argument guard: this script installs on any run, so --help must not. It takes
+# no argument or --check, nothing else (2026-11-21, docs/FAILURE-MODES.md 38).
+usage() { sed -n '/^# Usage:/,/^#$/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
+for a in "$@"; do
+  case "$a" in -h|--help) usage; exit 0 ;; esac
+done
+if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
+  echo "ERROR: unknown argument: $*" >&2; usage >&2; exit 2
+fi
 SRC="$(cd "$(dirname "$0")" && pwd)"      # .../phase-zero/global
 KITROOT="$(cd "$SRC/.." && pwd)"          # .../phase-zero
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
@@ -38,6 +48,13 @@ $SRC/session-brief.global.sh|hooks/session-brief.sh
 $SRC/workspace-check.global.sh|hooks/workspace-check.sh
 $SRC/relations-guard.global.sh|hooks/relations-guard.sh
 $SRC/engage-log.global.sh|hooks/engage-log.sh"
+# Slash commands: every kit commands/*.md lands in DEST/commands/, same list, so
+# --check byte-compares them too.
+for c in "$KITROOT"/commands/*.md; do
+  [ -f "$c" ] || continue
+  GLOBAL_FILES="$GLOBAL_FILES
+$c|commands/$(basename "$c")"
+done
 GLOBAL_EXEC="hooks/phase-zero-trigger.sh hooks/session-brief.sh hooks/workspace-check.sh hooks/relations-guard.sh hooks/engage-log.sh"
 
 settings="$DEST/settings.json"
@@ -95,7 +112,7 @@ EOF_FILES
   exit "$drift"
 fi
 
-mkdir -p "$DEST/hooks"
+mkdir -p "$DEST/hooks" "$DEST/commands"
 while IFS='|' read -r src dst; do
   cp "$src" "$DEST/$dst"
 done <<EOF_FILES

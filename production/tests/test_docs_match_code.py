@@ -133,12 +133,12 @@ class DocsMatchCode(unittest.TestCase):
     def test_t17_fps_floor_is_the_configs(self):
         cfg = json.loads((PROD / "resolve-config.json").read_text(encoding="utf-8"))
         floors = {k: d["min_fps"] for k, d in cfg["destinations"].items() if d.get("min_fps")}
-        self.assertEqual(floors, {"social_9x16": "30000/1001"})
+        self.assertEqual(floors, {k: "30000/1001" for k in ("social_9x16", "social_4x5", "social_1x1")})
         self.assertNotIn("min_fps", cfg["destinations"]["social_9x16_music"])
         t17 = next(x for x in (PROD / "resolve-traps.md").read_text(encoding="utf-8").splitlines()
                    if x.startswith("- **T17."))
         self.assertIn("`min_fps` 30000/1001", t17)
-        self.assertIn(f"`social_9x16` alone carries a {float(Fraction(floors['social_9x16'])):.2f} fps floor", t17)
+        self.assertIn(f"`social_9x16`, `social_4x5` and `social_1x1` carry a {float(Fraction(floors['social_9x16'])):.2f} fps floor", t17)
         self.assertNotIn("prefer 30 fps", t17)
         self.assertEqual(cfg["destinations"]["social_9x16_music"]["captions"], "none")
         self.assertIn("`social_9x16_music` has no captions and no floor", t17)

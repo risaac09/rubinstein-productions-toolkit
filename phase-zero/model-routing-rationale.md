@@ -5,7 +5,7 @@ file holds the reasoning behind it, the known failure mode, and the history.
 Read it when a routing call is contested or the brief is being edited.
 
 Since 2026-09-28 the check states and proceeds: one line naming model, effort
-and why, then work. It asks first only when escalating above the anchor, when
+and why, then work. It asks first only when escalating delegated work above the anchor, when
 spending Fable, or before a Workflow fan-out (stack-data `docs/DECISIONS.md`,
 "The routing check states and proceeds"). Before that date it asked the operator to
 confirm every substantive task.
@@ -39,18 +39,19 @@ the pool, and it is independent of Q1 through Q3. A hard task with no
 Claude-context dependence goes to a strong Codex model, not to Opus.
 
 Tier follows Q1 and Q2. Effort follows Q3 and the surface area. Pool follows
-Q4 and the capacity contract. Three levers, not one lookup. The anchor is
-Sonnet 5.5 at medium; Q1 and Q2 move up from there, Q3 sets where in the ladder
-to start.
+Q4 and the capacity contract. Three levers, not one lookup. The main session
+runs Opus 5.5. For delegated and routine work the anchor is Sonnet 5.5 at
+medium; Q1 and Q2 move up from there, Q3 sets where in the ladder to start.
 
 ## Lane floors
 
 - Deterministic work with no judgment: a script, not a model call.
 - Routine synthesis, continuity work, component edits, extraction, and
   research legwork: Sonnet 5.5 at medium.
-- Orchestration, architecture, hard reasoning, and final synthesis: begin on
-  Sonnet 5.5 at medium. Escalate to Opus 5.5 only when a named difficulty survives
-  that pass.
+- Orchestration, architecture, and final synthesis: the main session, on
+  Opus 5.5.
+- Hard reasoning in delegated work: begin on Sonnet 5.5 at medium. Escalate to
+  Opus 5.5 only when a named difficulty survives that pass.
 - The single hardest long-horizon task worth the premium: Fable 5.2, sweep
   effort low to high.
 - Bulk reads, search, mechanical edits, validation: Haiku 5.5 at low.
@@ -97,10 +98,12 @@ pass validation untouched, so this needs no new machinery (since 2026-10-17 the
 optional keys `pool`, `cards`, `g1FirstPass` and `reviewEditLines` are
 validated, so Codex, local and OpenRouter rows can be compared with Claude's):
 
-    sd-ai-engage --json '{"routedTier":"opus-5.5/medium","secondRound":false}' --land
+    ~/stack-data/scripts/sd-ai-engage --json '{"routedTier":"opus-5.5/medium","secondRound":false}'
 
-(stack-data's `scripts/sd-ai-engage`; `--land` puts the fragment on main so it
-never rides a session branch.) Without that record this rule cannot be shown
+(stack-data's `scripts/sd-ai-engage`, called by path since it is not on PATH.
+No `--land`: the row waits untracked in the clone and the nightly batch lander
+puts it on main, so it never rides a session branch (decision 2026-10-31,
+OPS-10). `sd-ai-engage --coverage` reports how many sessions logged a tier.) Without that record this rule cannot be shown
 wrong, and its next version is another guess with better prose. The open
 Claude-versus-Sol card in `stack-data/docs/DECISIONS.md` closes on that data,
 not on argument.

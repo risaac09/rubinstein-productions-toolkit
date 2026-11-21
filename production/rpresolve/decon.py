@@ -11,12 +11,15 @@ A recipe carries timing only: cuts, dissolves, the black at the end, and the tem
 beat map is given. Role, move, query and fits are placeholders until shot description
 exists, and the method's own `look` stays null.
 
-The compare score is 0 to 100: the mean of six parts (seven when both files have audio), each 0 to 1, where a reference
+The compare score is 0 to 100: the mean of seven parts, each 0 to 1, where a reference
 against itself scores 100. Cut recall and extra cuts (within CUT_TOL_FRAMES), shot length
 at matched indexes, the difference in coefficient of variation, the distance between
 the shot-length histograms, and the median colour distance (CIEDE2000 of each shot's
-mean Lab, at DE_SCALE for zero). With audio in both, a seventh part: 1 minus the difference of the
-two cuts' on-beat shares, each on its own file's beat map (musicmap).
+mean Lab, at DE_SCALE for zero). Five of the parts are timing only (TIMING_PARTS), so
+a rebuild with the same cut times scores high whatever its picture; colour and a coarse 8 x 8
+thumbnail difference are the only picture parts, and `picture_differs` says when either is low.
+With audio in both, an eighth part, also timing only: 1 minus the difference of the two cuts'
+on-beat shares, each on its own file's beat map (musicmap).
 """
 
 import math
@@ -24,13 +27,16 @@ import os
 import statistics
 import subprocess
 
-from . import beats, cutlist, delivercheck as dc, methods, musicmap, rhythm
+from . import beats, cutlist, delivercheck as dc, methods, musicmap, paths, rhythm
 
 CUT_TOL_FRAMES = 2
 DE_SCALE = 20.0      # a median CIEDE2000 this large scores zero for colour
 BLACK_L = 5.0        # a last shot whose mean L* sits below this is the method's end black
 LAB_BOX = 96         # frames are read this small for colour; a mean needs no detail
 CELL = 144           # sheet cell, square, each frame fitted inside it
+PIC_SCALE = 0.25     # a median thumbnail difference (0 to 1 of full scale) this large scores zero for picture
+THUMB = 8            # picture is compared as an 8 x 8 grid of block means
+TIMING_PARTS = ("cut_recall", "no_extra_cuts", "shot_length", "variation", "histogram")
 PAIRS_PER_ROW = 4
 GAP = 8
 
@@ -62,13 +68,41 @@ def frame(video, t, box, dims=None):
     return np.frombuffer(p.stdout[:ow * oh * 3], dtype=np.uint8).reshape(oh, ow, 3)
 
 
+def _thumb(img, np):
+    """img as a THUMB x THUMB x 3 grid of block means, 0 to 1: where the light sits, not just how much."""
+    ys = np.linspace(0, img.shape[0], THUMB + 1).astype(int)
+    xs = np.linspace(0, img.shape[1], THUMB + 1).astype(int)
+    return np.array([[img[ys[i]:max(ys[i + 1], ys[i] + 1), xs[j]:max(xs[j + 1], xs[j] + 1)].mean(axis=(0, 1))
+                      for j in range(THUMB)] for i in range(THUMB)]) / 255.0
+
+
 def mean_lab(img):
     from . import color
     return color.rec709_to_lab(img.reshape(-1, 3) / 255.0).mean(axis=0)
 
 
-def _mid(shot):
-    return (shot["in"] + shot["out"]) / 2
+def _mid(shot, fps=None):
+    """Where to read a shot: its middle, kept inside its real frames (a one-frame shot at its
+    first frame; a seek past the last frame's pts returns nothing)."""
+    t = (shot["in"] + shot["out"]) / 2
+    return max(shot["in"], min(t, shot["out"] - 1.5 / fps)) if fps else t
+
+
+def check_outputs(inputs, outputs):
+    """Refuse an output that is, resolves to, or is a link to any input or another output, and
+    a link at an output name. Raises DeconError."""
+    ins = [p for p in inputs if p]
+    seen = []
+    for o in (x for x in outputs if x):
+        if os.path.islink(o):
+            raise DeconError(f"{o} is a symbolic link; name the real file")
+        for other in ins + seen:
+            same = os.path.realpath(o) == os.path.realpath(other)
+            if not same and os.path.exists(o) and os.path.exists(other):
+                same = os.path.samefile(o, other)
+            if same:
+                raise DeconError(f"{o} is the same file as {other}; refusing to overwrite it")
+        seen.append(o)
 
 
 def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
@@ -78,7 +112,7 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
         raise DeconError(f"{video} has no frame rate")
     w, h = _dims(video)
     end = None
-    if len(shots) > 1 and mean_lab(frame(video, _mid(shots[-1]), LAB_BOX, (w, h)))[0] < BLACK_L:
+    if len(shots) > 1 and mean_lab(frame(video, _mid(shots[-1], fps), LAB_BOX, (w, h)))[0] < BLACK_L:
         end = f"black:{shots.pop()['duration']:g}"
     slots = []
     for i, s in enumerate(shots):
@@ -94,14 +128,14 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
     durs = [s["seconds"] for s in slots]
     bpm, snap = None, False
     if beats_path:
-        beats = rhythm.load_beats(beats_path)
+        beats = sorted(set(rhythm.load_beats(beats_path)))   # a repeated beat is one beat
         if len(beats) > 1:
             b = round(60 / statistics.median(y - x for x, y in zip(beats, beats[1:])), 2)
             bpm = [b, b]
         hit, chance = rhythm.on_beat(durs, beats, fps)[1]
         snap = hit >= 0.5 and hit > chance
-    m = {"edit_method": 1, "id": ident, "name": name or f"Recipe from {os.path.basename(video)}",
-         "summary": (f"Deconstructed from {os.path.basename(video)}: {len(slots)} shots, average "
+    m = {"edit_method": 1, "id": ident, "name": name or f"Recipe {ident}",
+         "summary": (f"Deconstructed from a reference video: {len(slots)} shots, average "
                      f"{statistics.fmean(durs):.2f} s, cuts by {report.get('backend', 'scdet')}. Role, "
                      "move, query and fits are placeholders until shot description exists."),
          "fits": list(fits), "aspect": "9:16" if h > w else "16:9", "fps": fps,
@@ -159,24 +193,28 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
     dims_ref, dims_rb = _dims(ref_video), _dims(rb_video)
     pairs = []
     for s in ref["shots"]:
-        t = _mid(s) * k
+        t = max(0.0, min(_mid(s, fps) * k, rb["duration_s"] - 1.5 / fps))
         j = next((x for x in rb["shots"] if x["in"] <= t < x["out"]), rb["shots"][-1])
-        pairs.append({"shot": s["shot"], "t": round(_mid(s), 3), "rebuild_shot": j["shot"],
+        pairs.append({"shot": s["shot"], "t": round(_mid(s, fps), 3), "rebuild_shot": j["shot"],
                       "length_ratio": round(min(s["duration"], j["duration"]) / max(s["duration"], j["duration"]), 3),
-                      "a": frame(ref_video, _mid(s), CELL, dims_ref), "b": frame(rb_video, t, CELL, dims_rb)})
+                      "a": frame(ref_video, _mid(s, fps), CELL, dims_ref), "b": frame(rb_video, t, CELL, dims_rb)})
     for p in pairs:
+        p["picture"] = round(float(np.abs(_thumb(p["a"], np) - _thumb(p["b"], np)).mean()), 4)
         p["delta_e"] = round(float(color.delta_e_2000(mean_lab(p["a"]), mean_lab(p["b"]))), 2)
     de = [p["delta_e"] for p in pairs]
     length = statistics.median(p["length_ratio"] for p in pairs)
     parts = {"cut_recall": recall, "no_extra_cuts": 1 - extra, "shot_length": length,
              "variation": max(0.0, 1 - abs(st_ref["cv"] - st_rb["cv"])), "histogram": 1 - hist,
-             "colour": max(0.0, 1 - statistics.median(de) / DE_SCALE)}
+             "colour": max(0.0, 1 - statistics.median(de) / DE_SCALE),
+             "picture": max(0.0, 1 - statistics.median(p["picture"] for p in pairs) / PIC_SCALE)}
     shares, skipped = _beat_shares(ref_video, rb_video, d_ref, d_rb, fps)
     if shares:
         parts["beats"] = max(0.0, 1 - abs(shares[0] - shares[1]))
     if sheet:
         _sheet(pairs, sheet, np)
-    return {"reference": os.path.abspath(ref_video), "rebuild": os.path.abspath(rb_video), "fps": fps,
+    return {"reference": os.path.basename(ref_video), "rebuild": os.path.basename(rb_video), "fps": fps,
+            "timing_only_parts": list(TIMING_PARTS) + (["beats"] if "beats" in parts else []),
+            "picture_differs": bool(parts["colour"] < 0.5 or parts["picture"] < 0.5),
             "shots": [len(d_ref), len(d_rb)],
             "cut_error_frames": {"median": round(statistics.median(err), 2) if err else 0.0,
                                  "max": round(max(err), 2) if err else 0.0,
@@ -219,11 +257,13 @@ def _sheet(pairs, out, np):
             fh, fw = f.shape[:2]
             y, x = y0 + (CELL - fh) // 2, x0 + i * CELL + (CELL - fw) // 2
             img[y:y + fh, x:x + fw] = f
-    proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "rawvideo",
-                           "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-i", "-", "-frames:v", "1", out],
-                          input=img.tobytes(), capture_output=True)
-    if proc.returncode != 0:
-        raise DeconError(f"could not write {out}: {proc.stderr.decode(errors='replace')[-200:]}")
+    # a fresh temp name (-y is safe on it), renamed onto out, so no existing file is written through
+    with paths.atomic_path(out, suffix=".png") as tmp:
+        proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "rawvideo",
+                               "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-i", "-", "-frames:v", "1",
+                               dc._src(tmp)], input=img.tobytes(), capture_output=True)
+        if proc.returncode != 0:
+            raise DeconError(f"could not write {out}: {proc.stderr.decode(errors='replace')[-200:]}")
 
 
 def summary_compare(r):
@@ -238,4 +278,7 @@ def summary_compare(r):
         f"Colour: CIEDE2000 median {r['delta_e']['median']}, max {r['delta_e']['max']}",
         (f"Beats: on-beat share {r['on_beat']['share'][0]} vs {r['on_beat']['share'][1]} (within 1 frame)"
          if r["on_beat"]["share"] else f"Beats: not scored ({r['on_beat']['skipped']})"),
-    ])
+        f"Timing only: {', '.join(r['timing_only_parts'])}. The picture is read by colour and picture "
+        "(a coarse 8 x 8 thumbnail per shot); this is not a proof the videos match.",
+    ] + (["Picture differs: colour or picture is under 0.5, so the matching timing is not the same video."]
+         if r["picture_differs"] else []))

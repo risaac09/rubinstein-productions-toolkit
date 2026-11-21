@@ -40,6 +40,17 @@ class ParseLumaJumps(unittest.TestCase):
         self.assertEqual(reframe.parse_luma_jumps(text, 8.0), [0.12])
         self.assertEqual(reframe.parse_luma_jumps(text, 50.0), [])
 
+    def _jumps(self, ys):
+        text = "\n".join(f"frame:{i} pts:{i} pts_time:{i * 0.04:g}\nlavfi.signalstats.YAVG={y}"
+                         for i, y in enumerate(ys))
+        return reframe.parse_luma_jumps(text, 8.0)
+
+    def test_a_fade_a_flash_and_a_flicker_are_not_cuts_and_a_step_is(self):
+        self.assertEqual(self._jumps([100 - 10 * i for i in range(10)]), [])  # a fade
+        self.assertEqual(self._jumps([20] * 5 + [90, 90] + [20] * 5), [])  # a two-frame flash
+        self.assertEqual(self._jumps([20, 60] * 8), [])  # a flicker
+        self.assertEqual(len(self._jumps([20] * 5 + [90] * 5)), 1)
+
 
 @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg missing")
 class DarkCuts(unittest.TestCase):
@@ -60,6 +71,16 @@ class DarkCuts(unittest.TestCase):
             p = os.path.join(t, "nocut.mp4")
             _clip(p, 30, second=False)
             self.assertEqual(reframe.span_cuts(p, 0.0, 4.0), [])
+
+    def test_ten_bit_footage_reads_as_eight_bit_does(self):
+        # luma ramps 3 levels a frame for a second: no cut at any bit depth
+        ramp = "color=c=0x202020:s=320x180:r=25:d=4,geq=lum='32+3*min(N,25)':cb=128:cr=128"
+        with tempfile.TemporaryDirectory() as t:
+            for fmt in ("yuv420p", "yuv422p10le"):
+                p = os.path.join(t, fmt + ".mov")
+                subprocess.run([dc.FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", ramp,
+                                "-c:v", "ffv1" if "10" in fmt else "libx264", "-pix_fmt", fmt, p], check=True)
+                self.assertEqual(reframe.span_cuts(p, 0.0, 4.0), [], fmt)
 
 
 if __name__ == "__main__":

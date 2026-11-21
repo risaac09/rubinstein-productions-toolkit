@@ -6,6 +6,7 @@ timing, cut on whole frames as a render is, with the method's end black.
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -97,6 +98,94 @@ class TestDecon(unittest.TestCase):
         self.assertIn("pass", so.getvalue())
         with open(out, encoding="utf-8") as f:
             self.assertEqual(len(json.load(f)["slots"]), 15)
+
+
+    def _cli(self, argv):
+        so, se = StringIO(), StringIO()
+        with redirect_stdout(so), redirect_stderr(se):
+            code = cmd_decon.run(_parse(argv))
+        return code, se.getvalue()
+
+    def _copy(self, name):
+        dst = os.path.join(self.tmp.name, name)
+        shutil.copy(self.ref, dst)
+        return dst, Path(dst).read_bytes()
+
+    def test_refuses_to_overwrite_inputs(self):
+        victim, before = self._copy("victim.mkv")
+        link = os.path.join(self.tmp.name, "link.json")
+        if os.path.lexists(link):
+            os.remove(link)
+        os.symlink(victim, link)
+        for argv in (["recipe", victim, "--out", victim],
+                     ["recipe", self.ref, "--out", link],
+                     ["compare", self.ref, victim, "--out", os.path.join(self.tmp.name, "c.json"), "--sheet", victim],
+                     ["compare", self.ref, victim, "--out", victim],
+                     ["compare", self.ref, victim, "--out", os.path.join(self.tmp.name, "x"), "--sheet",
+                      os.path.join(self.tmp.name, "x")]):
+            code, err = self._cli(argv)
+            self.assertEqual(code, 1, argv)
+            self.assertTrue("same file" in err or "symbolic link" in err, err)
+            self.assertEqual(Path(victim).read_bytes(), before, argv)
+
+    def test_hard_link_to_input_refused(self):
+        victim, before = self._copy("hl_victim.mkv")
+        hl = os.path.join(self.tmp.name, "hl.json")
+        if os.path.exists(hl):
+            os.remove(hl)
+        os.link(victim, hl)
+        code, err = self._cli(["recipe", victim, "--out", hl])
+        self.assertEqual(code, 1)
+        self.assertEqual(Path(victim).read_bytes(), before)
+
+    def test_sheet_is_a_file_even_when_named_like_a_protocol(self):
+        d = tempfile.mkdtemp(dir=self.tmp.name)
+        cwd = os.getcwd()
+        os.chdir(d)
+        try:
+            decon.compare(self.report, self.report, self.ref, self.ref, "pipe:1.png")
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(os.listdir(d), ["pipe:1.png"])
+        self.assertGreater(os.path.getsize(os.path.join(d, "pipe:1.png")), 0)
+
+    def test_compare_picture_not_a_match_claim(self):
+        t, flip = os.path.join(self.tmp.name, "t.mkv"), os.path.join(self.tmp.name, "flip.mkv")
+        subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc2=s=192x108:r=25:d=2", "-c:v", "ffv1", t], check=True, stdin=subprocess.DEVNULL)
+        subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-i", t, "-vf",
+                        "hflip,vflip", "-c:v", "ffv1", flip], check=True, stdin=subprocess.DEVNULL)
+        a, b = shots.build(t, dissolves=False), shots.build(flip, dissolves=False)
+        r = decon.compare(a, b, t, flip)
+        self.assertTrue(r["picture_differs"], r)
+        self.assertLess(r["parts"]["picture"], 0.5)
+        self.assertIn("Picture differs", decon.summary_compare(r))
+        self.assertEqual(r["reference"], "t.mkv")  # a name, not a path
+        self.assertFalse(decon.compare(self.report, self.report, self.ref, self.ref)["picture_differs"])
+
+    def test_one_frame_last_shot_and_one_frame_file(self):
+        flash, one = os.path.join(self.tmp.name, "flash.mkv"), os.path.join(self.tmp.name, "one.mkv")
+        g = ("color=c=0x202020:s=192x108:r=25:d=2,format=yuv420p[a];color=c=white:s=192x108:r=25:d=2,"
+             "format=yuv420p[b];color=c=0x202020:s=192x108:r=25:d=0.04,format=yuv420p[c];"
+             "[a][b][c]concat=n=3:v=1:a=0[v]")
+        subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-filter_complex", g, "-map",
+                        "[v]", "-c:v", "ffv1", flash], check=True, stdin=subprocess.DEVNULL)
+        subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                        "color=c=red:s=192x108:r=25:d=0.04", "-c:v", "ffv1", one], check=True,
+                       stdin=subprocess.DEVNULL)
+        rep = shots.build(flash, dissolves=False)
+        decon.recipe(rep, flash, "flash-check")
+        decon.compare(rep, rep, flash, flash)
+        r1 = shots.build(one, dissolves=False)
+        self.assertEqual(decon.compare(r1, r1, one, one)["score"], 100.0)
+
+    def test_duplicate_beats_and_names(self):
+        bp = os.path.join(self.tmp.name, "b.json")
+        Path(bp).write_text(json.dumps({"beats_s": [1.0, 1.0, 1.0]}))
+        rec = decon.recipe(self.report, self.ref, "dup-beats", beats_path=bp)
+        self.assertIsNone(rec["bpm"])
+        self.assertNotIn("ref.mkv", json.dumps(rec))
+        self.assertEqual(rec["name"], "Recipe dup-beats")
 
 
 def _parse(argv):

@@ -110,14 +110,18 @@ def file_tag(path, ffprobe="ffprobe"):
     if not path.lower().endswith(".braw"):
         return None
     try:
-        out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format_tags=anamorphic",
-                              "-of", "default=nw=1:nk=1", path],
-                             capture_output=True, text=True, timeout=60).stdout
-    except (OSError, subprocess.SubprocessError):
+        out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format_tags:stream_tags",
+                              "-of", "json", path], capture_output=True, text=True, timeout=60).stdout
+        data = json.loads(out)
+        tags = [(data.get("format") or {}).get("tags") or {}] + [s.get("tags") or {} for s in data.get("streams") or []]
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
         return None
-    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*x?\s*", out or "", re.I)
-    f = float(m.group(1)) if m else None
-    return f if f is not None and not factor_problem(f) else None
+    for t in tags:  # any key naming it, any case, on the format or a stream: a body may write it its own way
+        for k, v in t.items():
+            m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*x?\s*", str(v), re.I) if "anamorphic" in k.lower() else None
+            if m and not factor_problem(float(m.group(1))):
+                return float(m.group(1))
+    return None
 
 
 def record_factor(path):

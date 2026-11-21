@@ -928,23 +928,33 @@ def squeeze_tag(data):
 CUT_EDGE_S = 0.1  # a cut this close to a span's edge is the edit's own, not one inside it
 
 
-CUT_LUMA_JUMP = 8.0  # a cut when the mean luma (0 to 255) moves this far between two frames
+CUT_LUMA_JUMP = 8.0  # a cut when the mean luma (0 to 255) steps this far between two frames
+CUT_HOLD_FRAMES = 3  # and is still this far from the old level this many frames later
 
 
 def parse_luma_jumps(text, jump):
-    """[pts_time] of every frame whose signalstats YAVG sits `jump` or more from the
-    frame before it. scdet scores a cut as min(mean difference, its change from the
-    last frame's), so noise in a dark shot lifts the floor and hides a cut that the
-    mean luma still shows."""
-    last, t, out = None, None, []
+    """[pts_time] of every frame whose signalstats YAVG (0 to 255) sits `jump` or more
+    from the frame before it, as a step: the level for CUT_HOLD_FRAMES before it and the frame
+    just after are steady (under half a jump), and the new level is still `jump` away from the
+    old one CUT_HOLD_FRAMES later. A fade, a flicker or a flash is not a step.
+    scdet scores a cut as min(mean difference, its change from the last frame's), so
+    noise in a dark shot lifts the floor and hides a cut that the mean luma still shows."""
+    rows, t = [], None
     for m in re.finditer(r"pts_time:(\S+)|lavfi\.signalstats\.YAVG=(\S+)", text):
         if m.group(1) is not None:
             t = float(m.group(1))
         elif t is not None:
-            y = float(m.group(2))
-            if last is not None and abs(y - last) >= jump:
-                out.append(t)
-            last = y
+            rows.append((t, float(m.group(2))))
+    ys, steady = [y for _, y in rows], jump / 2
+    out = []
+    for i in range(1, len(ys)):
+        if abs(ys[i] - ys[i - 1]) < jump:
+            continue
+        before = max((abs(y - ys[i - 1]) for y in ys[max(0, i - 1 - CUT_HOLD_FRAMES):i - 1]), default=0.0)
+        after = abs(ys[min(i + 1, len(ys) - 1)] - ys[i])
+        held = ys[min(i + CUT_HOLD_FRAMES, len(ys) - 1)]
+        if before < steady and after < steady and abs(held - ys[i - 1]) >= jump:
+            out.append(rows[i][0])
     return out
 
 
@@ -956,7 +966,7 @@ def span_cuts(path, a, b):
     th = qc.THRESHOLDS["scdet_threshold"]
     cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}",
            "-i", "file:" + path, "-map", "0:v:0", "-vf",
-           f"scdet=t={th},scale=160:-2,signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG",
+           f"scdet=t={th},scale=160:-2,format=gray,signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG",
            "-f", "null", "-"]
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -1551,7 +1561,7 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
     if kw.get("scene") and not plan_.get("scene"):
         plan_["scene"] = False
     plan_["counts"] = counts(plan_["rows"])
-    plan_["counts"]["none"] = sum(1 for i in plan_["items"] if i["move"] == "none")
+    plan_["counts"]["none"] = sum(1 for i in plan_["items"] if i["move"] == "none" and i["status"] == PASS)
     return plan_
 
 

@@ -1,0 +1,1 @@
+decon refuses to overwrite its input videos (output equal to, linked to or a symlink onto an input), writes the sheet through a temp file as a plain file, reads one-frame shots, ignores repeated beats, stores names not paths in compare.json, and compare reports which parts are timing only and when the picture differs (new picture part).

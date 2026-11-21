@@ -85,7 +85,11 @@ class TestRecord(Base):
 FAKE_FFPROBE = """#!/bin/sh
 # stands in for ffprobe: a BRAW tag for *tagged*.braw, a cropped 16:9 frame for *wide*
 case "$*" in
-  *format_tags=anamorphic*) case "$*" in *tagged*) echo "1.5x";; *junk*) echo "wide";; *) echo "";; esac;;
+  *format_tags*) case "$*" in
+      *tagged*) echo '{"format":{"tags":{"anamorphic":"1.5x"}}}';;
+      *streamtag*) echo '{"format":{"tags":{}},"streams":[{"tags":{"com.blackmagic-design.Anamorphic":"2x"}}]}';;
+      *junk*) echo '{"format":{"tags":{"anamorphic":"wide"}}}';;
+      *) echo '{"format":{"tags":{}}}';; esac;;
   *) case "$*" in
        *wide*) echo '{"streams":[{"width":1920,"height":1080,"side_data_list":[{"crop_top":113,"crop_bottom":114,"crop_left":0,"crop_right":0}]}]}';;
        *broken*) echo 'not json';;
@@ -101,7 +105,7 @@ class TestFileTagAndProxies(Base):
         self.ffprobe = os.path.join(self.dir, "ffprobe")
         Path(self.ffprobe).write_text(FAKE_FFPROBE)
         os.chmod(self.ffprobe, 0o755)
-        self.braw = {n: os.path.join(self.card, n + ".braw") for n in ("tagged", "plain", "junk")}
+        self.braw = {n: os.path.join(self.card, n + ".braw") for n in ("tagged", "plain", "junk", "streamtag")}
 
     def test_a_braw_states_its_own_squeeze_and_an_empty_or_odd_tag_is_no_answer(self):
         self.assertEqual(squeeze.file_tag(self.braw["tagged"], self.ffprobe), 1.5)
@@ -109,6 +113,10 @@ class TestFileTagAndProxies(Base):
         self.assertIsNone(squeeze.file_tag(self.braw["junk"], self.ffprobe))
         self.assertIsNone(squeeze.file_tag(self.clips[0], self.ffprobe))  # not BRAW: never probed
         self.assertIsNone(squeeze.file_tag(self.braw["tagged"], os.path.join(self.dir, "no-ffprobe")))
+
+    def test_a_tag_under_another_spelling_or_on_a_stream_is_still_the_files_answer(self):
+        # reframe.squeeze_tag reads any key holding "anamorphic", case aside, on the format or a stream
+        self.assertEqual(squeeze.file_tag(self.braw["streamtag"], self.ffprobe), 2.0)
 
     def test_a_record_beats_the_tag_and_a_tagged_clip_is_not_an_open_question(self):
         self.make_card()
