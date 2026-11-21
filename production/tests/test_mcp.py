@@ -570,8 +570,33 @@ class TestScriptingChangelog(unittest.TestCase):
                          (tools_read.SCRIPTING_AUDITED_DATE, tools_read.SCRIPTING_AUDITED_VERSION))
 
     def test_the_same_or_an_older_date_is_unchanged(self):
-        self.assertIs(self.scripting(self.doc(tools_read.SCRIPTING_AUDITED_DATE))["changed"], False)
-        self.assertIs(self.scripting(self.doc("1 Jan 2026"))["changed"], False)
+        same = self.doc(tools_read.SCRIPTING_AUDITED_DATE, tools_read.SCRIPTING_AUDITED_VERSION)
+        self.assertIs(self.scripting(same)["changed"], False)
+        self.assertIs(self.scripting(self.doc("1 Jan 2026", tools_read.SCRIPTING_AUDITED_VERSION))["changed"], False)
+
+    def test_a_full_month_name_parses(self):
+        self.assertTrue(self.scripting(self.doc("5 December 2026"))["changed"])
+        self.assertIs(self.scripting(self.doc("5 November 2026", "21.2"))["changed"], True)
+        self.assertIs(self.scripting(self.doc("1 January 2026", "21.2"))["changed"], False)
+
+    def test_a_new_version_heading_is_changed_on_the_audited_date(self):
+        self.assertTrue(self.scripting(self.doc(tools_read.SCRIPTING_AUDITED_DATE, "21.3"))["changed"])
+        self.assertIs(self.scripting(self.doc(tools_read.SCRIPTING_AUDITED_DATE,
+                                              tools_read.SCRIPTING_AUDITED_VERSION))["changed"], False)
+
+    def test_an_unreadable_date_says_so_in_the_summary(self):
+        class Session:
+            def get(self):
+                from rpresolve import api
+                raise api.ResolveAPIError("down")
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "CHANGELOG.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.doc("5 Sept 2026", tools_read.SCRIPTING_AUDITED_VERSION))
+            with mock.patch.object(tools_read, "SCRIPTING_CHANGELOG", path):
+                r = tools_read.resolve_status({}, ToolContext(session=Session()))
+        self.assertIsNone(r["scripting"]["changed"])
+        self.assertIn("scripting changelog date could not be read", r["summary"])
 
     def test_a_missing_file_cannot_be_judged(self):
         self.assertIsNone(self.scripting(None)["changed"])
@@ -586,10 +611,11 @@ class TestScriptingChangelog(unittest.TestCase):
                 from rpresolve import api
                 raise api.ResolveAPIError("down")
         for date, expect in (("5 Dec 2026", True), ("4 Nov 2026", False)):
+            version = "21.3" if expect else tools_read.SCRIPTING_AUDITED_VERSION
             with tempfile.TemporaryDirectory() as d:
                 path = os.path.join(d, "CHANGELOG.md")
                 with open(path, "w", encoding="utf-8") as f:
-                    f.write(self.doc(date))
+                    f.write(self.doc(date, version))
                 with mock.patch.object(tools_read, "SCRIPTING_CHANGELOG", path):
                     r = tools_read.resolve_status({}, ToolContext(session=Session()))
             self.assertEqual("scripting changelog" in r["summary"], expect)

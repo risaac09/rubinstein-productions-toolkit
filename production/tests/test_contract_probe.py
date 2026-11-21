@@ -354,6 +354,39 @@ class Sandbox(unittest.TestCase):
             Clip.SetAudioMapping = orig
         self.assertTrue(rows["verdict.remap_before_append"]["note"].startswith("not testable"))
 
+    def _patched_clip_rows(self, getter, setter=None):
+        orig_get, orig_set = Clip.GetAudioMapping, Clip.SetAudioMapping
+        Clip.GetAudioMapping = getter
+        if setter:
+            Clip.SetAudioMapping = setter
+        try:
+            return self._sb("Q2")
+        finally:
+            Clip.GetAudioMapping, Clip.SetAudioMapping = orig_get, orig_set
+
+    def test_a_read_back_that_differs_prints_no_file_path(self):
+        linked = json.loads(TWO_STREAMS)
+        linked["linked_audio"] = {"1": {"path": "/Volumes/Secret/client-name.wav"}}
+        rows = self._patched_clip_rows(lambda self: json.dumps(linked), lambda self, m: False)
+        note = rows["MediaPoolItem.GetAudioMapping.read_back"]["note"]
+        self.assertTrue(note.startswith("differs from what was set"))
+        self.assertNotIn("client-name", json.dumps(rows))
+        self.assertNotIn("/Volumes", json.dumps(rows))
+
+    def test_a_restore_that_cannot_be_read_is_not_reported_as_differing(self):
+        sets = []
+        def setter(self, m):
+            sets.append(m)
+            self.mapping = m
+            return True
+        def getter(self):
+            if len(sets) >= 2:  # the restore has written the original back; reading it now fails
+                raise RuntimeError("gone")
+            return self.mapping
+        rows = self._patched_clip_rows(getter, setter)
+        self.assertEqual(rows["MediaPoolItem.GetAudioMapping.restore_matches_original"]["note"],
+                         "could not be read back")
+
     def test_a_project_that_already_exists_is_never_created_saved_or_deleted(self):
         orig = PM.GetProjectListInCurrentFolder
         PM.GetProjectListInCurrentFolder = lambda self: ["rp-probe-q1"]

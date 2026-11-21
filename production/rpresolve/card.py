@@ -444,9 +444,14 @@ def squeeze_answer(card, clip):
 def _record_newer(root, checked_utc):
     # shortcut: mtime, so a copy that resets mtimes false-alarms; upgrade to a record sha256 in offsite.txt.
     try:
-        at = datetime.datetime.strptime(checked_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+        at = datetime.datetime.fromisoformat(checked_utc.replace("Z", "+00:00"))
+        if at.tzinfo is None:
+            raise ValueError(checked_utc)
+    except (ValueError, TypeError, AttributeError):
+        return True  # fail closed: a time we cannot read must not make a stale record read safe to format
+    try:
         return os.stat(root + RECORD).st_mtime > at.timestamp()
-    except (ValueError, TypeError, OSError):
+    except OSError:
         return False
 
 

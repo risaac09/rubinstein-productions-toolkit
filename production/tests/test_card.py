@@ -362,6 +362,13 @@ class Standards(Base):
         self.assertEqual(card.check(c)["S4"], [])  # the media's offsite check still holds: safe to format
         self.assertTrue(any(o.startswith("offsite record") for o in c["open"]))
 
+    def test_an_unparseable_check_time_counts_as_stale(self):
+        root = make_card(self.tmp, schema2=True, offsite=True)
+        for stamp in ("2001-01-01T00:00:00+00:00", "2001-01-01T00:00:00.123Z", "garbage"):
+            self.assertTrue(card._record_newer(str(root), stamp), stamp)
+        self.assertFalse(card._record_newer(str(root), "2999-01-01T00:00:00Z"))
+        self.assertFalse(card._record_newer(str(root), "2999-01-01T00:00:00+00:00"))
+
     def test_s5_old_name_fails_but_loads(self):
         res = card.check(card.load(str(make_card(self.tmp, name="OLD-NAME"))))
         self.assertIn("standard name is CAMA-012345", res["S5"][0])

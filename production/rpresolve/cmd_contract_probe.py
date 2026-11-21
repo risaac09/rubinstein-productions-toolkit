@@ -508,13 +508,14 @@ def s_q2(ctx, t):
         clip.SetAudioMapping(before)
         back = ctx.call("MediaPoolItem.GetAudioMapping.after_restore", clip, "GetAudioMapping")
         ctx.note("MediaPoolItem.GetAudioMapping.restore_matches_original",
-                 "same as the original" if _track_mapping(back) == _track_mapping(before) else "differs from the original")
+                 "could not be read back" if back is None
+                 else "same as the original" if _track_mapping(back) == _track_mapping(before) else "differs from the original")
     ctx.cleanups.append(restore)
     mapping = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "mute": False, "type": "stereo"}}})
     accepted = ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
     after = ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
     same = _track_mapping(after) == _track_mapping(mapping)  # Resolve adds embedded_audio_channels and linked_audio
-    ctx.note("MediaPoolItem.GetAudioMapping.read_back", "same as what was set" if same else f"differs from what was set: {after}")
+    ctx.note("MediaPoolItem.GetAudioMapping.read_back", "same as what was set" if same else f"differs from what was set; track_mapping read back: {json.dumps(_track_mapping(after))}")  # never the raw dump: linked_audio carries file paths
     tl, items = _scratch_timeline(ctx, dict(t, clip=clip), "q2")  # append the remapped clip, not the first one
     if tl is None:
         return
