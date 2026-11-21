@@ -4,7 +4,7 @@ Before a substantive task, state in one line the model, effort, and why, then
 proceed. Ask first only when escalating above the anchor (Sonnet 5.5 at medium),
 when spending Fable, or before launching a Workflow fan-out (state the agent
 count). If the operator redirects, the operator's call wins for the rest of the session.
-Prices per 1M tokens in/out: Fable 5.1 $10/$50, Opus 5.5 $4/$20, Sonnet 5.5 $2/$10,
+Prices per 1M tokens in/out: Fable 5.2 $8/$40, Opus 5.5 $4/$20, Sonnet 5.5 $2/$10,
 Haiku 5.5 $0.10/$0.50 (to 100k prompt tokens; $0.50/$2.50 above).
 
 ## Route on the task, not its category
@@ -34,7 +34,7 @@ pool follows Q4.
   Sonnet 5.5 at medium.
 - Orchestration, architecture, hard reasoning, final synthesis: start on
   Sonnet 5.5 at medium; escalate to Opus 5.5 only for a named difficulty.
-- The single hardest long-horizon task worth the premium: Fable 5.1.
+- The single hardest long-horizon task worth the premium: Fable 5.2.
 
 Importance is not difficulty. Model and effort are separate levers; the same
 model at a lower effort is often right.

@@ -86,6 +86,11 @@ SessionStart hook when one exists, so the routing brief never prints twice.
 
 ## Files
 
+- `KIT_VERSION`: the release stamp (DEV-15), one line. `install.sh --check`
+  prints it for the source (`kit source version: X`) and for each deployed copy
+  (`kit version X: <repo>`), and a deployed copy that differs is drift like any
+  other kit file. Edit it here only; the `kit-v1` tag is cut in the toolkit
+  after an "Export kit from stack-data" merge.
 - `phase-zero.md` — the portable core. Identity (Isaac, RP, the Material and
   Meaning research institute, the Third Information Lab), the directions,
   the voice rules, the gear ladder, the delegation protocol. Present in every
