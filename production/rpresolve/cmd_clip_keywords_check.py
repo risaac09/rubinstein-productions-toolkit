@@ -6,7 +6,7 @@ to Resolve; exit 0 when the plan is clean, 1 otherwise. The write is the
 clip_keywords MCP tool.
 """
 
-from rpresolve import clipkeywords
+from rpresolve import cli, clipkeywords
 
 NAME = "clip-keywords-check"
 HELP = "Check a clip keywords plan (TSV) offline"
@@ -30,3 +30,7 @@ def run(args):
         return 1
     print(f"plan is clean: {len(rows)} row(s)")
     return 0
+
+
+if __name__ == "__main__":
+    cli.script(__name__)

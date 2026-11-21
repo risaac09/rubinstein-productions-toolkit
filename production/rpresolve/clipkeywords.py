@@ -34,7 +34,7 @@ def _control(s):
 
 def parse_plan(text):
     """(rows, problems). Each row: {line, clip_id, keywords (list), description}."""
-    lines = text.replace("\r\n", "\n").split("\n")
+    lines = text.lstrip("\ufeff").replace("\r\n", "\n").split("\n")
     numbered = [(i + 1, ln) for i, ln in enumerate(lines) if ln.strip()]
     if not numbered:
         return [], ["the plan is empty: it needs a header row and at least one row"]
@@ -111,12 +111,17 @@ def merge_keywords(existing, wanted):
             added.append(w)
     if not added:
         return existing or "", []
-    base = (existing or "").rstrip(" ,")
-    return (base + ", " if base else "") + ", ".join(added), added
+    joined = ", ".join(added)
+    text = existing or ""
+    if not text.strip():
+        return joined, added
+    if text.rstrip().endswith(","):
+        return text + ("" if text.endswith(" ") else " ") + joined, added
+    return text + ", " + joined, added
 
 
 def clip_keywords(resolve, project_name, rows, dry_run=True, project_id=None, check_cancel=None,
-                  expect_sha=None, exists=os.path.exists):
+                  expect_sha=None, exists=os.path.exists, before_write=None):
     """Plan, and unless dry_run write, keywords and descriptions onto pool clips of
     the open project. Returns {project, dry_run, plan_sha, results, counts, problems,
     exit_status}: 0 all written or already there, 2 some row reported and left alone
@@ -135,7 +140,10 @@ def clip_keywords(resolve, project_name, rows, dry_run=True, project_id=None, ch
              "desc": r["description"], "result": "planned", "reason": "", "keywords_added": [],
              "description": "none", "new_kw": "", "set_desc": False}
         clip = by_id.get(r["clip_id"])
-        if clip is None:
+        if clip is not None and len(by_name.get(r["clip_id"], [])) and by_name[r["clip_id"]] != [clip]:
+            e.update(result="ambiguous", reason="this id is also the name of another clip; use a unique id")
+            clip = None
+        elif clip is None:
             named = by_name.get(r["clip_id"], [])
             if len(named) > 1:
                 e.update(result="ambiguous", reason=f"{len(named)} clips are named '{r['clip_id']}'; use a unique id")
@@ -152,7 +160,7 @@ def clip_keywords(resolve, project_name, rows, dry_run=True, project_id=None, ch
                 e.update(result="offline", reason="the clip's file is missing on disk")
             else:
                 meta = clip.GetMetadata() or {}
-                kw, desc = meta.get("Keywords") or "", (meta.get("Description") or "").strip()
+                kw, desc = meta.get("Keywords") or "", meta.get("Description") or ""
                 e["new_kw"], e["keywords_added"] = merge_keywords(kw, r["keywords"])
                 if r["description"] and not desc:
                     e["description"], e["set_desc"] = "set", True
@@ -164,25 +172,38 @@ def clip_keywords(resolve, project_name, rows, dry_run=True, project_id=None, ch
                 if not e["keywords_added"] and not e["set_desc"]:
                     e["result"] = "unchanged"
         plan.append(e)
+    first = {}
+    for e in plan:  # one clip, one row: a second row would rewrite what the first one set
+        if e["id"] and e["result"] not in ("ambiguous",):
+            if e["id"] in first:
+                raise Refused(f"line {first[e['id']]} and line {e['line']} of the plan name the same clip "
+                              f"('{e['name']}', id {e['id']}); give each clip one row")
+            first[e["id"]] = e["line"]
     sha = plan_sha("clip_keywords", pin.unique_id,
-                   [[e["clip"], e["id"], e["result"], e["keywords_added"], e["set_desc"], e["desc"],
+                   [[e["clip"], e["id"], e["name"], e["result"], e["keywords_added"], e["set_desc"], e["desc"],
                      e.get("before")] for e in plan])
-    out = {"project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run, "plan_sha": sha,
+    undo = [{"clip": e["clip"], "id": e["id"], "name": e["name"], "keywords_before": e["before"][0],
+             "description_before": e["before"][1], "wrote": []} for e in plan if e["result"] == "planned"]
+    out = {"undo": undo, "project": {"name": pin.name, "id": pin.unique_id}, "dry_run": dry_run, "plan_sha": sha,
            "problems": [], "keywords_written": []}
     if not dry_run:
         if expect_sha != sha:
             raise Refused("the plan changed since the dry run (the pool's metadata or the plan "
                           "differ); run the dry run again and review it")
         check = _check(pin, pm, check_cancel)
+        if before_write:
+            before_write(undo)  # the prior values are on record before the first change
+        wrote = {u["id"]: u["wrote"] for u in undo}
         try:
             for e in plan:
                 if e["result"] != "planned":
                     continue
                 check()
-                e["result"] = _write_one(by_id[e["id"]], e)
-                if e["result"] == "written":
-                    out["keywords_written"].append({"clip": e["clip"], "id": e["id"], "name": e["name"]})
-                else:
+                e["result"] = _write_one(by_id[e["id"]], e, wrote[e["id"]])
+                if wrote[e["id"]]:
+                    out["keywords_written"].append({"clip": e["clip"], "id": e["id"], "name": e["name"],
+                                                    "wrote": list(wrote[e["id"]])})
+                if e["result"] != "written":
                     out["problems"].append(f"{e['name']}: {e['result']}")
         except BaseException as stop:
             stop.keywords_written = list(out["keywords_written"])
@@ -199,24 +220,31 @@ def clip_keywords(resolve, project_name, rows, dry_run=True, project_id=None, ch
     out["counts"] = counts
     failed = any(e["result"].startswith("FAILED") for e in plan)
     left = any(e["result"] in ("not found", "ambiguous", "offline", "refused")
-               or (e["result"] == "unchanged" and e["description"].startswith("kept"))
-               for e in plan)
+               or e["description"].startswith("kept") for e in plan)
     out["exit_status"] = 1 if failed else (2 if left else 0)
     return out
 
 
-def _write_one(clip, e):
-    """Write one clip's keywords and description, read each back: 'written' or 'FAILED: ...'."""
-    if e["keywords_added"]:
-        if not clip.SetMetadata("Keywords", e["new_kw"]):
+def _write_one(clip, e, wrote=None):
+    """Write one clip's keywords and description, read each back: 'written' or 'FAILED: ...'.
+    Works from the clip as it is now: keywords are appended to what is there, and a
+    description is set only if it is still empty. `wrote` collects the fields changed."""
+    wrote = [] if wrote is None else wrote
+    live = clip.GetMetadata() or {}
+    new_kw, added = merge_keywords(live.get("Keywords") or "", e["kw"])
+    if added:
+        if not clip.SetMetadata("Keywords", new_kw):
             return "FAILED: SetMetadata('Keywords') returned false"
+        wrote.append("Keywords")
         got = clip.GetMetadata("Keywords") or ""
-        if [_norm(t) for t in _tokens(got)] != [_norm(t) for t in _tokens(e["new_kw"])]:
-            return f"FAILED: Keywords read '{got}' after the write"
-    if e["set_desc"]:
+        if sorted(_norm(t) for t in _tokens(got)) != sorted(_norm(t) for t in _tokens(new_kw)):
+            return f"FAILED: Keywords was written, then read '{got}'"
+    if e["set_desc"] and not (live.get("Description") or ""):
         if not clip.SetMetadata("Description", e["desc"]):
-            return "FAILED: SetMetadata('Description') returned false"
+            return "FAILED: Keywords was written but SetMetadata('Description') returned false" if wrote \
+                else "FAILED: SetMetadata('Description') returned false"
+        wrote.append("Description")
         got = (clip.GetMetadata("Description") or "").strip()
         if got != e["desc"]:
-            return f"FAILED: Description reads '{got}' after the write"
+            return f"FAILED: Description was written, then read '{got}'"
     return "written"

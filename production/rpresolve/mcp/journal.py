@@ -48,6 +48,17 @@ def start(tool, project, args):
     return wid
 
 
+def note(wid, tool, kind, detail):
+    """Record what a write is about to change (an undo record), before it changes it.
+    Raises JournalError; the write is then not attempted."""
+    try:
+        _append({"event": kind, "id": wid, "tool": tool, "detail": detail, "pid": os.getpid(),
+                 "time": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+    except OSError as e:
+        raise JournalError(f"cannot write the journal at {path()} ({e}); nothing was written "
+                           "to Resolve.")
+
+
 def finish(wid, tool, status, summary, detail=None):
     """Record the outcome. Returns None, or a warning string if the line
     could not be written (the write already happened; never raise here)."""

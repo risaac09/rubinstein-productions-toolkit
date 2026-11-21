@@ -20,7 +20,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
 import resolve_fakes as rf  # noqa: E402
-from rpresolve import api, clipkeywords as ck, cmd_clip_keywords, workflows  # noqa: E402
+from rpresolve import api, clipkeywords as ck, cmd_clip_keywords_check, workflows  # noqa: E402
 from rpresolve.mcp import schema, server  # noqa: E402
 from rpresolve.mcp.registry import Cancelled, ToolContext  # noqa: E402
 
@@ -34,6 +34,7 @@ class MetaClip(rf.Clip):
     refuse_set = False   # SetMetadata answers False and stores nothing
     drop_set = False     # SetMetadata answers True and stores nothing
     mangle = False       # the stored keywords read back with a stray extra word
+    refuse_keys = ()     # SetMetadata answers False for these keys only
 
     def __init__(self, name, uid, path, meta=None):
         super().__init__(name, uid, {"File Path": path, "Type": "Video + Audio"})
@@ -48,6 +49,8 @@ class MetaClip(rf.Clip):
             return False
         if self.drop_set:
             return True
+        if not isinstance(key, dict) and key in self.refuse_keys:
+            return False
         pairs = key if isinstance(key, dict) else {key: value}
         for k, v in pairs.items():
             self.meta[k] = v + ", oops" if self.mangle and k == "Keywords" else v
@@ -109,6 +112,10 @@ class TestPlanFile(unittest.TestCase):
             _, p = self.parse(text)
             self.assertTrue(any("no rows" in x or "header" in x for x in p), (text, p))
 
+    def test_a_bom_before_the_header_is_ignored(self):
+        rows, p = self.parse("\ufeffclip_id\tkeywords\tdescription\nid-1\ta\tb\n")
+        self.assertEqual((p, len(rows)), ([], 1))
+
     def test_crlf_and_blank_lines_are_fine(self):
         rows, p = self.parse("clip_id\tkeywords\tdescription\r\n\r\nid-1\ta\tb\r\n")
         self.assertEqual((p, len(rows)), ([], 1))
@@ -127,6 +134,11 @@ class TestMerge(unittest.TestCase):
     def test_nothing_to_add_leaves_the_text_alone(self):
         self.assertEqual(ck.merge_keywords("a, b", ["A"]), ("a, b", []))
 
+    def test_existing_text_is_kept_byte_for_byte(self):
+        self.assertEqual(ck.merge_keywords("Beach, Sunset, ", ["Crowd"])[0], "Beach, Sunset, Crowd")
+        self.assertEqual(ck.merge_keywords("a,", ["b"])[0], "a, b")
+        self.assertEqual(ck.merge_keywords("a  ", ["b"])[0], "a  , b")
+
     def test_empty_existing(self):
         self.assertEqual(ck.merge_keywords("", ["a", "b"]), ("a, b", ["a", "b"]))
         self.assertEqual(ck.merge_keywords(None, ["a"]), ("a", ["a"]))
@@ -141,14 +153,14 @@ class TestCheckCommand(unittest.TestCase):
             args = mock.Mock()
             args.plan = str(good)
             with mock.patch("builtins.print") as pr:
-                self.assertEqual(cmd_clip_keywords.run(args), 0)
+                self.assertEqual(cmd_clip_keywords_check.run(args), 0)
             self.assertIn("1 row", " ".join(str(c.args[0]) for c in pr.call_args_list))
             args.plan = str(bad)
             with mock.patch("builtins.print"):
-                self.assertEqual(cmd_clip_keywords.run(args), 1)
+                self.assertEqual(cmd_clip_keywords_check.run(args), 1)
             args.plan = str(Path(d, "missing.tsv"))
             with mock.patch("builtins.print"):
-                self.assertEqual(cmd_clip_keywords.run(args), 1)
+                self.assertEqual(cmd_clip_keywords_check.run(args), 1)
 
 
 class Base(unittest.TestCase):
@@ -225,7 +237,7 @@ class TestTool(Base):
 
     def test_real_run_adds_keywords_sets_empty_descriptions_and_reads_back(self):
         dry, real = self.real()
-        self.assertEqual(real["exit_status"], 0, real)
+        self.assertEqual(real["exit_status"], 2, real)  # B's description was kept: a person looks
         self.assertEqual(self.a.meta["Keywords"], "Beach, Sunset, Crowd")  # beach is already there
         self.assertEqual(self.a.meta["Description"], "Wide crowd")
         self.assertEqual(self.b.meta["Keywords"], "dusk")
@@ -234,7 +246,7 @@ class TestTool(Base):
         by = {r["clip"]: r for r in real["results"]}
         self.assertEqual(by["id-b"]["description"], "kept: the clip has another description")
         self.assertEqual(by["id-b"]["result"], "written")
-        self.assertEqual([e["event"] for e in self.events()], ["started", "finished"])
+        self.assertEqual([e["event"] for e in self.events()], ["started", "undo", "finished"])
         # only Keywords and Description were ever set
         self.assertEqual({c[2][1] for c in self.sets()}, {"Keywords", "Description"})
 
@@ -338,6 +350,76 @@ class TestTool(Base):
         done = self.events()[-1]
         self.assertEqual(done["status"], "error")
         self.assertEqual([w["clip"] for w in done["detail"]["keywords_written"]], ["id-a"])
+
+    def test_one_clip_named_twice_refuses_the_whole_plan(self):
+        self.write_plan(HEAD + "id-c\tdawn\tFirst\nid-a\tx\ty\nC.MOV\tdusk\tSecond\n")
+        with self.assertRaisesRegex(workflows.Refused, "rows? .*line 2.*line 4|line 2 and line 4"):
+            self.run_tool()
+        self.assertEqual(self.sets(), [])
+        self.assertEqual(self.c.meta, {})
+
+    def test_an_id_that_is_also_another_clips_name_is_ambiguous(self):
+        self.c.name = "id-a"
+        self.write_plan(HEAD + "id-a\tx\ty\n")
+        dry = self.run_tool()
+        self.assertEqual(dry["results"][0]["result"], "ambiguous")
+
+    def test_a_rename_between_dry_run_and_real_run_refuses(self):
+        dry = self.run_tool()
+        self.c.name = "Renamed.MOV"
+        with self.assertRaisesRegex(workflows.Refused, "plan changed"):
+            self.run_tool(dry_run=False, plan_sha=dry["plan_sha"])
+        self.assertEqual(self.sets(), [])
+
+    def test_the_write_never_removes_a_keyword_or_replaces_a_description_set_since_planning(self):
+        dry = self.run_tool()
+        e = {"keywords_added": ["dawn"], "kw": ["dawn"], "set_desc": True, "desc": "Mine",
+             "new_kw": "dawn", "name": "C.MOV"}
+        self.c.meta = {"Keywords": "kept, dawn2", "Description": "Someone's"}
+        self.assertEqual(ck._write_one(self.c, e), "written")
+        self.assertEqual(self.c.meta, {"Keywords": "kept, dawn2, dawn", "Description": "Someone's"})
+        self.assertTrue(dry["plan_sha"])
+
+    def test_a_half_written_clip_is_in_the_undo_record_and_the_failure_says_so(self):
+        self.c.refuse_keys = ("Description",)
+        _, real = self.real()
+        row = {r["clip"]: r for r in real["results"]}["C.MOV"]
+        self.assertIn("Keywords was written", row["result"])
+        wrote = {u["id"]: u["wrote"] for u in real["undo"]}
+        self.assertEqual(wrote["id-c"], ["Keywords"])
+        self.assertEqual(wrote["id-a"], ["Keywords", "Description"])
+
+    def test_the_undo_record_holds_before_values_and_is_journalled_before_the_first_write(self):
+        seen = []
+        orig = MetaClip.SetMetadata
+
+        def spy(clip, key, value=None):
+            if not seen:
+                seen.append(self.events())
+            return orig(clip, key, value)
+
+        dry = self.run_tool()
+        self.assertEqual([u["id"] for u in dry["undo"]], ["id-a", "id-b", "id-c"])
+        with mock.patch.object(MetaClip, "SetMetadata", spy):
+            real = self.run_tool(dry_run=False, plan_sha=dry["plan_sha"])
+        before = {u["id"]: u for u in real["undo"]}
+        self.assertEqual(before["id-a"]["keywords_before"], "Beach, Sunset")
+        self.assertEqual(before["id-b"]["description_before"], "Already described")
+        pre = seen[0]
+        self.assertEqual([e["event"] for e in pre], ["started", "undo"])
+        self.assertEqual({u["id"] for u in pre[1]["detail"]}, {"id-a", "id-b", "id-c"})
+        self.assertIn("undo", self.events()[-1]["detail"])
+
+    def test_a_kept_description_is_reported_even_when_keywords_were_written(self):
+        _, real = self.real()
+        self.assertEqual(real["exit_status"], 2)
+        self.assertIn("another description", real["summary"])
+
+    def test_a_whitespace_only_description_is_not_overwritten(self):
+        self.b.meta["Description"] = "   "
+        self.write_plan(HEAD + "id-b\t\tNew\n")
+        dry = self.run_tool()
+        self.assertEqual(dry["results"][0]["result"], "unchanged")
 
     def test_a_plan_with_a_problem_never_reaches_resolve(self):
         self.write_plan(HEAD + "id-a\tx\tone\ttwo\n")
