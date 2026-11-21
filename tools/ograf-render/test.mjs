@@ -11,14 +11,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { findChrome } from "./find-chrome.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, "ograf-render.mjs");
 const WORKFLOW = process.env.RESOLVE_WORKFLOW || join(HERE, "..", "..", "production", "resolve_workflow.py");
 
 const have = (cmd, args) => spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
-const chrome = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
-  .concat(process.env.CHROME || []).some((c) => (c.includes("/") ? existsSync(c) : have("which", [c])));
+const chrome = findChrome();
 const skip = !chrome ? "Chrome not found" : !have("ffmpeg", ["-version"]) ? "ffmpeg not found" : false;
 
 // A bar that slides and fades in over 400 ms of play, holds, then fades out from the

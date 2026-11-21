@@ -1,6 +1,6 @@
 # ograf-render
 
-Renders an [OGraf](https://ograf.ebu.io) template offline to a ProRes 4444 master with alpha, the way Resolve's non-realtime path drives it, so `overlay-check` can verify the result without Resolve open. Node 22 or newer, built-ins only, no packages. Needs Chrome (or Chromium) and `ffmpeg` on the machine.
+Renders an [OGraf](https://ograf.ebu.io) template offline to a ProRes 4444 master with alpha, the way Resolve's non-realtime path drives it, so `overlay-check` can verify the result without Resolve open. Node 22 or newer, built-ins only, no packages. Needs `chrome-headless-shell` (preferred), Chrome or Chromium, and `ffmpeg` on the machine.
 
 ```bash
 node tools/ograf-render/ograf-render.mjs path/to/Thing.ograf.json --out out/thing
@@ -16,6 +16,10 @@ python3 production/resolve_workflow.py overlay-check out/thing/Thing.mov --fps 2
 5. Wraps the PNGs with `ffmpeg` to ProRes 4444 (`prores_ks`, `yuva444p10le`). Colour (range tv, BT.709) is set with `setparams` in the filter chain, not with output flags.
 6. Writes the files below, then revisits a spread of frames in reverse to check that a seek gives the same pixels again.
 
+## Getting chrome-headless-shell
+
+The headless-only build has no app bundle, so a render never activates a Chrome app in the logged-in session on macOS. Install it once with `npx @puppeteer/browsers install chrome-headless-shell@stable`; the renderer finds it in the Puppeteer cache with no flag. It is a different build from your installed Chrome, so check a render's frames against the Chrome you deliver with before switching a pipeline.
+
 ## Interface
 
 | Flag | Meaning |
@@ -30,7 +34,7 @@ python3 production/resolve_workflow.py overlay-check out/thing/Thing.mov --fps 2
 | `--keep-frames`, `--no-video` | Keep `OUT/frames` (never replaces a folder already there); stop before ffmpeg. |
 | `--strict-fonts` | A missing font fails the run instead of warning. |
 | `--lint` | Run Resolve's own `lint-ograf.py` when it is installed (`OGRAF_LINT` sets another path). It is never copied here. |
-| `--chrome PATH` | Chrome binary; also the `CHROME` environment variable. |
+| `--chrome PATH` | Chrome binary; also the `CHROME` environment variable. Default order: `--chrome`, `CHROME`, `chrome-headless-shell` on PATH, the newest one in the Puppeteer cache (`PUPPETEER_CACHE_DIR`, else `~/.cache/puppeteer`), then the usual Chrome and Chromium names. |
 
 Exit codes: `0` ok, `1` a check failed (determinism, `--strict-fonts`, linter errors), `2` refused or bad input, `3` Chrome or ffmpeg missing.
 
