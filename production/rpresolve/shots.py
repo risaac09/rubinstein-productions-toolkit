@@ -281,7 +281,13 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
         found = find_dissolves(grey, float(rate))
         dips, flashes = find_dips(grey, float(rate)) if grey is not None else ([], [])
         half = 0.5 / float(rate)
-        # a dip's own fall and rise read as dissolves and its edges as cuts: the dip replaces both
+        # a dip's own fall and rise read as dissolves and its edges as cuts: the dip replaces both,
+        # and takes the dissolve's span where that reaches further (a fall or rise over RAMP_FRAMES)
+        for p in dips:
+            for d in [d for d in found if d["start"] - half <= p["end"] and p["start"] - half <= d["end"]]:
+                p["start_frame"], p["end_frame"] = min(p["start_frame"], d["start_frame"]), max(p["end_frame"], d["end_frame"])
+            p.update(start=round(p["start_frame"] / float(rate), 3), end=round(p["end_frame"] / float(rate), 3),
+                     duration=round((p["end_frame"] - p["start_frame"]) / float(rate), 3))
         found = [d for d in found if not any(d["start"] - half <= p["end"] and p["start"] - half <= d["end"] for p in dips)]
         cuts = [c for c in cuts if not any(p["start"] - half <= c <= p["end"] + half for p in dips)]
         if backend == "pyscenedetect":

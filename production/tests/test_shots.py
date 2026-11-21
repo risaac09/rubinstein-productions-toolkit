@@ -70,6 +70,20 @@ class TestShots(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp.cleanup()
 
+    def test_a_slow_dip_spans_its_whole_fade(self):
+        # 10 fps: A 0-19, fade out over frames 12-19 (8 frames, more than RAMP_FRAMES), 3 black,
+        # B fades in over 8 frames: the span is the whole fall and rise, as the dissolve pass sees it
+        S = f"s={SIZE}:r={RATE}"
+        parts = [f"testsrc2={S}:d=2,fade=t=out:st=1.2:d=0.8", f"color=c=black:{S}:d=0.3",
+                 f"smptebars={S}:d=2,fade=t=in:st=0:d=0.8"]
+        path = os.path.join(self._tmp.name, "slowdip.mkv")
+        make(path, parts)
+        r = shots.build(path)
+        self.assertEqual(len(r["dips"]), 1, r["dips"])
+        self.assertAlmostEqual(r["dips"][0]["start"], 1.2, delta=1.5 / RATE)
+        self.assertAlmostEqual(r["dips"][0]["end"], 3.1, delta=1.5 / RATE)
+        self.assertEqual([s["into"] for s in r["shots"]], ["start", "dip"])
+
     def test_a_dip_and_a_flash_are_found_and_plain_files_have_none(self):
         # frames at 10 fps: A 0-14, cut, B 15-29 with a 2-frame fade out, 2 black, C 34-49 after a
         # 2-frame fade in (the dip), then D 63-77 with one white frame at 63
