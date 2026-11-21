@@ -92,10 +92,15 @@ class SoundRows(unittest.TestCase):
         cls.words = _words(p("words.json"), [(1.0, 1.5), (1.6, 3.0)])
         # PRI-22: a steady bed with two speech spans; the second is buried (planted fault)
         cls.bed_ok = p("bed_ok.wav")
-        _wav(cls.bed_ok, f"0.05*(2*random(0)-1)+0.6*{TONE}*(between(t,1,2.5)+between(t,3.5,5))", 7)
+        _wav(cls.bed_ok, f"0.05*(2*random(0)-1)+0.6*{TONE}*(between(t,2,3.5)+between(t,6,7.5))", 10)
         cls.bed_bad = p("bed_bad.wav")
-        _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,1,2.5)+0.03*between(t,3.5,5))", 7)
-        cls.bed_words = _words(p("bed_words.json"), [(1.0, 2.5), (3.5, 5.0)])
+        _wav(cls.bed_bad, f"0.05*(2*random(0)-1)+{TONE}*(0.6*between(t,2,3.5)+0.03*between(t,6,7.5))", 10)
+        cls.bed_words = _words(p("bed_words.json"), [(2.0, 3.5), (6.0, 7.5)])
+        # room tone, then a voice's loud, decaying tail in the short gap beside the first span
+        cls.bed_tail = p("bed_tail.wav")
+        _wav(cls.bed_tail, f"0.02*(2*random(0)-1)+{TONE}*(0.3*between(t,2,3.5)+0.2*exp(-6*(t-3.5))*between(t,3.7,4.8)+0.3*between(t,5.0,6.6))", 9)
+        cls.bed_tail_words = _words(p("bed_tail_words.json"), [(2.0, 3.5), (5.0, 6.6)])
+        cls.bed_short_words = _words(p("bed_short_words.json"), [(0.5, 4.5), (5.0, 9.5)])
         cls.low = p("low.wav")        # energy only at 100 Hz
         _wav(cls.low, "0.5*sin(2*PI*100*t)", 6)
 
@@ -147,10 +152,19 @@ class SoundRows(unittest.TestCase):
         words = qc.load_words(self.bed_words)
         bad = self.by(self.bed_bad, words=words)["voice_vs_bed"]
         self.assertEqual(bad["status"], qc.WARN, bad)
-        self.assertIn("3.30s to 5.20s", bad["found"])
-        self.assertNotIn("0.80s", bad["found"])
+        self.assertIn("5.80s to 7.70s", bad["found"])
+        self.assertNotIn("1.80s", bad["found"])
         self.assertIn("working default", bad["expected"])
         self.assertEqual(self.by(self.bed_ok, words=words)["voice_vs_bed"]["status"], qc.PASS)
+
+    def test_voice_vs_bed_does_not_read_a_decaying_voice_tail_as_a_bed(self):
+        row = self.by(self.bed_tail, words=qc.load_words(self.bed_tail_words))["voice_vs_bed"]
+        self.assertEqual(row["status"], qc.PASS, row)
+
+    def test_voice_vs_bed_is_not_measurable_without_a_long_gap(self):
+        row = self.by(self.bed_ok, words=qc.load_words(self.bed_short_words))["voice_vs_bed"]
+        self.assertEqual(row["status"], qc.SKIP, row)
+        self.assertIn("not measurable", row["found"])
 
     def test_voice_vs_bed_skips_without_words_or_readable_spans(self):
         self.assertEqual(self.by(self.bed_ok)["voice_vs_bed"]["status"], qc.SKIP)
@@ -238,6 +252,93 @@ class SoundCli(unittest.TestCase):
                                   os.path.join(d, "none.json")], stdin=subprocess.DEVNULL,
                                  capture_output=True, text=True)
             self.assertEqual(bad.returncode, 1)
+
+
+@unittest.skipUnless(np, "needs numpy")
+class VoiceVsBedLocalBed(unittest.TestCase):
+    """The bed is read per span from the gaps beside it, on synthetic frames
+    (no audio: one momentary frame per 0.1 s)."""
+
+    PAD = 0.2
+
+    def _run(self, words, level, end, tail_s=0.0):
+        """level(t, in_gap_start) -> LUFS; the speech pad is the row's own."""
+        frames = [(i / 10, level(i / 10), 0) for i in range(int(end * 10))]
+        ws = [{"word": "w", "start": a, "end": b} for a, b in words]
+        return qc._sound_voice_vs_bed(frames, ws, qc.THRESHOLDS)
+
+    @staticmethod
+    def _levels(spans, gaps, voice=-22.0, quiet=-50.0):
+        # spans: padded (a, b); gaps: {(a, b): LUFS}; everything else is quiet
+        def f(t):
+            if any(a <= t < b for a, b in spans):
+                return voice
+            return next((v for (a, b), v in gaps.items() if a <= t < b), quiet)
+        return f
+
+    # raw word gaps of 1.6 s: padded 1.2 s, short but readable (0.1 s in, 0.3 s out, 0.4 s left)
+    WORDS = [(5, 9), (10.6, 14.6), (16.2, 20.2), (21.8, 25.8)]
+    PADDED = [(4.8, 9.2), (10.4, 14.8), (16.0, 20.4), (21.6, 26.0)]
+
+    def test_voice_over_a_local_music_bed_warns(self):
+        words = [(5, 9), (15, 19), (25, 29)]
+        padded = [(4.8, 9.2), (14.8, 19.2), (24.8, 29.2)]
+        f = self._levels(padded, {(9.2, 14.8): -24.0})
+        row = self._run(words, f, 35)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("4.80s to 9.20s", row["found"])
+        self.assertIn("14.80s to 19.20s", row["found"])
+        self.assertNotIn("24.80s", row["found"])
+
+    def test_music_in_short_gaps_warns_on_the_spans_beside_them(self):
+        f = self._levels(self.PADDED, {(9.2, 10.4): -24.0, (14.8, 16.0): -24.0})
+        row = self._run(self.WORDS, f, 35)
+        self.assertEqual(row["status"], qc.WARN, row)
+        for a in ("4.80s", "10.40s", "16.00s"):
+            self.assertIn(a, row["found"])
+        self.assertNotIn("21.60s", row["found"])
+
+    def test_the_next_voice_starting_at_the_end_of_a_short_gap_is_not_a_bed(self):
+        base = self._levels(self.PADDED, {})
+
+        def f(t):  # a breath or onset fills the last 0.4 s before each voice
+            if any(a - 0.4 <= t < a for a, _ in self.PADDED[1:]):
+                return -30.0
+            return base(t)
+        self.assertEqual(self._run(self.WORDS, f, 35)["status"], qc.PASS)
+
+    def test_one_loud_long_gap_flags_only_the_span_touching_it(self):
+        words = [(5 + 5 * i, 9 + 5 * i) for i in range(6)]  # padded gaps of 0.6 s: not readable
+        padded = [(a - 0.2, b + 0.2) for a, b in words]
+        f = self._levels(padded, {(34.2, 45.0): -24.0})
+        row = self._run(words, f, 45)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertEqual(row["found"].count("voice"), 1, row)
+        self.assertIn("29.80s", row["found"])
+
+    def test_a_side_with_no_readable_gap_takes_the_other_sides_bed(self):
+        words = [(5, 9), (10.3, 14.3)]  # padded gap 0.9 s between them: not readable
+        padded = [(4.8, 9.2), (10.1, 14.5)]
+        f = self._levels(padded, {(0.0, 4.8): -24.0})
+        row = self._run(words, f, 30)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("4.80s", row["found"])  # loud head on its left, nothing readable on its right
+        self.assertNotIn("10.10s", row["found"])  # quiet tail on its right is its only bed
+
+    def test_music_only_in_gaps_too_short_to_read_passes(self):
+        words = [(5, 9), (10.3, 14.3), (15.6, 19.6)]  # the known looser case
+        padded = [(4.8, 9.2), (10.1, 14.5), (15.4, 19.8)]
+        f = self._levels(padded, {(9.2, 10.1): -24.0, (14.5, 15.4): -24.0})
+        self.assertEqual(self._run(words, f, 30)["status"], qc.PASS)
+
+    def test_a_voice_tail_in_short_gaps_is_not_a_bed(self):
+        base = self._levels(self.PADDED, {})
+
+        def f(t):  # the momentary window still holds the voice for 0.5 s into each gap
+            if any(a <= t < a + 0.5 for _, a in self.PADDED):
+                return -28.0
+            return base(t)
+        self.assertEqual(self._run(self.WORDS, f, 35)["status"], qc.PASS)
 
 
 if __name__ == "__main__":

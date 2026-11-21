@@ -2,7 +2,7 @@
 Tests for rpresolve.delivercheck on media made here with ffmpeg (lavfi
 testsrc2 and a 1 kHz sine, 2.5 s at a tiny frame size): a passing file per
 codec family (H.264, H.265, ProRes 422 HQ), then files that must fail on
-fps, size, colour tags, loudness 2 LU off, true peak over -1 dBTP, a
+fps, size, colour tags, loudness 2 LU off, true peak over -1.5 dBTP, a
 missing or malformed sidecar, captions where none belong, and a bad name.
 Last, the loudness fix: the fixed file passes and its video stream is
 bit-identical to the original's. Skipped where ffmpeg, ffprobe or its

@@ -229,7 +229,7 @@ mkdir -p "$W/ingest" "$W/reel" "$W/out"
 $PY resolve_workflow.py transcribe "$SRC" --backend mlx-whisper --out "$W/reel/words.json" --srt "$W/reel/words.srt"
 ```
 
-`copy` hashes the card, copies, reads every file back from the destination and writes `CAM_A-<id6>.SHA256SUMS` beside the folder. It never writes to the card. Format the card only after `./offload.sh safe "$W/ingest/CAM_A-<id6>" <rclone-remote>` says so; the offsite copy is a hand step. `transcribe` needs `mlx-whisper` (section 4).
+`copy` hashes the card, copies, reads every file back from the destination and writes `CAM_A-<id6>.SHA256SUMS` beside the folder. It never writes to the card. Format the card only after `./offload.sh safe "$W/ingest/CAM_A-<id6>" <rclone-remote>` says so; the offsite copy is a hand step. A practice that keeps only a lite tier offsite (one H.264 `.mp4` per video, same folders, `<name>.mp4` when two videos share a stem) runs `./offload.sh safe --lite <lite-dir> "$W/ingest/CAM_A-<id6>" <rclone-remote>` instead: the full copy must still verify, every video needs its lite file, and `.offsite.txt` records `tier lite`. `transcribe` needs `mlx-whisper` (section 4).
 
 ### Quote the spans, get a worksheet
 

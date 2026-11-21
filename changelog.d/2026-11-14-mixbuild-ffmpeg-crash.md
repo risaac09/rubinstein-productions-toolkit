@@ -1,0 +1,1 @@
+mixbuild: the delay measurement keeps ffmpeg's output when ffmpeg dies on a signal after writing all of it (a Homebrew anlmdn segfault), retries a short run up to three times, and still fails at once on a normal error exit.

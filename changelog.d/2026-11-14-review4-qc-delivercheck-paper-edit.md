@@ -1,0 +1,1 @@
+qc colour row warns on hot pixels in masked bars and refuses a file read short; ear check is withdrawn by a hold on any version; cropped sizes follow the decoder; paper-edit reads 29.97 as NTSC and refuses NaN durations, missing transcripts and repeated ids.

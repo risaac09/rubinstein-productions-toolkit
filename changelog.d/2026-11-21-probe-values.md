@@ -1,0 +1,1 @@
+contract-probe records the numeric values of TimelineItem.GetFades and GetSpeed (read and sandbox rows) and reads back the Q2 audio-mapping restore; strings stay length only, other dicts keep keys only.

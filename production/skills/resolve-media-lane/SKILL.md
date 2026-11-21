@@ -1,11 +1,29 @@
 ---
 name: resolve-media-lane
-description: 'Route media-lane work (stills, colour, edit, sound, card offload, DaVinci Resolve) to the right tool in this toolkit and keep its safety rules. Use for "develop these RAWs", "build a LUT or a shot-match", "balance the shots", "mix this dialogue", "export an EDL or FCPXML", "offload this card", or any Resolve MCP tool call. Not for generated video or for client sends.'
+description: 'Route media-lane work (stills, colour, edit, sound, card offload, DaVinci Resolve) to the right tool in this toolkit and keep its safety rules, and run the secondaries check on every grade and every title. Use for "develop these RAWs", "build a LUT or a shot-match", "grade this", "balance the shots", "add a title", "build the timeline", "mix this dialogue", "export an EDL or FCPXML", "offload this card", any Resolve MCP tool call, and any Color page, Fusion, window, qualifier, mask or tracking work. Not for generated video or for client sends.'
 ---
 
 # Resolve media lane
 
 Pick the tool, run it the safe way, point at the doc. This skill does not restate the docs: when a flag or a number matters, open the doc named below. Paths are relative to the toolkit's `production/` folder.
+
+## Secondaries check (every grade, every title, every build plan)
+
+Answer these before a grade is called done, a title is placed or a build plan is shown. Write the answers into the build log, and put them beside the candidates when a choice goes to review.
+
+Per shot:
+1. Does part of the frame need its own exposure or colour (a face under, a sky clipped, a lamp of another colour)? Yes or no, and why. If yes, name a window shape or a qualifier, on its own node after the correction node.
+2. Does that area move? If yes, track the window forward and back, or use Magic Mask for a person or object. Say which, and why.
+3. Should the look stay off skin or off the sky? If yes, key the look node, or use a layer mixer with the matte.
+4. Would one ResolveFX do it better (vignette, glow, grain, Film Look Creator, noise reduction, deflicker)? Name it, or write none.
+
+Per title:
+
+5. Should the title sit behind the subject (a matte title with Magic Mask)?
+6. Should it stick to a surface (Tracker or Planar Tracker)?
+7. Does it have a motion spec that passes `python3 -m rpresolve.motionlint SPEC.json`?
+
+A "no" with a reason is a full answer; a missing answer fails the check. The scripting API creates no colour-page node, window or qualifier (`resolve-mcp.md`, "Things that cost time to find"), and Magic Mask needs strokes drawn on screen (`resolve-traps.md`, T21 and T35), so every "yes" is a screen step: write it as a `ui_steps` entry in the manifest (`edit-methods.md`) and do it by computer use, one batch at a time, with a read-back (`describe_grade`, or a frame at full size). A grade with windows built once can travel to other shots as a `.drx` through `apply_grade`.
 
 ## Route the task
 

@@ -119,6 +119,39 @@ def test_caption_tags_and_fts_fields():
     c.close()
 
 
+def test_caption_film_hint_and_redo(monkeypatch, tmp_path):
+    from footage_index import __main__ as cli, caption
+    thumb = tmp_path / "t.jpg"
+    thumb.write_bytes(b"jpg")
+    sent = []
+
+    class Reply:
+        __enter__ = lambda s: s
+        __exit__ = lambda s, *a: None
+        read = lambda s: json.dumps({"message": {"content": json.dumps({"subject": "lawn", "tags": ["grass"]})}}).encode()
+    monkeypatch.setattr(caption.urllib.request, "urlopen", lambda req, timeout: sent.append(json.loads(req.data)) or Reply())
+    caption.caption(str(thumb))
+    caption.caption(str(thumb), film=True)
+    assert [caption.FILM_HINT in m["messages"][0]["content"] for m in sent] == [False, True]
+
+    monkeypatch.setattr(store, "connect", functools.partial(store.connect, str(tmp_path / "cap.db")))
+    monkeypatch.setattr(cli, "LOG", str(tmp_path / "log"))
+    monkeypatch.setattr(cli, "FILM", ("Film/",))
+    calls = []
+    monkeypatch.setattr(caption, "caption", lambda t, film=False: calls.append((t, film)) or {"subject": "new"})
+    c = store.connect()
+    for rel in ("Film/reel.mp4", "Film-Other/a.mov", "Digital/b.mov"):
+        cid, _ = store.upsert_clip(c, rel, rel, 1, 1)
+        store.set_caption(c, store.add_shot(c, cid, 1.0, 0.0, 2.0, f"/{rel}.jpg", luma=0.5), {"subject": "old"}, "m")
+    c.commit(); c.close()
+    cli.main(["caption", "--prefix", "Film/"])
+    assert calls == []  # already captioned and no --redo: no model call
+    cli.main(["caption", "--prefix", "Film/", "--redo"])
+    assert calls == [("/Film/reel.mp4.jpg", True)]  # only under the prefix, with the hint
+    with pytest.raises(SystemExit):
+        cli.main(["caption", "--redo"])  # --redo without --prefix would redo the whole index
+
+
 def test_client_filter():
     c = store.connect(os.environ["FOOTAGE_DB"])
     cid, _ = store.upsert_clip(c, "Restricted/X/a.mov", "kc", 1, 1, client=1, project="X")

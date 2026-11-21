@@ -167,6 +167,7 @@ from .paths import OutputRefused, in_any_git_tree
 BIT_DEPTH = "pcm_s24le"
 AB_TOLERANCE_LU = 0.5
 RUN_TIMEOUT_S = 3600
+DELAY_TRIES = 3                  # runs of a delay measurement ffmpeg dies on a signal in
 MAX_DELAY_S = 0.25               # a denoiser delaying more than this is refused
 RNNOISE_ENV = "RPRESOLVE_RNNOISE_MODEL"  # arnndn's .rnnn when the step names none
 DUCK_KEY = "duck/duck-key.wav"   # a mix input that is the duck key; stem names hold no /
@@ -515,16 +516,30 @@ def delay_samples(filt, rate):
            "-ac", "1", "-i", "-", "-af",
            f"{filt},aformat=sample_fmts=flt:sample_rates={rate}:channel_layouts=mono",
            "-f", "f32le", "-"]
-    try:
-        proc = subprocess.run(cmd, input=x.tobytes(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              timeout=RUN_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        raise MixError(f"ffmpeg timed out measuring the delay of {filt}")
-    y = np.frombuffer(proc.stdout, "<f4").astype(np.float64)
-    if proc.returncode != 0 or len(y) < n // 2:
+    for attempt in range(DELAY_TRIES):
+        try:
+            proc = subprocess.run(cmd, input=x.tobytes(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  timeout=RUN_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            raise MixError(f"ffmpeg timed out measuring the delay of {filt}")
+        y = np.frombuffer(proc.stdout[:len(proc.stdout) // 4 * 4], "<f4").astype(np.float64)
+        if proc.returncode >= 0:
+            break
+        # Killed by a signal (the Homebrew build can segfault in anlmdn after it has written
+        # everything): a full-length output is good, a short one is run again.
+        if len(y) >= n:
+            print(f"mixbuild: ffmpeg died on signal {-proc.returncode} measuring the delay of "
+                  f"{filt} after writing all its output; using it", file=sys.stderr)
+            break
+    else:
+        raise MixError(f"ffmpeg was killed by signal {-proc.returncode} {DELAY_TRIES} times "
+                       f"measuring the delay of {filt}, with short output")
+    if proc.returncode > 0 or len(y) < n // 2:
         raise MixError(f"could not measure the delay of {filt}: "
                        + proc.stderr.decode(errors="replace").strip()[-300:])
     y = y[:n]
+    if not np.isfinite(y).all() or not np.linalg.norm(y) > 0:  # a crashed run's NaN or silence is not a delay of 0
+        raise MixError(f"{filt} at {rate} Hz: ffmpeg wrote NaN or silence, no delay to measure")
     m = 1 << (2 * n - 1).bit_length()
     c = np.fft.irfft(np.fft.rfft(y, m) * np.conj(np.fft.rfft(x, m)), m)[:int(MAX_DELAY_S * rate)]
     lag = int(np.argmax(c))

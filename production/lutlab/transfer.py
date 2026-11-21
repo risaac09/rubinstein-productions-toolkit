@@ -189,10 +189,15 @@ def _sample(path):
     return flat[np.linspace(0, len(flat) - 1, min(len(flat), SAMPLE)).astype(int)]
 
 
+MAX_SIZE = 129   # Resolve reads cubes to 129 per edge
+
+
 def transfer(src_path, ref_path, space="srgb", stages=STAGES, size=cube.DEFAULT_SIZE, max_slope=MAX_SLOPE):
     """Fit the staged transfer. Returns the result dict; raises Refused when the inputs cannot support
     a fit or no stage passes its guard."""
     spaces.check_space(space)
+    if not 2 <= size <= MAX_SIZE:
+        raise ValueError(f"--size is a cube edge from 2 to {MAX_SIZE}; got {size}")
     stages = tuple(stages)
     bad = [s for s in stages if s not in STAGES]
     if bad or not stages:
