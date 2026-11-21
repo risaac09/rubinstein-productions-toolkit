@@ -1,8 +1,8 @@
 # Lock handoff folder (VP-145)
 
-> **Status:** aspirational, proposed 2026-10-20, a spec with no checker yet. The paper-edit validator (`rpresolve/cmd_paper_edit.py`, VP-131 offline half) reads the `paper-edit.tsv` shape and writes a version 2 manifest. Held until the toolkit freeze lifts on 2026-11-01. Gate G6 of the card-to-delivery pipeline.
+> **Status:** draft, 2026-11-21. The checker exists: `python3 resolve_workflow.py lock-check <folder>` (`rpresolve/cmd_lock_check.py`, tests in `tests/test_lock_check.py`). Proposed 2026-10-20. The paper-edit validator (`rpresolve/cmd_paper_edit.py`, VP-131 offline half) reads the `paper-edit.tsv` shape and writes a version 2 manifest. Held until the toolkit freeze lifts on 2026-11-01. Gate G6 of the card-to-delivery pipeline.
 
-When a cut is locked, picture stops moving and three lanes start reading it: colour, sound and titles. They read one folder, written once, so none of them invents its own export. This page says what the folder holds, how each file is named and checksummed, and what counts as a change after lock. The checker that enforces it is a later item; the acceptance test is stated at the end so the spec and the checker agree.
+When a cut is locked, picture stops moving and three lanes start reading it: colour, sound and titles. They read one folder, written once, so none of them invents its own export. This page says what the folder holds, how each file is named and checksummed, and what counts as a change after lock. The checker that enforces it is `lock-check` (`rpresolve/cmd_lock_check.py`); the acceptance test is stated at the end so the spec and the checker agree.
 
 ## One folder per lock version
 
@@ -98,7 +98,7 @@ Locked means the folder is read-only. Any change to picture after lock, however 
 
 ## The checker's job (acceptance)
 
-A later item writes the checker. It passes a complete folder and fails, with the first mismatch named, on each of:
+`lock-check` is the checker. It passes a complete folder and fails, with the first mismatch named, on each of:
 
 - a missing file, or a file not in `SHA256SUMS` or `lock.json`;
 - a hash that does not match the bytes;

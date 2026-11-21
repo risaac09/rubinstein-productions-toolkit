@@ -1,0 +1,673 @@
+"""
+Offline tests for the lock-check command (lock-handoff.md, the checker's job).
+The fixture folder is built here with the repo's own interchange writers; the
+checker is read-only and tests assert it leaves the folder byte for byte alone.
+
+Run: python3 -m unittest discover production/tests -p test_lock_check.py -v
+"""
+
+import contextlib
+import hashlib
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from rpresolve import cli, cmd_lock_check as lc
+from rpresolve import interchange as ic
+from test_interchange import manifest
+
+FPS = "24000/1001"
+MARKER_HEAD = "frame\ttimecode\tduration_frames\tname\tcolour\tnote\tfps\n"
+CONSENT_HEAD = "subject\tkind\ttimeline_frame\trelease_ref\tapproved\tapproved_by\tapproved_on\n"
+OTHER = {"paper-edit.tsv": "order\tclip_id\tsource_in\tsource_out\tbeat\tnote\n",
+         "cue-sheet.tsv": "cue_id\tkind\ttitle\ttimeline_frame\tduration_frames\tsource\tlicence_row\n"}
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def items_hash(items):
+    return sha(json.dumps(sorted(items, key=lambda i: (i["track"], i["record_in"])),
+                          sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def build(root, slug="example-slug_lock_v01", guide=False, mutate=None, fps=FPS):
+    """Write a valid lock folder under root and return its path. mutate(files, lock, sound)
+    may change the file bytes (dict name -> bytes) or the two dicts before hashing."""
+    rate = ic.Fraction(fps)
+    m = manifest([{"in": 1.0, "out": 3.0}, {"in": 5.0, "out": 6.5}, {"in": 8, "out": 10}], fps=float(rate))
+    otio = json.loads(ic.build(m, "otio")[0])
+    edl, rep = ic.build(m, "edl")
+    drop, start_tc = rep["drop_frame"], rep["record_start"]
+    ids = ["CARD-a/P1000110", "CARD-a/P1000111", "CARD-b/P1000112"]
+    clips = otio["tracks"]["children"][0]["children"]
+    items, t = [], 0
+    for n, (c, cid) in enumerate(zip(clips, ids), 1):
+        c["metadata"] = {"clip_id": cid}
+        d, s = int(c["source_range"]["duration"]["value"]), int(c["source_range"]["start_time"]["value"])
+        items.append({"track": 1, "index": n, "name": c["name"], "record_in": t, "record_out": t + d,
+                      "clip_id": cid, "source_in": s, "source_out": s + d})
+        t += d
+    files = {"timeline.otio": json.dumps(otio, indent=2).encode(),
+             "timeline.edl": edl.encode(),
+             "markers.tsv": (MARKER_HEAD + f"0\t{ic.timecode(0, rate, drop)}\t1\tstory:hook\tBlue\t\t{fps}\n"
+                             f"24\t{ic.timecode(24, rate, drop)}\t2\tsnd:sting\tGreen\tx\t{fps}\n").encode(),
+             "consent-list.tsv": (CONSENT_HEAD + "kid\tchild\t10\tR-1\tyes\tIA\t2026-11-01\n").encode()}
+    files.update({k: v.encode() for k, v in OTHER.items()})
+    lock = {"schema": {"name": "shared.lock-handoff", "version": 1}, "project": "example-slug",
+            "lock_version": 1, "locked_at": "2026-11-02T15:00:00Z",
+            "timeline": {"name": "cut", "fps": fps, "start_timecode": start_tc, "duration_frames": t},
+            "items_sha256": items_hash(items), "files": {}}
+    sound = {"schema": {"name": "sound.handoff", "version": 1}, "timeline": "cut", "fps": fps,
+             "start_timecode": start_tc, "duration_frames": t,
+             "track_layout": [{"track": "A1", "role": "dialogue"}], "stems_plan": ["dialogue"]}
+    if guide:
+        files["guide.mov"] = b"guide"
+    if mutate:
+        mutate(files, lock, sound)
+    files["sound-handoff.json"] = json.dumps(sound).encode()
+    lock["files"] = {k: sha(v) for k, v in files.items()}
+    if mutate and getattr(mutate, "after_hash", None):
+        mutate.after_hash(files, lock)
+    files["lock.json"] = json.dumps(lock, indent=2).encode()
+    sums = "".join(f"{sha(v)}  {k}\n" for k, v in sorted(files.items()))
+    files["SHA256SUMS"] = sums.encode()
+    folder = Path(root) / slug
+    folder.mkdir()
+    for k, v in files.items():
+        (folder / k).write_bytes(v)
+    return folder
+
+
+def mut(fn, after=None):
+    fn.after_hash = after
+    return fn
+
+
+def snapshot(folder):
+    return {p.name: p.read_bytes() for p in Path(folder).iterdir() if p.is_file() and not p.is_symlink()}
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self._t = tempfile.TemporaryDirectory()
+        self.tmp = self._t.name
+        self.addCleanup(self._t.cleanup)
+
+    def fails(self, folder, *needles):
+        before = snapshot(folder) if Path(folder).is_dir() else None
+        msg = lc.check(str(folder))
+        self.assertIsNotNone(msg, "expected a FAIL")
+        for n in needles:
+            self.assertIn(n, msg)
+        if before is not None:
+            self.assertEqual(snapshot(folder), before, "the checker wrote to the folder")
+        return msg
+
+    def rehash(self, folder, name, data=None):
+        """Rewrite one file and keep lock.json and SHA256SUMS in step, so only the named fault shows."""
+        p = Path(folder)
+        if data is not None:
+            (p / name).write_bytes(data)
+        lock = json.loads((p / "lock.json").read_text())
+        if name in lock["files"]:
+            lock["files"][name] = sha((p / name).read_bytes())
+        (p / "lock.json").write_text(json.dumps(lock, indent=2))
+        sums = "".join(f"{sha((p / n).read_bytes())}  {n}\n"
+                       for n in sorted(list(lock["files"]) + ["lock.json"]))
+        (p / "SHA256SUMS").write_text(sums)
+
+
+class Acceptance(Base):
+    def test_valid_folder_passes(self):
+        f = build(self.tmp)
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_valid_folder_with_guide_passes(self):
+        self.assertIsNone(lc.check(str(build(self.tmp, guide=True))))
+
+    def test_missing_file(self):
+        f = build(self.tmp)
+        (f / "cue-sheet.tsv").unlink()
+        self.fails(f, "cue-sheet.tsv")
+
+    def test_file_not_in_sums(self):
+        f = build(self.tmp)
+        lines = [l for l in (f / "SHA256SUMS").read_text().splitlines(True) if "markers.tsv" not in l]
+        (f / "SHA256SUMS").write_text("".join(lines))
+        self.fails(f, "markers.tsv", "SHA256SUMS")
+
+    def test_file_not_in_lock_json(self):
+        f = build(self.tmp)
+        lock = json.loads((f / "lock.json").read_text())
+        del lock["files"]["markers.tsv"]
+        (f / "lock.json").write_text(json.dumps(lock))
+        self.rehash(f, "lock.json")
+        self.fails(f, "markers.tsv", "lock.json")
+
+    def test_hash_mismatch_against_sums(self):
+        f = build(self.tmp)
+        (f / "paper-edit.tsv").write_bytes(b"changed\n")
+        self.fails(f, "paper-edit.tsv", "hash")
+
+    def test_hash_mismatch_against_lock_json_only(self):
+        f = build(self.tmp)
+        lock = json.loads((f / "lock.json").read_text())
+        lock["files"]["paper-edit.tsv"] = "0" * 64
+        (f / "lock.json").write_text(json.dumps(lock))
+        self.rehash(f, "lock.json")
+        self.fails(f, "paper-edit.tsv", "hash")
+
+    def test_lock_json_hash_mismatch_against_sums(self):
+        f = build(self.tmp)
+        (f / "lock.json").write_text((f / "lock.json").read_text() + "\n ")
+        self.fails(f, "lock.json")
+
+    def edit_dur(self, f, which, delta=1):
+        if which == "lock":
+            lock = json.loads((f / "lock.json").read_text())
+            lock["timeline"]["duration_frames"] += delta
+            (f / "lock.json").write_text(json.dumps(lock))
+            self.rehash(f, "lock.json")
+        elif which == "sound":
+            s = json.loads((f / "sound-handoff.json").read_text())
+            s["duration_frames"] += delta
+            self.rehash(f, "sound-handoff.json", json.dumps(s).encode())
+        elif which == "edl":
+            lines = (f / "timeline.edl").read_text().splitlines()
+            i = max(n for n, l in enumerate(lines) if l[14:19].strip() == "V")
+            parts = lines[i].split()
+            h, m, s_, fr = parts[-1].split(":")
+            parts[-1] = f"{h}:{m}:{s_}:{int(fr) + delta:02d}"
+            lines[i] = " ".join(parts)
+            self.rehash(f, "timeline.edl", ("\n".join(lines) + "\n").encode())
+        elif which == "otio":
+            d = json.loads((f / "timeline.otio").read_text())
+            c = d["tracks"]["children"][0]["children"][-1]
+            c["source_range"]["duration"]["value"] += delta
+            self.rehash(f, "timeline.otio", json.dumps(d).encode())
+
+    def test_duration_off_by_one_in_each_place(self):
+        for which in ("lock", "sound", "edl", "otio"):
+            with self.subTest(which=which):
+                with tempfile.TemporaryDirectory() as d:
+                    f = build(d)
+                    self.edit_dur(f, which)
+                    self.fails(f, "duration")
+
+    def test_items_hash_mismatch(self):
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        d["tracks"]["children"][0]["children"][0]["name"] = "renamed.mov"
+        self.rehash(f, "timeline.otio", json.dumps(d).encode())
+        self.fails(f, "items_sha256")
+
+    def test_items_hash_ignores_audio(self):
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        d["tracks"]["children"].append({"OTIO_SCHEMA": "Track.1", "kind": "Audio", "name": "A1",
+                                        "children": [{"OTIO_SCHEMA": "Clip.2", "name": "x"}]})
+        self.rehash(f, "timeline.otio", json.dumps(d).encode())
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_consent_row_not_yes(self):
+        f = build(self.tmp)
+        self.rehash(f, "consent-list.tsv", (CONSENT_HEAD + "kid\tchild\t10\tR-1\tno\t\t\n").encode())
+        self.fails(f, "consent-list.tsv", "approved")
+
+    def test_markers_fail_schema(self):
+        f = build(self.tmp)
+        bad = MARKER_HEAD + f"0\t00:00:00:00\t1\thook\tBlue\t\t{FPS}\n"  # no lane prefix
+        self.rehash(f, "markers.tsv", bad.encode())
+        self.fails(f, "markers.tsv", "name")
+
+
+class Markers(Base):
+    def marker_fault(self, body, *needles, head=MARKER_HEAD):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d)
+            self.rehash(f, "markers.tsv", (head + body).encode())
+            self.fails(f, "markers.tsv", *needles)
+
+    def test_faults(self):
+        r = lambda fr="0", tc="00:00:00:00", d="1", n="story:a", c="Blue", note="", fps=FPS: \
+            "\t".join([fr, tc, d, n, c, note, fps]) + "\n"
+        self.marker_fault(r(fr="x"), "frame")
+        self.marker_fault(r(fr="-1", tc="00:00:00:00"), "frame")
+        self.marker_fault(r(tc="00:00:00:01"), "timecode")
+        self.marker_fault(r(d="0"), "duration_frames")
+        self.marker_fault(r(n="other:a"), "name")
+        self.marker_fault(r(c=""), "colour")
+        self.marker_fault(r(fps="25"), "fps")
+        self.marker_fault(r(fr="24", tc="00:00:01:00") + r(fr="0"), "sorted")
+        self.marker_fault("0\t00:00:00:00\t1\tstory:a\tBlue\n", "cells")
+        self.marker_fault(r() + r(fr="0", n="story:a")[:-1] + "\textra\n", "cells")
+
+    def test_wrong_header(self):
+        self.marker_fault("", "header", head=MARKER_HEAD.replace("note", "notes"))
+
+    def test_header_only_is_valid(self):
+        for name, head in (("markers.tsv", MARKER_HEAD), ("consent-list.tsv", CONSENT_HEAD)):
+            with tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, name, head.encode())
+                self.assertIsNone(lc.check(str(f)), name)
+
+    def test_empty_markers_file_is_not_valid(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d)
+            self.rehash(f, "markers.tsv", b"")
+            self.fails(f, "markers.tsv")
+
+
+class Hostile(Base):
+    def lock_files(self, f, fn):
+        lock = json.loads((f / "lock.json").read_text())
+        fn(lock)
+        (f / "lock.json").write_text(json.dumps(lock))
+        sums = (f / "SHA256SUMS").read_text().splitlines()
+        (f / "SHA256SUMS").write_text("".join(
+            l + "\n" if "lock.json" not in l else f"{sha((f / 'lock.json').read_bytes())}  lock.json\n"
+            for l in sums))
+
+    def test_traversal_and_absolute_names_in_lock_json(self):
+        for bad in ("../outside.txt", "/etc/passwd", "sub/a.tsv", "..", ".", "", "a\\b"):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.lock_files(f, lambda l: l["files"].update({bad: "0" * 64}))
+                self.fails(f, "lock.json")
+
+    def test_traversal_name_in_sums(self):
+        f = build(self.tmp)
+        (f / "SHA256SUMS").write_text((f / "SHA256SUMS").read_text() + f"{'0' * 64}  ../x\n")
+        self.fails(f, "SHA256SUMS")
+
+    def test_extra_file_in_folder(self):
+        f = build(self.tmp)
+        (f / "notes.txt").write_text("hi")
+        self.fails(f, "notes.txt")
+
+    def test_extra_directory_in_folder(self):
+        f = build(self.tmp)
+        (f / "sub").mkdir()
+        self.fails(f, "sub")
+
+    def test_symlink_pointing_outside(self):
+        f = build(self.tmp)
+        outside = Path(self.tmp) / "outside.tsv"
+        outside.write_bytes((f / "cue-sheet.tsv").read_bytes())
+        (f / "cue-sheet.tsv").unlink()
+        (f / "cue-sheet.tsv").symlink_to(outside)
+        self.fails(f, "cue-sheet.tsv", "symlink")
+
+    def test_dangling_symlink(self):
+        f = build(self.tmp)
+        (f / "paper-edit.tsv").unlink()
+        (f / "paper-edit.tsv").symlink_to(Path(self.tmp) / "nope")
+        self.fails(f, "paper-edit.tsv")
+
+    def test_uppercase_hex_in_sums(self):
+        f = build(self.tmp)
+        t = (f / "SHA256SUMS").read_text().splitlines(True)
+        t[0] = t[0][:64].upper() + t[0][64:]
+        (f / "SHA256SUMS").write_text("".join(t))
+        self.fails(f, "SHA256SUMS")
+
+    def test_uppercase_hex_in_lock_json(self):
+        f = build(self.tmp)
+        self.lock_files(f, lambda l: l["files"].update(
+            {"cue-sheet.tsv": l["files"]["cue-sheet.tsv"].upper()}))
+        self.fails(f, "lock.json")
+
+    def test_crlf_sums(self):
+        f = build(self.tmp)
+        (f / "SHA256SUMS").write_bytes((f / "SHA256SUMS").read_bytes().replace(b"\n", b"\r\n"))
+        self.fails(f, "SHA256SUMS")
+
+    def test_duplicate_sums_entry(self):
+        f = build(self.tmp)
+        first = (f / "SHA256SUMS").read_text().splitlines(True)[0]
+        (f / "SHA256SUMS").write_text((f / "SHA256SUMS").read_text() + first)
+        self.fails(f, "SHA256SUMS", "twice")
+
+    def test_malformed_sums_line(self):
+        f = build(self.tmp)
+        (f / "SHA256SUMS").write_text((f / "SHA256SUMS").read_text() + "garbage\n")
+        self.fails(f, "SHA256SUMS")
+
+    def test_approved_variants(self):
+        for v in ("Yes", " yes ", "", "YES", "y", "true"):
+            with self.subTest(v=v), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, "consent-list.tsv",
+                            (CONSENT_HEAD + f"kid\tchild\t10\tR-1\t{v}\tIA\t2026-11-01\n").encode())
+                self.fails(f, "consent-list.tsv", "approved")
+
+    def test_consent_short_row(self):
+        f = build(self.tmp)
+        self.rehash(f, "consent-list.tsv", (CONSENT_HEAD + "kid\tchild\n").encode())
+        self.fails(f, "consent-list.tsv")
+
+    def test_lock_json_not_json(self):
+        f = build(self.tmp)
+        (f / "lock.json").write_bytes(b"{nope")
+        (f / "SHA256SUMS").write_text("".join(
+            l if "lock.json" not in l else f"{sha(b'{nope')}  lock.json\n"
+            for l in (f / "SHA256SUMS").read_text().splitlines(True)))
+        self.fails(f, "lock.json")
+
+    def test_lock_json_shapes(self):
+        for body in (b"[]", b"[1,2]", b"null", b'"x"', b"7", b"{}", b'{"files": []}',
+                     b'{"files": {}, "timeline": [], "items_sha256": 1}', b"\xff\xfe"):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                (f / "lock.json").write_bytes(body)
+                (f / "SHA256SUMS").write_text("".join(
+                    l if "lock.json" not in l else f"{sha(body)}  lock.json\n"
+                    for l in (f / "SHA256SUMS").read_text().splitlines(True)))
+                self.fails(f, "lock.json")
+
+    def test_sound_handoff_shapes(self):
+        for body in (b"[]", b"{nope", b'{"timeline": 1}', b"{}"):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, "sound-handoff.json", body)
+                self.fails(f, "sound-handoff.json")
+
+    def test_otio_shapes(self):
+        for body in (b"[]", b"{nope", b"{}", b'{"tracks": []}', b'{"tracks": {"children": [1]}}',
+                     b'{"tracks": {"children": []}}'):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, "timeline.otio", body)
+                self.fails(f, "timeline.otio")
+
+    def test_edl_without_events(self):
+        f = build(self.tmp)
+        self.rehash(f, "timeline.edl", b"TITLE: x\nFCM: NON-DROP FRAME\n")
+        self.fails(f, "timeline.edl")
+
+    def test_binary_in_tsv(self):
+        f = build(self.tmp)
+        self.rehash(f, "markers.tsv", b"\xff\xfe\x00")
+        self.fails(f, "markers.tsv")
+
+    def test_folder_missing(self):
+        msg = lc.check(os.path.join(self.tmp, "nope_lock_v01"))
+        self.assertIn("does not exist", msg)
+
+    def test_folder_is_a_file(self):
+        p = Path(self.tmp) / "x_lock_v01"
+        p.write_text("x")
+        self.assertIn("not a folder", lc.check(str(p)))
+
+    def test_folder_name(self):
+        for name in ("example-slug", "example-slug_lock_v1", "example-slug_lock_v001", "_lock_v01",
+                     "example-slug_lock_vAB", "example-slug_lock_v01x", "Example_lock_v01"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
+                f = build(d, slug=name)
+                self.assertIn("<slug>_lock_vNN", lc.check(str(f)))
+
+    def test_trailing_slash_and_dot(self):
+        f = build(self.tmp)
+        self.assertIsNone(lc.check(str(f) + "/"))
+        cwd = os.getcwd()
+        try:
+            os.chdir(f)
+            self.assertIsNone(lc.check("."))
+        finally:
+            os.chdir(cwd)
+
+    def test_sound_handoff_other_fields_must_equal_lock(self):
+        for key, val in (("timeline", "other"), ("fps", "25"), ("start_timecode", "00:00:00:00")):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                s = json.loads((f / "sound-handoff.json").read_text())
+                s[key] = val
+                self.rehash(f, "sound-handoff.json", json.dumps(s).encode())
+                self.fails(f, key)
+
+
+class Review(Base):
+    """Faults a reviewer found PASSing."""
+    def lock_edit(self, f, fn):
+        lock = json.loads((f / "lock.json").read_text())
+        fn(lock)
+        (f / "lock.json").write_text(json.dumps(lock, indent=2))
+        self.rehash(f, "lock.json")
+
+    def test_folder_name_must_match_project_and_version(self):
+        for slug in ("example-slug_lock_v02", "other-slug_lock_v01"):
+            with self.subTest(slug=slug), tempfile.TemporaryDirectory() as d:
+                self.fails(build(d, slug=slug), "project", "lock_version")
+
+    def test_folder_name_with_lock_version_two_digits(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d, slug="example-slug_lock_v07")
+            self.lock_edit(f, lambda l: l.update(lock_version=7))
+            self.assertIsNone(lc.check(str(f)))
+
+    def test_folder_inside_git_tree(self):
+        (Path(self.tmp) / ".git").mkdir()
+        f = build(self.tmp)
+        self.fails(f, "git working tree")
+
+    def test_folder_inside_git_tree_via_symlinked_path(self):
+        real = Path(self.tmp) / "repo"
+        real.mkdir()
+        (real / ".git").write_text("gitdir: x")
+        f = build(real)
+        link = Path(self.tmp) / "link"
+        link.symlink_to(real)
+        self.fails(link / f.name, "git working tree")
+
+    def test_marker_colour_must_be_a_resolve_colour(self):
+        for c in ("NotAColour", "blue", "BLUE"):
+            with self.subTest(c=c), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tstory:a\t{c}\t\t{FPS}\n").encode())
+                self.fails(f, "markers.tsv", "colour")
+
+    def test_marker_name_needs_text_after_prefix_but_note_may_be_empty(self):
+        f = build(self.tmp)
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tfx:\tRed\t\t{FPS}\n").encode())
+        self.fails(f, "markers.tsv", "name")
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tfx:a\tRed\t\t{FPS}\n").encode())
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_marker_fields_with_leading_zero_frame_ok_but_float_fails(self):
+        f = build(self.tmp)
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"1.5\t00:00:00:01\t1\tstory:a\tRed\t\t{FPS}\n").encode())
+        self.fails(f, "markers.tsv", "frame")
+
+    def test_edl_cut_to_last_event_fails(self):
+        f = build(self.tmp)
+        lines = (f / "timeline.edl").read_text().splitlines()
+        keep = [l for l in lines[:3]] + lines[-4:]   # header + the last V and AA events
+        self.rehash(f, "timeline.edl", ("\n".join(keep) + "\n").encode())
+        self.fails(f, "timeline.edl", "events")
+
+    def test_edl_event_moved_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("01:00:02:00 01:00:03:12", "01:00:02:01 01:00:03:12", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_interchange_drop_frame_and_non_drop_pass(self):
+        for fps in ("30000/1001", "24000/1001", "25", "60000/1001"):
+            with self.subTest(fps=fps), tempfile.TemporaryDirectory() as d:
+                f = build(d, fps=fps)
+                self.assertEqual((f / "timeline.edl").read_text().split("\n")[1].startswith("FCM: DROP"),
+                                 fps in ("30000/1001", "60000/1001"))
+                self.assertIsNone(lc.check(str(f)))
+
+    def test_drop_frame_separator_must_match_fcm(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d, fps="30000/1001")
+            t = (f / "timeline.edl").read_text()
+            self.rehash(f, "timeline.edl", t.replace("DROP FRAME", "NON-DROP FRAME", 1).encode())
+            self.fails(f, "timeline.edl", "FCM")
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d)
+            t = (f / "timeline.edl").read_text().replace("NON-DROP FRAME", "DROP FRAME")
+            self.rehash(f, "timeline.edl", t.encode())
+            self.fails(f, "timeline.edl", "FCM")
+
+    def test_edl_semicolon_timecode_under_non_drop_is_refused(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("01:00:03:12 01:00:05:12", "01:00:03;12 01:00:05;12", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_dissolve_and_wipe_events_compare_by_record_range(self):
+        for code in ("D    012", "W001 012", "K"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                lines = (f / "timeline.edl").read_text().splitlines()
+                i = next(n for n, l in enumerate(lines) if l.startswith("005") and l[14:19].strip() == "V")
+                parts = lines[i].split()
+                zero = f"005  CLIPONE  V     C        {parts[-4]} {parts[-4]} {parts[-2]} {parts[-2]}"
+                lines[i] = lines[i].replace("C        ", code.ljust(9), 1)
+                lines.insert(i, zero)
+                self.rehash(f, "timeline.edl", ("\n".join(lines) + "\n").encode())
+                self.assertIsNone(lc.check(str(f)))
+
+    def test_dissolve_with_wrong_range_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("C        00:00:08:00 00:00:10:00 01:00:03:12 01:00:05:12",
+                                                     "D    012 00:00:08:00 00:00:10:00 01:00:03:12 01:00:05:13", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_unknown_transition_code_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("C        00:00:08:00", "Q        00:00:08:00", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_empty_tsv_of_every_kind_fails(self):
+        for name in ("paper-edit.tsv", "cue-sheet.tsv", "markers.tsv", "consent-list.tsv"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, name, b"")
+                self.fails(f, name)
+
+    def test_header_only_paper_edit_and_cue_sheet_pass_and_wrong_header_fails(self):
+        f = build(self.tmp)
+        self.rehash(f, "paper-edit.tsv", b"a\tb\n")
+        self.fails(f, "paper-edit.tsv", "header")
+
+    def test_schema_and_locked_at(self):
+        cases = [lambda l: l["schema"].update(name="other"), lambda l: l["schema"].update(version=2),
+                 lambda l: l.pop("schema"), lambda l: l.update(schema=[]),
+                 lambda l: l.update(locked_at="yesterday"), lambda l: l.update(locked_at="2026-11-02T15:00:00"),
+                 lambda l: l.update(locked_at="2026-11-02T15:00:00+01:00"), lambda l: l.update(locked_at="2026-13-02T15:00:00Z"),
+                 lambda l: l.pop("locked_at"), lambda l: l.update(locked_at=5)]
+        for i, fn in enumerate(cases):
+            with self.subTest(i=i), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.lock_edit(f, fn)
+                self.fails(f, "lock.json")
+
+    def test_sound_schema(self):
+        f = build(self.tmp)
+        s = json.loads((f / "sound-handoff.json").read_text())
+        s["schema"] = {"name": "sound.handoff", "version": 9}
+        self.rehash(f, "sound-handoff.json", json.dumps(s).encode())
+        self.fails(f, "sound-handoff.json", "schema")
+
+    def test_audio_track_longer_than_duration_fails(self):
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        rt = {"OTIO_SCHEMA": "RationalTime.1", "rate": 24000 / 1001}
+        d["tracks"]["children"].append({"OTIO_SCHEMA": "Track.1", "kind": "Audio", "name": "A9", "children": [
+            {"OTIO_SCHEMA": "Clip.2", "name": "x", "source_range": {
+                "start_time": dict(rt, value=0), "duration": dict(rt, value=99999)}}]})
+        self.rehash(f, "timeline.otio", json.dumps(d).encode())
+        self.fails(f, "A9", "longer than duration_frames")
+
+    def test_items_hash_is_over_utf8_not_ascii_escapes(self):
+        def rename(files, lock, sound):
+            pass
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        d["tracks"]["children"][0]["children"][0]["name"] = "caf\u00e9 \u65e5\u672c.mov"
+        items, _, _, _ = lc.otio_items(d, lc.Fraction(FPS))
+        want = sha(json.dumps(sorted(items, key=lambda i: (i["track"], i["record_in"])), sort_keys=True,
+                              separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        lock = json.loads((f / "lock.json").read_text())
+        lock["items_sha256"] = want
+        (f / "lock.json").write_text(json.dumps(lock, indent=2))
+        self.rehash(f, "timeline.otio", json.dumps(d, ensure_ascii=False).encode("utf-8"))
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_pinned_item_reading(self):
+        """Spec question: what the checker rebuilds today. Change it only on purpose."""
+        f = build(self.tmp)
+        items, dur, start, _ = lc.otio_items(json.loads((f / "timeline.otio").read_text()), lc.Fraction(FPS))
+        self.assertEqual((dur, start), (132, 86400))
+        self.assertEqual([(i["track"], i["index"], i["record_in"], i["record_out"], i["source_in"], i["source_out"],
+                           i["clip_id"]) for i in items],
+                         [(1, 1, 0, 48, 24, 72, "CARD-a/P1000110"), (1, 2, 48, 84, 120, 156, "CARD-a/P1000111"),
+                          (1, 3, 84, 132, 192, 240, "CARD-b/P1000112")])
+
+
+class Command(Base):
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = cli.main(argv)
+            except SystemExit as e:
+                code = e.code
+        return code, out.getvalue(), err.getvalue()
+
+    def test_pass_exit_0(self):
+        f = build(self.tmp)
+        code, out, _ = self.run_cli(["lock-check", str(f)])
+        self.assertEqual((code, out.split()[0]), (0, "PASS"))
+
+    def test_fail_exit_1_names_first_mismatch(self):
+        f = build(self.tmp)
+        (f / "cue-sheet.tsv").unlink()
+        code, out, _ = self.run_cli(["lock-check", str(f)])
+        self.assertEqual(code, 1)
+        self.assertTrue(out.startswith("FAIL"))
+        self.assertIn("cue-sheet.tsv", out)
+        self.assertNotIn("Traceback", out)
+
+    def test_usage_exit_2(self):
+        for argv in (["lock-check"], ["lock-check", "--nope", "x"], ["lock-check", "a", "b"]):
+            with self.subTest(argv=argv):
+                code, out, err = self.run_cli(argv)
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("usage", err)
+
+    def test_help_prints_usage_only(self):
+        code, out, err = self.run_cli(["lock-check", "--help"])
+        self.assertEqual(code, 0)
+        self.assertIn("usage", out)
+
+    def test_help_creates_nothing(self):
+        before = set(os.listdir(self.tmp))
+        self.run_cli(["lock-check", "--help"])
+        self.run_cli(["lock-check", "--bogus"])
+        self.assertEqual(set(os.listdir(self.tmp)), before)
+
+    def test_missing_folder_exit_1(self):
+        code, out, _ = self.run_cli(["lock-check", os.path.join(self.tmp, "a_lock_v01")])
+        self.assertEqual(code, 1)
+        self.assertTrue(out.startswith("FAIL"))
+
+
+if __name__ == "__main__":
+    unittest.main()
