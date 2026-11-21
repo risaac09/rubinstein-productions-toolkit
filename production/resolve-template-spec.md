@@ -140,7 +140,7 @@ create the other bins, which are made by hand.
 7. Manual creative grade (`CON`, `SAT`, `SKIN`, `WIN`, `TEX`), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
-10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (`queue_render` neither flags nor blocks a missing record; `deliver-check --review-log` checks for it after the render, see the gate)
+10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists: a missing record is flagged, not blocked, by the person queuing, who writes it down first (`queue_render` checks nothing; `deliver-check --review-log` reads the log after the render, see the gate)
 11. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
 12. Render the queued jobs on the Deliver page (no tool starts one)
 13. Write the delivery manifest once `deliver_check` passes ([delivery manifest](delivery-manifest.md))

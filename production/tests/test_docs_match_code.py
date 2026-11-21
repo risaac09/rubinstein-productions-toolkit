@@ -240,5 +240,18 @@ class DocsMatchCode(unittest.TestCase):
         self.assertEqual(hits, [])
 
 
+class QueueingDutyStaysInStepTen(unittest.TestCase):
+    """Step 10 of the template spec keeps the person's duty and agrees with the
+    Queueing-without-a-record paragraph: the tool checks nothing, the person
+    flags it."""
+
+    def test_step_ten_names_the_person_not_the_tool(self):
+        text = (PROD / "resolve-template-spec.md").read_text(encoding="utf-8")
+        step = next(l for l in text.splitlines() if l.startswith("10. Final approval"))
+        self.assertNotIn("neither flags", step)
+        self.assertIn("person queuing", step)
+        self.assertIn("flagged, not blocked", text)
+
+
 if __name__ == "__main__":
     unittest.main()
