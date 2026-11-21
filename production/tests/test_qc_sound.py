@@ -12,6 +12,7 @@ Run: /usr/bin/python3 -m unittest production.tests.test_qc_sound -v
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -307,23 +308,40 @@ class VoiceVsBedLocalBed(unittest.TestCase):
             return base(t)
         self.assertEqual(self._run(self.WORDS, f, 35)["status"], qc.PASS)
 
-    def test_one_loud_long_gap_flags_only_the_span_touching_it(self):
+    def test_a_loud_long_gap_far_away_does_not_flag_every_span(self):
         words = [(5 + 5 * i, 9 + 5 * i) for i in range(6)]  # padded gaps of 0.6 s: not readable
         padded = [(a - 0.2, b + 0.2) for a, b in words]
         f = self._levels(padded, {(34.2, 45.0): -24.0})
         row = self._run(words, f, 45)
         self.assertEqual(row["status"], qc.WARN, row)
-        self.assertEqual(row["found"].count("voice"), 1, row)
-        self.assertIn("29.80s", row["found"])
+        self.assertIn("29.80s", row["found"])   # touches the loud gap
+        flagged = re.findall(r"(\d+\.\d\ds) to", row["found"])
+        self.assertEqual(flagged, ["19.80s", "24.80s", "29.80s"])  # the three nearer the loud gap
 
-    def test_a_side_with_no_readable_gap_takes_the_other_sides_bed(self):
-        words = [(5, 9), (10.3, 14.3)]  # padded gap 0.9 s between them: not readable
-        padded = [(4.8, 9.2), (10.1, 14.5)]
-        f = self._levels(padded, {(0.0, 4.8): -24.0})
-        row = self._run(words, f, 30)
+    def test_a_span_with_no_readable_side_walks_out_to_the_nearest_long_gap(self):
+        # three spans 0.9 s apart (not readable); the middle one has no readable side
+        words = [(5, 9), (10.3, 14.3), (15.6, 19.6)]
+        padded = [(4.8, 9.2), (10.1, 14.5), (15.4, 19.8)]
+        loud_head = self._run(words, self._levels(padded, {(0.0, 4.8): -24.0}), 30)
+        self.assertEqual(loud_head["status"], qc.WARN, loud_head)
+        self.assertIn("10.10s", loud_head["found"])  # head and tail are equally far: the louder wins
+        self.assertNotIn("15.40s", loud_head["found"])  # its own right gap is quiet
+        loud_tail = self._run(words, self._levels(padded, {(19.8, 30.0): -24.0}), 30)
+        self.assertIn("10.10s", loud_tail["found"])
+        self.assertIn("15.40s", loud_tail["found"])
+        self.assertNotIn("4.80s to", loud_tail["found"])  # the quiet head is its own bed
+
+    def test_a_span_with_no_signal_says_no_voice_here(self):
+        words = [(5, 9), (15, 19), (25, 29)]
+        padded = [(4.8, 9.2), (14.8, 19.2), (24.8, 29.2)]
+
+        def f(t):
+            if 14.8 <= t < 19.2:
+                return -120.0  # the transcript has words where the file is silent
+            return self._levels([padded[0], padded[2]], {})(t)
+        row = self._run(words, f, 35)
         self.assertEqual(row["status"], qc.WARN, row)
-        self.assertIn("4.80s", row["found"])  # loud head on its left, nothing readable on its right
-        self.assertNotIn("10.10s", row["found"])  # quiet tail on its right is its only bed
+        self.assertEqual(row["found"], "14.80s to 19.20s no voice here: check the transcript timing")
 
     def test_music_only_in_gaps_too_short_to_read_passes(self):
         words = [(5, 9), (10.3, 14.3), (15.6, 19.6)]  # the known looser case

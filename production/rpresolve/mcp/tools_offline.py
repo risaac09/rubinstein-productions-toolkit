@@ -314,6 +314,8 @@ def _framing_plan(args, ctx):
                           f"{n[reframe.PASS] - n['none']} pass with a move, "
                           f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
                           f"{n[reframe.NO_FACE]} no face"
+                          + (f", {n[reframe.SCENE]} scene crop (no face seen: look)"
+                             if n[reframe.SCENE] else "")
                           + (f", {n[reframe.HAND]} by hand" if n[reframe.HAND] else "")
                           + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,

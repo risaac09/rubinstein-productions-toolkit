@@ -48,7 +48,8 @@ class TestSceneSpan(unittest.TestCase):
         sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"],
                                scene=reads([(1400, 540)] * 8))
         p = sp["aspects"]["9x16"]
-        self.assertEqual((p["status"], p["x"], p["y"]), (reframe.PASS, 1400.0, 540.0))
+        self.assertEqual((p["status"], p["x"], p["y"]), (reframe.SCENE, 1400.0, 540.0))
+        self.assertIn("no face", p["reason"])
         self.assertEqual(sp["scene"]["subject"], "saliency")
         self.assertEqual(sp["scene"]["centre"], {"x": 1400.0, "y": 540.0})
         self.assertIsNone(sp["scene"]["depth"])
@@ -68,7 +69,7 @@ class TestSceneSpan(unittest.TestCase):
         # a box 1000 px wide cannot sit inside a 9x16 crop; its centre does
         sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"],
                                scene=reads([(1000, 540)] * 8, w=1000, h=900))
-        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.PASS)
+        self.assertEqual(sp["aspects"]["9x16"]["status"], reframe.SCENE)
         self.assertTrue(sp["review"])  # weaker than a face: a person looks
 
     def test_a_face_still_wins(self):
@@ -114,7 +115,7 @@ class TestSceneSpan(unittest.TestCase):
         sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"], scene=pan)
         self.assertEqual(sp["scene"]["move_type"], "pan")
         p = sp["aspects"]["9x16"]
-        self.assertEqual((p["status"], p["move_type"]), (reframe.PASS, "pan"))
+        self.assertEqual((p["status"], p["move_type"]), (reframe.SCENE, "pan"))
         self.assertGreater(p["composition"]["lead_px"], 0)  # room ahead on the right
         track = reads([(500 + 120 * i, 540) for i in range(8)])    # 840 px: 44% of the frame
         sp = reframe.plan_span(faces([[]] * 8), HD, full(HD), ["9x16"], scene=track)
@@ -183,7 +184,7 @@ class TestPlanWithScene(unittest.TestCase):
         self.assertIn("saliency centre", rows[0]["review"])
         self.assertEqual(rows[0]["move_type"], "hold")
         # the span past 100 s has no face: cropped on the saliency centre
-        self.assertEqual([r["status"] for r in rows if r["clip"] == "b_30"], ["pass", "pass"])
+        self.assertEqual([r["status"] for r in rows if r["clip"] == "b_30"], ["scene", "scene"])
         copy = reframe.apply(self.m, report)
         cutlist.validate_manifest(copy)
         e = copy["clips"][1]["spans"][0]["reframe"]["9x16"]

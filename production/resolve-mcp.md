@@ -570,7 +570,8 @@ version, keeps the subject's whole head. The rules, in `rpresolve/reframe.py`:
   saliency centre only breaks a tie between faces of like size (the review
   note says so, and `speaker_x` still wins). Where no face is found, the crop
   is placed on the median saliency box with the same fit, check and fallbacks
-  as a face (no head to keep), and the span is flagged for review: saliency is
+  as a face (no head to keep), the crop's status is `scene` (no face was seen: a
+  person should look, never `pass`), and the span is flagged for review: saliency is
   weaker evidence than a face, and a salient region wider than the crop is
   `manual`. Each span records `scene` (`subject` face or saliency, `centre`,
   `spread` as the centre's standard deviation over the frame, `sharpness`
