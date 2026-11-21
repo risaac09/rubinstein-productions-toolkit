@@ -1,0 +1,1 @@
+footage_index reads the screened transcripts vertcut writes: 'speech FOLDER' stores each clip's kept segments (withheld, bracketed and raw ones are never read) in an FTS table, and 'say "words"' finds clips by what was said, with the time range.

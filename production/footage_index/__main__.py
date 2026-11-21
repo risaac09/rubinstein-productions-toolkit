@@ -8,6 +8,8 @@
   python -m footage_index recaption-fts   # re-store captions (tag dedupe, FTS fields); no model
   python -m footage_index find "slow push-in on hands chopping herbs" [--no-client] [--fps-min 50]
                                   [--camera A7] [--project Outings] [--faces|--no-faces] [--limit 10] [--sheet DIR]
+  python -m footage_index speech  TRANSCRIPT_DIR      # store the screened transcripts (see speech.py)
+  python -m footage_index say     "words said" [--limit 10] [--no-client]
   python -m footage_index stats
   python -m footage_index shoot   Shoots/harvest-day [--refresh]
   python -m footage_index methods Shoots/harvest-day [--sheet DIR]
@@ -510,6 +512,21 @@ def cmd_find(a):
         print(f"sheet: {a.sheet}/sheet.jpg (key sealed beside it)")
 
 
+def cmd_speech(a):
+    from . import speech
+    c = store.connect()
+    clips, segs, orphans, unscreened = speech.ingest(c, a.folder)
+    c.commit()
+    log(f"speech: {segs} segment(s) from {clips} clip(s); {orphans} transcript(s) match no indexed clip; "
+        f"{unscreened} not screened, skipped")
+
+
+def cmd_say(a):
+    from . import speech
+    for r in speech.say(store.connect(), a.query, a.limit, a.client):
+        print(f"{r['relpath']}  @{r['t_in']:.1f}-{r['t_out']:.1f}s  {r['text']}")
+
+
 def cmd_shoot(a):
     from . import shoot
     p = shoot.profile(store.connect(), a.prefix, refresh=a.refresh)
@@ -692,6 +709,8 @@ def main(argv=None):
     s.add_argument("--project"); s.add_argument("--sheet"); s.add_argument("--json", action="store_true")
     s.add_argument("--faces", dest="faces", action="store_true", default=None); s.add_argument("--no-faces", dest="faces", action="store_false")
     s.add_argument("--moving", dest="moving", action="store_true", default=None); s.add_argument("--static", dest="moving", action="store_false")
+    s = sub.add_parser("speech"); s.add_argument("folder")
+    s = sub.add_parser("say"); s.add_argument("query"); s.add_argument("--limit", type=int, default=10); s.add_argument("--no-client", dest="client", action="store_false", default=True)
     sub.add_parser("stats")
     sub.add_parser("recaption-fts")
     sub.add_parser("cameras")
@@ -730,7 +749,7 @@ def main(argv=None):
         print(json.dumps(store.stats(store.connect()), indent=1))
     else:
         try:
-            {"index": cmd_index, "embed": cmd_embed, "caption": cmd_caption, "recaption-fts": cmd_recaption_fts, "migrate": cmd_migrate, "rekey": cmd_rekey, "refresh-squeeze": cmd_refresh_squeeze, "cameras": cmd_cameras, "find": cmd_find,
+            {"index": cmd_index, "embed": cmd_embed, "caption": cmd_caption, "recaption-fts": cmd_recaption_fts, "migrate": cmd_migrate, "rekey": cmd_rekey, "refresh-squeeze": cmd_refresh_squeeze, "cameras": cmd_cameras, "find": cmd_find, "speech": cmd_speech, "say": cmd_say,
              "shoot": cmd_shoot, "methods": cmd_methods, "plan": cmd_plan, "gate": cmd_gate, "check": cmd_check, "sheet": cmd_sheet,
              "slots-sheet": cmd_slots_sheet, "compose": cmd_compose}[a.cmd](a)
         except ValueError as e:
