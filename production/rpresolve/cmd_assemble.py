@@ -396,12 +396,15 @@ def _bake(bed, camera=False):
 
 def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=SIZE[1],
                    dry_run=True, project_id=None, expect_sha=None, check_cancel=None,
-                   bed_dir=None, exclude=None, ledger=None, draft=None, override=None):
+                   bed_dir=None, exclude=None, ledger=None, draft=None, override=None, fps=None):
     """Build the manifest as a new timeline `name` (must end ' [auto]'). Refused, writing
     nothing: a name that exists, a manifest whose fps is not the project's timeline rate
     (a scripted timeline takes the project's), a source or music file that is missing, a
     music bed that cannot be made or has no safe folder (bed_dir, see bed_plan), a window
-    span whose outgoing source ends inside its plate (plate_handles).
+    span whose outgoing source ends inside its plate (plate_handles). fps (a rate Resolve
+    spells, 24 or 29.97) gives the new timeline its own frame rate, set while it is empty and
+    read back, the project's left alone; it must be the manifest's rate. Omitted, the
+    timeline takes the project's (T2).
     Returns {project, timeline, rate, size, track, plan, colour, bed, plates, plan_sha,
     dry_run, created, items, audio, problems, left_behind, ui_restore_problems,
     exit_status}; track is the video track the montage is on (2 when plates are on V1),
@@ -431,11 +434,15 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     count = int(project.GetTimelineCount() or 0)
     if any(project.GetTimelineByIndex(i).GetName() == name for i in range(1, count + 1)):
         raise Refused(f"a timeline named '{name}' already exists; nothing is overwritten.")
-    rate = str(project.GetSetting("timelineFrameRate") or "")
+    rate = str(fps if fps is not None else project.GetSetting("timelineFrameRate") or "")
     tl_fps = deliver.exact_fps(rate)
+    if fps is not None and not tl_fps:
+        raise Refused(f"fps '{fps}' is not a frame rate.")
     if not tl_fps or abs(tl_fps - p["fps"]) > 0.01:
-        raise Refused(f"the manifest runs at {p['fps']:g} fps and the project's timelines at "
-                      f"'{rate}'; a scripted timeline takes the project's rate.")
+        who = f"fps is {rate}" if fps is not None else (
+            f"the project's timelines run at '{rate}'; a scripted timeline takes the project's "
+            "rate (pass fps to give the new one its own)")
+        raise Refused(f"the manifest runs at {p['fps']:g} fps and {who}.")
     colour = colour_plan(project, root, p)
     desqueeze = desqueeze_plan(root, p)
     shape = shape_plan(p, width, height)
@@ -476,7 +483,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     with snap:
         project = pin.check(pm)
         _build(out, project, media_pool, root, name, p, tl_fps, width, height,
-               _check(pin, pm, check_cancel))
+               _check(pin, pm, check_cancel), fps)
     out["ui_restore_problems"] = snap.problems
     if out["problems"] and out["created"]:
         out["left_behind"] = name
@@ -484,7 +491,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     return out
 
 
-def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check):
+def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check, fps=None):
     folder = _bin(media_pool, root, make=True)
     if not folder or not media_pool.SetCurrentFolder(folder):
         raise api.WriteNotApplied(f"could not open the bin '{BIN}'")
@@ -517,6 +524,15 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         # a timeline with custom settings holds its own colour spaces, so the project's are
         # copied across; a project that reads none of them has nothing to copy
         colour = [(k, v) for k, v in out["timeline_colour"].items() if v]
+        from rpresolve import deliver
+        if fps is not None:  # fixed once the timeline holds a clip (T2), so first, read back as a number
+            tl.SetSetting("useCustomSettings", "1")
+            tl.SetSetting("timelineFrameRate", str(fps))
+            got = tl.GetSetting("timelineFrameRate")
+            if deliver.fps_number(got) is None or abs(deliver.fps_number(got) - tl_fps) > 0.01:
+                raise api.WriteNotApplied(f"timelineFrameRate: wrote {fps}, read back {got!r}; "
+                                          f"LEFT BEHIND: '{name}' exists, empty; delete it "
+                                          "before a re-run")
         for key, value in (("useCustomSettings", "1"), ("timelineResolutionWidth", str(width)),
                            ("timelineResolutionHeight", str(height)),
                            ("timelineInputResMismatchBehavior", "scaleToCrop"), *colour):

@@ -242,6 +242,37 @@ class TestApply(Base):
             self.go(dry_run=False)
         self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
 
+    def test_fps_sets_the_new_timeline_rate_while_it_is_empty_and_reads_it_back(self):
+        self.manifest["fps"] = 30
+        dry = self.go(fps=30)
+        self.assertEqual(dry["rate"], "30")
+        r = self.go(dry_run=False, fps=30, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        self.assertEqual(float(tl.GetSetting("timelineFrameRate")), 30.0)
+        self.assertEqual(self.project.GetSetting("timelineFrameRate"), "24")  # the project is left alone
+        sets = [c[2][0] for c in rf.CALLS if c[1] == "SetSetting"]
+        self.assertLess(sets.index("useCustomSettings"), sets.index("timelineFrameRate"))
+        self.assertEqual([i.GetDuration() for i in tl.GetItemListInTrack("video", 1)][0], 30)
+
+    def test_fps_not_matching_the_manifest_is_refused_writing_nothing(self):
+        with self.assertRaisesRegex(Refused, "manifest runs at 24 fps and fps is 30"):
+            self.go(dry_run=False, fps=30)
+        self.assertEqual([c for c in rf.CALLS if c[1].startswith(rf.MUTATING_PREFIXES)], [])
+
+    def test_an_unreadable_fps_is_refused(self):
+        with self.assertRaisesRegex(Refused, "fps"):
+            self.go(fps="fast")
+
+    def test_a_rate_that_does_not_read_back_stops_before_any_clip_and_names_the_timeline(self):
+        self.manifest["fps"] = 30
+        with mock.patch.object(rf.Timeline, "GetSetting",
+                               lambda self, k=None: 24.0 if k == "timelineFrameRate"
+                               else self.settings.get(k)):
+            r = self.go(dry_run=False, fps=30)
+        self.assertEqual((r["exit_status"], r["left_behind"], r["items"]), (1, "Shoot m v1 [auto]", []))
+        self.assertIn("timelineFrameRate: wrote 30, read back 24.0", r["problems"][0])
+
     def test_an_existing_name_is_never_overwritten(self):
         self.project.add(rf.Timeline("Shoot m v1 [auto]", "tl-x"))
         with self.assertRaisesRegex(Refused, "already exists"):

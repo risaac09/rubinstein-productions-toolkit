@@ -7,7 +7,7 @@ Other docs cite these by number (`T3`). A number never changes; a corrected trap
 ## Timelines and items
 
 - **T1. `AppendToTimeline` clip info.** `endFrame` is exclusive. An item's length is floor((end - start) x timeline fps / source fps). To get n timeline frames, ask for ceil(n x source fps / timeline fps) source frames.
-- **T2. Frame rate.** A scripted timeline takes the project frame rate. `SetSetting("timelineFrameRate")` returns False once the timeline exists.
+- **T2. Frame rate.** A scripted timeline takes the project frame rate. `SetSetting("timelineFrameRate")` returns False once the timeline exists. `assemble_timeline` and `cut` set it on a timeline that is still empty, with `useCustomSettings`, and read it back; `assemble_timeline` does so only when `fps` is passed (not yet run against a live Resolve).
 - **T8. Stills.** `ExportCurrentFrameAsStill` wants an absolute path and can return the previous frame. Seek a few frames early, seek to the frame, wait two seconds, then export. Wait longer after a timeline switch.
 - **T10. Mixed rates.** `interchange` refuses a manifest whose sources mix 29.97 and 30 fps. It also wants every source at the timeline's rate. A 24 fps timeline from 29.97 or 60 fps sources is built by `assemble_timeline`, which appends each span at its clip's own rate (T1).
 - **T12. Fill on a duplicated timeline.** A duplicated timeline set to 1080x1920 with `timelineInputResMismatchBehavior` = `scaleToCrop` reads the setting back and still renders every clip fitted to width. Set the item property `Scaling` to 3 on each item. Values: 0 project, 1 crop at native pixels, 2 fit, 3 fill, 4 stretch.
