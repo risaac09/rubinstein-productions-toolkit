@@ -343,6 +343,58 @@ rotd="$ld"; printf 'rot' >> "$rotd/DCIM/A/C0001.XML"
 run safe --lite "$T/lite" "$rotd" remote:bucket/lite
 check "a rotted full copy is not safe even with a complete lite copy" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "no longer matches"'
 
+# R3D originals with no lite copy are not safe (data-loss repro: .r3d was not counted as video).
+c="$T/cr3"; mkdir -p "$c/A001_C001.RDM/A001_C001.RDC" "$c/A001_C002.RDM"
+head -c 4000 /dev/urandom > "$c/A001_C001.RDM/A001_C001.RDC/A001_C001_001.R3D"
+head -c 4000 /dev/urandom > "$c/A001_C001.RDM/A001_C001.RDC/A001_C001_002.R3D"
+head -c 4000 /dev/urandom > "$c/A001_C002.RDM/B_ROLL.mov"
+mkdir "$T/ar3"; run copy "$T/cr3" "$T/ar3" --cam GH7
+rd=$(ls -d "$T/ar3"/GH7-*/); rd=${rd%/}
+mkdir -p "$T/lite3/A001_C002.RDM"; echo lite > "$T/lite3/A001_C002.RDM/B_ROLL.mp4"
+run safe --lite "$T/lite3" "$rd" remote:bucket/lite
+check "R3D originals with no lite copy are not safe and are named" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "A001_C001_001.R3D" && printf "%s" "$out" | grep -q "A001_C001_002.R3D" && [ ! -e "$rd.offsite.txt" ]'
+# A DNG may be a CinemaDNG frame sequence the lite builder cannot make: it blocks too.
+c="$T/cdng"; mkdir -p "$c/CLIP_0001"
+head -c 4000 /dev/urandom > "$c/CLIP_0001/CLIP_0001_000001.dng"
+mkdir "$T/adng"; run copy "$T/cdng" "$T/adng" --cam GH7
+rd=$(ls -d "$T/adng"/GH7-*/); rd=${rd%/}
+mkdir -p "$T/litedng"; echo lite > "$T/litedng/other.mp4"
+run safe --lite "$T/litedng" "$rd" remote:bucket/lite
+check "a DNG frame with no lite copy is not safe and is named" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "CLIP_0001_000001.dng" && [ ! -e "$rd.offsite.txt" ]'
+# Keep lite_names in step with card.py VIDEO: every extension card.py counts as video must be
+# classified there (a video to cover, or r3d, which blocks).
+vids=$(sed -n 's/^VIDEO = {\(.*\)}.*/\1/p' "$SRC/production/rpresolve/card.py" | tr -d '". ' | tr ',' ' ')
+alt=$(sed -n 's/.*(e !*~ \/^(\([a-z0-9|]*\))\$\/.*/\1/p' "$O" | tr '\n' '|')
+miss=""; for e in $vids; do case "|$alt|" in *"|${e#.}|"*) ;; *) miss="$miss $e" ;; esac; done
+check "lite_names video list covers card.py VIDEO (missing:${miss:- none})" '[ -n "$vids" ] && [ -n "$alt" ] && [ -z "$miss" ]'
+
+# Fail closed: one unknown extension blocks and is named; a mixed tree of known types passes end to end.
+c="$T/cmx"; mkdir -p "$c/DCIM/A" "$c/DCIM/B/Proxy" "$c/AUDIO"
+head -c 3000 /dev/urandom > "$c/DCIM/A/V1.MOV"; head -c 3000 /dev/urandom > "$c/DCIM/B/R1.braw"
+head -c 2000 /dev/urandom > "$c/DCIM/B/Proxy/R1.mp4"; head -c 2000 /dev/urandom > "$c/DCIM/A/S1.JPG"
+head -c 2000 /dev/urandom > "$c/AUDIO/T1.wav"; echo m > "$c/DCIM/A/V1.XML"
+mkdir "$T/amx"; run copy "$T/cmx" "$T/amx" --cam GH7
+xd=$(ls -d "$T/amx"/GH7-*/); xd=${xd%/}
+mkdir -p "$T/litemx/DCIM/A" "$T/litemx/DCIM/B"; echo l > "$T/litemx/DCIM/A/V1.mp4"; echo l > "$T/litemx/DCIM/B/R1.mp4"
+run safe --lite "$T/litemx" "$xd" remote:bucket/lite
+check "mixed known types (video, braw+proxy, still, wav, xml) pass the lite tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+c="$T/cmy"; cp -R "$T/cmx" "$c"; head -c 900 /dev/urandom > "$c/DCIM/A/CLIP.zzz"
+mkdir "$T/amy"; run copy "$c" "$T/amy" --cam GH7
+yd=$(ls -d "$T/amy"/GH7-*/); yd=${yd%/}
+run safe --lite "$T/litemx" "$yd" remote:bucket/lite
+check "an unknown extension is not safe and is named" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "DCIM/A/CLIP.zzz" && [ ! -e "$yd.offsite.txt" ]'
+
+# A case-changed spelling of the copy or a path inside it is still the copy (case-insensitive APFS keeps the typed case).
+lc=$(printf '%s' "$ld" | tr '[:upper:]' '[:lower:]')
+if [ "$lc" != "$ld" ] && [ -d "$lc" ]; then
+  run safe --lite "$lc" "$ld" remote:bucket/lite
+  check "a case-changed spelling of the copy as lite dir is refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "lite dir" && [ ! -e "$ld.offsite.txt" ]'
+  run safe --lite "$lc/DCIM" "$ld" remote:bucket/lite
+  check "a case-changed lite dir inside the copy is refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "lite dir" && [ ! -e "$ld.offsite.txt" ]'
+else
+  echo "skip case-changed lite dir tests: the temp filesystem is case-sensitive (or the path has no letters to change)"
+fi
+
 # 13. Help is the header only.
 out=$("$O" --help)
 check "help stops at the header" 'printf "%s" "$out" | grep -q "safe to format" && ! printf "%s" "$out" | grep -q "set -u"'

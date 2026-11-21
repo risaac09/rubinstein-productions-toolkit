@@ -1,0 +1,1 @@
+offload.sh safe --lite now fails closed: R3D and any unknown file type block SAFE TO FORMAT and are named, and the lite-dir-inside-the-copy check compares inodes, so a case-changed path on APFS is refused.
