@@ -38,6 +38,7 @@ import os
 import sys
 from pathlib import Path
 
+from rpresolve import api
 from rpresolve import cli
 from rpresolve import config as rpconfig
 
@@ -481,20 +482,8 @@ def s_q1(ctx, t):
     ctx.call("ProjectManager.DeleteProject", pm, "DeleteProject", name)
 
 
-def _track_mapping(text):
-    try:
-        data = json.loads(text) if isinstance(text, str) else text
-        return (data or {}).get("track_mapping")
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
-def _mapping_tracks(text):
-    try:
-        data = json.loads(text) if isinstance(text, str) else text
-        return len((data or {}).get("track_mapping") or {})
-    except (ValueError, AttributeError, TypeError):
-        return 0
+_track_mapping = api.audio_track_mapping
+_mapping_tracks = api.audio_track_count
 
 
 def s_q2(ctx, t):

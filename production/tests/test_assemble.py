@@ -1178,7 +1178,8 @@ class TestTimelineColourAndCameraSound(Base):
         self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 1)
 
     def test_a_source_with_several_audio_streams_keeps_only_the_first_on_a1(self):
-        """Resolve spreads a four-stream source over A1 to A4; the spill goes (T36)."""
+        """Resolve would spread a four-stream source over A1 to A4 (T36); the run remaps what it
+        imported before the append, so nothing spills and nothing is deleted."""
         orig = rf.Clip.__init__
 
         def four(self, *args, **kw):
@@ -1190,7 +1191,7 @@ class TestTimelineColourAndCameraSound(Base):
             dry, r, tl = self.built()
         self.assertEqual((r["exit_status"], r["problems"]), (0, []))
         self.assertEqual(len(tl.GetItemListInTrack("audio", 1)), 3)
-        self.assertEqual(r["camera_audio_extra_removed"], 9)
+        self.assertEqual(r["camera_audio_extra_removed"], 0)
         (bed,) = tl.GetItemListInTrack("audio", 2)
         self.assertEqual(bed.clip.props["File Path"], r["bed"]["path"])
         self.assertEqual(tl.GetTrackCount("audio"), 2)
@@ -1203,6 +1204,91 @@ class TestTimelineColourAndCameraSound(Base):
             dry = self.go()
         self.assertTrue(all(x["streams_found"] == 4 and x["streams_used"] == 1
                             for x in dry["camera_streams"]), dry["camera_streams"])
+
+    # T36 at the cause: remap a multi-stream source the run imported, before the append.
+    def four_streams(self):
+        orig = rf.Clip.__init__
+
+        def four(clip, *args, **kw):
+            orig(clip, *args, **kw)
+            clip.audio_streams = 1 if str(clip.name).endswith(".wav") else 4
+        patch = mock.patch.object(rf.Clip, "__init__", four)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.manifest["camera_sound"] = True
+
+    def probe_four(self):
+        probe = {"streams": [{"codec_type": "video"}] + [{"codec_type": "audio"}] * 4}
+        for new in (mock.patch.object(dc, "probe", lambda path: probe),
+                    mock.patch.object(dc, "check_tools", lambda **k: None)):
+            new.start()
+            self.addCleanup(new.stop)
+
+    def mapped(self):
+        return [c for c in rf.CALLS if c[1] == "SetAudioMapping"]
+
+    def test_a_clip_the_run_imported_is_remapped_to_one_track_and_nothing_is_deleted(self):
+        self.four_streams()
+        self.probe_four()
+        dry, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["camera_audio_extra_removed"], 0)
+        self.assertEqual(len(self.mapped()), 2)  # one.mov and two.mov, once each
+        self.assertFalse([c for c in rf.CALLS if c[1] == "DeleteClips"])
+        self.assertEqual(tl.GetTrackCount("audio"), 2)
+        self.assertEqual([x["result"] for x in r["camera_remap"]], ["remapped"] * 2)
+        want = {"1": {"channel_idx": [1], "mute": False, "type": "mono"}}
+        self.assertTrue(all(json.loads(c[2][1]) == {"track_mapping": want} for c in self.mapped()))
+
+    def test_a_clip_already_in_the_pool_is_not_remapped_and_the_delete_fallback_runs(self):
+        self.four_streams()
+        self.probe_four()
+        pre = rf.Clip("one.mov", "pre-one", {"File Path": self.one, "FPS": "30.0",
+                                              "Input Color Space": UNTAGGED, "Data Level": "Auto"})
+        pre.audio_streams = 4
+        self.project.pool.root.subs.append(rf.Folder("methods [auto]", [pre]))
+        dry, r, tl = self.built()
+        self.assertEqual(pre.audio_streams, 4)
+        self.assertEqual([c[2][0] for c in self.mapped()], ["two.mov"])
+        self.assertEqual(r["camera_audio_extra_removed"], 6)  # one.mov: two spans, three spilled streams each
+        self.assertFalse([x for x in r["problems"] if "audio" in x], r["problems"])
+        self.assertEqual(tl.GetTrackCount("audio"), 2)
+
+    def test_a_refused_remap_falls_back_to_the_delete(self):
+        self.four_streams()
+        with mock.patch.object(rf.Clip, "refuse_mapping", True, create=True):
+            _, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["camera_audio_extra_removed"], 9)
+        self.assertTrue(all("refused" in x["result"] for x in r["camera_remap"]), r["camera_remap"])
+
+    def test_a_mapping_that_reads_back_differently_falls_back_and_is_put_back(self):
+        self.four_streams()
+        with mock.patch.object(rf.Clip, "drift_mapping", True, create=True):
+            _, r, tl = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertEqual(r["camera_audio_extra_removed"], 9)
+        self.assertTrue(all("read back" in x["result"] for x in r["camera_remap"]), r["camera_remap"])
+        self.assertEqual(len(self.mapped()), 4)  # set, then the original set again, per clip
+
+    def test_a_single_stream_clip_is_left_alone(self):
+        self.manifest["camera_sound"] = True
+        _, r, tl = self.built()
+        self.assertEqual(self.mapped(), [])
+        self.assertEqual(r["camera_remap"], [])
+        self.assertEqual(r["camera_audio_extra_removed"], 0)
+
+    def test_the_dry_run_lists_what_will_be_remapped_and_what_falls_back(self):
+        self.four_streams()
+        self.probe_four()
+        pre = rf.Clip("one.mov", "pre-one", {"File Path": self.one})
+        self.project.pool.root.subs.append(rf.Folder("methods [auto]", [pre]))
+        dry = self.go()
+        rows = {x["source"]: x for x in dry["camera_streams"]}
+        self.assertEqual({k: v["action"] for k, v in rows.items()},
+                         {"one.mov": "fallback", "two.mov": "remap"})
+        self.assertEqual(rows["two.mov"]["mapping"], a.FIRST_STREAM_ONLY)
+        self.assertEqual(self.mapped(), [])  # a dry run writes nothing
 
     def test_music_gain_and_camera_fade_keys_are_checked(self):
         for key, value, msg in (("music_gain_db", -6, "set music"),):
