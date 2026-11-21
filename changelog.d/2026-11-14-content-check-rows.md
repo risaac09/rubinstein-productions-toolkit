@@ -1,0 +1,1 @@
+Add content-check: an offline command that runs the degenerate-edit checks of a published agent-editing benchmark (silent and frozen share, channel balance, repeated footage) plus a cut-inside-a-word row and a face-at-the-edge row on a rendered file, none of which qc runs.
