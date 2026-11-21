@@ -6,14 +6,19 @@
 # The module list is discovered from production/tests/test_*.py, as CI always
 # did, so a new test file is picked up with no edit here. The slowest modules
 # (seconds measured in CI on 2026-11-21) are pinned to a shard to balance the
-# wall time; every other module goes round-robin by sorted name. A pin for a
-# module that no longer exists is ignored. The pins only balance time: the
-# --check step is what guarantees nothing is dropped or run twice.
+# wall time; every other module goes round-robin by sorted name. The first seven pins were
+# written for the Python 3.14 production job; test_assemble, test_audioreport and test_reel
+# were added from the medians of three CI runs, to cut the Python 3.9 rpresolve job's long pole
+# (shard 0, where test_drafts alone runs 286 s). At 156 modules they buy only about 9 s; the measured
+# wall clock is in the PR. The 3.9 job
+# drops the lutlab, rpstills and vertcut modules after the split, so those pins do nothing
+# there. A pin for a module that no longer exists is ignored. The pins only balance time:
+# the --check step is what guarantees nothing is dropped or run twice.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # module:shard, written for N=4 (folded with mod N for any other N)
-PINS="test_drafts:0 test_vertcut_e2e:1 test_vertcut_hook:1 test_mixbuild:2 test_delivercheck:2 test_qc_vp20:3 test_musicbed:3"
+PINS="test_drafts:0 test_vertcut_e2e:1 test_vertcut_hook:1 test_mixbuild:2 test_delivercheck:2 test_qc_vp20:3 test_musicbed:3 test_assemble:1 test_audioreport:2 test_reel:1"
 
 all() { ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##' | LC_ALL=C sort; }
 

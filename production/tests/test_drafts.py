@@ -1534,13 +1534,17 @@ class TestPlateRender(Base):
     """A source whose luma climbs 40 levels a second (about 2 grey levels a frame in the draft),
     so a held frame, or a plate that starts a few frames early or late, cannot pass."""
 
-    def setUp(self):
-        super().setUp()
-        self.src = os.path.join(self.dir, "ramp.mp4")
+    @classmethod
+    def setUpClass(cls):
+        # Built once: no test here writes to the source or the draft, only reads them.
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cdir = os.path.realpath(tmp.name)
+        cls.src = os.path.join(cdir, "ramp.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
                         "color=c=black:s=1920x1080:r=24:d=10,"
                         "geq=lum='min(235,16+40*T)':cb=128:cr=128", "-pix_fmt", "yuv420p",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", self.src],
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", cls.src],
                        check=True)
         m = copy.deepcopy(METHOD)
         m.update(look=None, length_s=5.0)
@@ -1551,16 +1555,16 @@ class TestPlateRender(Base):
                        "text": None} for sec, eff in slots]
         # the windows' own shots are far on in the ramp (6 s, bright); the shots they
         # open over end at 1.5 s and 2.5 s (dark), where the plate carries on from
-        fills = [{"source_path": self.src, "in": a, "out": a + sec}
+        fills = [{"source_path": cls.src, "in": a, "out": a + sec}
                  for (sec, _), a in zip(slots, (0.5, 6.0, 2.0, 8.2))]
-        d = os.path.join(self.dir, "plans", "ramp")
+        d = os.path.join(cdir, "plans", "ramp")
         os.makedirs(d)
         with open(os.path.join(d, "method.json"), "w") as f:
             json.dump(m, f)
         with open(os.path.join(d, "manifest.json"), "w") as f:
             json.dump(methods.to_manifest(m, fills), f)
-        self.doc = drafts.build([d], os.path.join(self.dir, "out"), hw=False, lanes=1)["drafts"][0]
-        self.draft = self.doc["file"]
+        cls.doc = drafts.build([d], os.path.join(cdir, "out"), hw=False, lanes=1)["drafts"][0]
+        cls.draft = cls.doc["file"]
 
     def corner(self, n):
         """Mean grey of a 60 px square in the top left corner of frame n (0 to 255, full range)."""
@@ -1659,20 +1663,24 @@ class TestWindowLayerTiming(Frames, Base):
     SPANS = [(1.0, None), (1.75, "scale-window"), (1.5, "crop-window"), (1.5, "crop-window")]
     START = [0, 24, 66, 102]
 
-    def setUp(self):
-        super().setUp()
-        self.src = os.path.join(self.dir, "colours.mp4")
+    @classmethod
+    def setUpClass(cls):
+        # Built once: the tests only read the decoded frames.
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        cdir = os.path.realpath(tmp.name)
+        cls.src = os.path.join(cdir, "colours.mp4")
         segs = [f"color=c={c}:s=640x360:r=30000/1001:d=5" for c in ("green", "blue", "red")]
         subprocess.run(["ffmpeg", "-v", "error"] + sum((["-f", "lavfi", "-i", x] for x in segs), [])
                        + ["-filter_complex", "concat=n=3:v=1:a=0", "-pix_fmt", "yuv420p",
-                          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", self.src],
+                          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", cls.src],
                        check=True)
         m = copy.deepcopy(METHOD)
-        m.update(look=None, length_s=sum(sec for sec, _ in self.SPANS))
+        m.update(look=None, length_s=sum(sec for sec, _ in cls.SPANS))
         m["rules"]["end"] = None
         m["slots"] = [{**m["slots"][0], "seconds": sec, "effect": eff, "scale": None,
                        "move": "static", "transition_out": {"type": "cut", "frames": 0},
-                       "text": None} for sec, eff in self.SPANS]
+                       "text": None} for sec, eff in cls.SPANS]
         # green, then red under a scale-window, then blue under a crop-window, then red under
         # a crop-window: each window opens over the shot before it playing on. The layer that
         # is the later one of each pair starts a part of a source frame behind.
@@ -1681,20 +1689,21 @@ class TestWindowLayerTiming(Frames, Base):
         out2 = late_by(7.0, True)  # span 3's plate: late; its red window: on time
         in3 = late_by(13.0, False)
         ins = [out0 - 1.0, in1, out2 - 1.5, in3]
-        fills = [{"source_path": self.src, "in": a, "out": a + sec}
-                 for (sec, _), a in zip(self.SPANS, ins)]
-        d = os.path.join(self.dir, "plans", "timing")
+        fills = [{"source_path": cls.src, "in": a, "out": a + sec}
+                 for (sec, _), a in zip(cls.SPANS, ins)]
+        d = os.path.join(cdir, "plans", "timing")
         os.makedirs(d)
         with open(os.path.join(d, "method.json"), "w") as f:
             json.dump(m, f)
         with open(os.path.join(d, "manifest.json"), "w") as f:
             json.dump(methods.to_manifest(m, fills), f)
-        doc = drafts.build([d], os.path.join(self.dir, "out"), hw=False, lanes=1)["drafts"][0]
+        doc = drafts.build([d], os.path.join(cdir, "out"), hw=False, lanes=1)["drafts"][0]
         raw = subprocess.run(["ffmpeg", "-v", "error", "-i", doc["file"], "-f", "rawvideo",
                               "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
-        self.size = self.W * self.H * 3
-        self.raw = raw
-        self.assertEqual(len(raw) // self.size, 24 + 42 + 36 + 36)
+        cls.size = cls.W * cls.H * 3
+        cls.raw = raw
+        if len(raw) // cls.size != 24 + 42 + 36 + 36:
+            raise AssertionError(len(raw) // cls.size)
 
     def test_a_scale_window_is_on_screen_from_its_first_frame(self):
         first = self.START[1]
