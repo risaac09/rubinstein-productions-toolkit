@@ -1,0 +1,1 @@
+Review fixes: contract-probe no longer prints a raw audio mapping (it can carry file paths) and says "could not be read back" for an unreadable restore; the scripting changelog check reads full month names, flags a new version heading, and says when its date cannot be read; an unreadable offsite check time now counts as a stale record.

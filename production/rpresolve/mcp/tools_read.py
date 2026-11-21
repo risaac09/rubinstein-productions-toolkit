@@ -84,9 +84,15 @@ def _scripting_info():
         version = re.search(r"^##\s+(\S+)", text, re.M)
         info["last_updated"] = date and date.group(1)
         info["newest_version"] = version and version.group(1)
-        fmt = "%d %b %Y"
-        info["changed"] = (datetime.datetime.strptime(info["last_updated"], fmt)
-                           > datetime.datetime.strptime(SCRIPTING_AUDITED_DATE, fmt))
+        def day(text):
+            for fmt in ("%d %b %Y", "%d %B %Y"):
+                try:
+                    return datetime.datetime.strptime(text, fmt)
+                except ValueError:
+                    pass
+            raise ValueError(text)
+        info["changed"] = (day(info["last_updated"]) > day(SCRIPTING_AUDITED_DATE)
+                           or bool(info["newest_version"]) and info["newest_version"] != SCRIPTING_AUDITED_VERSION)
     except (OSError, ValueError, TypeError):
         pass  # missing, unreadable or malformed: staleness cannot be judged
     return info
@@ -150,6 +156,8 @@ def resolve_status(args, ctx):
     if out["scripting"]["changed"]:
         out["summary"] += (f"; the Resolve scripting changelog ({out['scripting']['last_updated']}) is "
                            f"newer than the toolkit's audit ({SCRIPTING_AUDITED_DATE})")
+    elif out["scripting"]["last_updated"] and out["scripting"]["changed"] is None:
+        out["summary"] += "; the scripting changelog date could not be read"
     if out["server"].get("dirty"):
         out["summary"] += "; the toolkit checkout has uncommitted changes"
     return out
