@@ -1,0 +1,1 @@
+ograf-render: a --chrome or CHROME path that is missing, a directory or not executable now exits 3 instead of falling back to another browser or crashing; the headless flag is chosen from the resolved binary, not its name; the Puppeteer cache pick skips builds for other platforms; the temp profile folder is removed when Chrome cannot start.

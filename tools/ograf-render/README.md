@@ -34,7 +34,7 @@ The headless-only build has no app bundle, so a render never activates a Chrome 
 | `--keep-frames`, `--no-video` | Keep `OUT/frames` (never replaces a folder already there); stop before ffmpeg. |
 | `--strict-fonts` | A missing font fails the run instead of warning. |
 | `--lint` | Run Resolve's own `lint-ograf.py` when it is installed (`OGRAF_LINT` sets another path). It is never copied here. |
-| `--chrome PATH` | Chrome binary; also the `CHROME` environment variable. Default order: `--chrome`, `CHROME`, `chrome-headless-shell` on PATH, the newest one in the Puppeteer cache (`PUPPETEER_CACHE_DIR`, else `~/.cache/puppeteer`), then the usual Chrome and Chromium names. |
+| `--chrome PATH` | Chrome binary; also the `CHROME` environment variable. Default order: `--chrome`, `CHROME`, `chrome-headless-shell` on PATH, the newest one in the Puppeteer cache (`PUPPETEER_CACHE_DIR`, else `~/.cache/puppeteer`; builds for other platforms are skipped), then the usual Chrome and Chromium names. A browser named by `--chrome` or `CHROME` that is not an executable file exits 3; it never falls back to another one. |
 
 Exit codes: `0` ok, `1` a check failed (determinism, `--strict-fonts`, linter errors), `2` refused or bad input, `3` Chrome or ffmpeg missing.
 

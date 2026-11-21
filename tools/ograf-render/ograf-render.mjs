@@ -153,16 +153,21 @@ function serve(root, main) {
 // ---------------------------------------------------------------------------
 
 function requireChrome(arg) {
-  const bin = findChrome(arg);
+  let bin;
+  try { bin = findChrome(arg); } catch (e) { throw new Fail(`Chrome: ${e.message}`, 3); }
   if (!bin) throw new Fail("Chrome not found; pass --chrome PATH or set CHROME (chrome-headless-shell is preferred, see README)", 3);
   return bin;
 }
 
 async function launchChrome(bin) {
   const dir = mkdtempSync(join(tmpdir(), "ograf-chrome-"));
-  const proc = spawn(bin, [...(isHeadlessShell(bin) ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${dir}`,
+  let proc;
+  try { proc = spawn(bin, [...(isHeadlessShell(bin) ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--disable-dev-shm-usage", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu",
-    "--force-color-profile=srgb", ...(process.getuid?.() === 0 || process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
+    "--force-color-profile=srgb", ...(process.getuid?.() === 0 || process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" }); }
+  catch (e) { rmSync(dir, { recursive: true, force: true }); throw new Fail(`Chrome could not start: ${e.message}`, 3); }
+  let spawnError;
+  proc.on("error", (e) => { spawnError = e; });
   // Chrome may still be writing to its profile as it dies, so retry; a leftover temp dir must not fail a render.
   const cleanup = () => {
     try { proc.kill("SIGKILL"); } catch {}
@@ -170,7 +175,8 @@ async function launchChrome(bin) {
   };
   try {
     const portFile = join(dir, "DevToolsActivePort");
-    for (let i = 0; i < 300 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 300 && !existsSync(portFile) && !spawnError; i++) await new Promise((r) => setTimeout(r, 100));
+    if (spawnError) throw new Fail(`Chrome could not start: ${spawnError.message}`, 3);
     if (!existsSync(portFile)) throw new Fail("Chrome did not open a DevTools port", 3);
     const port = readFileSync(portFile, "utf8").split("\n")[0];
     let page;
