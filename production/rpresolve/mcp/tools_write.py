@@ -28,6 +28,7 @@ from .. import cli
 from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
+from .. import clipkeywords
 from .. import proxies as rpproxies, relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
@@ -66,7 +67,7 @@ def _journalled(tool, args, run):
     try:
         result = run()
     except BaseException as e:
-        done = {k: getattr(e, k) for k in ("relinked", "stabilized", "effects_added")
+        done = {k: getattr(e, k) for k in ("relinked", "stabilized", "effects_added", "keywords_written")
                 if getattr(e, k, None)}
         warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}", done or None)
         if warn:
@@ -1098,6 +1099,27 @@ def relink(args, ctx):
     return r
 
 
+def clip_keywords(args, ctx):
+    _require_sha(args)
+    with open(_existing(args["plan"], "plan"), encoding="utf-8") as f:
+        rows, problems = clipkeywords.parse_plan(f.read())
+    if problems:
+        raise ValueError("the plan has problems: " + "; ".join(problems))
+
+    def run():
+        r = clipkeywords.clip_keywords(ctx.session.get(), args["project"], rows,
+                                       dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                       check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"))
+        c = ", ".join(f"{n} {k}" for k, n in sorted(r["counts"].items()))
+        r["summary"] = (("would write: " if r["dry_run"] else "wrote, each read back: ") + c
+                        + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
+                        + _how(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("clip_keywords", args, run)
+
+
 # ---------------------------------------------------------------------------
 # registration
 # ---------------------------------------------------------------------------
@@ -1851,3 +1873,19 @@ def register(registry):
             **DRY_RUN},
          "required": ["file", "destination"], "additionalProperties": False},
         deliver_fix_loudness, title="Fix a render's loudness", annotations=WRITE))
+    registry.add(Tool(
+        "clip_keywords",
+        "Write theme keywords and a description onto media pool clips from a TSV plan "
+        "(clip_id, keywords separated by semicolons, description), so footage can be "
+        "filtered by theme in Resolve. Keywords are added after a clip's existing ones (never "
+        "removed or reordered, duplicates skipped); the description is set only where the "
+        "clip's is empty, and a clip with another description is reported and left alone. "
+        "A clip not found, offline or ambiguous (two clips of one name) is reported, never "
+        "guessed; use a unique id. Each write is read back. Check the plan offline with "
+        "`resolve_workflow.py clip-keywords-check`. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "plan": {"type": "string", "description": "Absolute path of the plan TSV."},
+            **DRY_RUN},
+         "required": ["project", "plan"], "additionalProperties": False},
+        clip_keywords, title="Write clip keywords", annotations=WRITE))
