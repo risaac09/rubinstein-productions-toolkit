@@ -8,8 +8,9 @@ Run from production/:
 
 MANIFEST is a cut manifest, read through cutlist.load_manifest. ITEMS is the
 saved output of the timeline_items read: one result, or a list of results,
-for example one with track_type video and one with track_type audio. Every
-page must be saved (a result with a next_offset is refused).
+for example one with track_type video and one with track_type audio. --items
+takes several files; pages are stitched in order, and a page that a next_offset
+promises but the files lack is a FAIL row.
 
 The plan is what cut builds: the clip's spans laid end to end on V1 from the
 timeline's start frame. Frames are counted as cut counts them: cutlist.frames
@@ -17,7 +18,15 @@ at the manifest's own fps number, rounding half up, so a span plays source
 frames [frame(in), frame(out)) and an item must hold exactly that start and
 length. A source end is not compared; the length gives it.
 
-One table, FAIL rows first. Exit 0 all pass, 1 any FAIL, 2 usage or bad input.
+Sound is expected as interchange places it: audio_lead and audio_tail move the
+sound's start and end in record and source frames, and the neighbouring span's
+sound gives way by the same amount. cut ignores both fields, so a timeline cut
+builds from a manifest that carries them FAILs with "not built".
+
+Anything the tool could not compare is a WARN row, printed and counted in the
+last line ("N rows not compared"); WARN does not change the exit code.
+
+One table, FAIL rows first, then WARN. Exit 0 no FAIL, 1 any FAIL, 2 usage or bad input.
 """
 
 import argparse
@@ -26,6 +35,7 @@ import os
 import sys
 
 from rpresolve import cutlist
+from rpresolve.deliver import exact_fps
 
 RATE_TOLERANCE = 0.01  # 29.97 as a number against Resolve's 29.97003
 SOUND_TRACK = 1        # where cut and assemble_timeline put the camera sound
@@ -57,14 +67,20 @@ def _load_json(path, what):
         raise DiffError(f"{what} {path} is not JSON: {e}") from None
 
 
-def load_items(path):
-    """({"start_frame", "fps", "video": [rows], "audio": [rows]}) from a
-    timeline_items file, checked key by key."""
-    raw = _load_json(path, "items")
-    results = [raw] if isinstance(raw, dict) else raw
-    if not isinstance(results, list) or not results or not all(isinstance(r, dict) for r in results):
-        raise DiffError(f"items {path}: expected a timeline_items result or a list of them")
-    out = {"start_frame": None, "fps": None, "video": [], "audio": [], "audio_read": False}
+def load_items(paths):
+    """{"start_frame", "fps", "video": [rows], "audio": [rows], "audio_read",
+    "page_problems"} from timeline_items files, checked key by key. Pages of
+    one track type are stitched in the order given."""
+    results = []
+    for path in paths:
+        raw = _load_json(path, "items")
+        got = [raw] if isinstance(raw, dict) else raw
+        if not isinstance(got, list) or not got or not all(isinstance(r, dict) for r in got):
+            raise DiffError(f"items {path}: expected a timeline_items result or a list of them")
+        results += got
+    out = {"start_frame": None, "fps": None, "video": [], "audio": [], "audio_read": False,
+           "page_problems": []}
+    expect = {}  # per kind, the offset its next page must carry
     for n, res in enumerate(results, 1):
         where = f"items result {n}"
         kind = res.get("track_type")
@@ -72,13 +88,18 @@ def load_items(path):
             raise DiffError(f"{where}: track_type is {kind!r}, not video or audio")
         if not isinstance(res.get("rows"), list):
             raise DiffError(f"{where}: no 'rows' list")
-        if res.get("next_offset") is not None:
-            raise DiffError(f"{where}: next_offset is {res['next_offset']}; save every page of "
-                            "timeline_items (raise its limit)")
+        offset, nxt = res.get("offset", 0), res.get("next_offset")
+        if not _whole(offset) or not (nxt is None or _whole(nxt)):
+            raise DiffError(f"{where}: offset and next_offset must be whole numbers")
+        due = expect.get(kind, 0)
+        if due is not None and offset != due:
+            out["page_problems"].append(f"{kind} page at offset {offset} where {due} was due")
+        expect[kind] = nxt
         tl = res.get("timeline") or {}
         if kind == "video":
-            out["start_frame"] = _need(tl, "start_frame", f"{where}: timeline")
-            out["fps"] = tl.get("fps")
+            if out["start_frame"] is None:
+                out["start_frame"] = _need(tl, "start_frame", f"{where}: timeline")
+                out["fps"] = tl.get("fps")
         else:
             out["audio_read"] = True
         for i, row in enumerate(res["rows"], 1):
@@ -89,7 +110,12 @@ def load_items(path):
                 _need(row, key, w)
             if kind == "video" and row.get("clip") is not None:
                 _need(row, "source_start", w)
+            if kind == "audio":
+                _need(row, "source_start", w)
             out[kind].append(row)
+    for kind, due in expect.items():
+        if due is not None:
+            out["page_problems"].append(f"{kind} read ends with next_offset {due} and no page after it")
     if out["start_frame"] is None:
         raise DiffError("items hold no video result; save timeline_items with track_type video")
     return out
@@ -123,36 +149,62 @@ def _row(status, check, detail):
     return {"status": status, "check": check, "detail": detail}
 
 
+def _same_path(a, b):
+    return os.path.normpath(a) == os.path.normpath(b)
+
+
+def audio_plan(clip, fps):
+    """Per span, the sound as interchange.timeline places it, in frames:
+    (record start, record end, source start). Lead and tail move it, and the
+    neighbour gives way."""
+    sp = clip["spans"]
+    lead = [cutlist.frame(x.get("audio_lead", 0), fps) for x in sp]
+    tail = [cutlist.frame(x.get("audio_tail", 0), fps) for x in sp]
+    out, rec = [], 0
+    for k, x in enumerate(sp):
+        n = cutlist.frames(x, fps)
+        pt = tail[k - 1] if k else 0
+        nl = lead[k + 1] if k + 1 < len(sp) else 0
+        out.append((rec - lead[k] + pt, rec + n + tail[k] - nl,
+                    cutlist.frame(x["in"], fps) - lead[k] + pt))
+        rec += n
+    return out
+
+
 def diff(m, clip, fps, items):
     rows = []
     base = items["start_frame"]
     plan, at = [], 0
+    aplan = audio_plan(clip, fps)
     for i, s in enumerate(clip["spans"], 1):
         n = cutlist.frames(s, fps)
         plan.append({"n": i, "rec": at, "len": n, "src": cutlist.frame(s["in"], fps),
-                     "file": os.path.basename(cutlist.source_for(m, s)["path"])})
+                     "path": cutlist.source_for(m, s)["path"],
+                     "split": bool(s.get("audio_lead") or s.get("audio_tail"))})
         at += n
     v1 = sorted((r for r in items["video"] if r["track"] == 1 and r.get("clip") is not None),
                 key=lambda r: r["start"])
     upper = [r for r in items["video"] if r["track"] != 1 and r.get("clip") is not None]
-    transitions = sum(1 for r in items["video"] if r.get("clip") is None)
+    # a V1 item with no clip is a transition; elsewhere it is a solid or a title, unplanned
+    transitions = [r for r in items["video"] if r["track"] == 1 and r.get("clip") is None]
+    unplanned = [r for r in items["video"] if r["track"] != 1 and r.get("clip") is None]
 
-    tl_fps = items["fps"]
-    try:
-        tl_fps = float(tl_fps)
-    except (TypeError, ValueError):
-        tl_fps = None
-    if tl_fps is None:
-        rows.append(_row("PASS", "frame rate", "timeline rate not in ITEMS, not compared"))
-    elif abs(tl_fps - fps) > RATE_TOLERANCE:
-        rows.append(_row("FAIL", "frame rate", f"timeline {tl_fps:g}, manifest {fps:g}"))
+    if items["page_problems"]:
+        rows.append(_row("FAIL", "pages", "; ".join(items["page_problems"])))
+
+    rate = exact_fps(items["fps"])
+    if rate is None:
+        rows.append(_row("FAIL", "frame rate", f"timeline rate {items['fps']!r} is not readable"))
+    elif abs(rate - fps) > RATE_TOLERANCE:
+        rows.append(_row("FAIL", "frame rate", f"timeline {rate:g}, manifest {fps:g}"))
     else:
-        rows.append(_row("PASS", "frame rate", f"{tl_fps:g}"))
+        rows.append(_row("PASS", "frame rate", f"{rate:g}"))
 
-    ok = len(v1) == len(plan)
-    rows.append(_row("PASS" if ok else "FAIL", "item count",
-                     f"{len(v1)} on V1, plan has {len(plan)}" +
-                     (f" ({transitions} transition item(s) not counted)" if transitions else "")))
+    rows.append(_row("PASS" if len(v1) == len(plan) else "FAIL", "item count",
+                     f"{len(v1)} on V1, plan has {len(plan)}"))
+    if transitions:
+        rows.append(_row("WARN", "transitions",
+                         f"{len(transitions)} transition item(s) on V1 not compared"))
 
     by_start = {}
     for r in v1:
@@ -168,16 +220,23 @@ def diff(m, clip, fps, items):
         it = cands.pop(0)
         matched.add(id(it))
         found[p["n"]] = it
-        bad = []
+        bad, warn = [], []
         if it["duration"] != p["len"]:
             bad.append(f"{it['duration']} frames, plan {p['len']}")
         if it["source_start"] != p["src"]:
             bad.append(f"source starts at {it['source_start']}, plan {p['src']}")
+        if "enabled" not in it:
+            warn.append("enabled not in ITEMS, not compared")
+        elif it["enabled"] is not True:
+            bad.append("disabled")
         path = (it.get("media") or {}).get("File Path")
-        if path and os.path.basename(path) != p["file"]:
-            bad.append(f"plays {os.path.basename(path)}, plan {p['file']}")
-        rows.append(_row("FAIL" if bad else "PASS", f"span {p['n']}",
-                         "; ".join(bad) or f"record {p['rec']}, {p['len']} frames, source {p['src']}"))
+        if not path:
+            warn.append("not compared by path: the item names no file")
+        elif not _same_path(path, p["path"]):
+            bad.append(f"plays {path}, plan {p['path']}")
+        status = "FAIL" if bad else "WARN" if warn else "PASS"
+        rows.append(_row(status, f"span {p['n']}", "; ".join(bad + warn) or
+                         f"record {p['rec']}, {p['len']} frames, source {p['src']}"))
 
     gaps, overlaps, end = [], [], base
     for r in v1:
@@ -198,39 +257,62 @@ def diff(m, clip, fps, items):
                          "no audio read in ITEMS; save timeline_items with track_type audio"))
     else:
         bad = []
-        for p in plan:
+        for p, (a0, a1, asrc) in zip(plan, aplan):
             v = found.get(p["n"])
             if v is None:
                 continue
             uid = (v.get("media") or {}).get("unique_id")
-            under = [a for a in items["audio"] if a["start"] <= v["start"] and a["end"] >= v["end"]
-                     and (uid is None or (a.get("media") or {}).get("unique_id") in (None, uid))]
-            if not under:
+            near = [a for a in items["audio"] if a["start"] - base < p["rec"] + p["len"]
+                    and a["end"] - base > p["rec"]
+                    and (uid is None or (a.get("media") or {}).get("unique_id") in (None, uid))]
+            if not near:
                 bad.append(f"span {p['n']}: no audio item under it")
-            elif not any(a["track"] == SOUND_TRACK for a in under):
-                tracks = sorted({a["track"] for a in under})
-                bad.append(f"span {p['n']}: audio on " + ", ".join(f"A{t}" for t in tracks) +
-                           f", expected A{SOUND_TRACK}")
+                continue
+            exact = [a for a in near if a["start"] - base == a0 and a["end"] - base == a1
+                     and a["source_start"] == asrc]
+            if any(a["track"] == SOUND_TRACK for a in exact):
+                continue
+            if exact:
+                bad.append(f"span {p['n']}: audio on " + ", ".join(
+                    f"A{t}" for t in sorted({a['track'] for a in exact})) + f", expected A{SOUND_TRACK}")
+                continue
+            a = next((x for x in near if x["track"] == SOUND_TRACK), near[0])
+            why = []
+            if a["start"] - base != a0 or a["end"] - base != a1:
+                why.append(f"audio runs {a['start'] - base}-{a['end'] - base}, plan {a0}-{a1}")
+            if a["source_start"] != asrc:
+                why.append(f"audio source starts at {a['source_start']}, plan {asrc}")
+            if p["split"] and a["start"] - base == p["rec"] and a["end"] - base == p["rec"] + p["len"]:
+                why.append("the manifest's audio_lead or audio_tail is not built (cut ignores both)")
+            bad.append(f"span {p['n']}: " + "; ".join(why))
         rows.append(_row("FAIL" if bad else "PASS", "audio under video",
-                         "; ".join(bad) or f"{len(found)} video item(s) each have audio on A{SOUND_TRACK}"))
+                         "; ".join(bad) or f"{len(found)} video item(s) each have their audio on "
+                                           f"A{SOUND_TRACK}, source in step"))
 
     extra = [f"V1 item at record {r['start'] - base} ({r['duration']} frames)"
              for r in v1 if id(r) not in matched]
-    extra += [f"V{r['track']} item at record {r['start'] - base} ({r['duration']} frames)" for r in upper]
+    extra += [f"V{r['track']} item at record {r['start'] - base} ({r['duration']} frames)"
+              for r in upper]
+    extra += [f"V{r['track']} item at record {r['start'] - base} "
+              f"({r['duration']} frames, no clip: a title or solid)" for r in unplanned]
     rows.append(_row("FAIL" if extra else "PASS", "extra items", "; ".join(extra) or "none"))
-    rows.sort(key=lambda r: r["status"] != "FAIL")  # stable: FAIL first
+    order = {"FAIL": 0, "WARN": 1, "PASS": 2}
+    rows.sort(key=lambda r: order[r["status"]])  # stable
     return rows
 
 
 def render(rows):
-    return "\n".join(f"{r['status']:<5} {r['check']:<18} {r['detail']}" for r in rows)
+    n = {k: sum(1 for r in rows if r["status"] == k) for k in ("FAIL", "WARN", "PASS")}
+    table = "\n".join(f"{r['status']:<5} {r['check']:<18} {r['detail']}" for r in rows)
+    return f"{table}\n{n['FAIL']} FAIL, {n['WARN']} WARN, {n['PASS']} PASS; {n['WARN']} rows not compared"
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python3 -m rpresolve.build_diff", allow_abbrev=False,
                                 description=__doc__.split("\n\n")[0])
     p.add_argument("--manifest", required=True, help="a cut manifest (see rpresolve/cutlist.py)")
-    p.add_argument("--items", required=True, help="saved timeline_items output (video, and audio)")
+    p.add_argument("--items", required=True, nargs="+",
+                   help="saved timeline_items output (video, and audio); several files are pages in order")
     p.add_argument("--clip", help="the manifest clip (needed when it holds more than one)")
     args = p.parse_args(argv)
     try:

@@ -91,7 +91,7 @@ class TableRows(Base):
     def test_all_pass(self):
         code, out, _ = self.run_diff(good_items())
         self.assertEqual(code, 0, out)
-        self.assertNotIn("FAIL", out)
+        self.assertFalse([ln for ln in out.splitlines() if ln.startswith("FAIL")])
 
     def test_item_count(self):
         v = good_video()[:2]
@@ -161,7 +161,7 @@ class TableRows(Base):
         a[1] = arow(2, START + 60, 30, 250)  # the picture stayed, the sound moved
         code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)])
         self.assertEqual(code, 1)
-        self.assertIn("span 2: no audio item", out)
+        self.assertIn("span 2: audio runs 60-90, plan 50-80", out)
 
     def test_extra_item_on_v1(self):
         v = good_video() + [vrow(4, START + 105, 10, 900)]
@@ -285,11 +285,12 @@ class Hostile(Base):
         self.assertEqual(code, 0, out)
 
     def test_incomplete_page(self):
-        r = result("video", good_video())
-        r["next_offset"] = 3
-        code, _, err = self.run_diff([r, result("audio", good_audio())])
-        self.assertEqual(code, 2)
-        self.assertIn("next_offset", err)
+        r = result("video", good_video()[:2])
+        r["next_offset"] = 2
+        code, out, _ = self.run_diff([r, result("audio", good_audio())])
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL", self.row(out, "pages"))
+        self.assertIn("next_offset 2", out)
 
     def test_non_json_items(self):
         m = self.write("m.json", MANIFEST)
@@ -330,6 +331,130 @@ class Hostile(Base):
             bd.main(["--manifest", m, "--items", i])
         after = {f: os.path.getmtime(os.path.join(self.tmp.name, f)) for f in os.listdir(self.tmp.name)}
         self.assertEqual(before, after)
+
+
+def split_manifest(**spans):
+    m = copy.deepcopy(MANIFEST)
+    for idx, kv in spans.items():
+        m["clips"][0]["spans"][int(idx[1:])].update(kv)
+    return m
+
+
+class SplitEdits(Base):
+    """Audio as interchange places it: the neighbour gives way."""
+
+    def test_j_cut_built_as_planned_passes(self):
+        m = split_manifest(s1={"audio_lead": 0.2})  # 5 frames
+        a = [arow(1, START, 45, 0), arow(2, START + 45, 35, 245), arow(3, START + 80, 25, 500)]
+        code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)], manifest=m)
+        self.assertEqual(code, 0, out)
+
+    def test_l_cut_built_as_planned_passes(self):
+        m = split_manifest(s0={"audio_tail": 0.2})
+        a = [arow(1, START, 55, 0), arow(2, START + 55, 25, 255), arow(3, START + 80, 25, 500)]
+        code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)], manifest=m)
+        self.assertEqual(code, 0, out)
+
+    def test_cut_ignores_lead_so_the_diff_says_so(self):
+        m = split_manifest(s1={"audio_lead": 0.2})
+        code, out, _ = self.run_diff(good_items(), manifest=m)
+        self.assertEqual(code, 1)
+        self.assertIn("audio_lead", self.row(out, "audio"))
+        self.assertIn("not built", out)
+
+    def test_audio_source_offset_wrong(self):
+        a = good_audio()
+        a[1] = arow(2, START + 50, 30, 251)
+        code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)])
+        self.assertEqual(code, 1)
+        self.assertIn("audio source starts at 251, plan 250", out)
+
+    def test_one_unedited_audio_item_under_the_cut(self):
+        a = [arow(1, START, 105, 0)]
+        code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)])
+        self.assertEqual(code, 1)
+        self.assertIn("span 2", self.row(out, "audio"))
+
+
+class Review2(Base):
+    def test_disabled_item(self):
+        v = good_video()
+        v[1]["enabled"] = False
+        code, out, _ = self.run_diff([result("video", v), result("audio", good_audio())])
+        self.assertEqual(code, 1)
+        self.assertIn("disabled", self.row(out, "span 2"))
+
+    def test_same_basename_other_card(self):
+        m = copy.deepcopy(MANIFEST)
+        m["source_path"] = "/cardA/take1.mov"
+        v = [vrow(i + 1, r["start"], r["duration"], r["source_start"], path="/cardA/take1.mov")
+             for i, r in enumerate(good_video())]
+        v[1] = vrow(2, START + 50, 30, 250, path="/cardB/take1.mov")
+        a = [arow(i + 1, r["start"], r["duration"], r["source_start"]) for i, r in enumerate(v)]
+        code, out, _ = self.run_diff([result("video", v), result("audio", a)], manifest=m)
+        self.assertEqual(code, 1)
+        self.assertIn("/cardB/take1.mov", self.row(out, "span 2"))
+
+    def test_no_path_is_a_warning_and_counted(self):
+        v = good_video()
+        v[0]["media"] = {"name": "take1", "unique_id": "m1"}
+        code, out, _ = self.run_diff([result("video", v), result("audio", good_audio())])
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN", self.row(out, "span 1"))
+        self.assertIn("not compared by path", out)
+        self.assertIn("1 rows not compared", out)
+
+    def test_clean_run_says_zero_not_compared(self):
+        _, out, _ = self.run_diff(good_items())
+        self.assertIn("0 rows not compared", out)
+
+    def test_v2_title_with_no_clip(self):
+        v = good_video()
+        t = vrow(1, START, 50, 0, track=2)
+        t["clip"] = None
+        code, out, _ = self.run_diff([result("video", v + [t]), result("audio", good_audio())])
+        self.assertEqual(code, 1)
+        self.assertIn("V2 item at record 0", self.row(out, "extra items"))
+
+    def test_ntsc_df_timeline_against_25(self):
+        items = [result("video", good_video(), fps="29.97 DF"), result("audio", good_audio())]
+        code, out, _ = self.run_diff(items)
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL", self.row(out, "frame rate"))
+
+    def test_unparseable_timeline_rate(self):
+        items = [result("video", good_video(), fps="fast"), result("audio", good_audio())]
+        code, out, _ = self.run_diff(items)
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL", self.row(out, "frame rate"))
+
+    def paged(self):
+        v = good_video()
+        p1 = result("video", v[:2])
+        p1["next_offset"], p1["total"], p1["returned"] = 2, 3, 2
+        p2 = result("video", v[2:])
+        p2["offset"], p2["total"], p2["returned"] = 2, 3, 1
+        return p1, p2, result("audio", good_audio())
+
+    def test_two_pages_in_one_list(self):
+        p1, p2, a = self.paged()
+        code, out, _ = self.run_diff([p1, p2, a])
+        self.assertEqual(code, 0, out)
+
+    def test_two_pages_in_two_files(self):
+        p1, p2, a = self.paged()
+        m = self.write("m.json", MANIFEST)
+        files = [self.write(f"i{n}.json", x) for n, x in enumerate([p1, p2, a])]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = bd.main(["--manifest", m, "--items", *files])
+        self.assertEqual(code, 0, out.getvalue())
+
+    def test_second_page_missing(self):
+        p1, _, a = self.paged()
+        code, out, _ = self.run_diff([p1, a])
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL", self.row(out, "pages"))
 
 
 class Cli(unittest.TestCase):
