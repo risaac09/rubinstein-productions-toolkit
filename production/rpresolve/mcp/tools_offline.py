@@ -275,6 +275,8 @@ def _framing_plan(args, ctx):
     aspects = args.get("aspects") or [reframe.MASTER]
     if len(aspects) != 1:
         raise ValueError("a framing plan for items is for one shape; give one aspect")
+    hand = reframe.load_hand(_existing(args["hand"], "hand"), len(args["items"])) \
+        if args.get("hand") else None
     items = []
     for it in args["items"]:
         it = dict(it)
@@ -297,7 +299,8 @@ def _framing_plan(args, ctx):
                                subject_region=args.get("subject_region"),
                                min_face_height=args.get("min_face_height"),
                                prefer=args["prefer"], allow_bars=args["allow_bars"],
-                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel)
+                               scene=bool(args.get("scene")), check_cancel=ctx.check_cancel,
+                               hand=hand)
     except BaseException:
         _drop_empty(None if args.get("out") else out)
         raise
@@ -310,7 +313,9 @@ def _framing_plan(args, ctx):
                           f"{p['out'][0]}x{p['out'][1]}: {n['none']} need nothing, "
                           f"{n[reframe.PASS] - n['none']} pass with a move, "
                           f"{n[reframe.FALLBACK]} fallback, {n[reframe.MANUAL]} manual, "
-                          f"{n[reframe.NO_FACE]} no face"),
+                          f"{n[reframe.NO_FACE]} no face"
+                          + (f", {n[reframe.HAND]} by hand" if n[reframe.HAND] else "")
+                          + ("; scene reads unavailable" if p.get("scene") is False else "")),
               "counts": n, "verdict": "review" if person else "pass", "plan": out,
               "tsv": stem + ".tsv"}
     result.update(_page(p["rows"], args))
@@ -320,6 +325,8 @@ def _framing_plan(args, ctx):
 
 def reframe_plan(args, ctx):
     from .. import reframe
+    if args.get("hand") and not args.get("items"):
+        raise ValueError("hand frames the items of a framing plan: give items with it")
     if args.get("items") or not args.get("manifest"):
         return _framing_plan(args, ctx)
     args = dict(args, aspects=args.get("aspects") or ["9x16", "1x1"])
@@ -1021,7 +1028,7 @@ def register(registry):
         "pass. Where the footage has an audience, name the subject with subject_region or "
         "min_face_height. Footage with no speech needs a manifest with \"speech\": false and "
         "only source_path and clips (no words, approved text or hash); cut still needs a "
-        "speech manifest. A span with no face gets no crop. Writes a copy of the manifest "
+        "speech manifest. A span with no face gets no crop (with items, unless hand names a centre for it; a hand entry also replaces a face crop). Writes a copy of the manifest "
         "with per-span reframes (cut reads them) and a TSV and JSON report beside it. "
         "Heads: the face box stops at the brows, so the head's top is taken 0.6 face heights "
         "above it; the crop moves up, never down, to keep the whole head and 0.65 face "
@@ -1053,6 +1060,18 @@ def register(registry):
                               "it (6048x4032 for the Pyxis)."}},
                   "required": ["path"], "additionalProperties": False},
                   "description": "A timeline's clips, for a framing plan (one aspect)."},
+              "hand": {"type": "string",
+                       "description": "With items: absolute path of a JSON file of hand "
+                       "framing, {\"<item number from 1>\": {\"x\": 0.4, \"y\": 0.5, \"zoom\": "
+                       "1.15}} (y and zoom optional; a bare number is x). x and y are shares 0 "
+                       "to 1 of the displayed (desqueezed) source; zoom multiplies the fill "
+                       "scale (1 to 4, default 1; give the item's current Zoom so "
+                       "reframe_apply keeps it) and the centre clamps for the zoomed width. An item with an entry is cropped "
+                       "there at the widest filled scale (times zoom) and named hand, whatever "
+                       "the face result (pass, fallback, bars, manual, no_face): the hand "
+                       "entry wins, with no head check, and a face crop it replaces is named in "
+                       "the item's review list. An item with no entry is unchanged. A share outside 0 to 1, or "
+                       "an item that does not exist, is refused before any work."},
               "master_size": {"type": "array", "items": {"type": "integer", "minimum": 1},
                               "minItems": 2, "maxItems": 2,
                               "description": "The master timeline's width and height."},
@@ -1198,7 +1217,7 @@ def register(registry):
               "review_log": {"type": "string",
                              "description": "Absolute path of the review log (review/events.jsonl): "
                              "the ear_check row passes only on a logged approve or go "
-                             "(step sound, question ear_check) naming this file."}},
+                             "(step sound, question ear_check) whose review_sha256 is this file's own sha256."}},
              ["file", "destination"]),
         deliver_check, title="Check a deliverable", annotations=READ))
     registry.add(Tool(
@@ -1232,7 +1251,7 @@ def register(registry):
         "is given. Sound rows (lra, phone_proxy, true peak and silence at each cut, "
         "speech_vs_rest and voice_vs_bed with words, stems_sum with stems), sha256, privacy "
         "(metadata tags: location, serial, name, path, email), and for a social "
-        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref), colour, stabiliser. WARN rows never fail the table. Never connects "
+        "destination social_fps and safe_zone. Opt-in rows: sync (sync_ref; the offset is gate-ready, its drift is advisory), colour and stabiliser (both advisory; thresholds calibrated 2026-11-14 on 39 renders and proxies; a failed read is a WARN row). WARN rows never fail the table. The privacy row warns on a camera id or name only with a destination (a delivery); a camera original or proxy keeps its own, so pass a destination to check a master. Never connects "
         "to Resolve.",
         _obj({"file": {"type": "string", "description": "Absolute path of the rendered file."},
               "destination": {"type": "string", "minLength": 1,
@@ -1255,13 +1274,16 @@ def register(registry):
                          "description": "Expected sha256 of the file."},
               "sync_ref": {"type": "string", "description": "Absolute path of the reference "
                            "(the camera or recorder file the sound should line up with): adds "
-                           "the sync row, offset and drift against it (needs numpy)."},
+                           "the sync row: offset (FAIL over one frame at the file's rate, WARN over half) and "
+                           "drift over several windows (advisory; needs numpy)."},
               "colour": {"type": "boolean", "default": False,
-                         "description": "Adds the colour row: luma legal range (FAIL outside "
-                         "16-235) and clipped pixels (WARN)."},
+                         "description": "Adds the colour row (advisory): every frame at 1.5 a "
+                         "second, bars masked; FAIL over 0.1 percent of the picture at hard "
+                         "clipping, WARN over 1 percent above Y 235; the low side is reported."},
               "stabiliser": {"type": "boolean", "default": False,
-                             "description": "Adds the stabiliser row: residual frame-to-frame "
-                             "shake of the render (WARN; judges the picture, not the setting)."},
+                             "description": "Adds the stabiliser row (advisory, never a gate): the "
+                             "worst of 12 bursts' frame-to-frame shake, sub-pixel (WARN; judges "
+                             "the picture, not the setting)."},
               "set": {"type": "array", "items": {"type": "string"},
                       "description": "KEY=VALUE threshold overrides (keys are in "
                       "rpresolve/qc.py THRESHOLDS)."}}, ["file"]),

@@ -345,7 +345,7 @@ class TestCommandModules(unittest.TestCase):
                  if re.search(r"get_resolve|rpapi\.connect|\.connect\(",
                               Path(m.__file__).read_text(encoding="utf-8"))}
         self.assertEqual(reach, {"list-projects", "list-timelines", "list-render-formats", "info",
-                                 "audio-state"})
+                                 "audio-state", "contract-probe"})
 
     def test_a_module_runs_alone_with_python_m(self):
         # The __main__ block is the same in every module (checked above); one run proves it.

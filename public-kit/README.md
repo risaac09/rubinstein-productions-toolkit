@@ -26,6 +26,10 @@ copies are the reference a maintainer diffs their repo's real files against.
 - `LICENSE-CC-BY-SA-4.0.template` — default for methodology-shaped repos
   (protocols, frameworks, practice-writing). See that file for why
   ShareAlike, not permissive, is the default for this category.
+- `check-voice.sh` (GOV-11): run it from a repo, or pass a root. It fails on
+  em-dashes and the banned jargon verbs in `README.md` and `docs/`, printing
+  file:line, and exits 2 when a file cannot be read. Deployed to
+  `.claude/public-kit/check-voice.sh`; wire it into the repo's CI.
 - `CONTRIBUTING.md.template`, `SECURITY.md.template` — solo-maintainer-sized
   defaults; fill in the bracketed sections per repo.
 

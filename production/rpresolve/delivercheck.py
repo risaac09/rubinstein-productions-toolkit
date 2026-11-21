@@ -41,7 +41,7 @@ what it expected:
     loudness      ffmpeg ebur128 with peak=true: integrated LUFS within the
                   tolerance; SKIP when the destination has no target
     true_peak     the same read: true peak at or under the destination's
-                  maximum, TRUE_PEAK_DEFAULT_DBTP (-1) when it names none. Runs
+                  maximum, TRUE_PEAK_DEFAULT_DBTP (-1.5) when it names none. Runs
                   for every destination whenever loudness is read, a
                   client_master included (its loudness stays unasserted)
     clipping      runs whenever loudness is read: FAIL when the first audio
@@ -107,7 +107,7 @@ TAIL_REF_FAR, TAIL_REF_NEAR = 3.0, 1.5
 TAIL_DROP_DB = 12.0
 TAIL_MIN_S = 4.0
 # The true_peak row's ceiling for a destination that names none (config.py's default too).
-TRUE_PEAK_DEFAULT_DBTP = -1.0
+TRUE_PEAK_DEFAULT_DBTP = -1.5
 # The clipping row: CLIP_RUN or more consecutive identical samples at CLIP_LEVEL of full scale
 # or above. A clipped signal repeats its ceiling value exactly; a clean sine never does
 # (neighbours at the crest differ by far more than a bit, down to about 30 Hz at 24 bit),
@@ -1080,7 +1080,7 @@ def find_approval(events, path, sha256=None):
         return None, f"no line names {stem or name} with a review copy and sha256"
     if newest.get("choice") not in APPROVING:
         return None, f"newest line for this file is {newest.get('choice')!r}"
-    copy, sha = os.path.basename(newest["review_copy"]), newest["review_sha256"]
+    copy, sha = os.path.basename(str(newest.get("review_copy") or "")), newest["review_sha256"]
     beside = os.path.join(os.path.dirname(os.path.abspath(path)), copy)
     if copy and os.path.isfile(beside) and file_sha256(beside) != sha:
         return None, f"sha mismatch: {copy} beside the file is not the sha256 logged ({sha[:12]})"
@@ -1121,9 +1121,12 @@ def ear_check_row(path, review_log=None, sha256=None):
                 "note": "hand step; give --review-log PATH to read the answer"}
     from rpresolve import tastedistill
     try:
+        sha256 = sha256 or file_sha256(path)
         events = [(n, e) for n, e in tastedistill.read_events(review_log)[0]
                   if e.get("step") == EAR_STEP and e.get("question") == EAR_QUESTION]
-        line, why = find_approval(events, path, sha256)
+        line, why = find_approval(events, path, sha256)  # a hold on any version of the piece withdraws
+        if line and line.get("review_sha256") != sha256:  # the exact bytes heard, not a sibling or an older render
+            line, why = None, "the newest ear check heard other bytes than this file"
     except OSError as e:
         line, why = None, f"log unreadable ({e.strerror})"
     if line:

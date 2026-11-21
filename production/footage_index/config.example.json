@@ -7,6 +7,7 @@
     ],
     "skip_prefixes": ["#recycle/", "_Archive-old/"],
     "staging_prefix": "_Incoming/",
+    "film_prefixes": ["Film-Scans/"],
     "restricted_prefix": "Restricted/",
     "required_folder": "Shoots",
     "edits_dir": "~/footage-edits",

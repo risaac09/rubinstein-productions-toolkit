@@ -8,8 +8,9 @@ music: a library index for a folder of music, files never moved (rpresolve/music
     music suggest DIR (--method ID | --bpm LO-HI) [--feel F] [--any-pulse] [-n N]
                                     tracks that fit a method's tempo range (half and double time count)
     music candidates DIR --manifest PATH [--feel F ...] [--bpm LO-HI] --out OUT [-n N] [--seconds S] [--start S]
-                                    for a cut manifest: tracks at its method's tempo range (steady pulse
-                                    first, as long as the cut), as lettered level-matched excerpts
+                                    for a cut manifest: tracks at its method's tempo range (any tempo when
+                                    it has none and no --bpm; steady pulse first, as long as the cut),
+                                    as lettered level-matched excerpts
                                     A.m4a, B.m4a... and key.json in OUT, for the media-review-loop. It
                                     suggests; project answer --music-key OUT --music-pick A records the pick
     music set DIR KEY [--genre G] [--feel F ...]   a person's own tags; KEY is a sha256 prefix or path
@@ -69,11 +70,13 @@ def run(args):
                 raise music.MusicError(problem)
             need, rng = music.cut_need(args.manifest)
             rng = [float(x) for x in args.bpm.split("-")] if args.bpm else rng
-            if not rng:
-                raise music.MusicError("the manifest names no method with a tempo range: give --bpm LO-HI")
+            if not rng:  # a shot-list cut's method has no tempo range: rank by pulse and length only
+                print("music: the manifest names no tempo range: any tempo, steady pulse first "
+                      "(--bpm LO-HI narrows it)", file=sys.stderr)
             got = music.candidates(lib, rng, args.feel, need + args.start, args.n)
             if not got:
-                raise music.MusicError(f"no track at {rng[0]:g}-{rng[1]:g} BPM, {need:.0f} s or longer")
+                raise music.MusicError(f"no track {f'at {rng[0]:g}-{rng[1]:g} BPM, ' if rng else ''}"
+                                       f"{need:.0f} s or longer")
             key = music.excerpts(args.dir, got, args.out, args.start, args.seconds)
             for letter, o in sorted(key["options"].items()):
                 print(f"{letter}: {o['path']}  ({o['excerpt_lufs']} LUFS, gain {o['gain_db']} dB)", file=sys.stderr)

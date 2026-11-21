@@ -205,7 +205,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(deliver.destination(cfg, "youtube_16x9_hd")["resolution"],
                          {"width": 1920, "height": 1080})
         self.assertEqual((yt["loudness"]["integrated_lufs"], yt["loudness"]["tolerance_lu"],
-                          yt["loudness"]["true_peak_max_dbtp"]), (-14.0, 0.5, -1.0))
+                          yt["loudness"]["true_peak_max_dbtp"]), (-14.0, 0.5, -1.5))
         self.assertEqual((yt["audio"]["codec"], yt["audio"]["sample_rate"],
                           yt["audio"]["channels"]), ("aac", 48000, 2))
         self.assertEqual(yt["captions"], "sidecar")
@@ -239,7 +239,7 @@ class TestConfig(unittest.TestCase):
                           s["loudness"]["tolerance_lu"], s["loudness"]["true_peak_max_dbtp"],
                           (s["resolution"]["width"], s["resolution"]["height"]), s["captions"],
                           s["audio"]["sample_rate"]),
-                         ("H264", "mp4", -14.0, 0.5, -1.0, (1080, 1920), "burnin", 48000))
+                         ("H264", "mp4", -14.0, 0.5, -1.5, (1080, 1920), "burnin", 48000))
         m = deliver.destination(cfg, "client_master")
         self.assertEqual((m["format"], m["codec"], m["resolution"], m["captions"]),
                          ("mov", "ProRes422HQ", "timeline", "none"))
@@ -294,7 +294,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(yt["target_dir"], "/elsewhere/out")
         self.assertEqual(yt["loudness"]["integrated_lufs"], -13)
         self.assertEqual(yt["loudness"]["tolerance_lu"], 1.0)  # house rule overlaid
-        self.assertEqual(yt["loudness"]["true_peak_max_dbtp"], -1.0)  # kept
+        self.assertEqual(yt["loudness"]["true_peak_max_dbtp"], -1.5)  # kept
         self.assertEqual(yt["codec"], "H265")  # kept
         self.assertEqual(deliver.destination(cfg, "vimeo_16x9")["name"], "Vimeo")
         self.assertNotIn("linkedin_1x1", deliver.destination_keys(cfg))

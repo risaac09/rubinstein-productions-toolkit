@@ -528,6 +528,19 @@ class TestPlanManifest(unittest.TestCase):
         self.assertEqual(text.splitlines()[0].split("\t"), list(reframe.COLUMNS))
         self.assertEqual(len(text.splitlines()), 7)
 
+    def test_plan_uses_the_size_the_reader_fitted_while_reading(self):
+        class OffByARow(FakeReader):
+            """Probes one row tall; the read refits its size, as SourceReader does."""
+            luma_size = (1280, 721)
+
+            def read(self, times, folder):
+                out = super().read(times, folder)
+                self.luma_size = HD720
+                return out
+
+        report = reframe.plan(self.m, aspects=["9x16"], reader=OffByARow(), detect=fake_detect)
+        self.assertTrue(report["rows"])
+
     def test_speaker_x_and_only(self):
         report = reframe.plan(self.m, aspects=["9x16"], speaker_x=900, only=["a_30"],
                               reader=FakeReader(), detect=fake_detect)
@@ -678,6 +691,25 @@ class TestOnAGeneratedClip(unittest.TestCase):
         sp = report["spans"][0]
         self.assertEqual(sp["samples"], 1)  # of 1.5, 2.5, 3.5 and 4.5 s, only 1.5 is in the clip
         self.assertIn("3 of 4 sample times were not read", "; ".join(sp["review"]))
+
+    def test_a_cut_inside_a_span_is_flagged_and_the_crop_left_alone(self):
+        cutclip = os.path.join(self.tmp.name, "cut.mp4")
+        subprocess.run([FFMPEG, "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=25:d=1",
+                        "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=25:d=2", "-filter_complex",
+                        "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "libx264", "-y", cutclip],
+                       check=True)
+        m = {"source_path": cutclip, "clips": [{"name": "c", "spans": [{"in": 0.2, "out": 2.5},
+                                                                       {"in": 1.3, "out": 2.5}]}]}
+        none = lambda paths: {p: [] for p in paths}  # noqa: E731
+        report = reframe.plan(m, aspects=["9x16"], samples=3, detect=none)
+        first, second = report["spans"]
+        self.assertEqual(first["cuts"], [1.0])
+        self.assertIn("1 cut(s) inside the span, at 1.00 s", "; ".join(first["review"]))
+        self.assertNotIn("cuts", second)
+        self.assertFalse([r for r in second["review"] if "cut" in r])
+        off = reframe.plan(m, aspects=["9x16"], samples=3, detect=none, cuts=None)
+        self.assertNotIn("cuts", off["spans"][0])
+        self.assertEqual(off["spans"][0]["aspects"], first["aspects"])  # report only
 
     def test_no_face_through_real_vision(self):
         if not (sys.platform == "darwin" and vision.vision_binary()):

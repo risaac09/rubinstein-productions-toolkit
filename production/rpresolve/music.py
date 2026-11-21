@@ -249,7 +249,7 @@ def cut_need(manifest_path):
     except Exception as e:  # cmd_assemble's Refused is not a ValueError
         raise MusicError(f"{manifest_path}: not a cut manifest ({e})")
     mid = (raw.get("method") or {}).get("id")
-    try:  # a shot-list cut names method "shotlist", which has no tempo range: --bpm gives one
+    try:  # a shot-list cut names method "shotlist", which has no tempo range: --bpm gives one, or any tempo
         bpm = methods.load(mid).get("bpm") if mid else None
     except ValueError:
         bpm = None
@@ -259,7 +259,7 @@ def cut_need(manifest_path):
 def candidates(lib, bpm, feel, need_s, n=3):
     """Up to n tracks for a cut that runs need_s seconds: those inside the tempo range first
     (half and double time count), steady pulse before the rest, then nearest; none shorter
-    than the cut. It suggests; a person picks."""
+    than the cut. With no range (bpm None) any tempo fits. It suggests; a person picks."""
     got = [t for t in suggest(lib, bpm=bpm, feel=feel, n=10 ** 6, steady=False)
            if (t.get("duration_s") or 0) >= need_s]
     got.sort(key=lambda t: (t["tempo_gap"] > 0, not t.get("steady"), t["tempo_gap"], t["path"]))

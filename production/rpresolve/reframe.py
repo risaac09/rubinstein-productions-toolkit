@@ -76,6 +76,10 @@ For each span of each clip:
      gets no centre; nothing is guessed.
      allow_bars keeps the default scale when it holds the face but leaves
      bars (the Ep 002 look); such a crop is status "bars" and named as such.
+  7. Cuts: a span is one crop, so a hard cut inside it (ffmpeg scdet at qc's
+     threshold, more than CUT_EDGE_S from either edge) is named in the
+     span's review note and its "cuts" list. Report only: the crop is not
+     changed, and the span needs a person's look at each shot.
 
 The transform, for Resolve's input scalings scaleToFit and scaleToCrop: the
 source is fit into the timeline by fit = min(W/sw, H/sh) (scaleToCrop:
@@ -112,7 +116,7 @@ import tempfile
 
 from . import composition, cutlist, vision
 from . import scene as scenemod
-from .detect import DetectError, run_ffprobe
+from .detect import DetectError, cropped_size, fit_frame, run_ffprobe
 
 FFMPEG = os.environ.get("RPRESOLVE_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 TIMEOUT_S = 120  # per ffmpeg frame grab
@@ -150,7 +154,9 @@ RULE = "the face present in the most samples, a tie going to the larger median b
 RULE_LARGEST = "the largest face among those present in at least half as many samples as the most present"
 
 PASS, BARS, FALLBACK, MANUAL, NO_FACE = "pass", "bars", "fallback", "manual", "no_face"
-STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE)
+HAND = "hand"  # a crop from a person's centre (plan_items hand=), for an item with a hand entry
+STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE, HAND)
+APPLIED = (PASS, BARS, FALLBACK, HAND)  # statuses that carry a crop
 
 
 class ReframeError(RuntimeError):
@@ -751,7 +757,7 @@ def plan_span(samples, src, area, aspects, scale=DEFAULT_SCALE, speaker_x=None, 
     sc = composition.summarise(scene, src) if scene else None
     hint = (sc["centre"]["x"], sc["centre"]["y"]) if sc else None
     pick, rule, note = choose(tracks, speaker_x, speaker_y, prefer, hint)
-    if pick is None and sc and area is not None:
+    if pick is None and sc and area is not None and not ignored:
         return _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars,
                            min_checked, master_size, scaling, ignored)
     if area is None or pick is None:
@@ -837,8 +843,11 @@ def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_
                unchecked=[t for t, _ in samples if t not in {t for t, _ in boxes}])
     out["review"].append("no face in any sampled frame: the crop is placed on the saliency "
                          "centre, which is weaker evidence than a face; look before use")
+    pts = [(t, (_centre(b)[0] - 1, _centre(b)[1] - 1, _centre(b)[0] + 1, _centre(b)[1] + 1))
+           for t, b in boxes]  # the box's centre as a 2 px box
     for a in aspects:
-        out["aspects"][a] = plan_aspect(boxes, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
+        # the attention box is wide; test its centre, so a good saliency crop can pass
+        out["aspects"][a] = plan_aspect(pts, (sc["centre"]["x"], sc["centre"]["y"]), src, area, a,
                                         scale, margin, allow_bars, samples=len(samples),
                                         min_checked=min_checked, out=size_of(a, master_size),
                                         anchor=anchor_of(a), head_above=0.0, headroom=0.0,
@@ -883,7 +892,7 @@ def probe(path):
     if not streams:
         raise ReframeError(f"no video stream in {path}: {err or 'ffprobe found none'}")
     s = streams[0]
-    w, h = int(s["width"]), int(s["height"])
+    w, h = cropped_size(s)
     if _rotation(s) % 180 == 90:
         w, h = h, w
     try:
@@ -909,6 +918,27 @@ def squeeze_tag(data):
     return None
 
 
+CUT_EDGE_S = 0.1  # a cut this close to a span's edge is the edit's own, not one inside it
+
+
+def span_cuts(path, a, b):
+    """Source times of the hard cuts (ffmpeg scdet, at qc's threshold) strictly
+    inside the span [a, b], or None when ffmpeg could not scan it."""
+    from . import qc
+    cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}",
+           "-i", "file:" + path, "-map", "0:v:0", "-vf", f"scdet=t={qc.THRESHOLDS['scdet_threshold']}",
+           "-f", "null", "-"]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              errors="replace", timeout=TIMEOUT_S * 5)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [round(a + t, 3) for t in qc.parse_scdet(proc.stderr, qc.THRESHOLDS["scdet_threshold"])
+            if CUT_EDGE_S < t < b - a - CUT_EDGE_S]
+
+
 class SourceReader:
     """Frames of one source: read(times, folder) -> [(t, png path, luma)],
     luma being width*height bytes of 8-bit grey, one ffmpeg call a frame."""
@@ -932,7 +962,10 @@ class SourceReader:
                 raise ReframeError(f"ffmpeg timed out reading the frame at {t:.3f}s")
             except OSError as e:
                 raise ReframeError(f"cannot run ffmpeg: {e}")
-            want = self.size[0] * self.size[1]
+            if proc.returncode == 0 and len(proc.stdout) != self.luma_size[0] * self.luma_size[1]:
+                # trust the decoded frame over a probe a pixel off
+                self.luma_size = fit_frame(len(proc.stdout), *self.luma_size) or self.luma_size
+            want = self.luma_size[0] * self.luma_size[1]
             if proc.returncode != 0 or len(proc.stdout) < want or not os.path.exists(png):
                 raise ReframeError(f"ffmpeg could not read the frame at {t:.3f}s: "
                                    f"{proc.stderr.decode(errors='replace').strip()[-200:]}")
@@ -1055,7 +1088,7 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
          speaker_x=None, only=None, allow_bars=False, reader=None, detect=None, check_cancel=None,
          progress=None, min_checked=MIN_CHECKED_SHARE, subject_region=None, min_face_height=None,
          speaker_y=None, prefer=PREFER_PRESENT, master_size=None, scaling=SCALE_TO_FIT,
-         squeeze=None, scene=None):
+         squeeze=None, scene=None, cuts=span_cuts):
     """Plan every span of the manifest's clips (or only those named).
     reader: a SourceReader (default: the manifest's source); detect:
     images -> {path: [Vision box]} or None (default: vision.face_boxes).
@@ -1073,6 +1106,9 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     callable (image, previous image or None) -> a scene.read() dict or None,
     run on each sampled frame; the report then has scene: true (when any read
     came back) and each span composition numbers and a move type (see plan_span). Default None: off.
+    cuts: (path, in, out) -> source times of hard cuts inside a span, or None
+    (default span_cuts, run on a reader that has a path); a span with a cut
+    gets a review note and a "cuts" list. Report only: the crop is not changed.
     Returns the report: {source, size, aspects, samples, per_second,
     speaker_x, speaker_y, rule, margin, min_checked, subject_region,
     min_face_height, prefer, spans: [...], rows: [...], counts}."""
@@ -1097,7 +1133,6 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
     reader = reader or SourceReader(one["path"])
     detect = detect or vision.face_boxes
     stored = tuple(reader.size)
-    luma_size = tuple(getattr(reader, "luma_size", None) or stored)
     for value, source in ((manifest.get("squeeze"), "manifest"), (squeeze, "argument"),
                           (getattr(reader, "squeeze", None), "file tag")):
         if value is not None:
@@ -1141,6 +1176,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 past = [t for t in times if end and t >= end]
                 times = [t for t in times if t not in past]
                 frames = reader.read(times, folder) if times else []
+                # read after the read: its decoded-size guard may have refit the size
+                luma_size = tuple(getattr(reader, "luma_size", None) or stored)
                 if frames:
                     boxes = detect([png for _, png, _ in frames])
                     if boxes is None:
@@ -1165,6 +1202,15 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 else:
                     sp = no_crop(0, aspects, f"the span lies past the source's end ({end:g} s): "
                                  "no frame to read")
+                hi = min(s["out"], end) if end else s["out"]
+                found = cuts(reader.path, s["in"], hi) if cuts and getattr(reader, "path", None) \
+                    and hi > s["in"] else None
+                if found:
+                    sp["cuts"] = found
+                    sp["review"].append(f"{len(found)} cut(s) inside the span, at "
+                                        + ", ".join(f"{t:.2f} s" for t in found[:4])
+                                        + (" and more" if len(found) > 4 else "")
+                                        + ": one crop holds for every shot, so look at each")
                 if past:
                     sp["review"].append(f"the span runs past the source's end ({end:g} s): "
                                         f"{len(past)} of {len(past) + len(times)} sample times "
@@ -1178,6 +1224,8 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
                 done += 1
                 if progress:
                     progress(done, total)
+    if read_scene and not report.get("scene"):
+        report["scene"] = False  # asked for, never read (the helper is unavailable, or no read had a subject)
     report["rows"] = rows(report)
     report["counts"] = counts(report["rows"])
     return report
@@ -1188,13 +1236,16 @@ def entry(aspect_plan, src, area, face, review):
     cannot hold the face carries its status and reason and no centre, so
     cut refuses that version; nothing is guessed."""
     p = aspect_plan
-    if p["status"] not in (PASS, BARS, FALLBACK):
+    if p["status"] not in APPLIED:
         return {"status": p["status"], "reason": p["reason"]}
+    face = face or {}  # a HAND crop has no face
     e = {"x": p["x"], "y": p["y"], "scale": p["scale"], "src": list(src), "area": list(area),
-         "face_x": face["x"], "face_y": face["y"], "centre": p["centre"], "status": p["status"],
-         "inside": [p["check"]["inside"], p["check"]["total"]], "move": p.get("move"),
+         "face_x": face.get("x"), "face_y": face.get("y"), "centre": p["centre"],
+         "status": p["status"],
+         "inside": [p["check"]["inside"], p["check"]["total"]] if p["check"] else None,
+         "move": p.get("move"),
          "headroom_px": p.get("headroom_px")}
-    for k in ("move_type", "composition"):
+    for k in ("move_type", "composition", "source"):
         if k in p:
             e[k] = p[k]
     if p.get("out"):
@@ -1259,7 +1310,7 @@ def rows(report):
             dx = (round(face["x"] - sp["hand_face_x"], 1)
                   if face and sp.get("hand_face_x") is not None else None)
             reason = p.get("reason", "")
-            if (not TILT_CONFIRMED and p["status"] in (PASS, BARS, FALLBACK)
+            if (not TILT_CONFIRMED and p["status"] in APPLIED
                     and abs(props.get("Tilt") or 0.0) > TILT_NEGLIGIBLE_PX):
                 reason = "; ".join(x for x in (reason, TILT_NOTE.format(tilt=props["Tilt"])) if x)
             out.append({"clip": sp["clip"], "span": sp["span"], "in": sp["in"], "out": sp["out"],
@@ -1286,7 +1337,7 @@ def counts(rows):
     for r in rows:
         n[r["status"]] += 1
     n["review"] = sum(1 for r in rows if r["review"])
-    n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in (PASS, BARS, FALLBACK)
+    n["tilt"] = 0 if TILT_CONFIRMED else sum(1 for r in rows if r["status"] in APPLIED
                                              and abs(r["tilt"] or 0.0) > TILT_NEGLIGIBLE_PX)
     return n
 
@@ -1310,13 +1361,15 @@ def summary(report):
     return (f"reframe-plan: {len(report['rows'])} crop(s) over {len(report['spans'])} span(s): "
             f"{n[PASS]} pass, {n[FALLBACK]} fallback (widest filled scale), {n[MANUAL]} manual, "
             f"{n[NO_FACE]} no face" + (f", {n[BARS]} kept with bars" if n[BARS] else "") +
+            (f", {n[HAND]} by hand" if n[HAND] else "") +
             (f"; {n['review']} flagged for review" if n["review"] else "") +
             (f"; {n['tilt']} set a Tilt, whose sign no render has confirmed yet (check a still)"
              if n.get("tilt") else "") +
             ("; squeeze not read (no manifest value, argument or file tag): planned as 1.0, "
              "so give squeeze for an anamorphic source" if report.get("squeeze_from") == "assumed"
              else f"; squeeze {report['squeeze']:g} ({report['squeeze_from']})"
-             if report.get("squeeze_from") else ""))
+             if report.get("squeeze_from") else "") +
+            ("; scene reads unavailable" if report.get("scene") is False else ""))
 
 
 def line(r):
@@ -1325,7 +1378,7 @@ def line(r):
     if r["face_x"] is not None:
         parts.append(f"face x {r['face_x']:.0f}" +
                      (f" (hand {r['hand_face_x']:g}, {r['dx']:+.0f})" if r["dx"] is not None else ""))
-    if r["scale"] is not None and r["status"] in (PASS, BARS, FALLBACK):
+    if r["scale"] is not None and r["status"] in APPLIED:
         parts.append(f"scale {r['scale']:g} zoom {r['zoom']:g} pan {r['pan']:g} tilt {r['tilt']:g}"
                      + (f" move {r['move']}" if r.get("move") else ""))
     if r["inside"] is not None:
@@ -1340,21 +1393,79 @@ def line(r):
     return text
 
 
+def load_hand(path, count):
+    """A hand-framing file: JSON {"<item number from 1>": x or {"x": x, "y": y, "zoom": z}}, x
+    and y shares 0 to 1 of the displayed (desqueezed) source width and height, zoom a multiplier
+    on the fill scale (1 to 4, default 1). Returns {n: (x, y or None, zoom)}; ReframeError for a
+    file that is not that, an item past `count`, two keys for one item, a share outside 0..1 or
+    a zoom outside 1..4."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ReframeError(f"hand file {path}: {e}")
+    if not isinstance(raw, dict) or not raw:
+        raise ReframeError(f"hand file {path}: a JSON object of item number to crop centre")
+    hand = {}
+    for k, v in raw.items():
+        if not str(k).isdigit() or not 1 <= int(k) <= count:
+            raise ReframeError(f"hand: item {k} does not exist (1 to {count})")
+        x, y = (v.get("x"), v.get("y")) if isinstance(v, dict) else (v, None)
+        zoom = v.get("zoom", 1.0) if isinstance(v, dict) else 1.0
+        if int(k) in hand:
+            raise ReframeError(f"hand: item {int(k)} is given twice ({k!r})")
+        if isinstance(zoom, bool) or not isinstance(zoom, (int, float)) or not 1.0 <= zoom <= 4.0:
+            raise ReframeError(f"hand: item {k} zoom {zoom!r} must be from 1 to 4 (a multiplier "
+                               "on the fill scale)")
+        for name, share in (("x", x), ("y", y)):
+            if share is None and name == "y":
+                continue
+            if isinstance(share, bool) or not isinstance(share, (int, float)) \
+                    or not 0.0 <= share <= 1.0:
+                raise ReframeError(f"hand: item {k} {name} {share!r} must be a share from 0 to 1 "
+                                   "of the displayed source")
+        hand[int(k)] = (float(x), None if y is None else float(y), float(zoom))
+    return hand
+
+
+def _hand_aspect(hand, src, area, out, scaling):
+    """The aspect plan for a crop centred where a person said: the widest scale that fills the
+    frame, the centre clamped to the picture as for a face. No head, so no headroom check."""
+    scale = round(fill_scale(out, area) * hand[2], 4)  # window narrows with the zoom; place() clamps
+    point = (hand[0] * src[0], (0.5 if hand[1] is None else hand[1]) * src[1])
+    x, y = (round(v, 1) for v in place(point, out, scale, area))
+    return {"status": HAND, "centre": "hand", "scale": scale, "x": x, "y": y, "fills": True,
+            "bars": "", "check": {}, "out": list(out),
+            "reason": f"framed by hand at x {hand[0]:g} of the source width" +
+            (f", zoom {hand[2]:g} on the fill scale" if hand[2] != 1.0 else ""),
+            "source": "hand", "move": move_of(src, out, scale, (x, y), scaling),
+            "props": {k: round(v, 4) for k, v in
+                      resolve_props(src, out, scale, (x, y), scaling).items()}}
+
+
 def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, reader_for=None,
-               **kw):
+               hand=None, **kw):
     """A framing plan for items of a timeline, each its own source: [{name,
     path, in, out, squeeze?, stills?, src?}] (in and out in source seconds;
     stills: images to judge in place of the file, for a source ffmpeg
     cannot read, with src the source's own size). Each item is planned as
     one span for `aspect` (MASTER needs master_size) with plan(); kw goes
     to plan(). reader_for(item) may supply the reader (tests).
+    hand: {item number from 1: (x, y or None, zoom)} (load_hand): for an item with
+    a picture area, whatever the face result, a crop centred there, status
+    HAND, no head check; a face or scene crop it replaces is named in the
+    item's review list.
     Returns {kind, aspect, out, scaling, items: [{name, path, in, out,
     size, stored_size, squeeze, squeeze_from, status, reason, review, move,
     entry, row}], rows, counts}; entry is what reframe_apply writes from."""
     out = size_of(aspect, master_size)
+    hand = hand or {}
+    late = [n for n in hand if not 1 <= n <= len(items)]
+    if late:
+        raise ReframeError(f"hand: item {late[0]} does not exist (1 to {len(items)})")
     plan_ = {"kind": "framing", "aspect": aspect, "out": list(out), "scaling": scaling,
              "items": [], "rows": []}
-    for it in items:
+    for n, it in enumerate(items, 1):
         name, path = it.get("name") or os.path.basename(it["path"]), it["path"]
         if not it.get("stills") and (it.get("in") is None or it.get("out") is None):
             raise ReframeError(f"{name}: give in and out (source seconds) for a file; only "
@@ -1372,8 +1483,27 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
              "clips": [{"name": name, "spans": [{"in": a, "out": b}]}]}
         rep = plan(m, aspects=[aspect], reader=reader, master_size=master_size, scaling=scaling,
                    **kw)
+        if rep.get("scene"):
+            plan_["scene"] = True
         sp = rep["spans"][0]
         p = sp["aspects"][aspect]
+        if n in hand:
+            if sp["area"]:
+                was = p
+                p = sp["aspects"][aspect] = _hand_aspect(hand[n], rep["size"], sp["area"], out,
+                                                         scaling)
+                if was.get("x") is not None:  # the hand entry wins over any crop
+                    what = "scene crop" if sp.get("subject") == "saliency" else "face crop"
+                    sp["review"].append(f"{what} at x={was['x']:g} ({was['status']}) replaced by "
+                                        "the hand entry")
+                if sp["face"] and sp.get("subject") != "saliency":
+                    sp["hand_face_x"] = round(hand[n][0] * rep["size"][0], 1)
+                sp["review"].append("framed by hand: no head check (headroom and whole head do "
+                                    "not apply); look at the frame")
+            else:
+                sp["review"].append("hand entry not used: no picture area (every sampled frame "
+                                    "is black)")
+            rep["rows"] = rows(rep)
         e = entry(p, rep["size"], sp["area"], sp["face"], sp["review"]) if sp["area"] else \
             {"status": p["status"], "reason": p["reason"]}
         e.update(squeeze=rep["squeeze"], stored=rep["stored_size"])
@@ -1382,9 +1512,11 @@ def plan_items(items, aspect=MASTER, master_size=None, scaling=SCALE_TO_FIT, rea
                                "size": rep["size"], "stored_size": rep["stored_size"],
                                "squeeze": rep["squeeze"], "squeeze_from": rep["squeeze_from"],
                                "status": p["status"], "reason": p.get("reason", ""),
-                               "review": sp["review"], "move": p.get("move"), "entry": e,
+                               "source": p.get("source"), "review": sp["review"], "move": p.get("move"), "entry": e,
                                "row": row})
         plan_["rows"].append(row)
+    if kw.get("scene") and not plan_.get("scene"):
+        plan_["scene"] = False
     plan_["counts"] = counts(plan_["rows"])
     plan_["counts"]["none"] = sum(1 for i in plan_["items"] if i["move"] == "none")
     return plan_

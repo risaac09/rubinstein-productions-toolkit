@@ -467,6 +467,63 @@ class Presets(Base):
 
 
 @needs_numpy
+class DelayCrash(unittest.TestCase):
+    """delay_samples with a stub in place of ffmpeg: the Homebrew build can segfault in
+    anlmdn after writing all its output."""
+    LAG = 37
+
+    def run_with(self, code, short=False, bad=None, cached=False):
+        calls = []
+
+        def fake(cmd, input=None, **kw):
+            calls.append(cmd)
+            x = np.frombuffer(input, "<f4")
+            y = np.concatenate([np.zeros(self.LAG, "<f4"), x])[:len(x)]
+            if short:
+                y = y[:len(y) // 4]
+            if bad == "nan":
+                y = y.copy()
+                y[100] = np.nan
+            elif bad == "zero":
+                y = np.zeros_like(y)
+            return subprocess.CompletedProcess(cmd, code, y.tobytes(), b"boom")
+        with mock.patch.object(mb.subprocess, "run", fake), contextlib.redirect_stderr(io.StringIO()) as err:
+            try:
+                fn = mb.delay_samples if cached else mb.delay_samples.__wrapped__
+                return fn("anlmdn=s=1", 48000), calls, err.getvalue()
+            except mb.MixError as e:
+                return e, calls, err.getvalue()
+
+    def test_a_crash_after_complete_output_is_accepted_and_noted(self):
+        lag, calls, err = self.run_with(-11)
+        self.assertEqual(lag, self.LAG)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("signal 11", err)
+
+    def test_a_crash_with_short_output_is_retried_then_fails_naming_the_signal(self):
+        e, calls, _ = self.run_with(-11, short=True)
+        self.assertIsInstance(e, mb.MixError)
+        self.assertIn("signal 11", str(e))
+        self.assertEqual(len(calls), mb.DELAY_TRIES)
+
+    def test_a_crash_with_nan_or_silent_output_is_refused_and_not_cached(self):
+        mb.delay_samples.cache_clear()
+        self.addCleanup(mb.delay_samples.cache_clear)
+        for bad in ("nan", "zero"):
+            e, _, _ = self.run_with(-11, bad=bad, cached=True)
+            self.assertIsInstance(e, mb.MixError, bad)
+            self.assertIn("NaN or silence", str(e))
+        lag, _, _ = self.run_with(-11, cached=True)  # a later good run is measured, not a cached 0
+        self.assertEqual(lag, self.LAG)
+
+    def test_an_error_exit_fails_at_once(self):
+        e, calls, _ = self.run_with(1)
+        self.assertIsInstance(e, mb.MixError)
+        self.assertIn("could not measure", str(e))
+        self.assertEqual(len(calls), 1)
+
+
+@needs_numpy
 class Arnndn(Base):
     def check(self, step):
         return mb.validate_spec({"stems": {"d": {"input": "x.wav", "chain": [{"denoise": step}]}}},

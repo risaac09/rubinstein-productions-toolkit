@@ -1,0 +1,324 @@
+{
+  "I0:MediaPool.ImportTimelineFromFile": {
+    "present": true
+  },
+  "I0:Timeline.Export": {
+    "present": true
+  },
+  "I0:Timeline.ImportIntoTimeline": {
+    "present": true
+  },
+  "M0:Resolve.Fusion": {
+    "present": true
+  },
+  "M0:Timeline.InsertFusionTitleIntoTimeline": {
+    "present": true
+  },
+  "M0:Timeline.InsertGeneratorIntoTimeline": {
+    "present": true
+  },
+  "M0:Timeline.InsertTitleIntoTimeline": {
+    "present": true
+  },
+  "M0:TimelineItem.ExportFusionComp": {
+    "present": true
+  },
+  "M0:TimelineItem.ImportFusionComp": {
+    "present": true
+  },
+  "M0:TimelineItem.LoadFusionCompByName": {
+    "present": true
+  },
+  "M0:TimelineItem.RenameFusionCompByName": {
+    "present": true
+  },
+  "Q0:Resolve.GetProductName": {
+    "present": true,
+    "type": "str"
+  },
+  "Q0:Resolve.GetVersionString": {
+    "present": true,
+    "type": "str"
+  },
+  "Q0:Resolve.IsStudio": {
+    "present": true,
+    "type": "bool"
+  },
+  "Q10:Project.ApplyFairlightPresetToCurrentTimeline": {
+    "present": true
+  },
+  "Q10:Resolve.GetFairlightPresets": {
+    "present": true,
+    "type": "list"
+  },
+  "Q10:Timeline.GetTrackCount": {
+    "present": true,
+    "type": "int"
+  },
+  "Q10:Timeline.GetTrackSubType": {
+    "present": true,
+    "type": "str"
+  },
+  "Q11:Timeline.GetNormalizeAudioModes": {
+    "present": true,
+    "type": "list"
+  },
+  "Q11:Timeline.NormalizeAudioLevel": {
+    "present": true
+  },
+  "Q11:TimelineItem.AnalyzeAudioLevels": {
+    "present": true
+  },
+  "Q12:MediaPool.AppendToTimeline": {
+    "present": true
+  },
+  "Q12:MediaPool.DeleteTimelines": {
+    "present": true
+  },
+  "Q12:MediaPool.ImportMedia": {
+    "present": true
+  },
+  "Q12:Project.IsRenderingInProgress": {
+    "present": true,
+    "type": "bool"
+  },
+  "Q12:Project.StartRendering": {
+    "present": true
+  },
+  "Q1:Project.ExportProjectSettingsPreset": {
+    "present": true
+  },
+  "Q1:Project.GetProjectSettingsPresetList": {
+    "present": true,
+    "type": "list"
+  },
+  "Q1:Project.GetSettings": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q1:Project.ImportProjectSettingsPreset": {
+    "present": true
+  },
+  "Q1:Project.SaveCurrentProjectSettingsAsNewPreset": {
+    "present": true
+  },
+  "Q1:Project.SetProjectSettingsPreset": {
+    "present": true
+  },
+  "Q1:ProjectManager.CloseProject": {
+    "present": true
+  },
+  "Q1:ProjectManager.CreateProject": {
+    "present": true
+  },
+  "Q1:ProjectManager.DeleteProject": {
+    "present": true
+  },
+  "Q1:ProjectManager.GetProjectListInCurrentFolder": {
+    "present": true,
+    "type": "list"
+  },
+  "Q1:ProjectManager.LoadProject": {
+    "present": true
+  },
+  "Q1:ProjectManager.SaveProject": {
+    "present": true
+  },
+  "Q2:MediaPoolItem.GetAudioMapping": {
+    "present": true,
+    "type": "str"
+  },
+  "Q2:MediaPoolItem.GetClipProperty": {
+    "present": true,
+    "type": "str"
+  },
+  "Q2:MediaPoolItem.SetAudioMapping": {
+    "present": true
+  },
+  "Q2:TimelineItem.GetSourceAudioChannelMapping": {
+    "present": true,
+    "type": "str"
+  },
+  "Q2:TimelineItem.SetSourceAudioChannelMapping": {
+    "present": true
+  },
+  "Q3:TimelineItem.AddTransition": {
+    "present": true
+  },
+  "Q3:TimelineItem.GetFades": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q3:TimelineItem.GetProperties": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q3:TimelineItem.SetFades": {
+    "present": true
+  },
+  "Q4:Project.GetAudioRenderFormats": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q4:Project.GetRenderFormats": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q4:Project.GetRenderJobList": {
+    "present": true,
+    "type": "list"
+  },
+  "Q4:Project.GetRenderSettings": {
+    "present": false
+  },
+  "Q4:Project.SetRenderSettings": {
+    "present": true
+  },
+  "Q5:TimelineItem.GetProperties": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q5:TimelineItem.Stabilize": {
+    "present": true
+  },
+  "Q6:TimelineItem.GetSpeed": {
+    "present": true,
+    "type": "dict"
+  },
+  "Q6:TimelineItem.SetSpeed": {
+    "present": true
+  },
+  "Q7:Resolve.GetEffectsList": {
+    "present": true,
+    "type": "list"
+  },
+  "Q7:TimelineItem.AddTransition": {
+    "present": true
+  },
+  "Q8:Project.RefreshLUTList": {
+    "present": true
+  },
+  "Q8:Resolve.EncryptDCTL": {
+    "present": true
+  },
+  "Q8:Resolve.ValidateDCTL": {
+    "present": true
+  },
+  "Q8:TimelineItem.ExportLUT": {
+    "present": true
+  },
+  "Q8:TimelineItem.GetCDL": {
+    "present": true
+  },
+  "Q8:TimelineItem.SetCDL": {
+    "present": true
+  },
+  "Q9:Resolve.Fusion": {
+    "present": true
+  },
+  "Q9:TimelineItem.AddEffect": {
+    "present": true
+  },
+  "Q9:TimelineItem.AddFusionComp": {
+    "present": true
+  },
+  "Q9:TimelineItem.CreateMagicMask": {
+    "present": true
+  },
+  "Q9:TimelineItem.DeleteEffects": {
+    "present": true
+  },
+  "Q9:TimelineItem.DeleteFusionCompByName": {
+    "present": true
+  },
+  "Q9:TimelineItem.GetFusionCompCount": {
+    "present": true,
+    "type": "int"
+  },
+  "R0:Graph.ApplyGradeFromDRX": {
+    "present": true
+  },
+  "R0:Graph.GetLUT[1]": {
+    "present": true,
+    "type": "str"
+  },
+  "R0:Graph.GetNodeEnabled[1]": {
+    "present": true,
+    "type": "bool"
+  },
+  "R0:Graph.GetNodeLabel[1]": {
+    "present": true,
+    "type": "str"
+  },
+  "R0:Graph.GetNumNodes": {
+    "present": true,
+    "type": "int"
+  },
+  "R0:Graph.GetToolsInNode[1]": {
+    "present": true,
+    "type": "list"
+  },
+  "R0:Graph.ResetAllGrades": {
+    "present": true
+  },
+  "R0:Graph.SetLUT": {
+    "present": true
+  },
+  "R0:Graph.SetNodeLabel": {
+    "present": true
+  },
+  "R0:Project.GetSettings": {
+    "present": true,
+    "type": "dict"
+  },
+  "R0:TimelineItem.GetCDL[1]": {
+    "present": true,
+    "type": "dict"
+  },
+  "R0:TimelineItem.GetNodeGraph": {
+    "present": true,
+    "type": "object"
+  },
+  "R10:Project.GetSettings[all]": {
+    "present": true,
+    "type": "dict"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Data Level]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Input Color Space]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.GetClipProperty[Input Gamma]": {
+    "present": true,
+    "type": "str"
+  },
+  "R5:MediaPoolItem.SetClipProperty": {
+    "present": true
+  },
+  "R9:MediaPoolItem.GetClipProperty[all]": {
+    "present": true,
+    "type": "dict"
+  },
+  "S4:Resolve.GetEffectsList[audio]": {
+    "present": true,
+    "type": "list"
+  },
+  "S4:TimelineItem.AddEffect": {
+    "present": true
+  },
+  "S4:TimelineItem.GetEffects[audio]": {
+    "present": true,
+    "type": "list"
+  },
+  "S9:Project.GetAudioRenderCodecs": {
+    "present": true,
+    "type": "dict"
+  },
+  "S9:Project.GetAudioRenderFormats": {
+    "present": true,
+    "type": "dict"
+  }
+}

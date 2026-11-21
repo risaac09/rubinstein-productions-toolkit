@@ -9,6 +9,13 @@ Only what a stranger with their own practice could reuse as is. Rubinstein Produ
 ## The one guardrail
 `phase-zero/` and `public-kit/` are an export. Never edit them in this repo. Their source is `kit/phase-zero/` and `kit/public-kit/` in the private stack-data repo; `scripts/sd-kit-export` there privacy-scans, mirrors both directories byte for byte, and redeploys this repo's `.claude/`. Title the commit and its PR with the line it prints, `Export kit from stack-data <sha>`. Any other commit touching these two directories breaks the rule. Deploy commands and the consumer roster are in `phase-zero/README.md` and `phase-zero/install.sh`.
 
+## Who merges
+The path a pull request touches decides who merges it.
+- **Public edge: the maintainer merges.** `README.md`, `docs/`, the `LICENSE` files, `phase-zero/`, `public-kit/`, `.github/`, `install.sh`, and any path not named below.
+- **Plumbing: an agent may merge on green checks.** Code and tests under `production/`, including the spec files there that the docs-match-code test pins.
+- A pull request that touches both waits for the maintainer.
+- `phase-zero/` and `public-kit/` change only through export pull requests (see the guardrail above).
+
 ## Working here
 - One fragment per pull request in `changelog.d/` (`scripts/changelog-fragments new SLUG "TEXT"`).
 - CI runs the link check, the methodology status check, the instrument test, the fragment and burst-gate tests, shellcheck, and the production unit tests; run the relevant ones before pushing.

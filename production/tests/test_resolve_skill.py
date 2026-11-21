@@ -40,6 +40,14 @@ class ResolveSkill(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(m.group(1), SKILL.parent.name)
 
+    def test_secondaries_check(self):
+        body = section(self.text, "Secondaries check (every grade, every title, every build plan)")
+        self.assertEqual(re.findall(r"^(\d)\. ", body, re.M), [str(n) for n in range(1, 8)])
+        self.assertIn("window", body)
+        self.assertIn("Magic Mask", body)
+        self.assertIn("ui_steps", body)
+        self.assertIn("secondaries check", self.text.split("---")[1])  # the description triggers it
+
     def test_cmd_modules_exist(self):
         mods = set(re.findall(r"`(cmd_\w+)`", self.text))
         self.assertTrue(mods)

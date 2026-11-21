@@ -10,7 +10,9 @@ Offline rows (VP-23a, VP-20, working defaults, see qc.py): blackdetect warns on
 leading black under 2 s (a fade-in; other black stays FAIL), social_fps warns
 under 30 fps on a social destination, sha256 is reported (--sha256 HEX asserts
 it), safe_zone warns on persistent edges in the 9:16 margins. Opt-in rows (VP-20):
-sync (--sync-ref), colour (--colour) and stabiliser (--stabiliser); see qc.py.
+sync (--sync-ref), colour (--colour) and stabiliser (--stabiliser); see qc.py. Their thresholds
+were calibrated on 2026-11-14 against 39 renders and proxies: sync offset is gate-ready, sync
+drift, colour and stabiliser are advisory. A failed read in colour or stabiliser is a WARN row.
 """
 
 import json
@@ -50,13 +52,16 @@ def add_arguments(p):
                    "always reports the hash)")
     p.add_argument("--sync-ref", metavar="FILE",
                    help="The recording this file's sound came from: adds sync (offset and drift "
-                   "against it; FAIL over 40 ms, a working default)")
+                   "against it over several windows; offset FAIL over one frame at the file's "
+                   "rate, WARN over half; drift is advisory)")
     p.add_argument("--colour", action="store_true",
-                   help="Adds colour: luma legal range (FAIL outside 16-235) and clipped pixels "
-                   "(WARN over 1 percent), on 6 sampled frames")
+                   help="Adds colour (advisory): every frame at 1.5 a second, bars masked; FAIL over 0.1 "
+                   "percent of the picture at hard clipping (Y 252 and up or 4 and under), WARN over "
+                   "1 percent above Y 235; the low side is reported, not warned")
     p.add_argument("--stabiliser", action="store_true",
-                   help="Adds stabiliser: residual frame-to-frame shake of the render (WARN over "
-                   "a working default); judges the picture, not the stabiliser's settings")
+                   help="Adds stabiliser (advisory, never a gate): the worst of 12 bursts' frame-to-frame "
+                   "shake of the render, to a fraction of a pixel (WARN over 0.3 px of 320); judges "
+                   "the picture, not the stabiliser's settings")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help="Override a threshold (repeatable); keys are in rpresolve/qc.py THRESHOLDS")
     p.add_argument("--json", action="store_true", help="Print the result as JSON")
