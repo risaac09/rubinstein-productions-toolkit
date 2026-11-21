@@ -321,11 +321,17 @@ cmd_lite() {
   local p="$parent"
   while :; do
     [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
+    [ -f "$p.SHA256SUMS" ] && die "lite dir $lite is inside the offloaded card folder $p; the lite tier needs its own tree"
+    [ -e "$p/.git" ] && die "lite dir $lite is inside a git working tree ($p); make the lite folder elsewhere"
     [ "$p" = / ] && break
     p=$(dirname "$p")
   done
   route_check "$dir"; route_check "$parent"
   lite="$parent/$(basename "$lite")"
+  [ ! -f "$lite.SHA256SUMS" ] || die "lite dir $lite is an offloaded card folder; the lite tier needs its own tree"
+  local cu; cu=$(sed -n 's/.*"volume_uuid": "\([^"]*\)".*/\1/p' "$dir.card.json")
+  [ -z "$cu" ] || [ "$cu" = none ] || [ "$(volume_uuid "$parent")" != "$cu" ] \
+    || die "lite dir $lite is on the card's own volume ($cu); the tool never writes to the card; make the lite folder on another disk"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
   [ -n "$id" ] || die "no card_id in $dir.card.json"
   local base; base=$(basename "$dir")
@@ -403,6 +409,8 @@ cmd_safe() {
     lite="$p"
     while :; do
       [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
+    [ -f "$p.SHA256SUMS" ] && die "lite dir $lite is inside the offloaded card folder $p; the lite tier needs its own tree"
+    [ -e "$p/.git" ] && die "lite dir $lite is inside a git working tree ($p); make the lite folder elsewhere"
       [ "$p" = / ] && break
       p=$(dirname "$p")
     done

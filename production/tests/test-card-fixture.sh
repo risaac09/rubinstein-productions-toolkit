@@ -72,7 +72,10 @@ check "a second build into the same dir is refused" '! "$F" "$D" >/dev/null 2>&1
 mkdir "$T/bin"
 cat > "$T/bin/diskutil" <<'X'
 #!/bin/sh
-printf '   Volume UUID:              11111111-2222-3333-4444-555555555555\n'
+# the temp root is another volume from the cards below it
+u=11111111-2222-3333-4444-555555555555
+[ "${2%/}" != "$FAKE_PLAIN" ] || u=99999999-other-volume
+printf '   Volume UUID:              %s\n' "$u"
 X
 printf '#!/bin/sh\nexit 0\n' > "$T/bin/smbutil"
 printf '#!/bin/sh\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfake 100 0 999999999 0%% /x\\n"\n' > "$T/bin/df"
@@ -85,6 +88,7 @@ while [ $# -gt 0 ]; do case "$1" in --match) match="$2" ;; --log-file) : > "$2" 
 exit 0
 X
 chmod +x "$T/bin/"*
+FAKE_PLAIN=$(cd "$T" && pwd -P); export FAKE_PLAIN
 export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil"
 export OFFLOAD_CAFFEINATED=1 OFFLOAD_NOW=2026-10-20T12:00:00Z READ_FLAGS=""
 run() { out=$("$O" "$@" 2>&1); rc=$?; }

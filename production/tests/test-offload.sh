@@ -15,9 +15,13 @@ bad() { echo "FAIL $1"; fail=1; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 
 mkdir "$T/bin"
+FAKE_PLAIN=$(cd "$T" && pwd -P); export FAKE_PLAIN
 cat > "$T/bin/diskutil" <<'EOF'
 #!/bin/sh
-printf '   Volume Name:              CARD\n   Volume UUID:              %s\n' "${FAKE_UUID:-11111111-2222-3333-4444-555555555555}"
+# FAKE_PLAIN is the temp root: a path there is on a different volume from the cards, which sit below it.
+u="${FAKE_UUID:-11111111-2222-3333-4444-555555555555}"
+[ -z "${FAKE_PLAIN:-}" ] || [ "${2%/}" != "$FAKE_PLAIN" ] || u=99999999-other-volume
+printf '   Volume Name:              CARD\n   Volume UUID:              %s\n' "$u"
 EOF
 # smbutil fake: a SERVER_NAME line from FAKE_SMB_HOST, nothing when unset (a local disk).
 cat > "$T/bin/smbutil" <<'EOF'
@@ -446,6 +450,25 @@ rm -f "$l2.offsite.txt"
 (cd "$T" && run safe --lite lite4 "$l2" remote:bucket/lite)
 check "the lite_dir in the record is absolute" 'grep -q "^lite_dir $TP/lite4$" "$l2.offsite.txt"'
 rm -f "$l2.offsite.txt"
+
+# 14b. lite never writes to the card, into an offloaded card folder, or into a git working tree.
+before=$(find "$T/cl" | LC_ALL=C sort | shasum)
+run lite "$T/cl/LITE" "$ld"
+check "lite on the card's own volume is refused and names the volume" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "card.s own volume" && [ ! -e "$T/cl/LITE" ] && [ "$before" = "$(find "$T/cl" | LC_ALL=C sort | shasum)" ]'
+run lite "$ld/lite" "$ld"
+check "lite inside the copy is still refused" '[ "$rc" -eq 2 ] && [ ! -e "$ld/lite" ]'
+lcard cl2; mkdir "$T/al2"; FAKE_UUID=22222222-3333-4444-5555-666666666666 "$O" copy "$T/cl2" "$T/al2" --cam GH7 > /dev/null
+ld2=$(ls -d "$T/al2"/GH7-*/); ld2=${ld2%/}
+run lite "$ld/inner" "$ld2"
+check "lite inside another card's offloaded folder is refused with a named error" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "offloaded card folder" && [ ! -e "$ld/inner" ]'
+mkdir -p "$ld/DCIM/sub"; run lite "$ld/DCIM/sub/deep" "$ld2"
+check "lite deep inside an offloaded card folder is refused" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "offloaded card folder"'
+rmdir "$ld/DCIM/sub"
+mkdir -p "$T/repo/.git" "$T/repo/sub"
+run lite "$T/repo/sub/out" "$ld2"
+check "lite inside a git working tree is refused with a named error" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "git working tree" && [ ! -e "$T/repo/sub/out" ]'
+run lite "$T/okfolder" "$ld2"
+check "lite into a plain new folder elsewhere still works" '[ "$rc" -eq 0 ] && [ -s "$T/okfolder/offload-lite-manifest.txt" ]'
 
 # 15d. Two videos needing one lite file, or names equal ignoring case, block and are named.
 c="$T/cdup"; mkdir -p "$c/X" "$c/Y"
