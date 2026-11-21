@@ -1,13 +1,14 @@
 """
 decon: take a finished video apart and score a rebuild. `decon recipe REF --out
 recipe.json` writes the reference's cuts, dissolves, end black and (with --beats) tempo
-as an edit method that methods.validate passes; `--against METHOD` checks the round trip
+as an edit method that methods.validate passes (`--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
 Offline; the work is rpresolve/decon.py, the cuts come from rpresolve/shots.py.
 """
 
 import json
+import os
 import sys
 
 from rpresolve import cli
@@ -31,6 +32,8 @@ def add_arguments(p):
     r.add_argument("--name", help="the method name")
     r.add_argument("--fits", default="motion", help="comma-separated fits tags (placeholder: motion)")
     r.add_argument("--beats", help="a beat map (beats_s) on the reference's own clock, for bpm and snap")
+    r.add_argument("--grade", action="store_true",
+                   help="also estimate a grade per scene as .cube files in OUT's sibling folder (OUT minus .json, plus .grade)")
     r.add_argument("--against", help="a method id or path this video was built from: check the round trip")
     _shots_flags(r)
     c = sub.add_parser("compare", help="score a rebuild against its reference")
@@ -60,6 +63,14 @@ def run(args):
             doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             ok = True
+            if args.grade:
+                from rpresolve import decon_grade
+                gdir = os.path.splitext(args.out)[0] + ".grade"
+                problem = paths.out_problem(gdir, any_git_tree=True)
+                if problem:
+                    raise paths.OutputRefused(problem)
+                g = decon_grade.grade(ref, args.reference, gdir)
+                msg += f"\ngrade: {len(g['scenes'])} scenes, {sum(1 for s in g['scenes'] if s['cube'])} cubes in {gdir}"
             if args.against:
                 trip = decon.match_method(doc, methods.load(args.against))
                 ok = trip["ok"]
@@ -71,7 +82,7 @@ def run(args):
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1)
-    except (dc.ToolMissing, dc.CheckError, OSError, ValueError) as e:
+    except (dc.ToolMissing, dc.CheckError, OSError, ValueError, ImportError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     print(msg)
