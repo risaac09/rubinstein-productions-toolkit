@@ -1,0 +1,1 @@
+sheets, drafts and the squeeze checks now read a BRAW file's anamorphic tag under any spelling or on a stream, as reframe already did, so a body that writes it differently still gets its squeeze label
