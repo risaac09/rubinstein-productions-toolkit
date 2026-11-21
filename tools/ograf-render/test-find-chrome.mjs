@@ -101,12 +101,13 @@ describe("headless decision follows the real file (finding 6)", () => {
 describe("cache entries are filtered by platform (finding 7)", () => {
   it("a build for another platform is never picked", () => {
     const cache = join(root, "cache3");
-    const other = fake(cache, "chrome-headless-shell", "linux-999.0.0.1", "d", "chrome-headless-shell");
+    // the foreign build must not match the host, or its newer version wins there (CI runs on linux)
+    const [op, oa] = platformDir() === "linux" ? ["darwin", "arm64"] : ["linux", "x64"];
+    const other = fake(cache, "chrome-headless-shell", `${platformDir(op, oa)}-999.0.0.1`, "d", "chrome-headless-shell");
     const mine = fake(cache, "chrome-headless-shell", `${platformDir()}-1.0.0.1`, "d", "chrome-headless-shell");
     const env = { PUPPETEER_CACHE_DIR: cache, PATH: emptyPath };
     assert.equal(findChrome(undefined, env, process.platform, process.arch), mine);
-    assert.notEqual(findChrome(undefined, env, "darwin", "arm64"), other);
-    assert.equal(findChrome(undefined, env, "linux", "x64"), other);
+    assert.equal(findChrome(undefined, env, op, oa), other);
   });
   it("maps the platform names puppeteer uses", () => {
     assert.equal(platformDir("darwin", "arm64"), "mac_arm");
