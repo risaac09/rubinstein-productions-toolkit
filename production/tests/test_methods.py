@@ -93,6 +93,50 @@ class TestValidate(unittest.TestCase):
         self.assertEqual(self.problems(lambda m: None), "")
 
 
+class TestSecondaries(unittest.TestCase):
+    A = {"kind": "window", "target": "face", "why": "the face sits a stop under"}
+    B = {"kind": "magic-mask", "target": "person", "why": "the sky look stays off skin"}
+
+    def with_sec(self, sec, slot=1):
+        m = copy.deepcopy(methods.load("punch-montage"))
+        if sec is not None:
+            m["slots"][slot]["secondaries"] = sec
+        return m
+
+    def test_absent_and_valid_are_sound(self):
+        self.assertEqual(methods.validate(self.with_sec(None)), [])
+        self.assertEqual(methods.validate(self.with_sec([self.A, self.B])), [])
+
+    def test_each_bad_case_is_named(self):
+        bad = {"an empty list": [], "not a list": "window", "not an object": ["window"],
+               "unknown kind": [{**self.A, "kind": "vignette"}],
+               "missing why": [{"kind": "window", "target": "face"}],
+               "extra key": [{**self.A, "name": "x"}],
+               "blank target": [{**self.A, "target": " "}],
+               "non-string why": [{**self.A, "why": 3}]}
+        for name, sec in bad.items():
+            with self.subTest(name):
+                p = methods.validate(self.with_sec(sec))
+                self.assertTrue(p and all(x.startswith("slot 2: ") for x in p), p)
+
+    def test_to_manifest_gives_one_colour_step_each(self):
+        m = self.with_sec([self.A, self.B])
+        steps = methods.to_manifest(m, fills(m))["method"]["ui_steps"]
+        got = [x for x in steps if x["page"] == "Color"]
+        self.assertEqual([(x["target"], x["control"], x["value"], x["why"]) for x in got],
+                         [("span 1: face", "window", "face", self.A["why"]),
+                          ("span 1: person", "magic-mask", "person", self.B["why"])])
+        self.assertEqual([x["panel"] for x in got],
+                         ["Windows palette", "Magic Mask palette"])
+
+    def test_a_tracker_on_a_word_slot_goes_to_fusion(self):
+        m = methods.load("matte-title")
+        m["slots"][0]["secondaries"] = [{"kind": "tracker", "target": "wall",
+                                         "why": "the word sticks to it"}]
+        steps = methods.to_manifest(m, fills(m))["method"]["ui_steps"]
+        self.assertEqual([x["page"] for x in steps if x["control"] == "tracker"], ["Fusion"])
+
+
 class TestToManifest(unittest.TestCase):
     def test_round_trips_through_interchange(self):
         for mid in IDS:
