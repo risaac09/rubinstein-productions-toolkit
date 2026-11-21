@@ -2,6 +2,8 @@
 
 **A facilitation and measurement methodology, and the production tools that go with it, for solo practitioners who listen and film.**
 
+Kit source and an additive Resolve automation library for one AI-assisted solo practice. Take what is useful. Methodology releases live in pureland-fork-kit.
+
 Built by [Isaac Rubinstein](https://rubinsteinproductions.com) and published so other practitioners can take what is useful. The business that runs on it is not here; this is the reusable part.
 
 Forks welcome. Pull requests are not reviewed or merged, so fork it and make it yours. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security issues as [`SECURITY.md`](SECURITY.md) describes.
