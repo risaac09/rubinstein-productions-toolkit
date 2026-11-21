@@ -329,6 +329,32 @@ class Vp20Rows(unittest.TestCase):
         self.assertEqual(_row(r, "stabiliser")["status"], qc.WARN, _row(r, "stabiliser"))
         self.assertEqual(r["status"], "pass")
 
+    def _narrow(self, shake, noise):
+        """A textured 50x140 subject on a flat wall, the whole picture moving by `shake` px."""
+        rng = np.random.default_rng(5)
+        subj = rng.integers(60, 200, (140, 50)).astype(np.float64)
+        frames = []
+        for n in range(100):
+            f = np.full((180, 320), 128.0)
+            dx = int(round(shake * (1 if n % 2 else -1)))
+            f[20:160, 135 + dx:185 + dx] = subj
+            frames.append(np.clip(f + rng.standard_normal(f.shape) * noise, 0, 255).astype(np.uint8))
+        out = os.path.join(self._tmp.name, f"narrow_{shake}_{noise}.mp4")
+        p = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "rawvideo",
+                            "-pix_fmt", "gray", "-s", "320x180", "-r", "25", "-i", "-", "-c:v", "libx264",
+                            "-qp", "0", "-pix_fmt", "yuv444p", out], input=b"".join(f.tobytes() for f in frames),
+                           capture_output=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return out
+
+    def test_stabiliser_does_not_pass_a_shake_its_flat_corners_cannot_measure(self):
+        row = _row(qc.run(self._narrow(3, 0), stabiliser=True), "stabiliser")
+        self.assertEqual(row["status"], qc.WARN, row)
+
+    def test_stabiliser_does_not_read_noise_on_a_flat_wall_as_shake(self):
+        row = _row(qc.run(self._narrow(0, 3), stabiliser=True), "stabiliser")
+        self.assertEqual(row["status"], qc.PASS, row)
+
     def test_stabiliser_catches_one_bump_that_three_fixed_bursts_would_miss(self):
         row = _row(qc.run(self.bump, stabiliser=True), "stabiliser")
         self.assertEqual(row["status"], qc.WARN, row)  # the worst burst, not the median of twelve

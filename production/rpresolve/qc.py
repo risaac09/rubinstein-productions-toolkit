@@ -562,12 +562,16 @@ def _sound_voice_vs_bed(frames, words, th):
         v = sorted(m for t, m, _ in frames if a + 0.4 <= t <= b and m > floor)
         return v[len(v) // 2] if len(v) >= max(3, int(need * 10) - 4) else None
 
-    def silent(a, b):  # frames wholly inside [a, b] exist and nine in ten read as no signal
+    end = max((t for t, _, _ in frames), default=0.0)
+
+    def silent(a, b):  # a span past the audio, or frames wholly inside [a, b] nine in ten no signal
+        if a >= end:
+            return True
         v = [m for t, m, _ in frames if a + 0.4 <= t <= b]
         return len(v) >= 3 and sum(m <= floor for m in v) >= 0.9 * len(v)
 
     spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
-    edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
+    edges = [0.0] + [x for sp in spans for x in sp] + [end]
     gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]  # gap i precedes span i
     long_bed = [level(a, b) if b - a >= gap_min else None for a, b in gaps]
     beds = sorted(x for x in long_bed if x is not None)
@@ -607,7 +611,7 @@ def _sound_voice_vs_bed(frames, words, th):
         return _srow("voice_vs_bed", SKIP, f"0 of {len(spans)} spans readable", expected,
                      f"each span needs {need:g}s of clean frames")
     found = "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
-    found = "; ".join(x for x in (found, "; ".join(empty[:5])) if x) or f"{read} spans clear of their bed"
+    found = "; ".join(x for x in (found, "; ".join(empty[:5]) + (f"; +{len(empty) - 5} more" if len(empty) > 5 else "")) if x) or f"{read} spans clear of their bed"
     return _srow("voice_vs_bed", WARN if bad or empty else PASS, found, expected,
                  f"{read} of {len(spans)} spans read, each against the louder bed of the gaps beside it, "
                  f"or the nearest of {len(beds)} gap(s) of {gap_min:g}s or more "
@@ -915,13 +919,22 @@ def _shift(np, a, b):
 STAB_CORNER = 0.4  # each corner region is this share of the picture's width and height
 
 
-def _shift_corners(np, a, b):
-    """(dx, dy) of b against a, read in the four corners and the median taken per
+def _corner_regions(h, w):
+    rh, rw = int(h * STAB_CORNER), int(w * STAB_CORNER)
+    return [(slice(y, y + rh), slice(x, x + rw)) for y in (0, h - rh) for x in (0, w - rw)]
+
+
+def _texture(np, a):
+    """Std of the picture averaged in 4x4 blocks: structure survives, sensor noise
+    on a flat wall does not, so a flat corner reads as flat whatever its noise."""
+    h, w = a.shape[0] // 4, a.shape[1] // 4
+    return float(a[:h * 4, :w * 4].reshape(h, 4, w, 4).mean(axis=(1, 3)).std())
+
+
+def _shift_corners(np, a, b, rs):
+    """(dx, dy) of b against a, read in the regions rs and the median taken per
     axis: a subject that moves in the middle of the picture does not read as camera
     shake, and a shake that moves the whole picture still does."""
-    h, w = a.shape
-    rh, rw = int(h * STAB_CORNER), int(w * STAB_CORNER)
-    rs = [(slice(y, y + rh), slice(x, x + rw)) for y in (0, h - rh) for x in (0, w - rw)]
     return tuple(np.median(np.array([_shift(np, a[r], b[r]) for r in rs]), axis=0))
 
 
@@ -954,9 +967,13 @@ def _stab_row(np, path, stabiliser, th, dur, streams):
                                     + proc.stderr.decode(errors="replace").strip()[-300:])
             fr = np.frombuffer(proc.stdout, dtype=np.uint8)
             fr = fr[:len(fr) // (w * h) * w * h].reshape(-1, h, w).astype(np.float64)
-            if len(fr) < 4 or float(fr.std(axis=(1, 2)).min()) < 2.0:  # too short or flat to read
+            if len(fr) < 4 or min(_texture(np, f) for f in fr) < 2.0:  # too short or flat to read
                 continue
-            shifts = np.array([_shift_corners(np, a, b) for a, b in zip(fr[:-1], fr[1:])])
+            # a corner with no texture of its own has nothing to measure: leave it out, and
+            # with fewer than two left read the whole picture, never a zero from a flat wall
+            rs = [r for r in _corner_regions(h, w) if min(_texture(np, f[r]) for f in fr) >= 2.0]
+            shifts = np.array([_shift_corners(np, a, b, rs) if len(rs) >= 2 else _shift(np, a, b)
+                               for a, b in zip(fr[:-1], fr[1:])])
             jerks.append(float(np.median(np.hypot(*np.diff(shifts, axis=0).T))))
     except (rpmeasure.MeasureError, dc.CheckError, subprocess.SubprocessError, OSError, ValueError, KeyError) as e:
         return _srow("stabiliser", WARN, "not read", expected, str(e))  # a bad read keeps the table
@@ -965,7 +982,7 @@ def _stab_row(np, path, stabiliser, th, dur, streams):
     jerk = max(jerks)
     over = sum(1 for j in jerks if j > th["stab_jerk_px"])
     return _srow("stabiliser", WARN if jerk > th["stab_jerk_px"] else PASS, f"{jerk:.2f} px", expected,
-                 f"{len(jerks)} bursts of {n} frames, {over} over; sub-pixel shifts on a {w}x{h} grey picture, read in its four corners; "
+                 f"{len(jerks)} bursts of {n} frames, {over} over; sub-pixel shifts on a {w}x{h} grey picture, read in its textured corners, or the whole picture when fewer than two have texture; "
                  f"advisory, never gates ({CALIBRATED}: 0.3 px flagged 8 of 39 files on the whole-picture read, not rerun on the corner read; no handheld set was run, so its "
                  "false-WARN rate on handheld shots is unmeasured); judges the render, not the stabiliser's settings")
 
