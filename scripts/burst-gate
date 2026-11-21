@@ -181,8 +181,7 @@ default_tests() {
     "$t"
   done
   if [ -d production/tests ]; then
-    mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
-    LUTLAB_SKIP_RENDER_VERIFY=1 python3 -m unittest $mods
+    LUTLAB_SKIP_RENDER_VERIFY=1 scripts/run-production-tests
   fi
 }
 

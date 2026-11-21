@@ -142,14 +142,15 @@ done
 for t in test-check-voice test-check-licence-scope test-methodology-status test-changelog-fragments test-burst-gate; do
   printf '#!/bin/sh\nexit 0\n' > "$R/scripts/$t.sh"; chmod +x "$R/scripts/$t.sh"
 done
+cp "$SRC/scripts/run-production-tests" "$R/scripts/"
 mkdir -p "$R/production/tests"; printf '#!/bin/sh\nexit 0\n' > "$R/production/tests/test-offload.sh"; chmod +x "$R/production/tests/test-offload.sh"
 printf 'import unittest\nclass T(unittest.TestCase):\n    def test_ok(self): pass\n' > "$R/production/tests/test_stub.py"
 printf 'Changed g3exec.\n' > "$R/changelog.d/2026-10-16-g3exec.md"
 git -C "$R" add -A; git -C "$R" commit -qm g3exec
-out="$(cd "$R" && PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+out="$(cd "$R" && HOME="$TMP" PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q 'PASS G3 tests' && ok "G3 default set passes when every listed script is executable" || bad "G3 default (rc=$rc): $out"
 chmod -x "$R/scripts/test-methodology-status.sh"; git -C "$R" commit -qam noexec
-out="$(cd "$R" && PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
+out="$(cd "$R" && HOME="$TMP" PYTHONDONTWRITEBYTECODE=1 "$G" --base main --skip G1,G2,G4,G5 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'not executable: scripts/test-methodology-status.sh' && ok "G3 fails and names a non-executable test script" || bad "G3 noexec (rc=$rc): $out"
 
 # A JSON declaration, when jq is present.

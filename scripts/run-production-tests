@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# run-production-tests [unittest args]: the production unit tests, as CI runs
+# them. Where an optional local job limiter is installed at
+# $HOME/scripts/heavy-slot (never on CI runners), the run waits for one slot,
+# up to 1800s, so parallel runs on one machine do not swamp it. Without it the
+# tests run directly. A wait that times out exits 75 and never reads as a pass.
+# Env: PYTHON names the interpreter (default python3).
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 2
+mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
+cmd=("${PYTHON:-python3}" -m unittest "$@")
+limiter="${HOME:-}/scripts/heavy-slot"
+if [ -x "$limiter" ]; then
+  # shellcheck disable=SC2086
+  "$limiter" --timeout 1800 -- "${cmd[@]}" $mods; rc=$?
+  [ "$rc" -eq 75 ] && echo "run-production-tests: no job slot free within 1800s; the tests did not run" >&2
+  exit "$rc"
+fi
+# shellcheck disable=SC2086
+exec "${cmd[@]}" $mods

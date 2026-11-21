@@ -1,0 +1,1 @@
+Added scripts/run-production-tests, the production unit-test runner that burst-gate now calls. Where an optional local job limiter is installed at $HOME/scripts/heavy-slot it takes one slot for the run (1800s timeout, exit 75 on timeout, never a pass); without it, as on CI runners, the tests run directly. Covered by scripts/test-run-production-tests.sh, wired into CI.
