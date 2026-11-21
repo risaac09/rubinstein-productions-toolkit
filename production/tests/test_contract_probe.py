@@ -381,6 +381,42 @@ class Sandbox(unittest.TestCase):
         self.assertTrue(doc["project_is_sandbox"])
 
 
+class Values(unittest.TestCase):
+    def test_opt_in_dict_records_numbers_and_string_lengths_only(self):
+        out = probe.summarise({"a": 1, "b": 2.5, "c": True, "d": "/secret/path", "e": [1]}, values=True)
+        self.assertEqual(out["values"], {"a": 1, "b": 2.5, "c": True})
+        self.assertEqual(out["str_lens"], {"d": 12})
+        self.assertNotIn("secret", json.dumps(out))
+
+    def test_dict_without_opt_in_records_keys_only(self):
+        out = probe.summarise({"a": 1, "d": "x"})
+        self.assertEqual(out, {"type": "dict", "keys": ["a", "d"]})
+
+    def test_fades_and_speed_rows_carry_numbers_other_dicts_do_not(self):
+        got = {r["call"]: r for r in rows(run())}
+        self.assertEqual(got["TimelineItem.GetFades"]["returned"]["values"], {"FadeIn": 0, "FadeOut": 0})
+        self.assertEqual(got["TimelineItem.GetSpeed"]["returned"]["values"], {"Percentage": 100.0})
+        self.assertNotIn("values", got["TimelineItem.GetProperties"]["returned"])
+
+    def test_sandbox_after_rows_carry_numbers(self):
+        for only, call in (("Q3", "TimelineItem.GetFades.after"), ("Q6", "TimelineItem.GetSpeed.after")):
+            doc = run("box", sandbox_checks=True, config=Sandbox.CONFIG, only=only)
+            got = {r["call"]: r for c in doc["checks"] if c["mode"] == "sandbox-only" for r in c["rows"]}
+            self.assertIn("values", got[call]["returned"])
+
+    def test_values_never_change_the_grade(self):
+        gold = {"Q3:TimelineItem.GetFades": {"present": True, "type": "dict"}}
+        doc = probe.run_probe(Resolve(), gold, {}, only="Q3")
+        row = [r for r in rows(doc) if r["call"] == "TimelineItem.GetFades"][0]
+        self.assertEqual(row["golden"], "pass")
+
+    def test_restore_is_read_back_and_compared(self):
+        doc = run("box", sandbox_checks=True, config=Sandbox.CONFIG, only="Q2")
+        got = {r["call"]: r for c in doc["checks"] if c["mode"] == "sandbox-only" for r in c["rows"]}
+        self.assertEqual(got["MediaPoolItem.GetAudioMapping.restore_matches_original"]["note"], "same as the original")
+        self.assertIn("MediaPoolItem.GetAudioMapping.after_restore", got)
+
+
 class Golden(unittest.TestCase):
     def test_every_row_passes_the_shipped_golden_on_the_fake(self):
         doc = run()
