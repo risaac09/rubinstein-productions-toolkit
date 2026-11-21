@@ -457,6 +457,73 @@ class Review2(Base):
         self.assertIn("FAIL", self.row(out, "pages"))
 
 
+class Review3(Base):
+    def real_pair(self):
+        d = os.path.join(self.tmp.name, "media")
+        os.mkdir(d)
+        real = os.path.join(d, "Take1.mov")
+        open(real, "w").close()
+        link = os.path.join(d, "link.mov")
+        os.symlink(real, link)
+        return real, link
+
+    def with_path(self, manifest_path, item_path, audio_path=None):
+        m = copy.deepcopy(MANIFEST)
+        m["source_path"] = manifest_path
+        v = [vrow(i + 1, r["start"], r["duration"], r["source_start"], path=item_path)
+             for i, r in enumerate(good_video())]
+        a = [arow(i + 1, r["start"], r["duration"], r["source_start"],
+                  path=audio_path or item_path) for i, r in enumerate(good_audio())]
+        return m, [result("video", v), result("audio", a)]
+
+    def test_symlink_is_the_same_file(self):
+        real, link = self.real_pair()
+        m, items = self.with_path(real, link)
+        code, out, _ = self.run_diff(items, manifest=m)
+        self.assertEqual(code, 0, out)
+
+    def test_case_only_difference_is_a_warning(self):
+        m, items = self.with_path("/nowhere/Take1.mov", "/nowhere/take1.MOV")
+        code, out, _ = self.run_diff(items, manifest=m)
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN", self.row(out, "span 1"))
+        self.assertIn("path differs only in case, not compared", out)
+
+    def test_other_missing_file_still_fails(self):
+        m, items = self.with_path("/nowhere/a.mov", "/nowhere/b.mov")
+        code, out, _ = self.run_diff(items, manifest=m)
+        self.assertEqual(code, 1)
+
+    def test_disabled_audio(self):
+        a = good_audio()
+        a[1]["enabled"] = False
+        code, out, _ = self.run_diff([result("video", good_video()), result("audio", a)])
+        self.assertEqual(code, 1)
+        self.assertIn("span 2: audio disabled", self.row(out, "audio"))
+
+    def test_audio_from_another_file_without_ids(self):
+        a = good_audio()
+        for r in a:
+            r["media"] = {"name": "x", "File Path": "/media/take1.mov"}
+        a[1]["media"] = {"name": "x", "File Path": "/cardB/take1.mov"}
+        v = good_video()
+        for r in v:
+            r["media"]["unique_id"] = None
+        code, out, _ = self.run_diff([result("video", v), result("audio", a)])
+        self.assertEqual(code, 1)
+        self.assertIn("span 2", self.row(out, "audio"))
+
+    def test_audio_source_unknowable_is_a_warning(self):
+        a = good_audio()
+        a[1]["media"] = {"name": "x"}
+        v = good_video()
+        v[1]["media"] = {"name": "take1"}
+        code, out, _ = self.run_diff([result("video", v), result("audio", a)])
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN", self.row(out, "audio"))
+        self.assertIn("audio source not compared", out)
+
+
 class Cli(unittest.TestCase):
     def sub(self, *args):
         return subprocess.run([sys.executable, "-m", "rpresolve.build_diff", *args], cwd=PROD,

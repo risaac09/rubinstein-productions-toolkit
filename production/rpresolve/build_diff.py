@@ -149,8 +149,19 @@ def _row(status, check, detail):
     return {"status": status, "check": check, "detail": detail}
 
 
-def _same_path(a, b):
-    return os.path.normpath(a) == os.path.normpath(b)
+def path_match(a, b):
+    """True (same file), False (another file), None (differs only in letter
+    case: not decided) for two paths. Both on disk: os.path.samefile. Else
+    the real paths (symlinks resolved) are compared."""
+    try:
+        if os.path.exists(a) and os.path.exists(b):
+            return os.path.samefile(a, b)
+    except OSError:
+        pass
+    ra, rb = os.path.realpath(a), os.path.realpath(b)
+    if ra == rb:
+        return True
+    return None if ra.lower() == rb.lower() else False
 
 
 def audio_plan(clip, fps):
@@ -232,8 +243,12 @@ def diff(m, clip, fps, items):
         path = (it.get("media") or {}).get("File Path")
         if not path:
             warn.append("not compared by path: the item names no file")
-        elif not _same_path(path, p["path"]):
-            bad.append(f"plays {path}, plan {p['path']}")
+        else:
+            same = path_match(path, p["path"])
+            if same is None:
+                warn.append("path differs only in case, not compared")
+            elif not same:
+                bad.append(f"plays {path}, plan {p['path']}")
         status = "FAIL" if bad else "WARN" if warn else "PASS"
         rows.append(_row(status, f"span {p['n']}", "; ".join(bad + warn) or
                          f"record {p['rec']}, {p['len']} frames, source {p['src']}"))
@@ -256,27 +271,45 @@ def diff(m, clip, fps, items):
         rows.append(_row("FAIL", "audio under video",
                          "no audio read in ITEMS; save timeline_items with track_type audio"))
     else:
-        bad = []
+        bad, warn = [], []
         for p, (a0, a1, asrc) in zip(plan, aplan):
             v = found.get(p["n"])
             if v is None:
                 continue
-            uid = (v.get("media") or {}).get("unique_id")
-            near = [a for a in items["audio"] if a["start"] - base < p["rec"] + p["len"]
-                    and a["end"] - base > p["rec"]
-                    and (uid is None or (a.get("media") or {}).get("unique_id") in (None, uid))]
+            vm = v.get("media") or {}
+            near = []
+            for a in items["audio"]:
+                if not (a["start"] - base < p["rec"] + p["len"] and a["end"] - base > p["rec"]):
+                    continue
+                am = a.get("media") or {}
+                if am.get("unique_id") is not None and vm.get("unique_id") is not None:
+                    same = am["unique_id"] == vm["unique_id"]
+                elif am.get("File Path"):
+                    same = path_match(am["File Path"], vm.get("File Path") or p["path"])
+                else:
+                    same = None
+                if same is not False:
+                    near.append((a, same))
             if not near:
                 bad.append(f"span {p['n']}: no audio item under it")
                 continue
-            exact = [a for a in near if a["start"] - base == a0 and a["end"] - base == a1
-                     and a["source_start"] == asrc]
-            if any(a["track"] == SOUND_TRACK for a in exact):
+            exact = [(a, same) for a, same in near if a["start"] - base == a0
+                     and a["end"] - base == a1 and a["source_start"] == asrc]
+            good = [(a, same) for a, same in exact if a["track"] == SOUND_TRACK]
+            if good:
+                a, same = good[0]
+                if a.get("enabled") is False:
+                    bad.append(f"span {p['n']}: audio disabled")
+                elif "enabled" not in a:
+                    warn.append(f"span {p['n']}: audio enabled not in ITEMS, not compared")
+                if same is not True:
+                    warn.append(f"span {p['n']}: audio source not compared")
                 continue
             if exact:
                 bad.append(f"span {p['n']}: audio on " + ", ".join(
-                    f"A{t}" for t in sorted({a['track'] for a in exact})) + f", expected A{SOUND_TRACK}")
+                    f"A{t}" for t in sorted({a['track'] for a, _ in exact})) + f", expected A{SOUND_TRACK}")
                 continue
-            a = next((x for x in near if x["track"] == SOUND_TRACK), near[0])
+            a = next((x for x, _ in near if x["track"] == SOUND_TRACK), near[0][0])
             why = []
             if a["start"] - base != a0 or a["end"] - base != a1:
                 why.append(f"audio runs {a['start'] - base}-{a['end'] - base}, plan {a0}-{a1}")
@@ -285,9 +318,9 @@ def diff(m, clip, fps, items):
             if p["split"] and a["start"] - base == p["rec"] and a["end"] - base == p["rec"] + p["len"]:
                 why.append("the manifest's audio_lead or audio_tail is not built (cut ignores both)")
             bad.append(f"span {p['n']}: " + "; ".join(why))
-        rows.append(_row("FAIL" if bad else "PASS", "audio under video",
-                         "; ".join(bad) or f"{len(found)} video item(s) each have their audio on "
-                                           f"A{SOUND_TRACK}, source in step"))
+        rows.append(_row("FAIL" if bad else "WARN" if warn else "PASS", "audio under video",
+                         "; ".join(bad + warn) or f"{len(found)} video item(s) each have their audio on "
+                                                  f"A{SOUND_TRACK}, source in step"))
 
     extra = [f"V1 item at record {r['start'] - base} ({r['duration']} frames)"
              for r in v1 if id(r) not in matched]
