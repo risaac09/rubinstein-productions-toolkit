@@ -1,0 +1,1 @@
+deliver_fix_loudness now fixes a destination with no loudness target (a client master) whose true peak is over the ceiling: a copy with the audio gain lowered under it, video copied, original untouched, nothing written when the peak is already under. queue_render no longer nests the destination folder twice when target_dir already ends in it.

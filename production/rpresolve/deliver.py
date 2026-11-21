@@ -449,12 +449,17 @@ def same_output(a, b):
         return _folded(da) == _folded(db)
 
 
+def _in_subfolder(real, sub):
+    """real/<sub>, or real itself when it already ends in <sub> (a target
+    folder named for the destination is not nested twice)."""
+    return real if not sub or os.path.basename(real) == sub else os.path.join(real, sub)
+
+
 def output_folder(target_dir, dest):
     """The folder a destination's file goes in: target_dir/<subfolder>, or
-    target_dir itself when the destination has none. A real path; the
-    subfolder need not exist yet."""
-    real = os.path.realpath(os.path.expanduser(target_dir))
-    return os.path.join(real, dest["subfolder"]) if dest.get("subfolder") else real
+    target_dir itself when the destination has none or target_dir already
+    ends in it. A real path; the subfolder need not exist yet."""
+    return _in_subfolder(os.path.realpath(os.path.expanduser(target_dir)), dest.get("subfolder"))
 
 
 def subfolders(config):
@@ -495,7 +500,7 @@ def output_problems(target_dir, filename, dest, queued=(), volumes_root="/Volume
         problems.append(ref)
     folder = real
     if subfolder:
-        folder = os.path.join(real, subfolder)
+        folder = _in_subfolder(real, subfolder)
         if os.path.islink(folder):
             problems.append(f"{folder} is a link; the destination's files go in a real folder "
                             "there, so the checks above cover where they land.")
