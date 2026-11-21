@@ -366,8 +366,9 @@ class Standards(Base):
         root = make_card(self.tmp, schema2=True, offsite=True)
         for stamp in ("2001-01-01T00:00:00+00:00", "2001-01-01T00:00:00.123Z", "garbage"):
             self.assertTrue(card._record_newer(str(root), stamp), stamp)
-        self.assertFalse(card._record_newer(str(root), "2999-01-01T00:00:00Z"))
-        self.assertFalse(card._record_newer(str(root), "2999-01-01T00:00:00+00:00"))
+        for stamp in ("2999-01-01T00:00:00Z", "2999-01-01T00:00:00+00:00", "2099-01-01T24:00:00Z",
+                      "9999-12-31T23:59:59Z"):
+            self.assertTrue(card._record_newer(str(root), stamp), stamp)  # the future is not trusted
 
     def test_s5_old_name_fails_but_loads(self):
         res = card.check(card.load(str(make_card(self.tmp, name="OLD-NAME"))))

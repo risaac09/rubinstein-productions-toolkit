@@ -569,6 +569,12 @@ class TestScriptingChangelog(unittest.TestCase):
         self.assertEqual((s["audited_date"], s["audited_version"]),
                          (tools_read.SCRIPTING_AUDITED_DATE, tools_read.SCRIPTING_AUDITED_VERSION))
 
+    def test_a_newer_version_is_changed_even_when_the_date_does_not_read(self):
+        for date in ("5 Sept 2026", "November 5, 2026", "2026-11-05", "5th November 2026"):
+            self.assertTrue(self.scripting(self.doc(date, "21.3"))["changed"], date)
+        undated = "# DaVinci Resolve Scripting API Changelog\n\n## 21.3\n- x\n"
+        self.assertTrue(self.scripting(undated)["changed"])
+
     def test_the_same_or_an_older_date_is_unchanged(self):
         same = self.doc(tools_read.SCRIPTING_AUDITED_DATE, tools_read.SCRIPTING_AUDITED_VERSION)
         self.assertIs(self.scripting(same)["changed"], False)
@@ -603,7 +609,7 @@ class TestScriptingChangelog(unittest.TestCase):
 
     def test_a_malformed_file_cannot_be_judged(self):
         self.assertIsNone(self.scripting("nothing useful\n")["changed"])
-        self.assertIsNone(self.scripting(self.doc("someday"))["changed"])
+        self.assertIsNone(self.scripting(self.doc("someday", tools_read.SCRIPTING_AUDITED_VERSION))["changed"])
 
     def test_the_summary_names_both_dates_only_when_changed(self):
         class Session:
