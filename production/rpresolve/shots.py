@@ -42,10 +42,19 @@ dissolve, not a second cut. The shot list gains three columns after the four
 above: into (start, cut or dissolve), blend_in and blend_out (seconds, dissolves
 only). --no-dissolves skips the pass.
 
-What it does not do: wipes, dip-to-black and fades to or from a flat colour
-(the blend must have pixels moving both ways); a dissolve over footage that
+Dips and flashes come from the same grey frames (no second decode, so
+--no-dissolves skips them too). A dip is a flat near-black run of 2 frames or
+more, or a near-white run of 4 or more, with a picture on both sides; the
+frames where luma falls into it and rises out are its span, and the shot after
+it has into "dip" with blend_in and blend_out as that span. A dip replaces a
+cut or dissolve found inside it. A flash is 1 to 3 frames far brighter than
+both neighbours; the report lists their times under "flashes" (the cuts a
+flash scores are left as scdet found them).
+
+What it does not do: wipes and fades to or from a colour that is not near
+black or white, or a fade at the very start or end of the file; a dissolve over footage that
 moves a lot, since the run is then no straight line; a dissolve in a clip with
-no still stretch at all. Flashes and whip pans can score as cuts. The list
+no still stretch at all. Whip pans can score as cuts. The list
 proposes; the editor's own shot list outranks it.
 """
 
@@ -73,6 +82,11 @@ MAX_OFF = 0.25      # a window frame may sit this far off the blend line, as a s
 MAX_NOISE = 1.0     # grey levels a frame step can move on noise alone
 MAX_DISSOLVE_S = 3600.0  # longest file the dissolve pass holds in memory (about 200 MB of grey frames at 25 fps, a few times over in find_dissolves)
 MAX_STEP = 0.35     # no single frame step may be more than this share of the whole move
+DARK_MAX, WHITE_MIN = 24.0, 232.0   # mean grey of a near-black or near-white frame (video-range black is 16, white 235)
+FLAT_STD = 8.0      # a dip frame is near flat: its grey levels spread less than this
+MIN_DARK, MIN_WHITE = 2, 4   # frames in a dip's flat run (a white run of 1 to 3 frames is a flash)
+RAMP_FRAMES, RAMP_STEP = 6, 4.0   # a fall or rise is at most this many frames, each moving the mean more than RAMP_STEP
+FLASH_RISE, MAX_FLASH = 60.0, 3   # a flash is 1 to MAX_FLASH frames this many levels above both neighbours
 BACKENDS = ("scdet", "pyscenedetect")
 # the 2026-10-31 trial's settings, with shots down to 2 frames (its default of 15 hides flash cuts)
 PSD_ARGS = ("-d", "2", "-q", "-m", "2", "detect-adaptive")
@@ -193,6 +207,42 @@ def find_dissolves(frames, fps):
     return out
 
 
+def find_dips(frames, fps):
+    """(dips, flashes) in grey frames (n, pixels). A dip is a flat near-black (or near-white) run with
+    a picture on both sides, plus the frames over which the luma falls into it and rises out;
+    start_frame is the last frame still on shot A, end_frame the first fully on shot B. A flash is
+    1 to MAX_FLASH frames FLASH_RISE or more brighter than both neighbours: a list of times."""
+    n = len(frames)
+    m, sd = frames.mean(1), frames.std(1)
+    flat = sd < FLAT_STD
+    dips, flashes, i = [], [], 0
+    while i < n:
+        kind = "black" if flat[i] and m[i] <= DARK_MAX else "white" if flat[i] and m[i] >= WHITE_MIN else None
+        j = i
+        while kind and j + 1 < n and flat[j + 1] and (m[j + 1] <= DARK_MAX if kind == "black" else m[j + 1] >= WHITE_MIN):
+            j += 1
+        if kind and 0 < i and j < n - 1 and j - i + 1 >= (MIN_DARK if kind == "black" else MIN_WHITE):
+            a, b = i, j
+            while a > 0 and i - a < RAMP_FRAMES and abs(m[a - 1] - m[a]) > RAMP_STEP:
+                a -= 1
+            while b < n - 1 and b - j < RAMP_FRAMES and abs(m[b + 1] - m[b]) > RAMP_STEP:
+                b += 1
+            dips.append({"start_frame": a, "end_frame": b, "start": round(a / fps, 3), "end": round(b / fps, 3),
+                         "duration": round((b - a) / fps, 3), "to": kind})
+            i = b + 1
+        else:
+            i = j + 1
+    for i in range(1, n - 1):  # a flash starts on a frame far above the one before it
+        if m[i] - m[i - 1] < FLASH_RISE:
+            continue
+        for j in range(i, min(i + MAX_FLASH, n - 1)):
+            if m[j] - m[j + 1] >= FLASH_RISE and m[i:j + 1].min() - max(m[i - 1], m[j + 1]) >= FLASH_RISE:
+                if not any(d["start_frame"] <= i <= d["end_frame"] for d in dips):
+                    flashes.append(round(i / fps, 3))
+                break
+    return dips, flashes
+
+
 def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
     """{file, backend, threshold, fps, duration_s, cuts, dissolves, shots} for a video file;
     shots are {shot, in, out, duration, into, blend_in, blend_out}. Raises
@@ -225,17 +275,22 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
             raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
         found_cuts = qc.parse_scdet(proc.stderr, threshold)
     cuts = sorted({t for t in found_cuts if 0 < t < total})
-    found = []
+    found, dips, flashes = [], [], []
     if dissolves and rate:
-        found = find_dissolves(grey_frames(source, total), float(rate))
+        grey = grey_frames(source, total)  # one decode serves the dissolve and dip passes
+        found = find_dissolves(grey, float(rate))
+        dips, flashes = find_dips(grey, float(rate)) if grey is not None else ([], [])
         half = 0.5 / float(rate)
+        # a dip's own fall and rise read as dissolves and its edges as cuts: the dip replaces both
+        found = [d for d in found if not any(d["start"] - half <= p["end"] and p["start"] - half <= d["end"] for p in dips)]
+        cuts = [c for c in cuts if not any(p["start"] - half <= c <= p["end"] + half for p in dips)]
         if backend == "pyscenedetect":
             # its cuts are the confident ones: a "dissolve" holding one is handheld motion around a cut
             found = [d for d in found if not any(d["start"] - half <= c <= d["end"] + half for c in cuts)]
         else:
             # scdet can catch one frame of a quick dissolve: that is the dissolve, not a cut
             cuts = [c for c in cuts if not any(d["start"] - half <= c <= d["end"] + half for d in found)]
-    bounds = sorted([(c, None) for c in cuts] + [((d["start"] + d["end"]) / 2, d) for d in found],
+    bounds = sorted([(c, None) for c in cuts] + [((d["start"] + d["end"]) / 2, d) for d in found + dips],
                     key=lambda b: b[0])
     bounds = [b for b in bounds if 0 < b[0] < total]
     edges = [0.0] + [b[0] for b in bounds] + [total]
@@ -243,11 +298,12 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
     for i, (a, b) in enumerate(zip(edges, edges[1:])):
         d = bounds[i - 1][1] if i else None
         shots.append({"shot": i + 1, "in": round(a, 3), "out": round(b, 3), "duration": round(b - a, 3),
-                      "into": "start" if not i else "dissolve" if d else "cut",
+                      "into": "start" if not i else ("dip" if "to" in d else "dissolve") if d else "cut",
                       "blend_in": d["start"] if d else "", "blend_out": d["end"] if d else ""})
     return {"file": os.path.abspath(source), "backend": backend, "threshold": threshold,
             "fps": round(float(rate), 3) if rate else None, "duration_s": round(total, 3),
-            "cuts": [round(c, 3) for c in cuts], "dissolves": found, "shots": shots}
+            "cuts": [round(c, 3) for c in cuts], "dissolves": found, "dips": dips, "flashes": flashes,
+            "shots": shots}
 
 
 def table(report, sep=","):
@@ -273,11 +329,14 @@ def summary(report):
     shown = ", ".join(f"{c:.2f}s" for c in cuts[:8]) + (f" and {len(cuts) - 8} more"
                                                         if len(cuts) > 8 else "")
     blends = ", ".join(f"frames {d['start_frame']}-{d['end_frame']} ({d['start']:.2f}-{d['end']:.2f}s)" for d in diss[:8])
+    dips, flashes = report.get("dips", []), report.get("flashes", [])
+    extra = ((f"; {len(dips)} dip(s) at " + ", ".join(f"{d['start']:.2f}s" for d in dips[:8])) if dips else "") + \
+            ((f"; {len(flashes)} flash(es) at " + ", ".join(f"{t:.2f}s" for t in flashes[:8])) if flashes else "")
     return (f"shots: {len(report['shots'])} shot(s), {len(cuts)} cut(s), {len(diss)} dissolve(s) in "
             f"{report['duration_s']:g} s "
             + ("by PySceneDetect (adaptive)" if report.get("backend") == "pyscenedetect"
                else f"at scdet t={report['threshold']:g}")
-            + (f" (cuts at {shown})" if cuts else "") + (f" (dissolves at {blends})" if diss else "")
+            + (f" (cuts at {shown})" if cuts else "") + (f" (dissolves at {blends})" if diss else "") + extra
             + ". A proposal: check the cuts by eye.")
 
 

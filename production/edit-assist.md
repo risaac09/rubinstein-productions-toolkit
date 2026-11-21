@@ -55,8 +55,9 @@ On three 3-second trims of camera test clips joined end to end (chart, lens-cap 
 What it does not do, and limits:
 
 - Fades, wipes and slow dissolves: scdet compares neighbouring frames, so a slow transition seldom crosses the threshold. A second pass (on by default, `--no-dissolves` skips it) finds dissolves as MIN_FRAMES or more of steady change, and can still miss some.
+- Dips and flashes: the same pass reads the frames it already decoded. A flat near-black run of 2 frames or more (near-white, 4 or more) with a picture on both sides is a dip; the shot after it has `into` `dip`, `blend_in` and `blend_out` span the fall and rise, and the dip replaces any cut or dissolve inside it. A flash is 1 to 3 frames far brighter than both neighbours and is listed by time under `flashes` in the report (not a column). `--no-dissolves` skips both. A fade at the very start or end of the file is not a dip.
 - A hard cut between two shots of the same scene in the same light can score under 10 (as above). Lower `--threshold` for such footage, and expect false cuts on fast motion.
-- Flashes, strobes and whip pans can score as cuts.
+- Strobes and whip pans can score as cuts. A flash scores two cuts, and they stay in the list: the `flashes` list in the report names where to look.
 - It decodes every frame at full resolution: a long 6K HEVC file takes a while.
 
 ## decon
@@ -68,7 +69,7 @@ python3 resolve_workflow.py decon compare REF REBUILD --out compare.json [--shee
 
 Both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
 
-`recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
+`recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve or dip as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
 
 `compare` scores a rebuild against its reference, 0 to 100, as the mean of six parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms, and colour (median CIEDE2000 of each shot's mean Lab, zero at 20). Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames as pairs, reference left. Beat alignment and title timing are not scored yet.
 

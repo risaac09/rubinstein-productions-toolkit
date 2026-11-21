@@ -7,7 +7,7 @@ against it. Offline; reads the picture with ffmpeg and never writes to Resolve.
     match_method(recipe, method)    the round trip: slot count and per-slot error in frames
     compare(ref, rebuild, ...)      cut-time error, rhythm and colour distance, one score
 
-A recipe carries timing only: cuts, dissolves, the black at the end, and the tempo when a
+A recipe carries timing only: cuts, dissolves, dips, the black at the end, and the tempo when a
 beat map is given. Role, move, query and fits are placeholders until shot description
 exists, and the method's own `look` stays null.
 
@@ -84,6 +84,8 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
         nxt = shots[i + 1] if i + 1 < len(shots) else None
         if nxt and nxt["into"] == "dissolve":
             out = {"type": "dissolve", "frames": max(1, round((nxt["blend_out"] - nxt["blend_in"]) * fps))}
+        elif nxt and nxt["into"] == "dip":
+            out = {"type": "dip", "frames": max(1, round((nxt["blend_out"] - nxt["blend_in"]) * fps))}
         else:
             out = {"type": "cut", "frames": 0}
         slots.append({"role": "place", "seconds": s["duration"],

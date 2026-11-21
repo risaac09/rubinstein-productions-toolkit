@@ -70,6 +70,31 @@ class TestShots(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp.cleanup()
 
+    def test_a_dip_and_a_flash_are_found_and_plain_files_have_none(self):
+        # frames at 10 fps: A 0-14, cut, B 15-29 with a 2-frame fade out, 2 black, C 34-49 after a
+        # 2-frame fade in (the dip), then D 63-77 with one white frame at 63
+        S = f"s={SIZE}:r={RATE}"
+        parts = [f"testsrc2={S}:d=1.5", f"smptebars={S}:d=1.5,fade=t=out:st=1.3:d=0.2",
+                 f"color=c=black:{S}:d=0.2", f"color=c=0x6090c0:{S}:d=0.4,fade=t=in:st=0:d=0.2",
+                 f"color=c=0x6090c0:{S}:d=1.2", f"color=c=0x404040:{S}:d=1.5",
+                 f"color=c=white:{S}:d=0.1", f"color=c=0x404040:{S}:d=1.4"]
+        path = os.path.join(self._tmp.name, "dip.mkv")
+        make(path, parts)
+        r = shots.build(path)
+        self.assertEqual(len(r["dips"]), 1)
+        d = r["dips"][0]
+        self.assertAlmostEqual(d["start_frame"], 28, delta=1)
+        self.assertAlmostEqual(d["end_frame"], 34, delta=1)
+        self.assertEqual([s["into"] for s in r["shots"]][:3], ["start", "cut", "dip"])
+        self.assertAlmostEqual(r["shots"][2]["blend_in"], d["start"])
+        self.assertAlmostEqual(r["cuts"][0], 1.5, delta=1 / RATE)
+        self.assertEqual(len(r["flashes"]), 1)
+        self.assertAlmostEqual(r["flashes"][0], 6.3, delta=1 / RATE)
+        for plain in (self.cut, self.one):
+            q = shots.build(plain)
+            self.assertEqual((q["dips"], q["flashes"]), ([], []))
+        self.assertIn("1 dip(s)", shots.summary(r))
+
     def test_cuts_land_on_the_joins(self):
         r = shots.build(self.cut)
         self.assertEqual(len(r["cuts"]), 2)
