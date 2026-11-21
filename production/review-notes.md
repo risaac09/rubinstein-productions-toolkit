@@ -35,7 +35,7 @@ A TSV with a header, one row per note. Ids are never reused or renumbered; a dup
 | `round` | 1 for the first `add`, then 2, 3 |
 | `cut` | the cut the note was made against |
 | `timeline_frame` | the marker's `frame` |
-| `timecode` | the marker's `timecode`, copied. Its shape is always checked (`HH:MM:SS:FF` or `HH:MM:SS;FF`, minutes and seconds under 60, frames under the nominal rate). It is checked against `frame` only at an integer rate; at a fractional rate (24000/1001, 30000/1001) the frame is the authority and the arithmetic is skipped |
+| `timecode` | the marker's `timecode`, copied. Its shape is always checked (`HH:MM:SS:FF` or `HH:MM:SS;FF`, minutes and seconds under 60, frames under the nominal rate). A `;` timecode must be a real drop-frame label (29.97 or 59.94 only; the dropped labels such as `00:01:00;00` are refused) and must equal `frame`, counted by the interchange tool's converter. A `:` timecode is checked against `frame` only at an integer rate; at a fractional rate the frame is the authority and the arithmetic is skipped |
 | `text` | the marker `name`, then ` | ` and its `note` when there is one |
 | `status` | `open`, `done` or `wontfix` |
 | `resolved_in` | the cut that addressed a `done` note, else empty |

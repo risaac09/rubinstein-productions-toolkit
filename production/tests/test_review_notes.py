@@ -349,6 +349,39 @@ class TestSecondReview(Base):
         self.assertEqual(self.lines()[1].split("\t")[5], "story:a  b ")
 
 
+class TestDropFrame(Base):
+    def try_row(self, frame, tc, fps):
+        row = f"{frame}\t{tc}\t1\ta\tRed\t\t{fps}"
+        return self.add(self.mk("df.tsv", markers(row)), cut="c")
+
+    def test_dropped_labels_refused(self):
+        for frame, tc, fps in ((1800, "00:01:00;00", "30000/1001"), (1800, "00:01:00;01", "30000/1001"),
+                               (3600, "00:01:00;03", "60000/1001"), (0, "00:00:00;00", "24/1")):
+            if tc == "00:00:00;00":
+                continue  # ;00 at minute 0 exists at 29.97; kept out of this list
+            code, _, err = self.try_row(frame, tc, fps)
+            self.assertEqual(code, 1, tc)
+            self.assertIn("drop-frame", err)
+        self.assertFalse(self.ledger.exists())
+
+    def test_real_drop_frame_labels_and_frame_agreement(self):
+        for frame, tc, fps in ((0, "00:00:00;00", "30000/1001"), (1800, "00:01:00;02", "30000/1001"),
+                               (3600, "00:01:00;04", "60000/1001"), (17982, "00:10:00;00", "30000/1001")):
+            self.assertEqual(self.try_row(frame, tc, fps)[0], 0, tc)
+        code, _, err = self.try_row(1799, "00:01:00;02", "30000/1001")
+        self.assertEqual(code, 1)
+        self.assertIn("does not match frame", err)
+
+    def test_semicolon_at_a_rate_with_no_drop_frame_is_refused(self):
+        for fps in ("24/1", "25/1", "24000/1001"):
+            code, _, err = self.try_row(48, "00:00:02;00", fps)
+            self.assertEqual(code, 1, fps)
+            self.assertIn("drop-frame", err)
+
+    def test_non_drop_colon_at_fractional_rate_stays_shape_only(self):
+        self.assertEqual(self.try_row(1800, "00:01:00:00", "30000/1001")[0], 0)
+
+
 class TestResolve(Base):
     def res(self, *a):
         return self.run_cli("resolve", "--ledger", self.ledger, *a)

@@ -76,6 +76,15 @@ def check_timecode(n, frame, tc, fps):
     h, mi, s, ff = map(int, m.groups())
     if mi > 59 or s > 59 or ff >= nominal:
         raise NotesError(f"markers line {n}: timecode {tc} has a field out of range at {nominal} frames")
+    if ";" in tc:
+        from rpresolve import interchange  # the repo's one drop-frame converter
+        try:
+            counted = interchange.tc_frames(tc, fps)
+        except interchange.InterchangeError as e:
+            raise NotesError(f"markers line {n}: {e}")
+        if counted != frame:
+            raise NotesError(f"markers line {n}: drop-frame timecode {tc} does not match frame {frame}")
+        return
     # Frame is the authority: a fractional rate (drop-frame or not) has more than one way
     # to write a timecode, so the arithmetic is skipped there and only the shape is held.
     if fps.denominator == 1 and ((h * 60 + mi) * 60 + s) * nominal + ff != frame:
