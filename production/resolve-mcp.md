@@ -58,7 +58,7 @@ writes.
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `resolve_status` | read | Toolkit commit on disk and the commit the server loaded (`stale` when they differ: restart it), dirty flag, one line per mounted media volume, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. Works with Resolve closed. |
+| `resolve_status` | read | Toolkit commit on disk and the commit the server loaded (`stale` when they differ: restart it), dirty flag, one line per mounted media volume, whether Resolve is reachable, the open project's name, unique id, colour science, timelines and render queue, and which helper tools are installed. `scripting` compares the date in Blackmagic's scripting `CHANGELOG.md` with the date the toolkit was last audited against it (`changed` is true when the file is newer, null when it is missing or unreadable). Works with Resolve closed. |
 | `list_timelines` | read | Every timeline: index, name, unique id, frame rate, start and end frames, track counts, which is current, which end in ` [auto]`. |
 | `timeline_items` | read | One timeline's items per track: timeline and source frames, media file, input colour space and data level, transform, and grade (version, colour group, nodes with labels, LUTs and tools). `index` is the raw track position, a dissolve counted; a video row's `clip` is the clip number `apply_effect` and `vertical_apply` count by, null for a dissolve (`T29`). Reads a timeline without making it current. |
 | `media_pool` | read | The folder tree (capped at 300 folders) and one folder's clips with their properties. |

@@ -1,0 +1,1 @@
+offload.sh safe --lite <lite-dir> <copy-dir> <remote>: a card is safe to format when the full local copy verifies and a lite copy (one .mp4 per video) passes rclone check offsite; .offsite.txt records the tier.

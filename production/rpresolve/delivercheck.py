@@ -1080,7 +1080,7 @@ def find_approval(events, path, sha256=None):
         return None, f"no line names {stem or name} with a review copy and sha256"
     if newest.get("choice") not in APPROVING:
         return None, f"newest line for this file is {newest.get('choice')!r}"
-    copy, sha = os.path.basename(newest["review_copy"]), newest["review_sha256"]
+    copy, sha = os.path.basename(str(newest.get("review_copy") or "")), newest["review_sha256"]
     beside = os.path.join(os.path.dirname(os.path.abspath(path)), copy)
     if copy and os.path.isfile(beside) and file_sha256(beside) != sha:
         return None, f"sha mismatch: {copy} beside the file is not the sha256 logged ({sha[:12]})"

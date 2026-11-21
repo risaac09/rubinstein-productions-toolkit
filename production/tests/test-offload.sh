@@ -270,6 +270,79 @@ if [ "$(uname)" = Darwin ]; then
   check "copy with iflag=direct read-back" '[ "$rc" -eq 0 ]'
 fi
 
+# 14. safe --lite: the full copy verifies, a lite copy of each video is offsite.
+# lcard NAME: videos at several shapes, a BRAW with a camera proxy, a shared stem, a non-video.
+lcard() {
+  c="$T/$1"; mkdir -p "$c/DCIM/A" "$c/DCIM/B/Proxy" "$c/DCIM/C"
+  head -c 5000 /dev/urandom > "$c/DCIM/A/C0001.MOV"
+  head -c 5000 /dev/urandom > "$c/DCIM/A/c0002.mp4"
+  head -c 5000 /dev/urandom > "$c/DCIM/B/R001.braw"
+  head -c 3000 /dev/urandom > "$c/DCIM/B/Proxy/R001.mp4"
+  head -c 5000 /dev/urandom > "$c/DCIM/C/X1.mov"
+  head -c 5000 /dev/urandom > "$c/DCIM/C/X1.mxf"
+  echo meta > "$c/DCIM/A/C0001.XML"
+}
+# lite_tree DIR: the lite files the naming rule asks for.
+lite_tree() {
+  mkdir -p "$1/DCIM/A" "$1/DCIM/B" "$1/DCIM/C"
+  for f in DCIM/A/C0001.mp4 DCIM/A/c0002.mp4 DCIM/B/R001.mp4 DCIM/C/X1.mov.mp4 DCIM/C/X1.mxf.mp4; do echo lite > "$1/$f"; done
+}
+lcard cl; mkdir "$T/al"
+run copy "$T/cl" "$T/al" --cam GH7
+ld=$(ls -d "$T/al"/GH7-*/); ld=${ld%/}
+lite_tree "$T/lite"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "lite tier passes and records the tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && grep -q "^tier lite" "$ld.offsite.txt" && grep -q "^lite_dir $T/lite" "$ld.offsite.txt"'
+rm -f "$ld.offsite.txt"
+run safe "$ld" remote:bucket/x
+check "full tier records tier full" '[ "$rc" -eq 0 ] && grep -q "^tier full" "$ld.offsite.txt" && ! grep -q lite_dir "$ld.offsite.txt"'
+rm -f "$ld.offsite.txt"
+rm "$T/lite/DCIM/C/X1.mxf.mp4"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "a missing lite file is not safe and is named" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "NOT safe to format" && printf "%s" "$out" | grep -q "DCIM/C/X1.mxf.mp4" && [ ! -e "$ld.offsite.txt" ]'
+: > "$T/lite/DCIM/C/X1.mxf.mp4"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "an empty lite file is not safe" '[ "$rc" -eq 1 ] && [ ! -e "$ld.offsite.txt" ]'
+echo lite > "$T/lite/DCIM/C/X1.mxf.mp4"
+rm "$T/lite/DCIM/C/X1.mov.mp4"; echo lite > "$T/lite/DCIM/C/X1.mp4"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "shared stem needs the full-name .mp4, not the stem .mp4" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "DCIM/C/X1.mov.mp4"'
+rm "$T/lite/DCIM/C/X1.mp4"; echo lite > "$T/lite/DCIM/C/X1.mov.mp4"
+rm "$T/lite/DCIM/B/R001.mp4"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "a BRAW is not covered by its Proxy in the copy alone; its lite file is needed" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "DCIM/B/R001.mp4"'
+echo lite > "$T/lite/DCIM/B/R001.mp4"
+run safe --lite "$T/lite" "$ld" remote:bucket/lite
+check "BRAW covered by its proxy copy, shared stems named in full: passes" '[ "$rc" -eq 0 ] && grep -q "^tier lite" "$ld.offsite.txt"'
+rm -f "$ld.offsite.txt"
+out=$(FAKE_RC=1 "$O" safe --lite "$T/lite" "$ld" remote:bucket/lite 2>&1); rc=$?
+check "rclone failure on the lite tree is not safe" '[ "$rc" -eq 1 ] && [ ! -e "$ld.offsite.txt" ]'
+out=$(FAKE_LOG="NOTICE: 1 hashes could not be checked" "$O" safe --lite "$T/lite" "$ld" remote:bucket/lite 2>&1); rc=$?
+check "lite hashes that could not compare are not safe" '[ "$rc" -eq 1 ] && [ ! -e "$ld.offsite.txt" ]'
+out=$(FAKE_MATCH="DCIM/A/C0001.mp4" "$O" safe --lite "$T/lite" "$ld" remote:bucket/lite 2>&1); rc=$?
+check "a lite check that matched only some files is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "did not match" && [ ! -e "$ld.offsite.txt" ]'
+run safe --lite "$T/lite" "$ld" "$T/al"
+check "a local path as remote is refused in lite mode" '[ "$rc" -eq 2 ] && [ ! -e "$ld.offsite.txt" ]'
+out=$(FAKE_REMOTES="remote:  local" FAKE_TARGET="/some/dir" "$O" safe --lite "$T/lite" "$ld" remote:x 2>&1); rc=$?
+check "a local-type remote is refused in lite mode" '[ "$rc" -eq 2 ] && [ ! -e "$ld.offsite.txt" ]'
+run safe --lite "$ld" "$ld" remote:bucket/lite
+check "the copy as its own lite dir is refused" '[ "$rc" -eq 2 ] && [ ! -e "$ld.offsite.txt" ]'
+mkdir "$T/emptylite"
+run safe --lite "$T/emptylite" "$ld" remote:bucket/lite
+check "an empty lite dir is not safe" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+card cnv; mkdir "$T/anv"; rm "$T/cnv/DCIM/100_PANA/P1000001.MOV"
+run copy "$T/cnv" "$T/anv" --cam GH7
+nd=$(ls -d "$T/anv"/GH7-*/); nd=${nd%/}
+run safe --lite "$T/emptylite" "$nd" remote:bucket/lite
+check "a copy with no videos is not safe by the lite tier" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "no video files"'
+run safe --lite
+check "--lite without a directory is a usage error" '[ "$rc" -eq 2 ]'
+run safe --lite "$T/lite" "$ld"
+check "lite form needs the remote" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "usage"'
+rotd="$ld"; printf 'rot' >> "$rotd/DCIM/A/C0001.XML"
+run safe --lite "$T/lite" "$rotd" remote:bucket/lite
+check "a rotted full copy is not safe even with a complete lite copy" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "no longer matches"'
+
 # 13. Help is the header only.
 out=$("$O" --help)
 check "help stops at the header" 'printf "%s" "$out" | grep -q "safe to format" && ! printf "%s" "$out" | grep -q "set -u"'
