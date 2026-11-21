@@ -10,7 +10,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
