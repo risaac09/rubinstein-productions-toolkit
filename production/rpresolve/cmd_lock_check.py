@@ -45,8 +45,9 @@ OPTIONAL = ("guide.mov",)
 FOLDER = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*_lock_v\d\d")
 HEX = re.compile(r"[0-9a-f]{64}")
 SUMS_LINE = re.compile(r"([0-9a-f]{64})  (.+)")
-TC = r"(\d\d):(\d\d):(\d\d):(\d\d)"
-EDL_EVENT = re.compile(r"^\d{3,}\s+\S+\s+(\S+)\s+C\s+" + r"\s+".join([TC] * 4) + r"\s*$")
+TC = r"(\d\d):(\d\d):(\d\d)([:;])(\d\d)"
+# CMX 3600: cut, dissolve, wipe (W and three digits), key; D and W carry a transition length.
+EDL_EVENT = re.compile(r"^\d{3,}\s+\S+\s+(\S+)\s+(?:C|D|W\d{3}|K)(?:\s+\d{1,3})?\s+" + r"\s+".join([TC] * 4) + r"\s*$")
 LOCKED_AT = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z")
 LANES = ("story:", "snd:", "fx:")
 MARKER_COLUMNS = ["frame", "timecode", "duration_frames", "name", "colour", "note", "fps"]
@@ -117,8 +118,12 @@ def rate_of(text, where):
     return r
 
 
-def tc_frames(h, m, s, f, rate):
-    return (int(h) * 3600 + int(m) * 60 + int(s)) * round(float(rate)) + int(f)
+def tc_frames(h, m, s, sep, f, rate, drop):
+    """Frames from a timecode, by interchange's own reader; the separator must match drop."""
+    need(sep == (";" if drop else ":"), "a timecode separator (in timeline.edl or lock.json start_timecode) disagrees with the EDL's FCM line "
+         f"({'DROP' if drop else 'NON-DROP'} FRAME wants '{';' if drop else ':'}')")
+    from rpresolve import interchange
+    return interchange.tc_frames(f"{h}:{m}:{s}{sep}{f}", rate)
 
 
 def check_folder(path):
@@ -264,33 +269,41 @@ def otio_items(doc, rate):
     return items, duration, start, other
 
 
-def edl_events(text, rate, start_tc):
-    """[(record_in, record_out)] of the V events, in file order, from the start timecode."""
-    need(not re.search(r"^FCM:\s*DROP", text, re.M), "timeline.edl is drop-frame; the spec gives HH:MM:SS:FF only")
+def edl_drop(text):
+    m = re.search(r"^FCM:\s*(NON-DROP|DROP) FRAME\s*$", text, re.M)
+    return bool(m) and m.group(1) == "DROP"
+
+
+def edl_events(text, rate, start_tc, drop):
+    """[(record_in, record_out)] of the V events, in file order, from the start timecode. An event
+    whose record in equals its record out is the zero-length half of a dissolve: not an item."""
     out = []
     for line in text.splitlines():
         if re.match(r"^\d{3,}\s", line):
             m = EDL_EVENT.match(line)
             need(m, f"timeline.edl event line is not HH:MM:SS:FF CMX 3600: {line.strip()[:60]!r}")
             if m.group(1) == "V":
-                g = m.groups()[1:]
-                out.append((tc_frames(*g[8:12], rate) - start_tc, tc_frames(*g[12:16], rate) - start_tc))
+                g = m.groups()
+                a, b = tc_frames(*g[11:16], rate, drop) - start_tc, tc_frames(*g[16:21], rate, drop) - start_tc
+                if a != b:
+                    out.append((a, b))
     need(out, "timeline.edl has no V1 event")
     return out
 
 
-def check_markers(folder, rate, fps):
+def check_markers(folder, rate, fps, drop):
     from rpresolve import interchange
     prev = None
     for n, r in read_tsv(folder, "markers.tsv", MARKER_COLUMNS):
         w = f"markers.tsv line {n}"
         need(re.fullmatch(r"\d+", r["frame"]), f"{w}: frame {r['frame']!r} is not a non-negative integer")
         fr = int(r["frame"])
-        need(r["timecode"] == interchange.timecode(fr, rate, False),
+        need(r["timecode"] == interchange.timecode(fr, rate, drop),
              f"{w}: timecode {r['timecode']!r} does not match frame {fr} at {fps}")
         need(re.fullmatch(r"\d+", r["duration_frames"]) and int(r["duration_frames"]) >= 1,
              f"{w}: duration_frames {r['duration_frames']!r} is not an integer of 1 or more")
-        need(r["name"].startswith(LANES), f"{w}: name {r['name']!r} must start with a lane prefix ({', '.join(LANES)})")
+        need(r["name"].startswith(LANES) and r["name"].split(":", 1)[1] != "",
+             f"{w}: name {r['name']!r} must be a lane prefix ({', '.join(LANES)}) then text")
         need(r["colour"] in MARKER_COLORS, f"{w}: colour {r['colour']!r} is not a Resolve marker colour")
         need(r["fps"] == fps, f"{w}: fps {r['fps']!r} is not the timeline rate {fps}")
         key = (fr, r["name"])
@@ -313,14 +326,15 @@ def verify(folder):
     rate = rate_of(tl["fps"], "lock.json")
     start = re.fullmatch(TC, tl["start_timecode"])
     need(start, f"lock.json start_timecode {tl['start_timecode']!r} is not HH:MM:SS:FF")
-    start_frames = tc_frames(*start.groups(), rate)
+    edl_text = read_bytes(folder, "timeline.edl").decode("utf-8", "replace")
+    drop = edl_drop(edl_text)
+    start_frames = tc_frames(*start.groups(), rate, drop)
     doc = read_json(folder, "timeline.otio")
     items, otio_dur, otio_start, other = otio_items(doc, rate)
     need(otio_start == start_frames, "timeline.otio global_start_time does not equal lock.json start_timecode")
-    edl_text = read_bytes(folder, "timeline.edl").decode("utf-8", "replace")
     sound = read_json(folder, "sound-handoff.json")
     need(isinstance(sound, dict), "sound-handoff.json is not a JSON object")
-    ev = edl_events(edl_text, rate, start_frames)
+    ev = edl_events(edl_text, rate, start_frames, drop)
     durs = {"lock.json": tl["duration_frames"], "timeline.otio": otio_dur,
             "timeline.edl": ev[-1][1],
             "sound-handoff.json": sound.get("duration_frames")}
@@ -341,7 +355,7 @@ def verify(folder):
                                      ensure_ascii=False).encode("utf-8")).hexdigest()
     need(got == lock["items_sha256"], "items_sha256 does not match the items rebuilt from timeline.otio")
     check_consent(folder)
-    check_markers(folder, rate, tl["fps"])
+    check_markers(folder, rate, tl["fps"], drop)
     for name, cols in (("paper-edit.tsv", PAPER_COLUMNS), ("cue-sheet.tsv", CUE_COLUMNS)):
         read_tsv(folder, name, cols)
 

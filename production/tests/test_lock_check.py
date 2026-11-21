@@ -36,14 +36,17 @@ def sha(data):
 
 def items_hash(items):
     return sha(json.dumps(sorted(items, key=lambda i: (i["track"], i["record_in"])),
-                          sort_keys=True, separators=(",", ":")).encode())
+                          sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
-def build(root, slug="example-slug_lock_v01", guide=False, mutate=None):
+def build(root, slug="example-slug_lock_v01", guide=False, mutate=None, fps=FPS):
     """Write a valid lock folder under root and return its path. mutate(files, lock, sound)
     may change the file bytes (dict name -> bytes) or the two dicts before hashing."""
-    m = manifest([{"in": 1.0, "out": 3.0}, {"in": 5.0, "out": 6.5}, {"in": 8, "out": 10}], fps=24000 / 1001)
+    rate = ic.Fraction(fps)
+    m = manifest([{"in": 1.0, "out": 3.0}, {"in": 5.0, "out": 6.5}, {"in": 8, "out": 10}], fps=float(rate))
     otio = json.loads(ic.build(m, "otio")[0])
+    edl, rep = ic.build(m, "edl")
+    drop, start_tc = rep["drop_frame"], rep["record_start"]
     ids = ["CARD-a/P1000110", "CARD-a/P1000111", "CARD-b/P1000112"]
     clips = otio["tracks"]["children"][0]["children"]
     items, t = [], 0
@@ -54,17 +57,17 @@ def build(root, slug="example-slug_lock_v01", guide=False, mutate=None):
                       "clip_id": cid, "source_in": s, "source_out": s + d})
         t += d
     files = {"timeline.otio": json.dumps(otio, indent=2).encode(),
-             "timeline.edl": ic.build(m, "edl")[0].encode(),
-             "markers.tsv": (MARKER_HEAD + f"0\t00:00:00:00\t1\tstory:hook\tBlue\t\t{FPS}\n"
-                             f"24\t00:00:01:00\t2\tsnd:sting\tGreen\tx\t{FPS}\n").encode(),
+             "timeline.edl": edl.encode(),
+             "markers.tsv": (MARKER_HEAD + f"0\t{ic.timecode(0, rate, drop)}\t1\tstory:hook\tBlue\t\t{fps}\n"
+                             f"24\t{ic.timecode(24, rate, drop)}\t2\tsnd:sting\tGreen\tx\t{fps}\n").encode(),
              "consent-list.tsv": (CONSENT_HEAD + "kid\tchild\t10\tR-1\tyes\tIA\t2026-11-01\n").encode()}
     files.update({k: v.encode() for k, v in OTHER.items()})
     lock = {"schema": {"name": "shared.lock-handoff", "version": 1}, "project": "example-slug",
             "lock_version": 1, "locked_at": "2026-11-02T15:00:00Z",
-            "timeline": {"name": "cut", "fps": FPS, "start_timecode": "01:00:00:00", "duration_frames": t},
+            "timeline": {"name": "cut", "fps": fps, "start_timecode": start_tc, "duration_frames": t},
             "items_sha256": items_hash(items), "files": {}}
-    sound = {"schema": {"name": "sound.handoff", "version": 1}, "timeline": "cut", "fps": FPS,
-             "start_timecode": "01:00:00:00", "duration_frames": t,
+    sound = {"schema": {"name": "sound.handoff", "version": 1}, "timeline": "cut", "fps": fps,
+             "start_timecode": start_tc, "duration_frames": t,
              "track_layout": [{"track": "A1", "role": "dialogue"}], "stems_plan": ["dialogue"]}
     if guide:
         files["guide.mov"] = b"guide"
@@ -473,9 +476,11 @@ class Review(Base):
                 self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tstory:a\t{c}\t\t{FPS}\n").encode())
                 self.fails(f, "markers.tsv", "colour")
 
-    def test_marker_name_text_after_prefix_may_be_empty_and_note_empty(self):
+    def test_marker_name_needs_text_after_prefix_but_note_may_be_empty(self):
         f = build(self.tmp)
         self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tfx:\tRed\t\t{FPS}\n").encode())
+        self.fails(f, "markers.tsv", "name")
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tfx:a\tRed\t\t{FPS}\n").encode())
         self.assertIsNone(lc.check(str(f)))
 
     def test_marker_fields_with_leading_zero_frame_ok_but_float_fails(self):
@@ -496,15 +501,55 @@ class Review(Base):
         self.rehash(f, "timeline.edl", t.encode())
         self.fails(f, "timeline.edl")
 
-    def test_edl_drop_frame_is_refused(self):
-        f = build(self.tmp)
-        t = (f / "timeline.edl").read_text().replace("NON-DROP FRAME", "DROP FRAME")
-        self.rehash(f, "timeline.edl", t.encode())
-        self.fails(f, "drop-frame")
+    def test_interchange_drop_frame_and_non_drop_pass(self):
+        for fps in ("30000/1001", "24000/1001", "25", "60000/1001"):
+            with self.subTest(fps=fps), tempfile.TemporaryDirectory() as d:
+                f = build(d, fps=fps)
+                self.assertEqual((f / "timeline.edl").read_text().split("\n")[1].startswith("FCM: DROP"),
+                                 fps in ("30000/1001", "60000/1001"))
+                self.assertIsNone(lc.check(str(f)))
 
-    def test_edl_semicolon_timecode_is_refused(self):
+    def test_drop_frame_separator_must_match_fcm(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d, fps="30000/1001")
+            t = (f / "timeline.edl").read_text()
+            self.rehash(f, "timeline.edl", t.replace("DROP FRAME", "NON-DROP FRAME", 1).encode())
+            self.fails(f, "timeline.edl", "FCM")
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d)
+            t = (f / "timeline.edl").read_text().replace("NON-DROP FRAME", "DROP FRAME")
+            self.rehash(f, "timeline.edl", t.encode())
+            self.fails(f, "timeline.edl", "FCM")
+
+    def test_edl_semicolon_timecode_under_non_drop_is_refused(self):
         f = build(self.tmp)
         t = (f / "timeline.edl").read_text().replace("01:00:03:12 01:00:05:12", "01:00:03;12 01:00:05;12", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_dissolve_and_wipe_events_compare_by_record_range(self):
+        for code in ("D    012", "W001 012", "K"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                lines = (f / "timeline.edl").read_text().splitlines()
+                i = next(n for n, l in enumerate(lines) if l.startswith("005") and l[14:19].strip() == "V")
+                parts = lines[i].split()
+                zero = f"005  CLIPONE  V     C        {parts[-4]} {parts[-4]} {parts[-2]} {parts[-2]}"
+                lines[i] = lines[i].replace("C        ", code.ljust(9), 1)
+                lines.insert(i, zero)
+                self.rehash(f, "timeline.edl", ("\n".join(lines) + "\n").encode())
+                self.assertIsNone(lc.check(str(f)))
+
+    def test_dissolve_with_wrong_range_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("C        00:00:08:00 00:00:10:00 01:00:03:12 01:00:05:12",
+                                                     "D    012 00:00:08:00 00:00:10:00 01:00:03:12 01:00:05:13", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_unknown_transition_code_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("C        00:00:08:00", "Q        00:00:08:00", 1)
         self.rehash(f, "timeline.edl", t.encode())
         self.fails(f, "timeline.edl")
 
