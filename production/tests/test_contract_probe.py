@@ -387,6 +387,18 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(rows["MediaPoolItem.GetAudioMapping.restore_matches_original"]["note"],
                          "could not be read back")
 
+    def test_a_restore_that_reads_back_empty_is_not_reported_as_differing(self):
+        sets = []
+        def setter(self, m):
+            sets.append(m)
+            self.mapping = m
+            return True
+        def getter(self):
+            return "" if len(sets) >= 2 else self.mapping
+        rows = self._patched_clip_rows(getter, setter)
+        self.assertEqual(rows["MediaPoolItem.GetAudioMapping.restore_matches_original"]["note"],
+                         "could not be read back")
+
     def test_a_project_that_already_exists_is_never_created_saved_or_deleted(self):
         orig = PM.GetProjectListInCurrentFolder
         PM.GetProjectListInCurrentFolder = lambda self: ["rp-probe-q1"]

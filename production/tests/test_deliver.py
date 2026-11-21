@@ -409,6 +409,8 @@ class TestOutputProblems(unittest.TestCase):
         self.assertEqual(deliver.output_folder(own, self.yt), os.path.realpath(own))
         self.assertEqual(deliver.output_folder(self.dir, self.yt),
                          os.path.join(os.path.realpath(self.dir), sub))
+        cased = os.path.join(self.dir, sub.upper())  # a case-only difference is the same folder
+        self.assertEqual(deliver.output_folder(cased, self.yt), os.path.realpath(cased))
         other = os.path.join(self.dir, "renders")
         os.makedirs(other)
         self.assertEqual(deliver.output_folder(other, self.yt),
