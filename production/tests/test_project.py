@@ -8,6 +8,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -v
 """
 
 import contextlib
+import datetime
 import io
 import json
 import os
@@ -219,7 +220,9 @@ class Chain(unittest.TestCase):
         line = [x for x in lines if x.startswith("may the card be formatted")][0]
         return line.startswith("may the card be formatted: yes")
 
-    def _offsite(self, card, utc="2999-01-01T00:00:00Z"):
+    def _offsite(self, card, utc=None):
+        # a check time after the record was written; not far future: card._record_newer distrusts that
+        utc = utc or (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(card + ".card.json", encoding="utf-8") as f:
             cid = json.load(f)["card_id"]
         Path(card + ".offsite.txt").write_text(f"card_id {cid}\nremote b2:bucket\nchecked_utc {utc}\n")
