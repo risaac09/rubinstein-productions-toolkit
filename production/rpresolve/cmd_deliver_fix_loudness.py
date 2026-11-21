@@ -28,12 +28,17 @@ def run(args):
     <stem>.loudfix<ext>, then check it. --replace swaps it in only after
     the check passes, moving the original to ~/.Trash. Exit 0 the fixed
     file passes, 1 it does not (or the fix failed), 2 ffmpeg missing."""
-    from rpresolve import deliver, delivercheck as dc
+    from rpresolve import deliver, delivercheck as dc, peakfix
     try:
         dest = deliver.destination(cli.deliver_config(args), args.dest)
         size = cli.size(args.size) if args.size else None
         if args.fps:
             dc.parse_fps(args.fps)
+        if not deliver.has_loudness_target(dest):  # no target: the peak-only fix
+            if args.replace:
+                raise dc.CheckError("--replace is for a loudness fix; the peak-only fix "
+                                    "never replaces the original.")
+            return _peak(peakfix.fix_peak(args.file, dest, fps=args.fps, size=size), args, dc)
         r = dc.fix_loudness(args.file, dest, replace=args.replace, fps=args.fps, size=size)
     except dc.ToolMissing as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -55,6 +60,23 @@ def run(args):
             print(f"Replaced: {r['fixed']} (the original is in {r['trashed']})")
         else:
             print(f"Fixed file: {r['fixed']} (the original is untouched)")
+    for w in r["warnings"]:
+        print(f"  WARNING: {w}", file=sys.stderr)
+    return 0 if r["status"] == "pass" else 1
+
+
+def _peak(r, args, dc):
+    if args.json:
+        print(json.dumps(r, indent=1, default=str))
+    elif r.get("nothing_to_fix"):
+        print(f"True peak {r['true_peak_dbtp']} dBTP is at or under {r['ceiling_dbtp']:g}; "
+              "nothing to fix, nothing written.")
+    else:
+        print(f"True peak {r['true_peak_dbtp']} dBTP over {r['ceiling_dbtp']:g}: audio gain "
+              f"{r['gain_db']:g} dB, video copied.")
+        sys.stdout.write(dc.format_report(r["check"]))
+        print(f"Video stream bit-identical: {'yes' if r['video_identical'] else 'NO'}")
+        print(f"Fixed file: {r['fixed']} (the original is untouched)")
     for w in r["warnings"]:
         print(f"  WARNING: {w}", file=sys.stderr)
     return 0 if r["status"] == "pass" else 1

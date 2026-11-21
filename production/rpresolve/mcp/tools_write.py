@@ -800,6 +800,8 @@ def deliver_fix_loudness(args, ctx):
     if args.get("fps"):
         dc.parse_fps(args["fps"])
     ctx.check_cancel()
+    if not deliver.has_loudness_target(dest):
+        return _fix_peak(args, ctx, dest, path, size)
     plan = dc.fix_loudness(path, dest, fps=args.get("fps"), size=size, dry_run=True)
     st = os.stat(path)
     sha = workflows.plan_sha("deliver_fix_loudness", plan["original"], st.st_size, st.st_mtime_ns,
@@ -818,6 +820,41 @@ def deliver_fix_loudness(args, ctx):
         r["plan_sha"], r["exit_status"] = sha, 0 if r["status"] == "pass" else 2
         r["summary"] = (f"wrote {r['fixed']}: loudnorm {r['result_loudnorm'].get('normalization_type')} "
                         f"mode, output {r['result_loudnorm'].get('output_i')} LUFS; its deliver_check "
+                        f"is {r['check']['status'].upper()}, video stream "
+                        f"{'identical' if r['video_identical'] else 'DIFFERENT'}. The original is "
+                        "untouched. Listen before delivering: the ear check is the reviewer's.")
+        return r
+
+    return run() if args["dry_run"] else _journalled("deliver_fix_loudness", args, run)
+
+
+def _fix_peak(args, ctx, dest, path, size):
+    """deliver_fix_loudness for a destination with no loudness target: a peak-only
+    copy (audio gain lowered under the ceiling, video copied), or nothing."""
+    from .. import peakfix
+    plan = peakfix.fix_peak(path, dest, fps=args.get("fps"), size=size, dry_run=True)
+    if plan.get("nothing_to_fix"):
+        return {**plan, "exit_status": 0, "summary": (
+            f"true peak {plan['true_peak_dbtp']} dBTP is at or under {plan['ceiling_dbtp']:g}; "
+            "nothing to fix, nothing written.")}
+    st = os.stat(path)
+    sha = workflows.plan_sha("deliver_fix_loudness", plan["original"], st.st_size, st.st_mtime_ns,
+                             dest["key"], plan["fixed"], args.get("fps"), args.get("size"),
+                             plan["gain_db"])
+
+    def run():
+        if args["dry_run"]:
+            return {**plan, "plan_sha": sha, "exit_status": 0, "summary": (
+                f"true peak {plan['true_peak_dbtp']} dBTP is over {plan['ceiling_dbtp']:g}: would "
+                f"write {plan['fixed']} with the audio gain {plan['gain_db']:g} dB and the video "
+                f"copied; the original stays untouched. To run it, call again with dry_run false "
+                f"and plan_sha {sha}.")}
+        if args["plan_sha"] != sha:
+            raise workflows.Refused("plan_sha does not match this file, destination and size "
+                                    "as they are now; run a dry run again.")
+        r = peakfix.fix_peak(path, dest, fps=args.get("fps"), size=size)
+        r["plan_sha"], r["exit_status"] = sha, 0 if r["status"] == "pass" else 2
+        r["summary"] = (f"wrote {r['fixed']}: audio gain {r['gain_db']:g} dB; its deliver_check "
                         f"is {r['check']['status'].upper()}, video stream "
                         f"{'identical' if r['video_identical'] else 'DIFFERENT'}. The original is "
                         "untouched. Listen before delivering: the ear check is the reviewer's.")
@@ -1789,9 +1826,11 @@ def register(registry):
         "render's first audio stream to the destination's target, video copied untouched, written "
         "as '<stem>.loudfix<ext>' beside the render, then checked as deliver_check checks the "
         "original. Additive only: it never overwrites or replaces (the CLI's --replace, which "
-        "moves the original to the Trash, stays a CLI choice). Refused for a destination with no "
-        "loudness target, when the .loudfix file exists, and when Resolve's caption sidecar has "
-        "no .srt yet. It reads the whole file twice, so it plans first like the write tools: dry "
+        "moves the original to the Trash, stays a CLI choice). For a destination with no loudness target "
+        "(a client master) it writes a peak-only copy instead: when the true peak is over the ceiling, "
+        "the audio gain is lowered just under it and the video copied, and when it is not, nothing is "
+        "written. Refused when the .loudfix file exists. A caption sidecar not yet made into an .srt "
+        "fails the copy's check (run deliver_captions first). It reads the whole file twice, so it plans first like the write tools: dry "
         "run, then the real run with its plan_sha. The result is numbers: the ear check is a "
         "person's.",
         {"type": "object", "properties": {
