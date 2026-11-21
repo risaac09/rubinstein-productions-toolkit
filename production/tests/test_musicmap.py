@@ -136,6 +136,31 @@ class TestMusicMap(unittest.TestCase):
         self.assertEqual(len(got["cuts"]), 8)
         self.assertIn("beats_s", got)
 
+    def test_out_never_overwrites_an_input(self):
+        import shutil
+        sj, vid = os.path.join(self.tmp.name, "in-shots.json"), os.path.join(self.tmp.name, "in.mp4")
+        with open(sj, "w") as f:
+            json.dump(self.report, f)
+        shutil.copy(self.on, vid)
+        before = [Path(p).read_bytes() for p in (sj, vid)]
+        ap = __import__("argparse").ArgumentParser()
+        cmd_music_map.add_arguments(ap)
+        for out in (vid, sj):
+            err = StringIO()
+            with redirect_stdout(StringIO()), redirect_stderr(err):
+                self.assertEqual(cmd_music_map.run(ap.parse_args([vid, "--out", out, "--shots", sj])), 1)
+            self.assertIn("refusing to overwrite", err.getvalue())
+        self.assertEqual([Path(p).read_bytes() for p in (sj, vid)], before)
+
+    def test_a_file_over_the_length_cap_is_refused_before_decoding(self):
+        old = musicmap.MAX_SECONDS
+        musicmap.MAX_SECONDS = 10.0
+        try:
+            with self.assertRaisesRegex(musicmap.MusicMapError, "longer than"):
+                musicmap.build(self.on)
+        finally:
+            musicmap.MAX_SECONDS = old
+
     def test_no_audio_is_an_error(self):
         with self.assertRaises(musicmap.MusicMapError):
             musicmap.build(self.silent)

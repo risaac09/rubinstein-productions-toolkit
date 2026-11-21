@@ -25,7 +25,7 @@ def run(args):
     import sys
     from rpresolve import paths
     try:
-        from rpresolve import beats, cutlist, musicmap
+        from rpresolve import beats, cutlist, decon, musicmap
     except ModuleNotFoundError as e:
         print(f"ERROR: music-map needs {e.name}, which this Python does not have", file=sys.stderr)
         return 1
@@ -33,6 +33,7 @@ def run(args):
         problem = paths.out_problem(args.out, any_git_tree=True)
         if problem:
             raise paths.OutputRefused(problem)
+        decon.check_outputs([args.video, args.shots], [args.out])
         mm = musicmap.build(args.video, args.prior_bpm)
         table = None
         if args.shots:

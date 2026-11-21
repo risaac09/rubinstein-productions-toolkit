@@ -25,14 +25,15 @@ SR = beatsmod.SR
 WINDOW_S = 1.0
 MIN_SECTION_S = 4.0
 FLAT_DB = 6.0   # a file whose windows span less than this has no sections worth marking
+MAX_SECONDS = 1800.0  # longest file mapped: the whole track is held as float64 at 16 kHz (about 230 MB at the cap)
 
 
 class MusicMapError(ValueError):
     pass
 
 
-def has_audio(video):
-    info = dc.probe(video)
+def has_audio(video, info=None):
+    info = info or dc.probe(video)
     return any(s.get("codec_type") == "audio" for s in info.get("streams") or [])
 
 
@@ -75,18 +76,22 @@ def sections(y, window=WINDOW_S, min_s=MIN_SECTION_S):
 
 def build(video, prior_bpm=beatsmod.PRIOR_BPM, ffmpeg=None):
     """The music map of a video's audio. Raises MusicMapError (no audio) or BeatsError."""
+    name = os.path.basename(video)  # messages name the file, not its path: compare.json carries them
     if not os.path.isfile(video):
-        raise MusicMapError(f"{video} is not a file")
-    if not has_audio(video):
-        raise MusicMapError(f"{video} has no audio stream")
+        raise MusicMapError(f"{name} is not a file")
+    info = dc.probe(video)
+    if not has_audio(video, info):
+        raise MusicMapError(f"{name} has no audio stream")
+    if float((info.get("format") or {}).get("duration") or 0) > MAX_SECONDS:
+        raise MusicMapError(f"{name} is longer than {MAX_SECONDS:g} s; cut the part with the music first")
     raw = cutlist.decode_pcm(video, 0.0, None, ffmpeg, timeout=trimreview.DECODE_TIMEOUT_S)
     y = np.frombuffer(raw, dtype="<i2").astype(np.float64) / 32768.0
     if len(y) < beatsmod.MIN_SECONDS * SR:
-        raise MusicMapError(f"{video} has {len(y) / SR:.1f} s of audio; a music map needs "
+        raise MusicMapError(f"{name} has {len(y) / SR:.1f} s of audio; a music map needs "
                             f"{beatsmod.MIN_SECONDS:g} s or more")
     bpm, bt, phase = beatsmod.beat_map(y, prior_bpm)
     gaps = np.diff(bt)
-    return {"file": os.path.abspath(video), "duration_s": round(len(y) / SR, 3),
+    return {"file": os.path.basename(video), "duration_s": round(len(y) / SR, 3),
             "bpm": round(float(60 / np.median(gaps)) if len(gaps) else float(bpm), 2),
             "beats_s": [round(float(t), 3) for t in bt], "phase": phase,
             "sections": sections(y), "method": beatsmod.METHOD, "proposal": True}
