@@ -21,13 +21,18 @@
 # PUBLIC_CONSUMERS. redeploy-prs.sh reads it through
 # --list instead of carrying a copy: a hand copy there left out stack-data,
 # and the 2026-09-29 redeploy skipped it without a word.
-# --check byte-compares the seven kit files against source and confirms both
+# --check byte-compares the eight kit files against source and confirms both
 # hook registrations plus every kit permission clamp exist in settings.json.
 # settings.json itself is never byte-compared: merged consumer copies carry
 # repo-local config and legitimately differ from source. It writes nothing
 # and exits 1 on any drift. This is the kit-drift tripwire from the 2026-07-17 audit:
 # a stale deployed copy (third-information-lab missed the merge-boundary
 # section for a day) is invisible until something reads it.
+#
+# KIT_VERSION (DEV-15) is the release stamp: --check prints it for the source
+# ("kit source version: X") and for each deployed copy ("kit version X: <repo>"),
+# so a fork or a consumer can say which export it carries. Edit it in the kit
+# source only; the tag is cut in the toolkit after an export merge.
 #
 # This is the rp-shared-style distribution path: the kit is versioned in
 # stack-data/kit/ (private), exported to the public toolkit by
@@ -75,7 +80,7 @@
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
-KIT_FILES="phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-lib.sh hooks/phase-zero-trigger.sh hooks/session-brief.sh"
+KIT_FILES="KIT_VERSION phase-zero.md retrospective.md model-routing.md operating-brief.md hooks/phase-zero-lib.sh hooks/phase-zero-trigger.sh hooks/session-brief.sh"
 
 # Kit files that used to ship and no longer do. install_one removes them, since
 # it otherwise only copies and a renamed file would leave its predecessor behind
@@ -125,7 +130,7 @@ is_consumer() {
 # source dir, allowlist, target dir, and install/check functions; nothing
 # below is read by the phase-zero path above, and vice versa.
 PUBLIC_SRC="$(cd "$SRC/../public-kit" && pwd)"
-PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURITY.md.template"
+PUBLIC_KIT_FILES="VOICE-RULES.md README-SHAPE.md CONTRIBUTING.md.template SECURITY.md.template check-voice.sh"
 
 # Repos that are actually public, read from the registry by
 # load_public_consumers (see the file header). Independent of CONSUMERS
@@ -300,6 +305,8 @@ check_one() {
   for f in $KIT_FILES settings.json; do paths="$paths .claude/$f"; done
   # shellcheck disable=SC2086  # word splitting of the path list is intended
   check_committed "$target" $paths || drift=1
+  # DEV-15: name the deployed version beside the verdict, stale or current.
+  [ ! -f "$target/.claude/KIT_VERSION" ] || echo "kit version $(tr -d '[:space:]' < "$target/.claude/KIT_VERSION"): $target"
   [ "$drift" -eq 0 ] && echo "kit current: $target"
   return $drift
 }
@@ -313,6 +320,7 @@ install_one() {
   for f in $RETIRED_FILES; do
     rm -f "$target/.claude/$f"
   done
+  cp "$SRC/KIT_VERSION" "$target/.claude/KIT_VERSION"
   cp "$SRC/phase-zero.md" "$target/.claude/phase-zero.md"
   cp "$SRC/retrospective.md" "$target/.claude/retrospective.md"
   cp "$SRC/model-routing.md" "$target/.claude/model-routing.md"
@@ -403,6 +411,7 @@ install_one_public() {
   for f in $PUBLIC_KIT_FILES; do
     cp "$PUBLIC_SRC/$f" "$target/.claude/public-kit/$f"
   done
+  chmod +x "$target/.claude/public-kit/check-voice.sh"
   cp "$(public_license_template "$target")" "$target/.claude/public-kit/LICENSE.recommended"
   echo "public-kit installed -> $target/.claude/public-kit"
 }
@@ -461,6 +470,7 @@ if [ "${1:-}" = "--public" ]; then
   exit 0
 elif [ "${1:-}" = "--check" ]; then
   shift
+  echo "kit source version: $(tr -d '[:space:]' < "$SRC/KIT_VERSION")"
   RC=0
   if [ "${1:-}" = "--all" ]; then
     parent="${2:?usage: install.sh --check --all <parent-dir>}"

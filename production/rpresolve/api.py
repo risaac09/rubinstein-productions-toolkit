@@ -28,6 +28,7 @@ Verified against Resolve Studio 21.0.4.5:
 import contextlib
 import errno
 import fcntl
+import json
 import math
 import os
 import sys
@@ -530,3 +531,18 @@ def assert_graph_matches(graph, manifest):
             if want != got:
                 mismatches.append(f"node {i + 1} label: expected {want!r}, got {got!r}")
     return mismatches
+
+
+def audio_track_mapping(text):
+    """The 'track_mapping' of a GetAudioMapping/SetAudioMapping JSON string, or None. Resolve adds
+    embedded_audio_channels and linked_audio on a read; only this key is compared."""
+    try:
+        data = json.loads(text) if isinstance(text, str) else text
+        return (data or {}).get("track_mapping")
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def audio_track_count(text):
+    """How many tracks a mapping lists (0 when it cannot be read)."""
+    return len(audio_track_mapping(text) or {})
