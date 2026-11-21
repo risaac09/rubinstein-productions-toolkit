@@ -63,15 +63,18 @@ What it does not do, and limits:
 ## decon
 
 ```sh
+python3 resolve_workflow.py decon fetch URL --out-dir DIR [--yt-dlp PATH]
 python3 resolve_workflow.py decon recipe REF --out recipe.json [--id ID] [--beats MAP.json] [--against METHOD]
 python3 resolve_workflow.py decon compare REF REBUILD --out compare.json [--sheet sheet.png]
 ```
 
-Both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
+`fetch` is the first step: it downloads one public video with yt-dlp (an argument list, never a shell; only `http` and `https` URLs; best mp4 where there is one; `--no-playlist`) into DIR as `<id>.mp4` and `<id>.info.json`, then writes `<id>.ref.json`: url, id, title, uploader, duration, fps, width, height, file name, sha256 and `fetched_at` (UTC). ffprobe checks the file: it must have a video stream and its duration must be within 0.5 s of the info json's, else exit 1. yt-dlp missing is an error with the `brew install yt-dlp` hint, or pass `--yt-dlp PATH`. DIR must be outside every git tree, like the other outputs. References are for study only: keep them in a scratch folder or on storage you control, never commit or publish them, and respect the source's terms.
+
+`recipe` and `compare` both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
 
 `recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve or dip as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
 
-`compare` scores a rebuild against its reference, 0 to 100, as the mean of six parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms, and colour (median CIEDE2000 of each shot's mean Lab, zero at 20). Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames as pairs, reference left. Beat alignment and title timing are not scored yet.
+`compare` scores a rebuild against its reference, 0 to 100, as the mean of seven parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms (these five are timing only), colour (median CIEDE2000 of each shot's mean Lab, zero at 20) and picture (median difference of an 8 x 8 grid of block means per shot, zero at a quarter of full scale). The score is timing-weighted, so a rebuild with the same cut times scores high whatever it shows; it is not a claim that the videos match. The result lists `timing_only_parts` and sets `picture_differs` when colour or picture is under 0.5, and the printed summary says so. compare.json stores file names, not paths. A recipe's default name is `Recipe ID` and its summary does not name the source file. Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames (a one-frame shot is read at its first frame) as pairs, reference left. Beat alignment and title timing are not scored yet.
 
 ## beats
 

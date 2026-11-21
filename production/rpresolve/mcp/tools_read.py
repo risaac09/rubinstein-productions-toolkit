@@ -91,8 +91,10 @@ def _scripting_info():
                 except ValueError:
                     pass
             raise ValueError(text)
-        info["changed"] = (day(info["last_updated"]) > day(SCRIPTING_AUDITED_DATE)
-                           or bool(info["newest_version"]) and info["newest_version"] != SCRIPTING_AUDITED_VERSION)
+        if info["newest_version"] and info["newest_version"] != SCRIPTING_AUDITED_VERSION:
+            info["changed"] = True  # a newer version heading stands whether or not the date reads
+        else:
+            info["changed"] = day(info["last_updated"]) > day(SCRIPTING_AUDITED_DATE)
     except (OSError, ValueError, TypeError):
         pass  # missing, unreadable or malformed: staleness cannot be judged
     return info
@@ -154,7 +156,8 @@ def resolve_status(args, ctx):
         out["summary"] += (f"; the server loaded {out['server']['loaded_commit']} but the checkout "
                            f"is at {out['server']['commit']}: restart it")
     if out["scripting"]["changed"]:
-        out["summary"] += (f"; the Resolve scripting changelog ({out['scripting']['last_updated']}) is "
+        out["summary"] += (f"; the Resolve scripting changelog ({out['scripting']['last_updated'] or 'undated'}, "
+                           f"version {out['scripting']['newest_version']}) is "
                            f"newer than the toolkit's audit ({SCRIPTING_AUDITED_DATE})")
     elif out["scripting"]["last_updated"] and out["scripting"]["changed"] is None:
         out["summary"] += "; the scripting changelog date could not be read"

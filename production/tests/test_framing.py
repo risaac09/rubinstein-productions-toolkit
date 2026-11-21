@@ -63,6 +63,20 @@ def window_top(row_or_item, out, scale):
     return row_or_item["y"] - out[1] / (2.0 * scale)
 
 
+class TestSceneCounts(unittest.TestCase):
+    def test_a_scene_crop_that_needs_no_move_is_not_a_need_nothing(self):
+        read = {"saliency": {"attention": [{"x": 0.45, "y": 0.45, "w": 0.1, "h": 0.1}], "objectness": []},
+                "sharpness": {"ratio": 2.0}, "depth": {"depth": None, "reason": "no model"},
+                "motion": {"mad": 0.0}}
+        n = reframe.plan_items(
+            [{"name": "c", "path": "/media/c.braw", "in": 0.0, "out": 8.0, "squeeze": None}],
+            aspect=reframe.MASTER, master_size=MASTER, scaling=reframe.SCALE_TO_CROP,
+            reader_for=lambda it: Reader(PYXIS), detect=lambda paths: {p: [] for p in paths},
+            scene=lambda image, previous: read)["counts"]
+        self.assertEqual((n[reframe.SCENE], n["none"]), (1, 0))
+        self.assertGreaterEqual(n[reframe.PASS] - n["none"], 0)
+
+
 class TestMasterShape(unittest.TestCase):
     # A standing performer on a festival stage: Vision's box from row 725 to 1083 (0.18 to 0.27 of
     # the height). Centre fill at scaleToCrop shows rows 672 to 3360, so the box is in but

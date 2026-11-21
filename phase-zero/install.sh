@@ -10,6 +10,7 @@
 # existing config. Idempotent: re-running refreshes the kit.
 #
 # Usage:
+#   (a flag may sit before or after the target; --check anywhere means check only)
 #   ./install.sh <target-repo-dir>          install into one repo
 #   ./install.sh --all <parent-dir>         install into every listed consumer
 #   ./install.sh --check <target-repo-dir>  verify one deployed kit, no writes
@@ -415,6 +416,47 @@ install_one_public() {
   cp "$(public_license_template "$target")" "$target/.claude/public-kit/LICENSE.recommended"
   echo "public-kit installed -> $target/.claude/public-kit"
 }
+
+# Argument guard: an unknown flag must not fall through to "install into this
+# directory". -h/--help prints the usage and writes nothing; any other
+# dash-word outside the supported flags exits 2 (2026-11-21, FAILURE-MODES 38).
+usage() { sed -n '/^# Usage:/,/^#$/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
+for a in "$@"; do
+  case "$a" in -h|--help) usage; exit 0 ;; esac
+done
+for a in "$@"; do
+  case "$a" in
+    --list|--public|--check|--all) ;;
+    -*) echo "ERROR: unknown argument: $a" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+# A flag is a flag wherever it sits: parse every argument before acting, then
+# rebuild them in the order the dispatch below reads (--public, --list or
+# --check, --all, target). --check anywhere means check only (2026-11-21,
+# FAILURE-MODES 38). More than one target, or none where one is needed, exits 2.
+f_pub=0 f_chk=0 f_all=0 f_list=0 npos=0 target=""
+for a in "$@"; do
+  case "$a" in
+    --public) f_pub=1 ;;
+    --check) f_chk=1 ;;
+    --all) f_all=1 ;;
+    --list) f_list=1 ;;
+    *) npos=$((npos + 1)); target="$a" ;;
+  esac
+done
+if [ "$f_list" -eq 1 ]; then
+  bad=$((f_chk + f_all + npos))
+else
+  bad=$((npos != 1))
+fi
+[ "$bad" -eq 0 ] || { echo "ERROR: expected $([ "$f_list" -eq 1 ] && echo no target || echo exactly one target)" >&2; usage >&2; exit 2; }
+set --
+[ "$f_pub" -eq 0 ] || set -- "$@" --public
+[ "$f_list" -eq 0 ] || set -- "$@" --list
+[ "$f_chk" -eq 0 ] || set -- "$@" --check
+[ "$f_all" -eq 0 ] || set -- "$@" --all
+[ "$npos" -eq 0 ] || set -- "$@" "$target"
 
 if [ "${1:-}" = "--list" ]; then
   ensure_consumers

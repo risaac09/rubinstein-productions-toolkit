@@ -64,6 +64,7 @@ card() {
   echo junk > "$c/.fseventsd/x"; echo junk > "$c/.DS_Store"; echo junk > "$c/DCIM/._P1000001.MOV"
   touch -t 202610031234 "$c/DCIM/100_PANA/P1000001.MOV"
 }
+TP=$(cd -P "$T" && pwd -P)
 tree() { (cd "$1" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort) | shasum -a 256; }
 run() { out=$("$O" "$@" 2>&1); rc=$?; }
 
@@ -292,7 +293,7 @@ run copy "$T/cl" "$T/al" --cam GH7
 ld=$(ls -d "$T/al"/GH7-*/); ld=${ld%/}
 lite_tree "$T/lite"
 run safe --lite "$T/lite" "$ld" remote:bucket/lite
-check "lite tier passes and records the tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && grep -q "^tier lite" "$ld.offsite.txt" && grep -q "^lite_dir $T/lite" "$ld.offsite.txt"'
+check "lite tier passes and records the tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && grep -q "^tier lite" "$ld.offsite.txt" && grep -q "^lite_dir $TP/lite$" "$ld.offsite.txt"'
 rm -f "$ld.offsite.txt"
 run safe "$ld" remote:bucket/x
 check "full tier records tier full" '[ "$rc" -eq 0 ] && grep -q "^tier full" "$ld.offsite.txt" && ! grep -q lite_dir "$ld.offsite.txt"'
@@ -394,6 +395,63 @@ if [ "$lc" != "$ld" ] && [ -d "$lc" ]; then
 else
   echo "skip case-changed lite dir tests: the temp filesystem is case-sensitive (or the path has no letters to change)"
 fi
+
+# 15. Review 2 fixes.
+lcard c15; mkdir "$T/a15"; run copy "$T/c15" "$T/a15" --cam GH7
+l2=$(ls -d "$T/a15"/GH7-*/); l2=${l2%/}
+# 15a. Only a listed offsite backend passes: archive, union, combine, an alias to archive, an unknown type.
+d="$l2"; rm -f "$d.offsite.txt"
+for c in "remote:  archive" "remote:  union" "remote:  combine" "remote:  sftp" "remote:  somenewbackend" "remote:  memory"; do
+  out=$(FAKE_REMOTES="$c" "$O" safe "$d" remote:x 2>&1); rc=$?
+  check "remote type '$c' is not a listed offsite backend" '[ "$rc" -eq 2 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && [ ! -e "$d.offsite.txt" ]'
+done
+for t in b2 s3 drive; do
+  out=$(FAKE_REMOTES="remote:  $t" "$O" safe "$d" remote:x 2>&1); rc=$?
+  check "remote type $t passes" '[ "$rc" -eq 0 ]'
+done
+rm -f "$d.offsite.txt"
+if command -v rclone > /dev/null; then
+  printf '[arc]\ntype = archive\nremote = /tmp\n\n[alarc]\ntype = alias\nremote = arc:\n' > "$T/rc2.conf"
+  safe_cfg "$T/rc2.conf" arc:x
+  check "a real archive remote is refused" '[ "$rc" -eq 2 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+  safe_cfg "$T/rc2.conf" alarc:x
+  check "an alias to an archive remote is refused" '[ "$rc" -eq 2 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+fi
+
+# 15b. A not-safe run removes an earlier safe record.
+run safe "$l2" remote:bucket/x
+check "full tier passes first" '[ "$rc" -eq 0 ] && [ -f "$l2.offsite.txt" ]'
+out=$(FAKE_RC=1 "$O" safe "$l2" remote:bucket/x 2>&1); rc=$?
+check "a failing rerun removes the earlier safe record" '[ "$rc" -eq 1 ] && [ ! -e "$l2.offsite.txt" ]'
+run safe "$l2" remote:bucket/x
+out=$(FAKE_REMOTES="remote:  local" "$O" safe "$l2" remote:x 2>&1); rc=$?
+check "a refused rerun removes the earlier safe record" '[ "$rc" -eq 2 ] && [ ! -e "$l2.offsite.txt" ]'
+
+# 15c. A lite tree holding clips this card does not have is not safe; a lite dir path is stored absolute;
+#      a lite pass keeps an earlier full-tier record.
+lite_tree "$T/lite4"; echo lite > "$T/lite4/DCIM/A/C0099.mp4"
+run safe --lite "$T/lite4" "$l2" remote:bucket/lite
+check "a lite dir with an .mp4 no video on this card needs is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -qi "C0099.mp4" && [ ! -e "$l2.offsite.txt" ]'
+run safe "$l2" remote:bucket/x
+rm -rf "$T/lite4"; lite_tree "$T/lite4"
+(cd "$T" && run safe --lite lite4 "$l2" remote:bucket/lite; echo "$rc" > "$T/rc.out"; printf '%s' "$out" > "$T/out.txt")
+check "a lite pass after a full pass keeps the full record" '[ "$(cat "$T/rc.out")" = 0 ] && grep -q "^tier full" "$l2.offsite.txt" && ! grep -q "^tier lite" "$l2.offsite.txt" && grep -q "earlier full-tier record" "$T/out.txt"'
+check "the SAFE output states the lite limit" 'grep -q "^limit: " "$T/out.txt"'
+rm -f "$l2.offsite.txt"
+(cd "$T" && run safe --lite lite4 "$l2" remote:bucket/lite)
+check "the lite_dir in the record is absolute" 'grep -q "^lite_dir $TP/lite4$" "$l2.offsite.txt"'
+rm -f "$l2.offsite.txt"
+
+# 15d. Two videos needing one lite file, or names equal ignoring case, block and are named.
+c="$T/cdup"; mkdir -p "$c/X" "$c/Y"
+for f in X/A.mov X/A.mp4 X/A.mp4.mov Y/B001.mov Y/b001.mp4; do head -c 2000 /dev/urandom > "$c/$f"; done
+mkdir "$T/adup"; run copy "$c" "$T/adup" --cam GH7
+dd2=$(ls -d "$T/adup"/GH7-*/); dd2=${dd2%/}
+mkdir -p "$T/litedup/X" "$T/litedup/Y"
+for f in X/A.mov.mp4 X/A.mp4.mp4 Y/B001.mp4 Y/b001.mp4; do echo lite > "$T/litedup/$f"; done
+run safe --lite "$T/litedup" "$dd2" remote:bucket/lite
+check "videos that need the same lite file are blocked by name" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "X/A.mp4.mov" && printf "%s" "$out" | grep -q "X/A.mp4 " && [ ! -e "$dd2.offsite.txt" ]'
+check "a case-only name clash says what happened, not a filter" 'printf "%s" "$out" | grep -q "Y/B001.mov" && printf "%s" "$out" | grep -q "ignoring case" && ! printf "%s" "$out" | grep -q "a filter"'
 
 # 13. Help is the header only.
 out=$("$O" --help)

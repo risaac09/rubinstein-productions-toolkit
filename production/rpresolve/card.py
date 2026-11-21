@@ -445,8 +445,8 @@ def _record_newer(root, checked_utc):
     # shortcut: mtime, so a copy that resets mtimes false-alarms; upgrade to a record sha256 in offsite.txt.
     try:
         at = datetime.datetime.fromisoformat(checked_utc.replace("Z", "+00:00"))
-        if at.tzinfo is None:
-            raise ValueError(checked_utc)
+        if at.tzinfo is None or at > datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5):
+            raise ValueError(checked_utc)  # a time in the future is as untrustworthy as one we cannot read
     except (ValueError, TypeError, AttributeError):
         return True  # fail closed: a time we cannot read must not make a stale record read safe to format
     try:

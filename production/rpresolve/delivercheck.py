@@ -814,7 +814,7 @@ def check(path, dest, fps=None, size=None, as_name=None, loudness=True, folders=
     # Loudness, true peak and clipping: the peak and the flat-top rows run for every
     # destination whenever the file is read, a client master included.
     loud = dest.get("loudness") or {}
-    peak_max = float(loud.get("true_peak_max_dbtp", TRUE_PEAK_DEFAULT_DBTP))
+    peak_max = peak_ceiling(dest)
     has_target = deliver.has_loudness_target(dest)
     m = None
     if audio is not None and loudness:
@@ -1166,12 +1166,24 @@ def loudnorm_filter(target, tp, lra, measured=None):
     return f + ":print_format=json"
 
 
+def peak_ceiling(dest):
+    """The destination's true-peak ceiling in dBTP; CheckError when an overlay made it unusable."""
+    v = (dest.get("loudness") or {}).get("true_peak_max_dbtp", TRUE_PEAK_DEFAULT_DBTP)
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise CheckError(f"'{dest.get('key')}' true_peak_max_dbtp must be a number, not {v!r}.")
+
+
 def fix_command(path, out, dest, has_data, measured, target, tp, lra):
     """The second-pass ffmpeg argv: every stream mapped and copied except
     the first audio stream, which is normalised and re-encoded to the
     destination's audio settings. An mp4 cannot carry a copied timecode
     (tmcd) data track, so there data streams are left out and the muxer
-    writes the timecode again from the video stream's timecode tag."""
+    writes the timecode again from the video stream's timecode tag. A mov
+    carrying a chapter track cannot copy its text data stream either (ffmpeg
+    stops with "Tag text incompatible"), so a mov leaves data streams out the
+    same way; the chapters themselves are carried by -map_chapters."""
     a = dest["audio"]
     if a["codec"] == "lpcm":
         enc = ["-c:a:0", PCM[int(a["bit_depth"])][0]]
@@ -1179,8 +1191,8 @@ def fix_command(path, out, dest, has_data, measured, target, tp, lra):
         enc = ["-c:a:0", "aac"] + (["-b:a:0", f"{int(a['bitrate_kbps'])}k"]
                                    if a.get("bitrate_kbps") else [])
     cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-n", "-i", _src(path), "-map", "0"]
-    if dest["format"] == "mp4" and has_data:
-        cmd += ["-map", "-0:d"]
+    if dest["format"] in ("mp4", "mov") and has_data:
+        cmd += ["-map", "-0:d", "-map_chapters", "0"]
     cmd += ["-c", "copy"] + enc
     cmd += ["-filter:a:0", loudnorm_filter(target, tp, lra, measured) +
             f",aresample={int(a['sample_rate'])}"]
@@ -1254,9 +1266,10 @@ def fix_loudness(path, dest, replace=False, fps=None, size=None, trash_root=None
         warnings.append("Resolve's caption sidecar has not been made into an .srt yet (run "
                         "deliver-captions on the original), so the check below fails its "
                         "captions row.")
-    if dest["format"] == "mp4" and has_data:
-        warnings.append("data streams (such as a timecode track) are not copied into an mp4; "
-                        "ffmpeg writes the timecode track again from the video stream's tag.")
+    if dest["format"] in ("mp4", "mov") and has_data:
+        warnings.append(f"data streams (such as a timecode track) are not copied into a "
+                        f"{dest['format']}; ffmpeg writes the timecode track again from the "
+                        "video stream's tag and carries the chapters.")
 
     if dry_run:
         return {"original": os.path.abspath(path), "fixed": os.path.abspath(out),
