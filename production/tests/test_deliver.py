@@ -196,8 +196,8 @@ class TestConfig(unittest.TestCase):
     def test_defaults_cover_every_destination(self):
         cfg = rpconfig.load_config("/nonexistent/config.json")
         self.assertEqual(deliver.destination_keys(cfg), sorted([
-            "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16", "social_4x5",
-            "social_9x16", "social_9x16_music", "substack_16x9", "youtube_16x9",
+            "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16", "social_1x1",
+            "social_4x5", "social_9x16", "social_9x16_music", "substack_16x9", "youtube_16x9",
             "youtube_16x9_hd"]))
         yt = deliver.destination(cfg, "youtube_16x9")
         self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
