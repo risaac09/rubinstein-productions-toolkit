@@ -41,6 +41,10 @@ jobs:
         run: |
           scripts/test-changelog-fragments.sh
           scripts/test-burst-gate.sh
+      - name: CI shard matrix matches the shard count
+        run: |
+          scripts/check-ci-shards.sh
+          scripts/test-check-ci-shards.sh
       - name: Production test runner tests
         run: scripts/test-run-production-tests.sh
       - name: Methodology status check tests
@@ -389,15 +393,31 @@ jobs:
           fi
           echo "skips for packages and ffmpeg: none. Other skips:"
           grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
-      # Node 22, once, for every Node test: each tracked test*.mjs runs under
-      # node --test with no edit here.
-      # Shard 3 carries them, and gets the lighter share of the Python modules.
+
+  # Node 22, once, for every Node test: each tracked test*.mjs runs under node --test with no
+  # edit here. Its own job, so the Python shards stay balanced; production-unit-tests below needs
+  # it, so the required check still covers these tests. The tests call python3 for the lint
+  # cases, so it gets the same Python and packages as the shards.
+  node-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the pinned packages
+        run: python -m pip install -r requirements.txt
+      - name: Install ffmpeg
+        timeout-minutes: 6
+        run: |
+          set -eu
+          O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
+          sudo apt-get $O update -qq
+          sudo apt-get $O install -y -qq ffmpeg
       - uses: actions/setup-node@v4
-        if: matrix.shard == 3
         with:
           node-version: "22"
       - name: Node tests
-        if: matrix.shard == 3
         run: |
           set -euo pipefail
           RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
@@ -408,19 +428,22 @@ jobs:
           echo "$tests"
           node --test $tests
 
-  # Keeps the required check name production-unit-tests. Fails if any shard
+  # Keeps the required check name production-unit-tests. Fails if any shard or the Node job
   # failed, was cancelled or was skipped.
   production-unit-tests:
     if: always()
-    needs: production-unit-tests-shard
+    needs:
+      - production-unit-tests-shard
+      - node-tests
     runs-on: ubuntu-24.04
     steps:
-      - name: Every shard passed
+      - name: Every shard and the Node tests passed
         env:
           RESULT: ${{ needs.production-unit-tests-shard.result }}
+          NODE_RESULT: ${{ needs.node-tests.result }}
         run: |
-          echo "shards: $RESULT"
-          [ "$RESULT" = "success" ]
+          echo "shards: $RESULT, node: $NODE_RESULT"
+          [ "$RESULT" = "success" ] && [ "$NODE_RESULT" = "success" ]
 
   # Red-main alarm. When a push run on main fails, open one issue (or comment on
   # the one already open); when main is green again, close it. It never runs on
@@ -435,6 +458,7 @@ jobs:
       - rpresolve-tests-3-9
       - footage-index-tests
       - production-unit-tests-shard
+      - node-tests
       - production-unit-tests
       - site-build
     runs-on: ubuntu-26.04
