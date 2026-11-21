@@ -220,6 +220,12 @@ class TestApprovalRow(Case):
         self.line(copy="whatever.mp4", review_sha=sha(b"deliverable"))
         self.assertEqual(self.row()["status"], "PASS")
 
+    def test_clip_naming_its_own_sha_without_a_copy_passes(self):
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        self.log.write_text(json.dumps({"ts": "2026-10-31T10:00:00Z", "step": "sound", "choice": "approve",
+                                        "review_sha256": sha(b"deliverable")}) + "\n")
+        self.assertEqual(self.row()["status"], "PASS")
+
     def test_missing_log_warns_and_no_flag_skips(self):
         self.assertEqual(dc.approval_row(str(self.f), str(self.log))[0]["status"], "WARN")
         self.assertEqual(dc.approval_row(str(self.f), None)[0]["status"], "SKIP")

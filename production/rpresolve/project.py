@@ -85,7 +85,7 @@ def load_config(path=None, overrides=None):
             raise ProjectError(f"{path}: a pipeline config is a JSON object")
         strangers = sorted(k for k in cfg if k not in CONFIG_KEYS + READ_ELSEWHERE and not k.startswith("_"))
         if strangers:
-            raise ProjectError(f"{path}: unknown key(s) {', '.join(strangers)} (known: {', '.join(CONFIG_KEYS)})")
+            raise ProjectError(f"{path}: unknown key(s) {', '.join(strangers)} (known: {', '.join(CONFIG_KEYS + READ_ELSEWHERE)})")
     out = {k: cfg.get(k) for k in CONFIG_KEYS}
     out.update({k: v for k, v in (overrides or {}).items() if v})
     for k in ("landing_root", "work_root", "sheets_root", "music_root"):
@@ -564,11 +564,29 @@ def answer(cfg, slug, apply, squeeze=None, clips=(), resolved=False, say=print,
     return 0
 
 
+def unsafe_to_format(cards):
+    """Why the cards may not be formatted, or "" when every one may: each must load, carry an offsite.txt
+    that names it, and have no record changed since that check. Fails closed on no cards or an unreadable one."""
+    if not cards:
+        return "this project holds no card"
+    for card in cards:
+        try:
+            c = rpcard.load(card)
+        except (rpcard.CardError, OSError) as e:
+            return f"{card} cannot be read ({e})"
+        if not c["offsite"]["ok"]:
+            return f"no offsite.txt names {card}"
+        stale = [o for o in c["open"] if o.startswith("offsite record")]
+        if stale:
+            return f"{card}: {stale[0]}"
+    return ""
+
+
 def status(cfg, slug, say=print):
     """The nine steps with their state; for 7 to 9 the next command (none for 7 once a pick is
     recorded, only the build for 8 once its answers are); each answer as recorded and those still
     open; a recorded destination with no render folder; whether the card may be formatted (true
-    only when an offsite.txt names it)."""
+    only when every card has an offsite.txt that names it and no changed record)."""
     ch = Chain(cfg, slug, False, say)
     if not os.path.isfile(ch.path):
         raise ProjectError(f"{slug}: no {ch.path}; run project start first")
@@ -596,14 +614,9 @@ def status(cfg, slug, say=print):
     for key in sorted({a["destination"]["key"] for a in levels if "destination" in a}):
         _, folder, problem, _ = render_folder(cfg, slug, key)
         say(f"open: render folder: {problem}" if problem else f"render folder for '{key}': {folder}")
-    ok = False
-    for card in ch.st["cards"]:
-        try:
-            ok = rpcard.load(card)["offsite"]["ok"]
-        except rpcard.CardError:
-            ok = False
-    say("may the card be formatted: " + ("yes, an offsite.txt names it" if ok
-        else "no, no offsite.txt names it (card check shows S4)"))
+    why = unsafe_to_format(ch.st["cards"])
+    say("may the card be formatted: " + (f"no, {why}" if why
+        else "yes, every card has an offsite.txt that names it"))
     if not any("music" in a for a in levels) and cfg.get("music_root") \
             and os.path.isfile(os.path.join(cfg["music_root"], "library.json")):
         say(f"music (optional): python3 resolve_workflow.py music candidates {cfg['music_root']} --manifest M --out DIR; "
