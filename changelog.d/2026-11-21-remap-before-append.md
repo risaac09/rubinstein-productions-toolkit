@@ -1,0 +1,1 @@
+assemble_timeline remaps a multi-stream camera source it imported to one mono track before the append (T36, T39); a source already in the pool, a refused remap or a differing read-back keep the delete cleanup, and the dry run's camera_streams names the action per source.
