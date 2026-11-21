@@ -318,6 +318,37 @@ class TestNits(Base):
         self.assertEqual(code, 1)
 
 
+class TestSecondReview(Base):
+    def test_fractional_rate_still_checks_timecode_shape(self):
+        for tc in ("banana", "00:00:00", "00:61:00:00", "00:00:61:00", "00:00:00:24", "0:0:0:0", ""):
+            row = f"1\t{tc}\t1\ta\tRed\t\t24000/1001"
+            code, _, err = self.add(self.mk("m.tsv", markers(row)))
+            self.assertEqual(code, 1, tc)
+            self.assertIn("timecode", err)
+        self.assertFalse(self.ledger.exists())
+        for tc in ("00:01:00:00", "00:01:00;02"):
+            row = f"1800\t{tc}\t1\ta\tRed\t\t30000/1001"
+            self.assertEqual(self.add(self.mk("ok.tsv", markers(row)), cut=f"c{tc[-2:]}")[0], 0, tc)
+
+    def test_duplicate_match_ignores_whitespace_not_case(self):
+        self.seed()
+        before = self.ledger.read_bytes()
+        spaced = self.mk("m.tsv", markers("48\t00:00:02:00\t1\t story:logo   too early \tRed\t"
+                                          "move  after the line\t24/1",
+                                          "240\t00:00:10:00\t1\tsnd:music loud\tBlue\t\t24/1"))
+        code, _, err = self.add(spaced)
+        self.assertEqual(code, 1)
+        self.assertIn("already in the ledger", err)
+        self.assertEqual(self.ledger.read_bytes(), before)
+        cased = self.mk("c.tsv", markers("240\t00:00:10:00\t1\tSnd:Music loud\tBlue\t\t24/1"))
+        self.assertEqual(self.add(cased)[0], 0)
+        self.assertEqual(self.lines()[-1].split("\t")[5], "Snd:Music loud")
+
+    def test_stored_text_is_exactly_as_given(self):
+        self.add(self.mk("m.tsv", markers("1\t00:00:00:01\t1\tstory:a  b \tRed\t\t24/1")))
+        self.assertEqual(self.lines()[1].split("\t")[5], "story:a  b ")
+
+
 class TestResolve(Base):
     def res(self, *a):
         return self.run_cli("resolve", "--ledger", self.ledger, *a)

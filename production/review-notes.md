@@ -35,7 +35,7 @@ A TSV with a header, one row per note. Ids are never reused or renumbered; a dup
 | `round` | 1 for the first `add`, then 2, 3 |
 | `cut` | the cut the note was made against |
 | `timeline_frame` | the marker's `frame` |
-| `timecode` | the marker's `timecode`, copied. Checked against `frame` only at an integer rate; at a fractional rate (24000/1001, 30000/1001) the frame is the authority and the timecode, drop-frame or not, is carried through unchecked |
+| `timecode` | the marker's `timecode`, copied. Its shape is always checked (`HH:MM:SS:FF` or `HH:MM:SS;FF`, minutes and seconds under 60, frames under the nominal rate). It is checked against `frame` only at an integer rate; at a fractional rate (24000/1001, 30000/1001) the frame is the authority and the arithmetic is skipped |
 | `text` | the marker `name`, then ` | ` and its `note` when there is one |
 | `status` | `open`, `done` or `wontfix` |
 | `resolved_in` | the cut that addressed a `done` note, else empty |
@@ -44,5 +44,9 @@ A TSV with a header, one row per note. Ids are never reused or renumbered; a dup
 The TSV holds the client's text raw: a note starting with `=`, `+`, `-` or `@` is stored as written, so a spreadsheet may run it as a formula. The Markdown report escapes such text with a backslash.
 
 The marker schema carries no author, so the ledger has no author column.
+
+Duplicate detection compares text with surrounding whitespace stripped and inner runs of whitespace collapsed, and keeps case exact; the stored text is exactly as given.
+
+The lock uses `flock`, which a network share may not support; the tool then reports the ledger as busy. Keep the ledger on a local disk.
 
 Every change rewrites the ledger through a temporary file and an atomic rename.

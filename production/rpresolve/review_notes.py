@@ -28,7 +28,7 @@ MARKER_COLUMNS = ["frame", "timecode", "duration_frames", "name", "colour", "not
 LEDGER_COLUMNS = ["note_id", "round", "cut", "timeline_frame", "timecode", "text",
                   "status", "resolved_in", "reason"]
 STATUSES = ("open", "done", "wontfix")
-TC_RE = re.compile(r"^(\d\d):(\d\d):(\d\d):(\d\d)$")
+TC_RE = re.compile(r"^(\d\d):(\d\d):(\d\d)[:;](\d\d)$")
 ID_RE = re.compile(r"^N-(\d{3,})$")
 LOCK_WAIT = 10.0  # seconds a command waits for another one on the same ledger folder
 CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
@@ -69,16 +69,16 @@ def read_tsv(path, what):
 
 
 def check_timecode(n, frame, tc, fps):
-    # Frame is the authority. A fractional rate (drop-frame or not) has more than one
-    # way to write a timecode, so it is carried through unchecked.
-    if fps.denominator != 1:
-        return
     m = TC_RE.match(tc)
     if not m:
-        raise NotesError(f"markers line {n}: timecode {tc!r} is not HH:MM:SS:FF")
+        raise NotesError(f"markers line {n}: timecode {tc!r} is not HH:MM:SS:FF or HH:MM:SS;FF")
     nominal = round(fps)
     h, mi, s, ff = map(int, m.groups())
-    if ff >= nominal or ((h * 60 + mi) * 60 + s) * nominal + ff != frame:
+    if mi > 59 or s > 59 or ff >= nominal:
+        raise NotesError(f"markers line {n}: timecode {tc} has a field out of range at {nominal} frames")
+    # Frame is the authority: a fractional rate (drop-frame or not) has more than one way
+    # to write a timecode, so the arithmetic is skipped there and only the shape is held.
+    if fps.denominator == 1 and ((h * 60 + mi) * 60 + s) * nominal + ff != frame:
         raise NotesError(f"markers line {n}: timecode {tc} does not match frame {frame}")
 
 
@@ -106,6 +106,11 @@ def load_markers(path):
             raise NotesError(f"markers line {n}: empty name")
         out.append((frame, f[ix["timecode"]], f"{name} | {note}" if note.strip() else name))
     return out
+
+
+def norm(text):
+    """Duplicate-detection key: surrounding whitespace stripped, inner runs collapsed, case kept."""
+    return " ".join(text.split())
 
 
 def load_ledger(path):
@@ -198,13 +203,13 @@ def cmd_add(args):
         return 0
     with ledger_lock(args.ledger):
         rows = load_ledger(args.ledger) if os.path.exists(args.ledger) else []
-        have = {(r["cut"], r["timeline_frame"], r["text"]): r["note_id"] for r in rows}
-        fresh = [m for m in new if (cut, str(m[0]), m[2]) not in have]
+        have = {(r["cut"], r["timeline_frame"], norm(r["text"])): r["note_id"] for r in rows}
+        fresh = [m for m in new if (cut, str(m[0]), norm(m[2])) not in have]
         if not fresh:
             raise NotesError(f"{args.markers}: every marker is already in the ledger for {cut}; "
                              "this file was added before, nothing written")
-        elsewhere = {(r["timeline_frame"], r["text"]) for r in rows if r["cut"] != cut}
-        if all((str(f), t) in elsewhere for f, _, t in new):
+        elsewhere = {(r["timeline_frame"], norm(r["text"])) for r in rows if r["cut"] != cut}
+        if all((str(f), norm(t)) in elsewhere for f, _, t in new):
             others = ", ".join(sorted({r["cut"] for r in rows if r["cut"] != cut}))
             print(f"warning: every marker already sits in the ledger under another cut ({others}); "
                   f"check that {cut} is the cut name you meant", file=sys.stderr)
@@ -220,7 +225,7 @@ def cmd_add(args):
         write_ledger(args.ledger, rows)
         confirm(args.ledger, added)
     print(f"round {rnd}: {len(fresh)} notes added, N-{nid + 1:03d} to N-{nid + len(fresh):03d}")
-    repeats = [(f, have[(cut, str(f), t)]) for f, _, t in new if (cut, str(f), t) in have]
+    repeats = [(f, have[(cut, str(f), norm(t))]) for f, _, t in new if (cut, str(f), norm(t)) in have]
     if repeats:
         print(f"{len(repeats)} already present, not added: "
               + ", ".join(f"{i} (frame {f})" for f, i in repeats))
