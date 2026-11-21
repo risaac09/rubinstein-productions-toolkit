@@ -46,6 +46,8 @@ What it does not do, and limits:
 python3 -m rpresolve.shots SOURCE --out SHOTS.tsv [--threshold 10] [--no-dissolves]
 ```
 
+`--backend pyscenedetect` takes the hard cuts from PySceneDetect's adaptive detector (downscale 2) in place of scdet. It is a separate program the toolkit calls and never imports: `uv tool install 'scenedetect[opencv]==0.7.2'` puts it on PATH. On a 240 s render with 26 planned cuts it found 24 and no false cut, against scdet's 14 and 50 false (trial of 2026-10-31); on the same render through this command it found the same 24 in 47 s. `--threshold` applies to scdet only. With this backend a cut outranks a dissolve that holds it. The dissolve pass still reads handheld motion as dissolves (56 on that render through this command, which has none), so pass `--no-dissolves` on handheld edits.
+
 qc and rhythm run ffmpeg's `scdet` on a render. shots runs the same filter (`scdet=t=10`, qc's threshold) through the same parser (`qc.parse_scdet`) on the footage itself, and every frame that scores the threshold or more starts a new shot. The file has a header (`shot,in,out,duration,into,blend_in,blend_out`) and one row per shot, times in source seconds. A `.tsv` path is written tab-separated, the paper-edit shape rhythm reads; any other path is comma-separated. `qc --shots` counts the rows of either.
 
 On three 3-second trims of camera test clips joined end to end (chart, lens-cap black, chart; 1920x1280 at 29.97 fps), shots found cuts at 3.003 s and 6.006 s, on the true joins to the frame. Joining three chart clips of the same framing at different ISO, the joins scored 4.3 and 3.2, under the threshold, and no cut was found (the next highest frame scored 0.4).

@@ -10,6 +10,7 @@ Run: /usr/bin/python3 -m unittest production.tests.test_shots -v
 import csv
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -267,3 +268,80 @@ class TestDissolveFootage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SCENE_LIST = (
+    "Timecode List:,00:00:01.500,00:00:02.500\n"
+    "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode,End Time (seconds),"
+    "Length (frames),Length (timecode),Length (seconds)\n"
+    "1,1,00:00:00.000,0.000,15,00:00:01.500,1.500,15,00:00:01.500,1.500\n"
+    "2,16,00:00:01.500,1.500,25,00:00:02.500,2.500,10,00:00:01.000,1.000\n"
+    "3,26,00:00:02.500,2.500,37,00:00:03.700,3.700,12,00:00:01.200,1.200\n")
+
+
+@needs_numpy
+class TestPySceneDetectBackend(unittest.TestCase):
+    def test_the_scene_list_gives_the_starts_after_the_first(self):
+        self.assertEqual(shots.parse_scene_list(SCENE_LIST), [1.5, 2.5])
+        self.assertEqual(shots.parse_scene_list(SCENE_LIST.split("\n", 1)[1]), [1.5, 2.5])  # --skip-cuts form
+
+    def test_a_list_without_its_header_is_an_error(self):
+        with self.assertRaises(dc.CheckError):
+            shots.parse_scene_list("1,1,00:00:00.000,0.000\n")
+        with self.assertRaises(dc.CheckError):
+            shots.parse_scene_list("Scene Number,Start\n1,0\n2,1.5\n")
+
+    def test_missing_program_names_the_install_and_the_way_out(self):
+        with mock.patch.object(shots.shutil, "which", return_value=None):
+            with self.assertRaises(dc.ToolMissing) as cm:
+                shots.scenedetect_exe()
+        self.assertIn("uv tool install", str(cm.exception))
+        self.assertIn("--backend scdet", str(cm.exception))
+
+    def test_an_unknown_backend_is_refused(self):
+        with tempfile.NamedTemporaryFile(suffix=".mkv") as f, \
+                mock.patch.object(shots.dc, "check_tools"), \
+                mock.patch.object(shots.dc, "probe", return_value={"streams": [{"codec_type": "video", "avg_frame_rate": "10/1"}],
+                                                                    "format": {"duration": "3.7"}}):
+            with self.assertRaises(ValueError):
+                shots.build(f.name, backend="nope", dissolves=False)
+
+    @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
+    @unittest.skipUnless(shutil.which("scenedetect"), "scenedetect not installed")
+    def test_the_program_finds_the_joins(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "three.mkv")
+            make(clip, PARTS)
+            report = shots.build(clip, backend="pyscenedetect")
+        self.assertEqual(report["backend"], "pyscenedetect")
+        self.assertEqual(len(report["cuts"]), len(JOINS))
+        for got, want in zip(report["cuts"], JOINS):
+            self.assertAlmostEqual(got, want, delta=1 / RATE)
+        self.assertIn("by PySceneDetect", shots.summary(report))
+
+
+@needs_numpy
+class TestCutOutranksDissolve(unittest.TestCase):
+    def build_with(self, backend, cuts, dissolves):
+        info = {"streams": [{"codec_type": "video", "avg_frame_rate": "10/1"}], "format": {"duration": "10"}}
+        diss = [{"start_frame": int(a * 10), "end_frame": int(b * 10), "start": a, "end": b, "duration": b - a}
+                for a, b in dissolves]
+        with tempfile.NamedTemporaryFile(suffix=".mkv") as f, \
+                mock.patch.object(shots.dc, "check_tools"), mock.patch.object(shots.dc, "probe", return_value=info), \
+                mock.patch.object(shots.dc, "duration", return_value=10.0), \
+                mock.patch.object(shots, "pyscenedetect_cuts", return_value=cuts), \
+                mock.patch.object(shots.dc, "_run", return_value=mock.Mock(returncode=0, stderr="")), \
+                mock.patch.object(shots.qc, "parse_scdet", return_value=cuts), \
+                mock.patch.object(shots, "grey_frames", return_value=None), \
+                mock.patch.object(shots, "find_dissolves", return_value=diss):
+            return shots.build(f.name, backend=backend)
+
+    def test_pyscenedetect_keeps_its_cut_and_drops_the_dissolve_around_it(self):
+        r = self.build_with("pyscenedetect", [4.0, 7.0], [(3.8, 4.3), (5.0, 5.6)])
+        self.assertEqual(r["cuts"], [4.0, 7.0])
+        self.assertEqual([(d["start"], d["end"]) for d in r["dissolves"]], [(5.0, 5.6)])
+
+    def test_scdet_lets_the_dissolve_take_its_cut(self):
+        r = self.build_with("scdet", [4.0, 7.0], [(3.8, 4.3), (5.0, 5.6)])
+        self.assertEqual(r["cuts"], [7.0])
+        self.assertEqual(len(r["dissolves"]), 2)
