@@ -5,7 +5,7 @@
 #   card-fixture.sh [--image] <dir>      build into <dir>, which must exist and be empty
 #   card-fixture.sh --help               print this header; writes nothing
 #
-# <dir>/cards/<name>/ holds one card each; <dir>/MANIFEST.tsv lists every file made
+# <dir>/cards/<name>/ holds one card each; <dir>/MANIFEST.tsv lists every file under cards/
 # (card, path, bytes, sha256, role, how). Cards:
 #   panasonic    DCIM/100_PANA and PRIVATE/PANA_GRP: MOV and MP4 clips, an RW2 and a JPG still,
 #                a WAV, an XML sidecar, a byte-identical duplicate clip under another name
@@ -24,8 +24,9 @@
 # attached at <dir>/mnt to fill it and detached again before the script exits, even on error.
 # Elsewhere --image prints "SKIP" and builds only the tree.
 #
-# Writes only under <dir>. Refuses a <dir> that is missing, not empty, the root, a symlink, or under
-# /Volumes (as typed or resolved); the one mount it makes is its own, inside <dir>.
+# Writes only under <dir>. Refuses a <dir> that is missing, not empty, unreadable, the root, a symlink
+# (also as link/ or link/.), or under /Volumes (as typed or resolved); the one mount it makes is its
+# own, inside <dir>. Mount points elsewhere (/media, /mnt) are not recognised: only the empty rule holds there.
 # Exit: 0 ok, 2 refused or failed.
 set -u -o pipefail
 
@@ -43,20 +44,39 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$dir" ] || die "usage: card-fixture.sh [--image] <dir>"
 
-dir="${dir%/}"
+unset CDPATH  # cd must go to the directory given, never to a same-named one on a search path
 [ -d "$dir" ] || die "not a directory: $dir (it is never created)"
-[ ! -L "$dir" ] || die "$dir is a symlink; give the real directory"
-ROOT=$(cd -P "$dir" && pwd -P) || die "cannot resolve $dir"
-case "$dir" in /Volumes|/Volumes/*) die "$dir is under /Volumes; the fixture never writes to a mounted volume" ;; esac
+# TYPED: the path as given, made absolute with its links kept, so link, link// and link/. all read as the link.
+TYPED=$(cd -- "$dir" && pwd -L) || die "cannot resolve $dir"
+ROOT=$(cd -P -- "$dir" && pwd -P) || die "cannot resolve $dir"
+# bash keeps a leading // through cd and pwd; fold it to one slash so //Volumes/x is seen as /Volumes/x.
+TYPED="/${TYPED#"${TYPED%%[!/]*}"}"; ROOT="/${ROOT#"${ROOT%%[!/]*}"}"
+[ ! -L "$TYPED" ] || die "$dir is a symlink; give the real directory"
+case "$TYPED" in /Volumes|/Volumes/*) die "$dir is under /Volumes; the fixture never writes to a mounted volume" ;; esac
 case "$ROOT" in /|/Volumes|/Volumes/*) die "$ROOT is not a scratch directory" ;; esac
-[ -z "$(ls -A "$ROOT")" ] || die "$ROOT is not empty; the fixture never overwrites"
+# A directory that cannot be listed is not known to be empty.
+listing=$(ls -A "$ROOT" 2>/dev/null) || die "cannot list $ROOT; the fixture never writes where it cannot see"
+[ -z "$listing" ] || die "$ROOT is not empty; the fixture never overwrites"
 [ -w "$ROOT" ] || die "$ROOT is not writable"
 
 FF=$(command -v "${FFMPEG:-ffmpeg}" 2>/dev/null || true)
+[ -n "$FF" ] || echo "card-fixture: no ffmpeg; every media file is a stand-in (the how column says so)" >&2
 MAN="$ROOT/MANIFEST.tsv"
-MNT=""
+MNT=""; ATTACHING=""
+# True only when a volume is mounted exactly at $MNT: the mount point is the tail of df's line,
+# matched whole so a space in the path survives.
+mounted() { case "$(df -P "$MNT" 2>/dev/null | tail -n 1)" in *" $MNT") return 0 ;; esac; return 1; }
 cleanup() {
-  if [ -n "$MNT" ]; then hdiutil detach "$MNT" -quiet >/dev/null 2>&1 || hdiutil detach "$MNT" -force -quiet >/dev/null 2>&1; MNT=""; fi
+  [ -n "$MNT" ] || return 0
+  # When hdiutil attach fails or is itself killed, the system can still finish the mount a moment
+  # later: while an attach is in doubt keep trying for a few seconds, so a late mount is detached too.
+  local i=0
+  # hdiutil is called only on our own mount point, never on a plain directory of some other volume.
+  until mounted && { hdiutil detach "$MNT" -quiet >/dev/null 2>&1 || hdiutil detach "$MNT" -force -quiet >/dev/null 2>&1; }; do
+    [ -n "$ATTACHING" ] && [ "$i" -lt 10 ] || break
+    sleep 0.5; i=$((i + 1))
+  done
+  MNT=""
 }
 trap cleanup EXIT
 trap 'exit 2' INT TERM HUP
@@ -81,9 +101,11 @@ ff_args() { # ext
     mov|mp4|m4v|mkv|avi) echo "$(vsrc) -c:v mpeg4 -q:v 5 -an" ;;
     mts|m2ts) echo "$(vsrc) -c:v mpeg2video -q:v 5 -an" ;;
     mxf) echo "$(vsrc) -c:v mpeg2video -q:v 5 -an" ;;
-    jpg) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v mjpeg" ;;
-    png) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v png" ;;
-    tif) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v tiff" ;;
+    # -update 1: without it the image writer reads a % anywhere in the output path as a frame-number
+    # pattern and writes to another path (a <dir> named p%d would land files in p1).
+    jpg) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v mjpeg -update 1" ;;
+    png) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v png -update 1" ;;
+    tif) echo "-f lavfi -i testsrc2=size=64x48 -frames:v 1 -c:v tiff -update 1" ;;
     wav) echo "-f lavfi -i sine=frequency=440:duration=0.2 -c:a pcm_s16le" ;;
     aif) echo "-f lavfi -i sine=frequency=440:duration=0.2 -c:a pcm_s16be" ;;
     flac) echo "-f lavfi -i sine=frequency=440:duration=0.2 -c:a flac" ;;
@@ -152,7 +174,7 @@ build() {
   # unknown: the panasonic card plus one file no tool knows.
   mkdir -p "$base/cards/unknown" || exit 2
   cp -R "$base/cards/panasonic/." "$base/cards/unknown/" || exit 2
-  awk -F'\t' -v OFS='\t' '$1 == "panasonic" { $1 = "unknown"; print }' "$MAN" >> "$MAN.tmp" && cat "$MAN.tmp" >> "$MAN" && rm -f "$MAN.tmp"
+  awk -F'\t' -v OFS='\t' '$1 == "panasonic" { $1 = "unknown"; print }' "$MAN" >> "$MAN.tmp" && cat "$MAN.tmp" >> "$MAN" && rm -f "$MAN.tmp" || die "cannot list the unknown card in $MAN"
   printf 'no tool knows this extension\n' > "$(place unknown DCIM/100_PANA/CLIP.zzz)" || exit 2
   note unknown DCIM/100_PANA/CLIP.zzz unknown text
 }
@@ -170,10 +192,12 @@ if [ -n "$image" ]; then
   # The disk image holds the panasonic card, filled through a mount that lives inside <dir>.
   mkdir "$ROOT/mnt" || die "cannot create $ROOT/mnt"
   hdiutil create -size 16m -fs MS-DOS -volname CARD -ov "$ROOT/card.dmg" >/dev/null || die "hdiutil create failed"
+  # Set before the attach: a signal that lands while hdiutil is still running must find the mount to detach.
+  MNT="$ROOT/mnt"; ATTACHING=1
   hdiutil attach "$ROOT/card.dmg" -mountpoint "$ROOT/mnt" -nobrowse -noautoopen -quiet >/dev/null || die "hdiutil attach failed"
-  MNT="$ROOT/mnt"
+  ATTACHING=""
   # Only a volume attached at our own mount point is written to.
-  [ "$(cd -P "$MNT" && pwd -P)" = "$ROOT/mnt" ] && [ "$(df -P "$MNT" | awk 'NR == 2 {print $NF}')" = "$ROOT/mnt" ] || die "the image did not mount at $ROOT/mnt"
+  [ "$(cd -P "$MNT" && pwd -P)" = "$ROOT/mnt" ] && mounted || die "the image did not mount at $ROOT/mnt"
   cp -R "$ROOT/cards/panasonic/." "$MNT/" || die "cannot fill the image"
   sync
   cleanup
