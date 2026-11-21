@@ -41,6 +41,8 @@ jobs:
         run: |
           scripts/test-changelog-fragments.sh
           scripts/test-burst-gate.sh
+      - name: Production test runner tests
+        run: scripts/test-run-production-tests.sh
       - name: Methodology status check tests
         run: scripts/test-methodology-status.sh
       - name: Card offload tests
