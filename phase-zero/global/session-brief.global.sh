@@ -5,6 +5,9 @@
 # sessions receive the canonical routing brief from their deployed phase-zero
 # kit. This hook covers sessions opened from ~/ or another directory without
 # that kit and defers when a project-level SessionStart hook exists.
+#
+# Prints one warning line, and nothing else, when ~/.claude/model-routing.md
+# is missing (a half-installed global kit). Exit 0 always.
 
 set -euo pipefail
 
@@ -35,7 +38,10 @@ if [ -n "$project" ] && [ "$project" != "$HOME" ] && [ -f "$project/.claude/hook
 fi
 
 routing="$HOME/.claude/model-routing.md"
-[ -f "$routing" ] || exit 0
+if [ ! -f "$routing" ]; then
+  echo "[session brief: ~/.claude/model-routing.md is missing; run stack-data/kit/phase-zero/global/install-global.sh]"
+  exit 0
+fi
 
 echo "[session brief: global model routing and standing context]"
 echo

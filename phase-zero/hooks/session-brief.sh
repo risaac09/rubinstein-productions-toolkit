@@ -15,8 +15,9 @@
 #      goes to stack-data's research-bibliographer agent, printed with or
 #      without a reachable clone so a cloud sandbox still carries the rule.
 #
-# Silent when the kit payload is absent, so a repo without the kit loses
-# nothing. Exit 0 always; a context hook must never block a session.
+# Prints one warning line, and nothing else, when the routing file is
+# missing (a half-installed kit); a repo without the hook loses nothing.
+# Exit 0 always; a context hook must never block a session.
 #
 # Source of truth: stack-data/kit/phase-zero/. Deployed
 # copies are overwritten on every install; edit the source and redeploy.
@@ -76,7 +77,10 @@ if [ "$shallow" = "true" ]; then
 fi
 
 routing="$root/.claude/model-routing.md"
-[ -f "$routing" ] || exit 0
+if [ ! -f "$routing" ]; then
+  echo "[session brief: .claude/model-routing.md is missing here; run stack-data/kit/phase-zero/install.sh]"
+  exit 0
+fi
 
 echo "[session brief: model routing and standing context]"
 echo
