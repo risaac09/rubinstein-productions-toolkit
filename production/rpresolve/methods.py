@@ -41,6 +41,12 @@ TOP = {"edit_method", "id", "name", "summary", "fits", "aspect", "fps", "length_
        "look", "rules", "slots"}
 RULES = {"reuse", "min_shot_s", "snap_to_beat", "end"}
 SLOT = {"role", "seconds", "query", "move", "speed", "transition_out", "effect", "scale", "text"}
+SLOT_OPTIONAL = {"secondaries"}
+SECONDARY_KINDS = ("window", "qualifier", "magic-mask", "tracker", "resolvefx")
+SECONDARY = {"kind", "target", "why"}
+SECONDARY_PANEL = {"window": "Windows palette", "qualifier": "Qualifier palette",
+                   "magic-mask": "Magic Mask palette", "tracker": "Tracker palette",
+                   "resolvefx": "OpenFX palette (ResolveFX)"}
 
 
 def _num(v):
@@ -121,8 +127,10 @@ def validate(m):
 def _slot_problems(s, min_shot, last):
     if not isinstance(s, dict):
         return ["a slot is an object"]
-    p = [f"unknown field '{k}'" for k in sorted(set(s) - SLOT)]
+    p = [f"unknown field '{k}'" for k in sorted(set(s) - SLOT - SLOT_OPTIONAL)]
     p += [f"missing field '{k}'" for k in sorted(SLOT - set(s))]
+    if "secondaries" in s:
+        p += _secondary_problems(s["secondaries"])
     if s.get("role") not in ROLES:  # roles any shoot can fill, never one video's subject
         p.append(f"role must be one of {', '.join(ROLES)}")
     if not isinstance(s.get("query"), str) or not s.get("query").strip():
@@ -159,6 +167,24 @@ def _slot_problems(s, min_shot, last):
         p.append("scale must be null or [start, end], each 0.1 to 10")
     if s.get("text") not in (None, "word"):
         p.append('text must be null or "word"')
+    return p
+
+
+def _secondary_problems(sec):
+    if not isinstance(sec, list) or not sec:
+        return ["secondaries must be a non-empty list (leave the field out for none)"]
+    p = []
+    for j, x in enumerate(sec, 1):
+        w = f"secondaries {j}"
+        if not isinstance(x, dict):
+            p.append(f"{w}: a secondary is {{kind, target, why}}")
+            continue
+        p += [f"{w}: unknown field '{k}'" for k in sorted(set(x) - SECONDARY)]
+        p += [f"{w}: missing field '{k}'" for k in sorted(SECONDARY - set(x))]
+        if "kind" in x and x["kind"] not in SECONDARY_KINDS:
+            p.append(f"{w}: kind must be one of {', '.join(SECONDARY_KINDS)}")
+        p += [f"{w}: {k} must be a non-empty string" for k in ("target", "why")
+              if k in x and not (isinstance(x[k], str) and x[k].strip())]
     return p
 
 
@@ -218,7 +244,8 @@ def to_manifest(method, fills):
     or `params.gain` (1 to 20) when the fill carries a `gain` and the effect is exposure-flash,
     and a `retime` entry (`params.speed`) when the slot's speed is not 1. And `method` {id, aspect, look, end, ui_steps}: ui_steps
     are computer-use recipes (ui_step) for what no manifest field or script holds:
-    BRAW decode, dips, wipes, animated scales, words no fill names, mattes, the end black.
+    BRAW decode, dips, wipes, animated scales, words no fill names, mattes, a slot's
+    `secondaries` (windows, qualifiers, Magic Masks, trackers, ResolveFX), the end black.
     Raises ValueError on a fill that is too short, on a gain outside 1 to 20 or on a slot that
     is not an exposure-flash, or on two fills that overlap in one source when the method's
     rules.reuse is false."""
@@ -292,6 +319,12 @@ def to_manifest(method, fills):
                                  "(untested live: sandbox project first)",
                                  "the macro's matte is a placeholder rectangle, and the draft "
                                  "draws the title in front of the subject"))
+        for x in slot.get("secondaries", []):
+            # Colour page, except a tracker on a word slot: the word lives in its Fusion comp.
+            fusion = x["kind"] == "tracker" and slot["text"] == "word"
+            steps.append(ui_step(f"span {i}: {x['target']}", "Fusion" if fusion else "Color",
+                                 "comp rp-fx > Tracker" if fusion else SECONDARY_PANEL[x["kind"]],
+                                 x["kind"], x["target"], x["why"]))
         for j, other in enumerate(spans):
             if other["source"] == span["source"] and other["in"] < span["out"] \
                     and span["in"] < other["out"]:

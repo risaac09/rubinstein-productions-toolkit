@@ -1750,3 +1750,114 @@ class TestMixPeak(unittest.TestCase):
             bed["gain_db"] = 6.0
             with self.assertRaisesRegex(Refused, "baked clipped"):
                 REAL_BED_PEAK(bed)
+
+
+class TestAssembleReview2(Base):
+    """Defects an adversarial review found in assemble_timeline (current timeline, put-back,
+    dry-run streams, plan hash, malformed mapping)."""
+    four_streams = TestTimelineColourAndCameraSound.four_streams
+    probe_four = TestTimelineColourAndCameraSound.probe_four
+    mapped = TestTimelineColourAndCameraSound.mapped
+
+    def built(self, **kw):
+        dry = self.go(**kw)
+        r = self.go(dry_run=False, expect_sha=dry["plan_sha"], **kw)
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        return dry, r, tl
+
+    def on_here(self):
+        return [it for tracks in self.here.tracks.values() for t in tracks for it in t]
+
+    def switch_at(self, n, after=None):
+        calls = {"k": 0}
+
+        def cancel():
+            calls["k"] += 1
+            if calls["k"] == n:
+                self.project.current = self.here  # the person clicks another timeline
+                if after:
+                    after()
+        return cancel
+
+    def test_a_timeline_switched_mid_run_is_set_back_before_every_append(self):
+        for n in (2, 3, 4):  # before the picture, the camera sound, the music
+            with self.subTest(switch_at=n):
+                self.setUp()
+                self.manifest["camera_sound"] = True
+                dry = self.go()
+                r = self.go(dry_run=False, expect_sha=dry["plan_sha"],
+                            check_cancel=self.switch_at(n))
+                self.assertEqual(self.on_here(), [])
+                self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+                self.assertEqual(r["current_timeline_reset"], 1)
+
+    def test_a_switch_that_cannot_be_undone_stops_before_any_append_elsewhere(self):
+        self.manifest["camera_sound"] = True
+        dry = self.go()
+        orig = rf.Project.SetCurrentTimeline
+
+        def stuck(project, tl):  # says True and stays where it is once the person has switched
+            return True if getattr(project, "stuck", False) else orig(project, tl)
+        cancel = self.switch_at(2, lambda: setattr(self.project, "stuck", True))
+        with mock.patch.object(rf.Project, "SetCurrentTimeline", stuck):
+            r = self.go(dry_run=False, expect_sha=dry["plan_sha"], check_cancel=cancel)
+        self.assertEqual(self.on_here(), [])
+        self.assertEqual(r["exit_status"], 1)
+        self.assertTrue(any("current timeline" in x and "Where" in x for x in r["problems"]),
+                        r["problems"])
+        self.assertEqual(r["left_behind"], "Shoot m v1 [auto]")
+
+    def test_a_put_back_that_does_not_take_fails_the_run_and_names_the_clip(self):
+        self.four_streams()
+
+        def set_once(clip, text):
+            rf._log(clip, "SetAudioMapping", clip.name, text)
+            if json.loads(text)["track_mapping"].get("2"):
+                return False  # the put-back is refused
+            clip.mapping = {"1": {**json.loads(text)["track_mapping"]["1"], "mute": True}}
+            clip.audio_streams = 1
+            return True
+        with mock.patch.object(rf.Clip, "SetAudioMapping", set_once):
+            _, r, _ = self.built()
+        self.assertEqual(r["exit_status"], 1)
+        for name in ("one.mov", "two.mov"):
+            self.assertTrue(any(name in x and "put back" in x for x in r["problems"]),
+                            r["problems"])
+        self.assertTrue(all("NOT put back" in x["result"] for x in r["camera_remap"]))
+
+    def test_a_put_back_that_takes_is_still_clean(self):
+        self.four_streams()
+        with mock.patch.object(rf.Clip, "drift_mapping", True, create=True):
+            _, r, _ = self.built()
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        self.assertTrue(all("(put back)" in x["result"] for x in r["camera_remap"]))
+
+    def test_one_multichannel_stream_is_not_promised_as_none(self):
+        self.four_streams()
+        probe = {"streams": [{"codec_type": "video"}, {"codec_type": "audio", "channels": 4}]}
+        with mock.patch.object(dc, "probe", lambda path: probe), \
+                mock.patch.object(dc, "check_tools", lambda **k: None):
+            dry, r, _ = self.built()
+        self.assertTrue(all(x["action"] == "at build" for x in dry["camera_streams"]),
+                        dry["camera_streams"])
+        self.assertEqual([x["result"] for x in r["camera_remap"]], ["remapped"] * 2)
+
+    def test_one_stereo_stream_stays_none(self):
+        self.four_streams()
+        probe = {"streams": [{"codec_type": "video"}, {"codec_type": "audio", "channels": 2}]}
+        with mock.patch.object(dc, "probe", lambda path: probe), \
+                mock.patch.object(dc, "check_tools", lambda **k: None):
+            dry = self.go()
+        self.assertTrue(all(x["action"] == "none" for x in dry["camera_streams"]))
+
+    def test_the_plan_hash_covers_whether_fps_was_passed(self):
+        self.assertNotEqual(self.go()["plan_sha"], self.go(fps=24)["plan_sha"])
+
+    def test_a_malformed_track_mapping_takes_the_fallback_and_is_reported(self):
+        self.four_streams()
+        bad = json.dumps({"track_mapping": [{"channel_idx": [1]}, {"channel_idx": [2]}]})
+        with mock.patch.object(rf.Clip, "GetAudioMapping", lambda c: bad):
+            _, r, _ = self.built()
+        self.assertEqual(self.mapped(), [])
+        self.assertEqual(len(r["camera_remap"]), 2)
+        self.assertTrue(all("cannot be read" in x["result"] for x in r["camera_remap"]))
