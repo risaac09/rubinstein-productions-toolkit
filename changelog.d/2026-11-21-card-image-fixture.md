@@ -1,0 +1,1 @@
+Add production/card-fixture.sh, a builder for small synthetic camera cards (Panasonic, Sony, Blackmagic, RED layouts, an unknown extension, a duplicate, sidecars, a manifest, an optional macOS disk image) and production/tests/test-card-fixture.sh, which runs the offload verdicts on them and asserts safe --lite fails closed. Architecture decision 5, first step.
