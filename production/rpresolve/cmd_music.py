@@ -14,7 +14,7 @@ music: a library index for a folder of music, files never moved (rpresolve/music
                                     A.m4a, B.m4a... and key.json in OUT, for the media-review-loop. It
                                     suggests; project answer --music-key OUT --music-pick A records the pick
     music set DIR KEY [--genre G] [--feel F ...]   a person's own tags; KEY is a sha256 prefix or path
-    music import-tags DIR FILE      a tagger's JSON {path: {"genre": .., "feel": [..]}}, marked model
+    music import-tags DIR FILE [--source S]   a tagger's or lookup's JSON {sha or path: {"genre": .., "feel": [..]}}, marked model (or S)
 
 A measurement and a set of suggestions, nothing heard: model tags are drafts until a person checks them.
 """
@@ -41,6 +41,7 @@ def add_arguments(p):
     p.add_argument("--genre")
     p.add_argument("--any-pulse", action="store_true", help="suggest: include tracks without a steady pulse")
     p.add_argument("-n", type=int, default=10)
+    p.add_argument("--source", default="model", help="import-tags: where the tags came from (model, lookup)")
     p.add_argument("--manifest", help="candidates: the cut manifest (absolute path)")
     p.add_argument("--out", help="candidates: the folder for the excerpts and key.json, outside any git tree")
     p.add_argument("--seconds", type=float, default=25.0, help="candidates: excerpt length")
@@ -90,7 +91,7 @@ def run(args):
             music.save_library(args.dir, lib)
         elif args.action == "import-tags":
             with open(args.target, encoding="utf-8") as f:
-                n = music.import_tags(lib, json.load(f))
+                n = music.import_tags(lib, json.load(f), args.source)
             music.write_playlists(args.dir, lib)
             music.save_library(args.dir, lib)
             print(f"music: {n} field(s) set from the tagger")

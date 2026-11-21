@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rpresolve import music, music_tag  # noqa: E402
+from rpresolve import music, music_lookup, music_tag  # noqa: E402
 
 try:
     import numpy as np
@@ -129,6 +129,32 @@ class Pure(unittest.TestCase):
         json.dump({"nope": 1}, open(p, "w"))
         with self.assertRaisesRegex(music.MusicError, "not a cut manifest"):
             music.cut_need(p)
+
+    def test_the_artist_to_look_up(self):
+        a = music_lookup.artists_of
+        self.assertEqual(a({"artist": "Some Channel", "title": "Ana Voss - Slow Lake (Official Video)"}), ["Ana Voss"])
+        self.assertEqual(a({"artist": "Ana Voss", "title": "Slow Lake"}), ["Ana Voss"])
+        self.assertEqual(a({"artist": "x", "title": "Ana Voss ft. Bo Lin - Slow Lake"}), ["Ana Voss ft. Bo Lin", "Ana Voss"])
+        self.assertEqual(a({"artist": "Vale, The Kite", "title": "Slow Lake"}), ["Vale, The Kite", "Vale"])
+        self.assertEqual(a({"artist": "", "title": "Slow Lake"}), [])
+
+    def test_import_records_the_source_and_keeps_a_persons_tag(self):
+        lib = {"tracks": {"h": {"path": "p.wav", "genre": "folk", "genre_source": "person"},
+                          "i": {"path": "q.wav", "genre": "pop", "genre_source": "model"}}}
+        music.import_tags(lib, {"h": {"genre": "rap"}, "i": {"genre": "soul"}}, "lookup")
+        self.assertEqual((lib["tracks"]["h"]["genre"], lib["tracks"]["h"]["genre_source"]), ("folk", "person"))
+        self.assertEqual((lib["tracks"]["i"]["genre"], lib["tracks"]["i"]["genre_source"]), ("soul", "lookup"))
+
+    def test_a_match_needs_the_same_name_and_a_confident_score(self):
+        r = [{"name": "Ana Voss Band", "score": 100, "id": "x"}, {"name": "ana voss", "score": 95, "id": "y"}]
+        self.assertEqual(music_lookup.match_id("Ana Voss", r), "y")
+        self.assertIsNone(music_lookup.match_id("Bo Lin", r))
+        self.assertIsNone(music_lookup.match_id("Ana Voss", [dict(r[1], score=60)]))
+
+    def test_top_genre_is_the_most_voted(self):
+        d = {"genres": [{"name": "folk", "count": 2}, {"name": "pop", "count": 5}]}
+        self.assertEqual(music_lookup.top_genre(d), "pop")
+        self.assertIsNone(music_lookup.top_genre({"genres": []}))
 
     def test_playlists_by_band_and_feel(self):
         lib = {"tracks": {"h": {"path": "x/p.wav", "bpm": 120, "feel": ["calm"]}}}
