@@ -20,7 +20,7 @@
 #                                                   which exists only from 3.14. On 3.9 its 24 zstd tests skip.
 #
 # Programs outside pip
-#   ffmpeg, ffprobe   production/, tools/vertcut. Homebrew on the Mac; preinstalled on CI's ubuntu-latest.
+#   ffmpeg, ffprobe   production/, tools/vertcut. Homebrew on the Mac; preinstalled on CI's ubuntu-26.04.
 #   exiftool          optional, read by detect when present.
 #   mlx-whisper       vertcut transcribe only, Apple silicon, so not pinned in this file (CI runs on Linux).
 #                     Into the same venv, held at these pins:
@@ -96,13 +96,13 @@
 # the pull-request site build both install the version pinned below.
 #
 # Pins are the versions CI installs and the suite was run against on 3.14 (numpy 2.3.5 and scipy 1.16.3
-# have 3.14 wheels; Pillow 12.3 is the release the security alerts need). The marked numpy line is for
+# have 3.14 wheels; Pillow 13.0.0 is the lowest release that clears the open security alerts). The marked numpy line is for
 # rpresolve on 3.9 only. The Mac's own 3.9 set (numpy 2.0.2, scipy 1.13.1, opencv 5.0.0.93) gave
 # identical lutlab Delta E figures.
 numpy==2.3.5; python_version >= "3.10"
 numpy==2.0.2; python_version < "3.10"
 scipy==1.16.3
-Pillow==12.3.0
+Pillow==13.0.0
 opencv-python-headless==4.10.0.84
 imagehash==4.3.2
 markdown==3.9

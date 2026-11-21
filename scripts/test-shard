@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Deterministic split of the production test modules, so CI can run them in
+# parallel shards.
+#   scripts/test-shard K N         print shard K (0-based) of N, as dotted module names
+#   scripts/test-shard --check N   fail unless the N shards together hold every module exactly once
+# The module list is discovered from production/tests/test_*.py, as CI always
+# did, so a new test file is picked up with no edit here. The slowest modules
+# (seconds measured in CI on 2026-11-21) are pinned to a shard to balance the
+# wall time; every other module goes round-robin by sorted name. A pin for a
+# module that no longer exists is ignored. The pins only balance time: the
+# --check step is what guarantees nothing is dropped or run twice.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# module:shard, written for N=4 (folded with mod N for any other N)
+PINS="test_drafts:0 test_vertcut_e2e:1 test_vertcut_hook:1 test_mixbuild:2 test_delivercheck:2 test_qc_vp20:3 test_musicbed:3"
+
+all() { ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##' | LC_ALL=C sort; }
+
+shard() { # $1=K $2=N
+  local k=$1 n=$2 i=0 mod name p pin
+  while IFS= read -r mod; do
+    name=${mod##*.}
+    pin=""
+    for p in $PINS; do
+      if [ "${p%%:*}" = "$name" ]; then pin=$(( ${p##*:} % n )); fi
+    done
+    if [ -n "$pin" ]; then
+      if [ "$pin" -eq "$k" ]; then echo "$mod"; fi
+    else
+      if [ $(( i % n )) -eq "$k" ]; then echo "$mod"; fi
+      i=$((i + 1))
+    fi
+  done < <(all)
+}
+
+if [ "${1:-}" = "--check" ]; then
+  n=${2:?usage: test-shard --check N}
+  full=$(all)
+  [ -n "$full" ] || { echo "no test modules found" >&2; exit 1; }
+  got=""
+  k=0
+  while [ "$k" -lt "$n" ]; do
+    part=$(shard "$k" "$n")
+    echo "shard $k: $(printf '%s\n' "$part" | grep -c .) modules"
+    got="$got$part"$'\n'
+    k=$((k + 1))
+  done
+  got=$(printf '%s' "$got" | grep . | LC_ALL=C sort)
+  if [ "$got" != "$full" ]; then
+    echo "the shards are not the full module list exactly once:" >&2
+    diff <(echo "$full") <(echo "$got") >&2 || true
+    exit 1
+  fi
+  echo "shards cover all $(echo "$full" | grep -c .) modules exactly once"
+  exit 0
+fi
+
+shard "${1:?usage: test-shard K N}" "${2:?usage: test-shard K N}"
