@@ -136,6 +136,30 @@ class TestMusicMap(unittest.TestCase):
         self.assertEqual(len(got["cuts"]), 8)
         self.assertIn("beats_s", got)
 
+    def test_command_reads_the_shot_list_the_shots_command_writes(self):
+        # `shots --out` writes .csv or .tsv, never JSON: music-map --shots takes those as they are
+        ap = __import__("argparse").ArgumentParser()
+        cmd_music_map.add_arguments(ap)
+        for ext in ("csv", "tsv"):
+            sl, out = (os.path.join(self.tmp.name, f"list-{ext}.{x}") for x in (ext, "json"))
+            shots.write(self.report, sl)
+            err = StringIO()
+            with redirect_stdout(StringIO()), redirect_stderr(err):
+                self.assertEqual(cmd_music_map.run(ap.parse_args([self.on, "--out", out, "--shots", sl])), 0, err.getvalue())
+            got = json.loads(Path(out).read_text())
+            self.assertEqual(got["cuts"], musicmap.cut_table(self.report, self.mm))
+
+    def test_a_report_without_a_frame_rate_is_an_error_not_a_crash(self):
+        sj, out = os.path.join(self.tmp.name, "nofps.json"), os.path.join(self.tmp.name, "nofps-out.json")
+        with open(sj, "w") as f:
+            json.dump({**self.report, "fps": None}, f)
+        ap = __import__("argparse").ArgumentParser()
+        cmd_music_map.add_arguments(ap)
+        err = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(err):
+            self.assertEqual(cmd_music_map.run(ap.parse_args([self.on, "--out", out, "--shots", sj])), 1)
+        self.assertIn("frame rate", err.getvalue())
+
     def test_out_never_overwrites_an_input(self):
         import shutil
         sj, vid = os.path.join(self.tmp.name, "in-shots.json"), os.path.join(self.tmp.name, "in.mp4")
