@@ -119,6 +119,29 @@ class TestRender(Base):
             self.assertIn("no sheet", doc["sheet"]["error"])
         self.assertEqual(sorted(p for p in os.listdir(out) if p.startswith(".drafts-")), [])
 
+    def test_unhonoured_fields_are_noted_and_a_plain_manifest_notes_none(self):
+        d = self.plan("plain", METHOD, self.src)
+        doc = drafts.build([d], os.path.join(self.dir, "o1"), hw=False, lanes=1)
+        self.assertFalse([n for n in doc["drafts"][0]["notes"] if "not built by" in n])
+        song = os.path.join(self.dir, "song.wav")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=d=4", song], check=True)
+        mp = os.path.join(d, "manifest.json")
+        with open(mp) as f:
+            m = json.load(f)
+        m["clips"][0]["spans"][0].update(audio_lead=0.5, audio_tail=0.2)
+        m.update(camera_sound=True, camera_sound_lufs=-20, music_gain_db=-6,
+                 music={"path": song, "in": 0})
+        with open(mp, "w") as f:
+            json.dump(m, f)
+        doc = drafts.build([d], os.path.join(self.dir, "o2"), hw=False, lanes=1)
+        got = [n for n in doc["drafts"][0]["notes"] if "not built by" in n]
+        self.assertEqual(got, [
+            "music_gain_db: not built by the draft renderer",
+            "camera_sound_lufs: not built by the draft renderer",
+            "audio_lead on span 1: not built by the draft renderer",
+            "audio_tail on span 1: not built by the draft renderer",
+            "camera_sound: not built by the draft renderer (music replaces camera sound)"])
+
     def two_lettered_plans(self):
         """Two plans out of one source; the second has an effect no draft can show."""
         m = copy.deepcopy(METHOD)

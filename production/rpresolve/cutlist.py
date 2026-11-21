@@ -653,6 +653,19 @@ def to_v2(m):
     return validate_manifest(out, allow_no_speech=m.get("speech") is False)
 
 
+def unbuilt_lines(m, tool, top=(), span=(), clips=None):
+    """One line per manifest field a tool was given and does not honour: the top-level `top`
+    fields first, then each clip span's `span` fields (numbered from 1 within its clip; the
+    clip is named when the manifest has several). A field that is absent or empty is not named."""
+    out = [f"{f}: not built by {tool}" for f in top if m.get(f)]
+    clips = m["clips"] if clips is None else clips
+    for c in clips:
+        where = f" of {c['name']}" if len(m["clips"]) > 1 else ""
+        for i, s in enumerate(c["spans"], 1):
+            out += [f"{f} on span {i}{where}: not built by {tool}" for f in span if s.get(f)]
+    return out
+
+
 def frame(t, fps):
     """The frame a time falls on, rounding half up (Python's round() goes to
     the even neighbour at exact halves)."""

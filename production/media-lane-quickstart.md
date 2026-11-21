@@ -348,7 +348,7 @@ $PY resolve_workflow.py review-log --dir "$W" --project P-0001 --step gate --dev
 | `develop` or `finish` refuses the folder | The output is inside a git tree | Pick `OUT` under `~/media-out/` |
 | `mixbuild`: stems sum-null check fails | A non-linear step is on the mix bus (limiter, dynamic loudnorm), or the mix clipped | Drop the limiter; lower `speechnorm i`; read the reason, which names a clipped mix when that is the cause |
 | `mixbuild`: arnndn model refused | `RPRESOLVE_RNNOISE_MODEL` unset or not an absolute path | Export it to an existing `.rnnn` file |
-| `interchange`, `pacing` or `cut`: "audio_lead at a change of source is not supported" | A split edit would take sound from two files | Remove the `audio_lead` or `audio_tail` there |
+| `interchange` or `pacing`: "audio_lead at a change of source is not supported" | A split edit would take sound from two files | Remove the `audio_lead` or `audio_tail` there. `cut`, `assemble_timeline` and the draft renderer do not build a split edit and do not refuse it: their output names each `audio_lead` and `audio_tail` as not built |
 | `cut`: "UNREFRAMED ... several sources" | A 9:16 or 1:1 is planned for one source | Pass `make_9x16` false; the 16:9 is built from all sources |
 | `lutlab balance`: `no_neutral` or `no_face` | No white or grey reference below a found face, or no face at all (a chart) | Add `--face` and `--neutral-box`, or `--wb-from SHOT` for a shot in the same light |
 | `gate-packet` or `vertcut cut`: stops on the review gate | The batch is over 30 minutes or would replace an output, and no `go` is logged | Send the packet, log the person's `go`, pass `--reviewed` and `--review-log` |

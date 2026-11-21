@@ -80,6 +80,30 @@ class Base(unittest.TestCase):
         return self.timeline(name).GetItemListInTrack("video", 1)
 
 
+class TestNotBuilt(Base):
+    def edited(self, **span):
+        path = self.manifest()
+        with open(path) as f:
+            m = json.load(f)
+        m["clips"][0]["spans"][1].update(span)
+        if "music" in span:
+            m["music"] = m["clips"][0]["spans"][1].pop("music")
+        with open(path, "w") as f:
+            json.dump(m, f)
+        return path
+
+    def test_a_lead_a_tail_and_a_bed_are_named_one_line_each(self):
+        path = self.edited(audio_lead=0.5, audio_tail=0.25, music={"path": "/x.m4a", "in": 0})
+        dry = self.cut(path, dry_run=True)
+        self.assertEqual(dry["not_built"], ["music: not built by cut",
+                                            "audio_lead on span 2: not built by cut",
+                                            "audio_tail on span 2: not built by cut"])
+        self.assertEqual(self.cut(path, expect_sha=dry["plan_sha"])["not_built"], dry["not_built"])
+
+    def test_a_manifest_without_them_names_nothing(self):
+        self.assertEqual(self.cut(self.manifest(), dry_run=True)["not_built"], [])
+
+
 class TestPerSpan(Base):
     def test_each_span_gets_its_own_transform_read_back(self):
         path = self.manifest(span_reframes=[{"9x16": span_entry(270)},

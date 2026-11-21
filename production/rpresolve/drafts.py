@@ -944,6 +944,10 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 info["notes"].append("the crops file is not used: the method is 16:9")
             if id(p) in own_crops:
                 info["notes"].append(own_crops[id(p)])
+            info["notes"] += cutlist.unbuilt_lines(
+                p["manifest"], "the draft renderer",
+                ("music_gain_db", "camera_sound_lufs", "camera_sound_fade_s", "squeeze"),
+                ("audio_lead", "audio_tail", "layer", "cutout"))
             if not ex:
                 info["notes"].append(cutlist.NO_EXCLUDE)
             elif ex["not_checked"]:
@@ -965,6 +969,9 @@ def build(plan_dirs, out, camera=None, lut_root=LUT_ROOT, proxy_dir=None, lanes=
                 info["notes"].append("music file not found: camera sound kept instead")
                 music = None
             elif music:
+                if p["manifest"].get("camera_sound"):
+                    info["notes"].append("camera_sound: not built by the draft renderer "
+                                         "(music replaces camera sound)")
                 info["notes"].append(f"music replaces camera sound, from {float(music.get('in') or 0):.2f} s; "
                                      "check its licence before anything is posted")
             sound = None
