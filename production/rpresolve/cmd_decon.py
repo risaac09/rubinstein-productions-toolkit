@@ -53,6 +53,8 @@ def run(args):
             problem = out and paths.out_problem(out, any_git_tree=True)
             if problem:
                 raise paths.OutputRefused(problem)
+        decon.check_outputs([args.reference, getattr(args, "rebuild", None), args.beats if args.action == "recipe" else None],
+                            [args.out, getattr(args, "sheet", None)])
         dissolves = not args.no_dissolves
         ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend)
         if args.action == "recipe":
