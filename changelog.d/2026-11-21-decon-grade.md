@@ -1,0 +1,1 @@
+decon recipe --grade estimates a grade per scene of the reference as a .cube with lutlab transfer, beside the recipe in a .grade folder with a grade.json, a vignette flag per scene, and a verifier on clips graded with shipped looks (median CIEDE2000 under 1.5, limit 5).
