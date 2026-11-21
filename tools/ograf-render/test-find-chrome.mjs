@@ -3,14 +3,14 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import { findChrome, isHeadlessShell } from "./find-chrome.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "find-chrome-"));
 after(() => rmSync(root, { recursive: true, force: true }));
 const fake = (...parts) => { // an executable file at root/parts
-  const p = join(root, ...parts);
+  const p = resolve(root, ...parts);
   mkdirSync(join(p, ".."), { recursive: true });
   writeFileSync(p, "#!/bin/sh\n"); chmodSync(p, 0o755);
   return p;

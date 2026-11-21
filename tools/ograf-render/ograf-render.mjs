@@ -38,7 +38,8 @@ const USAGE = `usage: ograf-render.mjs TEMPLATE.ograf.json --out DIR [options]
   --no-video           stop after the PNGs, boxes and report
   --strict-fonts       a missing font fails the run (default: a warning in report.json)
   --font-wait-ms N     how long a frame waits for fonts and paint before it is captured anyway (default 2000)
-  --chrome PATH        Chrome binary (default: CHROME env, chrome-headless-shell, then the usual names)
+  --chrome PATH        Chrome binary (default: CHROME env, chrome-headless-shell, then the usual names;
+                       get it with: npx @puppeteer/browsers install chrome-headless-shell@stable)
   --lint               run Resolve's own linter when installed (OGRAF_LINT overrides its path)
 `;
 

@@ -1,0 +1,1 @@
+ograf-render prefers chrome-headless-shell (PATH or the Puppeteer cache) over the Chrome app, so a render no longer launches a Chrome app in the logged-in session; frames matched byte for byte on a test template.
