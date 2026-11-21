@@ -457,5 +457,8 @@ check "a case-only name clash says what happened, not a filter" 'printf "%s" "$o
 out=$("$O" --help)
 check "help stops at the header" 'printf "%s" "$out" | grep -q "safe to format" && ! printf "%s" "$out" | grep -q "set -u"'
 
+# 14. The synthetic card fixture and the verdicts on it (its own file, so CI needs no new step).
+"$SRC/production/tests/test-card-fixture.sh" || fail=1
+
 [ "$fail" -eq 0 ] && echo "offload: all cases pass"
 exit "$fail"
