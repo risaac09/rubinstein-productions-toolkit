@@ -90,6 +90,9 @@ def fetch(url, out_dir, yt_dlp=None):
               "width": info.get("width") or video.get("width"), "height": info.get("height") or video.get("height"),
               "file": os.path.basename(media), "sha256": _sha256(media),
               "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
-    with open(os.path.join(out_dir, vid + ".ref.json"), "w", encoding="utf-8") as f:
+    ref_path = os.path.join(out_dir, vid + ".ref.json")
+    if os.path.islink(ref_path):   # never write through a symlink onto some other file
+        raise paths.OutputRefused(f"{ref_path} is a symlink; remove it or pick another --out-dir")
+    with open(ref_path, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=1)
     return record

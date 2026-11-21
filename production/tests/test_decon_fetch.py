@@ -79,6 +79,15 @@ class TestFetch(unittest.TestCase):
         self.assertEqual(len(disk["sha256"]), 64)
         self.assertRegex(disk["fetched_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
+    def test_ref_json_symlink_refused(self):
+        victim = os.path.join(self.tmp.name, "victim.mp4")
+        Path(victim).write_bytes(b"keep")
+        os.symlink(victim, os.path.join(self.out, "abc123.ref.json"))
+        run, _ = fake_ytdlp(self.out)
+        with mock.patch("subprocess.run", run), self.assertRaises(paths.OutputRefused):
+            decon_fetch.fetch(URL, self.out, "/fake/yt-dlp")
+        self.assertEqual(Path(victim).read_bytes(), b"keep")
+
     def test_duration_mismatch_fails(self):
         run, _ = fake_ytdlp(self.out, claimed=5.0)
         with mock.patch("subprocess.run", run), self.assertRaises(dc.CheckError) as cm:
