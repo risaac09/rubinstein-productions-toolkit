@@ -221,8 +221,10 @@ cmd_copy() {
 
 REMOTE_RE='^[A-Za-z0-9_][A-Za-z0-9_. -]+:'
 
-# lite_names: copy-relative paths on stdin, the lite file each video needs on stdout.
-# A .mp4 in Proxy/ beside a .braw of the same stem is that BRAW's lite; it needs none.
+# lite_names: copy-relative paths on stdin; stdout is "L <lite file a video needs>" or
+# "U <path>" for a file that blocks the verdict: an unknown extension, or a video the lite
+# builder cannot make (r3d). Fail closed: only the known non-video list needs nothing.
+# The video list must cover production/rpresolve/card.py VIDEO (test-offload.sh checks it).
 lite_names() {
   awk '
     { p[NR] = $0; n = NR }
@@ -230,9 +232,11 @@ lite_names() {
       for (i = 1; i <= n; i++) {
         f = p[i]; d = ""; b = f
         if (match(f, /\/[^\/]*$/)) { d = substr(f, 1, RSTART - 1); b = substr(f, RSTART + 1) }
-        if (!match(b, /\.[^.]*$/)) continue
+        if (!match(b, /\.[^.]*$/)) { print "U " f; continue }
         e = tolower(substr(b, RSTART + 1)); st = substr(b, 1, RSTART - 1)
-        if (e !~ /^(mov|mp4|m4v|mts|m2ts|mxf|avi|mkv|braw)$/) continue
+        if (e ~ /^(r3d)$/) { print "U " f; continue }
+        if (e ~ /^(jpg|jpeg|heic|heif|png|tif|tiff|dng|arw|cr2|cr3|nef|raf|rw2|orf|xml|bin|txt|json|csv|xmp|thm|wav|aif|aiff|mp3|aac|m4a|flac|srt|cpi|bim|bdm|mpl|clpi|sif|rmd|ale)$/) continue
+        if (e !~ /^(mov|mp4|m4v|mts|m2ts|mxf|avi|mkv|braw)$/) { print "U " f; continue }
         v++; D[v] = d; B[v] = b; S[v] = st; E[v] = e; cnt[d "/" st]++
         if (e == "braw") braw[d "/" st] = 1
       }
@@ -243,7 +247,7 @@ lite_names() {
           if (braw[pd "/" S[k]]) continue
         }
         o = (cnt[d "/" S[k]] > 1) ? B[k] ".mp4" : S[k] ".mp4"
-        print (d == "" ? o : d "/" o)
+        print "L " (d == "" ? o : d "/" o)
       }
     }'
 }
@@ -261,9 +265,13 @@ cmd_safe() {
   if [ -n "$lite" ]; then
     [ -d "$lite" ] || die "not a directory: $lite"
     route_check "$lite"
-    local pd pl
-    pd=$(cd -P "$dir" && pwd -P) && pl=$(cd -P "$lite" && pwd -P) || die "cannot resolve $dir or $lite"
-    case "$pl/" in "$pd/"*) die "lite dir $lite is the copy or inside it; the lite tier needs its own tree" ;; esac
+    # By inode, not path text: case-insensitive APFS keeps the typed case.
+    local p; p=$(cd -P "$lite" && pwd -P) || die "cannot resolve $lite"
+    while :; do
+      [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
+      [ "$p" = / ] && break
+      p=$(dirname "$p")
+    done
   fi
   # Only an rclone remote ("name:path") is offsite; a bare path, even one on
   # another disk, is a local folder and never earns the verdict.
@@ -302,7 +310,11 @@ cmd_safe() {
   local src="$dir" need=""
   if [ -n "$lite" ]; then
     src="$lite"
-    need=$(cut -c67- "$dir.SHA256SUMS" | lite_names | LC_ALL=C sort -u) || fail "cannot list the videos in $dir"
+    local cls bad
+    cls=$(cut -c67- "$dir.SHA256SUMS" | lite_names | LC_ALL=C sort -u) || fail "cannot list the videos in $dir"
+    bad=$(printf '%s\n' "$cls" | sed -n 's/^U //p' | tr '\n' ' ')
+    [ -z "$bad" ] || fail "NOT safe to format: no lite copy can cover (unknown or unmakeable type): $bad; card $id"
+    need=$(printf '%s\n' "$cls" | sed -n 's/^L //p')
     [ -n "$need" ] || fail "NOT safe to format: no video files in $dir, so a lite copy covers nothing; card $id"
     local miss="" l
     while IFS= read -r l; do [ -s "$lite/$l" ] || miss="$miss $l"; done <<NEED
