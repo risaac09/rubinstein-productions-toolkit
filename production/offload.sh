@@ -29,7 +29,7 @@
 # .mp4) when two videos in that folder share a stem. A .mp4 in a Proxy/ folder beside a .braw of
 # the same stem is that BRAW's lite and needs none of its own; non-video files need none. The
 # card is safe when the full copy verifies and `rclone check --one-way <lite-dir> <remote>`
-# passes; no full offsite copy is required. <copy>.offsite.txt records "tier lite" or "tier full".
+# passes; no full offsite copy is required. Limit: lite files are not checked to be this card's clips; only an extra .mp4 blocks. <copy>.offsite.txt records "tier lite" or "tier full".
 #
 # Exit: 0 ok, 1 copy or check failed, 2 refused (usage, gate, destination).
 # Check a finished copy later: cd <CAM>-<id6> && shasum -a 256 -c ../<CAM>-<id6>.SHA256SUMS
@@ -222,7 +222,7 @@ cmd_copy() {
 REMOTE_RE='^[A-Za-z0-9_][A-Za-z0-9_. -]+:'
 
 # lite_names: copy-relative paths on stdin; stdout is "L <lite file a video needs>" or
-# "U <path>" for a file that blocks the verdict: an unknown extension, or a video the lite
+# "C <path>" for a video whose lite name another video also needs, "U <path>" for a file that blocks the verdict: an unknown extension, or a video the lite
 # builder cannot make (r3d, and dng, which may be a CinemaDNG frame sequence). Fail closed: only the known non-video list needs nothing.
 # The video list must cover production/rpresolve/card.py VIDEO (test-offload.sh checks it).
 lite_names() {
@@ -247,7 +247,12 @@ lite_names() {
           if (braw[pd "/" S[k]]) continue
         }
         o = (cnt[d "/" S[k]] > 1) ? B[k] ".mp4" : S[k] ".mp4"
-        print "L " (d == "" ? o : d "/" o)
+        N[k] = (d == "" ? o : d "/" o); seen[tolower(N[k])]++
+      }
+      # Two videos that need one lite file (or two that differ only by case, one file on APFS): "C", never merged.
+      for (k = 1; k <= v; k++) {
+        if (!(k in N)) continue
+        if (seen[tolower(N[k])] > 1) print "C " (D[k] == "" ? "" : D[k] "/") B[k]; else print "L " N[k]
       }
     }'
 }
@@ -261,12 +266,19 @@ cmd_safe() {
   [ $# -eq 2 ] || die "usage: offload.sh safe [--lite <lite-dir>] <copy-dir> <rclone-remote>"
   local dir="${1%/}" remote="$2"
   [ -d "$dir" ] || die "not a directory: $dir"
+  # A verdict record exists only after the latest run said SAFE: drop the old one before any check
+  # (a failed run must not leave an earlier "safe" for card check and project status to read).
+  local prev=""
+  [ ! -f "$dir.offsite.txt" ] || prev=$(cat "$dir.offsite.txt")
+  rm -f "$dir.offsite.txt" || die "cannot remove the old $dir.offsite.txt"
   route_check "$dir"
   if [ -n "$lite" ]; then
     [ -d "$lite" ] || die "not a directory: $lite"
     route_check "$lite"
-    # By inode, not path text: case-insensitive APFS keeps the typed case.
-    local p; p=$(cd -P "$lite" && pwd -P) || die "cannot resolve $lite"
+    # By inode, not path text: case-insensitive APFS keeps the typed case. Absolute from here on,
+    # so rclone never reads a name with a colon as a remote and the record is meaningful later.
+    local p; p=$(cd -P -- "$lite" && pwd -P) || die "cannot resolve $lite"
+    lite="$p"
     while :; do
       [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
       [ "$p" = / ] && break
@@ -277,8 +289,10 @@ cmd_safe() {
   # another disk, is a local folder and never earns the verdict.
   printf '%s' "$remote" | grep -qE "$REMOTE_RE" \
     || die "not an rclone remote: $remote (want name:path); a local folder is not an offsite copy"
-  # A remote of type local, or a wrapper (alias, crypt, ...) that ends at one, is a local folder too.
-  # A type that cannot be read is refused. Never contacts the remote.
+  # Only a listed offsite backend passes; any other type (local, archive, union, combine, a backend
+  # this script has not seen) is refused, so a new rclone backend fails closed. A wrapper (alias,
+  # crypt, ...) passes only when its target resolves to a listed backend: the `remote =` line is
+  # all that is read from `config show`, nothing else is kept or printed. Never contacts the remote.
   local r="$remote" hops=0 t n
   while :; do
     n=${r%%:*}
@@ -288,13 +302,12 @@ cmd_safe() {
     [ -n "$t" ] || t=$("$RCLONE_BIN" listremotes --long < /dev/null 2>/dev/null | awk -v n="$n:" 'index($0, n) == 1 { split(substr($0, length(n) + 1), f, " "); print f[1]; exit }')
     case "$t" in
       "") die "cannot read the type of rclone remote '$n'; refusing" ;;
-      local) die "rclone remote '$n' is of type local; a local folder is not an offsite copy" ;;
-      union|combine) die "rclone remote '$n' is of type $t and may sit on a local folder; refusing" ;;
+      b2|s3|drive|gcs|azureblob|dropbox|onedrive) break ;;
       alias|crypt|compress|chunker|hasher|cache)
         hops=$((hops + 1)); [ "$hops" -le 8 ] || die "alias chain from $remote is too deep; refusing"
         r=$("$RCLONE_BIN" config show "$n" < /dev/null 2>/dev/null | sed -n 's/^remote *= *//p' | head -n 1)
         printf '%s' "$r" | grep -qE "$REMOTE_RE" || die "$t '$n' does not point at an rclone remote; a local folder is not an offsite copy" ;;
-      *) break ;;
+      *) die "rclone remote '$n' is of type $t, not a known offsite backend (b2, s3, drive, gcs, azureblob, dropbox, onedrive); a local folder is not an offsite copy; refusing" ;;
     esac
   done
   local json="$dir.card.json"
@@ -310,10 +323,12 @@ cmd_safe() {
   local src="$dir" need=""
   if [ -n "$lite" ]; then
     src="$lite"
-    local cls bad
+    local cls bad clash
     cls=$(cut -c67- "$dir.SHA256SUMS" | lite_names | LC_ALL=C sort -u) || fail "cannot list the videos in $dir"
     bad=$(printf '%s\n' "$cls" | sed -n 's/^U //p' | tr '\n' ' ')
     [ -z "$bad" ] || fail "NOT safe to format: no lite copy can cover (unknown or unmakeable type): $bad; card $id"
+    clash=$(printf '%s\n' "$cls" | sed -n 's/^C //p' | tr '\n' ' ')
+    [ -z "$clash" ] || fail "NOT safe to format: these videos need the same lite file name (equal, or equal ignoring case), so one lite file cannot cover each: $clash; card $id"
     need=$(printf '%s\n' "$cls" | sed -n 's/^L //p')
     [ -n "$need" ] || fail "NOT safe to format: no video files in $dir, so a lite copy covers nothing; card $id"
     local miss="" l
@@ -321,6 +336,12 @@ cmd_safe() {
 $need
 NEED
     [ -z "$miss" ] || fail "NOT safe to format: lite copy is missing or empty for:$miss; card $id"
+    # Clip numbers restart per card, so a lite tree built for another card can cover this one by name.
+    # Partial signal only: an .mp4 in the lite dir that no video on this card needs means it holds another card's clips.
+    local extra
+    extra=$( (cd "$lite" && find . -type f -iname '*.mp4' | sed 's|^\./||' | tr 'A-Z' 'a-z' | LC_ALL=C sort) | LC_ALL=C comm -23 - <(printf '%s\n' "$need" | tr 'A-Z' 'a-z' | LC_ALL=C sort) ) \
+      || fail "cannot list $lite"
+    [ -z "$extra" ] || fail "NOT safe to format: the lite dir holds .mp4 files no video on this card needs (another card's lite tree?): $(printf '%s' "$extra" | tr '\n' ' '); card $id"
   fi
   local log match; log=$(mktemp) && match=$(mktemp) || fail "mktemp failed"
   # shellcheck disable=SC2064
@@ -344,9 +365,17 @@ NEED
     || fail "NOT safe to format: cannot compare rclone's matches with $base.SHA256SUMS; card $id"
   [ -z "$unmatched" ] || fail "NOT safe to format: rclone did not match $(printf '%s' "$unmatched" | tr '\n' ' ') (a filter?); card $id"
   local tier="tier full"; [ -z "$lite" ] || tier=$(printf 'tier lite\nlite_dir %s' "$lite")
-  printf 'card_id %s\nremote %s\n%s\nchecked_utc %s\n' "$id" "$remote" "$tier" "$(now)" > "$dir.offsite.txt" \
-    || fail "cannot write $dir.offsite.txt"
-  if [ -n "$lite" ]; then echo "SAFE TO FORMAT: card $id is verified at $dir and a lite copy ($lite) is at $remote"
+  # A lite pass does not undo an earlier full-tier record for this card: keep that one.
+  if [ -n "$lite" ] && printf '%s\n' "$prev" | grep -qx "card_id $id" && printf '%s\n' "$prev" | grep -qx "tier full"; then
+    printf '%s\n' "$prev" > "$dir.offsite.txt" || fail "cannot write $dir.offsite.txt"
+    echo "note: the earlier full-tier record for this card is kept ($dir.offsite.txt)"
+  else
+    printf 'card_id %s\nremote %s\n%s\nchecked_utc %s\n' "$id" "$remote" "$tier" "$(now)" > "$dir.offsite.txt" \
+      || fail "cannot write $dir.offsite.txt"
+  fi
+  if [ -n "$lite" ]; then
+    echo "SAFE TO FORMAT: card $id is verified at $dir and a lite copy ($lite) is at $remote"
+    echo "limit: the lite files are not checked to be this card's clips (only that none is extra); check lite names against the card before formatting"
   else echo "SAFE TO FORMAT: card $id is verified at $dir and at $remote"; fi
 }
 

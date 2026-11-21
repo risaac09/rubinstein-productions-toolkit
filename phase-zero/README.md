@@ -119,6 +119,7 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   `sd-ai-engage` fragment per session to a spool under `~/.local/share/stack-data/`
   and never lands it; `scripts/sd-engage-batch-land` lands the spool nightly. Installed
   by `global/install-global.sh` with a 30 second timeout; exits 0 on any error.
+- `commands/inbox.md`: the `/inbox` slash command, which walks the corpus inbox by verdict and moves a note only on a named yes. `global/install-global.sh` copies `commands/*.md` into `~/.claude/commands/`.
 - `settings.json` — the hook registrations (both hooks), copied to a repo
   with no existing settings; merged in (jq) when one exists.
 - `global/auto-mode.json` — the auto-mode classifier config (`autoMode` block:
@@ -126,7 +127,7 @@ SessionStart hook when one exists, so the routing brief never prints twice.
   trust boundary: every risaac09 repo by name with its actual visibility (not
   a generic "treat as private" guess — the classifier never sees `gh repo
   view` output, only what's stated here or in a live message), ~/.secrets, the
-  vault, stack-data, the sd-privacy-scan blind spot, the Mini. The classifier
+  vault, stack-data, the sd-privacy-scan blind spot. The classifier
   reads `autoMode` only from user-level `~/.claude/settings.json`, so this
   deploys through `install-global.sh` per machine, never through the per-repo
   kit. `install-global.sh` overwrites each section wholesale on redeploy, same

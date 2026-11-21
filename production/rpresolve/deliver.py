@@ -452,7 +452,7 @@ def same_output(a, b):
 def _in_subfolder(real, sub):
     """real/<sub>, or real itself when it already ends in <sub> (a target
     folder named for the destination is not nested twice)."""
-    return real if not sub or os.path.basename(real) == sub else os.path.join(real, sub)
+    return real if not sub or os.path.basename(real).casefold() == sub.casefold() else os.path.join(real, sub)
 
 
 def output_folder(target_dir, dest):
