@@ -51,7 +51,7 @@ to start.
 - Orchestration, architecture, hard reasoning, and final synthesis: begin on
   Sonnet 5.5 at medium. Escalate to Opus 5.5 only when a named difficulty survives
   that pass.
-- The single hardest long-horizon task worth the premium: Fable 5.1, sweep
+- The single hardest long-horizon task worth the premium: Fable 5.2, sweep
   effort low to high.
 - Bulk reads, search, mechanical edits, validation: Haiku 5.5 at low.
 - Low-impact preprocessing (markitdown conversion, summarization, bulk
