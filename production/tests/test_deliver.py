@@ -402,6 +402,22 @@ class TestOutputProblems(unittest.TestCase):
     def test_a_clean_folder_passes(self):
         self.assertEqual(deliver.output_problems(self.dir, self.name, self.yt), [])
 
+    def test_a_target_dir_ending_in_the_destination_folder_is_not_nested_twice(self):
+        sub = self.yt["subfolder"]
+        own = os.path.join(self.dir, sub)
+        os.makedirs(own)
+        self.assertEqual(deliver.output_folder(own, self.yt), os.path.realpath(own))
+        self.assertEqual(deliver.output_folder(self.dir, self.yt),
+                         os.path.join(os.path.realpath(self.dir), sub))
+        other = os.path.join(self.dir, "renders")
+        os.makedirs(other)
+        self.assertEqual(deliver.output_folder(other, self.yt),
+                         os.path.join(os.path.realpath(other), sub))
+        self.assertEqual(deliver.output_problems(own, self.name, self.yt, subfolder=sub), [])
+        open(os.path.join(own, self.name), "w").close()  # the file's real home is own, not own/sub
+        self.assertIn("already exists", " ".join(
+            deliver.output_problems(own, self.name, self.yt, subfolder=sub)))
+
     def test_missing_or_relative_folder(self):
         self.assertIn("does not exist", deliver.output_problems(
             os.path.join(self.dir, "nope"), self.name, self.yt)[0])
