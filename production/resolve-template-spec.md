@@ -140,7 +140,7 @@ create the other bins, which are made by hand.
 7. Manual creative grade (`CON`, `SAT`, `SKIN`, `WIN`, `TEX`), per clip
 8. Subtitles if needed (auto captions on the `[auto]` timeline, or .srt import by hand → branded style)
 9. Audio work in Fairlight
-10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (queueing without it is flagged, not blocked, see the gate)
+10. Final approval: the client approves a review copy (see Deliver, The final-approval gate). Nothing should be queued before the record exists (`queue_render` neither flags nor blocks a missing record; `deliver-check --review-log` checks for it after the render, see the gate)
 11. Queue the deliverables with `queue_render`, one call per delivery destination (see Deliver)
 12. Render the queued jobs on the Deliver page (no tool starts one)
 13. Write the delivery manifest once `deliver_check` passes ([delivery manifest](delivery-manifest.md))
@@ -167,7 +167,7 @@ and re-read against the MCP tools on 2026-10-07:
 | Auto-queue renders | Done (`queue_render`, for a delivery `destination`; the older render presets are gone, and a call that passes one is refused). It queues the job and never starts it. |
 | Auto-apply source conversion nodes by camera tag | Changed, and only partly there. Nothing applies a node or LUT by camera tag now: the clip-colour camera tag and the `--camera` filter went with the retired commands. What exists is `ingest`, which tags each clip's Input Color Space from `detect`, and `apply_grade`, which puts a LUT on one node of the items of an `[auto]` timeline that you choose by item number (`timeline_items` lists them with their input colour space). Choosing the items that belong to one camera is a person's step. |
 | Auto-sort media into camera bins by metadata | Done (`ingest` bins by the camera `detect` reads from the file headers; a file it cannot classify goes to a Review bin). |
-| Auto-apply Low Contrast PowerGrade | Not done: no PowerGrade or gallery-still API call exists. `apply_grade` applies a hand-exported `.drx`, checked against a label manifest beside it. |
+| Auto-apply Low Contrast PowerGrade | Not done, though the scripting API has the calls (`GetGalleryPowerGradeAlbums`, `CreateGalleryPowerGradeAlbum`, `GalleryStillAlbum.ImportStills` and `ExportStills`, `Graph.ApplyGradeFromDRX`). `apply_grade` calls `ApplyGradeFromDRX` and applies a hand-exported `.drx`, checked against a label manifest beside it. |
 | Subtitle import | Auto captions done (`create_captions`, 2026-09-29): Resolve transcribes an `[auto]` timeline and the subtitle track is read back. An .srt cannot be placed by script on Resolve 21: `MediaPool.AppendToTimeline` returns True and places nothing, so import an .srt by hand (File > Import > Subtitle). The retired `add-subtitles` command counted the items on every track before and after and exited 1 unless subtitle items alone grew. |
 | Subtitle style application | **Not scriptable.** The API has no entry point for subtitle font/color/position. This stays a manual Edit-page step, permanently; don't wait for it to get built. |
 | Select-pulling | Out of scope by design. Choosing the best take is editorial judgment; the tool automates the container around it, not the cut. |
@@ -681,7 +681,7 @@ folder no destination owns.
 
 ### The final-approval gate
 
-> **Status:** accepted 2026-10-16. No tool enforces this gate. `queue_render` does not know whether a cut was approved, and the house file name has no place for an approval reference, so the gate is a step a person holds and a record a person keeps.
+> **Status:** accepted 2026-10-16. No tool enforces this gate at the queue. `queue_render` does not know whether a cut was approved (`deliver-check --review-log` reads an approval line in the review log after the render), and the house file name has no place for an approval reference, so the gate is a step a person holds and a record a person keeps.
 
 Delivery waits for the client's approval of a review copy. The gate sits after the audio work and before the first deliverable is queued, because a deliverable is a final file and the loop's later steps (captions to `.srt`, the loudness fix, the check) change the container, the audio level and the sidecar and leave the picture and the words alone. The audio level does change, so the review copy is rendered at the destination's loudness target (run the loudness fix on it first) and the approver hears what ships.
 

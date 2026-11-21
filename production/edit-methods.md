@@ -87,7 +87,7 @@ A slot:
 | `scale` that changes | nothing when the slot's effect is `zoom-push` or `scale-window` (the macro animates it); otherwise a UI step for Zoom keyframes |
 | `speed` other than 1 | `effects[]` `{span_index, effect: "retime", params: {speed}}`, which `apply_effect` builds as a Fusion comp (FCPXML retimes import broken in Resolve 21.2). An item holds one comp, so the validator refuses a slot with both a speed and an effect |
 | `text: "word"` | `params.text` on the slot's text effect when the fill carries a `text` word; with no word in the fill, a UI step |
-| `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Person Magic Mask, by computer use ([recipe](fusion-macros.md#person-matte-the-magic-mask-recipe), untested live) |
+| `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Person Magic Mask, by computer use ([recipe](fusion-macros.md#person-matte-the-magic-mask-recipe), run live 2026-11-11) |
 | `effect: exposure-flash`, and the fill carries a `gain` (1 to 20) | `params.gain` on that entry; the draft draws the same number ([T28](resolve-traps.md)). A `gain` on a fill for any other slot is refused |
 | `effect` | `effects[]` `{span_index, effect, params?}`, span_index from 0 |
 | `secondaries[]` | one UI step per entry, on the Color page (Fusion for a `tracker` on a `text: "word"` slot, whose word lives in its comp), naming the span and the target, with `why` as the reason. The scripting API creates no colour-page node, window or qualifier, so computer use does it |

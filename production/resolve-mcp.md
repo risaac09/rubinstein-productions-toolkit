@@ -294,7 +294,7 @@ use instead (the table below says the same), without connecting to Resolve.
 | `render`, `render-all`, `deliver-queue` | `queue_render` with a `destination`, a delivery destination in `resolve-config.json`, under the house file name. It queues the job and never starts it; a person starts the render on the Deliver page. `render-all` is one `queue_render` call per destination. The four render presets `render` and `render-all` took (`youtube`, `linkedin`, `master`, `story`) no longer exist; the Deliver section of `resolve-template-spec.md` lists the destinations and their frame sizes. |
 | `clear-queue` | No tool. Remove jobs on the Deliver page; no tool deletes anything. |
 | `apply-lut`, `apply-drx` | `apply_grade` on an ` [auto]` timeline. A `.drx` needs a label manifest beside it, a hand-written `<name>.json` holding `{"num_nodes": 3, "labels": ["CST IN", "", "CST OUT"]}`: the node count and the node labels the graph should show after the apply, so the result can be read back (either key may be left out). The `--camera` filter by clip colour is gone; choose items by number with `items` (`timeline_items` lists them). |
-| `open-page` | No tool. Click the page tab in Resolve. |
+| `open-page` | No tool of its own. `Resolve.OpenPage` exists; `stabilize` and `create_captions` switch pages themselves, and the command is otherwise left to a person: click the page tab in Resolve. |
 | `export-project` | No tool. `ProjectManager.ExportProject(name, path)` is a documented call; the toolkit leaves it to a person by policy. Export the project by hand in Resolve: from the Project Manager, or with File > Export Project Archive. The command only wrote a project file to disk and changed nothing in Resolve; it is retired with the rest. |
 | `ingest`, `cut`, `sync` | The tools of the same names. |
 | `trim-review --markers` | `trim_review_markers`. |
@@ -438,8 +438,8 @@ choose the file.
 - `GetIsTrackEnabled` answers False for every track of a timeline that is
   not current.
 - `get_image` and `get_thumbnails` with source `timeline` draw the current
-  timeline only, and no tool of this server makes another one current
-  ([T33](resolve-traps.md), live-tested 2026-11-11).
+  timeline only; `set_current_timeline` makes another one current
+  ([T33](resolve-traps.md), live-tested 2026-11-11 before that tool existed).
 - A transform can read back perfectly and still leave bars. At `cut`'s
   default 2.25 output pixels per source pixel, a 720-row source covers
   1620 of 1920 rows of a 9:16 frame, and a picture letterboxed to a
