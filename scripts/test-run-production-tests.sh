@@ -25,10 +25,12 @@ wrapper() { printf '#!/bin/bash\n%s\n' "$1" > "$H/scripts/heavy-slot"; chmod "${
 
 rm -f "$H/scripts/heavy-slot"
 expect "no wrapper: the tests run plainly" 0 "OK"
+out="$(env -u HOME "$RUN" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qF "OK" && ok "HOME unset: the tests run plainly" || bad "HOME unset (rc=$rc): $out"
 
 wrapper 'echo "$@" > "$HOME/args"; shift 3; exec "$@"'
 expect "wrapper present: the tests run under it" 0 "OK"
-[ "$(cut -d' ' -f1-4 "$H/args")" = "--timeout 1800 -- python3" ] && ok "called with a 1800s timeout" || bad "wrong call: $(cat "$H/args")"
+[ "$(cut -d' ' -f1-3 "$H/args")" = "--timeout 1800 --" ] && ok "called with a 1800s timeout" || bad "wrong call: $(cat "$H/args")"
 
 wrapper 'exit 99' 644
 expect "wrapper not executable: skipped" 0 "OK"

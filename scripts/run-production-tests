@@ -9,7 +9,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
 cmd=("${PYTHON:-python3}" -m unittest "$@")
-limiter="$HOME/scripts/heavy-slot"
+limiter="${HOME:-}/scripts/heavy-slot"
 if [ -x "$limiter" ]; then
   # shellcheck disable=SC2086
   "$limiter" --timeout 1800 -- "${cmd[@]}" $mods; rc=$?
