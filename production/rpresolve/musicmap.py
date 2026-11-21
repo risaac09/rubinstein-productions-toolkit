@@ -11,7 +11,7 @@ of bin is a boundary; a section shorter than MIN_SECTION_S joins the one before 
 are neutral (s1, s2, ...): it hears loudness, not verse or chorus.
 
 Run from production/:
-    python3 -m rpresolve.cmd_music_map VIDEO --out music-map.json [--shots shots.json]
+    python3 -m rpresolve.cmd_music_map VIDEO --out music-map.json [--shots shots.csv]
 """
 
 import bisect
