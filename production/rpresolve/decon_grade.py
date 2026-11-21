@@ -87,16 +87,16 @@ def estimate(src, ref, size=33):
 def grade(report, video, outdir, size=33):
     """Write outdir/sceneNN.cube, outdir/stills/sceneNN.png and outdir/grade.json. Returns the grade.json dict."""
     from lutlab import cube
-    shots = list(report["shots"])
+    shots, fps = list(report["shots"]), report.get("fps")
     w, h = decon._dims(video)
-    if len(shots) > 1 and color.rec709_to_lab(decon.frame(video, decon._mid(shots[-1]), decon.LAB_BOX, (w, h)))[..., 0].mean() < decon.BLACK_L:
+    if len(shots) > 1 and color.rec709_to_lab(decon.frame(video, decon._mid(shots[-1], fps), decon.LAB_BOX, (w, h)))[..., 0].mean() < decon.BLACK_L:
         shots.pop()   # the end black, as recipe does
-    labs = [decon.mean_lab(decon.frame(video, decon._mid(s), decon.LAB_BOX, (w, h))) for s in shots]
+    labs = [decon.mean_lab(decon.frame(video, decon._mid(s, fps), decon.LAB_BOX, (w, h))) for s in shots]
     os.makedirs(os.path.join(outdir, "stills"), exist_ok=True)
     rows = []
     for n, idx in enumerate(scenes(shots, labs), 1):
         first, last = shots[idx[0]], shots[idx[-1]]
-        t = (first["in"] + last["out"]) / 2
+        t = decon._mid({"in": first["in"], "out": last["out"]}, fps)  # inside the real frames, as recipe reads
         img = decon.frame(video, t, STILL_BOX, (w, h)) / 255.0
         name = f"scene{n:02d}"
         _png(os.path.join(outdir, "stills", name + ".png"), img)

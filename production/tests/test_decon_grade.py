@@ -20,14 +20,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from rpresolve import delivercheck as dc  # noqa: E402
 
+MISSING = None
 try:
     import cv2
     import numpy as np
     from lutlab import cube, model
     from rpresolve import cmd_decon, decon, decon_grade, methods
     from test_decon import _parse
-except ImportError:
-    decon_grade = None
+except ImportError as e:  # name the module: the 3.9 job has numpy alone and fails on a skip that blames numpy
+    decon_grade, MISSING = None, e.name or str(e)
 
 MAX_DE = 5.0
 LOOKS = PROD / "lutlab-looks"
@@ -65,7 +66,7 @@ def grade_clip(src, dst, cube_path):
                    check=True, stdin=subprocess.DEVNULL)
 
 
-@unittest.skipIf(decon_grade is None, "numpy, OpenCV or lutlab not importable")
+@unittest.skipIf(decon_grade is None, f"{MISSING} not importable")
 @unittest.skipUnless(os.access(dc.FFMPEG, os.X_OK), "ffmpeg missing")
 class TestDeconGrade(unittest.TestCase):
     @classmethod
@@ -102,6 +103,19 @@ class TestDeconGrade(unittest.TestCase):
         print("verifier median CIEDE2000:", {k: round(v, 2) for k, v in worst.items()})
         for look, de in worst.items():
             self.assertLessEqual(de, MAX_DE, look)
+
+    def test_one_frame_scene_reads_a_real_frame(self):
+        # a one-frame video: the scene's middle sits past the last frame's pts unless read as recipe reads it
+        ref = os.path.join(self.tmp.name, "one.mkv")
+        clip(ref, picture(3), secs=1 / 24)
+        out = os.path.join(self.tmp.name, "one.json")
+        so, se = StringIO(), StringIO()
+        with redirect_stdout(so), redirect_stderr(se):
+            code = cmd_decon.run(_parse(["recipe", ref, "--out", out, "--grade", "--no-dissolves"]))
+        self.assertEqual(code, 0, se.getvalue())
+        g = json.loads(Path(self.tmp.name, "one.grade", "grade.json").read_text())
+        self.assertEqual(len(g["scenes"]), 1)
+        self.assertEqual(g["scenes"][0]["still_s"], 0.0)
 
     def test_cli_grade_sidecar(self):
         # two scenes: a plain picture, then a different one with a corner fall-off
