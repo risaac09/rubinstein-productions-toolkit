@@ -11,11 +11,12 @@ A recipe carries timing only: cuts, dissolves, the black at the end, and the tem
 beat map is given. Role, move, query and fits are placeholders until shot description
 exists, and the method's own `look` stays null.
 
-The compare score is 0 to 100: the mean of six parts, each 0 to 1, where a reference
+The compare score is 0 to 100: the mean of six parts (seven when both files have audio), each 0 to 1, where a reference
 against itself scores 100. Cut recall and extra cuts (within CUT_TOL_FRAMES), shot length
 at matched indexes, the difference in coefficient of variation, the distance between
 the shot-length histograms, and the median colour distance (CIEDE2000 of each shot's
-mean Lab, at DE_SCALE for zero).
+mean Lab, at DE_SCALE for zero). With audio in both, a seventh part: 1 minus the difference of the
+two cuts' on-beat shares, each on its own file's beat map (musicmap).
 """
 
 import math
@@ -23,7 +24,7 @@ import os
 import statistics
 import subprocess
 
-from . import delivercheck as dc, methods, rhythm
+from . import beats, cutlist, delivercheck as dc, methods, musicmap, rhythm
 
 CUT_TOL_FRAMES = 2
 DE_SCALE = 20.0      # a median CIEDE2000 this large scores zero for colour
@@ -170,6 +171,9 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
     parts = {"cut_recall": recall, "no_extra_cuts": 1 - extra, "shot_length": length,
              "variation": max(0.0, 1 - abs(st_ref["cv"] - st_rb["cv"])), "histogram": 1 - hist,
              "colour": max(0.0, 1 - statistics.median(de) / DE_SCALE)}
+    shares, skipped = _beat_shares(ref_video, rb_video, d_ref, d_rb, fps)
+    if shares:
+        parts["beats"] = max(0.0, 1 - abs(shares[0] - shares[1]))
     if sheet:
         _sheet(pairs, sheet, np)
     return {"reference": os.path.abspath(ref_video), "rebuild": os.path.abspath(rb_video), "fps": fps,
@@ -182,8 +186,24 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
                        "histogram_distance": round(hist, 3), "shot_length_ratio": round(length, 3)},
             "delta_e": {"median": round(statistics.median(de), 2), "max": round(max(de), 2)},
             "parts": {k2: round(v, 3) for k2, v in parts.items()},
+            "on_beat": {"share": shares, "skipped": skipped},
             "score": round(100 * statistics.fmean(parts.values()), 1),
             "matched": [{k2: v for k2, v in p.items() if k2 not in ("a", "b")} for p in pairs]}
+
+
+def _beat_shares(ref_video, rb_video, d_ref, d_rb, fps):
+    """([reference share, rebuild share], None) of cuts within 1 frame of a beat, each on its
+    own file's beat map; (None, why) when a file has no audio or no beat map."""
+    shares = []
+    for v, d in ((ref_video, d_ref), (rb_video, d_rb)):
+        try:
+            mm = musicmap.build(v)
+        except (musicmap.MusicMapError, beats.BeatsError, cutlist.CutlistError) as e:
+            return None, f"{os.path.basename(v)}: {e}"
+        if not mm["beats_s"]:
+            return None, f"{os.path.basename(v)}: no beats found"
+        shares.append(round(rhythm.on_beat(d, mm["beats_s"], fps)[1][0], 3))
+    return shares, None
 
 
 def _sheet(pairs, out, np):
@@ -216,4 +236,6 @@ def summary_compare(r):
         f"Rhythm: ASL {rh['asl'][0]} vs {rh['asl'][1]} s, CV {rh['cv'][0]} vs {rh['cv'][1]}, "
         f"histogram distance {rh['histogram_distance']}, shot length at matched shots {rh['shot_length_ratio']}",
         f"Colour: CIEDE2000 median {r['delta_e']['median']}, max {r['delta_e']['max']}",
+        (f"Beats: on-beat share {r['on_beat']['share'][0]} vs {r['on_beat']['share'][1]} (within 1 frame)"
+         if r["on_beat"]["share"] else f"Beats: not scored ({r['on_beat']['skipped']})"),
     ])

@@ -64,13 +64,16 @@ What it does not do, and limits:
 ```sh
 python3 resolve_workflow.py decon recipe REF --out recipe.json [--id ID] [--beats MAP.json] [--against METHOD]
 python3 resolve_workflow.py decon compare REF REBUILD --out compare.json [--sheet sheet.png]
+python3 resolve_workflow.py music-map VIDEO --out music-map.json [--shots shots.json]
 ```
 
 Both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
 
 `recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
 
-`compare` scores a rebuild against its reference, 0 to 100, as the mean of six parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms, and colour (median CIEDE2000 of each shot's mean Lab, zero at 20). Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames as pairs, reference left. Beat alignment and title timing are not scored yet.
+`compare` scores a rebuild against its reference, 0 to 100, as the mean of six parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms, and colour (median CIEDE2000 of each shot's mean Lab, zero at 20). Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames as pairs, reference left. When both files have audio, a seventh part `beats` is 1 minus the difference between the two cuts' on-beat shares (within 1 frame), each cut on its own file's beat map; both shares are reported. A file with no audio drops the part and the summary says so, and the score is the mean of the six. Title timing is not scored yet.
+
+`music-map` writes a video's own music map: `beats_s` and `bpm` (so `--beats` and rhythm read it), and `sections` from RMS energy in 1 s windows, binned low, mid or high by thirds of the file's range, a change of bin a boundary, a section under 4 s joined to the one before, labelled `s1`, `s2` and so on. It hears loudness, not verse or chorus. With `--shots` (a `shots` report) it adds `cuts`: each cut's nearest beat, the signed offset in frames, and its section. It is a separate command from `beats` so that one stays a plain beat map of a music file. A proposal: check it by ear.
 
 ## beats
 
