@@ -223,8 +223,18 @@ jobs:
   # measure, sync, colour and trim review. The full suite below runs on 3.14, so this job runs
   # every module except lutlab, rpstills and vertcut (which live on 3.14) on 3.9 with numpy
   # alone, at the 3.9 pin in requirements.txt. A 3.10+ construct in rpresolve fails here.
-  rpresolve-tests-3-9:
+  #
+  # The module list is split in four shards by scripts/test-shard (its --check step fails if
+  # the shards do not hold every module exactly once; the lutlab, rpstills and vertcut filter
+  # is applied per module after the split, so it cannot drop or double one). The required check
+  # name rpresolve-tests-3-9 stays on the gate job below; the shards report as
+  # rpresolve-tests-3-9-shard.
+  rpresolve-tests-3-9-shard:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -239,12 +249,15 @@ jobs:
           O='-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20'
           sudo apt-get $O update -qq
           sudo apt-get $O install -y -qq ffmpeg
-      - name: Every module but lutlab, rpstills and vertcut
+      - name: Shards hold every test module exactly once
+        run: scripts/test-shard --check 4
+      - name: Every module but lutlab, rpstills and vertcut, shard ${{ matrix.shard }} of 4
         run: |
           set -euo pipefail
           RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
           export RPRESOLVE_FFMPEG RPRESOLVE_FFPROBE
-          mods="$(ls production/tests/test_*.py | grep -vE 'lutlab|rpstills|vertcut' | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          mods="$(scripts/test-shard ${{ matrix.shard }} 4 | { grep -vE 'lutlab|rpstills|vertcut' || true; })"
+          [ -n "$mods" ] || { echo "empty shard" >&2; exit 1; }
           python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
       - name: No skips for numpy or ffmpeg
         run: |
@@ -253,6 +266,20 @@ jobs:
             echo "a test skipped because numpy or ffmpeg is missing" >&2
             exit 1
           fi
+
+  # Keeps the required check name rpresolve-tests-3-9. Fails if any shard
+  # failed, was cancelled or was skipped.
+  rpresolve-tests-3-9:
+    if: always()
+    needs: rpresolve-tests-3-9-shard
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every shard passed
+        env:
+          RESULT: ${{ needs.rpresolve-tests-3-9-shard.result }}
+        run: |
+          echo "shards: $RESULT"
+          [ "$RESULT" = "success" ]
 
   # The footage indexer (production/footage_index) runs against synthetic clips. torch and the
   # SigLIP and Ollama models are not installed here: tests/conftest.py stands in for torch, and the
@@ -404,6 +431,7 @@ jobs:
     needs:
       - hygiene-checks
       - resolve-mcp-tests
+      - rpresolve-tests-3-9-shard
       - rpresolve-tests-3-9
       - footage-index-tests
       - production-unit-tests-shard
