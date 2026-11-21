@@ -77,7 +77,8 @@ For each span of each clip:
      allow_bars keeps the default scale when it holds the face but leaves
      bars (the Ep 002 look); such a crop is status "bars" and named as such.
   7. Cuts: a span is one crop, so a hard cut inside it (ffmpeg scdet at qc's
-     threshold, more than CUT_EDGE_S from either edge) is named in the
+     threshold, or a jump of the mean luma that scdet misses in noisy dark
+     shots; more than CUT_EDGE_S from either edge) is named in the
      span's review note and its "cuts" list. Report only: the crop is not
      changed, and the span needs a person's look at each shot.
 
@@ -110,6 +111,7 @@ import copy
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import tempfile
@@ -155,8 +157,9 @@ RULE_LARGEST = "the largest face among those present in at least half as many sa
 
 PASS, BARS, FALLBACK, MANUAL, NO_FACE = "pass", "bars", "fallback", "manual", "no_face"
 HAND = "hand"  # a crop from a person's centre (plan_items hand=), for an item with a hand entry
-STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE, HAND)
-APPLIED = (PASS, BARS, FALLBACK, HAND)  # statuses that carry a crop
+SCENE = "scene"  # a crop on the saliency centre: no face was seen, so a person should look
+STATUSES = (PASS, BARS, FALLBACK, MANUAL, NO_FACE, HAND, SCENE)
+APPLIED = (PASS, BARS, FALLBACK, HAND, SCENE)  # statuses that carry a crop
 
 
 class ReframeError(RuntimeError):
@@ -819,7 +822,7 @@ def _record_scene(out, sc, subject, boxes, src, path):
                     "sharpness": sc["sharpness"], "motion": sc["motion"], "depth": sc["depth"],
                     "move_type": move, "reads": len(sc["boxes"])}
     for p in out["aspects"].values():
-        if p["status"] in (PASS, BARS, FALLBACK):
+        if p["status"] in (PASS, BARS, FALLBACK, SCENE):
             p["move_type"] = move
             p["composition"] = composition.compose(boxes, p["out"], p["scale"], (p["x"], p["y"]),
                                                    src, move)
@@ -852,6 +855,10 @@ def _scene_span(sc, samples, src, area, aspects, scale, margin, allow_bars, min_
                                         min_checked=min_checked, out=size_of(a, master_size),
                                         anchor=anchor_of(a), head_above=0.0, headroom=0.0,
                                         scaling=scaling)
+        p = out["aspects"][a]
+        if p["status"] == PASS:  # a crop that holds, but on no face: not a PASS
+            p.update(status=SCENE, reason="no face was seen: the crop is on the saliency centre; "
+                     "a person should look" + (f" ({p['reason']})" if p["reason"] else ""))
     _record_scene(out, sc, "saliency", boxes, src, [_centre(b) for _, b in boxes])
     return out
 
@@ -921,12 +928,35 @@ def squeeze_tag(data):
 CUT_EDGE_S = 0.1  # a cut this close to a span's edge is the edit's own, not one inside it
 
 
+CUT_LUMA_JUMP = 8.0  # a cut when the mean luma (0 to 255) moves this far between two frames
+
+
+def parse_luma_jumps(text, jump):
+    """[pts_time] of every frame whose signalstats YAVG sits `jump` or more from the
+    frame before it. scdet scores a cut as min(mean difference, its change from the
+    last frame's), so noise in a dark shot lifts the floor and hides a cut that the
+    mean luma still shows."""
+    last, t, out = None, None, []
+    for m in re.finditer(r"pts_time:(\S+)|lavfi\.signalstats\.YAVG=(\S+)", text):
+        if m.group(1) is not None:
+            t = float(m.group(1))
+        elif t is not None:
+            y = float(m.group(2))
+            if last is not None and abs(y - last) >= jump:
+                out.append(t)
+            last = y
+    return out
+
+
 def span_cuts(path, a, b):
-    """Source times of the hard cuts (ffmpeg scdet, at qc's threshold) strictly
-    inside the span [a, b], or None when ffmpeg could not scan it."""
+    """Source times of the hard cuts strictly inside the span [a, b]: ffmpeg scdet at
+    qc's threshold, plus a jump of the mean luma (CUT_LUMA_JUMP) that scdet misses in
+    noisy dark shots. None when ffmpeg could not scan it."""
     from . import qc
+    th = qc.THRESHOLDS["scdet_threshold"]
     cmd = [FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}",
-           "-i", "file:" + path, "-map", "0:v:0", "-vf", f"scdet=t={qc.THRESHOLDS['scdet_threshold']}",
+           "-i", "file:" + path, "-map", "0:v:0", "-vf",
+           f"scdet=t={th},scale=160:-2,signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG",
            "-f", "null", "-"]
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -935,8 +965,11 @@ def span_cuts(path, a, b):
         return None
     if proc.returncode != 0:
         return None
-    return [round(a + t, 3) for t in qc.parse_scdet(proc.stderr, qc.THRESHOLDS["scdet_threshold"])
-            if CUT_EDGE_S < t < b - a - CUT_EDGE_S]
+    found = []
+    for t in sorted(qc.parse_scdet(proc.stderr, th) + parse_luma_jumps(proc.stderr, CUT_LUMA_JUMP)):
+        if CUT_EDGE_S < t < b - a - CUT_EDGE_S and (not found or t - found[-1] > 0.05):
+            found.append(t)  # the same cut seen by both cues counts once
+    return [round(a + t, 3) for t in found]
 
 
 class SourceReader:
@@ -1360,7 +1393,7 @@ def summary(report):
     n = report["counts"]
     return (f"reframe-plan: {len(report['rows'])} crop(s) over {len(report['spans'])} span(s): "
             f"{n[PASS]} pass, {n[FALLBACK]} fallback (widest filled scale), {n[MANUAL]} manual, "
-            f"{n[NO_FACE]} no face" + (f", {n[BARS]} kept with bars" if n[BARS] else "") +
+            f"{n[NO_FACE]} no face" + (f", {n[SCENE]} scene crop, no face seen: look" if n[SCENE] else "") + (f", {n[BARS]} kept with bars" if n[BARS] else "") +
             (f", {n[HAND]} by hand" if n[HAND] else "") +
             (f"; {n['review']} flagged for review" if n["review"] else "") +
             (f"; {n['tilt']} set a Tilt, whose sign no render has confirmed yet (check a still)"

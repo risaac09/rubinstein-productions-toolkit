@@ -430,5 +430,54 @@ class Vp20Rows(unittest.TestCase):
         self.assertIn("sync", p.stdout)
 
 
+def _textured_video(out, shaky, frames=125):
+    """320x180 grey: a fixed textured background, a large textured subject in the
+    middle that jitters 3 px a frame, and with `shaky` the whole picture shaking."""
+    rng = np.random.default_rng(3)
+
+    def tex(h, w):
+        r = rng.standard_normal((h, w))
+        for ax in (0, 1):
+            r = np.apply_along_axis(lambda v: np.convolve(v, np.ones(3) / 3, "same"), ax, r)
+        return r * 40 + 128
+    bg, subj = tex(180, 320), tex(100, 140)
+    raw = bytearray()
+    for _ in range(frames):
+        f = np.roll(bg, tuple(int(v) for v in rng.integers(-3, 4, 2)), (0, 1)) if shaky else bg.copy()
+        y, x = 40 + int(rng.integers(-3, 4)), 90 + int(rng.integers(-3, 4))
+        f[y:y + 100, x:x + 140] = subj
+        raw += np.clip(f, 0, 255).astype(np.uint8).tobytes()
+    p = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "rawvideo",
+                        "-pix_fmt", "gray", "-s", "320x180", "-r", "25", "-i", "-", "-c:v", "libx264",
+                        "-crf", "12", "-pix_fmt", "yuv420p", out], input=bytes(raw), capture_output=True)
+    if p.returncode != 0:
+        raise RuntimeError(p.stderr.decode())
+
+
+@unittest.skipUnless(_have(), "ffmpeg or numpy missing")
+class StabiliserRegions(unittest.TestCase):
+    """The stabiliser row reads the picture's corners, not the whole frame."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.moving = os.path.join(cls._tmp.name, "moving.mp4")
+        cls.shaking = os.path.join(cls._tmp.name, "shaking.mp4")
+        _textured_video(cls.moving, shaky=False)
+        _textured_video(cls.shaking, shaky=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_a_subject_moving_in_a_steady_picture_is_not_shake(self):
+        row = _row(qc.run(self.moving, stabiliser=True), "stabiliser")
+        self.assertEqual(row["status"], qc.PASS, row)
+
+    def test_a_shaking_picture_with_a_moving_subject_still_warns(self):
+        row = _row(qc.run(self.shaking, stabiliser=True), "stabiliser")
+        self.assertEqual(row["status"], qc.WARN, row)
+
+
 if __name__ == "__main__":
     unittest.main()

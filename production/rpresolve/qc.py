@@ -40,13 +40,14 @@ and set with --set; none is a standard. They are numbers, not listening:
                         gap of at least voice_bed_gap_s read whole, a shorter
                         one by its interior median (0.1 s after the last
                         voice to 0.3 s before the next, 0.4 s or more left);
-                        a gap too short to read counts as no gap, the other
-                        side stands in, then the file's median over the long
-                        gaps. WARN names each span under bed +
+                        a span with neither side readable takes the nearest
+                        long gap in time, walking outward. WARN names each span under bed +
                         voice_bed_margin_lu. SKIP (not measurable) when no
-                        gap is that long. Needs numpy; a bed that ducks under
-                        voice reads louder in the gaps than it is, and music
-                        living only in gaps too short to read passes
+                        gap is that long. A span with no signal in its frames
+                        WARNs as "no voice here: check the transcript timing".
+                        Needs numpy; a bed that ducks under voice reads louder
+                        in the gaps than it is, and music living only in gaps
+                        too short to read can pass
     phone_proxy         the mix folded to mono and high-passed at
                         phone_hp_hz: its loudest short-term loudness against
                         the full mix's; WARN when it drops more than
@@ -137,8 +138,9 @@ drops the table:
                        consecutive frames of stab_bursts (12) short bursts,
                        read to a fraction of a pixel by phase correlation on
                        a small grey picture of the decoded picture's own
-                       aspect; the jerk is frame-to-frame change of that
-                       shift in pixels of a stab_width-wide picture. The row
+                       aspect, read in its four corners (median per axis) so
+                       a subject moving in the middle is not shake; the jerk
+                       is frame-to-frame change of that shift in pixels of a stab_width-wide picture. The row
                        is the worst burst's median jerk, WARN over
                        stab_jerk_px (0.3, about 1.8 px at 1080p). A
                        locked-off or panning shot reads smooth; a hand-held
@@ -536,19 +538,20 @@ def _sound_voice_vs_bed(frames, words, th):
     """PRI-22: per speech span, the voice against the room's bed. The
     momentary loudness (400 ms) of each span is its median over the frames
     wholly inside it. The bed is read on each side of the span from the gap
-    that touches it, and only that gap: a gap of at least voice_bed_gap_s is
-    read whole (its median); a shorter one by the median of its interior,
-    from VOICE_TAIL_S after the previous voice to ONSET_S before the next,
-    when 0.4 s or more remains. A side whose gap cannot be read has no bed;
-    the span takes the louder bed of the sides that have one, the other side's
-    alone when one has none, and the file's lower median over the long gaps
-    when neither does. WARN names every span under the margin; SKIP when no
-    gap is long enough to read.
+    that touches it: a gap of at least voice_bed_gap_s is read whole (its
+    median); a shorter one by the median of its interior, from VOICE_TAIL_S
+    after the previous voice to ONSET_S before the next, when 0.4 s or more
+    remains. The span takes the louder bed of the sides that can be read. When
+    neither side can, it takes the nearest gap of voice_bed_gap_s or more in
+    time (the louder when two are equally near), walking outward past the
+    unreadable ones. A span with no signal at all in its frames is named "no
+    voice here: check the transcript timing" and WARNs. WARN names every span
+    under the margin; SKIP when no gap is long enough to read.
     shortcut: a mix has no bed track, so a bed that ducks under the voice
     reads louder in the gaps than it is. Looser than the rule before this
-    one in one case: music that lives only in gaps too short to read (under
-    about 1.1 s with the speech padding), whose spans then take the other
-    side's bed or the file median. Stems would give the bed itself."""
+    one in one case: music that lives only in gaps too short to read, on a
+    span whose other side also cannot be read and which sits nearer a quiet
+    long gap. Stems would give the bed itself."""
     margin = th["voice_bed_margin_lu"]
     expected = f"each speech span >= its bed + {margin:g} LU{WD}"
     if words is None:
@@ -559,6 +562,10 @@ def _sound_voice_vs_bed(frames, words, th):
         v = sorted(m for t, m, _ in frames if a + 0.4 <= t <= b and m > floor)
         return v[len(v) // 2] if len(v) >= max(3, int(need * 10) - 4) else None
 
+    def silent(a, b):  # frames wholly inside [a, b] exist and nine in ten read as no signal
+        v = [m for t, m, _ in frames if a + 0.4 <= t <= b]
+        return len(v) >= 3 and sum(m <= floor for m in v) >= 0.9 * len(v)
+
     spans = speech_spans(words, th["speech_pad_s"], th["speech_join_s"])
     edges = [0.0] + [x for sp in spans for x in sp] + [max((t for t, _, _ in frames), default=0.0)]
     gaps = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]  # gap i precedes span i
@@ -567,7 +574,13 @@ def _sound_voice_vs_bed(frames, words, th):
     if not beds:
         return _srow("voice_vs_bed", SKIP, f"not measurable: no gap of {gap_min:g}s or more", expected,
                      f"the bed is read in gaps of at least {gap_min:g}s; a mix with no such room tone has none to read")
-    median = beds[(len(beds) - 1) // 2]
+    longs = [j for j, x in enumerate(long_bed) if x is not None]
+
+    def nearest(i):  # the bed of the long gap nearest span i in time, the louder on a tie
+        def dist(j):  # gap j lies before span i when j <= i
+            return spans[i][0] - gaps[j][1] if j <= i else gaps[j][0] - spans[i][1]
+        d = min(dist(j) for j in longs)
+        return max(long_bed[j] for j in longs if abs(dist(j) - d) < 1e-9)
 
     def side(j):  # the bed from gap j, the one that touches the span; None when it cannot be read
         if long_bed[j] is not None:
@@ -577,25 +590,28 @@ def _sound_voice_vs_bed(frames, words, th):
             return level(a + VOICE_TAIL_S, b - ONSET_S)
         return None
 
-    bad, read = [], 0
+    bad, read, empty = [], 0, []
     for i, (a, b) in enumerate(spans):
         voice = level(a, b)
         if voice is None:
+            if silent(a, b):
+                empty.append(f"{_at(a)} to {_at(b)} no voice here: check the transcript timing")
             continue
         read += 1
         near = [x for x in (side(i), side(i + 1)) if x is not None]
-        bed = max(near) if near else median
+        bed = max(near) if near else nearest(i)
         gap = round(voice - bed, 1)
         if gap < margin - 1e-9:
             bad.append(f"{_at(a)} to {_at(b)} voice {gap:+g} LU over its bed")
-    if not read:
+    if not read and not empty:
         return _srow("voice_vs_bed", SKIP, f"0 of {len(spans)} spans readable", expected,
                      f"each span needs {need:g}s of clean frames")
-    return _srow("voice_vs_bed", WARN if bad else PASS,
-                 "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
-                 if bad else f"{read} spans clear of their bed", expected,
-                 f"{read} of {len(spans)} spans read, each against the louder bed of the gaps beside it "
-                 f"(file median {median:g} LUFS from {len(beds)} gap(s) of {gap_min:g}s or more)")
+    found = "; ".join(bad[:5]) + (f"; +{len(bad) - 5} more" if len(bad) > 5 else "")
+    found = "; ".join(x for x in (found, "; ".join(empty[:5])) if x) or f"{read} spans clear of their bed"
+    return _srow("voice_vs_bed", WARN if bad or empty else PASS, found, expected,
+                 f"{read} of {len(spans)} spans read, each against the louder bed of the gaps beside it, "
+                 f"or the nearest of {len(beds)} gap(s) of {gap_min:g}s or more "
+                 f"(file median {beds[(len(beds) - 1) // 2]:g} LUFS)")
 
 
 def _sound_phone_proxy(path, full_frames, th):
@@ -896,6 +912,19 @@ def _shift(np, a, b):
     return (x - w if x > w // 2 else x) + dx, (y - h if y > h // 2 else y) + dy
 
 
+STAB_CORNER = 0.4  # each corner region is this share of the picture's width and height
+
+
+def _shift_corners(np, a, b):
+    """(dx, dy) of b against a, read in the four corners and the median taken per
+    axis: a subject that moves in the middle of the picture does not read as camera
+    shake, and a shake that moves the whole picture still does."""
+    h, w = a.shape
+    rh, rw = int(h * STAB_CORNER), int(w * STAB_CORNER)
+    rs = [(slice(y, y + rh), slice(x, x + rw)) for y in (0, h - rh) for x in (0, w - rw)]
+    return tuple(np.median(np.array([_shift(np, a[r], b[r]) for r in rs]), axis=0))
+
+
 def _stab_row(np, path, stabiliser, th, dur, streams):
     expected = (f"worst burst's median jerk <= {th['stab_jerk_px']:g} px of {th['stab_width']:g} "
                 f"(about {th['stab_jerk_px'] * 1920 / th['stab_width']:.1f} px at 1080p), advisory{WD}")
@@ -927,7 +956,7 @@ def _stab_row(np, path, stabiliser, th, dur, streams):
             fr = fr[:len(fr) // (w * h) * w * h].reshape(-1, h, w).astype(np.float64)
             if len(fr) < 4 or float(fr.std(axis=(1, 2)).min()) < 2.0:  # too short or flat to read
                 continue
-            shifts = np.array([_shift(np, a, b) for a, b in zip(fr[:-1], fr[1:])])
+            shifts = np.array([_shift_corners(np, a, b) for a, b in zip(fr[:-1], fr[1:])])
             jerks.append(float(np.median(np.hypot(*np.diff(shifts, axis=0).T))))
     except (rpmeasure.MeasureError, dc.CheckError, subprocess.SubprocessError, OSError, ValueError, KeyError) as e:
         return _srow("stabiliser", WARN, "not read", expected, str(e))  # a bad read keeps the table
@@ -936,8 +965,8 @@ def _stab_row(np, path, stabiliser, th, dur, streams):
     jerk = max(jerks)
     over = sum(1 for j in jerks if j > th["stab_jerk_px"])
     return _srow("stabiliser", WARN if jerk > th["stab_jerk_px"] else PASS, f"{jerk:.2f} px", expected,
-                 f"{len(jerks)} bursts of {n} frames, {over} over; sub-pixel shifts on a {w}x{h} grey picture; "
-                 f"advisory, never gates ({CALIBRATED}: 0.3 px flagged 8 of 39 files; no handheld set was run, so its "
+                 f"{len(jerks)} bursts of {n} frames, {over} over; sub-pixel shifts on a {w}x{h} grey picture, read in its four corners; "
+                 f"advisory, never gates ({CALIBRATED}: 0.3 px flagged 8 of 39 files on the whole-picture read, not rerun on the corner read; no handheld set was run, so its "
                  "false-WARN rate on handheld shots is unmeasured); judges the render, not the stabiliser's settings")
 
 
