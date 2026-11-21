@@ -11,12 +11,9 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
+import { findChrome, isHeadlessShell } from "./find-chrome.mjs";
 
 const LINTER = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/OGraf HTML Templates/Scripts/lint-ograf.py";
-const CHROME_CANDIDATES = [
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome",
-];
 const MIME = { ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json",
   ".css": "text/css", ".html": "text/html", ".woff2": "font/woff2", ".woff": "font/woff",
   ".ttf": "font/ttf", ".otf": "font/otf", ".png": "image/png", ".svg": "image/svg+xml" };
@@ -41,7 +38,7 @@ const USAGE = `usage: ograf-render.mjs TEMPLATE.ograf.json --out DIR [options]
   --no-video           stop after the PNGs, boxes and report
   --strict-fonts       a missing font fails the run (default: a warning in report.json)
   --font-wait-ms N     how long a frame waits for fonts and paint before it is captured anyway (default 2000)
-  --chrome PATH        Chrome binary (default: CHROME env, then the usual names)
+  --chrome PATH        Chrome binary (default: CHROME env, chrome-headless-shell, then the usual names)
   --lint               run Resolve's own linter when installed (OGRAF_LINT overrides its path)
 `;
 
@@ -154,17 +151,15 @@ function serve(root, main) {
 // Chrome over the DevTools protocol
 // ---------------------------------------------------------------------------
 
-function findChrome(arg) {
-  const tries = [arg, process.env.CHROME, ...CHROME_CANDIDATES].filter(Boolean);
-  for (const c of tries) {
-    if (c.includes("/") ? existsSync(c) : spawnSync("which", [c]).status === 0) return c;
-  }
-  throw new Fail("Chrome not found; pass --chrome PATH or set CHROME", 3);
+function requireChrome(arg) {
+  const bin = findChrome(arg);
+  if (!bin) throw new Fail("Chrome not found; pass --chrome PATH or set CHROME (chrome-headless-shell is preferred, see README)", 3);
+  return bin;
 }
 
 async function launchChrome(bin) {
   const dir = mkdtempSync(join(tmpdir(), "ograf-chrome-"));
-  const proc = spawn(bin, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
+  const proc = spawn(bin, [...(isHeadlessShell(bin) ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--disable-dev-shm-usage", "--no-default-browser-check", "--hide-scrollbars", "--disable-gpu",
     "--force-color-profile=srgb", ...(process.getuid?.() === 0 || process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
   // Chrome may still be writing to its profile as it dies, so retry; a leftover temp dir must not fail a render.
@@ -314,7 +309,7 @@ async function main() {
   const tmpMov = join(outDir, `.${name}.tmp.mov`);
 
   if (!o.noVideo && spawnSync("ffmpeg", ["-version"]).status !== 0) throw new Fail("ffmpeg not found on PATH", 3);
-  const chromeBin = findChrome(o.chrome);
+  const chromeBin = requireChrome(o.chrome);
   // Nothing already in OUT is touched until the new render has passed its checks: frames go
   // to a temp folder this run made, the movie to a temp name, and both are cleaned up on failure.
   mkdirSync(outDir, { recursive: true });
