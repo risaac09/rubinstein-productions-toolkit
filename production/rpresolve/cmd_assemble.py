@@ -457,7 +457,7 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
            else bed_peak(bed) if bed and p["music_gain_db"] > 0 else None)
     plates = plate_handles(p)
     sha = plan_sha("assemble", pin.unique_id, name, rate, width, height, p, colour, bed, plates,
-                   report, tl_colour, desqueeze, level, tail, mix)
+                   report, tl_colour, desqueeze, level, tail, mix, fps is not None)
     out = {"project": {"name": pin.name, "id": pin.unique_id}, "timeline": name, "rate": rate,
            "size": [width, height], "track": p["track"], "plan": p, "colour": colour,
            "timeline_colour": tl_colour, "desqueeze": desqueeze, "shape": shape,
@@ -519,7 +519,25 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
     out["created"] = {"name": name, "unique_id": api._safe_call(tl, "GetUniqueId")}
+    out["current_timeline_reset"] = 0
     problems = out["problems"]
+    plain_check = check
+
+    def check():
+        """Every append lands on the project's current timeline, so before each one that
+        must still be this run's: set back (and read back) when a person switched, else stop."""
+        plain_check()
+        def key(t):
+            return (api._safe_call(t, "GetUniqueId") or api._safe_call(t, "GetName")) if t else None
+        mine = key(tl)
+        if key(project.GetCurrentTimeline()) == mine:
+            return
+        was = api._safe_call(project.GetCurrentTimeline(), "GetName")
+        if project.SetCurrentTimeline(tl) and key(project.GetCurrentTimeline()) == mine:
+            out["current_timeline_reset"] += 1
+            return
+        raise api.WriteNotApplied(f"the current timeline is '{was}', not '{name}', and could not "
+                                  f"be set back; nothing was appended to '{was}'")
     try:
         # a timeline with custom settings holds its own colour spaces, so the project's are
         # copied across; a project that reads none of them has nothing to copy
@@ -776,7 +794,8 @@ FIRST_STREAM_ONLY = "track 1 of the clip's own mapping, alone"
 def first_track_only(was):
     """The mapping to set from what GetAudioMapping read: track 1 only, unmuted; None when the
     read has no track 1."""
-    t1 = (api.audio_track_mapping(was) or {}).get("1")
+    tracks = api.audio_track_mapping(was)
+    t1 = tracks.get("1") if isinstance(tracks, dict) else None  # a list is not a mapping
     return {"track_mapping": {"1": {**t1, "mute": False}}} if isinstance(t1, dict) else None
 
 
@@ -794,11 +813,15 @@ def camera_streams(p, in_bin=()):
             continue
         try:
             dc.check_tools(ffmpeg=False)
-            n = sum(1 for x in dc.probe(r["path"]).get("streams") or []
-                    if x.get("codec_type") == "audio")
+            audio = [x for x in dc.probe(r["path"]).get("streams") or []
+                     if x.get("codec_type") == "audio"]
+            n = len(audio)
+            # one stream of more than two channels may be several mapping tracks in Resolve,
+            # which the build reads (ffprobe counts streams, the build counts tracks)
+            wide = any(int(x.get("channels") or 0) > 2 for x in audio)
         except (dc.ToolMissing, dc.CheckError):
-            n = None
-        action = ("at build" if n is None else "none" if n < 2
+            n, wide = None, False
+        action = ("at build" if n is None or (n == 1 and wide) else "none" if n < 2
                   else "fallback" if r["path"] in in_bin else "remap")
         rows[r["path"]] = {"source": os.path.basename(r["path"]), "streams_found": n,
                            "streams_used": None if n is None else min(n, 1), "action": action,
@@ -819,7 +842,12 @@ def _remap(out, have, imported, before, p):
             continue
         was = api._safe_call(clip, "GetAudioMapping")
         want = first_track_only(was)
-        if api.audio_track_count(was) < 2 or want is None:
+        if api.audio_track_count(was) < 2:
+            continue
+        if want is None:
+            rows.append({"source": os.path.basename(path), "tracks_before": api.audio_track_count(was),
+                         "mapping": None, "result": "the clip's mapping cannot be read; the extra "
+                         "tracks are deleted after the append"})
             continue
         row = {"source": os.path.basename(path), "tracks_before": api.audio_track_count(was),
                "mapping": want["track_mapping"]}
@@ -827,9 +855,16 @@ def _remap(out, have, imported, before, p):
         if api._safe_call(clip, "SetAudioMapping", json.dumps(want)) is not True:
             row["result"] = "refused: SetAudioMapping did not return True; the extra tracks are deleted after the append"
         elif api.audio_track_mapping(api._safe_call(clip, "GetAudioMapping")) != want["track_mapping"]:
-            api._safe_call(clip, "SetAudioMapping",
-                           json.dumps({"track_mapping": api.audio_track_mapping(was)}))
-            row["result"] = "read back differs from what was set (put back); the extra tracks are deleted after the append"
+            orig = api.audio_track_mapping(was)
+            ok = api._safe_call(clip, "SetAudioMapping", json.dumps({"track_mapping": orig})) is True \
+                and api.audio_track_mapping(api._safe_call(clip, "GetAudioMapping")) == orig
+            if ok:
+                row["result"] = "read back differs from what was set (put back); the extra tracks are deleted after the append"
+            else:
+                row["result"] = "read back differs from what was set and the original mapping was NOT put back"
+                out["problems"].append(f"{row['source']}: the audio mapping was changed, did not read "
+                                       "back, and the original could not be put back; check its "
+                                       "audio mapping in the media pool")
         else:
             row["result"] = "remapped"
 
