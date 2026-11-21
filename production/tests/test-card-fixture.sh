@@ -102,6 +102,7 @@ before=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC
 copy_card panasonic; PD=$CD
 run safe "$PD" remote:bucket
 check "panasonic: full safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+"$O" lite-manifest "$T/lite" "$PD" > /dev/null
 run safe --lite "$T/lite" "$PD" remote:bucket
 check "panasonic: lite safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "full-tier record"'
 after=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort | shasum -a 256)

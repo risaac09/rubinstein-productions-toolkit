@@ -291,7 +291,7 @@ lite_tree() {
 lcard cl; mkdir "$T/al"
 run copy "$T/cl" "$T/al" --cam GH7
 ld=$(ls -d "$T/al"/GH7-*/); ld=${ld%/}
-lite_tree "$T/lite"
+lite_tree "$T/lite"; "$O" lite-manifest "$T/lite" "$ld" > /dev/null
 run safe --lite "$T/lite" "$ld" remote:bucket/lite
 check "lite tier passes and records the tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && grep -q "^tier lite" "$ld.offsite.txt" && grep -q "^lite_dir $TP/lite$" "$ld.offsite.txt"'
 rm -f "$ld.offsite.txt"
@@ -377,6 +377,7 @@ head -c 2000 /dev/urandom > "$c/AUDIO/T1.wav"; echo m > "$c/DCIM/A/V1.XML"
 mkdir "$T/amx"; run copy "$T/cmx" "$T/amx" --cam GH7
 xd=$(ls -d "$T/amx"/GH7-*/); xd=${xd%/}
 mkdir -p "$T/litemx/DCIM/A" "$T/litemx/DCIM/B"; echo l > "$T/litemx/DCIM/A/V1.mp4"; echo l > "$T/litemx/DCIM/B/R1.mp4"
+"$O" lite-manifest "$T/litemx" "$xd" > /dev/null
 run safe --lite "$T/litemx" "$xd" remote:bucket/lite
 check "mixed known types (video, braw+proxy, still, wav, xml) pass the lite tier" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
 c="$T/cmy"; cp -R "$T/cmx" "$c"; head -c 900 /dev/urandom > "$c/DCIM/A/CLIP.zzz"
@@ -433,7 +434,7 @@ lite_tree "$T/lite4"; echo lite > "$T/lite4/DCIM/A/C0099.mp4"
 run safe --lite "$T/lite4" "$l2" remote:bucket/lite
 check "a lite dir with an .mp4 no video on this card needs is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -qi "C0099.mp4" && [ ! -e "$l2.offsite.txt" ]'
 run safe "$l2" remote:bucket/x
-rm -rf "$T/lite4"; lite_tree "$T/lite4"
+rm -rf "$T/lite4"; lite_tree "$T/lite4"; "$O" lite-manifest "$T/lite4" "$l2" > /dev/null
 (cd "$T" && run safe --lite lite4 "$l2" remote:bucket/lite; echo "$rc" > "$T/rc.out"; printf '%s' "$out" > "$T/out.txt")
 check "a lite pass after a full pass keeps the full record" '[ "$(cat "$T/rc.out")" = 0 ] && grep -q "^tier full" "$l2.offsite.txt" && ! grep -q "^tier lite" "$l2.offsite.txt" && grep -q "earlier full-tier record" "$T/out.txt"'
 check "the SAFE output states the lite limit" 'grep -q "^limit: " "$T/out.txt"'
@@ -452,6 +453,42 @@ for f in X/A.mov.mp4 X/A.mp4.mp4 Y/B001.mp4 Y/b001.mp4; do echo lite > "$T/lited
 run safe --lite "$T/litedup" "$dd2" remote:bucket/lite
 check "videos that need the same lite file are blocked by name" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "X/A.mp4.mov" && printf "%s" "$out" | grep -q "X/A.mp4 " && [ ! -e "$dd2.offsite.txt" ]'
 check "a case-only name clash says what happened, not a filter" 'printf "%s" "$out" | grep -q "Y/B001.mov" && printf "%s" "$out" | grep -q "ignoring case" && ! printf "%s" "$out" | grep -q "a filter"'
+
+# 16. The lite copy names its card: a lite folder with another card's files is not safe (the clip
+#     numbers of two cards collide, so every name matches), and a lite copy with no manifest is not safe.
+lcard cardA; lcard cardB; echo more >> "$T/cardB/DCIM/A/C0001.XML"; mkdir "$T/aab"
+run copy "$T/cardA" "$T/aab" --cam GH7; run copy "$T/cardB" "$T/aab" --cam GH7
+idA=$("$O" id "$T/cardA" | awk '/card_id/ {print $2}'); idB=$("$O" id "$T/cardB" | awk '/card_id/ {print $2}')
+dA="$T/aab/GH7-$(printf '%s' "$idA" | cut -c1-6)"; dB="$T/aab/GH7-$(printf '%s' "$idB" | cut -c1-6)"
+mkdir -p "$T/lcb/DCIM/A" "$T/lcb/DCIM/B" "$T/lcb/DCIM/C"
+for f in DCIM/A/C0001.mp4 DCIM/A/c0002.mp4 DCIM/B/R001.mp4 DCIM/C/X1.mov.mp4 DCIM/C/X1.mxf.mp4; do head -c 400 /dev/urandom > "$T/lcb/$f"; done
+"$O" lite-manifest "$T/lcb" "$dB" > /dev/null 2>&1
+run safe --lite "$T/lcb" "$dA" remote:bucket/lite
+check "another card's lite folder (same names, own manifest) is not safe" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "NOT safe to format" && printf "%s" "$out" | grep -q "another card" && [ ! -e "$dA.offsite.txt" ]'
+run safe --lite "$T/lcb" "$dB" remote:bucket/lite
+check "the same lite folder with its own card's manifest is safe" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+rm -f "$dB.offsite.txt"
+M="$T/lcb/offload-lite-manifest.txt"
+mv "$M" "$M.keep"
+run safe --lite "$T/lcb" "$dB" remote:bucket/lite
+check "a lite copy with no manifest is not safe and says how to make one" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "NOT safe to format" && printf "%s" "$out" | grep -q "offload.sh lite-manifest" && [ ! -e "$dB.offsite.txt" ]'
+mv "$M.keep" "$M"
+sed 's/^card_id .*/card_id 000000000000/' "$M" > "$M.x" && mv "$M.x" "$M"
+run safe --lite "$T/lcb" "$dB" remote:bucket/lite
+check "a manifest naming another card is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "another card" && [ ! -e "$dB.offsite.txt" ]'
+"$O" lite-manifest "$T/lcb" "$dB" > /dev/null 2>&1
+head -c 400 /dev/urandom > "$T/lcb/DCIM/A/C0001.mp4"
+run safe --lite "$T/lcb" "$dB" remote:bucket/lite
+check "a lite file changed after the manifest was written is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "DCIM/A/C0001.mp4" && [ ! -e "$dB.offsite.txt" ]'
+"$O" lite-manifest "$T/lcb" "$dB" > /dev/null 2>&1
+awk -F'\t' 'BEGIN{OFS="\t"} $1=="file" && !d {$5="0000000000000000000000000000000000000000000000000000000000000000"; d=1} {print}' "$M" > "$M.x" && mv "$M.x" "$M"
+run safe --lite "$T/lcb" "$dB" remote:bucket/lite
+check "a manifest source hash that is not this card's is not safe" '[ "$rc" -eq 1 ] && printf "%s" "$out" | grep -q "does not match" && [ ! -e "$dB.offsite.txt" ]'
+run lite-manifest "$T/lcb" "$T/aab/nothing"
+check "lite-manifest for a copy that is not offloaded is refused" '[ "$rc" -eq 2 ]'
+rm -f "$M"
+run lite-manifest "$T/lcb"
+check "lite-manifest needs both directories" '[ "$rc" -eq 2 ]'
 
 # 13. Help is the header only.
 out=$("$O" --help)
