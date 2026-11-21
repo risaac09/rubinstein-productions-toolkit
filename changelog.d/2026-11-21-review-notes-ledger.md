@@ -1,0 +1,1 @@
+Add `python3 -m rpresolve.review_notes`, an offline ledger that turns rounds of client review markers into numbered notes, closes them against the cut that fixed them, and prints a change list by round.
