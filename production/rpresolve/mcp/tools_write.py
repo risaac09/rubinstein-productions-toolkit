@@ -592,7 +592,8 @@ def assemble_timeline(args, ctx):
                                         bed_dir=args.get("bed_dir") and _abs(args["bed_dir"], "bed_dir"),
                                         exclude=args.get("exclude") and _abs(args["exclude"], "exclude"),
                                         ledger=args.get("ledger") and _abs(args["ledger"], "ledger"),
-                                        draft=args.get("draft"), override=args.get("override"))
+                                        draft=args.get("draft"), override=args.get("override"),
+                                        fps=args.get("fps"))
         p = r["plan"]
         what = (f"{len(p['spans'])} item(s), {p['frames']} frames at {r['rate']} fps"
                 + (f", montage on V{p['track']} over {len(r['plates'])} plate(s) on V1 (the shot "
@@ -1455,6 +1456,11 @@ def register(registry):
                         "manifest's own folder. Refused inside a git working tree."},
             "width": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[0]},
             "height": {"type": "integer", "minimum": 16, "default": cmd_assemble.SIZE[1]},
+            "fps": {"type": "number", "exclusiveMinimum": 0,
+                    "description": "The new timeline's own frame rate (24, 29.97), set while it "
+                    "is empty and read back; the project's rate is left alone. Must equal the "
+                    "manifest's fps. Omitted, the timeline takes the project's rate and a "
+                    "manifest at another rate is refused."},
             **DRY_RUN},
          "required": ["project", "name", "manifest"], "additionalProperties": False},
         assemble_timeline, title="Assemble a method timeline", annotations=WRITE))
