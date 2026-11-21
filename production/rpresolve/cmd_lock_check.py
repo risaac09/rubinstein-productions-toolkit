@@ -25,6 +25,7 @@ Checks, in this order, stopping at the first that fails:
 Exit 0 pass, 1 fail, 2 usage.
 """
 
+import datetime
 import hashlib
 import json
 import os
@@ -33,6 +34,7 @@ import sys
 from fractions import Fraction
 
 from rpresolve import cli
+from rpresolve.markers import MARKER_COLORS
 
 NAME = "lock-check"
 HELP = "Offline: check a lock handoff folder and print PASS or the first FAIL"
@@ -43,12 +45,17 @@ OPTIONAL = ("guide.mov",)
 FOLDER = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*_lock_v\d\d")
 HEX = re.compile(r"[0-9a-f]{64}")
 SUMS_LINE = re.compile(r"([0-9a-f]{64})  (.+)")
-TC = r"(\d\d):(\d\d):(\d\d)([:;])(\d\d)"
-EDL_EVENT = re.compile(r"^\d{3,}\s+\S+\s+V\s+C\s+" + r"\s+".join([TC] * 4) + r"\s*$")
+TC = r"(\d\d):(\d\d):(\d\d):(\d\d)"
+EDL_EVENT = re.compile(r"^\d{3,}\s+\S+\s+(\S+)\s+C\s+" + r"\s+".join([TC] * 4) + r"\s*$")
+LOCKED_AT = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z")
 LANES = ("story:", "snd:", "fx:")
 MARKER_COLUMNS = ["frame", "timecode", "duration_frames", "name", "colour", "note", "fps"]
 CONSENT_COLUMNS = ["subject", "kind", "timeline_frame", "release_ref", "approved", "approved_by",
                    "approved_on"]
+
+
+PAPER_COLUMNS = ["order", "clip_id", "source_in", "source_out", "beat", "note"]
+CUE_COLUMNS = ["cue_id", "kind", "title", "timeline_frame", "duration_frames", "source", "licence_row"]
 
 
 class Fail(Exception):
@@ -90,6 +97,7 @@ def read_tsv(folder, name, columns):
     lines = text.split("\n")
     if lines and lines[-1] == "":
         lines.pop()
+    need(text != "", f"{name} is empty; a file with nothing to say is still written header only")
     need(lines and lines[0].split("\t") == columns,
          f"{name} header must be exactly: {chr(9).join(columns)}")
     rows = []
@@ -109,13 +117,8 @@ def rate_of(text, where):
     return r
 
 
-def tc_frames(h, m, s, sep, f, rate):
-    base = round(float(rate))
-    n = (int(h) * 3600 + int(m) * 60 + int(s)) * base + int(f)
-    if sep == ";":
-        mins = int(h) * 60 + int(m)
-        n -= (2 if base == 30 else 4) * (mins - mins // 10)
-    return n
+def tc_frames(h, m, s, f, rate):
+    return (int(h) * 3600 + int(m) * 60 + int(s)) * round(float(rate)) + int(f)
 
 
 def check_folder(path):
@@ -123,6 +126,13 @@ def check_folder(path):
     need(os.path.isdir(path), f"{path} is not a folder")
     base = os.path.basename(os.path.abspath(path))
     need(FOLDER.fullmatch(base), f"{base} is not named <slug>_lock_vNN (lowercase slug, two-digit version)")
+    d = os.path.realpath(path)
+    while True:
+        need(not os.path.lexists(os.path.join(d, ".git")), f"{base} sits inside a git working tree ({d}); a lock folder never does")
+        up = os.path.dirname(d)
+        if up == d:
+            break
+        d = up
 
 
 def check_lock(folder):
@@ -130,6 +140,16 @@ def check_lock(folder):
     lock = read_json(folder, "lock.json")
     need(isinstance(lock, dict), "lock.json is not a JSON object")
     files, tl = lock.get("files"), lock.get("timeline")
+    need(lock.get("schema") == {"name": "shared.lock-handoff", "version": 1},
+         'lock.json schema must be {"name": "shared.lock-handoff", "version": 1}')
+    la = lock.get("locked_at")
+    need(isinstance(la, str) and LOCKED_AT.fullmatch(la), "lock.json locked_at is not ISO 8601 UTC (YYYY-MM-DDTHH:MM:SSZ)")
+    try:
+        datetime.datetime.strptime(la[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        raise Fail("lock.json locked_at is not a real date and time")
+    need(isinstance(lock.get("project"), str) and is_int(lock.get("lock_version")) and 1 <= lock["lock_version"] <= 99,
+         "lock.json project or lock_version is missing or invalid")
     need(isinstance(files, dict), "lock.json has no files object")
     need(isinstance(tl, dict), "lock.json has no timeline object")
     for n, h in files.items():
@@ -143,6 +163,12 @@ def check_lock(folder):
     need(isinstance(lock.get("items_sha256"), str) and HEX.fullmatch(lock["items_sha256"]),
          "lock.json items_sha256 is not 64 lowercase hex")
     return lock
+
+
+def check_name(folder, lock):
+    want = f"{lock['project']}_lock_v{lock['lock_version']:02d}"
+    got = os.path.basename(os.path.abspath(folder))
+    need(got == want, f"folder name {got} does not match lock.json project and lock_version ({want})")
 
 
 def check_listing(folder, files):
@@ -197,14 +223,22 @@ def frames(v, rate, where):
 
 
 def otio_items(doc, rate):
-    """(items, duration, start_frames): video items as the spec's items hash builds them."""
+    """(items, duration, start_frames, other_tracks): video items as the spec's items hash builds
+    them; duration is the longest video track; other_tracks is [(name, frames)] for the rest."""
     need(isinstance(doc, dict) and isinstance(doc.get("tracks"), dict)
          and isinstance(doc["tracks"].get("children"), list), "timeline.otio has no tracks.children list")
     start = frames(doc.get("global_start_time"), rate, "global_start_time")
-    items, duration, track_no = [], 0, 0
+    items, duration, track_no, longest, other = [], 0, 0, 0, []
     for tr in doc["tracks"]["children"]:
         need(isinstance(tr, dict) and isinstance(tr.get("children"), list), "timeline.otio has a malformed track")
         if tr.get("kind") != "Video":
+            end = 0
+            for c in tr["children"]:
+                rng = c.get("source_range") if isinstance(c, dict) else None
+                if isinstance(rng, dict):
+                    end += frames(rng.get("duration"), rate, "duration")
+            longest = max(longest, end)
+            other.append((tr.get("name") or tr.get("kind"), end))
             continue
         track_no += 1
         t, index = 0, 0
@@ -227,34 +261,37 @@ def otio_items(doc, rate):
             t += d
         duration = max(duration, t)
     need(items, "timeline.otio has no video items")
-    return items, duration, start
+    return items, duration, start, other
 
 
-def edl_duration(text, rate, start_tc):
-    last = None
+def edl_events(text, rate, start_tc):
+    """[(record_in, record_out)] of the V events, in file order, from the start timecode."""
+    need(not re.search(r"^FCM:\s*DROP", text, re.M), "timeline.edl is drop-frame; the spec gives HH:MM:SS:FF only")
+    out = []
     for line in text.splitlines():
-        m = EDL_EVENT.match(line)
-        if m:
-            last = m.groups()[15:20]
-    need(last, "timeline.edl has no V1 event")
-    h, mi, s, sep, f = last
-    return tc_frames(h, mi, s, sep, f, rate) - start_tc
+        if re.match(r"^\d{3,}\s", line):
+            m = EDL_EVENT.match(line)
+            need(m, f"timeline.edl event line is not HH:MM:SS:FF CMX 3600: {line.strip()[:60]!r}")
+            if m.group(1) == "V":
+                g = m.groups()[1:]
+                out.append((tc_frames(*g[8:12], rate) - start_tc, tc_frames(*g[12:16], rate) - start_tc))
+    need(out, "timeline.edl has no V1 event")
+    return out
 
 
-def check_markers(folder, rate, fps, drop):
+def check_markers(folder, rate, fps):
     from rpresolve import interchange
     prev = None
     for n, r in read_tsv(folder, "markers.tsv", MARKER_COLUMNS):
         w = f"markers.tsv line {n}"
         need(re.fullmatch(r"\d+", r["frame"]), f"{w}: frame {r['frame']!r} is not a non-negative integer")
         fr = int(r["frame"])
-        need(r["timecode"] == interchange.timecode(fr, rate, drop),
+        need(r["timecode"] == interchange.timecode(fr, rate, False),
              f"{w}: timecode {r['timecode']!r} does not match frame {fr} at {fps}")
         need(re.fullmatch(r"\d+", r["duration_frames"]) and int(r["duration_frames"]) >= 1,
              f"{w}: duration_frames {r['duration_frames']!r} is not an integer of 1 or more")
-        need(r["name"].startswith(LANES) and len(r["name"].split(":", 1)[1]) > 0,
-             f"{w}: name {r['name']!r} must be a lane prefix ({', '.join(LANES)}) then text")
-        need(r["colour"] != "", f"{w}: colour is empty")
+        need(r["name"].startswith(LANES), f"{w}: name {r['name']!r} must start with a lane prefix ({', '.join(LANES)})")
+        need(r["colour"] in MARKER_COLORS, f"{w}: colour {r['colour']!r} is not a Resolve marker colour")
         need(r["fps"] == fps, f"{w}: fps {r['fps']!r} is not the timeline rate {fps}")
         key = (fr, r["name"])
         need(prev is None or prev <= key, f"{w}: rows are not sorted by frame, then name")
@@ -270,31 +307,43 @@ def verify(folder):
     check_folder(folder)
     lock = check_lock(folder)
     files, tl = lock["files"], lock["timeline"]
+    check_name(folder, lock)
     check_listing(folder, files)
     check_hashes(folder, check_sums(folder, files), files)
     rate = rate_of(tl["fps"], "lock.json")
     start = re.fullmatch(TC, tl["start_timecode"])
     need(start, f"lock.json start_timecode {tl['start_timecode']!r} is not HH:MM:SS:FF")
-    start_frames = tc_frames(*start.groups()[:4], start.group(5), rate)
+    start_frames = tc_frames(*start.groups(), rate)
     doc = read_json(folder, "timeline.otio")
-    items, otio_dur, otio_start = otio_items(doc, rate)
+    items, otio_dur, otio_start, other = otio_items(doc, rate)
     need(otio_start == start_frames, "timeline.otio global_start_time does not equal lock.json start_timecode")
     edl_text = read_bytes(folder, "timeline.edl").decode("utf-8", "replace")
     sound = read_json(folder, "sound-handoff.json")
     need(isinstance(sound, dict), "sound-handoff.json is not a JSON object")
+    ev = edl_events(edl_text, rate, start_frames)
     durs = {"lock.json": tl["duration_frames"], "timeline.otio": otio_dur,
-            "timeline.edl": edl_duration(edl_text, rate, start_frames),
+            "timeline.edl": ev[-1][1],
             "sound-handoff.json": sound.get("duration_frames")}
     need(all(is_int(v) for v in durs.values()) and len(set(durs.values())) == 1,
          "duration_frames disagrees: " + ", ".join(f"{k} {v}" for k, v in durs.items()))
+    v1 = [(i["record_in"], i["record_out"]) for i in items if i["track"] == 1]
+    need(len(ev) == len(v1), f"timeline.edl has {len(ev)} V1 events, timeline.otio has {len(v1)} V1 items")
+    for n, (e, o) in enumerate(zip(ev, v1), 1):
+        need(e == o, f"timeline.edl V1 event {n} runs record frames {e[0]}-{e[1]}, timeline.otio item {n} runs {o[0]}-{o[1]}")
+    need(sound.get("schema") == {"name": "sound.handoff", "version": 1},
+         'sound-handoff.json schema must be {"name": "sound.handoff", "version": 1}')
+    for name, n in other:
+        need(n <= tl["duration_frames"], f"timeline.otio track {name} runs {n} frames, longer than duration_frames {tl['duration_frames']}")
     for k, lk in (("timeline", "name"), ("fps", "fps"), ("start_timecode", "start_timecode")):
         need(sound.get(k) == tl[lk], f"sound-handoff.json {k} {sound.get(k)!r} does not equal lock.json timeline.{lk} {tl[lk]!r}")
     ordered = sorted(items, key=lambda i: (i["track"], i["record_in"]))
-    got = hashlib.sha256(json.dumps(ordered, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    got = hashlib.sha256(json.dumps(ordered, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
     need(got == lock["items_sha256"], "items_sha256 does not match the items rebuilt from timeline.otio")
     check_consent(folder)
-    drop = bool(re.search(r"^FCM:\s*DROP FRAME", edl_text, re.M))
-    check_markers(folder, rate, tl["fps"], drop)
+    check_markers(folder, rate, tl["fps"])
+    for name, cols in (("paper-edit.tsv", PAPER_COLUMNS), ("cue-sheet.tsv", CUE_COLUMNS)):
+        read_tsv(folder, name, cols)
 
 
 def check(folder):

@@ -242,7 +242,6 @@ class Markers(Base):
         self.marker_fault(r(tc="00:00:00:01"), "timecode")
         self.marker_fault(r(d="0"), "duration_frames")
         self.marker_fault(r(n="other:a"), "name")
-        self.marker_fault(r(n="story:"), "name")
         self.marker_fault(r(c=""), "colour")
         self.marker_fault(r(fps="25"), "fps")
         self.marker_fault(r(fr="24", tc="00:00:01:00") + r(fr="0"), "sorted")
@@ -432,6 +431,148 @@ class Hostile(Base):
                 s[key] = val
                 self.rehash(f, "sound-handoff.json", json.dumps(s).encode())
                 self.fails(f, key)
+
+
+class Review(Base):
+    """Faults a reviewer found PASSing."""
+    def lock_edit(self, f, fn):
+        lock = json.loads((f / "lock.json").read_text())
+        fn(lock)
+        (f / "lock.json").write_text(json.dumps(lock, indent=2))
+        self.rehash(f, "lock.json")
+
+    def test_folder_name_must_match_project_and_version(self):
+        for slug in ("example-slug_lock_v02", "other-slug_lock_v01"):
+            with self.subTest(slug=slug), tempfile.TemporaryDirectory() as d:
+                self.fails(build(d, slug=slug), "project", "lock_version")
+
+    def test_folder_name_with_lock_version_two_digits(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = build(d, slug="example-slug_lock_v07")
+            self.lock_edit(f, lambda l: l.update(lock_version=7))
+            self.assertIsNone(lc.check(str(f)))
+
+    def test_folder_inside_git_tree(self):
+        (Path(self.tmp) / ".git").mkdir()
+        f = build(self.tmp)
+        self.fails(f, "git working tree")
+
+    def test_folder_inside_git_tree_via_symlinked_path(self):
+        real = Path(self.tmp) / "repo"
+        real.mkdir()
+        (real / ".git").write_text("gitdir: x")
+        f = build(real)
+        link = Path(self.tmp) / "link"
+        link.symlink_to(real)
+        self.fails(link / f.name, "git working tree")
+
+    def test_marker_colour_must_be_a_resolve_colour(self):
+        for c in ("NotAColour", "blue", "BLUE"):
+            with self.subTest(c=c), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tstory:a\t{c}\t\t{FPS}\n").encode())
+                self.fails(f, "markers.tsv", "colour")
+
+    def test_marker_name_text_after_prefix_may_be_empty_and_note_empty(self):
+        f = build(self.tmp)
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"0\t00:00:00:00\t1\tfx:\tRed\t\t{FPS}\n").encode())
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_marker_fields_with_leading_zero_frame_ok_but_float_fails(self):
+        f = build(self.tmp)
+        self.rehash(f, "markers.tsv", (MARKER_HEAD + f"1.5\t00:00:00:01\t1\tstory:a\tRed\t\t{FPS}\n").encode())
+        self.fails(f, "markers.tsv", "frame")
+
+    def test_edl_cut_to_last_event_fails(self):
+        f = build(self.tmp)
+        lines = (f / "timeline.edl").read_text().splitlines()
+        keep = [l for l in lines[:3]] + lines[-4:]   # header + the last V and AA events
+        self.rehash(f, "timeline.edl", ("\n".join(keep) + "\n").encode())
+        self.fails(f, "timeline.edl", "events")
+
+    def test_edl_event_moved_fails(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("01:00:02:00 01:00:03:12", "01:00:02:01 01:00:03:12", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_edl_drop_frame_is_refused(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("NON-DROP FRAME", "DROP FRAME")
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "drop-frame")
+
+    def test_edl_semicolon_timecode_is_refused(self):
+        f = build(self.tmp)
+        t = (f / "timeline.edl").read_text().replace("01:00:03:12 01:00:05:12", "01:00:03;12 01:00:05;12", 1)
+        self.rehash(f, "timeline.edl", t.encode())
+        self.fails(f, "timeline.edl")
+
+    def test_empty_tsv_of_every_kind_fails(self):
+        for name in ("paper-edit.tsv", "cue-sheet.tsv", "markers.tsv", "consent-list.tsv"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.rehash(f, name, b"")
+                self.fails(f, name)
+
+    def test_header_only_paper_edit_and_cue_sheet_pass_and_wrong_header_fails(self):
+        f = build(self.tmp)
+        self.rehash(f, "paper-edit.tsv", b"a\tb\n")
+        self.fails(f, "paper-edit.tsv", "header")
+
+    def test_schema_and_locked_at(self):
+        cases = [lambda l: l["schema"].update(name="other"), lambda l: l["schema"].update(version=2),
+                 lambda l: l.pop("schema"), lambda l: l.update(schema=[]),
+                 lambda l: l.update(locked_at="yesterday"), lambda l: l.update(locked_at="2026-11-02T15:00:00"),
+                 lambda l: l.update(locked_at="2026-11-02T15:00:00+01:00"), lambda l: l.update(locked_at="2026-13-02T15:00:00Z"),
+                 lambda l: l.pop("locked_at"), lambda l: l.update(locked_at=5)]
+        for i, fn in enumerate(cases):
+            with self.subTest(i=i), tempfile.TemporaryDirectory() as d:
+                f = build(d)
+                self.lock_edit(f, fn)
+                self.fails(f, "lock.json")
+
+    def test_sound_schema(self):
+        f = build(self.tmp)
+        s = json.loads((f / "sound-handoff.json").read_text())
+        s["schema"] = {"name": "sound.handoff", "version": 9}
+        self.rehash(f, "sound-handoff.json", json.dumps(s).encode())
+        self.fails(f, "sound-handoff.json", "schema")
+
+    def test_audio_track_longer_than_duration_fails(self):
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        rt = {"OTIO_SCHEMA": "RationalTime.1", "rate": 24000 / 1001}
+        d["tracks"]["children"].append({"OTIO_SCHEMA": "Track.1", "kind": "Audio", "name": "A9", "children": [
+            {"OTIO_SCHEMA": "Clip.2", "name": "x", "source_range": {
+                "start_time": dict(rt, value=0), "duration": dict(rt, value=99999)}}]})
+        self.rehash(f, "timeline.otio", json.dumps(d).encode())
+        self.fails(f, "A9", "longer than duration_frames")
+
+    def test_items_hash_is_over_utf8_not_ascii_escapes(self):
+        def rename(files, lock, sound):
+            pass
+        f = build(self.tmp)
+        d = json.loads((f / "timeline.otio").read_text())
+        d["tracks"]["children"][0]["children"][0]["name"] = "caf\u00e9 \u65e5\u672c.mov"
+        items, _, _, _ = lc.otio_items(d, lc.Fraction(FPS))
+        want = sha(json.dumps(sorted(items, key=lambda i: (i["track"], i["record_in"])), sort_keys=True,
+                              separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        lock = json.loads((f / "lock.json").read_text())
+        lock["items_sha256"] = want
+        (f / "lock.json").write_text(json.dumps(lock, indent=2))
+        self.rehash(f, "timeline.otio", json.dumps(d, ensure_ascii=False).encode("utf-8"))
+        self.assertIsNone(lc.check(str(f)))
+
+    def test_pinned_item_reading(self):
+        """Spec question: what the checker rebuilds today. Change it only on purpose."""
+        f = build(self.tmp)
+        items, dur, start, _ = lc.otio_items(json.loads((f / "timeline.otio").read_text()), lc.Fraction(FPS))
+        self.assertEqual((dur, start), (132, 86400))
+        self.assertEqual([(i["track"], i["index"], i["record_in"], i["record_out"], i["source_in"], i["source_out"],
+                           i["clip_id"]) for i in items],
+                         [(1, 1, 0, 48, 24, 72, "CARD-a/P1000110"), (1, 2, 48, 84, 120, 156, "CARD-a/P1000111"),
+                          (1, 3, 84, 132, 192, 240, "CARD-b/P1000112")])
 
 
 class Command(Base):
