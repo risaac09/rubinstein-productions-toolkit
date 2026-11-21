@@ -547,6 +547,57 @@ class TestServerInfo(unittest.TestCase):
         self.assertEqual(tools_read._mounts("/no/such/volumes"), ["none"])
 
 
+class TestScriptingChangelog(unittest.TestCase):
+    """resolve_status: Blackmagic's dated scripting changelog against the toolkit's audit."""
+
+    def scripting(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "CHANGELOG.md")
+            if text is not None:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+            with mock.patch.object(tools_read, "SCRIPTING_CHANGELOG", path):
+                return tools_read._scripting_info()
+
+    def doc(self, date, version="21.3"):
+        return f"# DaVinci Resolve Scripting API Changelog\n\n*Last Updated: {date}*\n\n## {version}\n- x\n"
+
+    def test_a_newer_date_is_changed(self):
+        s = self.scripting(self.doc("5 Dec 2026", "21.3"))
+        self.assertTrue(s["changed"])
+        self.assertEqual((s["last_updated"], s["newest_version"]), ("5 Dec 2026", "21.3"))
+        self.assertEqual((s["audited_date"], s["audited_version"]),
+                         (tools_read.SCRIPTING_AUDITED_DATE, tools_read.SCRIPTING_AUDITED_VERSION))
+
+    def test_the_same_or_an_older_date_is_unchanged(self):
+        self.assertIs(self.scripting(self.doc(tools_read.SCRIPTING_AUDITED_DATE))["changed"], False)
+        self.assertIs(self.scripting(self.doc("1 Jan 2026"))["changed"], False)
+
+    def test_a_missing_file_cannot_be_judged(self):
+        self.assertIsNone(self.scripting(None)["changed"])
+
+    def test_a_malformed_file_cannot_be_judged(self):
+        self.assertIsNone(self.scripting("nothing useful\n")["changed"])
+        self.assertIsNone(self.scripting(self.doc("someday"))["changed"])
+
+    def test_the_summary_names_both_dates_only_when_changed(self):
+        class Session:
+            def get(self):
+                from rpresolve import api
+                raise api.ResolveAPIError("down")
+        for date, expect in (("5 Dec 2026", True), ("4 Nov 2026", False)):
+            with tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "CHANGELOG.md")
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self.doc(date))
+                with mock.patch.object(tools_read, "SCRIPTING_CHANGELOG", path):
+                    r = tools_read.resolve_status({}, ToolContext(session=Session()))
+            self.assertEqual("scripting changelog" in r["summary"], expect)
+            if expect:
+                self.assertIn("5 Dec 2026", r["summary"])
+                self.assertIn(tools_read.SCRIPTING_AUDITED_DATE, r["summary"])
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_server_without_resolve(self):
         env = dict(os.environ, RPRESOLVE_MCP_NO_RESOLVE="1")

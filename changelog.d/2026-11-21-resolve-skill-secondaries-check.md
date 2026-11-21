@@ -1,0 +1,1 @@
+The resolve-media-lane skill now runs a secondaries check on every grade, title and build plan: windows, tracking, Magic Mask, keyed looks and ResolveFX each get a yes or no with a reason, and every yes becomes a computer-use UI step.
