@@ -17,6 +17,18 @@ uncut, should show one cut fewer than the list has shots.
 
 Run from production/:
     python3 -m rpresolve.shots SOURCE --out SHOTS.csv|SHOTS.tsv [--threshold 10]
+        [--backend scdet|pyscenedetect]
+
+Backends for hard cuts: scdet (the default, as above) or pyscenedetect, the
+PySceneDetect command line (`scenedetect`, adaptive detector, downscale 2),
+which the 2026-10-31 trial on a 26-cut render found better (24 of 26 matched,
+none false, against scdet's 14 and 50). It is a separate program, never
+imported: install it with `uv tool install 'scenedetect[opencv]==0.7.2'`, which
+puts `scenedetect` on PATH. --threshold applies to scdet only. The
+dissolve pass below runs after either backend; with pyscenedetect a cut wins
+over a dissolve that holds it (with scdet the dissolve wins, as below). On
+handheld footage the dissolve pass calls motion a dissolve: on the trial's
+render it found 56 where there were none, so pass --no-dissolves there.
 
 Dissolves: scdet scores frame to frame, so a slow cross-dissolve seldom
 crosses its threshold. A second pass reads the clip as 32x18 grey frames and
@@ -38,9 +50,13 @@ proposes; the editor's own shot list outranks it.
 """
 
 import argparse
+import csv
+import io
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 
 import numpy as np
 
@@ -57,6 +73,8 @@ MAX_OFF = 0.25      # a window frame may sit this far off the blend line, as a s
 MAX_NOISE = 1.0     # grey levels a frame step can move on noise alone
 MAX_DISSOLVE_S = 3600.0  # longest file the dissolve pass holds in memory (about 200 MB of grey frames at 25 fps, a few times over in find_dissolves)
 MAX_STEP = 0.35     # no single frame step may be more than this share of the whole move
+BACKENDS = ("scdet", "pyscenedetect")
+PSD_ARGS = ("-d", "2", "-q", "detect-adaptive")  # the 2026-10-31 trial's settings
 
 
 class TooLong(dc.CheckError):
@@ -66,6 +84,48 @@ class TooLong(dc.CheckError):
 def scdet_filter(threshold=THRESHOLD):
     """The scdet filter exactly as qc and rhythm attach it."""
     return f"scdet=t={threshold}"
+
+
+def scenedetect_exe():
+    """The PySceneDetect command line, `scenedetect` on PATH. Raises dc.ToolMissing."""
+    exe = shutil.which("scenedetect")
+    if not exe:
+        raise dc.ToolMissing("PySceneDetect is not on PATH: uv tool install 'scenedetect[opencv]==0.7.2' "
+                             "(it lands in ~/.local/bin); or use --backend scdet.")
+    return exe
+
+
+def parse_scene_list(text):
+    """Cut times in seconds (the start of every scene after the first) from `scenedetect list-scenes`
+    CSV, which may open with a "Timecode List:" row before its header."""
+    lines = text.splitlines()
+    start = next((i for i, l in enumerate(lines) if l.startswith("Scene Number")), None)
+    if start is None:
+        raise dc.CheckError("PySceneDetect wrote no scene list header.")
+    rows = list(csv.DictReader(io.StringIO("\n".join(lines[start:]))))
+    try:
+        return [float(r["Start Time (seconds)"]) for r in rows[1:]]
+    except (KeyError, TypeError, ValueError):  # another PySceneDetect version's columns
+        raise dc.CheckError("PySceneDetect's scene list has no readable 'Start Time (seconds)' column; "
+                            "this reads version 0.7.2's list-scenes CSV.")
+
+
+def pyscenedetect_cuts(source):
+    """Hard-cut times in seconds from PySceneDetect's adaptive detector. Raises dc.ToolMissing or
+    dc.CheckError."""
+    exe = scenedetect_exe()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            proc = subprocess.run([exe, "-i", os.path.abspath(source), *PSD_ARGS, "list-scenes", "-o", tmp,
+                                   "-f", "scenes.csv"], stdin=subprocess.DEVNULL, capture_output=True,
+                                  text=True, timeout=dc.READ_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            raise dc.CheckError(f"PySceneDetect timed out reading {source}")
+        out = os.path.join(tmp, "scenes.csv")
+        if proc.returncode != 0 or not os.path.isfile(out):
+            raise dc.CheckError(f"PySceneDetect could not read {source}: {proc.stderr.strip()[-300:]}")
+        with open(out, encoding="utf-8") as f:
+            return parse_scene_list(f.read())
 
 
 def grey_frames(source, total):
@@ -132,8 +192,8 @@ def find_dissolves(frames, fps):
     return out
 
 
-def build(source, threshold=THRESHOLD, dissolves=True):
-    """{file, threshold, fps, duration_s, cuts, dissolves, shots} for a video file;
+def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
+    """{file, backend, threshold, fps, duration_s, cuts, dissolves, shots} for a video file;
     shots are {shot, in, out, duration, into, blend_in, blend_out}. Raises
     dc.ToolMissing or dc.CheckError."""
     dc.check_tools(ffmpeg=True)
@@ -152,18 +212,28 @@ def build(source, threshold=THRESHOLD, dissolves=True):
         raise TooLong(f"{source} runs {total / 3600:.1f} h; the dissolve pass holds every frame in memory "
                             f"and stops above {MAX_DISSOLVE_S / 3600:g} h. Pass --no-dissolves for cuts only, "
                             f"or split the file first.")
-    proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", dc._src(source),
-                    "-map", "0:v:0", "-vf", scdet_filter(threshold), "-f", "null", "-"],
-                   dc.READ_TIMEOUT_S)
-    if proc.returncode != 0:
-        raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
-    cuts = sorted({t for t in qc.parse_scdet(proc.stderr, threshold) if 0 < t < total})
+    if backend not in BACKENDS:
+        raise ValueError(f"backend must be one of {', '.join(BACKENDS)}, not {backend!r}")
+    if backend == "pyscenedetect":
+        found_cuts = pyscenedetect_cuts(source)
+    else:
+        proc = dc._run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-i", dc._src(source),
+                        "-map", "0:v:0", "-vf", scdet_filter(threshold), "-f", "null", "-"],
+                       dc.READ_TIMEOUT_S)
+        if proc.returncode != 0:
+            raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
+        found_cuts = qc.parse_scdet(proc.stderr, threshold)
+    cuts = sorted({t for t in found_cuts if 0 < t < total})
     found = []
     if dissolves and rate:
         found = find_dissolves(grey_frames(source, total), float(rate))
-        # scdet can catch one frame of a quick dissolve: that is the dissolve, not a cut
-        cuts = [c for c in cuts if not any(d["start"] - 0.5 / float(rate) <= c <= d["end"] + 0.5 / float(rate)
-                                           for d in found)]
+        half = 0.5 / float(rate)
+        if backend == "pyscenedetect":
+            # its cuts are the confident ones: a "dissolve" holding one is handheld motion around a cut
+            found = [d for d in found if not any(d["start"] - half <= c <= d["end"] + half for c in cuts)]
+        else:
+            # scdet can catch one frame of a quick dissolve: that is the dissolve, not a cut
+            cuts = [c for c in cuts if not any(d["start"] - half <= c <= d["end"] + half for d in found)]
     bounds = sorted([(c, None) for c in cuts] + [((d["start"] + d["end"]) / 2, d) for d in found],
                     key=lambda b: b[0])
     bounds = [b for b in bounds if 0 < b[0] < total]
@@ -174,7 +244,7 @@ def build(source, threshold=THRESHOLD, dissolves=True):
         shots.append({"shot": i + 1, "in": round(a, 3), "out": round(b, 3), "duration": round(b - a, 3),
                       "into": "start" if not i else "dissolve" if d else "cut",
                       "blend_in": d["start"] if d else "", "blend_out": d["end"] if d else ""})
-    return {"file": os.path.abspath(source), "threshold": threshold,
+    return {"file": os.path.abspath(source), "backend": backend, "threshold": threshold,
             "fps": round(float(rate), 3) if rate else None, "duration_s": round(total, 3),
             "cuts": [round(c, 3) for c in cuts], "dissolves": found, "shots": shots}
 
@@ -203,7 +273,9 @@ def summary(report):
                                                         if len(cuts) > 8 else "")
     blends = ", ".join(f"frames {d['start_frame']}-{d['end_frame']} ({d['start']:.2f}-{d['end']:.2f}s)" for d in diss[:8])
     return (f"shots: {len(report['shots'])} shot(s), {len(cuts)} cut(s), {len(diss)} dissolve(s) in "
-            f"{report['duration_s']:g} s at scdet t={report['threshold']:g}"
+            f"{report['duration_s']:g} s "
+            + ("by PySceneDetect (adaptive)" if report.get("backend") == "pyscenedetect"
+               else f"at scdet t={report['threshold']:g}")
             + (f" (cuts at {shown})" if cuts else "") + (f" (dissolves at {blends})" if diss else "")
             + ". A proposal: check the cuts by eye.")
 
@@ -215,6 +287,8 @@ def add_arguments(p):
     p.add_argument("--threshold", type=float, default=THRESHOLD,
                    help=f"scdet score that makes a cut (default {THRESHOLD:g}, as qc)")
     p.add_argument("--no-dissolves", action="store_true", help="skip the dissolve pass (cuts only, as before)")
+    p.add_argument("--backend", choices=BACKENDS, default="scdet",
+                   help="hard-cut detector: scdet (default) or pyscenedetect (the scenedetect program, adaptive)")
     return p
 
 
@@ -225,7 +299,7 @@ def run(args):
             raise paths.OutputRefused(problem)
         if os.path.realpath(args.out) == os.path.realpath(args.source):
             raise paths.OutputRefused(f"{args.out} is the source; the shot list never replaces it")
-        report = build(args.source, args.threshold, not args.no_dissolves)
+        report = build(args.source, args.threshold, not args.no_dissolves, args.backend)
         write(report, args.out)
     except (dc.ToolMissing, dc.CheckError, OSError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

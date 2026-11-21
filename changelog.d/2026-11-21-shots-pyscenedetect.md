@@ -1,0 +1,1 @@
+shots takes --backend pyscenedetect: hard cuts from PySceneDetect's adaptive detector (24 of 26 on the trial render, none false), called as a separate program; its cuts outrank an overlapping dissolve.
