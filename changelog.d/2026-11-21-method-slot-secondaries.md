@@ -1,0 +1,1 @@
+An edit method's slot takes an optional `secondaries` list of `{kind, target, why}` (window, qualifier, magic-mask, tracker or resolvefx), validated, and `to_manifest` turns each into a Color page entry in `ui_steps` for computer use, so the secondaries check from the resolve-media-lane skill lands in the build plan. Methods without it stay valid.
