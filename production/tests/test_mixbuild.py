@@ -472,7 +472,7 @@ class DelayCrash(unittest.TestCase):
     anlmdn after writing all its output."""
     LAG = 37
 
-    def run_with(self, code, short=False):
+    def run_with(self, code, short=False, bad=None, cached=False):
         calls = []
 
         def fake(cmd, input=None, **kw):
@@ -481,10 +481,16 @@ class DelayCrash(unittest.TestCase):
             y = np.concatenate([np.zeros(self.LAG, "<f4"), x])[:len(x)]
             if short:
                 y = y[:len(y) // 4]
+            if bad == "nan":
+                y = y.copy()
+                y[100] = np.nan
+            elif bad == "zero":
+                y = np.zeros_like(y)
             return subprocess.CompletedProcess(cmd, code, y.tobytes(), b"boom")
         with mock.patch.object(mb.subprocess, "run", fake), contextlib.redirect_stderr(io.StringIO()) as err:
             try:
-                return mb.delay_samples.__wrapped__("anlmdn=s=1", 48000), calls, err.getvalue()
+                fn = mb.delay_samples if cached else mb.delay_samples.__wrapped__
+                return fn("anlmdn=s=1", 48000), calls, err.getvalue()
             except mb.MixError as e:
                 return e, calls, err.getvalue()
 
@@ -499,6 +505,16 @@ class DelayCrash(unittest.TestCase):
         self.assertIsInstance(e, mb.MixError)
         self.assertIn("signal 11", str(e))
         self.assertEqual(len(calls), mb.DELAY_TRIES)
+
+    def test_a_crash_with_nan_or_silent_output_is_refused_and_not_cached(self):
+        mb.delay_samples.cache_clear()
+        self.addCleanup(mb.delay_samples.cache_clear)
+        for bad in ("nan", "zero"):
+            e, _, _ = self.run_with(-11, bad=bad, cached=True)
+            self.assertIsInstance(e, mb.MixError, bad)
+            self.assertIn("NaN or silence", str(e))
+        lag, _, _ = self.run_with(-11, cached=True)  # a later good run is measured, not a cached 0
+        self.assertEqual(lag, self.LAG)
 
     def test_an_error_exit_fails_at_once(self):
         e, calls, _ = self.run_with(1)

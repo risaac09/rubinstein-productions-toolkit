@@ -3,7 +3,9 @@ rpresolve.mcp.tools_read: tools that read the open Resolve project and
 change nothing, not even the UI (no page or timeline switches).
 """
 
+import datetime
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +66,32 @@ def _server_info():
     return info
 
 
+SCRIPTING_CHANGELOG = ("/Library/Application Support/Blackmagic Design/DaVinci Resolve/"
+                       "Developer/Scripting/CHANGELOG.md")
+# What the toolkit's API knowledge was last audited against; update both after a scripting audit.
+SCRIPTING_AUDITED_DATE, SCRIPTING_AUDITED_VERSION = "4 Nov 2026", "21.2"
+
+
+def _scripting_info():
+    """Blackmagic's scripting changelog date against the audit. A file read, never Resolve;
+    `changed` is None when the file is missing or unparseable."""
+    info = {"last_updated": None, "newest_version": None, "audited_date": SCRIPTING_AUDITED_DATE,
+            "audited_version": SCRIPTING_AUDITED_VERSION, "changed": None}
+    try:
+        with open(SCRIPTING_CHANGELOG, encoding="utf-8") as f:
+            text = f.read()
+        date = re.search(r"^\*Last Updated:\s*(.+?)\s*\*\s*$", text, re.M)
+        version = re.search(r"^##\s+(\S+)", text, re.M)
+        info["last_updated"] = date and date.group(1)
+        info["newest_version"] = version and version.group(1)
+        fmt = "%d %b %Y"
+        info["changed"] = (datetime.datetime.strptime(info["last_updated"], fmt)
+                           > datetime.datetime.strptime(SCRIPTING_AUDITED_DATE, fmt))
+    except (OSError, ValueError, TypeError):
+        pass  # missing, unreadable or malformed: staleness cannot be judged
+    return info
+
+
 def _tools_available():
     def has(path):
         return os.access(path, os.X_OK)
@@ -80,7 +108,8 @@ def _tools_available():
 def resolve_status(args, ctx):
     """Server, Resolve and open-project state. Succeeds with Resolve closed."""
     out = {"summary": "", "server": _server_info(), "resolve": {"connected": False},
-           "project": None, "tools": _tools_available()}
+           "project": None, "tools": _tools_available(),
+           "scripting": _scripting_info()}
     try:
         with api.ResolveLock(timeout=STATUS_LOCK_WAIT):
             resolve = ctx.session.get()
@@ -118,6 +147,9 @@ def resolve_status(args, ctx):
     elif out["server"]["stale"]:
         out["summary"] += (f"; the server loaded {out['server']['loaded_commit']} but the checkout "
                            f"is at {out['server']['commit']}: restart it")
+    if out["scripting"]["changed"]:
+        out["summary"] += (f"; the Resolve scripting changelog ({out['scripting']['last_updated']}) is "
+                           f"newer than the toolkit's audit ({SCRIPTING_AUDITED_DATE})")
     if out["server"].get("dirty"):
         out["summary"] += "; the toolkit checkout has uncommitted changes"
     return out

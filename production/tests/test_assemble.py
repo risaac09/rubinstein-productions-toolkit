@@ -1510,7 +1510,7 @@ class TestCameraLevel(Base):
 
     def test_a_gain_that_would_clip_is_refused_in_the_dry_run(self):
         self.measured = {"integrated_lufs": -53.0, "true_peak_dbtp": -20.0}
-        with self.assertRaisesRegex(Refused, "above the -1 dBTP ceiling"):
+        with self.assertRaisesRegex(Refused, "above the -1.5 dBTP ceiling"):
             self.go()
 
     def test_a_silent_bed_is_refused(self):
@@ -1571,7 +1571,7 @@ class TestCameraLevel(Base):
 
 
 class TestMixPeak(unittest.TestCase):
-    """mix_peak sums the camera sound and the bed offline and refuses above -1 dBTP."""
+    """mix_peak sums the camera sound and the bed offline and refuses above -1.5 dBTP."""
 
     def run_mix(self, tp, gain=-3.0, fade=True):
         p = {"fps": 24, "spans": [{"path": "/x/one.mov", "in": 1.0, "frames": 48},
@@ -1600,7 +1600,7 @@ class TestMixPeak(unittest.TestCase):
         self.assertEqual(out["true_peak_dbtp"], -2.0)
 
     def test_a_mix_above_the_ceiling_is_refused(self):
-        with self.assertRaisesRegex(Refused, "above the -1 dBTP ceiling"):
+        with self.assertRaisesRegex(Refused, "above the -1.5 dBTP ceiling"):
             self.run_mix(0.3)
 
     @needs_ffmpeg

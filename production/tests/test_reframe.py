@@ -528,6 +528,19 @@ class TestPlanManifest(unittest.TestCase):
         self.assertEqual(text.splitlines()[0].split("\t"), list(reframe.COLUMNS))
         self.assertEqual(len(text.splitlines()), 7)
 
+    def test_plan_uses_the_size_the_reader_fitted_while_reading(self):
+        class OffByARow(FakeReader):
+            """Probes one row tall; the read refits its size, as SourceReader does."""
+            luma_size = (1280, 721)
+
+            def read(self, times, folder):
+                out = super().read(times, folder)
+                self.luma_size = HD720
+                return out
+
+        report = reframe.plan(self.m, aspects=["9x16"], reader=OffByARow(), detect=fake_detect)
+        self.assertTrue(report["rows"])
+
     def test_speaker_x_and_only(self):
         report = reframe.plan(self.m, aspects=["9x16"], speaker_x=900, only=["a_30"],
                               reader=FakeReader(), detect=fake_detect)

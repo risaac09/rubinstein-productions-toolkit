@@ -59,6 +59,7 @@ Settings come, highest first, from an environment variable, the `footage_index` 
 | `roots` | `[]` | list of `{name, mount, volume, catalog, include, skip_dirs}`; empty means the one `--root` folder |
 | `skip_prefixes` | `["#recycle/"]` | relpath prefixes never indexed |
 | `staging_prefix` | `""` | folder whose copies lose to the same take elsewhere |
+| `film_prefixes` | `[]` | relpath prefixes of scanned film; their frames are captioned with a hint to describe only what is clear. Matched against the stored relpath, which for a later root starts `Name:` |
 | `restricted_prefix` | `""` | clips under it get `client=1`; `find --no-client` leaves them out |
 | `required_folder` | `""` | a folder the first root must contain, or `index` refuses (a wrong-mount guard) |
 | `review_log` | `""` | JSON-lines log of picks from past reviews, used to rank variants |

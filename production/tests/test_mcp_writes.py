@@ -336,18 +336,24 @@ TEST_DIR = "tests"
 # The one exception to "no Delete* anywhere" (Isaac, 2026-11-14): assemble_timeline removes the
 # audio items Resolve spills onto A2 and up when a source has several streams (T36), and the
 # tracks they empty. They are items its own run just appended to the timeline it just created.
-# The exemption holds inside the one function only, so a delete anywhere else in the file (a
+# The exemption holds inside the named functions only, so a delete anywhere else in the file (a
 # MediaPool.DeleteClips, a delete on a person's timeline) still fails the guard.
-ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": ("_spill", {"DeleteClips", "DeleteTrack"})}
+ALLOWED_DELETES = {"rpresolve/cmd_assemble.py": (("_spill",), {"DeleteClips", "DeleteTrack"}),
+                   # contract-probe's --sandbox-checks half (off unless config names a sandbox
+                   # project): creates, deletes and starts nothing but rp-probe- objects, and
+                   # names these calls to test the walls. Never run yet; needs the repo owner's explicit yes.
+                   "rpresolve/cmd_contract_probe.py": (
+                       ("q1", "q9", "q12", "_scratch_timeline", "s_q1", "s_q12", "s_r7"),
+                       {"CloseProject", "CreateProject", "DeleteProject", "LoadProject",
+                        "SaveProject", "StartRendering", "DeleteEffects",
+                        "DeleteFusionCompByName", "DeleteTimelines", "DeleteColorGroup"})}
 
 
-def allowed_lines(path, func):
-    """The line numbers of top-level function `func` in the file (empty when it is absent)."""
+def allowed_lines(path, funcs):
+    """The line numbers of the top-level functions `funcs` in the file (none when absent)."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=str(path))
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name == func:
-            return range(node.lineno, node.end_lineno + 1)
-    return range(0)
+    return {n for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in funcs
+            for n in range(node.lineno, node.end_lineno + 1)}
 
 
 def _names(path):
@@ -391,8 +397,8 @@ def scan_production(root):
     found = {}
     for f in production_files(root):
         rel = f.relative_to(root)
-        func, ok = ALLOWED_DELETES.get(rel.as_posix(), (None, ()))
-        lines = allowed_lines(f, func) if func else range(0)
+        funcs, ok = ALLOWED_DELETES.get(rel.as_posix(), ((), ()))
+        lines = allowed_lines(f, funcs) if funcs else set()
         hits = [h for h in forbidden_uses(f) if not (h[1] in ok and h[0] in lines)]
         if rel.parts[0] != WRITE_LAYER:
             hits += write_uses(f)

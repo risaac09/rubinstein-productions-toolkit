@@ -1,0 +1,1 @@
+`project status` says a card may be formatted only when every card in the project has an offsite.txt that names it and no record changed since that check; it says no on no cards or an unreadable one, and no longer lets the last card decide. The unknown-key error in the pipeline config now lists footage_index.

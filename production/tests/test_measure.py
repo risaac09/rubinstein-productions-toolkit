@@ -456,6 +456,40 @@ class TestCmdMeasure(unittest.TestCase):
             self.assertEqual(rw.cmd_measure(args), 1)
         self.assertIn("--hero B", err.getvalue())
 
+@unittest.skipUnless(os.access(measure.FFMPEG if np is not None else "", os.X_OK), "ffmpeg missing")
+class TestLumaPassSources(unittest.TestCase):
+    def test_audio_outlasting_the_picture_still_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = os.path.join(tmp, "tail.mkv")
+            subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=64x64:r=2:d=57",
+                            "-f", "lavfi", "-i", "sine=d=60", "-c:v", "ffv1", "-c:a", "pcm_s16le", "-y", clip],
+                           check=True)
+            info = measure.probe(clip)
+            self.assertGreater(info["duration"] - info["stream_duration"], 1 / 24)
+            self.assertGreater(measure.luma_pass(clip, fps=1)["frames"], 50)
+
+    def test_ten_bit_legal_white_reads_at_235_not_234(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = os.path.join(tmp, "clamp.mkv")
+            subprocess.run([measure.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=64x64:r=25:d=2",
+                            "-vf", "format=yuv422p10le,geq=lum=940:cb=512:cr=512", "-c:v", "ffv1",
+                            "-pix_fmt", "yuv422p10le", "-y", clip], check=True)
+            w = measure.luma_pass(clip, fps=2)["worst"]
+            self.assertEqual((w["at_235_pct"], w["over_235_pct"], w["ymax"]), (100.0, 0.0, 235))
+            self.assertEqual(measure.luma_bits("yuv422p10le"), 10)
+            self.assertEqual(measure.luma_bits("yuv420p"), 8)
+
+    def test_ten_bit_codes_over_the_clamp_count_as_over(self):
+        y = np.full((10, 10), 940, np.uint16)
+        y[0, :3] = 944
+        y[1, :2] = 943  # clamp ringing floors to 235: not over
+        y[2, :1] = 941
+        d = measure.luma_shares(y, bits=10)
+        self.assertEqual((d["at_235_pct"], d["over_235_pct"]), (97.0, 3.0))
+        low = np.full((10, 10), 500, np.uint16)
+        low[0, :2], low[1, :3] = 19, 20  # 19 floors to 4 (crushed), 20 to 5
+        self.assertEqual(measure.luma_shares(low, bits=10)["hard_low_pct"], 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

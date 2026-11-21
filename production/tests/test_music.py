@@ -109,6 +109,8 @@ class Pure(unittest.TestCase):
         got = music.candidates(lib, [118, 124], None, 60, 5)
         self.assertEqual([t["path"] for t in got], ["b.wav", "a.wav", "d.wav"])
         self.assertEqual(len(music.candidates(lib, [118, 124], None, 60, 1)), 1)
+        # no tempo range (a shot-list cut): any tempo, steady pulse first, still none shorter than the cut
+        self.assertEqual([t["path"] for t in music.candidates(lib, None, None, 60, 5)], ["b.wav", "d.wav", "a.wav"])
 
     def test_cut_need_reads_the_length_and_tempo_of_a_method_manifest(self):
         from rpresolve import methods

@@ -19,13 +19,19 @@ PROMPT = ("You are logging footage for an editor. Describe this video frame as J
           "time_of_day, light (for example overcast, golden hour, hard sun, tungsten, mixed), and tags (5 to 12 short "
           "lowercase nouns or adjectives an editor would search for). Describe only what is visible. "
           "Do not name real people.")
+# On film scans the model guessed a scene ("football players" for a lawn, "explosion" for clouds). In a 20-shot A/B this
+# hint fixed both without a new error; its last sentence keeps texture words from crowding content out of the tags.
+FILM_HINT = (" This frame is a scan of old home-movie film (8mm or 16mm): expect grain, faded or shifted colour, blur and "
+             "scratches. Describe only what is clearly visible. When the scene is unclear, say so (for example \"unclear "
+             "outdoor scene\") rather than guessing a specific place, object or activity. Keep grain, fading, blur and "
+             "scratches out of the tags.")
 
 
-def caption(thumb):
+def caption(thumb, film=False):
     # no motion hint: it set off tag loops ("ear, ear, ear")
     # num_predict ends a loop in seconds; a full caption is ~150 tokens
     body = {"model": MODEL, "stream": False, "format": SCHEMA, "options": {"temperature": 0, "num_predict": 400},
-            "messages": [{"role": "user", "content": PROMPT,
+            "messages": [{"role": "user", "content": PROMPT + (FILM_HINT if film else ""),
                           "images": [base64.b64encode(open(thumb, "rb").read()).decode()]}]}
     req = urllib.request.Request(OLLAMA + "/api/chat", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
