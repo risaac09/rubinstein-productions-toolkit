@@ -72,6 +72,23 @@ class TestDecon(unittest.TestCase):
         self.assertEqual(trip["slots"], [15, 15])
         self.assertEqual(rec["aspect"], "16:9")
 
+    def test_recipe_carries_a_dip(self):
+        S = "s=192x108:r=10"
+        parts = [f"color=c=0xe0c020:{S}:d=1.0", f"color=c=0x208020:{S}:d=1.0,fade=t=out:st=0.8:d=0.2",
+                 f"color=c=black:{S}:d=0.2", f"color=c=0x802020:{S}:d=1.4,fade=t=in:st=0:d=0.2",
+                 f"color=c=0x80e0f0:{S}:d=1.0"]
+        graph = ";".join(f"{p},format=yuv420p[v{i}]" for i, p in enumerate(parts))
+        graph += ";" + "".join(f"[v{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[v]"
+        path = os.path.join(self.tmp.name, "dip.mkv")
+        subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-filter_complex", graph,
+                        "-map", "[v]", "-c:v", "ffv1", path], check=True, stdin=subprocess.DEVNULL)
+        rep = shots.build(path)
+        self.assertEqual([s["into"] for s in rep["shots"]], ["start", "cut", "dip", "cut"])
+        rec = decon.recipe(rep, path, "dip-check")
+        self.assertEqual([s["transition_out"]["type"] for s in rec["slots"]], ["cut", "dip", "cut", "cut"])
+        self.assertAlmostEqual(rec["slots"][1]["transition_out"]["frames"], 6, delta=1)
+        self.assertEqual(methods.validate(rec), [])
+
     def test_compare_self_is_perfect(self):
         r = decon.compare(self.report, self.report, self.ref, self.ref)
         self.assertEqual(r["score"], 100.0)
