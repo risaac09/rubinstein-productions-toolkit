@@ -62,11 +62,14 @@ What it does not do, and limits:
 ## decon
 
 ```sh
+python3 resolve_workflow.py decon fetch URL --out-dir DIR [--yt-dlp PATH]
 python3 resolve_workflow.py decon recipe REF --out recipe.json [--id ID] [--beats MAP.json] [--against METHOD] [--grade]
 python3 resolve_workflow.py decon compare REF REBUILD --out compare.json [--sheet sheet.png]
 ```
 
-Both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
+`fetch` is the first step: it downloads one public video with yt-dlp (an argument list, never a shell; only `http` and `https` URLs; best mp4 where there is one; `--no-playlist`) into DIR as `<id>.mp4` and `<id>.info.json`, then writes `<id>.ref.json`: url, id, title, uploader, duration, fps, width, height, file name, sha256 and `fetched_at` (UTC). ffprobe checks the file: it must have a video stream and its duration must be within 0.5 s of the info json's, else exit 1. yt-dlp missing is an error with the `brew install yt-dlp` hint, or pass `--yt-dlp PATH`. DIR must be outside every git tree, like the other outputs. References are for study only: keep them in a scratch folder or on storage you control, never commit or publish them, and respect the source's terms.
+
+`recipe` and `compare` both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
 
 `recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
 

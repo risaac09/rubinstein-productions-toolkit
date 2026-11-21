@@ -1,0 +1,1 @@
+Add the social_1x1 destination (TikTok, Instagram, 1080x1080, -14 LUFS) and give social_4x5 and social_1x1 the 30 FPS floor Instagram's Reels page states; platform-specs.md records each page read on 2026-11-21 and what neither platform states.

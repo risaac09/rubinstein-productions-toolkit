@@ -313,8 +313,18 @@ at import, so a new command adds its module and its tests and edits no shared
 file, this one included (`rpresolve/cli.py` says how).
 
 - Read Resolve and change nothing (Resolve Studio must be running):
-  `list-projects`, `list-timelines`, `list-render-formats`, `info` and `audio-state`.
-- Every other command never connects to Resolve.
+  `list-projects`, `list-timelines`, `list-render-formats`, `info`, `audio-state` and
+  `fusion-dump export`.
+- Every other command never connects to Resolve, except `fusion-dump export` below.
+
+`fusion-dump` checks a Fusion node tree by a second route. `export` calls
+`ExportFusionComp` on one timeline item (`--project`, `--project-id`,
+`--timeline`, `--item`, optional `--track` and `--comp`) and writes only the
+`.comp` file: it exits 2 when the open project's name or id differs, and refuses
+an output inside any git tree. `parse` turns a `.comp` or `.setting` into a JSON
+tree of nodes, links and modifiers, offline. `diff tree.json intended.json`
+lists missing and extra nodes, type mismatches and missing and extra links, and
+exits 1 when any exist. The tree shape is in `rpresolve/fusiondump.py`.
 
 A command has an MCP tool when one of the same name with underscores is in
 [Tools](#tools); `info` is covered by `resolve_status`, `list_timelines` and
@@ -570,8 +580,8 @@ version, keeps the subject's whole head. The rules, in `rpresolve/reframe.py`:
   saliency centre only breaks a tie between faces of like size (the review
   note says so, and `speaker_x` still wins). Where no face is found, the crop
   is placed on the median saliency box with the same fit, check and fallbacks
-  as a face (no head to keep), the crop's status is `scene` (no face was seen: a
-  person should look, never `pass`), and the span is flagged for review: saliency is
+  as a face (no head to keep), the crop's status is `scene` in place of `pass` (no face was seen: a
+  person should look; a crop that lands as `fallback` or `bars` keeps that status), and the span is flagged for review: saliency is
   weaker evidence than a face, and a salient region wider than the crop is
   `manual`. Each span records `scene` (`subject` face or saliency, `centre`,
   `spread` as the centre's standard deviation over the frame, `sharpness`
@@ -600,7 +610,7 @@ writes the fill scale over it, and the crop centre clamps for the zoomed
 width); a bare number is `x`. Two keys for one item (`"1"` and `"01"`) are
 refused. A hand entry wins: an item
 with an entry gets a crop at that centre whatever the face result (pass,
-fallback, bars, manual, no_face), at the widest scale that fills the frame
+fallback, bars, manual, no_face, scene), at the widest scale that fills the frame
 (times `zoom`), clamped to the picture exactly as a face centre is: status
 `hand`, `source` `hand`, a review line saying that there is no head, so the
 headroom and whole-head check does not apply, and, when a face crop was

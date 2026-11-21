@@ -4,7 +4,8 @@ recipe.json` writes the reference's cuts, dissolves, end black and (with --beats
 as an edit method that methods.validate passes (`--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
-Offline; the work is rpresolve/decon.py, the cuts come from rpresolve/shots.py.
+`decon fetch URL --out-dir DIR` downloads one reference with yt-dlp (study only, outside any git
+tree). The rest is offline; the work is rpresolve/decon.py, the cuts come from rpresolve/shots.py.
 """
 
 import json
@@ -25,6 +26,11 @@ def _shots_flags(p):
 
 def add_arguments(p):
     sub = p.add_subparsers(dest="action", required=True)
+    f = sub.add_parser("fetch", help="download one reference with yt-dlp and record it (study only, never committed)")
+    f.add_argument("url", help="an http or https video URL")
+    f.add_argument("--out-dir", required=True, help="folder for the video, info json and <id>.ref.json, outside any "
+                   "git tree. References are for study only: never commit or publish them.")
+    f.add_argument("--yt-dlp", help="path to yt-dlp (default: on PATH)")
     r = sub.add_parser("recipe", help="a reference video as an edit method (timing only)")
     r.add_argument("reference")
     r.add_argument("--out", required=True, help="recipe .json, outside any git tree")
@@ -44,7 +50,21 @@ def add_arguments(p):
     _shots_flags(c)
 
 
+def _fetch(args):
+    from rpresolve import decon_fetch, delivercheck as dc, paths
+    try:
+        rec = decon_fetch.fetch(args.url, args.out_dir, args.yt_dlp)
+    except (dc.ToolMissing, dc.CheckError, paths.OutputRefused, OSError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(f"fetched {rec['id']}: {rec['duration']} s, {rec['width']}x{rec['height']}, {rec['file']}")
+    print(f"Wrote {os.path.join(args.out_dir, rec['id'] + '.ref.json')}", file=sys.stderr)
+    return 0
+
+
 def run(args):
+    if args.action == "fetch":
+        return _fetch(args)
     from rpresolve import delivercheck as dc, paths
     try:
         from rpresolve import decon, methods, shots

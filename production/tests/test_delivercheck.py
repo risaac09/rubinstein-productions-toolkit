@@ -239,6 +239,21 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(statuses(dc.check(path, tiny("linkedin_9x16"), loudness=False))
                          ["fps_floor"], dc.SKIP)
 
+    def test_instagram_floor_covers_every_tiktok_and_instagram_shape(self):
+        # Instagram's Reels page states a 30 FPS minimum for any shape it takes
+        # (1.91:1 to 9:16, so 4:5 and 1:1 too); linkedin_1x1 is LinkedIn's, no floor.
+        for key, aspect, size in (("social_4x5", "4x5", "48x60"), ("social_1x1", "1x1", "48x48")):
+            name = f"SW001_Guest_01_example-clip_{aspect}.mp4"
+            for rate, want in (("24000/1001", dc.WARN), ("30000/1001", dc.PASS)):
+                path = self.clip(name=name, sidecar=None, size=size, lufs=-14.0, rate=rate)
+                r = dc.check(path, tiny(key), loudness=False)
+                self.assertEqual(statuses(r)["fps_floor"], want, f"{key}\n{dc.format_report(r)}")
+                self.assertEqual(r["status"], "pass")
+        path = self.clip(name="SW001_Guest_01_example-clip_1x1.mp4", sidecar=None, size="48x48",
+                         rate="24000/1001")
+        self.assertEqual(statuses(dc.check(path, tiny("linkedin_1x1"), loudness=False))
+                         ["fps_floor"], dc.SKIP)
+
     def test_the_folder_row_knows_which_destination_a_folder_is_for(self):
         folders = deliver.subfolders(CFG)
         d = self.folder()

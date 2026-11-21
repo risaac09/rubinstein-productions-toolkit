@@ -54,7 +54,7 @@ Other docs cite these by number (`T3`). A number never changes; a corrected trap
 
 ## Delivery
 
-- **T17. A music montage has no captions.** A destination that wants captions (sidecar or burn-in) refuses a timeline with none. `social_9x16` alone carries a 29.97 fps floor (`min_fps` 30000/1001 in `resolve-config.json`): a lower rate gets a `deliver_check` WARN and a `queue_render` plan warning, never a refusal. `social_9x16_music` has no captions and no floor. Use `social_9x16_music`, or queue a master at 1080x1920 and transcode it: libx264 crf 16 preset slow, yuv420p, AAC 320k, two-pass loudnorm to -14 LUFS (`delivercheck.loudnorm_filter`), `+faststart`. Tag colour with `-x264-params colorprim=bt709:transfer=bt709:colormatrix=bt709`; the `-color_primaries` and `-color_trc` output flags left both unknown.
+- **T17. A music montage has no captions.** A destination that wants captions (sidecar or burn-in) refuses a timeline with none. `social_9x16`, `social_4x5` and `social_1x1` carry a 29.97 fps floor (`min_fps` 30000/1001 in `resolve-config.json`): a lower rate gets a `deliver_check` WARN and a `queue_render` plan warning, never a refusal. `social_9x16_music` has no captions and no floor. Use `social_9x16_music`, or queue a master at 1080x1920 and transcode it: libx264 crf 16 preset slow, yuv420p, AAC 320k, two-pass loudnorm to -14 LUFS (`delivercheck.loudnorm_filter`), `+faststart`. Tag colour with `-x264-params colorprim=bt709:transfer=bt709:colormatrix=bt709`; the `-color_primaries` and `-color_trc` output flags left both unknown.
 
 ## Documented limits, from Blackmagic's own scripting docs (not tested live)
 
