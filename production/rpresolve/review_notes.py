@@ -14,9 +14,12 @@ is never written inside a git working tree.
 """
 
 import argparse
+import contextlib
+import fcntl
 import os
 import re
 import sys
+import time
 from fractions import Fraction
 
 from rpresolve import paths
@@ -27,6 +30,7 @@ LEDGER_COLUMNS = ["note_id", "round", "cut", "timeline_frame", "timecode", "text
 STATUSES = ("open", "done", "wontfix")
 TC_RE = re.compile(r"^(\d\d):(\d\d):(\d\d):(\d\d)$")
 ID_RE = re.compile(r"^N-(\d{3,})$")
+LOCK_WAIT = 10.0  # seconds a command waits for another one on the same ledger folder
 CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
 
@@ -65,6 +69,10 @@ def read_tsv(path, what):
 
 
 def check_timecode(n, frame, tc, fps):
+    # Frame is the authority. A fractional rate (drop-frame or not) has more than one
+    # way to write a timecode, so it is carried through unchecked.
+    if fps.denominator != 1:
+        return
     m = TC_RE.match(tc)
     if not m:
         raise NotesError(f"markers line {n}: timecode {tc!r} is not HH:MM:SS:FF")
@@ -138,6 +146,41 @@ def write_ledger(path, rows):
             f.write(text)
 
 
+@contextlib.contextmanager
+def ledger_lock(path):
+    """Hold an exclusive flock on the ledger's folder for a whole read-modify-write.
+    The folder, not a sidecar file, so nothing is left behind; it also serialises two
+    ledgers in one folder, which is cheap and harmless."""
+    folder = os.path.dirname(os.path.realpath(path)) or "."
+    try:
+        fd = os.open(folder, os.O_RDONLY)
+    except OSError as e:
+        raise NotesError(f"cannot lock the folder of {path}: {e}")
+    try:
+        end = time.monotonic() + LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= end:
+                    raise NotesError(f"ledger is busy: another review_notes command holds {folder}; "
+                                     "nothing written, try again")
+                time.sleep(0.02)
+        yield
+    finally:
+        os.close(fd)  # closing releases the lock
+
+
+def confirm(path, ids_texts):
+    """Re-read the ledger and refuse to report success for a row that is not in it."""
+    have = {r["note_id"]: r for r in load_ledger(path)}
+    missing = [i for i, (kind, val) in ids_texts.items() if i not in have or have[i][kind] != val]
+    if missing:
+        raise NotesError(f"after writing, {', '.join(missing)} not in the ledger {path}; "
+                         "do not trust this run, check the file")
+
+
 def clean_name(value, what):
     if not value.strip() or CONTROL.search(value) or "\t" in value:
         raise NotesError(f"{what} must be non-empty text with no tab or newline")
@@ -150,22 +193,37 @@ def cmd_add(args):
     if problem:
         raise NotesError(problem)
     new = load_markers(args.markers)
-    rows = load_ledger(args.ledger) if os.path.exists(args.ledger) else []
     if not new:
         print("0 notes added (the marker file has a header and no rows; no round counted)")
         return 0
-    have = {(r["cut"], r["timeline_frame"], r["text"]) for r in rows}
-    if any((cut, str(f), t) in have for f, _, t in new):
-        raise NotesError(f"{args.markers}: markers already in the ledger for {cut}; "
-                         "this file was added before, nothing written")
-    rnd = max([int(r["round"]) for r in rows] + [0]) + 1
-    nid = max([int(ID_RE.match(r["note_id"]).group(1)) for r in rows] + [0])
-    for i, (frame, tc, text) in enumerate(new, 1):
-        rows.append({"note_id": f"N-{nid + i:03d}", "round": str(rnd), "cut": cut,
-                     "timeline_frame": str(frame), "timecode": tc, "text": text,
-                     "status": "open", "resolved_in": "", "reason": ""})
-    write_ledger(args.ledger, rows)
-    print(f"round {rnd}: {len(new)} notes added, N-{nid + 1:03d} to N-{nid + len(new):03d}")
+    with ledger_lock(args.ledger):
+        rows = load_ledger(args.ledger) if os.path.exists(args.ledger) else []
+        have = {(r["cut"], r["timeline_frame"], r["text"]): r["note_id"] for r in rows}
+        fresh = [m for m in new if (cut, str(m[0]), m[2]) not in have]
+        if not fresh:
+            raise NotesError(f"{args.markers}: every marker is already in the ledger for {cut}; "
+                             "this file was added before, nothing written")
+        elsewhere = {(r["timeline_frame"], r["text"]) for r in rows if r["cut"] != cut}
+        if all((str(f), t) in elsewhere for f, _, t in new):
+            others = ", ".join(sorted({r["cut"] for r in rows if r["cut"] != cut}))
+            print(f"warning: every marker already sits in the ledger under another cut ({others}); "
+                  f"check that {cut} is the cut name you meant", file=sys.stderr)
+        rnd = max([int(r["round"]) for r in rows] + [0]) + 1
+        nid = max([int(ID_RE.match(r["note_id"]).group(1)) for r in rows] + [0])
+        added = {}
+        for i, (frame, tc, text) in enumerate(fresh, 1):
+            row = {"note_id": f"N-{nid + i:03d}", "round": str(rnd), "cut": cut,
+                   "timeline_frame": str(frame), "timecode": tc, "text": text,
+                   "status": "open", "resolved_in": "", "reason": ""}
+            rows.append(row)
+            added[row["note_id"]] = ("text", text)
+        write_ledger(args.ledger, rows)
+        confirm(args.ledger, added)
+    print(f"round {rnd}: {len(fresh)} notes added, N-{nid + 1:03d} to N-{nid + len(fresh):03d}")
+    repeats = [(f, have[(cut, str(f), t)]) for f, _, t in new if (cut, str(f), t) in have]
+    if repeats:
+        print(f"{len(repeats)} already present, not added: "
+              + ", ".join(f"{i} (frame {f})" for f, i in repeats))
     return 0
 
 
@@ -176,17 +234,22 @@ def cmd_resolve(args):
     problem = paths.out_problem(args.ledger, any_git_tree=True)
     if problem:
         raise NotesError(problem)
-    rows = load_ledger(args.ledger)
-    row = next((r for r in rows if r["note_id"] == args.note), None)
-    if row is None:
-        raise NotesError(f"no note {args.note} in {args.ledger}")
-    if row["status"] != "open":
-        raise NotesError(f"{args.note} is already {row['status']}; nothing changed")
-    if args.wontfix:
-        row["status"], row["reason"] = "wontfix", clean_name(args.reason, "--reason")
-    else:
-        row["status"], row["resolved_in"] = "done", clean_name(args.in_cut, "--in")
-    write_ledger(args.ledger, rows)
+    with ledger_lock(args.ledger):
+        rows = load_ledger(args.ledger)
+        row = next((r for r in rows if r["note_id"] == args.note), None)
+        if row is None:
+            raise NotesError(f"no note {args.note} in {args.ledger}")
+        if row["status"] != "open":
+            raise NotesError(f"{args.note} is already {row['status']}; nothing changed")
+        if args.wontfix:
+            row["status"], row["reason"] = "wontfix", clean_name(args.reason, "--reason")
+        else:
+            row["status"], row["resolved_in"] = "done", clean_name(args.in_cut, "--in")
+        write_ledger(args.ledger, rows)
+        r2 = next((r for r in load_ledger(args.ledger) if r["note_id"] == args.note), None)
+        if r2 is None or r2["status"] != row["status"]:
+            raise NotesError(f"after writing, {args.note} is not {row['status']} in the ledger "
+                             f"{args.ledger}; do not trust this run, check the file")
     print(f"{args.note} {row['status']}")
     return 0
 
@@ -212,7 +275,8 @@ def cmd_report(args):
             else:
                 tail = f" [wontfix: {r['reason']}]"
             box = "[ ]" if r["status"] == "open" else "[x]"
-            out.append(f"- {box} {r['note_id']} {where}: {r['text']}{tail}")
+            text = "\\" + r["text"] if r["text"][:1] in ("=", "+", "-", "@") else r["text"]
+            out.append(f"- {box} {r['note_id']} {where}: {text}{tail}")
         out.append("")
     if args.rounds_allowed:
         used = len(rounds)

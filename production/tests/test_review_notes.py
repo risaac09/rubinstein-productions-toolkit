@@ -8,6 +8,7 @@ Run: /usr/bin/python3 -m unittest discover production/tests -p test_review_notes
 import contextlib
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -185,6 +186,136 @@ class TestAdd(Base):
     def test_no_temp_files_left(self):
         self.seed()
         self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["ledger.tsv", "m1.tsv"])
+
+
+GO_WRAPPER = (
+    "import os, sys, time\n"
+    "sys.path.insert(0, sys.argv[1])\n"
+    "from rpresolve import review_notes as rn\n"
+    "while not os.path.exists(sys.argv[2]):\n"
+    "    time.sleep(0.0005)\n"
+    "sys.exit(rn.main(sys.argv[3:]))\n")
+
+
+class TestConcurrency(Base):
+    def spawn(self, go, *argv):
+        return subprocess.Popen([sys.executable, "-c", GO_WRAPPER, str(PROD), str(go), *map(str, argv)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    def test_parallel_adds_and_a_resolve_lose_nothing(self):
+        self.seed()  # N-001, N-002
+        go = self.dir / "go"
+        procs = []
+        for i in range(12):
+            m = self.mk(f"p{i}.tsv", markers(f"96\t00:00:04:00\t1\tstory:par{i}\tRed\t\t24/1"))
+            procs.append(self.spawn(go, "add", "--markers", m, "--cut", "show_v02", "--ledger", self.ledger))
+        procs.append(self.spawn(go, "resolve", "--ledger", self.ledger, "--note", "N-001", "--in", "show_v03"))
+        go.write_text("go")
+        results = [(p.wait(), *p.communicate()) for p in procs]
+        for code, out, err in results:
+            self.assertEqual(code, 0, err)
+        rows = [l.split("\t") for l in self.lines()[1:]]
+        ids = [r[0] for r in rows]
+        self.assertEqual(ids, [f"N-{i:03d}" for i in range(1, 15)])
+        self.assertEqual(sum("story:par" in r[5] for r in rows), 12)
+        self.assertEqual(len({r[5] for r in rows}), 14)
+        self.assertEqual(rows[0][6:8], ["done", "show_v03"])
+        for code, out, err in results[:12]:
+            for nid in re.findall(r"N-\d{3}", out):
+                self.assertIn(nid, ids)
+
+    def test_parallel_adds_on_fresh_ledger(self):
+        go = self.dir / "go"
+        procs = []
+        for i in range(8):
+            m = self.mk(f"p{i}.tsv", markers(f"96\t00:00:04:00\t1\tstory:f{i}\tRed\t\t24/1"))
+            procs.append(self.spawn(go, "add", "--markers", m, "--cut", "c", "--ledger", self.ledger))
+        go.write_text("go")
+        for p in procs:
+            self.assertEqual(p.wait(), 0, p.communicate()[1])
+        ids = [l.split("\t")[0] for l in self.lines()[1:]]
+        self.assertEqual(ids, [f"N-{i:03d}" for i in range(1, 9)])
+
+    def test_busy_ledger_is_a_named_error(self):
+        import fcntl
+        self.seed()
+        fd = os.open(self.dir, os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        self.addCleanup(os.close, fd)
+        old = rn.LOCK_WAIT
+        rn.LOCK_WAIT = 0.3
+        self.addCleanup(setattr, rn, "LOCK_WAIT", old)
+        before = self.ledger.read_bytes()
+        code, _, err = self.run_cli("resolve", "--ledger", self.ledger, "--note", "N-001", "--in", "v2")
+        self.assertEqual(code, 1)
+        self.assertIn("busy", err)
+        self.assertEqual(self.ledger.read_bytes(), before)
+
+    def test_success_is_not_printed_when_rows_missing_after_write(self):
+        real = rn.write_ledger
+        def lossy(path, rows):
+            real(path, rows[:-1])
+        rn.write_ledger = lossy
+        self.addCleanup(setattr, rn, "write_ledger", real)
+        code, out, err = self.add(self.mk("m.tsv", markers(*R1)))
+        self.assertEqual(code, 1)
+        self.assertNotIn("notes added", out)
+        self.assertIn("not in the ledger", err)
+
+
+class TestLaterRounds(Base):
+    def test_partial_overlap_adds_only_new_rows_and_names_old_ids(self):
+        self.seed()
+        m = self.mk("m2.tsv", markers(R1[0], "96\t00:00:04:00\t1\tstory:new\tRed\t\t24/1"))
+        code, out, err = self.add(m)
+        self.assertEqual(code, 0, err)
+        rows = [l.split("\t") for l in self.lines()[1:]]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[2][:2], ["N-003", "2"])
+        self.assertIn("1 already present", out)
+        self.assertIn("N-001", out)
+
+    def test_full_overlap_still_refused(self):
+        self.seed()
+        code, _, err = self.add(self.mk("m.tsv", markers(*R1)))
+        self.assertEqual(code, 1)
+        self.assertIn("already in the ledger", err)
+
+    def test_typo_cut_warns_but_adds(self):
+        self.seed()
+        code, out, err = self.add(self.mk("m.tsv", markers(*R1)), cut="show_v0l")
+        self.assertEqual(code, 0)
+        self.assertIn("warning", err)
+        self.assertIn("show_v01", err)
+
+    def test_no_warning_when_not_every_row_matches(self):
+        self.seed()
+        m = self.mk("m.tsv", markers(R1[0], "96\t00:00:04:00\t1\tstory:new\tRed\t\t24/1"))
+        _, _, err = self.add(m, cut="show_v02")
+        self.assertNotIn("warning", err)
+
+
+class TestNits(Base):
+    def test_formula_text_raw_in_tsv_escaped_in_report(self):
+        self.add(self.mk("m.tsv", markers("1\t00:00:00:01\t1\t=SUM(A1)\tRed\t\t24/1",
+                                          "2\t00:00:00:02\t1\t@cmd\tRed\t\t24/1")))
+        self.assertIn("\t=SUM(A1)\t", self.lines()[1])
+        _, out, _ = self.run_cli("report", "--ledger", self.ledger)
+        self.assertIn("\\=SUM(A1)", out)
+        self.assertIn("\\@cmd", out)
+
+    def test_fractional_rate_stores_frame_and_carries_timecode(self):
+        row = "1800\t00:01:00:00\t1\ta\tRed\t\t30000/1001"
+        self.assertEqual(self.add(self.mk("m.tsv", markers(row)))[0], 0)
+        self.assertEqual(self.lines()[1].split("\t")[3:5], ["1800", "00:01:00:00"])
+        led2 = self.dir / "l2.tsv"
+        row = "1800\t00:01:00;02\t1\ta\tRed\t\t30000/1001"
+        code, _, _ = self.run_cli("add", "--markers", self.mk("m2.tsv", markers(row)), "--cut", "c", "--ledger", led2)
+        self.assertEqual(code, 0)
+
+    def test_integer_rate_still_checks_timecode(self):
+        code, _, _ = self.add(self.mk("m.tsv", markers("25\t00:00:00:01\t1\ta\tRed\t\t24/1")))
+        self.assertEqual(code, 1)
 
 
 class TestResolve(Base):
