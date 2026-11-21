@@ -1,1 +1,0 @@
-../../../prompts/skills/branded-doc-build.md
