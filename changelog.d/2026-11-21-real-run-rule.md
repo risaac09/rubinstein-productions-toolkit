@@ -1,0 +1,1 @@
+Add a Real run before merge section to CLAUDE.md: risky paths (card offload, deliver, backup, offsite, anything that deletes or formats) get a fresh agent's run on a synthetic card or scratch copy, never the only copy, with commands, exit codes and verdict lines in the PR body. Architecture decision 5.

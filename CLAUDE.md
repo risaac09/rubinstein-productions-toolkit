@@ -16,6 +16,15 @@ The path a pull request touches decides who merges it.
 - A pull request that touches both waits for the maintainer.
 - `phase-zero/` and `public-kit/` change only through export pull requests (see the guardrail above).
 
+## Real run before merge, risky paths
+A green CI run did not catch #498, where `offload.sh safe --lite` printed SAFE TO FORMAT for a card with unknown originals. A pull request that changes a tool that can delete, format, copy off a card, or publish gets one real run first.
+- **Risky paths:** `production/offload.sh`; `production/rpresolve/card.py`; the deliver tools (`production/rpresolve/deliver.py`, `delivercheck.py`, `peakfix.py`, `cmd_deliver_*.py`); anything named backup or offsite; any script or command that deletes, overwrites or formats.
+- **Who runs it:** a fresh agent that did not write the change, on the branch's head, before the merge.
+- **What it runs:** the changed tool on a synthetic card from `production/card-fixture.sh <empty-temp-dir>` (add `--image` on macOS for a mountable image), or on a scratch copy it made itself. It runs the failing side too: the unknown extension, the missing copy, the case the change was written for. The verdict must fail closed there.
+- **Never the only copy.** Nothing is run against a real card, a real archive, a real remote or the only copy of anything. If the check needs real hardware, the pull request says so and waits for the maintainer.
+- **In the pull request body:** each command, its exit code (`cmd; echo "exit $?"`, never through a pipe), and the verdict lines it printed, both the pass and the refusal.
+- **Merge:** the path rules in "Who merges" stay as they are. A plumbing pull request without this block is not merged.
+
 ## Working here
 - One fragment per pull request in `changelog.d/` (`scripts/changelog-fragments new SLUG "TEXT"`).
 - CI runs the link check, the methodology status check, the instrument test, the fragment and burst-gate tests, shellcheck, and the production unit tests; run the relevant ones before pushing.
