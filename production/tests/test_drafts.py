@@ -1702,7 +1702,8 @@ class TestWindowLayerTiming(Frames, Base):
                               "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
         cls.size = cls.W * cls.H * 3
         cls.raw = raw
-        assert len(raw) // cls.size == 24 + 42 + 36 + 36, len(raw) // cls.size
+        if len(raw) // cls.size != 24 + 42 + 36 + 36:
+            raise AssertionError(len(raw) // cls.size)
 
     def test_a_scale_window_is_on_screen_from_its_first_frame(self):
         first = self.START[1]

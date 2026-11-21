@@ -9,7 +9,8 @@
 # wall time; every other module goes round-robin by sorted name. The first seven pins were
 # written for the Python 3.14 production job; test_assemble, test_audioreport and test_reel
 # were added from the medians of three CI runs, to cut the Python 3.9 rpresolve job's long pole
-# (shard 0, where test_drafts alone runs 286 s) without unbalancing the 3.14 job. The 3.9 job
+# (shard 0, where test_drafts alone runs 286 s). At 156 modules they buy only about 9 s; the measured
+# wall clock is in the PR. The 3.9 job
 # drops the lutlab, rpstills and vertcut modules after the split, so those pins do nothing
 # there. A pin for a module that no longer exists is ignored. The pins only balance time:
 # the --check step is what guarantees nothing is dropped or run twice.

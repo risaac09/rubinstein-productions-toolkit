@@ -33,5 +33,56 @@ printf 'jobs:\n  t-shard:\n    steps:\n      - run: scripts/test-shard 0 4\n' > 
 "$SRC/scripts/check-ci-shards.sh" "$TMP/ci.yml" >/dev/null 2>&1 && bad "no matrix fails" || ok "test-shard with no matrix fails"
 printf 'jobs:\n  t:\n    steps:\n      - run: echo hi\n' > "$TMP/ci.yml"
 "$SRC/scripts/check-ci-shards.sh" "$TMP/ci.yml" >/dev/null 2>&1 && bad "no sharded job fails" || ok "a workflow with no sharded job fails (the check cannot go quiet)"
+# A call the check cannot read must fail with a named reason, never pass. LINE is the whole run line.
+unreadable() { # NAME LINE
+  printf 'jobs:\n  t-shard:\n    strategy:\n      matrix:\n        shard: [0, 1, 2]\n    steps:\n      - run: scripts/test-shard --check 4\n      - run: %s\n' "$2" > "$TMP/ci.yml"
+  out=$("$SRC/scripts/check-ci-shards.sh" "$TMP/ci.yml" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qF "cannot read"; then ok "$1"; else bad "$1 (rc=$rc: $out)"; fi
+}
+unreadable "quoted expression" 'scripts/test-shard "${{ matrix.shard }}" 4'
+unreadable "quoted count" 'scripts/test-shard ${{ matrix.shard }} "4"'
+unreadable "count in a variable" 'scripts/test-shard ${{ matrix.shard }} "$N"'
+unreadable "two spaces before the count" 'scripts/test-shard ${{ matrix.shard }}  4'
+unreadable "expression without inner spaces" 'scripts/test-shard ${{matrix.shard}} 4'
+unreadable "--check=4" 'scripts/test-shard --check=4'
+unreadable "quoted --check count" 'scripts/test-shard --check "4"'
+
+reject() { # NAME WANT-TEXT: the job on stdin
+  cat > "$TMP/ci.yml"
+  out=$("$SRC/scripts/check-ci-shards.sh" "$TMP/ci.yml" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qF "$2"; then ok "$1"; else bad "$1 (rc=$rc: $out)"; fi
+}
+reject "matrix exclude drops a shard" "exclude" <<'Y'
+jobs:
+  t-shard:
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3]
+        exclude:
+          - shard: 3
+    steps:
+      - run: scripts/test-shard --check 4
+      - run: scripts/test-shard ${{ matrix.shard }} 4
+Y
+reject "step if on the shard" "matrix.shard in an if" <<'Y'
+jobs:
+  t-shard:
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - run: scripts/test-shard --check 4
+      - if: matrix.shard != 3
+        run: scripts/test-shard ${{ matrix.shard }} 4
+Y
+reject "no --check call" "no test-shard --check" <<'Y'
+jobs:
+  t-shard:
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - run: scripts/test-shard ${{ matrix.shard }} 4
+Y
 "$SRC/scripts/check-ci-shards.sh" "$SRC/.github/workflows/ci.yml" >/dev/null 2>&1 && ok "the real ci.yml passes" || bad "the real ci.yml passes"
 exit "$fail"
