@@ -91,9 +91,10 @@ def run(args):
         return 0
     try:
         lines = fusiondump.diff(fusiondump.load_tree(args.tree), fusiondump.load_tree(args.intended))
-    except (OSError, ValueError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print(f"ERROR: unreadable tree ({type(e).__name__}: {e}); a link needs from, to and input.",
+              file=sys.stderr)
+        return 2  # not 1: that means the trees differ
     print("\n".join(lines) if lines else "The trees match.")
     return 1 if lines else 0
 
