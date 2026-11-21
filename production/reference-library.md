@@ -2,7 +2,7 @@
 
 **Status:** operational.
 
-A private shelf of grade targets taken from your own finished work. A reference is a set of numbers (`targets.json`), never a deliverable and never a borrowed still: only work you made and own goes in. No stock-frame sites, public-domain, Creative Commons or commercial stills.
+A private shelf of references taken from your own finished work, grade targets first. A reference is a set of numbers (`targets.json`), never a deliverable and never a borrowed still: only work you made and own goes in. No stock-frame sites, public-domain, Creative Commons or commercial stills.
 
 ## Layout
 
@@ -11,20 +11,28 @@ The library lives outside every git repository (a repository is public or may be
 ```
 <library>/
   REFERENCE-LIBRARY-ROOT.md
-  <reference-slug>/
-    ref.yaml
-    targets.json
+  stills/    <reference-slug>/  ref.yaml, targets.json, the still
+  idents/    <reference-slug>/  ref.yaml, the ident
+  mixes/     <reference-slug>/  ref.yaml, the mix
+  stings/    <reference-slug>/  ref.yaml, the sting
+  cuts/      <reference-slug>/  ref.yaml, the cut
 ```
+
+Pixels and audio stay in this tree and out of git. Derived numbers, such as a `targets.json`, may be copied into a private repository. Only `stills/` has tooling today; the other shelves are folder convention so every kind of reference has one home.
+
+What the code reads: only the marker file (see "The refusal"). It never opens `ref.yaml`. Every `ref.yaml` field below is convention: write them so a reference can be understood and its permission checked later, but expect no tool to validate them. Do not use a field name as if a command honoured it.
 
 `ref.yaml` fields:
 
 | Field | Meaning |
 |---|---|
-| `source` | the project and deliverable the still came from |
+| `what` | what the item is, in one line (convention) |
+| `reference_for` | what it is a reference for, such as `skin tone in warm interiors` or `loudness of a short sting` (convention) |
+| `source` | the project and deliverable it came from |
 | `licence` | `own work` |
 | `allowed_uses` | what the targets may be used for, such as `grade targets for matching` |
 | `date` | when the still was taken |
-| `targets` | path of `targets.json`, relative to the reference folder |
+| `targets` | path of `targets.json`, relative to the reference folder (stills only) |
 
 ## Making a `targets.json`
 
