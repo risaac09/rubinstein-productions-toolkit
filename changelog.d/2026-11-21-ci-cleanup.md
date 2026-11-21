@@ -1,0 +1,1 @@
+CI: runner images pinned (ubuntu-26.04 and ubuntu-24.04), the production unit tests run in four shards split by scripts/test-shard (a check fails if a module is left out), a main-alarm job opens or updates one issue when main fails and closes it when green, and Pillow moves to 13.0.0 to clear the open security alerts.

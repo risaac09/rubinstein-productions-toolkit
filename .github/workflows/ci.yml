@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   hygiene-checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - name: Markdown link check
@@ -257,7 +257,7 @@ jobs:
   # tests patch embed.text and stub the caption call, as they do on a Mac without a GPU. Tests that
   # need the Swift face probe skip themselves on Linux.
   footage-index-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -287,7 +287,7 @@ jobs:
   # there. Kit-export pull requests are exempt (see changelog.d/README.md).
   changelog-fragment:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -307,8 +307,18 @@ jobs:
   # run here (they replaced a separate resolve-survey-3-14 job). Skips for
   # macOS-only pieces (swiftc, the Vision helper, the 3.14 survey interpreter)
   # are expected on Linux and are only counted.
-  production-unit-tests:
+  #
+  # The suite runs in four shards (scripts/test-shard splits the module list,
+  # and its --check step fails if the shards do not hold every module exactly
+  # once). The branch protection rule requires a check named
+  # production-unit-tests, so the aggregate job below keeps that name and
+  # fails when any shard did; the shards report as production-unit-tests-shard.
+  production-unit-tests-shard:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -327,7 +337,9 @@ jobs:
           sudo apt-get $O install -y -qq ffmpeg
           ffmpeg -version | sed -n 1p
           ffprobe -version | sed -n 1p
-      - name: All production test modules
+      - name: Shards hold every test module exactly once
+        run: scripts/test-shard --check 4
+      - name: Production test modules, shard ${{ matrix.shard }} of 4
         run: |
           set -euo pipefail
           # The tools default to Homebrew paths; point them at the runner's.
@@ -336,7 +348,8 @@ jobs:
           # Ubuntu's ffmpeg reads colour differently from the Homebrew build the
           # verify-render bounds were set on (median dE2000 4.5 against under 1).
           export LUTLAB_SKIP_RENDER_VERIFY=1
-          mods="$(ls production/tests/test_*.py | sed 's#/#.#; s#/#.#; s#\.py$##')"
+          mods="$(scripts/test-shard ${{ matrix.shard }} 4)"
+          [ -n "$mods" ] || { echo "empty shard" >&2; exit 1; }
           python -m unittest -v $mods 2>&1 | tee "$RUNNER_TEMP/unittest.log"
       - name: No skips for a missing package
         run: |
@@ -349,10 +362,13 @@ jobs:
           grep -E "skipped '" "$RUNNER_TEMP/unittest.log" | sed -E "s/.*skipped//" | sort | uniq -c
       # Node 22, once, for every Node test: each tracked test*.mjs runs under
       # node --test with no edit here.
+      # Shard 3 carries them, and gets the lighter share of the Python modules.
       - uses: actions/setup-node@v4
+        if: matrix.shard == 3
         with:
           node-version: "22"
       - name: Node tests
+        if: matrix.shard == 3
         run: |
           set -euo pipefail
           RPRESOLVE_FFMPEG="$(command -v ffmpeg)"; RPRESOLVE_FFPROBE="$(command -v ffprobe)"
@@ -363,11 +379,69 @@ jobs:
           echo "$tests"
           node --test $tests
 
+  # Keeps the required check name production-unit-tests. Fails if any shard
+  # failed, was cancelled or was skipped.
+  production-unit-tests:
+    if: always()
+    needs: production-unit-tests-shard
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every shard passed
+        env:
+          RESULT: ${{ needs.production-unit-tests-shard.result }}
+        run: |
+          echo "shards: $RESULT"
+          [ "$RESULT" = "success" ]
+
+  # Red-main alarm. When a push run on main fails, open one issue (or comment on
+  # the one already open); when main is green again, close it. It never runs on
+  # pull requests. It uses only the built-in token with issues: write, and the
+  # issue text carries the run link and the failing job names, nothing else.
+  main-alarm:
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - hygiene-checks
+      - resolve-mcp-tests
+      - rpresolve-tests-3-9
+      - footage-index-tests
+      - production-unit-tests-shard
+      - production-unit-tests
+      - site-build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NEEDS: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Open, update or close the alarm issue
+        run: |
+          set -euo pipefail
+          title_prefix="CI failing on main"
+          failed="$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key' <<<"$NEEDS" | paste -sd, - | sed 's/,/, /g')"
+          open="$(gh issue list --state open --search "\"$title_prefix\" in:title" --json number,title -q ".[] | select(.title | startswith(\"$title_prefix\")) | .number" | head -n 1)"
+          if [ -n "$failed" ]; then
+            body="Workflow CI failed on main at commit ${SHA:0:7}.
+          Failing jobs: $failed
+          Run: $RUN_URL"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+            else
+              gh issue create --title "$title_prefix: CI at ${SHA:0:7}" --body "$body"
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "CI is green on main again at commit ${SHA:0:7}. Run: $RUN_URL"
+          fi
+
   # The Pages site builds from scripts/build-site.py, and the deploy workflow
   # runs only on pushes to main. Build into a temp directory here so a docs
   # change that breaks the build fails the pull request, and deploy nothing.
   site-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
