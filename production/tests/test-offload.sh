@@ -353,6 +353,14 @@ rd=$(ls -d "$T/ar3"/GH7-*/); rd=${rd%/}
 mkdir -p "$T/lite3/A001_C002.RDM"; echo lite > "$T/lite3/A001_C002.RDM/B_ROLL.mp4"
 run safe --lite "$T/lite3" "$rd" remote:bucket/lite
 check "R3D originals with no lite copy are not safe and are named" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "A001_C001_001.R3D" && printf "%s" "$out" | grep -q "A001_C001_002.R3D" && [ ! -e "$rd.offsite.txt" ]'
+# A DNG may be a CinemaDNG frame sequence the lite builder cannot make: it blocks too.
+c="$T/cdng"; mkdir -p "$c/CLIP_0001"
+head -c 4000 /dev/urandom > "$c/CLIP_0001/CLIP_0001_000001.dng"
+mkdir "$T/adng"; run copy "$T/cdng" "$T/adng" --cam GH7
+rd=$(ls -d "$T/adng"/GH7-*/); rd=${rd%/}
+mkdir -p "$T/litedng"; echo lite > "$T/litedng/other.mp4"
+run safe --lite "$T/litedng" "$rd" remote:bucket/lite
+check "a DNG frame with no lite copy is not safe and is named" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "CLIP_0001_000001.dng" && [ ! -e "$rd.offsite.txt" ]'
 # Keep lite_names in step with card.py VIDEO: every extension card.py counts as video must be
 # classified there (a video to cover, or r3d, which blocks).
 vids=$(sed -n 's/^VIDEO = {\(.*\)}.*/\1/p' "$SRC/production/rpresolve/card.py" | tr -d '". ' | tr ',' ' ')

@@ -223,7 +223,7 @@ REMOTE_RE='^[A-Za-z0-9_][A-Za-z0-9_. -]+:'
 
 # lite_names: copy-relative paths on stdin; stdout is "L <lite file a video needs>" or
 # "U <path>" for a file that blocks the verdict: an unknown extension, or a video the lite
-# builder cannot make (r3d). Fail closed: only the known non-video list needs nothing.
+# builder cannot make (r3d, and dng, which may be a CinemaDNG frame sequence). Fail closed: only the known non-video list needs nothing.
 # The video list must cover production/rpresolve/card.py VIDEO (test-offload.sh checks it).
 lite_names() {
   awk '
@@ -234,8 +234,8 @@ lite_names() {
         if (match(f, /\/[^\/]*$/)) { d = substr(f, 1, RSTART - 1); b = substr(f, RSTART + 1) }
         if (!match(b, /\.[^.]*$/)) { print "U " f; continue }
         e = tolower(substr(b, RSTART + 1)); st = substr(b, 1, RSTART - 1)
-        if (e ~ /^(r3d)$/) { print "U " f; continue }
-        if (e ~ /^(jpg|jpeg|heic|heif|png|tif|tiff|dng|arw|cr2|cr3|nef|raf|rw2|orf|xml|bin|txt|json|csv|xmp|thm|wav|aif|aiff|mp3|aac|m4a|flac|srt|cpi|bim|bdm|mpl|clpi|sif|rmd|ale)$/) continue
+        if (e ~ /^(r3d|dng)$/) { print "U " f; continue }
+        if (e ~ /^(jpg|jpeg|heic|heif|png|tif|tiff|arw|cr2|cr3|nef|raf|rw2|orf|xml|bin|txt|json|csv|xmp|thm|wav|aif|aiff|mp3|aac|m4a|flac|srt|cpi|bim|bdm|mpl|clpi|sif|rmd|ale)$/) continue
         if (e !~ /^(mov|mp4|m4v|mts|m2ts|mxf|avi|mkv|braw)$/) { print "U " f; continue }
         v++; D[v] = d; B[v] = b; S[v] = st; E[v] = e; cnt[d "/" st]++
         if (e == "braw") braw[d "/" st] = 1
