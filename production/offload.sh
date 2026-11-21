@@ -8,7 +8,7 @@
 #   offload.sh safe --lite <lite-dir> <copy-dir> <rclone-remote>
 #                                                   lite tier: the full copy verifies locally, and a
 #                                                   lite copy (one H.264 .mp4 per video) is offsite
-#   offload.sh lite-manifest <lite-dir> <copy-dir>  write the lite copy's manifest (needed by safe --lite)
+#   offload.sh lite <new-lite-dir> <copy-dir>       make the lite copy and its manifest in one step
 #
 # copy and safe refuse to start on a share mounted from a slow address (Wi-Fi,
 # the tailnet): smbutil must report OFFLOAD_FAST_HOST (10.10.10.2) for the share,
@@ -32,12 +32,15 @@
 # card is safe when the full copy verifies and `rclone check --one-way <lite-dir> <remote>`
 # passes; no full offsite copy is required. <copy>.offsite.txt records "tier lite" or "tier full".
 #
-# The lite copy names its card: `offload.sh lite-manifest <lite-dir> <copy-dir>` writes
-# <lite-dir>/offload-lite-manifest.txt (the card id, and per lite file its hash and the hash of the
-# original it stands for, from SHA256SUMS). Write it when the lite copy is made, before the upload.
-# safe --lite refuses a lite dir with no manifest, a manifest for another card, a lite file that no
-# longer matches it, or a source hash that is not this card's. The manifest proves the lite files
-# are the ones the operator named at write time; it cannot prove a transcode came from the clip.
+# The lite copy names its card, and is made by this tool: `offload.sh lite <new-lite-dir> <copy-dir>`
+# transcodes each video from the verified copy (ffmpeg) into a folder that does not exist yet (or is
+# empty), and writes <lite-dir>/offload-lite-manifest.txt in the same step: the card id, and per lite
+# file its hash and the hash of the original, checked against SHA256SUMS before and after the
+# transcode. No command writes a manifest for files already in a folder, and `lite` refuses a
+# non-empty folder, so another card's lite folder is never relabelled. safe --lite refuses a lite dir
+# with no manifest, a manifest for another card, a lite file that no longer matches it, an unreadable
+# lite file, or lite files with the same bytes for different originals. Limit: a manifest typed by hand in the same format
+# would pass; the tool has no way to tell. A BRAW video is transcoded from its Proxy .mp4 (recorded in the manifest); with none, `lite` refuses.
 #
 # Exit: 0 ok, 1 copy or check failed, 2 refused (usage, gate, destination).
 # Check a finished copy later: cd <CAM>-<id6> && shasum -a 256 -c ../<CAM>-<id6>.SHA256SUMS
@@ -266,58 +269,114 @@ lite_names() {
 }
 
 LITE_MANIFEST=offload-lite-manifest.txt
-LITE_MANIFEST_HOW="regenerate it with: offload.sh lite-manifest <lite-dir> <copy-dir> (only once the lite files are this card's)"
+LITE_FRESH="make a fresh lite folder for this card with: offload.sh lite <new-lite-dir> <copy-dir>; never edit or reuse another card's lite folder"
+FFMPEG_BIN="${FFMPEG_BIN:-ffmpeg}"
+
+is_sha() { printf '%s' "$1" | grep -qE '^[0-9a-f]{64}$'; }
+
+# lite_same_bytes MANIFEST: lite files that hold the same bytes though their originals differ (a transcoder
+# that wrote one thing for two clips). Two byte-identical originals may share lite bytes.
+lite_same_bytes() { awk -F'\t' '$1 == "file" { if ($3 in o && o[$3] != $5) print $2; o[$3] = $5 }' "$1"; }
 
 # lite_manifest_check LITE COPY ID NEEDMAP: refuse (exit 1) unless the manifest names this card and
 # covers every needed lite file with its current hash and the original's hash from SHA256SUMS.
 lite_manifest_check() {
   local lite="$1" dir="$2" id="$3" needmap="$4" m="$1/$LITE_MANIFEST" base l s h w
   base=$(basename "$dir")
-  [ -s "$m" ] || fail "NOT safe to format: the lite copy has no manifest naming its card ($LITE_MANIFEST), so it cannot be tied to card $id; $LITE_MANIFEST_HOW"
+  [ -s "$m" ] || fail "NOT safe to format: the lite copy has no manifest naming its card ($LITE_MANIFEST), so it cannot be tied to card $id; $LITE_FRESH; a manifest written by hand does not count"
   [ "$(sed -n 's/^card_id //p' "$m" | head -n 1)" = "$id" ] \
-    || fail "NOT safe to format: the lite manifest names another card, not $id; $LITE_MANIFEST_HOW"
+    || fail "NOT safe to format: the lite manifest names another card, not $id; $LITE_FRESH"
   # Every manifest line: the original's hash must be this card's.
   local badsrc
-  badsrc=$(awk -F'\t' 'NR == FNR { sum[substr($0, 67)] = substr($0, 1, 64); next } $1 == "file" && sum[$4] != $5 { print $4 }' "$dir.SHA256SUMS" "$m") \
+  badsrc=$(awk -F'\t' 'NR == FNR { sum[substr($0, 67)] = substr($0, 1, 64); next } $1 == "file" && (length($5) != 64 || length($7) != 64 || sum[$4] != $5 || sum[$6] != $7) { print $4 }' "$dir.SHA256SUMS" "$m") \
     || fail "NOT safe to format: cannot read the lite manifest; card $id"
   [ -z "$badsrc" ] || fail "NOT safe to format: the lite manifest lists an original hash that does not match this card's $base.SHA256SUMS: $(printf '%s' "$badsrc" | tr '\n' ' '); card $id"
+  local dup; dup=$(lite_same_bytes "$m")
+  [ -z "$dup" ] || fail "NOT safe to format: lite files with the same bytes stand for different originals: $(printf '%s' "$dup" | tr '\n' ' '); card $id"
   while IFS=$'\t' read -r l s; do
     [ -n "$l" ] || continue
-    h=$(shasum -a 256 < "$lite/$l" | cut -d' ' -f1)
+    h=$(shasum -a 256 < "$lite/$l" 2>/dev/null | cut -d' ' -f1)
+    is_sha "$h" || fail "NOT safe to format: cannot hash lite file $l; card $id"
     w=$(printf 'file\t%s\t%s\t%s\t' "$l" "$h" "$s")
     awk -F'\t' -v w="$w" 'index($0, w) == 1 { f = 1 } END { exit !f }' "$m" \
-      || fail "NOT safe to format: lite file $l does not match the lite manifest (changed since it was written, or not this card's clip $s); $LITE_MANIFEST_HOW; card $id"
+      || fail "NOT safe to format: lite file $l does not match the lite manifest (changed since it was made, or not this card's clip $s); $LITE_FRESH; card $id"
   done <<NEEDMAP
 $needmap
 NEEDMAP
 }
 
-cmd_lite_manifest() {
-  [ $# -eq 2 ] || die "usage: offload.sh lite-manifest <lite-dir> <copy-dir>"
+# cmd_lite LITE COPY: make the lite copy and its manifest in one step, into a folder that does not
+# exist yet (or is empty). Each lite file is transcoded from the verified copy; the manifest records
+# the hash of the original as read before and after the transcode, so the tie is made when the lite
+# file is made, never afterwards. There is no command that writes a manifest for files already there.
+cmd_lite() {
+  [ $# -eq 2 ] || die "usage: offload.sh lite <new-lite-dir> <copy-dir>"
   local lite="${1%/}" dir="${2%/}"
-  [ -d "$lite" ] || die "not a directory: $lite"
   [ -d "$dir" ] && [ -f "$dir.card.json" ] && [ -f "$dir.SHA256SUMS" ] || die "no sidecars beside $dir: it was not offloaded by this tool"
+  if [ -e "$lite" ] || [ -L "$lite" ]; then
+    [ -d "$lite" ] && [ ! -L "$lite" ] && [ -z "$(ls -A "$lite" 2>/dev/null)" ] \
+      || die "$lite already exists and is not an empty folder; $LITE_FRESH"
+  fi
+  local parent; parent=$(cd -P -- "$(dirname "$lite")" 2>/dev/null && pwd -P) || die "no parent folder for $lite"
+  local p="$parent"
+  while :; do
+    [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
+    [ "$p" = / ] && break
+    p=$(dirname "$p")
+  done
+  route_check "$dir"; route_check "$parent"
+  lite="$parent/$(basename "$lite")"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
   [ -n "$id" ] || die "no card_id in $dir.card.json"
-  local cls bad clash
+  local base; base=$(basename "$dir")
+  (cd "$dir" && shasum -a 256 -c "../$base.SHA256SUMS" > /dev/null 2>&1) \
+    || fail "$dir no longer matches $base.SHA256SUMS; no lite copy made"
+  local cls bad
   cls=$(cut -c67- "$dir.SHA256SUMS" | lite_names | LC_ALL=C sort -u) || die "cannot list the videos in $dir"
   bad=$(printf '%s\n' "$cls" | sed -n 's/^[UC] //p' | tr '\n' ' ')
   [ -z "$bad" ] || die "no lite copy can cover these (unknown type, or a shared lite name): $bad"
-  local tmp; tmp=$(mktemp) || die "mktemp failed"
-  printf 'offload-lite-manifest 1\ncard_id %s\n' "$id" > "$tmp"
-  local l s h sh n=0
+  local map; map=$(printf '%s\n' "$cls" | sed -n 's/^L //p')
+  [ -n "$map" ] || die "no video files in $dir, so a lite copy covers nothing"
+  command -v "$FFMPEG_BIN" > /dev/null || die "no ffmpeg ($FFMPEG_BIN): cannot make the lite copy"
+  local work="$lite.partial-$$"
+  mkdir "$work" || die "cannot create $work"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$work'" EXIT
+  printf 'offload-lite-manifest 1\ncard_id %s\n' "$id" > "$work/$LITE_MANIFEST"
+  local l s r sh h1 h2 lh n=0
   while IFS=$'\t' read -r l s; do
     [ -n "$l" ] || continue
-    [ -s "$lite/$l" ] || { rm -f "$tmp"; die "lite file missing or empty: $l"; }
-    h=$(shasum -a 256 < "$lite/$l" | cut -d' ' -f1)
-    sh=$(awk -v p="$s" 'substr($0, 67) == p { print substr($0, 1, 64); exit }' "$dir.SHA256SUMS")
-    printf 'file\t%s\t%s\t%s\t%s\n' "$l" "$h" "$s" "$sh" >> "$tmp"; n=$((n + 1))
+    r="$s"
+    # ffmpeg cannot read BRAW: the camera's Proxy .mp4 (also in SHA256SUMS) is what gets transcoded, and the manifest says so.
+    case "$s" in *.[bB][rR][aA][wW])
+      r=$(cut -c67- "$dir.SHA256SUMS" | awk -v d="$(dirname "$s")" -v b="$(basename "$s")" '
+        BEGIN { st = b; sub(/\.[^.]*$/, "", st); want = (d == "." ? "" : d "/") "Proxy/" st }
+        { q = $0; if (match(q, /\.[^.\/]*$/) && tolower(substr(q, RSTART)) == ".mp4" && substr(q, 1, RSTART - 1) == want) { print q; exit } }')
+      [ -n "$r" ] || fail "$s has no Proxy .mp4 in the copy for ffmpeg to read; no lite copy made" ;;
+    esac
+    sh=$(awk -v p="$r" 'substr($0, 67) == p { print substr($0, 1, 64); exit }' "$dir.SHA256SUMS")
+    is_sha "$sh" || fail "no recorded hash for $r in $base.SHA256SUMS; no lite copy made"
+    h1=$(shasum -a 256 < "$dir/$r" 2>/dev/null | cut -d' ' -f1)
+    [ "$h1" = "$sh" ] || fail "$r no longer matches its recorded hash; no lite copy made"
+    mkdir -p "$work/$(dirname "$l")" || fail "cannot create folder for $l"
+    "$FFMPEG_BIN" -nostdin -v error -y -i "$dir/$r" -map 0:v:0 -map '0:a?' -c:v libx264 -preset veryfast -crf 28 \
+      -vf scale=-2:720 -c:a aac -b:a 96k -movflags +faststart "$work/$l" < /dev/null \
+      || fail "ffmpeg failed on $s; no lite copy made"
+    h2=$(shasum -a 256 < "$dir/$r" 2>/dev/null | cut -d' ' -f1)
+    [ "$h2" = "$sh" ] || fail "$r changed while it was being transcoded; no lite copy made"
+    [ -s "$work/$l" ] || fail "ffmpeg wrote no lite file for $s; no lite copy made"
+    lh=$(shasum -a 256 < "$work/$l" | cut -d' ' -f1)
+    is_sha "$lh" || fail "cannot hash lite file $l; no lite copy made"
+    printf 'file\t%s\t%s\t%s\t%s\t%s\t%s\n' "$l" "$lh" "$s" "$(awk -v p="$s" 'substr($0, 67) == p { print substr($0, 1, 64); exit }' "$dir.SHA256SUMS")" "$r" "$sh" >> "$work/$LITE_MANIFEST"; n=$((n + 1))
   done <<NEEDMAP
-$(printf '%s\n' "$cls" | sed -n 's/^L //p')
+$map
 NEEDMAP
-  [ "$n" -gt 0 ] || { rm -f "$tmp"; die "no video files in $dir, so a lite copy covers nothing"; }
-  mv "$tmp" "$lite/$LITE_MANIFEST" || die "cannot write $lite/$LITE_MANIFEST"
-  echo "wrote $lite/$LITE_MANIFEST: card $id, $n lite files"
+  local dup; dup=$(lite_same_bytes "$work/$LITE_MANIFEST")
+  [ -z "$dup" ] || fail "lite files with the same bytes stand for different originals: $(printf '%s' "$dup" | tr '\n' ' '); no lite copy made"
+  if [ -d "$lite" ]; then rmdir "$lite" || fail "cannot replace the empty folder $lite"; fi
+  mv "$work" "$lite" || fail "cannot move the lite copy into place at $lite"
+  trap - EXIT
+  echo "made $lite: card $id, $n lite files, manifest $LITE_MANIFEST (upload it with them)"
 }
 
 cmd_safe() {
@@ -441,11 +500,11 @@ NEED
   fi
   if [ -n "$lite" ]; then
     echo "SAFE TO FORMAT: card $id is verified at $dir and a lite copy ($lite) is at $remote"
-    echo "limit: the manifest ties the lite files to this card as the operator named them; it does not prove a transcode came from the clip"
+    echo "limit: the manifest was written when the lite files were made from this card; a hand-typed manifest would also pass"
   else echo "SAFE TO FORMAT: card $id is verified at $dir and at $remote"; fi
 }
 
-[ $# -ge 1 ] || die "usage: offload.sh id|copy|safe|lite-manifest ..."
+[ $# -ge 1 ] || die "usage: offload.sh id|copy|safe|lite ..."
 sub="$1"; shift
 # --route-override may sit anywhere after the subcommand.
 args=()
@@ -461,7 +520,7 @@ case "$sub" in
     fi
     cmd_copy "$@" ;;
   safe) cmd_safe "$@" ;;
-  lite-manifest) cmd_lite_manifest "$@" ;;
+  lite) cmd_lite "$@" ;;
   -h|--help) sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command $sub" ;;
 esac

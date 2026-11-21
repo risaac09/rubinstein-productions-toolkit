@@ -95,14 +95,19 @@ copy_card() { # card -> sets CD to the copy dir
 }
 
 # Lite tree for the panasonic clips (one .mp4 per video; the duplicate needs its own).
-mkdir -p "$T/lite/DCIM/100_PANA"
-for s in P1000001 P1000002 P1000005; do echo lite > "$T/lite/DCIM/100_PANA/$s.mp4"; done
+# ffmpeg fake: the output is a function of the input's bytes.
+cat > "$T/bin/ffmpeg-stub" <<'X2'
+#!/bin/sh
+while [ $# -gt 1 ]; do case "$1" in -i) in="$2" ;; esac; shift; done
+printf 'lite of %s\n' "$(shasum -a 256 < "$in" | cut -d' ' -f1)" > "$1"
+X2
+chmod +x "$T/bin/ffmpeg-stub"; export FFMPEG_BIN="$T/bin/ffmpeg-stub"
 
 before=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort | shasum -a 256)
 copy_card panasonic; PD=$CD
 run safe "$PD" remote:bucket
 check "panasonic: full safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
-"$O" lite-manifest "$T/lite" "$PD" > /dev/null
+"$O" lite "$T/lite" "$PD" > /dev/null
 run safe --lite "$T/lite" "$PD" remote:bucket
 check "panasonic: lite safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "full-tier record"'
 after=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort | shasum -a 256)
