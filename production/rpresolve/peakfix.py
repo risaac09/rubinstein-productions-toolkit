@@ -39,6 +39,10 @@ def fix_peak(path, dest, fps=None, size=None, dry_run=False):
     tp, limit = dc.measure_loudness(path)["true_peak_dbtp"], ceiling(dest)
     r = {"original": os.path.abspath(path), "true_peak_dbtp": tp, "ceiling_dbtp": limit,
          "fixed": None, "gain_db": 0.0, "warnings": [], "status": "pass"}
+    n_audio = sum(s.get("codec_type") == "audio" for s in streams)
+    if n_audio > 1:
+        r["warnings"].append(f"{n_audio} audio streams: only the first is measured and lowered; "
+                             "the others are copied as they are.")
     if tp is None:
         raise dc.CheckError(f"no true peak could be read from {path}.")
     if tp <= limit + 1e-9:

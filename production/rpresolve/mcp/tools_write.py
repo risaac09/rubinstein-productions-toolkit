@@ -1829,8 +1829,8 @@ def register(registry):
         "moves the original to the Trash, stays a CLI choice). For a destination with no loudness target "
         "(a client master) it writes a peak-only copy instead: when the true peak is over the ceiling, "
         "the audio gain is lowered just under it and the video copied, and when it is not, nothing is "
-        "written. Refused when the .loudfix file exists, and when Resolve's caption sidecar has "
-        "no .srt yet. It reads the whole file twice, so it plans first like the write tools: dry "
+        "written. Refused when the .loudfix file exists. A caption sidecar not yet made into an .srt "
+        "fails the copy's check (run deliver_captions first). It reads the whole file twice, so it plans first like the write tools: dry "
         "run, then the real run with its plan_sha. The result is numbers: the ear check is a "
         "person's.",
         {"type": "object", "properties": {

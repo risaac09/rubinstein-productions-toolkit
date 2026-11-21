@@ -94,6 +94,14 @@ class TestPeakFix(unittest.TestCase):
         self.assertLess(r["gain_db"], 0)
         self.assertFalse(os.path.exists(r["fixed"]))
 
+    def test_a_second_audio_stream_is_named_as_left_alone(self):
+        two = os.path.join(self.dir, "Client_two_audio_master.mov")
+        subprocess.run([dc.FFMPEG, "-v", "error", "-y", "-i", self.hot, "-i", self.hot,
+                        "-map", "0", "-map", "1:a", "-c", "copy", two],
+                       stdin=subprocess.DEVNULL, check=True)
+        r = peakfix.fix_peak(two, self.dest, dry_run=True)
+        self.assertTrue(any("2 audio streams" in w for w in r["warnings"]))
+
     def test_a_destination_with_a_target_is_not_this_fix(self):
         with self.assertRaisesRegex(dc.CheckError, "has a loudness target"):
             peakfix.fix_peak(self.hot, tiny("youtube_16x9"))
