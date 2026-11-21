@@ -440,7 +440,9 @@ def apply_assemble(resolve, project_name, name, manifest, width=SIZE[0], height=
     desqueeze = desqueeze_plan(root, p)
     shape = shape_plan(p, width, height)
     level = sound_level(p)
-    streams = camera_streams(p) if p["sound"] else []
+    folder = _bin(None, root, make=False)
+    streams = camera_streams(p, {c.GetClipProperty("File Path") for c in
+                                 folder.GetClipList() or []} if folder else ()) if p["sound"] else []
     tl_colour = {k: str(project.GetSetting(k) or "") for k in cm.TIMELINE_COLOUR_KEYS}
     bed = bed_plan(p, manifest, bed_dir, tl_fps)
     tail = tail_plan(p, bed_folder(manifest, bed_dir), tl_fps) if p["sound_fade_s"] else None
@@ -504,6 +506,8 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
     check()
     _colour(out, have, imported, before)
     _desqueeze(out, have)
+    if p["sound"]:
+        _remap(out, have, imported, before, p)
     tl = media_pool.CreateEmptyTimeline(name)
     if not tl or tl.GetName() != name:
         raise api.WriteNotApplied(f"CreateEmptyTimeline('{name}') failed")
@@ -745,11 +749,29 @@ def _colour(out, have, imported, before):
                 problems.append(f"colour: {base}: {row['flag']}")
 
 
-def camera_streams(p):
-    """One row per source file under camera sound: {source, streams_found, streams_used}. The
-    build uses the first audio stream only (T36): Resolve spreads a source with several over
-    as many tracks and the rest are removed after the append. None found = ffprobe could not
-    read the file."""
+# The mapping that keeps what the delete fallback keeps, the first stream alone: track 1 of the
+# clip's own mapping, copied as it reads (a four-mono source gives {"channel_idx": [1], "type":
+# "mono"}; a stereo first stream keeps both channels), unmuted, with the other tracks dropped.
+# README "Audio Mapping": SetAudioMapping may pass fewer tracks than the media has. The mono form
+# is not yet proven on a live Resolve (the probe's Q2 proved stereo [1, 2]); the read-back decides.
+FIRST_STREAM_ONLY = "track 1 of the clip's own mapping, alone"
+
+
+def first_track_only(was):
+    """The mapping to set from what GetAudioMapping read: track 1 only, unmuted; None when the
+    read has no track 1."""
+    t1 = (api.audio_track_mapping(was) or {}).get("1")
+    return {"track_mapping": {"1": {**t1, "mute": False}}} if isinstance(t1, dict) else None
+
+
+def camera_streams(p, in_bin=()):
+    """One row per source file under camera sound: {source, streams_found, streams_used, action,
+    mapping}. The build uses the first audio stream only (T36). action 'remap': the source has
+    several streams and this run will import it, so its pool item is remapped to one track before
+    the append (T39); 'fallback': it has several but is already in the bin, a pool item other
+    timelines use and never remapped, so the extra tracks are deleted after the append; 'none':
+    one stream or none; 'at build': ffprobe could not read the file (None found), the build reads
+    the clip's own mapping."""
     rows = {}
     for r in p["spans"]:
         if r["path"] in rows:
@@ -760,9 +782,40 @@ def camera_streams(p):
                     if x.get("codec_type") == "audio")
         except (dc.ToolMissing, dc.CheckError):
             n = None
+        action = ("at build" if n is None else "none" if n < 2
+                  else "fallback" if r["path"] in in_bin else "remap")
         rows[r["path"]] = {"source": os.path.basename(r["path"]), "streams_found": n,
-                           "streams_used": None if n is None else min(n, 1)}
+                           "streams_used": None if n is None else min(n, 1), "action": action,
+                           "mapping": FIRST_STREAM_ONLY if action in ("remap", "at build") else None}
     return _group(list(rows.values()))
+
+
+def _remap(out, have, imported, before, p):
+    """Before the append (T39): a source this run imported that lists several audio tracks gets
+    its first track alone (first_track_only), read back. It is the PAR exception's scope: SetAudioMapping
+    changes the pool item for every timeline that uses it, so a clip that was in the pool is never
+    touched; _spill deals with it. A refused or differing mapping is reported in camera_remap, the
+    original mapping set back, and _spill runs as before."""
+    out["camera_remap"] = rows = []
+    for path in dict.fromkeys(r["path"] for r in p["spans"]):
+        clip = have[path]
+        if path not in imported or clip.GetUniqueId() in before:
+            continue
+        was = api._safe_call(clip, "GetAudioMapping")
+        want = first_track_only(was)
+        if api.audio_track_count(was) < 2 or want is None:
+            continue
+        row = {"source": os.path.basename(path), "tracks_before": api.audio_track_count(was),
+               "mapping": want["track_mapping"]}
+        rows.append(row)
+        if api._safe_call(clip, "SetAudioMapping", json.dumps(want)) is not True:
+            row["result"] = "refused: SetAudioMapping did not return True; the extra tracks are deleted after the append"
+        elif api.audio_track_mapping(api._safe_call(clip, "GetAudioMapping")) != want["track_mapping"]:
+            api._safe_call(clip, "SetAudioMapping",
+                           json.dumps({"track_mapping": api.audio_track_mapping(was)}))
+            row["result"] = "read back differs from what was set (put back); the extra tracks are deleted after the append"
+        else:
+            row["result"] = "remapped"
 
 
 def _spill(tl, out, problems):

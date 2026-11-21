@@ -11,6 +11,7 @@ write tools need are implemented, and record themselves in CALLS too.
 import contextlib
 import copy
 import itertools
+import json
 import os
 from unittest import mock
 
@@ -96,6 +97,10 @@ class Graph(Fake):
 
 
 class Clip(Fake):
+    mapping = None  # the track_mapping SetAudioMapping stored
+    refuse_mapping = False  # SetAudioMapping answers False and changes nothing
+    drift_mapping = False  # the mapping reads back muted, not as it was set
+
     def __init__(self, name, uid, props=None):
         self.name, self.uid, self.props = name, uid, dict(props or {})
         self.linked = None  # (audio clip, offset in timeline frames) after AutoSyncAudio
@@ -112,6 +117,26 @@ class Clip(Fake):
 
     def GetClipProperty(self, key=None):
         return dict(self.props) if key is None else self.props.get(key, "")
+
+    def GetAudioMapping(self):
+        """As Resolve 21.2 reads it: the track_mapping plus keys a setter ignores."""
+        tracks = self.mapping or {
+            str(n): {"channel_idx": [n], "mute": False, "type": "mono"}
+            for n in range(1, self.audio_streams + 1)}
+        if self.drift_mapping:
+            tracks = {k: {**v, "mute": True} for k, v in tracks.items()}
+        _log(self, "GetAudioMapping", self.name)
+        return json.dumps({"embedded_audio_channels": self.audio_streams, "linked_audio": {},
+                           "track_mapping": tracks})
+
+    def SetAudioMapping(self, text):
+        """Accepts a track_mapping; the clip then spills over as many tracks as it lists."""
+        _log(self, "SetAudioMapping", self.name, text)
+        if self.refuse_mapping:
+            return False
+        self.mapping = json.loads(text)["track_mapping"]
+        self.audio_streams = len(self.mapping)
+        return True
 
 
 _ITEM_IDS = itertools.count(1)
