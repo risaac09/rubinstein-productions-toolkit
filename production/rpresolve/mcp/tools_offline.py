@@ -1070,7 +1070,7 @@ def register(registry):
                        "scale (1 to 4, default 1; give the item's current Zoom so "
                        "reframe_apply keeps it) and the centre clamps for the zoomed width. An item with an entry is cropped "
                        "there at the widest filled scale (times zoom) and named hand, whatever "
-                       "the face result (pass, fallback, bars, manual, no_face): the hand "
+                       "the face result (pass, fallback, bars, manual, no_face, scene): the hand "
                        "entry wins, with no head check, and a face crop it replaces is named in "
                        "the item's review list. An item with no entry is unchanged. A share outside 0 to 1, or "
                        "an item that does not exist, is refused before any work."},

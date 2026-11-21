@@ -343,6 +343,19 @@ class VoiceVsBedLocalBed(unittest.TestCase):
         self.assertEqual(row["status"], qc.WARN, row)
         self.assertEqual(row["found"], "14.80s to 19.20s no voice here: check the transcript timing")
 
+    def test_a_span_past_the_end_of_the_audio_says_no_voice_here(self):
+        words = [(5, 9), (15, 19), (40, 44)]  # the file is 35 s long
+        padded = [(4.8, 9.2), (14.8, 19.2)]
+        row = self._run(words, self._levels(padded, {}), 35)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertIn("39.80s to 44.20s no voice here", row["found"])
+
+    def test_no_voice_warnings_past_the_fifth_are_counted(self):
+        words = [(5 + 6 * i, 9 + 6 * i) for i in range(8)]
+        row = self._run(words, lambda t: -120.0 if t >= 5 else -50.0, 80)
+        self.assertEqual(row["status"], qc.WARN, row)
+        self.assertTrue(row["found"].endswith("; +3 more"), row["found"])
+
     def test_music_only_in_gaps_too_short_to_read_passes(self):
         words = [(5, 9), (10.3, 14.3), (15.6, 19.6)]  # the known looser case
         padded = [(4.8, 9.2), (10.1, 14.5), (15.4, 19.8)]
