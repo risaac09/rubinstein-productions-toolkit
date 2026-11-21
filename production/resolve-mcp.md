@@ -313,8 +313,18 @@ at import, so a new command adds its module and its tests and edits no shared
 file, this one included (`rpresolve/cli.py` says how).
 
 - Read Resolve and change nothing (Resolve Studio must be running):
-  `list-projects`, `list-timelines`, `list-render-formats`, `info` and `audio-state`.
-- Every other command never connects to Resolve.
+  `list-projects`, `list-timelines`, `list-render-formats`, `info`, `audio-state` and
+  `fusion-dump export`.
+- Every other command never connects to Resolve, except `fusion-dump export` below.
+
+`fusion-dump` checks a Fusion node tree by a second route. `export` calls
+`ExportFusionComp` on one timeline item (`--project`, `--project-id`,
+`--timeline`, `--item`, optional `--track` and `--comp`) and writes only the
+`.comp` file: it exits 2 when the open project's name or id differs, and refuses
+an output inside any git tree. `parse` turns a `.comp` or `.setting` into a JSON
+tree of nodes, links and modifiers, offline. `diff tree.json intended.json`
+lists missing and extra nodes, type mismatches and missing and extra links, and
+exits 1 when any exist. The tree shape is in `rpresolve/fusiondump.py`.
 
 A command has an MCP tool when one of the same name with underscores is in
 [Tools](#tools); `info` is covered by `resolve_status`, `list_timelines` and
