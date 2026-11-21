@@ -20,7 +20,7 @@ Run from production/:
         [--backend scdet|pyscenedetect]
 
 Backends for hard cuts: scdet (the default, as above) or pyscenedetect, the
-PySceneDetect command line (`scenedetect`, adaptive detector, downscale 2),
+PySceneDetect command line (`scenedetect`, adaptive detector, downscale 2, shots from 2 frames),
 which the 2026-10-31 trial on a 26-cut render found better (24 of 26 matched,
 none false, against scdet's 14 and 50). It is a separate program, never
 imported: install it with `uv tool install 'scenedetect[opencv]==0.7.2'`, which
@@ -74,7 +74,8 @@ MAX_NOISE = 1.0     # grey levels a frame step can move on noise alone
 MAX_DISSOLVE_S = 3600.0  # longest file the dissolve pass holds in memory (about 200 MB of grey frames at 25 fps, a few times over in find_dissolves)
 MAX_STEP = 0.35     # no single frame step may be more than this share of the whole move
 BACKENDS = ("scdet", "pyscenedetect")
-PSD_ARGS = ("-d", "2", "-q", "detect-adaptive")  # the 2026-10-31 trial's settings
+# the 2026-10-31 trial's settings, with shots down to 2 frames (its default of 15 hides flash cuts)
+PSD_ARGS = ("-d", "2", "-q", "-m", "2", "detect-adaptive")
 
 
 class TooLong(dc.CheckError):
