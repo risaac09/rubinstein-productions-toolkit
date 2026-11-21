@@ -5,6 +5,9 @@
 #   offload.sh id   <card>                          card id, listing hash, counts
 #   offload.sh copy <card> <dest-parent> --cam CAM  copy, verify, write sidecars
 #   offload.sh safe <copy-dir> <rclone-remote>      offsite check, then the verdict
+#   offload.sh safe --lite <lite-dir> <copy-dir> <rclone-remote>
+#                                                   lite tier: the full copy verifies locally, and a
+#                                                   lite copy (one H.264 .mp4 per video) is offsite
 #
 # copy and safe refuse to start on a share mounted from a slow address (Wi-Fi,
 # the tailnet): smbutil must report OFFLOAD_FAST_HOST (10.10.10.2) for the share,
@@ -20,6 +23,13 @@
 # "relpath size" listing), OS junk excluded and mtimes ignored, so a time-zone
 # change keeps the id and an added clip changes it. The listing hash (the same
 # without the VolumeUUID) matches a dual-slot twin.
+#
+# Lite tier: <lite-dir> mirrors <copy-dir>; each video (mov mp4 m4v mts m2ts mxf avi mkv braw,
+# any case) at <dir>/<stem>.<ext> needs <dir>/<stem>.mp4, or <dir>/<name>.mp4 (full name plus
+# .mp4) when two videos in that folder share a stem. A .mp4 in a Proxy/ folder beside a .braw of
+# the same stem is that BRAW's lite and needs none of its own; non-video files need none. The
+# card is safe when the full copy verifies and `rclone check --one-way <lite-dir> <remote>`
+# passes; no full offsite copy is required. <copy>.offsite.txt records "tier lite" or "tier full".
 #
 # Exit: 0 ok, 1 copy or check failed, 2 refused (usage, gate, destination).
 # Check a finished copy later: cd <CAM>-<id6> && shasum -a 256 -c ../<CAM>-<id6>.SHA256SUMS
@@ -211,11 +221,50 @@ cmd_copy() {
 
 REMOTE_RE='^[A-Za-z0-9_][A-Za-z0-9_. -]+:'
 
+# lite_names: copy-relative paths on stdin, the lite file each video needs on stdout.
+# A .mp4 in Proxy/ beside a .braw of the same stem is that BRAW's lite; it needs none.
+lite_names() {
+  awk '
+    { p[NR] = $0; n = NR }
+    END {
+      for (i = 1; i <= n; i++) {
+        f = p[i]; d = ""; b = f
+        if (match(f, /\/[^\/]*$/)) { d = substr(f, 1, RSTART - 1); b = substr(f, RSTART + 1) }
+        if (!match(b, /\.[^.]*$/)) continue
+        e = tolower(substr(b, RSTART + 1)); st = substr(b, 1, RSTART - 1)
+        if (e !~ /^(mov|mp4|m4v|mts|m2ts|mxf|avi|mkv|braw)$/) continue
+        v++; D[v] = d; B[v] = b; S[v] = st; E[v] = e; cnt[d "/" st]++
+        if (e == "braw") braw[d "/" st] = 1
+      }
+      for (k = 1; k <= v; k++) {
+        d = D[k]
+        if (E[k] == "mp4" && d ~ /(^|\/)Proxy$/) {
+          pd = d; sub(/(^|\/)Proxy$/, "", pd)
+          if (braw[pd "/" S[k]]) continue
+        }
+        o = (cnt[d "/" S[k]] > 1) ? B[k] ".mp4" : S[k] ".mp4"
+        print (d == "" ? o : d "/" o)
+      }
+    }'
+}
+
 cmd_safe() {
-  [ $# -eq 2 ] || die "usage: offload.sh safe <copy-dir> <rclone-remote>"
+  local lite=""
+  if [ "${1:-}" = --lite ]; then
+    [ $# -ge 2 ] || die "--lite needs a directory"
+    lite="${2%/}"; shift 2
+  fi
+  [ $# -eq 2 ] || die "usage: offload.sh safe [--lite <lite-dir>] <copy-dir> <rclone-remote>"
   local dir="${1%/}" remote="$2"
   [ -d "$dir" ] || die "not a directory: $dir"
   route_check "$dir"
+  if [ -n "$lite" ]; then
+    [ -d "$lite" ] || die "not a directory: $lite"
+    route_check "$lite"
+    local pd pl
+    pd=$(cd -P "$dir" && pwd -P) && pl=$(cd -P "$lite" && pwd -P) || die "cannot resolve $dir or $lite"
+    case "$pl/" in "$pd/"*) die "lite dir $lite is the copy or inside it; the lite tier needs its own tree" ;; esac
+  fi
   # Only an rclone remote ("name:path") is offsite; a bare path, even one on
   # another disk, is a local folder and never earns the verdict.
   printf '%s' "$remote" | grep -qE "$REMOTE_RE" \
@@ -249,6 +298,18 @@ cmd_safe() {
   local base; base=$(basename "$dir")
   (cd "$dir" && shasum -a 256 -c "../$base.SHA256SUMS" > /dev/null 2>&1) \
     || fail "NOT safe to format: $dir no longer matches $base.SHA256SUMS; card $id"
+  # Lite tier: every video needs its lite file, and those files are what rclone checks.
+  local src="$dir" need=""
+  if [ -n "$lite" ]; then
+    src="$lite"
+    need=$(cut -c67- "$dir.SHA256SUMS" | lite_names | LC_ALL=C sort -u) || fail "cannot list the videos in $dir"
+    [ -n "$need" ] || fail "NOT safe to format: no video files in $dir, so a lite copy covers nothing; card $id"
+    local miss="" l
+    while IFS= read -r l; do [ -s "$lite/$l" ] || miss="$miss $l"; done <<NEED
+$need
+NEED
+    [ -z "$miss" ] || fail "NOT safe to format: lite copy is missing or empty for:$miss; card $id"
+  fi
   local log match; log=$(mktemp) && match=$(mktemp) || fail "mktemp failed"
   # shellcheck disable=SC2064
   trap "rm -f '$log' '$match'" EXIT
@@ -258,7 +319,7 @@ cmd_safe() {
   ( for v in $(compgen -e); do
       case "$v" in RCLONE_CONFIG*|RCLONE_PASSWORD_COMMAND) ;; RCLONE_*) unset "$v" ;; esac
     done
-    exec "$bin" check "$dir" "$remote" --one-way --match "$match" --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null )
+    exec "$bin" check "$src" "$remote" --one-way --match "$match" --log-file "$log" --log-level NOTICE --ask-password=false < /dev/null )
   local rc=$?
   # B2 and others report a file they could not hash as a pass on size alone.
   if grep -q "hashes could not be checked" "$log"; then
@@ -266,13 +327,15 @@ cmd_safe() {
   fi
   [ "$rc" -eq 0 ] || fail "NOT safe to format: rclone check exited $rc; card $id"
   # A check that left files out (a filter, by any route) still exits 0: every
-  # hashed file must be among the matches.
-  local unmatched; unmatched=$(cut -c67- "$dir.SHA256SUMS" | LC_ALL=C sort | LC_ALL=C comm -23 - <(LC_ALL=C sort "$match")) \
+  # hashed file (lite tier: every lite file) must be among the matches.
+  local unmatched; unmatched=$( { if [ -n "$lite" ]; then printf '%s\n' "$need"; else cut -c67- "$dir.SHA256SUMS"; fi; } | LC_ALL=C sort | LC_ALL=C comm -23 - <(LC_ALL=C sort "$match")) \
     || fail "NOT safe to format: cannot compare rclone's matches with $base.SHA256SUMS; card $id"
   [ -z "$unmatched" ] || fail "NOT safe to format: rclone did not match $(printf '%s' "$unmatched" | tr '\n' ' ') (a filter?); card $id"
-  printf 'card_id %s\nremote %s\nchecked_utc %s\n' "$id" "$remote" "$(now)" > "$dir.offsite.txt" \
+  local tier="tier full"; [ -z "$lite" ] || tier=$(printf 'tier lite\nlite_dir %s' "$lite")
+  printf 'card_id %s\nremote %s\n%s\nchecked_utc %s\n' "$id" "$remote" "$tier" "$(now)" > "$dir.offsite.txt" \
     || fail "cannot write $dir.offsite.txt"
-  echo "SAFE TO FORMAT: card $id is verified at $dir and at $remote"
+  if [ -n "$lite" ]; then echo "SAFE TO FORMAT: card $id is verified at $dir and a lite copy ($lite) is at $remote"
+  else echo "SAFE TO FORMAT: card $id is verified at $dir and at $remote"; fi
 }
 
 [ $# -ge 1 ] || die "usage: offload.sh id|copy|safe ..."

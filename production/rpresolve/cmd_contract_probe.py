@@ -23,7 +23,7 @@ Every check is read-only or sandbox-only.
 
 The document lists, per check and per call: whether the call is present (the
 attribute exists and is callable), what it returned (a type, a length, the keys of a
-dict, the value of a bool or number; never a name or a path), and "pass", "differs"
+dict, the value of a bool or number; for the fades and speed reads also the numeric values of the dict, and a string value as a length; never a name or a path), and "pass", "differs"
 or "no_golden" against a golden file (default: production/tests/fixtures/
 contract_probe_golden.json). The golden file records what the documentation says (its types were taken from a fake
 modelled on the stub, then checked row by row against the stub text);
@@ -86,8 +86,9 @@ def kind_of(value):
     return "object"
 
 
-def summarise(value, show=False):
-    """What a return looks like, without any name or path in it."""
+def summarise(value, show=False, values=False):
+    """What a return looks like, without any name or path in it. A dict records keys only; with
+    values=True it also records its bool/int/float values, and a string value as a length only."""
     kind = kind_of(value)
     out = {"type": kind}
     if kind in ("bool", "int", "float"):
@@ -98,6 +99,9 @@ def summarise(value, show=False):
             out["value"] = value
     elif kind == "dict":
         out["keys"] = sorted(str(k) for k in value)
+        if values:
+            out["values"] = {str(k): v for k, v in value.items() if kind_of(v) in ("bool", "int", "float")}
+            out["str_lens"] = {str(k): len(v) for k, v in value.items() if kind_of(v) == "str"}
     return out
 
 
@@ -161,7 +165,7 @@ class Context:
         self._row(label, method, present, None, None)
         return present
 
-    def call(self, label, obj, method, *args, show=False):
+    def call(self, label, obj, method, *args, show=False, values=False):
         """Make a call and record it. In read mode a non-read method is refused."""
         if obj is None:
             self._row(label, method, None, None, "no target object in the open project")
@@ -181,7 +185,7 @@ class Context:
         except Exception as e:  # a real Resolve can raise on a bad state
             self._row(label, method, True, None, f"raised {type(e).__name__}")
             return None
-        self._row(label, method, True, summarise(self.raw(value) if isinstance(value, Guard) else value, show), None)
+        self._row(label, method, True, summarise(self.raw(value) if isinstance(value, Guard) else value, show, values), None)
         return value
 
     def note(self, label, text):
@@ -262,7 +266,7 @@ def q3(ctx, t):
     a = t["audio_item"]
     ctx.look("TimelineItem.SetFades", a, "SetFades")
     ctx.look("TimelineItem.AddTransition", a, "AddTransition")
-    ctx.call("TimelineItem.GetFades", a, "GetFades")
+    ctx.call("TimelineItem.GetFades", a, "GetFades", values=True)
     ctx.call("TimelineItem.GetProperties", a, "GetProperties")
 
 
@@ -287,7 +291,7 @@ def q5(ctx, t):
 def q6(ctx, t):
     v = t["video_item"]
     ctx.look("TimelineItem.SetSpeed", v, "SetSpeed")
-    ctx.call("TimelineItem.GetSpeed", v, "GetSpeed")
+    ctx.call("TimelineItem.GetSpeed", v, "GetSpeed", values=True)
 
 
 def q7(ctx, t):
@@ -500,7 +504,12 @@ def s_q2(ctx, t):
         ctx.note("verdict.remap_before_append",
                  f"not testable: no clip at the pool root lists several tracks; the first lists {streams} track(s); use a clip with several streams")
         return
-    ctx.cleanups.append(lambda: clip.SetAudioMapping(before))
+    def restore():
+        clip.SetAudioMapping(before)
+        back = ctx.call("MediaPoolItem.GetAudioMapping.after_restore", clip, "GetAudioMapping")
+        ctx.note("MediaPoolItem.GetAudioMapping.restore_matches_original",
+                 "same as the original" if _track_mapping(back) == _track_mapping(before) else "differs from the original")
+    ctx.cleanups.append(restore)
     mapping = json.dumps({"track_mapping": {"1": {"channel_idx": [1, 2], "mute": False, "type": "stereo"}}})
     accepted = ctx.call("MediaPoolItem.SetAudioMapping", clip, "SetAudioMapping", mapping)
     after = ctx.call("MediaPoolItem.GetAudioMapping.after", clip, "GetAudioMapping")
@@ -534,7 +543,7 @@ def s_q3(ctx, t):
         return
     item = items[0]
     ctx.call("TimelineItem.SetFades", item, "SetFades", {"FadeIn": 0, "FadeOut": 12})
-    ctx.call("TimelineItem.GetFades.after", item, "GetFades")
+    ctx.call("TimelineItem.GetFades.after", item, "GetFades", values=True)
     ctx.call("TimelineItem.AddTransition.audio", item, "AddTransition",
              {"type": "Cross Fade +3 dB", "category": "audio", "position": "end",
               "alignment": "left", "duration": 12})
@@ -568,7 +577,7 @@ def s_q6(ctx, t):
         return
     item = items[0]
     ctx.call("TimelineItem.SetSpeed[50]", item, "SetSpeed", {"Percentage": 50.0})
-    ctx.call("TimelineItem.GetSpeed.after", item, "GetSpeed")
+    ctx.call("TimelineItem.GetSpeed.after", item, "GetSpeed", values=True)
     item.SetSpeed({"Percentage": 100.0})
 
 

@@ -111,7 +111,7 @@ class Chain(unittest.TestCase):
         self.assertIn("6. Resolve project colour: done", text)
         self.assertIn("7. shot list, cut times, drafts, watch, pick: pending", text)
         self.assertIn("next: write the shot list", text)
-        self.assertIn("no, no offsite.txt names it", text)
+        self.assertIn("may the card be formatted: no, no offsite.txt names", text)
 
     def test_a_second_squeeze_answer_is_refused_unless_replace(self):
         self.go(apply=True)
@@ -204,6 +204,61 @@ class Chain(unittest.TestCase):
         self.go(apply=True)
         self.assertEqual((len(self.ran("rpresolve.cmd_card")), len(self.ran("rpresolve.cmd_detect"))),
                          (sets, detects))
+
+    def _formattable(self, *cards):
+        """Run status over a started project holding `cards`; True when it says the card may be formatted."""
+        self.go(apply=True)
+        path = os.path.join(self.cfg["work_root"], "demo", "project.json")
+        with open(path, encoding="utf-8") as f:
+            st = json.load(f)
+        st["cards"] = list(cards)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        lines = []
+        project.status(self.cfg, "demo", say=lines.append)
+        line = [x for x in lines if x.startswith("may the card be formatted")][0]
+        return line.startswith("may the card be formatted: yes")
+
+    def _offsite(self, card, utc="2999-01-01T00:00:00Z"):
+        with open(card + ".card.json", encoding="utf-8") as f:
+            cid = json.load(f)["card_id"]
+        Path(card + ".offsite.txt").write_text(f"card_id {cid}\nremote b2:bucket\nchecked_utc {utc}\n")
+
+    def _second_card(self):
+        other = self.card.replace("CAMA-000000", "CAMA-111111")
+        shutil.copytree(self.card, other)
+        for ext in (".card.json", ".SHA256SUMS"):
+            if os.path.exists(self.card + ext):
+                shutil.copy(self.card + ext, other + ext)
+        return other
+
+    def test_status_formats_only_when_every_card_is_safe(self):
+        self._offsite(self.card)
+        self.assertTrue(self._formattable(self.card))
+
+    def test_status_refuses_format_without_offsite_or_cards(self):
+        self.assertFalse(self._formattable(self.card))
+        self.assertFalse(self._formattable())
+
+    def test_status_refuses_format_when_the_record_is_stale(self):
+        self._offsite(self.card, "2001-01-01T00:00:00Z")  # the record was written after this check
+        self.assertFalse(self._formattable(self.card))
+
+    def test_status_refuses_format_when_any_card_fails_not_just_the_last(self):
+        other = self._second_card()
+        self._offsite(self.card)
+        for order in ((self.card, other), (other, self.card)):  # the unsafe one first, then last
+            self.assertFalse(self._formattable(*order))
+
+    def test_status_refuses_format_for_an_unreadable_card(self):
+        self._offsite(self.card)
+        self.assertFalse(self._formattable(self.card, self.card + "-missing"))
+
+    def test_config_error_lists_the_footage_index_key(self):
+        p = os.path.join(self.dir, "c.json")
+        Path(p).write_text(json.dumps({"work_roots": "/w"}))
+        with self.assertRaisesRegex(project.ProjectError, "footage_index"):
+            project.load_config(p)
 
     def test_status_of_an_unknown_project_is_refused(self):
         with self.assertRaisesRegex(project.ProjectError, "run project start first"):
