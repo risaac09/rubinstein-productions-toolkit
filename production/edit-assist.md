@@ -1,4 +1,4 @@
-# Edit assist: wordsnap, shots, beats, cutout
+# Edit assist: wordsnap, shots, decon, beats, cutout
 
 **Status:** operational.
 
@@ -46,7 +46,7 @@ What it does not do, and limits:
 python3 -m rpresolve.shots SOURCE --out SHOTS.tsv [--threshold 10] [--no-dissolves]
 ```
 
-`--backend pyscenedetect` takes the hard cuts from PySceneDetect's adaptive detector (downscale 2) in place of scdet. It is a separate program the toolkit calls and never imports: `uv tool install 'scenedetect[opencv]==0.7.2'` puts it on PATH. On a 240 s render with 26 planned cuts it found 24 and no false cut, against scdet's 14 and 50 false (trial of 2026-10-31); on the same render through this command it found the same 24 in 47 s. `--threshold` applies to scdet only. With this backend a cut outranks a dissolve that holds it. The dissolve pass still reads handheld motion as dissolves (56 on that render through this command, which has none), so pass `--no-dissolves` on handheld edits.
+`--backend pyscenedetect` takes the hard cuts from PySceneDetect's adaptive detector (downscale 2) in place of scdet. It is a separate program the toolkit calls and never imports: `uv tool install 'scenedetect[opencv]==0.7.2'` puts it on PATH. On a 240 s render with 26 planned cuts it found 24 and no false cut, against scdet's 14 and 50 false (trial of 2026-10-31); `--threshold` applies to scdet only. It runs with a shortest shot of 2 frames: PySceneDetect's default of 15 found 7 of 15 cuts in the punch-montage method's timing, and 2 found all 15. On the 240 s render through this command it finds 25 cuts in 40 s, the trial's 24 and one real cut the default hid (a 0.4 s shot), and no false one. With this backend a cut outranks a dissolve that holds it. The dissolve pass still reads handheld motion as dissolves (56 on that render through this command, which has none), so pass `--no-dissolves` on handheld edits.
 
 qc and rhythm run ffmpeg's `scdet` on a render. shots runs the same filter (`scdet=t=10`, qc's threshold) through the same parser (`qc.parse_scdet`) on the footage itself, and every frame that scores the threshold or more starts a new shot. The file has a header (`shot,in,out,duration,into,blend_in,blend_out`) and one row per shot, times in source seconds. A `.tsv` path is written tab-separated, the paper-edit shape rhythm reads; any other path is comma-separated. `qc --shots` counts the rows of either.
 
@@ -58,6 +58,19 @@ What it does not do, and limits:
 - A hard cut between two shots of the same scene in the same light can score under 10 (as above). Lower `--threshold` for such footage, and expect false cuts on fast motion.
 - Flashes, strobes and whip pans can score as cuts.
 - It decodes every frame at full resolution: a long 6K HEVC file takes a while.
+
+## decon
+
+```sh
+python3 resolve_workflow.py decon recipe REF --out recipe.json [--id ID] [--beats MAP.json] [--against METHOD]
+python3 resolve_workflow.py decon compare REF REBUILD --out compare.json [--sheet sheet.png]
+```
+
+Both take `--backend` and `--no-dissolves` as shots does, and the cuts come from shots. Pass `--backend pyscenedetect` on real edits.
+
+`recipe` writes a finished video as an edit method (`edit-methods.md`) that the method validator passes: one slot per shot with its length, a dissolve as the slot's `transition_out`, a black last shot (mean L* under 5) as `rules.end`, the aspect from the frame, and with a beat map on the video's own clock the tempo and `snap_to_beat`. It carries timing only. Role, move, query and fits are placeholders until shot description exists. `--against` checks the round trip on a render of a known method: the same slot count and every slot within 2 frames, exit 1 if not. A flat-colour render of punch-montage (15 slots, the shortest 3 frames, 0.7 s of end black) comes back with 15 slots inside the 2 frames.
+
+`compare` scores a rebuild against its reference, 0 to 100, as the mean of six parts from 0 to 1: cut recall and no extra cuts (within 2 frames), shot length at matched shots, the difference in coefficient of variation, the distance between the shot-length histograms, and colour (median CIEDE2000 of each shot's mean Lab, zero at 20). Each reference shot is matched to the rebuild at the same share of the running time. A reference against itself scores 100; the punch-montage render against a shuffled order of the same shots scores under 60. `--sheet` writes the matched middle frames as pairs, reference left. Beat alignment and title timing are not scored yet.
 
 ## beats
 

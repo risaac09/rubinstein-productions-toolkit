@@ -1,0 +1,1 @@
+decon: recipe writes a finished video's cuts, dissolves, end black and tempo as an edit method, with a round-trip check against a known method; compare scores a rebuild against its reference out of 100 with a side-by-side sheet. shots' PySceneDetect backend now finds shots down to 2 frames.
