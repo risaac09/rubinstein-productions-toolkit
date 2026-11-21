@@ -1,0 +1,1 @@
+Add rpresolve.build_diff, an offline read-only check of a cut manifest against a saved timeline_items read: item count, record positions and source ranges, gaps and overlaps, audio under each video item, and extra items.
