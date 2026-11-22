@@ -77,20 +77,23 @@ def _size(w, h):
     return max(2, int(w * s) // 2 * 2), max(2, int(h * s) // 2 * 2)
 
 
-def _read(video, frames, size, tmp, tag, raw=True):
+def _read(video, frames, size, tmp, tag, raw=True, fps=None):
     """{frame: (png path, HxWx3 uint8 or None)} for the given frame numbers (a range with a step
     is selected as one expression). raw=False writes the PNGs only, so a long coarse pass holds
-    no frames in memory."""
+    no frames in memory. With fps, an explicit list is read from a seek to its first frame, not
+    by decoding the file from the start (a long reference made each read a full pass)."""
     import numpy as np
     step = frames.step if isinstance(frames, range) else None
     frames = sorted(set(frames))
     if not frames:
         return {}
     w, h = size
-    sel = (f"not(mod(n\\,{step}))" if step and frames[0] == 0 else "+".join(f"eq(n\\,{n})" for n in frames))
+    seek = fps and not step and frames[0] > 2
+    off = frames[0] if seek else 0
+    sel = (f"not(mod(n\\,{step}))" if step and frames[0] == 0 else "+".join(f"eq(n\\,{n - off})" for n in frames))
     vf = f"select='{sel}',scale={w}:{h}"
-    base = [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(video), "-map", "0:v:0",
-            "-vf", vf, "-fps_mode", "passthrough"]
+    base = [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error"] + (["-ss", f"{(off - 0.5) / fps:.4f}"] if seek else []) \
+        + ["-i", dc._src(video), "-map", "0:v:0", "-vf", vf, "-fps_mode", "passthrough", "-frames:v", str(len(frames))]
     pat = os.path.join(tmp, f"{tag}-%06d.png")
     p = subprocess.run(base + ["-y", pat], stdin=subprocess.DEVNULL, capture_output=True, timeout=dc.READ_TIMEOUT_S)
     if p.returncode != 0:
@@ -162,11 +165,17 @@ def _diff(img, empty, box):
     return float(np.abs(img[y0:y1, x0:x1].astype(np.int16) - empty[y0:y1, x0:x1]).mean())
 
 
+def _inside(b):
+    """Box clamped into the frame: Vision's line box can overhang an edge by a few pixels."""
+    x, y = max(0.0, b["x"]), max(0.0, b["y"])
+    return {"x": round(x, 4), "y": round(y, 4), "w": round(min(b["w"], 1 - x), 4), "h": round(min(b["h"], 1 - y), 4)}
+
+
 def _centre(b):
     return b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
 
 
-def _edge(video, size, tmp, t, side, nframes, rest, full):
+def _edge(video, size, tmp, t, side, nframes, rest, full, fps=None):
     """(edge frame, animation) for one side ("in" or "out") of a track."""
     hits = t["hits"]
     if side == "in":
@@ -178,7 +187,7 @@ def _edge(video, size, tmp, t, side, nframes, rest, full):
         bound = hits[-1][0] + STRIDE
         gap = list(range(known + 1, min(nframes, bound)))
     has_empty = 0 <= bound < nframes
-    read = _read(video, gap + [known] + ([bound] if has_empty else []), size, tmp, f"{side}{known}")
+    read = _read(video, gap + [known] + ([bound] if has_empty else []), size, tmp, f"{side}{known}", fps=fps)
     lines = _lines({f: v for f, v in read.items() if f in gap})
     order = sorted(lines, reverse=(side == "out"))   # outermost frame first
     edge, box = known, (hits[0] if side == "in" else hits[-1])[1]
@@ -199,8 +208,9 @@ def _edge(video, size, tmp, t, side, nframes, rest, full):
     return edge, ("slide" if moved else "fade" if ratio < HALF else "cut")
 
 
-def detect(video, fps, nframes, dims):
-    """[title] for video (fps, frame count, (width, height)), sorted by in time."""
+def detect(video, fps, nframes, dims, min_h=0.0):
+    """[title] for video (fps, frame count, (width, height)), sorted by in time. min_h drops lines whose box is
+    shorter than that share of the frame (a screen recording's interface text reads as hundreds of titles)."""
     if not fps or not nframes:
         raise TitlesUnavailable(f"{video} has no frame rate or frame count")
     if vision.vision_binary(vision.TEXT_SOURCE) is None:
@@ -211,22 +221,26 @@ def detect(video, fps, nframes, dims):
         lines = _lines(_read(video, range(0, nframes, STRIDE), size, tmp, "s", raw=False))
         samples = [(f, lines[f]) for f in sorted(lines)]
         for t in _track(samples):
+            if len(t["hits"]) < 2:   # one sample is OCR flicker on a busy frame (a screen recording gave hundreds)
+                continue
             texts = [ln["text"] for _, ln in t["hits"]]
             words = [len(x.split()) for x in texts]
             final = statistics.mode([x for x, n in zip(texts, words) if n == max(words)])
             full_hits = [ln for _, ln in t["hits"] if ln["text"] == final]
-            rest = {k: round(statistics.median(ln[k] for ln in full_hits), 4) for k in ("x", "y", "w", "h")}
+            rest = _inside({k: statistics.median(ln[k] for ln in full_hits) for k in ("x", "y", "w", "h")})
+            if rest["h"] < min_h:   # before the reads: each kept track costs several decodes
+                continue
             mid_f = [f for f, ln in t["hits"] if ln["text"] == final]
             mid_f = mid_f[len(mid_f) // 2]
             # the settled title against an empty frame either side (the sample before, else after)
             empty_f = next((f for f in (t["hits"][0][0] - STRIDE, t["hits"][-1][0] + STRIDE) if 0 <= f < nframes), None)
             full = 0.0
             if empty_f is not None:
-                two = _read(video, [mid_f, empty_f], size, tmp, f"full{mid_f}")
+                two = _read(video, [mid_f, empty_f], size, tmp, f"full{mid_f}", fps=fps)
                 if mid_f in two and empty_f in two:
                     full = _diff(two[mid_f][1], two[empty_f][1], rest)
-            fin, a_in = _edge(video, size, tmp, t, "in", nframes, rest, full)
-            fout, a_out = _edge(video, size, tmp, t, "out", nframes, rest, full)
+            fin, a_in = _edge(video, size, tmp, t, "in", nframes, rest, full, fps)
+            fout, a_out = _edge(video, size, tmp, t, "out", nframes, rest, full, fps)
             # word by word: the count only rises, at least twice over, and the first read is a word prefix of the final
             if len(set(words)) > 1 and words == sorted(words) and final.lower().split()[:words[0]] == texts[0].lower().split():
                 a_in = "word"

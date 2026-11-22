@@ -1,0 +1,1 @@
+decon titles on a long screen recording: the title pass reads each frame it needs from a seek instead of decoding the file from the start, drops single-sample OCR flicker, clamps a Vision box that overhangs the frame edge (the recipe no longer fails to validate), and `decon recipe --title-min-h` ignores interface text below a share of the frame height.

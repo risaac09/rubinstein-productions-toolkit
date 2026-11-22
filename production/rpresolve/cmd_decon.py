@@ -46,6 +46,8 @@ def add_arguments(p):
                    help="also estimate a grade per scene as .cube files in OUT's sibling folder (OUT minus .json, plus .grade)")
     r.add_argument("--titles", action="store_true",
                    help="also read on-screen text (in, out, box, animation) into the recipe's titles (macOS Vision)")
+    r.add_argument("--title-min-h", type=float, default=0.0,
+                   help="with --titles: ignore text shorter than this share of the frame height (0.02 clears a screen recording's interface text)")
     r.add_argument("--effects", action="store_true",
                    help="also put flashes, freeze frames and speed ramps on the slots (one more decode)")
     r.add_argument("--sound", action="store_true",
@@ -83,10 +85,10 @@ def _fetch(args):
     return 0
 
 
-def _titles(report, video):
+def _titles(report, video, min_h=0.0):
     from rpresolve import decon, decon_titles
     fps = report.get("fps")
-    return decon_titles.detect(video, fps, round(report["duration_s"] * fps) if fps else 0, decon._dims(video))
+    return decon_titles.detect(video, fps, round(report["duration_s"] * fps) if fps else 0, decon._dims(video), min_h)
 
 
 def run(args):
@@ -110,7 +112,7 @@ def run(args):
         ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend, adaptive=True)
         if args.action == "recipe":
             fits = [f.strip() for f in args.fits.split(",") if f.strip()]
-            titles = _titles(ref, args.reference) if args.titles else None
+            titles = _titles(ref, args.reference, args.title_min_h) if args.titles else None
             found = None
             if args.effects:
                 from rpresolve import decon_effects
