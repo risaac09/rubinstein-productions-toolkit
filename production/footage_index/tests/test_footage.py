@@ -262,6 +262,21 @@ def test_shoot_methods_plan(monkeypatch):
         assert abs((s["out_s"] - s["in_s"]) - slot["seconds"]) < 1e-6
         assert s["in_s"] >= 0 and s["out_s"] <= 13.0
     assert json.load(open(os.path.join(d, "fills.json")))["music"] == "/tmp/song.wav"
+    # a recipe path takes a method id's place: the same slot count, fills.json under the recipe's own id
+    rec = dict(m, id="recipe-dinner", name="Recipe dinner")
+    rpath = os.path.join(TMP, "recipe-dinner.json")
+    with open(rpath, "w") as fh:
+        json.dump(rec, fh)
+    got = edit.get_method(rpath)
+    assert got["id"] == "recipe-dinner"
+    rfills, rd, _ = edit.plan(c, got, dinner, gate=False)
+    assert len(rfills["slots"]) == len(m["slots"]) and rd.endswith("-recipe-dinner")
+    assert len(json.load(open(os.path.join(rd, "fills.json")))["slots"]) == len(m["slots"])
+    for bad in ({"edit_method": 1, "id": "x"}, [1]):
+        with open(rpath, "w") as fh:
+            json.dump(bad, fh)
+        with pytest.raises(ValueError):
+            edit.get_method(rpath)
     assert not any("V1-0003" in t for t in takes) or not any(t.endswith("P1900003.MOV") for t in takes)
     v1, p3, p2 = (c.execute("SELECT id FROM clips WHERE relpath LIKE ?", (f"%{x}",)).fetchone()[0]
                   for x in ("V1-0003_P1900003.mov", "/P1900003.MOV", "/P1900002.MOV"))

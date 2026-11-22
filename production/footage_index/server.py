@@ -66,7 +66,7 @@ def rank_edit_methods(prefix: str) -> dict:
 @mcp.tool()
 def plan_edit(method_id: str, prefix: str, music: str | None = None, swap_slot: int | None = None,
               swap_letter: str | None = None) -> dict:
-    """Fill every slot of a method from one shoot; writes fills.json (and the v2 manifest when the toolkit has
+    """Fill every slot of a method (an id, or the path to a recipe .json from `decon recipe`) from one shoot; writes fills.json (and the v2 manifest when the toolkit has
     rpresolve.methods.to_manifest) to <edits_dir>/<shoot>-<method>/. swap_slot alone makes a lettered sheet of
     that slot's top 5; swap_slot with swap_letter puts that take in the slot."""
     c, m = store.connect(), edit.get_method(method_id)
