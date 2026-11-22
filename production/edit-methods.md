@@ -58,6 +58,7 @@ Run from `production/`; stdlib only, except that `watch sheets` needs ffmpeg and
 | `rules.end` | `"black:S"`, S seconds of black after the last slot, or `null` |
 | `slots[]` | in play order |
 | `titles` | optional, written by `decon recipe --titles`: a list of `{text, in_s, out_s, box, animation, animation_out}`, the on-screen text read from the reference. Times in seconds on its clock (out is the end of the last frame drawn), `box` `{x, y, w, h}` a share of the frame from its top left, each animation `cut`, `fade`, `slide` or `word` (word by word). `to_manifest` does not read it yet |
+| `sound` | optional, written by `decon recipe --sound` (see `edit-assist.md`): `integrated_lufs`, `lra_lu`, `curve_db`, `spans`, `hits` |
 
 A slot:
 

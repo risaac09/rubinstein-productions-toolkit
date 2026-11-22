@@ -27,7 +27,7 @@ import os
 import statistics
 import subprocess
 
-from . import beats, cutlist, decon_effects, delivercheck as dc, methods, musicmap, paths, rhythm
+from . import audioreport as ar, beats, cutlist, decon_effects, decon_sound, delivercheck as dc, methods, musicmap, paths, rhythm
 
 CUT_TOL_FRAMES = 2
 DE_SCALE = 20.0      # a median CIEDE2000 this large scores zero for colour
@@ -105,8 +105,8 @@ def check_outputs(inputs, outputs):
         seen.append(o)
 
 
-def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None, found=None):
-    """An edit method from a shots.build report, with titles (decon_titles.detect) when given. `found`
+def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None, found=None, sound=None):
+    """An edit method from a shots.build report, with titles (decon_titles.detect) when given and sound (a decon_sound.build map) as its `sound` field. `found`
     (decon_effects.detect) puts its flashes, freezes and ramps on the slots, and gets a `placed` list back.
     Raises DeconError when it would not validate."""
     shots, fps = list(report["shots"]), report.get("fps")
@@ -152,6 +152,8 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, t
          "slots": slots}
     if titles is not None:
         m["titles"] = titles
+    if sound:
+        m["sound"] = decon_sound.for_recipe(sound, len(slots))
     problems = methods.validate(m)
     if problems:
         raise DeconError("the recipe does not validate: " + "; ".join(problems))
@@ -226,10 +228,13 @@ def compare(ref, rb, ref_video, rb_video, sheet=None, titles=None):
         part = title_score.pop("part")
         if part is not None:
             parts["titles"] = part
+    snd, snd_skipped = _sound_parts(ref, rb, ref_video, rb_video)
+    if snd is not None:
+        parts["sound"] = snd
     if sheet:
         _sheet(pairs, sheet, np)
     return {"reference": os.path.basename(ref_video), "rebuild": os.path.basename(rb_video), "fps": fps,
-            "timing_only_parts": list(TIMING_PARTS) + [k2 for k2 in ("beats", "titles") if k2 in parts],
+            "timing_only_parts": list(TIMING_PARTS) + [k2 for k2 in ("beats", "titles", "sound") if k2 in parts],
             "picture_differs": bool(parts["colour"] < 0.5 or parts["picture"] < 0.5),
             "shots": [len(d_ref), len(d_rb)],
             "detector": {side: {k2: r.get(k2) for k2 in ("backend", "threshold_used", "low_contrast", "black_and_white")}
@@ -244,8 +249,22 @@ def compare(ref, rb, ref_video, rb_video, sheet=None, titles=None):
             "parts": {k2: round(v, 3) for k2, v in parts.items()},
             "on_beat": {"share": shares, "skipped": skipped},
             "title_timing": title_score,
+            "sound": {"part": parts.get("sound"), "skipped": snd_skipped},
             "score": round(100 * statistics.fmean(parts.values()), 1),
             "matched": [{k2: v for k2, v in p.items() if k2 not in ("a", "b")} for p in pairs]}
+
+
+def _sound_parts(ref, rb, ref_video, rb_video):
+    """(part, None), or (None, why) when a file has no audio or cannot be read. Both files'
+    loudness and hit shares go through decon_sound.compare_part."""
+    maps = []
+    for r, v in ((ref, ref_video), (rb, rb_video)):
+        try:
+            maps.append(decon_sound.build(v, r, kinds=False))
+        except (decon_sound.SoundError, ar.ReportError, cutlist.CutlistError, dc.CheckError) as e:
+            return None, f"{os.path.basename(v)}: {e}"
+    part = decon_sound.compare_part(*maps)
+    return part, (None if part is not None else "silent audio or a file with no cuts")
 
 
 def _beat_shares(ref_video, rb_video, d_ref, d_rb, fps):
@@ -304,6 +323,8 @@ def summary_compare(r):
         f"Rhythm: ASL {rh['asl'][0]} vs {rh['asl'][1]} s, CV {rh['cv'][0]} vs {rh['cv'][1]}, "
         f"histogram distance {rh['histogram_distance']}, shot length at matched shots {rh['shot_length_ratio']}",
         f"Colour: CIEDE2000 median {r['delta_e']['median']}, max {r['delta_e']['max']}",
+        (f"Sound: part {r['sound']['part']:.3f}" if r["sound"]["part"] is not None
+         else f"Sound: not scored ({r['sound']['skipped']})"),
         (f"Beats: on-beat share {r['on_beat']['share'][0]} vs {r['on_beat']['share'][1]} (within 1 frame)"
          if r["on_beat"]["share"] else f"Beats: not scored ({r['on_beat']['skipped']})"),
         _title_line(r.get("title_timing")),

@@ -39,9 +39,10 @@ END = re.compile(r"^black:(\d+(?:\.\d+)?)$")
 
 TOP = {"edit_method", "id", "name", "summary", "fits", "aspect", "fps", "length_s", "bpm",
        "look", "rules", "slots"}
-TOP_OPTIONAL = {"titles"}   # on-screen text a recipe read from its reference (decon_titles)
+TOP_OPTIONAL = {"titles", "sound"}   # on-screen text a recipe read from its reference (decon_titles)
 TITLE = {"text", "in_s", "out_s", "box", "animation", "animation_out"}
 TITLE_ANIMATIONS = ("cut", "fade", "slide", "word")
+SOUND_KINDS = ("speech", "sung", "music", "hallucination", "uncertain")
 RULES = {"reuse", "min_shot_s", "snap_to_beat", "end"}
 SLOT = {"role", "seconds", "query", "move", "speed", "transition_out", "effect", "scale", "text"}
 SLOT_OPTIONAL = {"secondaries", "ramp", "freeze"}
@@ -119,6 +120,8 @@ def validate(m):
     slots = m.get("slots")
     if not isinstance(slots, list) or not slots:
         return p + ["slots must be a non-empty list"]
+    if "sound" in m:
+        p += _sound_problems(m["sound"], len(slots))
     for i, s in enumerate(slots, 1):
         p += [f"slot {i}: {x}" for x in _slot_problems(s, min_shot, i == len(slots))]
     if not p and fps:
@@ -211,6 +214,37 @@ def _title_problems(titles):
         for k in ("animation", "animation_out"):
             if k in t and t[k] not in TITLE_ANIMATIONS:
                 p.append(f"{w}: {k} must be one of {', '.join(TITLE_ANIMATIONS)}")
+    return p
+
+
+def _sound_problems(sd, n_slots):
+    """sound: {integrated_lufs, lra_lu, curve_db, spans, hits} from decon's sound map."""
+    if not isinstance(sd, dict):
+        return ["sound must be an object"]
+    keys = {"integrated_lufs", "lra_lu", "curve_db", "spans", "hits"}
+    p = [f"sound: unknown field '{k}'" for k in sorted(set(sd) - keys)]
+    p += [f"sound: missing field '{k}'" for k in sorted(keys - set(sd))]
+    for k in ("integrated_lufs", "lra_lu"):
+        if k in sd and sd[k] is not None and not _num(sd[k]):
+            p.append(f"sound.{k} must be a number or null")
+    c = sd.get("curve_db")
+    if "curve_db" in sd and not (isinstance(c, list) and all(x is None or _num(x) for x in c)):
+        p.append("sound.curve_db must be a list of numbers (null where a second has no reading)")
+    for j, x in enumerate(sd.get("spans") if isinstance(sd.get("spans"), list) else [], 1):
+        if not (isinstance(x, dict) and set(x) == {"start_s", "end_s", "kind"} and _num(x["start_s"])
+                and _num(x["end_s"]) and 0 <= x["start_s"] < x["end_s"] and x["kind"] in SOUND_KINDS):
+            p.append(f"sound.spans {j}: {{start_s, end_s, kind}}, start before end, kind one of "
+                     f"{', '.join(SOUND_KINDS)}")
+    if "spans" in sd and not isinstance(sd["spans"], list):
+        p.append("sound.spans must be a list")
+    h = sd.get("hits")
+    if "hits" in sd and not isinstance(h, list):
+        p.append("sound.hits must be a list")
+    for j, x in enumerate(h if isinstance(h, list) else [], 1):
+        if not (isinstance(x, dict) and set(x) == {"slot", "offset_frames"} and _num(x["offset_frames"])
+                and isinstance(x["slot"], int) and not isinstance(x["slot"], bool)
+                and 2 <= x["slot"] <= n_slots):
+            p.append(f"sound.hits {j}: {{slot, offset_frames}}, slot a whole number from 2 to {n_slots}")
     return p
 
 

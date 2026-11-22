@@ -6,6 +6,7 @@ on a render of a known method. `decon compare REF REBUILD --out compare.json [--
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
 `--titles` on either reads on-screen text with macOS Vision (rpresolve/decon_titles.py): the
 recipe carries it as `titles`, compare scores title timing.
+`decon sound REF --out sound.json` maps the sound (loudness curve, speech or music spans, hits at cuts); `recipe --sound` carries it into the recipe.
 `decon fetch URL --out-dir DIR` downloads one reference with yt-dlp (study only, outside any git
 tree). The rest is offline; the work is rpresolve/decon.py, the cuts come from rpresolve/shots.py.
 """
@@ -46,8 +47,17 @@ def add_arguments(p):
                    help="also read on-screen text (in, out, box, animation) into the recipe's titles (macOS Vision)")
     r.add_argument("--effects", action="store_true",
                    help="also put flashes, freeze frames and speed ramps on the slots (one more decode)")
+    r.add_argument("--sound", action="store_true",
+                   help="also map the sound (loudness curve, speech or music spans, hits at cuts) into the recipe's `sound` field")
+    r.add_argument("--kinds", help="with --sound: a <name>.kinds.json from `vertcut transcribe` (default: the one beside the "
+                   "video, else `vertcut kinds` on the audio alone)")
     r.add_argument("--against", help="a method id or path this video was built from: check the round trip")
     _shots_flags(r)
+    so = sub.add_parser("sound", help="a reference video's sound map: loudness curve, speech or music spans, hits at cuts")
+    so.add_argument("reference")
+    so.add_argument("--out", required=True, help="sound .json, outside any git tree")
+    so.add_argument("--kinds", help="a <name>.kinds.json (default: the one beside the video, else `vertcut kinds` on the audio)")
+    _shots_flags(so)
     c = sub.add_parser("compare", help="score a rebuild against its reference")
     c.add_argument("reference")
     c.add_argument("rebuild")
@@ -80,7 +90,7 @@ def run(args):
         return _fetch(args)
     from rpresolve import delivercheck as dc, paths
     try:
-        from rpresolve import decon, methods, shots
+        from rpresolve import audioreport, cutlist, decon, decon_sound, methods, shots
     except ModuleNotFoundError as e:
         print(f"ERROR: decon needs {e.name}, which this Python does not have", file=sys.stderr)
         return 1
@@ -89,7 +99,8 @@ def run(args):
             problem = out and paths.out_problem(out, any_git_tree=True)
             if problem:
                 raise paths.OutputRefused(problem)
-        decon.check_outputs([args.reference, getattr(args, "rebuild", None), args.beats if args.action == "recipe" else None],
+        decon.check_outputs([args.reference, getattr(args, "rebuild", None), args.beats if args.action == "recipe" else None,
+                             getattr(args, "kinds", None)],
                             [args.out, getattr(args, "sheet", None)])
         dissolves = not args.no_dissolves
         ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend, adaptive=True)
@@ -100,7 +111,8 @@ def run(args):
             if args.effects:
                 from rpresolve import decon_effects
                 found = decon_effects.detect(ref, args.reference)
-            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found)
+            sm = decon_sound.build(args.reference, ref, args.kinds) if args.sound else None
+            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
                 msg += f", {len(titles)} titles"
@@ -109,6 +121,8 @@ def run(args):
                 msg += (f"\neffects: {n['flash']} flash, {n['freeze']} freeze, {n['ramp']} ramp placed"
                         f"; {len(found['left_off'])} flash left off (not at a slot's start)")
             ok = True
+            if sm:
+                msg += "\n" + decon_sound.summary(sm)
             if args.grade:
                 from rpresolve import decon_grade
                 gdir = os.path.splitext(args.out)[0] + ".grade"
@@ -122,6 +136,9 @@ def run(args):
                 ok = trip["ok"]
                 msg += (f"\nround trip against {args.against}: slots {trip['slots'][0]} vs {trip['slots'][1]}, "
                         f"worst {trip['max_error_frames']} frames: {'pass' if trip['ok'] else 'FAIL'}")
+        elif args.action == "sound":
+            doc = decon_sound.build(args.reference, ref, args.kinds)
+            msg, ok = decon_sound.summary(doc), True
         else:
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
             titles = (_titles(ref, args.reference), _titles(rb, args.rebuild)) if args.titles else None
@@ -129,7 +146,8 @@ def run(args):
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1)
-    except (dc.ToolMissing, dc.CheckError, OSError, ValueError, ImportError) as e:
+    except (dc.ToolMissing, dc.CheckError, audioreport.ReportError, cutlist.CutlistError, OSError, ValueError,
+            ImportError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     print(msg)

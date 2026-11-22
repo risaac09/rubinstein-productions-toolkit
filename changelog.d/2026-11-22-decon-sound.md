@@ -1,0 +1,1 @@
+Add decon sound (D8): a reference video's loudness curve, speech or music spans from vertcut kinds, and audio hits within 2 frames of a cut; decon recipe --sound carries it as the method's optional sound field, and decon compare gains a sound part.
