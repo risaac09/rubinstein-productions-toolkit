@@ -110,6 +110,8 @@ class TestDecon(unittest.TestCase):
         got = [{"text": "HELLO", "in_s": 1.0, "out_s": 2.0, "box": {"x": 0, "y": 0, "w": 1, "h": 1},
                 "animation": "cut", "animation_out": "cut"}]
         self.assertEqual(decon.compare_key(self.report, self.ref, key, got)["parts"]["titles"], 1.0)
+        r = decon.compare_key(self.report, self.ref, {"steps_s": cuts + [cuts[-1] + 3.0]}, steps=[cuts[-1] + 3.1])
+        self.assertEqual((r["missed_s"], r["screen_steps"]), ([], 1))   # a screen step finds the step no cut has
         r = decon.compare_key(self.report, self.ref, {"steps_s": cuts}, got)
         self.assertNotIn("titles", r["parts"])
         self.assertIn("the key has no titles", decon.summary_key(r))
@@ -127,6 +129,18 @@ class TestDecon(unittest.TestCase):
         code, err = self._cli(["compare", self.ref, "--out", out, "--no-dissolves"])
         self.assertEqual(code, 1)
         self.assertIn("--key", err)
+        code, err = self._cli(["compare", self.ref, self.ref, "--screen", "--out", out, "--no-dissolves"])
+        self.assertEqual(code, 1)
+        self.assertIn("--key only", err)
+        code, err = self._cli(["compare", self.ref, "--key", key, "--screen", "--out", out, "--no-dissolves"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("screen_steps", json.loads(Path(out).read_text()))
+        rec = os.path.join(self.tmp.name, "screen.json")
+        code, err = self._cli(["recipe", self.ref, "--screen", "--out", rec, "--no-dissolves"])
+        self.assertEqual(code, 0, err)
+        doc = json.loads(Path(rec).read_text())
+        self.assertIsInstance(doc["steps"], list)
+        self.assertEqual(methods.validate(doc), [])
         code, err = self._cli(["compare", self.ref, "--key", key, "--out", key, "--no-dissolves"])
         self.assertEqual(code, 1)   # would overwrite the key
         self.assertEqual(json.loads(Path(key).read_text()), {"steps_s": decon._bounds(self.report)})

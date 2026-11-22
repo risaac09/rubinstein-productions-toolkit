@@ -105,7 +105,8 @@ def check_outputs(inputs, outputs):
         seen.append(o)
 
 
-def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None, found=None, sound=None):
+def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None, found=None, sound=None,
+           steps=None):
     """An edit method from a shots.build report, with titles (decon_titles.detect) when given and sound (a decon_sound.build map) as its `sound` field. `found`
     (decon_effects.detect) puts its flashes, freezes and ramps on the slots, and gets a `placed` list back.
     Raises DeconError when it would not validate."""
@@ -154,6 +155,8 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, t
         m["titles"] = titles
     if sound:
         m["sound"] = decon_sound.for_recipe(sound, len(slots))
+    if steps is not None:
+        m["steps"] = sorted(steps)
     problems = methods.validate(m)
     if problems:
         raise DeconError("the recipe does not validate: " + "; ".join(problems))
@@ -273,16 +276,18 @@ def key_problems(key):
     return p
 
 
-def compare_key(ref, ref_video, key, titles=None):
+def compare_key(ref, ref_video, key, titles=None, steps=()):
     """Score a reference's shots.build report (and its detected titles, when given) against a measured key
-    (key_problems says its shape). A step is found by a cut within KEY_TOL_S; a cut near no step is extra."""
+    (key_problems says its shape). A step is found by a cut, or one of `steps` (decon_steps.find on a screen
+    recording), within KEY_TOL_S; a cut or step near no key step is extra."""
     fps = ref.get("fps")
     if not fps:
         raise DeconError(f"{ref_video} has no frame rate")
     bad = key_problems(key)
     if bad:
         raise DeconError("key: " + "; ".join(bad))
-    cuts, steps = _bounds(ref), sorted(key["steps_s"])
+    found_steps = list(steps)
+    cuts, steps = sorted(_bounds(ref) + found_steps), sorted(key["steps_s"])
     tol = KEY_TOL_S + 1e-6
     err = [_near(cuts, t) for t in steps]
     found = [e for e in err if e <= tol]
@@ -296,6 +301,7 @@ def compare_key(ref, ref_video, key, titles=None):
         if part is not None:
             parts["titles"] = part
     return {"reference": os.path.basename(ref_video), "fps": fps, "steps": len(steps), "cuts": len(cuts),
+            "screen_steps": len(list(found_steps)),
             "found": len(found), "missed_s": [t for t, e in zip(steps, err) if e > tol],
             "extra_s": [round(t, 3) for t in cuts if _near(steps, t) > tol],
             "step_error_frames": {"median": round(statistics.median(found) * fps, 2) if found else None,
@@ -309,7 +315,8 @@ def summary_key(r):
     return "\n".join([
         f"Score {r['score']} of 100 against the key ({', '.join(f'{k} {v}' for k, v in r['parts'].items())})",
         f"Steps: {r['found']} of {r['steps']} found by a cut within {KEY_TOL_S} s (error median {e['median']} frames, "
-        f"max {e['max']}); {len(r['extra_s'])} of {r['cuts']} cuts near no step",
+        f"max {e['max']}); {len(r['extra_s'])} of {r['cuts']} cuts near no step"
+        + (f" ({r['screen_steps']} of them screen steps)" if r.get("screen_steps") else ""),
         f"Missed steps (s): {', '.join(f'{t:g}' for t in r['missed_s']) or 'none'}",
         _title_line(r.get("title_timing")),
     ])

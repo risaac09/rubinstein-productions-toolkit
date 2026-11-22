@@ -70,6 +70,38 @@ class TestShots(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp.cleanup()
 
+    def test_find_bursts(self):
+        def frames(steps):   # grey frames whose mean step from one to the next is each value in steps
+            f = [np.zeros(16, np.float32)]
+            for v in steps:
+                f.append(f[-1] + (v if len(f) % 2 else -v))
+            return np.array(f)
+        quiet = [0.5] * 6
+        self.assertEqual(shots.find_bursts(frames(quiet + [30] * 5 + quiet), 25), [(6, 11)])
+        self.assertEqual(shots.find_bursts(frames(quiet + [30, 30, 2, 30, 30] + quiet), 25), [])  # a still frame inside
+        self.assertEqual(shots.find_bursts(frames([20] * 30), 25), [])          # steady motion is no burst
+        self.assertEqual(shots.find_bursts(frames(quiet + [30] * 12 + quiet), 25), [])  # too long for a transition
+        self.assertEqual(shots.find_bursts(None, 25), [])
+
+    def test_bursts_are_cuts_in_an_adaptive_build_only(self):
+        S = f"s={SIZE}:r={RATE}"
+        graph = (f"smptebars={S}:d=2,format=yuv420p[a];color=c=0x2060a0:{S}:d=2,format=yuv420p[b];"
+                 "[a][b]xfade=transition=slideleft:duration=0.5:offset=1.5[v]")
+        path = os.path.join(self._tmp.name, "slide.mkv")
+        proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y", "-filter_complex", graph,
+                               "-map", "[v]", "-c:v", "ffv1", path], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        from unittest import mock
+        self.assertEqual(shots.build(path)["cuts"], [1.6])   # scdet takes this slide as a cut
+        # a burst in clear space becomes a cut at its middle; one on the existing cut adds nothing
+        # (13, 17) holds the cut at 1.6 s and (17, 20) starts 2 frames after it: both are that transition
+        with mock.patch.object(shots, "find_bursts", return_value=[(5, 9), (13, 17), (17, 20)]):
+            r = shots.build(path, adaptive=True)
+            self.assertEqual(r["bursts"], [0.8])
+            self.assertEqual(r["cuts"], [0.8, 1.6])
+            self.assertEqual([x["into"] for x in r["shots"]], ["start", "cut", "cut"])
+            self.assertEqual(shots.build(path)["bursts"], [])   # not adaptive: not read
+
     def test_a_slow_dip_spans_its_whole_fade(self):
         # 10 fps: A 0-19, fade out over frames 12-19 (8 frames, more than RAMP_FRAMES), 3 black,
         # B fades in over 8 frames: the span is the whole fall and rise, as the dissolve pass sees it

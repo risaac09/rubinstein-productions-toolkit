@@ -55,7 +55,8 @@ def add_arguments(p):
     r.add_argument("--effects", action="store_true",
                    help="also put flashes, freeze frames and speed ramps on the slots (one more decode)")
     r.add_argument("--screen", action="store_true",
-                   help="with --effects: the reference is a screen recording, so its holds and scrolls are not freezes or ramps")
+                   help="the reference is a screen recording: with --effects its holds and scrolls are not freezes or ramps; "
+                   "the recipe gains `steps`, the times part of the screen changes at once with no cut (a menu opens)")
     r.add_argument("--sound", action="store_true",
                    help="also map the sound (loudness curve, speech or music spans, hits at cuts) into the recipe's `sound` field")
     r.add_argument("--kinds", help="with --sound: a <name>.kinds.json from `vertcut transcribe` (default: the one beside the "
@@ -80,6 +81,8 @@ def add_arguments(p):
     c.add_argument("--titles", action="store_true", help="also score title timing (macOS Vision)")
     c.add_argument("--title-drop-ui", action="store_true",
                    help="with --titles: ignore text off the frame's centre in both videos")
+    c.add_argument("--screen", action="store_true",
+                   help="with --key: the reference is a screen recording, so its steps with no cut count as found too")
     _shots_flags(c)
 
 
@@ -133,10 +136,16 @@ def run(args):
                     sm = decon_sound.build(args.reference, ref, args.kinds)
                 except decon_sound.SoundError as e:   # a silent screen recording is still a reference
                     sound_note = f"\nsound: skipped ({e})"
-            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm)
+            steps = None
+            if getattr(args, "screen", False):
+                from rpresolve import decon_steps
+                steps = decon_steps.find(args.reference, decon._bounds(ref))
+            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm, steps)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
                 msg += f", {len(titles)} titles"
+            if steps is not None:
+                msg += f", {len(steps)} screen steps"
             if found is not None:
                 n = {k: sum(p["kind"] == k for p in found["placed"]) for k in ("flash", "freeze", "ramp")}
                 msg += (f"\neffects: {n['flash']} flash, {n['freeze']} freeze, {n['ramp']} ramp placed"
@@ -185,11 +194,17 @@ def run(args):
             with open(args.key) as f:
                 key = json.load(f)
             titles = _titles(ref, args.reference, drop_ui=args.title_drop_ui) if args.titles else None
-            doc = decon.compare_key(ref, args.reference, key, titles)
+            steps = ()
+            if args.screen:
+                from rpresolve import decon_steps
+                steps = decon_steps.find(args.reference, decon._bounds(ref))
+            doc = decon.compare_key(ref, args.reference, key, titles, steps)
             msg, ok = decon.summary_key(doc), True
         else:
             if not args.rebuild:
                 raise ValueError("compare needs a rebuild video or --key")
+            if args.screen:
+                raise ValueError("compare --screen works with --key only")
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
             titles = (_titles(ref, args.reference, drop_ui=args.title_drop_ui),
                       _titles(rb, args.rebuild, drop_ui=args.title_drop_ui)) if args.titles else None

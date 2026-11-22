@@ -51,6 +51,14 @@ cut or dissolve found inside it. A flash is 1 to 3 frames far brighter than
 both neighbours; the report lists their times under "flashes" (the cuts a
 flash scores are left as scdet found them).
 
+Fast transitions (adaptive=True only): a whip, push or wipe changes the picture over 3 to 8 frames,
+which both detectors average away. A burst whose mean frame step is at least BURST_FLOOR grey levels,
+BURST_RATIO times the BURST_SIDE frames either side, with no frame in it under half its mean, is a
+cut at its middle (listed under "bursts" too), unless a cut lies within BURST_SIDE frames of it or a
+dissolve or dip overlaps it. On
+2026-11-22 it found three on one edited reference and none on four edited rebuilds, and fired on 2 of
+25 single camera clips (a fast pan inside a shot), so it is kept to decon's adaptive builds.
+
 Dark, flat and black-and-white footage (adaptive=True, which only decon sets): scdet scores shrink
 with contrast (a dim black-and-white clip scores its cuts 6 to 14, under 10) and PySceneDetect's
 default weighs hue and saturation, which black and white lacks. An adaptive build samples the file's
@@ -106,6 +114,10 @@ NO_PICTURE = 2.0                      # a frame whose luma spread is under this 
 START_FRAMES = 2                      # an adaptive scdet cut this close to the start is the encoder's first frame, not a shot,
 START_KEEP = 2.0                      # unless it scores this many times the unscaled threshold (real head cuts 29 to 43, artefacts 3 to 10)
 NO_CHROMA_READ = 99.0                 # chroma reported for a file look() could not sample: ordinary colour footage
+BURST_FLOOR = 10.0                    # mean grey-level step (of 255) of a fast transition's frames
+BURST_RATIO = 3.0                     # its mean over the quieter-looking side's, whichever side is busier
+BURST_SIDE = 4                        # frames read either side of a burst
+BURST_FRAMES = (3, 8)                 # a fast transition's length, frames
 GREY_CHROMA = 4.0                     # mean distance of U and V from neutral below which footage counts as black and white
 
 
@@ -249,6 +261,27 @@ def find_dissolves(frames, fps):
     return out
 
 
+def find_bursts(frames, fps):
+    """[(start_frame, end_frame)] of fast transitions in grey frames (see the module docstring), the
+    strongest first when two overlap; end exclusive, as frame-step indices."""
+    if frames is None or len(frames) < 2 * BURST_SIDE + BURST_FRAMES[0] + 1:
+        return []
+    d = np.abs(np.diff(frames, axis=0)).mean(axis=1)
+    n, found = len(d), []
+    for ln in range(BURST_FRAMES[0], BURST_FRAMES[1] + 1):
+        for i in range(BURST_SIDE, n - ln - BURST_SIDE + 1):
+            run = d[i:i + ln]
+            m = float(run.mean())
+            side = max(float(d[i - BURST_SIDE:i].mean()), float(d[i + ln:i + ln + BURST_SIDE].mean()), 1.0)
+            if m >= BURST_FLOOR and m >= BURST_RATIO * side and float(run.min()) >= 0.5 * m:
+                found.append((m / side, i, i + ln))
+    out = []
+    for _, a, b in sorted(found, reverse=True):
+        if all(b <= x or a >= y for x, y in out):
+            out.append((a, b))
+    return sorted(out)
+
+
 def find_dips(frames, fps):
     """(dips, flashes) in grey frames (n, pixels). A dip is a flat near-black (or near-white) run with
     a picture on both sides, plus the frames over which the luma falls into it and rises out;
@@ -327,7 +360,7 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
         strong = set(qc.parse_scdet(proc.stderr, START_KEEP * threshold))
     start = START_FRAMES / float(rate) if adaptive and rate and backend == "scdet" else 0.0
     cuts = sorted({t for t in found_cuts if start < t < total or t in strong})
-    found, dips, flashes = [], [], []
+    found, dips, flashes, bursts = [], [], [], []
     if dissolves and rate:
         grey = grey_frames(source, total)  # one decode serves the dissolve and dip passes
         found = find_dissolves(grey, float(rate))
@@ -342,6 +375,16 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
                      duration=round((p["end_frame"] - p["start_frame"]) / float(rate), 3))
         found = [d for d in found if not any(d["start"] - half <= p["end"] and p["start"] - half <= d["end"] for p in dips)]
         cuts = [c for c in cuts if not any(p["start"] - half <= c <= p["end"] + half for p in dips)]
+        if adaptive:
+            # a step between frames i and i+1 sits at (i + 1) / fps; the burst's middle is the cut
+            taken = [(p["start"], p["end"]) for p in found + dips]
+            for a, b in find_bursts(grey, float(rate)):
+                t0, t1 = (a + 1) / float(rate), (b + 1) / float(rate)
+                near = BURST_SIDE / float(rate)   # a detector's cut on the burst's edge is the same transition
+                if not any(t0 - near <= c <= t1 + near for c in cuts) and \
+                        not any(t0 - half <= y and x <= t1 + half for x, y in taken):
+                    bursts.append(round((t0 + t1) / 2, 3))
+            cuts = sorted(cuts + bursts)
         if backend == "pyscenedetect":
             # its cuts are the confident ones: a "dissolve" holding one is handheld motion around a cut
             found = [d for d in found if not any(d["start"] - half <= c <= d["end"] + half for c in cuts)]
@@ -362,7 +405,7 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
             "threshold_used": used, "contrast": None if contrast is None else round(contrast, 1),
             "black_and_white": grey_footage, "low_contrast": scale < 1.0, "fps": round(float(rate), 3) if rate else None, "duration_s": round(total, 3),
             "cuts": [round(c, 3) for c in cuts], "dissolves": found, "dips": dips, "flashes": flashes,
-            "shots": shots}
+            "bursts": bursts, "shots": shots}
 
 
 def table(report, sep=","):

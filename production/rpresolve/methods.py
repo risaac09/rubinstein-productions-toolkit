@@ -39,7 +39,7 @@ END = re.compile(r"^black:(\d+(?:\.\d+)?)$")
 
 TOP = {"edit_method", "id", "name", "summary", "fits", "aspect", "fps", "length_s", "bpm",
        "look", "rules", "slots"}
-TOP_OPTIONAL = {"titles", "sound"}   # on-screen text a recipe read from its reference (decon_titles)
+TOP_OPTIONAL = {"titles", "sound", "steps"}   # read from a reference by decon (titles, sound map, screen steps)
 TITLE = {"text", "in_s", "out_s", "box", "animation", "animation_out"}
 TITLE_ANIMATIONS = ("cut", "fade", "slide", "word")
 TITLE_OPTIONAL = {"role"}   # decon_titles.ROLES; recipes from before roles have none
@@ -124,6 +124,9 @@ def validate(m):
         return p + ["slots must be a non-empty list"]
     if "sound" in m:
         p += _sound_problems(m["sound"], len(slots))
+    st = m.get("steps")
+    if "steps" in m and not (isinstance(st, list) and all(_num(x) and x >= 0 for x in st) and st == sorted(st)):
+        p.append("steps must be a sorted list of seconds (a screen recording's steps that are no cut)")
     for i, s in enumerate(slots, 1):
         p += [f"slot {i}: {x}" for x in _slot_problems(s, min_shot, i == len(slots))]
     if not p and fps:
