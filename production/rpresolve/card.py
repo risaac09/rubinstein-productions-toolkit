@@ -30,7 +30,8 @@ from . import paths as rppaths
 from . import sidecar, squeeze
 
 RECORD, SUMS, OFFSITE, LEGACY_SQUEEZE = ".card.json", ".SHA256SUMS", ".offsite.txt", squeeze.SUFFIX
-SIBLINGS = (RECORD, SUMS, OFFSITE, LEGACY_SQUEEZE)
+CARD_ROOT = ".card-root"  # written by offload.sh copy: where the card was mounted
+SIBLINGS = (RECORD, SUMS, OFFSITE, LEGACY_SQUEEZE, CARD_ROOT)
 SEVEN = ("card_id", "listing_hash", "volume_uuid", "cam", "files", "bytes", "offloaded_utc")
 KEYS_V2 = SEVEN + ("schema", "origin", "shoot", "project", "answers", "clips", "history")
 OPTIONAL = ("note",)  # written by hand on two early retrofits

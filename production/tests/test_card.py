@@ -483,6 +483,7 @@ class Command(Base):
         src, dst = Path(self.tmp, "src"), Path(self.tmp, "dst")
         src.mkdir(); dst.mkdir()
         root = make_card(src, schema2=True, offsite=True)
+        Path(str(root) + ".card-root").write_text("/Volumes/CARD\n")
         self.assertEqual(run_cmd("mv", str(root), str(dst))[0], 0)  # dry run
         self.assertTrue(root.exists())
         self.assertEqual(run_cmd("mv", str(root), str(dst), "--apply")[0], 0)
@@ -492,6 +493,7 @@ class Command(Base):
         self.assertEqual(c["record"]["history"][0]["to"], str(dst / "CAMA-012345"))
         self.assertTrue(c["offsite"]["ok"])
         self.assertEqual(sorted(os.listdir(src)), [])
+        self.assertEqual(Path(str(dst / "CAMA-012345") + ".card-root").read_text(), "/Volumes/CARD\n")
 
     def test_mv_refuses_a_clash_and_a_missing_destination(self):
         src, dst = Path(self.tmp, "src"), Path(self.tmp, "dst")

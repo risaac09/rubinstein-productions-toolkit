@@ -72,7 +72,10 @@ check "a second build into the same dir is refused" '! "$F" "$D" >/dev/null 2>&1
 mkdir "$T/bin"
 cat > "$T/bin/diskutil" <<'X'
 #!/bin/sh
-printf '   Volume UUID:              11111111-2222-3333-4444-555555555555\n'
+# the temp root is another volume from the cards below it
+u=11111111-2222-3333-4444-555555555555
+[ "${2%/}" != "$FAKE_PLAIN" ] || u=99999999-other-volume
+printf '   Volume UUID:              %s\n' "$u"
 X
 printf '#!/bin/sh\nexit 0\n' > "$T/bin/smbutil"
 printf '#!/bin/sh\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfake 100 0 999999999 0%% /x\\n"\n' > "$T/bin/df"
@@ -84,8 +87,17 @@ while [ $# -gt 0 ]; do case "$1" in --match) match="$2" ;; --log-file) : > "$2" 
 [ -z "$match" ] || (cd "$src" && find . -type f | sed 's|^\./||' | grep -v "${FAKE_RCLONE_DROP:-^$}") > "$match"
 exit 0
 X
+# stat fake: the device is the first folder under the temp root, so a folder nested in a card is on the card's device and a sibling folder is not.
+cat > "$T/bin/stat" <<'EOF'
+#!/bin/sh
+for p; do :; done
+p=$(cd -P "$p" 2>/dev/null && pwd -P) || exit 1
+r=${p#"$FAKE_PLAIN"/}; r=${r%%/*}
+printf '%s' "$r" | cksum | cut -d' ' -f1
+EOF
 chmod +x "$T/bin/"*
-export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil"
+FAKE_PLAIN=$(cd "$T" && pwd -P); export FAKE_PLAIN
+export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil" STAT_BIN="$T/bin/stat"
 export OFFLOAD_CAFFEINATED=1 OFFLOAD_NOW=2026-10-20T12:00:00Z READ_FLAGS=""
 run() { out=$("$O" "$@" 2>&1); rc=$?; }
 copy_card() { # card -> sets CD to the copy dir
@@ -95,13 +107,19 @@ copy_card() { # card -> sets CD to the copy dir
 }
 
 # Lite tree for the panasonic clips (one .mp4 per video; the duplicate needs its own).
-mkdir -p "$T/lite/DCIM/100_PANA"
-for s in P1000001 P1000002 P1000005; do echo lite > "$T/lite/DCIM/100_PANA/$s.mp4"; done
+# ffmpeg fake: the output is a function of the input's bytes.
+cat > "$T/bin/ffmpeg-stub" <<'X2'
+#!/bin/sh
+while [ $# -gt 1 ]; do case "$1" in -i) in="$2" ;; esac; shift; done
+printf 'lite of %s\n' "$(shasum -a 256 < "$in" | cut -d' ' -f1)" > "$1"
+X2
+chmod +x "$T/bin/ffmpeg-stub"; export FFMPEG_BIN="$T/bin/ffmpeg-stub"
 
 before=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort | shasum -a 256)
 copy_card panasonic; PD=$CD
 run safe "$PD" remote:bucket
 check "panasonic: full safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
+"$O" lite "$T/lite" "$PD" > /dev/null
 run safe --lite "$T/lite" "$PD" remote:bucket
 check "panasonic: lite safe passes" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "full-tier record"'
 after=$(cd "$D/cards/panasonic" && find . -type f -exec shasum -a 256 {} + | LC_ALL=C sort | shasum -a 256)
