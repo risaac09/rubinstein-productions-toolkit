@@ -88,6 +88,13 @@ class TestFetch(unittest.TestCase):
             decon_fetch.fetch(URL, self.out, "/fake/yt-dlp")
         self.assertEqual(Path(victim).read_bytes(), b"keep")
 
+    def test_whole_second_duration_passes(self):
+        # TikTok rounds down to whole seconds; the 2 s clip claimed as 1 is within tolerance
+        run, _ = fake_ytdlp(self.out, claimed=1)
+        with mock.patch("subprocess.run", run):
+            decon_fetch.fetch(URL, self.out, "/fake/yt-dlp")
+        self.assertTrue(os.path.exists(os.path.join(self.out, "abc123.ref.json")))
+
     def test_duration_mismatch_fails(self):
         run, _ = fake_ytdlp(self.out, claimed=5.0)
         with mock.patch("subprocess.run", run), self.assertRaises(dc.CheckError) as cm:

@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from . import delivercheck as dc, paths
 
-DURATION_TOLERANCE_S = 0.5
+DURATION_TOLERANCE_S = 1.0  # TikTok info json gives whole seconds (111 for 111.57 s)
 YTDLP_TIMEOUT_S = 600
 FORMAT = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b"
 
