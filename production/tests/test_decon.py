@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -104,6 +105,18 @@ class TestDecon(unittest.TestCase):
         self.assertLess(r["score"], 60)
         self.assertLess(r["cut_error_frames"]["recall"], 0.5)
         self.assertTrue(os.path.getsize(sheet) > 0)
+
+    def test_compare_builds_both_sides_adaptive_and_records_the_detector(self):
+        out = os.path.join(self.tmp.name, "cmp.json")
+        with mock.patch.object(shots, "build", wraps=shots.build) as spy:
+            code, err = self._cli(["compare", self.ref, self.ref, "--out", out, "--no-dissolves"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual([c.kwargs.get("adaptive") for c in spy.call_args_list], [True, True])
+        with open(out, encoding="utf-8") as f:
+            det = json.load(f)["detector"]
+        for side in ("reference", "rebuild"):
+            self.assertEqual(set(det[side]), {"backend", "threshold_used", "low_contrast", "black_and_white"})
+            self.assertIsNotNone(det[side]["threshold_used"])
 
     def test_cli_recipe_against(self):
         out = os.path.join(self.tmp.name, "recipe.json")

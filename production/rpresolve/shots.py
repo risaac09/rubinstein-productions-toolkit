@@ -56,8 +56,8 @@ with contrast (a dim black-and-white clip scores its cuts 6 to 14, under 10) and
 default weighs hue and saturation, which black and white lacks. An adaptive build samples the file's
 frames first: the scdet threshold scales down in proportion to the median luma spread of the
 frames that have a picture (near-black frames are left out, so a black head does not count), never
-below 0.4 of the set value, and PySceneDetect runs luma-only on black and white. A cut in the first
-two frames is dropped (an encoder start-up artefact the lower bar would count). The report says what
+below 0.4 of the set value, and PySceneDetect runs luma-only on black and white. A scdet cut in the first
+two frames is dropped unless it scores 20 or more (an encoder start-up artefact the lower bar would count). The report says what
 ran: threshold_used, contrast, low_contrast, black_and_white. The default build, qc, besttake and
 any explicit --threshold keep the fixed threshold, so `qc --shots` agrees with the list.
 
@@ -103,7 +103,8 @@ PSD_ARGS = ("-d", "2", "-q", "-m", "2", "detect-adaptive")
 # scdet scores and PySceneDetect's colour channels both shrink on dark, flat or black-and-white footage
 REF_CONTRAST, MIN_SCALE = 25.0, 0.4   # luma spread (grey levels) at which the threshold applies as set; never below 0.4 of it
 NO_PICTURE = 2.0                      # a frame whose luma spread is under this (black, a slate) says nothing about contrast
-START_FRAMES = 2                      # an adaptive cut this close to the start is the encoder's first frame, not a shot
+START_FRAMES = 2                      # an adaptive scdet cut this close to the start is the encoder's first frame, not a shot,
+START_KEEP = 2.0                      # unless it scores this many times the unscaled threshold (real head cuts 29 to 43, artefacts 3 to 10)
 NO_CHROMA_READ = 99.0                 # chroma reported for a file look() could not sample: ordinary colour footage
 GREY_CHROMA = 4.0                     # mean distance of U and V from neutral below which footage counts as black and white
 
@@ -143,8 +144,10 @@ def parse_scene_list(text):
 
 def look(source):
     """(contrast, chroma) of a video file: median luma spread of its frames that have a picture, and
-    mean colour distance from neutral, over 32x18 frames sampled at 2 a second (keyframes only read the dark clips 2x too bright). A file it cannot sample reads as ordinary
-    footage (a half-decoded file does too: fail safe). Raises dc.CheckError on a timeout."""
+    mean colour distance from neutral, over 32x18 frames sampled at 2 a second. A file with no
+    frame to sample (shorter than half a second) gives contrast None: no reading, not an invented one.
+    Raises dc.CheckError on a timeout or a failed ffmpeg run."""
+    # frames sampled at 2 a second, not keyframes only: keyframes read the dark clips about 2x too bright
     try:
         proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source), "-map", "0:v:0",
                                "-vf", f"fps=2,scale={GREY_W}:{GREY_H}:flags=area,format=yuv444p",
@@ -154,8 +157,10 @@ def look(source):
         raise dc.CheckError(f"ffmpeg timed out sampling {source}")
     size = GREY_W * GREY_H
     raw = np.frombuffer(proc.stdout, np.uint8)[:len(proc.stdout) // (3 * size) * 3 * size]
-    if proc.returncode != 0 or not raw.size:
-        return REF_CONTRAST, NO_CHROMA_READ
+    if proc.returncode != 0:
+        raise dc.CheckError(f"ffmpeg could not sample {source}: {proc.stderr.decode(errors='replace').strip()[-300:]}")
+    if not raw.size:
+        return None, NO_CHROMA_READ
     f = raw.reshape(-1, 3, size).astype(np.float32)
     spread = f[:, 0].std(1)
     seen = spread >= NO_PICTURE
@@ -306,9 +311,10 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
     adaptive = adaptive and threshold is None  # an explicit threshold is used as given
     threshold = THRESHOLD if threshold is None else threshold
     contrast, chroma = look(source) if adaptive else (None, NO_CHROMA_READ)
-    scale = min(1.0, max(MIN_SCALE, contrast / REF_CONTRAST)) if adaptive else 1.0
+    scale = min(1.0, max(MIN_SCALE, contrast / REF_CONTRAST)) if adaptive and contrast is not None else 1.0
     used = round(threshold * scale, 3)  # scdet scores track contrast: a fixed bar misses cuts in dark or flat footage
     grey_footage = adaptive and chroma < GREY_CHROMA  # PySceneDetect weighs hue and saturation, which black and white lacks
+    strong = set()
     if backend == "pyscenedetect":
         found_cuts = pyscenedetect_cuts(source, luma_only=grey_footage)
     else:
@@ -318,8 +324,9 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
         if proc.returncode != 0:
             raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
         found_cuts = qc.parse_scdet(proc.stderr, used)
-    start = START_FRAMES / float(rate) if adaptive and rate else 0.0
-    cuts = sorted({t for t in found_cuts if start < t < total})
+        strong = set(qc.parse_scdet(proc.stderr, START_KEEP * threshold))
+    start = START_FRAMES / float(rate) if adaptive and rate and backend == "scdet" else 0.0
+    cuts = sorted({t for t in found_cuts if start < t < total or t in strong})
     found, dips, flashes = [], [], []
     if dissolves and rate:
         grey = grey_frames(source, total)  # one decode serves the dissolve and dip passes
