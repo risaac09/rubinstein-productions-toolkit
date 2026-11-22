@@ -156,6 +156,13 @@ class TestDetect(unittest.TestCase):
                 self.assertEqual(got["animation"], a_in, got)
                 self.assertEqual(got["animation_out"], a_out, got)
 
+    def test_min_h_drops_small_text(self):
+        self.assertEqual(dt.detect(self.clip, FPS, N, (W, H), min_h=0.5), [])
+
+    def test_inside_clamps_an_overhanging_box(self):
+        b = dt._inside({"x": -0.002, "y": 0.5, "w": 0.3, "h": 0.6})
+        self.assertEqual(b, {"x": 0.0, "y": 0.5, "w": 0.3, "h": 0.5})
+
     def test_recipe_carries_titles_and_validates(self):
         m = dict(methods.load("punch-montage"), titles=self.found)
         self.assertEqual(methods.validate(m), [])
