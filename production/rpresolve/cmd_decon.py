@@ -117,7 +117,12 @@ def run(args):
             if args.effects:
                 from rpresolve import decon_effects
                 found = decon_effects.detect(ref, args.reference)
-            sm = decon_sound.build(args.reference, ref, args.kinds) if getattr(args, "sound", False) else None
+            sm, sound_note = None, ""
+            if getattr(args, "sound", False):
+                try:
+                    sm = decon_sound.build(args.reference, ref, args.kinds)
+                except decon_sound.SoundError as e:   # a silent screen recording is still a reference
+                    sound_note = f"\nsound: skipped ({e})"
             doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
@@ -127,6 +132,7 @@ def run(args):
                 msg += (f"\neffects: {n['flash']} flash, {n['freeze']} freeze, {n['ramp']} ramp placed"
                         f"; {len(found['left_off'])} flash left off (not at a slot's start)")
             ok = True
+            msg += sound_note
             if sm:
                 msg += "\n" + decon_sound.summary(sm)
             if args.grade:

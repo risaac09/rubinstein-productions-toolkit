@@ -136,6 +136,18 @@ class TestDeconSound(unittest.TestCase):
         with self.assertRaisesRegex(decon_sound.SoundError, "no audio"):
             decon_sound.build(self.silent, rep)
 
+    def test_recipe_sound_flag_skips_a_silent_video(self):
+        rout = os.path.join(self.tmp.name, "silent-recipe.json")
+        buf = StringIO()
+        with redirect_stdout(buf), redirect_stderr(StringIO()):
+            rc = cmd_decon.run(argparse.Namespace(
+                action="recipe", reference=self.silent, out=rout, id="snd-silent", name=None, fits="motion", beats=None,
+                grade=False, against=None, sound=True, kinds=None, titles=False, effects=False, backend="scdet", no_dissolves=True))
+        self.assertEqual(rc, 0, buf.getvalue())
+        self.assertIn("sound: skipped", buf.getvalue())
+        with open(rout) as f:
+            self.assertNotIn("sound", json.load(f))
+
     def test_recipe_carries_sound_and_validates(self):
         rec = decon.recipe(self.report, self.ref, "snd-test", sound=self.sm)
         self.assertEqual(methods.validate(rec), [])

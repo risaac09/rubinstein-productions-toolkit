@@ -1,0 +1,1 @@
+decon recipe --sound no longer aborts the whole recipe on a reference with no audio stream (an Instagram screen recording): it prints "sound: skipped" with the reason and writes the recipe without a sound field.
