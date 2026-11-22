@@ -13,7 +13,7 @@ Answer these before a grade is called done, a title is placed or a build plan is
 
 Per shot:
 1. Does part of the frame need its own exposure or colour (a face under, a sky clipped, a lamp of another colour)? Yes or no, and why. If yes, name a window shape or a qualifier, on its own node after the correction node.
-2. Does that area move? If yes, track the window forward and back, or use Magic Mask for a person or object. Say which, and why.
+2. Does that area move, or will the shot be repositioned or reframed after masking (`reframe_apply`, `vertical_apply`, an Edit-page transform)? If it moves, track the window forward and back, or use Magic Mask for a person or object. If it will be reframed, mask in Fusion, since a Color-page window follows the frame, not the subject (`resolve-traps.md`, T47; tutorial claim, not yet measured here). Say which, and why.
 3. Should the look stay off skin or off the sky? If yes, key the look node, or use a layer mixer with the matte.
 4. Would one ResolveFX do it better (vignette, glow, grain, Film Look Creator, noise reduction, deflicker)? Name it, or write none.
 
@@ -23,7 +23,7 @@ Per title:
 6. Should it stick to a surface (Tracker or Planar Tracker)?
 7. Does it have a motion spec that passes `python3 -m rpresolve.motionlint SPEC.json`?
 
-A "no" with a reason is a full answer; a missing answer fails the check. The scripting API creates no colour-page node, window or qualifier (`resolve-mcp.md`, "Things that cost time to find"), and Magic Mask needs strokes drawn on screen (`resolve-traps.md`, T21 and T35), so every "yes" is a screen step: write it as a `ui_steps` entry in the manifest (`edit-methods.md`) and do it by computer use, one batch at a time, with a read-back (`describe_grade`, or a frame at full size). A grade with windows built once can travel to other shots as a `.drx` through `apply_grade`.
+A "no" with a reason is a full answer; a missing answer fails the check. The scripting API creates no colour-page node, window or qualifier (`resolve-mcp.md`, "Things that cost time to find"), and Magic Mask needs strokes drawn on screen (`resolve-traps.md`, T21 and T35), so every "yes" is a screen step: write it as a `ui_steps` entry in the manifest (`edit-methods.md`) and do it by computer use, one batch at a time, with a read-back (`describe_grade`, or a frame at full size). A grade or comp built once on screen is saved as a `.drx`, `.comp` or `.setting` and reapplied by API (`resolve-traps.md`, T19, T45, T46): a `.drx` with a tracked window goes in mode 1 or 2, and a Magic Mask never travels, so draw it again per clip.
 
 ## Route the task
 
