@@ -120,7 +120,7 @@ class TestDeconEffects(unittest.TestCase):
         from rpresolve import cmd_decon
         out = os.path.join(self.tmp.name, "fx.json")
         args = type("A", (), dict(action="recipe", reference=self.freeze, out=out, id="fx-cli", name=None,
-                                  fits="motion", beats=None, grade=False, effects=True, against=None,
+                                  fits="motion", beats=None, grade=False, titles=False, effects=True, against=None,
                                   backend="scdet", no_dissolves=True))()
         buf = StringIO()
         with redirect_stdout(buf), redirect_stderr(StringIO()):
