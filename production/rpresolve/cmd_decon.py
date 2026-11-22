@@ -111,7 +111,7 @@ def run(args):
             if args.effects:
                 from rpresolve import decon_effects
                 found = decon_effects.detect(ref, args.reference)
-            sm = decon_sound.build(args.reference, ref, args.kinds) if args.sound else None
+            sm = decon_sound.build(args.reference, ref, args.kinds) if getattr(args, "sound", False) else None
             doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
