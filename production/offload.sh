@@ -161,7 +161,7 @@ cmd_copy() {
 
   if [ -e "$final" ]; then
     if [ -f "$json" ] && grep -q "\"card_id\": \"$ID\"" "$json"; then
-      [ -s "$parent/$name.card-root" ] || (cd -P "$card" && pwd -P) > "$parent/$name.card-root" || die "cannot write $parent/$name.card-root"
+      (cd -P "$card" && pwd -P) > "$parent/$name.card-root" || die "cannot write $parent/$name.card-root"
       echo "already offloaded: $final (card $ID)"; exit 0
     fi
     die "destination exists: $final; never offloading into it"
@@ -337,13 +337,17 @@ cmd_lite() {
   lite="$parent/$(basename "$lite")"
   [ ! -f "$lite.SHA256SUMS" ] || die "lite dir $lite is an offloaded card folder; the lite tier needs its own tree"
   # Fail closed: refuse on the card's device, and when either device cannot be read (no recorded card root, card gone).
+  local cu; cu=$(sed -n 's/.*"volume_uuid": "\([^"]*\)".*/\1/p' "$dir.card.json")
+  [ -n "$cu" ] && [ "$cu" != none ] || die "this copy recorded no volume UUID, so it cannot tell its card from another with the same listing; run copy on the card's mount point (the card's root, not a folder inside it), then lite"
   local croot; croot=$(cat "$dir.card-root" 2>/dev/null)
-  [ -n "$croot" ] && [ -d "$croot" ] || die "cannot tell whether $lite is on the card: its mount point is not recorded or not mounted; mount the card at its recorded path, or run copy on it again to record where it is"
+  [ -n "$croot" ] || die "cannot tell whether $lite is on the card: no mount point is recorded for it; run copy on the card again where it is mounted to record it"
+  [ -d "$croot" ] || die "the card's recorded path $croot is not a folder (the card is ejected or mounted elsewhere); run copy on it again where it is now mounted, then lite"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
   [ -n "$id" ] || die "no card_id in $dir.card.json"
   # A stale mount folder or a same-named card is not the card: its listing must give this copy's card id.
-  ( card_id "$croot" 2>/dev/null && [ "$ID" = "$id" ] ) \
-    || die "the card is not mounted at its recorded path $croot (another card or an empty folder is there); put the card back in its reader at that path"
+  command -v "$DISKUTIL_BIN" > /dev/null || die "no diskutil ($DISKUTIL_BIN): cannot read the card's volume to check it is the card at $croot"
+  local got; got=$( (card_id "$croot" 2>/dev/null && echo "$ID") ) || die "cannot list the card at $croot (no files, or unreadable); run copy on it again where it is now mounted, then lite"
+  [ "$got" = "$id" ] || die "the card at $croot is not card $id (another card, or this card has changed since the copy: it is $got); run copy on the right card where it is mounted, then lite"
   local near="$lite"; while [ ! -e "$near" ]; do near=$(dirname "$near"); done
   local dc dl; dc=$(dev_of "$croot") && dl=$(dev_of "$near") || die "cannot read the device of $croot or $near; the tool never writes to the card"
   [ "$dc" != "$dl" ] || die "lite dir $lite is on the card's own volume ($croot); the tool never writes to the card; make the lite folder on another disk"

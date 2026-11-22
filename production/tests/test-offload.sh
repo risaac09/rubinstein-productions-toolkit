@@ -507,19 +507,32 @@ check "lite deep on the card (DCIM/LITE) is refused and nothing is written" '[ "
 STAT_BIN=/nonexistent/stat run lite "$T/lcdev" "$dA"
 check "lite refuses when the device cannot be read" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "cannot read the device" && [ ! -e "$T/lcdev" ]'
 mv "$dA.card-root" "$dA.card-root.gone"; run lite "$T/lcdev" "$dA"
-check "lite refuses when the card root is not recorded" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not recorded or not mounted" && [ ! -e "$T/lcdev" ]'
+check "lite refuses when the card root is not recorded" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "no mount point is recorded" && [ ! -e "$T/lcdev" ]'
 printf '%s\n' "$T/no-such-card" > "$dA.card-root"; run lite "$T/lcdev" "$dA"
 check "lite refuses when the recorded card root is not mounted" '[ "$rc" -eq 2 ] && [ ! -e "$T/lcdev" ]'
 mv "$dA.card-root.gone" "$dA.card-root"
 # Fifth fix: the recorded card root must still hold this card (R1 stale mount folder, R2 same-named cards swapped).
 mkdir "$T/stale"; printf '%s\n' "$TP/stale" > "$dA.card-root"; run lite "$T/lcdev" "$dA"
-check "R1: a stale mount folder is not the card; lite refuses and names the path" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not mounted at its recorded path" && [ ! -e "$T/lcdev" ]'
+check "R1: a stale mount folder is not the card; lite refuses and says it cannot list the card" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "cannot list the card at" && [ ! -e "$T/lcdev" ]'
 printf '%s\n' "$TP/cardB" > "$dA.card-root"; run lite "$T/cardA/LITE2" "$dA"
-check "R2: another card at the recorded path is refused, nothing written on either card" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not mounted at its recorded path" && [ ! -e "$T/cardA/LITE2" ] && [ ! -e "$T/cardB/LITE2" ]'
+check "R2: another card at the recorded path is refused, nothing written on either card" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "is not card $idA" && [ ! -e "$T/cardA/LITE2" ] && [ ! -e "$T/cardB/LITE2" ]'
 printf '%s\n' "$TP/cardA" > "$dA.card-root"
 # Fifth fix: copy on an already offloaded card writes a missing .card-root.
 rm -f "$dA.card-root"; run copy "$T/cardA" "$T/aab" --cam GH7
 check "copy again on an offloaded card adds the missing .card-root" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "already offloaded" && [ "$(cat "$dA.card-root")" = "$TP/cardA" ]'
+# Sixth fix: copy again refreshes .card-root (remount); a copy with no volume UUID and a missing diskutil are refused apart.
+printf '%s\n' "$TP/stale" > "$dA.card-root"; cp -R "$T/cardA" "$T/m2"
+run copy "$T/m2" "$T/aab" --cam GH7
+check "copy again from the remounted card rewrites .card-root" '[ "$rc" -eq 0 ] && [ "$(cat "$dA.card-root")" = "$TP/m2" ]'
+run lite "$T/lcm2" "$dA"
+check "after the remount, lite to another disk works" '[ "$rc" -eq 0 ] && [ -s "$T/lcm2/offload-lite-manifest.txt" ]'
+printf '%s\n' "$TP/cardA" > "$dA.card-root"
+DISKUTIL_BIN=/nonexistent/diskutil run lite "$T/lcdev" "$dA"
+check "lite names a missing diskutil as the cause" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "no diskutil" && [ ! -e "$T/lcdev" ]'
+cp "$dA.card.json" "$dA.card.json.keep"; sed 's/"volume_uuid": "[^"]*"/"volume_uuid": "none"/' "$dA.card.json.keep" > "$dA.card.json"
+run lite "$T/lcdev" "$dA"
+check "lite refuses a copy that recorded no volume UUID and says to run copy on the mount point" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "no volume UUID" && printf "%s" "$out" | grep -q "mount point" && [ ! -e "$T/lcdev" ]'
+mv "$dA.card.json.keep" "$dA.card.json"
 # Reproduction 1: card A's lite folder offered for card B is refused, and no command relabels it.
 run safe --lite "$T/lcA" "$dB" remote:bucket/lite
 check "another card's lite folder is not safe and does not say to regenerate" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "another card" && printf "%s" "$out" | grep -q "fresh lite folder" && ! printf "%s" "$out" | grep -q "regenerate" && [ ! -e "$dB.offsite.txt" ]'
