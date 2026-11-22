@@ -1,7 +1,7 @@
 """
 decon: take a finished video apart and score a rebuild. `decon recipe REF --out
 recipe.json` writes the reference's cuts, dissolves, end black and (with --beats) tempo
-as an edit method that methods.validate passes (`--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
+as an edit method that methods.validate passes (`--effects` adds flashes, freeze frames and speed ramps; `--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
 `--titles` on either reads on-screen text with macOS Vision (rpresolve/decon_titles.py): the
@@ -44,6 +44,8 @@ def add_arguments(p):
                    help="also estimate a grade per scene as .cube files in OUT's sibling folder (OUT minus .json, plus .grade)")
     r.add_argument("--titles", action="store_true",
                    help="also read on-screen text (in, out, box, animation) into the recipe's titles (macOS Vision)")
+    r.add_argument("--effects", action="store_true",
+                   help="also put flashes, freeze frames and speed ramps on the slots (one more decode)")
     r.add_argument("--against", help="a method id or path this video was built from: check the round trip")
     _shots_flags(r)
     c = sub.add_parser("compare", help="score a rebuild against its reference")
@@ -94,10 +96,18 @@ def run(args):
         if args.action == "recipe":
             fits = [f.strip() for f in args.fits.split(",") if f.strip()]
             titles = _titles(ref, args.reference) if args.titles else None
-            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles)
+            found = None
+            if args.effects:
+                from rpresolve import decon_effects
+                found = decon_effects.detect(ref, args.reference)
+            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
                 msg += f", {len(titles)} titles"
+            if found is not None:
+                n = {k: sum(p["kind"] == k for p in found["placed"]) for k in ("flash", "freeze", "ramp")}
+                msg += (f"\neffects: {n['flash']} flash, {n['freeze']} freeze, {n['ramp']} ramp placed"
+                        f"; {len(found['left_off'])} flash left off (not at a slot's start)")
             ok = True
             if args.grade:
                 from rpresolve import decon_grade

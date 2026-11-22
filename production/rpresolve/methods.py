@@ -44,7 +44,7 @@ TITLE = {"text", "in_s", "out_s", "box", "animation", "animation_out"}
 TITLE_ANIMATIONS = ("cut", "fade", "slide", "word")
 RULES = {"reuse", "min_shot_s", "snap_to_beat", "end"}
 SLOT = {"role", "seconds", "query", "move", "speed", "transition_out", "effect", "scale", "text"}
-SLOT_OPTIONAL = {"secondaries"}
+SLOT_OPTIONAL = {"secondaries", "ramp", "freeze"}
 SECONDARY_KINDS = ("window", "qualifier", "magic-mask", "tracker", "resolvefx")
 SECONDARY = {"kind", "target", "why"}
 SECONDARY_PANEL = {"window": "Windows palette", "qualifier": "Qualifier palette",
@@ -136,6 +136,19 @@ def _slot_problems(s, min_shot, last):
     p += [f"missing field '{k}'" for k in sorted(SLOT - set(s))]
     if "secondaries" in s:
         p += _secondary_problems(s["secondaries"])
+    if "ramp" in s:
+        r = s["ramp"]
+        if not (isinstance(r, list) and len(r) == 2 and all(_num(x) and 0.1 <= x <= 10 for x in r)):
+            p.append("ramp must be [speed at the start, speed at the end], each 0.1 to 10")
+        if s.get("speed") != 1 or s.get("effect") is not None:
+            p.append("a ramp is the item's one retime comp: the slot's speed is 1 and its effect null")
+    if "freeze" in s:
+        f = s["freeze"]
+        if not (isinstance(f, dict) and set(f) == {"at", "seconds"} and _num(f["at"]) and _num(f["seconds"])
+                and f["at"] >= 0 and f["seconds"] > 0):
+            p.append("freeze must be {at, seconds}: seconds into the slot, and how long it holds")
+        elif _num(s.get("seconds")) and f["at"] + f["seconds"] > s["seconds"] + 1e-6:
+            p.append("a freeze must end inside its slot")
     if s.get("role") not in ROLES:  # roles any shoot can fill, never one video's subject
         p.append(f"role must be one of {', '.join(ROLES)}")
     if not isinstance(s.get("query"), str) or not s.get("query").strip():
@@ -366,6 +379,14 @@ def to_manifest(method, fills):
         spans.append(span)
         if entry:
             effects.append(entry)
+        if slot.get("ramp"):  # a linear speed change: the retime comp, as apply_effect builds it
+            effects.append({"span_index": i, "effect": "retime",
+                            "params": {"speed": slot["ramp"][0], "speed_to": slot["ramp"][1]}})
+        if slot.get("freeze"):
+            fz = slot["freeze"]
+            steps.append(ui_step(f"span {i}", "Edit", "right-click the clip > Retime Controls > Freeze Frame",
+                                 "Freeze Frame", f"at {fz['at']:g} s into the span, held {fz['seconds']:g} s",
+                                 "no macro or script holds a frame"))
         if slot["speed"] != 1:  # apply_effect builds it; FCPXML retimes import broken (21.2)
             effects.append({"span_index": i, "effect": "retime",
                             "params": {"speed": slot["speed"]}})
