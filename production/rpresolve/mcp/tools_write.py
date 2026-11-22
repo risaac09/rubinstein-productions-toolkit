@@ -1337,7 +1337,9 @@ def register(registry):
             "drx": {"type": "object", "properties": {
                 "path": {"type": "string", "description": "Absolute path of the .drx."},
                 "mode": {"type": "integer", "enum": [0, 1, 2], "default": 0,
-                         "description": "0 no keyframes, 1 source timecode, 2 start frames."},
+                         "description": "0 no keyframes, 1 source timecode, 2 start frames. Mode 0 drops tracking "
+                                        "on window nodes (Resolve 21.2, measured 2026-11-21); use 1 or 2 "
+                                        "for a still with tracked windows."},
                 "manifest": {"type": "string",
                              "description": "Expected-labels JSON (default: beside the .drx)."}},
                 "required": ["path"], "additionalProperties": False},
