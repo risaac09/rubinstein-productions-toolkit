@@ -3,7 +3,7 @@ rpresolve.shots: the shot list of a source file, from ffmpeg scdet. Offline:
 ffprobe and ffmpeg, never Resolve.
 
 qc and rhythm run scdet on a render; this runs the same filter, at qc's
-threshold (qc.THRESHOLDS["scdet_threshold"]) and through qc.parse_scdet, on
+threshold (qc.THRESHOLDS["scdet_threshold"], fixed unless adaptive, below) and through qc.parse_scdet, on
 the footage itself: a camera file with in-camera cuts, a screen recording, a
 supplied edit. Every frame scoring the threshold or more starts a new shot.
 
@@ -51,11 +51,15 @@ cut or dissolve found inside it. A flash is 1 to 3 frames far brighter than
 both neighbours; the report lists their times under "flashes" (the cuts a
 flash scores are left as scdet found them).
 
-Dark, flat and black-and-white footage: scdet scores shrink with contrast (a dim black-and-white
-clip scores its cuts 6 to 14, under 10) and PySceneDetect's default weighs hue and saturation, which
-black and white lacks. build samples the file's luma spread and colour first: the scdet threshold
-scales down in proportion to it (never below 0.4 of the set value, reported as threshold_used) and
-PySceneDetect runs luma-only on black and white. low_contrast and black_and_white in the report say so.
+Dark, flat and black-and-white footage (adaptive=True, which only decon sets): scdet scores shrink
+with contrast (a dim black-and-white clip scores its cuts 6 to 14, under 10) and PySceneDetect's
+default weighs hue and saturation, which black and white lacks. An adaptive build samples the file's
+frames first: the scdet threshold scales down in proportion to the median luma spread of the
+frames that have a picture (near-black frames are left out, so a black head does not count), never
+below 0.4 of the set value, and PySceneDetect runs luma-only on black and white. A cut in the first
+two frames is dropped (an encoder start-up artefact the lower bar would count). The report says what
+ran: threshold_used, contrast, low_contrast, black_and_white. The default build, qc, besttake and
+any explicit --threshold keep the fixed threshold, so `qc --shots` agrees with the list.
 
 What it does not do: wipes and fades to or from a colour that is not near
 black or white, or a fade at the very start or end of the file; a dissolve over footage that
@@ -98,6 +102,9 @@ BACKENDS = ("scdet", "pyscenedetect")
 PSD_ARGS = ("-d", "2", "-q", "-m", "2", "detect-adaptive")
 # scdet scores and PySceneDetect's colour channels both shrink on dark, flat or black-and-white footage
 REF_CONTRAST, MIN_SCALE = 25.0, 0.4   # luma spread (grey levels) at which the threshold applies as set; never below 0.4 of it
+NO_PICTURE = 2.0                      # a frame whose luma spread is under this (black, a slate) says nothing about contrast
+START_FRAMES = 2                      # an adaptive cut this close to the start is the encoder's first frame, not a shot
+NO_CHROMA_READ = 99.0                 # chroma reported for a file look() could not sample: ordinary colour footage
 GREY_CHROMA = 4.0                     # mean distance of U and V from neutral below which footage counts as black and white
 
 
@@ -135,18 +142,24 @@ def parse_scene_list(text):
 
 
 def look(source):
-    """(contrast, chroma) of a video file: median luma spread and mean colour distance from neutral,
-    over 32x18 frames sampled at 2 a second. A file it cannot sample reads as ordinary footage."""
-    proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source),
-                           "-map", "0:v:0", "-vf", f"fps=2,scale={GREY_W}:{GREY_H}:flags=area,format=yuv444p",
-                           "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, capture_output=True,
-                          timeout=dc.READ_TIMEOUT_S)
+    """(contrast, chroma) of a video file: median luma spread of its frames that have a picture, and
+    mean colour distance from neutral, over 32x18 frames sampled at 2 a second (keyframes only read the dark clips 2x too bright). A file it cannot sample reads as ordinary
+    footage (a half-decoded file does too: fail safe). Raises dc.CheckError on a timeout."""
+    try:
+        proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostats", "-nostdin", "-v", "error", "-i", dc._src(source), "-map", "0:v:0",
+                               "-vf", f"fps=2,scale={GREY_W}:{GREY_H}:flags=area,format=yuv444p",
+                               "-f", "rawvideo", "-"], stdin=subprocess.DEVNULL, capture_output=True,
+                              timeout=dc.READ_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise dc.CheckError(f"ffmpeg timed out sampling {source}")
     size = GREY_W * GREY_H
     raw = np.frombuffer(proc.stdout, np.uint8)[:len(proc.stdout) // (3 * size) * 3 * size]
     if proc.returncode != 0 or not raw.size:
-        return REF_CONTRAST, 99.0
+        return REF_CONTRAST, NO_CHROMA_READ
     f = raw.reshape(-1, 3, size).astype(np.float32)
-    return float(np.median(f[:, 0].std(1))), float(np.abs(f[:, 1:] - 128).mean())
+    spread = f[:, 0].std(1)
+    seen = spread >= NO_PICTURE
+    return float(np.median(spread[seen])) if seen.any() else 0.0, float(np.abs(f[seen if seen.any() else slice(None), 1:] - 128).mean())
 
 
 def pyscenedetect_cuts(source, luma_only=False):
@@ -267,9 +280,10 @@ def find_dips(frames, fps):
     return dips, flashes
 
 
-def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
+def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=False):
     """{file, backend, threshold, fps, duration_s, cuts, dissolves, shots} for a video file;
-    shots are {shot, in, out, duration, into, blend_in, blend_out}. Raises
+    shots are {shot, in, out, duration, into, blend_in, blend_out}. threshold None is qc's; adaptive
+    (decon's) scales that default to the footage's contrast and never an explicit threshold. Raises
     dc.ToolMissing or dc.CheckError."""
     dc.check_tools(ffmpeg=True)
     if not os.path.isfile(source):
@@ -289,10 +303,12 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
                             f"or split the file first.")
     if backend not in BACKENDS:
         raise ValueError(f"backend must be one of {', '.join(BACKENDS)}, not {backend!r}")
-    contrast, chroma = look(source)
-    scale = min(1.0, max(MIN_SCALE, contrast / REF_CONTRAST))
+    adaptive = adaptive and threshold is None  # an explicit threshold is used as given
+    threshold = THRESHOLD if threshold is None else threshold
+    contrast, chroma = look(source) if adaptive else (None, NO_CHROMA_READ)
+    scale = min(1.0, max(MIN_SCALE, contrast / REF_CONTRAST)) if adaptive else 1.0
     used = round(threshold * scale, 3)  # scdet scores track contrast: a fixed bar misses cuts in dark or flat footage
-    grey_footage = chroma < GREY_CHROMA  # PySceneDetect weighs hue and saturation, which black and white lacks
+    grey_footage = adaptive and chroma < GREY_CHROMA  # PySceneDetect weighs hue and saturation, which black and white lacks
     if backend == "pyscenedetect":
         found_cuts = pyscenedetect_cuts(source, luma_only=grey_footage)
     else:
@@ -302,7 +318,8 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
         if proc.returncode != 0:
             raise dc.CheckError(f"ffmpeg could not scan {source}: {proc.stderr.strip()[-300:]}")
         found_cuts = qc.parse_scdet(proc.stderr, used)
-    cuts = sorted({t for t in found_cuts if 0 < t < total})
+    start = START_FRAMES / float(rate) if adaptive and rate else 0.0
+    cuts = sorted({t for t in found_cuts if start < t < total})
     found, dips, flashes = [], [], []
     if dissolves and rate:
         grey = grey_frames(source, total)  # one decode serves the dissolve and dip passes
@@ -335,8 +352,8 @@ def build(source, threshold=THRESHOLD, dissolves=True, backend="scdet"):
                       "into": "start" if not i else ("dip" if "to" in d else "dissolve") if d else "cut",
                       "blend_in": d["start"] if d else "", "blend_out": d["end"] if d else ""})
     return {"file": os.path.abspath(source), "backend": backend, "threshold": threshold,
-            "threshold_used": used, "contrast": round(contrast, 1), "black_and_white": grey_footage,
-            "low_contrast": scale < 1.0, "fps": round(float(rate), 3) if rate else None, "duration_s": round(total, 3),
+            "threshold_used": used, "contrast": None if contrast is None else round(contrast, 1),
+            "black_and_white": grey_footage, "low_contrast": scale < 1.0, "fps": round(float(rate), 3) if rate else None, "duration_s": round(total, 3),
             "cuts": [round(c, 3) for c in cuts], "dissolves": found, "dips": dips, "flashes": flashes,
             "shots": shots}
 
@@ -379,8 +396,8 @@ def add_arguments(p):
     p.add_argument("source", help="a video file: camera original, screen recording or edit")
     p.add_argument("--out", required=True,
                    help="shot list, .csv or .tsv (rhythm reads .tsv), outside any git tree")
-    p.add_argument("--threshold", type=float, default=THRESHOLD,
-                   help=f"scdet score that makes a cut (default {THRESHOLD:g}, as qc)")
+    p.add_argument("--threshold", type=float, default=None,
+                   help=f"scdet score that makes a cut (default {THRESHOLD:g}, as qc; always used as given)")
     p.add_argument("--no-dissolves", action="store_true", help="skip the dissolve pass (cuts only, as before)")
     p.add_argument("--backend", choices=BACKENDS, default="scdet",
                    help="hard-cut detector: scdet (default) or pyscenedetect (the scenedetect program, adaptive)")
