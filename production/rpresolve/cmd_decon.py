@@ -4,6 +4,8 @@ recipe.json` writes the reference's cuts, dissolves, end black and (with --beats
 as an edit method that methods.validate passes (`--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
+`--titles` on either reads on-screen text with macOS Vision (rpresolve/decon_titles.py): the
+recipe carries it as `titles`, compare scores title timing.
 `decon fetch URL --out-dir DIR` downloads one reference with yt-dlp (study only, outside any git
 tree). The rest is offline; the work is rpresolve/decon.py, the cuts come from rpresolve/shots.py.
 """
@@ -40,6 +42,8 @@ def add_arguments(p):
     r.add_argument("--beats", help="a beat map (beats_s) on the reference's own clock, for bpm and snap")
     r.add_argument("--grade", action="store_true",
                    help="also estimate a grade per scene as .cube files in OUT's sibling folder (OUT minus .json, plus .grade)")
+    r.add_argument("--titles", action="store_true",
+                   help="also read on-screen text (in, out, box, animation) into the recipe's titles (macOS Vision)")
     r.add_argument("--against", help="a method id or path this video was built from: check the round trip")
     _shots_flags(r)
     c = sub.add_parser("compare", help="score a rebuild against its reference")
@@ -47,6 +51,7 @@ def add_arguments(p):
     c.add_argument("rebuild")
     c.add_argument("--out", required=True, help="compare .json, outside any git tree")
     c.add_argument("--sheet", help="side-by-side PNG of the matched shots, outside any git tree")
+    c.add_argument("--titles", action="store_true", help="also score title timing (macOS Vision)")
     _shots_flags(c)
 
 
@@ -60,6 +65,12 @@ def _fetch(args):
     print(f"fetched {rec['id']}: {rec['duration']} s, {rec['width']}x{rec['height']}, {rec['file']}")
     print(f"Wrote {os.path.join(args.out_dir, rec['id'] + '.ref.json')}", file=sys.stderr)
     return 0
+
+
+def _titles(report, video):
+    from rpresolve import decon, decon_titles
+    fps = report.get("fps")
+    return decon_titles.detect(video, fps, round(report["duration_s"] * fps) if fps else 0, decon._dims(video))
 
 
 def run(args):
@@ -82,8 +93,11 @@ def run(args):
         ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend, adaptive=True)
         if args.action == "recipe":
             fits = [f.strip() for f in args.fits.split(",") if f.strip()]
-            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats)
+            titles = _titles(ref, args.reference) if args.titles else None
+            doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
+            if titles is not None:
+                msg += f", {len(titles)} titles"
             ok = True
             if args.grade:
                 from rpresolve import decon_grade
@@ -100,7 +114,8 @@ def run(args):
                         f"worst {trip['max_error_frames']} frames: {'pass' if trip['ok'] else 'FAIL'}")
         else:
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
-            doc = decon.compare(ref, rb, args.reference, args.rebuild, args.sheet)
+            titles = (_titles(ref, args.reference), _titles(rb, args.rebuild)) if args.titles else None
+            doc = decon.compare(ref, rb, args.reference, args.rebuild, args.sheet, titles)
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1)

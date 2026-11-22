@@ -57,6 +57,7 @@ Run from `production/`; stdlib only, except that `watch sheets` needs ffmpeg and
 | `rules.snap_to_beat` | a boolean the validator checks. Nothing in this repo moves a cut because of it. Cuts are placed by `notes snap`, on played notes, and `notes check` reports cuts on a note against chance |
 | `rules.end` | `"black:S"`, S seconds of black after the last slot, or `null` |
 | `slots[]` | in play order |
+| `titles` | optional, written by `decon recipe --titles`: a list of `{text, in_s, out_s, box, animation, animation_out}`, the on-screen text read from the reference. Times in seconds on its clock (out is the end of the last frame drawn), `box` `{x, y, w, h}` a share of the frame from its top left, each animation `cut`, `fade`, `slide` or `word` (word by word). `to_manifest` does not read it yet |
 
 A slot:
 
