@@ -58,11 +58,13 @@ class MovesError(ValueError):
     pass
 
 
-def _frames(video, t0, t1, fps, np):
-    """Grey frames from t0 to t1 at ANALYSIS_W wide, every step-th frame: (frames, step)."""
+def _frames(video, t0, t1, fps, size):
+    """Grey frames from t0 to t1 at size (w, h), every step-th frame: (frames, step). The exact size,
+    not W:-2, so the bytes always slice as w x h (an autorotated phone clip would not; shortcut: its
+    axes are then squeezed, not swapped, until _dims reads the rotation)."""
     n = max(0, int(round((t1 - t0) * fps)))
     step = max(1, math.ceil(n / MAX_STEPS))
-    vf = f"scale={ANALYSIS_W}:-2,format=gray"
+    vf = f"scale={size[0]}:{size[1]},format=gray"
     if step > 1:
         vf = f"select='not(mod(n\\,{step}))'," + vf
     p = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-ss", f"{t0:.6f}",
@@ -189,7 +191,7 @@ def measure(report, video, n=None):
         raise MovesError(f"{video} has no frame rate")
     w0, h0 = _dims(video)
     w = ANALYSIS_W
-    h = max(2, int(round(h0 * w / w0 / 2)) * 2)  # ffmpeg's scale=W:-2
+    h = max(2, int(round(h0 * w / w0 / 2)) * 2)
     out = []
     all_shots = report["shots"]
     for i, shot in enumerate(all_shots[:n]):
@@ -198,7 +200,7 @@ def measure(report, video, n=None):
         if t1 - t0 < 3 / fps:
             row.update(summarise([], w, h), note="too short to track")
         else:
-            raw, step = _frames(video, t0, t1, fps, np)
+            raw, step = _frames(video, t0, t1, fps, (w, h))
             row.update(summarise(track(raw, w, h, cv2, np), w, h, step))
         if row["steps"] and row["untracked"] > row["steps"] / 2:
             row["note"] = "most steps had too little texture to track; read as static"
