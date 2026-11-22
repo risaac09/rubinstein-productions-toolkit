@@ -161,6 +161,7 @@ cmd_copy() {
 
   if [ -e "$final" ]; then
     if [ -f "$json" ] && grep -q "\"card_id\": \"$ID\"" "$json"; then
+      [ -s "$parent/$name.card-root" ] || (cd -P "$card" && pwd -P) > "$parent/$name.card-root" || die "cannot write $parent/$name.card-root"
       echo "already offloaded: $final (card $ID)"; exit 0
     fi
     die "destination exists: $final; never offloading into it"
@@ -337,12 +338,15 @@ cmd_lite() {
   [ ! -f "$lite.SHA256SUMS" ] || die "lite dir $lite is an offloaded card folder; the lite tier needs its own tree"
   # Fail closed: refuse on the card's device, and when either device cannot be read (no recorded card root, card gone).
   local croot; croot=$(cat "$dir.card-root" 2>/dev/null)
-  [ -n "$croot" ] && [ -d "$croot" ] || die "cannot tell whether $lite is on the card: its mount point is not recorded or not mounted; mount the card at its recorded path, or re-offload it"
+  [ -n "$croot" ] && [ -d "$croot" ] || die "cannot tell whether $lite is on the card: its mount point is not recorded or not mounted; mount the card at its recorded path, or run copy on it again to record where it is"
+  local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
+  [ -n "$id" ] || die "no card_id in $dir.card.json"
+  # A stale mount folder or a same-named card is not the card: its listing must give this copy's card id.
+  ( card_id "$croot" 2>/dev/null && [ "$ID" = "$id" ] ) \
+    || die "the card is not mounted at its recorded path $croot (another card or an empty folder is there); put the card back in its reader at that path"
   local near="$lite"; while [ ! -e "$near" ]; do near=$(dirname "$near"); done
   local dc dl; dc=$(dev_of "$croot") && dl=$(dev_of "$near") || die "cannot read the device of $croot or $near; the tool never writes to the card"
   [ "$dc" != "$dl" ] || die "lite dir $lite is on the card's own volume ($croot); the tool never writes to the card; make the lite folder on another disk"
-  local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
-  [ -n "$id" ] || die "no card_id in $dir.card.json"
   local base; base=$(basename "$dir")
   (cd "$dir" && shasum -a 256 -c "../$base.SHA256SUMS" > /dev/null 2>&1) \
     || fail "$dir no longer matches $base.SHA256SUMS; no lite copy made"
@@ -418,8 +422,8 @@ cmd_safe() {
     lite="$p"
     while :; do
       [ "$p" -ef "$dir" ] && die "lite dir $lite is the copy or inside it; the lite tier needs its own tree"
-    [ -f "$p.SHA256SUMS" ] && die "lite dir $lite is inside the offloaded card folder $p; the lite tier needs its own tree"
-    [ -e "$p/.git" ] && die "lite dir $lite is inside a git working tree ($p); make the lite folder elsewhere"
+      [ -f "$p.SHA256SUMS" ] && die "lite dir $lite is inside the offloaded card folder $p; the lite tier needs its own tree"
+      [ -e "$p/.git" ] && die "lite dir $lite is inside a git working tree ($p); make the lite folder elsewhere"
       [ "$p" = / ] && break
       p=$(dirname "$p")
     done

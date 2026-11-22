@@ -475,7 +475,7 @@ rmdir "$ld/DCIM/sub"
 mkdir -p "$T/repo/.git" "$T/repo/sub"
 run lite "$T/repo/sub/out" "$ld2"
 check "lite inside a git working tree is refused with a named error" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "git working tree" && [ ! -e "$T/repo/sub/out" ]'
-run lite "$T/okfolder" "$ld2"
+FAKE_UUID=22222222-3333-4444-5555-666666666666 run lite "$T/okfolder" "$ld2"
 check "lite into a plain new folder elsewhere still works" '[ "$rc" -eq 0 ] && [ -s "$T/okfolder/offload-lite-manifest.txt" ]'
 
 # 15d. Two videos needing one lite file, or names equal ignoring case, block and are named.
@@ -511,6 +511,15 @@ check "lite refuses when the card root is not recorded" '[ "$rc" -eq 2 ] && prin
 printf '%s\n' "$T/no-such-card" > "$dA.card-root"; run lite "$T/lcdev" "$dA"
 check "lite refuses when the recorded card root is not mounted" '[ "$rc" -eq 2 ] && [ ! -e "$T/lcdev" ]'
 mv "$dA.card-root.gone" "$dA.card-root"
+# Fifth fix: the recorded card root must still hold this card (R1 stale mount folder, R2 same-named cards swapped).
+mkdir "$T/stale"; printf '%s\n' "$TP/stale" > "$dA.card-root"; run lite "$T/lcdev" "$dA"
+check "R1: a stale mount folder is not the card; lite refuses and names the path" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not mounted at its recorded path" && [ ! -e "$T/lcdev" ]'
+printf '%s\n' "$TP/cardB" > "$dA.card-root"; run lite "$T/cardA/LITE2" "$dA"
+check "R2: another card at the recorded path is refused, nothing written on either card" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not mounted at its recorded path" && [ ! -e "$T/cardA/LITE2" ] && [ ! -e "$T/cardB/LITE2" ]'
+printf '%s\n' "$TP/cardA" > "$dA.card-root"
+# Fifth fix: copy on an already offloaded card writes a missing .card-root.
+rm -f "$dA.card-root"; run copy "$T/cardA" "$T/aab" --cam GH7
+check "copy again on an offloaded card adds the missing .card-root" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "already offloaded" && [ "$(cat "$dA.card-root")" = "$TP/cardA" ]'
 # Reproduction 1: card A's lite folder offered for card B is refused, and no command relabels it.
 run safe --lite "$T/lcA" "$dB" remote:bucket/lite
 check "another card's lite folder is not safe and does not say to regenerate" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "another card" && printf "%s" "$out" | grep -q "fresh lite folder" && ! printf "%s" "$out" | grep -q "regenerate" && [ ! -e "$dB.offsite.txt" ]'
