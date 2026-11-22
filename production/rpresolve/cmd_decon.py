@@ -135,7 +135,7 @@ def run(args):
                     raise paths.OutputRefused(problem)
                 g = decon_grade.grade(ref, args.reference, gdir)
                 msg += f"\ngrade: {len(g['scenes'])} scenes, {sum(1 for s in g['scenes'] if s['cube'])} cubes in {gdir}"
-            if args.moves:
+            if getattr(args, "moves", False):
                 from rpresolve import decon_moves
                 side = os.path.splitext(args.out)[0] + ".moves.json"
                 problem = paths.out_problem(side, any_git_tree=True)
