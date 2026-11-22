@@ -54,7 +54,8 @@ flash scores are left as scdet found them).
 Fast transitions (adaptive=True only): a whip, push or wipe changes the picture over 3 to 8 frames,
 which both detectors average away. A burst whose mean frame step is at least BURST_FLOOR grey levels,
 BURST_RATIO times the BURST_SIDE frames either side, with no frame in it under half its mean, is a
-cut at its middle (listed under "bursts" too), unless a cut, dissolve or dip already sits in it. On
+cut at its middle (listed under "bursts" too), unless a cut lies within BURST_SIDE frames of it or a
+dissolve or dip overlaps it. On
 2026-11-22 it found three on one edited reference and none on four edited rebuilds, and fired on 2 of
 25 single camera clips (a fast pan inside a shot), so it is kept to decon's adaptive builds.
 
@@ -379,7 +380,8 @@ def build(source, threshold=None, dissolves=True, backend="scdet", adaptive=Fals
             taken = [(p["start"], p["end"]) for p in found + dips]
             for a, b in find_bursts(grey, float(rate)):
                 t0, t1 = (a + 1) / float(rate), (b + 1) / float(rate)
-                if not any(t0 - half <= c <= t1 + half for c in cuts) and \
+                near = BURST_SIDE / float(rate)   # a detector's cut on the burst's edge is the same transition
+                if not any(t0 - near <= c <= t1 + near for c in cuts) and \
                         not any(t0 - half <= y and x <= t1 + half for x, y in taken):
                     bursts.append(round((t0 + t1) / 2, 3))
             cuts = sorted(cuts + bursts)

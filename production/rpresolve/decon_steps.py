@@ -34,14 +34,28 @@ def changes(video):
     if not v or not fps or not v.get("width") or not v.get("height"):
         raise dc.CheckError(f"{video} has no readable video stream")
     h = max(2, round(STEP_W * int(v["height"]) / int(v["width"]) / 2) * 2)
-    proc = subprocess.run([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(video), "-map", "0:v:0",
-                           "-vf", f"scale={STEP_W}:{h}:flags=area,format=gray", "-f", "rawvideo", "-"],
-                          stdin=subprocess.DEVNULL, capture_output=True, timeout=dc.READ_TIMEOUT_S)
-    if proc.returncode != 0:
-        raise dc.CheckError(f"ffmpeg could not read {video}: {proc.stderr.decode(errors='replace')[-200:]}")
-    g = np.frombuffer(proc.stdout, np.uint8)
-    g = g[:len(g) // (STEP_W * h) * STEP_W * h].reshape(-1, STEP_W * h).astype(np.int16)
-    return (np.abs(np.diff(g, axis=0)) > LEVEL).mean(axis=1), float(fps)
+    frame = STEP_W * h
+    proc = subprocess.Popen([dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(video), "-map", "0:v:0",
+                             "-vf", f"scale={STEP_W}:{h}:flags=area,format=gray", "-f", "rawvideo", "-"],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, prev = [], None
+    try:
+        while True:   # one frame at a time: only the change share is kept, so length costs no memory
+            buf = proc.stdout.read(frame)
+            if len(buf) < frame:
+                break
+            cur = np.frombuffer(buf, np.uint8).astype(np.int16)
+            if prev is not None:
+                out.append(float((np.abs(cur - prev) > LEVEL).mean()))
+            prev = cur
+        err = proc.stderr.read()
+        code = proc.wait(timeout=dc.READ_TIMEOUT_S)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    if code != 0:
+        raise dc.CheckError(f"ffmpeg could not read {video}: {err.decode(errors='replace')[-200:]}")
+    return np.array(out), float(fps)
 
 
 def from_changes(ch, fps, cuts=()):

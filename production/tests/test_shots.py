@@ -94,7 +94,8 @@ class TestShots(unittest.TestCase):
         from unittest import mock
         self.assertEqual(shots.build(path)["cuts"], [1.6])   # scdet takes this slide as a cut
         # a burst in clear space becomes a cut at its middle; one on the existing cut adds nothing
-        with mock.patch.object(shots, "find_bursts", return_value=[(5, 9), (13, 17)]):
+        # (13, 17) holds the cut at 1.6 s and (17, 20) starts 2 frames after it: both are that transition
+        with mock.patch.object(shots, "find_bursts", return_value=[(5, 9), (13, 17), (17, 20)]):
             r = shots.build(path, adaptive=True)
             self.assertEqual(r["bursts"], [0.8])
             self.assertEqual(r["cuts"], [0.8, 1.6])
