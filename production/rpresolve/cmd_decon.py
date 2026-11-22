@@ -79,7 +79,7 @@ def run(args):
         decon.check_outputs([args.reference, getattr(args, "rebuild", None), args.beats if args.action == "recipe" else None],
                             [args.out, getattr(args, "sheet", None)])
         dissolves = not args.no_dissolves
-        ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend)
+        ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend, adaptive=True)
         if args.action == "recipe":
             fits = [f.strip() for f in args.fits.split(",") if f.strip()]
             doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats)
@@ -99,7 +99,7 @@ def run(args):
                 msg += (f"\nround trip against {args.against}: slots {trip['slots'][0]} vs {trip['slots'][1]}, "
                         f"worst {trip['max_error_frames']} frames: {'pass' if trip['ok'] else 'FAIL'}")
         else:
-            rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend)
+            rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
             doc = decon.compare(ref, rb, args.reference, args.rebuild, args.sheet)
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:

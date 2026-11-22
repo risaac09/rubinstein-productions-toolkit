@@ -218,6 +218,8 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
             "timing_only_parts": list(TIMING_PARTS) + (["beats"] if "beats" in parts else []),
             "picture_differs": bool(parts["colour"] < 0.5 or parts["picture"] < 0.5),
             "shots": [len(d_ref), len(d_rb)],
+            "detector": {side: {k2: r.get(k2) for k2 in ("backend", "threshold_used", "low_contrast", "black_and_white")}
+                         for side, r in (("reference", ref), ("rebuild", rb))},
             "cut_error_frames": {"median": round(statistics.median(err), 2) if err else 0.0,
                                  "max": round(max(err), 2) if err else 0.0,
                                  "recall": round(recall, 3), "extra": round(extra, 3)},

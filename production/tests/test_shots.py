@@ -121,6 +121,75 @@ class TestShots(unittest.TestCase):
         self.assertEqual((r["threshold"], r["fps"]), (qc.THRESHOLDS["scdet_threshold"], 10.0))
         self.assertIn("3 shot(s), 2 cut(s)", shots.summary(r))
 
+    def dim_clip(self, d):
+        clip = os.path.join(d, "dim.mkv")
+        make(clip, [f"{p},hue=s=0,eq=brightness=-0.35:contrast=0.3" for p in PARTS])  # scdet scores 6-7, under 10
+        return clip
+
+    def test_cuts_in_dark_black_and_white_footage_are_found_when_adaptive(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = shots.build(self.dim_clip(d), dissolves=False, adaptive=True)
+        self.assertEqual(r["cuts"], [1.5, 2.5])
+        self.assertTrue(r["low_contrast"] and r["black_and_white"])
+        self.assertLess(r["threshold_used"], r["threshold"])
+
+    def test_the_default_and_an_explicit_threshold_are_never_scaled(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = self.dim_clip(d)
+            plain = shots.build(clip, dissolves=False)
+            fixed = shots.build(clip, threshold=10, dissolves=False, adaptive=True)
+        for r in (plain, fixed):
+            self.assertEqual((r["threshold_used"], r["cuts"], r["low_contrast"]), (10, [], False))
+
+    def test_a_long_black_head_does_not_drag_the_threshold_down(self):
+        # 10 s of black, then 6 s of handheld motion whose frame scores sit between 4 and 6.5, under 10
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "head.mkv")
+            make(clip, ["color=c=black:s=640x360:r=24:d=10",
+                        "testsrc2=s=1280x720:r=24:d=6,crop=640:360:x='320+200*sin(9*t)':y='180+120*sin(13*t)'"])
+            r = shots.build(clip, dissolves=False, adaptive=True)
+        self.assertGreater(r["contrast"], 15)
+        self.assertEqual(r["threshold_used"], r["threshold"])
+        self.assertLessEqual(len(r["cuts"]), 2)
+
+    def test_a_weak_cut_in_the_first_frames_is_an_encoder_artefact_when_adaptive(self):
+        info = {"streams": [{"codec_type": "video", "avg_frame_rate": "10/1"}], "format": {"duration": "10"}}
+        scores = {0.1: 12.0, 5.0: 30.0}  # the head one scores 10 to 20, as an artefact does
+
+        def parse(text, t):
+            return [at for at, sc in scores.items() if sc >= t]
+        with tempfile.NamedTemporaryFile(suffix=".mkv") as f, \
+                mock.patch.object(shots.dc, "check_tools"), mock.patch.object(shots.dc, "probe", return_value=info), \
+                mock.patch.object(shots.dc, "duration", return_value=10.0), \
+                mock.patch.object(shots, "look", return_value=(10.0, 50.0)), \
+                mock.patch.object(shots.dc, "_run", return_value=mock.Mock(returncode=0, stderr="")), \
+                mock.patch.object(shots.qc, "parse_scdet", side_effect=parse):
+            self.assertEqual(shots.build(f.name, dissolves=False, adaptive=True)["cuts"], [5.0])
+            self.assertEqual(shots.build(f.name, dissolves=False)["cuts"], [0.1, 5.0])
+
+    def test_a_hard_cut_in_the_first_frames_is_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "head.mkv")
+            make(clip, [f"color=c=black:s={SIZE}:r={RATE}:d=0.2", f"testsrc2=s={SIZE}:r={RATE}:d=1"])
+            self.assertEqual(shots.build(clip, dissolves=False, adaptive=True)["cuts"], [0.2])
+
+    def test_a_failed_sampling_run_is_an_error_not_a_reading(self):
+        bad = mock.Mock(returncode=1, stdout=b"", stderr=b"No such filter")
+        with mock.patch.object(shots.subprocess, "run", return_value=bad), self.assertRaises(dc.CheckError):
+            shots.look(self.cut)
+
+    def test_a_file_too_short_to_sample_has_no_contrast_reading(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "tiny.mkv")
+            make(clip, [f"testsrc2=s={SIZE}:r={RATE}:d=0.2"])
+            r = shots.build(clip, dissolves=False, adaptive=True)
+        self.assertEqual((r["contrast"], r["low_contrast"], r["threshold_used"]), (None, False, r["threshold"]))
+
+    def test_look_timeout_is_a_check_error(self):
+        with mock.patch.object(shots.subprocess, "run", side_effect=subprocess.TimeoutExpired("ffmpeg", 1)):
+            with self.assertRaises(dc.CheckError):
+                shots.look(self.cut)
+
     def test_one_picture_is_one_shot_and_a_high_threshold_finds_none(self):
         self.assertEqual(len(shots.build(self.one)["shots"]), 1)
         self.assertEqual(shots.build(self.cut, threshold=100)["cuts"], [])
