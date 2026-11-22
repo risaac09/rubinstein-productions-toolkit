@@ -20,11 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse  # noqa: E402
-from rpresolve import audioreport, cutlist, delivercheck as dc, methods  # noqa: E402
+from rpresolve import delivercheck as dc, methods  # noqa: E402
 
 try:
     import numpy as np
-    from rpresolve import cmd_decon, decon, decon_sound, shots  # noqa: E402
+    from rpresolve import audioreport, cmd_decon, cutlist, decon, decon_sound, shots  # noqa: E402
 except ImportError:  # numpy missing on this interpreter
     np = None
 
