@@ -24,8 +24,10 @@ the first read frame sits more than MOVED from where it rests; "fade" when the f
 differs from the empty one by under HALF of the settled title's difference; else "cut". The
 same tests, without "word", give animation_out.
 
-Limits: the walk compares against the frame before the title, so over moving footage it stops at
-that sample and an edge can be up to STRIDE frames late (exact on a still background). A slide
+Limits: the walk compares against the empty frame, so over moving footage it runs on to that
+sample: an in point up to STRIDE - 1 frames early, an out point as late (exact on a still
+background). Times are frame index over fps, so a file whose video starts at a non-zero
+timestamp, or with a variable frame rate, is off by that against pts-based shot times. A slide
 from outside the frame is timed from the first frame Vision can read. Text in the footage itself
 (a sign, a shirt) is reported like a title. Two lines are two titles.
 """
@@ -45,11 +47,12 @@ FAINT = 0.05          # share of the settled difference that still counts as dra
 HALF = 0.6            # a first frame under this share of it is a fade
 MOVED = 0.02          # box centre shift (share of the frame) that makes a slide
 READ_W = 1280         # frames are read at most this wide
+BATCH = 200           # images per Vision call, well inside vision.TIMEOUT_S
 TITLE_SCALE = 12.0    # mean in and out error, frames, that scores zero in compare
 ANIMATIONS = ("cut", "fade", "slide", "word")
 
 
-class TitlesUnavailable(RuntimeError):
+class TitlesUnavailable(ValueError):
     pass
 
 
@@ -74,24 +77,30 @@ def _size(w, h):
     return max(2, int(w * s) // 2 * 2), max(2, int(h * s) // 2 * 2)
 
 
-def _read(video, frames, size, tmp, tag):
-    """{frame: (png path, HxWx3 uint8)} for the given frame numbers, in one ffmpeg pass each."""
+def _read(video, frames, size, tmp, tag, raw=True):
+    """{frame: (png path, HxWx3 uint8 or None)} for the given frame numbers (a range with a step
+    is selected as one expression). raw=False writes the PNGs only, so a long coarse pass holds
+    no frames in memory."""
     import numpy as np
+    step = frames.step if isinstance(frames, range) else None
     frames = sorted(set(frames))
     if not frames:
         return {}
     w, h = size
-    sel = "+".join(f"eq(n\\,{n})" for n in frames)
+    sel = (f"not(mod(n\\,{step}))" if step and frames[0] == 0 else "+".join(f"eq(n\\,{n})" for n in frames))
     vf = f"select='{sel}',scale={w}:{h}"
     base = [dc.FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-i", dc._src(video), "-map", "0:v:0",
             "-vf", vf, "-fps_mode", "passthrough"]
     pat = os.path.join(tmp, f"{tag}-%06d.png")
     p = subprocess.run(base + ["-y", pat], stdin=subprocess.DEVNULL, capture_output=True, timeout=dc.READ_TIMEOUT_S)
+    if p.returncode != 0:
+        raise TitlesUnavailable(f"ffmpeg could not read frames of {video}: {p.stderr.decode(errors='replace')[-200:]}")
+    if not raw:
+        return {f: (pat % (i + 1), None) for i, f in enumerate(frames) if os.path.exists(pat % (i + 1))}
     r = subprocess.run(base + ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdin=subprocess.DEVNULL,
                        capture_output=True, timeout=dc.READ_TIMEOUT_S)
-    if p.returncode != 0 or r.returncode != 0:
-        raise TitlesUnavailable(f"ffmpeg could not read frames of {video}: "
-                                f"{(p.stderr or r.stderr).decode(errors='replace')[-200:]}")
+    if r.returncode != 0:
+        raise TitlesUnavailable(f"ffmpeg could not read frames of {video}: {r.stderr.decode(errors='replace')[-200:]}")
     n = len(r.stdout) // (w * h * 3)
     imgs = np.frombuffer(r.stdout[:n * w * h * 3], dtype=np.uint8).reshape(n, h, w, 3)
     return {f: (pat % (i + 1), imgs[i]) for i, f in enumerate(frames[:n])}
@@ -99,9 +108,12 @@ def _read(video, frames, size, tmp, tag):
 
 def _lines(read):
     """{frame: [line]} through Vision, low-confidence and empty lines dropped."""
-    got = vision.text_boxes([p for p, _ in read.values()])
-    if got is None:
-        raise TitlesUnavailable("the Vision text helper cannot run (macOS with swiftc only)")
+    paths, got = [p for p, _ in read.values()], {}
+    for i in range(0, len(paths), BATCH):
+        part = vision.text_boxes(paths[i:i + BATCH])
+        if part is None:
+            raise TitlesUnavailable("the Vision text helper failed or timed out (it runs on macOS with swiftc only)")
+        got.update(part)
     out = {}
     for f, (p, _) in read.items():
         out[f] = [dict(x, text=_norm(x["text"])) for x in got.get(p, [])
@@ -110,7 +122,7 @@ def _lines(read):
 
 
 def _track(samples):
-    """Lines followed across samples: [{"hits": [(frame, line)], "last_i": sample index}]."""
+    """Lines followed across samples: [{"hits": [(frame, line)], "last_i": last sample index}]."""
     tracks, done = [], []
     for i, (f, lines) in enumerate(samples):
         used = set()
@@ -119,7 +131,7 @@ def _track(samples):
             if cand:
                 t = max(cand, key=lambda t: _iou(t["hits"][-1][1], ln))
             else:
-                t = {"hits": [], "first_i": i}
+                t = {"hits": []}
                 tracks.append(t)
             t["hits"].append((f, ln))
             t["last_i"] = i
@@ -196,8 +208,7 @@ def detect(video, fps, nframes, dims):
     size = _size(*dims)
     out = []
     with tempfile.TemporaryDirectory() as tmp:
-        coarse = _read(video, range(0, nframes, STRIDE), size, tmp, "s")
-        lines = _lines(coarse)
+        lines = _lines(_read(video, range(0, nframes, STRIDE), size, tmp, "s", raw=False))
         samples = [(f, lines[f]) for f in sorted(lines)]
         for t in _track(samples):
             texts = [ln["text"] for _, ln in t["hits"]]
@@ -207,15 +218,17 @@ def detect(video, fps, nframes, dims):
             rest = {k: round(statistics.median(ln[k] for ln in full_hits), 4) for k in ("x", "y", "w", "h")}
             mid_f = [f for f, ln in t["hits"] if ln["text"] == final]
             mid_f = mid_f[len(mid_f) // 2]
-            empty_f = t["hits"][0][0] - STRIDE
+            # the settled title against an empty frame either side (the sample before, else after)
+            empty_f = next((f for f in (t["hits"][0][0] - STRIDE, t["hits"][-1][0] + STRIDE) if 0 <= f < nframes), None)
             full = 0.0
-            if empty_f >= 0:
-                full = _diff(coarse[mid_f][1], coarse[empty_f][1], rest)
-            elif t["hits"][-1][0] + STRIDE < nframes:
-                full = _diff(coarse[mid_f][1], coarse[t["hits"][-1][0] + STRIDE][1], rest)
+            if empty_f is not None:
+                two = _read(video, [mid_f, empty_f], size, tmp, f"full{mid_f}")
+                if mid_f in two and empty_f in two:
+                    full = _diff(two[mid_f][1], two[empty_f][1], rest)
             fin, a_in = _edge(video, size, tmp, t, "in", nframes, rest, full)
             fout, a_out = _edge(video, size, tmp, t, "out", nframes, rest, full)
-            if len(set(words)) > 1 and words[0] < max(words):
+            # word by word: the count only rises, at least twice over, and the first read is a word prefix of the final
+            if len(set(words)) > 1 and words == sorted(words) and final.lower().split()[:words[0]] == texts[0].lower().split():
                 a_in = "word"
             out.append({"text": final, "in_s": round(fin / fps, 4), "out_s": round((fout + 1) / fps, 4),
                         "box": rest, "animation": a_in, "animation_out": a_out})

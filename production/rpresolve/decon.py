@@ -220,8 +220,9 @@ def compare(ref, rb, ref_video, rb_video, sheet=None, titles=None):
     if titles is not None:
         from . import decon_titles
         title_score = decon_titles.score(titles[0], titles[1], fps)
-        if title_score["part"] is not None:
-            parts["titles"] = title_score.pop("part")
+        part = title_score.pop("part")
+        if part is not None:
+            parts["titles"] = part
     if sheet:
         _sheet(pairs, sheet, np)
     return {"reference": os.path.basename(ref_video), "rebuild": os.path.basename(rb_video), "fps": fps,

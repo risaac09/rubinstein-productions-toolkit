@@ -119,7 +119,7 @@ def run(args):
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1)
-    except (dc.ToolMissing, dc.CheckError, OSError, ValueError, ImportError, RuntimeError) as e:
+    except (dc.ToolMissing, dc.CheckError, OSError, ValueError, ImportError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     print(msg)
