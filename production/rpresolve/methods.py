@@ -39,6 +39,9 @@ END = re.compile(r"^black:(\d+(?:\.\d+)?)$")
 
 TOP = {"edit_method", "id", "name", "summary", "fits", "aspect", "fps", "length_s", "bpm",
        "look", "rules", "slots"}
+TOP_OPTIONAL = {"titles"}   # on-screen text a recipe read from its reference (decon_titles)
+TITLE = {"text", "in_s", "out_s", "box", "animation", "animation_out"}
+TITLE_ANIMATIONS = ("cut", "fade", "slide", "word")
 RULES = {"reuse", "min_shot_s", "snap_to_beat", "end"}
 SLOT = {"role", "seconds", "query", "move", "speed", "transition_out", "effect", "scale", "text"}
 SLOT_OPTIONAL = {"secondaries"}
@@ -65,7 +68,9 @@ def validate(m):
     if not isinstance(m, dict):
         return ["a method is a JSON object"]
     p = []
-    p += [f"unknown field '{k}'" for k in sorted(set(m) - TOP)]
+    p += [f"unknown field '{k}'" for k in sorted(set(m) - TOP - TOP_OPTIONAL)]
+    if "titles" in m:
+        p += _title_problems(m["titles"])
     p += [f"missing field '{k}'" for k in sorted(TOP - set(m))]
     if m.get("edit_method") != 1:
         p.append("edit_method must be 1")
@@ -167,6 +172,32 @@ def _slot_problems(s, min_shot, last):
         p.append("scale must be null or [start, end], each 0.1 to 10")
     if s.get("text") not in (None, "word"):
         p.append('text must be null or "word"')
+    return p
+
+
+def _title_problems(titles):
+    if not isinstance(titles, list):
+        return ["titles must be a list"]
+    p = []
+    for j, t in enumerate(titles, 1):
+        w = f"title {j}"
+        if not isinstance(t, dict):
+            p.append(f"{w}: a title is {{{', '.join(sorted(TITLE))}}}")
+            continue
+        p += [f"{w}: unknown field '{k}'" for k in sorted(set(t) - TITLE)]
+        p += [f"{w}: missing field '{k}'" for k in sorted(TITLE - set(t))]
+        if not (isinstance(t.get("text"), str) and t["text"].strip()):
+            p.append(f"{w}: text must be a non-empty string")
+        if not (_num(t.get("in_s")) and _num(t.get("out_s")) and 0 <= t["in_s"] < t["out_s"]):
+            p.append(f"{w}: in_s and out_s must be seconds with 0 <= in_s < out_s")
+        b = t.get("box")
+        if not (isinstance(b, dict) and set(b) == {"x", "y", "w", "h"} and all(map(_num, b.values()))
+                and b["w"] > 0 and b["h"] > 0 and b["x"] >= 0 and b["y"] >= 0
+                and b["x"] + b["w"] <= 1.001 and b["y"] + b["h"] <= 1.001):
+            p.append(f"{w}: box must be {{x, y, w, h}}, a share of the frame from its top left, inside it")
+        for k in ("animation", "animation_out"):
+            if k in t and t[k] not in TITLE_ANIMATIONS:
+                p.append(f"{w}: {k} must be one of {', '.join(TITLE_ANIMATIONS)}")
     return p
 
 

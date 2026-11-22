@@ -105,8 +105,9 @@ def check_outputs(inputs, outputs):
         seen.append(o)
 
 
-def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
-    """An edit method from a shots.build report. Raises DeconError when it would not validate."""
+def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None):
+    """An edit method from a shots.build report, with titles (decon_titles.detect) when given.
+    Raises DeconError when it would not validate."""
     shots, fps = list(report["shots"]), report.get("fps")
     if not fps:
         raise DeconError(f"{video} has no frame rate")
@@ -146,6 +147,8 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None):
          "rules": {"reuse": False, "min_shot_s": max(0.001, math.floor(min(durs) * 1000) / 1000),
                    "snap_to_beat": snap, "end": end},
          "slots": slots}
+    if titles is not None:
+        m["titles"] = titles
     problems = methods.validate(m)
     if problems:
         raise DeconError("the recipe does not validate: " + "; ".join(problems))
@@ -171,9 +174,10 @@ def _near(xs, t):
     return min((abs(x - t) for x in xs), default=math.inf)
 
 
-def compare(ref, rb, ref_video, rb_video, sheet=None):
+def compare(ref, rb, ref_video, rb_video, sheet=None, titles=None):
     """Score a rebuild's shots.build report against the reference's. Writes the side-by-side
-    sheet (PNG) when sheet is a path."""
+    sheet (PNG) when sheet is a path. titles: (reference titles, rebuild titles) from
+    decon_titles.detect, to score title timing."""
     import numpy as np
     from . import color
     fps = ref.get("fps") or rb.get("fps")
@@ -212,10 +216,16 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
     shares, skipped = _beat_shares(ref_video, rb_video, d_ref, d_rb, fps)
     if shares:
         parts["beats"] = max(0.0, 1 - abs(shares[0] - shares[1]))
+    title_score = None
+    if titles is not None:
+        from . import decon_titles
+        title_score = decon_titles.score(titles[0], titles[1], fps)
+        if title_score["part"] is not None:
+            parts["titles"] = title_score.pop("part")
     if sheet:
         _sheet(pairs, sheet, np)
     return {"reference": os.path.basename(ref_video), "rebuild": os.path.basename(rb_video), "fps": fps,
-            "timing_only_parts": list(TIMING_PARTS) + (["beats"] if "beats" in parts else []),
+            "timing_only_parts": list(TIMING_PARTS) + [k2 for k2 in ("beats", "titles") if k2 in parts],
             "picture_differs": bool(parts["colour"] < 0.5 or parts["picture"] < 0.5),
             "shots": [len(d_ref), len(d_rb)],
             "detector": {side: {k2: r.get(k2) for k2 in ("backend", "threshold_used", "low_contrast", "black_and_white")}
@@ -229,6 +239,7 @@ def compare(ref, rb, ref_video, rb_video, sheet=None):
             "delta_e": {"median": round(statistics.median(de), 2), "max": round(max(de), 2)},
             "parts": {k2: round(v, 3) for k2, v in parts.items()},
             "on_beat": {"share": shares, "skipped": skipped},
+            "title_timing": title_score,
             "score": round(100 * statistics.fmean(parts.values()), 1),
             "matched": [{k2: v for k2, v in p.items() if k2 not in ("a", "b")} for p in pairs]}
 
@@ -270,6 +281,15 @@ def _sheet(pairs, out, np):
             raise DeconError(f"could not write {out}: {proc.stderr.decode(errors='replace')[-200:]}")
 
 
+def _title_line(t):
+    if t is None:
+        return "Titles: not scored (pass --titles)"
+    if not t["titles"][0] and not t["titles"][1]:
+        return "Titles: none in either file"
+    return (f"Titles: reference {t['titles'][0]}, rebuild {t['titles'][1]}, matched {t['matched']}; "
+            f"in and out error median {t['median_frames']} frames, max {t['max_frames']}")
+
+
 def summary_compare(r):
     c, rh = r["cut_error_frames"], r["rhythm"]
     return "\n".join([
@@ -282,6 +302,7 @@ def summary_compare(r):
         f"Colour: CIEDE2000 median {r['delta_e']['median']}, max {r['delta_e']['max']}",
         (f"Beats: on-beat share {r['on_beat']['share'][0]} vs {r['on_beat']['share'][1]} (within 1 frame)"
          if r["on_beat"]["share"] else f"Beats: not scored ({r['on_beat']['skipped']})"),
+        _title_line(r.get("title_timing")),
         f"Timing only: {', '.join(r['timing_only_parts'])}. The picture is read by colour and picture "
         "(a coarse 8 x 8 thumbnail per shot); this is not a proof the videos match.",
     ] + (["Picture differs: colour or picture is under 0.5, so the matching timing is not the same video."]
