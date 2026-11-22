@@ -1,7 +1,8 @@
 """
 decon: take a finished video apart and score a rebuild. `decon recipe REF --out
 recipe.json` writes the reference's cuts, dissolves, end black and (with --beats) tempo
-as an edit method that methods.validate passes (`--effects` adds flashes, freeze frames and speed ramps; `--grade` adds a folder of per-scene .cube grades); `--against METHOD` checks the round trip
+as an edit method that methods.validate passes (`--effects` adds flashes, freeze frames and speed ramps; `--grade` adds a folder of per-scene .cube grades;
+`--moves` each shot's camera move from feature tracking, D3 and D4, with a .moves.json beside it); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
 sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
 `--titles` on either reads on-screen text with macOS Vision (rpresolve/decon_titles.py): the
@@ -51,6 +52,9 @@ def add_arguments(p):
                    help="also map the sound (loudness curve, speech or music spans, hits at cuts) into the recipe's `sound` field")
     r.add_argument("--kinds", help="with --sound: a <name>.kinds.json from `vertcut transcribe` (default: the one beside the "
                    "video, else `vertcut kinds` on the audio alone)")
+    r.add_argument("--moves", action="store_true",
+                   help="also measure each shot's camera move (zoom, pan, tilt, shake, speed ramp) into the slots' "
+                   "move, role and scale, with the detail in OUT minus .json, plus .moves.json (needs OpenCV)")
     r.add_argument("--against", help="a method id or path this video was built from: check the round trip")
     _shots_flags(r)
     so = sub.add_parser("sound", help="a reference video's sound map: loudness curve, speech or music spans, hits at cuts")
@@ -131,6 +135,18 @@ def run(args):
                     raise paths.OutputRefused(problem)
                 g = decon_grade.grade(ref, args.reference, gdir)
                 msg += f"\ngrade: {len(g['scenes'])} scenes, {sum(1 for s in g['scenes'] if s['cube'])} cubes in {gdir}"
+            if getattr(args, "moves", False):
+                from rpresolve import decon_moves
+                side = os.path.splitext(args.out)[0] + ".moves.json"
+                problem = paths.out_problem(side, any_git_tree=True)
+                if problem:
+                    raise paths.OutputRefused(problem)
+                decon.check_outputs([args.reference, args.beats, getattr(args, "kinds", None), args.out], [side])
+                mv = decon_moves.measure(ref, args.reference, len(doc["slots"]))
+                doc = decon_moves.apply(doc, mv)
+                with open(side, "w", encoding="utf-8") as f:
+                    json.dump(mv, f, indent=1)
+                msg += f"\n{decon_moves.summary(mv)} ({side})"
             if args.against:
                 trip = decon.match_method(doc, methods.load(args.against))
                 ok = trip["ok"]

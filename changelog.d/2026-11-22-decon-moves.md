@@ -1,0 +1,1 @@
+decon recipe --moves reads each shot's camera move by feature tracking (zoom, pan, tilt, shake, speed ramp) into the slots' move, role and scale, with zoom-push, reframe-pan and retime params in a .moves.json beside the recipe (decon stages D3 and D4).
