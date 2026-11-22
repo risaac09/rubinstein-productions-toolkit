@@ -179,7 +179,7 @@ class TestDeconSound(unittest.TestCase):
         with redirect_stdout(buf), redirect_stderr(StringIO()):
             rc = cmd_decon.run(argparse.Namespace(
                 action="recipe", reference=self.ref, out=rout, id="snd-cli", name=None, fits="motion", beats=None,
-                grade=False, against=None, sound=True, kinds=None, backend="scdet", no_dissolves=True))
+                grade=False, against=None, sound=True, kinds=None, titles=False, effects=False, backend="scdet", no_dissolves=True))
         self.assertEqual(rc, 0, buf.getvalue())
         with open(rout) as f:
             self.assertIn("sound", json.load(f))
