@@ -121,6 +121,16 @@ class TestShots(unittest.TestCase):
         self.assertEqual((r["threshold"], r["fps"]), (qc.THRESHOLDS["scdet_threshold"], 10.0))
         self.assertIn("3 shot(s), 2 cut(s)", shots.summary(r))
 
+    def test_cuts_in_dark_black_and_white_footage_are_found(self):
+        dim = "hue=s=0,eq=brightness=-0.35:contrast=0.3"  # scdet scores fall to 6-7 here, under qc's 10
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "dim.mkv")
+            make(clip, [f"{p},{dim}" for p in PARTS])
+            self.assertEqual(shots.build(clip, dissolves=False)["cuts"], [1.5, 2.5])
+            r = shots.build(clip, dissolves=False)
+        self.assertTrue(r["low_contrast"] and r["black_and_white"])
+        self.assertLess(r["threshold_used"], r["threshold"])
+
     def test_one_picture_is_one_shot_and_a_high_threshold_finds_none(self):
         self.assertEqual(len(shots.build(self.one)["shots"]), 1)
         self.assertEqual(shots.build(self.cut, threshold=100)["cuts"], [])

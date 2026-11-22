@@ -1,0 +1,1 @@
+shots and decon find cuts in dark and black-and-white footage: the scdet threshold scales down with the file's luma spread (never below 0.4 of the set value) and PySceneDetect runs luma-only on black and white; the report carries threshold_used, contrast, low_contrast and black_and_white.
