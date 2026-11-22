@@ -27,7 +27,7 @@ import os
 import statistics
 import subprocess
 
-from . import beats, cutlist, delivercheck as dc, methods, musicmap, paths, rhythm
+from . import beats, cutlist, decon_effects, delivercheck as dc, methods, musicmap, paths, rhythm
 
 CUT_TOL_FRAMES = 2
 DE_SCALE = 20.0      # a median CIEDE2000 this large scores zero for colour
@@ -105,8 +105,9 @@ def check_outputs(inputs, outputs):
         seen.append(o)
 
 
-def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None):
-    """An edit method from a shots.build report, with titles (decon_titles.detect) when given.
+def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, titles=None, found=None):
+    """An edit method from a shots.build report, with titles (decon_titles.detect) when given. `found`
+    (decon_effects.detect) puts its flashes, freezes and ramps on the slots, and gets a `placed` list back.
     Raises DeconError when it would not validate."""
     shots, fps = list(report["shots"]), report.get("fps")
     if not fps:
@@ -128,6 +129,8 @@ def recipe(report, video, ident, name=None, fits=("motion",), beats_path=None, t
                       "query": f"shot {s['shot']} of the reference, {s['in']:.2f} to {s['out']:.2f} s",
                       "move": "static", "speed": 1.0, "transition_out": out, "effect": None,
                       "scale": None, "text": None})
+    if found is not None:
+        found.update(decon_effects.place(slots, report["shots"], found))
     durs = [s["seconds"] for s in slots]
     bpm, snap = None, False
     if beats_path:

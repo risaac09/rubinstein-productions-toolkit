@@ -72,6 +72,8 @@ A slot:
 | `effect` | a macro id from [fusion-macros.md](fusion-macros.md), or `null` |
 | `scale` | `[start, end]` zoom, or `null` |
 | `text` | `"word"` when the slot carries a word, else `null` |
+| `ramp` | optional: `[start, end]` speed, each 0.1 to 10, a linear speed change over the slot; the slot's `speed` is 1 and its `effect` null (the item's one comp is the retime) |
+| `freeze` | optional: `{at, seconds}`, a held frame `at` seconds into the slot for `seconds`; it must end inside the slot |
 | `secondaries` | optional: a non-empty list of `{kind, target, why}` for what the shot needs beyond a global grade, the answers to the [secondaries check](skills/resolve-media-lane/SKILL.md). `kind` is `window`, `qualifier`, `magic-mask`, `tracker` or `resolvefx`; `target` is generic (`face`, `sky`); `why` says what the shot gains |
 
 `validate(m)` returns every departure from this as a sentence; `load(id_or_path)` refuses a method that has any.
@@ -91,6 +93,8 @@ A slot:
 | `effect: person-matte-text` | also a UI step: replace the placeholder matte with a tracked Person Magic Mask, by computer use ([recipe](fusion-macros.md#person-matte-the-magic-mask-recipe), untested live) |
 | `effect: exposure-flash`, and the fill carries a `gain` (1 to 20) | `params.gain` on that entry; the draft draws the same number ([T28](resolve-traps.md)). A `gain` on a fill for any other slot is refused |
 | `effect` | `effects[]` `{span_index, effect, params?}`, span_index from 0 |
+| `ramp` | a `retime` entry in the manifest's `effects` with `params` `speed` (start) and `speed_to` (end) |
+| `freeze` | one UI step on the Edit page (Retime Controls > Freeze Frame), naming the span, the time and the hold; no macro or script holds a frame |
 | `secondaries[]` | one UI step per entry, on the Color page (Fusion for a `tracker` on a `text: "word"` slot, whose word lives in its comp), naming the span and the target, with `why` as the reason. The scripting API creates no colour-page node, window or qualifier, so computer use does it |
 | `rules.end` | `method.end`, and a UI step for the black after the last item |
 | a `.braw` source | a UI step: Camera Raw Decode Using Clip on its items ([BRAW](#braw-decodes-from-the-clip)) |

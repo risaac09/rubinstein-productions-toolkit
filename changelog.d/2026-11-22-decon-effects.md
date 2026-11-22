@@ -1,0 +1,1 @@
+decon recipe --effects puts flashes, freeze frames and speed ramps on the recipe's slots (exposure-flash, `freeze`, `ramp`), and the method format takes `ramp` and `freeze`; a manifest lists a ramp as a retime effect and a freeze as a UI step.
