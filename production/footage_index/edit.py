@@ -57,6 +57,13 @@ def load_methods(path=None):
 
 
 def get_method(mid, path=None):
+    """A method by id from the methods folder, or by path to a method .json (a `decon recipe`)."""
+    if path is None and mid.endswith(".json") and os.path.isfile(os.path.expanduser(mid)):
+        with open(os.path.expanduser(mid)) as fh:
+            m = json.load(fh)
+        if not isinstance(m, dict) or m.get("edit_method") != 1 or not m.get("slots") or not m.get("id"):
+            raise ValueError(f"{mid} is not an edit method (edit_method 1, an id and slots)")
+        return m
     for m in load_methods(path):
         if m["id"] == mid:
             return m
