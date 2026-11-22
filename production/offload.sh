@@ -49,6 +49,7 @@ set -u -o pipefail
 DD_BIN="${DD_BIN:-dd}"
 DF_BIN="${DF_BIN:-df}"
 DISKUTIL_BIN="${DISKUTIL_BIN:-diskutil}"
+STAT_BIN="${STAT_BIN:-stat}"
 RCLONE_BIN="${RCLONE_BIN:-rclone}"
 SMBUTIL_BIN="${SMBUTIL_BIN:-smbutil}"
 OFFLOAD_NOW="${OFFLOAD_NOW:-}"
@@ -85,6 +86,9 @@ volume_uuid() {
   u=$("$DISKUTIL_BIN" info "$1" 2>/dev/null | awk -F': *' '/Volume UUID/ {print $2; exit}')
   echo "${u:-none}"
 }
+
+# dev_of PATH: the device number of the filesystem holding PATH (GNU stat first; macOS stat has no -c). Fails when unknown.
+dev_of() { local d; d=$("$STAT_BIN" -c %d "$1" 2>/dev/null) || d=$("$STAT_BIN" -f %d "$1" 2>/dev/null) || return 1; [ -n "$d" ] && echo "$d"; }
 
 # Sets ID, LHASH, NFILES, NBYTES, VUUID for card $1.
 card_id() {
@@ -220,6 +224,8 @@ cmd_copy() {
   local id_before="$ID"; card_id "$card"
   [ "$ID" = "$id_before" ] || fail "card changed during the copy ($id_before -> $ID); $partial kept"
 
+  # Where the card was mounted: `lite` compares devices against it to never write onto the card.
+  (cd -P "$card" && pwd -P) > "$parent/$name.card-root" || fail "cannot write $parent/$name.card-root"
   cp "$tmp/sums" "$sums" || fail "cannot write $sums"
   printf '{\n  "card_id": "%s",\n  "listing_hash": "%s",\n  "volume_uuid": "%s",\n  "cam": "%s",\n  "files": %s,\n  "bytes": %s,\n  "offloaded_utc": "%s"\n}\n' \
     "$ID" "$LHASH" "$VUUID" "$cam" "$NFILES" "$NBYTES" "$(now)" > "$tmp/json"
@@ -329,9 +335,12 @@ cmd_lite() {
   route_check "$dir"; route_check "$parent"
   lite="$parent/$(basename "$lite")"
   [ ! -f "$lite.SHA256SUMS" ] || die "lite dir $lite is an offloaded card folder; the lite tier needs its own tree"
-  local cu; cu=$(sed -n 's/.*"volume_uuid": "\([^"]*\)".*/\1/p' "$dir.card.json")
-  [ -z "$cu" ] || [ "$cu" = none ] || [ "$(volume_uuid "$parent")" != "$cu" ] \
-    || die "lite dir $lite is on the card's own volume ($cu); the tool never writes to the card; make the lite folder on another disk"
+  # Fail closed: refuse on the card's device, and when either device cannot be read (no recorded card root, card gone).
+  local croot; croot=$(cat "$dir.card-root" 2>/dev/null)
+  [ -n "$croot" ] && [ -d "$croot" ] || die "cannot tell whether $lite is on the card: its mount point is not recorded or not mounted; mount the card at its recorded path, or re-offload it"
+  local near="$lite"; while [ ! -e "$near" ]; do near=$(dirname "$near"); done
+  local dc dl; dc=$(dev_of "$croot") && dl=$(dev_of "$near") || die "cannot read the device of $croot or $near; the tool never writes to the card"
+  [ "$dc" != "$dl" ] || die "lite dir $lite is on the card's own volume ($croot); the tool never writes to the card; make the lite folder on another disk"
   local id; id=$(sed -n 's/.*"card_id": "\([0-9a-f]*\)".*/\1/p' "$dir.card.json")
   [ -n "$id" ] || die "no card_id in $dir.card.json"
   local base; base=$(basename "$dir")

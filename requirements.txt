@@ -76,6 +76,7 @@
 #   BURST_GATE_DENYLIST          scripts/burst-gate                unset (no extra patterns)                 you keep private regexes for the G2 privacy scan.
 #   DD_BIN, DF_BIN               production/offload.sh             dd, df from PATH                          tests: stand-ins for the system tools.
 #   DISKUTIL_BIN                 production/offload.sh             diskutil from PATH                        tests: a stand-in for diskutil.
+#   STAT_BIN                     production/offload.sh lite        stat from PATH                            tests: a stand-in for stat (the card-volume refusal compares device numbers).
 #   OFFLOAD_NOW                  production/offload.sh             unset (the clock)                         tests: a fixed UTC time stamp.
 #   SMBUTIL_BIN                  production/offload.sh             smbutil from PATH                         tests: a stand-in for smbutil.
 #   OFFLOAD_SMB_ROOT             production/offload.sh             /Volumes                                  shares mount elsewhere; tests: a temp root.

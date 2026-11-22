@@ -1,0 +1,1 @@
+offload.sh lite now compares device numbers (stat) between the card and the lite folder, so it refuses any folder on the card (not only the card root) and refuses when it cannot tell. `copy` records the card's mount path in a new `<card>.card-root` sidecar; a copy made before this change has none, so `lite` refuses it until it is re-offloaded.

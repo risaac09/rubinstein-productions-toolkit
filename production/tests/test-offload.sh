@@ -18,10 +18,18 @@ mkdir "$T/bin"
 FAKE_PLAIN=$(cd "$T" && pwd -P); export FAKE_PLAIN
 cat > "$T/bin/diskutil" <<'EOF'
 #!/bin/sh
-# FAKE_PLAIN is the temp root: a path there is on a different volume from the cards, which sit below it.
+# Like the real tool, it answers only for a mount point: a card root, which sits directly under FAKE_PLAIN. Any folder deeper is "Could not find disk".
+[ "$(cd -P "$2/.." 2>/dev/null && pwd -P)" = "$FAKE_PLAIN" ] || { echo "Could not find disk: $2" >&2; exit 1; }
 u="${FAKE_UUID:-11111111-2222-3333-4444-555555555555}"
-[ -z "${FAKE_PLAIN:-}" ] || [ "${2%/}" != "$FAKE_PLAIN" ] || u=99999999-other-volume
 printf '   Volume Name:              CARD\n   Volume UUID:              %s\n' "$u"
+EOF
+# stat fake: the device is the first folder under the temp root, so a folder nested in a card is on the card's device and a sibling folder is not.
+cat > "$T/bin/stat" <<'EOF'
+#!/bin/sh
+for p; do :; done
+p=$(cd -P "$p" 2>/dev/null && pwd -P) || exit 1
+r=${p#"$FAKE_PLAIN"/}; r=${r%%/*}
+printf '%s' "$r" | cksum | cut -d' ' -f1
 EOF
 # smbutil fake: a SERVER_NAME line from FAKE_SMB_HOST, nothing when unset (a local disk).
 cat > "$T/bin/smbutil" <<'EOF'
@@ -64,7 +72,7 @@ printf 'lite of %s\n' "$(shasum -a 256 < "$in" | cut -d' ' -f1)" > "$1"
 EOF
 chmod +x "$T/bin/"*
 export FFMPEG_BIN="$T/bin/ffmpeg-stub"
-export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil"
+export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil" STAT_BIN="$T/bin/stat"
 export OFFLOAD_CAFFEINATED=1 OFFLOAD_NOW=2026-10-20T12:00:00Z READ_FLAGS=""
 
 # card NAME: a small camera card with nested folders, a clip, OS junk.
@@ -492,6 +500,17 @@ M="$T/lcA/offload-lite-manifest.txt"
 run safe --lite "$T/lcA" "$dA" remote:bucket/lite
 check "a lite copy made for its own card is safe" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "SAFE TO FORMAT"'
 rm -f "$dA.offsite.txt"
+# Fourth fix: the card-volume refusal compares devices, so it holds for a folder deep on the card and fails closed.
+before=$(find "$T/cardA" | LC_ALL=C sort | shasum)
+run lite "$T/cardA/DCIM/LITE" "$dA"
+check "lite deep on the card (DCIM/LITE) is refused and nothing is written" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "card.s own volume" && [ ! -e "$T/cardA/DCIM/LITE" ] && [ "$before" = "$(find "$T/cardA" | LC_ALL=C sort | shasum)" ]'
+STAT_BIN=/nonexistent/stat run lite "$T/lcdev" "$dA"
+check "lite refuses when the device cannot be read" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "cannot read the device" && [ ! -e "$T/lcdev" ]'
+mv "$dA.card-root" "$dA.card-root.gone"; run lite "$T/lcdev" "$dA"
+check "lite refuses when the card root is not recorded" '[ "$rc" -eq 2 ] && printf "%s" "$out" | grep -q "not recorded or not mounted" && [ ! -e "$T/lcdev" ]'
+printf '%s\n' "$T/no-such-card" > "$dA.card-root"; run lite "$T/lcdev" "$dA"
+check "lite refuses when the recorded card root is not mounted" '[ "$rc" -eq 2 ] && [ ! -e "$T/lcdev" ]'
+mv "$dA.card-root.gone" "$dA.card-root"
 # Reproduction 1: card A's lite folder offered for card B is refused, and no command relabels it.
 run safe --lite "$T/lcA" "$dB" remote:bucket/lite
 check "another card's lite folder is not safe and does not say to regenerate" '[ "$rc" -eq 1 ] && ! printf "%s" "$out" | grep -q "SAFE TO FORMAT" && printf "%s" "$out" | grep -q "another card" && printf "%s" "$out" | grep -q "fresh lite folder" && ! printf "%s" "$out" | grep -q "regenerate" && [ ! -e "$dB.offsite.txt" ]'

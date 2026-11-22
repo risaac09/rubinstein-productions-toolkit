@@ -87,9 +87,17 @@ while [ $# -gt 0 ]; do case "$1" in --match) match="$2" ;; --log-file) : > "$2" 
 [ -z "$match" ] || (cd "$src" && find . -type f | sed 's|^\./||' | grep -v "${FAKE_RCLONE_DROP:-^$}") > "$match"
 exit 0
 X
+# stat fake: the device is the first folder under the temp root, so a folder nested in a card is on the card's device and a sibling folder is not.
+cat > "$T/bin/stat" <<'EOF'
+#!/bin/sh
+for p; do :; done
+p=$(cd -P "$p" 2>/dev/null && pwd -P) || exit 1
+r=${p#"$FAKE_PLAIN"/}; r=${r%%/*}
+printf '%s' "$r" | cksum | cut -d' ' -f1
+EOF
 chmod +x "$T/bin/"*
 FAKE_PLAIN=$(cd "$T" && pwd -P); export FAKE_PLAIN
-export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil"
+export DISKUTIL_BIN="$T/bin/diskutil" DF_BIN="$T/bin/df" RCLONE_BIN="$T/bin/rclone" SMBUTIL_BIN="$T/bin/smbutil" STAT_BIN="$T/bin/stat"
 export OFFLOAD_CAFFEINATED=1 OFFLOAD_NOW=2026-10-20T12:00:00Z READ_FLAGS=""
 run() { out=$("$O" "$@" 2>&1); rc=$?; }
 copy_card() { # card -> sets CD to the copy dir
