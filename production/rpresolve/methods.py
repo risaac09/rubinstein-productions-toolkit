@@ -42,6 +42,8 @@ TOP = {"edit_method", "id", "name", "summary", "fits", "aspect", "fps", "length_
 TOP_OPTIONAL = {"titles", "sound"}   # on-screen text a recipe read from its reference (decon_titles)
 TITLE = {"text", "in_s", "out_s", "box", "animation", "animation_out"}
 TITLE_ANIMATIONS = ("cut", "fade", "slide", "word")
+TITLE_OPTIONAL = {"role"}   # decon_titles.ROLES; recipes from before roles have none
+TITLE_ROLES = ("caption", "title", "ui")
 SOUND_KINDS = ("speech", "sung", "music", "hallucination", "uncertain")
 RULES = {"reuse", "min_shot_s", "snap_to_beat", "end"}
 SLOT = {"role", "seconds", "query", "move", "speed", "transition_out", "effect", "scale", "text"}
@@ -200,7 +202,9 @@ def _title_problems(titles):
         if not isinstance(t, dict):
             p.append(f"{w}: a title is {{{', '.join(sorted(TITLE))}}}")
             continue
-        p += [f"{w}: unknown field '{k}'" for k in sorted(set(t) - TITLE)]
+        p += [f"{w}: unknown field '{k}'" for k in sorted(set(t) - TITLE - TITLE_OPTIONAL)]
+        if "role" in t and t["role"] not in TITLE_ROLES:
+            p.append(f"{w}: role must be one of {', '.join(TITLE_ROLES)}")
         p += [f"{w}: missing field '{k}'" for k in sorted(TITLE - set(t))]
         if not (isinstance(t.get("text"), str) and t["text"].strip()):
             p.append(f"{w}: text must be a non-empty string")

@@ -15,6 +15,12 @@ frame-difference ratio saturates for large moves, so a ramp past about 5x reads 
 becomes the slot's exposure-flash only within FLASH_SLOT_S of a slot's start, where that macro
 puts it; a flash further in is reported and left off the slot. A hold of static content after
 motion (a title card) also reads as a freeze: the recipe cannot tell it from a held frame.
+
+A screen recording holds still between steps, so every hold reads as a freeze and every scroll as
+a ramp. detect(screen=True) places neither. It always reports a screen hint: holds a minute and
+the median share of pixels unchanged frame to frame. Both over SCREEN_HOLDS_PER_MIN and
+SCREEN_STILL looks like a screen recording; it is a hint, not a test (on 2026-11-22 it caught 10
+of 14 screen recordings and flagged one of 16 camera clips), so nothing is dropped on it alone.
 """
 
 import numpy as np
@@ -29,6 +35,8 @@ RAMP_MIN_FRAMES = 12      # a shot shorter than this has no rate to read
 RAMP_RATIO = 1.8          # end rate over start rate, on the fitted line, either way, at which a shot is a ramp
 MIN_MOTION = 0.15         # mean grey levels per frame below which there is no motion to measure
 FLASH_SLOT_S = 0.25
+SCREEN_HOLDS_PER_MIN = 12.0   # freezes a minute
+SCREEN_STILL = 0.85           # median share of grey-frame pixels unchanged from one frame to the next
 
 
 def freezes(video, duration):
@@ -74,12 +82,23 @@ def ramps(grey, fps, shot_list, frozen):
     return out
 
 
-def detect(report, video):
-    """{freezes, ramps, flashes}, each entry with its `shot`. Freezes that cover a shot from its
-    first frames are left out (a still picture)."""
+def screen_hint(frozen, frames, duration):
+    """{holds_per_min, still, looks_like_screen} from the freezes and the grey frames."""
+    per_min = len(frozen) * 60.0 / duration if duration else 0.0
+    still = float(np.median((np.abs(np.diff(frames, axis=0)) < 0.5).mean(axis=1))) if len(frames) > 1 else 0.0
+    return {"holds_per_min": round(per_min, 1), "still": round(still, 3),
+            "looks_like_screen": per_min >= SCREEN_HOLDS_PER_MIN and still >= SCREEN_STILL}
+
+
+def detect(report, video, screen=False):
+    """{freezes, ramps, flashes, screen}, each entry with its `shot`. Freezes that cover a shot from its
+    first frames are left out (a still picture). screen=True (a screen recording) finds no freezes or ramps."""
     fps, shot_list = report["fps"], report["shots"]
     frozen = freezes(video, report["duration_s"])
     frames = shots_mod.grey_frames(video, report["duration_s"])
+    hint = screen_hint(frozen, frames, report["duration_s"])
+    if screen:
+        frozen = []
     held = []
     for a, d in frozen:
         s = next((x for x in shot_list if x["in"] <= a < x["out"]), None)
@@ -90,8 +109,8 @@ def detect(report, video):
         s = next((x for x in shot_list if x["in"] <= t < x["out"]), None)
         if s:
             flashes.append({"shot": s["shot"], "at": t})
-    return {"freezes": held, "flashes": flashes,
-            "ramps": ramps(frames, fps, shot_list, [(f["start"], f["seconds"]) for f in held])}
+    return {"freezes": held, "flashes": flashes, "screen": hint,
+            "ramps": [] if screen else ramps(frames, fps, shot_list, [(f["start"], f["seconds"]) for f in held])}
 
 
 def place(slots, shot_list, found):

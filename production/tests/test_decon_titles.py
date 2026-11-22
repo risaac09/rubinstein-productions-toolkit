@@ -112,7 +112,44 @@ class TestScoreAndSchema(unittest.TestCase):
         self.assertEqual(s["max_frames"], 6.0)
         self.assertAlmostEqual(s["part"], 0.5)
         self.assertEqual(dt.score(a, [], 25)["part"], 0.0)
+        later = [dict(a[0], text="HELLO THERE", in_s=30.0, out_s=31.0)]   # a word prefix, 29 s on: not this title
+        self.assertEqual(dt.score(a, later, 25)["matched"], 0)
         self.assertIsNone(dt.score([], [], 25)["part"])
+
+    def test_roles(self):
+        def box(cx, cy, w=0.3, h=0.02):
+            return {"x": cx - w / 2, "y": cy - h / 2, "w": w, "h": h}
+        caps = [box(0.5, 0.65), box(0.51, 0.66, 0.2), box(0.49, 0.65, 0.4)]   # one centred band
+        ui = [box(0.1, 0.1, 0.1), box(0.85, 0.4, 0.1), box(0.2, 0.3, 0.02, 0.2)]   # off centre; a digit column
+        card = [box(0.5, 0.2, 0.7, 0.1), box(0.3, 0.4, 0.4, 0.06)]   # centred elsewhere; a tall left-aligned line
+        self.assertEqual(dt.roles(caps + ui + card), ["caption"] * 3 + ["ui"] * 3 + ["title"] * 2)
+        self.assertEqual(dt.roles(caps[:2]), ["title", "title"])   # under CAPTION_MIN: no band
+        self.assertEqual(dt.roles([]), [])
+        menu = [box(0.5, 0.2 + i / 20) for i in range(4)]   # centred, but four at once: a menu
+        self.assertEqual(dt.roles(menu + card, [8, 8, 8, 8, 0, 12]), ["ui"] * 4 + ["title"] * 2)
+
+    def test_track_splits_on_a_jump(self):
+        ln = lambda text, cx, cy: {"text": text, "confidence": 1.0, "x": cx - 0.1, "y": cy - 0.01, "w": 0.2, "h": 0.02}
+        card = [(f, [ln("RAINBOW RELIGHT", 0.5, 0.64)]) for f in (0, 4, 8)]
+        bar = [(f, [ln("RAINBOW RELIGHT v", 0.26, 0.07)]) for f in (12, 16)]
+        self.assertEqual(sorted(len(t["hits"]) for t in dt._track(card + bar)), [2, 3])
+        slide = [(f, [ln("SLIDE", 0.3 + f / 40, 0.5)]) for f in (0, 4, 8, 12)]   # 0.1 per sample: one line
+        self.assertEqual(len(dt._track(slide)), 1)
+        fast = [(f, [ln("SLIDE", f / 10, 0.5)]) for f in (0, 4, 8)]   # 0.4 per sample, same text and size
+        self.assertEqual(len(dt._track(fast)), 1)
+
+    def test_merge_joins_ocr_variants(self):
+        box = {"x": 0.45, "y": 0.9, "w": 0.15, "h": 0.03}
+        t = lambda text, i, o, b=box: {"text": text, "in_s": i, "out_s": o, "box": b, "animation": "fade",
+                                       "animation_out": "cut", "role": "title"}
+        logo = [t("SKATEF OARDC", 1.0, 4.0), t("SHATEEOANON", 4.2, 5.0), t("ЅКАТЕВОАRDС", 5.3, 6.0)]
+        m = dt.merge(logo + [t("OTHER WORDS", 2.0, 3.0), t("SKATEBOARD", 9.0, 10.0),
+                             t("SKATEBOARD", 1.0, 2.0, {"x": 0.1, "y": 0.1, "w": 0.15, "h": 0.03})])
+        self.assertEqual(len(m), 4, m)   # the logo once; other text, a later read and another place stay apart
+        self.assertEqual((m[0]["text"], m[0]["in_s"], m[0]["out_s"]), ("SKATEF OARDC", 1.0, 6.0))
+        self.assertNotIn("_long", m[0])
+        cap = lambda text, i, o: dict(t(text, i, o), role="caption")
+        self.assertEqual(len(dt.merge([cap("like this", 1.0, 2.0), cap("like this anymore", 2.0, 3.0)])), 2)
 
     def test_method_titles_schema(self):
         m = methods.load("punch-montage")
@@ -124,6 +161,8 @@ class TestScoreAndSchema(unittest.TestCase):
         p = methods.validate(dict(m, titles=[bad]))
         self.assertEqual(len(p), 3, p)
         self.assertTrue(methods.validate(dict(m, titles=[dict(ok, extra=1)])))
+        self.assertEqual(methods.validate(dict(m, titles=[dict(ok, role="caption")])), [])
+        self.assertTrue(methods.validate(dict(m, titles=[dict(ok, role="logo")])))
         self.assertTrue(methods.validate(dict(m, titles="HELLO")))
 
 
@@ -155,6 +194,9 @@ class TestDetect(unittest.TestCase):
                 self.assertGreaterEqual(dt._iou(got["box"], truth_box(spec)), 0.7, got)
                 self.assertEqual(got["animation"], a_in, got)
                 self.assertEqual(got["animation_out"], a_out, got)
+
+    def test_every_title_has_a_role(self):
+        self.assertTrue(all(t["role"] in dt.ROLES for t in self.found), self.found)
 
     def test_min_h_drops_small_text(self):
         self.assertEqual(dt.detect(self.clip, FPS, N, (W, H), min_h=0.5), [])
