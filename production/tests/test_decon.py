@@ -95,6 +95,42 @@ class TestDecon(unittest.TestCase):
         self.assertEqual(r["score"], 100.0)
         self.assertEqual(r["cut_error_frames"]["max"], 0.0)
 
+    def test_compare_key(self):
+        cuts = decon._bounds(self.report)
+        r = decon.compare_key(self.report, self.ref, {"steps_s": cuts})
+        self.assertEqual((r["score"], r["found"], r["missed_s"], r["extra_s"]), (100.0, len(cuts), [], []))
+        late = {"steps_s": [t + 0.3 for t in cuts[:5]] + [cuts[-1] + 5.0]}   # 5 found late, 1 missed
+        r = decon.compare_key(self.report, self.ref, late)
+        self.assertEqual((r["found"], r["missed_s"]), (5, [cuts[-1] + 5.0]))
+        self.assertEqual(r["parts"]["step_recall"], round(5 / 6, 3))
+        self.assertEqual(r["extra_s"], [round(t, 3) for t in cuts if decon._near(late["steps_s"], t) > decon.KEY_TOL_S])
+        self.assertTrue(r["extra_s"])
+        self.assertNotIn("titles", r["parts"])   # no detected titles given
+        key = {"steps_s": cuts, "titles": [{"text": "HELLO", "in_s": 1.0, "out_s": 2.0}]}
+        got = [{"text": "HELLO", "in_s": 1.0, "out_s": 2.0, "box": {"x": 0, "y": 0, "w": 1, "h": 1},
+                "animation": "cut", "animation_out": "cut"}]
+        self.assertEqual(decon.compare_key(self.report, self.ref, key, got)["parts"]["titles"], 1.0)
+        r = decon.compare_key(self.report, self.ref, {"steps_s": cuts}, got)
+        self.assertNotIn("titles", r["parts"])
+        self.assertIn("the key has no titles", decon.summary_key(r))
+        for bad in ({"steps_s": [True]}, {"steps_s": "1"}, {"steps_s": [], "titles": [{"text": "A", "in_s": 2, "out_s": 1}]}, {"steps": []}):
+            with self.assertRaises(decon.DeconError):
+                decon.compare_key(self.report, self.ref, bad)
+
+    def test_cli_compare_key(self):
+        key = os.path.join(self.tmp.name, "k.json")
+        Path(key).write_text(json.dumps({"steps_s": decon._bounds(self.report)}))
+        out = os.path.join(self.tmp.name, "kc.json")
+        code, err = self._cli(["compare", self.ref, "--key", key, "--out", out, "--no-dissolves"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(Path(out).read_text())["score"], 100.0)
+        code, err = self._cli(["compare", self.ref, "--out", out, "--no-dissolves"])
+        self.assertEqual(code, 1)
+        self.assertIn("--key", err)
+        code, err = self._cli(["compare", self.ref, "--key", key, "--out", key, "--no-dissolves"])
+        self.assertEqual(code, 1)   # would overwrite the key
+        self.assertEqual(json.loads(Path(key).read_text()), {"steps_s": decon._bounds(self.report)})
+
     def test_compare_shuffled_scores_low(self):
         shuf = os.path.join(self.tmp.name, "shuf.mkv")
         order = list(range(len(self.method["slots"])))

@@ -80,6 +80,24 @@ class TestDeconEffects(unittest.TestCase):
         _, f = self.found(self.flat)
         self.assertEqual((f["freezes"], f["ramps"]), ([], []))
 
+    def test_screen_flag_reads_no_freezes_or_ramps(self):
+        rep = shots.build(self.freeze, dissolves=False)
+        f = decon_effects.detect(rep, self.freeze, screen=True)
+        self.assertEqual((f["freezes"], f["ramps"]), ([], []))
+        self.assertEqual(set(f["screen"]), {"holds_per_min", "still", "looks_like_screen"})
+        rep = shots.build(self.ramp, dissolves=False)
+        self.assertEqual(decon_effects.detect(rep, self.ramp, screen=True)["ramps"], [])
+        self.assertTrue(decon_effects.detect(rep, self.ramp)["ramps"])
+
+    def test_screen_hint(self):
+        import numpy as np
+        still = np.zeros((61, 10), np.float32)
+        h = decon_effects.screen_hint([(0, 1)] * 20, still, 60.0)
+        self.assertEqual(h, {"holds_per_min": 20.0, "still": 1.0, "looks_like_screen": True})
+        moving = np.arange(610, dtype=np.float32).reshape(61, 10)
+        self.assertFalse(decon_effects.screen_hint([(0, 1)] * 20, moving, 60.0)["looks_like_screen"])
+        self.assertFalse(decon_effects.screen_hint([], still, 60.0)["looks_like_screen"])
+
     def test_still_picture_is_not_a_freeze(self):
         still = os.path.join(self.tmp.name, "still.mkv")
         make(still, "smptebars=s=192x108:r=30:d=2")

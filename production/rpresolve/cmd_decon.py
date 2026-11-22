@@ -4,7 +4,9 @@ recipe.json` writes the reference's cuts, dissolves, end black and (with --beats
 as an edit method that methods.validate passes (`--effects` adds flashes, freeze frames and speed ramps; `--grade` adds a folder of per-scene .cube grades;
 `--moves` each shot's camera move from feature tracking, D3 and D4, with a .moves.json beside it); `--against METHOD` checks the round trip
 on a render of a known method. `decon compare REF REBUILD --out compare.json [--sheet
-sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100.
+sheet.png]` gives cut-time error, rhythm and colour distance and one score out of 100;
+`decon compare REF --key KEY.json` instead scores the reference's own cuts and titles against a key
+measured by eye ({steps_s, titles}), kept outside git with the reference.
 `--titles` on either reads on-screen text with macOS Vision (rpresolve/decon_titles.py): the
 recipe carries it as `titles`, compare scores title timing.
 `decon sound REF --out sound.json` maps the sound (loudness curve, speech or music spans, hits at cuts); `recipe --sound` carries it into the recipe.
@@ -47,9 +49,13 @@ def add_arguments(p):
     r.add_argument("--titles", action="store_true",
                    help="also read on-screen text (in, out, box, animation) into the recipe's titles (macOS Vision)")
     r.add_argument("--title-min-h", type=float, default=0.0,
-                   help="with --titles: ignore text shorter than this share of the frame height (0.02 clears a screen recording's interface text)")
+                   help="with --titles: ignore text shorter than this share of the frame height")
+    r.add_argument("--title-drop-ui", action="store_true",
+                   help="with --titles: ignore text off the frame's centre (a screen recording's interface text)")
     r.add_argument("--effects", action="store_true",
                    help="also put flashes, freeze frames and speed ramps on the slots (one more decode)")
+    r.add_argument("--screen", action="store_true",
+                   help="with --effects: the reference is a screen recording, so its holds and scrolls are not freezes or ramps")
     r.add_argument("--sound", action="store_true",
                    help="also map the sound (loudness curve, speech or music spans, hits at cuts) into the recipe's `sound` field")
     r.add_argument("--kinds", help="with --sound: a <name>.kinds.json from `vertcut transcribe` (default: the one beside the "
@@ -64,12 +70,16 @@ def add_arguments(p):
     so.add_argument("--out", required=True, help="sound .json, outside any git tree")
     so.add_argument("--kinds", help="a <name>.kinds.json (default: the one beside the video, else `vertcut kinds` on the audio)")
     _shots_flags(so)
-    c = sub.add_parser("compare", help="score a rebuild against its reference")
+    c = sub.add_parser("compare", help="score a rebuild against its reference, or the reference against a measured key")
     c.add_argument("reference")
-    c.add_argument("rebuild")
+    c.add_argument("rebuild", nargs="?")
+    c.add_argument("--key", help="a measured key .json ({steps_s, titles}) to score the reference's own cuts and titles "
+                   "against, in place of a rebuild")
     c.add_argument("--out", required=True, help="compare .json, outside any git tree")
     c.add_argument("--sheet", help="side-by-side PNG of the matched shots, outside any git tree")
     c.add_argument("--titles", action="store_true", help="also score title timing (macOS Vision)")
+    c.add_argument("--title-drop-ui", action="store_true",
+                   help="with --titles: ignore text off the frame's centre in both videos")
     _shots_flags(c)
 
 
@@ -85,10 +95,10 @@ def _fetch(args):
     return 0
 
 
-def _titles(report, video, min_h=0.0):
+def _titles(report, video, min_h=0.0, drop_ui=False):
     from rpresolve import decon, decon_titles
     fps = report.get("fps")
-    return decon_titles.detect(video, fps, round(report["duration_s"] * fps) if fps else 0, decon._dims(video), min_h)
+    return decon_titles.detect(video, fps, round(report["duration_s"] * fps) if fps else 0, decon._dims(video), min_h, drop_ui)
 
 
 def run(args):
@@ -106,17 +116,17 @@ def run(args):
             if problem:
                 raise paths.OutputRefused(problem)
         decon.check_outputs([args.reference, getattr(args, "rebuild", None), args.beats if args.action == "recipe" else None,
-                             getattr(args, "kinds", None)],
+                             getattr(args, "kinds", None), getattr(args, "key", None)],
                             [args.out, getattr(args, "sheet", None)])
         dissolves = not args.no_dissolves
         ref = shots.build(args.reference, dissolves=dissolves, backend=args.backend, adaptive=True)
         if args.action == "recipe":
             fits = [f.strip() for f in args.fits.split(",") if f.strip()]
-            titles = _titles(ref, args.reference, args.title_min_h) if args.titles else None
+            titles = _titles(ref, args.reference, args.title_min_h, args.title_drop_ui) if args.titles else None
             found = None
             if args.effects:
                 from rpresolve import decon_effects
-                found = decon_effects.detect(ref, args.reference)
+                found = decon_effects.detect(ref, args.reference, getattr(args, "screen", False))
             sm, sound_note = None, ""
             if getattr(args, "sound", False):
                 try:
@@ -131,6 +141,12 @@ def run(args):
                 n = {k: sum(p["kind"] == k for p in found["placed"]) for k in ("flash", "freeze", "ramp")}
                 msg += (f"\neffects: {n['flash']} flash, {n['freeze']} freeze, {n['ramp']} ramp placed"
                         f"; {len(found['left_off'])} flash left off (not at a slot's start)")
+                hint = found["screen"]
+                if getattr(args, "screen", False):
+                    msg += "\neffects: screen recording (--screen): freezes and ramps not read"
+                elif hint["looks_like_screen"]:
+                    msg += (f"\neffects: this looks like a screen recording ({hint['holds_per_min']} holds a minute, "
+                            f"{hint['still']:.0%} of the picture still): if it is, run again with --screen")
             ok = True
             msg += sound_note
             if sm:
@@ -163,9 +179,20 @@ def run(args):
         elif args.action == "sound":
             doc = decon_sound.build(args.reference, ref, args.kinds)
             msg, ok = decon_sound.summary(doc), True
+        elif getattr(args, "key", None):
+            if args.rebuild or args.sheet:
+                raise ValueError("compare --key takes no rebuild and no --sheet")
+            with open(args.key) as f:
+                key = json.load(f)
+            titles = _titles(ref, args.reference, drop_ui=args.title_drop_ui) if args.titles else None
+            doc = decon.compare_key(ref, args.reference, key, titles)
+            msg, ok = decon.summary_key(doc), True
         else:
+            if not args.rebuild:
+                raise ValueError("compare needs a rebuild video or --key")
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
-            titles = (_titles(ref, args.reference), _titles(rb, args.rebuild)) if args.titles else None
+            titles = (_titles(ref, args.reference, drop_ui=args.title_drop_ui),
+                      _titles(rb, args.rebuild, drop_ui=args.title_drop_ui)) if args.titles else None
             doc = decon.compare(ref, rb, args.reference, args.rebuild, args.sheet, titles)
             msg, ok = decon.summary_compare(doc), True
         with open(args.out, "w", encoding="utf-8") as f:

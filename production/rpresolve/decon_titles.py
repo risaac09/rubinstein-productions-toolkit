@@ -6,14 +6,15 @@ vision_text.swift (rpresolve.vision); elsewhere detect() raises TitlesUnavailabl
     detect(video, fps)       [title]: each line of text with its in and out times, box and animation
     score(ref, rb, fps)      title timing error between two title lists, and a 0 to 1 part
 
-A title is {"text", "in_s", "out_s", "box": {x, y, w, h}, "animation", "animation_out"}: times on
+A title is {"text", "in_s", "out_s", "box": {x, y, w, h}, "animation", "animation_out", "role"}: times on
 the video's own clock (in is the first frame drawn, out the frame after the last), the box
 normalized with the origin top left (Vision's line box, ascent to descent) where the title rests,
-and the animation in and out, one of ANIMATIONS.
+and the animation in and out, one of ANIMATIONS. role is one of ROLES (see roles()).
 
 How. Every STRIDE-th frame is read; a line is followed from sample to sample while its text stays
 the same, or one is a word prefix of the other (a word-by-word reveal), or they are within
-SIMILAR of each other (a misread letter). A line gone for two samples ends. Each edge is then
+SIMILAR of each other (a misread letter), and its box has not jumped more than JUMP (unless the
+text and its height are the same: a fast slide). A line gone for two samples ends. Each edge is then
 found to the frame: Vision reads every frame between the last sample without the line and the
 first with it, and from the first frame it reads, the in point walks back while the line's box
 still differs from the empty frame before it by FAINT of the settled title's difference (a fade
@@ -23,6 +24,15 @@ Animation in: "word" when the text grows by whole words while on screen; "slide"
 the first read frame sits more than MOVED from where it rests; "fade" when the first drawn frame
 differs from the empty one by under HALF of the settled title's difference; else "cut". The
 same tests, without "word", give animation_out.
+
+Roles and merging. A screen recording reads its interface text as titles. roles() splits by
+position and size: a box centred across the frame is "caption" when it sits in the band most
+centred boxes share (burned-in captions use one box), else "title"; an off-centre line at least
+TALL of the frame high is a "title" too (a left-aligned title card); the rest is "ui". Lines
+that first appear LIST or more in one sample are "ui" wherever they sit (a menu or panel opening).
+detect(drop_ui=True) skips ui lines before their edges are read. merge() then joins titles
+whose boxes overlap and whose texts are OCR variants of one another (a stylised logo read 20
+ways), when they touch in time.
 
 Limits: the walk compares against the empty frame, so over moving footage it runs on to that
 sample: an in point up to STRIDE - 1 frames early, an out point as late (exact on a still
@@ -46,10 +56,23 @@ SIMILAR = 0.8         # difflib ratio for "the same line, a letter misread"
 FAINT = 0.05          # share of the settled difference that still counts as drawn
 HALF = 0.6            # a first frame under this share of it is a fade
 MOVED = 0.02          # box centre shift (share of the frame) that makes a slide
+JUMP = 0.25           # a line further than this from the last sample is a new line (a title card, then a window title)
 READ_W = 1280         # frames are read at most this wide
 BATCH = 200           # images per Vision call, well inside vision.TIMEOUT_S
 TITLE_SCALE = 12.0    # mean in and out error, frames, that scores zero in compare
 ANIMATIONS = ("cut", "fade", "slide", "word")
+ROLES = ("caption", "title", "ui")
+CENTRED = 0.05        # box centre this near the frame's vertical midline (share of width) is centred
+BAND = 0.02           # centre heights within this of the caption band (share of height) are captions
+CAPTION_MIN = 3       # centred boxes a band needs before it counts as the caption band
+LIST = 4              # this many lines appearing in one sample are a menu or panel, not titles
+TALL = 0.04           # a line this high (share of the frame) is a title wherever it sits
+MERGE_IOU = 0.5       # box overlap that makes two titles one place on screen
+MERGE_SIMILAR = 0.5   # difflib ratio of folded text that makes two reads one word
+MERGE_GAP_S = 0.5     # titles this close in time can merge
+# Cyrillic letters Vision returns for the Latin capitals of a stylised word, mapped to those (З and Л as
+# read on a logo for S and R)
+_GLYPHS = str.maketrans("АВСЕНІКМОРТХЗЛ", "ABCEHIKMOPTXSR")
 
 
 class TitlesUnavailable(ValueError):
@@ -130,7 +153,8 @@ def _track(samples):
     for i, (f, lines) in enumerate(samples):
         used = set()
         for ln in sorted(lines, key=lambda x: -x["confidence"]):
-            cand = [t for t in tracks if id(t) not in used and related(t["hits"][-1][1]["text"], ln["text"])]
+            cand = [t for t in tracks if id(t) not in used and related(t["hits"][-1][1]["text"], ln["text"])
+                    and (_jump(t["hits"][-1][1], ln) <= JUMP or _sliding(t["hits"][-1][1], ln))]
             if cand:
                 t = max(cand, key=lambda t: _iou(t["hits"][-1][1], ln))
             else:
@@ -143,6 +167,16 @@ def _track(samples):
             tracks.remove(t)
             done.append(t)
     return done + tracks
+
+
+def _sliding(a, b):
+    """The same text at the same size: a fast slide may move it past JUMP between samples."""
+    return _norm(a["text"]).lower() == _norm(b["text"]).lower() and 0.8 <= b["h"] / max(a["h"], 1e-6) <= 1.25
+
+
+def _jump(a, b):
+    """Largest shift of the box centre between two lines, as a share of the frame."""
+    return max(abs(p - q) for p, q in zip(_centre(a), _centre(b)))
 
 
 def _iou(a, b):
@@ -208,9 +242,52 @@ def _edge(video, size, tmp, t, side, nframes, rest, full, fps=None):
     return edge, ("slide" if moved else "fade" if ratio < HALF else "cut")
 
 
-def detect(video, fps, nframes, dims, min_h=0.0):
+def _fold(t):
+    return "".join(c for c in _norm(t).upper().translate(_GLYPHS) if c.isalnum())
+
+
+def roles(boxes, starts=None):
+    """[role] for a list of boxes, one of ROLES each (see the module docstring); starts, when given,
+    is each line's first sample frame."""
+    cy = [b["y"] + b["h"] / 2 for b in boxes]
+    centred = [abs(b["x"] + b["w"] / 2 - 0.5) <= CENTRED for b in boxes]
+    band, best = None, 0
+    for c in (y for y, k in zip(cy, centred) if k):
+        n = sum(1 for y, k in zip(cy, centred) if k and abs(y - c) <= BAND)
+        if n > best:
+            band, best = c, n
+    if best < CAPTION_MIN:
+        band = None
+    crowd = [starts.count(f) >= LIST for f in starts] if starts else [False] * len(boxes)
+    return ["ui" if c else "caption" if k and band is not None and abs(y - band) <= BAND
+            else "title" if k or (b["h"] >= TALL and b["w"] > b["h"]) else "ui"   # w > h: a ruler's digit column is no title
+            for b, y, k, c in zip(boxes, cy, centred, crowd)]
+
+
+def merge(titles):
+    """titles with OCR variants of one line joined: boxes overlapping by MERGE_IOU, folded texts within
+    MERGE_SIMILAR, no more than MERGE_GAP_S apart, not both captions. The merged title spans both and keeps the text, box
+    and role of the one longer on screen."""
+    out = []
+    for t in sorted(titles, key=lambda x: x["in_s"]):
+        m = next((m for m in reversed(out) if t["in_s"] <= m["out_s"] + MERGE_GAP_S
+                  and not (m.get("role") == t.get("role") == "caption")   # back-to-back captions share a box and words
+                  and _iou(m["box"], t["box"]) >= MERGE_IOU
+                  and difflib.SequenceMatcher(None, _fold(m["text"]), _fold(t["text"])).ratio() >= MERGE_SIMILAR), None)
+        if m is None:
+            out.append(dict(t, _long=t["out_s"] - t["in_s"]))
+            continue
+        if t["out_s"] - t["in_s"] > m["_long"]:
+            m.update({k: t[k] for k in ("text", "box", "role") if k in t}, _long=t["out_s"] - t["in_s"])
+        if t["out_s"] > m["out_s"]:
+            m["out_s"], m["animation_out"] = t["out_s"], t["animation_out"]
+    return [{k: v for k, v in t.items() if k != "_long"} for t in out]
+
+
+def detect(video, fps, nframes, dims, min_h=0.0, drop_ui=False):
     """[title] for video (fps, frame count, (width, height)), sorted by in time. min_h drops lines whose box is
-    shorter than that share of the frame (a screen recording's interface text reads as hundreds of titles)."""
+    shorter than that share of the frame; drop_ui drops lines off the frame's centre (a screen recording's
+    interface text reads as hundreds of titles). Each title carries its role; OCR variants are merged."""
     if not fps or not nframes:
         raise TitlesUnavailable(f"{video} has no frame rate or frame count")
     if vision.vision_binary(vision.TEXT_SOURCE) is None:
@@ -220,6 +297,7 @@ def detect(video, fps, nframes, dims, min_h=0.0):
     with tempfile.TemporaryDirectory() as tmp:
         lines = _lines(_read(video, range(0, nframes, STRIDE), size, tmp, "s", raw=False))
         samples = [(f, lines[f]) for f in sorted(lines)]
+        cands = []
         for t in _track(samples):
             if len(t["hits"]) < 2:   # one sample is OCR flicker on a busy frame (a screen recording gave hundreds)
                 continue
@@ -228,7 +306,10 @@ def detect(video, fps, nframes, dims, min_h=0.0):
             final = statistics.mode([x for x, n in zip(texts, words) if n == max(words)])
             full_hits = [ln for _, ln in t["hits"] if ln["text"] == final]
             rest = _inside({k: statistics.median(ln[k] for ln in full_hits) for k in ("x", "y", "w", "h")})
-            if rest["h"] < min_h:   # before the reads: each kept track costs several decodes
+            if rest["h"] >= min_h:   # before the reads: each kept track costs several decodes
+                cands.append((t, texts, words, final, rest))
+        for (t, texts, words, final, rest), role in zip(cands, roles([c[4] for c in cands], [c[0]["hits"][0][0] for c in cands])):
+            if drop_ui and role == "ui":
                 continue
             mid_f = [f for f, ln in t["hits"] if ln["text"] == final]
             mid_f = mid_f[len(mid_f) // 2]
@@ -245,8 +326,8 @@ def detect(video, fps, nframes, dims, min_h=0.0):
             if len(set(words)) > 1 and words == sorted(words) and final.lower().split()[:words[0]] == texts[0].lower().split():
                 a_in = "word"
             out.append({"text": final, "in_s": round(fin / fps, 4), "out_s": round((fout + 1) / fps, 4),
-                        "box": rest, "animation": a_in, "animation_out": a_out})
-    return sorted(out, key=lambda x: (x["in_s"], x["box"]["y"]))
+                        "box": rest, "animation": a_in, "animation_out": a_out, "role": role})
+    return sorted(merge(out), key=lambda x: (x["in_s"], x["box"]["y"]))
 
 
 def score(ref, rb, fps):

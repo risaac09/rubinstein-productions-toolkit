@@ -254,6 +254,67 @@ def compare(ref, rb, ref_video, rb_video, sheet=None, titles=None):
             "matched": [{k2: v for k2, v in p.items() if k2 not in ("a", "b")} for p in pairs]}
 
 
+KEY_TOL_S = 0.5     # a detected cut this near a key step finds it (a step is read by eye from frames)
+
+
+def key_problems(key):
+    """Problems with a measured key: {"steps_s": [seconds], "titles": [{text, in_s, out_s}]}, titles optional."""
+    if not isinstance(key, dict):
+        return ["a key is an object"]
+    p = [f"unknown field '{k}'" for k in sorted(set(key) - {"steps_s", "titles", "note"})]
+    sec = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+    st = key.get("steps_s")
+    if not (isinstance(st, list) and all(sec(x) and x >= 0 for x in st)):
+        p.append("steps_s must be a list of seconds")
+    for j, t in enumerate(key.get("titles", []), 1):
+        if not (isinstance(t, dict) and isinstance(t.get("text"), str) and t["text"].strip()
+                and all(sec(t.get(k)) for k in ("in_s", "out_s")) and 0 <= t["in_s"] < t["out_s"]):
+            p.append(f"title {j} must be {{text, in_s, out_s}} with 0 <= in_s < out_s")
+    return p
+
+
+def compare_key(ref, ref_video, key, titles=None):
+    """Score a reference's shots.build report (and its detected titles, when given) against a measured key
+    (key_problems says its shape). A step is found by a cut within KEY_TOL_S; a cut near no step is extra."""
+    fps = ref.get("fps")
+    if not fps:
+        raise DeconError(f"{ref_video} has no frame rate")
+    bad = key_problems(key)
+    if bad:
+        raise DeconError("key: " + "; ".join(bad))
+    cuts, steps = _bounds(ref), sorted(key["steps_s"])
+    tol = KEY_TOL_S + 1e-6
+    err = [_near(cuts, t) for t in steps]
+    found = [e for e in err if e <= tol]
+    parts = {"step_recall": len(found) / len(steps) if steps else 1.0,
+             "no_extra_cuts": 1 - (sum(_near(steps, t) > tol for t in cuts) / len(cuts) if cuts else 0.0)}
+    title_score = None if titles is None else {"titles": [0, len(titles)], "matched": 0, "skipped": "the key has no titles"}
+    if titles is not None and "titles" in key:
+        from . import decon_titles
+        title_score = decon_titles.score([dict(t, animation=None) for t in key["titles"]], titles, fps)
+        part = title_score.pop("part")
+        if part is not None:
+            parts["titles"] = part
+    return {"reference": os.path.basename(ref_video), "fps": fps, "steps": len(steps), "cuts": len(cuts),
+            "found": len(found), "missed_s": [t for t, e in zip(steps, err) if e > tol],
+            "extra_s": [round(t, 3) for t in cuts if _near(steps, t) > tol],
+            "step_error_frames": {"median": round(statistics.median(found) * fps, 2) if found else None,
+                                  "max": round(max(found) * fps, 2) if found else None},
+            "title_timing": title_score, "parts": {k: round(v, 3) for k, v in parts.items()},
+            "score": round(100 * statistics.fmean(parts.values()), 1)}
+
+
+def summary_key(r):
+    e = r["step_error_frames"]
+    return "\n".join([
+        f"Score {r['score']} of 100 against the key ({', '.join(f'{k} {v}' for k, v in r['parts'].items())})",
+        f"Steps: {r['found']} of {r['steps']} found by a cut within {KEY_TOL_S} s (error median {e['median']} frames, "
+        f"max {e['max']}); {len(r['extra_s'])} of {r['cuts']} cuts near no step",
+        f"Missed steps (s): {', '.join(f'{t:g}' for t in r['missed_s']) or 'none'}",
+        _title_line(r.get("title_timing")),
+    ])
+
+
 def _sound_parts(ref, rb, ref_video, rb_video):
     """(part, None), or (None, why) when a file has no audio or cannot be read. Both files'
     loudness and hit shares go through decon_sound.compare_part."""
@@ -307,6 +368,8 @@ def _sheet(pairs, out, np):
 def _title_line(t):
     if t is None:
         return "Titles: not scored (pass --titles)"
+    if t.get("skipped"):
+        return f"Titles: not scored ({t['skipped']})"
     if not t["titles"][0] and not t["titles"][1]:
         return "Titles: none in either file"
     return (f"Titles: reference {t['titles'][0]}, rebuild {t['titles'][1]}, matched {t['matched']}; "
