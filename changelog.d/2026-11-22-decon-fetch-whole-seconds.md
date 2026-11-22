@@ -1,0 +1,1 @@
+- `decon fetch` accepts a duration within 1 s of ffprobe: TikTok's info json gives whole seconds, so a 111.57 s post failed at 0.5 s.
