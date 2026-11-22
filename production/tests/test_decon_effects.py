@@ -128,6 +128,16 @@ class TestDeconEffects(unittest.TestCase):
         self.assertIn("1 freeze", buf.getvalue())
         self.assertEqual(methods.validate(json.loads(Path(out).read_text())), [])
 
+    def test_blend_frames_are_not_a_ramp(self):
+        import numpy as np
+        g = np.zeros((60, 4), np.float32)
+        step = np.concatenate([np.full(12, 3.0), np.full(47, 1.0)])   # fast blend, then steady motion
+        g[1:] = np.cumsum(step)[:, None]
+        shot = {"shot": 1, "in": 0.0, "out": 2.0, "blend_in": "", "blend_out": ""}
+        self.assertEqual(len(decon_effects.ramps(g, 30, [shot], [])), 1)
+        shot.update(blend_in=0.0, blend_out=12 / 30)
+        self.assertEqual(decon_effects.ramps(g, 30, [shot], []), [])
+
     def test_flash_at_a_slot_start_is_its_effect(self):
         slots = [method_with({})["slots"][0] for _ in range(2)]
         shot_list = [{"shot": 1, "in": 0.0}, {"shot": 2, "in": 1.0}]

@@ -13,7 +13,8 @@ frame difference at the end of a shot to the start (frozen frames left out): a r
 1 at the start, not the source's own speed, and only where there is motion to measure (a
 frame-difference ratio saturates for large moves, so a ramp past about 5x reads low). A flash
 becomes the slot's exposure-flash only within FLASH_SLOT_S of a slot's start, where that macro
-puts it; a flash further in is reported and left off the slot.
+puts it; a flash further in is reported and left off the slot. A hold of static content after
+motion (a title card) also reads as a freeze: the recipe cannot tell it from a held frame.
 """
 
 import numpy as np
@@ -25,7 +26,7 @@ FREEZE_NOISE_DB = -50.0   # freezedetect n=: frames this alike are the same fram
 MOTION_FRAMES = 2         # frames of motion before a freeze, else the shot is a still
 EDGE = 3                  # frames at each end of a shot left out of the rate reading (blends, cuts)
 RAMP_MIN_FRAMES = 12      # a shot shorter than this has no rate to read
-RAMP_RATIO = 1.8          # end rate over start rate, on the fitted line,, either way, at which a shot is a ramp
+RAMP_RATIO = 1.8          # end rate over start rate, on the fitted line, either way, at which a shot is a ramp
 MIN_MOTION = 0.15         # mean grey levels per frame below which there is no motion to measure
 FLASH_SLOT_S = 0.25
 
@@ -43,12 +44,15 @@ def freezes(video, duration):
 
 def ramps(grey, fps, shot_list, frozen):
     """[{shot, from, to, start, end}] for shots whose rate of change differs by RAMP_RATIO between
-    the two ends of a line fitted to the shot's frame differences. `from` is 1 and `to` the ratio; start and end are the seconds
-    where the rate crosses 10 and 90 percent of the way."""
+    the two ends of a line fitted to the shot's frame differences. `from` is 1 and `to` the ratio;
+    start and end are the seconds where the rate crosses 10 and 90 percent of the way."""
     diff = np.abs(np.diff(grey, axis=0)).mean(axis=1)
     held = np.zeros(len(diff), bool)
     for a, d in frozen:
         held[max(0, int(round(a * fps))):int(round((a + d) * fps))] = True
+    for s in shot_list:  # a dissolve or dip changes the picture at its own rate, not the shot's
+        if s.get("blend_in") != "" and s.get("blend_out") != "" and "blend_in" in s:
+            held[max(0, int(round(s["blend_in"] * fps))):int(round(s["blend_out"] * fps)) + 1] = True
     out = []
     for s in shot_list:
         lo, hi = int(round(s["in"] * fps)) + EDGE, min(int(round(s["out"] * fps)) - EDGE, len(diff))
@@ -99,8 +103,9 @@ def place(slots, shot_list, found):
     placed, left = [], []
     for r in found["ramps"]:
         if r["shot"] in at:
-            slots[at[r["shot"]]]["ramp"] = [r["from"], max(0.1, min(10.0, r["to"]))]
-            placed.append({"kind": "ramp", "slot": at[r["shot"]], "from": r["from"], "to": r["to"]})
+            to = max(0.1, min(10.0, r["to"]))  # the format's range
+            slots[at[r["shot"]]]["ramp"] = [r["from"], to]
+            placed.append({"kind": "ramp", "slot": at[r["shot"]], "from": r["from"], "to": to})
     for f in found["freezes"]:
         if f["shot"] in at:
             slot = slots[at[f["shot"]]]
