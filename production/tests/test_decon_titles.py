@@ -112,6 +112,8 @@ class TestScoreAndSchema(unittest.TestCase):
         self.assertEqual(s["max_frames"], 6.0)
         self.assertAlmostEqual(s["part"], 0.5)
         self.assertEqual(dt.score(a, [], 25)["part"], 0.0)
+        later = [dict(a[0], text="HELLO THERE", in_s=30.0, out_s=31.0)]   # a word prefix, 29 s on: not this title
+        self.assertEqual(dt.score(a, later, 25)["matched"], 0)
         self.assertIsNone(dt.score([], [], 25)["part"])
 
     def test_roles(self):

@@ -60,6 +60,7 @@ JUMP = 0.25           # a line further than this from the last sample is a new l
 READ_W = 1280         # frames are read at most this wide
 BATCH = 200           # images per Vision call, well inside vision.TIMEOUT_S
 TITLE_SCALE = 12.0    # mean in and out error, frames, that scores zero in compare
+PAIR_S = 2.0          # titles further apart than this in time are not the same title (a repeated word later on)
 ANIMATIONS = ("cut", "fade", "slide", "word")
 ROLES = ("caption", "title", "ui")
 CENTRED = 0.05        # box centre this near the frame's vertical midline (share of width) is centred
@@ -332,12 +333,12 @@ def detect(video, fps, nframes, dims, min_h=0.0, drop_ui=False):
 
 def score(ref, rb, fps):
     """Title timing error. Each reference title is paired with the unused rebuild title of the
-    same (or related) text nearest in time; error is |in| and |out| difference in frames. The
+    same (or related) text nearest in time, within PAIR_S; error is |in| and |out| difference in frames. The
     part is the sum over pairs of max(0, 1 - mean error / TITLE_SCALE), over the larger count."""
     used, pairs = set(), []
     for a in ref:
         cand = [(abs(b["in_s"] - a["in_s"]), j) for j, b in enumerate(rb)
-                if j not in used and related(a["text"], b["text"])]
+                if j not in used and related(a["text"], b["text"]) and abs(b["in_s"] - a["in_s"]) <= PAIR_S]
         if not cand:
             continue
         j = min(cand)[1]
