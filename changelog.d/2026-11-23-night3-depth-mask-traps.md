@@ -1,0 +1,1 @@
+Traps T51 and T52 and the Magic Mask recipe: a depth band loses a subject who moves in depth; a stroke on the first frame fixes a weak early matte; a re-tracked mask renders stale off the Fusion page.
