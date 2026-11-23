@@ -1407,14 +1407,17 @@ def register(registry):
                 "pan_from": {"type": "number", "minimum": 0, "maximum": 1},
                 "pan_to": {"type": "number", "minimum": 0, "maximum": 1},
                 "pan_base": {"type": "number", "minimum": 0, "maximum": 1},
-                "fade_out": {"type": "number", "minimum": 0, "maximum": 5}},
+                "fade_out": {"type": "number", "minimum": 0, "maximum": 5},
+                "out": {"type": "number", "exclusiveMinimum": 0, "maximum": 600}},
                 "description": "Macro settings: text, size (text-word, person-matte-text); "
                                "centre, 0 to 1 across the frame (zoom-push, text-word); gain, 1 to 20, default 2 "
                                "(exposure-flash); speed "
                                "and optional speed_to, which makes a ramp comp (retime); "
                                "pan_from, pan_to, optional pan_base, optional fade_out in "
                                "seconds, 0 to 5 (reframe-pan: the picture also fades to "
-                               "black over the item's last fade_out seconds)."},
+                               "black over the item's last fade_out seconds); optional out, "
+                               "seconds after the item's start (text-word: the word fades off "
+                               "over 3 frames ending there)."},
             **DRY_RUN},
          "required": ["project", "timeline", "effect"], "additionalProperties": False},
         apply_effect, title="Apply a Fusion effect", annotations=WRITE))

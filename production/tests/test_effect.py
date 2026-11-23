@@ -669,6 +669,32 @@ class TestParams(Base):
         self.assertIsNone(self.comp("reframe-pan").FindTool("BrightnessContrast1"))
 
 
+    def test_text_word_out_fades_the_word_off(self):
+        _, real = self.run_fx("text-word", {"text": "OUT", "out": 1.0})
+        self.assertTrue(real["results"][0]["ok"], real["results"])
+        comp = self.comp("text-word")
+        keys = comp.FindTool("Merge1Blend").keys
+        # 1 s at 25 fps = 25 timeline frames, x 240/50 source per timeline frame = 120
+        self.assertEqual(sorted(keys), [0, 117, 120])
+        self.assertEqual((keys[0][1], keys[117][1], keys[120][1]), (1, 1, 0))
+        self.assertIs(comp.FindTool("Merge1").links["Blend"], comp.FindTool("Merge1Blend"))
+        self.assertIs(comp.FindTool("MediaOut1").links["Input"], comp.FindTool("Merge1"))
+        self.assertEqual(real["results"][0]["params"]["Merge1Blend@120"], 0)
+
+    def test_text_word_out_is_validated_and_must_fall_inside_the_item(self):
+        v = cmd_effect.validate_params
+        for params in [{"out": 0}, {"out": -1}, {"out": True}, {"out": 601}]:
+            with self.assertRaises(workflows.Refused, msg=params):
+                v("text-word", params)
+        with self.assertRaises(workflows.Refused):
+            v("zoom-push", {"out": 1})
+        with self.assertRaises(workflows.Refused) as e:   # 3 s is 75 timeline frames; the item holds 50
+            self.run_fx("text-word", {"out": 3.0})
+        self.assertIn("never leave", str(e.exception))
+        self.run_fx("text-word", {"text": "STAY"})
+        self.assertIsNone(self.comp("text-word").FindTool("Merge1Blend"))
+
+
 class TestClipNumbering(Base):
     """A dissolve is a track item with no media pool clip (T29). Items are clip numbers and
     spans are manifest indices, as vertical_apply counts; the raw track position is kept."""
