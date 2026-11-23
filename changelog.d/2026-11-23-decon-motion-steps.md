@@ -1,0 +1,1 @@
+decon finds motion steps inside one take (a punch-in, pan or scale change) with --motion on recipe and compare --key, and compare REF REBUILD --roi prints when change turns on and off in a region of each video.

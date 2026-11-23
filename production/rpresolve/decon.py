@@ -316,7 +316,7 @@ def summary_key(r):
         f"Score {r['score']} of 100 against the key ({', '.join(f'{k} {v}' for k, v in r['parts'].items())})",
         f"Steps: {r['found']} of {r['steps']} found by a cut within {KEY_TOL_S} s (error median {e['median']} frames, "
         f"max {e['max']}); {len(r['extra_s'])} of {r['cuts']} cuts near no step"
-        + (f" ({r['screen_steps']} of them screen steps)" if r.get("screen_steps") else ""),
+        + (f" ({r['screen_steps']} of them screen or motion steps)" if r.get("screen_steps") else ""),
         f"Missed steps (s): {', '.join(f'{t:g}' for t in r['missed_s']) or 'none'}",
         _title_line(r.get("title_timing")),
     ])
