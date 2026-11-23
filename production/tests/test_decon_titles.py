@@ -127,6 +127,9 @@ class TestScoreAndSchema(unittest.TestCase):
         self.assertEqual(dt.roles([]), [])
         menu = [box(0.5, 0.2 + i / 20) for i in range(4)]   # centred, but four at once: a menu
         self.assertEqual(dt.roles(menu + card, [8, 8, 8, 8, 0, 12]), ["ui"] * 4 + ["title"] * 2)
+        tiny = box(0.5, 0.8, 0.07, 0.008)                      # a centred timecode in an editor crop
+        strip = {"x": 0.0, "y": 0.5, "w": 0.99, "h": 0.013}   # a timeline track name cut off by the left edge
+        self.assertEqual(dt.roles(caps + [tiny, strip]), ["caption"] * 3 + ["ui"] * 2)
 
     def test_track_splits_on_a_jump(self):
         ln = lambda text, cx, cy: {"text": text, "confidence": 1.0, "x": cx - 0.1, "y": cy - 0.01, "w": 0.2, "h": 0.02}

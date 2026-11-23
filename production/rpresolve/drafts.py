@@ -321,7 +321,8 @@ def effect_filter(effect, seconds, fps, w, h, params=None, over=False):
         return flash_filter(float(p.get("gain", FLASH_GAIN)), fps)
     if effect == "text-word":  # a box where the word goes (drawtext is not in every ffmpeg)
         return (f"drawbox=x={int(w * 0.25)}:y={int(h * 0.34)}:w={int(w * 0.5)}:"
-                f"h={int(h * 0.08)}:color=white@0.75:t=fill")
+                f"h={int(h * 0.08)}:color=white@0.75:t=fill"
+                + (f":enable='lt(t,{float(p['out']):.4f})'" if p.get("out") else ""))
     if effect == "person-matte-text":  # the macro's title as a box, in front of the picture
         # Text1: Center 0.55/0.55 (Fusion's y counts from the bottom), Size 0.32 of the frame
         # height, red-orange. shortcut: cap height and a flat 0.72 em per letter stand in for

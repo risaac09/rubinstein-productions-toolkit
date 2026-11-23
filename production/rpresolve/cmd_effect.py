@@ -57,13 +57,14 @@ PARAMS = {
     "person-matte-text": {"text", "size"},
     "reframe-pan": {"pan_from", "pan_to", "pan_base", "fade_out"},
     "retime": {"speed", "speed_to"},
-    "text-word": {"text", "size", "centre"},
+    "text-word": {"text", "size", "centre", "out"},
     "zoom-push": {"centre"},
 }
 REQUIRED = {"reframe-pan": ("pan_from", "pan_to"), "retime": ("speed",)}
 # Macros whose keys depend on the item's length in source frames (Fusion comp time on an
 # item counts source frames, 0 at its first frame).
 NEEDS_LENGTH = {"reframe-pan", "retime"}
+OUT_FADE = 3  # text-word's out: the word fades over this many comp frames, ending at `out`
 
 COMP_PREFIX = "rp-fx "  # the added comp's name: "rp-fx <id>"
 
@@ -286,6 +287,8 @@ def validate_params(effect, params):
                 ok = 1 <= v <= 20  # the flash's peak; the macro's own is 2
             elif ok and k == "fade_out":
                 ok = 0 <= v <= 5  # seconds
+            elif ok and k == "out":
+                ok = 0 < v <= 600  # seconds from the item's start
             elif ok:
                 ok = 0 <= v <= 1  # centre, pan_*: a fraction of the frame
         if not ok:
@@ -294,6 +297,7 @@ def validate_params(effect, params):
                 "a number above 0" if k in ("speed", "speed_to", "size") else
                 "a number from 1 to 20" if k == "gain" else
                 "seconds, from 0 to 5" if k == "fade_out" else
+                "seconds after the item's start, above 0 and at most 600" if k == "out" else
                 "a number from 0 to 1"))
     return dict(params)
 
@@ -306,13 +310,15 @@ def _hermite(n, v1, d0, d1, v0=0):
             n: {1: v1, "LH": {1: n - n / 3.0, 2: v1 - d1 * n / 3.0}}}
 
 
-def apply_params(parsed, effect, params, n, fade_frames=0):
+def apply_params(parsed, effect, params, n, fade_frames=0, out_frames=0):
     """(the macro with params written in, the checks to read back). n is the item's
     length in source frames. Keys that depend on the item are built here, not in the
     .setting: retime's SourceTime (source frame = integral of the speed, a linear speed
     change when speed_to is given) and reframe-pan's X, and with fade_frames (comp frames)
     its fade: dip-to-black's BrightnessContrast, fed by Transform1, gain 1 to 0 linearly
-    over the last fade_frames, black on the item's last frame."""
+    over the last fade_frames, black on the item's last frame. With out_frames (comp frames)
+    text-word's Merge1.Blend falls linearly from 1 to 0 over OUT_FADE frames ending there:
+    the word's out point."""
     macro = copy.deepcopy(parsed)
     tools, checks = macro["Tools"], []
 
@@ -368,6 +374,17 @@ def apply_params(parsed, effect, params, n, fade_frames=0):
                 keyframes[first]["LH"] = {1: first - first / 3.0, 2: 1}
             tools[gain] = {**copy.deepcopy(dip["Tools"][gain]), "KeyFrames": keyframes}
             checks.append({"param": "fade_out", "tool": gain, "frame": last, "want": 0})
+    if effect == "text-word" and out_frames:
+        last = max(1, int(out_frames))
+        first = max(0, last - OUT_FADE)
+        lin = {"Linear": True}
+        keyframes = {first: {1: 1, "Flags": lin}, last: {1: 0, "Flags": lin}}
+        if first > 0:  # held at 1 from frame 0, as reframe-pan's fade (Resolve keys frame 0 itself)
+            keyframes[0] = {1: 1, "Flags": lin}
+        tools["Merge1"].setdefault("Inputs", {})["Blend"] = {"SourceOp": "Merge1Blend",
+                                                             "Source": "Value"}
+        tools["Merge1Blend"] = {"__ctor": "BezierSpline", "NameSet": True, "KeyFrames": keyframes}
+        checks.append({"param": "out", "tool": "Merge1Blend", "frame": last, "want": 0})
     return macro, checks
 
 
@@ -659,10 +676,11 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     comp_name = COMP_PREFIX + effect
     native = native_speed(effect, params)
     fps = None
-    if params.get("fade_out"):  # the fade's length in frames needs the timeline's rate
+    timed = next((k for k in ("fade_out", "out") if params.get(k)), None)
+    if timed:  # seconds to frames needs the timeline's rate
         fps = deliver.exact_fps(api._safe_call(tl, "GetSetting", "timelineFrameRate"))
         if not fps:
-            raise Refused(f"the frame rate of '{tl_name}' cannot be read, so fade_out cannot "
+            raise Refused(f"the frame rate of '{tl_name}' cannot be read, so {timed} cannot "
                           "be put in frames.")
     targets, refused = [], []
     for n in wanted:
@@ -676,8 +694,10 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                "route": "native" if native else "comp"}
         row["key_scale"], row["key_offset"] = (1, 0) if native else comp_timing(
             parsed, effect, frames, row["source_frames"])
-        if fps:  # comp time counts source frames: the fade's seconds times key_scale
+        if fps and params.get("fade_out"):  # comp time counts source frames: seconds x fps x key_scale
             row["fade_frames"] = max(1, round(params["fade_out"] * fps * row["key_scale"]))
+        if fps and params.get("out"):
+            row["out_frames"] = max(1, round(params["out"] * fps * row["key_scale"]))
         why = []
         if native:
             # No comp is added, so other comps are fine; the old comp route's own comp is
@@ -693,6 +713,9 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
                            "would replace the one that renders")
             if effect in END_ANCHORED and not (isinstance(frames, (int, float)) and frames > 0):
                 why.append("its length cannot be read, so the fade cannot be put at its end")
+            if row.get("out_frames") and not (row["source_frames"] and row["out_frames"] < row["source_frames"]):
+                why.append("out is not inside it (or its length cannot be read), so the word "
+                           "would never leave")
             if effect in NEEDS_LENGTH and not row["source_frames"]:
                 why.append("its length in source frames cannot be read, so the keys cannot "
                            "be built")
@@ -706,7 +729,8 @@ def apply_effect(resolve, project_name, timeline, effect, track=1, items=None, d
     report = ledgercheck.check(led, [(effect, t["index"] - 1) for t in targets], override)
     sha = plan_sha("effect", pin.unique_id, tl_id, track, effect, text,
                    [(t["index"], t["position"], t["item_id"], t["comps"], t["reuse"],
-                     t["frames"], t["source_frames"], t["route"], t.get("fade_frames"))
+                     t["frames"], t["source_frames"], t["route"], t.get("fade_frames"),
+                     t.get("out_frames"))
                     for t in targets], sorted(params.items()), report)
     out = {"project": {"name": pin.name, "id": pin.unique_id},
            "timeline": {"name": tl_name, "unique_id": tl_id, "track": track,
@@ -840,7 +864,7 @@ def _apply_all(out, targets, all_items, parsed, effect, comp_name, pm, pin, chec
         w = wiring(effect, params)
         if params or effect in NEEDS_LENGTH:
             macro, checks = apply_params(macro, effect, params or {}, t["source_frames"],
-                                         t.get("fade_frames") or 0)
+                                         t.get("fade_frames") or 0, t.get("out_frames") or 0)
         comp.Lock()
         try:
             skipped, animated = _build(comp, macro)

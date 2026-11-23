@@ -1,0 +1,1 @@
+decon titles read small lines and lines cut off at the frame's left edge as interface text (night 7's editor crop keeps 12 of 71). apply_effect's text-word takes an out param: the word fades off over 3 frames at that second.
