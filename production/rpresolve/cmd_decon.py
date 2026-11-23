@@ -214,6 +214,8 @@ def run(args):
             with open(args.key) as f:
                 key = json.load(f)
             titles = _titles(ref, args.reference, drop_ui=args.title_drop_ui) if args.titles else None
+            if args.roi or args.rebuild_roi:
+                raise ValueError("compare --roi and --rebuild-roi work with a rebuild, not --key")
             steps = _steps(args, ref) or ()
             doc = decon.compare_key(ref, args.reference, key, titles, steps)
             msg, ok = decon.summary_key(doc), True
@@ -222,6 +224,8 @@ def run(args):
                 raise ValueError("compare needs a rebuild video or --key")
             if args.screen or args.motion:
                 raise ValueError("compare --screen and --motion work with --key only")
+            if args.rebuild_roi and not args.roi:
+                raise ValueError("compare --rebuild-roi needs --roi")
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
             titles = (_titles(ref, args.reference, drop_ui=args.title_drop_ui),
                       _titles(rb, args.rebuild, drop_ui=args.title_drop_ui)) if args.titles else None
