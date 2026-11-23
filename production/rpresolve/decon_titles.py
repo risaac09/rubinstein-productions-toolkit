@@ -29,7 +29,8 @@ Roles and merging. A screen recording reads its interface text as titles. roles(
 position and size: a box centred across the frame is "caption" when it sits in the band most
 centred boxes share (burned-in captions use one box), else "title"; an off-centre line at least
 TALL of the frame high is a "title" too (a left-aligned title card); the rest is "ui". Lines
-that first appear LIST or more in one sample are "ui" wherever they sit (a menu or panel opening).
+that first appear LIST or more in one sample are "ui" wherever they sit (a menu or panel opening), and
+so are lines under SMALL high or starting at the frame's left edge (a label cut off by it).
 detect(drop_ui=True) skips ui lines before their edges are read. merge() then joins titles
 whose boxes overlap and whose texts are OCR variants of one another (a stylised logo read 20
 ways), when they touch in time.
@@ -67,6 +68,8 @@ CENTRED = 0.05        # box centre this near the frame's vertical midline (share
 BAND = 0.02           # centre heights within this of the caption band (share of height) are captions
 CAPTION_MIN = 3       # centred boxes a band needs before it counts as the caption band
 LIST = 4              # this many lines appearing in one sample are a menu or panel, not titles
+SMALL = 0.012         # a line under this high (share of the frame) is interface text: social text runs 0.02 to 0.06
+EDGE = 0.005          # a line starting this near the frame's left edge runs off it: a truncated interface label
 TALL = 0.04           # a line this high (share of the frame) is a title wherever it sits
 MERGE_IOU = 0.5       # box overlap that makes two titles one place on screen
 MERGE_SIMILAR = 0.5   # difflib ratio of folded text that makes two reads one word
@@ -260,6 +263,7 @@ def roles(boxes, starts=None):
     if best < CAPTION_MIN:
         band = None
     crowd = [starts.count(f) >= LIST for f in starts] if starts else [False] * len(boxes)
+    crowd = [c or b["h"] < SMALL or b["x"] <= EDGE for c, b in zip(crowd, boxes)]
     return ["ui" if c else "caption" if k and band is not None and abs(y - band) <= BAND
             else "title" if k or (b["h"] >= TALL and b["w"] > b["h"]) else "ui"   # w > h: a ruler's digit column is no title
             for b, y, k, c in zip(boxes, cy, centred, crowd)]
