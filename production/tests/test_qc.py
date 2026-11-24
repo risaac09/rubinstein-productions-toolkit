@@ -199,7 +199,7 @@ class QcTable(unittest.TestCase):
         dest = deliver.destination(CFG, "youtube_16x9")
         r = qc.run(self.f["black"], dest, config_folders=deliver.subfolders(CFG))
         statuses = [x["status"] for x in r["checks"]]
-        self.assertEqual(statuses, sorted(statuses, key=[qc.FAIL, qc.PASS, qc.SKIP].index))
+        self.assertEqual(statuses, sorted(statuses, key=[qc.FAIL, qc.WARN, qc.PASS, qc.SKIP].index))
         self.assertEqual(statuses[0], qc.FAIL)
         sources = {x["source"] for x in r["checks"]}
         self.assertEqual(sources, {"deliver_check", "ffmpeg"})

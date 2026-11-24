@@ -391,6 +391,10 @@ def destination_problems(dest):
     color = dest.get("color") or {}
     if not isinstance(color.get("resolve"), dict) or not isinstance(color.get("expect"), dict):
         p.append("color needs a resolve block (tag strings) and an expect block (ffprobe values)")
+    for k in ("min_video_kbps", "max_video_kbps", "max_file_mb", "max_duration_s"):
+        v = (dest.get("expect") or {}).get(k)
+        if v is not None and not (_num(v) and v > 0):
+            p.append(f"expect.{k} must be a positive number")
     sub = dest.get("subfolder")
     if sub is not None and not (isinstance(sub, str) and SUBFOLDER_RE.fullmatch(sub)):
         p.append("subfolder must be one folder name (lowercase letters, digits, _ and -), "
@@ -631,6 +635,21 @@ def shape_problems(dest, size, timeline="the timeline"):
                 "the picture into the frame with bars. Queue a timeline of the destination's "
                 "shape."]
     return []
+
+
+def upscale_warnings(dest, size, timeline="the timeline"):
+    """A warning when the destination's frame is larger than the timeline's:
+    Resolve scales the picture up to fill it (a 1080x1920 timeline queued
+    for youtube_9x16's 2160x3840), and no check of the file can see it."""
+    if dest["resolution"] == "timeline" or not size or not all(size):
+        return []
+    dw, dh = int(dest["resolution"]["width"]), int(dest["resolution"]["height"])
+    w, h = int(size[0]), int(size[1])
+    if w >= dw and h >= dh:
+        return []
+    return [f"{timeline} is {w}x{h} and '{dest['key']}' renders {dw}x{dh}: Resolve will scale "
+            "the picture up. Queue a timeline at the destination's size, or a destination at "
+            "the timeline's."]
 
 
 def timeline_problems(dest, subtitle_counts, disabled_counts=()):

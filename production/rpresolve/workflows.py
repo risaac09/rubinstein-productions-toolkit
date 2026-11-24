@@ -1841,6 +1841,7 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
            "made_folder": None, "render_guard": None}
     # Warns only; the plan_sha is already fixed, so this never moves it.
     out["warnings"] += deliver.client_drift(target_dir, filename, config)
+    out["warnings"] += deliver.upscale_warnings(dest, size, f"timeline '{tl.GetName()}'")
     unnamed = render.unreported_jobs(project)
     if unnamed:
         out["warnings"].append(f"{len(unnamed)} job(s) already in the render queue do not report "
@@ -1914,6 +1915,10 @@ def queue_destination(resolve, project_name, timeline, key, target_dir, name_par
     loose = {"VideoFormat": [dest["format"], {"mov": "QuickTime", "mp4": "MP4"}[dest["format"]]],
              "VideoCodec": [q["codec"]["used"], q["codec"]["description"]],
              "AudioCodec": [dest["audio"].get("resolve_codec") or dest["audio"]["codec"]]}
+    # VideoQuality's unit (kb/s) is unverified: a job that reports another value warns.
+    vq = (dest.get("resolve") or {}).get("VideoQuality")
+    if vq is not None:
+        loose["VideoQuality"] = [str(vq)]
     problems, warnings, unverified = render.readback_report(job, exact, loose)
     unverified += [k for k in deliver.changed_fields(steps)
                    if k not in exact and k not in loose and job.get(k) is None]

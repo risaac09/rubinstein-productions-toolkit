@@ -22,16 +22,23 @@ CONFIG_PATH_DEFAULT = Path(__file__).resolve().parent.parent / "resolve-config.j
 MERGED_KEYS = ("deliver", "destinations")
 
 
-def _web(name, aspect, width, height, codec, lufs, captions):
-    """A web destination: mp4, AAC 48 kHz stereo, a loudness target."""
+def _web(name, aspect, width, height, codec, lufs, captions, video_kbps=None, audio_kbps=320,
+         profile=None, limits=None):
+    """A web destination: mp4, AAC 48 kHz stereo, a loudness target.
+    video_kbps: Resolve's VideoQuality as a bit rate (else the Deliver page's
+    carries over). profile: Resolve's EncodingProfile. limits: the platform's
+    stated ceilings (max_video_kbps, max_file_mb, max_duration_s), which
+    deliver_check reports as WARN rows. Sources in platform-specs.md."""
     h265 = codec == "H265"
+    extra = {k: v for k, v in (("VideoQuality", video_kbps), ("EncodingProfile", profile))
+             if v is not None}
     return {
         "name": name, "naming": "clip", "aspect": aspect, "target_dir": None,
         "format": "mp4", "codec": codec,
         "codec_fallbacks": ["HEVC", "H.265"] if h265 else ["H.264", "AVC"],
         "resolution": {"width": width, "height": height},
         "audio": {"codec": "aac", "resolve_codec": "aac", "sample_rate": 48000,
-                  "bit_depth": None, "channels": 2, "bitrate_kbps": 320},
+                  "bit_depth": None, "channels": 2, "bitrate_kbps": audio_kbps},
         "loudness": {"integrated_lufs": lufs},
         "captions": captions,
         # Web files are tagged Rec.709-A, which writes the transfer as bt709 (1-1-1);
@@ -39,12 +46,27 @@ def _web(name, aspect, width, height, codec, lufs, captions):
         # renders and chose Rec.709-A on 2026-09-29 (pipeline note, spike 21).
         "color": {"resolve": {"GammaTag": "Rec.709-A"}, "expect": {"color_transfer": "bt709"}},
         # Further SetRenderSettings keys, sent one by one; a refusal is a warning.
-        "resolve": {"NetworkOptimization": True},
+        "resolve": {"NetworkOptimization": True, **extra},
         # What ffprobe should read back. H.264 for the web is 8-bit 4:2:0;
         # H.265 may be Main or Main10, so its bit depth is not fixed.
         "expect": {"codec_name": "hevc" if h265 else "h264", "profile": None,
-                   "pix_fmt_family": "420", "bit_depth": None if h265 else 8},
+                   "pix_fmt_family": "420", "bit_depth": None if h265 else 8, **(limits or {})},
     }
+
+
+# Per-platform values, read 2026-11-24 (platform-specs.md has each source).
+# YouTube's SDR upload table: 2160p 35-45 Mbps at 24-30 fps, 53-68 at 48-60;
+# 1080p 8 and 12. One rate per destination covers both frame-rate bands
+# (H.265 needs less than the H.264 figures). Its audio advice is AAC stereo 384 kbps.
+# VideoQuality as an int is a bit rate (scripting README); kbps, as the Deliver
+# page's "Restrict to" field, is unverified until a live queue reads it back.
+# The floor (a WARN in deliver_check) is the table's lowest figure for the size.
+YT_UHD = {"video_kbps": 60000, "audio_kbps": 384, "limits": {"min_video_kbps": 35000}}
+YT_HD = {"video_kbps": 16000, "audio_kbps": 384, "limits": {"min_video_kbps": 8000}}
+# Meta's Reels publishing spec: VBR at most 25 Mbps, 300 MB, 15 min, at most 1920
+# columns; TikTok lets every creator post 3 minutes. H.264 High is Instagram's ask.
+SOCIAL = {"video_kbps": 16000, "profile": "High",
+          "limits": {"max_video_kbps": 25000, "max_file_mb": 300, "max_duration_s": 180}}
 
 
 DEFAULT_CONFIG = {
@@ -90,29 +112,37 @@ DEFAULT_CONFIG = {
         },
     },
     "destinations": {
-        "youtube_16x9": _web("YouTube 16:9 UHD", "16x9", 3840, 2160, "H265", -14.0, "sidecar"),
-        "youtube_16x9_hd": _web("YouTube 16:9 HD", "16x9", 1920, 1080, "H265", -14.0, "sidecar"),
+        "youtube_16x9": _web("YouTube 16:9 UHD", "16x9", 3840, 2160, "H265", -14.0, "sidecar",
+                             **YT_UHD),
+        "youtube_16x9_hd": _web("YouTube 16:9 HD", "16x9", 1920, 1080, "H265", -14.0, "sidecar",
+                                **YT_HD),
         "linkedin_16x9": _web("LinkedIn 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "linkedin_9x16": _web("LinkedIn 9:16", "9x16", 1080, 1920, "H264", -16.0, "burnin"),
         "social_9x16": {**_web("Social 9:16 (TikTok, Instagram)", "9x16", 1080, 1920, "H264", -14.0,
-                             "burnin"), "min_fps": "30000/1001"},
+                             "burnin", **SOCIAL), "min_fps": "30000/1001"},
+        # YouTube Shorts: a vertical up to 3 minutes. Rendered at 2160x3840, since a 4K upload
+        # is what earns YouTube's VP9 encode; TikTok and Instagram stay at 1080x1920.
+        "youtube_9x16": _web("YouTube Shorts 9:16 UHD", "9x16", 2160, 3840, "H265", -14.0,
+                             "burnin", **{**YT_UHD, "limits": {"min_video_kbps": 35000,
+                                                                "max_duration_s": 180}}),
         # A music-only montage: no speech, so no captions, and 24 fps is allowed (no min_fps).
         # It has no show, guest or clip index, so it takes the montage name, not the clip name.
         # tail_fade: its music is baked with a one second fade out (musicbed.py); deliver_check
         # asserts the 100 ms ending at the last video frame sit well below the seconds before.
         "social_9x16_music": {**_web("Social 9:16, music only (TikTok, Instagram)", "9x16", 1080,
-                                     1920, "H264", -14.0, "none"), "naming": "montage",
+                                     1920, "H264", -14.0, "none", **SOCIAL), "naming": "montage",
                               "tail_fade": True},
         # social_9x16_music's landscape twin for YouTube: a music-only montage, no captions,
         # the montage name and the baked music fade, at youtube_16x9's size and codec.
         "youtube_16x9_music": {**_web("YouTube 16:9 UHD, music only", "16x9", 3840, 2160, "H265",
-                                      -14.0, "none"), "naming": "montage", "tail_fade": True},
+                                      -14.0, "none", **YT_UHD), "naming": "montage",
+                               "tail_fade": True},
         # Instagram's Reels page states a 30 FPS floor for every shape it takes, so 4:5 and
         # 1:1 carry min_fps as 9:16 does (platform-specs.md).
         "social_4x5": {**_web("Social 4:5 (TikTok, Instagram)", "4x5", 1080, 1350, "H264", -14.0,
-                              "burnin"), "min_fps": "30000/1001"},
+                              "burnin", **SOCIAL), "min_fps": "30000/1001"},
         "social_1x1": {**_web("Social 1:1 (TikTok, Instagram)", "1x1", 1080, 1080, "H264", -14.0,
-                              "burnin"), "min_fps": "30000/1001"},
+                              "burnin", **SOCIAL), "min_fps": "30000/1001"},
         "linkedin_1x1": _web("LinkedIn 1:1", "1x1", 1080, 1080, "H264", -16.0, "burnin"),
         "substack_16x9": _web("Substack 16:9", "16x9", 1920, 1080, "H264", -16.0, "sidecar"),
         "client_master": {

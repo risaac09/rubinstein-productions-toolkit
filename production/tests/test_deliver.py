@@ -198,7 +198,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(deliver.destination_keys(cfg), sorted([
             "client_master", "linkedin_16x9", "linkedin_1x1", "linkedin_9x16", "social_1x1",
             "social_4x5", "social_9x16", "social_9x16_music", "substack_16x9", "youtube_16x9",
-            "youtube_16x9_hd", "youtube_16x9_music"]))
+            "youtube_16x9_hd", "youtube_16x9_music", "youtube_9x16"]))
         yt = deliver.destination(cfg, "youtube_16x9")
         self.assertEqual((yt["format"], yt["codec"], yt["resolution"]),
                          ("mp4", "H265", {"width": 3840, "height": 2160}))
@@ -719,7 +719,8 @@ class TestRenderSteps(unittest.TestCase):
         self.assertNotIn("ReplaceExistingFilesInPlace", s)
         self.assertIs(s["SelectAllFrames"], True)
         optional = {k for st in steps if not st["required"] for k in st["settings"]}
-        self.assertEqual(optional, {"FrameRate", "NetworkOptimization"})
+        self.assertEqual(optional, {"FrameRate", "NetworkOptimization", "VideoQuality"})
+        self.assertEqual(s["VideoQuality"], 60000)  # YouTube's 2160p upload table
         # a data burn-in (timecode on review copies) must not ride along
         self.assertIn({"settings": {"DataBurnIn": "None"}, "required": True}, steps)
 
@@ -727,10 +728,11 @@ class TestRenderSteps(unittest.TestCase):
         steps = deliver.render_steps(dest("youtube_16x9"), "/tmp", "SW001_G_01_s_16x9.mp4",
                                      fps=23.976)
         left = deliver.carried_over(steps)
-        for key in ("VideoQuality", "EncodingProfile", "ExportAlpha", "UniqueFilenameStyle",
+        for key in ("EncodingProfile", "ExportAlpha", "UniqueFilenameStyle",
                     "UseFullExtents", "AddFrameHandles", "PixelAspectRatio"):
             self.assertIn(key, left)
-        for key in ("DataBurnIn", "FrameRate", "MarkIn", "MarkOut", "SubtitleFormat"):
+        for key in ("DataBurnIn", "FrameRate", "MarkIn", "MarkOut", "SubtitleFormat",
+                    "VideoQuality"):
             self.assertNotIn(key, left)
         self.assertEqual(set(left) & set(deliver.changed_fields(steps)), set())
         # no frame rate, no data burn-in setting, no captions: each is then left as it is
