@@ -12,7 +12,8 @@ bad() { echo "FAIL $1"; fail=1; }
 
 B="$TMP/bin"; mkdir -p "$B"
 printf '#!/bin/sh\nexec "$@"\n' > "$B/sudo"
-printf '#!/bin/sh\nshift\nexec "$@"\n' > "$B/timeout"
+printf '#!/bin/sh\nshift 3\nexec "$@"\n' > "$B/timeout"   # drops -k 10 SECONDS
+printf '#!/bin/sh\n' > "$B/dpkg"
 # apt-get fails while the count in $APT_FAILS is above zero, counting down once per call.
 cat > "$B/apt-get" <<'APT'
 #!/bin/sh
