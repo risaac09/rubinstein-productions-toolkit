@@ -57,6 +57,9 @@ def add_arguments(p):
     r.add_argument("--screen", action="store_true",
                    help="the reference is a screen recording: with --effects its holds and scrolls are not freezes or ramps; "
                    "the recipe gains `steps`, the times part of the screen changes at once with no cut (a menu opens)")
+    r.add_argument("--motion", action="store_true",
+                   help="the recipe's `steps` also gain motion steps: a punch-in, pan or scale change inside one take "
+                   "(rpresolve/decon_motion.py)")
     r.add_argument("--sound", action="store_true",
                    help="also map the sound (loudness curve, speech or music spans, hits at cuts) into the recipe's `sound` field")
     r.add_argument("--kinds", help="with --sound: a <name>.kinds.json from `vertcut transcribe` (default: the one beside the "
@@ -81,6 +84,13 @@ def add_arguments(p):
     c.add_argument("--titles", action="store_true", help="also score title timing (macOS Vision)")
     c.add_argument("--title-drop-ui", action="store_true",
                    help="with --titles: ignore text off the frame's centre in both videos")
+    c.add_argument("--motion", action="store_true",
+                   help="with --key: also count motion steps (a punch-in, pan or scale change inside one take, "
+                   "rpresolve/decon_motion.py) as found")
+    c.add_argument("--roi", action="append", metavar="X,Y,W,H",
+                   help="with a rebuild: a region of the reference (pixels, repeatable); prints and writes when change "
+                   "turns on and off in it, beside the rebuild's")
+    c.add_argument("--rebuild-roi", metavar="X,Y,W,H", help="with --roi: the rebuild's region (default: the whole frame)")
     c.add_argument("--screen", action="store_true",
                    help="with --key: the reference is a screen recording, so its steps with no cut count as found too")
     _shots_flags(c)
@@ -96,6 +106,19 @@ def _fetch(args):
     print(f"fetched {rec['id']}: {rec['duration']} s, {rec['width']}x{rec['height']}, {rec['file']}")
     print(f"Wrote {os.path.join(args.out_dir, rec['id'] + '.ref.json')}", file=sys.stderr)
     return 0
+
+
+def _steps(args, ref):
+    """Screen steps (--screen) and motion steps (--motion) with no cut, sorted; None when neither flag is set."""
+    from rpresolve import decon
+    out = None
+    if getattr(args, "screen", False):
+        from rpresolve import decon_steps
+        out = decon_steps.find(args.reference, decon._bounds(ref))
+    if getattr(args, "motion", False):
+        from rpresolve import decon_motion
+        out = (out or []) + decon_motion.find(args.reference, decon._bounds(ref))
+    return None if out is None else sorted(out)
 
 
 def _titles(report, video, min_h=0.0, drop_ui=False):
@@ -136,10 +159,7 @@ def run(args):
                     sm = decon_sound.build(args.reference, ref, args.kinds)
                 except decon_sound.SoundError as e:   # a silent screen recording is still a reference
                     sound_note = f"\nsound: skipped ({e})"
-            steps = None
-            if getattr(args, "screen", False):
-                from rpresolve import decon_steps
-                steps = decon_steps.find(args.reference, decon._bounds(ref))
+            steps = _steps(args, ref)
             doc = decon.recipe(ref, args.reference, args.id, args.name, fits, args.beats, titles, found, sm, steps)
             msg = f"recipe: {len(doc['slots'])} slots, {doc['length_s']} s, end {doc['rules']['end']}"
             if titles is not None:
@@ -194,22 +214,29 @@ def run(args):
             with open(args.key) as f:
                 key = json.load(f)
             titles = _titles(ref, args.reference, drop_ui=args.title_drop_ui) if args.titles else None
-            steps = ()
-            if args.screen:
-                from rpresolve import decon_steps
-                steps = decon_steps.find(args.reference, decon._bounds(ref))
+            if args.roi or args.rebuild_roi:
+                raise ValueError("compare --roi and --rebuild-roi work with a rebuild, not --key")
+            steps = _steps(args, ref) or ()
             doc = decon.compare_key(ref, args.reference, key, titles, steps)
             msg, ok = decon.summary_key(doc), True
         else:
             if not args.rebuild:
                 raise ValueError("compare needs a rebuild video or --key")
-            if args.screen:
-                raise ValueError("compare --screen works with --key only")
+            if args.screen or args.motion:
+                raise ValueError("compare --screen and --motion work with --key only")
+            if args.rebuild_roi and not args.roi:
+                raise ValueError("compare --rebuild-roi needs --roi")
             rb = shots.build(args.rebuild, dissolves=dissolves, backend=args.backend, adaptive=True)
             titles = (_titles(ref, args.reference, drop_ui=args.title_drop_ui),
                       _titles(rb, args.rebuild, drop_ui=args.title_drop_ui)) if args.titles else None
             doc = decon.compare(ref, rb, args.reference, args.rebuild, args.sheet, titles)
             msg, ok = decon.summary_compare(doc), True
+            if args.roi:
+                from rpresolve import decon_motion as dm
+                doc["regions"] = dm.region_table(args.reference, [dm.parse_roi(r) for r in args.roi], args.rebuild,
+                                                 dm.parse_roi(args.rebuild_roi) if args.rebuild_roi else None,
+                                                 decon._bounds(ref), decon._bounds(rb))
+                msg += "\n" + dm.summary_table(doc["regions"])
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1)
     except (dc.ToolMissing, dc.CheckError, audioreport.ReportError, cutlist.CutlistError, OSError, ValueError,
