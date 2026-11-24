@@ -23,12 +23,7 @@ def add_arguments(p):
 
 def run(args):
     """Exit 1 when a shot cannot be read; nothing is written then."""
-    try:
-        from rpresolve import measure as rpmeasure
-        from rpresolve import scene_light
-    except ImportError as e:
-        print(f"ERROR: scene-light needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
-        return 1
+    from rpresolve import scene_light  # stdlib only: saved reports need no numpy
     problem = rppaths.out_problem(args.json, any_git_tree=True) if args.json else None
     if problem:
         print(f"ERROR: {problem}", file=sys.stderr)
@@ -43,8 +38,13 @@ def run(args):
                     raise ValueError("not a measure --json report")
                 report.setdefault("file", shot)
             else:
+                try:
+                    from rpresolve import measure as rpmeasure
+                except ImportError as e:
+                    print(f"ERROR: measuring {shot} needs numpy ({e}). Use /usr/bin/python3.", file=sys.stderr)
+                    return 1
                 report = rpmeasure.measure(shot, samples=args.samples)
-        except (OSError, ValueError, rpmeasure.MeasureError) as e:
+        except (OSError, ValueError, RuntimeError) as e:  # RuntimeError: measure.MeasureError
             print(f"ERROR: {shot}: {e}", file=sys.stderr)
             return 1
         records.append(scene_light.shot_record(report))
