@@ -1,0 +1,1 @@
+scene-light: the light block of the per-shot scene model (key from luma p50 on house thresholds, lighting ratio and lit side, skin L*, readable and lost shadow) from measure's own readouts, with the taste fields named and every missing number null with a reason. Reference: production/scene-light.md.
