@@ -75,6 +75,7 @@ import tempfile
 
 from rpresolve import api, cli
 from rpresolve import paths as rppaths
+from rpresolve import squeeze as rpsqueeze
 from rpresolve import windowplate
 from rpresolve.workflows import AUTO, Refused, plan_sha
 
@@ -144,7 +145,7 @@ def _items(items, probe):
         if win is not None and win not in windowplate.PLATE_FRAMES:
             raise VerticalError(f"item {i} ({it['name']}): window is one of "
                                 f"{', '.join(sorted(windowplate.PLATE_FRAMES))}")
-        problem = _extras_problem(it)
+        problem = _extras_problem(it) or rpsqueeze.height_refusal(it["path"], "vertical plan")
         if problem:
             raise VerticalError(f"item {i} ({it['name']}): {problem}")
         rows.append({"index": i, "name": it["name"], "path": it["path"], "in": float(it["in"]),
@@ -708,6 +709,10 @@ def _item_plan(it, crop, n, text_size_override, text_cap):
     path = _item_path(it)
     if crop.get("path") and path and rpingest.norm_path(path) != rpingest.norm_path(crop["path"]):
         why.append("plays a different file than crops.json planned")
+    known = path or crop.get("path")
+    tall = known and rpsqueeze.height_refusal(known, "vertical_apply")
+    if tall:
+        why.append(tall)
     zx, zy = (_num(api._safe_call(it, "GetProperty", k)) for k in ("ZoomX", "ZoomY"))
     if zx is None or zy is None or abs(zx - zoom) > ZOOM_TOLERANCE or abs(zy - zoom) > ZOOM_TOLERANCE:
         why.append(f"has zoom {zx}/{zy}, crops.json has {zoom:g}")

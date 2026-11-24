@@ -12,7 +12,9 @@ timeline frames, and the music. `apply_assemble`, the work behind the MCP tool, 
 guarded write. It makes one new timeline and nothing else that could be mistaken for
 someone's work: the clips it needs are imported into a bin named 'methods [auto]' (made
 when missing), the timeline takes the project's frame rate (T2) and gets its own size
-and fill-and-crop scaling, a span's static scale becomes the item's zoom, and the
+and fill-and-crop scaling, a span's static scale becomes the item's zoom, a source a person
+recorded as squeezed in the height (a factor below 1, squeeze.py) gets that factor as its
+item's Zoom X with Zoom Y left at the scale, and the
 manifest's `music` {path, in} is cut by ffmpeg into a bed (musicbed.py: the in point and
 the length of the picture plus the end black, a one second fade out baked into a 24-bit
 48 kHz WAV) and the bed goes on A1 from the first frame. SetFades is not used: it reads back
@@ -145,9 +147,15 @@ def plan(manifest, exclude=None):
         raise Refused(str(e))
     # Every anamorphic source; `set` is whether this tool writes its pixel aspect ratio: only
     # from a person's record, and never on a BRAW file, which Resolve desqueezes by its own tag.
+    # A factor below 1 is a squeeze in the height. The clip's pixel aspect ratio has no setting
+    # for that, so it is never written; each item of that source takes Zoom X = factor instead.
     squeeze = [{"path": p, "factor": f, "where": where,
-                "set": where == "record" and not p.lower().endswith(".braw")}
-               for p, (f, where) in wide.items() if f and f > 1]
+                "set": f > 1 and where == "record" and not p.lower().endswith(".braw")}
+               for p, (f, where) in wide.items() if f and f != 1]
+    for row in spans:
+        f = wide[row["path"]][0]
+        if f and f < 1:
+            row["zoom_x"] = f
     sound = manifest.get("camera_sound", False)
     if not isinstance(sound, bool):
         raise Refused("camera_sound is true or false")
@@ -604,12 +612,7 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
             if track > 1 and it.GetStart() != info["recordFrame"]:
                 problems.append(f"item {r['index']} sits at frame {it.GetStart() - tl.GetStartFrame()}, "
                                 f"planned {info['recordFrame'] - tl.GetStartFrame()}")
-            if r["scale"]:
-                for k in ("ZoomX", "ZoomY"):
-                    try:
-                        row[k] = api.set_property_checked(it, k, r["scale"])
-                    except api.WriteNotApplied as e:
-                        problems.append(f"item {r['index']}: {e}")
+            row.update(_zoom(it, r["scale"], r.get("zoom_x"), problems, f"item {r['index']}"))
             out["items"].append(row)
         if p["sound"]:
             check()
@@ -636,6 +639,28 @@ def _build(out, project, media_pool, root, name, p, tl_fps, width, height, check
         problems.append(f"stopped, the open project changed: {e}")
     except api.ResolveAPIError as e:
         problems.append(f"{type(e).__name__}: {e}")
+
+
+def _zoom(it, scale, zoom_x, problems, who):
+    """Set an item's zoom through the checked write and return what was read back: a span's
+    static scale on both axes, times zoom_x across the width for a source squeezed in the
+    height (Zoom X 0.6667 with Zoom Y 1 measured right against a source frame on a 1080x1920
+    fill timeline, 2026-11-24). An unequal zoom needs the link between the axes off first.
+    Each axis is tried on its own and a write that does not land goes to problems under `who`.
+    Nothing is written for a plain item."""
+    if not scale and not zoom_x:
+        return {}
+    want = {"ZoomX": scale, "ZoomY": scale}
+    if zoom_x:
+        it.SetProperty("ZoomGang", False)  # proven by the unequal read-backs below
+        want = {"ZoomX": round((scale or 1) * zoom_x, 4), "ZoomY": scale or 1}
+    got = {}
+    for k, v in want.items():
+        try:
+            got[k] = api.set_property_checked(it, k, v)
+        except api.WriteNotApplied as e:
+            problems.append(f"{who}: {e}")
+    return got
 
 
 def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
@@ -678,12 +703,8 @@ def _plates(out, tl, media_pool, have, p, ends, tl_fps, check):
                 api._safe_call(info["mediaPoolItem"], "GetUniqueId"):
             problems.append(f"the plate under item {row['into']} is {it.GetName()}, not the "
                             "outgoing shot")
-        if scale:
-            for key in ("ZoomX", "ZoomY"):
-                try:
-                    api.set_property_checked(it, key, scale)
-                except api.WriteNotApplied as e:
-                    problems.append(f"the plate under item {row['into']}: {e}")
+        _zoom(it, scale, p["spans"][row["into"] - 2].get("zoom_x"), problems,
+              f"the plate under item {row['into']}")
 
 
 PAR = "PAR"  # the clip property Clip Attributes' Pixel Aspect Ratio reads and writes
@@ -756,9 +777,19 @@ def shape_plan(p, width, height):
             continue
         pic = dims[0] * r["factor"] / dims[1]
         shape = width / height
-        row = {"source": base, "picture": f"{dims[0]}x{dims[1]} at {r['factor']:g}x = {pic:.2f}:1",
+        row = {"source": base, "picture": f"{dims[0]}x{dims[1]} at {rpsqueeze.label(r['factor'])} = {pic:.2f}:1",
                "crop": None, "fits": None, "note": ""}
-        if shape > pic * (1 + 1e-9):
+        if r["factor"] < 1 and shape > pic * 1.005:  # a gap under half a percent is rounding, not bars
+            # Zoom X narrows the filled picture and Zoom Y stays 1, so a frame wider than the
+            # real picture is not covered. Only the covered case was measured live.
+            fill = max(width, height * dims[0] / dims[1])  # the stored picture's width after fill
+            k = width / (r["factor"] * fill)
+            row["bars"] = round(100 * (1 - 1 / k), 1)
+            row["note"] = (f"the {width}x{height} shape ({shape:.2f}:1) is wider than the picture: "
+                           f"Zoom X {r['factor']:g} leaves black on {row['bars']:g}% of the width, "
+                           f"where a draft fills. To fill, set Zoom X {r['factor'] * k:.4g} and "
+                           f"Zoom Y {k:.4g} by hand (arithmetic, not measured live)")
+        elif shape > pic * (1 + 1e-9):
             row["crop"] = {"axis": "height", "percent": round(100 * (1 - pic / shape), 1)}
         elif shape < pic / (1 + 1e-9):
             row["crop"] = {"axis": "width", "percent": round(100 * (1 - shape / pic), 1)}
@@ -1212,6 +1243,7 @@ def run(args):
         win = f"  {r['window']}, {r['plate']} f of #{r['index'] - 1} playing on" if r.get("plate") else ""
         print(f"#{r['index']:<3} {r['frames']:>4} f  in {r['in']:9.3f} s"
               f"{'  scale ' + format(r['scale'], 'g') if r['scale'] else ''}"
+              f"{'  Zoom X ' + format(r['zoom_x'], 'g') + ' (squeezed in the height)' if r.get('zoom_x') else ''}"
               f"{'  (same take, continued)' if r['continues'] else ''}{win}  "
               f"{os.path.basename(r['path'])}")
     if p["track"] > 1:

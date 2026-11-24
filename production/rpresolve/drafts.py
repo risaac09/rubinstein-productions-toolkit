@@ -352,7 +352,8 @@ def span_filter(span, effects, w, h, fps, seconds, lut=None, back=None, cx=None,
     the window needs), and vf is a filter_complex graph (it starts with "[0:v]") instead
     of a plain chain. squeeze: the source's anamorphic factor; the picture is stretched
     to its real shape before anything is scaled or cropped, so cx and a pan stay shares
-    of the desqueezed width."""
+    of the desqueezed width. A factor below 1 (a squeeze in the height) narrows the width
+    by the same filter, which is the same shape as stretching the height."""
     ents = [e if isinstance(e, dict) else {"effect": e} for e in effects]
     params = {e["effect"]: e.get("params") or {} for e in ents}
     crop = f"crop={w}:{h}" if cx is None else centre_crop(w, h, cx)
@@ -567,7 +568,7 @@ def plan_jobs(plan, work, hw, camera=None, lut_root=LUT_ROOT, proxy_dir=None, ce
     wide = sorted({round(f, 3) for f in sq.values() if f})
     if wide:
         notes.append("desqueezed " + ", ".join(
-            f"{f:g}x: span(s) " + ", ".join(
+            f"{rpsqueeze.label(f)}: span(s) " + ", ".join(
                 str(i) for i, sp in enumerate(spans)
                 if round(sq.get(sp.get("source") or next(iter(srcs))) or 0, 3) == f)
             for f in wide) + " (the card's squeeze record, or the file's own tag)")

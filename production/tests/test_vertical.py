@@ -147,6 +147,13 @@ class TestPlan(unittest.TestCase):
         with self.assertRaisesRegex(v.VerticalError, "out after in"):
             v.plan([item("a", "/m/a.mov", 3, 1)], mode="edge")
 
+    def test_a_clip_squeezed_in_the_height_is_refused_by_name(self):
+        with mock.patch.object(v.rpsqueeze, "recorded", lambda p: 0.6667 if p == "/m/tall.mov" else None):
+            self.assertEqual(len(v.plan([item("a", "/m/a.mov", 0, 2)], mode="edge")["items"]), 1)
+            with self.assertRaisesRegex(v.VerticalError, r"item 2 \(t\): tall.mov is recorded as squeezed "
+                                        r"1.5x in the height \(factor 0.6667\): vertical plan"):
+                v.plan([item("a", "/m/a.mov", 0, 2), item("t", "/m/tall.mov", 0, 2)], mode="edge")
+
     def test_review_sets_the_flag_and_apply_needs_it(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "crops.json")
@@ -837,6 +844,13 @@ class TestApply(unittest.TestCase):
                     self.go(dry_run=False, **kw)
         self.assertEqual(rf.mutating_calls(), [])
         self.assertEqual(len(self.project.timelines), 2)
+
+    def test_an_item_squeezed_in_the_height_is_refused_by_name(self):
+        with mock.patch.object(v.rpsqueeze, "recorded", lambda p: 0.6667):
+            with self.assertRaisesRegex(workflows.Refused,
+                                        "recorded as squeezed 1.5x in the height .*vertical_apply"):
+                self.go(dry_run=False)
+        self.assertEqual(rf.mutating_calls(), [])
 
     def test_a_different_file_is_refused(self):
         self.crops["items"][2]["path"] = "/m/other.mov"

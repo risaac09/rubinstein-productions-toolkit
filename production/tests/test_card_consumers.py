@@ -185,6 +185,22 @@ class Tools(Base):
         with self.assertRaisesRegex(Exception, "plan has changed"):
             self.call("card_set", {**base, "dry_run": False, "plan_sha": dry["plan_sha"]}, env)
 
+    def test_set_takes_a_squeeze_in_the_height_by_axis_or_as_the_bare_factor(self):
+        env = {"RPRESOLVE_MCP_JOURNAL": os.path.join(self.tmp, "writes.jsonl")}
+        base = {"path": self.root, "squeeze": 1.5, "axis": "height", "clips": ["AAA0001.MOV"]}
+        dry = self.call("card_set", base, env)
+        self.assertIn("squeeze 0.6667 (1.5x in the height) for 1 clip(s)", dry["changes"])
+        self.call("card_set", {**base, "dry_run": False, "plan_sha": dry["plan_sha"]}, env)
+        self.assertEqual(card.load(self.root)["answers"]["squeeze"]["clips"], {"CAMA-012345/AAA0001": 0.6667})
+        self.assertEqual(squeeze.answer(self.a1), (0.6667, "record"))
+        bare = self.call("card_set", {"path": self.root, "squeeze": 0.5, "clips": ["AAA0001.MOV"]}, env)
+        self.assertIn("squeeze 0.5 (2x in the height)", bare["changes"])
+        for bad in ({"squeeze": 0.6667, "axis": "height"}, {"axis": "height", "project_slug": "demo"}):
+            with self.assertRaisesRegex(Exception, "axis height"):
+                self.call("card_set", {"path": self.root, **bad}, env)
+        schema = server.build_registry().get("card_set").input_schema["properties"]
+        self.assertEqual((schema["squeeze"]["minimum"], schema["axis"]["enum"]), (0.4, ["width", "height"]))
+
     def test_set_refuses_a_stranger_clip_and_a_git_tree(self):
         with self.assertRaisesRegex(Exception, "no such clip"):
             self.call("card_set", {"path": self.root, "squeeze": 1.5, "clips": ["NOPE.MOV"]})

@@ -654,6 +654,14 @@ class TestShapeRows(unittest.TestCase):
         rows = {r["check"]: r for r in dc.shape_rows({"width": 64, "height": 36}, None, None)}
         self.assertEqual((rows["shape"]["status"], "squeeze" in rows), (dc.SKIP, False))
 
+    def test_a_source_squeezed_in_the_height_is_judged_the_same_way(self):
+        Path(os.path.dirname(self.src), "squeeze.json").write_text(json.dumps({"default": 0.6667}))
+        rows = self.rows(1080, 1920, size=(1080, 1920))
+        self.assertEqual((rows["shape"]["status"], rows["squeeze"]["status"]), (dc.PASS, dc.PASS))
+        rows = self.rows(3840, 2560, size=(1080, 1920))  # the sensor's own 1.5:1: never desqueezed
+        self.assertEqual(rows["squeeze"]["status"], dc.FAIL)
+        self.assertIn("rendered squeezed", rows["squeeze"]["note"])
+
     def test_a_source_that_is_not_anamorphic_adds_no_squeeze_row(self):
         Path(os.path.dirname(self.src), "squeeze.json").write_text(json.dumps({"default": 1}))
         self.assertNotIn("squeeze", self.rows(3840, 1608, size=(3840, 1608)))

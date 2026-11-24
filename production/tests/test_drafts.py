@@ -285,6 +285,10 @@ class TestSqueeze(Base):
         for f in (None, 1, 1.0):
             self.assertNotIn("iw*", drafts.span_filter({}, [], 1280, 720, 24, 1.0, squeeze=f)[0])
 
+    def test_a_squeeze_in_the_height_narrows_the_width_before_the_scale(self):
+        vf, _ = drafts.span_filter({}, [], 720, 1280, 24, 1.0, cx=0.4, squeeze=0.6667)
+        self.assertLess(vf.index("scale=trunc(iw*0.6667/2)*2:ih"), vf.index("scale=720:1280"))
+
     def test_a_card_with_no_answer_is_refused_before_any_job(self):
         card, plan = self.card_plan()
         with self.assertRaisesRegex(drafts.DraftError, "no squeeze recorded for .*CAM-abc123.*squeeze set"):

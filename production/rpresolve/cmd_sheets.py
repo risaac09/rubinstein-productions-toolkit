@@ -161,7 +161,7 @@ def conversion(path, detected, convert=True):
 def label(path, second, factor, log=False):
     """The two label lines of a cell. log: drawn as recorded, a log profile still flat."""
     stem = os.path.splitext(os.path.basename(path))[0]
-    note = "squeeze open" if factor is None else (f"{factor:g}x" if factor != 1 else "")
+    note = "squeeze open" if factor is None else (rpsqueeze.label(factor).replace(" in the height", " tall") if factor != 1 else "")
     return f"{stem[:30]} {second:.1f}s", (note + " log").strip() if log else note
 
 

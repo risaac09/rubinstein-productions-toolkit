@@ -107,8 +107,20 @@ class Sheets(Tmp):
         self.assertEqual({c["squeeze"] for c in idx if c["path"].endswith("b.mp4")}, {None})
         self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, None), ("a 2.0s", "squeeze open"))
         self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 1.5), ("a 2.0s", "1.5x"))
+        self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 0.6667), ("a 2.0s", "1.5x tall"))
         self.assertEqual(cmd_sheets.label("/x/a.mp4", 2.0, 1), ("a 2.0s", ""))
         self.assertEqual((idx[0]["sheet"], idx[0]["row"], idx[0]["col"]), (1, 1, 1))
+
+    def test_a_clip_squeezed_in_the_height_is_drawn_narrower(self):
+        card = os.path.join(self.dir, "card")
+        clip(os.path.join(card, "DCIM", "a.mp4"))
+        clip(os.path.join(card, "DCIM", "b.mp4"))
+        Path(card, "squeeze.json").write_text(json.dumps({"default": 1, "clips": {"a.mp4": 0.6667}}))
+        from PIL import Image
+        wide = cmd_sheets.read_clip(os.path.join(card, "DCIM", "b.mp4"), 1, None, {}, False, Image)[0][3]
+        tall = cmd_sheets.read_clip(os.path.join(card, "DCIM", "a.mp4"), 1, None, {}, False, Image)[0]
+        self.assertEqual((tall[2], tall[3].height), (0.6667, wide.height))
+        self.assertEqual(tall[3].width, round(wide.width * 0.6667))
 
     def test_log_clips_are_converted_or_labelled_and_probed_once(self):
         folder = os.path.join(self.dir, "shoot")

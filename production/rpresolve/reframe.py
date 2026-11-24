@@ -1239,6 +1239,9 @@ def plan(manifest, aspects=("9x16", "1x1"), samples=DEFAULT_SAMPLES, per_second=
         sq = 0.0
     if not 0.5 <= sq <= 3.0:
         raise ReframeError(f"squeeze {value!r} ({source}): a factor such as 1, 1.33 or 1.5")
+    if sq < 1:  # a squeeze in the height: the crop writes one zoom for both axes and cannot carry it
+        raise ReframeError(f"squeeze {value!r} ({source}) is below 1, a squeeze in the height: the "
+                           "reframe tools set one zoom for both axes and do not carry it yet")
     src = (int(round(stored[0] * sq)), stored[1])
     end = float(getattr(reader, "duration", 0) or 0)
     total = sum(len(c["spans"]) for c in clips)

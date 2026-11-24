@@ -7,6 +7,8 @@ card: read, check and keep the record of a copied camera card (production/card-r
     card init --retrofit FOLDER --cam CAM
                                        a folder with no record: write its SHA256SUMS and a schema 2 record
     card set PATH --squeeze F [--clip ID]   record the squeeze answer (1 is spherical); --project SLUG;
+                                       --axis height for a lens turned 90 degrees: F is then the
+                                       lens's factor and 1 / F is recorded (1.5 becomes 0.6667);
                                        --upgrade turns a schema 1 record into schema 2 with no answer;
                                        --refresh-shoot recomputes the shoot from the clips' capture times
     card mv PATH DEST_PARENT           move a card folder and its sidecars on the same volume, verify
@@ -39,6 +41,8 @@ def add_arguments(p):
     p.add_argument("--retrofit", action="store_true", help="init: required; the folder has no record")
     p.add_argument("--cam", help="init: camera code, 2 to 12 of A-Z 0-9")
     p.add_argument("--squeeze", type=float, metavar="FACTOR", help="set: the squeeze factor; 1 is spherical")
+    p.add_argument("--axis", choices=("width", "height"), default="width",
+                   help="set: where the squeeze is; height records 1 / FACTOR (a lens turned 90 degrees)")
     p.add_argument("--clip", action="append", metavar="ID", help="set: only this clip (clip id or file name; repeatable)")
     p.add_argument("--project", help="set: the project slug")
     p.add_argument("--upgrade", action="store_true", help="set: upgrade a schema 1 record to schema 2, answering nothing")
@@ -171,13 +175,17 @@ def set_(args):
     if args.upgrade and card["version"] == 2:
         return _fail(f"{card['name']} is already schema 2")
     info = {}
-    f = None if args.squeeze is None else (int(args.squeeze) if float(args.squeeze).is_integer() else args.squeeze)
+    try:
+        f = rpsqueeze.said(args.squeeze, args.axis)
+    except rpsqueeze.SqueezeError as e:
+        return _fail(str(e))
     rec = rpcard.plan_set(card, default=None if args.clip else f,
                           clips={c: f for c in args.clip or []} if f is not None else None, project=args.project,
                           refresh_shoot_=args.refresh_shoot, info=info)
     lines = []
     if f is not None:
-        lines.append(f"squeeze {f:g} for {len(args.clip)} clip(s)" if args.clip else f"squeeze default {f:g}")
+        lines.append(f"squeeze {rpsqueeze.said_line(f)} for {len(args.clip)} clip(s)" if args.clip
+                     else f"squeeze default {rpsqueeze.said_line(f)}")
     if args.project:
         lines.append(f"project {args.project}")
     if args.refresh_shoot:
