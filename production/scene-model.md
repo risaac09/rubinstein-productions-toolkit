@@ -1,6 +1,6 @@
 # Scene model
 
-> **Status:** reference and design note, 2026-11-24. The framing axis is built (`rpresolve/framing_rules.py`, written onto every crop `reframe-plan` plans). Light, colour, contrast and saturation are measured today in separate commands and are not yet joined into one per-shot record. That join is the follow-up.
+> **Status:** draft. A reference and design note, 2026-11-24. The framing axis is built (`rpresolve/framing_rules.py`, written onto every crop `reframe-plan` plans). Light, colour, contrast and saturation are measured today in separate commands and are not yet joined into one per-shot record. That join is the follow-up.
 
 This page does two jobs. It collects the working rules of cinematography, videography, composition, light, colour and editing, with what each rule can be measured as, what the toolkit already measures, and where it acts in Resolve. And it is the design note for a per-shot **scene model**: one record per shot, with named fields and units, that the shot-choice and story-order tools can read.
 
