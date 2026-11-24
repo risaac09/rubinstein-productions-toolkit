@@ -28,6 +28,7 @@ from .. import cli
 from .. import api, cmd_assemble, cmd_effect, cmd_vertical, deliver, delivercheck, ledgercheck, settingsguard, syncbuild, workflows
 from .. import detect as rpdetect
 from .. import ingest as rpingest
+from .. import clipkeywords
 from .. import proxies as rpproxies, relink as rprelink, trimreview
 from . import journal
 from .registry import WRITE, Tool
@@ -57,16 +58,18 @@ def _require_sha(args):
                                 "call; run it with dry_run true first and review the plan.")
 
 
-def _journalled(tool, args, run):
+def _journalled(tool, args, run, wid_box=None):
     """Run a real write between a started and a finished journal line."""
     record = {k: v for k, v in args.items() if k not in ("offset", "limit")}
     project = ({"name": args["project"], "id": args.get("project_id")} if "project" in args
                else None)
     wid = journal.start(tool, project, record)
+    if wid_box is not None:
+        wid_box.append(wid)
     try:
         result = run()
     except BaseException as e:
-        done = {k: getattr(e, k) for k in ("relinked", "stabilized", "effects_added")
+        done = {k: getattr(e, k) for k in ("relinked", "stabilized", "effects_added", "keywords_written", "undo")
                 if getattr(e, k, None)}
         warn = journal.finish(wid, tool, "error", f"{type(e).__name__}: {e}", done or None)
         if warn:
@@ -76,7 +79,7 @@ def _journalled(tool, args, run):
     warn = journal.finish(wid, tool, status, result.get("summary"),
                           {k: result.get(k) for k in ("counts", "would_create", "created",
                                                       "applied", "left_behind", "plan_sha",
-                                                      "settings_drift_rows", "relinked", "stabilized")
+                                                      "settings_drift_rows", "relinked", "stabilized", "keywords_written", "undo")
                            if k in result})
     result["journal"] = {"id": wid, "path": journal.path()}
     if warn:
@@ -1086,7 +1089,7 @@ def relink(args, ctx):
                             + (f"; {c['not attempted (max_items)']} not attempted (max_items): "
                                "dry run again to plan the rest"
                                if c.get("not attempted (max_items)") else "")
-                            + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
+                        + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
                             + _ui(r))
         return r
 
@@ -1096,6 +1099,33 @@ def relink(args, ctx):
     r["results"] = page.pop("rows")
     r.update(page)
     return r
+
+
+def clip_keywords(args, ctx):
+    _require_sha(args)
+    with open(_existing(args["plan"], "plan"), encoding="utf-8") as f:
+        rows, problems = clipkeywords.parse_plan(f.read())
+    if problems:
+        raise ValueError("the plan has problems: " + "; ".join(problems))
+
+    wid_box = []
+
+    def run():
+        r = clipkeywords.clip_keywords(ctx.session.get(), args["project"], rows,
+                                       dry_run=args["dry_run"], project_id=args.get("project_id"),
+                                       check_cancel=ctx.check_cancel, expect_sha=args.get("plan_sha"),
+                                       before_write=lambda undo: journal.note(wid_box[0], "clip_keywords",
+                                                                              "undo", undo))
+        c = ", ".join(f"{n} {k}" for k, n in sorted(r["counts"].items()))
+        kept = sum(1 for x in r["results"] if x["description"].startswith("kept"))
+        r["summary"] = (("would write: " if r["dry_run"] else "wrote, each read back: ") + c
+                        + (f"; {kept} clip(s) have another description, left alone" if kept else "")
+                        + (f"; PROBLEMS: {'; '.join(r['problems'])}" if r["problems"] else "")
+                        + _how(r))
+        return r
+
+    with api.ResolveLock(timeout=WRITE_LOCK_WAIT):
+        return run() if args["dry_run"] else _journalled("clip_keywords", args, run, wid_box)
 
 
 # ---------------------------------------------------------------------------
@@ -1856,3 +1886,19 @@ def register(registry):
             **DRY_RUN},
          "required": ["file", "destination"], "additionalProperties": False},
         deliver_fix_loudness, title="Fix a render's loudness", annotations=WRITE))
+    registry.add(Tool(
+        "clip_keywords",
+        "Write theme keywords and a description onto media pool clips from a TSV plan "
+        "(clip_id, keywords separated by semicolons, description), so footage can be "
+        "filtered by theme in Resolve. Keywords are added after a clip's existing ones (never "
+        "removed or reordered, duplicates skipped); the description is set only where the "
+        "clip's is empty, and a clip with another description is reported and left alone. "
+        "A clip not found, offline or ambiguous (two clips of one name) is reported, never "
+        "guessed; use a unique id. Each write is read back. Check the plan offline with "
+        "`resolve_workflow.py clip-keywords-check`. Dry run first; the real run needs its plan_sha.",
+        {"type": "object", "properties": {
+            **PROJECT,
+            "plan": {"type": "string", "description": "Absolute path of the plan TSV."},
+            **DRY_RUN},
+         "required": ["project", "plan"], "additionalProperties": False},
+        clip_keywords, title="Write clip keywords", annotations=WRITE))
