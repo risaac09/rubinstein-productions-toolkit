@@ -287,7 +287,7 @@ def take_need(method, variants=1):
 def rank(c, prefix, methods=None, floor=FLOOR, top=3, variants=1):
     """top=None returns every method, ranked. A method's score is scaled by its take budget: the share of the distinct
     takes it needs for this many variants (take_need) that the shoot's gate can supply."""
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     prof = shoot.profile(c, prefix)
     tags = {t: v["strength"] for t, v in prof["tags"].items()}
     takes = gated_takes(c, prefix)
@@ -537,7 +537,7 @@ def check_shotlist(c, prefix, path):
     A shot with no "out" is judged over SHOT_DEFAULT_S seconds from "in". An error is a shot the shoot's exclude list rules out (as check judges a span); a warning is a source the index does not
     hold, or a gate flag (gate.shot_flags: soft, dark, blown, smear) on the nearest indexed thumbnail of its clip. Flag
     percentiles are over the shoot's indexed shots. Raises ValueError when the shoot has no exclude list or the file is malformed."""
-    p = search.shoot_prefix(prefix)
+    p = search.shoot_prefix(prefix, c)
     if not os.path.exists(exclude_path(p)):
         raise ValueError(f"no exclude list at {exclude_path(p)}; nothing to check against")
     try:
@@ -579,7 +579,7 @@ def check(c, prefix, plan_dirs):
     crop-window) over a previous take that ends inside the plate (trim.PLATE_FRAMES) is a line too, judged as the draft
     farm judges it, when the index holds the previous take's length. Raises
     ValueError when the shoot has no exclude list, so a mistyped shoot cannot pass."""
-    p = search.shoot_prefix(prefix)
+    p = search.shoot_prefix(prefix, c)
     if not os.path.exists(exclude_path(p)):
         raise ValueError(f"no exclude list at {exclude_path(p)}; nothing to check against")
     ex = load_exclude(p)
@@ -740,7 +740,7 @@ def fill_slots(c, method, prefix, music=None, others=(), gate=False, trim_mode="
 
 
 def plan(c, method, prefix, music=None, gate=None, trim_mode="motion", beats=None, state=None, beat_start=0, notes=None):
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     fills = fill_slots(c, method, prefix, music, gate=_gate_arg(c, prefix, gate, state), trim_mode=trim_mode, beats=beats,
                        beat_start=beat_start, notes=notes)
     d = out_dir(method["id"], prefix)
@@ -812,7 +812,7 @@ def variants(c, prefix, n=6, music=None, methods=None, gate=None, trim_mode="mot
     """n complete plans that differ in method, fills, look and pacing; no two share more than half their takes.
     Each goes to <edits_dir>/<shoot>-variants/vK-<method>/ with fills.json, method.json and the manifest;
     variants.json there ranks them by method fit plus the taste profile and the review log."""
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     methods = methods if methods is not None else load_methods()
     if not methods:
         raise ValueError(f"no methods in {METHODS}")
@@ -864,7 +864,7 @@ def variants_within(c, method, prefix, n=4, music=None, gate=None, trim_mode="mo
     other methods on this shoot; each take any of their plans used counts as one earlier use, so the shoot's videos do not
     all open on the same shots. Written to <edits>/<shoot>-<method>-variants/vK-<theme or top>/ with variants.json
     (ranked by mean slot score)."""
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     g = _gate_arg(c, prefix, gate, state)
     if g is None:
         raise ValueError("within-method variants need the gate")
@@ -998,7 +998,7 @@ def swap(c, method, prefix, slot_n, letter=None, gate=None, trim_mode="motion", 
     state: the colour state to draw from; when none is given, the one the plan was made with (fills.json), so a plan made
     with an explicit state is swapped from that state. plan_dir: the plan folder to act on, a variants folder for one
     (variant_dir); the default is <edits>/<shoot>-<method>/."""
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     d, fills = _plan_fills(method, prefix, plan_dir)
     g = _gate_once(c, prefix, gate, state or fills.get("state"))
     cand = _slot_cands(c, method, slot_n, prefix, fills, g)
@@ -1017,7 +1017,7 @@ def slots_sheet(c, method, prefix, gate=None, state=None, plan_dir=None):
     each key sealed beside it). A slot with fewer than two unused takes gets no sheet and keeps its take. Returns
     {"dir", "sheets": {slot: swap's result (sheet path, letters)}, "skipped": {slot: why}}."""
     _short(method)
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     d, fills = _plan_fills(method, prefix, plan_dir)
     g = _gate_once(c, prefix, gate, state or fills.get("state"))
     sheets, skipped = {}, {}
@@ -1035,7 +1035,7 @@ def compose(c, method, prefix, picks, gate=None, trim_mode="motion", state=None,
     list as they stand now, a take still free, no take picked twice (unless the method reuses). Any refusal writes nothing.
     A slot not named keeps its take. plan_dir as in swap."""
     _short(method)
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     try:
         by_slot = {int(k): v for k, v in picks.items()}
     except (ValueError, TypeError, AttributeError):

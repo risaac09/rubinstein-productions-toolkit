@@ -27,9 +27,18 @@ TWIN_COS = 0.97  # copies of one take (export, low-res handoff, render) embed al
 _prefix_cache = {}  # one entry: the last shoot's matrix
 
 
-def shoot_prefix(p):
-    """A shoot folder as a relpath prefix ending in '/', so 'Outings/Harbor' never takes in 'Outings/Harbor Loop'."""
-    return p.strip("/") + "/"
+def shoot_prefix(p, c=None):
+    """A shoot folder as a relpath prefix ending in '/', so 'Outings/Harbor' never takes in 'Outings/Harbor Loop'.
+    With c, a prefix that no clip starts with is tried under the one top-level folder named 'Volume:First' for
+    its first segment, so 'Active/test-shoot' finds 'Work:Active/test-shoot/...'."""
+    p = p.strip("/") + "/"
+    if c is None or c.execute("SELECT 1 FROM clips WHERE substr(relpath, 1, ?) = ? LIMIT 1", (len(p), p)).fetchone():
+        return p
+    first = p.split("/", 1)[0]
+    tops = {r[0] for r in c.execute("SELECT DISTINCT substr(relpath, 1, instr(relpath, '/') - 1) FROM clips "
+                                    "WHERE relpath LIKE '%:%/%'")}
+    hit = [t for t in tops if t.rpartition(":")[2] == first]
+    return t + p[len(first):] if len(hit) == 1 and (t := hit[0]) else p
 
 
 def prefix_vectors(c, prefix):

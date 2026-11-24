@@ -139,7 +139,7 @@ class Gate:
     """Everything the gate knows about one shoot, as arrays aligned with V (one row per embedded shot)."""
 
     def __init__(self, c, prefix, state=None, exclude=None):
-        self.prefix = p = search.shoot_prefix(prefix)
+        self.prefix = p = search.shoot_prefix(prefix, c)
         ids, self.V = search.prefix_vectors(c, p)
         pos = {s: i for i, s in enumerate(ids)}
         self.rows = [None] * len(ids)

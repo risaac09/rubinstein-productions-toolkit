@@ -206,6 +206,26 @@ class Chain(unittest.TestCase):
         self.assertEqual((len(self.ran("rpresolve.cmd_card")), len(self.ran("rpresolve.cmd_detect"))),
                          (sets, detects))
 
+    def test_a_second_card_is_added_and_gets_its_own_identify_index_and_sheets(self):
+        self.go(apply=True)
+        project.answer(self.cfg, "demo", True, 1.0, (), False, say=lambda m: None)
+        self.go(apply=True)  # the first card runs through index and sheets
+        other = self._second_card()
+        before = {n: len(self.ran(n)) for n in ("rpresolve.cmd_detect", "rpresolve.cmd_sheets", "indexer-bin")}
+        _, out = self.go(apply=True, card=other)
+        with open(os.path.join(self.cfg["work_root"], "demo", "project.json"), encoding="utf-8") as f:
+            st = json.load(f)
+        self.assertEqual(st["cards"], [self.card, other])
+        self.assertNotIn("identify: done", out)
+        for n, was in before.items():
+            self.assertGreater(len(self.ran(n)), was, n)
+        self.assertTrue(any(other in c for c in self.ran("indexer-bin")))
+        self.assertEqual(st["card_done"]["identify"], [self.card, other])
+        calls = len(self.calls)  # the first card again: every per-card step is done for it
+        self.go(apply=True, card=self.card)
+        self.assertEqual(len(self.ran("rpresolve.cmd_detect")), before["rpresolve.cmd_detect"] + 1)
+        self.assertNotIn(self.card, [c[-1] for c in self.calls[calls:] if "indexer-bin" in c])
+
     def _formattable(self, *cards):
         """Run status over a started project holding `cards`; True when it says the card may be formatted."""
         self.go(apply=True)
