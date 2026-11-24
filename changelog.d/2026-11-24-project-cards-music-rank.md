@@ -1,0 +1,1 @@
+project start keeps its steps per card: a second card of a project is added to its cards and gets its own identify, index and sheets. music candidates ranks by the cut's shot length (the beat that lands on its shots), then the length nearest the cut's, so two manifests no longer get the same three tracks.

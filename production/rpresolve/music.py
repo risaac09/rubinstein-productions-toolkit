@@ -29,6 +29,7 @@ copy of the folder carries a copy of the file; the copies drift apart unless
 
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -239,8 +240,9 @@ def suggest(lib, method=None, bpm=None, feel=None, n=10, steady=True):
     return [dict(t, sha=h, tempo_gap=round(g, 1)) for g, h, t in out[:n]]
 
 
-def cut_need(manifest_path):
-    """(seconds the cut runs, the tempo range of its method or None) for a cut manifest."""
+def cut_need(manifest_path, shots=False):
+    """(seconds the cut runs, the tempo range of its method or None) for a cut manifest;
+    shots=True adds the mean shot length in seconds as a third value."""
     from . import cmd_assemble
     try:
         with open(manifest_path, encoding="utf-8") as f:
@@ -253,16 +255,30 @@ def cut_need(manifest_path):
         bpm = methods.load(mid).get("bpm") if mid else None
     except ValueError:
         bpm = None
-    return (p["frames"] + (p.get("black_frames") or 0)) / p["fps"], bpm
+    need = (p["frames"] + (p.get("black_frames") or 0)) / p["fps"]
+    if shots:
+        return need, bpm, need / max(1, len(p["spans"]))
+    return need, bpm
 
 
-def candidates(lib, bpm, feel, need_s, n=3):
+def pulse_fit(bpm, shot_s):
+    """How far a track's beat sits from landing on this cut's shots: 0 when a shot is a power-of-two
+    number of beats (half and double time count), up to 0.5 octave."""
+    x = math.log2(bpm / 60 * shot_s)
+    return abs(x - round(x))
+
+
+def candidates(lib, bpm, feel, need_s, n=3, shot_s=None):
     """Up to n tracks for a cut that runs need_s seconds: those inside the tempo range first
     (half and double time count), steady pulse before the rest, then nearest; none shorter
-    than the cut. With no range (bpm None) any tempo fits. It suggests; a person picks."""
+    than the cut. With no range (bpm None) any tempo fits. With shot_s (the cut's mean shot length)
+    the tracks whose beat lands on its shots come first, then the length nearest the cut's.
+    It suggests; a person picks."""
     got = [t for t in suggest(lib, bpm=bpm, feel=feel, n=10 ** 6, steady=False)
            if (t.get("duration_s") or 0) >= need_s]
-    got.sort(key=lambda t: (t["tempo_gap"] > 0, not t.get("steady"), t["tempo_gap"], t["path"]))
+    got.sort(key=lambda t: (t["tempo_gap"] > 0, not t.get("steady"),
+                            round(pulse_fit(t["bpm"], shot_s), 2) if shot_s else 0, t["tempo_gap"],
+                            (t.get("duration_s") or 0) - need_s if shot_s else 0, t["path"]))
     return got[:n]
 
 

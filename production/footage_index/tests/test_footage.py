@@ -1931,3 +1931,18 @@ def test_speech_ingest_and_say(tmp_path):
     assert speech.say(c, "unscreened words") == []  # a transcript with no screening block is never stored
     store.prune(c, set())
     assert c.execute("SELECT count(*) FROM speech").fetchone()[0] == 0
+
+
+def test_a_shoot_prefix_without_its_volume_name_finds_the_shoot():
+    from footage_index import search, shoot
+    c = store.connect(os.path.join(TMP, "volume-prefix.db"))
+    for rel in ("Work:Active/test-shoot/a.mp4", "Work:Active/test-shoot-2/b.mp4", "Misc/Active/c.mp4"):
+        cid, _ = store.upsert_clip(c, rel, rel, 1, 1, client=0, project="x", fps=24, duration=5.0, status="done")
+        store.add_shot(c, cid, 2.0, 0.0, 4.0, f"/x/{cid}.jpg", motion=0.0, faces=0, face_max=0.0, luma=0.5)
+    c.commit()
+    assert search.shoot_prefix("Active/test-shoot", c) == "Work:Active/test-shoot/"
+    assert search.shoot_prefix("Work:Active/test-shoot", c) == "Work:Active/test-shoot/"
+    assert search.shoot_prefix("Active/nothing", c) == "Work:Active/nothing/"  # no clips either way
+    assert shoot.profile(c, "Active/test-shoot")["clips"] == 1
+    store.upsert_clip(c, "Other:Active/d.mp4", "d", 1, 1, client=0, project="x", fps=24, duration=5.0, status="done")
+    assert search.shoot_prefix("Active/d", c) == "Active/d/"  # two volumes named Active: no guess

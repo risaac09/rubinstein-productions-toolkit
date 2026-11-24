@@ -32,6 +32,7 @@ CONFIG_KEYS = ("landing_root", "work_root", "indexer", "offsite_remote", "sheets
 READ_ELSEWHERE = ("footage_index",)  # the indexer's own block; project does not use it but must not refuse it
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
+PER_CARD = ("identify", "index", "sheets")  # run once for every card of the project
 STEPS = (("copy", "copy and verify"), ("identify", "identify camera, profile, lens"),
          ("ask", "open questions"), ("index", "index the card"),
          ("sheets", "whole-card contact sheets"), ("resolve", "Resolve project colour"),
@@ -202,6 +203,7 @@ class Chain:
         self.cfg, self.slug, self.apply, self.say, self.tick = cfg, slug, apply, say, tick
         self.path = state_path(cfg, slug)
         self.st = read_state(self.path, slug)
+        self.card = None
 
     def save(self):
         if self.apply:
@@ -209,9 +211,28 @@ class Chain:
 
     def mark(self, key, status, note=""):
         self.st["steps"][key] = {"status": status, "note": note}
+        if key in PER_CARD and status in ("done", "skipped") and self.card:
+            held = self.st.setdefault("card_done", {}).setdefault(key, [])
+            if self.card not in held:
+                held.append(self.card)
         self.save()
 
+    def add_card(self, card):
+        """Hold a card; a new one makes the per-card steps pending again."""
+        self.card = card
+        if card not in self.st["cards"]:
+            self.st["cards"].append(card)
+            for k in PER_CARD + ("ask",):
+                self.st["steps"][k] = {"status": "pending", "note": f"waiting on card {card}"}
+
     def done(self, key):
+        """A per-card step is done for the card in hand; a state from before cards were tracked
+        counts its done steps for the first card."""
+        if key in PER_CARD:
+            held = self.st.get("card_done", {}).get(key)
+            if held is None and self.st["steps"][key]["status"] in ("done", "skipped"):
+                held = self.st["cards"][:1]
+            return self.card in (held or [])
         return self.st["steps"][key]["status"] in ("done", "skipped")
 
     def cmd(self, argv, writes=False, **kw):
@@ -230,13 +251,18 @@ def _sheets_out(cfg, slug, what):
 
 
 def step_copy(ch, target, cam):
-    if ch.st["cards"]:
-        ch.mark("copy", "done", "card " + ch.st["cards"][0])
-        return ch.st["cards"][0]
+    if target in ch.st["cards"]:
+        ch.add_card(target)
+        ch.mark("copy", "done", "card " + target)
+        return target
     if os.path.isfile(target + rpcard.RECORD):
-        ch.st["cards"] = [target]
+        ch.add_card(target)
         ch.mark("copy", "skipped", "a card folder with its record: not copied again")
         return target
+    if ch.st["cards"] and not cam:  # a volume again, with no --cam: the resume of the copy made earlier
+        ch.add_card(ch.st["cards"][-1])
+        ch.mark("copy", "done", "card " + ch.card)
+        return ch.card
     if not cam:
         raise Stop("needs --cam CAM (2 to 12 of A-Z 0-9) to copy a card volume")
     land = ch.cfg["landing_root"]
@@ -248,7 +274,7 @@ def step_copy(ch, target, cam):
         raise Stop(f"offload.sh id failed: {(err or out).strip()[-200:]}")
     dest = os.path.join(land, f"{cam}-{ids['card_id'][:6]}")
     if os.path.isfile(dest + rpcard.RECORD):
-        ch.st["cards"] = [dest]
+        ch.add_card(dest)
         ch.mark("copy", "done", "already copied to " + dest)
         return dest
     res = ch.cmd([OFFLOAD, "copy", target, land, "--cam", cam], writes=True)
@@ -257,7 +283,7 @@ def step_copy(ch, target, cam):
     rc, out, err = res
     if rc != 0:
         raise Stop(f"offload.sh copy failed ({rc}): {(err or out).strip()[-200:]}")
-    ch.st["cards"] = [dest]
+    ch.add_card(dest)
     ch.mark("copy", "done", "copied to " + dest)
     return dest
 
@@ -381,7 +407,7 @@ def start(cfg, target, slug, cam=None, apply=False, say=print, new_project=False
     try:
         card = None
         for key, title in STEPS[:6]:
-            if key not in ("copy", "ask", "resolve") and ch.done(key):
+            if key in PER_CARD and ch.done(key):
                 say(f"{key}: done")
                 continue
             say(f"{key}: {title}")

@@ -112,6 +112,17 @@ class Pure(unittest.TestCase):
         # no tempo range (a shot-list cut): any tempo, steady pulse first, still none shorter than the cut
         self.assertEqual([t["path"] for t in music.candidates(lib, None, None, 60, 5)], ["b.wav", "d.wav", "a.wav"])
 
+    def test_candidates_depend_on_the_cuts_shot_length(self):
+        lib = {"tracks": {  # all steady, all in range, long enough; only the beat per shot differs
+            "slow": {"path": "slow.wav", "bpm": 100, "steady": True, "duration_s": 200},
+            "mid": {"path": "mid.wav", "bpm": 120, "steady": True, "duration_s": 200},
+            "fast": {"path": "fast.wav", "bpm": 140, "steady": True, "duration_s": 200}}}
+        top = lambda shot: music.candidates(lib, [95, 145], None, 60, 3, shot)[0]["path"]
+        self.assertEqual(top(1.2), "slow.wav")   # 2.0 beats a shot
+        self.assertEqual(top(2.0), "mid.wav")    # 4.0 beats
+        self.assertEqual(top(0.43), "fast.wav")  # 1.0 beat
+        self.assertEqual(top(1.2) != top(2.0), True)
+
     def test_cut_need_reads_the_length_and_tempo_of_a_method_manifest(self):
         from rpresolve import methods
         m = methods.load("tempo-ladder")
@@ -122,6 +133,7 @@ class Pure(unittest.TestCase):
         p = os.path.join(d, "m.json")
         json.dump(methods.to_manifest(m, fills), open(p, "w"))
         self.assertEqual(music.cut_need(p), (16.5, m["bpm"]))
+        self.assertEqual(music.cut_need(p, shots=True)[2], 16.5 / len(m["slots"]))
         shot = methods.to_manifest(m, fills)  # a shot-list cut: no edit method, so no tempo range
         shot["method"] = {"id": "shotlist"}
         json.dump(shot, open(p, "w"))

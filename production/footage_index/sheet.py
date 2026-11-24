@@ -43,7 +43,7 @@ def _cell(r, first, flags, excl, font):
 
 def make(c, prefix, out, skip=(), per_clip=6, cols=8, rows=6, exclude=None):
     """Write sheet-NN.jpg and sheets.json into out; returns {"sheets": [paths], "clips": n, "cells": n}."""
-    p = search.shoot_prefix(prefix)
+    p = search.shoot_prefix(prefix, c)
     if exclude and not os.path.exists(exclude):
         raise ValueError(f"no exclude file at {exclude}")
     ex = edit.read_exclude(exclude) if exclude else edit.load_exclude(p)  # no --exclude: the shoot's own list

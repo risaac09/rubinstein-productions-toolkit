@@ -73,7 +73,7 @@ def _caption_words(data):
 
 def profile(c, prefix, refresh=False):
     from . import search
-    prefix = search.shoot_prefix(prefix)
+    prefix = search.shoot_prefix(prefix, c)
     rows = c.execute("SELECT s.id, s.motion, s.faces, s.face_max, s.luma, cl.relpath, cl.fps, cap.data AS caption "
                      "FROM shots s JOIN clips cl ON cl.id = s.clip_id LEFT JOIN captions cap ON cap.shot_id = s.id "
                      "WHERE substr(cl.relpath, 1, ?) = ?", (len(prefix), prefix)).fetchall()

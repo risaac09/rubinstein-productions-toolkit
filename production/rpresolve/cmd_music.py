@@ -9,7 +9,8 @@ music: a library index for a folder of music, files never moved (rpresolve/music
                                     tracks that fit a method's tempo range (half and double time count)
     music candidates DIR --manifest PATH [--feel F ...] [--bpm LO-HI] --out OUT [-n N] [--seconds S] [--start S]
                                     for a cut manifest: tracks at its method's tempo range (any tempo when
-                                    it has none and no --bpm; steady pulse first, as long as the cut),
+                                    it has none and no --bpm; steady pulse first, then the beat that lands on its
+                                    shots, then the length nearest the cut's),
                                     as lettered level-matched excerpts
                                     A.m4a, B.m4a... and key.json in OUT, for the media-review-loop. It
                                     suggests; project answer --music-key OUT --music-pick A records the pick
@@ -69,12 +70,12 @@ def run(args):
             problem = paths.out_problem(os.path.join(args.out, "key.json"), any_git_tree=True)
             if problem:
                 raise music.MusicError(problem)
-            need, rng = music.cut_need(args.manifest)
+            need, rng, shot_s = music.cut_need(args.manifest, shots=True)
             rng = [float(x) for x in args.bpm.split("-")] if args.bpm else rng
             if not rng:  # a shot-list cut's method has no tempo range: rank by pulse and length only
                 print("music: the manifest names no tempo range: any tempo, steady pulse first "
                       "(--bpm LO-HI narrows it)", file=sys.stderr)
-            got = music.candidates(lib, rng, args.feel, need + args.start, args.n)
+            got = music.candidates(lib, rng, args.feel, need + args.start, args.n, shot_s)
             if not got:
                 raise music.MusicError(f"no track {f'at {rng[0]:g}-{rng[1]:g} BPM, ' if rng else ''}"
                                        f"{need:.0f} s or longer")
