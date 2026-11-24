@@ -1,6 +1,6 @@
 # Scene model: the colour axis
 
-> **Status:** built 2026-11-24. The second axis of the per-shot scene model in [scene-model.md](scene-model.md), after framing. Code: `rpresolve/scene_colour.py`; command: `scene-colour`; tests: `tests/test_scene_colour.py`.
+> **Status:** draft. Built 2026-11-24. The second axis of the per-shot scene model in [scene-model.md](scene-model.md), after framing. Code: `rpresolve/scene_colour.py`; command: `scene-colour`; tests: `tests/test_scene_colour.py`.
 
 The colour block is a join of numbers the toolkit already measures. It reads them from files and measures nothing new: no frame is decoded again.
 
