@@ -9,6 +9,9 @@ farm desqueezes by it and refuses a card with no answer.
     squeeze show PATH...                       one line per clip: factor, where it came from, lens
     squeeze set FOLDER --factor 1              the whole card is spherical
     squeeze set FOLDER --factor 1.5            the whole card is 1.5x anamorphic
+    squeeze set FOLDER --factor 0.6667 --clip A001.braw
+                                               that clip's squeeze is in the height: a 1.5x lens
+                                               turned 90 degrees, recorded as 1 / 1.5
     squeeze set FOLDER --factor 1.5 --manual-lens
                                                clips with no lens data are 1.5x, the rest spherical
     squeeze set FOLDER --factor 1.5 --clip P1040114.MOV --clip P1040115.MOV
@@ -74,8 +77,8 @@ def show(paths):
         return 1
     table = rows(files, _exif_for(files))
     for r in table:
-        fac = "?" if r["factor"] is None else f"{r['factor']:g}"
-        print(f"{fac:>5}  {r['source']:<10}  {r['lens'] or '(no lens data)':<34}  {r['file']}")
+        fac = "?" if r["factor"] is None else f"{r['factor']:g}"  # below 1: squeezed in the height
+        print(f"{fac:>6}  {r['source']:<10}  {r['lens'] or '(no lens data)':<34}  {r['file']}")
     open_ = [r for r in table if r["source"] == "unanswered"]
     hint = sum(1 for r in open_ if not r["lens"])
     print(f"squeeze: {len(table)} clip(s), {len(open_)} unanswered"

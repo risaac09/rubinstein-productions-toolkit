@@ -208,6 +208,15 @@ class TestReframeApply(Base):
         self.assertEqual(why["X"], "no plan entry for its file")
         self.assertEqual(dry["exit_status"], 2)
 
+    def test_an_item_squeezed_in_the_height_is_refused_by_name(self):
+        tall = lambda p: 0.6667 if p.endswith("SEAT.braw") else None  # noqa: E731
+        with mock.patch.object(workflows.rpsqueeze, "recorded", tall):
+            dry = call("reframe_apply", self.args(), self.resolve)
+        why = {r["name"]: r["reasons"][0] for r in dry["refused"]}
+        self.assertIn("SEAT.braw is recorded as squeezed 1.5x in the height", why["SEAT"])
+        self.assertIn("reframe_apply sets one zoom for both axes", why["SEAT"])
+        self.assertNotIn("STAND", why)
+
     def test_a_zoom_below_the_fill_scale_needs_allow_bars(self):
         plan = framing_plan({"STAND": STANDING, "SEAT": SEATED})
         plan["items"][0]["entry"]["scale"] = 0.9

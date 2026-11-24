@@ -624,7 +624,7 @@ def shape_rows(video, size, manifest):
     try:
         for src in cutlist.sources(doc):
             f, _ = rpsqueeze.answer(src["path"])
-            if f and f > 1:
+            if f and f != 1:  # below 1: squeezed in the height, and still not the sensor's shape
                 dims = video_dims(src["path"])
                 sensors[os.path.basename(src["path"])] = dims and dims[0] / dims[1]
     except (rpsqueeze.SqueezeError, cutlist.CutlistError) as e:

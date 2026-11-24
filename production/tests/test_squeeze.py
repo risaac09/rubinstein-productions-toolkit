@@ -67,10 +67,10 @@ class TestRecord(Base):
         self.assertEqual(squeeze.factor(self.clips[0]), 1.8)
 
     def test_refusals(self):
-        for bad in (0.5, 3, "1.5", True, None):
+        for bad in (0.39, 0, -1.5, 3, "1.5", True, None):
             self.assertTrue(squeeze.factor_problem(bad), bad)
         self.assertIsNone(squeeze.factor_problem(1))
-        with self.assertRaisesRegex(squeeze.SqueezeError, "a number from 1 to 2.5"):
+        with self.assertRaisesRegex(squeeze.SqueezeError, "a number from 0.4 to 2.5"):
             squeeze.write(self.card, default=4)
         with self.assertRaisesRegex(squeeze.SqueezeError, "not a folder"):
             squeeze.write(self.clips[0], default=1)
@@ -82,6 +82,44 @@ class TestRecord(Base):
             squeeze.factor(self.clips[0])
 
 
+class TestSqueezeInTheHeight(Base):
+    """A lens turned 90 degrees: the factor is below 1, 1 over the lens's own."""
+
+    def test_the_factor_a_turned_lens_records_and_how_it_reads(self):
+        self.assertEqual([squeeze.in_height(f) for f in (1.5, 1.33, 2)], [0.6667, 0.7519, 0.5])
+        self.assertEqual((squeeze.said(1.5, "height"), squeeze.said(1.5), squeeze.said(2.0), squeeze.said(None)),
+                         (0.6667, 1.5, 2, None))
+        self.assertEqual([squeeze.label(f) for f in (1.5, 1, 0.6667, 0.5)],
+                         ["1.5x", "1x", "1.5x in the height", "2x in the height"])
+        self.assertEqual((squeeze.said_line(1.5), squeeze.said_line(0.6667)),
+                         ("1.5", "0.6667 (1.5x in the height)"))
+        for f, axis in ((1, "height"), (0.6667, "height"), (3, "height"), (None, "height")):
+            with self.assertRaises(squeeze.SqueezeError, msg=(f, axis)):
+                squeeze.said(f, axis)
+
+    def test_a_record_below_one_is_read_and_every_older_record_still_is(self):
+        squeeze.write(self.card, default=1.5, clips={"C.MOV": 0.6667})
+        self.assertEqual([squeeze.factor(c) for c in self.clips[:1]] + [squeeze.factor(os.path.join(self.card, "C.MOV"))],
+                         [1.5, 0.6667])
+        self.assertEqual(squeeze.answer(os.path.join(self.card, "C.MOV")), (0.6667, "record"))
+
+    def test_the_stretch_owed_to_a_proxy_of_a_clip_squeezed_in_the_height(self):
+        # a camera proxy of the whole 3:2 sensor still owes the whole factor; one made at the real shape owes none
+        self.assertAlmostEqual(squeeze.remaining(0.6667, 1.5, 1.5), 0.6667)
+        self.assertIsNone(squeeze.remaining(0.6667, 1.5, 1.0))
+
+    def test_the_refusal_names_the_clip_the_tool_and_the_way_forward(self):
+        tall = os.path.join(self.card, "C.MOV")
+        squeeze.write(self.card, default=1.5, clips={"C.MOV": 0.6667})
+        why = squeeze.height_refusal(tall, "vertical plan")
+        for bit in ("C.MOV", "1.5x in the height", "factor 0.6667", "vertical plan", "assemble_timeline"):
+            self.assertIn(bit, why)
+        self.assertIsNone(squeeze.height_refusal(self.clips[0], "vertical plan"))  # 1.5 across the width
+        self.assertIsNone(squeeze.height_refusal("/nowhere/loose.mov", "vertical plan"))
+        Path(self.card + squeeze.SUFFIX).write_text("{not json")
+        self.assertIn("cannot read the squeeze record", squeeze.height_refusal(tall, "vertical plan"))
+
+
 FAKE_FFPROBE = """#!/bin/sh
 # stands in for ffprobe: a BRAW tag for *tagged*.braw, a cropped 16:9 frame for *wide*
 case "$*" in
@@ -89,6 +127,7 @@ case "$*" in
       *tagged*) echo '{"format":{"tags":{"anamorphic":"1.5x"}}}';;
       *streamtag*) echo '{"format":{"tags":{}},"streams":[{"tags":{"com.blackmagic-design.Anamorphic":"2x"}}]}';;
       *junk*) echo '{"format":{"tags":{"anamorphic":"wide"}}}';;
+      *below*) echo '{"format":{"tags":{"anamorphic":"0.67x"}}}';;
       *) echo '{"format":{"tags":{}}}';; esac;;
   *) case "$*" in
        *wide*) echo '{"streams":[{"width":1920,"height":1080,"side_data_list":[{"crop_top":113,"crop_bottom":114,"crop_left":0,"crop_right":0}]}]}';;
@@ -111,6 +150,8 @@ class TestFileTagAndProxies(Base):
         self.assertEqual(squeeze.file_tag(self.braw["tagged"], self.ffprobe), 1.5)
         self.assertIsNone(squeeze.file_tag(self.braw["plain"], self.ffprobe))
         self.assertIsNone(squeeze.file_tag(self.braw["junk"], self.ffprobe))
+        # only a person records a squeeze in the height: a tag below 1 is no answer
+        self.assertIsNone(squeeze.file_tag(os.path.join(self.card, "below.braw"), self.ffprobe))
         self.assertIsNone(squeeze.file_tag(self.clips[0], self.ffprobe))  # not BRAW: never probed
         self.assertIsNone(squeeze.file_tag(self.braw["tagged"], os.path.join(self.dir, "no-ffprobe")))
 

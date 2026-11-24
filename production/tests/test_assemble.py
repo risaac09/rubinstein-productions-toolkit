@@ -1429,6 +1429,82 @@ class TestCameraSoundDetails(Base):
         self.assertEqual(r["problems"], [])
 
 
+class TestSqueezeInTheHeight(Base):
+    """A source a person recorded with a factor below 1 (a lens turned 90 degrees): no pixel
+    aspect ratio is written, since the clip attribute has no setting for it; each item of that
+    source takes Zoom X = factor with Zoom Y at the span's scale, read back."""
+
+    def setUp(self):
+        super().setUp()
+        Path(os.path.dirname(self.one), "squeeze.json").write_text(
+            json.dumps({"default": 1, "clips": {"one.mov": 0.6667}}))
+        for p in (self.one, self.two):
+            rf.IMPORT_PROPS[p]["PAR"] = "Square"
+        self.addCleanup(lambda: [rf.IMPORT_PROPS[p].pop("PAR", None) for p in (self.one, self.two)])
+        dims = mock.patch.object(a.dc, "video_dims", lambda path: (6064, 4048))
+        dims.start()
+        self.addCleanup(dims.stop)
+
+    def summary(self, r):
+        from rpresolve.mcp import tools_write
+        return tools_write._squeeze_line(r)
+
+    def test_the_plan_gives_each_item_of_that_source_its_zoom_x_and_no_pixel_aspect_ratio(self):
+        dry = self.go(width=1080, height=1920)
+        self.assertEqual([s.get("zoom_x") for s in dry["plan"]["spans"]], [0.6667, 0.6667, None])
+        self.assertEqual(dry["plan"]["squeeze"],
+                         [{"path": self.one, "factor": 0.6667, "where": "record", "set": False}])
+        self.assertEqual(dry["desqueeze"], [])
+        self.assertIn("would set Zoom X on 2 item(s) squeezed in the height", self.summary(dry))
+        self.assertFalse([c for c in rf.CALLS if c[1] == "SetProperty"])
+
+    def test_the_real_run_sets_zoom_x_and_reads_it_back_and_leaves_the_clip_alone(self):
+        dry = self.go(width=1080, height=1920)
+        r = self.go(width=1080, height=1920, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertEqual((r["exit_status"], r["problems"]), (0, []))
+        tl = next(t for t in self.project.timelines if t.name == "Shoot m v1 [auto]")
+        items = tl.GetItemListInTrack("video", 1)
+        # item 1: Zoom X alone; item 2 carries a static scale of 1.15 on both axes as well
+        self.assertEqual([(i.props.get("ZoomX"), i.props.get("ZoomY"), i.props.get("ZoomGang")) for i in items],
+                         [(0.6667, 1, False), (0.7667, 1.15, False), (None, None, None)])
+        self.assertEqual([(x.get("ZoomX"), x.get("ZoomY")) for x in r["items"]],
+                         [(0.6667, 1), (0.7667, 1.15), (None, None)])
+        self.assertFalse([c for c in rf.CALLS if c[1] == "SetClipProperty" and c[2][0] == "PAR"])
+        self.assertIn("set Zoom X on 2 item(s)", self.summary(r))
+
+    def test_a_zoom_that_does_not_land_is_a_problem(self):
+        dry = self.go(width=1080, height=1920)
+        real_set = rf.Item.SetProperty
+
+        def deaf(item, key, value):
+            return True if key == "ZoomX" else real_set(item, key, value)
+        with mock.patch.object(rf.Item, "SetProperty", deaf):
+            r = self.go(width=1080, height=1920, dry_run=False, expect_sha=dry["plan_sha"])
+        self.assertTrue(any("ZoomX" in x for x in r["problems"]), r["problems"])
+        self.assertEqual(r["exit_status"], 1)
+
+    def test_the_plan_hash_follows_the_factor(self):
+        before = self.go(width=1080, height=1920)["plan_sha"]
+        Path(os.path.dirname(self.one), "squeeze.json").write_text(
+            json.dumps({"default": 1, "clips": {"one.mov": 0.5}}))
+        self.assertNotEqual(before, self.go(width=1080, height=1920)["plan_sha"])
+
+    def test_a_shape_no_wider_than_the_picture_is_filled_and_says_what_it_crops(self):
+        (row,) = self.go(width=1080, height=1920)["shape"]  # a 1:1 picture in 9:16: full height
+        self.assertEqual(row["picture"], "6064x4048 at 1.5x in the height = 1.00:1")
+        self.assertEqual(row["crop"], {"axis": "width", "percent": 43.7})  # 56 percent of the width is kept
+        self.assertNotIn("bars", row)
+
+    def test_a_shape_wider_than_the_picture_says_it_leaves_black_and_how_to_fill(self):
+        r = self.go(width=3840, height=2160)
+        (row,) = r["shape"]
+        self.assertEqual((row["crop"], row["bars"]), (None, 33.3))
+        for bit in ("Zoom X 0.6667 leaves black on 33.3% of the width", "set Zoom X 1 and Zoom Y 1.5 by hand",
+                    "not measured live"):
+            self.assertIn(bit, row["note"])
+        self.assertIn("leaves black", self.summary(r))
+
+
 class TestDesqueeze(Base):
     """A source a person recorded as anamorphic gets its pool clip's PAR set before items are
     placed; the shape the timeline takes is judged against the desqueezed picture."""

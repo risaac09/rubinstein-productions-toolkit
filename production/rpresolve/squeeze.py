@@ -16,6 +16,13 @@ of 1 is a spherical lens: recording it is the answer "not anamorphic", which is 
 the question for a card. A `squeeze.json` inside any folder works the same way for footage
 that is not a card copy.
 
+The factor is what the stored picture's width is multiplied by to reach its real shape. Above
+1 the squeeze is across the width, the usual case. Below 1 it is in the height: the lens was
+turned 90 degrees for a vertical frame, and the number is 1 over the lens's factor to four
+places (a 1.5x lens turned is 0.6667, `in_height(1.5)`). One number keeps one meaning for
+every reader, and a reader that predates it refuses the value as out of range instead of
+stretching the picture the wrong way. No camera tags a turned lens, so only a person records it.
+
 When a card has a record (`<CAM>-<id6>.card.json`, see rpresolve/card.py and production/card-record.md)
 the answers are read from it by clip id, with a legacy squeeze.json folded in; this module's own
 reading of squeeze.json stays for footage that is not a card copy.
@@ -34,7 +41,7 @@ import subprocess
 INSIDE = "squeeze.json"
 SUFFIX = ".squeeze.json"
 CARD_SUFFIX = ".card.json"
-MIN_FACTOR, MAX_FACTOR = 1.0, 2.5
+MIN_FACTOR, MAX_FACTOR = 0.4, 2.5  # below 1: in the height, down to a 2.5x lens turned
 
 
 class SqueezeError(ValueError):
@@ -44,8 +51,54 @@ class SqueezeError(ValueError):
 def factor_problem(f):
     """Why f is not a squeeze factor, or None."""
     if isinstance(f, bool) or not isinstance(f, (int, float)) or not MIN_FACTOR <= f <= MAX_FACTOR:
-        return f"a squeeze factor is a number from {MIN_FACTOR:g} to {MAX_FACTOR:g} (1 is spherical)"
+        return (f"a squeeze factor is a number from {MIN_FACTOR:g} to {MAX_FACTOR:g} (1 is spherical; "
+                "below 1 is a squeeze in the height, 1 over the lens's factor)")
     return None
+
+
+def in_height(lens):
+    """The factor to record for a lens of squeeze `lens` turned 90 degrees: 1 / lens, to four
+    places (1.5 gives 0.6667, the Zoom X measured against a source frame in Resolve)."""
+    return round(1 / lens, 4)
+
+
+def said(f, axis="width"):
+    """The factor to record for what a person said: f as it is (whole numbers as int), or
+    in_height(f) when axis is 'height'. None stays None. Raises SqueezeError for an axis that
+    does not fit the number."""
+    if f is None:
+        if axis == "height":
+            raise SqueezeError("axis height says where a squeeze is: give the lens's factor too")
+        return None
+    if axis == "height":
+        if isinstance(f, bool) or not isinstance(f, (int, float)) or not 1 < f <= MAX_FACTOR:
+            raise SqueezeError(f"with axis height the factor is the lens's own, above 1 and at most {MAX_FACTOR:g}")
+        return in_height(f)
+    return int(f) if float(f).is_integer() else f
+
+
+def said_line(f):
+    """A recorded factor for a plan line: '1.5', or '0.6667 (1.5x in the height)'."""
+    return f"{f:g}" if f >= 1 else f"{f:g} ({label(f)})"
+
+
+def label(f):
+    """A factor as a person says it: '1.5x', or '1.5x in the height' for one below 1."""
+    return f"{f:g}x" if f >= 1 else f"{1 / f:.3g}x in the height"
+
+
+def height_refusal(path, tool):
+    """Why `tool` will not take a clip a person recorded as squeezed in the height, or None.
+    For the readers that set one zoom for both axes: they name the clip and the way forward."""
+    try:
+        f = recorded(path)
+    except SqueezeError as e:  # a record that cannot be read is not a pass
+        return str(e)
+    if f is None or f >= 1:
+        return None
+    return (f"{os.path.basename(path)} is recorded as squeezed {label(f)} (factor {f:g}): {tool} "
+            "sets one zoom for both axes and does not carry a squeeze in the height yet. Build "
+            "the manifest at the shape wanted with assemble_timeline, which sets Zoom X on the item")
 
 
 def _ancestors(path):
@@ -119,7 +172,7 @@ def file_tag(path, ffprobe="ffprobe"):
     for t in tags:  # any key naming it, any case, on the format or a stream: a body may write it its own way
         for k, v in t.items():
             m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*x?\s*", str(v), re.I) if "anamorphic" in k.lower() else None
-            if m and not factor_problem(float(m.group(1))):
+            if m and float(m.group(1)) >= 1 and not factor_problem(float(m.group(1))):
                 return float(m.group(1))
     return None
 
@@ -141,13 +194,18 @@ def record_factor(path):
     return None if f is None else float(f)
 
 
+def recorded(path):
+    """The factor a person recorded for a media file (the card record, else a squeeze.json
+    beside or above the file), or None."""
+    f = record_factor(path)
+    return factor(path) if f is None else f
+
+
 def answer(path, ffprobe="ffprobe"):
     """(factor, where) for a media file: a person's record first ("record": the card record,
     else a squeeze.json beside or above the file), else the file's own tag ("file tag"),
     else (None, None)."""
-    f = record_factor(path)
-    if f is None:
-        f = factor(path)
+    f = recorded(path)
     if f is not None:
         return f, "record"
     f = file_tag(path, ffprobe)
@@ -189,7 +247,7 @@ def picture_aspect(path, ffprobe="ffprobe"):
 def remaining(f, source_aspect, drawn_aspect, slack=0.03):
     """The stretch still owed to the file that is drawn (a proxy) for a source squeezed f:
     a proxy made desqueezed already has the real shape, so nothing is owed. None when no
-    stretch is needed."""
+    stretch is needed. f below 1 (a squeeze in the height) is the same arithmetic."""
     if not f or f == 1:
         return None
     if source_aspect and drawn_aspect:

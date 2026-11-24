@@ -423,6 +423,29 @@ class Command(Base):
         self.assertEqual(card.validate(after), [])
         self.assertEqual(run_cmd("set", self.tmp + "/CAMA-012345", "--squeeze", "3", "--apply")[0], 1)
 
+    def test_set_records_a_squeeze_in_the_height_as_one_over_the_lens(self):
+        make_card(self.tmp)
+        root, rec_path = self.tmp + "/CAMA-012345", Path(self.tmp, "CAMA-012345.card.json")
+        rc, out, _ = run_cmd("set", root, "--squeeze", "1.5", "--axis", "height", "--clip", "AAA0002.MOV")
+        self.assertEqual(rc, 0)
+        self.assertIn("squeeze 0.6667 (1.5x in the height) for 1 clip(s)", out)
+        self.assertEqual(run_cmd("set", root, "--squeeze", "1.5", "--axis", "height", "--clip", "AAA0002.MOV", "--apply")[0], 0)
+        self.assertEqual(run_cmd("set", root, "--squeeze", "1.5", "--clip", "AAA0001.MOV", "--apply")[0], 0)
+        after = json.loads(rec_path.read_text())
+        self.assertEqual(after["answers"]["squeeze"]["clips"],
+                         {"CAMA-012345/AAA0001": 1.5, "CAMA-012345/AAA0002": 0.6667})
+        self.assertEqual(card.validate(after), [])
+        c = card.load(root)
+        self.assertEqual(card.squeeze_answer(c, c["clips"][1]), (0.6667, "record"))
+        self.assertFalse([o for o in c["open"] if o.startswith("squeeze ")])  # S3 is answered
+        # the bare factor is taken too; a number that is no lens factor, and one out of range, are refused
+        self.assertEqual(run_cmd("set", root, "--squeeze", "0.5", "--clip", "AAA0001.MOV", "--apply")[0], 0)
+        for bad in (("--squeeze", "0.6667", "--axis", "height"), ("--squeeze", "1", "--axis", "height"),
+                    ("--squeeze", "0.3"), ("--project", "demo", "--axis", "height")):
+            before = rec_path.read_text()
+            self.assertEqual(run_cmd("set", root, *bad, "--apply")[0], 1, bad)
+            self.assertEqual(rec_path.read_text(), before, bad)
+
     def test_set_upgrade_alone_is_a_dry_run_then_keeps_every_key(self):
         make_card(self.tmp)
         rec_path = Path(self.tmp, "CAMA-012345.card.json")

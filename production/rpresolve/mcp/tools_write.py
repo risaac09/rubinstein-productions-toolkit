@@ -564,6 +564,10 @@ def _squeeze_line(r):
     elif r["desqueeze"] and not r["dry_run"]:
         bits.append(f"Pixel Aspect Ratio set on {sum(1 for x in r['desqueeze'] if x.get('result') == 'set')} "
                     f"of {len(r['desqueeze'])} clip(s), read back")
+    tall = [s for s in r["plan"]["spans"] if s.get("zoom_x")]
+    if tall:
+        bits.append(f"{'would set' if r['dry_run'] else 'set'} Zoom X on {len(tall)} item(s) squeezed "
+                    "in the height (Zoom Y stays at the scale), read back")
     bits += cmd_assemble.once([x["note"] for x in r["shape"] if x["note"]], [])
     return "; squeeze: " + "; ".join(bits) if bits else ""
 
@@ -877,8 +881,11 @@ def card_set(args, ctx):
     clips = args.get("clips") or []
     if clips and args.get("squeeze") is None:
         raise ValueError("clips name the clips a squeeze answer is for; give squeeze too.")
-    f = args.get("squeeze")
-    f = int(f) if f is not None and float(f).is_integer() else f
+    from .. import squeeze as rpsqueeze
+    try:
+        f = rpsqueeze.said(args.get("squeeze"), args.get("axis") or "width")
+    except rpsqueeze.SqueezeError as e:
+        raise ValueError(str(e))
     card = rpcard.load(path)
     try:
         rpcard.refuse_git(card["root"])
@@ -898,7 +905,8 @@ def card_set(args, ctx):
         raise workflows.Refused("the plan has changed since the dry run (the record or the call "
                                 "differs); run it with dry_run true again and review it.")
     what = ", ".join(x for x in (
-        (f"squeeze {f:g} for {len(clips)} clip(s)" if clips else f"squeeze default {f:g}") if f is not None else "",
+        (f"squeeze {rpsqueeze.said_line(f)} for {len(clips)} clip(s)" if clips
+         else f"squeeze default {rpsqueeze.said_line(f)}") if f is not None else "",
         f"project {args['project_slug']}" if args.get("project_slug") else "",
         "upgrade the record from schema 1 to 2" if card["version"] == 1 else "") if x)
     r = {"card": card["root"], "record": card["root"] + rpcard.RECORD, "plan_sha": sha,
@@ -1429,6 +1437,10 @@ def register(registry):
         "timeline (import_timeline reads FCPXML, which holds one rate for both). The clips "
         "it needs are imported into a bin named 'methods [auto]', the new timeline gets its "
         "own size and fill-and-crop scaling, a span's static scale becomes the item's zoom, "
+        "a source a person recorded as squeezed in the height (a card record factor below 1: a "
+        "lens turned 90 degrees) gets that factor as its items' Zoom X with Zoom Y left at the "
+        "scale, read back (no Pixel Aspect Ratio is written for it; the shape rows say when "
+        "the frame is wider than the picture and black is left at the sides), "
         "and the music goes on A1 (A2 when the manifest sets camera_sound) from the first frame through the end black as a bed that "
         "ffmpeg cuts first (the in point and a one second fade out baked into a 24-bit 48 kHz "
         "WAV beside the manifest, or in bed_dir; refused inside a git tree). SetFades is not "
@@ -1788,7 +1800,9 @@ def register(registry):
         "card_set",
         "Offline, never Resolve: record what a person said about a copied camera card, in its "
         "record (<CAM>-<id6>.card.json): the squeeze answer (1 is spherical; for the whole card, or "
-        "for the clips named by clip id or file name) and the project slug. Nothing else is "
+        "for the clips named by clip id or file name) and the project slug. A lens turned 90 "
+        "degrees squeezes the height: give its factor with axis 'height' and 1 / factor is "
+        "recorded (1.5 becomes 0.6667). Nothing else is "
         "writable here. It replaces the record atomically, keeping every key it had and "
         "upgrading a schema 1 record to 2; it never touches the footage, SHA256SUMS, offsite.txt "
         "or a squeeze.json, and refuses inside a git working tree. It plans first like the write "
@@ -1797,8 +1811,13 @@ def register(registry):
         {"type": "object", "properties": {
             "path": {"type": "string", "description": "Absolute path of a card copy, a file in it, "
                      "or one of its sidecars."},
-            "squeeze": {"type": "number", "minimum": 1, "maximum": 2.5,
-                        "description": "The squeeze factor; 1 is spherical."},
+            "squeeze": {"type": "number", "minimum": 0.4, "maximum": 2.5,
+                        "description": "The squeeze factor; 1 is spherical. Below 1 is a squeeze "
+                        "in the height, 1 over the lens's factor (or give the lens's factor "
+                        "with axis 'height')."},
+            "axis": {"type": "string", "enum": ["width", "height"],
+                     "description": "Where the squeeze is. 'height' (a lens turned 90 degrees) "
+                     "records 1 / squeeze. Default 'width'."},
             "clips": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 500,
                       "description": "Clip ids (<CAM>-<id6>/<stem>) or file names the squeeze is "
                       "for. Omit it to answer for every clip not named."},

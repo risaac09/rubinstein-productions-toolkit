@@ -31,6 +31,7 @@ from . import filmed as rpfilmed
 from . import ingest as rpingest
 from . import proxies as rpproxies
 from . import relink as rprelink
+from . import squeeze as rpsqueeze
 from .renderguard import RenderGuard
 
 # RPRESOLVE_SURVEY_PYTHON names another Python 3.14+ (the survey needs compression.zstd).
@@ -1428,6 +1429,10 @@ def reframe_apply(resolve, project_name, timeline, plan, track=1, items=None, al
         entries = by_path.get(rpingest.norm_path(path)) if path else None
         if not entries:
             refusals.append({**row, "reasons": ["no plan entry for its file"]})
+            continue
+        tall = rpsqueeze.height_refusal(path, "reframe_apply")
+        if tall:  # one zoom for both axes would undo the item's Zoom X
+            refusals.append({**row, "reasons": [tall]})
             continue
         pe = _pick(entries, _source_seconds(it))
         if pe is None:
